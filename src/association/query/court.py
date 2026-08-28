@@ -9,10 +9,10 @@ def render_court_html(title: str, subtitle: str, shots: list[tuple]) -> str:
     W, H = 500, 470  # 10px per foot, court width 50 x half-court length 47
     scale = 10
 
-    def sx(x):
+    def sx(x: float) -> float:
         return x * scale
 
-    def sy(y):
+    def sy(y: float) -> float:
         return H - y * scale  # baseline at bottom
 
     court = f"""

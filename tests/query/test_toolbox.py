@@ -1,6 +1,7 @@
 """Regression + sanity tests for the Toolbox the local model calls into."""
 
 import json
+from pathlib import Path
 
 import duckdb
 import pytest
@@ -9,7 +10,7 @@ from association.query.toolbox import Toolbox
 
 
 @pytest.fixture
-def db_path(tmp_path):
+def db_path(tmp_path: Path) -> str:
     path = tmp_path / "test.duckdb"
     con = duckdb.connect(str(path))
     con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
@@ -32,20 +33,20 @@ def db_path(tmp_path):
 
 
 @pytest.fixture
-def toolbox(tmp_path, db_path):
+def toolbox(tmp_path: Path, db_path: str) -> Toolbox:
     return Toolbox(db_path, tmp_path / "out")
 
 
 # ---------------- describe_table ----------------
 
 
-def test_describe_table_known_table(toolbox):
+def test_describe_table_known_table(toolbox: Toolbox) -> None:
     result = json.loads(toolbox.describe_table("players"))
     cols = {c["column"] for c in result}
     assert {"athlete_id", "display_name"} <= cols
 
 
-def test_describe_table_unknown_table_is_rejected(toolbox):
+def test_describe_table_unknown_table_is_rejected(toolbox: Toolbox) -> None:
     result = toolbox.describe_table("not_a_real_table")
     assert "Unknown table" in result
 
@@ -53,24 +54,24 @@ def test_describe_table_unknown_table_is_rejected(toolbox):
 # ---------------- run_sql ----------------
 
 
-def test_run_sql_executes_select(toolbox):
+def test_run_sql_executes_select(toolbox: Toolbox) -> None:
     result = json.loads(toolbox.run_sql("SELECT display_name FROM players ORDER BY display_name"))
     names = [r["display_name"] for r in result["rows"]]
     assert names == ["Klay Thompson", "Stephen Curry"]
 
 
 @pytest.mark.parametrize("query", ["DELETE FROM players", "DROP TABLE players", "INSERT INTO players VALUES ('3','x')"])
-def test_run_sql_rejects_non_select_statements(toolbox, query):
+def test_run_sql_rejects_non_select_statements(toolbox: Toolbox, query: str) -> None:
     result = toolbox.run_sql(query)
     assert "only read-only" in result
 
 
-def test_run_sql_allows_with_clause(toolbox):
+def test_run_sql_allows_with_clause(toolbox: Toolbox) -> None:
     result = json.loads(toolbox.run_sql("WITH x AS (SELECT 1 AS n) SELECT n FROM x"))
     assert result["rows"] == [{"n": 1}]
 
 
-def test_run_sql_enriches_id_columns_with_names(toolbox):
+def test_run_sql_enriches_id_columns_with_names(toolbox: Toolbox) -> None:
     """Regression: the model kept surfacing raw athlete_id/team_id numbers in
     its answers instead of names. run_sql now auto-resolves any *_id column to
     a matching *_name field so the model always has a name available."""
@@ -78,7 +79,7 @@ def test_run_sql_enriches_id_columns_with_names(toolbox):
     assert result["rows"][0]["athlete_name"] == "Stephen Curry"
 
 
-def test_run_sql_reports_db_error_instead_of_raising(toolbox):
+def test_run_sql_reports_db_error_instead_of_raising(toolbox: Toolbox) -> None:
     result = toolbox.run_sql("SELECT * FROM not_a_real_table")
     assert "SQL error" in result
 
@@ -86,19 +87,19 @@ def test_run_sql_reports_db_error_instead_of_raising(toolbox):
 # ---------------- render_shot_chart ----------------
 
 
-def test_render_shot_chart_nickname_matching(toolbox):
+def test_render_shot_chart_nickname_matching(toolbox: Toolbox) -> None:
     """Regression: "Steph" is not a substring of "Stephen" (whole-phrase ILIKE
     matching failed for this exact query). Per-token AND matching fixes it."""
     result = toolbox.render_shot_chart(player_name="Steph Curry")
     assert "Rendered shot chart for Stephen Curry" in result
 
 
-def test_render_shot_chart_no_match(toolbox):
+def test_render_shot_chart_no_match(toolbox: Toolbox) -> None:
     result = toolbox.render_shot_chart(player_name="Nobody Real")
     assert "No player found" in result
 
 
-def test_render_shot_chart_event_id_overrides_season(toolbox):
+def test_render_shot_chart_event_id_overrides_season(toolbox: Toolbox) -> None:
     """Regression: season/season_type must be ignored once event_id is given -
     a wrong guessed season used to silently zero out otherwise-correct results."""
     result = toolbox.render_shot_chart(player_name="Curry", event_id="100", season=1999)
@@ -106,22 +107,22 @@ def test_render_shot_chart_event_id_overrides_season(toolbox):
     assert "2/3" in result
 
 
-def test_render_shot_chart_made_only_filters(toolbox):
+def test_render_shot_chart_made_only_filters(toolbox: Toolbox) -> None:
     result = toolbox.render_shot_chart(player_name="Curry", made_only=True)
     assert "2/2" in result
 
 
-def test_render_shot_chart_shot_value_filters(toolbox):
+def test_render_shot_chart_shot_value_filters(toolbox: Toolbox) -> None:
     result = toolbox.render_shot_chart(player_name="Curry", shot_value=2)
     assert "1/1" in result
 
 
-def test_render_shot_chart_period_filters(toolbox):
+def test_render_shot_chart_period_filters(toolbox: Toolbox) -> None:
     result = toolbox.render_shot_chart(player_name="Curry", period=2)
     assert "1/1" in result
 
 
-def test_render_shot_chart_writes_html_file(toolbox, tmp_path):
+def test_render_shot_chart_writes_html_file(toolbox: Toolbox, tmp_path: Path) -> None:
     toolbox.render_shot_chart(player_name="Curry")
     files = list((tmp_path / "out").glob("*.html"))
     assert len(files) == 1

@@ -7,6 +7,8 @@ because a real question against real data produced wrong/crashing output; see
 each docstring for what broke.
 """
 
+from typing import Any
+
 import pytest
 
 from association.fetch import parse
@@ -30,11 +32,11 @@ from association.fetch import parse
         (12.0, 12.0),
     ],
 )
-def test_num(value, expected):
+def test_num(value: Any, expected: Any) -> None:
     assert parse._num(value) == expected
 
 
-def test_num_empty_string_regression():
+def test_num_empty_string_regression() -> None:
     """Regression: pyarrow.lib.ArrowInvalid: Could not convert '' with type str:
     tried to convert to double. ESPN returns value=None + displayValue="" for
     stats it hasn't computed yet (e.g. early-season BPI projections); this used
@@ -46,26 +48,26 @@ def test_num_empty_string_regression():
 # ---------------- _assign_stat ----------------
 
 
-def test_assign_stat_compound_made_attempted():
-    row = {}
+def test_assign_stat_compound_made_attempted() -> None:
+    row: dict[str, Any] = {}
     parse._assign_stat(row, "fieldGoalsMade-fieldGoalsAttempted", "44-88")
     assert row == {"fieldGoalsMade": 44, "fieldGoalsAttempted": 88}
 
 
-def test_assign_stat_simple():
-    row = {}
+def test_assign_stat_simple() -> None:
+    row: dict[str, Any] = {}
     parse._assign_stat(row, "points", "18")
     assert row == {"points": 18}
 
 
-def test_assign_stat_negative_value_not_mistaken_for_compound():
-    row = {}
+def test_assign_stat_negative_value_not_mistaken_for_compound() -> None:
+    row: dict[str, Any] = {}
     parse._assign_stat(row, "plusMinus", "-6")
     assert row == {"plusMinus": -6}
 
 
-def test_assign_stat_ignores_missing_name():
-    row = {}
+def test_assign_stat_ignores_missing_name() -> None:
+    row: dict[str, Any] = {}
     parse._assign_stat(row, "", "5")
     parse._assign_stat(row, None, "5")
     assert row == {}
@@ -74,7 +76,7 @@ def test_assign_stat_ignores_missing_name():
 # ---------------- parse_teams ----------------
 
 
-def test_parse_teams():
+def test_parse_teams() -> None:
     data = {
         "sports": [
             {
@@ -115,7 +117,7 @@ def test_parse_teams():
     assert row["is_active"] is True
 
 
-def test_parse_teams_handles_missing_data():
+def test_parse_teams_handles_missing_data() -> None:
     assert parse.parse_teams(None) == []
     assert parse.parse_teams({}) == []
 
@@ -123,12 +125,12 @@ def test_parse_teams_handles_missing_data():
 # ---------------- parse_schedule_event_ids ----------------
 
 
-def test_parse_schedule_event_ids():
+def test_parse_schedule_event_ids() -> None:
     data = {"events": [{"id": "1"}, {"id": "2"}, {}]}
     assert parse.parse_schedule_event_ids(data) == ["1", "2"]
 
 
-def test_parse_schedule_event_ids_handles_missing_data():
+def test_parse_schedule_event_ids_handles_missing_data() -> None:
     assert parse.parse_schedule_event_ids(None) == []
     assert parse.parse_schedule_event_ids({}) == []
 
@@ -136,7 +138,7 @@ def test_parse_schedule_event_ids_handles_missing_data():
 # ---------------- parse_game_summary ----------------
 
 
-def _make_game_data(status_name="STATUS_FINAL", completed=True, state="post"):
+def _make_game_data(status_name: str = "STATUS_FINAL", completed: bool = True, state: str = "post") -> dict:
     return {
         "header": {
             "id": "401585183",
@@ -249,7 +251,7 @@ def _make_game_data(status_name="STATUS_FINAL", completed=True, state="post"):
     }
 
 
-def test_parse_game_summary_completed_game():
+def test_parse_game_summary_completed_game() -> None:
     data = _make_game_data()
     result = parse.parse_game_summary(data, season=2024, season_type=2)
     game = result["game"]
@@ -282,7 +284,7 @@ def test_parse_game_summary_completed_game():
     assert result["players_seen"]["3155526"]["display_name"] == "Test Player"
 
 
-def test_parse_game_summary_free_throw_sentinel_coordinate_nulled():
+def test_parse_game_summary_free_throw_sentinel_coordinate_nulled() -> None:
     """Regression: free throws (and some other plays) carry an ESPN sentinel
     "no real coordinate" value instead of a court position or null. Left
     unfiltered, this produced garbage shot-chart plots and skewed distance
@@ -300,7 +302,7 @@ def test_parse_game_summary_free_throw_sentinel_coordinate_nulled():
     assert ft_shot["coordinate_y"] is None
 
 
-def test_parse_game_summary_postponed_game_not_completed_but_state_post():
+def test_parse_game_summary_postponed_game_not_completed_but_state_post() -> None:
     """Regression: a postponed/cancelled game has completed=False but
     state='post' (permanently settled, not pending) - distinct from a
     still-upcoming game (state='pre'). Conflating the two meant a season could
@@ -312,14 +314,14 @@ def test_parse_game_summary_postponed_game_not_completed_but_state_post():
     assert game["status_state"] == "post"
 
 
-def test_parse_game_summary_pending_game():
+def test_parse_game_summary_pending_game() -> None:
     data = _make_game_data(status_name="STATUS_SCHEDULED", completed=False, state="pre")
     game = parse.parse_game_summary(data, 2024, 2)["game"]
     assert game["status_completed"] is False
     assert game["status_state"] == "pre"
 
 
-def test_parse_game_summary_handles_missing_data():
+def test_parse_game_summary_handles_missing_data() -> None:
     result = parse.parse_game_summary(None, 2024, 2)
     assert result["game"] is None
     assert result["player_box"] == []
@@ -331,7 +333,7 @@ def test_parse_game_summary_handles_missing_data():
 # empty-string placeholders straight into what should be numeric columns.
 
 
-def test_parse_standings_empty_stat_value_becomes_none():
+def test_parse_standings_empty_stat_value_becomes_none() -> None:
     data = {
         "children": [
             {
@@ -356,7 +358,7 @@ def test_parse_standings_empty_stat_value_becomes_none():
     assert any(g["stat_key"] == "wins" for g in glossary)
 
 
-def test_parse_standings_dedupes_across_nested_levels():
+def test_parse_standings_dedupes_across_nested_levels() -> None:
     """Standings entries appear at both conference and division level for the
     same teams - only the first (more complete) occurrence should be kept."""
     data = {
@@ -374,13 +376,13 @@ def test_parse_standings_dedupes_across_nested_levels():
     assert rows[0]["wins"] == 50.0
 
 
-def test_parse_standings_handles_missing_data():
+def test_parse_standings_handles_missing_data() -> None:
     rows, glossary = parse.parse_standings(None, season=2021)
     assert rows == []
     assert glossary == []
 
 
-def test_parse_team_season_stats_empty_value_becomes_none():
+def test_parse_team_season_stats_empty_value_becomes_none() -> None:
     data = {
         "splits": {
             "categories": [
@@ -400,13 +402,13 @@ def test_parse_team_season_stats_empty_value_becomes_none():
     assert row["team_id"] == "13"
 
 
-def test_parse_team_season_stats_handles_missing_data():
+def test_parse_team_season_stats_handles_missing_data() -> None:
     row, glossary = parse.parse_team_season_stats(None, 2021, 2, "13")
     assert row is None
     assert glossary == []
 
 
-def test_parse_power_index_empty_value_becomes_none_and_team_id_extracted_from_ref():
+def test_parse_power_index_empty_value_becomes_none_and_team_id_extracted_from_ref() -> None:
     data = {
         "items": [
             {
@@ -428,19 +430,19 @@ def test_parse_power_index_empty_value_becomes_none_and_team_id_extracted_from_r
     assert rows[0]["winpct"] is None
 
 
-def test_parse_power_index_handles_missing_data():
+def test_parse_power_index_handles_missing_data() -> None:
     rows, glossary = parse.parse_power_index(None)
     assert rows == []
     assert glossary == []
 
 
-def test_parse_player_career_stats_handles_missing_data():
+def test_parse_player_career_stats_handles_missing_data() -> None:
     rows, glossary = parse.parse_player_career_stats(None, "1", 2)
     assert rows == []
     assert glossary == []
 
 
-def test_parse_player_career_stats_splits_compound_and_groups_by_season_team():
+def test_parse_player_career_stats_splits_compound_and_groups_by_season_team() -> None:
     data = {
         "categories": [
             {

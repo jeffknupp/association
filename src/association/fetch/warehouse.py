@@ -68,7 +68,7 @@ def build(data_dir: Path, db_path: Path) -> None:
         con.close()
 
 
-def _build_views(con, loaded: set[str]) -> None:
+def _build_views(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
     if {"player_box_stats", "players", "games", "teams"} <= loaded:
         con.execute(
             """

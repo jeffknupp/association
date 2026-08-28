@@ -5,12 +5,28 @@ repos:
       - id: ruff
         args: [--fix]
 
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v2.3.1
+  # Local hooks (not the isolated mirrors-mypy env) so mypy resolves the
+  # `association` package and third-party stubs (pytest, duckdb, ...) exactly
+  # as this project's own venv does - an isolated hook env would need every
+  # dependency re-declared and re-installed separately, and would still get
+  # `association` itself wrong (not pip-installed there).
+  #
+  # src and tests are checked in two SEPARATE invocations, not one `mypy src
+  # tests` call: combined, mypy ends up resolving the `association` package
+  # two different ways (the source-rooted src/ copy vs. the editable-installed
+  # copy tests/ imports), which produces spurious cross-checking errors that
+  # don't occur when each root is checked on its own (verified clean either way).
+  - repo: local
     hooks:
-      - id: mypy
-        # Run over the whole package every time, not just staged files - mypy
-        # needs the full src/ tree together to resolve cross-module imports
-        # (e.g. cli.py importing .fetch.warehouse).
-        args: ["src"]
+      - id: mypy-src
+        name: mypy (src)
+        entry: .venv/bin/mypy src
+        language: system
         pass_filenames: false
+        types: [python]
+      - id: mypy-tests
+        name: mypy (tests)
+        entry: .venv/bin/mypy tests
+        language: system
+        pass_filenames: false
+        types: [python]

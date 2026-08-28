@@ -9,12 +9,17 @@ hardcoding a stat list, so the parser tracks whatever ESPN exposes.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from typing import Any
 
 TEAM_REF_RE = re.compile(r"/teams/(\d+)")
 
+# Raw ESPN response payload (or a nested dict within one) - a plain dict, since
+# these are decoded straight from JSON and we index into them dynamically.
+JSON = dict[str, Any]
 
-def _num(value):
+
+def _num(value: Any) -> int | float | str | None:
     if value is None:
         return None
     s = str(value).strip()
@@ -31,7 +36,7 @@ def _num(value):
             return s
 
 
-def _assign_stat(row: dict, name: str, value) -> None:
+def _assign_stat(row: dict[str, Any], name: str | None, value: Any) -> None:
     if not name:
         return
     if "-" in name:
@@ -43,9 +48,14 @@ def _assign_stat(row: dict, name: str, value) -> None:
         row[name] = _num(value)
 
 
-def _glossary_rows(names, labels, descriptions, source):
-    labels = labels or []
-    descriptions = descriptions or []
+def _glossary_rows(
+    names: Iterable[str] | None,
+    labels: Iterable[str | None] | None,
+    descriptions: Iterable[str | None] | None,
+    source: str,
+) -> list[dict]:
+    labels = list(labels or [])
+    descriptions = list(descriptions or [])
     rows = []
     for i, name in enumerate(names or []):
         rows.append(
@@ -59,7 +69,7 @@ def _glossary_rows(names, labels, descriptions, source):
     return rows
 
 
-def parse_teams(data) -> list[dict]:
+def parse_teams(data: JSON | None) -> list[dict]:
     rows: list[dict] = []
     if not data:
         return rows
@@ -89,13 +99,13 @@ def parse_teams(data) -> list[dict]:
     return rows
 
 
-def parse_schedule_event_ids(data) -> list[str]:
+def parse_schedule_event_ids(data: JSON | None) -> list[str]:
     if not data:
         return []
     return [e.get("id") for e in data.get("events") or [] if e.get("id")]
 
 
-def parse_game_summary(data, season: int, season_type: int) -> dict[str, Any]:
+def parse_game_summary(data: JSON | None, season: int, season_type: int) -> dict[str, Any]:
     """Returns dict with: game (dict|None), player_box, team_box, plays,
     shot_chart, win_probability (lists of dict), players_seen (athlete_id -> bio dict),
     glossary (list of dict)."""
@@ -126,7 +136,7 @@ def parse_game_summary(data, season: int, season_type: int) -> dict[str, Any]:
     away_team_id = (away.get("team") or {}).get("id")
     opponent_of = {home_team_id: away_team_id, away_team_id: home_team_id}
 
-    def linescore_str(c):
+    def linescore_str(c: dict[str, Any]) -> str:
         return ",".join(str(x.get("displayValue", "")) for x in (c.get("linescores") or []))
 
     winner_team_id = None
@@ -291,11 +301,11 @@ def parse_game_summary(data, season: int, season_type: int) -> dict[str, Any]:
     return result
 
 
-def parse_standings(data, season: int) -> tuple[list[dict], list[dict]]:
+def parse_standings(data: JSON | None, season: int) -> tuple[list[dict], list[dict]]:
     seen: dict[str, dict] = {}
     glossary: list[dict] = []
 
-    def walk(node):
+    def walk(node: JSON | None) -> None:
         standings = (node or {}).get("standings") or {}
         for entry in standings.get("entries") or []:
             team = entry.get("team") or {}
@@ -323,7 +333,7 @@ def parse_standings(data, season: int) -> tuple[list[dict], list[dict]]:
     return list(seen.values()), glossary
 
 
-def parse_player_career_stats(data, athlete_id: str, season_type: int) -> tuple[list[dict], list[dict]]:
+def parse_player_career_stats(data: JSON | None, athlete_id: str, season_type: int) -> tuple[list[dict], list[dict]]:
     rows: dict[tuple, dict] = {}
     glossary: list[dict] = []
     if not data:
@@ -352,11 +362,13 @@ def parse_player_career_stats(data, athlete_id: str, season_type: int) -> tuple[
     return list(rows.values()), glossary
 
 
-def parse_team_season_stats(data, season: int, season_type: int, team_id: str):
+def parse_team_season_stats(
+    data: JSON | None, season: int, season_type: int, team_id: str
+) -> tuple[dict[str, Any] | None, list[dict]]:
     if not data:
         return None, []
-    row = {"season": season, "season_type": season_type, "team_id": team_id}
-    glossary = []
+    row: dict[str, Any] = {"season": season, "season_type": season_type, "team_id": team_id}
+    glossary: list[dict] = []
     splits = data.get("splits") or {}
     for cat in splits.get("categories") or []:
         names, labels, descs = [], [], []
@@ -373,7 +385,7 @@ def parse_team_season_stats(data, season: int, season_type: int, team_id: str):
     return row, glossary
 
 
-def parse_power_index(data) -> tuple[list[dict], list[dict]]:
+def parse_power_index(data: JSON | None) -> tuple[list[dict], list[dict]]:
     rows: list[dict] = []
     glossary: list[dict] = []
     if not data:

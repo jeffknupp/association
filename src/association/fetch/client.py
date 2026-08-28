@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import Any
 
 from curl_cffi import requests as cf_requests
 
@@ -29,7 +30,7 @@ class ESPNClient:
         self._min_interval = 1.0 / rate_limit if rate_limit > 0 else 0.0
         self._last_request = 0.0
 
-    def get_json(self, url: str, params: dict | None = None):
+    def get_json(self, url: str, params: dict[str, Any] | None = None) -> dict[str, Any] | None:
         """GET url, return parsed JSON, None on 400/404 (missing/invalid resource)."""
         last_exc = None
         for attempt in range(self.max_retries + 1):

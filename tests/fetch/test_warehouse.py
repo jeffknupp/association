@@ -1,5 +1,7 @@
 """Regression + sanity tests for the DuckDB warehouse builder."""
 
+from pathlib import Path
+
 import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -7,7 +9,7 @@ import pyarrow.parquet as pq
 from association.fetch import warehouse
 
 
-def test_build_ignores_directory_names_uses_embedded_columns(tmp_path):
+def test_build_ignores_directory_names_uses_embedded_columns(tmp_path: Path) -> None:
     """Regression: files live under season=X/season_type=Y directories, and
     each row ALSO embeds its own season/season_type columns. Reading with
     hive_partitioning=True made duckdb infer a SECOND copy of those columns
@@ -32,7 +34,7 @@ def test_build_ignores_directory_names_uses_embedded_columns(tmp_path):
     assert row == (2024, 2)
 
 
-def test_build_merges_files_with_differing_column_types(tmp_path):
+def test_build_merges_files_with_differing_column_types(tmp_path: Path) -> None:
     """Regression: an early-season power-index snapshot had every stat as
     None (ESPN hadn't computed them yet), so that file's column typed as
     null; a later, fully-populated season's file typed the same column as
@@ -54,7 +56,7 @@ def test_build_merges_files_with_differing_column_types(tmp_path):
     assert rows == [(2021, None), (2024, 0.75)]
 
 
-def test_build_skips_tables_with_no_parquet_files(tmp_path):
+def test_build_skips_tables_with_no_parquet_files(tmp_path: Path) -> None:
     data_dir = tmp_path / "parquet"
     data_dir.mkdir()
     db_path = tmp_path / "empty.duckdb"
@@ -66,7 +68,7 @@ def test_build_skips_tables_with_no_parquet_files(tmp_path):
     assert tables == []
 
 
-def test_build_creates_player_game_log_view_when_dependencies_present(tmp_path):
+def test_build_creates_player_game_log_view_when_dependencies_present(tmp_path: Path) -> None:
     data_dir = tmp_path / "parquet"
     fixtures = {
         "teams": {"team_id": "1", "abbreviation": "BOS"},

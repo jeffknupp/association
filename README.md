@@ -105,8 +105,11 @@ because a line of code needed generic coverage.
 
 ## Linting / type checking
 
-`ruff` and `mypy` run as pre-commit hooks (`ruff --fix`, then `mypy` over the
-whole `src/` tree):
+`ruff` and `mypy` run as pre-commit hooks (`ruff --fix`, then `mypy` over
+`src/` and, separately, `tests/`). The whole codebase is fully type-annotated
+and mypy runs with `disallow_untyped_defs`/`disallow_incomplete_defs` - new
+code without annotations fails the hook, it's not just checking whatever
+happens to already have hints.
 
 ```bash
 uv sync --extra dev

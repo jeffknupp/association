@@ -9,7 +9,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import pyarrow as pa
 import pyarrow.dataset as ds
+import pyarrow.parquet as pq
 from tqdm import tqdm
 
 from . import endpoints, parse, storage
@@ -37,20 +39,20 @@ class Pipeline:
             raise RuntimeError("This Pipeline has no ESPNClient (constructed for local-only use) - can't make network requests.")
         return self.client
 
-    def _p(self, *parts) -> Path:
+    def _p(self, *parts: str | int) -> Path:
         return self.root.joinpath(*[str(p) for p in parts])
 
     def _exists(self, path: Path) -> bool:
         return storage.exists(path) and not self.force
 
-    def _add_glossary(self, rows):
+    def _add_glossary(self, rows: list[dict]) -> None:
         for r in rows:
             key = r.get("stat_key")
             if key and key not in self.glossary:
                 self.glossary[key] = r
 
     # ---------------- teams ----------------
-    def fetch_teams(self):
+    def fetch_teams(self) -> None:
         path = self._p("teams", "teams.parquet")
         if self._exists(path):
             return
@@ -144,7 +146,7 @@ class Pipeline:
         for athlete_id, bio in parsed["players_seen"].items():
             self._cache_player_bio(athlete_id, bio)
 
-    def _cache_player_bio(self, athlete_id, bio: dict) -> None:
+    def _cache_player_bio(self, athlete_id: str, bio: dict) -> None:
         path = self._p("players", f"athlete_{athlete_id}.parquet")
         if storage.exists(path):
             return
@@ -284,7 +286,5 @@ class Pipeline:
         self.write_glossary()
 
 
-def pq_read(path: Path, columns: list[str]):
-    import pyarrow.parquet as pq
-
+def pq_read(path: Path, columns: list[str]) -> pa.Table:
     return pq.read_table(path, columns=columns)
