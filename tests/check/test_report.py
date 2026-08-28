@@ -1,0 +1,104 @@
+"""Regression tests for `association data check`.
+
+Covers two real bugs from the same incident: the reported "missing" game
+count didn't account for locally-resolved (postponed/cancelled) games, making
+even a fully-accounted-for season look incomplete; and the live schedule
+cross-check re-hit ESPN's API every run even for seasons already verified
+complete by `pull`.
+"""
+
+import pyarrow as pa
+import pyarrow.parquet as pq
+import pytest
+
+from association.check import report
+
+
+def _write(path, rows):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pq.write_table(pa.Table.from_pylist(rows), path)
+
+
+def test_resolved_count_counts_markers(tmp_path):
+    d = tmp_path / "_resolved" / "season=2024" / "season_type=2"
+    d.mkdir(parents=True)
+    (d / "event_1.marker").touch()
+    (d / "event_2.marker").touch()
+    assert report._resolved_count(tmp_path, 2024, 2) == 2
+
+
+def test_resolved_count_zero_when_dir_missing(tmp_path):
+    assert report._resolved_count(tmp_path, 2024, 2) == 0
+
+
+def test_run_check_no_local_data_prints_guidance(tmp_path, capsys):
+    report.run_check(tmp_path, seasons=None, season_types=[2], live=False)
+    out = capsys.readouterr().out
+    assert "association data pull" in out
+
+
+def test_run_check_offline_accounts_for_resolved_games_in_have_count(tmp_path, capsys):
+    """Regression: a season with 2 real games + 1 postponed game used to
+    report a misleading "2/?" (or "2/4" live) instead of counting the
+    postponed game as accounted-for, not missing."""
+    _write(tmp_path / "games" / "season=2024" / "season_type=2" / "event_1.parquet", [{"season": 2024, "season_type": 2, "event_id": "1"}])
+    _write(tmp_path / "games" / "season=2024" / "season_type=2" / "event_2.parquet", [{"season": 2024, "season_type": 2, "event_id": "2"}])
+    resolved_dir = tmp_path / "_resolved" / "season=2024" / "season_type=2"
+    resolved_dir.mkdir(parents=True)
+    (resolved_dir / "event_3.marker").touch()
+
+    report.run_check(tmp_path, seasons=[2024], season_types=[2], live=False)
+    out = capsys.readouterr().out
+    assert "3/?" in out  # 2 played + 1 resolved = 3 accounted for, not just 2
+
+
+def test_run_check_cached_complete_skips_live_schedule_call(tmp_path, capsys, monkeypatch):
+    """The core fix: a season/type already marked complete by `pull` must not
+    trigger a fresh live schedule request - the marker is trusted."""
+    _write(tmp_path / "games" / "season=2024" / "season_type=2" / "event_1.parquet", [{"season": 2024, "season_type": 2, "event_id": "1"}])
+    (tmp_path / "_complete" / "season=2024").mkdir(parents=True)
+    (tmp_path / "_complete" / "season=2024" / "season_type=2.marker").touch()
+
+    def _boom(*a, **k):
+        raise AssertionError("event_ids_for should not be called for an already-complete season")
+
+    monkeypatch.setattr("association.check.report.Pipeline.event_ids_for", _boom)
+    monkeypatch.setattr("association.check.report.Pipeline.team_ids", lambda self: [])
+    monkeypatch.setattr("association.check.report.ESPNClient.__init__", lambda self, **k: None)
+
+    report.run_check(tmp_path, seasons=[2024], season_types=[2], live=True)
+    out = capsys.readouterr().out
+    assert "1/1*" in out
+    assert "trusted from local completion marker" in out
+
+
+def test_run_check_force_bypasses_cache_and_hits_live(tmp_path, capsys, monkeypatch):
+    _write(tmp_path / "games" / "season=2024" / "season_type=2" / "event_1.parquet", [{"season": 2024, "season_type": 2, "event_id": "1"}])
+    (tmp_path / "_complete" / "season=2024").mkdir(parents=True)
+    (tmp_path / "_complete" / "season=2024" / "season_type=2.marker").touch()
+
+    calls = {"n": 0}
+
+    def _fake_event_ids_for(self, season, season_type, team_ids):
+        calls["n"] += 1
+        return ["1", "2"]
+
+    monkeypatch.setattr("association.check.report.Pipeline.event_ids_for", _fake_event_ids_for)
+    monkeypatch.setattr("association.check.report.Pipeline.team_ids", lambda self: [])
+    monkeypatch.setattr("association.check.report.ESPNClient.__init__", lambda self, **k: None)
+
+    report.run_check(tmp_path, seasons=[2024], season_types=[2], live=True, force=True)
+    out = capsys.readouterr().out
+    assert calls["n"] == 1
+    assert "1/2" in out
+    assert "*" not in out.split("\n")[2]  # the data row itself, not force-cached
+
+
+def test_discover_seasons_reads_season_directories(tmp_path):
+    (tmp_path / "games" / "season=2023").mkdir(parents=True)
+    (tmp_path / "games" / "season=2024").mkdir(parents=True)
+    assert report.discover_seasons(tmp_path) == [2023, 2024]
+
+
+def test_discover_seasons_empty_when_no_games_dir(tmp_path):
+    assert report.discover_seasons(tmp_path) == []

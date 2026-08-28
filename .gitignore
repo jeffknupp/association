@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+data/
+*.duckdb
+*.duckdb.wal
+query_output/
+.pytest_cache/
+*.egg-info/
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
