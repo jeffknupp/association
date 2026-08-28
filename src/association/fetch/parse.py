@@ -9,6 +9,7 @@ hardcoding a stat list, so the parser tracks whatever ESPN exposes.
 from __future__ import annotations
 
 import re
+from typing import Any
 
 TEAM_REF_RE = re.compile(r"/teams/(\d+)")
 
@@ -59,7 +60,7 @@ def _glossary_rows(names, labels, descriptions, source):
 
 
 def parse_teams(data) -> list[dict]:
-    rows = []
+    rows: list[dict] = []
     if not data:
         return rows
     for sport in data.get("sports") or []:
@@ -94,11 +95,11 @@ def parse_schedule_event_ids(data) -> list[str]:
     return [e.get("id") for e in data.get("events") or [] if e.get("id")]
 
 
-def parse_game_summary(data, season: int, season_type: int) -> dict:
+def parse_game_summary(data, season: int, season_type: int) -> dict[str, Any]:
     """Returns dict with: game (dict|None), player_box, team_box, plays,
     shot_chart, win_probability (lists of dict), players_seen (athlete_id -> bio dict),
     glossary (list of dict)."""
-    result = {
+    result: dict[str, Any] = {
         "game": None,
         "player_box": [],
         "team_box": [],
@@ -119,8 +120,8 @@ def parse_game_summary(data, season: int, season_type: int) -> dict:
     venue = game_info.get("venue") or {}
     status = (comp.get("status") or {}).get("type") or {}
 
-    home = next((c for c in competitors if c.get("homeAway") == "home"), {})
-    away = next((c for c in competitors if c.get("homeAway") == "away"), {})
+    home: dict[str, Any] = next((c for c in competitors if c.get("homeAway") == "home"), {})
+    away: dict[str, Any] = next((c for c in competitors if c.get("homeAway") == "away"), {})
     home_team_id = (home.get("team") or {}).get("id")
     away_team_id = (away.get("team") or {}).get("id")
     opponent_of = {home_team_id: away_team_id, away_team_id: home_team_id}
@@ -201,7 +202,8 @@ def parse_game_summary(data, season: int, season_type: int) -> dict:
                 "dnp_reason": ath.get("reason"),
                 "ejected": ath.get("ejected", False),
             }
-            for k, v in zip(keys, ath.get("stats") or []):
+            # stats can be shorter than keys (e.g. empty for a DNP player) - truncate, don't error
+            for k, v in zip(keys, ath.get("stats") or [], strict=False):
                 _assign_stat(row, k, v)
             result["player_box"].append(row)
 
@@ -289,7 +291,7 @@ def parse_game_summary(data, season: int, season_type: int) -> dict:
     return result
 
 
-def parse_standings(data, season: int) -> list[dict]:
+def parse_standings(data, season: int) -> tuple[list[dict], list[dict]]:
     seen: dict[str, dict] = {}
     glossary: list[dict] = []
 
@@ -345,7 +347,7 @@ def parse_player_career_stats(data, athlete_id: str, season_type: int) -> tuple[
                     "position": entry.get("position"),
                 },
             )
-            for name, val in zip(names, entry.get("stats") or []):
+            for name, val in zip(names, entry.get("stats") or [], strict=False):
                 _assign_stat(row, name, val)
     return list(rows.values()), glossary
 
@@ -372,8 +374,8 @@ def parse_team_season_stats(data, season: int, season_type: int, team_id: str):
 
 
 def parse_power_index(data) -> tuple[list[dict], list[dict]]:
-    rows = []
-    glossary = []
+    rows: list[dict] = []
+    glossary: list[dict] = []
     if not data:
         return rows, glossary
     for item in data.get("items") or []:

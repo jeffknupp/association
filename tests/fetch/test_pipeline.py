@@ -128,7 +128,6 @@ def test_postponed_game_not_refetched_every_run(tmp_path):
     client = FakeClient(responses)
     pipeline = Pipeline(client, tmp_path)
     pipeline.fetch_teams()
-    team_ids = pipeline.team_ids()
 
     pipeline.fetch_game("101", 2024, 2)
     summary_calls_after_first = sum(1 for url, _ in client.calls if url == SUMMARY_URL)

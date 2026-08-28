@@ -39,9 +39,9 @@ def _local_count(con: duckdb.DuckDBPyConnection, table_dir: Path, season: int, s
     if season_type is not None:
         where += f" AND season_type = {season_type}"
     glob = str(table_dir / "**" / "*.parquet")
-    return con.execute(
-        f"SELECT count(*) FROM read_parquet(?, union_by_name=true) WHERE {where}", [glob]
-    ).fetchone()[0]
+    row = con.execute(f"SELECT count(*) FROM read_parquet(?, union_by_name=true) WHERE {where}", [glob]).fetchone()
+    assert row is not None  # COUNT(*) always returns exactly one row
+    return row[0]
 
 
 def _resolved_count(data_dir: Path, season: int, season_type: int) -> int:
@@ -74,7 +74,7 @@ def run_check(
 
     cols = ["season", "type", "complete", "games (have/expected)", "standings", "team_stats", "bpi", "players", "shots"]
     widths = [6, 10, 8, 23, 9, 10, 4, 7, 8]
-    print(" ".join(c.rjust(w) for c, w in zip(cols, widths)))
+    print(" ".join(c.rjust(w) for c, w in zip(cols, widths, strict=True)))
     print("-" * (sum(widths) + len(widths) - 1))
 
     any_cached = False
@@ -116,7 +116,7 @@ def run_check(
                 str(players),
                 str(shots),
             ]
-            print(" ".join(c.rjust(w) for c, w in zip(row, widths)))
+            print(" ".join(c.rjust(w) for c, w in zip(row, widths, strict=True)))
 
     con.close()
     notes = []

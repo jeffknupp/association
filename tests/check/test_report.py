@@ -9,7 +9,6 @@ complete by `pull`.
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-import pytest
 
 from association.check import report
 

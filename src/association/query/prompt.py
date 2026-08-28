@@ -236,7 +236,11 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "render_shot_chart",
-            "description": "Render a static HTML shot chart (made/missed shots on a simplified court) for one player, optionally filtered by season, season_type, event_id (one game), period (quarter/OT), shot_value (2 or 3 pointers, or 1 for free throws), and made_only.",
+            "description": (
+                "Render a static HTML shot chart (made/missed shots on a simplified court) for one player, "
+                "optionally filtered by season, season_type, event_id (one game), period (quarter/OT), "
+                "shot_value (2 or 3 pointers, or 1 for free throws), and made_only."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -266,7 +270,11 @@ TOOLS = [
                     },
                     "made_only": {
                         "type": "boolean",
-                        "description": "Only set this if the user explicitly asked for made shots only or missed shots only. true = only made shots, false = only missed shots. Omit (do not guess) to show both, which is what most requests want.",
+                        "description": (
+                            "Only set this if the user explicitly asked for made shots only or missed "
+                            "shots only. true = only made shots, false = only missed shots. Omit (do not "
+                            "guess) to show both, which is what most requests want."
+                        ),
                     },
                 },
                 "required": ["player_name"],

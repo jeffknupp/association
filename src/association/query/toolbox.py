@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import duckdb
 
@@ -72,7 +73,7 @@ class Toolbox:
             rows = cur.fetchmany(MAX_ROWS)
         except Exception as exc:  # let the model see the DB error and retry
             return f"SQL error: {exc}"
-        result = [dict(zip(cols, row)) for row in rows]
+        result = [dict(zip(cols, row, strict=True)) for row in rows]
         self._enrich_ids_with_names(cols, result)
         truncated = len(result) == MAX_ROWS
         return json.dumps({"rows": result, "row_count": len(result), "truncated": truncated}, default=str)
@@ -108,31 +109,31 @@ class Toolbox:
             season_type = None
 
         where = ["athlete_id = ?"]
-        params: list = [athlete_id]
+        filter_params: list[Any] = [athlete_id]
         if season is not None:
             where.append("season = ?")
-            params.append(season)
+            filter_params.append(season)
         if season_type is not None:
             where.append("season_type = ?")
-            params.append(season_type)
+            filter_params.append(season_type)
         if event_id is not None:
             where.append("event_id = ?")
-            params.append(event_id)
+            filter_params.append(event_id)
         if period is not None:
             where.append("period = ?")
-            params.append(period)
+            filter_params.append(period)
         if shot_value is not None:
             where.append("points_attempted = ?")
-            params.append(shot_value)
+            filter_params.append(shot_value)
         if made_only is not None:
             where.append("made = ?")
-            params.append(made_only)
+            filter_params.append(made_only)
 
         sql = (
             "SELECT coordinate_x, coordinate_y, made, shot_type, period, clock, event_id "
             f"FROM shot_chart WHERE {' AND '.join(where)} AND coordinate_x IS NOT NULL"
         )
-        shots = self.con.execute(sql, params).fetchall()
+        shots = self.con.execute(sql, filter_params).fetchall()
         if not shots:
             return f"No shots found for {resolved_name} with the given filters."
 

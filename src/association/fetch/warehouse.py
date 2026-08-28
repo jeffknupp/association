@@ -57,7 +57,9 @@ def build(data_dir: Path, db_path: Path) -> None:
                 "SELECT * FROM read_parquet(?, hive_partitioning=false, union_by_name=true)",
                 [glob],
             )
-            count = con.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+            count_row = con.execute(f"SELECT count(*) FROM {table}").fetchone()
+            assert count_row is not None  # COUNT(*) always returns exactly one row
+            count = count_row[0]
             log.info("%s: %d rows", table, count)
             loaded.add(table)
 

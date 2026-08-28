@@ -19,10 +19,30 @@ dependencies = [
 association = "association.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = [
+    "mypy>=2.3.1",
+    "pre-commit>=4.6.2",
+    "pytest>=8.0",
+    "ruff>=0.16.5",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+# Generous on purpose: much of this codebase is prompt/schema description
+# strings and SQL fixtures that read worse wrapped than left as one line.
+line-length = 200
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true

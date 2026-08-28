@@ -23,7 +23,7 @@ NOT_FOUND_STATUS = {400, 404}
 class ESPNClient:
     def __init__(self, rate_limit: float = 5.0, timeout: float = 15.0, max_retries: int = 5):
         """rate_limit: max requests/second against ESPN's hosts."""
-        self.session = cf_requests.Session(impersonate=IMPERSONATE)
+        self.session: cf_requests.Session = cf_requests.Session(impersonate=IMPERSONATE)
         self.timeout = timeout
         self.max_retries = max_retries
         self._min_interval = 1.0 / rate_limit if rate_limit > 0 else 0.0

@@ -19,12 +19,23 @@ log = logging.getLogger("association.fetch.pipeline")
 
 
 class Pipeline:
-    def __init__(self, client: ESPNClient, data_dir: Path, include_pbp: bool = False, force: bool = False):
+    def __init__(self, client: ESPNClient | None, data_dir: Path, include_pbp: bool = False, force: bool = False):
+        # client may be None for local-only use (e.g. `data check --offline`,
+        # which never calls a network-touching method like event_ids_for).
         self.client = client
         self.root = Path(data_dir)
         self.include_pbp = include_pbp
         self.force = force
         self.glossary: dict[str, dict] = {}
+
+    @property
+    def _live_client(self) -> ESPNClient:
+        """Every network-touching method goes through this instead of self.client
+        directly - a clear error beats an AttributeError if a Pipeline built for
+        local-only use (client=None) ever has a network method called on it."""
+        if self.client is None:
+            raise RuntimeError("This Pipeline has no ESPNClient (constructed for local-only use) - can't make network requests.")
+        return self.client
 
     def _p(self, *parts) -> Path:
         return self.root.joinpath(*[str(p) for p in parts])
@@ -43,7 +54,7 @@ class Pipeline:
         path = self._p("teams", "teams.parquet")
         if self._exists(path):
             return
-        data = self.client.get_json(endpoints.teams_url(), params={"limit": 50})
+        data = self._live_client.get_json(endpoints.teams_url(), params={"limit": 50})
         rows = parse.parse_teams(data)
         storage.write_rows(path, rows)
 
@@ -60,7 +71,7 @@ class Pipeline:
     def event_ids_for(self, season: int, season_type: int, team_ids: list[str]) -> list[str]:
         ids: set[str] = set()
         for team_id in tqdm(team_ids, desc=f"{season} type={season_type} schedules", leave=False):
-            data = self.client.get_json(
+            data = self._live_client.get_json(
                 endpoints.team_schedule_url(team_id),
                 params={"season": season, "seasontype": season_type},
             )
@@ -76,7 +87,7 @@ class Pipeline:
         if (self._exists(game_path) or storage.is_complete(resolved_marker)) and not self.force:
             return
 
-        data = self.client.get_json(endpoints.summary_url(), params={"event": event_id})
+        data = self._live_client.get_json(endpoints.summary_url(), params={"event": event_id})
         parsed = parse.parse_game_summary(data, season, season_type)
         game_row = parsed["game"]
         if game_row is None:
@@ -168,7 +179,7 @@ class Pipeline:
         path = self._p("player_season_stats", f"athlete_{athlete_id}_type_{season_type}.parquet")
         if self._exists(path):
             return
-        data = self.client.get_json(
+        data = self._live_client.get_json(
             endpoints.player_career_stats_url(athlete_id), params={"seasontype": season_type}
         )
         rows, glossary = parse.parse_player_career_stats(data, athlete_id, season_type)
@@ -189,7 +200,7 @@ class Pipeline:
         )
         if self._exists(path):
             return
-        data = self.client.get_json(endpoints.team_season_stats_url(season, season_type, team_id))
+        data = self._live_client.get_json(endpoints.team_season_stats_url(season, season_type, team_id))
         row, glossary = parse.parse_team_season_stats(data, season, season_type, team_id)
         self._add_glossary(glossary)
         if row:
@@ -200,7 +211,7 @@ class Pipeline:
         path = self._p("standings", f"season={season}", "standings.parquet")
         if self._exists(path):
             return
-        data = self.client.get_json(endpoints.standings_url(), params={"season": season})
+        data = self._live_client.get_json(endpoints.standings_url(), params={"season": season})
         rows, glossary = parse.parse_standings(data, season)
         self._add_glossary(glossary)
         storage.write_rows(path, rows)
@@ -210,7 +221,7 @@ class Pipeline:
         path = self._p("team_power_index", f"season={season}", "power_index.parquet")
         if self._exists(path):
             return
-        data = self.client.get_json(endpoints.power_index_url(season))
+        data = self._live_client.get_json(endpoints.power_index_url(season))
         rows, glossary = parse.parse_power_index(data)
         self._add_glossary(glossary)
         storage.write_rows(path, rows)

@@ -1,6 +1,6 @@
 """Sanity tests for CLI argument parsing."""
 
-from association.cli import _parse_seasons, _parse_season_types, build_parser
+from association.cli import _parse_season_types, _parse_seasons, build_parser
 
 
 def test_parse_seasons_single():

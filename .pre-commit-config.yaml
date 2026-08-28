@@ -1,0 +1,16 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.5
+    hooks:
+      - id: ruff
+        args: [--fix]
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v2.3.1
+    hooks:
+      - id: mypy
+        # Run over the whole package every time, not just staged files - mypy
+        # needs the full src/ tree together to resolve cross-module imports
+        # (e.g. cli.py importing .fetch.warehouse).
+        args: ["src"]
+        pass_filenames: false

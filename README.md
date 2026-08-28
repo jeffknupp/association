@@ -103,6 +103,17 @@ type-collision crash, a shot-chart sentinel coordinate, a postponed game that
 would've been re-fetched forever, ...) produced wrong or crashing output, not
 because a line of code needed generic coverage.
 
+## Linting / type checking
+
+`ruff` and `mypy` run as pre-commit hooks (`ruff --fix`, then `mypy` over the
+whole `src/` tree):
+
+```bash
+uv sync --extra dev
+pre-commit install     # one-time, wires the git hook
+pre-commit run --all-files   # run manually against everything
+```
+
 ## Known limitations
 
 - ESPN's stats API is undocumented and unofficial — endpoints or shapes can

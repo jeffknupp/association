@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import re
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import ollama
 
@@ -44,7 +46,9 @@ class Agent:
         self.verbose = verbose
         self.think = think
         self.toolbox = Toolbox(db_path, out_dir)
-        self.dispatch = {
+        # heterogeneous signatures dispatched generically via **args below -
+        # a specific Callable type would make mypy check the wrong signature.
+        self.dispatch: dict[str, Callable[..., str]] = {
             "describe_table": self.toolbox.describe_table,
             "run_sql": self.toolbox.run_sql,
             "render_shot_chart": self.toolbox.render_shot_chart,
@@ -64,7 +68,7 @@ class Agent:
         auto_recoveries = 0
 
         for _ in range(MAX_TOOL_ITERATIONS):
-            chat_kwargs = dict(model=self.model, messages=self.messages, tools=TOOLS, options={"num_ctx": NUM_CTX})
+            chat_kwargs: dict[str, Any] = dict(model=self.model, messages=self.messages, tools=TOOLS, options={"num_ctx": NUM_CTX})
             if self.think:
                 chat_kwargs["think"] = True
             try:

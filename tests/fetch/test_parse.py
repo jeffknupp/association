@@ -11,7 +11,6 @@ import pytest
 
 from association.fetch import parse
 
-
 # ---------------- _num ----------------
 
 

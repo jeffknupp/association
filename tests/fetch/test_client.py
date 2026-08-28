@@ -1,5 +1,6 @@
 """Regression + sanity tests for the ESPN HTTP client."""
 
+import pytest
 from curl_cffi import requests as cf_requests
 
 from association.fetch.client import ESPNClient
@@ -92,8 +93,5 @@ def test_get_json_gives_up_after_max_retries(monkeypatch):
         content = b""
 
     monkeypatch.setattr(client.session, "get", lambda *a, **k: ErrResp())
-    try:
+    with pytest.raises(RuntimeError):
         client.get_json("http://example.com")
-        assert False, "expected an exception after exhausting retries"
-    except RuntimeError:
-        pass
