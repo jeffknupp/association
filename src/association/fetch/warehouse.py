@@ -43,12 +43,29 @@ def _has_parquet(dir_path: Path) -> bool:
     return dir_path.exists() and any(dir_path.rglob("*.parquet"))
 
 
-def build(data_dir: Path, db_path: Path, include_advanced_stats: bool = False) -> None:
+def _existing_tables(con: duckdb.DuckDBPyConnection) -> set[str]:
+    rows = con.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'main'").fetchall()
+    return {r[0] for r in rows}
+
+
+def build(data_dir: Path, db_path: Path, tables: list[str] | None = None, include_advanced_stats: bool = False) -> None:
+    """(Re)build the warehouse. tables=None rebuilds every known table; a
+    subset only reloads those, leaving any other already-loaded table (and
+    tables/views that depend on it) untouched - the `association data load`
+    path for refreshing part of a large warehouse without rescanning
+    everything. include_advanced_stats=True (re)builds the computed advanced-
+    stats views; False leaves whatever is already there alone rather than
+    dropping it, so a later reload doesn't have to keep repeating the flag."""
+    if tables is not None:
+        unknown = sorted(set(tables) - set(TABLES))
+        if unknown:
+            raise ValueError(f"Unknown table(s): {', '.join(unknown)}. Known tables: {', '.join(TABLES)}")
+    target_tables = TABLES if tables is None else [t for t in TABLES if t in tables]
+
     data_dir = Path(data_dir)
     con = duckdb.connect(str(db_path))
     try:
-        loaded = set()
-        for table in TABLES:
+        for table in target_tables:
             table_dir = data_dir / table
             if not _has_parquet(table_dir):
                 log.info("skip %s (no parquet files yet)", table)
@@ -63,13 +80,11 @@ def build(data_dir: Path, db_path: Path, include_advanced_stats: bool = False) -
             assert count_row is not None  # COUNT(*) always returns exactly one row
             count = count_row[0]
             log.info("%s: %d rows", table, count)
-            loaded.add(table)
 
-        _build_views(con, loaded)
+        existing = _existing_tables(con)
+        _build_views(con, existing)
         if include_advanced_stats:
-            advanced_stats.build_views(con, loaded)
-        else:
-            advanced_stats.drop_views(con)
+            advanced_stats.build_views(con, existing)
     finally:
         con.close()
 

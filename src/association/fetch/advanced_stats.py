@@ -106,8 +106,3 @@ def build_views(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
         GROUP BY pbs.season, pbs.season_type, pbs.athlete_id
     """)
     log.info("advanced stats views built: %s", ", ".join(VIEWS))
-
-
-def drop_views(con: duckdb.DuckDBPyConnection) -> None:
-    for view in VIEWS:
-        con.execute(f"DROP VIEW IF EXISTS {view}")

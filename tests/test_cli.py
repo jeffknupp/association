@@ -44,6 +44,22 @@ def test_build_parser_data_pull_advanced_stats_flag() -> None:
     assert default_args.advanced_stats is False
 
 
+def test_build_parser_dispatches_to_data_load() -> None:
+    parser = build_parser()
+    args = parser.parse_args(["data", "load", "--tables", "games,player_box_stats", "--advanced-stats"])
+    assert args.command == "data"
+    assert args.data_command == "load"
+    assert args.tables == "games,player_box_stats"
+    assert args.advanced_stats is True
+
+
+def test_build_parser_data_load_defaults() -> None:
+    parser = build_parser()
+    args = parser.parse_args(["data", "load"])
+    assert args.tables is None
+    assert args.advanced_stats is False
+
+
 def test_build_parser_dispatches_to_data_check() -> None:
     parser = build_parser()
     args = parser.parse_args(["data", "check", "--offline"])

@@ -5,6 +5,7 @@ from pathlib import Path
 import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 
 from association.fetch import warehouse
 
@@ -88,3 +89,85 @@ def test_build_creates_player_game_log_view_when_dependencies_present(tmp_path: 
     result = con.execute("SELECT player_name, points FROM player_game_log").fetchall()
     con.close()
     assert result == [("Test Player", 20)]
+
+
+def _write_table_fixture(data_dir: Path, table: str, row: dict) -> None:
+    d = data_dir / table
+    d.mkdir(parents=True, exist_ok=True)
+    pq.write_table(pa.Table.from_pylist([row]), d / "f.parquet")
+
+
+def test_build_with_tables_subset_only_loads_requested_tables(tmp_path: Path) -> None:
+    data_dir = tmp_path / "parquet"
+    _write_table_fixture(data_dir, "teams", {"team_id": "1", "abbreviation": "BOS"})
+    _write_table_fixture(data_dir, "games", {"event_id": "100", "date": "2024-01-01"})
+    db_path = tmp_path / "test.duckdb"
+
+    warehouse.build(data_dir, db_path, tables=["teams"])
+
+    con = duckdb.connect(str(db_path))
+    tables = {r[0] for r in con.execute("SHOW TABLES").fetchall()}
+    con.close()
+    assert tables == {"teams"}
+
+
+def test_build_with_unknown_table_raises(tmp_path: Path) -> None:
+    data_dir = tmp_path / "parquet"
+    db_path = tmp_path / "test.duckdb"
+    with pytest.raises(ValueError, match="not_a_real_table"):
+        warehouse.build(data_dir, db_path, tables=["not_a_real_table"])
+
+
+def test_partial_reload_still_builds_views_from_previously_loaded_tables(tmp_path: Path) -> None:
+    """Regression-shaped: reloading just player_box_stats after teams/players/
+    games were already loaded in a prior full build must still (re)build
+    player_game_log - the view's dependency check has to look at what's
+    actually in the DB, not just what this particular call loaded."""
+    data_dir = tmp_path / "parquet"
+    fixtures: dict[str, dict] = {
+        "teams": {"team_id": "1", "abbreviation": "BOS"},
+        "players": {"athlete_id": "10", "display_name": "Test Player"},
+        "games": {"event_id": "100", "date": "2024-01-01"},
+        "player_box_stats": {"event_id": "100", "athlete_id": "10", "team_id": "1", "opponent_team_id": "1", "points": 20},
+    }
+    for table, row in fixtures.items():
+        _write_table_fixture(data_dir, table, row)
+    db_path = tmp_path / "test.duckdb"
+
+    warehouse.build(data_dir, db_path)  # full build first
+
+    # Now overwrite just player_box_stats on disk and reload only that table.
+    (data_dir / "player_box_stats" / "f.parquet").unlink()
+    _write_table_fixture(data_dir, "player_box_stats", dict(fixtures["player_box_stats"], points=99))
+    warehouse.build(data_dir, db_path, tables=["player_box_stats"])
+
+    con = duckdb.connect(str(db_path))
+    result = con.execute("SELECT player_name, points FROM player_game_log").fetchall()
+    con.close()
+    assert result == [("Test Player", 99)]
+
+
+def test_advanced_stats_flag_false_leaves_existing_views_alone(tmp_path: Path) -> None:
+    """A partial reload that doesn't pass --advanced-stats shouldn't silently
+    tear down advanced-stats views a prior build already created."""
+    data_dir = tmp_path / "parquet"
+    _write_table_fixture(
+        data_dir,
+        "player_box_stats",
+        {
+            "event_id": "1", "season": 2024, "season_type": 2, "team_id": "1", "athlete_id": "10",
+            "minutes": 36, "points": 30, "fieldGoalsMade": 10, "fieldGoalsAttempted": 20,
+            "threePointFieldGoalsMade": 2, "freeThrowsMade": 8, "freeThrowsAttempted": 10,
+            "offensiveRebounds": 1, "defensiveRebounds": 4, "assists": 5, "steals": 2, "blocks": 1,
+            "fouls": 3, "turnovers": 3,
+        },
+    )
+    db_path = tmp_path / "test.duckdb"
+
+    warehouse.build(data_dir, db_path, include_advanced_stats=True)
+    warehouse.build(data_dir, db_path, tables=["player_box_stats"])  # no --advanced-stats this time
+
+    con = duckdb.connect(str(db_path))
+    tables = {r[0] for r in con.execute("SHOW TABLES").fetchall()}
+    con.close()
+    assert "player_advanced_stats" in tables

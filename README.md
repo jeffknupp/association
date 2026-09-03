@@ -7,6 +7,7 @@ LLM via [Ollama](https://ollama.com) — no cloud API calls anywhere.
 
 ```
 association data pull --seasons 2020-2026        # fetch, resumable
+association data load --tables games,standings   # rebuild the warehouse from Parquet already on disk
 association data check                            # audit coverage vs. ESPN
 association query "who led the league in assists?"
 association ai --think                            # interactive REPL
@@ -61,6 +62,11 @@ season stat ESPN hasn't computed yet) and *not* hive-partitioned (every row
 already embeds its own `season`/`season_type`/`team_id` columns, so inferring
 a second copy from the directory layout only invites type collisions).
 Rebuilding the warehouse is idempotent and cheap — safe to re-run any time.
+`data pull` rebuilds it automatically after fetching; `data load` rebuilds it
+straight from Parquet already on disk without touching the network, and
+`--tables` scopes that to a subset instead of rescanning everything (a full
+warehouse rebuild rereads every Parquet file, which gets slow as the tree
+grows).
 
 **Query engine** — a local Ollama model gets three tools: `describe_table`
 (schema lookup on demand, so table summaries stay short even for 100+-column
@@ -79,7 +85,7 @@ rather than handing back an unexecuted recipe.
 
 ```
 src/association/
-  cli.py            entrypoint: data pull|check, query, ai
+  cli.py            entrypoint: data pull|load|check, query, ai
   fetch/            client (curl_cffi — see below), endpoints, parse, storage, pipeline, warehouse
   check/            data coverage report, cross-checked live against ESPN
   query/            prompt/knowledge base, tools, court renderer, agent loop, REPL

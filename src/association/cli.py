@@ -3,6 +3,7 @@
 
 Subcommands:
     association data pull [...]     resumable fetch from ESPN -> Parquet -> DuckDB warehouse
+    association data load [...]     (re)build the DuckDB warehouse from Parquet already on disk
     association data check [...]    report data coverage, optionally cross-checked live vs ESPN
     association query "..."         one-shot natural-language question (local LLM, no cloud calls)
     association ai [...]            interactive REPL (same engine as `query`, keeps context)
@@ -10,6 +11,7 @@ Subcommands:
 Examples:
     association data pull --seasons 2024
     association data pull --seasons 2022-2024 --season-types 2,3 --include-pbp
+    association data load --tables games,player_box_stats
     association data check --seasons 2020-2024
     association query "Who are the top 5 3-point shooters by shot volume?"
     association ai --model qwen3:8b --think --verbose
@@ -65,13 +67,20 @@ def _cmd_data_pull(args: argparse.Namespace) -> None:
     data_dir = Path(args.data_dir)
     db_path = Path(args.db_path)
 
-    if not args.build_db_only:
-        client = ESPNClient(rate_limit=args.rate_limit)
-        pipeline = Pipeline(client, data_dir, include_pbp=args.include_pbp, force=args.force)
-        pipeline.run(seasons, season_types)
+    client = ESPNClient(rate_limit=args.rate_limit)
+    pipeline = Pipeline(client, data_dir, include_pbp=args.include_pbp, force=args.force)
+    pipeline.run(seasons, season_types)
 
     if not args.fetch_only:
         warehouse.build(data_dir, db_path, include_advanced_stats=args.advanced_stats)
+
+
+def _cmd_data_load(args: argparse.Namespace) -> None:
+    from .fetch import warehouse
+
+    logging.basicConfig(level=args.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    tables = [t.strip() for t in args.tables.split(",") if t.strip()] if args.tables else None
+    warehouse.build(Path(args.data_dir), Path(args.db_path), tables=tables, include_advanced_stats=args.advanced_stats)
 
 
 def _cmd_data_check(args: argparse.Namespace) -> None:
@@ -138,9 +147,6 @@ def build_parser() -> argparse.ArgumentParser:
     pull_p.add_argument("--force", action="store_true", help="Re-fetch even if already checkpointed as complete")
     pull_p.add_argument("--fetch-only", action="store_true", help="Fetch Parquet files only, skip building the DuckDB warehouse")
     pull_p.add_argument(
-        "--build-db-only", action="store_true", help="Skip fetching, just (re)build the DuckDB warehouse from existing Parquet files"
-    )
-    pull_p.add_argument(
         "--advanced-stats",
         action="store_true",
         help="Also build computed player_advanced_stats/player_season_advanced_stats views "
@@ -148,6 +154,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     pull_p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     pull_p.set_defaults(func=_cmd_data_pull)
+
+    load_p = data_sub.add_parser(
+        "load",
+        help="(Re)build the DuckDB warehouse from Parquet files already on disk, without fetching.",
+    )
+    load_p.add_argument("--data-dir", default=DEFAULT_DATA_DIR, help=f"Parquet flat-file root (default: {DEFAULT_DATA_DIR})")
+    load_p.add_argument("--db-path", default=DEFAULT_DB_PATH, help=f"DuckDB warehouse file (default: {DEFAULT_DB_PATH})")
+    load_p.add_argument(
+        "--tables",
+        default=None,
+        help="Comma-separated subset of tables to (re)load, e.g. 'games,player_box_stats' "
+        "(unknown names error out). Default: every table with Parquet files on disk.",
+    )
+    load_p.add_argument(
+        "--advanced-stats",
+        action="store_true",
+        help="Also (re)build the computed player_advanced_stats/player_season_advanced_stats views.",
+    )
+    load_p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    load_p.set_defaults(func=_cmd_data_load)
 
     check_p = data_sub.add_parser(
         "check", help="Report data coverage vs. what ESPN's API actually has, per season/season_type."
