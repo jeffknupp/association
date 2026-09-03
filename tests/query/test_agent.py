@@ -1,10 +1,14 @@
-"""Regression tests for the SQL-as-prose safety net.
+"""Regression tests for the SQL-as-prose safety net, and for the thinking-model
+context-growth fix in Agent.ask."""
 
-This is a pure code utility, not a model-behavior test: it's the deterministic
-catch that runs regardless of what the model does, added after the model
-repeatedly ended its turn by printing a SQL query instead of calling run_sql."""
+from pathlib import Path
+from typing import Any
 
-from association.query.agent import _extract_unrun_sql
+import ollama
+import pytest
+from ollama import ChatResponse, Message
+
+from association.query.agent import Agent, _extract_unrun_sql
 
 
 def test_extract_sql_from_fenced_sql_block() -> None:
@@ -40,3 +44,53 @@ def test_extract_sql_handles_empty_and_none() -> None:
 def test_extract_sql_picks_first_valid_sql_block_among_several() -> None:
     text = "```text\nnot sql\n```\n```sql\nSELECT 1\n```"
     assert _extract_unrun_sql(text) == "SELECT 1"
+
+
+@pytest.fixture
+def think_agent(tmp_path: Path) -> Agent:
+    import duckdb
+
+    db_path = tmp_path / "test.duckdb"
+    duckdb.connect(str(db_path)).close()
+    return Agent("qwen3:8b", str(db_path), tmp_path / "out", think=True)
+
+
+def test_ask_strips_thinking_from_history_before_next_call(monkeypatch: pytest.MonkeyPatch, think_agent: Agent) -> None:
+    """Regression: a thinking model's own past reasoning was being replayed back
+    into its context on every later tool-call round, growing prompt-eval cost
+    with each iteration for no benefit - confirmed live (an 8x cut in a
+    follow-up iteration's prompt-eval time after stripping it). The model's
+    `thinking` field must not survive into a later outgoing request."""
+    calls: list[list[dict]] = []
+
+    tool_call = Message.ToolCall(function=Message.ToolCall.Function(name="describe_table", arguments={"table_name": "players"}))
+    responses = iter(
+        [
+            ChatResponse(
+                model="qwen3:8b",
+                created_at="",
+                done=True,
+                message=Message(role="assistant", content="", thinking="lots of first-turn reasoning", tool_calls=[tool_call]),
+            ),
+            ChatResponse(
+                model="qwen3:8b",
+                created_at="",
+                done=True,
+                message=Message(role="assistant", content="Final answer.", thinking="second-turn reasoning"),
+            ),
+        ]
+    )
+
+    def fake_chat(**kwargs: Any) -> ChatResponse:
+        calls.append(kwargs["messages"])
+        return next(responses)
+
+    monkeypatch.setattr(ollama, "chat", fake_chat)
+    result = think_agent.ask("some question")
+
+    assert result == "Final answer."
+    assert len(calls) == 2
+    second_call_messages = calls[1]
+    assistant_msg = next(m for m in second_call_messages if m.get("role") == "assistant")
+    assert assistant_msg.get("thinking") is None
+    assert "lots of first-turn reasoning" not in str(second_call_messages)

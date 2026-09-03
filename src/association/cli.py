@@ -24,6 +24,12 @@ Setup for query/ai (one-time):
 
 Pulling any other model: `ollama pull <name>:<tag>` (browse at https://ollama.com/library).
 Tool-calling support varies by model - check a model's page before swapping --model.
+
+--think is much slower than the default (confirmed live on a 16GB M2: qwen3:8b's
+thinking-token volume varies run to run, 3-6x+ the wall time of qwen2.5:7b for the
+same question) - reach for it when investigating a wrong answer, not for routine
+queries. Switching --model between calls also costs ~60-80s to swap the loaded
+model on memory-constrained hardware - avoid alternating models call to call.
 """
 
 from __future__ import annotations
