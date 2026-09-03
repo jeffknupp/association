@@ -97,6 +97,61 @@ def _write_table_fixture(data_dir: Path, table: str, row: dict) -> None:
     pq.write_table(pa.Table.from_pylist([row]), d / "f.parquet")
 
 
+_ADVANCED_STATS_PLAYER_BOX_ROW = {
+    "event_id": "100", "season": 2024, "season_type": 2, "team_id": "1", "opponent_team_id": "1", "athlete_id": "10",
+    "minutes": 36, "points": 30, "fieldGoalsMade": 10, "fieldGoalsAttempted": 20,
+    "threePointFieldGoalsMade": 2, "freeThrowsMade": 8, "freeThrowsAttempted": 10,
+    "offensiveRebounds": 1, "defensiveRebounds": 4, "assists": 5, "steals": 2, "blocks": 1,
+    "fouls": 3, "turnovers": 3,
+}
+
+
+def test_player_game_log_gains_advanced_columns_when_built_with_advanced_stats(tmp_path: Path) -> None:
+    """Regression: a model asking for a single game's ts_pct naturally tried
+    player_game_log first (the documented per-game convenience view) and got
+    told the column didn't exist there, even though --advanced-stats had been
+    used - player_game_log never joined player_advanced_stats at all."""
+    data_dir = tmp_path / "parquet"
+    fixtures: dict[str, dict] = {
+        "teams": {"team_id": "1", "abbreviation": "BOS"},
+        "players": {"athlete_id": "10", "display_name": "Test Player"},
+        "games": {"event_id": "100", "date": "2024-01-01"},
+        "player_box_stats": _ADVANCED_STATS_PLAYER_BOX_ROW,
+    }
+    for table, row in fixtures.items():
+        _write_table_fixture(data_dir, table, row)
+    db_path = tmp_path / "test.duckdb"
+
+    warehouse.build(data_dir, db_path, include_advanced_stats=True)
+
+    con = duckdb.connect(str(db_path))
+    result_row = con.execute("SELECT player_name, ts_pct FROM player_game_log WHERE event_id = '100'").fetchone()
+    con.close()
+    assert result_row is not None
+    assert result_row[0] == "Test Player"
+    assert result_row[1] is not None
+
+
+def test_player_game_log_has_no_advanced_columns_without_the_flag(tmp_path: Path) -> None:
+    data_dir = tmp_path / "parquet"
+    fixtures: dict[str, dict] = {
+        "teams": {"team_id": "1", "abbreviation": "BOS"},
+        "players": {"athlete_id": "10", "display_name": "Test Player"},
+        "games": {"event_id": "100", "date": "2024-01-01"},
+        "player_box_stats": _ADVANCED_STATS_PLAYER_BOX_ROW,
+    }
+    for table, row in fixtures.items():
+        _write_table_fixture(data_dir, table, row)
+    db_path = tmp_path / "test.duckdb"
+
+    warehouse.build(data_dir, db_path)  # no --advanced-stats
+
+    con = duckdb.connect(str(db_path))
+    cols = {r[0] for r in con.execute("DESCRIBE player_game_log").fetchall()}
+    con.close()
+    assert "ts_pct" not in cols
+
+
 def test_build_with_tables_subset_only_loads_requested_tables(tmp_path: Path) -> None:
     data_dir = tmp_path / "parquet"
     _write_table_fixture(data_dir, "teams", {"team_id": "1", "abbreviation": "BOS"})

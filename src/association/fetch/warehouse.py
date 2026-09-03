@@ -82,28 +82,43 @@ def build(data_dir: Path, db_path: Path, tables: list[str] | None = None, includ
             log.info("%s: %d rows", table, count)
 
         existing = _existing_tables(con)
-        _build_views(con, existing)
         if include_advanced_stats:
             advanced_stats.build_views(con, existing)
+            existing = _existing_tables(con)  # refresh so player_game_log can join the views just created
+        _build_views(con, existing)
     finally:
         con.close()
 
 
 def _build_views(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
-    if {"player_box_stats", "players", "games", "teams"} <= loaded:
-        con.execute(
-            """
-            CREATE OR REPLACE VIEW player_game_log AS
-            SELECT
-                pbs.*,
-                p.display_name AS player_name,
-                g.date AS game_date,
-                t.abbreviation AS team_abbr,
-                o.abbreviation AS opponent_abbr
-            FROM player_box_stats pbs
-            LEFT JOIN players p ON p.athlete_id = pbs.athlete_id
-            LEFT JOIN games g ON g.event_id = pbs.event_id
-            LEFT JOIN teams t ON t.team_id = pbs.team_id
-            LEFT JOIN teams o ON o.team_id = pbs.opponent_team_id
-            """
-        )
+    if not ({"player_box_stats", "players", "games", "teams"} <= loaded):
+        return
+
+    # player_advanced_stats may or may not exist (opt-in, --advanced-stats) -
+    # `loaded` reflects the DB's actual current state, not just this call, so
+    # this stays correct across a partial `data load` too.
+    has_advanced = "player_advanced_stats" in loaded
+    advanced_select = ", pas.ts_pct, pas.efg_pct, pas.usage_pct, pas.game_score" if has_advanced else ""
+    advanced_join = (
+        "LEFT JOIN player_advanced_stats pas ON pas.event_id = pbs.event_id AND pas.athlete_id = pbs.athlete_id"
+        if has_advanced
+        else ""
+    )
+    con.execute(
+        f"""
+        CREATE OR REPLACE VIEW player_game_log AS
+        SELECT
+            pbs.*,
+            p.display_name AS player_name,
+            g.date AS game_date,
+            t.abbreviation AS team_abbr,
+            o.abbreviation AS opponent_abbr
+            {advanced_select}
+        FROM player_box_stats pbs
+        LEFT JOIN players p ON p.athlete_id = pbs.athlete_id
+        LEFT JOIN games g ON g.event_id = pbs.event_id
+        LEFT JOIN teams t ON t.team_id = pbs.team_id
+        LEFT JOIN teams o ON o.team_id = pbs.opponent_team_id
+        {advanced_join}
+        """
+    )

@@ -34,7 +34,7 @@ team_power_index    - one row per team per season per season_type (ESPN BPI: bpi
 shot_chart          - one row per shot ATTEMPT (event_id, athlete_id, team_id, period, clock, made, shot_type, coordinate_x, coordinate_y, points_attempted)
 win_probability     - one row per play (event_id, play_id, home_win_pct, tie_pct)
 stat_glossary       - stat_key -> label/description; self-documents what a column means
-player_game_log     - convenience view: player_box_stats joined with player/game/team names
+player_game_log     - convenience view: player_box_stats joined with player/game/team names, plus ts_pct/efg_pct/usage_pct/game_score if the warehouse was built with --advanced-stats
 player_advanced_stats        - COMPUTED, one row per player PER GAME (ts_pct, efg_pct, usage_pct, game_score) - opt-in, see below
 player_season_advanced_stats - COMPUTED, one row per player per season per season_type (ts_pct, efg_pct, usage_pct, avg_game_score, games_played) - opt-in, see below
 
@@ -125,6 +125,40 @@ KNOWLEDGE_BASE = [
         "example": (
             "-- \"three pointers in the first quarter\" -> no made_only key at all:\n"
             "render_shot_chart(player_name=..., shot_value=3, period=1)"
+        ),
+    },
+    {
+        "topic": "Filtering SQL to one named player or team",
+        "note": (
+            "athlete_id/team_id are opaque VARCHAR ids, not names. Comparing one directly to a "
+            "name (e.g. athlete_id = 'Stephen Curry') is valid SQL that silently returns zero "
+            "rows - no error, nothing to catch. To filter to a specific player or team, JOIN "
+            "players/teams and filter on display_name (ILIKE '%name%' for partial matches). An "
+            "empty run_sql result does NOT mean the data doesn't exist for that season/game - "
+            "before concluding data is missing, check that the WHERE clause is actually "
+            "matching an id, not a name, against an id column."
+        ),
+        "example": (
+            "-- WRONG: WHERE athlete_id = 'Stephen Curry' -- always empty, no error\n"
+            "-- RIGHT:\n"
+            "SELECT pbs.*\n"
+            "FROM player_box_stats pbs JOIN players p ON p.athlete_id = pbs.athlete_id\n"
+            "WHERE p.display_name ILIKE '%Curry%' AND pbs.season = 2026"
+        ),
+    },
+    {
+        "topic": "\"First game\" / \"most recent game\" / \"last game\" of a season",
+        "note": (
+            "These need an explicit ORDER BY on games.date - LIMIT 1 without an ORDER BY "
+            "returns an arbitrary row, not the earliest/latest one. Join to games and sort by "
+            "g.date (ASC for first, DESC for most recent/last), don't try to guess an event_id."
+        ),
+        "example": (
+            "-- Steph Curry's first game of the 2026 season\n"
+            "SELECT g.date, pgl.points, pgl.ts_pct\n"
+            "FROM player_game_log pgl JOIN games g ON g.event_id = pgl.event_id\n"
+            "WHERE pgl.player_name ILIKE '%Curry%' AND pgl.season = 2026 AND pgl.season_type = 2\n"
+            "ORDER BY g.date ASC LIMIT 1"
         ),
     },
     {
