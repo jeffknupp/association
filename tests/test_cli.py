@@ -35,6 +35,15 @@ def test_build_parser_dispatches_to_data_pull() -> None:
     assert args.seasons == "2024"
 
 
+def test_build_parser_data_pull_advanced_stats_flag() -> None:
+    parser = build_parser()
+    args = parser.parse_args(["data", "pull", "--seasons", "2024", "--advanced-stats"])
+    assert args.advanced_stats is True
+
+    default_args = parser.parse_args(["data", "pull", "--seasons", "2024"])
+    assert default_args.advanced_stats is False
+
+
 def test_build_parser_dispatches_to_data_check() -> None:
     parser = build_parser()
     args = parser.parse_args(["data", "check", "--offline"])

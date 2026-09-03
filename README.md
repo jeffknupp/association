@@ -30,6 +30,15 @@ play-by-play/shot charts/win probability. Grain and table design borrow the
 dimension/fact split popularized by the `nbadb` project, built directly
 against what ESPN's API actually returns rather than reimplementing it.
 
+**Computed tables** (opt-in via `--advanced-stats`, not sourced from ESPN):
+`player_advanced_stats` and `player_season_advanced_stats` — true shooting %,
+effective FG%, usage rate, and Hollinger game score, per game and per season.
+ESPN's team season stats already carry these natively (`effectiveFGPct`,
+`trueShootingPct`, `paceFactor`), but its player stats endpoint doesn't, so
+only the player side needs a computed layer — see
+[`fetch/advanced_stats.py`](src/association/fetch/advanced_stats.py) for the
+exact formulas and why PER/Win Shares/BPM/VORP are deliberately excluded.
+
 ## Design
 
 **Storage** — one small Parquet file per unit of fetched work (one game, one
@@ -121,7 +130,9 @@ pre-commit run --all-files   # run manually against everything
 
 - ESPN's stats API is undocumented and unofficial — endpoints or shapes can
   change without notice.
-- Player-level advanced metrics (e.g. Real Plus-Minus) aren't available at a
-  stable live endpoint and aren't included.
+- ESPN's own Real Plus-Minus (RPM) isn't available at a stable JSON endpoint
+  (only ever found rendered into a webpage), so it isn't included. PER, Win
+  Shares, BPM, and VORP are also not included, but for a different reason:
+  see `player_advanced_stats` above.
 - `data check --live` cross-checks are opt-in and can be slow for seasons
   without a local completion marker yet — `pull` first to build those up.

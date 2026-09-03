@@ -71,7 +71,7 @@ def _cmd_data_pull(args: argparse.Namespace) -> None:
         pipeline.run(seasons, season_types)
 
     if not args.fetch_only:
-        warehouse.build(data_dir, db_path)
+        warehouse.build(data_dir, db_path, include_advanced_stats=args.advanced_stats)
 
 
 def _cmd_data_check(args: argparse.Namespace) -> None:
@@ -139,6 +139,12 @@ def build_parser() -> argparse.ArgumentParser:
     pull_p.add_argument("--fetch-only", action="store_true", help="Fetch Parquet files only, skip building the DuckDB warehouse")
     pull_p.add_argument(
         "--build-db-only", action="store_true", help="Skip fetching, just (re)build the DuckDB warehouse from existing Parquet files"
+    )
+    pull_p.add_argument(
+        "--advanced-stats",
+        action="store_true",
+        help="Also build computed player_advanced_stats/player_season_advanced_stats views "
+        "(true shooting %%, effective FG%%, usage rate, game score - see fetch/advanced_stats.py)",
     )
     pull_p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     pull_p.set_defaults(func=_cmd_data_pull)

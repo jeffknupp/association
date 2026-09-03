@@ -12,6 +12,8 @@ from pathlib import Path
 
 import duckdb
 
+from . import advanced_stats
+
 log = logging.getLogger("association.fetch.warehouse")
 
 # Every row already embeds its own season/season_type/team_id columns (set in
@@ -41,7 +43,7 @@ def _has_parquet(dir_path: Path) -> bool:
     return dir_path.exists() and any(dir_path.rglob("*.parquet"))
 
 
-def build(data_dir: Path, db_path: Path) -> None:
+def build(data_dir: Path, db_path: Path, include_advanced_stats: bool = False) -> None:
     data_dir = Path(data_dir)
     con = duckdb.connect(str(db_path))
     try:
@@ -64,6 +66,10 @@ def build(data_dir: Path, db_path: Path) -> None:
             loaded.add(table)
 
         _build_views(con, loaded)
+        if include_advanced_stats:
+            advanced_stats.build_views(con, loaded)
+        else:
+            advanced_stats.drop_views(con)
     finally:
         con.close()
 

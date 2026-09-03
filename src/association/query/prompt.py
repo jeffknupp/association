@@ -17,6 +17,8 @@ KNOWN_TABLES = {
     "win_probability",
     "stat_glossary",
     "player_game_log",
+    "player_advanced_stats",
+    "player_season_advanced_stats",
 }
 
 TABLE_SUMMARY = """
@@ -33,6 +35,10 @@ shot_chart          - one row per shot ATTEMPT (event_id, athlete_id, team_id, p
 win_probability     - one row per play (event_id, play_id, home_win_pct, tie_pct)
 stat_glossary       - stat_key -> label/description; self-documents what a column means
 player_game_log     - convenience view: player_box_stats joined with player/game/team names
+player_advanced_stats        - COMPUTED, one row per player PER GAME (ts_pct, efg_pct, usage_pct, game_score) - opt-in, see below
+player_season_advanced_stats - COMPUTED, one row per player per season per season_type (ts_pct, efg_pct, usage_pct, avg_game_score, games_played) - opt-in, see below
+
+player_advanced_stats / player_season_advanced_stats only exist if the warehouse was built with --advanced-stats.
 
 season is ESPN's convention: the year the season ENDS (the 2023-24 season is season=2024).
 season_type: 1=preseason, 2=regular season, 3=postseason.
@@ -165,6 +171,19 @@ KNOWLEDGE_BASE = [
             "WHERE ps.season = 2024 AND ps.season_type = 2\n"
             "QUALIFY ROW_NUMBER() OVER (PARTITION BY ps.athlete_id ORDER BY (ps.team_id IS NULL) DESC) = 1\n"
             "ORDER BY ps.tripleDouble DESC LIMIT 1"
+        ),
+    },
+    {
+        "topic": "Advanced stats: what's computed vs. what doesn't exist",
+        "note": (
+            "player_advanced_stats / player_season_advanced_stats hold true shooting % "
+            "(ts_pct), effective FG% (efg_pct), usage rate (usage_pct), and Hollinger game "
+            "score (game_score / avg_game_score) - use these instead of recomputing the "
+            "formulas yourself. They only exist if the warehouse was built with "
+            "--advanced-stats; if a query against them errors with a missing-table/view "
+            "error, say so rather than guessing a value. PER, Win Shares, BPM, and VORP are "
+            "not computed anywhere in this dataset - if asked for one of those, say it isn't "
+            "available rather than substituting a different stat or inventing a number."
         ),
     },
 ]
