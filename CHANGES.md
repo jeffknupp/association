@@ -5,6 +5,20 @@ commit that made it for the full story.
 
 ## 2026-09-04
 
+- **KNOWLEDGE_BASE: winner_team_id location, and win/loss tallies**: a live
+  query ("Knicks' last 20 games and their record") surfaced two more bugs -
+  the model referenced `tbs.winner_team_id` (winner_team_id only exists on
+  `games`, not `team_box_stats` - a column-not-found error), and separately
+  reported the win/loss record backwards (7-13 instead of the actual 13-7)
+  because it tried to count wins/losses by re-reading a list it had already
+  printed instead of computing the tally in SQL. A follow-up run then showed
+  a *correct* aggregate record sitting next to 6 individually misclassified
+  games, because the model summarized "wins against X, Y, Z" from memory
+  instead of listing each game's own row. Tightened the existing team-game-log
+  KNOWLEDGE_BASE entry and added a new one (CTE + window-function tally
+  pattern, plus an explicit instruction not to collapse per-game detail into
+  a hand-sorted summary). Verified live: all 20 games and the record now
+  match ground truth exactly.
 - **CHANGES.md, enforced via pre-commit**: added this changelog and a
   `changes-md` pre-commit hook (`scripts/check_changes_md.sh`) that fails any
   commit touching `src/` unless `CHANGES.md` is staged too - a manual entry

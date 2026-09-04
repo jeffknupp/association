@@ -167,11 +167,13 @@ KNOWLEDGE_BASE = [
             "games is home/away-oriented, not team-perspective - filtering it by joining "
             "team_id to only home_team_id (or only away_team_id) silently returns just that "
             "team's HOME games, missing every away game, with no error. Don't figure out the "
-            "opponent or who won by hand either: team_box_stats already has one row per TEAM "
-            "per game with team_id/opponent_team_id/home_away, and games.winner_team_id already "
-            "says who won - join team_box_stats and select winner_team_id/opponent_team_id "
-            "directly (they auto-resolve to names), don't alias a team name onto a 'winner' "
-            "column yourself. Also SELECT team_score/opponent_score as the CASE-on-home_away "
+            "opponent or who won by hand either: team_box_stats has team_id/opponent_team_id/"
+            "home_away (one row per TEAM per game), but who WON lives only on games as "
+            "g.winner_team_id - team_box_stats has no winner column of its own, so "
+            "tbs.winner_team_id is a column-not-found error, not a shortcut. Join team_box_stats "
+            "for the opponent, join games for winner_team_id, select both directly (they "
+            "auto-resolve to names) - don't alias a team name onto a 'winner' column yourself. "
+            "Also SELECT team_score/opponent_score as the CASE-on-home_away "
             "columns shown below, not raw home_score/away_score - reporting raw home/away score "
             "in prose forces you to silently guess which number was this team's each row, which "
             "you WILL get backwards on some rows; the computed columns remove the guess. A query "
@@ -189,6 +191,42 @@ KNOWLEDGE_BASE = [
             "JOIN teams t ON t.team_id = tbs.team_id\n"
             "WHERE t.display_name ILIKE '%Knicks%' AND tbs.season = 2026 AND tbs.season_type = 2\n"
             "ORDER BY g.date DESC LIMIT 20"
+        ),
+    },
+    {
+        "topic": "A record/tally (wins, losses, count) alongside a list of games",
+        "note": (
+            "Never count wins/losses/totals yourself by reading back over rows you already "
+            "listed - a small model WILL miscount or invert the tally (confirmed live: reported "
+            "'7 wins and 13 losses' as the summary for a list that, counted row by row, was "
+            "actually 13-7 the other way). Compute the tally in SQL instead. If the games are "
+            "already limited (e.g. 'last 20 games'), wrap that query in a CTE and aggregate over "
+            "it with a window function, so the count is guaranteed to match exactly the same set "
+            "of rows being displayed - don't run a second, separately-limited query for the "
+            "count, it can drift from the displayed set. When the user asked for BOTH per-game "
+            "detail and a record, your answer needs BOTH: still list every game with its own "
+            "date/score/outcome from the actual rows, don't collapse them into a hand-sorted "
+            "'wins against X, Y, Z / losses against A, B, C' summary instead - confirmed live, "
+            "that grouping-from-memory step (not the aggregate count itself) is where a small "
+            "model misclassifies individual games, even when the total it reports is correct."
+        ),
+        "example": (
+            "-- Knicks' last 20 games AND their record over exactly those 20\n"
+            "WITH last20 AS (\n"
+            "    SELECT g.date, tbs.team_id, tbs.opponent_team_id, tbs.home_away,\n"
+            "           CASE WHEN tbs.home_away = 'home' THEN g.home_score ELSE g.away_score END AS team_score,\n"
+            "           CASE WHEN tbs.home_away = 'home' THEN g.away_score ELSE g.home_score END AS opponent_score,\n"
+            "           g.winner_team_id\n"
+            "    FROM team_box_stats tbs\n"
+            "    JOIN games g ON g.event_id = tbs.event_id\n"
+            "    JOIN teams t ON t.team_id = tbs.team_id\n"
+            "    WHERE t.display_name ILIKE '%Knicks%' AND tbs.season = 2026 AND tbs.season_type = 2\n"
+            "    ORDER BY g.date DESC LIMIT 20\n"
+            ")\n"
+            "SELECT *,\n"
+            "       SUM(CASE WHEN winner_team_id = team_id THEN 1 ELSE 0 END) OVER () AS wins,\n"
+            "       SUM(CASE WHEN winner_team_id != team_id THEN 1 ELSE 0 END) OVER () AS losses\n"
+            "FROM last20 ORDER BY date DESC"
         ),
     },
     {
