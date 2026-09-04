@@ -74,7 +74,13 @@ def _cmd_data_pull(args: argparse.Namespace) -> None:
     db_path = Path(args.db_path)
 
     client = ESPNClient(rate_limit=args.rate_limit)
-    pipeline = Pipeline(client, data_dir, include_pbp=args.include_pbp, force=args.force)
+    pipeline = Pipeline(
+        client,
+        data_dir,
+        include_pbp=args.include_pbp,
+        include_net_points_daily=args.include_net_points_daily,
+        force=args.force,
+    )
     pipeline.run(seasons, season_types)
 
     if not args.fetch_only:
@@ -148,6 +154,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--include-pbp",
         action="store_true",
         help="Also parse play-by-play, shot_chart, win_probability (free - same API call, more disk/parse time)",
+    )
+    pull_p.add_argument(
+        "--include-net-points-daily",
+        action="store_true",
+        help="Also fetch per-game NetPoints (net_points_player_game/net_points_team_game) - one extra, "
+        "signed S3 request per date already covered locally, not per game or per player. Opt-in: needs "
+        "boto3's Cognito credential exchange (see fetch/netpoints_client.py) and matches players by exact "
+        "display-name (ambiguous/unmatched names are left unresolved, not guessed).",
     )
     pull_p.add_argument("--rate-limit", type=float, default=5.0, help="Max requests/second against ESPN (default: 5)")
     pull_p.add_argument("--force", action="store_true", help="Re-fetch even if already checkpointed as complete")

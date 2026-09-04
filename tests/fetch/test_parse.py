@@ -555,3 +555,108 @@ def test_parse_net_points_team_transposes_pandas_orient_columns_json() -> None:
 def test_parse_net_points_team_handles_missing_data() -> None:
     assert parse.parse_net_points_team(None, {}) == []
     assert parse.parse_net_points_team({}, {}) == []
+
+
+def test_parse_net_points_daily_resolves_via_team_and_date_not_nba_ids() -> None:
+    """NetPoints' per-date payload has no ESPN ids anywhere (only NBA.com's
+    own plyrID/teamId/gmId) - event_id/season/season_type come entirely from
+    matching (team_id, date) against this project's own games table."""
+    data = {
+        "player_box": [
+            {"tmName": "NYK", "displayName": "Jalen Brunson", "plyrID": 1628973, "oNetPts": 8.7, "dNetPts": 2.6, "tNetPts": 11.3},
+        ],
+        "team_box": [
+            {"tmName": "NYK", "netPts2s": 1.0, "netPts3s": 2.0, "netPtsShooting": 3.0, "netPtsTurnover": -1.0, "netPtsRebound": 0.5, "netPtsFreethrow": 0.2, "totPoss": 100, "oppPoss": 98},
+        ],
+    }
+    team_abbr_to_id = {"NY": "18"}  # ESPN's real abbreviation for the Knicks is "NY", not "NYK"
+    team_date_to_game = {("18", "2026-04-12"): ("401585183", 2026, 2)}
+    name_to_athlete_id = {"Jalen Brunson": "3934672"}
+
+    player_rows, team_rows = parse.parse_net_points_daily(data, "2026-04-12", team_abbr_to_id, team_date_to_game, name_to_athlete_id)
+
+    assert player_rows == [
+        {
+            "event_id": "401585183",
+            "season": 2026,
+            "season_type": 2,
+            "team_id": "18",
+            "athlete_id": "3934672",
+            "o_net_pts": 8.7,
+            "d_net_pts": 2.6,
+            "t_net_pts": 11.3,
+            "o_usage": None,
+            "d_usage": None,
+            "o_poss": None,
+            "d_poss": None,
+            "t_poss": None,
+            "o_wpa": None,
+            "d_wpa": None,
+            "t_wpa": None,
+        }
+    ]
+    assert team_rows == [
+        {
+            "event_id": "401585183",
+            "season": 2026,
+            "season_type": 2,
+            "team_id": "18",
+            "net_pts_2pt": 1.0,
+            "net_pts_3pt": 2.0,
+            "net_pts_shooting": 3.0,
+            "net_pts_turnover": -1.0,
+            "net_pts_rebound": 0.5,
+            "net_pts_freethrow": 0.2,
+            "tot_poss": 100,
+            "opp_poss": 98,
+        }
+    ]
+
+
+def test_parse_net_points_daily_falls_back_to_date_plus_one() -> None:
+    """Regression: ESPN's games.date is UTC and can be a day ahead of the US-
+    local date NetPoints uses for its file naming (confirmed live: a real
+    OKC @ NYK game ESPN stores as 2026-03-05T00:00Z is filed by NetPoints
+    under 2026-03-04). UTC is never behind US local time, so the fallback
+    only ever needs to check date+1, not date-1."""
+    data = {"player_box": [{"tmName": "NYK", "displayName": "X", "oNetPts": 1.0}], "team_box": []}
+    team_abbr_to_id = {"NY": "18"}
+    team_date_to_game = {("18", "2026-03-05"): ("1", 2026, 2)}  # ESPN's stored date, one day ahead
+    player_rows, _ = parse.parse_net_points_daily(data, "2026-03-04", team_abbr_to_id, team_date_to_game, {"X": "9"})
+    assert player_rows[0]["event_id"] == "1"
+
+
+def test_parse_net_points_daily_prefers_date_plus_one_over_exact_match_on_back_to_backs() -> None:
+    """Regression, confirmed live: New Orleans played the LA Clippers on both
+    2026-03-19 and 2026-03-20 (ESPN dates), a real back-to-back against the
+    same opponent. Processing the NetPoints file labeled 2026-03-19 (whose
+    real ESPN date is 2026-03-20, the +1 offset) used to match the WRONG,
+    unrelated New Orleans game that genuinely exists on the exact label date
+    2026-03-19, because exact-date was checked before date+1. date+1 must be
+    tried first, not as a fallback."""
+    data = {"player_box": [{"tmName": "NOR", "displayName": "X", "oNetPts": 1.0}], "team_box": []}
+    team_abbr_to_id = {"NO": "3"}
+    team_date_to_game = {
+        ("3", "2026-03-19"): ("wrong-earlier-game", 2026, 2),
+        ("3", "2026-03-20"): ("correct-game", 2026, 2),
+    }
+    player_rows, _ = parse.parse_net_points_daily(data, "2026-03-19", team_abbr_to_id, team_date_to_game, {"X": "9"})
+    assert player_rows[0]["event_id"] == "correct-game"
+
+
+def test_parse_net_points_daily_drops_rows_with_no_matching_local_game() -> None:
+    data = {"player_box": [{"tmName": "NYK", "displayName": "X", "oNetPts": 1.0}], "team_box": []}
+    player_rows, team_rows = parse.parse_net_points_daily(data, "2026-04-12", {"NY": "18"}, {}, {"X": "9"})
+    assert player_rows == []
+    assert team_rows == []
+
+
+def test_parse_net_points_daily_ambiguous_or_unmatched_name_leaves_athlete_id_none() -> None:
+    data = {"player_box": [{"tmName": "NYK", "displayName": "Unknown Player", "oNetPts": 1.0}], "team_box": []}
+    team_date_to_game = {("18", "2026-04-12"): ("1", 2026, 2)}
+    player_rows, _ = parse.parse_net_points_daily(data, "2026-04-12", {"NY": "18"}, team_date_to_game, {})
+    assert player_rows[0]["athlete_id"] is None
+
+
+def test_parse_net_points_daily_handles_missing_data() -> None:
+    assert parse.parse_net_points_daily(None, "2026-04-12", {}, {}, {}) == ([], [])

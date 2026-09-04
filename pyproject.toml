@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "ESPN NBA stats: resumable fetch -> compact Parquet -> DuckDB warehouse -> local-LLM natural-language query"
 requires-python = ">=3.10"
 dependencies = [
+    "boto3>=1.34",
     "curl_cffi>=0.7",
     "duckdb>=1.0",
     "ollama>=0.6.2",

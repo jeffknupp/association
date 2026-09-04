@@ -5,6 +5,36 @@ commit that made it for the full story.
 
 ## 2026-09-04
 
+- **NetPoints per-game data (net_points_player_game, net_points_team_game)**:
+  opt-in via `--include-net-points-daily`. The source's per-game breakdown
+  lives in a *different* S3 bucket than the season-level files, and this one
+  rejects unsigned requests - reached via the same anonymous AWS Cognito
+  identity-pool credential exchange espnanalytics.com's own frontend uses to
+  read it (confirmed live: a plain unsigned request gets 403 AccessDenied;
+  the identity pool ID is meant to be public, embedded in the site's own
+  client-side JS - added `boto3` as a dependency to do the same exchange).
+  One request per date already covered locally (not per player, not per
+  game - one file covers every game played that date). Every field uses
+  NBA.com's own player/team/game IDs, with no crosswalk to ESPN's provided
+  anywhere in the data; resolved instead by matching (team, date) against
+  this project's own `games` table (a team plays at most one game per date,
+  so this is exact) and by exact player display-name match against
+  `players` (ambiguous/unmatched names are dropped, not guessed). Confirmed
+  live and handled: ESPN's `games.date` is UTC and can be a full day ahead
+  of the US-local date NetPoints files under (an OKC @ NYK game ESPN stores
+  as `2026-03-05T00:00Z` is filed under `2026-03-04`). Two real bugs found
+  and fixed by checking actual coverage after the first backfill, not just
+  trusting a clean exit code: (1) date+1 has to be tried BEFORE the exact
+  date, not after - a team playing the same opponent on back-to-back nights
+  (confirmed live: New Orleans @ LA Clippers on both 2026-03-19 and -20) has
+  its own unrelated game sitting at the exact label date, which silently
+  stole the match before the offset case ever ran; (2) a local date's true
+  NetPoints label (date-1) has to be fetched even when no OTHER local game
+  falls on that exact calendar day, or it's never fetched at all - confirmed
+  live, a Lakers game was missed entirely this way, not just mis-resolved.
+  Only NetPoints' own unique fields are kept; real box-score numbers ESPN
+  already provides aren't duplicated from this second source. Backfilled
+  locally: 1,654 dates.
 - **NetPoints (net_points_player, net_points_team)**: fetches ESPN Analytics'
   current advanced player/team metric (successor to the discontinued Real
   Plus-Minus) from espnanalytics.com's public, unauthenticated S3-hosted JSON

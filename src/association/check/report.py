@@ -92,13 +92,14 @@ def run_check(
     pipeline = Pipeline(client, data_dir)
     team_ids = pipeline.team_ids() if live else []
 
-    cols = ["season", "type", "complete", "games (have/expected)", "standings", "team_stats", "bpi", "players", "shots", "net_pts"]
-    widths = [6, 10, 8, 23, 9, 10, 4, 7, 8, 7]
+    cols = ["season", "type", "complete", "games (have/expected)", "standings", "team_stats", "bpi", "players", "shots", "net_pts", "np_gm"]
+    widths = [6, 10, 8, 23, 9, 10, 4, 7, 8, 7, 6]
     print(" ".join(c.rjust(w) for c, w in zip(cols, widths, strict=True)))
     print("-" * (sum(widths) + len(widths) - 1))
 
     any_cached = False
     any_net_points = False
+    any_net_points_daily = False
     for season in seasons:
         std_count = _local_count(con, data_dir / "standings", season)
         bpi_count = _local_count(con, data_dir / "team_power_index", season)
@@ -128,6 +129,9 @@ def run_check(
             net_pts = _net_points_player_count(con, data_dir, season, season_type)
             if season_type in NET_POINTS_TYPE_LABEL:
                 any_net_points = True
+            net_pts_daily = _local_count(con, data_dir / "net_points_player_game", season, season_type)
+            if net_pts_daily:
+                any_net_points_daily = True
 
             row = [
                 str(season),
@@ -140,6 +144,7 @@ def run_check(
                 str(players),
                 str(shots),
                 str(net_pts),
+                str(net_pts_daily),
             ]
             print(" ".join(c.rjust(w) for c, w in zip(row, widths, strict=True)))
 
@@ -154,6 +159,12 @@ def run_check(
             "net_pts = NetPoints (espnanalytics.com) player rows for regular/postseason only - "
             "it has no preseason equivalent, and net_points_team (not shown here) only ever covers "
             "the single current season, not full history."
+        )
+    if any_net_points_daily:
+        notes.append(
+            "np_gm = per-game NetPoints player rows (net_points_player_game), fetched only with "
+            "--include-net-points-daily - a player row is dropped (not zero, just absent) if their "
+            "display name couldn't be matched unambiguously to a local player."
         )
     if notes:
         print("\n" + "\n".join(notes))

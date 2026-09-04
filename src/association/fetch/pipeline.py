@@ -7,6 +7,8 @@ scope never has to re-derive its own completeness on a later run.
 from __future__ import annotations
 
 import logging
+from datetime import date as _date
+from datetime import timedelta as _timedelta
 from pathlib import Path
 
 import pyarrow as pa
@@ -16,19 +18,29 @@ from tqdm import tqdm
 
 from . import endpoints, parse, storage
 from .client import ESPNClient
+from .netpoints_client import NetPointsDailyClient
 
 log = logging.getLogger("association.fetch.pipeline")
 
 
 class Pipeline:
-    def __init__(self, client: ESPNClient | None, data_dir: Path, include_pbp: bool = False, force: bool = False):
+    def __init__(
+        self,
+        client: ESPNClient | None,
+        data_dir: Path,
+        include_pbp: bool = False,
+        include_net_points_daily: bool = False,
+        force: bool = False,
+    ):
         # client may be None for local-only use (e.g. `data check --offline`,
         # which never calls a network-touching method like event_ids_for).
         self.client = client
         self.root = Path(data_dir)
         self.include_pbp = include_pbp
+        self.include_net_points_daily = include_net_points_daily
         self.force = force
         self.glossary: dict[str, dict] = {}
+        self._net_points_daily_client: NetPointsDailyClient | None = None
 
     @property
     def _live_client(self) -> ESPNClient:
@@ -273,6 +285,118 @@ class Pipeline:
                 continue
             storage.write_rows(path, rows)
 
+    def _team_date_to_game(self) -> dict[tuple[str, str], tuple[str, int, int]]:
+        """(team_id, date) -> (event_id, season, season_type), built from
+        games already on disk - this is how NetPoints' per-date rows resolve
+        to an event_id, since NetPoints has no ESPN ids anywhere in its own
+        data. A team plays at most one game per real-world date, so this is
+        an exact, deterministic join - no name/id-matching heuristic needed
+        for games or teams, only for players (see parse.py)."""
+        path = self._p("games")
+        if not path.exists():
+            return {}
+        table = ds.dataset(str(path), format="parquet").to_table(
+            columns=["event_id", "season", "season_type", "date", "home_team_id", "away_team_id"]
+        )
+        result: dict[tuple[str, str], tuple[str, int, int]] = {}
+        for event_id, season, season_type, date, home_id, away_id in zip(
+            table.column("event_id").to_pylist(),
+            table.column("season").to_pylist(),
+            table.column("season_type").to_pylist(),
+            table.column("date").to_pylist(),
+            table.column("home_team_id").to_pylist(),
+            table.column("away_team_id").to_pylist(),
+            strict=True,
+        ):
+            if not date:
+                continue
+            date_part = str(date)[:10]
+            game = (str(event_id), int(season), int(season_type))
+            if home_id is not None:
+                result[(str(home_id), date_part)] = game
+            if away_id is not None:
+                result[(str(away_id), date_part)] = game
+        return result
+
+    def _name_to_athlete_id(self) -> dict[str, str]:
+        """display_name -> athlete_id, built from players already on disk.
+        A name shared by more than one locally-known player is dropped
+        entirely rather than guessed - NetPoints' per-game files have no
+        athlete_id of their own, only a display name to match against."""
+        path = self._p("players")
+        if not path.exists():
+            return {}
+        table = ds.dataset(str(path), format="parquet").to_table(columns=["athlete_id", "display_name"])
+        by_name: dict[str, set[str]] = {}
+        for athlete_id, name in zip(table.column("athlete_id").to_pylist(), table.column("display_name").to_pylist(), strict=True):
+            if name:
+                by_name.setdefault(name, set()).add(str(athlete_id))
+        return {name: next(iter(ids)) for name, ids in by_name.items() if len(ids) == 1}
+
+    def _net_points_dates_and_seasons(self) -> dict[str, int]:
+        """NetPoints label -> project season, for every date this project
+        already has at least one local ESPN game for, PLUS each such date
+        minus one day - NetPoints daily data is only fetched for dates
+        already covered, not blindly over the source's full history.
+
+        The "minus one day" half is required, not an optimization: a local
+        game's true NetPoints label is usually its ESPN date minus one (the
+        UTC-vs-local-date offset - see _resolve_net_points_game), and if that
+        label date has no OTHER local game of its own, it would otherwise
+        never be fetched at all. Confirmed live: a Lakers game with no other
+        local game the literal calendar day before it was silently missed
+        entirely until this was added, not just given a wrong event_id like
+        the back-to-back case. The label's season is reused from its parent
+        date unless that label is itself an independently-known date (i.e.
+        the rare case of a season boundary) - the only failure mode of
+        reusing it is fetching one extra, harmlessly empty S3 key."""
+        path = self._p("games")
+        if not path.exists():
+            return {}
+        table = ds.dataset(str(path), format="parquet").to_table(columns=["date", "season"])
+        result: dict[str, int] = {}
+        for date, season in zip(table.column("date").to_pylist(), table.column("season").to_pylist(), strict=True):
+            if date:
+                result[str(date)[:10]] = int(season)
+        for date, season in list(result.items()):
+            prior_day = (_date.fromisoformat(date) - _timedelta(days=1)).isoformat()
+            result.setdefault(prior_day, season)
+        return result
+
+    def fetch_net_points_daily(self) -> None:
+        """Opt-in (--include-net-points-daily): one S3 request per date this
+        project has local ESPN games for (not per player, and not per game -
+        NetPoints publishes one file per date covering every game played that
+        day). Needs a different, signed-request client than the rest of this
+        pipeline - see netpoints_client.py for why."""
+        if self._net_points_daily_client is None:
+            self._net_points_daily_client = NetPointsDailyClient()
+
+        team_abbr_to_id = self.team_abbr_to_id()
+        team_date_to_game = self._team_date_to_game()
+        name_to_athlete_id = self._name_to_athlete_id()
+        dates_and_seasons = self._net_points_dates_and_seasons()
+
+        for date in tqdm(sorted(dates_and_seasons), desc="NetPoints daily"):
+            season = dates_and_seasons[date]
+            # A date whose rows all fail to resolve (e.g. no teams matched)
+            # writes no parquet file at all (storage.write_rows([]) is a
+            # no-op) - a marker, not file-existence, is what makes that date
+            # skip on the next run instead of being re-fetched forever, the
+            # same class of fix already applied to preseason team-stats and
+            # postponed games elsewhere in this pipeline.
+            marker = self._p("_net_points_daily_done", f"date={date}.marker")
+            if not self.force and storage.is_complete(marker):
+                continue
+
+            data = self._net_points_daily_client.get_daily(date, season_folder=season - 1)
+            player_rows, team_rows = parse.parse_net_points_daily(
+                data, date, team_abbr_to_id, team_date_to_game, name_to_athlete_id
+            )
+            storage.write_rows(self._p("net_points_player_game", f"season={season}", f"date={date}.parquet"), player_rows)
+            storage.write_rows(self._p("net_points_team_game", f"season={season}", f"date={date}.parquet"), team_rows)
+            storage.mark_complete(marker)
+
     # ---------------- glossary ----------------
     def write_glossary(self) -> None:
         if not self.glossary:
@@ -329,6 +453,12 @@ class Pipeline:
 
             for season_type in season_types:
                 self._run_season_type(season, season_type, team_ids)
+
+        if self.include_net_points_daily:
+            # Must run after the season/type loop above - it resolves against
+            # whatever's now in the local games table, so games have to be
+            # fetched first for this run's seasons to be there to resolve against.
+            self.fetch_net_points_daily()
 
         self.write_glossary()
 

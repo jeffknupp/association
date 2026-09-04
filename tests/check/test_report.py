@@ -122,7 +122,7 @@ def test_run_check_reports_net_points_player_count(tmp_path: Path, capsys: pytes
     out = capsys.readouterr().out
     lines = [ln for ln in out.splitlines() if ln.strip().startswith("2024")]
     assert len(lines) == 1
-    assert lines[0].split()[-1] == "2"
+    assert lines[0].split()[-2] == "2"  # net_pts column (np_gm, the daily table, is last)
     assert "NetPoints" in out
 
 
@@ -132,4 +132,20 @@ def test_run_check_net_points_zero_for_preseason(tmp_path: Path, capsys: pytest.
     report.run_check(tmp_path, seasons=[2024], season_types=[1], live=False)
     out = capsys.readouterr().out
     lines = [ln for ln in out.splitlines() if ln.strip().startswith("2024")]
-    assert lines[0].split()[-1] == "0"
+    assert lines[0].split()[-2] == "0"
+
+
+def test_run_check_reports_net_points_daily_count(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write(
+        tmp_path / "net_points_player_game" / "season=2024" / "date=2024-01-01.parquet",
+        [
+            {"event_id": "1", "season": 2024, "season_type": 2, "team_id": "1", "athlete_id": "1", "t_net_pts": 1.0},
+            {"event_id": "1", "season": 2024, "season_type": 2, "team_id": "2", "athlete_id": "2", "t_net_pts": 2.0},
+        ],
+    )
+    report.run_check(tmp_path, seasons=[2024], season_types=[2], live=False)
+    out = capsys.readouterr().out
+    lines = [ln for ln in out.splitlines() if ln.strip().startswith("2024")]
+    assert lines[0].split()[-1] == "2"
+    assert "np_gm" in out
+    assert "net_points_player_game" in out

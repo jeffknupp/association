@@ -40,20 +40,44 @@ only the player side needs a computed layer — see
 [`fetch/advanced_stats.py`](src/association/fetch/advanced_stats.py) for the
 exact formulas and why PER/Win Shares/BPM/VORP are deliberately excluded.
 
-**NetPoints** (`net_points_player`, `net_points_team`, fetched by default,
-not opt-in): ESPN Analytics' current advanced player/team rating — points
-contributed above average, split into offense/defense — published as public,
-unauthenticated JSON on S3 at
-[espnanalytics.com](https://espnanalytics.com), not through ESPN's own API.
-Confirmed live: no `robots.txt` disallow, no auth/CORS barrier, and it uses
-its own team-abbreviation scheme (translated to this project's team_id at
-parse time — see `fetch/parse.py`'s `NET_POINTS_ABBREV_TO_ESPN`) and its own
-season-*starts* convention (converted to this project's season-*ends*
-convention on ingest). Season-level only for now: NetPoints also publishes
-per-game data, but as one HTTP request per player (thousands of requests) via
-NBA.com's own player/game IDs rather than ESPN's, with no direct ESPN-id
-crosswalk provided — a bigger, separate piece of work than the two flat
-season files ingested here, left for a follow-up.
+**NetPoints** — ESPN Analytics' current advanced player/team rating (points
+contributed above average, split into offense/defense), from
+[espnanalytics.com](https://espnanalytics.com), not ESPN's own API:
+
+- `net_points_player` / `net_points_team` (season-level, **fetched by
+  default**): public, unauthenticated JSON on S3. Confirmed live: no
+  `robots.txt` disallow, no auth/CORS barrier. Uses its own team-abbreviation
+  scheme (translated to this project's team_id at parse time — see
+  `fetch/parse.py`'s `NET_POINTS_ABBREV_TO_ESPN`) and its own
+  season-*starts* convention (converted to season-*ends* on ingest).
+- `net_points_player_game` / `net_points_team_game` (per-game, **opt-in**
+  via `--include-net-points-daily`): the source's own per-game/per-player
+  breakdown, one request per date already covered locally rather than per
+  player or per game. This bucket rejects unsigned requests — reached via
+  the same anonymous AWS Cognito identity-pool credential exchange
+  espnanalytics.com's own frontend uses (see `fetch/netpoints_client.py`),
+  needing `boto3`. Every field in this data uses NBA.com's own player/team/
+  game IDs, not ESPN's, with no crosswalk provided — resolved instead by
+  matching (team, calendar date) against this project's own already-fetched
+  `games` table (a team plays at most one game per date, so this is exact,
+  not a guess), and by exact player display-name match against `players`
+  (ambiguous or unmatched names are left out rather than guessed). One
+  real wrinkle, confirmed live: ESPN's `games.date` is UTC and can land a
+  full calendar day ahead of the US-local date NetPoints files under (e.g.
+  an OKC @ NYK game ESPN stores as `2026-03-05T00:00Z` is filed under
+  `2026-03-04`) — resolution checks date+1 FIRST, falling back to the exact
+  date only if that misses (checking exact-date first was a real, confirmed
+  bug: a team playing the same opponent on back-to-back nights has its own
+  unrelated game sitting at the exact label date, stealing the match before
+  the offset case could run). The fetch set also includes each local date
+  minus one day, not just the dates ESPN itself reports — otherwise a
+  date whose only local game's true label is the day before, with no other
+  local game to trigger fetching that day, is silently never fetched at
+  all (confirmed live, a Lakers game was missed entirely this way). Only
+  the genuinely new fields are kept (the NetPoints metric itself, plus
+  usage/possession/win-probability-added context); real box-score numbers
+  ESPN already provides (points, rebounds, minutes, ...) aren't duplicated
+  from this second source.
 
 ## Design
 
@@ -122,8 +146,11 @@ tests/              pytest, one file per source module
   (the 2023-24 season is `season=2024`) - except NetPoints' own source data,
   which labels a season by the year it *starts*; converted on ingest so the
   stored `season` column matches every other table.
-- NetPoints (espnanalytics.com, not espn.com) needed none of the TLS-
-  impersonation tricks above - a plain request succeeds.
+- NetPoints' season-level files (espnanalytics.com, not espn.com) need none
+  of the TLS-impersonation tricks above - a plain request succeeds. Its
+  per-game bucket is the opposite problem: it rejects unsigned requests
+  outright, needing a Cognito credential exchange instead (see the NetPoints
+  section above and `fetch/netpoints_client.py`).
 
 ## Testing
 
@@ -162,13 +189,16 @@ must also update it, or the commit is rejected.
   (only ever found rendered into a webpage) - NetPoints (see above) is its
   successor and *is* included. PER, Win Shares, BPM, and VORP are still not
   included, for a different reason: see `player_advanced_stats` above.
-- NetPoints per-game data (as opposed to per-season, which is included)
-  exists on espnanalytics.com but isn't fetched yet - it's one HTTP request
-  per player rather than a flat file, and keyed by NBA.com's own player/game
-  IDs with no direct ESPN-id crosswalk provided. Planned as a follow-up.
 - NetPoints only has data back to the 2018-19 season (`season=2019`) -
-  nothing earlier exists on their side, confirmed live.
-- `net_points_team` only ever reflects the single current season - there's no
-  historical team-level file, only the per-game history described above.
+  nothing earlier exists on their side, confirmed live (both the season-level
+  and per-game endpoints).
+- `net_points_team` (season-level) only ever reflects the single current
+  season - `net_points_team_game` (per-game, `--include-net-points-daily`)
+  has full history instead.
+- `net_points_player_game` matches players by exact display-name text -
+  formatting differences between ESPN's and NetPoints' own name spelling
+  (accents, suffixes) will leave a real player's game rows unmatched rather
+  than wrongly matched, but that does mean a small amount of real coverage
+  gets dropped silently instead of guessed.
 - `data check --live` cross-checks are opt-in and can be slow for seasons
   without a local completion marker yet — `pull` first to build those up.

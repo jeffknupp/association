@@ -275,3 +275,132 @@ def test_fetch_net_points_force_overwrites(tmp_path: Path) -> None:
     pipeline.fetch_net_points()
     pipeline.fetch_net_points()  # must not raise even with --force
     assert (tmp_path / "net_points_player" / "season=2024" / "regular_season.parquet").exists()
+
+
+# ---------------- NetPoints daily (per-game) ----------------
+
+
+class FakeDailyClient:
+    """Stand-in for NetPointsDailyClient - no Cognito/S3, canned responses by date."""
+
+    def __init__(self, responses: dict[str, Any]) -> None:
+        self.responses = responses
+        self.calls: list[str] = []
+
+    def get_daily(self, date: str, season_folder: int) -> Any:
+        self.calls.append(date)
+        return self.responses.get(date)
+
+
+def _write_games_fixture(data_dir: Path, rows: list[dict]) -> None:
+    storage.write_rows(data_dir / "games" / "f.parquet", rows)
+
+
+def _write_players_fixture(data_dir: Path, rows: list[dict]) -> None:
+    storage.write_rows(data_dir / "players" / "f.parquet", rows)
+
+
+def test_team_date_to_game_covers_home_and_away(tmp_path: Path) -> None:
+    _write_games_fixture(
+        tmp_path,
+        [{"event_id": "1", "season": 2026, "season_type": 2, "date": "2026-04-12T22:00Z", "home_team_id": "18", "away_team_id": "30"}],
+    )
+    pipeline = Pipeline(FakeClient({}), tmp_path)
+    mapping = pipeline._team_date_to_game()
+    assert mapping[("18", "2026-04-12")] == ("1", 2026, 2)
+    assert mapping[("30", "2026-04-12")] == ("1", 2026, 2)
+
+
+def test_name_to_athlete_id_drops_ambiguous_names(tmp_path: Path) -> None:
+    _write_players_fixture(
+        tmp_path,
+        [
+            {"athlete_id": "1", "display_name": "Unique Player"},
+            {"athlete_id": "2", "display_name": "Duplicate Name"},
+            {"athlete_id": "3", "display_name": "Duplicate Name"},
+        ],
+    )
+    pipeline = Pipeline(FakeClient({}), tmp_path)
+    mapping = pipeline._name_to_athlete_id()
+    assert mapping == {"Unique Player": "1"}
+
+
+def test_fetch_net_points_daily_writes_resolved_rows(tmp_path: Path) -> None:
+    _write_games_fixture(
+        tmp_path,
+        [{"event_id": "1", "season": 2026, "season_type": 2, "date": "2026-04-12T22:00Z", "home_team_id": "18", "away_team_id": "30"}],
+    )
+    _write_players_fixture(tmp_path, [{"athlete_id": "9", "display_name": "Test Player"}])
+    client = FakeClient({TEAMS_URL: _teams_response(1)})
+    client.responses[TEAMS_URL] = {
+        "sports": [{"leagues": [{"teams": [{"team": {"id": "18", "abbreviation": "NY"}}]}]}]
+    }
+    pipeline = Pipeline(client, tmp_path)
+    pipeline.fetch_teams()
+    pipeline._net_points_daily_client = FakeDailyClient(
+        {
+            "2026-04-12": {
+                "player_box": [{"tmName": "NYK", "displayName": "Test Player", "oNetPts": 1.0, "dNetPts": 2.0, "tNetPts": 3.0}],
+                "team_box": [{"tmName": "NYK", "netPts2s": 1.0}],
+            }
+        }
+    )
+
+    pipeline.fetch_net_points_daily()
+
+    player_file = tmp_path / "net_points_player_game" / "season=2026" / "date=2026-04-12.parquet"
+    team_file = tmp_path / "net_points_team_game" / "season=2026" / "date=2026-04-12.parquet"
+    assert player_file.exists()
+    assert team_file.exists()
+    assert storage.exists(player_file)
+
+
+def test_fetch_net_points_daily_marks_done_even_with_zero_resolved_rows(tmp_path: Path) -> None:
+    """Regression-shaped: storage.write_rows([]) is a no-op, so a date whose
+    rows all fail to resolve must not look "incomplete" forever and get
+    re-fetched every run - the same class of bug already fixed for preseason
+    team-stats and postponed games elsewhere in this pipeline."""
+    _write_games_fixture(
+        tmp_path,
+        [{"event_id": "1", "season": 2026, "season_type": 2, "date": "2026-04-12T22:00Z", "home_team_id": "18", "away_team_id": "30"}],
+    )
+    _write_players_fixture(tmp_path, [])
+    client = FakeClient({TEAMS_URL: {"sports": [{"leagues": [{"teams": [{"team": {"id": "18", "abbreviation": "NY"}}]}]}]}})
+    pipeline = Pipeline(client, tmp_path)
+    pipeline.fetch_teams()
+    fake_daily = FakeDailyClient({"2026-04-11": None, "2026-04-12": None})  # no data published for either date
+    pipeline._net_points_daily_client = fake_daily
+
+    pipeline.fetch_net_points_daily()
+    assert fake_daily.calls == ["2026-04-11", "2026-04-12"]
+
+    pipeline.fetch_net_points_daily()
+    assert fake_daily.calls == ["2026-04-11", "2026-04-12"]  # not called again - markers made both skip
+
+
+def test_net_points_dates_and_seasons_includes_day_before_each_local_date(tmp_path: Path) -> None:
+    """Regression, confirmed live: a Lakers game with no OTHER local game on
+    the literal calendar day before it was silently never fetched at all -
+    its true NetPoints label (ESPN date minus one) never appeared in the
+    fetch set, unlike the back-to-back bug which fetched the wrong game
+    rather than no game. Every local date's day-before must be included too."""
+    _write_games_fixture(tmp_path, [{"event_id": "1", "season": 2026, "season_type": 2, "date": "2025-11-29T03:00Z", "home_team_id": "13", "away_team_id": "6"}])
+    pipeline = Pipeline(FakeClient({}), tmp_path)
+    dates = pipeline._net_points_dates_and_seasons()
+    assert dates == {"2025-11-29": 2026, "2025-11-28": 2026}
+
+
+def test_net_points_dates_and_seasons_prefers_real_season_over_derived_one(tmp_path: Path) -> None:
+    """If the day before a local date is ALSO independently a real local date
+    (the common case - most days have games), its own real season must win,
+    not the derived value from the following day."""
+    _write_games_fixture(
+        tmp_path,
+        [
+            {"event_id": "1", "season": 2019, "season_type": 3, "date": "2019-06-14T00:00Z", "home_team_id": "13", "away_team_id": "6"},
+            {"event_id": "2", "season": 2020, "season_type": 1, "date": "2019-06-15T00:00Z", "home_team_id": "13", "away_team_id": "6"},
+        ],
+    )
+    pipeline = Pipeline(FakeClient({}), tmp_path)
+    dates = pipeline._net_points_dates_and_seasons()
+    assert dates["2019-06-14"] == 2019  # its own real season, not season 2020 derived from the 15th

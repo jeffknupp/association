@@ -37,6 +37,8 @@ TABLES = [
     "win_probability",
     "net_points_player",
     "net_points_team",
+    "net_points_player_game",
+    "net_points_team_game",
     "stat_glossary",
 ]
 

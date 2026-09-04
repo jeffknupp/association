@@ -252,3 +252,29 @@ def test_build_loads_net_points_tables(tmp_path: Path) -> None:
     con.close()
     assert player_row == (1.5,)
     assert team_row == (2.5,)
+
+
+def test_build_loads_net_points_daily_tables(tmp_path: Path) -> None:
+    data_dir = tmp_path / "parquet"
+    d1 = data_dir / "net_points_player_game" / "season=2026"
+    d2 = data_dir / "net_points_team_game" / "season=2026"
+    d1.mkdir(parents=True)
+    d2.mkdir(parents=True)
+    pq.write_table(
+        pa.Table.from_pylist([{"event_id": "1", "season": 2026, "season_type": 2, "athlete_id": "9", "t_net_pts": 3.0}]),
+        d1 / "date=2026-04-12.parquet",
+    )
+    pq.write_table(
+        pa.Table.from_pylist([{"event_id": "1", "season": 2026, "season_type": 2, "team_id": "18", "net_pts_2pt": 1.0}]),
+        d2 / "date=2026-04-12.parquet",
+    )
+
+    db_path = tmp_path / "test.duckdb"
+    warehouse.build(data_dir, db_path)
+
+    con = duckdb.connect(str(db_path))
+    player_row = con.execute("SELECT t_net_pts FROM net_points_player_game").fetchone()
+    team_row = con.execute("SELECT net_pts_2pt FROM net_points_team_game").fetchone()
+    con.close()
+    assert player_row == (3.0,)
+    assert team_row == (1.0,)

@@ -21,6 +21,8 @@ KNOWN_TABLES = {
     "player_season_advanced_stats",
     "net_points_player",
     "net_points_team",
+    "net_points_player_game",
+    "net_points_team_game",
 }
 
 TABLE_SUMMARY = """
@@ -41,8 +43,13 @@ player_advanced_stats        - COMPUTED, one row per player PER GAME (ts_pct, ef
 player_season_advanced_stats - COMPUTED, one row per player per season per season_type (ts_pct, efg_pct, usage_pct, avg_game_score, games_played) - opt-in, see below
 net_points_player   - one row per player per season per net_points_season_type (overall, offense, defense, games, position, draft_year) - from espnanalytics.com, not ESPN's own API
 net_points_team     - one row per team per season per side ('Offense'/'Defense'/'Total') (avg_team_score, fast_break, fg2, fg3, free_throw, putback, rebound, turnover, total) - current season only
+net_points_player_game - one row per player PER GAME (o/d/t_net_pts, o/d_usage, o/d/t_poss, o/d/t_wpa) - opt-in flag below; normal numeric season_type, unlike the two tables above
+net_points_team_game   - one row per team PER GAME (net_pts_2pt/3pt/shooting/turnover/rebound/freethrow, tot_poss, opp_poss) - opt-in, same as above
 
 player_advanced_stats / player_season_advanced_stats only exist if the warehouse was built with --advanced-stats.
+net_points_player_game / net_points_team_game only exist if fetched with --include-net-points-daily - a
+player row can be legitimately absent (not zero, just missing) for a game if their display name couldn't
+be matched to exactly one local player.
 
 net_points_player / net_points_team hold ESPN Analytics' "NetPoints" metric (their
 current advanced player/team rating, successor to the discontinued Real
@@ -260,6 +267,22 @@ KNOWLEDGE_BASE = [
             "-- a player's NetPoints for a regular season\n"
             "SELECT overall, offense, defense FROM net_points_player\n"
             "WHERE athlete_id = ? AND season = 2026 AND net_points_season_type = 'Regular Season'"
+        ),
+    },
+    {
+        "topic": "Per-game NetPoints (net_points_player_game / net_points_team_game)",
+        "note": (
+            "Only exist if fetched with --include-net-points-daily - if a query against them errors "
+            "with a missing-table error, say so rather than falling back to the season-level tables "
+            "and calling it the same thing. A missing player row for a game is expected sometimes, "
+            "not a bug: their NetPoints display name couldn't be matched to exactly one local player, "
+            "so it was left out rather than guessed. These use the normal numeric season_type (2/3), "
+            "not net_points_season_type's string - don't mix the two tables' conventions up."
+        ),
+        "example": (
+            "-- a player's NetPoints in one specific game\n"
+            "SELECT o_net_pts, d_net_pts, t_net_pts FROM net_points_player_game\n"
+            "WHERE athlete_id = ? AND event_id = ?"
         ),
     },
     {
