@@ -23,6 +23,31 @@ ollama pull qwen2.5:7b           # default model, ~4.7GB
 ollama pull qwen3:8b             # optional: visible reasoning (--think), ~5GB
 ```
 
+**Shell completion** (tab-complete subcommands, options, and `--log-level`'s
+choices) — the CLI is built on [Click](https://click.palletsprojects.com),
+which generates these directly from the command definitions, so there's
+nothing to keep in sync by hand. Two ways to enable it:
+
+- Source one of the ready-made scripts in [`completions/`](completions/):
+  ```bash
+  # bash
+  echo 'source /path/to/association/completions/association.bash' >> ~/.bashrc
+  # zsh
+  echo 'source /path/to/association/completions/association.zsh' >> ~/.zshrc
+  # fish
+  cp completions/association.fish ~/.config/fish/completions/
+  ```
+- Or generate it fresh (picks up any future CLI changes automatically):
+  ```bash
+  eval "$(_ASSOCIATION_COMPLETE=bash_source association)"   # bash, in ~/.bashrc
+  eval "$(_ASSOCIATION_COMPLETE=zsh_source association)"    # zsh, in ~/.zshrc
+  _ASSOCIATION_COMPLETE=fish_source association | source    # fish, in ~/.config/fish/config.fish
+  ```
+
+The `completions/` scripts are generated, not hand-written - after changing a
+command or option in `cli.py`, regenerate them with
+`./scripts/generate_completions.sh`.
+
 ## Data model
 
 Fetches teams, games/box scores (player and team level), standings, player
@@ -130,6 +155,7 @@ src/association/
   query/            prompt/knowledge base, tools, court renderer, agent loop, REPL
 scripts/
   backfill_markers.sh   re-derive completion markers for data fetched before they existed
+completions/          generated bash/zsh/fish shell completion scripts (see Setup)
 tests/              pytest, one file per source module
 ```
 

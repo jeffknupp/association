@@ -1,13 +1,26 @@
 #!/usr/bin/env python3
-"""association - a single CLI for the ESPN NBA dataset: fetch it, audit it, query it.
+"""association - a single CLI for the ESPN NBA dataset: fetch it, audit it, query it."""
 
-Subcommands:
-    association data pull [...]     resumable fetch from ESPN -> Parquet -> DuckDB warehouse
-    association data load [...]     (re)build the DuckDB warehouse from Parquet already on disk
-    association data check [...]    report data coverage, optionally cross-checked live vs ESPN
-    association query "..."         one-shot natural-language question (local LLM, no cloud calls)
-    association ai [...]            interactive REPL (same engine as `query`, keeps context)
+from __future__ import annotations
 
+import logging
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any, TypeVar
+
+import click
+
+DEFAULT_DATA_DIR = "./data/parquet"
+DEFAULT_DB_PATH = "./nba.duckdb"
+DEFAULT_MODEL = "qwen2.5:7b"
+DEFAULT_OUT_DIR = "./query_output"
+
+LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR"]
+
+F = TypeVar("F", bound=Callable[..., Any])
+
+CLI_EPILOG = """
+\b
 Examples:
     association data pull --seasons 2024
     association data pull --seasons 2022-2024 --season-types 2,3 --include-pbp
@@ -16,6 +29,7 @@ Examples:
     association query "Who are the top 5 3-point shooters by shot volume?"
     association ai --model qwen3:8b --think --verbose
 
+\b
 Setup for query/ai (one-time):
     brew install ollama
     ollama serve &                # or `brew services start ollama`; must be running before use
@@ -30,18 +44,14 @@ thinking-token volume varies run to run, 3-6x+ the wall time of qwen2.5:7b for t
 same question) - reach for it when investigating a wrong answer, not for routine
 queries. Switching --model between calls also costs ~60-80s to swap the loaded
 model on memory-constrained hardware - avoid alternating models call to call.
+
+\b
+Shell completion (one-time):
+    bash: eval "$(_ASSOCIATION_COMPLETE=bash_source association)"   >> ~/.bashrc
+    zsh:  eval "$(_ASSOCIATION_COMPLETE=zsh_source association)"    >> ~/.zshrc
+    fish: _ASSOCIATION_COMPLETE=fish_source association | source    >> ~/.config/fish/config.fish
+See completions/ in the repo for ready-made static scripts instead of the eval form.
 """
-
-from __future__ import annotations
-
-import argparse
-import logging
-from pathlib import Path
-
-DEFAULT_DATA_DIR = "./data/parquet"
-DEFAULT_DB_PATH = "./nba.duckdb"
-DEFAULT_MODEL = "qwen2.5:7b"
-DEFAULT_OUT_DIR = "./query_output"
 
 
 def _parse_seasons(spec: str) -> list[int]:
@@ -62,174 +72,154 @@ def _parse_season_types(spec: str) -> list[int]:
     return sorted({int(x.strip()) for x in spec.split(",") if x.strip()})
 
 
-def _cmd_data_pull(args: argparse.Namespace) -> None:
+def _query_engine_options(f: F) -> F:
+    f = click.option("--model", default=DEFAULT_MODEL, show_default=True, help="Ollama model name.")(f)
+    f = click.option("--db-path", default=DEFAULT_DB_PATH, show_default=True, help="DuckDB warehouse file.")(f)
+    f = click.option("--out-dir", default=DEFAULT_OUT_DIR, show_default=True, help="Directory for rendered shot charts.")(f)
+    f = click.option("--verbose", is_flag=True, help="Print tool calls as they happen.")(f)
+    f = click.option(
+        "--think",
+        is_flag=True,
+        help="Show the model's reasoning trace before each response (requires a thinking-capable "
+        "model, e.g. qwen3:8b - qwen2.5 does not support this).",
+    )(f)
+    return f
+
+
+@click.group(epilog=CLI_EPILOG, context_settings={"help_option_names": ["-h", "--help"]})
+def cli() -> None:
+    """Fetch, audit, and query ESPN's NBA stats via a local DuckDB warehouse."""
+
+
+@cli.group()
+def data() -> None:
+    """Fetch and audit the ESPN NBA dataset."""
+
+
+@data.command("pull")
+@click.option("--seasons", required=True, help="e.g. '2024' or '2022-2024' or '2022,2023,2024' (ESPN's season year = the year the season ends)")
+@click.option("--season-types", default="2,3", show_default=True, help="1=preseason 2=regular 3=postseason")
+@click.option("--data-dir", default=DEFAULT_DATA_DIR, show_default=True, help="Parquet flat-file root")
+@click.option("--db-path", default=DEFAULT_DB_PATH, show_default=True, help="DuckDB warehouse file")
+@click.option(
+    "--include-pbp", is_flag=True, help="Also parse play-by-play, shot_chart, win_probability (free - same API call, more disk/parse time)"
+)
+@click.option(
+    "--include-net-points-daily",
+    is_flag=True,
+    help="Also fetch per-game NetPoints (net_points_player_game/net_points_team_game) - one extra, "
+    "signed S3 request per date already covered locally, not per game or per player. Opt-in: needs "
+    "boto3's Cognito credential exchange (see fetch/netpoints_client.py) and matches players by exact "
+    "display-name (ambiguous/unmatched names are left unresolved, not guessed).",
+)
+@click.option("--rate-limit", type=float, default=5.0, show_default=True, help="Max requests/second against ESPN")
+@click.option("--force", is_flag=True, help="Re-fetch even if already checkpointed as complete")
+@click.option("--fetch-only", is_flag=True, help="Fetch Parquet files only, skip building the DuckDB warehouse")
+@click.option(
+    "--advanced-stats",
+    is_flag=True,
+    help="Also build computed player_advanced_stats/player_season_advanced_stats views "
+    "(true shooting %, effective FG%, usage rate, game score - see fetch/advanced_stats.py)",
+)
+@click.option("--log-level", type=click.Choice(LOG_LEVELS), default="INFO", show_default=True)
+def data_pull(
+    seasons: str,
+    season_types: str,
+    data_dir: str,
+    db_path: str,
+    include_pbp: bool,
+    include_net_points_daily: bool,
+    rate_limit: float,
+    force: bool,
+    fetch_only: bool,
+    advanced_stats: bool,
+    log_level: str,
+) -> None:
+    """Resumable fetch from ESPN into Parquet + the DuckDB warehouse."""
     from .fetch import warehouse
     from .fetch.client import ESPNClient
     from .fetch.pipeline import Pipeline
 
-    logging.basicConfig(level=args.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    seasons = _parse_seasons(args.seasons)
-    season_types = _parse_season_types(args.season_types)
-    data_dir = Path(args.data_dir)
-    db_path = Path(args.db_path)
+    logging.basicConfig(level=log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    parsed_seasons = _parse_seasons(seasons)
+    parsed_season_types = _parse_season_types(season_types)
+    data_dir_path = Path(data_dir)
+    db_path_path = Path(db_path)
 
-    client = ESPNClient(rate_limit=args.rate_limit)
+    client = ESPNClient(rate_limit=rate_limit)
     pipeline = Pipeline(
         client,
-        data_dir,
-        include_pbp=args.include_pbp,
-        include_net_points_daily=args.include_net_points_daily,
-        force=args.force,
+        data_dir_path,
+        include_pbp=include_pbp,
+        include_net_points_daily=include_net_points_daily,
+        force=force,
     )
-    pipeline.run(seasons, season_types)
+    pipeline.run(parsed_seasons, parsed_season_types)
 
-    if not args.fetch_only:
-        warehouse.build(data_dir, db_path, include_advanced_stats=args.advanced_stats)
+    if not fetch_only:
+        warehouse.build(data_dir_path, db_path_path, include_advanced_stats=advanced_stats)
 
 
-def _cmd_data_load(args: argparse.Namespace) -> None:
+@data.command("load")
+@click.option("--data-dir", default=DEFAULT_DATA_DIR, show_default=True, help="Parquet flat-file root")
+@click.option("--db-path", default=DEFAULT_DB_PATH, show_default=True, help="DuckDB warehouse file")
+@click.option(
+    "--tables",
+    default=None,
+    help="Comma-separated subset of tables to (re)load, e.g. 'games,player_box_stats' "
+    "(unknown names error out). Default: every table with Parquet files on disk.",
+)
+@click.option("--advanced-stats", is_flag=True, help="Also (re)build the computed player_advanced_stats/player_season_advanced_stats views.")
+@click.option("--log-level", type=click.Choice(LOG_LEVELS), default="INFO", show_default=True)
+def data_load(data_dir: str, db_path: str, tables: str | None, advanced_stats: bool, log_level: str) -> None:
+    """(Re)build the DuckDB warehouse from Parquet files already on disk, without fetching."""
     from .fetch import warehouse
 
-    logging.basicConfig(level=args.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    tables = [t.strip() for t in args.tables.split(",") if t.strip()] if args.tables else None
-    warehouse.build(Path(args.data_dir), Path(args.db_path), tables=tables, include_advanced_stats=args.advanced_stats)
+    logging.basicConfig(level=log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    parsed_tables = [t.strip() for t in tables.split(",") if t.strip()] if tables else None
+    warehouse.build(Path(data_dir), Path(db_path), tables=parsed_tables, include_advanced_stats=advanced_stats)
 
 
-def _cmd_data_check(args: argparse.Namespace) -> None:
+@data.command("check")
+@click.option("--seasons", default=None, help="e.g. '2020-2024'. Defaults to every season with local data.")
+@click.option("--season-types", default="1,2,3", show_default=True)
+@click.option("--data-dir", default=DEFAULT_DATA_DIR, show_default=True)
+@click.option("--rate-limit", type=float, default=5.0, show_default=True)
+@click.option("--offline", is_flag=True, help="Skip the live ESPN schedule cross-check (fast, but can't report expected game counts).")
+@click.option("--force", is_flag=True, help="Re-verify live against ESPN even for seasons already marked complete locally.")
+def data_check(seasons: str | None, season_types: str, data_dir: str, rate_limit: float, offline: bool, force: bool) -> None:
+    """Report data coverage vs. what ESPN's API actually has, per season/season_type."""
     from .check.report import run_check
 
-    seasons = _parse_seasons(args.seasons) if args.seasons else None
-    season_types = _parse_season_types(args.season_types)
-    run_check(Path(args.data_dir), seasons, season_types, rate_limit=args.rate_limit, live=not args.offline, force=args.force)
+    parsed_seasons = _parse_seasons(seasons) if seasons else None
+    parsed_season_types = _parse_season_types(season_types)
+    run_check(Path(data_dir), parsed_seasons, parsed_season_types, rate_limit=rate_limit, live=not offline, force=force)
 
 
-def _cmd_query(args: argparse.Namespace) -> None:
+@cli.command("query")
+@click.argument("question")
+@_query_engine_options
+def query(question: str, model: str, db_path: str, out_dir: str, verbose: bool, think: bool) -> None:
+    """Ask one natural-language question about the local data."""
     from .query.agent import Agent
 
-    agent = Agent(args.model, args.db_path, Path(args.out_dir), verbose=args.verbose, think=args.think)
-    print(agent.ask(args.question))
+    agent = Agent(model, db_path, Path(out_dir), verbose=verbose, think=think)
+    click.echo(agent.ask(question))
 
 
-def _cmd_ai(args: argparse.Namespace) -> None:
+@cli.command("ai")
+@_query_engine_options
+def ai(model: str, db_path: str, out_dir: str, verbose: bool, think: bool) -> None:
+    """Interactive REPL - keeps conversation history across questions."""
     from .query.agent import Agent
     from .query.repl import run_repl
 
-    agent = Agent(args.model, args.db_path, Path(args.out_dir), verbose=args.verbose, think=args.think)
+    agent = Agent(model, db_path, Path(out_dir), verbose=verbose, think=think)
     run_repl(agent)
 
 
-def _add_query_engine_args(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--model", default=DEFAULT_MODEL)
-    p.add_argument("--db-path", default=DEFAULT_DB_PATH)
-    p.add_argument("--out-dir", default=DEFAULT_OUT_DIR)
-    p.add_argument("--verbose", action="store_true", help="Print tool calls as they happen.")
-    p.add_argument(
-        "--think",
-        action="store_true",
-        help="Show the model's reasoning trace before each response (requires a thinking-capable "
-        "model, e.g. qwen3:8b - qwen2.5 does not support this).",
-    )
-
-
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="association", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    data_p = sub.add_parser("data", help="Fetch and audit the ESPN NBA dataset.")
-    data_sub = data_p.add_subparsers(dest="data_command", required=True)
-
-    pull_p = data_sub.add_parser("pull", help="Resumable fetch from ESPN into Parquet + the DuckDB warehouse.")
-    pull_p.add_argument(
-        "--seasons",
-        required=True,
-        help="e.g. '2024' or '2022-2024' or '2022,2023,2024' "
-        "(ESPN's season year = the year the season ends)",
-    )
-    pull_p.add_argument("--season-types", default="2,3", help="1=preseason 2=regular 3=postseason (default: 2,3)")
-    pull_p.add_argument("--data-dir", default=DEFAULT_DATA_DIR, help=f"Parquet flat-file root (default: {DEFAULT_DATA_DIR})")
-    pull_p.add_argument("--db-path", default=DEFAULT_DB_PATH, help=f"DuckDB warehouse file (default: {DEFAULT_DB_PATH})")
-    pull_p.add_argument(
-        "--include-pbp",
-        action="store_true",
-        help="Also parse play-by-play, shot_chart, win_probability (free - same API call, more disk/parse time)",
-    )
-    pull_p.add_argument(
-        "--include-net-points-daily",
-        action="store_true",
-        help="Also fetch per-game NetPoints (net_points_player_game/net_points_team_game) - one extra, "
-        "signed S3 request per date already covered locally, not per game or per player. Opt-in: needs "
-        "boto3's Cognito credential exchange (see fetch/netpoints_client.py) and matches players by exact "
-        "display-name (ambiguous/unmatched names are left unresolved, not guessed).",
-    )
-    pull_p.add_argument("--rate-limit", type=float, default=5.0, help="Max requests/second against ESPN (default: 5)")
-    pull_p.add_argument("--force", action="store_true", help="Re-fetch even if already checkpointed as complete")
-    pull_p.add_argument("--fetch-only", action="store_true", help="Fetch Parquet files only, skip building the DuckDB warehouse")
-    pull_p.add_argument(
-        "--advanced-stats",
-        action="store_true",
-        help="Also build computed player_advanced_stats/player_season_advanced_stats views "
-        "(true shooting %%, effective FG%%, usage rate, game score - see fetch/advanced_stats.py)",
-    )
-    pull_p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
-    pull_p.set_defaults(func=_cmd_data_pull)
-
-    load_p = data_sub.add_parser(
-        "load",
-        help="(Re)build the DuckDB warehouse from Parquet files already on disk, without fetching.",
-    )
-    load_p.add_argument("--data-dir", default=DEFAULT_DATA_DIR, help=f"Parquet flat-file root (default: {DEFAULT_DATA_DIR})")
-    load_p.add_argument("--db-path", default=DEFAULT_DB_PATH, help=f"DuckDB warehouse file (default: {DEFAULT_DB_PATH})")
-    load_p.add_argument(
-        "--tables",
-        default=None,
-        help="Comma-separated subset of tables to (re)load, e.g. 'games,player_box_stats' "
-        "(unknown names error out). Default: every table with Parquet files on disk.",
-    )
-    load_p.add_argument(
-        "--advanced-stats",
-        action="store_true",
-        help="Also (re)build the computed player_advanced_stats/player_season_advanced_stats views.",
-    )
-    load_p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
-    load_p.set_defaults(func=_cmd_data_load)
-
-    check_p = data_sub.add_parser(
-        "check", help="Report data coverage vs. what ESPN's API actually has, per season/season_type."
-    )
-    check_p.add_argument("--seasons", default=None, help="e.g. '2020-2024'. Defaults to every season with local data.")
-    check_p.add_argument("--season-types", default="1,2,3")
-    check_p.add_argument("--data-dir", default=DEFAULT_DATA_DIR)
-    check_p.add_argument("--rate-limit", type=float, default=5.0)
-    check_p.add_argument(
-        "--offline",
-        action="store_true",
-        help="Skip the live ESPN schedule cross-check (fast, but can't report expected game counts).",
-    )
-    check_p.add_argument(
-        "--force",
-        action="store_true",
-        help="Re-verify live against ESPN even for seasons already marked complete locally.",
-    )
-    check_p.set_defaults(func=_cmd_data_check)
-
-    query_p = sub.add_parser("query", help="Ask one natural-language question about the local data.")
-    query_p.add_argument("question", help="Natural-language question about the NBA data.")
-    _add_query_engine_args(query_p)
-    query_p.set_defaults(func=_cmd_query)
-
-    ai_p = sub.add_parser("ai", help="Interactive REPL - keeps conversation history across questions.")
-    _add_query_engine_args(ai_p)
-    ai_p.set_defaults(func=_cmd_ai)
-
-    return parser
-
-
 def main() -> None:
-    parser = build_parser()
-    args = parser.parse_args()
-    args.func(args)
+    cli(prog_name="association")
 
 
 if __name__ == "__main__":

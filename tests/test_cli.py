@@ -1,6 +1,11 @@
-"""Sanity tests for CLI argument parsing."""
+"""Sanity tests for CLI argument parsing (Click)."""
 
-from association.cli import _parse_season_types, _parse_seasons, build_parser
+from typing import Any
+
+import pytest
+from click.testing import CliRunner
+
+from association.cli import _parse_season_types, _parse_seasons, ai, cli, data_check, data_load, data_pull, query
 
 
 def test_parse_seasons_single() -> None:
@@ -27,56 +32,114 @@ def test_parse_season_types_dedups_and_sorts() -> None:
     assert _parse_season_types("3,1,2,2") == [1, 2, 3]
 
 
-def test_build_parser_dispatches_to_data_pull() -> None:
-    parser = build_parser()
-    args = parser.parse_args(["data", "pull", "--seasons", "2024"])
-    assert args.command == "data"
-    assert args.data_command == "pull"
-    assert args.seasons == "2024"
+def test_cli_lists_expected_commands() -> None:
+    assert set(cli.commands.keys()) == {"data", "query", "ai"}
+    data_group = cli.commands["data"]
+    assert set(data_group.commands.keys()) == {"pull", "load", "check"}
 
 
-def test_build_parser_data_pull_advanced_stats_flag() -> None:
-    parser = build_parser()
-    args = parser.parse_args(["data", "pull", "--seasons", "2024", "--advanced-stats"])
-    assert args.advanced_stats is True
-
-    default_args = parser.parse_args(["data", "pull", "--seasons", "2024"])
-    assert default_args.advanced_stats is False
+def test_data_pull_requires_seasons() -> None:
+    runner = CliRunner()
+    result = runner.invoke(data_pull, [])
+    assert result.exit_code != 0
+    assert "seasons" in result.output.lower()
 
 
-def test_build_parser_dispatches_to_data_load() -> None:
-    parser = build_parser()
-    args = parser.parse_args(["data", "load", "--tables", "games,player_box_stats", "--advanced-stats"])
-    assert args.command == "data"
-    assert args.data_command == "load"
-    assert args.tables == "games,player_box_stats"
-    assert args.advanced_stats is True
+def test_data_pull_parses_seasons_and_advanced_stats_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    class FakePipeline:
+        def __init__(self, client: object, data_dir: object, **kwargs: Any) -> None:
+            captured["kwargs"] = kwargs
+
+        def run(self, seasons: list[int], season_types: list[int]) -> None:
+            captured["seasons"] = seasons
+            captured["season_types"] = season_types
+
+    monkeypatch.setattr("association.fetch.pipeline.Pipeline", FakePipeline)
+    monkeypatch.setattr("association.fetch.client.ESPNClient", lambda **k: object())
+    monkeypatch.setattr("association.fetch.warehouse.build", lambda *a, **k: None)
+
+    runner = CliRunner()
+    result = runner.invoke(data_pull, ["--seasons", "2024", "--advanced-stats", "--fetch-only"])
+    assert result.exit_code == 0, result.output
+    assert captured["seasons"] == [2024]
+    assert captured["kwargs"]["force"] is False
 
 
-def test_build_parser_data_load_defaults() -> None:
-    parser = build_parser()
-    args = parser.parse_args(["data", "load"])
-    assert args.tables is None
-    assert args.advanced_stats is False
+def test_data_load_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr(
+        "association.fetch.warehouse.build",
+        lambda data_dir, db_path, tables=None, include_advanced_stats=False: captured.update(
+            tables=tables, include_advanced_stats=include_advanced_stats
+        ),
+    )
+    runner = CliRunner()
+    result = runner.invoke(data_load, [])
+    assert result.exit_code == 0, result.output
+    assert captured["tables"] is None
+    assert captured["include_advanced_stats"] is False
 
 
-def test_build_parser_dispatches_to_data_check() -> None:
-    parser = build_parser()
-    args = parser.parse_args(["data", "check", "--offline"])
-    assert args.data_command == "check"
-    assert args.offline is True
+def test_data_load_parses_tables_and_advanced_stats(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr(
+        "association.fetch.warehouse.build",
+        lambda data_dir, db_path, tables=None, include_advanced_stats=False: captured.update(
+            tables=tables, include_advanced_stats=include_advanced_stats
+        ),
+    )
+    runner = CliRunner()
+    result = runner.invoke(data_load, ["--tables", "games,player_box_stats", "--advanced-stats"])
+    assert result.exit_code == 0, result.output
+    assert captured["tables"] == ["games", "player_box_stats"]
+    assert captured["include_advanced_stats"] is True
 
 
-def test_build_parser_dispatches_to_query() -> None:
-    parser = build_parser()
-    args = parser.parse_args(["query", "who led the league in assists"])
-    assert args.command == "query"
-    assert args.question == "who led the league in assists"
+def test_data_check_offline_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr(
+        "association.check.report.run_check",
+        lambda data_dir, seasons, season_types, rate_limit, live, force: captured.update(live=live),
+    )
+    runner = CliRunner()
+    result = runner.invoke(data_check, ["--offline"])
+    assert result.exit_code == 0, result.output
+    assert captured["live"] is False
 
 
-def test_build_parser_dispatches_to_ai() -> None:
-    parser = build_parser()
-    args = parser.parse_args(["ai", "--think", "--model", "qwen3:8b"])
-    assert args.command == "ai"
-    assert args.think is True
-    assert args.model == "qwen3:8b"
+def test_query_dispatches_with_question(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    class FakeAgent:
+        def __init__(self, model: str, db_path: str, out_dir: object, verbose: bool, think: bool) -> None:
+            captured["model"] = model
+
+        def ask(self, question: str) -> str:
+            captured["question"] = question
+            return "the answer"
+
+    monkeypatch.setattr("association.query.agent.Agent", FakeAgent)
+    runner = CliRunner()
+    result = runner.invoke(query, ["who led the league in assists"])
+    assert result.exit_code == 0, result.output
+    assert captured["question"] == "who led the league in assists"
+    assert "the answer" in result.output
+
+
+def test_ai_dispatches_with_think_and_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    class FakeAgent:
+        def __init__(self, model: str, db_path: str, out_dir: object, verbose: bool, think: bool) -> None:
+            captured["model"] = model
+            captured["think"] = think
+
+    monkeypatch.setattr("association.query.agent.Agent", FakeAgent)
+    monkeypatch.setattr("association.query.repl.run_repl", lambda agent: None)
+    runner = CliRunner()
+    result = runner.invoke(ai, ["--think", "--model", "qwen3:8b"])
+    assert result.exit_code == 0, result.output
+    assert captured["think"] is True
+    assert captured["model"] == "qwen3:8b"

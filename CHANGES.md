@@ -5,6 +5,15 @@ commit that made it for the full story.
 
 ## 2026-09-04
 
+- **Switched the CLI from argparse to Click; added shell completion**: Click
+  generates bash/zsh/fish completion directly from the command definitions
+  (subcommands, options, `--log-level`'s choices), so there's nothing to
+  write or keep in sync by hand - the whole reason for the switch. Ready-made
+  scripts live in `completions/`; `README.md` documents both that and the
+  dynamic `_ASSOCIATION_COMPLETE=...` alternative. All CLI behavior -
+  commands, flags, defaults, help text - is unchanged; only the argument-
+  parsing implementation and its tests (now using Click's `CliRunner`)
+  changed.
 - **KNOWLEDGE_BASE: exact-date filtering, and abbreviations vs ids**: found
   while verifying the NetPoints per-game work, but general bugs unrelated to
   it. A live query filtered `games.date = '2026-04-12'` - `date` is a full
