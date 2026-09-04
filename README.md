@@ -132,6 +132,9 @@ pre-commit install     # one-time, wires the git hook
 pre-commit run --all-files   # run manually against everything
 ```
 
+A third hook enforces [CHANGES.md](CHANGES.md): any commit touching `src/`
+must also update it, or the commit is rejected.
+
 ## Known limitations
 
 - ESPN's stats API is undocumented and unofficial — endpoints or shapes can

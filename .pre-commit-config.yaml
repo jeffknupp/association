@@ -18,6 +18,12 @@ repos:
   # don't occur when each root is checked on its own (verified clean either way).
   - repo: local
     hooks:
+      - id: changes-md
+        name: CHANGES.md updated
+        entry: scripts/check_changes_md.sh
+        language: system
+        pass_filenames: false
+        always_run: true
       - id: mypy-src
         name: mypy (src)
         entry: .venv/bin/mypy src
