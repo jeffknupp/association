@@ -24,7 +24,7 @@ KNOWN_TABLES = {
 TABLE_SUMMARY = """
 teams               - one row per NBA team (team_id, abbreviation, display_name, ...)
 players             - one row per player (athlete_id, display_name, position_abbr, ...)
-games               - one row per game (event_id, season, season_type, date, home/away team_id + score, venue, status)
+games               - one row per game (event_id, season, season_type, date, home/away team_id + score, winner_team_id, venue, status)
 player_box_stats    - one row per player PER GAME (points, rebounds, assists, fieldGoalsMade/Attempted, threePointFieldGoalsMade/Attempted, freeThrowsMade/Attempted, etc.)
 team_box_stats      - one row per team PER GAME (team-level totals for the same categories)
 player_season_stats - one row per player per season per season_type: SEASON totals (fieldGoalsMade, points, ...) and PER-GAME averages (avgPoints, avgAssists, ...), both already computed by ESPN
@@ -159,6 +159,36 @@ KNOWLEDGE_BASE = [
             "FROM player_game_log pgl JOIN games g ON g.event_id = pgl.event_id\n"
             "WHERE pgl.player_name ILIKE '%Curry%' AND pgl.season = 2026 AND pgl.season_type = 2\n"
             "ORDER BY g.date ASC LIMIT 1"
+        ),
+    },
+    {
+        "topic": "A team's game log across home AND away games (opponent, score, win/loss)",
+        "note": (
+            "games is home/away-oriented, not team-perspective - filtering it by joining "
+            "team_id to only home_team_id (or only away_team_id) silently returns just that "
+            "team's HOME games, missing every away game, with no error. Don't figure out the "
+            "opponent or who won by hand either: team_box_stats already has one row per TEAM "
+            "per game with team_id/opponent_team_id/home_away, and games.winner_team_id already "
+            "says who won - join team_box_stats and select winner_team_id/opponent_team_id "
+            "directly (they auto-resolve to names), don't alias a team name onto a 'winner' "
+            "column yourself. Also SELECT team_score/opponent_score as the CASE-on-home_away "
+            "columns shown below, not raw home_score/away_score - reporting raw home/away score "
+            "in prose forces you to silently guess which number was this team's each row, which "
+            "you WILL get backwards on some rows; the computed columns remove the guess. A query "
+            "that only ever shows one team as the winner across every row, or only ever as the "
+            "home team, is a sign this was done by hand instead - re-check before answering."
+        ),
+        "example": (
+            "-- New York Knicks' last 20 games (home and away), opponent, score, and outcome\n"
+            "SELECT g.date, tbs.home_away, tbs.opponent_team_id,\n"
+            "       CASE WHEN tbs.home_away = 'home' THEN g.home_score ELSE g.away_score END AS team_score,\n"
+            "       CASE WHEN tbs.home_away = 'home' THEN g.away_score ELSE g.home_score END AS opponent_score,\n"
+            "       g.winner_team_id\n"
+            "FROM team_box_stats tbs\n"
+            "JOIN games g ON g.event_id = tbs.event_id\n"
+            "JOIN teams t ON t.team_id = tbs.team_id\n"
+            "WHERE t.display_name ILIKE '%Knicks%' AND tbs.season = 2026 AND tbs.season_type = 2\n"
+            "ORDER BY g.date DESC LIMIT 20"
         ),
     },
     {
