@@ -153,20 +153,26 @@ KNOWLEDGE_BASE = [
     {
         "topic": "Filtering SQL to one named player or team",
         "note": (
-            "athlete_id/team_id are opaque VARCHAR ids, not names. Comparing one directly to a "
-            "name (e.g. athlete_id = 'Stephen Curry') is valid SQL that silently returns zero "
-            "rows - no error, nothing to catch. To filter to a specific player or team, JOIN "
-            "players/teams and filter on display_name (ILIKE '%name%' for partial matches). An "
-            "empty run_sql result does NOT mean the data doesn't exist for that season/game - "
-            "before concluding data is missing, check that the WHERE clause is actually "
-            "matching an id, not a name, against an id column."
+            "athlete_id/team_id are opaque VARCHAR ids, not names OR abbreviations. Comparing one "
+            "directly to a name (athlete_id = 'Stephen Curry') OR an abbreviation "
+            "(home_team_id = 'NY') is valid SQL that silently returns zero rows - no error, "
+            "nothing to catch, confirmed live for both forms. To filter to a specific player or "
+            "team, JOIN players/teams and filter on display_name (ILIKE '%name%' for partial "
+            "matches) or abbreviation - never compare an id column directly to either. An empty "
+            "run_sql result does NOT mean the data doesn't exist for that season/game - before "
+            "concluding data is missing, check that the WHERE clause is actually matching an id, "
+            "not a name or abbreviation, against an id column."
         ),
         "example": (
             "-- WRONG: WHERE athlete_id = 'Stephen Curry' -- always empty, no error\n"
+            "-- WRONG: WHERE home_team_id = 'NY' -- also always empty, same reason\n"
             "-- RIGHT:\n"
             "SELECT pbs.*\n"
             "FROM player_box_stats pbs JOIN players p ON p.athlete_id = pbs.athlete_id\n"
-            "WHERE p.display_name ILIKE '%Curry%' AND pbs.season = 2026"
+            "WHERE p.display_name ILIKE '%Curry%' AND pbs.season = 2026\n"
+            "-- RIGHT (team by abbreviation):\n"
+            "SELECT g.* FROM games g JOIN teams t ON t.team_id = g.home_team_id\n"
+            "WHERE t.abbreviation = 'NY' AND g.date LIKE '2026-04-12%'"
         ),
     },
     {
@@ -283,6 +289,21 @@ KNOWLEDGE_BASE = [
             "-- a player's NetPoints in one specific game\n"
             "SELECT o_net_pts, d_net_pts, t_net_pts FROM net_points_player_game\n"
             "WHERE athlete_id = ? AND event_id = ?"
+        ),
+    },
+    {
+        "topic": "Filtering by an exact calendar date",
+        "note": (
+            "games.date is a full ISO timestamp string like '2026-04-12T22:00Z', not a bare "
+            "'YYYY-MM-DD' - WHERE date = '2026-04-12' is valid SQL that silently matches nothing, "
+            "no error. Use date LIKE 'YYYY-MM-DD%' (or CAST(date AS DATE) = 'YYYY-MM-DD') instead. "
+            "As always: an empty result here means check the filter before concluding the data or "
+            "game doesn't exist."
+        ),
+        "example": (
+            "-- WRONG: WHERE date = '2026-04-12' -- always empty, no error\n"
+            "-- RIGHT:\n"
+            "SELECT event_id FROM games WHERE date LIKE '2026-04-12%'"
         ),
     },
     {

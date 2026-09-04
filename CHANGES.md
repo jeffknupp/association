@@ -5,6 +5,15 @@ commit that made it for the full story.
 
 ## 2026-09-04
 
+- **KNOWLEDGE_BASE: exact-date filtering, and abbreviations vs ids**: found
+  while verifying the NetPoints per-game work, but general bugs unrelated to
+  it. A live query filtered `games.date = '2026-04-12'` - `date` is a full
+  ISO timestamp (`2026-04-12T22:00Z`), so exact equality against a bare date
+  silently matches nothing; needs `date LIKE 'YYYY-MM-DD%'`. A second query
+  then filtered `home_team_id = 'NY'` - comparing an id column directly to a
+  team abbreviation, the same silently-empty failure mode already documented
+  for names, just not generalized to abbreviations. Extended the existing
+  KNOWLEDGE_BASE entry and added a new one, both with corrected examples.
 - **NetPoints per-game data (net_points_player_game, net_points_team_game)**:
   opt-in via `--include-net-points-daily`. The source's per-game breakdown
   lives in a *different* S3 bucket than the season-level files, and this one
