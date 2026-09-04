@@ -35,6 +35,8 @@ TABLES = [
     "plays",
     "shot_chart",
     "win_probability",
+    "net_points_player",
+    "net_points_team",
     "stat_glossary",
 ]
 

@@ -7,6 +7,7 @@ because a real question against real data produced wrong/crashing output; see
 each docstring for what broke.
 """
 
+import json
 from typing import Any
 
 import pytest
@@ -465,3 +466,92 @@ def test_parse_player_career_stats_splits_compound_and_groups_by_season_team() -
     assert row["gamesPlayed"] == 70
     assert row["avgFieldGoalsMade"] == 5.0
     assert row["avgFieldGoalsAttempted"] == 10.0
+
+
+def test_parse_net_points_player_converts_start_year_to_end_year_season() -> None:
+    """NetPoints labels a season by the year it starts (2025 = the 2025-26
+    season); this project's convention (used everywhere else) is the year it
+    ends - confirmed live against ESPN's own games-played count for the same
+    player-season. Off-by-one here would silently misfile every row."""
+    data = [
+        {
+            "dot_com_id": 3975,
+            "position": "G",
+            "draftYear": 2009,
+            "full_nm": "Stephen Curry",
+            "tm": "GSW",
+            "overall": 121.61,
+            "offense": 125.13,
+            "defense": -3.52,
+            "min_season": 2025,
+            "max_season": 2025,
+            "seasonType": "Regular Season",
+            "net_pts_games": 43,
+        }
+    ]
+    rows = parse.parse_net_points_player(data, team_abbr_to_id={"GS": "9"})
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["athlete_id"] == 3975
+    assert row["season"] == 2026
+    assert row["net_points_season_type"] == "Regular Season"
+    assert row["team_id"] == "9"
+    assert row["games"] == 43
+    assert row["overall"] == 121.61
+
+
+def test_parse_net_points_player_translates_mismatched_team_abbreviations() -> None:
+    """NetPoints uses its own short codes for several franchises that don't
+    match ESPN's own (e.g. GSW vs ESPN's GS, SAN vs ESPN's SA) - confirmed
+    live by cross-checking every team. Left untranslated, team_id silently
+    ends up None for these teams."""
+    data = [{"dot_com_id": 1, "tm": "GSW", "min_season": 2024, "seasonType": "Regular Season", "net_pts_games": 1}]
+    rows = parse.parse_net_points_player(data, team_abbr_to_id={"GS": "9"})
+    assert rows[0]["team_id"] == "9"
+
+
+def test_parse_net_points_player_unmapped_team_leaves_team_id_none() -> None:
+    data = [{"dot_com_id": 1, "tm": "ZZZ", "min_season": 2024, "seasonType": "Regular Season", "net_pts_games": 1}]
+    rows = parse.parse_net_points_player(data, team_abbr_to_id={"GS": "9"})
+    assert rows[0]["team_id"] is None
+
+
+def test_parse_net_points_player_handles_missing_data() -> None:
+    assert parse.parse_net_points_player(None, {}) == []
+
+
+def test_parse_net_points_team_transposes_pandas_orient_columns_json() -> None:
+    """team_nba.json nests each stat block as a JSON string in pandas'
+    orient="columns" shape ({"col": {"0": v, "1": v}, ...}), not a plain list
+    of row dicts - this has to be transposed before it's usable."""
+    team4f = json.dumps(
+        {
+            "teamId": {"0": "GSW", "1": "BOS"},
+            "Side": {"0": "Total", "1": "Total"},
+            "team_score": {"0": 118.5, "1": 112.0},
+            "FB": {"0": -3.5, "1": 1.2},
+            "FG2": {"0": 3.6, "1": -1.0},
+            "FG3": {"0": 3.9, "1": 0.5},
+            "FT": {"0": -6.4, "1": 0.1},
+            "Putback": {"0": -3.2, "1": 0.0},
+            "REB": {"0": -3.2, "1": 1.1},
+            "TOV": {"0": -3.4, "1": -0.2},
+            "Total": {"0": -8.0, "1": 1.7},
+            "season": {"0": 2025, "1": 2025},
+        }
+    )
+    data = {"team4f": team4f, "bpi_stats": "{}", "plyr_stats": "{}", "team_stats": "{}"}
+    rows = parse.parse_net_points_team(data, team_abbr_to_id={"GS": "9", "BOS": "2"})
+    assert len(rows) == 2
+    assert rows[0]["team_id"] == "9"
+    assert rows[0]["season"] == 2026
+    assert rows[0]["side"] == "Total"
+    assert rows[0]["avg_team_score"] == 118.5
+    assert rows[0]["fast_break"] == -3.5
+    assert rows[0]["total"] == -8.0
+    assert rows[1]["team_id"] == "2"
+
+
+def test_parse_net_points_team_handles_missing_data() -> None:
+    assert parse.parse_net_points_team(None, {}) == []
+    assert parse.parse_net_points_team({}, {}) == []

@@ -40,6 +40,21 @@ only the player side needs a computed layer — see
 [`fetch/advanced_stats.py`](src/association/fetch/advanced_stats.py) for the
 exact formulas and why PER/Win Shares/BPM/VORP are deliberately excluded.
 
+**NetPoints** (`net_points_player`, `net_points_team`, fetched by default,
+not opt-in): ESPN Analytics' current advanced player/team rating — points
+contributed above average, split into offense/defense — published as public,
+unauthenticated JSON on S3 at
+[espnanalytics.com](https://espnanalytics.com), not through ESPN's own API.
+Confirmed live: no `robots.txt` disallow, no auth/CORS barrier, and it uses
+its own team-abbreviation scheme (translated to this project's team_id at
+parse time — see `fetch/parse.py`'s `NET_POINTS_ABBREV_TO_ESPN`) and its own
+season-*starts* convention (converted to this project's season-*ends*
+convention on ingest). Season-level only for now: NetPoints also publishes
+per-game data, but as one HTTP request per player (thousands of requests) via
+NBA.com's own player/game IDs rather than ESPN's, with no direct ESPN-id
+crosswalk provided — a bigger, separate piece of work than the two flat
+season files ingested here, left for a follow-up.
+
 ## Design
 
 **Storage** — one small Parquet file per unit of fetched work (one game, one
@@ -104,7 +119,11 @@ tests/              pytest, one file per source module
   live, not a gap) — the fetcher skips that request rather than re-querying
   an endpoint that structurally never returns data.
 - Season numbering follows ESPN's convention: the year a season *ends*
-  (the 2023-24 season is `season=2024`).
+  (the 2023-24 season is `season=2024`) - except NetPoints' own source data,
+  which labels a season by the year it *starts*; converted on ingest so the
+  stored `season` column matches every other table.
+- NetPoints (espnanalytics.com, not espn.com) needed none of the TLS-
+  impersonation tricks above - a plain request succeeds.
 
 ## Testing
 
@@ -140,8 +159,16 @@ must also update it, or the commit is rejected.
 - ESPN's stats API is undocumented and unofficial — endpoints or shapes can
   change without notice.
 - ESPN's own Real Plus-Minus (RPM) isn't available at a stable JSON endpoint
-  (only ever found rendered into a webpage), so it isn't included. PER, Win
-  Shares, BPM, and VORP are also not included, but for a different reason:
-  see `player_advanced_stats` above.
+  (only ever found rendered into a webpage) - NetPoints (see above) is its
+  successor and *is* included. PER, Win Shares, BPM, and VORP are still not
+  included, for a different reason: see `player_advanced_stats` above.
+- NetPoints per-game data (as opposed to per-season, which is included)
+  exists on espnanalytics.com but isn't fetched yet - it's one HTTP request
+  per player rather than a flat file, and keyed by NBA.com's own player/game
+  IDs with no direct ESPN-id crosswalk provided. Planned as a follow-up.
+- NetPoints only has data back to the 2018-19 season (`season=2019`) -
+  nothing earlier exists on their side, confirmed live.
+- `net_points_team` only ever reflects the single current season - there's no
+  historical team-level file, only the per-game history described above.
 - `data check --live` cross-checks are opt-in and can be slow for seasons
   without a local completion marker yet — `pull` first to build those up.

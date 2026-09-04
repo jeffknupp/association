@@ -32,3 +32,19 @@ def team_season_stats_url(season: int, season_type: int, team_id: str) -> str:
 
 def power_index_url(season: int) -> str:
     return f"{CORE_V2}/seasons/{season}/powerindex"
+
+
+# NetPoints: ESPN Analytics' advanced player/team metric (successor to Real
+# Plus-Minus), published as static JSON on S3 - not an espn.com API, but public,
+# unauthenticated, and unrestricted (confirmed live: no robots.txt disallow, no
+# CORS/auth barrier, plain curl succeeds - no TLS impersonation needed here).
+NET_POINTS_PLAYER_URL = "https://nfl-player-metrics.s3.amazonaws.com/net-pts/nba_net_pts_data.json"
+NET_POINTS_TEAM_URL = "https://nfl-player-metrics.s3.amazonaws.com/net-pts/team_nba.json"
+
+
+def net_points_player_url() -> str:
+    return NET_POINTS_PLAYER_URL
+
+
+def net_points_team_url() -> str:
+    return NET_POINTS_TEAM_URL

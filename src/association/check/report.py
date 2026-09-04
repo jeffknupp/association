@@ -18,6 +18,12 @@ from ..fetch.pipeline import Pipeline
 
 SEASON_TYPE_NAME = {1: "preseason", 2: "regular", 3: "postseason"}
 
+# NetPoints (espnanalytics.com) has its own season_type labels, not this
+# project's 1/2/3 - only regular season and playoffs have a clean equivalent
+# to check coverage against here (it also has PlayIn/IST Championship rows,
+# which aren't represented by any of this project's season_type codes).
+NET_POINTS_TYPE_LABEL = {2: "Regular Season", 3: "Playoffs"}
+
 
 def discover_seasons(data_dir: Path) -> list[int]:
     games_dir = data_dir / "games"
@@ -40,6 +46,20 @@ def _local_count(con: duckdb.DuckDBPyConnection, table_dir: Path, season: int, s
         where += f" AND season_type = {season_type}"
     glob = str(table_dir / "**" / "*.parquet")
     row = con.execute(f"SELECT count(*) FROM read_parquet(?, union_by_name=true) WHERE {where}", [glob]).fetchone()
+    assert row is not None  # COUNT(*) always returns exactly one row
+    return row[0]
+
+
+def _net_points_player_count(con: duckdb.DuckDBPyConnection, data_dir: Path, season: int, season_type: int) -> int:
+    label = NET_POINTS_TYPE_LABEL.get(season_type)
+    table_dir = data_dir / "net_points_player"
+    if label is None or not table_dir.exists() or not any(table_dir.rglob("*.parquet")):
+        return 0
+    glob = str(table_dir / "**" / "*.parquet")
+    row = con.execute(
+        "SELECT count(*) FROM read_parquet(?, union_by_name=true) WHERE season = ? AND net_points_season_type = ?",
+        [glob, season, label],
+    ).fetchone()
     assert row is not None  # COUNT(*) always returns exactly one row
     return row[0]
 
@@ -72,12 +92,13 @@ def run_check(
     pipeline = Pipeline(client, data_dir)
     team_ids = pipeline.team_ids() if live else []
 
-    cols = ["season", "type", "complete", "games (have/expected)", "standings", "team_stats", "bpi", "players", "shots"]
-    widths = [6, 10, 8, 23, 9, 10, 4, 7, 8]
+    cols = ["season", "type", "complete", "games (have/expected)", "standings", "team_stats", "bpi", "players", "shots", "net_pts"]
+    widths = [6, 10, 8, 23, 9, 10, 4, 7, 8, 7]
     print(" ".join(c.rjust(w) for c, w in zip(cols, widths, strict=True)))
     print("-" * (sum(widths) + len(widths) - 1))
 
     any_cached = False
+    any_net_points = False
     for season in seasons:
         std_count = _local_count(con, data_dir / "standings", season)
         bpi_count = _local_count(con, data_dir / "team_power_index", season)
@@ -104,6 +125,9 @@ def run_check(
             tss_count = _local_count(con, data_dir / "team_season_stats", season, season_type)
             players = len(pipeline.athlete_ids_for(season, season_type))
             shots = _local_count(con, data_dir / "shot_chart", season, season_type)
+            net_pts = _net_points_player_count(con, data_dir, season, season_type)
+            if season_type in NET_POINTS_TYPE_LABEL:
+                any_net_points = True
 
             row = [
                 str(season),
@@ -115,6 +139,7 @@ def run_check(
                 str(bpi_count),
                 str(players),
                 str(shots),
+                str(net_pts),
             ]
             print(" ".join(c.rjust(w) for c, w in zip(row, widths, strict=True)))
 
@@ -124,5 +149,11 @@ def run_check(
         notes.append("* = trusted from local completion marker, not re-verified live this run (pass --force to re-verify)")
     if not live:
         notes.append("offline check - pass --live to cross-check game counts against ESPN's schedule")
+    if any_net_points:
+        notes.append(
+            "net_pts = NetPoints (espnanalytics.com) player rows for regular/postseason only - "
+            "it has no preseason equivalent, and net_points_team (not shown here) only ever covers "
+            "the single current season, not full history."
+        )
     if notes:
         print("\n" + "\n".join(notes))

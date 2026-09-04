@@ -226,3 +226,29 @@ def test_advanced_stats_flag_false_leaves_existing_views_alone(tmp_path: Path) -
     tables = {r[0] for r in con.execute("SHOW TABLES").fetchall()}
     con.close()
     assert "player_advanced_stats" in tables
+
+
+def test_build_loads_net_points_tables(tmp_path: Path) -> None:
+    data_dir = tmp_path / "parquet"
+    d1 = data_dir / "net_points_player" / "season=2026"
+    d2 = data_dir / "net_points_team" / "season=2026"
+    d1.mkdir(parents=True)
+    d2.mkdir(parents=True)
+    pq.write_table(
+        pa.Table.from_pylist([{"athlete_id": 1, "season": 2026, "net_points_season_type": "Regular Season", "overall": 1.5}]),
+        d1 / "regular_season.parquet",
+    )
+    pq.write_table(
+        pa.Table.from_pylist([{"team_id": "1", "season": 2026, "side": "Total", "total": 2.5}]),
+        d2 / "net_points_team.parquet",
+    )
+
+    db_path = tmp_path / "test.duckdb"
+    warehouse.build(data_dir, db_path)
+
+    con = duckdb.connect(str(db_path))
+    player_row = con.execute("SELECT overall FROM net_points_player").fetchone()
+    team_row = con.execute("SELECT total FROM net_points_team").fetchone()
+    con.close()
+    assert player_row == (1.5,)
+    assert team_row == (2.5,)

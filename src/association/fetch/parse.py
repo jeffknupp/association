@@ -8,6 +8,7 @@ hardcoding a stat list, so the parser tracks whatever ESPN exposes.
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Iterable
 from typing import Any
@@ -413,3 +414,96 @@ def parse_power_index(data: JSON | None) -> tuple[list[dict], list[dict]]:
             glossary.extend(_glossary_rows(names, labels, descs, "team_power_index"))
         rows.append(row)
     return rows, glossary
+
+
+# NetPoints (espnanalytics.com) uses its own short team codes that differ from
+# ESPN's own api.espn.com abbreviations (confirmed live by cross-checking every
+# team) - translate before resolving to team_id. The player file and the team
+# file don't even agree with each other for San Antonio ("SAN" vs "SAS"), so
+# this covers both variants seen across both files, not just one.
+NET_POINTS_ABBREV_TO_ESPN = {
+    "BRK": "BKN",
+    "GSW": "GS",
+    "NOR": "NO",
+    "NYK": "NY",
+    "PHO": "PHX",
+    "SAN": "SA",
+    "SAS": "SA",
+    "UTA": "UTAH",
+    "WAS": "WSH",
+}
+
+
+def _net_points_team_id(abbrev: str | None, team_abbr_to_id: dict[str, str]) -> str | None:
+    if not abbrev:
+        return None
+    return team_abbr_to_id.get(NET_POINTS_ABBREV_TO_ESPN.get(abbrev, abbrev))
+
+
+def parse_net_points_player(data: list[JSON] | None, team_abbr_to_id: dict[str, str]) -> list[dict]:
+    """NetPoints publishes one flat JSON array covering every historical
+    season in one request - no per-season fetch exists, so this parses the
+    whole thing every pull; the pipeline only writes out season+type files
+    that aren't already on disk.
+
+    NetPoints labels a season by the year it STARTS (e.g. 2025 = the 2025-26
+    season) - ESPN's convention used everywhere else in this project is the
+    year a season ENDS, so `season` here is stored as netpoints_season + 1
+    to stay directly comparable/joinable with every other table's `season`
+    column (confirmed live: a player's netpoints_season=2025 row has the same
+    games-played count as this project's own season=2026 data for them)."""
+    rows: list[dict] = []
+    for item in data or []:
+        rows.append(
+            {
+                "athlete_id": item.get("dot_com_id"),
+                "season": (item.get("min_season") or 0) + 1,
+                "net_points_season_type": item.get("seasonType"),
+                "team_id": _net_points_team_id(item.get("tm"), team_abbr_to_id),
+                "position": item.get("position"),
+                "draft_year": item.get("draftYear"),
+                "games": item.get("net_pts_games"),
+                "overall": item.get("overall"),
+                "offense": item.get("offense"),
+                "defense": item.get("defense"),
+            }
+        )
+    return rows
+
+
+def parse_net_points_team(data: JSON | None, team_abbr_to_id: dict[str, str]) -> list[dict]:
+    """team_nba.json nests each stat block as a JSON string in pandas'
+    orient="columns" shape ({"col": {"0": v, "1": v, ...}, ...}) rather than a
+    plain list of row dicts - transpose it before use. Confirmed live: this
+    file only ever reflects the single current season (no historical team-
+    level data), unlike the player file above."""
+    if not data:
+        return []
+    team4f = data.get("team4f")
+    if not team4f:
+        return []
+    block = json.loads(team4f) if isinstance(team4f, str) else team4f
+    columns = list(block.keys())
+    if not columns:
+        return []
+    indices = sorted(block[columns[0]].keys(), key=int)
+    rows: list[dict] = []
+    for i in indices:
+        raw = {col: block[col].get(i) for col in columns}
+        rows.append(
+            {
+                "team_id": _net_points_team_id(raw.get("teamId"), team_abbr_to_id),
+                "season": int(raw["season"]) + 1 if raw.get("season") is not None else None,
+                "side": raw.get("Side"),
+                "avg_team_score": raw.get("team_score"),
+                "fast_break": raw.get("FB"),
+                "fg2": raw.get("FG2"),
+                "fg3": raw.get("FG3"),
+                "free_throw": raw.get("FT"),
+                "putback": raw.get("Putback"),
+                "rebound": raw.get("REB"),
+                "turnover": raw.get("TOV"),
+                "total": raw.get("Total"),
+            }
+        )
+    return rows

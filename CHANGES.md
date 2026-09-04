@@ -5,6 +5,22 @@ commit that made it for the full story.
 
 ## 2026-09-04
 
+- **NetPoints (net_points_player, net_points_team)**: fetches ESPN Analytics'
+  current advanced player/team metric (successor to the discontinued Real
+  Plus-Minus) from espnanalytics.com's public, unauthenticated S3-hosted JSON
+  - a different domain from ESPN's own API, needing none of the TLS-
+  impersonation tricks the rest of the fetcher relies on. Fetched by default
+  as part of `data pull` (not opt-in), covered in `data check`'s new net_pts
+  column, and backfilled into the local warehouse. Two real gotchas found and
+  handled: NetPoints labels a season by the year it starts, not ends (off by
+  one from every other table here, confirmed against this project's own
+  games-played counts); and NetPoints uses its own team abbreviations that
+  disagree with ESPN's for 9 of 30 franchises (e.g. GSW vs ESPN's GS, and the
+  player file and team file don't even agree with each other for San Antonio)
+  - both are converted at ingest time so the stored tables behave like every
+  other table in the warehouse. Per-game NetPoints exists too but needs one
+  HTTP request per player against a different (NBA.com) ID scheme with no
+  direct ESPN-id crosswalk - deliberately left for a follow-up.
 - **KNOWLEDGE_BASE: winner_team_id location, and win/loss tallies**: a live
   query ("Knicks' last 20 games and their record") surfaced two more bugs -
   the model referenced `tbs.winner_team_id` (winner_team_id only exists on

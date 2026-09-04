@@ -217,3 +217,61 @@ def test_fetch_team_season_stats_still_fetches_for_regular_and_postseason(tmp_pa
     pipeline.fetch_team_season_stats(2024, 2, "1")
     assert len(client.calls) == 1
     assert (tmp_path / "team_season_stats" / "season=2024" / "season_type=2" / "team_1.parquet").exists()
+
+
+NET_POINTS_PLAYER_URL = "https://nfl-player-metrics.s3.amazonaws.com/net-pts/nba_net_pts_data.json"
+NET_POINTS_TEAM_URL = "https://nfl-player-metrics.s3.amazonaws.com/net-pts/team_nba.json"
+
+
+def test_fetch_net_points_writes_one_file_per_season_and_type(tmp_path: Path) -> None:
+    responses: dict[str, Any] = {
+        TEAMS_URL: _teams_response(2),  # team "1" -> abbreviation "T1"
+        NET_POINTS_PLAYER_URL: [
+            {"dot_com_id": 10, "tm": "T1", "min_season": 2023, "seasonType": "Regular Season", "net_pts_games": 50, "overall": 1.0},
+            {"dot_com_id": 11, "tm": "T2", "min_season": 2023, "seasonType": "Playoffs", "net_pts_games": 10, "overall": 2.0},
+        ],
+        NET_POINTS_TEAM_URL: {"team4f": '{"teamId": {"0": "T1"}, "Side": {"0": "Total"}, "season": {"0": 2023}}'},
+    }
+    client = FakeClient(responses)
+    pipeline = Pipeline(client, tmp_path)
+    pipeline.fetch_teams()
+    pipeline.fetch_net_points()
+
+    assert (tmp_path / "net_points_player" / "season=2024" / "regular_season.parquet").exists()
+    assert (tmp_path / "net_points_player" / "season=2024" / "playoffs.parquet").exists()
+    assert (tmp_path / "net_points_team" / "season=2024" / "net_points_team.parquet").exists()
+
+
+def test_fetch_net_points_skips_writing_files_already_on_disk(tmp_path: Path) -> None:
+    responses: dict[str, Any] = {
+        TEAMS_URL: _teams_response(1),
+        NET_POINTS_PLAYER_URL: [
+            {"dot_com_id": 10, "tm": "T1", "min_season": 2023, "seasonType": "Regular Season", "net_pts_games": 50, "overall": 1.0}
+        ],
+        NET_POINTS_TEAM_URL: {"team4f": '{"teamId": {"0": "T1"}, "Side": {"0": "Total"}, "season": {"0": 2023}}'},
+    }
+    client = FakeClient(responses)
+    pipeline = Pipeline(client, tmp_path)
+    pipeline.fetch_teams()
+    pipeline.fetch_net_points()
+
+    player_file = tmp_path / "net_points_player" / "season=2024" / "regular_season.parquet"
+    written_at = player_file.stat().st_mtime_ns
+    pipeline.fetch_net_points()
+    assert player_file.stat().st_mtime_ns == written_at  # not rewritten - still resumable on the write side
+
+
+def test_fetch_net_points_force_overwrites(tmp_path: Path) -> None:
+    responses: dict[str, Any] = {
+        TEAMS_URL: _teams_response(1),
+        NET_POINTS_PLAYER_URL: [
+            {"dot_com_id": 10, "tm": "T1", "min_season": 2023, "seasonType": "Regular Season", "net_pts_games": 50, "overall": 1.0}
+        ],
+        NET_POINTS_TEAM_URL: {"team4f": '{"teamId": {"0": "T1"}, "Side": {"0": "Total"}, "season": {"0": 2023}}'},
+    }
+    client = FakeClient(responses)
+    pipeline = Pipeline(client, tmp_path, force=True)
+    pipeline.fetch_teams()
+    pipeline.fetch_net_points()
+    pipeline.fetch_net_points()  # must not raise even with --force
+    assert (tmp_path / "net_points_player" / "season=2024" / "regular_season.parquet").exists()

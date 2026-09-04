@@ -30,8 +30,10 @@ class ESPNClient:
         self._min_interval = 1.0 / rate_limit if rate_limit > 0 else 0.0
         self._last_request = 0.0
 
-    def get_json(self, url: str, params: dict[str, Any] | None = None) -> dict[str, Any] | None:
-        """GET url, return parsed JSON, None on 400/404 (missing/invalid resource)."""
+    def get_json(self, url: str, params: dict[str, Any] | None = None) -> Any | None:
+        """GET url, return parsed JSON (a dict for every espn.com endpoint, but a
+        bare list for e.g. NetPoints' player file), None on 400/404 (missing/invalid
+        resource)."""
         last_exc = None
         for attempt in range(self.max_retries + 1):
             self._throttle()

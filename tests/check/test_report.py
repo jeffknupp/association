@@ -108,3 +108,28 @@ def test_discover_seasons_reads_season_directories(tmp_path: Path) -> None:
 
 def test_discover_seasons_empty_when_no_games_dir(tmp_path: Path) -> None:
     assert report.discover_seasons(tmp_path) == []
+
+
+def test_run_check_reports_net_points_player_count(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write(
+        tmp_path / "net_points_player" / "season=2024" / "regular_season.parquet",
+        [
+            {"athlete_id": 1, "season": 2024, "net_points_season_type": "Regular Season", "overall": 1.0},
+            {"athlete_id": 2, "season": 2024, "net_points_season_type": "Regular Season", "overall": 2.0},
+        ],
+    )
+    report.run_check(tmp_path, seasons=[2024], season_types=[2], live=False)
+    out = capsys.readouterr().out
+    lines = [ln for ln in out.splitlines() if ln.strip().startswith("2024")]
+    assert len(lines) == 1
+    assert lines[0].split()[-1] == "2"
+    assert "NetPoints" in out
+
+
+def test_run_check_net_points_zero_for_preseason(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """NetPoints has no preseason equivalent - season_type=1 should always
+    report 0, not error out on a missing label mapping."""
+    report.run_check(tmp_path, seasons=[2024], season_types=[1], live=False)
+    out = capsys.readouterr().out
+    lines = [ln for ln in out.splitlines() if ln.strip().startswith("2024")]
+    assert lines[0].split()[-1] == "0"

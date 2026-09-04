@@ -69,6 +69,18 @@ class Pipeline:
         table = pq_read(path, columns=["team_id"])
         return [str(v) for v in table.column("team_id").to_pylist()]
 
+    def team_abbr_to_id(self) -> dict[str, str]:
+        path = self._p("teams", "teams.parquet")
+        if not storage.exists(path):
+            self.fetch_teams()
+        if not storage.exists(path):
+            return {}
+        table = pq_read(path, columns=["team_id", "abbreviation"])
+        return {
+            str(abbr): str(team_id)
+            for team_id, abbr in zip(table.column("team_id").to_pylist(), table.column("abbreviation").to_pylist(), strict=True)
+        }
+
     # ---------------- schedule -> event ids ----------------
     def event_ids_for(self, season: int, season_type: int, team_ids: list[str]) -> list[str]:
         ids: set[str] = set()
@@ -228,6 +240,39 @@ class Pipeline:
         self._add_glossary(glossary)
         storage.write_rows(path, rows)
 
+    # ---------------- NetPoints (espnanalytics.com) ----------------
+    def fetch_net_points(self) -> None:
+        """Both NetPoints files are single flat downloads (not parameterized by
+        season/team), so there's no per-unit network call to skip the way there
+        is for games/player-stats - always fetch, but only write out a
+        season(+type) file that isn't already on disk (respects --force same as
+        everywhere else)."""
+        team_abbr_to_id = self.team_abbr_to_id()
+
+        player_data = self._live_client.get_json(endpoints.net_points_player_url())
+        player_rows = parse.parse_net_points_player(player_data, team_abbr_to_id)
+        by_season_type: dict[tuple[int, str], list[dict]] = {}
+        for row in player_rows:
+            season, season_type = row["season"], row["net_points_season_type"]
+            by_season_type.setdefault((season, season_type), []).append(row)
+        for (season, season_type), rows in by_season_type.items():
+            slug = season_type.lower().replace(" ", "_")
+            path = self._p("net_points_player", f"season={season}", f"{slug}.parquet")
+            if self._exists(path):
+                continue
+            storage.write_rows(path, rows)
+
+        team_data = self._live_client.get_json(endpoints.net_points_team_url())
+        team_rows = parse.parse_net_points_team(team_data, team_abbr_to_id)
+        by_season: dict[int, list[dict]] = {}
+        for row in team_rows:
+            by_season.setdefault(row["season"], []).append(row)
+        for season, rows in by_season.items():
+            path = self._p("net_points_team", f"season={season}", "net_points_team.parquet")
+            if self._exists(path):
+                continue
+            storage.write_rows(path, rows)
+
     # ---------------- glossary ----------------
     def write_glossary(self) -> None:
         if not self.glossary:
@@ -274,6 +319,8 @@ class Pipeline:
         if not team_ids:
             log.error("No teams returned from ESPN - aborting.")
             return
+
+        self.fetch_net_points()
 
         for season in seasons:
             log.info("== season %s ==", season)

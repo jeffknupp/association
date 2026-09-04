@@ -19,6 +19,8 @@ KNOWN_TABLES = {
     "player_game_log",
     "player_advanced_stats",
     "player_season_advanced_stats",
+    "net_points_player",
+    "net_points_team",
 }
 
 TABLE_SUMMARY = """
@@ -37,8 +39,22 @@ stat_glossary       - stat_key -> label/description; self-documents what a colum
 player_game_log     - convenience view: player_box_stats joined with player/game/team names, plus ts_pct/efg_pct/usage_pct/game_score if the warehouse was built with --advanced-stats
 player_advanced_stats        - COMPUTED, one row per player PER GAME (ts_pct, efg_pct, usage_pct, game_score) - opt-in, see below
 player_season_advanced_stats - COMPUTED, one row per player per season per season_type (ts_pct, efg_pct, usage_pct, avg_game_score, games_played) - opt-in, see below
+net_points_player   - one row per player per season per net_points_season_type (overall, offense, defense, games, position, draft_year) - from espnanalytics.com, not ESPN's own API
+net_points_team     - one row per team per season per side ('Offense'/'Defense'/'Total') (avg_team_score, fast_break, fg2, fg3, free_throw, putback, rebound, turnover, total) - current season only
 
 player_advanced_stats / player_season_advanced_stats only exist if the warehouse was built with --advanced-stats.
+
+net_points_player / net_points_team hold ESPN Analytics' "NetPoints" metric (their
+current advanced player/team rating, successor to the discontinued Real
+Plus-Minus) - overall/offense/defense are points-contributed-above-average
+values, NOT the same scale as team_power_index's BPI or player_advanced_stats'
+ts_pct/efg_pct/usage_pct - don't mix them into the same comparison. These two
+tables use their OWN net_points_season_type column ('Regular Season' /
+'Playoffs' / 'PlayIn' / 'IST Championship', a string) - NOT the numeric
+season_type used by every other table. Filtering net_points_player with
+season_type = 2 silently matches nothing; use net_points_season_type =
+'Regular Season' instead. net_points_team has no season_type column at all
+(current-season-only, not split by season type).
 
 season is ESPN's convention: the year the season ENDS (the 2023-24 season is season=2024).
 season_type: 1=preseason, 2=regular season, 3=postseason.
@@ -227,6 +243,23 @@ KNOWLEDGE_BASE = [
             "       SUM(CASE WHEN winner_team_id = team_id THEN 1 ELSE 0 END) OVER () AS wins,\n"
             "       SUM(CASE WHEN winner_team_id != team_id THEN 1 ELSE 0 END) OVER () AS losses\n"
             "FROM last20 ORDER BY date DESC"
+        ),
+    },
+    {
+        "topic": "NetPoints (net_points_player / net_points_team)",
+        "note": (
+            "These use net_points_season_type, a STRING ('Regular Season'/'Playoffs'/'PlayIn'/"
+            "'IST Championship'), not the numeric season_type every other table uses - filtering "
+            "with season_type = 2 here matches nothing, silently. net_points_team has no season "
+            "history at all (current season only) - an empty result for a past season there is "
+            "expected, not a sign of missing data. overall/offense/defense are NetPoints' own "
+            "points-above-average scale, not comparable to BPI (team_power_index) or "
+            "ts_pct/efg_pct/usage_pct (player_advanced_stats) - don't blend them into one ranking."
+        ),
+        "example": (
+            "-- a player's NetPoints for a regular season\n"
+            "SELECT overall, offense, defense FROM net_points_player\n"
+            "WHERE athlete_id = ? AND season = 2026 AND net_points_season_type = 'Regular Season'"
         ),
     },
     {
