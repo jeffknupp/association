@@ -82,6 +82,20 @@ contributed above average, split into offense/defense), from
   Confirmed live: espnanalytics.com's own "Net Points / 100 Poss" toggle
   fetches that second file rather than computing the rate in the browser, so
   this reuses ESPN Analytics' own numbers rather than approximating one.
+- `net_points_player_fingerprint` (season-level, **fetched by default**):
+  behind espnanalytics.com's "Net Pts Fingerprint" page — a per-player
+  breakdown by shot/play type (2pt, 3pt, driving, fastbreak, rebound,
+  turnover, and 17 more), each split into offense/defense/total NetPoints —
+  66 NetPoints columns per player-season. One file per season on the same
+  public bucket as the season-level file above, but this one returns 403
+  (not the usual 404/400) for a season with no file yet — confirmed live,
+  handled the same way `netpoints_client.py` already handles its bucket's
+  own AccessDenied quirk. Keyed by NBA.com's own player id like the per-game
+  data below, with the same exact-display-name-match resolution (ambiguous/
+  unmatched names dropped, not guessed). Bio fields the source also carries
+  (height, draft year, date of birth) aren't kept — real, already-sourced-
+  from-ESPN data on `players`, not duplicated from a second source that
+  might disagree.
 - `net_points_player_game` / `net_points_team_game` (per-game, **opt-in**
   via `--include-net-points-daily`): the source's own per-game/per-player
   breakdown, one request per date already covered locally rather than per

@@ -556,6 +556,64 @@ def test_parse_net_points_player_no_rate_match_leaves_fields_none() -> None:
     assert rows[0]["total_minutes"] is None
 
 
+def test_parse_net_points_fingerprint_converts_season_and_maps_categories() -> None:
+    """nbafingerprint_{start_year}.json is keyed by NBA.com's own player id
+    (no ESPN crosswalk) - resolved by exact display-name match instead, same
+    fail-safe pattern as the per-game NetPoints data. season uses the same
+    start-year convention as parse_net_points_player, converted the same way."""
+    data = {
+        "2544": {
+            "season": 2025,
+            "displayName": "LeBron James",
+            "deanAbbrev": "LAL",
+            "games_played": 60,
+            "minutes_played": 1989.05,
+            "tPoss": 4059.03,
+            "average_position": 2.94,
+            "offensive_usage": 0.27,
+            "assisted_rate": 0.54,
+            "2pt_oNetPts": 140.9,
+            "2pt_dNetPts": -51.7,
+            "2pt_tNetPts": 89.2,
+            "turnover_oNetPts": 1.0,
+            "turnover_dNetPts": 2.0,
+            "turnover_tNetPts": 3.0,
+            # height/draftYear/dob deliberately omitted from the fixture -
+            # confirmed not kept, real ESPN-sourced bio data already exists
+        }
+    }
+    rows = parse.parse_net_points_fingerprint(data, team_abbr_to_id={"LAL": "13"}, name_to_athlete_id={"LeBron James": "1966"})
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["athlete_id"] == "1966"
+    assert row["season"] == 2026
+    assert row["team_id"] == "13"
+    assert row["games"] == 60
+    assert row["minutes"] == 1989.05
+    assert row["total_poss"] == 4059.03
+    assert row["two_pt_o_net_pts"] == 140.9
+    assert row["two_pt_d_net_pts"] == -51.7
+    assert row["two_pt_t_net_pts"] == 89.2
+    assert row["turnover_o_net_pts"] == 1.0
+    assert "height" not in row
+    assert "draftYear" not in row
+    assert "dob" not in row
+
+
+def test_parse_net_points_fingerprint_drops_unmatched_and_ambiguous_names() -> None:
+    data = {
+        "1": {"season": 2025, "displayName": "No Match Player", "2pt_oNetPts": 1.0},
+        "2": {"season": 2025, "displayName": "Ambiguous Name", "2pt_oNetPts": 1.0},
+    }
+    rows = parse.parse_net_points_fingerprint(data, team_abbr_to_id={}, name_to_athlete_id={})
+    assert rows == []
+
+
+def test_parse_net_points_fingerprint_handles_missing_data() -> None:
+    assert parse.parse_net_points_fingerprint(None, {}, {}) == []
+    assert parse.parse_net_points_fingerprint({}, {}, {}) == []
+
+
 def test_parse_net_points_team_transposes_pandas_orient_columns_json() -> None:
     """team_nba.json nests each stat block as a JSON string in pandas'
     orient="columns" shape ({"col": {"0": v, "1": v}, ...}), not a plain list

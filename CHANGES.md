@@ -5,6 +5,36 @@ commit that made it for the full story.
 
 ## 2026-09-05
 
+- **NetPoints per-player skill/play-type breakdown (net_points_player_fingerprint)**:
+  a user asked whether we had enough NetPoints coverage to recreate
+  espnanalytics.com's "Net Pts Fingerprint" page - investigation found the
+  page draws from a third, not-yet-ingested file
+  (`fingerprint-files/nbafingerprint_{start_year}.json`, same public,
+  unauthenticated bucket as the season-level file), far richer than anything
+  already ingested: 66 NetPoints columns per player-season - 22 shot/play-
+  type categories (two_pt, two_pt_shooting, three_pt, three_pt_shooting,
+  assist, bad_pass, corner, cutting, driving, fade, fast_break, floating,
+  foul, free_throw, hook, layup, mid_range, putback, rebound, rim, total,
+  turnover), each split into offense/defense/total. Added as a new default
+  (not opt-in) table, `net_points_player_fingerprint`. Real wrinkle,
+  confirmed live: a season with no file published yet returns HTTP 403 from
+  this bucket, not the 404/400 every espn.com endpoint uses for missing data
+  - handled explicitly rather than left to raise, the same shape of fix
+  `netpoints_client.py` already needed for its own bucket's AccessDenied
+  quirk. Keyed by NBA.com's own player id with no ESPN crosswalk provided,
+  same as the per-game NetPoints data - resolved by exact display-name match
+  against `players` (ambiguous/unmatched names dropped, not guessed).
+  Bio fields the source also carries (height, draft year, date of birth)
+  are deliberately not kept - real, already-sourced-from-ESPN data on
+  `players`, not duplicated from a second source that might disagree. Backed
+  into the same in-season-refresh rule added earlier today (re-fetches while
+  the season is still current). Backfilled locally for every season NetPoints
+  covers (2019-2026): 4,338 rows, verified live against the source (LeBron
+  James's two_pt_o_net_pts/turnover_d_net_pts match espnanalytics.com's raw
+  file exactly) and through a real query (rim-scoring NetPoints leaders for
+  the current season come back as Jokic/Giannis/SGA - plausible real players,
+  not noise).
+
 - **Season-aggregate fetches now stay current during an in-progress season**:
   a user asked whether `data pull` still works correctly mid-season -
   investigation found it didn't, for anything that isn't a per-game fetch.

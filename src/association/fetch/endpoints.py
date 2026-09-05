@@ -41,6 +41,11 @@ def power_index_url(season: int) -> str:
 NET_POINTS_PLAYER_URL = "https://nfl-player-metrics.s3.amazonaws.com/net-pts/nba_net_pts_data.json"
 NET_POINTS_PLAYER_100_URL = "https://nfl-player-metrics.s3.amazonaws.com/net-pts/nba_net_pts100_data.json"
 NET_POINTS_TEAM_URL = "https://nfl-player-metrics.s3.amazonaws.com/net-pts/team_nba.json"
+# One file per season (NetPoints' own start-year label), same public bucket as
+# above - backs espnanalytics.com's "Net Pts Fingerprint" page. Confirmed live:
+# a season with no file yet (e.g. one that hasn't started) returns 403, not
+# 404 - unlike every other espn.com endpoint this project talks to.
+NET_POINTS_FINGERPRINT_URL_TEMPLATE = "https://nfl-player-metrics.s3.amazonaws.com/net-pts/fingerprint-files/nbafingerprint_{start_year}.json"
 
 
 def net_points_player_url() -> str:
@@ -53,3 +58,7 @@ def net_points_player_100_url() -> str:
 
 def net_points_team_url() -> str:
     return NET_POINTS_TEAM_URL
+
+
+def net_points_fingerprint_url(start_year: int) -> str:
+    return NET_POINTS_FINGERPRINT_URL_TEMPLATE.format(start_year=start_year)

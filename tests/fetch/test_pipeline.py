@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pyarrow.dataset as ds
+from curl_cffi import requests as cf_requests
 
 from association.fetch import storage
 from association.fetch.pipeline import Pipeline
@@ -442,6 +443,75 @@ def test_fetch_net_points_refetches_current_season_but_not_a_past_one(tmp_path: 
 
     time.sleep(0.01)  # guarantee a distinguishable mtime if the file IS rewritten
     pipeline.fetch_net_points()
+    assert past_file.stat().st_mtime_ns == past_written_at  # past season - untouched
+    assert current_file.stat().st_mtime_ns > current_written_at  # current season - refreshed
+
+
+# ---------------- NetPoints fingerprint ----------------
+
+
+def _fingerprint_url(start_year: int) -> str:
+    return f"https://nfl-player-metrics.s3.amazonaws.com/net-pts/fingerprint-files/nbafingerprint_{start_year}.json"
+
+
+def _raise_403(params: Any) -> Any:
+    from types import SimpleNamespace
+
+    raise cf_requests.exceptions.HTTPError("403 Forbidden", response=SimpleNamespace(status_code=403))
+
+
+def test_fetch_net_points_fingerprint_writes_matched_players(tmp_path: Path) -> None:
+    _write_players_fixture(tmp_path, [{"athlete_id": "1966", "display_name": "LeBron James"}])
+    responses: dict[str, Any] = {
+        TEAMS_URL: _teams_response(1),
+        _fingerprint_url(2025): {"2544": {"season": 2025, "displayName": "LeBron James", "2pt_oNetPts": 140.9}},
+    }
+    client = FakeClient(responses)
+    pipeline = Pipeline(client, tmp_path)
+    pipeline.fetch_teams()
+    pipeline.fetch_net_points_fingerprint(2026)
+
+    path = tmp_path / "net_points_player_fingerprint" / "season=2026" / "fingerprint.parquet"
+    assert path.exists()
+    table = ds.dataset(str(path), format="parquet").to_table()
+    assert table.to_pylist()[0]["athlete_id"] == "1966"
+    assert table.to_pylist()[0]["two_pt_o_net_pts"] == 140.9
+
+
+def test_fetch_net_points_fingerprint_treats_403_as_no_data(tmp_path: Path) -> None:
+    """A season with no fingerprint file yet (hasn't started, or older than
+    NetPoints' floor) returns 403 from this bucket - confirmed live, unlike
+    the 404/400 every espn.com endpoint uses for missing data. Must not raise."""
+    responses: dict[str, Any] = {TEAMS_URL: _teams_response(1), _fingerprint_url(2026): _raise_403}
+    client = FakeClient(responses)
+    pipeline = Pipeline(client, tmp_path)
+    pipeline.fetch_teams()
+    pipeline.fetch_net_points_fingerprint(2027)  # must not raise
+    assert not (tmp_path / "net_points_player_fingerprint" / "season=2027").exists()
+
+
+def test_fetch_net_points_fingerprint_refetches_current_season_but_not_a_past_one(tmp_path: Path, monkeypatch: Any) -> None:
+    monkeypatch.setattr("association.fetch.pipeline.current_season", lambda: 2024)
+    _write_players_fixture(tmp_path, [{"athlete_id": "1966", "display_name": "LeBron James"}])
+    responses: dict[str, Any] = {
+        TEAMS_URL: _teams_response(1),
+        _fingerprint_url(2022): {"2544": {"season": 2022, "displayName": "LeBron James", "2pt_oNetPts": 1.0}},
+        _fingerprint_url(2023): {"2544": {"season": 2023, "displayName": "LeBron James", "2pt_oNetPts": 2.0}},
+    }
+    client = FakeClient(responses)
+    pipeline = Pipeline(client, tmp_path)
+    pipeline.fetch_teams()
+    pipeline.fetch_net_points_fingerprint(2023)  # past season
+    pipeline.fetch_net_points_fingerprint(2024)  # "current" season
+
+    past_file = tmp_path / "net_points_player_fingerprint" / "season=2023" / "fingerprint.parquet"
+    current_file = tmp_path / "net_points_player_fingerprint" / "season=2024" / "fingerprint.parquet"
+    past_written_at = past_file.stat().st_mtime_ns
+    current_written_at = current_file.stat().st_mtime_ns
+
+    time.sleep(0.01)
+    pipeline.fetch_net_points_fingerprint(2023)
+    pipeline.fetch_net_points_fingerprint(2024)
     assert past_file.stat().st_mtime_ns == past_written_at  # past season - untouched
     assert current_file.stat().st_mtime_ns > current_written_at  # current season - refreshed
 

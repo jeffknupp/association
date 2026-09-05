@@ -14,6 +14,7 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.dataset as ds
 import pyarrow.parquet as pq
+from curl_cffi import requests as cf_requests
 from tqdm import tqdm
 
 from association.season import current_season
@@ -305,6 +306,32 @@ class Pipeline:
                 continue
             storage.write_rows(path, rows)
 
+    def fetch_net_points_fingerprint(self, season: int) -> None:
+        """espnanalytics.com's "Net Pts Fingerprint" page - a per-player
+        breakdown by shot/play type (2pt, 3pt, driving, fastbreak, rebound,
+        turnover, ...), each split into offense/defense/total NetPoints. One
+        file per season, same public bucket as fetch_net_points above but
+        parameterized by season this time. Same in-season-refresh reasoning
+        as fetch_standings/fetch_power_index. A season with no file yet
+        (hasn't started, or older than NetPoints' 2018-19 floor) returns 403
+        from this bucket - confirmed live, unlike every espn.com endpoint's
+        404/400 - so that's caught here and treated as no data rather than
+        left to raise."""
+        path = self._p("net_points_player_fingerprint", f"season={season}", "fingerprint.parquet")
+        if storage.exists(path) and not self.force and season < current_season():
+            return
+        try:
+            data = self._live_client.get_json(endpoints.net_points_fingerprint_url(season - 1))
+        except cf_requests.exceptions.HTTPError as exc:
+            if exc.response is not None and exc.response.status_code == 403:
+                return
+            raise
+        if not data:
+            return
+        rows = parse.parse_net_points_fingerprint(data, self.team_abbr_to_id(), self._name_to_athlete_id())
+        if rows:
+            storage.write_rows(path, rows)
+
     def _team_date_to_game(self) -> dict[tuple[str, str], tuple[str, int, int]]:
         """(team_id, date) -> (event_id, season, season_type), built from
         games already on disk - this is how NetPoints' per-date rows resolve
@@ -485,6 +512,11 @@ class Pipeline:
 
             for season_type in season_types:
                 self._run_season_type(season, season_type, team_ids)
+
+            # Resolves player names against the local `players` table, so it
+            # has to run after this season's games above have populated it -
+            # same reasoning as fetch_net_points_daily below.
+            self.fetch_net_points_fingerprint(season)
 
         if self.include_net_points_daily:
             # Must run after the season/type loop above - it resolves against

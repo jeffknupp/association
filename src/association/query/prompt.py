@@ -24,6 +24,7 @@ KNOWN_TABLES = {
     "player_advanced_stats",
     "player_season_advanced_stats",
     "net_points_player",
+    "net_points_player_fingerprint",
     "net_points_team",
     "net_points_player_game",
     "net_points_team_game",
@@ -53,6 +54,13 @@ player_advanced_stats        - COMPUTED, one row per player PER GAME (ts_pct, ef
 player_season_advanced_stats - COMPUTED, one row per player per season per season_type (ts_pct, efg_pct, usage_pct, avg_game_score, games_played) - opt-in, see below
 net_points_player   - one row per player per season per net_points_season_type (games, position, draft_year;
                       overall/offense/defense are SEASON TOTALS; *_per_100_poss + total_minutes are the RATE form)
+net_points_player_fingerprint - one row per player per season (NO season_type - not split by regular/post).
+                      Skill/play-type breakdown behind espnanalytics.com's "Net Pts Fingerprint": 22
+                      categories (two_pt, two_pt_shooting, three_pt, three_pt_shooting, assist, bad_pass,
+                      corner, cutting, driving, fade, fast_break, floating, foul, free_throw, hook, layup,
+                      mid_range, putback, rebound, rim, total, turnover), each as <category>_o_net_pts /
+                      _d_net_pts / _t_net_pts (offense/defense/total) - 66 NetPoints columns total. Also
+                      games, minutes, total_poss, average_position, usage, assisted_rate.
 net_points_team     - one row per team per season per side ('Offense'/'Defense'/'Total') (avg_team_score, fast_break, fg2, fg3, free_throw, putback, rebound, turnover, total) - current season only
 net_points_player_game - one row per player PER GAME (o/d/t_net_pts, o/d_usage, o/d/t_poss, o/d/t_wpa) - opt-in flag below; normal numeric season_type, unlike the two tables above
 net_points_team_game   - one row per team PER GAME (net_pts_2pt/3pt/shooting/turnover/rebound/freethrow, tot_poss, opp_poss) - opt-in, same as above

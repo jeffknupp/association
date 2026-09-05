@@ -644,3 +644,71 @@ def parse_net_points_daily(
         )
 
     return player_rows, team_rows
+
+
+# Source category name -> our column prefix. Covers every shot/play type
+# espnanalytics.com's "Net Pts Fingerprint" page breaks a player down by;
+# each gets an _o_net_pts (offense) / _d_net_pts (defense) / _t_net_pts
+# (total) column, driving the loop in parse_net_points_fingerprint below
+# instead of declaring all 66 fields by hand.
+FINGERPRINT_CATEGORIES = {
+    "2pt": "two_pt",
+    "2ptShooting": "two_pt_shooting",
+    "3pt": "three_pt",
+    "3ptShooting": "three_pt_shooting",
+    "assist": "assist",
+    "badpass": "bad_pass",
+    "corner": "corner",
+    "cutting": "cutting",
+    "driving": "driving",
+    "fade": "fade",
+    "fastbreak": "fast_break",
+    "floating": "floating",
+    "foul": "foul",
+    "freethrow": "free_throw",
+    "hook": "hook",
+    "layup": "layup",
+    "mid": "mid_range",
+    "putback": "putback",
+    "rebound": "rebound",
+    "rim": "rim",
+    "total": "total",
+    "turnover": "turnover",
+}
+
+
+def parse_net_points_fingerprint(
+    data: JSON | None,
+    team_abbr_to_id: dict[str, str],
+    name_to_athlete_id: dict[str, str],
+) -> list[dict]:
+    """One file per season (NetPoints' own start-year label, converted to this
+    project's season-ends convention same as parse_net_points_player), keyed
+    by NBA.com's own player id with no ESPN crosswalk provided - resolved
+    instead by exact display-name match against `players`, same fail-safe
+    pattern as the per-game NetPoints data (ambiguous/unmatched names are
+    dropped, not guessed). Bio fields the source also carries (height,
+    draftYear, dob) are NOT kept - real, already-sourced-from-ESPN data on
+    `players`, not something to duplicate from a second, possibly-disagreeing
+    source."""
+    rows: list[dict] = []
+    for raw in (data or {}).values():
+        athlete_id = name_to_athlete_id.get(raw.get("displayName"))
+        if athlete_id is None:
+            continue
+        row: dict[str, Any] = {
+            "athlete_id": athlete_id,
+            "season": (raw.get("season") or 0) + 1,
+            "team_id": _net_points_team_id(raw.get("deanAbbrev"), team_abbr_to_id),
+            "games": raw.get("games_played"),
+            "minutes": raw.get("minutes_played"),
+            "total_poss": raw.get("tPoss"),
+            "average_position": raw.get("average_position"),
+            "usage": raw.get("offensive_usage"),
+            "assisted_rate": raw.get("assisted_rate"),
+        }
+        for src_category, our_prefix in FINGERPRINT_CATEGORIES.items():
+            for side in ("o", "d", "t"):
+                row[f"{our_prefix}_{side}_net_pts"] = raw.get(f"{src_category}_{side}NetPts")
+        rows.append(row)
+    return rows
