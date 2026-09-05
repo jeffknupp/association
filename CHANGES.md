@@ -5,6 +5,32 @@ commit that made it for the full story.
 
 ## 2026-09-05
 
+- **Season-aggregate fetches now stay current during an in-progress season**:
+  a user asked whether `data pull` still works correctly mid-season -
+  investigation found it didn't, for anything that isn't a per-game fetch.
+  `standings`, `team_season_stats`, `team_power_index`, `player_season_stats`,
+  and NetPoints' season-level tables all used the same existence-check
+  resumability as immutable per-game data, but these reflect ESPN's own
+  live, evolving computation while a season is in progress - once first
+  pulled, every later `data pull` silently kept whatever was fetched first,
+  with no `--force` reminder and no way to tell from `data check` (which
+  only reports row counts, not freshness). Worse for `player_season_stats`
+  specifically: it was only ever fetched at all once EVERY game in a
+  season+type was fully resolved - during an in-progress season it was
+  never called even once, not just stale. Fixed by tying each fetch to
+  season completeness instead of plain existence: `standings`/
+  `team_power_index`/NetPoints re-fetch (a single cheap request each) as
+  long as the season is still the current one by this project's season-ends
+  calendar convention (extracted to a new shared `association/season.py`,
+  used by both the fetch pipeline and the query engine's existing
+  `current_season()`); `team_season_stats`/`player_season_stats` (one
+  request per team/player) re-fetch based on the season+type's own
+  completion marker instead, so they stop as soon as that season+type is
+  actually done rather than waiting for the calendar to roll over in
+  October. The player-stats loop also moved out from behind the
+  "season fully resolved" gate so it runs (and refreshes) every pull while
+  the season is still in progress, not just after it ends.
+
 - **Expose plays, add a verified per-quarter-scoring derivation, and a
   "don't silently answer an easier question" rule**: a real question ("how
   many games did Steph Curry score more than 15 points in a single

@@ -1,6 +1,7 @@
 """Regression + sanity tests for the fetch pipeline's resumability and the O(1)
 completion-marker optimization, using a fake client (no network)."""
 
+import time
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +43,19 @@ def _teams_response(n: int) -> dict:
 
 def _schedule_response(event_ids: list[str]) -> dict:
     return {"events": [{"id": eid} for eid in event_ids]}
+
+
+def _game_summary_with_player(
+    event_id: str, athlete_id: str, completed: bool = True, state: str = "post", home: str = "1", away: str = "2"
+) -> dict:
+    summary = _game_summary(event_id, completed=completed, state=state, home=home, away=away)
+    summary["boxscore"]["players"] = [
+        {
+            "team": {"id": home},
+            "statistics": [{"keys": ["points"], "athletes": [{"athlete": {"id": athlete_id}, "stats": ["20"]}]}],
+        }
+    ]
+    return summary
 
 
 def _game_summary(event_id: str, completed: bool = True, state: str = "post", home: str = "1", away: str = "2") -> dict:
@@ -176,6 +190,65 @@ def test_force_bypasses_completion_marker(tmp_path: Path) -> None:
     assert len(client.calls) > calls_before  # force=True -> re-does the full check
 
 
+TEAM_SEASON_STATS_URL_T1 = "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2024/types/2/teams/1/statistics"
+PLAYER_CAREER_STATS_URL_10 = "https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/10/stats"
+_PLAYER_CAREER_STATS_RESPONSE = {
+    "categories": [{"names": ["avgPoints"], "statistics": [{"season": {"year": 2024}, "teamId": "1", "stats": ["20.0"]}]}]
+}
+
+
+def test_run_season_type_refreshes_team_and_player_stats_while_season_in_progress(tmp_path: Path) -> None:
+    """Regression: team/player season-stats aggregates shift every game of an
+    in-progress season, but player season stats used to never be fetched at
+    all until the WHOLE season was fully resolved (gated behind the same
+    check that decides when to mark the season complete) - so a season in
+    progress never got any player season stats locally, not even stale ones.
+    A still-pending game must not block either from being fetched."""
+    responses: dict[str, Any] = {TEAMS_URL: _teams_response(1)}
+    responses[_schedule_url("1")] = _schedule_response(["500", "501"])
+    responses[SUMMARY_URL] = lambda params: (
+        _game_summary_with_player("500", "10", completed=True) if params["event"] == "500" else _game_summary("501", completed=False, state="pre")
+    )
+    responses[TEAM_SEASON_STATS_URL_T1] = {"splits": {"categories": [{"stats": [{"name": "blocks", "value": 5.0}]}]}}
+    responses[PLAYER_CAREER_STATS_URL_10] = _PLAYER_CAREER_STATS_RESPONSE
+    client = FakeClient(responses)
+    pipeline = Pipeline(client, tmp_path)
+    pipeline.fetch_teams()
+    pipeline._run_season_type(2024, 2, pipeline.team_ids())
+
+    assert not storage.is_complete(pipeline._complete_marker(2024, 2))  # still in progress - correct, unchanged
+    assert (tmp_path / "team_season_stats" / "season=2024" / "season_type=2" / "team_1.parquet").exists()
+    assert (tmp_path / "player_season_stats" / "athlete_10_type_2.parquet").exists()
+
+
+def test_run_season_type_re_fetches_team_and_player_stats_on_second_pass_while_in_progress(tmp_path: Path) -> None:
+    """Regression: once written, team/player season stats used to be frozen by
+    their own resumability check (file exists -> skip) for the rest of the
+    season, even without --force. While the season type is still in progress,
+    a second pull must re-fetch both rather than silently keeping stale data."""
+    responses: dict[str, Any] = {TEAMS_URL: _teams_response(1)}
+    responses[_schedule_url("1")] = _schedule_response(["500", "501"])
+    responses[SUMMARY_URL] = lambda params: (
+        _game_summary_with_player("500", "10", completed=True) if params["event"] == "500" else _game_summary("501", completed=False, state="pre")
+    )
+    responses[TEAM_SEASON_STATS_URL_T1] = {"splits": {"categories": [{"stats": [{"name": "blocks", "value": 5.0}]}]}}
+    responses[PLAYER_CAREER_STATS_URL_10] = _PLAYER_CAREER_STATS_RESPONSE
+    client = FakeClient(responses)
+    pipeline = Pipeline(client, tmp_path)
+    pipeline.fetch_teams()
+    team_ids = pipeline.team_ids()
+    pipeline._run_season_type(2024, 2, team_ids)
+
+    team_calls_before = sum(1 for url, _ in client.calls if url == TEAM_SEASON_STATS_URL_T1)
+    player_calls_before = sum(1 for url, _ in client.calls if url == PLAYER_CAREER_STATS_URL_10)
+    pipeline._run_season_type(2024, 2, team_ids)
+    team_calls_after = sum(1 for url, _ in client.calls if url == TEAM_SEASON_STATS_URL_T1)
+    player_calls_after = sum(1 for url, _ in client.calls if url == PLAYER_CAREER_STATS_URL_10)
+
+    assert team_calls_after > team_calls_before
+    assert player_calls_after > player_calls_before
+
+
 def test_athlete_ids_for_scoped_to_season_and_type(tmp_path: Path) -> None:
     """Regression: athlete discovery used to scan the whole season directory
     across all season_types combined - scoping to one season_type is both
@@ -219,6 +292,34 @@ def test_fetch_team_season_stats_still_fetches_for_regular_and_postseason(tmp_pa
     pipeline.fetch_team_season_stats(2024, 2, "1")
     assert len(client.calls) == 1
     assert (tmp_path / "team_season_stats" / "season=2024" / "season_type=2" / "team_1.parquet").exists()
+
+
+def test_fetch_team_season_stats_force_refresh_bypasses_existing_file(tmp_path: Path) -> None:
+    responses = {TEAM_SEASON_STATS_URL_T1: {"splits": {"categories": [{"stats": [{"name": "blocks", "value": 5.0}]}]}}}
+    client = FakeClient(responses)
+    pipeline = Pipeline(client, tmp_path)
+    pipeline.fetch_team_season_stats(2024, 2, "1")
+    calls_before = len(client.calls)
+
+    pipeline.fetch_team_season_stats(2024, 2, "1")  # no force_refresh - skips as before
+    assert len(client.calls) == calls_before
+
+    pipeline.fetch_team_season_stats(2024, 2, "1", force_refresh=True)
+    assert len(client.calls) > calls_before
+
+
+def test_fetch_player_season_stats_force_refresh_bypasses_existing_file(tmp_path: Path) -> None:
+    responses = {PLAYER_CAREER_STATS_URL_10: _PLAYER_CAREER_STATS_RESPONSE}
+    client = FakeClient(responses)
+    pipeline = Pipeline(client, tmp_path)
+    pipeline.fetch_player_season_stats("10", 2)
+    calls_before = len(client.calls)
+
+    pipeline.fetch_player_season_stats("10", 2)  # no force_refresh - skips as before
+    assert len(client.calls) == calls_before
+
+    pipeline.fetch_player_season_stats("10", 2, force_refresh=True)
+    assert len(client.calls) > calls_before
 
 
 NET_POINTS_PLAYER_URL = "https://nfl-player-metrics.s3.amazonaws.com/net-pts/nba_net_pts_data.json"
@@ -313,6 +414,36 @@ def test_fetch_net_points_force_overwrites(tmp_path: Path) -> None:
     pipeline.fetch_net_points()
     pipeline.fetch_net_points()  # must not raise even with --force
     assert (tmp_path / "net_points_player" / "season=2024" / "regular_season.parquet").exists()
+
+
+def test_fetch_net_points_refetches_current_season_but_not_a_past_one(tmp_path: Path, monkeypatch: Any) -> None:
+    """Regression: NetPoints values shift daily while a season is in progress,
+    but the season file, once written, used to be frozen for the rest of that
+    season without --force - same reasoning as fetch_standings/
+    fetch_power_index below."""
+    monkeypatch.setattr("association.fetch.pipeline.current_season", lambda: 2024)
+    responses: dict[str, Any] = {
+        TEAMS_URL: _teams_response(1),
+        NET_POINTS_PLAYER_URL: [
+            {"dot_com_id": 10, "tm": "T1", "min_season": 2022, "seasonType": "Regular Season", "net_pts_games": 50, "overall": 1.0},
+            {"dot_com_id": 10, "tm": "T1", "min_season": 2023, "seasonType": "Regular Season", "net_pts_games": 50, "overall": 2.0},
+        ],
+        NET_POINTS_TEAM_URL: {"team4f": '{"teamId": {"0": "T1"}, "Side": {"0": "Total"}, "season": {"0": 2023}}'},
+    }
+    client = FakeClient(responses)
+    pipeline = Pipeline(client, tmp_path)
+    pipeline.fetch_teams()
+    pipeline.fetch_net_points()
+
+    past_file = tmp_path / "net_points_player" / "season=2023" / "regular_season.parquet"  # min_season 2022 -> season 2023, in the past
+    current_file = tmp_path / "net_points_player" / "season=2024" / "regular_season.parquet"  # min_season 2023 -> season 2024, "current"
+    past_written_at = past_file.stat().st_mtime_ns
+    current_written_at = current_file.stat().st_mtime_ns
+
+    time.sleep(0.01)  # guarantee a distinguishable mtime if the file IS rewritten
+    pipeline.fetch_net_points()
+    assert past_file.stat().st_mtime_ns == past_written_at  # past season - untouched
+    assert current_file.stat().st_mtime_ns > current_written_at  # current season - refreshed
 
 
 # ---------------- NetPoints daily (per-game) ----------------
@@ -442,3 +573,58 @@ def test_net_points_dates_and_seasons_prefers_real_season_over_derived_one(tmp_p
     pipeline = Pipeline(FakeClient({}), tmp_path)
     dates = pipeline._net_points_dates_and_seasons()
     assert dates["2019-06-14"] == 2019  # its own real season, not season 2020 derived from the 15th
+
+
+# ---------------- standings / power index: in-season refresh ----------------
+
+STANDINGS_URL = "https://site.api.espn.com/apis/v2/sports/basketball/nba/standings"
+POWER_INDEX_URL_2023 = "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2023/powerindex"
+POWER_INDEX_URL_2024 = "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2024/powerindex"
+
+
+def _standings_response() -> dict:
+    return {"children": [{"standings": {"entries": [{"team": {"id": "1"}, "stats": [{"name": "wins", "value": 10.0}]}]}}]}
+
+
+def _power_index_response(season: int) -> dict:
+    return {
+        "items": [
+            {"season": season, "seasonType": 2, "team": {"$ref": "http://x/teams/1?x"}, "stats": [{"name": "bpi", "value": 5.0}]}
+        ]
+    }
+
+
+def test_fetch_standings_refetches_current_season_but_not_a_past_one(tmp_path: Path, monkeypatch: Any) -> None:
+    """Regression: standings shift every game of an in-progress season, but
+    used to be frozen after the first pull for the rest of that season
+    without --force."""
+    monkeypatch.setattr("association.fetch.pipeline.current_season", lambda: 2024)
+    responses: dict[str, Any] = {STANDINGS_URL: _standings_response()}
+    client = FakeClient(responses)
+    pipeline = Pipeline(client, tmp_path)
+    pipeline.fetch_standings(2023)  # past season
+    pipeline.fetch_standings(2024)  # "current" season
+    calls_before = len(client.calls)
+
+    pipeline.fetch_standings(2023)
+    pipeline.fetch_standings(2024)
+    assert len(client.calls) == calls_before + 1  # only the current season re-fetched
+
+
+def test_fetch_power_index_refetches_current_season_but_not_a_past_one(tmp_path: Path, monkeypatch: Any) -> None:
+    """Same reasoning as fetch_standings above - BPI/projected wins shift every
+    game of an in-progress season."""
+    monkeypatch.setattr("association.fetch.pipeline.current_season", lambda: 2024)
+    responses: dict[str, Any] = {
+        POWER_INDEX_URL_2023: _power_index_response(2023),
+        POWER_INDEX_URL_2024: _power_index_response(2024),
+    }
+    client = FakeClient(responses)
+    pipeline = Pipeline(client, tmp_path)
+    pipeline.fetch_power_index(2023)  # past season
+    pipeline.fetch_power_index(2024)  # "current" season
+    calls_before = len(client.calls)
+
+    pipeline.fetch_power_index(2023)
+    pipeline.fetch_power_index(2024)
+    assert len(client.calls) == calls_before + 1  # only the current season re-fetched

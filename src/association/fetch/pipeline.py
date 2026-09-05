@@ -16,6 +16,8 @@ import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 from tqdm import tqdm
 
+from association.season import current_season
+
 from . import endpoints, parse, storage
 from .client import ESPNClient
 from .netpoints_client import NetPointsDailyClient
@@ -201,9 +203,14 @@ class Pipeline:
         ids = {str(v) for v in table.column("athlete_id").to_pylist() if v is not None}
         return sorted(ids, key=lambda x: int(x))
 
-    def fetch_player_season_stats(self, athlete_id: str, season_type: int) -> None:
+    def fetch_player_season_stats(self, athlete_id: str, season_type: int, force_refresh: bool = False) -> None:
+        """One file covers this player's WHOLE career for a season_type (ESPN's
+        endpoint isn't scoped to a single season), so re-fetching it during an
+        in-progress season (force_refresh=True, from _run_season_type below)
+        naturally picks up that season's latest numbers along with everything
+        else - no separate per-season key needed."""
         path = self._p("player_season_stats", f"athlete_{athlete_id}_type_{season_type}.parquet")
-        if self._exists(path):
+        if storage.exists(path) and not self.force and not force_refresh:
             return
         data = self._live_client.get_json(
             endpoints.player_career_stats_url(athlete_id), params={"seasontype": season_type}
@@ -213,7 +220,7 @@ class Pipeline:
         storage.write_rows(path, rows)
 
     # ---------------- team season stats ----------------
-    def fetch_team_season_stats(self, season: int, season_type: int, team_id: str) -> None:
+    def fetch_team_season_stats(self, season: int, season_type: int, team_id: str, force_refresh: bool = False) -> None:
         if season_type == 1:
             # ESPN has no team season stats for preseason - confirmed live: the
             # endpoint returns no data for every team/season checked. There's
@@ -224,7 +231,7 @@ class Pipeline:
         path = self._p(
             "team_season_stats", f"season={season}", f"season_type={season_type}", f"team_{team_id}.parquet"
         )
-        if self._exists(path):
+        if storage.exists(path) and not self.force and not force_refresh:
             return
         data = self._live_client.get_json(endpoints.team_season_stats_url(season, season_type, team_id))
         row, glossary = parse.parse_team_season_stats(data, season, season_type, team_id)
@@ -234,8 +241,16 @@ class Pipeline:
 
     # ---------------- standings ----------------
     def fetch_standings(self, season: int) -> None:
+        """Standings change daily while a season is in progress - re-fetch (one
+        cheap request, all 30 teams in one call) every run for the current
+        season rather than freezing it after the first pull. A season that's
+        already over keeps its resumability skip as before. This can keep
+        re-fetching a season that's technically finished but hasn't rolled
+        over to the next one yet (this project's season-ends convention holds
+        a season "current" through the following off-season, until October) -
+        harmless, since it's a single request either way."""
         path = self._p("standings", f"season={season}", "standings.parquet")
-        if self._exists(path):
+        if storage.exists(path) and not self.force and season < current_season():
             return
         data = self._live_client.get_json(endpoints.standings_url(), params={"season": season})
         rows, glossary = parse.parse_standings(data, season)
@@ -244,8 +259,10 @@ class Pipeline:
 
     # ---------------- power index (BPI) ----------------
     def fetch_power_index(self, season: int) -> None:
+        """Same reasoning as fetch_standings above - BPI/projected wins shift
+        every game of an in-progress season."""
         path = self._p("team_power_index", f"season={season}", "power_index.parquet")
-        if self._exists(path):
+        if storage.exists(path) and not self.force and season < current_season():
             return
         data = self._live_client.get_json(endpoints.power_index_url(season))
         rows, glossary = parse.parse_power_index(data)
@@ -256,9 +273,11 @@ class Pipeline:
     def fetch_net_points(self) -> None:
         """Both NetPoints files are single flat downloads (not parameterized by
         season/team), so there's no per-unit network call to skip the way there
-        is for games/player-stats - always fetch, but only write out a
-        season(+type) file that isn't already on disk (respects --force same as
-        everywhere else)."""
+        is for games/player-stats - always fetch, but only overwrite a
+        season(+type) file that's either not already on disk or still the
+        current season (values shift daily while a season is in progress -
+        same reasoning as fetch_standings/fetch_power_index above; respects
+        --force same as everywhere else)."""
         team_abbr_to_id = self.team_abbr_to_id()
 
         player_data = self._live_client.get_json(endpoints.net_points_player_url())
@@ -271,7 +290,7 @@ class Pipeline:
         for (season, season_type), rows in by_season_type.items():
             slug = season_type.lower().replace(" ", "_")
             path = self._p("net_points_player", f"season={season}", f"{slug}.parquet")
-            if self._exists(path):
+            if storage.exists(path) and not self.force and season < current_season():
                 continue
             storage.write_rows(path, rows)
 
@@ -282,7 +301,7 @@ class Pipeline:
             by_season.setdefault(row["season"], []).append(row)
         for season, rows in by_season.items():
             path = self._p("net_points_team", f"season={season}", "net_points_team.parquet")
-            if self._exists(path):
+            if storage.exists(path) and not self.force and season < current_season():
                 continue
             storage.write_rows(path, rows)
 
@@ -421,19 +440,31 @@ class Pipeline:
         event_ids = self.event_ids_for(season, season_type, team_ids)
         for event_id in tqdm(event_ids, desc=f"{season} type={season_type} games"):
             self.fetch_game(event_id, season, season_type)
-        for team_id in tqdm(team_ids, desc=f"{season} type={season_type} team season stats", leave=False):
-            self.fetch_team_season_stats(season, season_type, team_id)
 
-        if not event_ids or self._resolved_event_count(season, season_type) < len(event_ids):
-            # Some discovered games haven't been played yet (in-progress season) -
-            # leave unmarked so next run re-checks the schedule for new results.
-            return
+        season_complete = bool(event_ids) and self._resolved_event_count(season, season_type) >= len(event_ids)
+
+        # Team/player season stats are league-computed aggregates that shift
+        # every game of an in-progress season - force_refresh=not season_complete
+        # keeps re-fetching them (overwriting the prior pull) each run until the
+        # season type truly is done, instead of freezing them after the first
+        # pull the way a per-game fetch correctly does. Running the player loop
+        # here too (previously gated behind season_complete, so it never even
+        # ran during an in-progress season) is what actually keeps player season
+        # stats current while games are still being played.
+        for team_id in tqdm(team_ids, desc=f"{season} type={season_type} team season stats", leave=False):
+            self.fetch_team_season_stats(season, season_type, team_id, force_refresh=not season_complete)
 
         athlete_ids = self.athlete_ids_for(season, season_type)
         for athlete_id in tqdm(
             athlete_ids, desc=f"{season} type={season_type} player season stats", leave=False
         ):
-            self.fetch_player_season_stats(athlete_id, season_type)
+            self.fetch_player_season_stats(athlete_id, season_type, force_refresh=not season_complete)
+
+        if not season_complete:
+            # Some discovered games haven't been played yet (in-progress season) -
+            # leave unmarked so next run re-checks the schedule for new results
+            # and keeps refreshing the aggregates above until it is.
+            return
 
         storage.mark_complete(marker)
 

@@ -127,6 +127,26 @@ once every game ESPN's schedule reports for a season+type is either played
 season is marked closed and every future `pull` or `check` skips it outright
 instead of re-hitting ESPN's schedule endpoint.
 
+**In-season data stays current, not frozen at first pull** — per-game data
+(box scores, play-by-play) is correctly immutable once fetched, but
+season-*aggregate* data (`standings`, `team_season_stats`, `team_power_index`,
+`player_season_stats`, and NetPoints' season-level tables) reflects ESPN's
+own live, evolving computation while a season is in progress — plain
+existence-check resumability would freeze these at whatever they were the
+first time they were pulled. `standings`/`team_power_index`/NetPoints keep
+re-fetching a season until it's no longer the *current* one
+(`current_season()` in [`association/season.py`](src/association/season.py),
+the same year-a-season-ends convention used everywhere else — a season keeps
+re-fetching a little past when it's actually over, until the next one starts
+in October, which is harmless since each is a single cheap request);
+`team_season_stats`/
+`player_season_stats` (one request per team/player) instead re-fetch based on
+the season+type's own completion marker, so they stop as soon as that
+season+type is genuinely done rather than waiting for the calendar to roll
+over. `data check`'s table only reports row *counts*, not freshness — it
+can't distinguish current-season data from stale current-season data, only
+`--live` cross-checks against ESPN catch that.
+
 **Warehouse** — a DuckDB file built from the Parquet tree via `read_parquet`
 with `union_by_name` (tolerates schema drift between files, e.g. an early-
 season stat ESPN hasn't computed yet) and *not* hive-partitioned (every row

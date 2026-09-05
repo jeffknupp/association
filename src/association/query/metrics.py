@@ -10,19 +10,10 @@ import between the two."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
 
+from association.season import current_season
 
-def current_season() -> int:
-    """This project's season convention (the year a season ENDS) applied to
-    today's real date: a season starting in October of year Y is season Y+1,
-    otherwise it's the current year. Resolved here in Python, once, rather
-    than asking the model to compute or remember it - confirmed live this is
-    the compounding rule small local models drop when a query also needs a
-    second condition (e.g. a minimum-sample filter) in the same query."""
-    today = date.today()
-    return today.year + 1 if today.month >= 10 else today.year
-
+__all__ = ["current_season", "SEASON_TYPE_LABELS", "LeaderboardMetric", "LEADERBOARD_METRICS", "EXTRA_FIELD_COLUMNS"]
 
 SEASON_TYPE_LABELS = {1: "Preseason", 2: "Regular Season", 3: "Postseason"}
 
