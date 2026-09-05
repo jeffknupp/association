@@ -69,6 +69,7 @@ def build(data_dir: Path, db_path: Path, tables: list[str] | None = None, includ
     data_dir = Path(data_dir)
     con = duckdb.connect(str(db_path))
     try:
+        _build_macros(con)
         for table in target_tables:
             table_dir = data_dir / table
             if not _has_parquet(table_dir):
@@ -94,7 +95,36 @@ def build(data_dir: Path, db_path: Path, tables: list[str] | None = None, includ
         con.close()
 
 
+def _build_macros(con: duckdb.DuckDBPyConnection) -> None:
+    """Schema-level helpers for ad hoc SQL (the query agent's run_sql escape
+    hatch, or a human at a duckdb prompt) - the same correctness rules
+    get_leaderboard applies in Python for its own fixed set of metrics, baked
+    in here instead so a query outside that fixed set doesn't have to
+    re-derive them from prose. Depend on no table, so built unconditionally,
+    before any table load - safe to call even against an empty database."""
+    con.execute(
+        """
+        CREATE OR REPLACE MACRO current_season() AS (
+            CASE WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 10
+                 THEN EXTRACT(YEAR FROM CURRENT_DATE) + 1
+                 ELSE EXTRACT(YEAR FROM CURRENT_DATE) END
+        )
+        """
+    )
+
+
 def _build_views(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
+    if "player_season_stats" in loaded:
+        con.execute(
+            """
+            CREATE OR REPLACE VIEW player_season_stats_deduped AS
+            SELECT * FROM player_season_stats
+            QUALIFY ROW_NUMBER() OVER (
+                PARTITION BY athlete_id, season, season_type ORDER BY (team_id IS NULL) DESC
+            ) = 1
+            """
+        )
+
     if not ({"player_box_stats", "players", "games", "teams"} <= loaded):
         return
 

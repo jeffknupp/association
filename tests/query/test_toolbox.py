@@ -122,6 +122,16 @@ def test_get_leaderboard_unknown_metric_is_rejected(toolbox: Toolbox) -> None:
     assert "unknown metric" in result
 
 
+def test_get_leaderboard_unknown_metric_suggests_closest_match(toolbox: Toolbox) -> None:
+    """Regression: a real run guessed metric='points' instead of the actual
+    enum value 'avg_points', which sent the model on an unrelated multi-turn
+    detour that eventually recovered but dropped the team/fields it had
+    originally asked for. A close-match suggestion should make this a
+    one-turn fix instead."""
+    result = toolbox.get_leaderboard(metric="points")
+    assert "Did you mean 'avg_points'?" in result
+
+
 def test_get_leaderboard_invalid_season_type_is_rejected(toolbox: Toolbox) -> None:
     result = toolbox.get_leaderboard(metric="usage_pct", season_type=7)
     assert "season_type must be" in result

@@ -5,6 +5,26 @@ commit that made it for the full story.
 
 ## 2026-09-05
 
+- **Schema-level helpers for the run_sql fallback path: current_season()
+  macro, player_season_stats_deduped view**: get_leaderboard (below) moves
+  leaderboard correctness into Python for its fixed set of metrics, but
+  run_sql is still the escape hatch for anything outside that set (a
+  leaderboard needing an opponent/per-game join, single-player lookups,
+  etc.) - and those ad hoc queries were still relying on the model
+  correctly recalling and re-deriving the same rules from KNOWLEDGE_BASE
+  prose every time. Added the same two rules directly to the DuckDB
+  warehouse instead: a `current_season()` SQL macro (built unconditionally,
+  before any table load, so it works even against an otherwise-empty
+  database) replacing the multi-line CASE/EXTRACT expression the model
+  previously had to write out by hand, and a `player_season_stats_deduped`
+  view that already collapses a traded player's per-team-stint rows to the
+  combined row - no QUALIFY pattern needed for an ad hoc season-total/
+  average query. Updated the relevant KNOWLEDGE_BASE examples and
+  TABLE_SUMMARY to point at both. Confirmed live against the real warehouse:
+  `SELECT current_season()` returns 2026, and player_season_stats_deduped
+  drops the ~3,475 duplicate stint rows player_season_stats carries for
+  every traded player.
+
 - **New get_leaderboard tool: correctness rules moved from prose into code**:
   a series of real "top N players by X" queries kept failing in different
   ways even with KNOWLEDGE_BASE entries covering each one - a season default

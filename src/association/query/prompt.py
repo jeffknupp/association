@@ -19,6 +19,7 @@ KNOWN_TABLES = {
     "win_probability",
     "stat_glossary",
     "player_game_log",
+    "player_season_stats_deduped",
     "player_advanced_stats",
     "player_season_advanced_stats",
     "net_points_player",
@@ -41,6 +42,9 @@ shot_chart          - one row per shot ATTEMPT (event_id, athlete_id, team_id, p
 win_probability     - one row per play (event_id, play_id, home_win_pct, tie_pct)
 stat_glossary       - stat_key -> label/description; self-documents what a column means
 player_game_log     - convenience view: player_box_stats joined with player/game/team names, plus ts_pct/efg_pct/usage_pct/game_score if the warehouse was built with --advanced-stats
+player_season_stats_deduped - convenience view: player_season_stats already collapsed to one row
+                      per player/season/season_type (picks the combined row for a traded player) -
+                      prefer this over player_season_stats directly, no QUALIFY needed
 player_advanced_stats        - COMPUTED, one row per player PER GAME (ts_pct, efg_pct, usage_pct, game_score) - opt-in, see below
 player_season_advanced_stats - COMPUTED, one row per player per season per season_type (ts_pct, efg_pct, usage_pct, avg_game_score, games_played) - opt-in, see below
 net_points_player   - one row per player per season per net_points_season_type (games, position, draft_year;
@@ -81,26 +85,20 @@ KNOWLEDGE_BASE = [
         "topic": "No season named in the question -> default to the CURRENT season",
         "note": (
             "If the question doesn't name a season ('this season', 'this year', or no season "
-            "mentioned at all), default to the CURRENT season computed from today's real "
-            "calendar date - NOT MAX(season) from whatever data happens to be loaded. This "
-            "project's season convention (used everywhere) is the year a season ENDS: a season "
-            "starting in October of year Y is season Y+1, otherwise it's the current year. "
-            "Compute it with CURRENT_DATE rather than assuming a fixed year. If that computed "
-            "season has no rows yet (a new season hasn't been fetched, or hasn't started), say "
-            "so plainly - do NOT silently fall back to an older season that does have data "
-            "without saying that's what you did; the user asked about the current season, not "
-            "whichever one happens to be available."
+            "mentioned at all), default to the CURRENT season using the current_season() SQL "
+            "function already defined in this warehouse - NOT MAX(season) from whatever data "
+            "happens to be loaded, and not a CASE/EXTRACT expression written out by hand (that "
+            "logic is exactly what current_season() already does). If that computed season has "
+            "no rows yet (a new season hasn't been fetched, or hasn't started), say so plainly - "
+            "do NOT silently fall back to an older season that does have data without saying "
+            "that's what you did; the user asked about the current season, not whichever one "
+            "happens to be available."
         ),
         "example": (
             "-- \"who leads the league in points?\" (no season named) -> use the CURRENT season\n"
             "SELECT p.display_name, ps.avgPoints\n"
             "FROM player_season_stats ps JOIN players p ON p.athlete_id = ps.athlete_id\n"
-            "WHERE ps.season = (\n"
-            "    SELECT CASE WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 10\n"
-            "                THEN EXTRACT(YEAR FROM CURRENT_DATE) + 1\n"
-            "                ELSE EXTRACT(YEAR FROM CURRENT_DATE) END\n"
-            ")\n"
-            "AND ps.season_type = 2\n"
+            "WHERE ps.season = current_season() AND ps.season_type = 2\n"
             "ORDER BY ps.avgPoints DESC LIMIT 1"
         ),
     },
@@ -126,15 +124,16 @@ KNOWLEDGE_BASE = [
         "note": (
             "player_season_stats gives a traded player one row PER TEAM STINT plus one "
             "additional combined row with team_id IS NULL. Without filtering, traded players "
-            "get double/triple-counted. Collapse to one row per player with the QUALIFY "
-            "pattern below on any season-total or season-average query."
+            "get double/triple-counted. Prefer player_season_stats_deduped instead of "
+            "player_season_stats directly - it already collapses to one row per player (the "
+            "combined row) - no QUALIFY needed. Only query player_season_stats itself with the "
+            "QUALIFY pattern below when you specifically need a single team stint's own row."
         ),
         "example": (
             "-- top 5 by season 3-point attempts\n"
             "SELECT p.display_name, ps.threePointFieldGoalsAttempted\n"
-            "FROM player_season_stats ps JOIN players p ON p.athlete_id = ps.athlete_id\n"
-            "WHERE ps.season = 2026 AND ps.season_type = 2\n"
-            "QUALIFY ROW_NUMBER() OVER (PARTITION BY ps.athlete_id ORDER BY (ps.team_id IS NULL) DESC) = 1\n"
+            "FROM player_season_stats_deduped ps JOIN players p ON p.athlete_id = ps.athlete_id\n"
+            "WHERE ps.season = current_season() AND ps.season_type = 2\n"
             "ORDER BY ps.threePointFieldGoalsAttempted DESC LIMIT 5"
         ),
     },
@@ -523,12 +522,11 @@ KNOWLEDGE_BASE = [
             "ts_pct/efg_pct/usage_pct too, not just NetPoints."
         ),
         "example": (
-            "-- top 10 by usage rate for a given season - remember to ALSO apply the current-\n"
-            "-- season default above if the question doesn't name one\n"
+            "-- top 10 by usage rate, season not named -> current_season(), not a hardcoded year\n"
             "SELECT p.display_name, pas.games_played, pas.usage_pct\n"
             "FROM player_season_advanced_stats pas\n"
             "JOIN players p ON p.athlete_id = pas.athlete_id\n"
-            "WHERE pas.season_type = 2 AND pas.season = 2026 AND pas.games_played >= 20\n"
+            "WHERE pas.season_type = 2 AND pas.season = current_season() AND pas.games_played >= 20\n"
             "ORDER BY pas.usage_pct DESC LIMIT 10"
         ),
     },
@@ -569,13 +567,12 @@ Available tables:
 {TABLE_SUMMARY}
 
 STANDING RULE - apply this to EVERY query, not just ones about "this season": if the question \
-does not name a season, add a season filter for the CURRENT season computed from today's real \
-date, in every query you write, even ones that also need other filters (a minimum games/minutes, \
-a team, a position, etc.) - never leave a multi-condition query without it just because another \
-condition is also present. Compute it with:
-SELECT CASE WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 10 THEN EXTRACT(YEAR FROM CURRENT_DATE) + 1 \
-ELSE EXTRACT(YEAR FROM CURRENT_DATE) END
-If that season has no rows yet, say so rather than silently answering from an older season.
+does not name a season, add a season filter for the CURRENT season, in every query you write, \
+even ones that also need other filters (a minimum games/minutes, a team, a position, etc.) - \
+never leave a multi-condition query without it just because another condition is also present. \
+A current_season() SQL function is already defined in the warehouse - use `season = current_season()` \
+directly rather than computing it yourself. If that season has no rows yet, say so rather than \
+silently answering from an older season.
 
 Known gotchas and patterns for this schema - read before writing SQL or calling a tool. Treat \
 each worked example as the exact pattern to copy, not just an illustration:

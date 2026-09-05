@@ -69,6 +69,54 @@ def test_build_skips_tables_with_no_parquet_files(tmp_path: Path) -> None:
     assert tables == []
 
 
+def test_build_creates_current_season_macro_unconditionally(tmp_path: Path) -> None:
+    """current_season() is schema-level, not tied to any table - a raw run_sql
+    query should be able to call it even against a freshly-created, otherwise
+    empty warehouse, the same as before any table has ever been loaded."""
+    import datetime
+
+    data_dir = tmp_path / "parquet"
+    data_dir.mkdir()
+    db_path = tmp_path / "empty.duckdb"
+    warehouse.build(data_dir, db_path)
+
+    con = duckdb.connect(str(db_path))
+    result = con.execute("SELECT current_season()").fetchone()
+    con.close()
+
+    today = datetime.date.today()
+    expected = today.year + 1 if today.month >= 10 else today.year
+    assert result == (expected,)
+
+
+def test_build_creates_player_season_stats_deduped_view(tmp_path: Path) -> None:
+    """Regression-shaped: a traded player has one player_season_stats row per
+    team stint plus a combined row (team_id IS NULL) - ad hoc SQL that forgets
+    the QUALIFY dedup pattern double/triple-counts them. This view bakes that
+    pattern in once so run_sql doesn't have to re-derive it per query."""
+    data_dir = tmp_path / "parquet"
+    _write_table_fixture(data_dir, "players", {"athlete_id": "1", "display_name": "Traded Player"})
+    d = data_dir / "player_season_stats"
+    d.mkdir(parents=True)
+    pq.write_table(
+        pa.Table.from_pylist(
+            [
+                {"season": 2026, "season_type": 2, "athlete_id": "1", "team_id": "9", "avgPoints": 15.0},
+                {"season": 2026, "season_type": 2, "athlete_id": "1", "team_id": "20", "avgPoints": 12.0},
+                {"season": 2026, "season_type": 2, "athlete_id": "1", "team_id": None, "avgPoints": 13.8},
+            ]
+        ),
+        d / "f.parquet",
+    )
+    db_path = tmp_path / "test.duckdb"
+    warehouse.build(data_dir, db_path)
+
+    con = duckdb.connect(str(db_path))
+    rows = con.execute("SELECT athlete_id, avgPoints FROM player_season_stats_deduped").fetchall()
+    con.close()
+    assert rows == [("1", 13.8)]
+
+
 def test_build_creates_player_game_log_view_when_dependencies_present(tmp_path: Path) -> None:
     data_dir = tmp_path / "parquet"
     fixtures = {

@@ -77,6 +77,7 @@ class Agent:
         auto_recoveries = 0
         error_recoveries = 0
         pending_error: str | None = None
+        pending_error_tool: str | None = None
 
         for _ in range(MAX_TOOL_ITERATIONS):
             chat_kwargs: dict[str, Any] = dict(model=self.model, messages=self.messages, tools=TOOLS, options={"num_ctx": NUM_CTX})
@@ -138,10 +139,13 @@ class Agent:
                         {
                             "role": "user",
                             "content": (
-                                "Your last tool call failed, so you do not have real data yet - do "
-                                "not answer with placeholder or made-up values. Either call run_sql "
-                                "again with a corrected query, or say plainly that you couldn't get "
-                                "the data. The error was:\n" + pending_error
+                                f"Your last {pending_error_tool} call failed, so you do not have real data "
+                                "yet - do not answer with placeholder or made-up values. Call "
+                                f"{pending_error_tool} again with corrected arguments, keeping every other "
+                                "argument you had already filled in (season, team, fields, limit, etc.) "
+                                "exactly as before - only fix what caused the error. If you can't get it "
+                                "working, say plainly that you couldn't get the data. The error was:\n"
+                                + pending_error
                             ),
                         }
                     )
@@ -188,6 +192,7 @@ class Agent:
                     # earlier run_sql/get_leaderboard call in the same turn may
                     # have already succeeded.
                     pending_error = result if _is_tool_error(result) else None
+                    pending_error_tool = name if pending_error else None
                 self.messages.append({"role": "tool", "content": result})
 
         self._trim_history()

@@ -139,18 +139,49 @@ straight from Parquet already on disk without touching the network, and
 warehouse rebuild rereads every Parquet file, which gets slow as the tree
 grows).
 
-**Query engine** — a local Ollama model gets three tools: `describe_table`
+**Query engine** — a local Ollama model gets four tools: `describe_table`
 (schema lookup on demand, so table summaries stay short even for 100+-column
-tables), `run_sql` (read-only, `SELECT`/`WITH` only, backed by a read-only
-DuckDB connection as a hard guarantee), and `render_shot_chart` (renders a
-static HTML/SVG court plot). A growing `KNOWLEDGE_BASE` of concrete
-schema/domain gotchas (hoop coordinates, a trade-mid-season double-counting
-trap in season stats, double-double/triple-double definitions, ...) gets
-appended to whenever a real question produces a wrong answer — small local
-models follow a copy-pasteable SQL pattern far more reliably than an abstract
-instruction. As a hard backstop, if the model ends a turn by printing SQL as
-prose instead of calling `run_sql`, the agent extracts and runs it anyway
-rather than handing back an unexecuted recipe.
+tables), `get_leaderboard` (a "top N players by X" query for a fixed, known
+set of metrics — the season default, qualifying minimum sample, and
+traded-player dedup are all resolved once in Python, in
+[`query/metrics.py`](src/association/query/metrics.py), instead of
+re-derived by the model from prose on every query — see "Design" below for
+why), `run_sql` (read-only, `SELECT`/`WITH` only, backed by a read-only
+DuckDB connection as a hard guarantee, for anything `get_leaderboard` doesn't
+cover), and `render_shot_chart` (renders a static HTML/SVG court plot). A
+growing `KNOWLEDGE_BASE` of concrete schema/domain gotchas (hoop coordinates,
+a trade-mid-season double-counting trap in season stats, double-double/
+triple-double definitions, ...) gets appended to whenever a real question
+produces a wrong answer — small local models follow a copy-pasteable SQL
+pattern far more reliably than an abstract instruction. Two hard backstops in
+the agent loop: if the model ends a turn by printing SQL as prose instead of
+calling `run_sql`, it extracts and runs it anyway rather than handing back an
+unexecuted recipe; and if it tries to finalize an answer right after an
+unrecovered `run_sql`/`get_leaderboard` error, it's refused a nudge to retry
+instead — confirmed live, without this a query error once produced a
+fabricated answer with literal `[Player Name 1]`-style placeholder text
+presented as real data.
+
+The warehouse itself also carries two schema-level helpers so ad hoc
+`run_sql` queries (not covered by `get_leaderboard`) don't have to re-derive
+common correctness rules either: a `current_season()` SQL macro (the year a
+season ENDS, computed from today's real date — the same rule `get_leaderboard`
+applies in Python) and a `player_season_stats_deduped` view (one row per
+player per season, already collapsed past the traded-player multi-row trap).
+
+**Why a dedicated leaderboard tool at all** — real "top N players by X"
+questions kept failing in different ways even with a `KNOWLEDGE_BASE` entry
+covering each one: a season default that got dropped as soon as a second
+filter was also needed, a minimum-sample rule that only applied to the one
+metric it was written for, and — worst — two runs of the identical question
+with the same *thinking* model producing two different metrics and answers
+five minutes apart. Every `KNOWLEDGE_BASE` entry makes the model responsible
+for remembering and re-deriving one more rule from prose on every query, and
+that stops composing reliably as the list grows — more "thinking" time
+doesn't fix a fundamentally stochastic process being asked to reproduce a
+growing checklist exactly. `get_leaderboard` moves the correctness for a
+fixed, known set of metrics out of prose and into code instead, so the
+model's job shrinks to picking a metric name and filling a few slots.
 
 ## Project layout
 

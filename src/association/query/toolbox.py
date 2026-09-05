@@ -5,6 +5,7 @@ and shot chart rendering."""
 from __future__ import annotations
 
 import json
+from difflib import get_close_matches
 from pathlib import Path
 from typing import Any
 
@@ -108,7 +109,14 @@ class Toolbox:
         need (a specific opponent, a per-game join) beyond team/fields here."""
         spec = LEADERBOARD_METRICS.get(metric)
         if spec is None:
-            return f"Error: unknown metric {metric!r}. Known metrics: {sorted(LEADERBOARD_METRICS)}"
+            # A close-match suggestion (e.g. "points" -> "avg_points") keeps a
+            # wrong guess a one-turn fix - confirmed live, without it a wrong
+            # metric name sent the model on an unrelated multi-turn detour
+            # that eventually recovered but dropped the team/fields it had
+            # originally been asked for.
+            suggestion = get_close_matches(metric, LEADERBOARD_METRICS, n=1)
+            hint = f" Did you mean {suggestion[0]!r}?" if suggestion else ""
+            return f"Error: unknown metric {metric!r}.{hint} Known metrics: {sorted(LEADERBOARD_METRICS)}"
         if season_type not in SEASON_TYPE_LABELS:
             return f"Error: season_type must be 1 (preseason), 2 (regular season), or 3 (postseason) - got {season_type!r}."
         unknown_fields = [f for f in fields or [] if f not in EXTRA_FIELD_COLUMNS]
