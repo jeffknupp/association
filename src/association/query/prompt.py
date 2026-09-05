@@ -20,6 +20,7 @@ KNOWN_TABLES = {
     "stat_glossary",
     "player_game_log",
     "player_season_stats_deduped",
+    "plays",
     "player_advanced_stats",
     "player_season_advanced_stats",
     "net_points_player",
@@ -40,6 +41,9 @@ standings           - one row per team per season (wins, losses, winPercent, pla
 team_power_index    - one row per team per season per season_type (ESPN BPI: bpi, bpioffense, bpidefense, projectedw, ...)
 shot_chart          - one row per shot ATTEMPT (event_id, athlete_id, team_id, period, clock, made, shot_type, coordinate_x, coordinate_y, points_attempted)
 win_probability     - one row per play (event_id, play_id, home_win_pct, tie_pct)
+plays               - one row per PLAY (event_id, play_id, period, clock, team_id, athlete_id, type, text,
+                      home_score/away_score - the RUNNING score after this play, scoring_play - opt-in,
+                      see below. NOT points-per-play - see the per-quarter-scoring entry below for that)
 stat_glossary       - stat_key -> label/description; self-documents what a column means
 player_game_log     - convenience view: player_box_stats joined with player/game/team names, plus ts_pct/efg_pct/usage_pct/game_score if the warehouse was built with --advanced-stats
 player_season_stats_deduped - convenience view: player_season_stats already collapsed to one row
@@ -57,6 +61,7 @@ player_advanced_stats / player_season_advanced_stats only exist if the warehouse
 net_points_player_game / net_points_team_game only exist if fetched with --include-net-points-daily - a
 player row can be legitimately absent (not zero, just missing) for a game if their display name couldn't
 be matched to exactly one local player.
+plays / shot_chart / win_probability only exist if fetched with --include-pbp.
 
 net_points_player / net_points_team hold ESPN Analytics' "NetPoints" metric (their
 current advanced player/team rating, successor to the discontinued Real
@@ -167,6 +172,52 @@ KNOWLEDGE_BASE = [
             "SELECT fieldGoalsMade - threePointFieldGoalsMade AS twoPtMade,\n"
             "       fieldGoalsAttempted - threePointFieldGoalsAttempted AS twoPtAttempted\n"
             "FROM player_box_stats WHERE athlete_id = ?"
+        ),
+    },
+    {
+        "topic": "Points scored in a specific quarter/period",
+        "note": (
+            "NOT a stored column anywhere - player_box_stats/player_season_stats only have GAME "
+            "totals. It has to be derived from plays (needs --include-pbp): each scoring play "
+            "carries the RUNNING home_score/away_score, so a made play's own point value is that "
+            "running score minus the immediately PRIOR scoring play's score for the same side - "
+            "computed with LAG() over ALL scoring plays in the game (ordered by period, then by "
+            "clock converted to seconds-remaining - NOT by play_id, which is NOT reliably "
+            "sortable as an integer across a whole game, confirmed live: it broke chronological "
+            "order badly enough to make some plays 'earn' 90+ points). CRITICAL: compute the "
+            "LAG() over every scoring play in the game first, THEN filter to one player in an "
+            "OUTER query/CTE - filtering to one player's rows BEFORE the window function (e.g. "
+            "in the same CTE) breaks the ordering context so LAG() jumps across whichever other "
+            "plays happen to be missing, again producing impossible values (confirmed live, this "
+            "exact mistake was made twice while building this pattern). Known limitation, be "
+            "upfront about it: even correctly written, this derivation disagrees with the "
+            "official player_box_stats game total for a small fraction of player-games (~1%, "
+            "confirmed live across the full dataset) - likely genuine ESPN play-by-play vs. "
+            "final-box-score inconsistencies, not something fixable in SQL. Mention this as an "
+            "approximation when answering, don't state a count as exact fact. If plays isn't "
+            "loaded (--include-pbp wasn't used), say this can't be answered rather than guessing "
+            "from a table that only has full-game totals."
+        ),
+        "example": (
+            "-- games where a player scored more than 15 points in a single quarter\n"
+            "WITH ordered AS (\n"
+            "    SELECT event_id, period, athlete_id, team_id, home_score, away_score,\n"
+            "        CASE WHEN clock LIKE '%:%'\n"
+            "             THEN CAST(split_part(clock, ':', 1) AS DOUBLE) * 60 + CAST(split_part(clock, ':', 2) AS DOUBLE)\n"
+            "             ELSE CAST(clock AS DOUBLE) END AS secs_remaining\n"
+            "    FROM plays WHERE scoring_play = true\n"
+            "),\n"
+            "deltas AS (\n"
+            "    SELECT o.event_id, o.period, o.athlete_id,\n"
+            "        CASE WHEN o.team_id = g.home_team_id\n"
+            "             THEN o.home_score - COALESCE(LAG(o.home_score) OVER (PARTITION BY o.event_id ORDER BY o.period, o.secs_remaining DESC), 0)\n"
+            "             ELSE o.away_score - COALESCE(LAG(o.away_score) OVER (PARTITION BY o.event_id ORDER BY o.period, o.secs_remaining DESC), 0)\n"
+            "        END AS pts\n"
+            "    FROM ordered o JOIN games g ON g.event_id = o.event_id\n"
+            ")\n"
+            "-- filter to one player only here, AFTER the window function above has already run\n"
+            "SELECT event_id, period, SUM(pts) AS period_points FROM deltas\n"
+            "WHERE athlete_id = ? GROUP BY event_id, period HAVING SUM(pts) > 15"
         ),
     },
     {
@@ -573,6 +624,14 @@ never leave a multi-condition query without it just because another condition is
 A current_season() SQL function is already defined in the warehouse - use `season = current_season()` \
 directly rather than computing it yourself. If that season has no rows yet, say so rather than \
 silently answering from an older season.
+
+STANDING RULE - if you cannot construct a query that actually answers what was asked (after a \
+reasonable number of attempts), say so explicitly and describe what you tried. NEVER answer a \
+different, easier question instead and present it as if it satisfies the original request - \
+confirmed live, a question asking for a specific per-quarter scoring count got a completely \
+unrelated season-averages summary back after a few failed attempts, with no indication the real \
+question had been abandoned. Silently substituting an easier question is worse than admitting \
+you couldn't answer the real one.
 
 Known gotchas and patterns for this schema - read before writing SQL or calling a tool. Treat \
 each worked example as the exact pattern to copy, not just an illustration:

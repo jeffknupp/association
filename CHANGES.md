@@ -5,6 +5,39 @@ commit that made it for the full story.
 
 ## 2026-09-05
 
+- **Expose plays, add a verified per-quarter-scoring derivation, and a
+  "don't silently answer an easier question" rule**: a real question ("how
+  many games did Steph Curry score more than 15 points in a single
+  quarter?") wandered through three wrong queries (hallucinated column
+  names, an unrelated pivot to a single specific date) and then, worst of
+  all, silently gave up and answered with an unrelated full-season stats
+  dump - presented as if it satisfied the original question, with no
+  indication the real question had been abandoned. Root cause of the first
+  part: `plays` (play-by-play, opt-in via `--include-pbp`) was never added
+  to KNOWN_TABLES/TABLE_SUMMARY at all, despite existing in the warehouse -
+  the model had no way to even discover it via describe_table. Added it,
+  and a new KNOWLEDGE_BASE entry with a verified derivation: per-quarter
+  points aren't a stored column, but each scoring play in `plays` carries
+  the running home/away score, so a play's own point value is that score
+  minus the immediately prior scoring play's score for the same side (a
+  LAG() window function). Two real bugs found and fixed while building and
+  validating this, both confirmed live: (1) ordering by play_id is wrong -
+  it's not reliably sortable as an integer across a whole game (confirmed:
+  it broke chronological order badly enough to attribute 90+ points to a
+  single play) - fixed by ordering on period + clock parsed to seconds-
+  remaining instead; (2) filtering to one player BEFORE the LAG() window
+  function (in the same CTE) breaks the ordering context the same way -
+  made this exact mistake twice while building the pattern, fixed by
+  computing the window function over every scoring play in the game first,
+  filtering to one player only in an outer query afterward. Even correct,
+  this derivation was measured (live, across the full dataset) to disagree
+  with the official player_box_stats game total for ~1% of player-games -
+  documented as a known, honest limitation (likely real ESPN play-by-play
+  vs. box-score inconsistencies) rather than presented as exact. Separately,
+  added a standing rule directly in the system prompt: if a query can't be
+  made to answer what was actually asked, say so - never silently substitute
+  an easier question and present it as satisfying the original one.
+
 - **Schema-level helpers for the run_sql fallback path: current_season()
   macro, player_season_stats_deduped view**: get_leaderboard (below) moves
   leaderboard correctness into Python for its fixed set of metrics, but
