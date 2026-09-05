@@ -75,6 +75,13 @@ contributed above average, split into offense/defense), from
   scheme (translated to this project's team_id at parse time — see
   `fetch/parse.py`'s `NET_POINTS_ABBREV_TO_ESPN`) and its own
   season-*starts* convention (converted to season-*ends* on ingest).
+  `overall`/`offense`/`defense` are season CUMULATIVE totals, not a rate —
+  `overall_per_100_poss`/`offense_per_100_poss`/`defense_per_100_poss` (plus
+  `total_minutes`) come from a second, separate file on the same public
+  bucket (`nba_net_pts100_data.json`), joined in by player+season+season-type.
+  Confirmed live: espnanalytics.com's own "Net Points / 100 Poss" toggle
+  fetches that second file rather than computing the rate in the browser, so
+  this reuses ESPN Analytics' own numbers rather than approximating one.
 - `net_points_player_game` / `net_points_team_game` (per-game, **opt-in**
   via `--include-net-points-daily`): the source's own per-game/per-player
   breakdown, one request per date already covered locally rather than per

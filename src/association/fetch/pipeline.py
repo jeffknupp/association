@@ -262,7 +262,8 @@ class Pipeline:
         team_abbr_to_id = self.team_abbr_to_id()
 
         player_data = self._live_client.get_json(endpoints.net_points_player_url())
-        player_rows = parse.parse_net_points_player(player_data, team_abbr_to_id)
+        rate_data = self._live_client.get_json(endpoints.net_points_player_100_url())
+        player_rows = parse.parse_net_points_player(player_data, team_abbr_to_id, rate_data)
         by_season_type: dict[tuple[int, str], list[dict]] = {}
         for row in player_rows:
             season, season_type = row["season"], row["net_points_season_type"]

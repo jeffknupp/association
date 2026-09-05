@@ -3,6 +3,30 @@
 Notable changes to `association`, newest first. Each entry links back to the
 commit that made it for the full story.
 
+## 2026-09-05
+
+- **NetPoints per-100-possession rate columns on `net_points_player`**: a user
+  asked whether NetPoints has a normalized (rate) form, since `overall`/
+  `offense`/`defense` are season cumulative totals - confirmed live, two
+  players with the identical 82 games this season range from -194.62 to
+  +164.15, so ranking by the total alone rewards playing more possessions,
+  not being better per-possession. Investigated whether espnanalytics.com's
+  own "Net Points / 100 Poss" toggle computes that client-side or pulls it
+  from somewhere else: confirmed live (via the site's own network requests)
+  that it fetches a second, separate flat file - `nba_net_pts100_data.json`
+  - on the same public, unauthenticated S3 bucket as the file already fetched
+  for `net_points_player`, rather than computing the rate in the browser.
+  Added `overall_per_100_poss`/`offense_per_100_poss`/`defense_per_100_poss`
+  (ESPN Analytics' own pre-computed values, not a local approximation) and
+  `total_minutes` (for a per-36 comparison instead, if wanted) by joining that
+  file in at parse time on (athlete_id, season, net_points_season_type) -
+  confirmed live to be a unique key in both files. A handful of degenerate
+  stints (e.g. a single scoreless playoff game) exist in the totals file but
+  are dropped from the rate file - left NULL there rather than guessed, same
+  fail-safe pattern as every other NetPoints join in this project. No new
+  fetch flag needed - both files are already covered by the existing
+  (default, not opt-in) NetPoints fetch.
+
 ## 2026-09-04
 
 - **KNOWLEDGE_BASE: fieldGoalsMade already includes 3-pointers**: a user

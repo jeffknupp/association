@@ -39,11 +39,16 @@ def power_index_url(season: int) -> str:
 # unauthenticated, and unrestricted (confirmed live: no robots.txt disallow, no
 # CORS/auth barrier, plain curl succeeds - no TLS impersonation needed here).
 NET_POINTS_PLAYER_URL = "https://nfl-player-metrics.s3.amazonaws.com/net-pts/nba_net_pts_data.json"
+NET_POINTS_PLAYER_100_URL = "https://nfl-player-metrics.s3.amazonaws.com/net-pts/nba_net_pts100_data.json"
 NET_POINTS_TEAM_URL = "https://nfl-player-metrics.s3.amazonaws.com/net-pts/team_nba.json"
 
 
 def net_points_player_url() -> str:
     return NET_POINTS_PLAYER_URL
+
+
+def net_points_player_100_url() -> str:
+    return NET_POINTS_PLAYER_100_URL
 
 
 def net_points_team_url() -> str:

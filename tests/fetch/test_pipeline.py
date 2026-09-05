@@ -4,6 +4,8 @@ completion-marker optimization, using a fake client (no network)."""
 from pathlib import Path
 from typing import Any
 
+import pyarrow.dataset as ds
+
 from association.fetch import storage
 from association.fetch.pipeline import Pipeline
 
@@ -220,6 +222,7 @@ def test_fetch_team_season_stats_still_fetches_for_regular_and_postseason(tmp_pa
 
 
 NET_POINTS_PLAYER_URL = "https://nfl-player-metrics.s3.amazonaws.com/net-pts/nba_net_pts_data.json"
+NET_POINTS_PLAYER_100_URL = "https://nfl-player-metrics.s3.amazonaws.com/net-pts/nba_net_pts100_data.json"
 NET_POINTS_TEAM_URL = "https://nfl-player-metrics.s3.amazonaws.com/net-pts/team_nba.json"
 
 
@@ -240,6 +243,41 @@ def test_fetch_net_points_writes_one_file_per_season_and_type(tmp_path: Path) ->
     assert (tmp_path / "net_points_player" / "season=2024" / "regular_season.parquet").exists()
     assert (tmp_path / "net_points_player" / "season=2024" / "playoffs.parquet").exists()
     assert (tmp_path / "net_points_team" / "season=2024" / "net_points_team.parquet").exists()
+
+
+def test_fetch_net_points_merges_per_100_possession_rate_file(tmp_path: Path) -> None:
+    """nba_net_pts100_data.json is a second, separate request against the same
+    public bucket - confirmed live it's fetched only when espnanalytics.com's
+    own "Net Points / 100 Poss" toggle is used, not computed client-side."""
+    responses: dict[str, Any] = {
+        TEAMS_URL: _teams_response(1),
+        NET_POINTS_PLAYER_URL: [
+            {"dot_com_id": 10, "tm": "T1", "min_season": 2023, "seasonType": "Regular Season", "net_pts_games": 50, "overall": 1.0}
+        ],
+        NET_POINTS_PLAYER_100_URL: [
+            {
+                "dot_com_id": 10,
+                "min_season": 2023,
+                "seasonType": "Regular Season",
+                "tNet100": 3.3,
+                "oNet100": 2.2,
+                "dNet100": 1.1,
+                "totMin": 1500,
+            }
+        ],
+        NET_POINTS_TEAM_URL: {"team4f": '{"teamId": {"0": "T1"}, "Side": {"0": "Total"}, "season": {"0": 2023}}'},
+    }
+    client = FakeClient(responses)
+    pipeline = Pipeline(client, tmp_path)
+    pipeline.fetch_teams()
+    pipeline.fetch_net_points()
+
+    table = ds.dataset(str(tmp_path / "net_points_player" / "season=2024" / "regular_season.parquet")).to_table()
+    row = table.to_pylist()[0]
+    assert row["overall_per_100_poss"] == 3.3
+    assert row["offense_per_100_poss"] == 2.2
+    assert row["defense_per_100_poss"] == 1.1
+    assert row["total_minutes"] == 1500
 
 
 def test_fetch_net_points_skips_writing_files_already_on_disk(tmp_path: Path) -> None:

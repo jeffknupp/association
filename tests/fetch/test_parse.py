@@ -520,6 +520,42 @@ def test_parse_net_points_player_handles_missing_data() -> None:
     assert parse.parse_net_points_player(None, {}) == []
 
 
+def test_parse_net_points_player_merges_per_100_possession_rates() -> None:
+    """nba_net_pts100_data.json is a separate file on the same public bucket -
+    confirmed live, ESPN Analytics' own "Net Points / 100 Poss" toggle fetches
+    it rather than computing the rate in the browser. Joined here by
+    (dot_com_id, min_season, seasonType), confirmed live to be a unique key in
+    both files."""
+    data = [{"dot_com_id": 3975, "tm": "GSW", "min_season": 2025, "seasonType": "Regular Season", "net_pts_games": 43}]
+    rate_data = [
+        {
+            "dot_com_id": 3975,
+            "min_season": 2025,
+            "seasonType": "Regular Season",
+            "tNet100": 5.55,
+            "oNet100": 5.76,
+            "dNet100": -0.16,
+            "totMin": 1330,
+        }
+    ]
+    rows = parse.parse_net_points_player(data, team_abbr_to_id={"GS": "9"}, rate_data=rate_data)
+    assert rows[0]["overall_per_100_poss"] == 5.55
+    assert rows[0]["offense_per_100_poss"] == 5.76
+    assert rows[0]["defense_per_100_poss"] == -0.16
+    assert rows[0]["total_minutes"] == 1330
+
+
+def test_parse_net_points_player_no_rate_match_leaves_fields_none() -> None:
+    """A handful of degenerate stints (e.g. a single scoreless playoff game,
+    confirmed live) are dropped from the rate file but not the main one - left
+    NULL here rather than guessed, matching this project's fail-safe pattern
+    for every other NetPoints join."""
+    data = [{"dot_com_id": 1, "tm": "GSW", "min_season": 2024, "seasonType": "Playoffs", "net_pts_games": 1}]
+    rows = parse.parse_net_points_player(data, team_abbr_to_id={"GS": "9"}, rate_data=[])
+    assert rows[0]["overall_per_100_poss"] is None
+    assert rows[0]["total_minutes"] is None
+
+
 def test_parse_net_points_team_transposes_pandas_orient_columns_json() -> None:
     """team_nba.json nests each stat block as a JSON string in pandas'
     orient="columns" shape ({"col": {"0": v, "1": v}, ...}), not a plain list

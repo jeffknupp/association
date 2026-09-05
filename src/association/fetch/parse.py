@@ -442,7 +442,11 @@ def _net_points_team_id(abbrev: str | None, team_abbr_to_id: dict[str, str]) -> 
     return team_abbr_to_id.get(NET_POINTS_ABBREV_TO_ESPN.get(abbrev, abbrev))
 
 
-def parse_net_points_player(data: list[JSON] | None, team_abbr_to_id: dict[str, str]) -> list[dict]:
+def parse_net_points_player(
+    data: list[JSON] | None,
+    team_abbr_to_id: dict[str, str],
+    rate_data: list[JSON] | None = None,
+) -> list[dict]:
     """NetPoints publishes one flat JSON array covering every historical
     season in one request - no per-season fetch exists, so this parses the
     whole thing every pull; the pipeline only writes out season+type files
@@ -453,9 +457,26 @@ def parse_net_points_player(data: list[JSON] | None, team_abbr_to_id: dict[str, 
     year a season ENDS, so `season` here is stored as netpoints_season + 1
     to stay directly comparable/joinable with every other table's `season`
     column (confirmed live: a player's netpoints_season=2025 row has the same
-    games-played count as this project's own season=2026 data for them)."""
+    games-played count as this project's own season=2026 data for them).
+
+    `rate_data` is a second, separate flat file (nba_net_pts100_data.json) on
+    the same public bucket - ESPN Analytics' own site fetches it only when its
+    "Net Points / 100 Poss" toggle is selected (confirmed live), rather than
+    computing the rate client-side. It carries the same identity fields plus
+    tNet100/oNet100/dNet100 (real per-100-possession values, not our own
+    approximation) and totMin - joined in here by (dot_com_id, min_season,
+    seasonType), confirmed live to be a unique key in both files. A handful of
+    degenerate stints (e.g. a single scoreless playoff game) are dropped from
+    this file but not the main one - left NULL here rather than guessed."""
+    rate_by_key: dict[tuple[Any, Any, Any], JSON] = {}
+    for item in rate_data or []:
+        key = (item.get("dot_com_id"), item.get("min_season"), item.get("seasonType"))
+        rate_by_key[key] = item
+
     rows: list[dict] = []
     for item in data or []:
+        key = (item.get("dot_com_id"), item.get("min_season"), item.get("seasonType"))
+        rate = rate_by_key.get(key)
         rows.append(
             {
                 "athlete_id": item.get("dot_com_id"),
@@ -468,6 +489,10 @@ def parse_net_points_player(data: list[JSON] | None, team_abbr_to_id: dict[str, 
                 "overall": item.get("overall"),
                 "offense": item.get("offense"),
                 "defense": item.get("defense"),
+                "overall_per_100_poss": rate.get("tNet100") if rate else None,
+                "offense_per_100_poss": rate.get("oNet100") if rate else None,
+                "defense_per_100_poss": rate.get("dNet100") if rate else None,
+                "total_minutes": rate.get("totMin") if rate else None,
             }
         )
     return rows

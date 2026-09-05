@@ -41,7 +41,8 @@ stat_glossary       - stat_key -> label/description; self-documents what a colum
 player_game_log     - convenience view: player_box_stats joined with player/game/team names, plus ts_pct/efg_pct/usage_pct/game_score if the warehouse was built with --advanced-stats
 player_advanced_stats        - COMPUTED, one row per player PER GAME (ts_pct, efg_pct, usage_pct, game_score) - opt-in, see below
 player_season_advanced_stats - COMPUTED, one row per player per season per season_type (ts_pct, efg_pct, usage_pct, avg_game_score, games_played) - opt-in, see below
-net_points_player   - one row per player per season per net_points_season_type (overall, offense, defense, games, position, draft_year) - from espnanalytics.com, not ESPN's own API
+net_points_player   - one row per player per season per net_points_season_type (games, position, draft_year;
+                      overall/offense/defense are SEASON TOTALS; *_per_100_poss + total_minutes are the RATE form)
 net_points_team     - one row per team per season per side ('Offense'/'Defense'/'Total') (avg_team_score, fast_break, fg2, fg3, free_throw, putback, rebound, turnover, total) - current season only
 net_points_player_game - one row per player PER GAME (o/d/t_net_pts, o/d_usage, o/d/t_poss, o/d/t_wpa) - opt-in flag below; normal numeric season_type, unlike the two tables above
 net_points_team_game   - one row per team PER GAME (net_pts_2pt/3pt/shooting/turnover/rebound/freethrow, tot_poss, opp_poss) - opt-in, same as above
@@ -303,6 +304,33 @@ KNOWLEDGE_BASE = [
             "-- a player's NetPoints for a regular season\n"
             "SELECT overall, offense, defense FROM net_points_player\n"
             "WHERE athlete_id = ? AND season = 2026 AND net_points_season_type = 'Regular Season'"
+        ),
+    },
+    {
+        "topic": "NetPoints per-100-possession rate vs. season total (net_points_player)",
+        "note": (
+            "overall/offense/defense on net_points_player are SEASON CUMULATIVE TOTALS, not a rate - "
+            "confirmed live: two players with the identical 82 games played this season range from "
+            "-194.62 to +164.15, so 'best/worst by NetPoints' using overall alone favors players who "
+            "played more possessions, not players who were better per-possession. For a normalized "
+            "comparison use overall_per_100_poss/offense_per_100_poss/defense_per_100_poss instead - "
+            "these are ESPN Analytics' OWN pre-computed per-100-possession values (confirmed live: "
+            "espnanalytics.com's 'Net Points / 100 Poss' toggle fetches a second file for these, it "
+            "does not compute them in the browser from the totals), not something derived here. "
+            "total_minutes is also available if a per-36 comparison is wanted instead. A player can "
+            "have overall/offense/defense but NULL per-100 fields - a small number of degenerate "
+            "stints (e.g. a single scoreless playoff game, confirmed live) exist in the totals file "
+            "but were dropped from the rate file; treat that as no rate available for that stint, not "
+            "as zero."
+        ),
+        "example": (
+            "-- best qualified players by NetPoints per 100 possessions, not by season total\n"
+            "SELECT p.display_name, npp.overall_per_100_poss, npp.total_minutes\n"
+            "FROM net_points_player npp\n"
+            "JOIN players p ON p.athlete_id = npp.athlete_id\n"
+            "WHERE npp.season = 2026 AND npp.net_points_season_type = 'Regular Season'\n"
+            "  AND npp.overall_per_100_poss IS NOT NULL AND npp.total_minutes >= 500\n"
+            "ORDER BY npp.overall_per_100_poss DESC LIMIT 10"
         ),
     },
     {
