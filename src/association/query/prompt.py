@@ -3,6 +3,8 @@ definitions, and the growing knowledge base of schema/domain gotchas."""
 
 from __future__ import annotations
 
+from .metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS
+
 KNOWN_TABLES = {
     "teams",
     "players",
@@ -336,7 +338,11 @@ KNOWLEDGE_BASE = [
     {
         "topic": "NetPoints per-100-possession rate vs. season total (net_points_player)",
         "note": (
-            "overall/offense/defense on net_points_player are SEASON CUMULATIVE TOTALS, not a rate - "
+            "Prefer get_leaderboard(metric='netpoints_total' or 'netpoints_per_100') over hand-writing "
+            "this - it already applies the right minimum-minutes qualifier below. Use run_sql directly "
+            "only when the question also needs something get_leaderboard doesn't do (e.g. an opponent "
+            "or per-game join). Background: overall/offense/defense on net_points_player are SEASON "
+            "CUMULATIVE TOTALS, not a rate - "
             "confirmed live: two players with the identical 82 games played this season range from "
             "-194.62 to +164.15, so 'best/worst by NetPoints' using overall alone favors players who "
             "played more possessions, not players who were better per-possession. For a normalized "
@@ -498,7 +504,10 @@ KNOWLEDGE_BASE = [
     {
         "topic": "Rate-stat leaderboards need a minimum sample size (usage_pct, ts_pct, efg_pct)",
         "note": (
-            "A real query for 'top 10 by usage rate' with no minimum returned Izaiah "
+            "Prefer get_leaderboard(metric='usage_pct'/'ts_pct'/'efg_pct') over hand-writing this - it "
+            "already applies the minimum-games qualifier below by default. Use run_sql directly only "
+            "if the question needs something get_leaderboard doesn't do. Background: a real query for "
+            "'top 10 by usage rate' with no minimum returned Izaiah "
             "Brockington at 65.93% (8 games) at #1, and the next 9 spots were all 1-3-game "
             "stints too - confirmed live: usage_pct is a ratio, so a handful of unusual "
             "garbage-time minutes can swing it to an extreme value that a real, sustained "
@@ -538,14 +547,20 @@ def format_knowledge_base(entries: list[dict]) -> str:
 
 
 SYSTEM_PROMPT = f"""You are a data analyst answering natural-language questions about NBA \
-statistics using a local, read-only DuckDB database. You have three tools:
+statistics using a local, read-only DuckDB database. You have four tools:
 
 - describe_table(table_name): get exact column names/types for a table. Call this before \
 writing SQL against a table you have not already described in this conversation - do not \
 guess column names.
-- run_sql(query): run a read-only SELECT query and get rows back as JSON. Use this for any \
-question answerable with a table or number (leaderboards, stats, comparisons, standings, \
-counts, percentages, averages, distances).
+- get_leaderboard(metric, season, season_type, min_sample, limit): rank players by one of a \
+fixed set of known metrics ({", ".join(sorted(LEADERBOARD_METRICS))}) - ALWAYS use this instead \
+of run_sql for a "top/best/worst N players by <metric>" question when the metric is in that \
+list. It already applies the current-season default, the right minimum-sample qualifier, and \
+traded-player dedup - you do not need to (and should not) re-derive those with run_sql for a \
+metric this tool covers.
+- run_sql(query): run a read-only SELECT query and get rows back as JSON. Use this for anything \
+get_leaderboard doesn't cover (a metric not in its list, a leaderboard that also needs an \
+opponent/box-score join, single-player lookups, comparisons, standings, counts, distances, etc).
 - render_shot_chart(player_name, season, season_type, event_id, period, shot_value, \
 made_only): renders a static HTML shot chart (makes vs misses on a simplified court) for one \
 player. Use this only for requests to see/plot/visualize shots.
@@ -587,13 +602,73 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "run_sql",
-            "description": "Run a read-only SQL SELECT query against the DuckDB warehouse and return rows as JSON.",
+            "description": (
+                "Run a read-only SQL SELECT query against the DuckDB warehouse and return rows as JSON. "
+                "For a \"top/best/worst N players by <metric>\" question, use get_leaderboard instead if "
+                "the metric is one of its known metrics - only use run_sql for that shape of question "
+                "when the metric isn't covered there."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "A DuckDB SELECT statement."}
                 },
                 "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_leaderboard",
+            "description": (
+                "Rank players by one of a fixed set of known metrics - the correct table, join, season "
+                "default, minimum-sample qualifier, and traded-player handling are all applied for you. "
+                "Optionally restrict to one team, or add extra box-score columns (points/rebounds/etc.) "
+                "alongside the ranked metric. ALWAYS prefer this over run_sql for a \"top/best/worst N "
+                "players by <metric>\" question when the metric is one of: "
+                + ", ".join(sorted(LEADERBOARD_METRICS))
+                + "."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "metric": {
+                        "type": "string",
+                        "enum": sorted(LEADERBOARD_METRICS),
+                        "description": "Which metric to rank by.",
+                    },
+                    "season": {
+                        "type": "integer",
+                        "description": (
+                            "ESPN season year (season-ending year), e.g. 2024 for the 2023-24 season. "
+                            "Omit if the question doesn't name a season - defaults to the CURRENT season."
+                        ),
+                    },
+                    "season_type": {
+                        "type": "integer",
+                        "description": "1=preseason, 2=regular season (default), 3=postseason.",
+                    },
+                    "min_sample": {
+                        "type": "integer",
+                        "description": (
+                            "Minimum games/minutes (depends on the metric) to qualify. Omit to use a "
+                            "sensible built-in default - only set this if the user's question gives its "
+                            "own minimum."
+                        ),
+                    },
+                    "team": {
+                        "type": "string",
+                        "description": "Restrict to one team (name or abbreviation, e.g. 'Lakers' or 'LAL'). Omit for all teams.",
+                    },
+                    "fields": {
+                        "type": "array",
+                        "items": {"type": "string", "enum": sorted(EXTRA_FIELD_COLUMNS)},
+                        "description": "Extra per-game box-score columns to include alongside the ranked metric. Omit if not asked for.",
+                    },
+                    "limit": {"type": "integer", "description": "How many players to return. Defaults to 10."},
+                },
+                "required": ["metric"],
             },
         },
     },

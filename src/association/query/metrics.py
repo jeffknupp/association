@@ -1,0 +1,165 @@
+"""The leaderboard metric registry: everything needed to build a correct
+"top N players by X" query for a fixed, known set of metrics, decided once
+here in code instead of re-derived by the model from prose on every query.
+
+Standalone module (no dependency on prompt.py or toolbox.py) so both can
+import from it - toolbox.py uses it to build SQL, prompt.py uses it to list
+known metrics in the get_leaderboard tool description - without a circular
+import between the two."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import date
+
+
+def current_season() -> int:
+    """This project's season convention (the year a season ENDS) applied to
+    today's real date: a season starting in October of year Y is season Y+1,
+    otherwise it's the current year. Resolved here in Python, once, rather
+    than asking the model to compute or remember it - confirmed live this is
+    the compounding rule small local models drop when a query also needs a
+    second condition (e.g. a minimum-sample filter) in the same query."""
+    today = date.today()
+    return today.year + 1 if today.month >= 10 else today.year
+
+
+SEASON_TYPE_LABELS = {1: "Preseason", 2: "Regular Season", 3: "Postseason"}
+
+# Extra display-only columns get_leaderboard can join in on request - a small,
+# fixed whitelist (name -> the real player_season_stats column) rather than an
+# arbitrary "fields" passthrough, so the model can't reintroduce a column-
+# guessing/injection surface the tool exists to close off. All sourced from
+# player_season_stats since that's the one table every metric can join to on
+# (athlete_id, season, season_type) regardless of which table the ranked
+# metric itself lives in.
+EXTRA_FIELD_COLUMNS = {
+    "points": "avgPoints",
+    "rebounds": "avgRebounds",
+    "assists": "avgAssists",
+    "steals": "avgSteals",
+    "blocks": "avgBlocks",
+    "minutes": "avgMinutes",
+}
+
+
+@dataclass(frozen=True)
+class LeaderboardMetric:
+    """`column` is what gets ranked; `season_type_is_string` routes to
+    net_points_player's own string season_type instead of the numeric one
+    every other table uses; `min_sample_column`/`default_min_sample` bake in
+    the qualifying threshold that keeps small-sample flukes (a garbage-time
+    cameo, a 1-game call-up) from dominating a rate/percentage ranking -
+    confirmed live necessary for usage_pct and NetPoints per-100-possession
+    values, not needed (and left off) for season-total/average box-score
+    stats, which naturally require volume to rank highly."""
+
+    table: str
+    column: str
+    label: str
+    id_column: str = "athlete_id"
+    season_column: str = "season"
+    season_type_column: str = "season_type"
+    season_type_is_string: bool = False
+    dedup_traded: bool = False
+    extra_columns: tuple[str, ...] = field(default_factory=tuple)
+    min_sample_column: str | None = None
+    default_min_sample: int | None = None
+    requires: str | None = None
+
+
+LEADERBOARD_METRICS: dict[str, LeaderboardMetric] = {
+    "usage_pct": LeaderboardMetric(
+        table="player_season_advanced_stats",
+        column="usage_pct",
+        label="usage rate",
+        extra_columns=("games_played",),
+        min_sample_column="games_played",
+        default_min_sample=20,
+        requires="warehouse built with --advanced-stats",
+    ),
+    "ts_pct": LeaderboardMetric(
+        table="player_season_advanced_stats",
+        column="ts_pct",
+        label="true shooting %",
+        extra_columns=("games_played",),
+        min_sample_column="games_played",
+        default_min_sample=20,
+        requires="warehouse built with --advanced-stats",
+    ),
+    "efg_pct": LeaderboardMetric(
+        table="player_season_advanced_stats",
+        column="efg_pct",
+        label="effective FG%",
+        extra_columns=("games_played",),
+        min_sample_column="games_played",
+        default_min_sample=20,
+        requires="warehouse built with --advanced-stats",
+    ),
+    "avg_points": LeaderboardMetric(
+        table="player_season_stats", column="avgPoints", label="points per game", dedup_traded=True, min_sample_column="gamesPlayed"
+    ),
+    "avg_rebounds": LeaderboardMetric(
+        table="player_season_stats", column="avgRebounds", label="rebounds per game", dedup_traded=True, min_sample_column="gamesPlayed"
+    ),
+    "avg_assists": LeaderboardMetric(
+        table="player_season_stats", column="avgAssists", label="assists per game", dedup_traded=True, min_sample_column="gamesPlayed"
+    ),
+    "avg_steals": LeaderboardMetric(
+        table="player_season_stats", column="avgSteals", label="steals per game", dedup_traded=True, min_sample_column="gamesPlayed"
+    ),
+    "avg_blocks": LeaderboardMetric(
+        table="player_season_stats", column="avgBlocks", label="blocks per game", dedup_traded=True, min_sample_column="gamesPlayed"
+    ),
+    "netpoints_total": LeaderboardMetric(
+        table="net_points_player",
+        column="overall",
+        label="NetPoints (season total)",
+        season_type_column="net_points_season_type",
+        season_type_is_string=True,
+    ),
+    "netpoints_offense": LeaderboardMetric(
+        table="net_points_player",
+        column="offense",
+        label="offensive NetPoints (season total)",
+        season_type_column="net_points_season_type",
+        season_type_is_string=True,
+    ),
+    "netpoints_defense": LeaderboardMetric(
+        table="net_points_player",
+        column="defense",
+        label="defensive NetPoints (season total)",
+        season_type_column="net_points_season_type",
+        season_type_is_string=True,
+    ),
+    "netpoints_per_100": LeaderboardMetric(
+        table="net_points_player",
+        column="overall_per_100_poss",
+        label="NetPoints per 100 possessions",
+        season_type_column="net_points_season_type",
+        season_type_is_string=True,
+        extra_columns=("total_minutes",),
+        min_sample_column="total_minutes",
+        default_min_sample=500,
+    ),
+    "netpoints_offense_per_100": LeaderboardMetric(
+        table="net_points_player",
+        column="offense_per_100_poss",
+        label="offensive NetPoints per 100 possessions",
+        season_type_column="net_points_season_type",
+        season_type_is_string=True,
+        extra_columns=("total_minutes",),
+        min_sample_column="total_minutes",
+        default_min_sample=500,
+    ),
+    "netpoints_defense_per_100": LeaderboardMetric(
+        table="net_points_player",
+        column="defense_per_100_poss",
+        label="defensive NetPoints per 100 possessions",
+        season_type_column="net_points_season_type",
+        season_type_is_string=True,
+        extra_columns=("total_minutes",),
+        min_sample_column="total_minutes",
+        default_min_sample=500,
+    ),
+}

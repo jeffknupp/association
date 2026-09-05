@@ -1,4 +1,5 @@
-"""The three tools exposed to the local model: schema lookup, read-only SQL,
+"""The tools exposed to the local model: schema lookup, read-only SQL, a
+parameterized leaderboard for the common "top N players by X" question shape,
 and shot chart rendering."""
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from typing import Any
 import duckdb
 
 from .court import render_court_html
+from .metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS, current_season
 from .prompt import KNOWN_TABLES
 
 MAX_ROWS = 200
@@ -77,6 +79,119 @@ class Toolbox:
         self._enrich_ids_with_names(cols, result)
         truncated = len(result) == MAX_ROWS
         return json.dumps({"rows": result, "row_count": len(result), "truncated": truncated}, default=str)
+
+    def get_leaderboard(
+        self,
+        metric: str,
+        season: int | None = None,
+        season_type: int = 2,
+        min_sample: int | None = None,
+        team: str | None = None,
+        fields: list[str] | None = None,
+        limit: int = 10,
+    ) -> str:
+        """A "top N players by X" query for a fixed, known set of metrics, with
+        every correctness rule this schema needs applied here in code rather
+        than left to the model to remember and re-derive per query: the season
+        defaults to the CURRENT one (see current_season()) rather than
+        whichever season happens to have data loaded; a qualifying minimum
+        sample (games or minutes, per metric) is applied by default for
+        rate/percentage metrics, since those - confirmed live - let a tiny
+        sample (a garbage-time cameo, a 1-game call-up) swing to an extreme
+        value no sustained role reaches; a traded player is deduplicated to
+        one row. `team` and `fields` are deliberately narrow (a resolved team
+        filter and a fixed whitelist of extra box-score columns) rather than a
+        free-text filter/column passthrough, which would just reopen the SQL-
+        generation reliability problem this tool exists to close. Prefer this
+        over hand-writing SQL for any of the metrics in LEADERBOARD_METRICS -
+        use run_sql instead only for a metric this tool doesn't cover, or a
+        need (a specific opponent, a per-game join) beyond team/fields here."""
+        spec = LEADERBOARD_METRICS.get(metric)
+        if spec is None:
+            return f"Error: unknown metric {metric!r}. Known metrics: {sorted(LEADERBOARD_METRICS)}"
+        if season_type not in SEASON_TYPE_LABELS:
+            return f"Error: season_type must be 1 (preseason), 2 (regular season), or 3 (postseason) - got {season_type!r}."
+        unknown_fields = [f for f in fields or [] if f not in EXTRA_FIELD_COLUMNS]
+        if unknown_fields:
+            return f"Error: unknown field(s) {unknown_fields}. Known fields: {sorted(EXTRA_FIELD_COLUMNS)}"
+
+        resolved_season = season if season is not None else current_season()
+        season_type_value: int | str = SEASON_TYPE_LABELS[season_type] if spec.season_type_is_string else season_type
+        effective_min_sample = min_sample if min_sample is not None else spec.default_min_sample
+
+        resolved_team_id: str | None = None
+        if team is not None:
+            matches = self.con.execute(
+                "SELECT team_id, display_name FROM teams WHERE team_id = ? OR abbreviation ILIKE ? OR display_name ILIKE ?",
+                [team, team, f"%{team}%"],
+            ).fetchall()
+            if not matches:
+                return f"Error: no team found matching {team!r}."
+            if len(matches) > 1:
+                return f"Error: {team!r} matches more than one team: {[m[1] for m in matches]}. Be more specific."
+            resolved_team_id = matches[0][0]
+
+        # A box-score join, keyed on (athlete_id, season, season_type) and
+        # deduped to the season-combined row (same pattern as a traded
+        # player's season-total row), is needed for `fields` regardless of
+        # which table the ranked metric itself lives in - player_season_stats
+        # is the one table every metric can join to this way.
+        select_cols = ["p.display_name AS display_name", f"t.{spec.column} AS value"]
+        select_cols.extend(f"t.{col}" for col in spec.extra_columns)
+        select_cols.extend(f"box.{EXTRA_FIELD_COLUMNS[f]} AS {f}" for f in fields or [])
+        from_clause = f"FROM {spec.table} t JOIN players p ON p.athlete_id = t.{spec.id_column}"
+        params: list[Any] = []
+        if fields:
+            from_clause += (
+                " LEFT JOIN (SELECT * FROM player_season_stats WHERE season = ? AND season_type = ? "
+                "QUALIFY ROW_NUMBER() OVER (PARTITION BY athlete_id ORDER BY (team_id IS NULL) DESC) = 1) box "
+                f"ON box.athlete_id = t.{spec.id_column}"
+            )
+            params.extend([resolved_season, season_type])
+
+        where = [f"t.{spec.season_column} = ?", f"t.{spec.season_type_column} = ?"]
+        params.extend([resolved_season, season_type_value])
+        if effective_min_sample is not None:
+            if spec.min_sample_column is None:
+                return f"Error: metric {metric!r} has no minimum-sample column to apply min_sample to."
+            where.append(f"t.{spec.min_sample_column} >= ?")
+            params.append(effective_min_sample)
+        if resolved_team_id is not None:
+            # A per-stint EXISTS check, not the deduped `box` join above - a
+            # traded player's deduped/combined row has team_id IS NULL, which
+            # would wrongly exclude them from every team's roster even though
+            # they really did play for one of their stint teams that season.
+            where.append(
+                f"EXISTS (SELECT 1 FROM player_season_stats pss WHERE pss.athlete_id = t.{spec.id_column} "
+                "AND pss.season = ? AND pss.season_type = ? AND pss.team_id = ?)"
+            )
+            params.extend([resolved_season, season_type, resolved_team_id])
+        qualify = ""
+        if spec.dedup_traded:
+            qualify = "QUALIFY ROW_NUMBER() OVER (PARTITION BY t.athlete_id ORDER BY (t.team_id IS NULL) DESC) = 1"
+
+        sql = f"SELECT {', '.join(select_cols)} {from_clause} WHERE {' AND '.join(where)} {qualify} ORDER BY t.{spec.column} DESC LIMIT ?"
+        params.append(limit)
+        try:
+            cur = self.con.execute(sql, params)
+            cols = [d[0] for d in cur.description]
+            rows = cur.fetchmany(MAX_ROWS)
+        except Exception as exc:  # e.g. the table needs a warehouse flag that wasn't used
+            return f"SQL error: {exc}" + (f" (requires: {spec.requires})" if spec.requires else "")
+        result = [dict(zip(cols, row, strict=True)) for row in rows]
+        return json.dumps(
+            {
+                "metric": metric,
+                "label": spec.label,
+                "season": resolved_season,
+                "season_type": season_type,
+                "min_sample_applied": effective_min_sample,
+                "team": team,
+                "rows": result,
+                "row_count": len(result),
+            },
+            default=str,
+        )
 
     def render_shot_chart(
         self,

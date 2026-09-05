@@ -5,6 +5,37 @@ commit that made it for the full story.
 
 ## 2026-09-05
 
+- **New get_leaderboard tool: correctness rules moved from prose into code**:
+  a series of real "top N players by X" queries kept failing in different
+  ways even with KNOWLEDGE_BASE entries covering each one - a season default
+  dropped as soon as a second filter was also needed, a min-sample rule that
+  only applied to the one metric it was written for, and (worst) two runs of
+  the identical question with the same thinking model producing two
+  different metrics and answers five minutes apart. Root cause: every
+  KNOWLEDGE_BASE entry makes the model responsible for remembering and
+  re-deriving one more rule from prose, on every query, and that stops
+  composing reliably as the list grows - more "thinking" time doesn't fix a
+  fundamentally stochastic process being asked to reproduce a growing
+  checklist exactly. Added `get_leaderboard(metric, season, season_type,
+  min_sample, team, fields, limit)` (`query/toolbox.py`, registry in new
+  `query/metrics.py`) - a fixed, known set of metrics (usage_pct, ts_pct,
+  efg_pct, avg_points/rebounds/assists/steals/blocks, netpoints_total/
+  offense/defense, netpoints_per_100/offense_per_100/defense_per_100) where
+  the season default, the qualifying minimum sample, the NetPoints string-
+  vs-numeric season_type quirk, and traded-player dedup are all resolved
+  once in Python instead of re-derived by the model per query. `team` and
+  `fields` are deliberately narrow (a resolved team name/abbreviation, a
+  whitelist of extra box-score columns) rather than a free-text filter or
+  arbitrary column passthrough, which would just reopen the same SQL-
+  generation reliability problem this tool exists to close. The model's job
+  shrinks to picking a metric name and filling a few slots - confirmed live,
+  the exact two failing questions ("top 10 by average usage rate" and
+  "average netpoints in 2026") now resolve in one tool call each, with the
+  default (non-thinking) model, correctly qualified, no KB-composition
+  needed. KNOWLEDGE_BASE entries for these metrics kept as run_sql fallback
+  guidance (for a leaderboard that also needs an opponent/per-game join),
+  now pointing at get_leaderboard first.
+
 - **Agent: never finalize an answer right after an unrecovered run_sql
   error**: a real query hit a column-not-found SQL error, and instead of
   retrying with a corrected query, the model finalized with a fabricated

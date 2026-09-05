@@ -59,6 +59,7 @@ class Agent:
         self.dispatch: dict[str, Callable[..., str]] = {
             "describe_table": self.toolbox.describe_table,
             "run_sql": self.toolbox.run_sql,
+            "get_leaderboard": self.toolbox.get_leaderboard,
             "render_shot_chart": self.toolbox.render_shot_chart,
         }
         self.messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -180,11 +181,12 @@ class Agent:
                     except Exception as exc:
                         result = f"Error calling {name}: {exc}"
                 result = str(result)
-                if name == "run_sql":
-                    # Only run_sql's outcome drives the fabrication guard below -
-                    # a describe_table miss (e.g. an unknown table name) doesn't
-                    # mean the model lacks real data, since an earlier run_sql
-                    # call in the same turn may have already succeeded.
+                if name in ("run_sql", "get_leaderboard"):
+                    # Only these two data-fetching tools drive the fabrication
+                    # guard below - a describe_table miss (e.g. an unknown table
+                    # name) doesn't mean the model lacks real data, since an
+                    # earlier run_sql/get_leaderboard call in the same turn may
+                    # have already succeeded.
                     pending_error = result if _is_tool_error(result) else None
                 self.messages.append({"role": "tool", "content": result})
 
