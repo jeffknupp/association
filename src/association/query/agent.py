@@ -16,6 +16,7 @@ from .toolbox import Toolbox
 
 MAX_TOOL_ITERATIONS = 8
 MAX_AUTO_SQL_RECOVERIES = 2  # cap on auto-executing SQL the model wrote instead of calling run_sql
+MAX_ERROR_RECOVERIES = 2  # cap on nudging a retry after a tool error, instead of letting it fabricate an answer
 MAX_HISTORY_MESSAGES = 40  # trim oldest turns once conversation grows past this, keep system prompt
 NUM_CTX = 8192  # local model's default (4096) is too small for multi-turn + tool-result JSON
 
@@ -35,6 +36,13 @@ def _extract_unrun_sql(text: str) -> str | None:
     if head.startswith("SELECT") or head.startswith("WITH"):
         return stripped
     return None
+
+
+def _is_tool_error(result: str) -> bool:
+    """A dispatched tool's result string that signals failure rather than real
+    data - toolbox.run_sql returns 'SQL error: ...' for a DB error, the dispatch
+    loop itself returns 'Error ...' for an unknown tool or a raised exception."""
+    return result.startswith("Error") or result.startswith("SQL error")
 
 
 class Agent:
@@ -66,6 +74,8 @@ class Agent:
     def ask(self, question: str) -> str:
         self.messages.append({"role": "user", "content": question})
         auto_recoveries = 0
+        error_recoveries = 0
+        pending_error: str | None = None
 
         for _ in range(MAX_TOOL_ITERATIONS):
             chat_kwargs: dict[str, Any] = dict(model=self.model, messages=self.messages, tools=TOOLS, options={"num_ctx": NUM_CTX})
@@ -112,6 +122,29 @@ class Agent:
                         }
                     )
                     continue
+                if not unrun_sql and pending_error and error_recoveries < MAX_ERROR_RECOVERIES:
+                    # The last tool call errored and the model never got real data
+                    # afterward, yet it's trying to finalize anyway - confirmed live,
+                    # this produced a fabricated answer with literal "[Player Name 1]"
+                    # / "[NetPoints Value]" placeholder text after a column-not-found
+                    # error, presented as if it were real. Never let a finalize
+                    # through right after an unrecovered error - nudge a retry
+                    # instead of trusting whatever it wrote.
+                    error_recoveries += 1
+                    if self.verbose:
+                        print("  -> (guard) blocked a finalize right after a tool error, nudging a retry", file=sys.stderr)
+                    self.messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "Your last tool call failed, so you do not have real data yet - do "
+                                "not answer with placeholder or made-up values. Either call run_sql "
+                                "again with a corrected query, or say plainly that you couldn't get "
+                                "the data. The error was:\n" + pending_error
+                            ),
+                        }
+                    )
+                    continue
                 self._trim_history()
                 if unrun_sql:
                     # Recovery cap hit and the model is STILL just printing SQL
@@ -126,6 +159,11 @@ class Agent:
                         "The last one I tried was:\n\n```sql\n" + unrun_sql + "\n```\n\n"
                         "You can run it yourself, or try rephrasing the question."
                     )
+                if pending_error:
+                    # Recovery cap hit and it's STILL trying to finalize right after
+                    # an unrecovered error - say so honestly rather than returning
+                    # whatever it fabricated.
+                    return "I ran into an error retrieving that data and wasn't able to recover. The last error was:\n\n" + pending_error
                 return msg.content or ""
 
             for call in msg.tool_calls:
@@ -141,7 +179,14 @@ class Agent:
                         result = fn(**args)
                     except Exception as exc:
                         result = f"Error calling {name}: {exc}"
-                self.messages.append({"role": "tool", "content": str(result)})
+                result = str(result)
+                if name == "run_sql":
+                    # Only run_sql's outcome drives the fabrication guard below -
+                    # a describe_table miss (e.g. an unknown table name) doesn't
+                    # mean the model lacks real data, since an earlier run_sql
+                    # call in the same turn may have already succeeded.
+                    pending_error = result if _is_tool_error(result) else None
+                self.messages.append({"role": "tool", "content": result})
 
         self._trim_history()
         return "Gave up after too many tool-call iterations."

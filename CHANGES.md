@@ -5,6 +5,26 @@ commit that made it for the full story.
 
 ## 2026-09-05
 
+- **Agent: never finalize an answer right after an unrecovered run_sql
+  error**: a real query hit a column-not-found SQL error, and instead of
+  retrying with a corrected query, the model finalized with a fabricated
+  answer using literal `[Player Name 1]` / `[NetPoints Value]` placeholder
+  text as if it were real data (confirmed live). This is worse than a wrong
+  answer - it looks like real, if truncated, output. Added a second guard
+  alongside the existing SQL-as-prose one: track whether the most recent
+  `run_sql` call in the turn errored, and if the model then tries to finalize
+  with plain prose (not unrun SQL, which the existing guard already handles),
+  refuse it - nudge a retry (same MAX_ERROR_RECOVERIES=2 cap pattern as the
+  existing recovery), and if still unrecovered after that, return an honest
+  "I ran into an error... and wasn't able to recover" message with the real
+  error shown, instead of trusting whatever the model wrote. Deliberately
+  scoped to `run_sql` only, not `describe_table`/`render_shot_chart` - a
+  `describe_table` miss (e.g. an unknown table name) doesn't mean the model
+  lacks real data, since an earlier `run_sql` call in the same turn may have
+  already succeeded; treating every tool error the same way broke an
+  existing test where a `describe_table` call incidentally failed against an
+  empty test database with unrelated real data already in hand.
+
 - **KNOWLEDGE_BASE: rate-stat leaderboards need a minimum sample, and a
   standing current-season default**: a user's real query ("top 10 players by
   average usage rate") came back with Izaiah Brockington at #1 (65.93% over

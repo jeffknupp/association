@@ -8,7 +8,7 @@ import ollama
 import pytest
 from ollama import ChatResponse, Message
 
-from association.query.agent import MAX_AUTO_SQL_RECOVERIES, Agent, _extract_unrun_sql
+from association.query.agent import MAX_AUTO_SQL_RECOVERIES, MAX_ERROR_RECOVERIES, Agent, _extract_unrun_sql
 
 
 def test_extract_sql_from_fenced_sql_block() -> None:
@@ -127,3 +127,75 @@ def test_ask_gives_honest_message_when_recovery_cap_exhausted(monkeypatch: pytes
     assert "wasn't able to get a working query" in result
     assert "SELECT 1" in result
     assert "Let's run this corrected query" not in result
+
+
+def test_ask_blocks_fabricated_answer_right_after_tool_error_and_retries(monkeypatch: pytest.MonkeyPatch, think_agent: Agent) -> None:
+    """Regression: a real query hit a column-not-found SQL error, and instead of
+    retrying with a corrected query, the model finalized with a fabricated answer
+    using literal "[Player Name 1]" / "[NetPoints Value]" placeholder text as if
+    it were real data (confirmed live). The agent must not return a final answer
+    right after an unrecovered tool error - it should nudge a retry instead, and
+    a subsequent successful run_sql call should produce the real answer."""
+    bad_call = Message.ToolCall(function=Message.ToolCall.Function(name="run_sql", arguments={"query": "SELECT bogus_column FROM players"}))
+    good_call = Message.ToolCall(function=Message.ToolCall.Function(name="run_sql", arguments={"query": "SELECT display_name FROM players"}))
+    responses = iter(
+        [
+            ChatResponse(model="qwen3:8b", created_at="", done=True, message=Message(role="assistant", content="", tool_calls=[bad_call])),
+            ChatResponse(
+                model="qwen3:8b",
+                created_at="",
+                done=True,
+                message=Message(role="assistant", content="1. [Player Name 1] - [Value]\n2. [Player Name 2] - [Value]"),
+            ),
+            ChatResponse(model="qwen3:8b", created_at="", done=True, message=Message(role="assistant", content="", tool_calls=[good_call])),
+            ChatResponse(model="qwen3:8b", created_at="", done=True, message=Message(role="assistant", content="Real answer.")),
+        ]
+    )
+
+    def fake_chat(**kwargs: Any) -> ChatResponse:
+        return next(responses)
+
+    def fake_run_sql(query: str) -> str:
+        if "bogus_column" in query:
+            return 'SQL error: Binder Error: column "bogus_column" not found'
+        return '{"rows": [{"display_name": "Test Player"}], "row_count": 1, "truncated": false}'
+
+    monkeypatch.setattr(ollama, "chat", fake_chat)
+    think_agent.dispatch["run_sql"] = fake_run_sql
+    result = think_agent.ask("some question")
+
+    assert result == "Real answer."
+    assert "[Player Name 1]" not in result
+
+
+def test_ask_gives_honest_message_when_error_recovery_cap_exhausted(monkeypatch: pytest.MonkeyPatch, think_agent: Agent) -> None:
+    """Regression: if the model keeps finalizing with a fabricated answer after
+    an unrecovered tool error past MAX_ERROR_RECOVERIES retries, the final reply
+    must say plainly that the query failed, not return the fabricated content."""
+    bad_call = Message.ToolCall(function=Message.ToolCall.Function(name="run_sql", arguments={"query": "SELECT bogus_column FROM players"}))
+    responses = iter(
+        [ChatResponse(model="qwen3:8b", created_at="", done=True, message=Message(role="assistant", content="", tool_calls=[bad_call]))]
+        + [
+            ChatResponse(
+                model="qwen3:8b",
+                created_at="",
+                done=True,
+                message=Message(role="assistant", content=f"Fabricated attempt {i}: [Player Name] - [Value]"),
+            )
+            for i in range(MAX_ERROR_RECOVERIES + 1)
+        ]
+    )
+
+    def fake_chat(**kwargs: Any) -> ChatResponse:
+        return next(responses)
+
+    def fake_run_sql(query: str) -> str:
+        return 'SQL error: Binder Error: column "bogus_column" not found'
+
+    monkeypatch.setattr(ollama, "chat", fake_chat)
+    think_agent.dispatch["run_sql"] = fake_run_sql
+    result = think_agent.ask("some question")
+
+    assert "ran into an error" in result
+    assert "bogus_column" in result
+    assert "[Player Name]" not in result
