@@ -261,13 +261,19 @@ KNOWLEDGE_BASE = [
     {
         "topic": "NetPoints (net_points_player / net_points_team)",
         "note": (
-            "These use net_points_season_type, a STRING ('Regular Season'/'Playoffs'/'PlayIn'/"
-            "'IST Championship'), not the numeric season_type every other table uses - filtering "
-            "with season_type = 2 here matches nothing, silently. net_points_team has no season "
-            "history at all (current season only) - an empty result for a past season there is "
-            "expected, not a sign of missing data. overall/offense/defense are NetPoints' own "
-            "points-above-average scale, not comparable to BPI (team_power_index) or "
-            "ts_pct/efg_pct/usage_pct (player_advanced_stats) - don't blend them into one ranking."
+            "These have NO season_type column at all - only net_points_season_type, a STRING "
+            "('Regular Season'/'Playoffs'/'PlayIn'/'IST Championship'). Referencing season_type "
+            "on either table (in a WHERE OR a JOIN condition) is a column-not-found error, not a "
+            "silent empty result - if you hit that error, the fix is net_points_season_type = "
+            "'Regular Season', not describe_table-guessing your way to a different column name. "
+            "net_points_team has no season history at all (current season only) - an empty result "
+            "for a past season there is expected, not a sign of missing data. overall/offense/"
+            "defense are NetPoints' own points-above-average scale, not comparable to BPI "
+            "(team_power_index) or ts_pct/efg_pct/usage_pct (player_advanced_stats) - don't blend "
+            "them into one ranking. These are SEASON-level (one row per player/team per season) - "
+            "joining either to a per-game table (player_box_stats, team_box_stats) fans out into "
+            "one row per game per player, not one row per player; see the next entry if the "
+            "question wants a specific opponent or per-game stats alongside NetPoints."
         ),
         "example": (
             "-- a player's NetPoints for a regular season\n"
@@ -289,6 +295,48 @@ KNOWLEDGE_BASE = [
             "-- a player's NetPoints in one specific game\n"
             "SELECT o_net_pts, d_net_pts, t_net_pts FROM net_points_player_game\n"
             "WHERE athlete_id = ? AND event_id = ?"
+        ),
+    },
+    {
+        "topic": "\"Top N players by NetPoints\" alongside opponent or per-game stats",
+        "note": (
+            "If the question wants an opponent, or per-game stats (points/rebounds/etc.) sitting "
+            "next to a NetPoints value, it means ONE game per player, not a season - use "
+            "net_points_player_game (t_net_pts), not net_points_player.overall. Confirmed live: "
+            "joining the season-level table to player_box_stats on athlete_id+season fans out into "
+            "one row per game the player played, so ORDER BY ... LIMIT 10 returns up to 10 GAMES "
+            "(often nearly all from one or two players whose season total happens to be highest), "
+            "not 10 distinct players - and without an explicit season_type filter on the per-game "
+            "side (net_points_player has no season_type to join on, forcing this mistake), it also "
+            "silently pulls in preseason/postseason games too. net_points_player_game already has "
+            "one row per player per game with its own season/season_type and the same event_id "
+            "player_box_stats uses - join on event_id + athlete_id, not season, and the opponent is "
+            "already sitting right there via player_box_stats.opponent_team_id."
+        ),
+        "example": (
+            "-- top 10 single-game NetPoints performances, with opponent and box score\n"
+            "SELECT p.display_name, npg.t_net_pts, pbs.opponent_team_id,\n"
+            "       pbs.points, pbs.assists, pbs.rebounds, pbs.blocks, pbs.steals, pbs.turnovers,\n"
+            "       pbs.fieldGoalsAttempted, pbs.fieldGoalsMade,\n"
+            "       pbs.threePointFieldGoalsAttempted, pbs.threePointFieldGoalsMade\n"
+            "FROM net_points_player_game npg\n"
+            "JOIN players p ON p.athlete_id = npg.athlete_id\n"
+            "JOIN player_box_stats pbs ON pbs.event_id = npg.event_id AND pbs.athlete_id = npg.athlete_id\n"
+            "WHERE npg.season = 2026 AND npg.season_type = 2\n"
+            "ORDER BY npg.t_net_pts DESC LIMIT 10"
+        ),
+    },
+    {
+        "topic": "Column aliases starting with a digit",
+        "note": (
+            "An alias like AS 2pta is invalid SQL - an unquoted identifier can't start with a "
+            "digit. Double-quote it (AS \"2pta\") instead of guessing a different spelling or "
+            "dropping the alias - this applies to any column name/alias starting with a number, "
+            "not just NetPoints queries."
+        ),
+        "example": (
+            "-- WRONG: SELECT points AS 2pta -- syntax error\n"
+            "-- RIGHT: SELECT points AS \"2pta\""
         ),
     },
     {

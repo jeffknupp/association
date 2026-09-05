@@ -113,6 +113,19 @@ class Agent:
                     )
                     continue
                 self._trim_history()
+                if unrun_sql:
+                    # Recovery cap hit and the model is STILL just printing SQL
+                    # instead of running it - returning msg.content as-is would
+                    # read as "I'm about to do this" while doing nothing
+                    # (confirmed live: a real answer ending in "Let's run this
+                    # corrected query" that never ran). Say plainly that it
+                    # didn't work, with the last attempt shown, rather than a
+                    # reply that only looks like an in-progress action.
+                    return (
+                        "I wasn't able to get a working query after a few attempts. "
+                        "The last one I tried was:\n\n```sql\n" + unrun_sql + "\n```\n\n"
+                        "You can run it yourself, or try rephrasing the question."
+                    )
                 return msg.content or ""
 
             for call in msg.tool_calls:

@@ -5,6 +5,28 @@ commit that made it for the full story.
 
 ## 2026-09-04
 
+- **Fix NetPoints leaderboard fan-out, and a dead-end recovery-cap message**:
+  a real query ("top 10 highest NetPoints, with opponent and box score
+  stats") joined season-level `net_points_player` to per-game
+  `player_box_stats` on athlete_id+season - fanning out into one row per
+  game (not per player), so `ORDER BY ... LIMIT 10` returned up to 10 games
+  from whichever one or two players had the highest season total, not 10
+  distinct players. Also referenced a nonexistent `net_points_player.
+  season_type` column (only the string `net_points_season_type` exists) and
+  an unquoted `AS 2pta`-style alias (invalid - identifiers can't start with
+  a digit unquoted). The model then made it worse across retries: guessed
+  wrong snake_case column names instead of calling describe_table, and
+  silently dropped the "opponent" requirement. Added a KNOWLEDGE_BASE
+  pattern: a request for an opponent or per-game stats alongside NetPoints
+  means one game, so use `net_points_player_game` (already has its own
+  season_type and event_id) joined on event_id+athlete_id, not season -
+  verified live, all 10 rows now match ground truth exactly. Also fixed:
+  once the SQL-as-prose auto-recovery cap was exhausted, a model that kept
+  printing SQL instead of running it got that raw prose returned as the
+  final answer verbatim - including "Let's run this corrected query" that
+  never ran (confirmed live). The agent now says plainly that it couldn't
+  get a working query, rather than returning text that only looks like an
+  action still in progress.
 - **Switched the CLI from argparse to Click; added shell completion**: Click
   generates bash/zsh/fish completion directly from the command definitions
   (subcommands, options, `--log-level`'s choices), so there's nothing to

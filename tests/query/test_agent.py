@@ -8,7 +8,7 @@ import ollama
 import pytest
 from ollama import ChatResponse, Message
 
-from association.query.agent import Agent, _extract_unrun_sql
+from association.query.agent import MAX_AUTO_SQL_RECOVERIES, Agent, _extract_unrun_sql
 
 
 def test_extract_sql_from_fenced_sql_block() -> None:
@@ -94,3 +94,36 @@ def test_ask_strips_thinking_from_history_before_next_call(monkeypatch: pytest.M
     assistant_msg = next(m for m in second_call_messages if m.get("role") == "assistant")
     assert assistant_msg.get("thinking") is None
     assert "lots of first-turn reasoning" not in str(second_call_messages)
+
+
+def test_ask_gives_honest_message_when_recovery_cap_exhausted(monkeypatch: pytest.MonkeyPatch, think_agent: Agent) -> None:
+    """Regression: once MAX_AUTO_SQL_RECOVERIES auto-recoveries are used up, a
+    model that keeps printing SQL instead of calling run_sql used to get its
+    raw prose returned as the final answer verbatim - including trailing text
+    like "Let's run this corrected query" that never actually ran (confirmed
+    live). The final reply must say plainly that it didn't work, not read
+    like an action that's still pending."""
+    responses = iter(
+        [
+            ChatResponse(model="qwen3:8b", created_at="", done=True, message=Message(role="assistant", content="SELECT 1"))
+            for _ in range(MAX_AUTO_SQL_RECOVERIES)
+        ]
+        + [
+            ChatResponse(
+                model="qwen3:8b",
+                created_at="",
+                done=True,
+                message=Message(role="assistant", content="Let's run this corrected query:\n```sql\nSELECT 1\n```"),
+            )
+        ]
+    )
+
+    def fake_chat(**kwargs: Any) -> ChatResponse:
+        return next(responses)
+
+    monkeypatch.setattr(ollama, "chat", fake_chat)
+    result = think_agent.ask("some question")
+
+    assert "wasn't able to get a working query" in result
+    assert "SELECT 1" in result
+    assert "Let's run this corrected query" not in result
