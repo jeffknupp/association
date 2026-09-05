@@ -76,6 +76,33 @@ team_id / athlete_id / event_id are all VARCHAR - join and filter on them as str
 # entry here rather than editing prose elsewhere.
 KNOWLEDGE_BASE = [
     {
+        "topic": "No season named in the question -> default to the CURRENT season",
+        "note": (
+            "If the question doesn't name a season ('this season', 'this year', or no season "
+            "mentioned at all), default to the CURRENT season computed from today's real "
+            "calendar date - NOT MAX(season) from whatever data happens to be loaded. This "
+            "project's season convention (used everywhere) is the year a season ENDS: a season "
+            "starting in October of year Y is season Y+1, otherwise it's the current year. "
+            "Compute it with CURRENT_DATE rather than assuming a fixed year. If that computed "
+            "season has no rows yet (a new season hasn't been fetched, or hasn't started), say "
+            "so plainly - do NOT silently fall back to an older season that does have data "
+            "without saying that's what you did; the user asked about the current season, not "
+            "whichever one happens to be available."
+        ),
+        "example": (
+            "-- \"who leads the league in points?\" (no season named) -> use the CURRENT season\n"
+            "SELECT p.display_name, ps.avgPoints\n"
+            "FROM player_season_stats ps JOIN players p ON p.athlete_id = ps.athlete_id\n"
+            "WHERE ps.season = (\n"
+            "    SELECT CASE WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 10\n"
+            "                THEN EXTRACT(YEAR FROM CURRENT_DATE) + 1\n"
+            "                ELSE EXTRACT(YEAR FROM CURRENT_DATE) END\n"
+            ")\n"
+            "AND ps.season_type = 2\n"
+            "ORDER BY ps.avgPoints DESC LIMIT 1"
+        ),
+    },
+    {
         "topic": "Single-game vs. season-total stats",
         "note": (
             "player_box_stats / team_box_stats rows are PER GAME, not season totals. For a "
@@ -468,6 +495,34 @@ KNOWLEDGE_BASE = [
             "available rather than substituting a different stat or inventing a number."
         ),
     },
+    {
+        "topic": "Rate-stat leaderboards need a minimum sample size (usage_pct, ts_pct, efg_pct)",
+        "note": (
+            "A real query for 'top 10 by usage rate' with no minimum returned Izaiah "
+            "Brockington at 65.93% (8 games) at #1, and the next 9 spots were all 1-3-game "
+            "stints too - confirmed live: usage_pct is a ratio, so a handful of unusual "
+            "garbage-time minutes can swing it to an extreme value that a real, sustained "
+            "role never reaches. The real usage leaders (Embiid, Giannis, Doncic, ~37-39%) "
+            "were buried below dozens of small-sample flukes. Unlike a season TOTAL (which "
+            "naturally requires volume to rank highly), a rate/percentage stat needs an "
+            "explicit minimum sample - use games_played (player_season_advanced_stats has it "
+            "directly) or total_minutes as a floor. Confirmed live: WHERE games_played >= 20 "
+            "fixes this leaderboard completely. If the user's question gives its own minimum "
+            "(games, minutes, attempts), use that instead of 20 - 20 is just a reasonable "
+            "default for 'best/worst by X%' with no minimum stated. This is the same principle "
+            "as the NetPoints-per-100 entry above (total_minutes >= 500 there) - apply it to "
+            "ts_pct/efg_pct/usage_pct too, not just NetPoints."
+        ),
+        "example": (
+            "-- top 10 by usage rate for a given season - remember to ALSO apply the current-\n"
+            "-- season default above if the question doesn't name one\n"
+            "SELECT p.display_name, pas.games_played, pas.usage_pct\n"
+            "FROM player_season_advanced_stats pas\n"
+            "JOIN players p ON p.athlete_id = pas.athlete_id\n"
+            "WHERE pas.season_type = 2 AND pas.season = 2026 AND pas.games_played >= 20\n"
+            "ORDER BY pas.usage_pct DESC LIMIT 10"
+        ),
+    },
 ]
 
 
@@ -497,6 +552,15 @@ player. Use this only for requests to see/plot/visualize shots.
 
 Available tables:
 {TABLE_SUMMARY}
+
+STANDING RULE - apply this to EVERY query, not just ones about "this season": if the question \
+does not name a season, add a season filter for the CURRENT season computed from today's real \
+date, in every query you write, even ones that also need other filters (a minimum games/minutes, \
+a team, a position, etc.) - never leave a multi-condition query without it just because another \
+condition is also present. Compute it with:
+SELECT CASE WHEN EXTRACT(MONTH FROM CURRENT_DATE) >= 10 THEN EXTRACT(YEAR FROM CURRENT_DATE) + 1 \
+ELSE EXTRACT(YEAR FROM CURRENT_DATE) END
+If that season has no rows yet, say so rather than silently answering from an older season.
 
 Known gotchas and patterns for this schema - read before writing SQL or calling a tool. Treat \
 each worked example as the exact pattern to copy, not just an illustration:

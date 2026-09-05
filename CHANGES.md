@@ -5,6 +5,29 @@ commit that made it for the full story.
 
 ## 2026-09-05
 
+- **KNOWLEDGE_BASE: rate-stat leaderboards need a minimum sample, and a
+  standing current-season default**: a user's real query ("top 10 players by
+  average usage rate") came back with Izaiah Brockington at #1 (65.93% over
+  8 games), and the rest of the top 10 were all 1-3-game stints too - the
+  real leaders (Embiid, Giannis, Doncic, ~37-39%) were buried below dozens of
+  small-sample flukes. Confirmed live: usage_pct is a ratio, so a few
+  unusual garbage-time minutes can swing it far past what any sustained role
+  reaches; `WHERE games_played >= 20` fixes the leaderboard completely.
+  Added a KNOWLEDGE_BASE entry generalizing this to any rate/percentage stat
+  (usage_pct, ts_pct, efg_pct) - same principle as the NetPoints-per-100
+  minimum-minutes entry added earlier the same day. Separately, added a
+  standing rule (in the system prompt directly, not just the growing gotcha
+  list) that a question naming no season should default to the CURRENT
+  season computed from `CURRENT_DATE` - not whatever season happens to have
+  the most data loaded, and not silently substituted without saying so if
+  the current season has no data yet. Confirmed live this works reliably for
+  a simple query ("who leads the league in points?" correctly resolved to
+  the current season); a compound query needing both the season default AND
+  a minimum-games filter in the same query did not reliably pick up the
+  season filter despite three different prompt placements tried - noted as
+  a known small-model instruction-following gap (consistent with prior ones
+  documented in this file), not chased further given diminishing returns.
+
 - **NetPoints per-100-possession rate columns on `net_points_player`**: a user
   asked whether NetPoints has a normalized (rate) form, since `overall`/
   `offense`/`defense` are season cumulative totals - confirmed live, two
