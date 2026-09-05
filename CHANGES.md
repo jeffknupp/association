@@ -5,6 +5,23 @@ commit that made it for the full story.
 
 ## 2026-09-04
 
+- **KNOWLEDGE_BASE: fieldGoalsMade already includes 3-pointers**: a user
+  caught real bad math in a live answer - 2x made-2pt + 3x made-3pt came out
+  well above the player's actual points. Root cause: fieldGoalsMade/
+  fieldGoalsAttempted are TOTAL field goals (2pt AND 3pt combined, the
+  standard box-score convention), and threePointFieldGoalsMade/Attempted is
+  a SUBSET already counted inside those totals - not a separate, additional
+  category the way freeThrows is. A prior KNOWLEDGE_BASE example (added this
+  same day, for the NetPoints leaderboard fan-out fix) used fieldGoalsMade
+  as if it were 2-point-specific, which is exactly this bug. Fixed that
+  example and added a dedicated entry: true 2-point makes/attempts are
+  fieldGoalsMade - threePointFieldGoalsMade (same pattern for attempted).
+  Verified live on all three tables that carry these fields
+  (player_box_stats, team_box_stats, player_season_stats): points ==
+  (fieldGoalsMade - threePointFieldGoalsMade)*2 + threePointFieldGoalsMade*3
+  + freeThrowsMade, exactly, every row checked. Re-ran the original query:
+  all 10 rows now reconcile correctly.
+
 - **Fix NetPoints leaderboard fan-out, and a dead-end recovery-cap message**:
   a real query ("top 10 highest NetPoints, with opponent and box score
   stats") joined season-level `net_points_player` to per-game

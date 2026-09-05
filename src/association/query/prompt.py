@@ -117,6 +117,30 @@ KNOWLEDGE_BASE = [
         ),
     },
     {
+        "topic": "fieldGoalsMade/Attempted already INCLUDES 3-pointers",
+        "note": (
+            "fieldGoalsMade/fieldGoalsAttempted are TOTAL field goals (2-point AND 3-point "
+            "combined) - the standard box-score convention. threePointFieldGoalsMade/Attempted is "
+            "a SUBSET already counted inside those totals, not a separate, additional category "
+            "(unlike freeThrows, which really is separate). Treating fieldGoalsMade as '2-point "
+            "makes' overcounts points badly - confirmed live, a real query's math implied a player "
+            "scored more from 2s and 3s alone than their actual total points. For true 2-point-only "
+            "makes/attempts, subtract: fieldGoalsMade - threePointFieldGoalsMade (same pattern for "
+            "attempted). This applies identically on player_box_stats, team_box_stats, and "
+            "player_season_stats - verified live, points = (fieldGoalsMade - "
+            "threePointFieldGoalsMade)*2 + threePointFieldGoalsMade*3 + freeThrowsMade exactly, "
+            "on all three."
+        ),
+        "example": (
+            "-- WRONG: treats fieldGoalsMade as 2-point makes -> double-counts 3s\n"
+            "SELECT fieldGoalsMade AS twoPtMade FROM player_box_stats WHERE athlete_id = ?\n"
+            "-- RIGHT:\n"
+            "SELECT fieldGoalsMade - threePointFieldGoalsMade AS twoPtMade,\n"
+            "       fieldGoalsAttempted - threePointFieldGoalsAttempted AS twoPtAttempted\n"
+            "FROM player_box_stats WHERE athlete_id = ?"
+        ),
+    },
+    {
         "topic": "Shot distance / shot location math",
         "note": (
             "shot_chart.coordinate_x/coordinate_y are court position in feet. The hoop is at "
@@ -315,9 +339,12 @@ KNOWLEDGE_BASE = [
         ),
         "example": (
             "-- top 10 single-game NetPoints performances, with opponent and box score\n"
+            "-- (fieldGoalsMade/Attempted - threePointFieldGoalsMade/Attempted) is the true 2-point\n"
+            "-- split - see the fieldGoalsMade entry below on why fieldGoalsMade alone is NOT that.\n"
             "SELECT p.display_name, npg.t_net_pts, pbs.opponent_team_id,\n"
             "       pbs.points, pbs.assists, pbs.rebounds, pbs.blocks, pbs.steals, pbs.turnovers,\n"
-            "       pbs.fieldGoalsAttempted, pbs.fieldGoalsMade,\n"
+            "       pbs.fieldGoalsAttempted - pbs.threePointFieldGoalsAttempted AS twoPtAttempted,\n"
+            "       pbs.fieldGoalsMade - pbs.threePointFieldGoalsMade AS twoPtMade,\n"
             "       pbs.threePointFieldGoalsAttempted, pbs.threePointFieldGoalsMade\n"
             "FROM net_points_player_game npg\n"
             "JOIN players p ON p.athlete_id = npg.athlete_id\n"
