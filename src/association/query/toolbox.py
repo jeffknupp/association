@@ -157,8 +157,11 @@ class Toolbox:
             )
             params.extend([resolved_season, season_type])
 
-        where = [f"t.{spec.season_column} = ?", f"t.{spec.season_type_column} = ?"]
-        params.extend([resolved_season, season_type_value])
+        where = [f"t.{spec.season_column} = ?"]
+        params.append(resolved_season)
+        if spec.has_season_type:
+            where.append(f"t.{spec.season_type_column} = ?")
+            params.append(season_type_value)
         if effective_min_sample is not None:
             if spec.min_sample_column is None:
                 return f"Error: metric {metric!r} has no minimum-sample column to apply min_sample to."
@@ -192,7 +195,7 @@ class Toolbox:
                 "metric": metric,
                 "label": spec.label,
                 "season": resolved_season,
-                "season_type": season_type,
+                "season_type": season_type if spec.has_season_type else None,
                 "min_sample_applied": effective_min_sample,
                 "team": team,
                 "rows": result,

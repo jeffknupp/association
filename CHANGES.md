@@ -5,6 +5,26 @@ commit that made it for the full story.
 
 ## 2026-09-05
 
+- **NetPoints fingerprint categories as get_leaderboard metrics, plus a KB
+  entry**: net_points_player_fingerprint (added earlier today) went
+  unused in a live query ("who has the best rim scoring NetPoints?") - the
+  model fell back to an unrelated per-game NetPoints leaderboard instead,
+  since nothing pointed it at the new table. Added all 66 fingerprint
+  category columns as get_leaderboard metrics (`<category>_o_net_pts` /
+  `_d_net_pts` / `_t_net_pts` for each of the 22 categories - two_pt,
+  three_pt, driving, fastbreak, rebound, turnover, rim, ...), generated from
+  the same category list `parse.py` already uses to build those columns
+  (extracted to a new shared `association/net_points_categories.py`, one
+  source of truth for both). Required a new `LeaderboardMetric.has_season_type`
+  flag - this table, unlike every other metric's table, has no season_type
+  column at all. Kept the free-text tool description short (listing the ~14
+  original metrics by name, describing the 66 fingerprint ones by their
+  naming pattern instead of spelling out all of them) while the JSON schema's
+  `enum` still lists every valid value. Also added a KNOWLEDGE_BASE entry for
+  the run_sql fallback path. Confirmed live: the exact previously-failing
+  question now resolves via `get_leaderboard(metric='rim_o_net_pts', ...)` in
+  one call, matching the values already verified directly against the DB.
+
 - **NetPoints per-player skill/play-type breakdown (net_points_player_fingerprint)**:
   a user asked whether we had enough NetPoints coverage to recreate
   espnanalytics.com's "Net Pts Fingerprint" page - investigation found the

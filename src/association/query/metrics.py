@@ -11,9 +11,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from association.net_points_categories import FINGERPRINT_CATEGORIES, FINGERPRINT_SIDE_LABELS
 from association.season import current_season
 
-__all__ = ["current_season", "SEASON_TYPE_LABELS", "LeaderboardMetric", "LEADERBOARD_METRICS", "EXTRA_FIELD_COLUMNS"]
+__all__ = [
+    "current_season",
+    "SEASON_TYPE_LABELS",
+    "LeaderboardMetric",
+    "LEADERBOARD_METRICS",
+    "EXTRA_FIELD_COLUMNS",
+    "CORE_METRIC_NAMES",
+    "FINGERPRINT_METRIC_NAMES",
+]
 
 SEASON_TYPE_LABELS = {1: "Preseason", 2: "Regular Season", 3: "Postseason"}
 
@@ -52,6 +61,7 @@ class LeaderboardMetric:
     season_column: str = "season"
     season_type_column: str = "season_type"
     season_type_is_string: bool = False
+    has_season_type: bool = True
     dedup_traded: bool = False
     extra_columns: tuple[str, ...] = field(default_factory=tuple)
     min_sample_column: str | None = None
@@ -154,3 +164,30 @@ LEADERBOARD_METRICS: dict[str, LeaderboardMetric] = {
         default_min_sample=500,
     ),
 }
+
+CORE_METRIC_NAMES = frozenset(LEADERBOARD_METRICS)
+
+# net_points_player_fingerprint's 22 shot/play-type categories x 3 sides
+# (offense/defense/total) = 66 more metrics, generated from the same category
+# list parse.py uses to build the columns in the first place - one source of
+# truth for both. The table has no season_type column at all (has_season_type
+# =False), unlike every other metric above. No default_min_sample: these are
+# season CUMULATIVE totals in the same units as netpoints_total/offense/
+# defense above, not a rate - same reasoning, no floor needed by default, but
+# `minutes` is still exposed as min_sample_column for a question that gives
+# its own minimum. Kept out of CORE_METRIC_NAMES (tracked separately as
+# FINGERPRINT_METRIC_NAMES) so prompt.py can describe this whole group by its
+# <category>_<side>_net_pts naming pattern instead of spelling out all 66
+# names in prose - the tool's JSON schema enum still lists every one.
+for _src_category, _our_prefix in FINGERPRINT_CATEGORIES.items():
+    for _side, _side_label in FINGERPRINT_SIDE_LABELS.items():
+        _metric_name = f"{_our_prefix}_{_side}_net_pts"
+        LEADERBOARD_METRICS[_metric_name] = LeaderboardMetric(
+            table="net_points_player_fingerprint",
+            column=_metric_name,
+            label=f"{_our_prefix.replace('_', ' ')} NetPoints ({_side_label})",
+            has_season_type=False,
+            min_sample_column="minutes",
+        )
+
+FINGERPRINT_METRIC_NAMES = frozenset(LEADERBOARD_METRICS) - CORE_METRIC_NAMES

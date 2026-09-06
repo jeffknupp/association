@@ -3,7 +3,7 @@ definitions, and the growing knowledge base of schema/domain gotchas."""
 
 from __future__ import annotations
 
-from .metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS
+from .metrics import CORE_METRIC_NAMES, EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS
 
 KNOWN_TABLES = {
     "teams",
@@ -425,6 +425,33 @@ KNOWLEDGE_BASE = [
         ),
     },
     {
+        "topic": "NetPoints Fingerprint categories (net_points_player_fingerprint)",
+        "note": (
+            "Prefer get_leaderboard(metric='<category>_o_net_pts'/'_d_net_pts'/'_t_net_pts') over "
+            "hand-writing this - e.g. rim_o_net_pts for 'best at scoring at the rim', "
+            "turnover_d_net_pts for 'best at forcing turnovers'. Use run_sql directly only for "
+            "something get_leaderboard doesn't do. Background: this table has NO season_type "
+            "column at all (unlike every other NetPoints table) - it's one row per player per "
+            "season, not split by regular/postseason. It also has no traded-player multi-row "
+            "problem the way player_season_stats does (already one row per player per season), "
+            "so no QUALIFY/dedup is needed here. The category columns (two_pt, three_pt, driving, "
+            "fastbreak, rebound, turnover, rim, ... - describe_table for the full 22) are SEASON "
+            "CUMULATIVE totals in the same units as net_points_player.overall, not a rate - same "
+            "caveat as that entry above, a low-minutes player can show an extreme value in one "
+            "category by chance. Bio-looking columns you might expect (height, draft year) aren't "
+            "here - join to players for those instead, this table only has games/minutes/"
+            "total_poss/average_position/usage/assisted_rate beyond the NetPoints categories."
+        ),
+        "example": (
+            "-- best players at scoring at the rim (offense), current season\n"
+            "SELECT p.display_name, f.rim_o_net_pts, f.minutes\n"
+            "FROM net_points_player_fingerprint f\n"
+            "JOIN players p ON p.athlete_id = f.athlete_id\n"
+            "WHERE f.season = current_season()\n"
+            "ORDER BY f.rim_o_net_pts DESC LIMIT 10"
+        ),
+    },
+    {
         "topic": "Per-game NetPoints (net_points_player_game / net_points_team_game)",
         "note": (
             "Only exist if fetched with --include-net-points-daily - if a query against them errors "
@@ -610,11 +637,15 @@ statistics using a local, read-only DuckDB database. You have four tools:
 writing SQL against a table you have not already described in this conversation - do not \
 guess column names.
 - get_leaderboard(metric, season, season_type, min_sample, limit): rank players by one of a \
-fixed set of known metrics ({", ".join(sorted(LEADERBOARD_METRICS))}) - ALWAYS use this instead \
-of run_sql for a "top/best/worst N players by <metric>" question when the metric is in that \
-list. It already applies the current-season default, the right minimum-sample qualifier, and \
-traded-player dedup - you do not need to (and should not) re-derive those with run_sql for a \
-metric this tool covers.
+fixed set of known metrics ({", ".join(sorted(CORE_METRIC_NAMES))}) - PLUS every NetPoints \
+"fingerprint" shot/play-type category (two_pt, two_pt_shooting, three_pt, three_pt_shooting, \
+assist, bad_pass, corner, cutting, driving, fade, fast_break, floating, foul, free_throw, hook, \
+layup, mid_range, putback, rebound, rim, total, turnover), each as <category>_o_net_pts / \
+_d_net_pts / _t_net_pts (offense/defense/total) - e.g. rim_o_net_pts for "best at scoring at the \
+rim". ALWAYS use this instead of run_sql for a "top/best/worst N players by <metric>" question \
+when the metric is one of these. It already applies the current-season default, the right \
+minimum-sample qualifier, and traded-player dedup - you do not need to (and should not) \
+re-derive those with run_sql for a metric this tool covers.
 - run_sql(query): run a read-only SELECT query and get rows back as JSON. Use this for anything \
 get_leaderboard doesn't cover (a metric not in its list, a leaderboard that also needs an \
 opponent/box-score join, single-player lookups, comparisons, standings, counts, distances, etc).
@@ -691,8 +722,10 @@ TOOLS = [
                 "Optionally restrict to one team, or add extra box-score columns (points/rebounds/etc.) "
                 "alongside the ranked metric. ALWAYS prefer this over run_sql for a \"top/best/worst N "
                 "players by <metric>\" question when the metric is one of: "
-                + ", ".join(sorted(LEADERBOARD_METRICS))
-                + "."
+                + ", ".join(sorted(CORE_METRIC_NAMES))
+                + " - or a NetPoints \"fingerprint\" shot/play-type category (2pt, 3pt, driving, "
+                "fastbreak, rebound, turnover, rim, etc. - see the metric enum for the full list), each "
+                "as <category>_o_net_pts / _d_net_pts / _t_net_pts for offense/defense/total."
             ),
             "parameters": {
                 "type": "object",

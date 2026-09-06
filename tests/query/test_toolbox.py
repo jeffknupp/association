@@ -58,6 +58,15 @@ def db_path(tmp_path: Path) -> str:
         "('1', 2026, 'Regular Season', 300.0, 9.9, 2200), "  # Curry: high total, high rate, real sample
         "('2', 2026, 'Regular Season', 50.0, 15.0, 40)"  # Klay: tiny minutes, extreme rate - excluded by default
     )
+    con.execute(
+        "CREATE TABLE net_points_player_fingerprint (athlete_id VARCHAR, season INTEGER, team_id VARCHAR, "
+        "games INTEGER, minutes DOUBLE, rim_o_net_pts DOUBLE, rim_d_net_pts DOUBLE, turnover_o_net_pts DOUBLE)"
+    )
+    con.execute(
+        "INSERT INTO net_points_player_fingerprint VALUES "
+        "('1', 2026, '9', 55, 1900.0, 50.0, -5.0, 3.0), "  # Curry
+        "('2', 2026, '9', 30, 800.0, 10.0, -2.0, 1.0)"  # Klay
+    )
     con.close()
     return str(path)
 
@@ -191,6 +200,27 @@ def test_get_leaderboard_netpoints_per_100_applies_default_minimum_minutes(toolb
     names = [r["display_name"] for r in result["rows"]]
     assert names == ["Stephen Curry"]
     assert result["min_sample_applied"] == 500
+
+
+def test_get_leaderboard_fingerprint_metric_has_no_season_type(toolbox: Toolbox) -> None:
+    """Regression: a real query for a NetPoints fingerprint category (e.g. rim
+    scoring) never used net_points_player_fingerprint at all - it isn't
+    exposed as a get_leaderboard metric, so the model fell back to an
+    unrelated per-game NetPoints leaderboard. This table also has no
+    season_type column at all (unlike every other metric), so get_leaderboard
+    must skip that filter entirely rather than trying to apply one."""
+    result = json.loads(toolbox.get_leaderboard(metric="rim_o_net_pts", season=2026))
+    names = [r["display_name"] for r in result["rows"]]
+    assert names[0] == "Stephen Curry"
+    assert result["season_type"] is None  # not applicable for this metric
+    assert result["min_sample_applied"] is None  # no default floor for a fingerprint total
+
+
+def test_get_leaderboard_fingerprint_metric_accepts_explicit_min_sample(toolbox: Toolbox) -> None:
+    result = json.loads(toolbox.get_leaderboard(metric="rim_o_net_pts", season=2026, min_sample=1000))
+    names = [r["display_name"] for r in result["rows"]]
+    assert names == ["Stephen Curry"]  # Klay's 800 minutes no longer qualifies
+    assert result["min_sample_applied"] == 1000
 
 
 def test_get_leaderboard_fields_adds_box_score_columns(toolbox: Toolbox) -> None:

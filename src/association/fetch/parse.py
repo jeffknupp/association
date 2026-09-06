@@ -15,6 +15,8 @@ from datetime import date as _date
 from datetime import timedelta as _timedelta
 from typing import Any
 
+from association.net_points_categories import FINGERPRINT_CATEGORIES
+
 TEAM_REF_RE = re.compile(r"/teams/(\d+)")
 
 # Raw ESPN response payload (or a nested dict within one) - a plain dict, since
@@ -644,37 +646,6 @@ def parse_net_points_daily(
         )
 
     return player_rows, team_rows
-
-
-# Source category name -> our column prefix. Covers every shot/play type
-# espnanalytics.com's "Net Pts Fingerprint" page breaks a player down by;
-# each gets an _o_net_pts (offense) / _d_net_pts (defense) / _t_net_pts
-# (total) column, driving the loop in parse_net_points_fingerprint below
-# instead of declaring all 66 fields by hand.
-FINGERPRINT_CATEGORIES = {
-    "2pt": "two_pt",
-    "2ptShooting": "two_pt_shooting",
-    "3pt": "three_pt",
-    "3ptShooting": "three_pt_shooting",
-    "assist": "assist",
-    "badpass": "bad_pass",
-    "corner": "corner",
-    "cutting": "cutting",
-    "driving": "driving",
-    "fade": "fade",
-    "fastbreak": "fast_break",
-    "floating": "floating",
-    "foul": "foul",
-    "freethrow": "free_throw",
-    "hook": "hook",
-    "layup": "layup",
-    "mid": "mid_range",
-    "putback": "putback",
-    "rebound": "rebound",
-    "rim": "rim",
-    "total": "total",
-    "turnover": "turnover",
-}
 
 
 def parse_net_points_fingerprint(
