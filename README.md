@@ -196,6 +196,18 @@ instead — confirmed live, without this a query error once produced a
 fabricated answer with literal `[Player Name 1]`-style placeholder text
 presented as real data.
 
+**Run history** — every `query`/`ai` call writes a file under `.history/`
+(gitignored), named with a random hash, holding the command invoked, the full
+tool-call/thinking trace, per-model-call and per-tool-call timing, and the
+final answer (or a traceback, if the call raised) — regardless of whether
+`--verbose` was passed. `--verbose` only additionally echoes that same trace
+to stderr live; the file always gets everything, so a confusing or wrong
+answer from an unwatched run still has its full evidence on disk afterward.
+Every run also prints a one-line timing summary to stderr (total time, and
+the model-inference-vs-tool-execution split) — in practice the model call
+dominates end-to-end latency by a wide margin (confirmed live: a single
+`get_leaderboard` call took 0.05s against two ~26s model-inference rounds).
+
 The warehouse itself also carries two schema-level helpers so ad hoc
 `run_sql` queries (not covered by `get_leaderboard`) don't have to re-derive
 common correctness rules either: a `current_season()` SQL macro (the year a
@@ -229,6 +241,7 @@ scripts/
   backfill_markers.sh   re-derive completion markers for data fetched before they existed
 completions/          generated bash/zsh/fish shell completion scripts (see Setup)
 tests/              pytest, one file per source module
+.history/           per-run command/trace/timing logs from query|ai (gitignored, see Run history above)
 ```
 
 ## Notable implementation details

@@ -5,6 +5,22 @@ commit that made it for the full story.
 
 ## 2026-09-05
 
+- **Per-run history logging + timing metrics (query/ai)**: added
+  `query/history.py`'s `RunHistory`, written by every `Agent.ask()` call
+  (both the one-shot `query` command and each turn of the interactive `ai`
+  REPL) to a new file under `.history/` (gitignored), named with a random
+  hash - the command invoked, the full tool-call/thinking trace, per-model-
+  call and per-tool-call timing, and the final answer (or a traceback, on an
+  exception - wrapped in `ask()`'s `try/finally` so this happens even when
+  the call never returns normally). Captured regardless of whether
+  `--verbose` was passed - `--verbose` now only controls whether that same
+  trace is ALSO echoed to stderr live, not whether it's recorded at all, so
+  a run nobody was watching still has full evidence to look back at
+  afterward. Every run also prints a one-line timing summary to stderr
+  (total time, model-inference-vs-tool-execution split) - confirmed live
+  this makes the actual bottleneck obvious: a real `get_leaderboard` call
+  took 0.05s against ~53s of model inference across two rounds.
+
 - **NetPoints fingerprint categories as get_leaderboard metrics, plus a KB
   entry**: net_points_player_fingerprint (added earlier today) went
   unused in a live query ("who has the best rim scoring NetPoints?") - the

@@ -52,7 +52,7 @@ def think_agent(tmp_path: Path) -> Agent:
 
     db_path = tmp_path / "test.duckdb"
     duckdb.connect(str(db_path)).close()
-    return Agent("qwen3:8b", str(db_path), tmp_path / "out", think=True)
+    return Agent("qwen3:8b", str(db_path), tmp_path / "out", think=True, history_dir=tmp_path / ".history")
 
 
 def test_ask_strips_thinking_from_history_before_next_call(monkeypatch: pytest.MonkeyPatch, think_agent: Agent) -> None:
@@ -199,3 +199,55 @@ def test_ask_gives_honest_message_when_error_recovery_cap_exhausted(monkeypatch:
     assert "ran into an error" in result
     assert "bogus_column" in result
     assert "[Player Name]" not in result
+
+
+def test_ask_writes_history_file_even_without_verbose(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The whole point of RunHistory: a run's full evidence (command, trace,
+    timing, answer) must land on disk regardless of whether --verbose was
+    passed - not_verbose here, and no [thinking]/tool-call output on stderr,
+    but the history file must still exist and hold everything."""
+    import duckdb
+
+    db_path = tmp_path / "test.duckdb"
+    duckdb.connect(str(db_path)).close()
+    history_dir = tmp_path / ".history"
+    agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=history_dir)
+
+    def fake_chat(**kwargs: Any) -> ChatResponse:
+        return ChatResponse(model="qwen2.5:7b", created_at="", done=True, message=Message(role="assistant", content="Final answer."))
+
+    monkeypatch.setattr(ollama, "chat", fake_chat)
+    result = agent.ask("some question")
+
+    assert result == "Final answer."
+    files = list(history_dir.glob("*.log"))
+    assert len(files) == 1
+    content = files[0].read_text()
+    assert "question: some question" in content
+    assert "model inference #1" in content
+    assert "answer:\nFinal answer." in content
+
+
+def test_ask_writes_history_file_even_when_it_raises(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A crash mid-run is exactly a "failed run" this exists to leave evidence
+    for - the history file must still be written, with the traceback as the
+    recorded answer, rather than lost because ask() never returned normally."""
+    import duckdb
+
+    db_path = tmp_path / "test.duckdb"
+    duckdb.connect(str(db_path)).close()
+    history_dir = tmp_path / ".history"
+    agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=history_dir)
+
+    def fake_chat(**kwargs: Any) -> ChatResponse:
+        raise RuntimeError("simulated ollama connection failure")
+
+    monkeypatch.setattr(ollama, "chat", fake_chat)
+    with pytest.raises(RuntimeError, match="simulated ollama connection failure"):
+        agent.ask("some question")
+
+    files = list(history_dir.glob("*.log"))
+    assert len(files) == 1
+    content = files[0].read_text()
+    assert "EXCEPTION" in content
+    assert "simulated ollama connection failure" in content

@@ -4,13 +4,17 @@ guards against the model writing SQL as prose instead of actually running it."""
 from __future__ import annotations
 
 import re
+import shlex
 import sys
+import time
+import traceback
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import ollama
 
+from .history import DEFAULT_HISTORY_DIR, RunHistory
 from .prompt import SYSTEM_PROMPT, TOOLS
 from .toolbox import Toolbox
 
@@ -49,10 +53,19 @@ class Agent:
     """Holds conversation state across turns so interactive mode has real
     multi-turn memory (e.g. "what about for 2025?" referring to the prior question)."""
 
-    def __init__(self, model: str, db_path: str, out_dir: Path, verbose: bool = False, think: bool = False):
+    def __init__(
+        self,
+        model: str,
+        db_path: str,
+        out_dir: Path,
+        verbose: bool = False,
+        think: bool = False,
+        history_dir: Path = DEFAULT_HISTORY_DIR,
+    ):
         self.model = model
         self.verbose = verbose
         self.think = think
+        self.history_dir = history_dir
         self.toolbox = Toolbox(db_path, out_dir)
         # heterogeneous signatures dispatched generically via **args below -
         # a specific Callable type would make mypy check the wrong signature.
@@ -73,6 +86,25 @@ class Agent:
             self.messages = [self.messages[0]] + self.messages[-(MAX_HISTORY_MESSAGES - 1):]
 
     def ask(self, question: str) -> str:
+        """Wraps _ask_inner so a RunHistory is ALWAYS written on the way out -
+        including on an exception - regardless of --verbose. See history.py:
+        one file per call, named with a random hash under .history/, meant to
+        make a confusing or failed run's full evidence easy to find afterward
+        rather than lost to whatever happened to print to the terminal."""
+        history = RunHistory(self.verbose, self.history_dir)
+        command = shlex.join(sys.argv)
+        answer = ""
+        try:
+            answer = self._ask_inner(question, history)
+            return answer
+        except Exception:
+            answer = "EXCEPTION:\n" + traceback.format_exc()
+            raise
+        finally:
+            path = history.write(command=command, model=self.model, think=self.think, question=question, answer=answer)
+            print(f"[history] {path}  {history.summary_line()}", file=sys.stderr)
+
+    def _ask_inner(self, question: str, history: RunHistory) -> str:
         self.messages.append({"role": "user", "content": question})
         auto_recoveries = 0
         error_recoveries = 0
@@ -83,6 +115,7 @@ class Agent:
             chat_kwargs: dict[str, Any] = dict(model=self.model, messages=self.messages, tools=TOOLS, options={"num_ctx": NUM_CTX})
             if self.think:
                 chat_kwargs["think"] = True
+            t0 = time.monotonic()
             try:
                 response = ollama.chat(**chat_kwargs)
             except ollama.ResponseError as exc:
@@ -92,9 +125,10 @@ class Agent:
                         "(try a thinking-capable model, e.g. qwen3:8b)."
                     ) from None
                 raise
+            history.record_model_call(time.monotonic() - t0)
             msg = response.message
-            if self.think and self.verbose and msg.thinking:
-                print(f"  [thinking] {msg.thinking}", file=sys.stderr)
+            if self.think and msg.thinking:
+                history.log(f"  [thinking] {msg.thinking}")
             dumped = msg.model_dump()
             # Don't replay past reasoning back into the model's own context - it's
             # scratch work for the turn that produced it, not memory it needs later,
@@ -109,9 +143,10 @@ class Agent:
                 unrun_sql = _extract_unrun_sql(msg.content or "")
                 if unrun_sql and auto_recoveries < MAX_AUTO_SQL_RECOVERIES:
                     auto_recoveries += 1
-                    if self.verbose:
-                        print(f"  -> (auto) running SQL the model wrote instead of calling run_sql: {unrun_sql!r}", file=sys.stderr)
+                    history.log(f"  -> (auto) running SQL the model wrote instead of calling run_sql: {unrun_sql!r}")
+                    t0 = time.monotonic()
                     result = self.toolbox.run_sql(unrun_sql)
+                    history.record_tool_call("run_sql (auto)", time.monotonic() - t0)
                     self.messages.append(
                         {
                             "role": "user",
@@ -133,8 +168,7 @@ class Agent:
                     # through right after an unrecovered error - nudge a retry
                     # instead of trusting whatever it wrote.
                     error_recoveries += 1
-                    if self.verbose:
-                        print("  -> (guard) blocked a finalize right after a tool error, nudging a retry", file=sys.stderr)
+                    history.log("  -> (guard) blocked a finalize right after a tool error, nudging a retry")
                     self.messages.append(
                         {
                             "role": "user",
@@ -174,9 +208,9 @@ class Agent:
             for call in msg.tool_calls:
                 name = call.function.name
                 args = call.function.arguments or {}
-                if self.verbose:
-                    print(f"  -> {name}({args})", file=sys.stderr)
+                history.log(f"  -> {name}({args})")
                 fn = self.dispatch.get(name)
+                t0 = time.monotonic()
                 if fn is None:
                     result = f"Error: unknown tool {name!r}"
                 else:
@@ -184,6 +218,7 @@ class Agent:
                         result = fn(**args)
                     except Exception as exc:
                         result = f"Error calling {name}: {exc}"
+                history.record_tool_call(name, time.monotonic() - t0)
                 result = str(result)
                 if name in ("run_sql", "get_leaderboard"):
                     # Only these two data-fetching tools drive the fabrication
