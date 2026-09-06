@@ -1,6 +1,9 @@
 """`association data check`: report local data coverage, optionally cross-checked
 against ESPN's live schedule to show exactly what games are missing.
 
+Local-only (no network) by default - pass --live to also cross-check against
+ESPN's schedule and report expected game counts, not just what's on disk.
+
 A season+season_type that `pull` has already verified complete (postponed/
 cancelled games included) gets its local `_complete` marker trusted here too -
 no live schedule call needed, since a finished season's schedule can't change.
@@ -36,6 +39,25 @@ def discover_seasons(data_dir: Path) -> list[int]:
         except ValueError:
             pass
     return sorted(seasons)
+
+
+def discover_season_types(data_dir: Path) -> list[int]:
+    """Same reasoning as discover_seasons - a hardcoded "1,2,3" default used to
+    disagree with `data pull`'s own default of "2,3" (preseason skipped),
+    making a plain `data check` report preseason as entirely missing for data
+    nobody ever asked to fetch. Discovering from what's actually on disk
+    (across every season, not per-season) fixes that structurally instead of
+    just picking a new hardcoded string that could drift out of sync again."""
+    games_dir = data_dir / "games"
+    if not games_dir.exists():
+        return []
+    types = set()
+    for p in games_dir.glob("season=*/season_type=*"):
+        try:
+            types.add(int(p.name.split("=", 1)[1]))
+        except ValueError:
+            pass
+    return sorted(types)
 
 
 def _local_count(con: duckdb.DuckDBPyConnection, table_dir: Path, season: int, season_type: int | None = None) -> int:
@@ -75,9 +97,9 @@ def _resolved_count(data_dir: Path, season: int, season_type: int) -> int:
 def run_check(
     data_dir: Path,
     seasons: list[int] | None,
-    season_types: list[int],
+    season_types: list[int] | None,
     rate_limit: float = 5.0,
-    live: bool = True,
+    live: bool = False,
     force: bool = False,
 ) -> None:
     data_dir = Path(data_dir)
@@ -85,6 +107,11 @@ def run_check(
         seasons = discover_seasons(data_dir)
     if not seasons:
         print(f"No local data found under {data_dir}. Run `association data pull` first.")
+        return
+    if not season_types:
+        season_types = discover_season_types(data_dir)
+    if not season_types:
+        print(f"No local season-type data found under {data_dir}. Run `association data pull` first.")
         return
 
     con = duckdb.connect(":memory:")

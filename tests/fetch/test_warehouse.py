@@ -154,11 +154,13 @@ _ADVANCED_STATS_PLAYER_BOX_ROW = {
 }
 
 
-def test_player_game_log_gains_advanced_columns_when_built_with_advanced_stats(tmp_path: Path) -> None:
+def test_player_game_log_gains_advanced_columns(tmp_path: Path) -> None:
     """Regression: a model asking for a single game's ts_pct naturally tried
     player_game_log first (the documented per-game convenience view) and got
-    told the column didn't exist there, even though --advanced-stats had been
-    used - player_game_log never joined player_advanced_stats at all."""
+    told the column didn't exist there - player_game_log never joined
+    player_advanced_stats at all. No --advanced-stats opt-in anymore - these
+    columns are there on a plain build whenever player_box_stats has what
+    the formulas need."""
     data_dir = tmp_path / "parquet"
     fixtures: dict[str, dict] = {
         "teams": {"team_id": "1", "abbreviation": "BOS"},
@@ -170,7 +172,7 @@ def test_player_game_log_gains_advanced_columns_when_built_with_advanced_stats(t
         _write_table_fixture(data_dir, table, row)
     db_path = tmp_path / "test.duckdb"
 
-    warehouse.build(data_dir, db_path, include_advanced_stats=True)
+    warehouse.build(data_dir, db_path)
 
     con = duckdb.connect(str(db_path))
     result_row = con.execute("SELECT player_name, ts_pct FROM player_game_log WHERE event_id = '100'").fetchone()
@@ -180,19 +182,22 @@ def test_player_game_log_gains_advanced_columns_when_built_with_advanced_stats(t
     assert result_row[1] is not None
 
 
-def test_player_game_log_has_no_advanced_columns_without_the_flag(tmp_path: Path) -> None:
+def test_player_game_log_has_no_advanced_columns_when_box_stats_incomplete(tmp_path: Path) -> None:
+    """player_advanced_stats is skipped (not crashed) when player_box_stats is
+    missing a column the formulas need - player_game_log's LEFT JOIN to it
+    should correctly reflect that by not gaining the advanced columns."""
     data_dir = tmp_path / "parquet"
     fixtures: dict[str, dict] = {
         "teams": {"team_id": "1", "abbreviation": "BOS"},
         "players": {"athlete_id": "10", "display_name": "Test Player"},
         "games": {"event_id": "100", "date": "2024-01-01"},
-        "player_box_stats": _ADVANCED_STATS_PLAYER_BOX_ROW,
+        "player_box_stats": {"event_id": "100", "athlete_id": "10", "team_id": "1", "opponent_team_id": "1", "points": 20},
     }
     for table, row in fixtures.items():
         _write_table_fixture(data_dir, table, row)
     db_path = tmp_path / "test.duckdb"
 
-    warehouse.build(data_dir, db_path)  # no --advanced-stats
+    warehouse.build(data_dir, db_path)
 
     con = duckdb.connect(str(db_path))
     cols = {r[0] for r in con.execute("DESCRIBE player_game_log").fetchall()}
@@ -250,9 +255,10 @@ def test_partial_reload_still_builds_views_from_previously_loaded_tables(tmp_pat
     assert result == [("Test Player", 99)]
 
 
-def test_advanced_stats_flag_false_leaves_existing_views_alone(tmp_path: Path) -> None:
-    """A partial reload that doesn't pass --advanced-stats shouldn't silently
-    tear down advanced-stats views a prior build already created."""
+def test_advanced_stats_views_survive_a_partial_reload(tmp_path: Path) -> None:
+    """A partial `--tables player_box_stats` reload should still (re)build the
+    advanced-stats views rather than tearing them down or leaving them stale -
+    no flag to forget to repeat anymore, they're just always kept current."""
     data_dir = tmp_path / "parquet"
     _write_table_fixture(
         data_dir,
@@ -267,8 +273,8 @@ def test_advanced_stats_flag_false_leaves_existing_views_alone(tmp_path: Path) -
     )
     db_path = tmp_path / "test.duckdb"
 
-    warehouse.build(data_dir, db_path, include_advanced_stats=True)
-    warehouse.build(data_dir, db_path, tables=["player_box_stats"])  # no --advanced-stats this time
+    warehouse.build(data_dir, db_path)
+    warehouse.build(data_dir, db_path, tables=["player_box_stats"])  # partial reload
 
     con = duckdb.connect(str(db_path))
     tables = {r[0] for r in con.execute("SHOW TABLES").fetchall()}

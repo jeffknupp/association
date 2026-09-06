@@ -46,12 +46,12 @@ plays               - one row per PLAY (event_id, play_id, period, clock, team_i
                       home_score/away_score - the RUNNING score after this play, scoring_play - opt-in,
                       see below. NOT points-per-play - see the per-quarter-scoring entry below for that)
 stat_glossary       - stat_key -> label/description; self-documents what a column means
-player_game_log     - convenience view: player_box_stats joined with player/game/team names, plus ts_pct/efg_pct/usage_pct/game_score if the warehouse was built with --advanced-stats
+player_game_log     - convenience view: player_box_stats joined with player/game/team names, plus ts_pct/efg_pct/usage_pct/game_score
 player_season_stats_deduped - convenience view: player_season_stats already collapsed to one row
                       per player/season/season_type (picks the combined row for a traded player) -
                       prefer this over player_season_stats directly, no QUALIFY needed
-player_advanced_stats        - COMPUTED, one row per player PER GAME (ts_pct, efg_pct, usage_pct, game_score) - opt-in, see below
-player_season_advanced_stats - COMPUTED, one row per player per season per season_type (ts_pct, efg_pct, usage_pct, avg_game_score, games_played) - opt-in, see below
+player_advanced_stats        - COMPUTED (not from ESPN), one row per player PER GAME (ts_pct, efg_pct, usage_pct, game_score)
+player_season_advanced_stats - COMPUTED (not from ESPN), one row per player per season per season_type (ts_pct, efg_pct, usage_pct, avg_game_score, games_played)
 net_points_player   - one row per player per season per net_points_season_type (games, position, draft_year;
                       overall/offense/defense are SEASON TOTALS; *_per_100_poss + total_minutes are the RATE form)
 net_points_player_fingerprint - one row per player per season (NO season_type - not split by regular/post).
@@ -65,7 +65,6 @@ net_points_team     - one row per team per season per side ('Offense'/'Defense'/
 net_points_player_game - one row per player PER GAME (o/d/t_net_pts, o/d_usage, o/d/t_poss, o/d/t_wpa) - opt-in flag below; normal numeric season_type, unlike the two tables above
 net_points_team_game   - one row per team PER GAME (net_pts_2pt/3pt/shooting/turnover/rebound/freethrow, tot_poss, opp_poss) - opt-in, same as above
 
-player_advanced_stats / player_season_advanced_stats only exist if the warehouse was built with --advanced-stats.
 net_points_player_game / net_points_team_game only exist if fetched with --include-net-points-daily - a
 player row can be legitimately absent (not zero, just missing) for a game if their display name couldn't
 be matched to exactly one local player.
@@ -579,9 +578,7 @@ KNOWLEDGE_BASE = [
             "player_advanced_stats / player_season_advanced_stats hold true shooting % "
             "(ts_pct), effective FG% (efg_pct), usage rate (usage_pct), and Hollinger game "
             "score (game_score / avg_game_score) - use these instead of recomputing the "
-            "formulas yourself. They only exist if the warehouse was built with "
-            "--advanced-stats; if a query against them errors with a missing-table/view "
-            "error, say so rather than guessing a value. PER, Win Shares, BPM, and VORP are "
+            "formulas yourself. PER, Win Shares, BPM, and VORP are "
             "not computed anywhere in this dataset - if asked for one of those, say it isn't "
             "available rather than substituting a different stat or inventing a number."
         ),

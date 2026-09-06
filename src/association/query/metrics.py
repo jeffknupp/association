@@ -77,7 +77,7 @@ LEADERBOARD_METRICS: dict[str, LeaderboardMetric] = {
         extra_columns=("games_played",),
         min_sample_column="games_played",
         default_min_sample=20,
-        requires="warehouse built with --advanced-stats",
+        requires="warehouse rebuilt with `association data load` after player_box_stats was fetched",
     ),
     "ts_pct": LeaderboardMetric(
         table="player_season_advanced_stats",
@@ -86,7 +86,7 @@ LEADERBOARD_METRICS: dict[str, LeaderboardMetric] = {
         extra_columns=("games_played",),
         min_sample_column="games_played",
         default_min_sample=20,
-        requires="warehouse built with --advanced-stats",
+        requires="warehouse rebuilt with `association data load` after player_box_stats was fetched",
     ),
     "efg_pct": LeaderboardMetric(
         table="player_season_advanced_stats",
@@ -95,7 +95,7 @@ LEADERBOARD_METRICS: dict[str, LeaderboardMetric] = {
         extra_columns=("games_played",),
         min_sample_column="games_played",
         default_min_sample=20,
-        requires="warehouse built with --advanced-stats",
+        requires="warehouse rebuilt with `association data load` after player_box_stats was fetched",
     ),
     "avg_points": LeaderboardMetric(
         table="player_season_stats", column="avgPoints", label="points per game", dedup_traded=True, min_sample_column="gamesPlayed"

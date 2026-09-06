@@ -45,7 +45,7 @@ def test_data_pull_requires_seasons() -> None:
     assert "seasons" in result.output.lower()
 
 
-def test_data_pull_parses_seasons_and_advanced_stats_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_data_pull_parses_seasons(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, Any] = {}
 
     class FakePipeline:
@@ -61,52 +61,84 @@ def test_data_pull_parses_seasons_and_advanced_stats_flag(monkeypatch: pytest.Mo
     monkeypatch.setattr("association.fetch.warehouse.build", lambda *a, **k: None)
 
     runner = CliRunner()
-    result = runner.invoke(data_pull, ["--seasons", "2024", "--advanced-stats", "--fetch-only"])
+    result = runner.invoke(data_pull, ["--seasons", "2024", "--fetch-only"])
     assert result.exit_code == 0, result.output
     assert captured["seasons"] == [2024]
     assert captured["kwargs"]["force"] is False
+
+
+def test_data_pull_fetch_only_skips_warehouse_build(monkeypatch: pytest.MonkeyPatch) -> None:
+    """--fetch-only used to also silently drop --advanced-stats with no
+    warning, back when that was a separate flag - now that advanced stats are
+    unconditional whenever the warehouse IS built, the only thing left to
+    verify is that --fetch-only really does skip the build step entirely."""
+    build_calls: list[Any] = []
+
+    class FakePipeline:
+        def __init__(self, client: object, data_dir: object, **kwargs: Any) -> None:
+            pass
+
+        def run(self, seasons: list[int], season_types: list[int]) -> None:
+            pass
+
+    monkeypatch.setattr("association.fetch.pipeline.Pipeline", FakePipeline)
+    monkeypatch.setattr("association.fetch.client.ESPNClient", lambda **k: object())
+    monkeypatch.setattr("association.fetch.warehouse.build", lambda *a, **k: build_calls.append((a, k)))
+
+    runner = CliRunner()
+    result = runner.invoke(data_pull, ["--seasons", "2024", "--fetch-only"])
+    assert result.exit_code == 0, result.output
+    assert build_calls == []
 
 
 def test_data_load_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, Any] = {}
     monkeypatch.setattr(
         "association.fetch.warehouse.build",
-        lambda data_dir, db_path, tables=None, include_advanced_stats=False: captured.update(
-            tables=tables, include_advanced_stats=include_advanced_stats
-        ),
+        lambda data_dir, db_path, tables=None: captured.update(tables=tables),
     )
     runner = CliRunner()
     result = runner.invoke(data_load, [])
     assert result.exit_code == 0, result.output
     assert captured["tables"] is None
-    assert captured["include_advanced_stats"] is False
 
 
-def test_data_load_parses_tables_and_advanced_stats(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_data_load_parses_tables(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, Any] = {}
     monkeypatch.setattr(
         "association.fetch.warehouse.build",
-        lambda data_dir, db_path, tables=None, include_advanced_stats=False: captured.update(
-            tables=tables, include_advanced_stats=include_advanced_stats
-        ),
+        lambda data_dir, db_path, tables=None: captured.update(tables=tables),
     )
     runner = CliRunner()
-    result = runner.invoke(data_load, ["--tables", "games,player_box_stats", "--advanced-stats"])
+    result = runner.invoke(data_load, ["--tables", "games,player_box_stats"])
     assert result.exit_code == 0, result.output
     assert captured["tables"] == ["games", "player_box_stats"]
-    assert captured["include_advanced_stats"] is True
 
 
-def test_data_check_offline_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_data_check_defaults_to_offline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """live now defaults to False (local-only, fast) - --live opts into the
+    ESPN cross-check, replacing the old --offline opt-out."""
     captured: dict[str, Any] = {}
     monkeypatch.setattr(
         "association.check.report.run_check",
         lambda data_dir, seasons, season_types, rate_limit, live, force: captured.update(live=live),
     )
     runner = CliRunner()
-    result = runner.invoke(data_check, ["--offline"])
+    result = runner.invoke(data_check, [])
     assert result.exit_code == 0, result.output
     assert captured["live"] is False
+
+
+def test_data_check_live_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr(
+        "association.check.report.run_check",
+        lambda data_dir, seasons, season_types, rate_limit, live, force: captured.update(live=live),
+    )
+    runner = CliRunner()
+    result = runner.invoke(data_check, ["--live"])
+    assert result.exit_code == 0, result.output
+    assert captured["live"] is True
 
 
 def test_query_dispatches_with_question(monkeypatch: pytest.MonkeyPatch) -> None:

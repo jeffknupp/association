@@ -56,7 +56,8 @@ play-by-play/shot charts/win probability. Grain and table design borrow the
 dimension/fact split popularized by the `nbadb` project, built directly
 against what ESPN's API actually returns rather than reimplementing it.
 
-**Computed tables** (opt-in via `--advanced-stats`, not sourced from ESPN):
+**Computed tables** (always built, not sourced from ESPN — see "Query engine"
+below for why this isn't gated behind a flag):
 `player_advanced_stats` and `player_season_advanced_stats` — true shooting %,
 effective FG%, usage rate, and Hollinger game score, per game and per season.
 ESPN's team season stats already carry these natively (`effectiveFGPct`,

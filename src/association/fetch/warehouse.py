@@ -53,14 +53,17 @@ def _existing_tables(con: duckdb.DuckDBPyConnection) -> set[str]:
     return {r[0] for r in rows}
 
 
-def build(data_dir: Path, db_path: Path, tables: list[str] | None = None, include_advanced_stats: bool = False) -> None:
+def build(data_dir: Path, db_path: Path, tables: list[str] | None = None) -> None:
     """(Re)build the warehouse. tables=None rebuilds every known table; a
     subset only reloads those, leaving any other already-loaded table (and
     tables/views that depend on it) untouched - the `association data load`
     path for refreshing part of a large warehouse without rescanning
-    everything. include_advanced_stats=True (re)builds the computed advanced-
-    stats views; False leaves whatever is already there alone rather than
-    dropping it, so a later reload doesn't have to keep repeating the flag."""
+    everything. The computed advanced-stats views (player_advanced_stats,
+    player_season_advanced_stats) are always (re)built when player_box_stats
+    is present - they're pure closed-form formulas over already-fetched
+    columns (see fetch/advanced_stats.py), no extra fetch or meaningful
+    storage cost, so there's no real reason to make that a decision the
+    caller has to opt into every time."""
     if tables is not None:
         unknown = sorted(set(tables) - set(TABLES))
         if unknown:
@@ -88,9 +91,8 @@ def build(data_dir: Path, db_path: Path, tables: list[str] | None = None, includ
             log.info("%s: %d rows", table, count)
 
         existing = _existing_tables(con)
-        if include_advanced_stats:
-            advanced_stats.build_views(con, existing)
-            existing = _existing_tables(con)  # refresh so player_game_log can join the views just created
+        advanced_stats.build_views(con, existing)
+        existing = _existing_tables(con)  # refresh so player_game_log can join the views just created
         _build_views(con, existing)
     finally:
         con.close()
@@ -129,9 +131,11 @@ def _build_views(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
     if not ({"player_box_stats", "players", "games", "teams"} <= loaded):
         return
 
-    # player_advanced_stats may or may not exist (opt-in, --advanced-stats) -
-    # `loaded` reflects the DB's actual current state, not just this call, so
-    # this stays correct across a partial `data load` too.
+    # player_advanced_stats may still not exist - e.g. player_box_stats wasn't
+    # loaded at all yet, or this is an older database from before advanced
+    # stats became unconditional. `loaded` reflects the DB's actual current
+    # state, not just this call, so this stays correct across a partial
+    # `data load` too.
     has_advanced = "player_advanced_stats" in loaded
     advanced_select = ", pas.ts_pct, pas.efg_pct, pas.usage_pct, pas.game_score" if has_advanced else ""
     advanced_join = (

@@ -37,12 +37,32 @@ _PLAYER_B = {
 }
 
 
-def test_advanced_stats_views_not_built_without_flag(tmp_path: Path) -> None:
+def test_advanced_stats_views_always_built(tmp_path: Path) -> None:
+    """No --advanced-stats opt-in anymore - these views cost nothing beyond a
+    CREATE VIEW over data already fetched, so a plain build (with all the
+    columns the formulas need) always produces them."""
     data_dir = tmp_path / "parquet"
     _write_player_box_stats(data_dir, [_PLAYER_A, _PLAYER_B])
     db_path = tmp_path / "test.duckdb"
 
     warehouse.build(data_dir, db_path)
+
+    con = duckdb.connect(str(db_path))
+    tables = {r[0] for r in con.execute("SHOW TABLES").fetchall()}
+    con.close()
+    assert "player_advanced_stats" in tables
+
+
+def test_advanced_stats_views_skipped_when_a_required_column_is_missing(tmp_path: Path) -> None:
+    """Regression: build_views() now always runs (no --advanced-stats opt-in
+    isolating it), so a minimal/partial player_box_stats must not crash the
+    WHOLE warehouse build - it should just skip these two views, the same as
+    player_box_stats being absent entirely already did."""
+    data_dir = tmp_path / "parquet"
+    _write_player_box_stats(data_dir, [{"event_id": "1", "athlete_id": "10", "points": 20}])  # no minutes, FGA, etc.
+    db_path = tmp_path / "test.duckdb"
+
+    warehouse.build(data_dir, db_path)  # must not raise
 
     con = duckdb.connect(str(db_path))
     tables = {r[0] for r in con.execute("SHOW TABLES").fetchall()}
@@ -55,7 +75,7 @@ def test_ts_pct_and_efg_pct_hand_computed(tmp_path: Path) -> None:
     _write_player_box_stats(data_dir, [_PLAYER_A, _PLAYER_B])
     db_path = tmp_path / "test.duckdb"
 
-    warehouse.build(data_dir, db_path, include_advanced_stats=True)
+    warehouse.build(data_dir, db_path)
 
     con = duckdb.connect(str(db_path))
     row = con.execute(
@@ -88,7 +108,7 @@ def test_season_view_aggregates_totals_not_average_of_ratios(tmp_path: Path) -> 
     _write_player_box_stats(data_dir, [_PLAYER_A, _PLAYER_B, game_2, game_2_teammate])
     db_path = tmp_path / "test.duckdb"
 
-    warehouse.build(data_dir, db_path, include_advanced_stats=True)
+    warehouse.build(data_dir, db_path)
 
     con = duckdb.connect(str(db_path))
     row = con.execute(

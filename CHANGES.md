@@ -5,6 +5,39 @@ commit that made it for the full story.
 
 ## 2026-09-05
 
+- **CLI cleanup: fix confusing/wrong defaults, remove flags that were cheap to
+  make default**: reviewed every subcommand's flags for confusing or invalid
+  combinations. Fixed two real bugs: (1) `data check`'s live ESPN cross-check
+  was the DEFAULT (`--offline` was the opt-OUT), directly contradicting
+  README's own "Known limitations" note describing it as opt-in via a
+  `--live` flag that didn't even exist - replaced `--offline` with `--live`
+  (off by default, matching the docs and making a plain `data check` fast
+  and network-free); (2) `data pull` defaults to `--season-types 2,3`
+  (skips preseason) while `data check` defaulted to a hardcoded `1,2,3`, so
+  the natural `data pull` then `data check` sequence reported preseason as
+  entirely missing for data nobody asked to fetch - fixed by making
+  `--season-types` auto-discover from local data (a new `discover_season_types`
+  in `check/report.py`, same pattern `--seasons` already used), removing the
+  mismatch structurally instead of just picking a new hardcoded string that
+  could drift out of sync again. Also removed `--advanced-stats` from `data
+  pull`/`data load` entirely - it's pure computed DuckDB views over data
+  already fetched (no extra network request, no meaningful storage), so
+  there was no real reason to make every caller opt into it - `warehouse.build()`
+  now always builds `player_advanced_stats`/`player_season_advanced_stats`
+  when `player_box_stats` is present. This surfaced a real robustness gap:
+  since these views now run unconditionally instead of behind an isolated
+  opt-in flag, a `player_box_stats` missing a column the formulas need would
+  crash the ENTIRE warehouse build, not just skip two optional views -
+  fixed by checking for the required columns up front and skipping (logging
+  why) instead of raising, the same graceful-skip already used when
+  `player_box_stats` isn't loaded at all. This also makes the earlier
+  `--fetch-only` + `--advanced-stats` silent-drop combination impossible,
+  since there's no longer a separate flag to drop. Confirmed live against
+  the real warehouse: `data load` (no flags) now builds both advanced-stats
+  views automatically; `data check --seasons 2026` (no flags) correctly
+  auto-discovers all three locally-present season types and completes in
+  ~6s fully offline.
+
 - **Per-run history logging + timing metrics (query/ai)**: added
   `query/history.py`'s `RunHistory`, written by every `Agent.ask()` call
   (both the one-shot `query` command and each turn of the interactive `ai`

@@ -262,11 +262,12 @@ def test_get_leaderboard_unknown_team_is_rejected(toolbox: Toolbox) -> None:
 
 
 def test_get_leaderboard_missing_table_reports_requires_hint(toolbox: Toolbox) -> None:
-    """usage_pct/ts_pct/efg_pct only exist if the warehouse was built with
-    --advanced-stats - if that view is missing, say so instead of a bare
-    DuckDB error the model has no way to act on."""
+    """usage_pct/ts_pct/efg_pct need player_advanced_stats, which needs a
+    warehouse rebuild after player_box_stats was fetched - if that view is
+    missing, say so instead of a bare DuckDB error the model has no way to
+    act on."""
     result = toolbox.get_leaderboard(metric="ts_pct", season=2026)
-    assert "requires: warehouse built with --advanced-stats" in result
+    assert "requires: warehouse rebuilt with `association data load`" in result
 
 
 # ---------------- render_shot_chart ----------------

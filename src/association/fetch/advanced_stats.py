@@ -17,9 +17,12 @@ size, which is real, correctness-critical complexity a closed-form ratio
 doesn't have. Treat that as a known, deliberate gap (like Real Plus-Minus in
 the README), not an oversight.
 
-Opt-in via --advanced-stats because these rows are derived, not sourced data -
-a table `association` didn't get from ESPN shouldn't look indistinguishable
-from one it did.
+Always built (no opt-in flag) since these views cost nothing beyond a
+CREATE VIEW over data already fetched - no extra network request, no extra
+storage. That these rows are DERIVED rather than sourced from ESPN directly
+is still made visible (the query engine's TABLE_SUMMARY labels them
+"COMPUTED", and this module's own name says the same), just not gated
+behind a flag someone has to remember to pass.
 """
 
 from __future__ import annotations
@@ -31,6 +34,34 @@ import duckdb
 log = logging.getLogger("association.fetch.advanced_stats")
 
 VIEWS = ["player_advanced_stats", "player_season_advanced_stats"]
+
+# Every column the two formulas below reference. Now that build_views() always
+# runs (no --advanced-stats opt-in to isolate a bad build to just these two
+# views), a minimal/partial player_box_stats (e.g. a `data load --tables`
+# subset fixture, or a genuinely incomplete ESPN response) must not crash the
+# WHOLE warehouse build - checked up front so a missing column skips just
+# these views, the same as player_box_stats being absent entirely already did.
+_REQUIRED_COLUMNS = {
+    "event_id",
+    "season",
+    "season_type",
+    "team_id",
+    "athlete_id",
+    "minutes",
+    "points",
+    "fieldGoalsMade",
+    "fieldGoalsAttempted",
+    "threePointFieldGoalsMade",
+    "freeThrowsMade",
+    "freeThrowsAttempted",
+    "offensiveRebounds",
+    "defensiveRebounds",
+    "steals",
+    "assists",
+    "blocks",
+    "fouls",
+    "turnovers",
+}
 
 # Usage % needs each player's team's totals for the same game. Every team's
 # player-minutes always sum to exactly 5x game minutes (5 players on court at
@@ -60,6 +91,12 @@ _GAME_SCORE_EXPR = """
 def build_views(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
     if "player_box_stats" not in loaded:
         log.info("skip advanced stats views (player_box_stats not loaded)")
+        return
+
+    existing_columns = {r[0] for r in con.execute("DESCRIBE player_box_stats").fetchall()}
+    missing = _REQUIRED_COLUMNS - existing_columns
+    if missing:
+        log.info("skip advanced stats views (player_box_stats missing columns: %s)", ", ".join(sorted(missing)))
         return
 
     con.execute(f"""

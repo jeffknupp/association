@@ -115,12 +115,6 @@ def data() -> None:
 @click.option("--rate-limit", type=float, default=5.0, show_default=True, help="Max requests/second against ESPN")
 @click.option("--force", is_flag=True, help="Re-fetch even if already checkpointed as complete")
 @click.option("--fetch-only", is_flag=True, help="Fetch Parquet files only, skip building the DuckDB warehouse")
-@click.option(
-    "--advanced-stats",
-    is_flag=True,
-    help="Also build computed player_advanced_stats/player_season_advanced_stats views "
-    "(true shooting %, effective FG%, usage rate, game score - see fetch/advanced_stats.py)",
-)
 @click.option("--log-level", type=click.Choice(LOG_LEVELS), default="INFO", show_default=True)
 def data_pull(
     seasons: str,
@@ -132,7 +126,6 @@ def data_pull(
     rate_limit: float,
     force: bool,
     fetch_only: bool,
-    advanced_stats: bool,
     log_level: str,
 ) -> None:
     """Resumable fetch from ESPN into Parquet + the DuckDB warehouse."""
@@ -157,7 +150,7 @@ def data_pull(
     pipeline.run(parsed_seasons, parsed_season_types)
 
     if not fetch_only:
-        warehouse.build(data_dir_path, db_path_path, include_advanced_stats=advanced_stats)
+        warehouse.build(data_dir_path, db_path_path)
 
 
 @data.command("load")
@@ -169,31 +162,36 @@ def data_pull(
     help="Comma-separated subset of tables to (re)load, e.g. 'games,player_box_stats' "
     "(unknown names error out). Default: every table with Parquet files on disk.",
 )
-@click.option("--advanced-stats", is_flag=True, help="Also (re)build the computed player_advanced_stats/player_season_advanced_stats views.")
 @click.option("--log-level", type=click.Choice(LOG_LEVELS), default="INFO", show_default=True)
-def data_load(data_dir: str, db_path: str, tables: str | None, advanced_stats: bool, log_level: str) -> None:
+def data_load(data_dir: str, db_path: str, tables: str | None, log_level: str) -> None:
     """(Re)build the DuckDB warehouse from Parquet files already on disk, without fetching."""
     from .fetch import warehouse
 
     logging.basicConfig(level=log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     parsed_tables = [t.strip() for t in tables.split(",") if t.strip()] if tables else None
-    warehouse.build(Path(data_dir), Path(db_path), tables=parsed_tables, include_advanced_stats=advanced_stats)
+    warehouse.build(Path(data_dir), Path(db_path), tables=parsed_tables)
 
 
 @data.command("check")
 @click.option("--seasons", default=None, help="e.g. '2020-2024'. Defaults to every season with local data.")
-@click.option("--season-types", default="1,2,3", show_default=True)
-@click.option("--data-dir", default=DEFAULT_DATA_DIR, show_default=True)
+@click.option("--season-types", default=None, help="e.g. '2,3'. Defaults to every season_type with local data (not a fixed 1,2,3).")
+@click.option("--data-dir", default=DEFAULT_DATA_DIR, show_default=True, help="Parquet flat-file root - read directly, no --db-path needed.")
 @click.option("--rate-limit", type=float, default=5.0, show_default=True)
-@click.option("--offline", is_flag=True, help="Skip the live ESPN schedule cross-check (fast, but can't report expected game counts).")
-@click.option("--force", is_flag=True, help="Re-verify live against ESPN even for seasons already marked complete locally.")
-def data_check(seasons: str | None, season_types: str, data_dir: str, rate_limit: float, offline: bool, force: bool) -> None:
+@click.option(
+    "--live",
+    is_flag=True,
+    help="Cross-check against ESPN's live schedule to report expected game counts, not just what's on disk "
+    "(slower - a real network call per season/type not yet checkpointed complete). Off by default: a plain "
+    "run only reports local coverage.",
+)
+@click.option("--force", is_flag=True, help="With --live, re-verify against ESPN even for seasons already marked complete locally.")
+def data_check(seasons: str | None, season_types: str | None, data_dir: str, rate_limit: float, live: bool, force: bool) -> None:
     """Report data coverage vs. what ESPN's API actually has, per season/season_type."""
     from .check.report import run_check
 
     parsed_seasons = _parse_seasons(seasons) if seasons else None
-    parsed_season_types = _parse_season_types(season_types)
-    run_check(Path(data_dir), parsed_seasons, parsed_season_types, rate_limit=rate_limit, live=not offline, force=force)
+    parsed_season_types = _parse_season_types(season_types) if season_types else None
+    run_check(Path(data_dir), parsed_seasons, parsed_season_types, rate_limit=rate_limit, live=live, force=force)
 
 
 @cli.command("query")
