@@ -67,6 +67,33 @@ MAX_LIMIT = 50
 SEASON_TYPE_NAMES = {1: "preseason", 2: "regular season", 3: "postseason"}
 
 
+# Slots that narrow WHICH games an answer covers. A template that ignores one
+# does not give a narrower answer, it gives a different one and says nothing -
+# confirmed live three times: a shot chart of "his last game" drew the whole
+# season (803 attempts, not 14), NetPoints for "his last game" reported all 43,
+# and a record "over their last 10 games" would have reported the full season.
+# Each was a slot the router extracted CORRECTLY and the template dropped, so
+# the routing check cannot catch them; only this can.
+SCOPING_SLOTS = frozenset({"order", "date"})
+
+# What each template actually honours. Anything not listed here honours none.
+HONORED_SCOPING: dict[str, frozenset[str]] = {
+    "game_log": frozenset({"order", "date"}),
+    "shot_chart": frozenset({"order"}),
+    "shot_distance": frozenset({"order"}),
+    "player_netpoints": frozenset({"order"}),
+}
+
+
+def check_scope(intent: str, slots: dict[str, Any]) -> None:
+    """Raise if the question scoped to particular games and this template
+    cannot honour that. Falling through is slow; answering a different question
+    quickly is worse."""
+    ignored = sorted(s for s in SCOPING_SLOTS if slots.get(s) and s not in HONORED_SCOPING.get(intent, frozenset()))
+    if ignored:
+        raise TemplateUnsupported(f"{intent} cannot honour {ignored} - it would answer for a different span than was asked")
+
+
 class TemplateUnsupported(Exception):
     """Raised when slots don't validate. The caller treats this exactly like an
     unrecognized intent - fall through to the agent - so a router slip
@@ -1020,6 +1047,18 @@ def shot_distance(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult
     if shot_value is not None:
         where.append("points_attempted = ?")
         params.append(shot_value)
+    game_note = ""
+    if slots.get("order") in ("recent", "first"):
+        found = con.execute(
+            "SELECT event_id, game_date FROM player_game_log WHERE athlete_id = ? AND season = ? AND season_type = ? "
+            f"ORDER BY game_date {'ASC' if slots['order'] == 'first' else 'DESC'} LIMIT 1",
+            [player.id, season, season_type],
+        ).fetchone()
+        if found is None:
+            raise TemplateUnsupported(f"no games found for {player.name}")
+        where.append("event_id = ?")
+        params.append(found[0])
+        game_note = f" in his {'first' if slots['order'] == 'first' else 'most recent'} game ({str(found[1])[:10]})"
     row = con.execute(
         f"SELECT AVG(SQRT(POWER(coordinate_x - {HOOP_X}, 2) + POWER(coordinate_y - {HOOP_Y}, 2))), COUNT(*) "
         f"FROM shot_chart WHERE {' AND '.join(where)}",
@@ -1030,10 +1069,10 @@ def shot_distance(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult
     period = _period(season, season_type)
     kind = {2: "2-point ", 3: "3-point "}.get(shot_value or 0, "")
     if not attempts or average is None:
-        answer = f"No {kind}shots with recorded coordinates for {player.name} in the {period}."
+        answer = f"No {kind}shots with recorded coordinates for {player.name}{game_note} in the {period}."
     else:
         answer = (
-            f"{player.name}'s average {kind}shot distance in the {period} was "
+            f"{player.name}'s average {kind}shot distance{game_note or f' in the {period}'} was "
             f"{average:.1f} feet, over {attempts:,} attempts with recorded coordinates."
         )
     return TemplateResult(

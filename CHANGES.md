@@ -5,6 +5,25 @@ commit that made it for the full story.
 
 ## 2026-09-06
 
+- **Reject scope slots a template cannot honor**: three live failures in a row
+  were slots the router extracted CORRECTLY and the template silently dropped -
+  a shot chart of "his last game" drew the whole season (803 attempts, not 14),
+  NetPoints for "his last game" reported all 43, and a record "over their last
+  10 games" would have covered the full season. `check_routing.py` cannot catch
+  any of them, because routing was right every time.
+
+  `order` and `date` are now declared: each template lists the scope slots it
+  honors, and the dispatcher falls through when a question scoped to particular
+  games meets a template that would answer for a different span. Slow beats
+  confidently wrong, which is the trade this design keeps making.
+
+  Measured across the 38 routing cases before adding it, exactly one slot was
+  emitted-but-unhonored: `order` on `shot_distance`. Rather than accept a
+  fall-through there, `shot_distance` now honors it too - "his average 3pt shot
+  distance in his last game" is a real question, and the data is the same table
+  a single-game chart already reads. A test asserts every template claiming to
+  honor a slot actually reads it, so the declaration cannot drift from the code.
+
 - **NetPoints for a single game**: "Show steph curry's netpoints from his last
   regular season game" returned the whole season - 43 games, 1,329 minutes -
   even though the router had correctly emitted `order: "recent"` and

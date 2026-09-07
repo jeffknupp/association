@@ -8,8 +8,10 @@ import duckdb
 import pytest
 
 from association.query.templates import (
+    HONORED_SCOPING,
     TemplateContext,
     TemplateUnsupported,
+    check_scope,
     game_log,
     head_to_head,
     leaderboard,
@@ -1001,3 +1003,59 @@ def test_single_game_netpoints_falls_through_without_the_optin_table(np_ctx: Tem
     # --include-net-points-daily; say so rather than answering for the season.
     with pytest.raises(TemplateUnsupported):
         player_netpoints(np_ctx, {"player": "SGA", "order": "recent"})
+
+
+# ---------------- scoping guard ----------------
+
+
+def test_scope_guard_blocks_a_template_that_would_ignore_a_game_scope() -> None:
+    """Three live failures were slots the router extracted CORRECTLY and the
+    template silently dropped: a chart of "his last game" drew the whole season,
+    NetPoints for "his last game" reported all 43, and a record "over their last
+    10" would have covered the full season. The routing check cannot catch
+    those - routing was right every time."""
+    for intent, slots in [
+        ("threshold_count", {"date": "2026-04-12"}),
+        ("team_record", {"order": "recent"}),
+        ("leaderboard", {"order": "first"}),
+        ("player_stat", {"date": "2026-04-12"}),
+    ]:
+        with pytest.raises(TemplateUnsupported, match="different span"):
+            check_scope(intent, slots)
+
+
+def test_scope_guard_allows_templates_that_honor_the_slot() -> None:
+    check_scope("game_log", {"order": "recent", "date": "2026-04-12"})
+    check_scope("shot_chart", {"order": "recent"})
+    check_scope("shot_distance", {"order": "first"})
+    check_scope("player_netpoints", {"order": "recent"})
+
+
+def test_scope_guard_ignores_absent_or_empty_slots() -> None:
+    check_scope("leaderboard", {})
+    check_scope("leaderboard", {"order": None, "date": ""})
+
+
+def test_every_template_honoring_a_scope_slot_actually_reads_it() -> None:
+    # Guards against the list drifting from the code it describes.
+    import inspect
+
+    from association.query import templates as module
+
+    for intent, honored in HONORED_SCOPING.items():
+        source = inspect.getsource(module.TEMPLATES[intent])
+        for slot in honored:
+            assert f'"{slot}"' in source, f"{intent} claims to honor {slot} but never reads it"
+
+
+def test_shot_distance_scopes_to_one_game(sc_ctx: TemplateContext) -> None:
+    sc_ctx.con.execute(
+        "CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, game_date VARCHAR)"
+    )
+    sc_ctx.con.execute("INSERT INTO player_game_log VALUES ('1',?,2,'e1','2026-04-13T00:30Z')", [current_season()])
+    # A second game whose shots must NOT be counted.
+    sc_ctx.con.execute("INSERT INTO player_game_log VALUES ('1',?,2,'e2','2026-01-01T00:00Z')", [current_season()])
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e2',1,'2:00',TRUE,'Jump Shot',25,40,3)", [current_season()])
+    answer = shot_distance(sc_ctx, {"player": "Stephen Curry", "order": "recent"}).answer or ""
+    assert "most recent game (2026-04-13)" in answer
+    assert "2 attempts" in answer  # the fixture's two shots in e1, not the third in e2

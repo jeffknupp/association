@@ -19,7 +19,7 @@ from .history import DEFAULT_HISTORY_DIR, RunHistory
 from .keepalive import KEEP_ALIVE
 from .prompt import NUM_CTX, TOOLS, build_system_prompt
 from .router import route
-from .templates import TEMPLATES, TemplateContext, TemplateUnsupported
+from .templates import TEMPLATES, TemplateContext, TemplateUnsupported, check_scope
 from .toolbox import Toolbox
 
 MAX_TOOL_ITERATIONS = 8
@@ -181,6 +181,7 @@ class Agent:
             return None
         t0 = time.monotonic()
         try:
+            check_scope(routed.intent, routed.slots)
             result = handler(TemplateContext(con=self.toolbox.con, out_dir=self.toolbox.out_dir), routed.slots)
         except TemplateUnsupported as exc:
             history.log(f"  -> (template) {exc} - falling through to the agent")
