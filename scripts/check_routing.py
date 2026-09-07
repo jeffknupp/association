@@ -45,7 +45,16 @@ CASES: list[tuple[str, str, dict]] = [
     ("How many points did Jokic score in the 3rd quarter against Boston?", "other", {}),
     ("Compare Luka and SGA this season", "other", {}),
     ("Show me Wembanyama's shot chart", "shot_chart", {}),
-    ("What was the Lakers record last season?", "team_record", {}),
+    ("What was the Lakers record last season?", "team_record", {"team": "Lakers", "season": current_season() - 1}),
+    # "last N games" means most recent, not earliest - confirmed live, the
+    # router got this backwards and answered with October games.
+    ("Show me the Knicks last 5 games", "game_log", {"team": "New York Knicks", "order": "recent", "limit": 5}),
+    ("What were the Bulls last 3 games?", "game_log", {"order": "recent"}),
+    ("What was Curry's first game of the season?", "game_log", {"order": "first"}),
+    ("Lakers opening game of the season", "game_log", {"order": "first"}),
+    # The router often expands a nickname to the full name ("Celtics" ->
+    # "Boston Celtics"); both resolve, so only the intent is asserted here.
+    ("How did the Celtics do in their last 10 games?", "game_log", {}),
 ]
 
 

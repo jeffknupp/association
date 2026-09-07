@@ -6,7 +6,7 @@ from typing import Any
 import duckdb
 import pytest
 
-from association.query.templates import TemplateUnsupported, leaderboard, player_stat, threshold_count
+from association.query.templates import TemplateUnsupported, game_log, leaderboard, player_stat, team_record, threshold_count
 from association.season import current_season
 
 
@@ -242,3 +242,98 @@ def test_leaderboard_handles_triple_doubles_as_a_metric_not_a_recount(lb_con: du
     assert result.answer == (
         f"Luka Doncic led the league in triple-doubles in the {current_season()} regular season, at 34. Next: Stephen Curry (2)."
     )
+
+
+# ---------------- team_record / game_log ----------------
+
+
+@pytest.fixture
+def gl_con() -> duckdb.DuckDBPyConnection:
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    c.execute("CREATE TABLE standings (team_id VARCHAR, season INTEGER, wins DOUBLE, losses DOUBLE, winPercent DOUBLE, streak DOUBLE, playoffSeed DOUBLE)")
+    c.execute("CREATE TABLE games (event_id VARCHAR, date VARCHAR, home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR)")
+    c.execute("CREATE TABLE team_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, opponent_team_id VARCHAR, home_away VARCHAR)")
+    c.execute("INSERT INTO teams VALUES ('18','NY','New York Knicks'),('2','BOS','Boston Celtics')")
+    s = current_season()
+    c.execute("INSERT INTO standings VALUES ('18',?,53.0,29.0,0.646,3.0,4.0)", [s])
+    c.execute("INSERT INTO games VALUES ('e1','2026-04-10T22:00Z',112,95,'18'),('e2','2026-04-12T22:00Z',110,96,'2')")
+    c.execute("INSERT INTO team_box_stats VALUES ('e1',?,2,'18','2','home'),('e2',?,2,'18','2','away')", [s, s])
+    return c
+
+
+def test_team_record_formats_a_double_backed_record_as_integers(gl_con: duckdb.DuckDBPyConnection) -> None:
+    # standings stores wins/losses as DOUBLE; "53.0-29.0" makes a correct
+    # answer look untrustworthy.
+    answer = team_record(gl_con, {"team": "Knicks"}).answer or ""
+    assert "53-29" in answer and "53.0" not in answer
+    assert "(.646)" in answer and "4th seed" in answer and "won 3 straight" in answer
+
+
+def test_team_record_falls_through_for_playoffs(gl_con: duckdb.DuckDBPyConnection) -> None:
+    # standings has no season_type, so a playoff record must not be answered
+    # with the regular-season number under a playoff-sounding label.
+    with pytest.raises(TemplateUnsupported):
+        team_record(gl_con, {"team": "Knicks", "season_type": 3})
+
+
+def test_team_record_reports_a_missing_season_honestly(gl_con: duckdb.DuckDBPyConnection) -> None:
+    assert "no 1999 standings" in (team_record(gl_con, {"team": "Knicks", "season": 1999}).answer or "")
+
+
+def test_game_log_includes_home_and_away_games(gl_con: duckdb.DuckDBPyConnection) -> None:
+    """Regression: joining games by home_team_id only silently returns a
+    team's home games and drops every away game, with no error."""
+    games = game_log(gl_con, {"team": "Knicks"}).data["games"]
+    assert {g["home_away"] for g in games} == {"home", "away"}
+
+
+def test_game_log_reports_each_games_own_score_from_that_teams_side(gl_con: duckdb.DuckDBPyConnection) -> None:
+    by_date = {g["date"]: g for g in game_log(gl_con, {"team": "Knicks"}).data["games"]}
+    assert (by_date["2026-04-10"]["team_score"], by_date["2026-04-10"]["opponent_score"]) == (112, 95)
+    # Away game: the Knicks' score is the AWAY score, not the home one.
+    assert (by_date["2026-04-12"]["team_score"], by_date["2026-04-12"]["opponent_score"]) == (96, 110)
+
+
+def test_game_log_tallies_the_record_over_exactly_the_rows_shown(gl_con: duckdb.DuckDBPyConnection) -> None:
+    result = game_log(gl_con, {"team": "Knicks"})
+    assert result.data["wins"] == 1
+    assert "(1-1)" in (result.answer or "")
+
+
+def test_game_log_order_first_is_ascending(gl_con: duckdb.DuckDBPyConnection) -> None:
+    # LIMIT 1 without an explicit ORDER BY returns an arbitrary row, not the
+    # earliest one.
+    first = game_log(gl_con, {"team": "Knicks", "order": "first", "limit": 1}).data["games"]
+    assert first[0]["date"] == "2026-04-10"
+    recent = game_log(gl_con, {"team": "Knicks", "limit": 1}).data["games"]
+    assert recent[0]["date"] == "2026-04-12"
+
+
+def test_game_log_filters_an_exact_calendar_date(gl_con: duckdb.DuckDBPyConnection) -> None:
+    # games.date is a full ISO timestamp, so `= 'YYYY-MM-DD'` is valid SQL that
+    # silently matches nothing.
+    games = game_log(gl_con, {"team": "Knicks", "date": "2026-04-12"}).data["games"]
+    assert [g["date"] for g in games] == ["2026-04-12"]
+
+
+def test_game_log_ignores_a_malformed_date_rather_than_matching_nothing(gl_con: duckdb.DuckDBPyConnection) -> None:
+    games = game_log(gl_con, {"team": "Knicks", "date": "April 12"}).data["games"]
+    assert len(games) == 2
+
+
+def test_game_log_ambiguous_team_asks(gl_con: duckdb.DuckDBPyConnection) -> None:
+    gl_con.execute("INSERT INTO teams VALUES ('12','LAC','LA Clippers'),('13','LAL','Los Angeles Lakers')")
+    assert "did you mean" in (game_log(gl_con, {"team": "LA"}).answer or "")
+
+
+def test_game_log_without_team_or_player_falls_through(gl_con: duckdb.DuckDBPyConnection) -> None:
+    with pytest.raises(TemplateUnsupported):
+        game_log(gl_con, {"limit": 5})
+
+
+def test_team_record_refuses_a_limited_set_rather_than_reporting_the_full_season(gl_con: duckdb.DuckDBPyConnection) -> None:
+    """"How did they do in their last 10?" answered with the full-season record
+    is a silent substitution - game_log tallies over exactly the games shown."""
+    with pytest.raises(TemplateUnsupported):
+        team_record(gl_con, {"team": "Knicks", "limit": 10})

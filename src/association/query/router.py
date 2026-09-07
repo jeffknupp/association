@@ -42,8 +42,9 @@ intent must be one of:
                      ("most 30+ point games", "most games with 20+ rebounds")
   player_stat      - one named player's season numbers ("how many points did Curry
                      average", "what are Jokic's numbers") - always set player
-  game_log         - list a player's or team's games ("Lakers games in January")
-  team_record      - a team's win/loss record
+  game_log         - list a player's or team's games, or one specific game
+                     ("Lakers last 5 games", "Curry's first game of the season")
+  team_record      - a team's win/loss record for a season
   shot_chart       - render/plot/visualize a player's shots
   other            - anything else, including per-quarter scoring, shot
                      distances, and any comparison of two or more named players
@@ -61,7 +62,10 @@ rim_o_net_pts / driving_o_net_pts.
 Set season ONLY when the question names an explicit 4-digit year. For "this
 season" / "last season" / "this year" set season_ref instead, and omit season.
 Set season_type to "playoffs" for a playoff/postseason question, otherwise
-omit it. Set team when the question names one.
+omit it. Set team when the question names one. For game_log always set order:
+"first" ONLY for the earliest/opening game(s) of a season, "recent" for the
+latest, the most recent, or "the last N games". Set date as YYYY-MM-DD only
+when the question names an exact calendar day.
 
 Examples:
 Q: Who had the most 30+ point games this season?
@@ -76,6 +80,14 @@ Q: How many points did Luka Doncic average in 2024?
 {"intent":"player_stat","player":"Luka Doncic","stat":"points","season":2024}
 Q: What are Jokic's numbers this season?
 {"intent":"player_stat","player":"Nikola Jokic","season_ref":"current"}
+Q: What was the Lakers record last season?
+{"intent":"team_record","team":"Lakers","season_ref":"previous"}
+Q: Show me the Knicks last 5 games
+{"intent":"game_log","team":"New York Knicks","order":"recent","limit":5}
+Q: How did the Celtics do in their last 10 games?
+{"intent":"game_log","team":"Boston Celtics","order":"recent","limit":10}
+Q: What was Curry's first game of the season?
+{"intent":"game_log","player":"Stephen Curry","order":"first","limit":1}
 Q: Top 5 scorers on the Lakers?
 {"intent":"leaderboard","stat":"points","team":"Lakers","limit":5}
 Q: Who led the playoffs in rebounding?
@@ -104,6 +116,8 @@ ROUTER_SCHEMA: dict[str, Any] = {
         "season": {"type": "integer"},
         "season_ref": {"type": "string", "enum": ["current", "previous"]},
         "season_type": {"type": "string", "enum": ["regular", "playoffs"]},
+        "order": {"type": "string", "enum": ["recent", "first"]},
+        "date": {"type": "string"},
         "limit": {"type": "integer"},
         "shot_value": {"type": "integer"},
     },

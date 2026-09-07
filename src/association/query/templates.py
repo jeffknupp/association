@@ -13,6 +13,7 @@ adding a function here, and its KNOWLEDGE_BASE entry then becomes deletable."""
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -21,7 +22,7 @@ import duckdb
 
 from association.season import current_season
 
-from .entities import Ambiguous, Entity, resolve_player
+from .entities import Ambiguous, Entity, resolve_player, resolve_team
 from .leaderboard import LeaderboardError, resolve_metric, run_leaderboard
 
 # Slot value -> real player_box_stats column. A whitelist, not a passthrough:
@@ -288,14 +289,27 @@ def player_stat(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> Templa
     )
 
 
-def _clarify(text: str, candidates: list[str]) -> TemplateResult:
+MAX_CLARIFY_CANDIDATES = 5
+
+
+def _as_int(value: Any) -> str:
+    return str(int(value)) if isinstance(value, (int, float)) else str(value)
+
+
+def _ordinal(n: int) -> str:
+    suffix = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
+def _clarify(text: str, candidates: list[str], kind: str = "player") -> TemplateResult:
     """A handled outcome, not a fall-through: the template knows exactly what
     is ambiguous, so it says so instead of passing the problem along."""
-    joined = ", ".join(candidates[:-1]) + f" or {candidates[-1]}"
+    shown, extra = candidates[:MAX_CLARIFY_CANDIDATES], len(candidates) - MAX_CLARIFY_CANDIDATES
+    joined = ", ".join(shown[:-1]) + f" or {shown[-1]}" + (f" ({extra} others also match)" if extra > 0 else "")
     return TemplateResult(
-        summary=f"ambiguous player {text!r}",
+        summary=f"ambiguous {kind} {text!r}",
         data={"ambiguous": text, "candidates": candidates},
-        answer=f"{text!r} matches more than one player - did you mean {joined}?",
+        answer=f"{text!r} matches more than one {kind} - did you mean {joined}?",
     )
 
 
@@ -323,8 +337,180 @@ def _phrase_player_stat(name: str, period: str, values: dict[str, Any], wanted: 
     return sentence
 
 
+DEFAULT_GAME_LOG_LIMIT = 10
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+# games is home/away-oriented, not team-perspective: joining team_id to only
+# home_team_id silently returns just that team's HOME games, with no error.
+# team_box_stats has the team-perspective row (team_id, opponent_team_id,
+# home_away), but who WON lives only on games.winner_team_id. team_score /
+# opponent_score are computed from home_away rather than reported raw, because
+# raw home_score/away_score forces a per-row guess about which number was this
+# team's - one that gets made backwards on some rows.
+_TEAM_GAMES_SQL = """
+SELECT g.date,
+       tbs.home_away,
+       opp.display_name AS opponent,
+       CASE WHEN tbs.home_away = 'home' THEN g.home_score ELSE g.away_score END AS team_score,
+       CASE WHEN tbs.home_away = 'home' THEN g.away_score ELSE g.home_score END AS opponent_score,
+       g.winner_team_id = tbs.team_id AS won
+FROM team_box_stats tbs
+JOIN games g ON g.event_id = tbs.event_id
+JOIN teams opp ON opp.team_id = tbs.opponent_team_id
+WHERE tbs.team_id = ? AND tbs.season = ? AND tbs.season_type = ?
+"""
+
+
+def _resolved_team(con: duckdb.DuckDBPyConnection, text: Any) -> Entity | TemplateResult:
+    if not isinstance(text, str) or not text.strip():
+        raise TemplateUnsupported("no team named")
+    match resolve_team(con, text):
+        case Entity() as team:
+            return team
+        case Ambiguous(candidates=candidates):
+            return _clarify(text, candidates, kind="team")
+        case _:
+            raise TemplateUnsupported(f"no team matching {text!r}")
+
+
+def team_record(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> TemplateResult:
+    """A team's win-loss record, read from standings rather than tallied from
+    games - standings is the authoritative season record and carries streak and
+    seed alongside it. It has no season_type column, so a playoff-record
+    question falls through rather than being answered with the regular-season
+    number under a playoff-sounding label."""
+    team = _resolved_team(con, slots.get("team"))
+    if isinstance(team, TemplateResult):
+        return team
+    if (slots.get("season_type") or 2) != 2:
+        raise TemplateUnsupported("standings covers the regular season only")
+    if slots.get("limit"):
+        # "how did they do in their last 10 games?" is a game_log question -
+        # standings only has the full-season record, and answering with it
+        # under a "last 10" question is a silent substitution. game_log already
+        # tallies the record over exactly the games it lists.
+        raise TemplateUnsupported("a record over a limited set of games is a game_log question")
+
+    season = slots.get("season") or current_season()
+    row = con.execute(
+        "SELECT wins, losses, winPercent, streak, playoffSeed FROM standings WHERE team_id = ? AND season = ?",
+        [team.id, season],
+    ).fetchone()
+    if row is None:
+        return TemplateResult(
+            summary=f"{team.name} record, {season}",
+            data={"team": team.name, "season": season},
+            answer=f"There are no {season} standings for the {team.name} in the warehouse.",
+        )
+    wins, losses, win_pct, streak, seed = row
+    # standings stores these as DOUBLE; reporting a 53-29 record as "53.0-29.0"
+    # is the kind of detail that makes a correct answer look untrustworthy.
+    answer = f"The {team.name} were {_as_int(wins)}-{_as_int(losses)} in the {season} regular season"
+    if win_pct is not None:
+        # Basketball convention: .646, not 0.646.
+        answer += f" ({win_pct:.3f}".replace("(0.", "(.") + ")"
+    extras = []
+    if seed:
+        extras.append(f"{_ordinal(int(seed))} seed")
+    if streak:
+        extras.append(f"{'won' if streak > 0 else 'lost'} {abs(int(streak))} straight")
+    answer += f", {', '.join(extras)}." if extras else "."
+    return TemplateResult(
+        summary=f"{team.name} record, {season}",
+        data={"team": team.name, "season": season, "wins": wins, "losses": losses, "win_pct": win_pct},
+        answer=answer,
+    )
+
+
+def game_log(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> TemplateResult:
+    """A team's or a player's games. Both orderings are explicit: "first game"
+    and "last game" differ only by ORDER BY direction, and LIMIT 1 without one
+    returns an arbitrary row rather than either."""
+    season = slots.get("season") or current_season()
+    season_type = slots.get("season_type") or 2
+    limit = _clamp_limit(slots.get("limit"), default=DEFAULT_GAME_LOG_LIMIT)
+    ascending = slots.get("order") == "first"
+    date = slots.get("date") if isinstance(slots.get("date"), str) and _ISO_DATE.match(slots.get("date", "")) else None
+    period = _period(season, season_type)
+
+    if slots.get("team"):
+        team = _resolved_team(con, slots.get("team"))
+        if isinstance(team, TemplateResult):
+            return team
+        sql, params = _TEAM_GAMES_SQL, [team.id, season, season_type]
+        if date:
+            # games.date is a full ISO timestamp, so `= 'YYYY-MM-DD'` is valid
+            # SQL that silently matches nothing.
+            sql, params = sql + " AND g.date LIKE ?", [*params, f"{date}%"]
+        rows = con.execute(f"{sql} ORDER BY g.date {'ASC' if ascending else 'DESC'} LIMIT ?", [*params, limit]).fetchall()
+        return _team_game_log_result(team.name, period, rows, ascending, date)
+
+    text = slots.get("player")
+    if not isinstance(text, str) or not text.strip():
+        raise TemplateUnsupported("game_log needs a team or a player")
+    match resolve_player(con, text):
+        case Entity() as player:
+            pass
+        case Ambiguous(candidates=candidates):
+            return _clarify(text, candidates)
+        case _:
+            raise TemplateUnsupported(f"no player matching {text!r}")
+
+    where = "athlete_id = ? AND season = ? AND season_type = ?"
+    params = [player.id, season, season_type]
+    if date:
+        where, params = where + " AND game_date LIKE ?", [*params, f"{date}%"]
+    rows = con.execute(
+        f"SELECT game_date, opponent_abbr, minutes, points, rebounds, assists FROM player_game_log "
+        f"WHERE {where} ORDER BY game_date {'ASC' if ascending else 'DESC'} LIMIT ?",
+        [*params, limit],
+    ).fetchall()
+    return _player_game_log_result(player.name, period, rows, ascending, date)
+
+
+def _scope(count: int, ascending: bool, date: str | None) -> str:
+    if date:
+        return f"on {date}"
+    if count == 1:
+        return "first game" if ascending else "most recent game"
+    return f"first {count} games" if ascending else f"last {count} games"
+
+
+def _team_game_log_result(name: str, period: str, rows: list[tuple[Any, ...]], ascending: bool, date: str | None) -> TemplateResult:
+    summary = f"{name} game log, {period}"
+    if not rows:
+        return TemplateResult(summary=summary, data={"team": name, "games": []}, answer=f"No {period} games found for the {name}.")
+    games = [
+        {"date": str(r[0])[:10], "home_away": r[1], "opponent": r[2], "team_score": r[3], "opponent_score": r[4], "won": bool(r[5])}
+        for r in rows
+    ]
+    # Tallied here, over exactly the rows being shown, rather than left to be
+    # counted back out of the listing - that recount is where a wins/losses
+    # total gets inverted.
+    wins = sum(1 for g in games if g["won"])
+    header = f"{name}, {_scope(len(games), ascending, date)} of the {period} ({wins}-{len(games) - wins}):"
+    lines = [
+        f"  {g['date']}  {'W' if g['won'] else 'L'} {g['team_score']}-{g['opponent_score']}  "
+        f"{'vs' if g['home_away'] == 'home' else 'at'} {g['opponent']}"
+        for g in games
+    ]
+    return TemplateResult(summary=summary, data={"team": name, "wins": wins, "games": games}, answer="\n".join([header, *lines]))
+
+
+def _player_game_log_result(name: str, period: str, rows: list[tuple[Any, ...]], ascending: bool, date: str | None) -> TemplateResult:
+    summary = f"{name} game log, {period}"
+    if not rows:
+        return TemplateResult(summary=summary, data={"player": name, "games": []}, answer=f"No {period} games found for {name}.")
+    games = [{"date": str(r[0])[:10], "opponent": r[1], "minutes": r[2], "points": r[3], "rebounds": r[4], "assists": r[5]} for r in rows]
+    header = f"{name}, {_scope(len(games), ascending, date)} of the {period}:"
+    lines = [f"  {g['date']}  vs {g['opponent']}  {g['points']} pts, {g['rebounds']} reb, {g['assists']} ast" for g in games]
+    return TemplateResult(summary=summary, data={"player": name, "games": games}, answer="\n".join([header, *lines]))
+
+
 TEMPLATES: dict[str, Callable[[duckdb.DuckDBPyConnection, dict[str, Any]], TemplateResult]] = {
     "threshold_count": threshold_count,
     "leaderboard": leaderboard,
     "player_stat": player_stat,
+    "team_record": team_record,
+    "game_log": game_log,
 }

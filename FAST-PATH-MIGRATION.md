@@ -4,8 +4,8 @@ Staged replacement of the single "understand the question AND write the SQL"
 model call with a router → template → answer pipeline.
 
 **Landed:** stage 1 (router + `threshold_count`), 2.0 (`entities.py`), 2.1
-(`leaderboard`), 2.2 (`player_stat`), 2.3 (double/triple-doubles).
-**Next:** 2.4–2.5, then stage 3.
+(`leaderboard`), 2.2 (`player_stat`), 2.3 (double/triple-doubles), 2.4
+(`game_log` + `team_record`). **Next:** 2.5, then stage 3.
 
 ## Why
 
@@ -146,16 +146,41 @@ schema, and twice now it has said the work is smaller than the plan assumed.
 **Still to retire in stage 3:** "Double-double / triple-double definitions"
 (199 tok).
 
-### 2.4 `game_log` and `team_record`
+### 2.4 `game_log` and `team_record` — DONE
 
-These two share the hard part: a team's games span `home_team_id` and
-`away_team_id`, so both need the same opponent/result CTE. Build it once,
-use it for the list (`game_log`) and the tally (`team_record`).
+`game_log` uses the shared team-perspective query (`team_box_stats` for
+opponent and home/away, `games` for `winner_team_id`, `team_score`/
+`opponent_score` computed from `home_away` rather than reported raw).
+`team_record` reads `standings` instead, which is authoritative for a full
+season and carries streak and seed. The record over a *limited* set of games
+is tallied in `game_log`, in Python, over exactly the rows being displayed.
 
-**Retires:** the two largest remaining KB entries — "A team's game log across
-home AND away games" (454 tok) and "A record/tally alongside a list of games"
-(485 tok) — plus "First/most recent/last game" (140), "Filtering by an exact
-calendar date" (129), "A specific game already implies its season" (54).
+Three guards this shape needed, each for a failure the KB entries describe:
+
+- `standings` has no `season_type`, so a playoff-record question falls through
+  rather than being answered with the regular-season number under a
+  playoff-sounding label.
+- `team_record` refuses a `limit` outright — "how did they do in their last
+  10?" answered with the full-season record is a silent substitution. It is a
+  `game_log` question, and the router now sends it there.
+- A malformed `date` slot is dropped rather than passed through, since
+  `games.date` is a full ISO timestamp and `= 'YYYY-MM-DD'` is valid SQL that
+  silently matches nothing.
+
+**Two routing bugs the live run caught that the check had not.** "Show me the
+Knicks **last** 5 games" routed as `order: "first"` and answered with October
+games; and "how did the Celtics do in their last 10 games?" routed to
+`team_record`, which would have reported the full season. Both are fixed in
+the router prompt, both now have assertions in `check_routing.py`, and the
+second also has the code-level guard above. Lesson: assert every slot that
+changes the answer, not just the intent — an intent-only assertion passed
+while the answer was wrong.
+
+**Still to retire in stage 3:** the two largest remaining KB entries — "A
+team's game log across home AND away games" (454 tok) and "A record/tally
+alongside a list of games" (485 tok) — plus "First/most recent/last game"
+(140), "Filtering by an exact calendar date" (129), "A specific game already
+implies its season" (54).
 
 ### 2.5 `shot_chart`
 

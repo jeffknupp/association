@@ -5,6 +5,41 @@ commit that made it for the full story.
 
 ## 2026-09-06
 
+- **game_log and team_record on the fast path** (stage 2.4): `game_log` uses
+  the team-perspective query both `KNOWLEDGE_BASE` entries describe -
+  `team_box_stats` for opponent and home/away, `games` for `winner_team_id`,
+  and `team_score`/`opponent_score` computed from `home_away` rather than
+  reported raw, since raw home/away scores force a per-row guess about which
+  number was this team's. `team_record` reads `standings` instead, which is
+  authoritative for a full season and carries streak and seed alongside the
+  record. A record over a LIMITED set of games is tallied in Python over
+  exactly the rows being displayed, so the total cannot drift from the listing.
+
+  Three guards, each for a failure those entries describe: `standings` has no
+  `season_type`, so a playoff-record question falls through rather than
+  answering with the regular-season number under a playoff-sounding label;
+  `team_record` refuses a `limit` outright, because "how did they do in their
+  last 10?" answered with the full-season record is a silent substitution (it
+  is a `game_log` question, and the router now sends it there); and a
+  malformed `date` slot is dropped rather than passed through, since
+  `games.date` is a full ISO timestamp and `= 'YYYY-MM-DD'` is valid SQL that
+  silently matches nothing.
+
+  Two routing bugs the LIVE run caught that `check_routing.py` had not: "show
+  me the Knicks LAST 5 games" routed as `order: "first"` and answered with
+  October games, and "how did the Celtics do in their last 10 games?" routed
+  to `team_record`. Both fixed in the router prompt, both now asserted in the
+  check, and the second also guarded in code. The lesson is in the check now:
+  assert every slot that changes the answer, not just the intent - an
+  intent-only assertion passed while the answer was wrong.
+
+  Also improved team matching while here: word-boundary matches now rank ahead
+  of incidental substring hits, so "LA" offers "LA Clippers or Los Angeles
+  Lakers" instead of nine teams including "Atlanta Hawks", and clarification
+  lists are capped at five. And `standings` stores wins/losses/seed as DOUBLE,
+  so a 53-29 record was printing as "53.0-29.0" - now formatted as the
+  integers they are, with win percentage in the conventional .646 form.
+
 - **Double-doubles and triple-doubles as leaderboard metrics** (stage 2.3):
   planned as a new per-game threshold template, landed as two entries in
   `LEADERBOARD_METRICS` instead. The `KNOWLEDGE_BASE` entry for this had

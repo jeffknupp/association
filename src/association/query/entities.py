@@ -71,13 +71,24 @@ def find_players(con: duckdb.DuckDBPyConnection, text: str) -> list[Entity]:
 
 
 def find_teams(con: duckdb.DuckDBPyConnection, text: str) -> list[Entity]:
+    """Substring matching is kept (so "LA" stays honestly ambiguous rather than
+    silently resolving to whichever team is literally named "LA"), but matches
+    that start a word are ranked first - otherwise "LA" offers "Atlanta Hawks"
+    as a candidate, which makes a clarification look broken."""
     rows = con.execute(
-        "SELECT team_id, display_name FROM teams "
-        "WHERE team_id = ? OR abbreviation ILIKE ? OR display_name ILIKE ? "
-        f"ORDER BY display_name LIMIT {MAX_CANDIDATES}",
-        [text, text, f"%{text}%"],
+        "SELECT team_id, display_name, "
+        "  (team_id = ? OR abbreviation ILIKE ? OR display_name ILIKE ? OR display_name ILIKE ?) AS strong "
+        "FROM teams WHERE team_id = ? OR abbreviation ILIKE ? OR display_name ILIKE ? "
+        f"ORDER BY strong DESC, display_name LIMIT {MAX_CANDIDATES}",
+        # strong = an id/abbreviation hit, or a name match that starts a word:
+        # 'LA%' catches "LA Clippers", '% LA%' catches "Los Angeles Lakers".
+        [text, text, f"{text}%", f"% {text}%", text, text, f"%{text}%"],
     ).fetchall()
-    return [Entity(id=str(r[0]), name=r[1]) for r in rows]
+    strong = [Entity(id=str(r[0]), name=r[1]) for r in rows if r[2]]
+    # Incidental substring hits ("LA" inside "Atlanta") are dropped whenever a
+    # word-boundary match exists, so a clarification offers plausible teams
+    # rather than everything the LIKE happened to touch.
+    return strong or [Entity(id=str(r[0]), name=r[1]) for r in rows]
 
 
 def _resolve(candidates: list[Entity], text: str, exact_keys: tuple[str, ...]) -> Resolution:
