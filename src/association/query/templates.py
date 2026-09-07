@@ -331,7 +331,8 @@ def _tabulate_leaderboard(
 # Reported together, so "how many points did X average" and "how many points
 # did X score" don't have to be told apart from wording - a distinction the
 # router got wrong more often than it got right.
-PLAYER_STAT_COLUMNS = {
+# stat -> (per-game column, season-total column or None, display label)
+PLAYER_STAT_COLUMNS: dict[str, tuple[str, str | None, str]] = {
     "points": ("avgPoints", "points", "points"),
     "rebounds": ("avgRebounds", None, "rebounds"),
     "assists": ("avgAssists", "assists", "assists"),

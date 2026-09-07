@@ -397,6 +397,7 @@ def test_parse_team_season_stats_empty_value_becomes_none() -> None:
         }
     }
     row, glossary = parse.parse_team_season_stats(data, 2021, 2, "13")
+    assert row is not None
     assert row["blocks"] == 5.0
     assert row["sosRemaining"] is None
     assert row["season"] == 2021

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -26,7 +27,7 @@ def exists(path: Path) -> bool:
     return path.exists() and path.stat().st_size > 0
 
 
-def write_rows(path: Path, rows: list[dict]) -> None:
+def write_rows(path: Path, rows: list[dict[str, Any]]) -> None:
     """Write rows to Parquet atomically. An empty list writes nothing, so a
     legitimately empty result never creates a file that looks like a checkpoint."""
     if not rows:
@@ -38,7 +39,7 @@ def write_rows(path: Path, rows: list[dict]) -> None:
     os.replace(tmp_path, path)
 
 
-def write_row(path: Path, row: dict) -> None:
+def write_row(path: Path, row: dict[str, Any]) -> None:
     """Write a single row, for endpoints that return one record per file."""
     write_rows(path, [row])
 

@@ -119,7 +119,7 @@ class Toolbox:
     than a convention: no query the model writes can modify the warehouse.
     """
     def __init__(self, db_path: str, out_dir: Path):
-        self.con = duckdb.connect(db_path, read_only=True)
+        self.con: duckdb.DuckDBPyConnection = duckdb.connect(db_path, read_only=True)
         self.out_dir = out_dir
         self.out_dir.mkdir(parents=True, exist_ok=True)
 

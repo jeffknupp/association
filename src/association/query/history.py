@@ -27,10 +27,10 @@ class RunHistory:
         self.verbose = verbose
         self.history_dir = history_dir
         self.lines: list[str] = []
-        self.model_calls = 0
-        self.model_seconds = 0.0
-        self.tool_calls = 0
-        self.tool_seconds = 0.0
+        self.model_calls: int = 0
+        self.model_seconds: float = 0.0
+        self.tool_calls: int = 0
+        self.tool_seconds: float = 0.0
         self._start = time.monotonic()
 
     def log(self, line: str) -> None:

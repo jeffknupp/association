@@ -1,7 +1,8 @@
 """Sanity tests for CLI argument parsing (Click)."""
 
-from typing import Any
+from typing import Any, cast
 
+import click
 import pytest
 from click.testing import CliRunner
 
@@ -34,7 +35,7 @@ def test_parse_season_types_dedups_and_sorts() -> None:
 
 def test_cli_lists_expected_commands() -> None:
     assert set(cli.commands.keys()) == {"data", "query", "ai"}
-    data_group = cli.commands["data"]
+    data_group = cast(click.Group, cli.commands["data"])
     assert set(data_group.commands.keys()) == {"pull", "load", "check"}
 
 

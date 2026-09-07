@@ -21,7 +21,7 @@ from typing import Any
 import boto3
 from botocore.exceptions import ClientError
 
-log = logging.getLogger("association.fetch.netpoints_client")
+log: logging.Logger = logging.getLogger("association.fetch.netpoints_client")
 
 REGION = "us-east-1"
 IDENTITY_POOL_ID = "us-east-1:7b073343-561b-4a8f-bf2a-765958c3aaaa"

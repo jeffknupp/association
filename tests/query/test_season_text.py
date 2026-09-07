@@ -38,7 +38,7 @@ def test_this_season_resolves_to_the_current_season(question: str) -> None:
     assert season_from_text(question) == current_season()
 
 
-def test_an_explicit_year_wins(): 
+def test_an_explicit_year_wins() -> None:
     assert season_from_text("Most games with 15+ assists in 2024?") == 2024
 
 

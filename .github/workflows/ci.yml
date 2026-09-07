@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  # A new push supersedes an in-flight run for the same ref.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync environment
+        # --frozen: build exactly what uv.lock pins, and fail if the lockfile
+        # has drifted from pyproject.toml rather than silently resolving anew.
+        run: uv sync --frozen --extra dev --extra docs
+
+      - name: Lint (ruff)
+        run: uv run ruff check src tests scripts
+
+      # No `ruff format --check`: this project is deliberately not
+      # ruff-formatted. line-length is 200 on purpose (see pyproject) because
+      # much of the code is prompt text and SQL fixtures that read worse
+      # wrapped, and enabling the formatter would rewrite 27 files to no
+      # benefit. `ruff check` still enforces the lint rules.
+
+      - name: Types (mypy, src)
+        # src and tests are checked separately: combined, mypy resolves the
+        # `association` package two ways and reports spurious errors. See the
+        # note in .pre-commit-config.yaml.
+        run: uv run mypy src
+
+      - name: Types (mypy, tests)
+        run: uv run mypy tests
+
+      - name: Public API type completeness
+        # pyright --verifytypes at 100%, the same gate pre-commit runs.
+        run: scripts/check_types_complete.sh
+
+      - name: Docstring coverage
+        run: scripts/check_docstrings.py
+
+      - name: Tests
+        run: uv run pytest -q
+
+      - name: Docs build
+        # -W: a broken cross-reference or a module missing from the API tree
+        # fails the build rather than rotting in the generated HTML.
+        run: scripts/build_docs.sh
+
+      - name: Upload built docs
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs
+          path: docs/_build/html
+          retention-days: 14

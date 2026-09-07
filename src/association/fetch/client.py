@@ -14,7 +14,7 @@ from typing import Any
 
 from curl_cffi import requests as cf_requests
 
-log = logging.getLogger("association.fetch.client")
+log: logging.Logger = logging.getLogger("association.fetch.client")
 
 IMPERSONATE = "chrome124"
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}

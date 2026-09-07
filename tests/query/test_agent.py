@@ -38,7 +38,7 @@ def test_extract_sql_returns_none_for_non_sql_fenced_code() -> None:
 
 def test_extract_sql_handles_empty_and_none() -> None:
     assert _extract_unrun_sql("") is None
-    assert _extract_unrun_sql(None) is None
+    assert _extract_unrun_sql(None) is None  # type: ignore[arg-type]  # deliberately passing None
 
 
 def test_extract_sql_picks_first_valid_sql_block_among_several() -> None:

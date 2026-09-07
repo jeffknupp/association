@@ -31,7 +31,7 @@ import logging
 
 import duckdb
 
-log = logging.getLogger("association.fetch.advanced_stats")
+log: logging.Logger = logging.getLogger("association.fetch.advanced_stats")
 
 VIEWS = ["player_advanced_stats", "player_season_advanced_stats"]
 

@@ -14,7 +14,7 @@ import duckdb
 
 from . import advanced_stats
 
-log = logging.getLogger("association.fetch.warehouse")
+log: logging.Logger = logging.getLogger("association.fetch.warehouse")
 
 # Every row already embeds its own season/season_type/team_id columns (set in
 # association.fetch.parse), so we read raw - not hive-partitioned - to avoid

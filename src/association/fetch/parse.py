@@ -19,9 +19,13 @@ from association.net_points_categories import FINGERPRINT_CATEGORIES
 
 TEAM_REF_RE = re.compile(r"/teams/(\d+)")
 
-# Raw ESPN response payload (or a nested dict within one) - a plain dict, since
+# Raw ESPN response payload (or a nested dict within one) - a plain Row, since
 # these are decoded straight from JSON and we index into them dynamically.
 JSON = dict[str, Any]
+
+# One flattened output row, ready for Parquet. Distinct from JSON above, which
+# is what ESPN sent us; this is what we write.
+Row = dict[str, Any]
 
 
 def _num(value: Any) -> int | float | str | None:
@@ -58,7 +62,7 @@ def _glossary_rows(
     labels: Iterable[str | None] | None,
     descriptions: Iterable[str | None] | None,
     source: str,
-) -> list[dict]:
+) -> list[Row]:
     labels = list(labels or [])
     descriptions = list(descriptions or [])
     rows = []
@@ -74,9 +78,9 @@ def _glossary_rows(
     return rows
 
 
-def parse_teams(data: JSON | None) -> list[dict]:
+def parse_teams(data: JSON | None) -> list[Row]:
     """Flatten the teams response into one row per team."""
-    rows: list[dict] = []
+    rows: list[Row] = []
     if not data:
         return rows
     for sport in data.get("sports") or []:
@@ -114,8 +118,8 @@ def parse_schedule_event_ids(data: JSON | None) -> list[str]:
 
 def parse_game_summary(data: JSON | None, season: int, season_type: int) -> dict[str, Any]:
     """Returns dict with: game (dict|None), player_box, team_box, plays,
-    shot_chart, win_probability (lists of dict), players_seen (athlete_id -> bio dict),
-    glossary (list of dict)."""
+    shot_chart, win_probability (lists of Row), players_seen (athlete_id -> bio Row),
+    glossary (list of Row)."""
     result: dict[str, Any] = {
         "game": None,
         "player_box": [],
@@ -310,10 +314,10 @@ def parse_game_summary(data: JSON | None, season: int, season_type: int) -> dict
     return result
 
 
-def parse_standings(data: JSON | None, season: int) -> tuple[list[dict], list[dict]]:
+def parse_standings(data: JSON | None, season: int) -> tuple[list[Row], list[Row]]:
     """One row per team: wins, losses, streak, seed and the rest of the standings."""
-    seen: dict[str, dict] = {}
-    glossary: list[dict] = []
+    seen: dict[str, Row] = {}
+    glossary: list[Row] = []
 
     def walk(node: JSON | None) -> None:
         """Recurse ESPN's nested stat groups, flattening leaves into ``out``."""
@@ -344,11 +348,11 @@ def parse_standings(data: JSON | None, season: int) -> tuple[list[dict], list[di
     return list(seen.values()), glossary
 
 
-def parse_player_career_stats(data: JSON | None, athlete_id: str, season_type: int) -> tuple[list[dict], list[dict]]:
+def parse_player_career_stats(data: JSON | None, athlete_id: str, season_type: int) -> tuple[list[Row], list[Row]]:
     """A player's season-by-season totals and averages, one row per season and
     season type."""
-    rows: dict[tuple, dict] = {}
-    glossary: list[dict] = []
+    rows: dict[tuple, Row] = {}
+    glossary: list[Row] = []
     if not data:
         return [], []
     for cat in data.get("categories") or []:
@@ -377,13 +381,13 @@ def parse_player_career_stats(data: JSON | None, athlete_id: str, season_type: i
 
 def parse_team_season_stats(
     data: JSON | None, season: int, season_type: int, team_id: str
-) -> tuple[dict[str, Any] | None, list[dict]]:
+) -> tuple[dict[str, Any] | None, list[Row]]:
     """A team's season aggregate, flattened from ESPN's nested category/stat
     structure into a single wide row."""
     if not data:
         return None, []
     row: dict[str, Any] = {"season": season, "season_type": season_type, "team_id": team_id}
-    glossary: list[dict] = []
+    glossary: list[Row] = []
     splits = data.get("splits") or {}
     for cat in splits.get("categories") or []:
         names, labels, descs = [], [], []
@@ -400,10 +404,10 @@ def parse_team_season_stats(
     return row, glossary
 
 
-def parse_power_index(data: JSON | None) -> tuple[list[dict], list[dict]]:
+def parse_power_index(data: JSON | None) -> tuple[list[Row], list[Row]]:
     """ESPN's Basketball Power Index for one season, one row per team."""
-    rows: list[dict] = []
-    glossary: list[dict] = []
+    rows: list[Row] = []
+    glossary: list[Row] = []
     if not data:
         return rows, glossary
     for item in data.get("items") or []:
@@ -459,7 +463,7 @@ def parse_net_points_player(
     data: list[JSON] | None,
     team_abbr_to_id: dict[str, str],
     rate_data: list[JSON] | None = None,
-) -> list[dict]:
+) -> list[Row]:
     """NetPoints publishes one flat JSON array covering every historical
     season in one request - no per-season fetch exists, so this parses the
     whole thing every pull; the pipeline only writes out season+type files
@@ -486,7 +490,7 @@ def parse_net_points_player(
         key = (item.get("dot_com_id"), item.get("min_season"), item.get("seasonType"))
         rate_by_key[key] = item
 
-    rows: list[dict] = []
+    rows: list[Row] = []
     for item in data or []:
         key = (item.get("dot_com_id"), item.get("min_season"), item.get("seasonType"))
         rate = rate_by_key.get(key)
@@ -511,7 +515,7 @@ def parse_net_points_player(
     return rows
 
 
-def parse_net_points_team(data: JSON | None, team_abbr_to_id: dict[str, str]) -> list[dict]:
+def parse_net_points_team(data: JSON | None, team_abbr_to_id: dict[str, str]) -> list[Row]:
     """team_nba.json nests each stat block as a JSON string in pandas'
     orient="columns" shape ({"col": {"0": v, "1": v, ...}, ...}) rather than a
     plain list of row dicts - transpose it before use. Confirmed live: this
@@ -527,7 +531,7 @@ def parse_net_points_team(data: JSON | None, team_abbr_to_id: dict[str, str]) ->
     if not columns:
         return []
     indices = sorted(block[columns[0]].keys(), key=int)
-    rows: list[dict] = []
+    rows: list[Row] = []
     for i in indices:
         raw = {col: block[col].get(i) for col in columns}
         rows.append(
@@ -584,7 +588,7 @@ def parse_net_points_daily(
     team_abbr_to_id: dict[str, str],
     team_date_to_game: dict[tuple[str, str], tuple[str, int, int]],
     name_to_athlete_id: dict[str, str],
-) -> tuple[list[dict], list[dict]]:
+) -> tuple[list[Row], list[Row]]:
     """One date's file covers every game played that date, as two blocks:
     player_box (one row per player per game) and team_box (one row per team
     per game) - both mix real box-score stats (already fetched from ESPN,
@@ -601,8 +605,8 @@ def parse_net_points_daily(
     written with a null event_id. Player rows are matched to athlete_id by
     exact displayName - ambiguous or unmatched names are left with
     athlete_id=None rather than guessed."""
-    player_rows: list[dict] = []
-    team_rows: list[dict] = []
+    player_rows: list[Row] = []
+    team_rows: list[Row] = []
     if not data:
         return player_rows, team_rows
 
@@ -663,7 +667,7 @@ def parse_net_points_fingerprint(
     data: JSON | None,
     team_abbr_to_id: dict[str, str],
     name_to_athlete_id: dict[str, str],
-) -> list[dict]:
+) -> list[Row]:
     """One file per season (NetPoints' own start-year label, converted to this
     project's season-ends convention same as parse_net_points_player), keyed
     by NBA.com's own player id with no ESPN crosswalk provided - resolved
@@ -673,7 +677,7 @@ def parse_net_points_fingerprint(
     draftYear, dob) are NOT kept - real, already-sourced-from-ESPN data on
     `players`, not something to duplicate from a second, possibly-disagreeing
     source."""
-    rows: list[dict] = []
+    rows: list[Row] = []
     for raw in (data or {}).values():
         athlete_id = name_to_athlete_id.get(raw.get("displayName"))
         if athlete_id is None:

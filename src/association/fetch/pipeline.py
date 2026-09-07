@@ -10,6 +10,7 @@ import logging
 from datetime import date as _date
 from datetime import timedelta as _timedelta
 from pathlib import Path
+from typing import Any, Protocol
 
 import pyarrow as pa
 import pyarrow.dataset as ds
@@ -20,10 +21,31 @@ from tqdm import tqdm
 from association.season import current_season
 
 from . import endpoints, parse, storage
-from .client import ESPNClient
 from .netpoints_client import NetPointsDailyClient
 
-log = logging.getLogger("association.fetch.pipeline")
+log: logging.Logger = logging.getLogger("association.fetch.pipeline")
+
+
+class JsonFetcher(Protocol):
+    """What the pipeline needs from an HTTP client: one method.
+
+    Declared structurally rather than as :class:`~association.fetch.client.ESPNClient`
+    because that is the honest dependency - the pipeline never touches
+    throttling, retries or TLS impersonation, only ``get_json`` - and because a
+    test double should not have to inherit a network client to stand in for one.
+    """
+
+    def get_json(self, url: str, params: dict[str, Any] | None = None) -> Any:
+        """Fetch and decode one JSON document."""
+        ...
+
+
+class DailyNetPointsFetcher(Protocol):
+    """What the pipeline needs from the per-game NetPoints client."""
+
+    def get_daily(self, date: str, season_folder: int) -> dict[str, Any] | None:
+        """One date's NetPoints, or None when that date has no file."""
+        ...
 
 
 class Pipeline:
@@ -35,7 +57,7 @@ class Pipeline:
     """
     def __init__(
         self,
-        client: ESPNClient | None,
+        client: JsonFetcher | None,
         data_dir: Path,
         include_pbp: bool = False,
         include_net_points_daily: bool = False,
@@ -44,20 +66,20 @@ class Pipeline:
         # client may be None for local-only use (e.g. `data check --offline`,
         # which never calls a network-touching method like event_ids_for).
         self.client = client
-        self.root = Path(data_dir)
+        self.root: Path = Path(data_dir)
         self.include_pbp = include_pbp
         self.include_net_points_daily = include_net_points_daily
         self.force = force
-        self.glossary: dict[str, dict] = {}
-        self._net_points_daily_client: NetPointsDailyClient | None = None
+        self.glossary: dict[str, dict[str, Any]] = {}
+        self._net_points_daily_client: DailyNetPointsFetcher | None = None
 
     @property
-    def _live_client(self) -> ESPNClient:
+    def _live_client(self) -> JsonFetcher:
         """Every network-touching method goes through this instead of self.client
         directly - a clear error beats an AttributeError if a Pipeline built for
         local-only use (client=None) ever has a network method called on it."""
         if self.client is None:
-            raise RuntimeError("This Pipeline has no ESPNClient (constructed for local-only use) - can't make network requests.")
+            raise RuntimeError("This Pipeline has no HTTP client (constructed for local-only use) - can't make network requests.")
         return self.client
 
     def _p(self, *parts: str | int) -> Path:

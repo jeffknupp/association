@@ -59,9 +59,14 @@ scripts/build_docs.sh          # docs/_build/html/index.html
 ```
 
 The build runs as a pre-commit hook with `-W`, so a broken cross-reference or a
-module missing from the API tree fails the commit. A companion hook enforces
-100% docstring coverage on `src/`, since autodoc renders an undocumented
-function perfectly happily, just uselessly.
+module missing from the API tree fails the commit. Companion hooks enforce 100%
+docstring coverage on `src/` (autodoc renders an undocumented function
+perfectly happily, just uselessly) and 100% public-API type completeness via
+`pyright --verifytypes`.
+
+Every check also runs in CI on push and pull request — ruff, mypy over `src`
+and `tests`, type completeness, docstring coverage, the test suite, and the
+docs build — with the built HTML uploaded as an artifact.
 
 ## Data model
 

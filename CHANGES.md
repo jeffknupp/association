@@ -5,6 +5,41 @@ commit that made it for the full story.
 
 ## 2026-09-06
 
+- **100% public-API type completeness, and CI**: `pyright --verifytypes
+  association --ignoreexternal` now scores **100%**, up from a 90.4% baseline
+  (311 known, 14 ambiguous, 19 unknown of 344 exported symbols). Getting there
+  needed a PEP 561 `py.typed` marker - without it pyright reports "No py.typed
+  file found" and scores 0% of zero symbols - plus annotations for module
+  loggers and instance attributes, and real type arguments for the bare
+  `dict`/`list`/`tuple` in signatures. `parse.py` gained a `Row` alias
+  (`dict[str, Any]`) so its return types say what they are rather than merely
+  satisfying the checker, distinct from the existing `JSON` alias for what ESPN
+  sent us.
+
+  `scripts/check_types_complete.sh` runs the gate. It installs the package into
+  a scratch directory first, because `--verifytypes` inspects an INSTALLED
+  package and the editable install in `.venv` resolves through an import hook
+  pyright cannot follow.
+
+  Adding `py.typed` had a consequence worth recording: `mypy tests` went from 6
+  errors to 43, because the package had been treated as untyped when checking
+  tests, so `Pipeline` and friends were `Any` and every mismatch passed
+  silently. (It was already red at HEAD - the pre-commit hook had not been
+  catching it.) Fixed properly rather than suppressed: `Pipeline` now declares
+  `JsonFetcher` and `DailyNetPointsFetcher` protocols, which is the honest
+  dependency - it never touches throttling, retries or TLS impersonation, only
+  `get_json` - and means a test double no longer has to inherit a network
+  client to stand in for one. That resolved 37 of the 43 on its own.
+
+  New `.github/workflows/ci.yml` runs the whole suite on push and pull request:
+  ruff, mypy over `src` and `tests` separately, type completeness, docstring
+  coverage, pytest, and the docs build with `-W`, uploading the built HTML as
+  an artifact. `uv sync --frozen` fails if the lockfile has drifted from
+  pyproject rather than silently re-resolving. No `ruff format --check`: this
+  project is deliberately not ruff-formatted (line-length 200, because much of
+  the code is prompt text and SQL fixtures that read worse wrapped), and
+  enabling it would rewrite 27 files to no benefit.
+
 - **Sphinx documentation, and hooks that keep it honest**: `docs/` builds a
   full site - architecture, a command reference generated from the Click CLI
   itself (so it cannot drift from the flags the code accepts), usage recipes

@@ -97,7 +97,7 @@ class Agent:
         self.history_dir = history_dir
         self.fast_path = fast_path
         self.last_question: str | None = None
-        self.toolbox = Toolbox(db_path, out_dir)
+        self.toolbox: Toolbox = Toolbox(db_path, out_dir)
         # heterogeneous signatures dispatched generically via **args below -
         # a specific Callable type would make mypy check the wrong signature.
         self.dispatch: dict[str, Callable[..., str]] = {
@@ -108,7 +108,7 @@ class Agent:
         }
         # Rebuilt per question in _ask_inner; this is the always-on core only,
         # so a fresh Agent is usable before any question has been asked.
-        self.messages: list[dict] = [{"role": "system", "content": build_system_prompt("")}]
+        self.messages: list[dict[str, Any]] = [{"role": "system", "content": build_system_prompt("")}]
 
     def reset(self) -> None:
         """Drop the conversation, keeping the agent usable for a fresh question."""

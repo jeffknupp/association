@@ -512,7 +512,7 @@ After using tools, give a concise natural-language answer summarizing the result
 raw JSON at the user. If you rendered a shot chart, tell the user the file path that was returned.
 """
 
-TOOLS = [
+TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {

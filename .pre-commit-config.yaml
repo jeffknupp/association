@@ -39,6 +39,12 @@ repos:
       # Sphinx -W catches malformed docs but renders an undocumented function
       # perfectly happily, just uselessly - so coverage is checked separately
       # from the build.
+      - id: verifytypes
+        name: public API type completeness (pyright)
+        entry: scripts/check_types_complete.sh
+        language: system
+        pass_filenames: false
+        files: ^(src/.*\.py|pyproject.toml)$
       - id: docstrings
         name: docstring coverage (src)
         entry: scripts/check_docstrings.py

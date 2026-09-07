@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Any
 
-def render_court_html(title: str, subtitle: str, shots: list[tuple]) -> str:
+
+def render_court_html(title: str, subtitle: str, shots: list[tuple[Any, ...]]) -> str:
     """Simplified NBA half-court in ESPN's shot coordinate system (x: 0-50 court width,
     y: 0 at baseline increasing toward half court), makes/misses as distinct markers."""
     W, H = 500, 470  # 10px per foot, court width 50 x half-court length 47
