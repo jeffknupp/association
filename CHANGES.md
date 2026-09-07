@@ -5,6 +5,25 @@ commit that made it for the full story.
 
 ## 2026-09-06
 
+- **Fouling out, and shot charts of a single game**: two failures reported from
+  real use.
+
+  "How many times has Wembanyama fouled out of a game" - the router got the
+  shape right (threshold_count) but emitted stat "fouls committed" with
+  threshold 1. The template correctly refused both, and the question then hung
+  in the agent until it was aborted at 95s. `fouls` was missing from the
+  threshold vocabulary entirely, and "fouling out" is six personal fouls - an
+  NBA rule rather than a judgement call, and not something a 3B reliably knows.
+  `fouls` is now a threshold stat, and the phrase is normalized in the router
+  to stat=fouls, threshold=6, so the rule lives in one place. Wembanyama fouled
+  out twice in 2026.
+
+  "Create a shot chart of steph curry's last regular season game" charted the
+  whole season - 803 attempts instead of that game's 14. Nothing scoped the
+  request to one game. `shot_chart` now honours `order` the same way `game_log`
+  does, resolving it to that game's event_id. (14, not the 22 rows the game
+  has: free throws carry no court coordinates and are excluded from a chart.)
+
 - **NetPoints fingerprint: the six categories that actually partition the
   total, and defense as its own section**: two corrections to how the
   fingerprint was presented.

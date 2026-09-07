@@ -192,3 +192,27 @@ def test_an_ordinary_question_is_not_forced_to_the_agent() -> None:
     with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"player_stat","player":"Stephen Curry"}')):
         got = route("m", "how many points does Curry average?")
     assert got is not None and got.intent == "player_stat"
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "How many times has Wembanyama fouled out of a game",
+        "how often does Embiid foul out?",
+        "games where Jokic fouled out",
+    ],
+)
+def test_fouling_out_is_normalized_to_six_fouls(question: str) -> None:
+    """Six personal fouls is an NBA rule, not a judgement call. Confirmed live:
+    the router got the shape right but emitted stat "fouls committed" with
+    threshold 1, and the question then hung in the agent until it was aborted."""
+    with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"player_stat","stat":"fouls committed","threshold":1}')):
+        got = route("m", question)
+    assert got is not None and got.intent == "threshold_count"
+    assert got.slots["stat"] == "fouls" and got.slots["threshold"] == 6
+
+
+def test_an_ordinary_foul_question_is_not_rewritten() -> None:
+    with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"leaderboard","stat":"fouls"}')):
+        got = route("m", "who commits the most fouls?")
+    assert got is not None and got.intent == "leaderboard" and "threshold" not in got.slots

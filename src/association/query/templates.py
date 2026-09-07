@@ -42,6 +42,7 @@ THRESHOLD_STAT_COLUMNS = {
     "fieldGoalsMade": "fieldGoalsMade",
     "freeThrowsMade": "freeThrowsMade",
     "minutes": "minutes",
+    "fouls": "fouls",
 }
 
 STAT_LABELS = {
@@ -55,6 +56,7 @@ STAT_LABELS = {
     "fieldGoalsMade": "field goal",
     "freeThrowsMade": "free throw",
     "minutes": "minute",
+    "fouls": "foul",
 }
 
 DEFAULT_LIMIT = 5
@@ -859,6 +861,17 @@ def _player_game_log_result(name: str, period: str, rows: list[tuple[Any, ...]],
     return TemplateResult(summary=summary, data={"player": name, "games": games}, answer="\n".join([header, *lines]))
 
 
+def _resolve_chart_player(ctx: TemplateContext, text: str) -> str:
+    """The athlete_id render_shot_chart will settle on, so a single-game lookup
+    scopes to the same player the chart is drawn for."""
+    from .entities import find_players
+
+    candidates = find_players(ctx.con, text)
+    if not candidates:
+        raise TemplateUnsupported(f"no player matching {text!r}")
+    return candidates[0].id
+
+
 def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """Renders one player's shots to a static HTML court plot.
 
@@ -874,6 +887,24 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     # thing; read both rather than fighting the router over which to emit.
     stat = slots.get("stat")
     shot_value = slots.get("shot_value") if slots.get("shot_value") in (1, 2, 3) else SHOT_VALUE_FROM_STAT.get(stat if isinstance(stat, str) else "")
+
+    # "a shot chart of Curry's LAST regular season game" charted the whole
+    # season - 803 attempts instead of that game's 22 - because nothing scoped
+    # the request to one game. `order` means the same here as in game_log, and
+    # resolving it to an event_id is the only way render_shot_chart can scope.
+    season = slots.get("season") or current_season()
+    season_type = slots.get("season_type") or 2
+    event_id = None
+    if slots.get("order") in ("recent", "first"):
+        found = ctx.con.execute(
+            "SELECT event_id FROM player_game_log WHERE athlete_id = ? AND season = ? AND season_type = ? "
+            f"ORDER BY game_date {'ASC' if slots['order'] == 'first' else 'DESC'} LIMIT 1",
+            [_resolve_chart_player(ctx, player), season, season_type],
+        ).fetchone()
+        if found is None:
+            raise TemplateUnsupported(f"no games found to chart for {player!r}")
+        event_id = found[0]
+
     message = render_shot_chart(
         ctx.con,
         ctx.out_dir,
@@ -881,8 +912,9 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         # An unspecified season means the CURRENT one here, exactly as it does
         # in every other template - passing None through charted a player's
         # entire career in one plot (confirmed live: 3,665 Curry attempts).
-        season=slots.get("season") or current_season(),
-        season_type=slots.get("season_type"),
+        season=None if event_id else season,
+        season_type=None if event_id else season_type,
+        event_id=event_id,
         shot_value=shot_value,
     )
     # A "no player found" / "no shots found" message is returned as the answer

@@ -70,7 +70,7 @@ intent must be one of:
                      distances
 
 stat names a box-score category: points, rebounds, assists, steals, blocks,
-turnovers, minutes, threePointFieldGoalsMade, fieldGoalsMade, freeThrowsMade,
+turnovers, minutes, fouls, threePointFieldGoalsMade, fieldGoalsMade, freeThrowsMade,
 or a shooting percentage: threePointFieldGoalPct, fieldGoalPct, freeThrowPct.
 Set it whenever the question names one - for threshold_count, leaderboard and
 player_stat alike. Omit it only when the question asks for overall numbers.
@@ -89,9 +89,10 @@ For leaderboard, set fields to the extra per-game box-score columns the
 question also asks to see ("top 10 in NetPoints with their points and minutes"
 -> fields ["points","minutes"]); omit it when only the ranked metric is asked
 for. Set season_type to "playoffs" for a playoff/postseason question, otherwise
-omit it. Set team when the question names one. For game_log always set order:
-"first" ONLY for the earliest/opening game(s) of a season, "recent" for the
-latest, the most recent, or "the last N games". Set date as YYYY-MM-DD only
+omit it. Set team when the question names one. For game_log and shot_chart always set order when the question is about
+specific games: "first" ONLY for the earliest/opening game(s) of a season,
+"recent" for the latest, the most recent, or "the last N games". A shot_chart
+with order covers that ONE game rather than the whole season. Set date as YYYY-MM-DD only
 when the question names an exact calendar day.
 
 Examples:
@@ -141,6 +142,8 @@ Q: Show me Steph Curry's threes from last season
 {"intent":"shot_chart","player":"Stephen Curry","shot_value":3,"season_ref":"previous"}
 Q: What was Steph Curry's avg 3pt shot distance?
 {"intent":"shot_distance","player":"Stephen Curry","shot_value":3,"season_ref":"current"}
+Q: Create a shot chart of Steph Curry's last regular season game
+{"intent":"shot_chart","player":"Stephen Curry","order":"recent","season_ref":"current"}
 Q: Show me Wembanyama's shot chart
 {"intent":"shot_chart","player":"Victor Wembanyama","season_ref":"current"}
 """
@@ -242,6 +245,14 @@ SEASON_TYPES = {"regular": 2, "playoffs": 3}
 # per game". It has since earned a template (shot_distance) and been removed
 # from this list - which is the intended lifecycle: a subject lands here only
 # until a template covers it properly.
+# "Fouling out" is six personal fouls - an NBA rule, not a judgement call, and
+# not something a 3B reliably knows. Confirmed live: the router got the shape
+# right (threshold_count) but emitted stat "fouls committed" and threshold 1,
+# which the template correctly refused, and the question then hung in the agent
+# until it was aborted at 95s. Normalized here so the rule lives in one place.
+_FOULED_OUT = re.compile(r"\bfoul(?:ed|s|ing)?\s+out\b")
+FOUL_OUT_THRESHOLD = 6
+
 _AGENT_ONLY = re.compile(
     r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+quarter\b|\bper\s+quarter\b|\bby\s+quarter\b"
 )
@@ -301,7 +312,12 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
         return None
     if not isinstance(raw, dict) or not isinstance(raw.get("intent"), str):
         return None
-    if _AGENT_ONLY.search(question.lower()):
+    low = question.lower()
+    if _FOULED_OUT.search(low):
+        raw["intent"] = "threshold_count"
+        raw["stat"] = "fouls"
+        raw["threshold"] = FOUL_OUT_THRESHOLD
+    if _AGENT_ONLY.search(low):
         # Slots are kept: the agent sees the conversation, not the Route, but
         # the log line shows what the model thought before the override.
         raw["intent"] = "other"

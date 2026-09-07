@@ -910,3 +910,43 @@ def test_overlapping_play_types_are_kept_out_of_the_summing_column(np_ctx: Templ
     offense = answer.split("Offense,")[1].split("Defense,")[0]
     assert "rim" not in offense and "layup" not in offense  # detail, not partition
     assert "do not add up" in answer and "rim" in answer.split("Play-type detail")[1]
+
+
+def test_shot_chart_scopes_to_a_single_game_when_order_is_set(sc_ctx: TemplateContext) -> None:
+    """Confirmed live: "a shot chart of Curry's last regular season game"
+    charted the whole season - 803 attempts instead of that game's 14."""
+    sc_ctx.con.execute(
+        "CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, game_date VARCHAR)"
+    )
+    sc_ctx.con.execute(
+        "INSERT INTO player_game_log VALUES ('1',?,2,'e1','2026-01-01T00:00Z'),('1',?,2,'eLast','2026-04-13T00:30Z')",
+        [current_season(), current_season()],
+    )
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'eLast',1,'2:00',TRUE,'Jump Shot',25,26,3)", [current_season()])
+    answer = shot_chart(sc_ctx, {"player": "Stephen Curry", "order": "recent"}).answer or ""
+    assert "1/1 made" in answer  # only the one shot from the last game
+    assert "eLast" in answer
+
+
+def test_shot_chart_order_first_picks_the_earliest_game(sc_ctx: TemplateContext) -> None:
+    sc_ctx.con.execute(
+        "CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, game_date VARCHAR)"
+    )
+    sc_ctx.con.execute(
+        "INSERT INTO player_game_log VALUES ('1',?,2,'e1','2026-01-01T00:00Z'),('1',?,2,'eLast','2026-04-13T00:30Z')",
+        [current_season(), current_season()],
+    )
+    assert "e1" in (shot_chart(sc_ctx, {"player": "Stephen Curry", "order": "first"}).answer or "")
+
+
+def test_shot_chart_without_order_still_covers_the_season(sc_ctx: TemplateContext) -> None:
+    # Both of the fixture's shots (one made, one missed), not one game's worth.
+    assert "1/2 made" in (shot_chart(sc_ctx, {"player": "Stephen Curry"}).answer or "")
+
+
+def test_threshold_count_supports_fouls(con: TemplateContext) -> None:
+    con.con.execute("ALTER TABLE player_box_stats ADD COLUMN fouls INTEGER")
+    con.con.execute("UPDATE player_box_stats SET fouls = 6 WHERE athlete_id = '1'")
+    result = threshold_count(con, {"stat": "fouls", "threshold": 6})
+    assert "6+ fouls" in (result.answer or "")
+    assert result.data["leaders"][0]["player"] == "Luka Doncic"
