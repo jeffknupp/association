@@ -5,6 +5,21 @@ commit that made it for the full story.
 
 ## 2026-09-06
 
+- **Give the NetPoints defensive fingerprint its own section**: the defence
+  column was present but effectively invisible. Sorting one combined table by
+  total magnitude buries every defensively significant play type below
+  categories whose defence is ~0 - for SGA, `turnover` carries the largest
+  defensive value of any category (170.9) and landed 15th of 21, with `foul`
+  (-82.3) at 3rd only because its OFFENSIVE value is large. Offence and defence
+  now get a section each, sorted by their own side, which is also how
+  espnanalytics.com presents the fingerprint.
+
+  Added a note that the play types overlap - two pt contains rim, layup and
+  driving; three pt contains corner - so they are alternative views of the same
+  possessions rather than a partition. Confirmed on real data: the non-total
+  categories sum to -28.3 against a defensive total of 64.4, so adding them up
+  is meaningless and the output now says so.
+
 - **player_netpoints: one player's NetPoints and play-type fingerprint**:
   reported from real use - "what were SGA's netpoint stats this season"
   answered "Nikola Jokic leads the team in NetPoints this season with a total

@@ -865,3 +865,26 @@ def test_player_netpoints_falls_back_to_totals_without_a_possession_count(np_ctx
     result = player_netpoints(np_ctx, {"player": "SGA"})
     assert next(r for r in result.data["fingerprint"] if r["category"] == "two pt")["total"] == 250.9
     assert "season totals" in (result.answer or "")
+
+
+def test_player_netpoints_gives_defense_its_own_section(np_ctx: TemplateContext) -> None:
+    """A single table sorted by total renders the defensive profile invisible:
+    for SGA, `turnover` carries the largest defensive value of any play type
+    and lands 15th of 21 by total, below categories whose defense is ~0."""
+    np_ctx.con.execute("UPDATE net_points_player_fingerprint SET turnover_d_net_pts = 170.9, turnover_t_net_pts = 15.7")
+    answer = player_netpoints(np_ctx, {"player": "SGA"}).answer or ""
+    assert "Offense fingerprint" in answer and "Defense fingerprint" in answer
+    defense_section = answer.split("Defense fingerprint")[1]
+    assert defense_section.strip().splitlines()[1].strip().startswith("turnover")
+
+
+def test_player_netpoints_sorts_each_section_by_its_own_side(np_ctx: TemplateContext) -> None:
+    np_ctx.con.execute("UPDATE net_points_player_fingerprint SET turnover_d_net_pts = 170.9, turnover_o_net_pts = 0.5")
+    answer = player_netpoints(np_ctx, {"player": "SGA"}) .answer or ""
+    offense_section = answer.split("Offense fingerprint")[1].split("Defense fingerprint")[0]
+    assert not offense_section.strip().splitlines()[1].strip().startswith("turnover")
+
+
+def test_player_netpoints_warns_that_play_types_overlap(np_ctx: TemplateContext) -> None:
+    # two_pt contains rim/layup/driving; summing the categories is meaningless.
+    assert "do not sum to the total" in (player_netpoints(np_ctx, {"player": "SGA"}).answer or "")

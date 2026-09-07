@@ -455,17 +455,31 @@ def _phrase_netpoints(
         lines.append("  No play-type fingerprint on record for this season.")
         return "\n".join(lines)
 
-    lines.append("")
     units = "per 100 possessions" if per_100 else "season totals"
     scope = f" over {possessions:,.0f} possessions" if per_100 and possessions else ""
-    lines.append(f"  Fingerprint by play type, {units}{scope}, largest first (offense / defense / total):")
     width = max(len(row["category"]) for row in breakdown)
-    lines.append("  " + "category".ljust(width) + "".join(h.rjust(9) for h in ("O", "D", "T")))
-    for row in breakdown:
-        # Two decimals: per-100 fingerprint values are small, and one decimal
-        # collapses most of the play types into the same number.
-        cells = "".join(("-" if row[k] is None else f"{row[k]:.2f}").rjust(9) for k in ("offense", "defense", "total"))
-        lines.append("  " + row["category"].ljust(width) + cells)
+
+    # Offense and defense get their own section, each sorted by its OWN side.
+    # A single table sorted by total renders the defensive profile invisible:
+    # for SGA, `turnover` carries the largest defensive value of any play type
+    # and lands 15th of 21 by total, below categories whose defense is ~0.
+    for side, heading in (("offense", "Offense"), ("defense", "Defense")):
+        ranked = sorted((r for r in breakdown if r[side] is not None), key=lambda r: -abs(r[side]))
+        if not ranked:
+            continue
+        lines.append("")
+        lines.append(f"  {heading} fingerprint by play type, {units}{scope}, largest first:")
+        for row in ranked:
+            # Two decimals: per-100 values are small, and one decimal collapses
+            # most of the play types onto the same number.
+            lines.append("  " + row["category"].ljust(width) + f"{row[side]:.2f}".rjust(9))
+
+    # two_pt contains rim/layup/driving, three_pt contains corner, and so on -
+    # these are overlapping views of the same possessions, not a partition.
+    # Confirmed on real data: the categories sum to -28.3 against a defensive
+    # total of 64.4, so adding them up is meaningless.
+    lines.append("")
+    lines.append("  (Play types overlap - two pt includes rim and layup, and so on - so they do not sum to the total.)")
     return "\n".join(lines)
 
 
