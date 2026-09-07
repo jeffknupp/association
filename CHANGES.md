@@ -5,6 +5,26 @@ commit that made it for the full story.
 
 ## 2026-09-06
 
+- **NetPoints for a single game**: "Show steph curry's netpoints from his last
+  regular season game" returned the whole season - 43 games, 1,329 minutes -
+  even though the router had correctly emitted `order: "recent"` and
+  `limit: 1`. The template ignored both. Same silent substitution as the shot
+  chart fixed alongside it, and the same shape of fix: `player_netpoints` now
+  honours `order`.
+
+  A single game is a genuinely different answer rather than a filtered one.
+  Per-game NetPoints live in `net_points_player_game`, which is opt-in
+  (`data pull --include-net-points-daily`), uses the normal NUMERIC season_type
+  unlike `net_points_player`, and carries no play-type fingerprint - that is
+  season-level only, and the output says so rather than leaving its absence
+  looking like missing data. It reports o/d/t NetPoints, possessions on each
+  side, and win probability added. Without the opt-in table the template falls
+  through rather than quietly answering for the season.
+
+  Cross-checked against the raw table: Curry's 2026-04-13 game reads 2.3857
+  offense / 3.924 defense / 6.3096 total, and it is the same game the shot
+  chart resolves for "his last regular season game".
+
 - **Fouling out, and shot charts of a single game**: two failures reported from
   real use.
 

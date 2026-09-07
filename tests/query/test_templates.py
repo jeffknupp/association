@@ -950,3 +950,54 @@ def test_threshold_count_supports_fouls(con: TemplateContext) -> None:
     result = threshold_count(con, {"stat": "fouls", "threshold": 6})
     assert "6+ fouls" in (result.answer or "")
     assert result.data["leaders"][0]["player"] == "Luka Doncic"
+
+
+def _add_per_game_netpoints(ctx: TemplateContext) -> None:
+    ctx.con.execute("CREATE TABLE games (event_id VARCHAR, date VARCHAR)")
+    ctx.con.execute("INSERT INTO games VALUES ('eFirst','2025-10-22T00:00Z'),('eLast','2026-04-13T00:30Z')")
+    ctx.con.execute(
+        "CREATE TABLE net_points_player_game (event_id VARCHAR, season INTEGER, season_type INTEGER, athlete_id VARCHAR, "
+        "o_net_pts DOUBLE, d_net_pts DOUBLE, t_net_pts DOUBLE, o_usage DOUBLE, d_usage DOUBLE, "
+        "o_poss DOUBLE, d_poss DOUBLE, t_poss DOUBLE, o_wpa DOUBLE, d_wpa DOUBLE, t_wpa DOUBLE)"
+    )
+    ctx.con.execute(
+        "INSERT INTO net_points_player_game VALUES "
+        "('eFirst',?,2,'1',0.8,1.4,2.2,0.2,0.2,16,15,31,0.1,0.1,0.215),"
+        "('eLast',?,2,'1',2.4,3.9,6.3,0.2,0.2,17,11,28,0.1,0.1,0.190)",
+        [current_season(), current_season()],
+    )
+
+
+def test_player_netpoints_scopes_to_one_game_when_order_is_set(np_ctx: TemplateContext) -> None:
+    """Confirmed live: "netpoints from his last regular season game" returned
+    the whole season - 43 games - because nothing scoped it."""
+    _add_per_game_netpoints(np_ctx)
+    result = player_netpoints(np_ctx, {"player": "SGA", "order": "recent"})
+    assert result.data["game"]["date"] == "2026-04-13"
+    answer = result.answer or ""
+    assert "6.3 total" in answer and "most recent" in answer
+    assert "Offense," not in answer  # not the season breakdown
+
+
+def test_player_netpoints_order_first_picks_the_earliest_game(np_ctx: TemplateContext) -> None:
+    _add_per_game_netpoints(np_ctx)
+    assert player_netpoints(np_ctx, {"player": "SGA", "order": "first"}).data["game"]["date"] == "2025-10-22"
+
+
+def test_single_game_netpoints_says_there_is_no_fingerprint(np_ctx: TemplateContext) -> None:
+    # The play-type breakdown is season-level only; silently omitting it would
+    # look like the data was missing.
+    _add_per_game_netpoints(np_ctx)
+    assert "season-level only" in (player_netpoints(np_ctx, {"player": "SGA", "order": "recent"}).answer or "")
+
+
+def test_player_netpoints_without_order_still_gives_the_season(np_ctx: TemplateContext) -> None:
+    _add_per_game_netpoints(np_ctx)
+    assert "Offense," in (player_netpoints(np_ctx, {"player": "SGA"}).answer or "")
+
+
+def test_single_game_netpoints_falls_through_without_the_optin_table(np_ctx: TemplateContext) -> None:
+    # net_points_player_game only exists if fetched with
+    # --include-net-points-daily; say so rather than answering for the season.
+    with pytest.raises(TemplateUnsupported):
+        player_netpoints(np_ctx, {"player": "SGA", "order": "recent"})

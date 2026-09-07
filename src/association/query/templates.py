@@ -377,6 +377,14 @@ def player_netpoints(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
 
     season = slots.get("season") or current_season()
     season_type = slots.get("season_type") or 2
+
+    # "NetPoints from his LAST regular season game" was answered with the whole
+    # season - 43 games - because nothing scoped it. Per-game NetPoints live in
+    # their own table, with no fingerprint breakdown, so this is a different
+    # answer rather than a filtered one.
+    if slots.get("order") in ("recent", "first"):
+        return _single_game_netpoints(ctx, player, season, season_type, slots["order"])
+
     # net_points_player uses its OWN string season_type; filtering it with the
     # numeric one every other table uses silently matches nothing.
     label = SEASON_TYPE_LABELS.get(season_type, "Regular Season")
@@ -432,6 +440,52 @@ def player_netpoints(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
         data={"player": player.name, "season": season, "headline": headline, "fingerprint": breakdown},
         answer=_phrase_netpoints(player.name, period, headline, breakdown, per_100, possessions),
     )
+
+
+def _single_game_netpoints(ctx: TemplateContext, player: Entity, season: int, season_type: int, order: str) -> TemplateResult:
+    """One game's NetPoints, from net_points_player_game.
+
+    That table is opt-in (`data pull --include-net-points-daily`) and, unlike
+    net_points_player, uses the normal numeric season_type. It carries no
+    play-type fingerprint - that is season-level only - so a single-game answer
+    is o/d/t NetPoints, possessions, usage and win-probability added."""
+    period = _period(season, season_type)
+    try:
+        row = ctx.con.execute(
+            "SELECT g.event_id, g.date, g.o_net_pts, g.d_net_pts, g.t_net_pts, g.o_poss, g.d_poss, g.t_wpa "
+            "FROM (SELECT npg.*, gm.date FROM net_points_player_game npg JOIN games gm ON gm.event_id = npg.event_id "
+            "      WHERE npg.athlete_id = ? AND npg.season = ? AND npg.season_type = ?) g "
+            f"ORDER BY g.date {'ASC' if order == 'first' else 'DESC'} LIMIT 1",
+            [player.id, season, season_type],
+        ).fetchone()
+    except duckdb.Error as exc:
+        # The table only exists if the daily NetPoints fetch was run. Saying so
+        # beats falling through to an agent that has no better source.
+        raise TemplateUnsupported(f"per-game NetPoints unavailable: {exc}") from exc
+
+    if row is None:
+        which = "earliest" if order == "first" else "most recent"
+        return TemplateResult(
+            summary=f"{player.name} NetPoints, single game",
+            data={"player": player.name, "season": season, "game": None},
+            answer=f"No per-game NetPoints on record for {player.name}'s {which} {period} game.",
+        )
+    event_id, date, o, d, t, o_poss, d_poss, wpa = row
+    which = "first" if order == "first" else "most recent"
+    game = {"event_id": event_id, "date": str(date)[:10], "offense": o, "defense": d, "total": t}
+    detail = []
+    if o_poss is not None and d_poss is not None:
+        detail.append(f"{o_poss:.0f} offensive and {d_poss:.0f} defensive possessions")
+    if wpa is not None:
+        detail.append(f"{wpa:+.3f} win probability added")
+    answer = (
+        f"{player.name}, NetPoints in his {which} {period} game ({str(date)[:10]}): "
+        f"{_table_cell(t)} total ({_table_cell(o)} offense, {_table_cell(d)} defense)."
+    )
+    if detail:
+        answer += "\n  " + ", ".join(detail) + "."
+    answer += "\n  (Per-game NetPoints carry no play-type fingerprint - that is season-level only.)"
+    return TemplateResult(summary=f"{player.name} NetPoints, {game['date']}", data={"player": player.name, "game": game}, answer=answer)
 
 
 def _phrase_netpoints(
