@@ -5,6 +5,50 @@ commit that made it for the full story.
 
 ## 2026-09-06
 
+- **Route on a 3B, generate SQL on the 7B**: routing and SQL generation are
+  different jobs and were sharing one model. Benchmarked over the 30 real
+  questions in `scripts/check_routing.py` (new `scripts/bench_router_models.py`
+  reproduces it), every model from 1.5B to 8B scored 28-30/30 on routing,
+  because constrained decoding does the structural work and the model only has
+  to classify and fill slots - not a 7B-sized job:
+
+      qwen2.5:7b   4.7GB  30/30 intent  29/30 +slots  2.00s median
+      phi4-mini    2.5GB  29/30         29/30         1.42s
+      qwen2.5:3b   1.9GB  29/30         29/30         1.12s
+      llama3.2:3b  2.0GB  29/30         28/30         1.05s
+      qwen2.5:1.5b 1.0GB  29/30         27/30         0.93s
+      qwen3:4b     2.5GB      -             -        ~20s   (thinking)
+
+  So `--router-model` now defaults to `qwen2.5:3b` (1.8x faster, same accuracy,
+  2.8GB less RAM) while `--model` keeps `qwen2.5:7b` for the fall-through
+  agent. At n=30 a one-case difference is inside the noise, so the 3B/4B tier
+  is effectively tied and was picked on size and speed. Thinking models are
+  disqualified on latency rather than accuracy: qwen3:4b spent ~20s per
+  question reasoning before emitting the same tiny JSON object.
+
+  Switching models required re-validating the prompt against the new one, which
+  is a lesson in itself: the 3B routed "how many points did Jokic score in the
+  3rd quarter against Boston?" to `game_log` rather than `other`, which would
+  have answered with a list of games instead of quarter scoring - the same
+  silent substitution `single_game_high` was added to fix. A worked negative
+  example in the router prompt fixed it; 30/30 on the 3B. `check_routing.py`
+  now defaults to the router's model rather than the agent's, so it tests what
+  actually ships, and run history records both models.
+
+  Both fit in RAM together (~6.6GB of 16GB), and `OLLAMA_MAX_LOADED_MODELS=2`
+  is worth setting: without it ollama unloads one to load the other whenever a
+  question falls through, measured at 152s on a real fall-through query -
+  nearly all swap rather than inference.
+
+  Also measured and worth recording as a NEGATIVE result: removing `season` and
+  `season_ref` from the router schema (extracting the season from the question
+  text in code instead) did NOT improve the accuracy of the remaining slots -
+  both variants scored 30/30 on them. The hypothesis that schema properties
+  compete for the model's attention is not supported by this experiment,
+  though the eval is at ceiling and so cannot detect a small effect either way.
+  Deterministic season extraction is still worth doing for its own sake (30/30
+  vs 29/30 on the season slot) but it is not a contention fix.
+
 - **single_game_high: a shape whose absence was a wrong answer**: reported
   from real use - "who had the most assists in a single game and how many did
   he have" was answered "Nikola Jokic led the league in assists per game in the

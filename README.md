@@ -174,6 +174,22 @@ straight from Parquet already on disk without touching the network, and
 warehouse rebuild rereads every Parquet file, which gets slow as the tree
 grows).
 
+**Two models by design** — routing and SQL generation are different jobs.
+Benchmarked over the 30 real questions in `scripts/check_routing.py`, every
+model from 1.5B to 8B scored 28–30/30 on routing, because constrained decoding
+does the structural work and the model only has to classify and fill slots.
+`qwen2.5:3b` matched `qwen2.5:7b`'s score at 1.8× the speed and 2.8GB less RAM,
+so it is the `--router-model` default; the fall-through agent keeps the 7B,
+where writing correct SQL by hand genuinely needs the capacity. Reproduce with
+`scripts/bench_router_models.py`. Thinking models are disqualified on latency,
+not accuracy — `qwen3:4b` spent ~20s per question reasoning before emitting the
+same tiny JSON object, against `qwen2.5:3b`'s 1.1s.
+
+Both models fit in RAM together (~6.6GB of 16GB). Set
+`OLLAMA_MAX_LOADED_MODELS=2` to keep them resident: otherwise ollama unloads one
+to load the other whenever a question falls through, which measured **152s** on
+a real fall-through query, nearly all of it swap rather than inference.
+
 **Query engine** — a question first hits a small **intent router**
 ([`query/router.py`](src/association/query/router.py)): a ~430-token prompt
 carrying no schema and no SQL, decoded under a JSON schema (ollama's `format`)
@@ -329,6 +345,7 @@ src/association/
 scripts/
   backfill_markers.sh   re-derive completion markers for data fetched before they existed
   check_routing.py      routing regression check for the query fast path (needs ollama)
+  bench_router_models.py  score candidate router models on that same question set
 completions/          generated bash/zsh/fish shell completion scripts (see Setup)
 tests/              pytest, one file per source module
 .history/           per-run command/trace/timing logs from query|ai (gitignored, see Run history above)

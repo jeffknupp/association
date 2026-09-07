@@ -59,7 +59,7 @@ class RunHistory:
             f"tools {self.tool_seconds:.2f}s ({self.tool_calls} call{'s' if self.tool_calls != 1 else ''})"
         )
 
-    def write(self, command: str, model: str, think: bool, question: str, answer: str) -> Path:
+    def write(self, command: str, model: str, think: bool, question: str, answer: str, router_model: str | None = None) -> Path:
         """Always called (from a finally block) regardless of how ask() exited -
         an exception's traceback text as `answer` is exactly the "failed run"
         evidence this exists to keep."""
@@ -68,7 +68,7 @@ class RunHistory:
         started = datetime.fromtimestamp(time.time() - self.total_seconds, tz=timezone.utc).isoformat()
         parts = [
             f"command: {command}",
-            f"model: {model} (think={think})",
+            f"model: {model} (think={think})" + (f", router: {router_model}" if router_model else ""),
             f"started: {started}",
             f"question: {question}",
             "=" * 80,

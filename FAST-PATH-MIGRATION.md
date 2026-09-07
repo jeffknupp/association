@@ -314,6 +314,34 @@ and started dropping it again. That is a real property of routing everything
 through one small model, and the reason `check_routing.py` exists and is run
 after every change rather than trusted from last time.
 
+## Model choice, measured
+
+Routing is classification under a JSON schema, and it is not a 7B-sized job.
+Over the 30 cases in `check_routing.py`, every model from 1.5B to 8B scored
+28–30/30 — constrained decoding does the structural work. `qwen2.5:3b` matches
+`qwen2.5:7b` at 1.8× the speed and 2.8GB less RAM and is now the router
+default; the agent keeps the 7B for hand-written SQL.
+`scripts/bench_router_models.py` reproduces the table.
+
+**Thinking models are wrong for this**, on latency rather than accuracy:
+`qwen3:4b` spent ~20s per question reasoning before emitting the same tiny JSON
+object. `--think` applies to the agent only.
+
+**Changing the router model means re-validating the prompt.** The prompt had
+been tuned against the 7B; on the 3B, "how many points did Jokic score in the
+3rd quarter against Boston?" started routing to `game_log` instead of `other`,
+which would have answered with a list of games. A worked negative example fixed
+it. Treat the prompt and the model as one unit — swapping either invalidates
+the check.
+
+**A negative result worth keeping.** Removing `season`/`season_ref` from the
+schema and extracting the season from question text in code did *not* improve
+the remaining slots — both variants scored 30/30 on them. The idea that schema
+properties compete for the model's attention is unsupported by this experiment.
+The eval is at ceiling, so it cannot rule out a small effect, but the honest
+summary is: trim the schema because a slot is better done in code, not because
+trimming buys accuracy elsewhere.
+
 ## What is left
 
 - ~~**`player_compare`**~~ — DONE. The agent got this wrong for a reason no

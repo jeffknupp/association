@@ -27,6 +27,19 @@ MAX_ERROR_RECOVERIES = 2  # cap on nudging a retry after a tool error, instead o
 MAX_HISTORY_MESSAGES = 40  # trim oldest turns once conversation grows past this, keep system prompt
 NARRATE_NUM_CTX = 2048  # the narrator sees one small result object, never the schema
 
+# Routing and SQL generation are different jobs and want different models.
+# Benchmarked on the 30 real cases in scripts/check_routing.py, every model
+# from 1.5B to 8B scored 28-30/30, because constrained decoding does the
+# structural work and the model only classifies and fills slots - not a
+# 7B-sized job. qwen2.5:3b matched qwen2.5:7b's 29/30 at 1.8x the speed and
+# 2.8GB less RAM. The fall-through agent keeps the 7B, where writing correct
+# SQL by hand genuinely needs the capacity.
+#
+# Thinking models are actively wrong here: qwen3:4b took ~20s per question
+# against qwen2.5:3b's 1.1s, reasoning at length before emitting the same tiny
+# JSON object. --think applies to the agent only, never the router.
+DEFAULT_ROUTER_MODEL = "qwen2.5:3b"
+
 # The narrator's only job is to restate numbers it can already see. It gets no
 # schema, no tools and no conversation - which is why it needs a fraction of
 # the context (and the wall time) a tool-calling turn does.
@@ -74,8 +87,10 @@ class Agent:
         think: bool = False,
         history_dir: Path = DEFAULT_HISTORY_DIR,
         fast_path: bool = True,
+        router_model: str = DEFAULT_ROUTER_MODEL,
     ):
         self.model = model
+        self.router_model = router_model
         self.verbose = verbose
         self.think = think
         self.history_dir = history_dir
@@ -119,7 +134,9 @@ class Agent:
             answer = "EXCEPTION:\n" + traceback.format_exc()
             raise
         finally:
-            path = history.write(command=command, model=self.model, think=self.think, question=question, answer=answer)
+            path = history.write(
+                command=command, model=self.model, think=self.think, question=question, answer=answer, router_model=self.router_model
+            )
             print(f"[history] {path}  {history.summary_line()}", file=sys.stderr)
 
     def _narrate(self, question: str, data: dict, history: RunHistory) -> str:
@@ -151,7 +168,7 @@ class Agent:
         if not self.fast_path:
             return None
         t0 = time.monotonic()
-        routed = route(self.model, question, previous_question=self.last_question)
+        routed = route(self.router_model, question, previous_question=self.last_question)
         history.record_model_call(time.monotonic() - t0)
         if routed is None:
             history.log("  -> (router) no usable classification, falling through to the agent")

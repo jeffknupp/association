@@ -88,6 +88,8 @@ Q: What was the highest scoring game by a player this year?
 {"intent":"single_game_high","stat":"points","season_ref":"current"}
 Q: Who were the top 10 in netpoints/100 possessions?
 {"intent":"leaderboard","stat":"netpoints_per_100","limit":10}
+Q: How many points did Jokic score in the 3rd quarter against Boston?
+{"intent":"other"}
 Q: Which player had the most triple-doubles?
 {"intent":"leaderboard","stat":"triple_double","limit":1}
 Q: Compare Luka and SGA this season

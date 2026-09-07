@@ -16,7 +16,7 @@ ollama into a reload loop that wedges it for minutes - and note that ollama
 reloads the model whenever num_ctx changes, so interleaving router calls
 (4096) with agent calls (16384) costs a full ~60-80s model load each way.
 
-    python scripts/check_routing.py [--model qwen2.5:7b]
+    python scripts/check_routing.py [--model qwen2.5:3b]
 
 Add a case whenever a shape is ported or a mis-route is found in the wild.
 """
@@ -27,6 +27,7 @@ import argparse
 import sys
 import time
 
+from association.query.agent import DEFAULT_ROUTER_MODEL
 from association.query.router import route
 from association.query.templates import TEMPLATES
 from association.season import current_season
@@ -101,7 +102,8 @@ CASES: list[tuple[str, str, dict]] = [
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default="qwen2.5:7b")
+    # Defaults to the model the router actually ships with, not the agent's.
+    parser.add_argument("--model", default=DEFAULT_ROUTER_MODEL)
     args = parser.parse_args()
 
     failures = 0

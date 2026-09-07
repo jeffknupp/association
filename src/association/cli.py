@@ -12,7 +12,8 @@ import click
 
 DEFAULT_DATA_DIR = "./data/parquet"
 DEFAULT_DB_PATH = "./nba.duckdb"
-DEFAULT_MODEL = "qwen2.5:7b"
+DEFAULT_MODEL = "qwen2.5:7b"          # the fall-through agent: writes SQL by hand
+DEFAULT_ROUTER_MODEL = "qwen2.5:3b"   # the fast path: classify + fill slots
 DEFAULT_OUT_DIR = "./query_output"
 
 LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR"]
@@ -33,18 +34,30 @@ Examples:
 Setup for query/ai (one-time):
     brew install ollama
     ollama serve &                # or `brew services start ollama`; must be running before use
-    ollama pull qwen2.5:7b        # default model, ~4.7GB, no thinking support
+    ollama pull qwen2.5:3b        # --router-model default, ~1.9GB - answers most questions on its own
+    ollama pull qwen2.5:7b        # --model default (fall-through agent), ~4.7GB
     ollama pull qwen3:8b          # optional: visible reasoning traces (--think) + tool calling, ~5GB
 
 Pulling any other model: `ollama pull <name>:<tag>` (browse at https://ollama.com/library).
 Tool-calling support varies by model - check a model's page before swapping --model.
 
 A question matching a ported intent is answered by the router + a deterministic
-SQL template (one model call, ~2.5s warm on an 8-core CPU box); anything else falls
+SQL template (one model call, ~1s warm on an 8-core CPU box); anything else falls
 through to the full tool-calling agent, which is minutes slower. --no-fast-path
 forces the agent path, for comparing the two.
 
---think applies only to the fall-through agent, and is much slower than the default
+Two models by design: routing is classification under a JSON schema, and benchmarked
+over 30 real questions every model from 1.5B to 8B scored 28-30/30 - so the router
+runs a 3B (1.8x faster than the 7B, same accuracy) while the agent keeps the 7B for
+writing SQL by hand. Both fit in RAM together (~6.6GB); set
+OLLAMA_MAX_LOADED_MODELS=2 to keep them both resident, otherwise ollama unloads one
+to load the other (~60-80s) whenever a question falls through.
+
+Do NOT point --router-model at a thinking model: qwen3:4b took ~20s per question
+against qwen2.5:3b's 1.1s, reasoning at length before emitting the same tiny JSON.
+
+--think applies only to the fall-through agent (never the router), and is much
+slower than the default
 (qwen3:8b's thinking-token volume varies run to run, 3-6x+ the wall time of
 qwen2.5:7b for the same question) - reach for it when investigating a wrong answer,
 not for routine queries. Switching --model between calls also costs ~60-80s to swap
@@ -81,7 +94,13 @@ def _parse_season_types(spec: str) -> list[int]:
 
 
 def _query_engine_options(f: F) -> F:
-    f = click.option("--model", default=DEFAULT_MODEL, show_default=True, help="Ollama model name.")(f)
+    f = click.option("--model", default=DEFAULT_MODEL, show_default=True, help="Ollama model for the fall-through agent.")(f)
+    f = click.option(
+        "--router-model",
+        default=DEFAULT_ROUTER_MODEL,
+        show_default=True,
+        help="Ollama model for the intent router. Smaller on purpose - see the setup notes below.",
+    )(f)
     f = click.option("--db-path", default=DEFAULT_DB_PATH, show_default=True, help="DuckDB warehouse file.")(f)
     f = click.option("--out-dir", default=DEFAULT_OUT_DIR, show_default=True, help="Directory for rendered shot charts.")(f)
     f = click.option("--verbose", is_flag=True, help="Print tool calls as they happen.")(f)
@@ -211,22 +230,22 @@ def data_check(seasons: str | None, season_types: str | None, data_dir: str, rat
 @cli.command("query")
 @click.argument("question")
 @_query_engine_options
-def query(question: str, model: str, db_path: str, out_dir: str, verbose: bool, think: bool, no_fast_path: bool) -> None:
+def query(question: str, model: str, router_model: str, db_path: str, out_dir: str, verbose: bool, think: bool, no_fast_path: bool) -> None:
     """Ask one natural-language question about the local data."""
     from .query.agent import Agent
 
-    agent = Agent(model, db_path, Path(out_dir), verbose=verbose, think=think, fast_path=not no_fast_path)
+    agent = Agent(model, db_path, Path(out_dir), verbose=verbose, think=think, fast_path=not no_fast_path, router_model=router_model)
     click.echo(agent.ask(question))
 
 
 @cli.command("ai")
 @_query_engine_options
-def ai(model: str, db_path: str, out_dir: str, verbose: bool, think: bool, no_fast_path: bool) -> None:
+def ai(model: str, router_model: str, db_path: str, out_dir: str, verbose: bool, think: bool, no_fast_path: bool) -> None:
     """Interactive REPL - keeps conversation history across questions."""
     from .query.agent import Agent
     from .query.repl import run_repl
 
-    agent = Agent(model, db_path, Path(out_dir), verbose=verbose, think=think, fast_path=not no_fast_path)
+    agent = Agent(model, db_path, Path(out_dir), verbose=verbose, think=think, fast_path=not no_fast_path, router_model=router_model)
     run_repl(agent)
 
 
