@@ -5,6 +5,23 @@ commit that made it for the full story.
 
 ## 2026-09-06
 
+- **Bound run_sql results by tokens, not rows**: a row cap does not bound what
+  comes BACK. Measured, `SELECT * FROM player_game_log LIMIT 200` serialised to
+  ~44,000 tokens - nearly three times the whole 16,384-token window, from a
+  single tool call. Over `num_ctx` ollama cuts the prompt to about half,
+  head-first and silently, throwing away the system prompt: the exact failure
+  this codebase was rebuilt to eliminate, and reachable by the `SELECT *` a
+  small model writes constantly.
+
+  `run_sql` now returns as many rows as fit `MAX_RESULT_TOKENS` (2,000), chosen
+  by binary search, and says how many were dropped with a pointer to aggregate
+  in SQL (COUNT/SUM/GROUP BY) or select fewer columns rather than listing every
+  row. 44,084 -> 1,828 tokens on that query. When even a single row is too
+  large, the column list comes back instead - that is what the model needs to
+  write a narrower query, and it beats a silently empty result.
+  `get_leaderboard`'s model-supplied `limit` is clamped to 100 for the same
+  reason.
+
 - **Extra columns on leaderboards, and a bounded array slot**: "top 10 in
   NetPoints alongside their points per game" routed to the `leaderboard`
   template, which had no slot for the extra columns and answered without them -

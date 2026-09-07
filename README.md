@@ -231,7 +231,9 @@ traded-player dedup are all resolved once in Python, in
 re-derived by the model from prose on every query — see "Design" below for
 why), `run_sql` (read-only, `SELECT`/`WITH` only, backed by a read-only
 DuckDB connection as a hard guarantee, for anything `get_leaderboard` doesn't
-cover), and `render_shot_chart` (renders a static HTML/SVG court plot). A
+cover; results are bounded by *tokens* rather than rows, since a 200-row
+`SELECT *` measured at ~44,000 tokens — three times the context window — and
+would silently truncate the system prompt out of the conversation), and `render_shot_chart` (renders a static HTML/SVG court plot). A
 growing `KNOWLEDGE_BASE` of concrete schema/domain gotchas (hoop coordinates,
 a trade-mid-season double-counting trap in season stats, double-double/
 triple-double definitions, ...) gets appended to whenever a real question

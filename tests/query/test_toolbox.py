@@ -324,3 +324,70 @@ def test_double_and_triple_doubles_are_registered_metrics() -> None:
     assert resolve_metric("double_double") == "double_doubles"
     assert LEADERBOARD_METRICS["triple_doubles"].column == "tripleDouble"
     assert LEADERBOARD_METRICS["double_doubles"].dedup_traded is True
+
+
+# ---------------- result size bounding ----------------
+
+
+@pytest.fixture
+def seeded(tmp_path: Path, db_path: str) -> Toolbox:
+    """A Toolbox over a db with bulky fixture tables. They have to be created
+    before Toolbox opens the file, since it connects read-only by design."""
+    con = duckdb.connect(db_path)
+    con.execute("CREATE TABLE wide AS SELECT i AS id, repeat('x', 400) AS padding FROM range(300) t(i)")
+    con.execute("CREATE TABLE narrow AS SELECT i AS id FROM range(300) t(i)")
+    con.execute("CREATE TABLE huge AS SELECT repeat('z', 40000) AS blob, 1 AS keep")
+    con.execute("INSERT INTO players (athlete_id, display_name) SELECT 'x' || i, 'P' || i FROM range(200) t(i)")
+    con.execute(
+        "INSERT INTO player_season_stats (athlete_id, season, season_type, avgPoints, gamesPlayed) "
+        "SELECT 'x' || i, 2026, 2, i, 40 FROM range(200) t(i)"
+    )
+    con.close()
+    return Toolbox(db_path, tmp_path / "out")
+
+
+def test_run_sql_bounds_a_wide_result_by_tokens_not_rows(seeded: Toolbox) -> None:
+    """A 200-row cap does not bound what comes BACK: measured, `SELECT * FROM
+    player_game_log LIMIT 200` serialised to ~44,000 tokens - nearly three
+    times the whole context window, from one tool call. Over num_ctx ollama
+    cuts the prompt head-first and silently, discarding the system prompt."""
+    from association.query.toolbox import MAX_RESULT_TOKENS, _estimate_tokens
+
+    result = seeded.run_sql("SELECT * FROM wide")
+    assert _estimate_tokens(result) <= MAX_RESULT_TOKENS
+    payload = json.loads(result)
+    assert payload["truncated"] is True
+    assert payload["row_count"] < 300
+    assert "dropped to fit the context window" in payload["note"]
+
+
+def test_run_sql_returns_a_small_result_untouched(toolbox: Toolbox) -> None:
+    payload = json.loads(toolbox.run_sql("SELECT athlete_id FROM players LIMIT 2"))
+    assert payload["truncated"] is False
+    assert "note" not in payload
+
+
+def test_run_sql_reports_the_dropped_count_so_the_model_can_narrow(seeded: Toolbox) -> None:
+    payload = json.loads(seeded.run_sql("SELECT * FROM wide"))
+    assert f"{200 - payload['row_count']} more row(s)" in payload["note"]
+    assert "aggregate in SQL" in payload["note"]
+
+
+def test_run_sql_explains_when_even_one_row_is_too_large(seeded: Toolbox) -> None:
+    # A very wide SELECT * - listing the columns is what the model needs to
+    # write a narrower query, so return that rather than a silent empty result.
+    payload = json.loads(seeded.run_sql("SELECT * FROM huge"))
+    assert payload["rows"] == [] and payload["truncated"] is True
+    assert "too large to return" in payload["note"] and "blob" in payload["note"]
+
+
+def test_run_sql_still_flags_the_row_cap_when_everything_fits(seeded: Toolbox) -> None:
+    payload = json.loads(seeded.run_sql("SELECT id FROM narrow"))
+    assert payload["truncated"] is True and "row cap" in payload["note"]
+
+
+def test_get_leaderboard_limit_is_clamped(seeded: Toolbox) -> None:
+    from association.query.leaderboard import MAX_LIMIT
+
+    result = json.loads(seeded.get_leaderboard(metric="avg_points", season=2026, min_sample=1, limit=5000))
+    assert result["row_count"] <= MAX_LIMIT

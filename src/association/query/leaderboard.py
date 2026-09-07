@@ -27,6 +27,9 @@ from .entities import Ambiguous, Entity, NotFound, resolve_team
 from .metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS, current_season
 
 MAX_ROWS = 200
+# `limit` is model-supplied on the agent path (the template clamps its own):
+# a leaderboard of 5,000 helps nobody and floods the context window.
+MAX_LIMIT = 100
 
 
 class LeaderboardError(Exception):
@@ -161,7 +164,7 @@ def run_leaderboard(
     qualify = "QUALIFY ROW_NUMBER() OVER (PARTITION BY t.athlete_id ORDER BY (t.team_id IS NULL) DESC) = 1" if spec.dedup_traded else ""
 
     sql = f"SELECT {', '.join(select_cols)} {from_clause} WHERE {' AND '.join(where)} {qualify} ORDER BY t.{spec.column} DESC LIMIT ?"
-    params.append(limit)
+    params.append(max(1, min(limit, MAX_LIMIT)))
     try:
         cur = con.execute(sql, params)
         cols = [d[0] for d in cur.description]

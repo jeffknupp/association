@@ -330,9 +330,20 @@ path; right way round.
   33.5 twice under two headings). `check_routing.py` now treats a list
   expectation as a *subset* check for the same reason: dropping a field the
   user asked for is a bug, an extra one is only noise.
-- **A second look at `MAX_ROWS`.** `run_sql` can return 200 rows of JSON into
-  a 16k window. Under the old 8192 that was a truncation risk nobody had
-  measured.
+- ~~**A second look at `MAX_ROWS`**~~ — DONE, and it was worse than suspected.
+  A row cap does not bound what comes *back*: measured, `SELECT * FROM
+  player_game_log LIMIT 200` serialises to **~44,000 tokens** — nearly three
+  times the whole 16,384-token window, from a single tool call. Over `num_ctx`
+  ollama cuts the prompt to about half, head-first and silently, throwing away
+  the system prompt: the exact failure this codebase was rebuilt to eliminate,
+  reachable by the `SELECT *` a small model writes constantly.
+
+  Results are now bounded by **tokens**, not rows — as many rows as fit
+  `MAX_RESULT_TOKENS` (2,000), chosen by binary search, with the dropped count
+  and a pointer to aggregate in SQL or select fewer columns. 44,084 → 1,828
+  tokens. When even one row is too large the column list comes back instead,
+  which is what the model needs to write a narrower query. `get_leaderboard`'s
+  model-supplied `limit` is clamped for the same reason.
 
 ## Sequencing and verification
 
