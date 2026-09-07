@@ -5,7 +5,8 @@ model call with a router → template → answer pipeline.
 
 **Landed:** stage 1 (router + `threshold_count`), 2.0 (`entities.py`), 2.1
 (`leaderboard`), 2.2 (`player_stat`), 2.3 (double/triple-doubles), 2.4
-(`game_log` + `team_record`). **Next:** 2.5, then stage 3.
+(`game_log` + `team_record`), 2.5 (`shot_chart`). **Stage 2 is complete.**
+**Next:** stage 3.
 
 ## Why
 
@@ -182,13 +183,41 @@ alongside a list of games" (485 tok) — plus "First/most recent/last game"
 (140), "Filtering by an exact calendar date" (129), "A specific game already
 implies its season" (54).
 
-### 2.5 `shot_chart`
+### 2.5 `shot_chart` — DONE
 
-Thin wrapper over the existing `toolbox.render_shot_chart`.
+`render_shot_chart` was extracted out of `Toolbox` into `shotchart.py` taking
+`con` and `out_dir` explicitly, the same split `leaderboard.py` got, so the
+template and the agent tool are one implementation. Templates now take a
+`TemplateContext` (connection + output directory) rather than a bare
+connection, since this is the first shape that needs to write a file.
 
-**Retires:** its **366 tokens** of tool schema, plus 2 KB entries (177 tok):
-"Shot charts (visual) vs. shot-related numbers" and "render_shot_chart's
-made_only parameter".
+Two bugs the port surfaced, both real:
+
+- `Toolbox.__init__` created `out_dir`, so the extracted function silently
+  depended on someone else having made the directory first. It creates its own
+  now.
+- `shot_chart` was the only template not defaulting an unspecified season to
+  the current one, so "plot Curry's threes" charted his entire career in a
+  single plot (3,665 attempts). Now scoped and labelled like everywhere else.
+
+**Still to retire in stage 3:** its **366 tokens** of tool schema, plus 2 KB
+entries (177 tok).
+
+**A measured limit of the schema lever, worth recording.** Stage 2.2 found
+that requiring a slot in `ROUTER_SCHEMA` makes the decoder actually emit it.
+Here, requiring `season_ref` as well made things *worse*: it fixed one dropped
+season but crowded out others, and "most games with 15+ assists in 2024?"
+started returning `season_ref: "current"` with no `season` at all — a named
+year silently replaced by the current one, worse than the miss it was meant to
+fix. Measured across five questions, optional-with-sharper-wording won 4/5
+against required's 3/5. The lever is real but not free: require the one slot
+that pays for itself, not every slot you wish the model would fill.
+
+**Known gap:** "plot Curry's threes from last season" drops `season_ref` (it
+gets `shot_value` right instead), so "last season" resolves to the current
+season. The answer names the season, so it is visible rather than silent, but
+the year can be wrong. `check_routing.py` asserts only what is reliable here
+and carries a comment saying why.
 
 ## Stage 3 — retire the preamble
 
@@ -231,7 +260,14 @@ Verification per shape, since unit tests can't catch a routing regression:
   only (cheap — all cache hits, ~1.5s each), asserting intent and slots, and
   including cases that must NOT be answered by a near-miss template. Grow it
   with every ported shape; it is the regression suite for the part that has no
-  types. Currently 13/13.
+  types. Currently 23/23.
+
+  Two rules learned the hard way while filling it in. **Assert every slot that
+  changes the answer, not just the intent** — an intent-only assertion passed
+  while "the Knicks' *last* 5 games" was answering with October games. And
+  **do not assert slots that merely restate a default** — an absent season
+  already means the current one in every template, so requiring the router to
+  say so makes the check brittle without making any answer more correct.
 - `--no-fast-path` runs the same question through the old agent for
   side-by-side comparison while both paths exist.
 

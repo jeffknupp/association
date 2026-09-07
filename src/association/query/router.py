@@ -59,8 +59,8 @@ or rating metric: ts_pct, efg_pct, usage_pct, netpoints, netpoints_per_100,
 netpoints_offense, netpoints_defense, or a NetPoints play-type category like
 rim_o_net_pts / driving_o_net_pts.
 
-Set season ONLY when the question names an explicit 4-digit year. For "this
-season" / "last season" / "this year" set season_ref instead, and omit season.
+Set season to the 4-digit year whenever the question names one. Otherwise set
+season_ref: "previous" for "last season"/"last year", "current" for anything else.
 Set season_type to "playoffs" for a playoff/postseason question, otherwise
 omit it. Set team when the question names one. For game_log always set order:
 "first" ONLY for the earliest/opening game(s) of a season, "recent" for the
@@ -94,6 +94,8 @@ Q: Who led the playoffs in rebounding?
 {"intent":"leaderboard","stat":"rebounds","season_type":"playoffs","limit":1}
 Q: Show me Steph Curry's threes from last season
 {"intent":"shot_chart","player":"Stephen Curry","shot_value":3,"season_ref":"previous"}
+Q: Show me Wembanyama's shot chart
+{"intent":"shot_chart","player":"Victor Wembanyama","season_ref":"current"}
 """
 
 # A JSON schema passed as ollama's `format`, so decoding is CONSTRAINED to a
@@ -131,6 +133,12 @@ ROUTER_SCHEMA: dict[str, Any] = {
     # `"stat":"points"`, and a question with no stat emits `""`, which the
     # blank-slot pruning below drops. Prompt wording persuades; the schema
     # decides.
+    # Only `stat`. Requiring `season_ref` too was measured and reverted: it
+    # fixed one dropped season but crowded out others, and "most games with 15+
+    # assists in 2024?" started coming back with season_ref "current" and no
+    # season at all - a named year silently replaced by the current one, which
+    # is worse than the miss it was meant to fix. The lever is real but not
+    # free; require the one slot that pays for itself, not every slot.
     "required": ["intent", "stat"],
 }
 

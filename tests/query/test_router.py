@@ -104,5 +104,18 @@ def test_blank_required_stat_is_dropped_rather_than_passed_along() -> None:
 
 
 def test_schema_requires_stat_so_the_decoder_emits_it() -> None:
-    assert ROUTER_SCHEMA["required"] == ["intent", "stat"]
+    assert "stat" in ROUTER_SCHEMA["required"]
     assert ROUTER_SCHEMA["additionalProperties"] is False
+
+
+def test_explicit_year_still_wins_over_a_required_season_ref() -> None:
+    """`season_ref` is required so the model always makes a relative-season
+    decision; a named year must still override it."""
+    got = _route('{"intent":"leaderboard","stat":"points","season":2024,"season_ref":"current"}')
+    assert got is not None and got.slots["season"] == 2024
+
+
+def test_schema_requires_only_the_slot_that_pays_for_itself() -> None:
+    """Requiring season_ref as well was measured and reverted - it crowded out
+    other slots and started dropping explicitly named years."""
+    assert ROUTER_SCHEMA["required"] == ["intent", "stat"]

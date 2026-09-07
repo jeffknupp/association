@@ -18,7 +18,7 @@ import ollama
 from .history import DEFAULT_HISTORY_DIR, RunHistory
 from .prompt import SYSTEM_PROMPT, TOOLS
 from .router import route
-from .templates import TEMPLATES, TemplateUnsupported
+from .templates import TEMPLATES, TemplateContext, TemplateUnsupported
 from .toolbox import Toolbox
 
 MAX_TOOL_ITERATIONS = 8
@@ -161,7 +161,7 @@ class Agent:
             return None
         t0 = time.monotonic()
         try:
-            result = handler(self.toolbox.con, routed.slots)
+            result = handler(TemplateContext(con=self.toolbox.con, out_dir=self.toolbox.out_dir), routed.slots)
         except TemplateUnsupported as exc:
             history.log(f"  -> (template) {exc} - falling through to the agent")
             return None

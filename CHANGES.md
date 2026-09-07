@@ -5,6 +5,32 @@ commit that made it for the full story.
 
 ## 2026-09-06
 
+- **shot_chart on the fast path, completing stage 2** (2.5):
+  `render_shot_chart` extracted out of `Toolbox` into `query/shotchart.py`
+  taking `con` and `out_dir` explicitly - the same split `leaderboard.py` got,
+  so the template and the agent tool are one implementation. Templates now
+  take a `TemplateContext` (connection plus output directory) rather than a
+  bare connection, since this is the first shape that writes a file.
+
+  Two real bugs the port surfaced: `Toolbox.__init__` created `out_dir`, so
+  the extracted function silently depended on someone else having made the
+  directory first (it creates its own now); and `shot_chart` was the only
+  template not defaulting an unspecified season to the current one, so "plot
+  Curry's threes" charted his entire career in a single plot - 3,665 attempts
+  across every season, now correctly 488 for the current one.
+
+  Also a measured LIMIT of the schema lever found in 2.2. Requiring
+  `season_ref` in addition to `stat` made things worse: it fixed one dropped
+  season but crowded out other slots, and "most games with 15+ assists in
+  2024?" started coming back with `season_ref: "current"` and no `season` at
+  all - a named year silently replaced by the current one, worse than the miss
+  it was meant to fix. Measured across five questions, optional-with-sharper-
+  wording won 4/5 against required's 3/5, so it was reverted. Require the one
+  slot that pays for itself, not every slot you wish the model would fill.
+
+  Stage 2 is complete: every shape the agent's four tools covered now takes
+  the fast path, plus several they did not. Routing check 23/23, 277 tests.
+
 - **game_log and team_record on the fast path** (stage 2.4): `game_log` uses
   the team-perspective query both `KNOWLEDGE_BASE` entries describe -
   `team_box_stats` for opponent and home/away, `games` for `winner_team_id`,

@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import duckdb
@@ -24,6 +25,7 @@ from association.season import current_season
 
 from .entities import Ambiguous, Entity, resolve_player, resolve_team
 from .leaderboard import LeaderboardError, resolve_metric, run_leaderboard
+from .shotchart import render_shot_chart
 
 # Slot value -> real player_box_stats column. A whitelist, not a passthrough:
 # the router's `stat` slot is model-generated text, and this is the only place
@@ -68,6 +70,18 @@ class TemplateUnsupported(Exception):
     degrades to the old (slow) path rather than to a wrong answer."""
 
 
+@dataclass(frozen=True)
+class TemplateContext:
+    """What a template is given: the warehouse, and somewhere to write output.
+
+    Templates took a bare connection until shot_chart needed an output
+    directory too. Passing a small context rather than the whole Toolbox keeps
+    templates testable with a plain in-memory DuckDB connection."""
+
+    con: duckdb.DuckDBPyConnection
+    out_dir: Path
+
+
 @dataclass
 class TemplateResult:
     """`answer`, when set, is the final prose and NO model call is made at all.
@@ -94,7 +108,7 @@ def _clamp_limit(limit: Any, default: int = DEFAULT_LIMIT) -> int:
     return min(limit, MAX_LIMIT)
 
 
-def threshold_count(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> TemplateResult:
+def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """"Most games with N+ of some stat" - the shape that motivated this split.
 
     KNOWLEDGE_BASE already carried this exact pattern ("Single-game vs.
@@ -102,6 +116,7 @@ def threshold_count(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> Te
     prompt, so three consecutive runs answered a season-averages leaderboard
     instead and presented it as the answer. Encoded here it cannot be
     truncated, misremembered, or silently substituted."""
+    con = ctx.con
     stat = slots.get("stat")
     column = THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
     threshold = slots.get("threshold")
@@ -176,13 +191,14 @@ def _format_value(value: Any) -> str:
     return str(value)
 
 
-def leaderboard(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> TemplateResult:
+def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """"Top N players by X" for the metrics in LEADERBOARD_METRICS.
 
     Thin on purpose: run_leaderboard already owns the season default, the
     per-metric minimum-sample floor and traded-player dedup, and the agent's
     get_leaderboard tool calls the same function. All this adds is the router
     slot mapping and deterministic phrasing."""
+    con = ctx.con
     metric = resolve_metric(slots.get("stat"))
     if metric is None:
         raise TemplateUnsupported(f"no leaderboard metric for stat {slots.get('stat')!r}")
@@ -236,7 +252,7 @@ PLAYER_STAT_COLUMNS = {
 STAT_LINE = ("points", "rebounds", "assists")
 
 
-def player_stat(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> TemplateResult:
+def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """One named player's season numbers, from player_season_stats_deduped so
     a traded player's multi-row season is already collapsed.
 
@@ -245,6 +261,7 @@ def player_stat(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> Templa
     end in a guess anyway; picking the most prominent match would silently
     attribute a number to the wrong player, which is the one failure this
     architecture is built to prevent. Asking costs ~1.5s and is always right."""
+    con = ctx.con
     text = slots.get("player")
     if not isinstance(text, str) or not text.strip():
         raise TemplateUnsupported("player_stat needs a player name")
@@ -373,12 +390,13 @@ def _resolved_team(con: duckdb.DuckDBPyConnection, text: Any) -> Entity | Templa
             raise TemplateUnsupported(f"no team matching {text!r}")
 
 
-def team_record(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> TemplateResult:
+def team_record(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """A team's win-loss record, read from standings rather than tallied from
     games - standings is the authoritative season record and carries streak and
     seed alongside it. It has no season_type column, so a playoff-record
     question falls through rather than being answered with the regular-season
     number under a playoff-sounding label."""
+    con = ctx.con
     team = _resolved_team(con, slots.get("team"))
     if isinstance(team, TemplateResult):
         return team
@@ -422,10 +440,11 @@ def team_record(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> Templa
     )
 
 
-def game_log(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> TemplateResult:
+def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """A team's or a player's games. Both orderings are explicit: "first game"
     and "last game" differ only by ORDER BY direction, and LIMIT 1 without one
     returns an arbitrary row rather than either."""
+    con = ctx.con
     season = slots.get("season") or current_season()
     season_type = slots.get("season_type") or 2
     limit = _clamp_limit(slots.get("limit"), default=DEFAULT_GAME_LOG_LIMIT)
@@ -507,10 +526,39 @@ def _player_game_log_result(name: str, period: str, rows: list[tuple[Any, ...]],
     return TemplateResult(summary=summary, data={"player": name, "games": games}, answer="\n".join([header, *lines]))
 
 
-TEMPLATES: dict[str, Callable[[duckdb.DuckDBPyConnection, dict[str, Any]], TemplateResult]] = {
+def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+    """Renders one player's shots to a static HTML court plot.
+
+    Uses shotchart.render_shot_chart, the same function the agent tool calls,
+    and so inherits its best-match player handling rather than resolve_player's
+    refusal: a chart drawn for the wrong Curry is obvious on sight, and the
+    plot is titled with the resolved name."""
+    player = slots.get("player")
+    if not isinstance(player, str) or not player.strip():
+        raise TemplateUnsupported("shot_chart needs a player name")
+    shot_value = slots.get("shot_value") if slots.get("shot_value") in (1, 2, 3) else None
+    message = render_shot_chart(
+        ctx.con,
+        ctx.out_dir,
+        player,
+        # An unspecified season means the CURRENT one here, exactly as it does
+        # in every other template - passing None through charted a player's
+        # entire career in one plot (confirmed live: 3,665 Curry attempts).
+        season=slots.get("season") or current_season(),
+        season_type=slots.get("season_type"),
+        shot_value=shot_value,
+    )
+    # A "no player found" / "no shots found" message is returned as the answer
+    # rather than falling through: the agent has no better source for a chart
+    # than the same table this just queried.
+    return TemplateResult(summary="shot chart", data={"message": message}, answer=message)
+
+
+TEMPLATES: dict[str, Callable[[TemplateContext, dict[str, Any]], TemplateResult]] = {
     "threshold_count": threshold_count,
     "leaderboard": leaderboard,
     "player_stat": player_stat,
     "team_record": team_record,
     "game_log": game_log,
+    "shot_chart": shot_chart,
 }
