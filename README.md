@@ -215,9 +215,10 @@ Ported so far: `threshold_count` ("most games with 30+ points"),
 rebounding", "most triple-doubles"), `single_game_high` ("most assists in a
 single game"), `player_stat` ("how many points did Luka
 average in 2024?"), `player_compare` ("Luka vs SGA this season"),
-`team_record`, `game_log` ("the Knicks' last 5 games", "Curry's first game of
-the season") and `shot_chart` — every shape the agent's four tools covered,
-plus several they did not.
+`team_record`, `head_to_head` ("how many times did the 76ers play Boston"),
+`game_log` ("the Knicks' last 5 games", "Curry's first game of the season") and
+`shot_chart` — every shape the agent's four tools covered, plus several they did
+not.
 
 Names resolve through a curated nickname table
 ([`entities.PLAYER_NICKNAMES`](src/association/query/entities.py)) before
@@ -256,7 +257,10 @@ why), `run_sql` (read-only, `SELECT`/`WITH` only, backed by a read-only
 DuckDB connection as a hard guarantee, for anything `get_leaderboard` doesn't
 cover; results are bounded by *tokens* rather than rows, since a 200-row
 `SELECT *` measured at ~44,000 tokens — three times the context window — and
-would silently truncate the system prompt out of the conversation), and `render_shot_chart` (renders a static HTML/SVG court plot). A
+would silently truncate the system prompt out of the conversation; a query
+comparing an `*_id` column to a non-numeric literal comes back with a warning,
+because ids here are all-digit strings and such a filter matches nothing
+without erroring), and `render_shot_chart` (renders a static HTML/SVG court plot). A
 growing `KNOWLEDGE_BASE` of concrete schema/domain gotchas (hoop coordinates,
 a trade-mid-season double-counting trap in season stats, double-double/
 triple-double definitions, ...) gets appended to whenever a real question

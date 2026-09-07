@@ -52,7 +52,9 @@ intent must be one of:
                      average", "what are Jokic's numbers") - always set player
   game_log         - list a player's or team's games, or one specific game
                      ("Lakers last 5 games", "Curry's first game of the season")
-  team_record      - a team's win/loss record for a season
+  team_record      - one team's win/loss record for a season
+  head_to_head     - games between TWO named teams ("how many times did the
+                     76ers play Boston", "Lakers vs Celtics record") - set teams
   shot_chart       - render/plot/visualize a player's shots
   player_compare   - two or more named players side by side ("Luka vs SGA",
                      "compare Curry and Lillard") - set players, not player
@@ -103,6 +105,8 @@ Q: How many points did Luka Doncic average in 2024?
 {"intent":"player_stat","player":"Luka Doncic","stat":"points","season":2024}
 Q: What are Jokic's numbers this season?
 {"intent":"player_stat","player":"Nikola Jokic","season_ref":"current"}
+Q: How many times did the 76ers play Boston?
+{"intent":"head_to_head","teams":["Philadelphia 76ers","Boston Celtics"]}
 Q: What was the Lakers record last season?
 {"intent":"team_record","team":"Lakers","season_ref":"previous"}
 Q: Show me the Knicks last 5 games
@@ -142,6 +146,7 @@ ROUTER_SCHEMA: dict[str, Any] = {
                 "player_compare",
                 "game_log",
                 "team_record",
+                "head_to_head",
                 "shot_chart",
                 "other",
             ],
@@ -157,6 +162,7 @@ ROUTER_SCHEMA: dict[str, Any] = {
         # Bound every array slot.
         "players": {"type": "array", "items": {"type": "string"}, "maxItems": 4},
         "team": {"type": "string"},
+        "teams": {"type": "array", "items": {"type": "string"}, "maxItems": 2},
         "season": {"type": "integer"},
         "season_ref": {"type": "string", "enum": ["current", "previous"]},
         "season_type": {"type": "string", "enum": ["regular", "playoffs"]},

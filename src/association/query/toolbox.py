@@ -5,6 +5,7 @@ and shot chart rendering."""
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,15 @@ MAX_ROWS = 200
 # bounded by TOKENS, and the model is told plainly when rows were dropped.
 MAX_RESULT_TOKENS = 2000
 
+# Every id in this warehouse is an all-digit VARCHAR ('20' for the 76ers,
+# '3975' for Curry). Comparing one to a name or abbreviation is valid SQL that
+# matches nothing - no error, no warning - and the model then reports the empty
+# result as fact: "the Philadelphia 76ers did not play against the Boston
+# Celtics" (they played four times, and the query said home_team_id = 'PHI').
+# The rule against this was in the prompt, verbatim, with that exact wrong form
+# as a worked example, and the model wrote it anyway. So it is detected here.
+_ID_LITERAL = re.compile(r"\b(\w*_id)\s*(?:=|!=|<>)\s*'([^']*)'", re.IGNORECASE)
+
 # column name -> (lookup table, id column in that table, name column in that table)
 ID_LOOKUPS = {
     "athlete_id": ("players", "athlete_id", "display_name"),
@@ -35,12 +45,29 @@ ID_LOOKUPS = {
 }
 
 
+def _id_compared_to_a_name(query: str) -> tuple[str, str] | None:
+    """An `*_id = 'something non-numeric'` comparison, which cannot ever match.
+    Returns the column and the literal, or None."""
+    for column, value in _ID_LITERAL.findall(query):
+        if value and not value.isdigit():
+            return column, value
+    return None
+
+
 def _estimate_tokens(text: str) -> int:
     return len(text) // 4
 
 
-def _serialise(rows: list[dict], row_count: int, hit_row_cap: bool, dropped: int) -> str:
+def _serialise(rows: list[dict], row_count: int, hit_row_cap: bool, dropped: int, impossible_filter: tuple[str, str] | None = None) -> str:
     payload: dict[str, Any] = {"rows": rows, "row_count": row_count, "truncated": bool(dropped or hit_row_cap)}
+    if impossible_filter:
+        column, value = impossible_filter
+        payload["warning"] = (
+            f"This query compares {column} to {value!r}. Ids in this warehouse are all-digit strings, so "
+            f"{column} = {value!r} can NEVER match - the filter is broken, and an empty or zero result here is "
+            "NOT evidence that the data is missing. Do not report it as a finding. Rewrite by joining "
+            "players/teams and filtering on display_name or abbreviation, then run it again."
+        )
     if dropped:
         payload["note"] = (
             f"{dropped} more row(s) matched but were dropped to fit the context window. "
@@ -52,17 +79,17 @@ def _serialise(rows: list[dict], row_count: int, hit_row_cap: bool, dropped: int
     return json.dumps(payload, default=str)
 
 
-def _pack_result(rows: list[dict], cols: list[str], hit_row_cap: bool) -> str:
+def _pack_result(rows: list[dict], cols: list[str], hit_row_cap: bool, impossible_filter: tuple[str, str] | None = None) -> str:
     """Return as many rows as fit MAX_RESULT_TOKENS, largest-first by binary
     search, saying how many were dropped."""
-    full = _serialise(rows, len(rows), hit_row_cap, dropped=0)
+    full = _serialise(rows, len(rows), hit_row_cap, dropped=0, impossible_filter=impossible_filter)
     if _estimate_tokens(full) <= MAX_RESULT_TOKENS or not rows:
         return full
 
     low, high = 0, len(rows)
     while low < high:
         mid = (low + high + 1) // 2
-        if _estimate_tokens(_serialise(rows[:mid], mid, hit_row_cap, dropped=len(rows) - mid)) <= MAX_RESULT_TOKENS:
+        if _estimate_tokens(_serialise(rows[:mid], mid, hit_row_cap, dropped=len(rows) - mid, impossible_filter=impossible_filter)) <= MAX_RESULT_TOKENS:
             low = mid
         else:
             high = mid - 1
@@ -82,7 +109,7 @@ def _pack_result(rows: list[dict], cols: list[str], hit_row_cap: bool) -> str:
             },
             default=str,
         )
-    return _serialise(rows[:low], low, hit_row_cap, dropped=len(rows) - low)
+    return _serialise(rows[:low], low, hit_row_cap, dropped=len(rows) - low, impossible_filter=impossible_filter)
 
 
 class Toolbox:
@@ -135,7 +162,12 @@ class Toolbox:
             return f"SQL error: {exc}"
         result = [dict(zip(cols, row, strict=True)) for row in rows]
         self._enrich_ids_with_names(cols, result)
-        return _pack_result(result, cols, hit_row_cap=len(result) == MAX_ROWS)
+        # Unconditional, not just on an empty result: the failing query was a
+        # COUNT(*), which returns one row containing 0 rather than no rows at
+        # all. The comparison is impossible either way, so the warning does not
+        # depend on what came back.
+        suspect = _id_compared_to_a_name(q)
+        return _pack_result(result, cols, hit_row_cap=len(result) == MAX_ROWS, impossible_filter=suspect)
 
     def get_leaderboard(
         self,

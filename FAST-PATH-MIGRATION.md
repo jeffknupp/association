@@ -384,6 +384,28 @@ now ~5,000–5,500 tokens. This is a side project and every entry is one `git
 revert` away, which is what made an aggressive trim the right call rather than
 a risky one.
 
+## `head_to_head`, and the limit of prompt-based correctness
+
+"How many times did the 76ers play boston?" answered "they did not play against
+the Boston Celtics", twice. They played four times.
+
+Four defects behind one wrong answer: no template for games between two teams
+(so it fell through); `home_team_id = 'PHI'` against an all-digit id column
+(silently zero rows); `A OR B AND season = ...` binding the season to one side
+of the matchup; and a zero count reported as a fact about the world.
+
+**The second one is the point.** That rule is *always-on*, and the assembled
+prompt for that exact question contained it verbatim — including
+`WHERE home_team_id = 'NY'` written out as a worked WRONG example. The model
+had it in front of it and wrote the wrong form anyway. No amount of prompt
+work fixes that; it is the argument for templates, restated by the system
+itself after every other argument had been made.
+
+So: a `head_to_head` template that resolves names to ids in code, plus a
+`run_sql` guard that flags any `*_id` compared to a non-numeric literal. The
+guard is unconditional rather than empty-result-only, because the failing query
+was a `COUNT(*)` — one row containing zero, not zero rows.
+
 ## What is left
 
 - ~~**`player_compare`**~~ — DONE. The agent got this wrong for a reason no

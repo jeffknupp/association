@@ -81,6 +81,11 @@ CASES: list[tuple[str, str, dict]] = [
     ("Show me Wembanyama's shot chart", "shot_chart", {"player": "Victor Wembanyama"}),
     ("Plot Curry's threes from last season", "shot_chart", {"season": current_season() - 1}),
     ("What was the Lakers record last season?", "team_record", {"team": "Lakers", "season": current_season() - 1}),
+    # Confirmed live: with no such intent this routed to team_record, fell
+    # through, and the agent answered that two teams who met four times had
+    # never played.
+    ("how many times did the 76ers play boston?", "head_to_head", {}),
+    ("Lakers vs Celtics record this season", "head_to_head", {}),
     # "last N games" means most recent, not earliest - confirmed live, the
     # router got this backwards and answered with October games.
     ("Show me the Knicks last 5 games", "game_log", {"team": "New York Knicks", "order": "recent", "limit": 5}),

@@ -694,6 +694,74 @@ def _phrase_single_game_high(games: list[dict[str, Any]], label: str, period: st
 MAX_COMPARED_PLAYERS = 4
 
 
+def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+    """"How many times did the 76ers play Boston?" - games between two teams.
+
+    Added after that exact question was answered "the Philadelphia 76ers did
+    not play against the Boston Celtics" (they played four times). The agent
+    wrote `home_team_id = 'PHI'`, but team_id is an opaque numeric VARCHAR
+    ('20'), so the filter silently matched nothing - and it did that with the
+    rule against it, complete with a worked WRONG example, in its prompt.
+    Resolving names to ids here is the only fix that holds."""
+    con = ctx.con
+    names = slots.get("teams")
+    if not isinstance(names, list) or len({n for n in names if isinstance(n, str) and n.strip()}) < 2:
+        raise TemplateUnsupported("head_to_head needs two team names")
+
+    resolved: list[Entity] = []
+    for name in names[:2]:
+        team = _resolved_team(con, name)
+        if isinstance(team, TemplateResult):
+            return team
+        if team.id not in {t.id for t in resolved}:
+            resolved.append(team)
+    if len(resolved) != 2:
+        raise TemplateUnsupported("the named teams resolved to the same team")
+
+    a, b = resolved
+    # The standing rule every other template follows: no season named means the
+    # CURRENT one. "All time" is a defensible reading of a head-to-head, but
+    # answering a different span than the rest of the system - silently - is the
+    # substitution this whole design exists to prevent. The answer names the
+    # season, so asking for another one is one follow-up away.
+    season = slots.get("season") or current_season()
+    season_type = slots.get("season_type") or 2
+    # Both orderings, since `games` is home/away-oriented rather than
+    # team-perspective, and the season filter parenthesised around the whole
+    # matchup - `A OR B AND season = ...` applies the season to one side only.
+    where = [
+        "((g.home_team_id = ? AND g.away_team_id = ?) OR (g.home_team_id = ? AND g.away_team_id = ?))",
+        "g.season_type = ?",
+        "g.season = ?",
+    ]
+    params: list[Any] = [a.id, b.id, b.id, a.id, season_type, season]
+    rows = con.execute(
+        f"SELECT g.date, g.home_team_id, g.home_score, g.away_score, g.winner_team_id "
+        f"FROM games g WHERE {' AND '.join(where)} ORDER BY g.date",
+        params,
+    ).fetchall()
+
+    a_wins = sum(1 for r in rows if r[4] == a.id)
+    b_wins = sum(1 for r in rows if r[4] == b.id)
+    period = _period(season, season_type)
+    return TemplateResult(
+        summary=f"{a.name} vs {b.name}, {period}",
+        data={"teams": [a.name, b.name], "games": len(rows), "wins": {a.name: a_wins, b.name: b_wins}},
+        answer=_phrase_head_to_head(a.name, b.name, len(rows), a_wins, b_wins, period),
+    )
+
+
+def _phrase_head_to_head(a: str, b: str, games: int, a_wins: int, b_wins: int, period: str) -> str:
+    if games == 0:
+        return f"The warehouse has no {period} games between the {a} and the {b}."
+    times = "once" if games == 1 else f"{games} times"
+    lead = f"The {a} and the {b} met {times} in the {period}"
+    if a_wins == b_wins:
+        return f"{lead}, splitting them {a_wins}-{b_wins}."
+    leader, trailing = (a, f"{a_wins}-{b_wins}") if a_wins > b_wins else (b, f"{b_wins}-{a_wins}")
+    return f"{lead}; the {leader} won the series {trailing}."
+
+
 def player_compare(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """Two or more named players' season numbers side by side.
 
@@ -778,4 +846,5 @@ TEMPLATES: dict[str, Callable[[TemplateContext, dict[str, Any]], TemplateResult]
     "shot_chart": shot_chart,
     "player_compare": player_compare,
     "single_game_high": single_game_high,
+    "head_to_head": head_to_head,
 }

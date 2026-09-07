@@ -5,6 +5,36 @@ commit that made it for the full story.
 
 ## 2026-09-06
 
+- **head_to_head, and a code-side guard for an id filter that can never
+  match**: reported from real use - "how many times did the 76ers play boston?"
+  answered "the Philadelphia 76ers did not play against the Boston Celtics",
+  twice, in 93s and 143s. They played four times.
+
+  Four separate defects behind one wrong answer. (1) No template covered games
+  between two teams, so the router chose `team_record`, invented `limit: 100`,
+  and the limit guard added in stage 2.4 correctly rejected it - falling through
+  to the agent. (2) The agent wrote `home_team_id = 'PHI'`, but team_id is an
+  opaque all-digit VARCHAR ('20'), so the filter silently matched nothing. (3)
+  Its `A OR B AND season = current_season()` applied the season filter to only
+  one side of the matchup, since AND binds tighter than OR. (4) It reported a
+  zero count as a fact about the world rather than a suspect result.
+
+  Defect 2 is the important one, and it is NOT a consequence of the recent
+  knowledge-base trim: the rule against it is ALWAYS-ON, and the assembled
+  prompt for that exact question contained it verbatim, including
+  `WHERE home_team_id = 'NY'` spelled out as a worked WRONG example. The model
+  had the rule in front of it and wrote the wrong form anyway - which is this
+  project's whole thesis restated, so the fix is code, not more prose.
+
+  New `head_to_head` template resolves both team names to ids, counts games in
+  both home/away directions, parenthesises the matchup so a season filter cannot
+  bind to one side only, and reports the series record. It defaults to the
+  current season like every other template rather than answering all-time.
+  Separately, `run_sql` now returns a `warning` whenever a query compares an
+  `*_id` column to a non-numeric literal - unconditionally, not just on an empty
+  result, because the failing query was a `COUNT(*)` that returns one row
+  containing 0 rather than no rows at all. 2.16s and correct. Routing 32/32.
+
 - **Trim the knowledge base to what the fall-through path actually needs, and
   keep models warm**: with every common shape ported to a template, fourteen
   `KNOWLEDGE_BASE` entries had nothing left to do - game logs across home and

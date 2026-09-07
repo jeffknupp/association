@@ -11,6 +11,7 @@ from association.query.templates import (
     TemplateContext,
     TemplateUnsupported,
     game_log,
+    head_to_head,
     leaderboard,
     player_compare,
     player_stat,
@@ -264,12 +265,19 @@ def gl_con(tmp_path: Path) -> TemplateContext:
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
     c.execute("CREATE TABLE standings (team_id VARCHAR, season INTEGER, wins DOUBLE, losses DOUBLE, winPercent DOUBLE, streak DOUBLE, playoffSeed DOUBLE)")
-    c.execute("CREATE TABLE games (event_id VARCHAR, date VARCHAR, home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR)")
+    c.execute(
+        "CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR, "
+        "home_team_id VARCHAR, away_team_id VARCHAR, home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR)"
+    )
     c.execute("CREATE TABLE team_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, opponent_team_id VARCHAR, home_away VARCHAR)")
     c.execute("INSERT INTO teams VALUES ('18','NY','New York Knicks'),('2','BOS','Boston Celtics')")
     s = current_season()
     c.execute("INSERT INTO standings VALUES ('18',?,53.0,29.0,0.646,3.0,4.0)", [s])
-    c.execute("INSERT INTO games VALUES ('e1','2026-04-10T22:00Z',112,95,'18'),('e2','2026-04-12T22:00Z',110,96,'2')")
+    c.execute(
+        "INSERT INTO games VALUES ('e1',?,2,'2026-04-10T22:00Z','18','2',112,95,'18'),"
+        "('e2',?,2,'2026-04-12T22:00Z','2','18',110,96,'2')",
+        [s, s],
+    )
     c.execute("INSERT INTO team_box_stats VALUES ('e1',?,2,'18','2','home'),('e2',?,2,'18','2','away')", [s, s])
     return TemplateContext(con=c, out_dir=tmp_path)
 
@@ -599,3 +607,52 @@ def test_single_game_high_ambiguous_player_asks(sgh_ctx: TemplateContext) -> Non
 
 def test_single_game_high_reports_an_empty_season_honestly(sgh_ctx: TemplateContext) -> None:
     assert "no 1999 regular season games" in (single_game_high(sgh_ctx, {"stat": "assists", "season": 1999}).answer or "")
+
+
+# ---------------- head_to_head ----------------
+
+
+def test_head_to_head_counts_games_in_both_directions(gl_con: TemplateContext) -> None:
+    """Regression: `games` is home/away-oriented, and the agent's version also
+    compared team_id to an abbreviation, so it reported that two teams who met
+    four times had never played."""
+    result = head_to_head(gl_con, {"teams": ["Knicks", "Celtics"], "season": current_season()})
+    assert result.data["games"] == 2  # one home, one away
+
+
+def test_head_to_head_reports_the_series_record(gl_con: TemplateContext) -> None:
+    answer = head_to_head(gl_con, {"teams": ["Knicks", "Celtics"], "season": current_season()}).answer or ""
+    assert "met 2 times" in answer and "splitting them 1-1" in answer
+
+
+def test_head_to_head_applies_the_season_to_the_whole_matchup(gl_con: TemplateContext) -> None:
+    # `A OR B AND season = ...` binds the season to one side only; the template
+    # parenthesises the matchup so the filter covers both orderings.
+    assert head_to_head(gl_con, {"teams": ["Knicks", "Celtics"], "season": 1999}).data["games"] == 0
+
+
+def test_head_to_head_reports_no_meetings_honestly(gl_con: TemplateContext) -> None:
+    assert "no" in (head_to_head(gl_con, {"teams": ["Knicks", "Celtics"], "season": 1999}).answer or "").lower()
+
+
+def test_head_to_head_defaults_to_the_current_season(gl_con: TemplateContext) -> None:
+    """Not all-time: answering a different span than every other template,
+    silently, is the substitution this design exists to prevent."""
+    gl_con.con.execute(
+        "INSERT INTO games VALUES ('e9',?,2,'2020-01-01T00:00Z','18','2',100,90,'18')", [current_season() - 3]
+    )
+    result = head_to_head(gl_con, {"teams": ["Knicks", "Celtics"]})
+    assert result.data["games"] == 2
+    assert f"{current_season()} regular season" in (result.answer or "")
+
+
+def test_head_to_head_needs_two_distinct_teams(gl_con: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        head_to_head(gl_con, {"teams": ["Knicks"]})
+    with pytest.raises(TemplateUnsupported):
+        head_to_head(gl_con, {"teams": ["Knicks", "New York Knicks"]})
+
+
+def test_head_to_head_asks_on_an_ambiguous_team(gl_con: TemplateContext) -> None:
+    gl_con.con.execute("INSERT INTO teams VALUES ('12','LAC','LA Clippers'),('13','LAL','Los Angeles Lakers')")
+    assert "did you mean" in (head_to_head(gl_con, {"teams": ["LA", "Celtics"]}).answer or "")

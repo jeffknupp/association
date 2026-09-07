@@ -391,3 +391,34 @@ def test_get_leaderboard_limit_is_clamped(seeded: Toolbox) -> None:
 
     result = json.loads(seeded.get_leaderboard(metric="avg_points", season=2026, min_sample=1, limit=5000))
     assert result["row_count"] <= MAX_LIMIT
+
+
+def test_run_sql_flags_an_id_compared_to_an_abbreviation(toolbox: Toolbox) -> None:
+    """Confirmed live: the agent wrote `home_team_id = 'PHI'` (ids are '20'),
+    got zero, and reported "the 76ers did not play against the Celtics" - they
+    played four times. The rule against this was in its prompt verbatim, with
+    that exact wrong form as a worked example."""
+    payload = json.loads(toolbox.run_sql("SELECT COUNT(*) AS c FROM shot_chart WHERE team_id = 'PHI'"))
+    assert "can NEVER match" in payload["warning"]
+    assert "team_id" in payload["warning"] and "PHI" in payload["warning"]
+
+
+def test_the_id_warning_fires_on_a_zero_count_not_just_an_empty_result(toolbox: Toolbox) -> None:
+    # The failing query was a COUNT(*), which returns one row containing 0
+    # rather than no rows at all.
+    payload = json.loads(toolbox.run_sql("SELECT COUNT(*) AS c FROM shot_chart WHERE team_id = 'PHI'"))
+    assert payload["row_count"] == 1 and payload["rows"][0]["c"] == 0
+    assert "warning" in payload
+
+
+def test_a_correct_id_filter_is_not_flagged(toolbox: Toolbox) -> None:
+    assert "warning" not in json.loads(toolbox.run_sql("SELECT * FROM shot_chart WHERE team_id = '9'"))
+
+
+def test_a_genuinely_empty_result_is_not_flagged(toolbox: Toolbox) -> None:
+    payload = json.loads(toolbox.run_sql("SELECT * FROM shot_chart WHERE period = 99"))
+    assert payload["row_count"] == 0 and "warning" not in payload
+
+
+def test_a_name_filter_on_a_name_column_is_not_flagged(toolbox: Toolbox) -> None:
+    assert "warning" not in json.loads(toolbox.run_sql("SELECT * FROM players WHERE display_name = 'Stephen Curry'"))
