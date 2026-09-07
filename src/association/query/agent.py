@@ -111,6 +111,7 @@ class Agent:
         self.messages: list[dict] = [{"role": "system", "content": build_system_prompt("")}]
 
     def reset(self) -> None:
+        """Drop the conversation, keeping the agent usable for a fresh question."""
         self.messages = [{"role": "system", "content": build_system_prompt("")}]
         self.last_question = None
 

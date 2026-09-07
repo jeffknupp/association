@@ -58,6 +58,7 @@ PLAYER_NICKNAMES = {
 
 @dataclass(frozen=True)
 class Entity:
+    """One resolved player or team: an opaque warehouse id and its display name."""
     id: str
     name: str
 
@@ -73,6 +74,8 @@ class Ambiguous:
 
 @dataclass(frozen=True)
 class NotFound:
+    """Nothing matched ``query`` - distinct from :class:`Ambiguous`, where too
+    much did."""
     query: str
 
 
@@ -144,4 +147,6 @@ def resolve_player(con: duckdb.DuckDBPyConnection, text: str) -> Resolution:
 
 
 def resolve_team(con: duckdb.DuckDBPyConnection, text: str) -> Resolution:
+    """One team, or a refusal. See :func:`resolve_player` for why ambiguity is
+    returned rather than resolved."""
     return _resolve(find_teams(con, text), text, ("name", "id"))

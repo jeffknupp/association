@@ -29,6 +29,12 @@ BUCKET = "espnsportsanalytics.com"
 
 
 class NetPointsDailyClient:
+    """Reader for per-game NetPoints, which live in a private S3 prefix.
+
+    Access needs a Cognito credential exchange - unauthenticated in the sense that
+    credentials are issued to anyone who asks, with no account - so the client is
+    built lazily and only when a date is actually fetched.
+    """
     def __init__(self) -> None:
         self._s3: Any = None
 

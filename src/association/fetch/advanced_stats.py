@@ -89,6 +89,11 @@ _GAME_SCORE_EXPR = """
 
 
 def build_views(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
+    """Create the computed advanced-stat views (TS%, eFG%, usage, game score).
+
+    Skipped with a logged reason when ``player_box_stats`` is absent or missing
+    a column the formulas need, rather than failing the whole warehouse build.
+    """
     if "player_box_stats" not in loaded:
         log.info("skip advanced stats views (player_box_stats not loaded)")
         return

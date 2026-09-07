@@ -27,6 +27,12 @@ log = logging.getLogger("association.fetch.pipeline")
 
 
 class Pipeline:
+    """Drives a full fetch: teams, schedules, games, players, aggregates.
+
+    Every step is checkpointed through :mod:`association.fetch.storage`, so a run
+    resumes where the last one stopped and interrupting is safe. ``force``
+    ignores those checkpoints.
+    """
     def __init__(
         self,
         client: ESPNClient | None,
@@ -68,6 +74,8 @@ class Pipeline:
 
     # ---------------- teams ----------------
     def fetch_teams(self) -> None:
+        """Fetch the team list - the root of everything else, since schedules and
+        ids are keyed off it."""
         path = self._p("teams", "teams.parquet")
         if self._exists(path):
             return
@@ -76,6 +84,7 @@ class Pipeline:
         storage.write_rows(path, rows)
 
     def team_ids(self) -> list[str]:
+        """Every team id, read back from the teams file on disk."""
         path = self._p("teams", "teams.parquet")
         if not storage.exists(path):
             self.fetch_teams()
@@ -85,6 +94,7 @@ class Pipeline:
         return [str(v) for v in table.column("team_id").to_pylist()]
 
     def team_abbr_to_id(self) -> dict[str, str]:
+        """Abbreviation to team id, for sources that identify teams by abbreviation."""
         path = self._p("teams", "teams.parquet")
         if not storage.exists(path):
             self.fetch_teams()
@@ -98,6 +108,8 @@ class Pipeline:
 
     # ---------------- schedule -> event ids ----------------
     def event_ids_for(self, season: int, season_type: int, team_ids: list[str]) -> list[str]:
+        """Every game id in a season, gathered from each team's schedule and
+        deduplicated - each game appears on two schedules."""
         ids: set[str] = set()
         for team_id in tqdm(team_ids, desc=f"{season} type={season_type} schedules", leave=False):
             data = self._live_client.get_json(
@@ -109,6 +121,8 @@ class Pipeline:
 
     # ---------------- games / box scores ----------------
     def fetch_game(self, event_id: str, season: int, season_type: int) -> None:
+        """Fetch one game's summary and write every table it yields: box scores,
+        and play-by-play derivatives when ``include_pbp`` is set."""
         game_path = self._p(
             "games", f"season={season}", f"season_type={season_type}", f"event_{event_id}.parquet"
         )
@@ -196,6 +210,8 @@ class Pipeline:
 
     # ---------------- player season stats ----------------
     def athlete_ids_for(self, season: int, season_type: int) -> list[str]:
+        """Every player who appeared in a season, taken from the box scores already
+        fetched rather than from a roster endpoint."""
         path = self._p("player_box_stats", f"season={season}", f"season_type={season_type}")
         if not path.exists():
             return []
@@ -222,6 +238,8 @@ class Pipeline:
 
     # ---------------- team season stats ----------------
     def fetch_team_season_stats(self, season: int, season_type: int, team_id: str, force_refresh: bool = False) -> None:
+        """One team's season aggregate. ``force_refresh`` re-fetches even when the
+        file exists, which is how an in-progress season stays current."""
         if season_type == 1:
             # ESPN has no team season stats for preseason - confirmed live: the
             # endpoint returns no data for every team/season checked. There's
@@ -446,6 +464,8 @@ class Pipeline:
 
     # ---------------- glossary ----------------
     def write_glossary(self) -> None:
+        """Write the stat glossary, so a column name can be explained without
+        guessing at what it means."""
         if not self.glossary:
             return
         path = self._p("stat_glossary", "stat_glossary.parquet")
@@ -497,6 +517,11 @@ class Pipeline:
 
     # ---------------- top-level run ----------------
     def run(self, seasons: list[int], season_types: list[int]) -> None:
+        """Fetch everything for the given seasons and season types.
+
+        Resumable and idempotent: completed scopes are skipped unless the pipeline
+        was constructed with ``force``.
+        """
         self.fetch_teams()
         team_ids = self.team_ids()
         if not team_ids:
@@ -528,4 +553,6 @@ class Pipeline:
 
 
 def pq_read(path: Path, columns: list[str]) -> pa.Table:
+    """Read selected columns from a Parquet file, projecting at read time so a
+    wide file costs only the columns actually needed."""
     return pq.read_table(path, columns=columns)

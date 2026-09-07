@@ -451,6 +451,7 @@ class PreambleTooLarge(RuntimeError):
 
 
 def format_knowledge_base(entries: list[dict[str, Any]]) -> str:
+    """Render knowledge-base entries into the prompt, worked examples included."""
     blocks = []
     for e in entries:
         block = f"- {e['topic']}: {e['note']}"

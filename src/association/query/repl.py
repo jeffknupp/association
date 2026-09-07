@@ -6,6 +6,11 @@ from .agent import Agent
 
 
 def run_repl(agent: Agent) -> None:
+    """Read-eval-print loop for ``association ai``.
+
+    The agent keeps conversation state across questions, so a follow-up can refer
+    back to the previous one. ``/reset`` clears it; ``/exit`` quits.
+    """
     print(f"NBA query REPL (model: {agent.model}). Type a question, or /reset, /exit.")
     while True:
         try:

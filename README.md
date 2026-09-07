@@ -48,6 +48,21 @@ The `completions/` scripts are generated, not hand-written - after changing a
 command or option in `cli.py`, regenerate them with
 `./scripts/generate_completions.sh`.
 
+## Documentation
+
+Full documentation — architecture, a generated command reference, usage
+recipes, data-source notes and the complete API — builds with Sphinx:
+
+```
+uv sync --extra docs
+scripts/build_docs.sh          # docs/_build/html/index.html
+```
+
+The build runs as a pre-commit hook with `-W`, so a broken cross-reference or a
+module missing from the API tree fails the commit. A companion hook enforces
+100% docstring coverage on `src/`, since autodoc renders an undocumented
+function perfectly happily, just uselessly.
+
 ## Data model
 
 Fetches teams, games/box scores (player and team level), standings, player

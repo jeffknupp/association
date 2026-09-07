@@ -21,10 +21,14 @@ import pyarrow.parquet as pq
 
 
 def exists(path: Path) -> bool:
+    """Whether a Parquet file is present AND non-empty - a zero-byte file is
+    treated as absent, since that is what an interrupted write leaves behind."""
     return path.exists() and path.stat().st_size > 0
 
 
 def write_rows(path: Path, rows: list[dict]) -> None:
+    """Write rows to Parquet atomically. An empty list writes nothing, so a
+    legitimately empty result never creates a file that looks like a checkpoint."""
     if not rows:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -35,6 +39,7 @@ def write_rows(path: Path, rows: list[dict]) -> None:
 
 
 def write_row(path: Path, row: dict) -> None:
+    """Write a single row, for endpoints that return one record per file."""
     write_rows(path, [row])
 
 

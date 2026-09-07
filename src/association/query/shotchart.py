@@ -27,6 +27,16 @@ def render_shot_chart(
     shot_value: int | None = None,
     made_only: bool | None = None,
 ) -> str:
+    """Render one player's shots to a static HTML court plot.
+
+    Free throws are excluded: they carry no court coordinates. Passing
+    ``event_id`` scopes the chart to a single game and makes ``season`` and
+    ``season_type`` redundant.
+
+    Returns:
+        A human-readable message naming the resolved player, the made/attempted
+        split, and the file written.
+    """
     # find_players, not resolve_player: a chart drawn for the wrong Curry
     # is obvious on sight, so taking the best match and naming the others
     # is friendlier here than refusing. Templates use resolve_player.

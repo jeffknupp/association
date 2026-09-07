@@ -29,6 +29,8 @@ NET_POINTS_TYPE_LABEL = {2: "Regular Season", 3: "Playoffs"}
 
 
 def discover_seasons(data_dir: Path) -> list[int]:
+    """Seasons with data on disk, so a plain ``data check`` reports on what is
+    actually there rather than on a hardcoded range."""
     games_dir = data_dir / "games"
     if not games_dir.exists():
         return []
@@ -102,6 +104,13 @@ def run_check(
     live: bool = False,
     force: bool = False,
 ) -> None:
+    """Report coverage per season and season type.
+
+    Offline by default: compares what is on disk against local checkpoints.
+    With ``live``, cross-checks against ESPN's own schedule, which is the real
+    test of whether a pull is complete. Postponed, cancelled and forfeited
+    games are accounted for rather than counted as gaps.
+    """
     data_dir = Path(data_dir)
     if not seasons:
         seasons = discover_seasons(data_dir)

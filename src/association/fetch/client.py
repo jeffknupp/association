@@ -22,6 +22,12 @@ NOT_FOUND_STATUS = {400, 404}
 
 
 class ESPNClient:
+    """HTTP transport for ESPN's endpoints: throttling, retries, TLS impersonation.
+
+    Uses ``curl_cffi`` rather than ``requests``/``httpx`` because ESPN's CDN
+    fingerprints the TLS handshake and rejects the standard clients outright.
+    Requests are rate limited (default 5/second) and retried with backoff.
+    """
     def __init__(self, rate_limit: float = 5.0, timeout: float = 15.0, max_retries: int = 5):
         """rate_limit: max requests/second against ESPN's hosts."""
         self.session: cf_requests.Session = cf_requests.Session(impersonate=IMPERSONATE)

@@ -5,6 +5,34 @@ commit that made it for the full story.
 
 ## 2026-09-06
 
+- **Sphinx documentation, and hooks that keep it honest**: `docs/` builds a
+  full site - architecture, a command reference generated from the Click CLI
+  itself (so it cannot drift from the flags the code accepts), usage recipes
+  for the things people actually do (fetching a season range, checking
+  consistency, forcing a refetch, keeping a live season current), a
+  data-sources page, the changelog, and an API reference covering every module.
+
+  The API tree is generated recursively by `autosummary` at build time rather
+  than from checked-in stub files, so a new module appears without anyone
+  remembering to add it - confirmed: 30 source modules, 30 generated pages.
+
+  Docstring coverage went from 51% to **100%** (120 of 120 public items, every
+  module), and two pre-commit hooks keep it there: `scripts/build_docs.sh`
+  builds with `-W` so a broken cross-reference or a missing module fails the
+  commit, and `scripts/check_docstrings.py` fails on any undocumented public
+  item - Sphinx catches malformed docs but renders an undocumented function
+  perfectly happily, just uselessly.
+
+  The data-sources page states plainly what the endpoints are: publicly
+  readable without authentication, undocumented, unsupported, and subject to
+  change without notice - a warehouse built from them is a snapshot of what
+  they returned that day. It also documents why the fetcher is deliberately
+  unhurried (5 req/s by default, checkpointed, nothing re-fetched unless
+  asked).
+
+  Sphinx is pinned below 9 because sphinx-click 6.x calls
+  `sphinx.ext.autodoc.mock` as a function, which is a module there.
+
 - **Reject scope slots a template cannot honor**: three live failures in a row
   were slots the router extracted CORRECTLY and the template silently dropped -
   a shot chart of "his last game" drew the whole season (803 attempts, not 14),

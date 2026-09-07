@@ -10,9 +10,11 @@ def render_court_html(title: str, subtitle: str, shots: list[tuple]) -> str:
     scale = 10
 
     def sx(x: float) -> float:
+        """Court x (0-50 feet, sideline to sideline) to SVG x."""
         return x * scale
 
     def sy(y: float) -> float:
+        """Court y (0 at the baseline) to SVG y, which grows downward."""
         return H - y * scale  # baseline at bottom
 
     court = f"""

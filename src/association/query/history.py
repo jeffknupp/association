@@ -34,25 +34,33 @@ class RunHistory:
         self._start = time.monotonic()
 
     def log(self, line: str) -> None:
+        """Record a trace line, and echo it to stderr when ``verbose``."""
         self.lines.append(line)
         if self.verbose:
             print(line, file=sys.stderr)
 
     def record_model_call(self, elapsed: float) -> None:
+        """Count one model round trip. These dominate wall time, so the count
+        matters as much as the seconds."""
         self.model_calls += 1
         self.model_seconds += elapsed
         self.log(f"  [timing] model inference #{self.model_calls}: {elapsed:.2f}s")
 
     def record_tool_call(self, name: str, elapsed: float) -> None:
+        """Count one tool or template call. Typically sub-millisecond, which is
+        the point: the timing split shows where the time is not going."""
         self.tool_calls += 1
         self.tool_seconds += elapsed
         self.log(f"  [timing] {name}: {elapsed:.2f}s")
 
     @property
     def total_seconds(self) -> float:
+        """Wall time since this run started."""
         return time.monotonic() - self._start
 
     def summary_line(self) -> str:
+        """The one-line summary printed to stderr after every run, splitting
+        total time into model inference versus tool execution."""
         return (
             f"[timing] total {self.total_seconds:.2f}s - "
             f"model {self.model_seconds:.2f}s ({self.model_calls} call{'s' if self.model_calls != 1 else ''}), "

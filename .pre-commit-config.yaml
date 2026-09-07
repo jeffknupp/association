@@ -36,3 +36,18 @@ repos:
         language: system
         pass_filenames: false
         types: [python]
+      # Sphinx -W catches malformed docs but renders an undocumented function
+      # perfectly happily, just uselessly - so coverage is checked separately
+      # from the build.
+      - id: docstrings
+        name: docstring coverage (src)
+        entry: scripts/check_docstrings.py
+        language: system
+        pass_filenames: false
+        files: ^src/.*\.py$
+      - id: docs
+        name: sphinx docs build
+        entry: scripts/build_docs.sh
+        language: system
+        pass_filenames: false
+        files: ^(src/.*\.py|docs/.*|CHANGES.md|pyproject.toml)$

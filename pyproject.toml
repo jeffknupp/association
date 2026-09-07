@@ -27,6 +27,13 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.16.5",
 ]
+docs = [
+    "furo>=2024.8.6",
+    "myst-parser>=4.0",
+    "sphinx>=8.1,<9",
+    "sphinx-autodoc-typehints>=2.5",
+    "sphinx-click>=6.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

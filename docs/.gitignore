@@ -1,0 +1,3 @@
+_build/
+# Regenerated from the package tree on every build by autosummary.
+api/generated/

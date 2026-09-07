@@ -113,6 +113,11 @@ def _pack_result(rows: list[dict], cols: list[str], hit_row_cap: bool, impossibl
 
 
 class Toolbox:
+    """The tools the fall-through agent can call.
+
+    The DuckDB connection is opened read-only, which is a hard guarantee rather
+    than a convention: no query the model writes can modify the warehouse.
+    """
     def __init__(self, db_path: str, out_dir: Path):
         self.con = duckdb.connect(db_path, read_only=True)
         self.out_dir = out_dir
@@ -144,12 +149,21 @@ class Toolbox:
                 r[new_key] = name_map.get(r.get(col))
 
     def describe_table(self, table_name: str) -> str:
+        """Column names and types for one table, so the model never has to guess
+        them. Restricted to known tables, with the list returned on a miss."""
         if table_name not in KNOWN_TABLES:
             return f"Unknown table {table_name!r}. Known tables: {sorted(KNOWN_TABLES)}"
         rows = self.con.execute(f"DESCRIBE {table_name}").fetchall()
         return json.dumps([{"column": r[0], "type": r[1]} for r in rows])
 
     def run_sql(self, query: str) -> str:
+        """Run a read-only ``SELECT``/``WITH`` query and return rows as JSON.
+
+        Results are bounded by TOKENS rather than rows (see ``MAX_RESULT_TOKENS``),
+        and a query comparing an ``*_id`` column to a non-numeric literal comes back
+        with a warning - such a filter can never match, and reporting its empty
+        result as a finding is a mistake this has actually produced.
+        """
         q = query.strip().rstrip(";")
         head = q[:10].lstrip().upper()
         if not (head.startswith("SELECT") or head.startswith("WITH")):

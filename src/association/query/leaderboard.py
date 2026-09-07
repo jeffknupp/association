@@ -40,6 +40,11 @@ class LeaderboardError(Exception):
 
 @dataclass
 class LeaderboardResult:
+    """A ranked leaderboard plus the qualifiers that produced it.
+
+    ``min_sample_applied`` and ``min_sample_column`` are part of the answer, not
+    bookkeeping: they are what makes "why is this player missing?" answerable.
+    """
     metric: str
     label: str
     season: int
@@ -92,6 +97,14 @@ def run_leaderboard(
     fields: list[str] | None = None,
     limit: int = 10,
 ) -> LeaderboardResult:
+    """Rank players by one known metric, with every correctness rule applied.
+
+    Raises:
+        LeaderboardError: with a message written for the model to read and act
+            on - an unknown metric (with a close-match suggestion), an
+            ambiguous team, or a table needing a warehouse flag that was not
+            used.
+    """
     spec = LEADERBOARD_METRICS.get(metric)
     if spec is None:
         # A close-match suggestion (e.g. "points" -> "avg_points") keeps a

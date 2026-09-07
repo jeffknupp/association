@@ -250,6 +250,7 @@ def ai(model: str, router_model: str, db_path: str, out_dir: str, verbose: bool,
 
 
 def main() -> None:
+    """Console-script entry point for the ``association`` command."""
     cli(prog_name="association")
 
 
