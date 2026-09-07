@@ -5,20 +5,38 @@ commit that made it for the full story.
 
 ## 2026-09-06
 
-- **Give the NetPoints defensive fingerprint its own section**: the defence
-  column was present but effectively invisible. Sorting one combined table by
-  total magnitude buries every defensively significant play type below
-  categories whose defence is ~0 - for SGA, `turnover` carries the largest
-  defensive value of any category (170.9) and landed 15th of 21, with `foul`
-  (-82.3) at 3rd only because its OFFENSIVE value is large. Offence and defence
-  now get a section each, sorted by their own side, which is also how
-  espnanalytics.com presents the fingerprint.
+- **NetPoints fingerprint: the six categories that actually partition the
+  total, and defence as its own section**: two corrections to how the
+  fingerprint was presented.
 
-  Added a note that the play types overlap - two pt contains rim, layup and
-  driving; three pt contains corner - so they are alternative views of the same
-  possessions rather than a partition. Confirmed on real data: the non-total
-  categories sum to -28.3 against a defensive total of 64.4, so adding them up
-  is meaningless and the output now says so.
+  First, the defence column was present but effectively invisible. Sorting one
+  combined table by total magnitude buries every defensively significant play
+  type below categories whose defence is ~0 - for SGA, `turnover` carries the
+  largest defensive value of any category (170.9) and landed 15th of 21, with
+  `foul` (-82.3) at 3rd only because its OFFENSIVE value is large. Offence and
+  defence now get a section each, sorted by their own side, which is also how
+  espnanalytics.com presents it.
+
+  Second, and this reverses a claim made in the previous commit: the categories
+  ARE a partition, six of them. `two_pt`, `three_pt`, `free_throw`, `turnover`,
+  `rebound` and `foul` sum EXACTLY to the offensive and defensive totals -
+  verified against the separately stored `net_points_player.offense`/`.defense`
+  for every top-minutes player in 2026, maximum deviation 0.005. The earlier
+  "they do not sum" note came from summing all 21 categories, which mixes the
+  partition with 15 overlapping descriptive slices (a driving layup at the rim
+  counts in `driving`, `layup` AND `rim`, and those 15 sum to roughly twice the
+  total on their own).
+
+  So the six are shown as the breakdown, each section printing its own sum so
+  the reader can check it against the headline - offence 8.55 plus defence 1.36
+  is 9.91 per 100 possessions, the figure `net_points_player` stores
+  independently. The overlapping slices follow as labelled detail, kept out of
+  the column that is meant to add up.
+
+  Also fixes a shadowing bug mypy caught while restructuring: the category list
+  was bound to `detail`, which the headline block already uses for a list of
+  strings - the same class of bug as the `per_100` shadowing fixed in the
+  previous commit.
 
 - **player_netpoints: one player's NetPoints and play-type fingerprint**:
   reported from real use - "what were SGA's netpoint stats this season"

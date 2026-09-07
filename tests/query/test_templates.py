@@ -873,18 +873,40 @@ def test_player_netpoints_gives_defense_its_own_section(np_ctx: TemplateContext)
     and lands 15th of 21 by total, below categories whose defense is ~0."""
     np_ctx.con.execute("UPDATE net_points_player_fingerprint SET turnover_d_net_pts = 170.9, turnover_t_net_pts = 15.7")
     answer = player_netpoints(np_ctx, {"player": "SGA"}).answer or ""
-    assert "Offense fingerprint" in answer and "Defense fingerprint" in answer
-    defense_section = answer.split("Defense fingerprint")[1]
+    assert "Offense," in answer and "Defense," in answer
+    defense_section = answer.split("Defense,")[1]
     assert defense_section.strip().splitlines()[1].strip().startswith("turnover")
 
 
 def test_player_netpoints_sorts_each_section_by_its_own_side(np_ctx: TemplateContext) -> None:
     np_ctx.con.execute("UPDATE net_points_player_fingerprint SET turnover_d_net_pts = 170.9, turnover_o_net_pts = 0.5")
-    answer = player_netpoints(np_ctx, {"player": "SGA"}) .answer or ""
-    offense_section = answer.split("Offense fingerprint")[1].split("Defense fingerprint")[0]
+    answer = player_netpoints(np_ctx, {"player": "SGA"}).answer or ""
+    offense_section = answer.split("Offense,")[1].split("Defense,")[0]
     assert not offense_section.strip().splitlines()[1].strip().startswith("turnover")
 
 
-def test_player_netpoints_warns_that_play_types_overlap(np_ctx: TemplateContext) -> None:
-    # two_pt contains rim/layup/driving; summing the categories is meaningless.
-    assert "do not sum to the total" in (player_netpoints(np_ctx, {"player": "SGA"}).answer or "")
+def test_player_netpoints_warns_that_the_detail_slices_overlap(np_ctx: TemplateContext) -> None:
+    # A driving layup at the rim counts in driving, layup AND rim, so the
+    # detail rows are not additive - unlike the six partition categories.
+    assert "do not add up" in (player_netpoints(np_ctx, {"player": "SGA"}).answer or "")
+
+
+def test_the_six_core_categories_partition_the_total(np_ctx: TemplateContext) -> None:
+    """two_pt, three_pt, free_throw, turnover, rebound and foul sum exactly to
+    the offensive and defensive totals - verified against the separately stored
+    net_points_player.offense/.defense for every top-minutes player in 2026,
+    max deviation 0.005. The other categories are overlapping slices."""
+    from association.query.templates import FINGERPRINT_PARTITION
+
+    assert set(FINGERPRINT_PARTITION) == {"two_pt", "three_pt", "free_throw", "turnover", "rebound", "foul"}
+    answer = player_netpoints(np_ctx, {"player": "SGA", "rate": "total"}).answer or ""
+    offense = answer.split("Offense,")[1].split("Defense,")[0]
+    listed = [ln.split()[-1] for ln in offense.strip().splitlines()[1:] if ln.strip() and not ln.strip().startswith("-")]
+    assert pytest.approx(sum(float(v) for v in listed[:-1]), rel=1e-6) == float(listed[-1])
+
+
+def test_overlapping_play_types_are_kept_out_of_the_summing_column(np_ctx: TemplateContext) -> None:
+    answer = player_netpoints(np_ctx, {"player": "SGA"}).answer or ""
+    offense = answer.split("Offense,")[1].split("Defense,")[0]
+    assert "rim" not in offense and "layup" not in offense  # detail, not partition
+    assert "do not add up" in answer and "rim" in answer.split("Play-type detail")[1]

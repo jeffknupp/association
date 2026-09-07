@@ -339,6 +339,17 @@ HISTORY_COLUMNS: dict[str, tuple[str, list[tuple[str, str]]]] = {
 # reported on the headline line instead of as a category row.
 FINGERPRINT_SUMMARY_CATEGORY = "total"
 
+# These six partition a player's NetPoints exactly: they sum to the offensive
+# and defensive totals for every player checked, to within float rounding
+# (max deviation 0.005 across the league's top minute-earners). Verified
+# against net_points_player.offense / .defense, which are stored separately.
+FINGERPRINT_PARTITION = ("two_pt", "three_pt", "free_throw", "turnover", "rebound", "foul")
+
+# The remaining categories are overlapping descriptive slices, not a second
+# partition - a driving layup at the rim counts in `driving`, `layup` AND
+# `rim`, and they sum to roughly twice the total. Shown as detail, kept out of
+# the column that is meant to add up.
+
 
 def player_netpoints(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """One player's NetPoints, with the play-type fingerprint.
@@ -458,28 +469,40 @@ def _phrase_netpoints(
     units = "per 100 possessions" if per_100 else "season totals"
     scope = f" over {possessions:,.0f} possessions" if per_100 and possessions else ""
     width = max(len(row["category"]) for row in breakdown)
+    partition_names = {c.replace("_", " ") for c in FINGERPRINT_PARTITION}
+    # NOT `detail`: the headline block above binds that to a list of strings,
+    # and reusing it here is the same shadowing that made a rate=total request
+    # print under a per-100 heading.
+    partition_rows = [r for r in breakdown if r["category"] in partition_names]
+    detail_rows = [r for r in breakdown if r["category"] not in partition_names]
 
-    # Offense and defense get their own section, each sorted by its OWN side.
-    # A single table sorted by total renders the defensive profile invisible:
-    # for SGA, `turnover` carries the largest defensive value of any play type
-    # and lands 15th of 21 by total, below categories whose defense is ~0.
+    # Offense and defense get a section each, sorted by their OWN side. One
+    # table sorted by total renders the defensive profile invisible: for SGA,
+    # `turnover` carries the largest defensive value of any category and lands
+    # 15th of 21 by total, below categories whose defense is ~0.
     for side, heading in (("offense", "Offense"), ("defense", "Defense")):
-        ranked = sorted((r for r in breakdown if r[side] is not None), key=lambda r: -abs(r[side]))
+        ranked = sorted((r for r in partition_rows if r[side] is not None), key=lambda r: -abs(r[side]))
         if not ranked:
             continue
         lines.append("")
-        lines.append(f"  {heading} fingerprint by play type, {units}{scope}, largest first:")
+        lines.append(f"  {heading}, {units}{scope}:")
         for row in ranked:
             # Two decimals: per-100 values are small, and one decimal collapses
-            # most of the play types onto the same number.
+            # most of the categories onto the same number.
             lines.append("  " + row["category"].ljust(width) + f"{row[side]:.2f}".rjust(9))
+        # The sum is printed so the reader can check it against the headline -
+        # these six really do add up, and showing it says so without asserting.
+        lines.append("  " + "-" * (width + 9))
+        lines.append("  " + "total".ljust(width) + f"{sum(r[side] for r in ranked):.2f}".rjust(9))
 
-    # two_pt contains rim/layup/driving, three_pt contains corner, and so on -
-    # these are overlapping views of the same possessions, not a partition.
-    # Confirmed on real data: the categories sum to -28.3 against a defensive
-    # total of 64.4, so adding them up is meaningless.
-    lines.append("")
-    lines.append("  (Play types overlap - two pt includes rim and layup, and so on - so they do not sum to the total.)")
+    if detail_rows:
+        lines.append("")
+        lines.append(f"  Play-type detail, {units} (overlapping slices - a driving layup at the rim")
+        lines.append("  counts in driving, layup and rim, so these do not add up):")
+        lines.append("  " + "category".ljust(width) + "".join(h.rjust(9) for h in ("O", "D")))
+        for row in sorted(detail_rows, key=lambda r: -abs(r["total"] or 0)):
+            cells = "".join(("-" if row[k] is None else f"{row[k]:.2f}").rjust(9) for k in ("offense", "defense"))
+            lines.append("  " + row["category"].ljust(width) + cells)
     return "\n".join(lines)
 
 
