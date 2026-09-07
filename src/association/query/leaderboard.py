@@ -70,6 +70,8 @@ METRIC_ALIASES = {
     "assists": "avg_assists",
     "steals": "avg_steals",
     "blocks": "avg_blocks",
+    "double_double": "double_doubles",
+    "triple_double": "triple_doubles",
     "netpoints": "netpoints_total",
     "true_shooting": "ts_pct",
     "usage": "usage_pct",

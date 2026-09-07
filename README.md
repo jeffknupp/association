@@ -190,7 +190,8 @@ the router entirely, for comparing the two paths.
 
 Ported so far: `threshold_count` ("most games with 30+ points"),
 `leaderboard` ("top 5 scorers on the Lakers", "who led the playoffs in
-rebounding") and `player_stat` ("how many points did Luka average in 2024?"). `scripts/check_routing.py` is the routing regression check — a
+rebounding", "most triple-doubles") and `player_stat` ("how many points did
+Luka average in 2024?"). `scripts/check_routing.py` is the routing regression check — a
 fixed question set through `route()` only, including questions that must
 *not* be answered by a near-miss template.
 

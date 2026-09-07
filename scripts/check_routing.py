@@ -39,8 +39,9 @@ CASES: list[tuple[str, str, dict]] = [
     ("How many points did Luka Doncic average in 2024?", "player_stat", {"player": "Luka Doncic", "stat": "points", "season": 2024}),
     ("What are Jokic's numbers this season?", "player_stat", {"player": "Nikola Jokic"}),
     ("How many rebounds is Wembanyama averaging?", "player_stat", {"stat": "rebounds"}),
+    ("Which player had the most triple-doubles?", "leaderboard", {"stat": "triple_double"}),
+    ("Most double-doubles this season?", "leaderboard", {"stat": "double_double"}),
     # Not ported - these must fall through, NOT be answered by a near-miss template.
-    ("Which player had the most triple-doubles?", "other", {}),
     ("How many points did Jokic score in the 3rd quarter against Boston?", "other", {}),
     ("Compare Luka and SGA this season", "other", {}),
     ("Show me Wembanyama's shot chart", "shot_chart", {}),

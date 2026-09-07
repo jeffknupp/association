@@ -4,7 +4,8 @@ Staged replacement of the single "understand the question AND write the SQL"
 model call with a router → template → answer pipeline.
 
 **Landed:** stage 1 (router + `threshold_count`), 2.0 (`entities.py`), 2.1
-(`leaderboard`), 2.2 (`player_stat`). **Next:** 2.3–2.5, then stage 3.
+(`leaderboard`), 2.2 (`player_stat`), 2.3 (double/triple-doubles).
+**Next:** 2.4–2.5, then stage 3.
 
 ## Why
 
@@ -129,12 +130,21 @@ decides. Reach for the schema first when a slot goes missing.
 **Still to retire in stage 3:** "Filtering SQL to one named player or team"
 (297 tok), and the remainder of "per game"/"average".
 
-### 2.3 `threshold_count` extensions — `double_double` / `triple_double`
+### 2.3 double-doubles / triple-doubles — DONE, and not as planned
 
-Currently routed to `other` on purpose. Same table and shape as
-`threshold_count`, different predicate (count categories ≥ 10).
+The plan assumed a new `threshold_count` variant recounting categories ≥ 10
+from `player_box_stats`. Unnecessary: the KB entry itself records that ESPN
+already precomputes `doubleDouble`/`tripleDouble` as a season COUNT of such
+games, so this is a *leaderboard metric*, not a new shape. Landed as two
+entries in `LEADERBOARD_METRICS` plus two aliases — no new template, and it
+inherits season defaults, traded-player dedup and team filtering for free.
 
-**Retires:** "Double-double / triple-double definitions" (199 tok).
+Worth noting for the shapes still to come: read the KB entry before building
+the template it retires. It is a record of what was already learned about the
+schema, and twice now it has said the work is smaller than the plan assumed.
+
+**Still to retire in stage 3:** "Double-double / triple-double definitions"
+(199 tok).
 
 ### 2.4 `game_log` and `team_record`
 

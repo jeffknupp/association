@@ -314,3 +314,13 @@ def test_render_shot_chart_writes_html_file(toolbox: Toolbox, tmp_path: Path) ->
     files = list((tmp_path / "out").glob("*.html"))
     assert len(files) == 1
     assert "<svg" in files[0].read_text()
+
+
+def test_double_and_triple_doubles_are_registered_metrics() -> None:
+    from association.query.leaderboard import resolve_metric
+    from association.query.metrics import LEADERBOARD_METRICS
+
+    assert resolve_metric("triple_double") == "triple_doubles"
+    assert resolve_metric("double_double") == "double_doubles"
+    assert LEADERBOARD_METRICS["triple_doubles"].column == "tripleDouble"
+    assert LEADERBOARD_METRICS["double_doubles"].dedup_traded is True

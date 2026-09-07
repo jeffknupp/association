@@ -5,6 +5,17 @@ commit that made it for the full story.
 
 ## 2026-09-06
 
+- **Double-doubles and triple-doubles as leaderboard metrics** (stage 2.3):
+  planned as a new per-game threshold template, landed as two entries in
+  `LEADERBOARD_METRICS` instead. The `KNOWLEDGE_BASE` entry for this had
+  already recorded that ESPN precomputes `doubleDouble`/`tripleDouble` as a
+  season COUNT of such games, so "most triple-doubles" is a leaderboard, not a
+  recount from `player_box_stats` - no new template, and it inherits the
+  season default, traded-player dedup and team filtering for free. These had
+  been routed to `other` on purpose since stage 1; they now take the fast
+  path. Confirmed live: "Nikola Jokic led the league in triple-doubles in the
+  2026 regular season, at 34."
+
 - **player_stat on the fast path, and a constrained-decoding lever** (stage
   2.2): one named player's season numbers, read from
   `player_season_stats_deduped` so a traded player's multi-row season is

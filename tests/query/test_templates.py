@@ -230,3 +230,15 @@ def test_player_stat_never_reports_a_total_as_a_per_game_number(ps_con: duckdb.D
     # (2143 total) per game", which states something false.
     answer = player_stat(ps_con, {"player": "Luka Doncic", "stat": "points"}).answer or ""
     assert "(2,143 total) per game" not in answer and "2143" not in answer
+
+
+def test_leaderboard_handles_triple_doubles_as_a_metric_not_a_recount(lb_con: duckdb.DuckDBPyConnection) -> None:
+    """ESPN precomputes doubleDouble/tripleDouble as a season count, so "most
+    triple-doubles" is a leaderboard rather than a per-game threshold recount."""
+    lb_con.execute("ALTER TABLE player_season_stats ADD COLUMN tripleDouble INTEGER")
+    lb_con.execute("UPDATE player_season_stats SET tripleDouble = 34 WHERE athlete_id = '1'")
+    lb_con.execute("UPDATE player_season_stats SET tripleDouble = 2 WHERE athlete_id = '2'")
+    result = leaderboard(lb_con, {"stat": "triple_double", "limit": 2})
+    assert result.answer == (
+        f"Luka Doncic led the league in triple-doubles in the {current_season()} regular season, at 34. Next: Stephen Curry (2)."
+    )

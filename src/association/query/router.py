@@ -45,18 +45,18 @@ intent must be one of:
   game_log         - list a player's or team's games ("Lakers games in January")
   team_record      - a team's win/loss record
   shot_chart       - render/plot/visualize a player's shots
-  other            - anything else, including double-doubles and triple-doubles,
-                     per-quarter scoring, shot distances, and any comparison of
-                     two or more named players
+  other            - anything else, including per-quarter scoring, shot
+                     distances, and any comparison of two or more named players
 
 stat names a box-score category: points, rebounds, assists, steals, blocks,
 turnovers, minutes, threePointFieldGoalsMade, fieldGoalsMade, freeThrowsMade.
 Set it whenever the question names one - for threshold_count, leaderboard and
 player_stat alike. Omit it only when the question asks for overall numbers.
 
-For leaderboard, stat may instead be a rate or rating metric: ts_pct, efg_pct,
-usage_pct, netpoints, netpoints_per_100, netpoints_offense, netpoints_defense,
-or a NetPoints play-type category like rim_o_net_pts / driving_o_net_pts.
+For leaderboard, stat may instead be double_double, triple_double, or a rate
+or rating metric: ts_pct, efg_pct, usage_pct, netpoints, netpoints_per_100,
+netpoints_offense, netpoints_defense, or a NetPoints play-type category like
+rim_o_net_pts / driving_o_net_pts.
 
 Set season ONLY when the question names an explicit 4-digit year. For "this
 season" / "last season" / "this year" set season_ref instead, and omit season.
@@ -71,7 +71,7 @@ Q: Most games with 20+ rebounds in 2024?
 Q: Who were the top 10 in netpoints/100 possessions?
 {"intent":"leaderboard","stat":"netpoints_per_100","limit":10}
 Q: Which player had the most triple-doubles?
-{"intent":"other"}
+{"intent":"leaderboard","stat":"triple_double","limit":1}
 Q: How many points did Luka Doncic average in 2024?
 {"intent":"player_stat","player":"Luka Doncic","stat":"points","season":2024}
 Q: What are Jokic's numbers this season?
