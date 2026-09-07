@@ -22,6 +22,39 @@ import duckdb
 
 MAX_CANDIDATES = 10
 
+# Curated shorthand -> the player it unambiguously means. This is NOT the
+# prominence tiebreak that was measured and rejected (no minutes/points ratio
+# separates "Luka" Doncic from Garza without also wrongly resolving "Brown"):
+# it is an explicit, auditable list, and a name absent from it still gets the
+# clarifying question rather than a guess. "Luka" and "Curry" are deliberately
+# NOT here - they are ordinary first names and surnames shared with real
+# players, and asking is the honest answer.
+#
+# Confirmed live: every value below matches exactly one row in `players`.
+PLAYER_NICKNAMES = {
+    "sga": "Shai Gilgeous-Alexander",
+    "wemby": "Victor Wembanyama",
+    "kd": "Kevin Durant",
+    "cp3": "Chris Paul",
+    "steph": "Stephen Curry",
+    "the greek freak": "Giannis Antetokounmpo",
+    "greek freak": "Giannis Antetokounmpo",
+    "giannis": "Giannis Antetokounmpo",
+    "joker": "Nikola Jokic",
+    "ad": "Anthony Davis",
+    "dame": "Damian Lillard",
+    "pg13": "Paul George",
+    "kat": "Karl-Anthony Towns",
+    "bron": "LeBron James",
+    "lebron": "LeBron James",
+    "ant": "Anthony Edwards",
+    "jrue": "Jrue Holiday",
+    "trae": "Trae Young",
+    "zion": "Zion Williamson",
+    "book": "Devin Booker",
+    "klay": "Klay Thompson",
+}
+
 
 @dataclass(frozen=True)
 class Entity:
@@ -59,6 +92,10 @@ def _exact(candidates: list[Entity], text: str, keys: tuple[str, ...] = ("name",
 def find_players(con: duckdb.DuckDBPyConnection, text: str) -> list[Entity]:
     """Every token must match, so "Luka Doncic" doesn't also match a player
     sharing only a first name."""
+    # Matched against the WHOLE query, never as a substring, so "book" resolves
+    # to Devin Booker while "notebook" is untouched - and "Ant" stops matching
+    # every player with "ant" in their name (Durant, Anthony, Antetokounmpo).
+    text = PLAYER_NICKNAMES.get(text.strip().casefold(), text)
     tokens = [t for t in text.split() if t]
     if not tokens:
         return []

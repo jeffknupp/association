@@ -5,6 +5,37 @@ commit that made it for the full story.
 
 ## 2026-09-06
 
+- **player_compare on the fast path, with a nickname table**: "compare Luka
+  and SGA this season" used to fall through to the agent, which got it wrong
+  for a reason no `KNOWLEDGE_BASE` entry could fix - it wrote correct SQL
+  (`current_season()`, ILIKE name matching) but expanded "SGA" to
+  `'%Scottie G. Allen%'` and compared Luka Doncic to Luka Garza, then reported
+  that the player with 0.4 steals led the one with 1.6. Nickname resolution is
+  a lookup, not something to hope a 7B model knows: `entities.PLAYER_NICKNAMES`
+  is a curated table of 21 shorthands (SGA, Wemby, the Greek Freak, KD, CP3,
+  ...), every one verified to match exactly one row in `players`, matched
+  against the WHOLE query rather than as a substring so "book" resolves to
+  Devin Booker while "notebook" resolves to nobody - which also fixed "Ant"
+  previously matching every player with those letters in their name (Durant,
+  Anthony, Antetokounmpo). "Luka" and "Curry" are deliberately absent: they are
+  ordinary first names and surnames shared with real players, and the
+  clarifying question is the honest answer - a curated table must not quietly
+  become the popularity guess that was measured and rejected in stage 2.2.
+
+  Output is a fixed-width table rather than prose, since comparisons are the
+  one shape where a sentence actively hurts. 122s and wrong -> ~2s and correct.
+
+  The bug worth remembering: `player_compare` was added to the router prompt
+  and given a `players` slot, but not to the intent enum in `ROUTER_SCHEMA`, so
+  constrained decoding could never emit it and every comparison silently routed
+  to `player_stat`. Constrained decoding is exactly as literal as it sounds - an
+  intent absent from the enum does not exist, however well the prompt describes
+  it. There is now a test asserting every intent the prompt describes, and every
+  ported template, appears in the enum. Also: `shot_chart` now reads "threes"
+  from either `shot_value` or the equivalent box-score stat, since the router
+  encodes it either way depending on wording - which incidentally closed the
+  known "last season" gap on that question. Routing check 25/25.
+
 - **Per-question prompt assembly, and a guard so the context cliff can never
   be silent again** (stage 3): the preamble that started all of this - 10,295
   tokens against a `NUM_CTX` of 8192, truncated head-first to 4,098 without an

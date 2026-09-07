@@ -46,14 +46,14 @@ CASES: list[tuple[str, str, dict]] = [
     ("Most double-doubles this season?", "leaderboard", {"stat": "double_double"}),
     # Not ported - these must fall through, NOT be answered by a near-miss template.
     ("How many points did Jokic score in the 3rd quarter against Boston?", "other", {}),
-    ("Compare Luka and SGA this season", "other", {}),
+    ("Compare Luka and SGA this season", "player_compare", {}),
+    ("Who scores more, Wemby or Jokic?", "player_compare", {"stat": "points"}),
+    ("Luka vs Giannis this year", "player_compare", {}),
     ("Show me Wembanyama's shot chart", "shot_chart", {"player": "Victor Wembanyama"}),
-    # Known gap: the router drops season_ref on this one (it gets shot_value
-    # right instead), so "last season" resolves to the current season. The
-    # template now defaults and names the season rather than charting every
-    # season at once, so the answer is scoped and visibly labelled - but the
-    # year can still be wrong. Asserting only what is reliable, deliberately.
-    ("Plot Curry's threes from last season", "shot_chart", {"shot_value": 3}),
+    # "threes" comes back as the box-score stat rather than shot_value here;
+    # the template reads either, so assert the season (the slot that was
+    # actually wrong once) and leave the encoding to the router.
+    ("Plot Curry's threes from last season", "shot_chart", {"season": current_season() - 1}),
     ("What was the Lakers record last season?", "team_record", {"team": "Lakers", "season": current_season() - 1}),
     # "last N games" means most recent, not earliest - confirmed live, the
     # router got this backwards and answered with October games.

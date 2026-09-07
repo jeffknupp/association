@@ -46,8 +46,10 @@ intent must be one of:
                      ("Lakers last 5 games", "Curry's first game of the season")
   team_record      - a team's win/loss record for a season
   shot_chart       - render/plot/visualize a player's shots
-  other            - anything else, including per-quarter scoring, shot
-                     distances, and any comparison of two or more named players
+  player_compare   - two or more named players side by side ("Luka vs SGA",
+                     "compare Curry and Lillard") - set players, not player
+  other            - anything else, including per-quarter scoring and shot
+                     distances
 
 stat names a box-score category: points, rebounds, assists, steals, blocks,
 turnovers, minutes, threePointFieldGoalsMade, fieldGoalsMade, freeThrowsMade.
@@ -76,6 +78,10 @@ Q: Who were the top 10 in netpoints/100 possessions?
 {"intent":"leaderboard","stat":"netpoints_per_100","limit":10}
 Q: Which player had the most triple-doubles?
 {"intent":"leaderboard","stat":"triple_double","limit":1}
+Q: Compare Luka and SGA this season
+{"intent":"player_compare","players":["Luka Doncic","Shai Gilgeous-Alexander"],"season_ref":"current"}
+Q: Who scores more, Wemby or Jokic?
+{"intent":"player_compare","players":["Victor Wembanyama","Nikola Jokic"],"stat":"points"}
 Q: How many points did Luka Doncic average in 2024?
 {"intent":"player_stat","player":"Luka Doncic","stat":"points","season":2024}
 Q: What are Jokic's numbers this season?
@@ -109,11 +115,12 @@ ROUTER_SCHEMA: dict[str, Any] = {
     "properties": {
         "intent": {
             "type": "string",
-            "enum": ["leaderboard", "threshold_count", "player_stat", "game_log", "team_record", "shot_chart", "other"],
+            "enum": ["leaderboard", "threshold_count", "player_stat", "player_compare", "game_log", "team_record", "shot_chart", "other"],
         },
         "stat": {"type": "string"},
         "threshold": {"type": "integer"},
         "player": {"type": "string"},
+        "players": {"type": "array", "items": {"type": "string"}},
         "team": {"type": "string"},
         "season": {"type": "integer"},
         "season_ref": {"type": "string", "enum": ["current", "previous"]},

@@ -12,6 +12,7 @@ from association.query.templates import (
     TemplateUnsupported,
     game_log,
     leaderboard,
+    player_compare,
     player_stat,
     shot_chart,
     team_record,
@@ -398,3 +399,68 @@ def test_shot_chart_defaults_an_unspecified_season_to_the_current_one(sc_ctx: Te
     answer = shot_chart(sc_ctx, {"player": "Stephen Curry"}) .answer or ""
     # Only this season's two shots, not the 2019 one as well.
     assert "1/2 made" in answer and str(current_season()) in answer
+
+
+# ---------------- player_compare ----------------
+
+
+def test_player_compare_puts_players_side_by_side(ps_con: TemplateContext) -> None:
+    answer = player_compare(ps_con, {"players": ["Luka Doncic", "Nikola Jokic"]}).answer or ""
+    assert "Luka Doncic vs Nikola Jokic" in answer
+    assert "points" in answer and "33.5" in answer and "27.7" in answer
+
+
+def test_player_compare_uses_a_table_not_prose(ps_con: TemplateContext) -> None:
+    """The agent's prose version of this stated that a player with 0.4 steals
+    led one with 1.6. A table cannot make that mistake."""
+    lines = (player_compare(ps_con, {"players": ["Luka Doncic", "Nikola Jokic"]}).answer or "").splitlines()
+    assert len(lines) >= 5 and lines[1].strip().startswith("Luka Doncic")
+
+
+def test_player_compare_aligns_decimals_consistently(ps_con: TemplateContext) -> None:
+    ps_con.con.execute("UPDATE player_season_stats_deduped SET avgPoints = 25.0 WHERE athlete_id = '3'")
+    answer = player_compare(ps_con, {"players": ["Luka Doncic", "Nikola Jokic"], "stat": "points"}).answer or ""
+    assert "25.0" in answer  # not a trailing-zero-stripped "25" beside "33.5"
+
+
+def test_player_compare_resolves_a_nickname(ps_con: TemplateContext) -> None:
+    ps_con.con.execute("INSERT INTO players VALUES ('9','Shai Gilgeous-Alexander')")
+    answer = player_compare(ps_con, {"players": ["Luka Doncic", "SGA"]}).answer or ""
+    assert "Shai Gilgeous-Alexander" in answer
+
+
+def test_player_compare_asks_rather_than_guessing_an_ambiguous_name(ps_con: TemplateContext) -> None:
+    answer = player_compare(ps_con, {"players": ["Luka", "Nikola Jokic"]}).answer or ""
+    assert "did you mean Luka Doncic or Luka Garza?" in answer
+
+
+def test_player_compare_needs_two_distinct_players(ps_con: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        player_compare(ps_con, {"players": ["Luka Doncic"]})
+    with pytest.raises(TemplateUnsupported):
+        player_compare(ps_con, {"players": ["Luka Doncic", "Luka Doncic"]})
+    with pytest.raises(TemplateUnsupported):
+        player_compare(ps_con, {"player": "Luka Doncic"})
+
+
+def test_player_compare_reports_a_player_with_no_rows_rather_than_dropping_them(ps_con: TemplateContext) -> None:
+    ps_con.con.execute("INSERT INTO players VALUES ('9','Shai Gilgeous-Alexander')")
+    answer = player_compare(ps_con, {"players": ["Luka Doncic", "Shai Gilgeous-Alexander"]}).answer or ""
+    assert "has no" in answer and "Shai Gilgeous-Alexander" in answer
+
+
+def test_player_compare_is_capped(ps_con: TemplateContext) -> None:
+    from association.query.templates import MAX_COMPARED_PLAYERS
+
+    ps_con.con.execute("INSERT INTO players VALUES ('9','A A'),('10','B B'),('11','C C'),('12','D D')")
+    result = player_compare(ps_con, {"players": ["Luka Doncic", "Nikola Jokic", "A A", "B B", "C C", "D D"]})
+    assert len(result.data["players"]) <= MAX_COMPARED_PLAYERS
+
+
+def test_shot_chart_reads_threes_from_either_slot(sc_ctx: TemplateContext) -> None:
+    """"Curry's threes" comes back as shot_value 3 or as the equivalent
+    box-score stat depending on wording; both mean the same thing."""
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e2',1,'9:00',TRUE,'Layup',5,5,2)", [current_season()])
+    by_value = shot_chart(sc_ctx, {"player": "Stephen Curry", "shot_value": 3}).answer or ""
+    by_stat = shot_chart(sc_ctx, {"player": "Stephen Curry", "stat": "threePointFieldGoalsMade"}).answer or ""
+    assert "1/2 made" in by_value and "1/2 made" in by_stat

@@ -536,7 +536,11 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     player = slots.get("player")
     if not isinstance(player, str) or not player.strip():
         raise TemplateUnsupported("shot_chart needs a player name")
-    shot_value = slots.get("shot_value") if slots.get("shot_value") in (1, 2, 3) else None
+    # "Curry's threes" comes back either as shot_value 3 or as the equivalent
+    # box-score stat, depending on the question's wording. Both mean the same
+    # thing; read both rather than fighting the router over which to emit.
+    stat = slots.get("stat")
+    shot_value = slots.get("shot_value") if slots.get("shot_value") in (1, 2, 3) else SHOT_VALUE_FROM_STAT.get(stat if isinstance(stat, str) else "")
     message = render_shot_chart(
         ctx.con,
         ctx.out_dir,
@@ -554,6 +558,86 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     return TemplateResult(summary="shot chart", data={"message": message}, answer=message)
 
 
+SHOT_VALUE_FROM_STAT = {"threePointFieldGoalsMade": 3, "freeThrowsMade": 1}
+
+MAX_COMPARED_PLAYERS = 4
+
+
+def player_compare(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+    """Two or more named players' season numbers side by side.
+
+    Previously fell through to the agent, which got it wrong for a reason no
+    KNOWLEDGE_BASE entry could fix: it wrote correct SQL (current_season(),
+    ILIKE name matching) but expanded "SGA" to '%Scottie G. Allen%' and
+    compared Luka Doncic to Luka Garza. Nickname resolution is a lookup, not
+    something to hope a 7B model knows - see entities.PLAYER_NICKNAMES."""
+    con = ctx.con
+    names = slots.get("players")
+    if not isinstance(names, list) or len({n for n in names if isinstance(n, str) and n.strip()}) < 2:
+        raise TemplateUnsupported("player_compare needs at least two distinct player names")
+
+    resolved: list[Entity] = []
+    for name in names[:MAX_COMPARED_PLAYERS]:
+        match resolve_player(con, name):
+            case Entity() as player:
+                if player.id not in {p.id for p in resolved}:
+                    resolved.append(player)
+            case Ambiguous(candidates=candidates):
+                return _clarify(name, candidates)
+            case _:
+                raise TemplateUnsupported(f"no player matching {name!r}")
+    if len(resolved) < 2:
+        raise TemplateUnsupported("the named players resolved to the same person")
+
+    season = slots.get("season") or current_season()
+    season_type = slots.get("season_type") or 2
+    stat = slots.get("stat") if slots.get("stat") in PLAYER_STAT_COLUMNS else None
+    wanted = [stat] if stat else list(STAT_LINE)
+    columns = ["gamesPlayed"] + [PLAYER_STAT_COLUMNS[name][0] for name in wanted]
+
+    rows: dict[str, dict[str, Any]] = {}
+    for player in resolved:
+        row = con.execute(
+            f"SELECT {', '.join(columns)} FROM player_season_stats_deduped "
+            "WHERE athlete_id = ? AND season = ? AND season_type = ?",
+            [player.id, season, season_type],
+        ).fetchone()
+        rows[player.name] = dict(zip(columns, row, strict=True)) if row else {}
+
+    period = _period(season, season_type)
+    return TemplateResult(
+        summary=f"{' vs '.join(rows)}, {period}",
+        data={"season": season, "players": rows},
+        answer=_phrase_compare(rows, wanted, period),
+    )
+
+
+def _table_cell(value: Any) -> str:
+    if value is None:
+        return "-"
+    return f"{value:.1f}" if isinstance(value, float) else str(value)
+
+
+def _phrase_compare(rows: dict[str, dict[str, Any]], wanted: list[str], period: str) -> str:
+    """A fixed-width table rather than prose. Comparisons are the one shape
+    where a sentence actively hurts - the agent's prose version stated that a
+    player with 0.4 steals led one with 1.6."""
+    names = list(rows)
+    missing = [name for name, values in rows.items() if not values]
+    label_width = max(len("games"), *(len(PLAYER_STAT_COLUMNS[name][2]) for name in wanted))
+    name_width = max(len(name) for name in names)
+    header = f"{' ' * label_width}  " + "  ".join(name.rjust(name_width) for name in names)
+    lines = [f"{' vs '.join(names)}, {period}:", header]
+    for label, key in [("games", "gamesPlayed")] + [(PLAYER_STAT_COLUMNS[n][2], PLAYER_STAT_COLUMNS[n][0]) for n in wanted]:
+        # A fixed decimal here, not _format_value: in an aligned column a
+        # trailing-zero-stripped "25" next to "27.7" reads as a different unit.
+        cells = [_table_cell(rows[name].get(key)) for name in names]
+        lines.append(f"{label.ljust(label_width)}  " + "  ".join(c.rjust(name_width) for c in cells))
+    if missing:
+        lines.append(f"({', '.join(missing)} has no {period} numbers in the warehouse.)")
+    return "\n".join(lines)
+
+
 TEMPLATES: dict[str, Callable[[TemplateContext, dict[str, Any]], TemplateResult]] = {
     "threshold_count": threshold_count,
     "leaderboard": leaderboard,
@@ -561,4 +645,5 @@ TEMPLATES: dict[str, Callable[[TemplateContext, dict[str, Any]], TemplateResult]
     "team_record": team_record,
     "game_log": game_log,
     "shot_chart": shot_chart,
+    "player_compare": player_compare,
 }

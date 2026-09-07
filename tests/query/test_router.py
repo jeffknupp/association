@@ -8,7 +8,7 @@ import ollama
 import pytest
 from ollama import ChatResponse, Message
 
-from association.query.router import ROUTER_SCHEMA, Route, route
+from association.query.router import ROUTER_PROMPT, ROUTER_SCHEMA, Route, route
 from association.season import current_season
 
 
@@ -119,3 +119,19 @@ def test_schema_requires_only_the_slot_that_pays_for_itself() -> None:
     """Requiring season_ref as well was measured and reverted - it crowded out
     other slots and started dropping explicitly named years."""
     assert ROUTER_SCHEMA["required"] == ["intent", "stat"]
+
+
+def test_every_intent_the_prompt_describes_is_emittable() -> None:
+    """Regression: player_compare was added to the prompt and given a slot, but
+    not to the schema enum - so constrained decoding could never emit it, and
+    every comparison silently routed to player_stat instead."""
+    described = {line.strip().split()[0] for line in ROUTER_PROMPT.splitlines() if line.startswith("  ") and " - " in line}
+    described = {name for name in described if name.isidentifier()}
+    assert described, "no intents parsed out of the prompt"
+    assert described <= set(ROUTER_SCHEMA["properties"]["intent"]["enum"])
+
+
+def test_every_ported_template_has_an_intent_in_the_schema() -> None:
+    from association.query.templates import TEMPLATES
+
+    assert set(TEMPLATES) <= set(ROUTER_SCHEMA["properties"]["intent"]["enum"])

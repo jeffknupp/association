@@ -286,11 +286,27 @@ path; right way round.
 
 ## What is left
 
-- **`player_compare`.** "Compare Luka and SGA this season" falls through and
-  the agent gets it wrong — not from a missing rule (it correctly used
-  `current_season()` and ILIKE name matching) but because it expanded "SGA"
-  to `'%Scottie G. Allen%'`. A template plus a nickname table would fix a
-  whole class of these.
+- ~~**`player_compare`**~~ — DONE. The agent got this wrong for a reason no
+  KNOWLEDGE_BASE entry could fix: it wrote correct SQL (`current_season()`,
+  ILIKE matching) but expanded "SGA" to `'%Scottie G. Allen%'` and compared
+  Luka Doncic to Luka Garza. Nickname resolution is a lookup, not something to
+  hope a 7B model knows — `entities.PLAYER_NICKNAMES` is a curated, auditable
+  table of 21 shorthands, every one verified to match exactly one row in
+  `players`, matched against the *whole* query so "book" resolves to Devin
+  Booker while "notebook" does not. "Luka" and "Curry" are deliberately absent:
+  they are ordinary first names and surnames shared with real players, and the
+  clarifying question is the honest answer. The output is a fixed-width table,
+  not prose — comparisons are the one shape where a sentence actively hurts,
+  and the agent's prose version had claimed a player with 0.4 steals led one
+  with 1.6. 122s and wrong → ~2s and correct.
+
+  **The bug worth remembering from this one:** `player_compare` was added to
+  the router prompt and given a `players` slot, but not to the intent enum in
+  `ROUTER_SCHEMA` — so constrained decoding could never emit it, and every
+  comparison silently routed to `player_stat`. Constrained decoding is exactly
+  as literal as it sounds: an intent absent from the enum does not exist, no
+  matter how well the prompt describes it. There is now a test asserting every
+  intent the prompt describes, and every ported template, appears in the enum.
 - **`fields` on leaderboards.** "Top 10 in NetPoints alongside their points
   per game" routes to the `leaderboard` template, which has no slot for the
   extra columns and answers without them — a silent partial answer. Either

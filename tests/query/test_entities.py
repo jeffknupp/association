@@ -65,3 +65,23 @@ def test_resolve_team_refuses_an_ambiguous_substring(con: duckdb.DuckDBPyConnect
 
 def test_resolve_team_reports_not_found(con: duckdb.DuckDBPyConnection) -> None:
     assert resolve_team(con, "Not A Team") == NotFound(query="Not A Team")
+
+
+def test_nickname_resolves_to_the_player_it_unambiguously_means(con: duckdb.DuckDBPyConnection) -> None:
+    con.execute("INSERT INTO players VALUES ('9','Shai Gilgeous-Alexander'),('10','Victor Wembanyama')")
+    assert resolve_player(con, "SGA") == Entity(id="9", name="Shai Gilgeous-Alexander")
+    assert resolve_player(con, "wemby") == Entity(id="10", name="Victor Wembanyama")
+
+
+def test_nickname_matches_the_whole_query_not_a_substring(con: duckdb.DuckDBPyConnection) -> None:
+    # "book" means Devin Booker; "notebook" means nothing.
+    assert isinstance(resolve_player(con, "notebook"), NotFound)
+
+
+def test_ordinary_first_names_are_deliberately_not_nicknames(con: duckdb.DuckDBPyConnection) -> None:
+    """"Luka" and "Curry" are shared with real players; asking is the honest
+    answer, and a curated table must not quietly turn into a popularity guess."""
+    from association.query.entities import PLAYER_NICKNAMES
+
+    assert "luka" not in PLAYER_NICKNAMES and "curry" not in PLAYER_NICKNAMES
+    assert isinstance(resolve_player(con, "Curry"), Ambiguous)
