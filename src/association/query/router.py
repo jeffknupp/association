@@ -63,7 +63,10 @@ rim_o_net_pts / driving_o_net_pts.
 
 Set season to the 4-digit year whenever the question names one. Otherwise set
 season_ref: "previous" for "last season"/"last year", "current" for anything else.
-Set season_type to "playoffs" for a playoff/postseason question, otherwise
+For leaderboard, set fields to the extra per-game box-score columns the
+question also asks to see ("top 10 in NetPoints with their points and minutes"
+-> fields ["points","minutes"]); omit it when only the ranked metric is asked
+for. Set season_type to "playoffs" for a playoff/postseason question, otherwise
 omit it. Set team when the question names one. For game_log always set order:
 "first" ONLY for the earliest/opening game(s) of a season, "recent" for the
 latest, the most recent, or "the last N games". Set date as YYYY-MM-DD only
@@ -96,6 +99,8 @@ Q: What was Curry's first game of the season?
 {"intent":"game_log","player":"Stephen Curry","order":"first","limit":1}
 Q: Top 5 scorers on the Lakers?
 {"intent":"leaderboard","stat":"points","team":"Lakers","limit":5}
+Q: Top 10 in NetPoints per 100 possessions with their points and minutes
+{"intent":"leaderboard","stat":"netpoints_per_100","fields":["points","minutes"],"limit":10}
 Q: Who led the playoffs in rebounding?
 {"intent":"leaderboard","stat":"rebounds","season_type":"playoffs","limit":1}
 Q: Show me Steph Curry's threes from last season
@@ -120,7 +125,13 @@ ROUTER_SCHEMA: dict[str, Any] = {
         "stat": {"type": "string"},
         "threshold": {"type": "integer"},
         "player": {"type": "string"},
-        "players": {"type": "array", "items": {"type": "string"}},
+        # maxItems is not cosmetic. An unbounded array under constrained decoding
+        # lets the grammar permit "one more item" forever, and the model takes
+        # that offer: confirmed live, it emitted ["points","minutes","minutes"]
+        # on one question and then hung for over five minutes on the next,
+        # because at ~10 tok/s on CPU a looping array is a stall, not a typo.
+        # Bound every array slot.
+        "players": {"type": "array", "items": {"type": "string"}, "maxItems": 4},
         "team": {"type": "string"},
         "season": {"type": "integer"},
         "season_ref": {"type": "string", "enum": ["current", "previous"]},
@@ -129,6 +140,11 @@ ROUTER_SCHEMA: dict[str, Any] = {
         "date": {"type": "string"},
         "limit": {"type": "integer"},
         "shot_value": {"type": "integer"},
+        "fields": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["points", "rebounds", "assists", "steals", "blocks", "minutes"]},
+            "maxItems": 4,
+        },
     },
     "additionalProperties": False,
     # `stat` is required, not because every intent has one, but because a

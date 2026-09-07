@@ -25,6 +25,7 @@ from association.season import current_season
 
 from .entities import Ambiguous, Entity, resolve_player, resolve_team
 from .leaderboard import LeaderboardError, resolve_metric, run_leaderboard
+from .metrics import EXTRA_FIELD_COLUMNS
 from .shotchart import render_shot_chart
 
 # Slot value -> real player_box_stats column. A whitelist, not a passthrough:
@@ -202,6 +203,21 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     metric = resolve_metric(slots.get("stat"))
     if metric is None:
         raise TemplateUnsupported(f"no leaderboard metric for stat {slots.get('stat')!r}")
+    # "top 10 in NetPoints ALONGSIDE their points per game" used to be answered
+    # without the second half and without saying so - a silent partial answer,
+    # the failure this whole architecture exists to prevent. An unknown field
+    # falls through rather than being dropped.
+    requested = [f for f in slots.get("fields") or [] if isinstance(f, str)]
+    unknown = [f for f in requested if f not in EXTRA_FIELD_COLUMNS]
+    if unknown:
+        raise TemplateUnsupported(f"unknown leaderboard field(s) {unknown}")
+    # Deduplicated, order preserved: the router repeats itself sometimes
+    # (confirmed live: ["points","minutes","minutes"]), and a repeat is a
+    # harmless slip, not a reason to spend minutes in the agent. A field that
+    # restates the ranked metric is dropped too - asked for "top scorers with
+    # their rebounds and assists" the model also returned "points", which
+    # rendered 33.5 twice under two different headings.
+    fields = [f for f in dict.fromkeys(requested) if metric != f"avg_{f}"]
     try:
         result = run_leaderboard(
             con,
@@ -209,6 +225,7 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
             season=slots.get("season"),
             season_type=slots.get("season_type") or 2,
             team=slots.get("team") if isinstance(slots.get("team"), str) else None,
+            fields=fields or None,
             limit=_clamp_limit(slots.get("limit"), default=DEFAULT_LEADERBOARD_LIMIT),
         )
     except LeaderboardError as exc:
@@ -219,10 +236,15 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     period = _period(result.season, result.season_type or 2)
     where = f"the {result.team_name}" if result.team_name else "the league"
     summary = f"{result.label}, {period}"
+    answer = (
+        _tabulate_leaderboard(result.rows, result.label, where, period, fields, result.min_sample_applied, result.min_sample_column)
+        if fields
+        else _phrase_leaderboard(result.rows, result.label, where, period)
+    )
     return TemplateResult(
         summary=summary,
-        data={"question_shape": summary, "season": result.season, "leaders": result.rows},
-        answer=_phrase_leaderboard(result.rows, result.label, where, period),
+        data={"question_shape": summary, "season": result.season, "fields": fields, "leaders": result.rows},
+        answer=answer,
     )
 
 
@@ -233,6 +255,41 @@ def _phrase_leaderboard(rows: list[dict[str, Any]], label: str, where: str, peri
     sentence = f"{top['display_name']} led {where} in {label} in the {period}, at {_format_value(top['value'])}."
     rest = [f"{r['display_name']} ({_format_value(r['value'])})" for r in rows[1:]]
     return sentence + (f" Next: {', '.join(rest)}." if rest else "")
+
+
+# The qualifying column's real name is not something to put in front of a
+# reader ("total_minutes", "gamesPlayed").
+MIN_SAMPLE_LABELS = {"total_minutes": "minutes", "gamesPlayed": "games", "games_played": "games", "minutes": "minutes"}
+
+
+def _tabulate_leaderboard(
+    rows: list[dict[str, Any]],
+    label: str,
+    where: str,
+    period: str,
+    fields: list[str],
+    min_sample: int | None,
+    min_sample_column: str | None,
+) -> str:
+    """A table once extra columns are asked for - a sentence carrying three
+    numbers per player across ten players is unreadable, and the qualifying
+    minimum belongs on screen so "why isn't X here?" has a visible answer."""
+    if not rows:
+        return f"No players qualified for {label} in {where} in the {period}."
+    unit = MIN_SAMPLE_LABELS.get(min_sample_column or "", min_sample_column or "")
+    header_note = f" (minimum {min_sample} {unit})".rstrip() if min_sample else ""
+    columns = [(label, "value")] + [(f, f) for f in fields]
+    name_width = max(len(r["display_name"]) for r in rows)
+    # The ranked metric keeps its own precision (9.91, not 9.9); the extra
+    # box-score columns are per-game averages, where one decimal is the norm.
+    cell = lambda row, key: _format_value(row[key]) if key == "value" else _table_cell(row.get(key))  # noqa: E731
+    widths = [max(len(title), *(len(cell(r, key)) for r in rows)) for title, key in columns]
+    lines = [f"{label}, {where}, {period}{header_note}:"]
+    lines.append(" " * name_width + "  " + "  ".join(t.rjust(w) for (t, _), w in zip(columns, widths, strict=True)))
+    for row in rows:
+        cells = "  ".join(cell(row, key).rjust(w) for (_, key), w in zip(columns, widths, strict=True))
+        lines.append(f"{row['display_name'].ljust(name_width)}  {cells}")
+    return "\n".join(lines)
 
 
 # Slot value -> (per-game column, season-total column or None, label).

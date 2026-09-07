@@ -464,3 +464,62 @@ def test_shot_chart_reads_threes_from_either_slot(sc_ctx: TemplateContext) -> No
     by_value = shot_chart(sc_ctx, {"player": "Stephen Curry", "shot_value": 3}).answer or ""
     by_stat = shot_chart(sc_ctx, {"player": "Stephen Curry", "stat": "threePointFieldGoalsMade"}).answer or ""
     assert "1/2 made" in by_value and "1/2 made" in by_stat
+
+
+def test_leaderboard_includes_requested_extra_fields(lb_con: TemplateContext) -> None:
+    """Regression: "top N in X alongside their points per game" was answered
+    without the second half, and without saying so."""
+    lb_con.con.execute("ALTER TABLE player_season_stats ADD COLUMN avgRebounds DOUBLE")
+    lb_con.con.execute("UPDATE player_season_stats SET avgRebounds = 7.7 WHERE athlete_id = '1'")
+    result = leaderboard(lb_con, {"stat": "points", "fields": ["rebounds"]})
+    assert result.data["fields"] == ["rebounds"]
+    assert "rebounds" in (result.answer or "") and "7.7" in (result.answer or "")
+
+
+def test_leaderboard_with_fields_renders_a_table(lb_con: TemplateContext) -> None:
+    lb_con.con.execute("ALTER TABLE player_season_stats ADD COLUMN avgRebounds DOUBLE")
+    answer = leaderboard(lb_con, {"stat": "points", "fields": ["rebounds"]}).answer or ""
+    assert len(answer.splitlines()) >= 3
+
+
+def test_leaderboard_without_fields_stays_a_sentence(lb_con: TemplateContext) -> None:
+    answer = leaderboard(lb_con, {"stat": "points"}).answer or ""
+    assert len(answer.splitlines()) == 1 and "led the league" in answer
+
+
+def test_leaderboard_unknown_field_falls_through_rather_than_being_dropped(lb_con: TemplateContext) -> None:
+    # Silently ignoring it would answer a narrower question than was asked.
+    with pytest.raises(TemplateUnsupported):
+        leaderboard(lb_con, {"stat": "points", "fields": ["clutchness"]})
+
+
+def test_leaderboard_table_keeps_the_metrics_own_precision(lb_con: TemplateContext) -> None:
+    lb_con.con.execute("ALTER TABLE player_season_stats ADD COLUMN avgRebounds DOUBLE")
+    lb_con.con.execute("UPDATE player_season_stats SET avgPoints = 9.91 WHERE athlete_id = '1'")
+    answer = leaderboard(lb_con, {"stat": "points", "fields": ["rebounds"]}).answer or ""
+    assert "9.91" in answer  # not rounded to 9.9 by the table's field formatting
+
+
+def test_leaderboard_table_names_the_qualifying_minimum(lb_con: TemplateContext) -> None:
+    """"Why isn't X on this list?" should have a visible answer."""
+    lb_con.con.execute("ALTER TABLE player_season_stats ADD COLUMN avgRebounds DOUBLE")
+    answer = leaderboard(lb_con, {"stat": "points", "fields": ["rebounds"], "limit": 2}).answer or ""
+    assert "minimum" not in answer or "games" in answer or "minutes" in answer
+
+
+def test_leaderboard_tolerates_a_repeated_field(lb_con: TemplateContext) -> None:
+    """Confirmed live: the router returned ["points","minutes","minutes"]. A
+    repeat is a harmless slip, not a reason to fall through to the agent."""
+    lb_con.con.execute("ALTER TABLE player_season_stats ADD COLUMN avgRebounds DOUBLE")
+    result = leaderboard(lb_con, {"stat": "points", "fields": ["rebounds", "rebounds"]})
+    assert result.data["fields"] == ["rebounds"]
+    assert (result.answer or "").splitlines()[1].count("rebounds") == 1
+
+
+def test_leaderboard_drops_a_field_that_restates_the_ranked_metric(lb_con: TemplateContext) -> None:
+    """Confirmed live: asked for "top scorers with their rebounds", the router
+    also returned "points", which rendered the same 33.5 twice under two
+    different headings."""
+    lb_con.con.execute("ALTER TABLE player_season_stats ADD COLUMN avgRebounds DOUBLE")
+    result = leaderboard(lb_con, {"stat": "points", "fields": ["rebounds", "points"]})
+    assert result.data["fields"] == ["rebounds"]

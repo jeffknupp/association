@@ -42,6 +42,7 @@ class LeaderboardResult:
     season: int
     season_type: int | None
     min_sample_applied: int | None
+    min_sample_column: str | None
     team: str | None
     team_name: str | None
     rows: list[dict[str, Any]]
@@ -174,6 +175,7 @@ def run_leaderboard(
         season=resolved_season,
         season_type=season_type if spec.has_season_type else None,
         min_sample_applied=effective_min_sample,
+        min_sample_column=spec.min_sample_column,
         team=team,
         team_name=resolved_team_name,
         rows=[dict(zip(cols, row, strict=True)) for row in rows],

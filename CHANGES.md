@@ -5,6 +5,34 @@ commit that made it for the full story.
 
 ## 2026-09-06
 
+- **Extra columns on leaderboards, and a bounded array slot**: "top 10 in
+  NetPoints alongside their points per game" routed to the `leaderboard`
+  template, which had no slot for the extra columns and answered without them -
+  a silent partial answer. A `fields` slot now feeds `run_leaderboard`'s
+  existing extra-columns support, and the answer switches from a sentence to a
+  table once extra columns are asked for, with the qualifying minimum in the
+  header so "why isn't X on this list?" has a visible answer. An UNKNOWN field
+  falls through rather than being dropped.
+
+  The bug worth remembering: the array slots had no `maxItems`. Under
+  constrained decoding an unbounded array lets the grammar permit "one more
+  item" forever, and the model takes that offer - it emitted
+  `["points","minutes","minutes"]` on one question and then hung for over FIVE
+  MINUTES on the next, because at ~10 tok/s on CPU a looping array is a stall,
+  not a typo. With `maxItems` those questions route in ~2.2s. Bound every array
+  slot in a constrained schema.
+
+  The model still over-fills to the cap, so the template deduplicates and drops
+  any field that restates the ranked metric - asked for "top scorers with their
+  rebounds", the router also returned "points", which rendered the same 33.5
+  twice under two headings. `check_routing.py` now treats a list expectation as
+  a SUBSET check for the same reason (dropping a requested field is a bug, an
+  extra one is noise), flushes its output so a running check no longer looks
+  identical to a hung one, gained a `known_gap` marker for the "last season"
+  slot the router reliably drops, and warns against running two copies at once -
+  concurrent runs put a CPU-only ollama into a reload loop that wedges it for
+  minutes. 27/27.
+
 - **player_compare on the fast path, with a nickname table**: "compare Luka
   and SGA this season" used to fall through to the agent, which got it wrong
   for a reason no `KNOWLEDGE_BASE` entry could fix - it wrote correct SQL

@@ -307,10 +307,29 @@ path; right way round.
   as literal as it sounds: an intent absent from the enum does not exist, no
   matter how well the prompt describes it. There is now a test asserting every
   intent the prompt describes, and every ported template, appears in the enum.
-- **`fields` on leaderboards.** "Top 10 in NetPoints alongside their points
-  per game" routes to the `leaderboard` template, which has no slot for the
-  extra columns and answers without them — a silent partial answer. Either
-  add the slot or have the template detect and decline.
+- ~~**`fields` on leaderboards**~~ — DONE. A `fields` slot feeds
+  `run_leaderboard`'s existing extra-columns support, and the answer switches
+  from a sentence to a table once extra columns are asked for (a sentence
+  carrying three numbers per player across ten players is unreadable). The
+  qualifying minimum is printed in the header, so "why isn't X on this list?"
+  has a visible answer. An *unknown* field falls through rather than being
+  dropped — silently ignoring it would answer a narrower question than was
+  asked, which is the failure this whole architecture exists to prevent.
+
+  **The bug worth remembering:** the array slots had no `maxItems`. Under
+  constrained decoding an unbounded array lets the grammar permit "one more
+  item" forever, and the model takes that offer — it emitted
+  `["points","minutes","minutes"]` on one question and then hung for **over
+  five minutes** on the next, because at ~10 tok/s on CPU a looping array is a
+  stall, not a typo. With `maxItems` those questions route in ~2.2s. Bound
+  every array slot in a constrained schema.
+
+  The model still over-fills to the cap, so the template deduplicates and
+  drops any field that restates the ranked metric (asked for "top scorers with
+  their rebounds", the router also returned "points", which rendered the same
+  33.5 twice under two headings). `check_routing.py` now treats a list
+  expectation as a *subset* check for the same reason: dropping a field the
+  user asked for is a bug, an extra one is only noise.
 - **A second look at `MAX_ROWS`.** `run_sql` can return 200 rows of JSON into
   a 16k window. Under the old 8192 that was a truncation risk nobody had
   measured.
@@ -326,7 +345,13 @@ Verification per shape, since unit tests can't catch a routing regression:
   only (cheap — all cache hits, ~1.5s each), asserting intent and slots, and
   including cases that must NOT be answered by a near-miss template. Grow it
   with every ported shape; it is the regression suite for the part that has no
-  types. Currently 23/23.
+  types. Currently 27/27, plus one case marked `known_gap` — reported as GAP
+  and not counted as a failure, so a real regression still stands out. That
+  one is "best true shooting percentage **last season**", where the router
+  drops `season_ref` and the answer covers the current season instead; every
+  template names the season it used, so it is visible rather than silent, and
+  requiring `season_ref` in the schema was measured and made other slots
+  worse.
 
   Two rules learned the hard way while filling it in. **Assert every slot that
   changes the answer, not just the intent** — an intent-only assertion passed

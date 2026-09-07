@@ -135,3 +135,13 @@ def test_every_ported_template_has_an_intent_in_the_schema() -> None:
     from association.query.templates import TEMPLATES
 
     assert set(TEMPLATES) <= set(ROUTER_SCHEMA["properties"]["intent"]["enum"])
+
+
+def test_array_slots_are_bounded() -> None:
+    """An unbounded array is a generation-length hazard under constrained
+    decoding: the grammar permits "one more item" forever, and at ~10 tok/s on
+    CPU a looping array stalls a call for minutes (confirmed live)."""
+    for name in ("players", "fields"):
+        schema = ROUTER_SCHEMA["properties"][name]
+        assert schema["type"] == "array"
+        assert schema.get("maxItems"), f"{name} has no maxItems"

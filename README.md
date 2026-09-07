@@ -202,9 +202,13 @@ matching — "SGA", "Wemby", "the Greek Freak" — matched against the whole que
 rather than as substrings, so "book" is Devin Booker and "notebook" is nobody.
 It is deliberately a short, auditable list rather than a popularity heuristic:
 "Luka" and "Curry" are not in it, because they are shared with real players
-and the clarifying question is the honest answer. `scripts/check_routing.py` is the routing regression check — a
-fixed question set through `route()` only, including questions that must
-*not* be answered by a near-miss template.
+and the clarifying question is the honest answer. A leaderboard can also carry extra
+per-game columns ("top 10 in NetPoints with their points and minutes"), which
+switches the answer to a table and prints the qualifying minimum in its header.
+`scripts/check_routing.py` is the routing regression check — a fixed question
+set through `route()` only, including questions that must *not* be answered by
+a near-miss template, and cases marked as known gaps so a real regression still
+stands out.
 
 Name resolution for both paths lives in
 [`query/entities.py`](src/association/query/entities.py). It draws a
