@@ -79,6 +79,14 @@ CASES: list[tuple[str, str, dict]] = [
     ("Who scores more, Wemby or Jokic?", "player_compare", {"stat": "points"}),
     ("Luka vs Giannis this year", "player_compare", {}),
     ("Show me Wembanyama's shot chart", "shot_chart", {"player": "Victor Wembanyama"}),
+    # Confirmed live: routed to player_stat and answered with a points/rebounds/
+    # assists stat line, then (once forced to the agent) with an all-shots,
+    # all-seasons average mislabelled as current-season three-point distance.
+    # "3pt" comes back as shot_value 3 or as the equivalent box-score stat
+    # depending on wording; shot_distance reads either, so only the intent is
+    # asserted rather than the encoding the router happened to pick.
+    ("what was steph curry's avg 3pt shot distance", "shot_distance", {}),
+    ("How far away does Wembanyama shoot from?", "shot_distance", {}),
     ("Plot Curry's threes from last season", "shot_chart", {"season": current_season() - 1}),
     ("What was the Lakers record last season?", "team_record", {"team": "Lakers", "season": current_season() - 1}),
     # Confirmed live: with no such intent this routed to team_record, fell

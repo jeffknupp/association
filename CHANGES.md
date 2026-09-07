@@ -5,6 +5,38 @@ commit that made it for the full story.
 
 ## 2026-09-06
 
+- **shot_distance, and no more silent stat fallback**: reported from real use -
+  "what was steph curry's avg 3pt shot distance" answered "Stephen Curry
+  averaged 26.6 points, 3.6 rebounds and 4.7 assists per game". Two bugs, and
+  the first one was mine rather than the model's.
+
+  `player_stat` treated a stat it did not recognise the same as no stat at all
+  and fell back to its default points/rebounds/assists line - a silent
+  substitution inside a template, which is precisely what templates exist to
+  prevent. `player_compare` had the identical bug. Both now distinguish "no
+  stat named" (default line, fine) from "stat named but unsupported" (fall
+  through). `PLAYER_STAT_COLUMNS` also gained the shooting stats the router
+  emits routinely - threePointFieldGoalsMade, fieldGoalsMade, freeThrowsMade -
+  which were missing and so triggered exactly that fallback.
+
+  Forced to the agent, the question then failed a second way: the agent wrote
+  the correct distance formula from its KNOWLEDGE_BASE entry but dropped BOTH
+  the 3-point filter and the season filter, reporting the all-shots,
+  all-seasons average of 16.94 feet as a current-season three-point distance.
+  The real figure is 23.6.
+
+  So shot distance earned a template. The hoop is at (25, 5.25) and free throws
+  carry NULL coordinates - a fixed formula over known columns, nothing that
+  needs judgement. It scopes to the current season like every other template
+  and reads the shot value from either `shot_value` or the equivalent stat.
+
+  Also adds a deliberately tiny list in the router that forces questions no
+  template computes to the agent regardless of the model's classification, for
+  subjects that read like a supported shape ("points in the 3rd quarter") and
+  are otherwise absorbed by a near-miss template. Shot distance was its first
+  entry and left it the same day by earning a template, which is the intended
+  lifecycle. Routing check 34/34.
+
 - **head_to_head, and a code-side guard for an id filter that can never
   match**: reported from real use - "how many times did the 76ers play boston?"
   answered "the Philadelphia 76ers did not play against the Boston Celtics",

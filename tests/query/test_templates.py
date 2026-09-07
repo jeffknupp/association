@@ -16,6 +16,7 @@ from association.query.templates import (
     player_compare,
     player_stat,
     shot_chart,
+    shot_distance,
     single_game_high,
     team_record,
     threshold_count,
@@ -656,3 +657,72 @@ def test_head_to_head_needs_two_distinct_teams(gl_con: TemplateContext) -> None:
 def test_head_to_head_asks_on_an_ambiguous_team(gl_con: TemplateContext) -> None:
     gl_con.con.execute("INSERT INTO teams VALUES ('12','LAC','LA Clippers'),('13','LAL','Los Angeles Lakers')")
     assert "did you mean" in (head_to_head(gl_con, {"teams": ["LA", "Celtics"]}).answer or "")
+
+
+def test_player_stat_refuses_a_named_stat_it_cannot_provide(ps_con: TemplateContext) -> None:
+    """Confirmed live: an unsupported stat fell back to the default stat line,
+    so "avg 3pt shot distance" was answered with points/rebounds/assists."""
+    with pytest.raises(TemplateUnsupported):
+        player_stat(ps_con, {"player": "Luka Doncic", "stat": "shot_distance"})
+
+
+def test_player_stat_still_defaults_when_no_stat_was_named(ps_con: TemplateContext) -> None:
+    assert "points" in (player_stat(ps_con, {"player": "Luka Doncic"}).answer or "")
+    assert "points" in (player_stat(ps_con, {"player": "Luka Doncic", "stat": ""}).answer or "")
+
+
+def test_player_compare_refuses_a_named_stat_it_cannot_provide(ps_con: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        player_compare(ps_con, {"players": ["Luka Doncic", "Nikola Jokic"], "stat": "shot_distance"})
+
+
+def test_player_stat_supports_the_shooting_stats_the_router_emits(ps_con: TemplateContext) -> None:
+    ps_con.con.execute("ALTER TABLE player_season_stats_deduped ADD COLUMN avgThreePointFieldGoalsMade DOUBLE")
+    ps_con.con.execute("ALTER TABLE player_season_stats_deduped ADD COLUMN threePointFieldGoalsMade INTEGER")
+    ps_con.con.execute("UPDATE player_season_stats_deduped SET avgThreePointFieldGoalsMade = 4.4, threePointFieldGoalsMade = 282 WHERE athlete_id = '1'")
+    answer = player_stat(ps_con, {"player": "Luka Doncic", "stat": "threePointFieldGoalsMade"}).answer or ""
+    assert "4.4 3-pointers" in answer and "282 in total" in answer
+
+
+# ---------------- shot_distance ----------------
+
+
+def test_shot_distance_filters_to_the_shot_value_asked_for(sc_ctx: TemplateContext) -> None:
+    """Confirmed live: the agent wrote the right distance formula, then dropped
+    both the 3-point filter and the season filter and reported an all-shots,
+    all-seasons average of 16.94 as a current-season three-point distance."""
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e5',1,'1:00',TRUE,'Layup',25,7,2)", [current_season()])
+    threes = shot_distance(sc_ctx, {"player": "Stephen Curry", "shot_value": 3})
+    everything = shot_distance(sc_ctx, {"player": "Stephen Curry"})
+    assert threes.data["attempts"] == 2 and everything.data["attempts"] == 3
+    assert threes.data["avg_feet"] > everything.data["avg_feet"]
+
+
+def test_shot_distance_measures_from_the_hoop_not_the_origin(sc_ctx: TemplateContext) -> None:
+    # The hoop is at (25, 5.25); the fixture's shot sits at (25, 20).
+    result = shot_distance(sc_ctx, {"player": "Stephen Curry", "shot_value": 3})
+    assert 14.0 < result.data["avg_feet"] < 15.5
+
+
+def test_shot_distance_scopes_to_the_current_season_by_default(sc_ctx: TemplateContext) -> None:
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',2019,2,'e6',1,'1:00',TRUE,'Jump Shot',25,40,3)")
+    assert shot_distance(sc_ctx, {"player": "Stephen Curry", "shot_value": 3}).data["attempts"] == 2
+
+
+def test_shot_distance_reads_the_shot_value_from_either_slot(sc_ctx: TemplateContext) -> None:
+    by_stat = shot_distance(sc_ctx, {"player": "Stephen Curry", "stat": "threePointFieldGoalsMade"})
+    assert by_stat.data["shot_value"] == 3
+
+
+def test_shot_distance_declines_free_throws(sc_ctx: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        shot_distance(sc_ctx, {"player": "Stephen Curry", "shot_value": 1})
+
+
+def test_shot_distance_reports_no_coordinates_honestly(sc_ctx: TemplateContext) -> None:
+    assert "No " in (shot_distance(sc_ctx, {"player": "Stephen Curry", "season": 1999}).answer or "")
+
+
+def test_shot_distance_without_a_player_falls_through(sc_ctx: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        shot_distance(sc_ctx, {"shot_value": 3})

@@ -168,3 +168,25 @@ def test_the_model_slot_still_applies_when_the_text_names_no_season() -> None:
     with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"leaderboard","season":2021}')):
         got = route("m", "who led in his rookie year?")
     assert got is not None and got.slots["season"] == 2021
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "How many points did Jokic score in the 3rd quarter?",
+        "points per quarter for Luka",
+    ],
+)
+def test_questions_no_template_computes_are_forced_to_the_agent(question: str) -> None:
+    """These read like a supported shape while asking for something no template
+    computes. Shot distance was here too until it earned its own template,
+    which is the intended lifecycle for this list."""
+    with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"player_stat","player":"Stephen Curry"}')):
+        got = route("m", question)
+    assert got is not None and got.intent == "other"
+
+
+def test_an_ordinary_question_is_not_forced_to_the_agent() -> None:
+    with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"player_stat","player":"Stephen Curry"}')):
+        got = route("m", "how many points does Curry average?")
+    assert got is not None and got.intent == "player_stat"

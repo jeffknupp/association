@@ -304,7 +304,27 @@ PLAYER_STAT_COLUMNS = {
     "blocks": ("avgBlocks", "blocks", "blocks"),
     "turnovers": ("avgTurnovers", "turnovers", "turnovers"),
     "minutes": ("avgMinutes", None, "minutes"),
+    # The router emits these routinely; without them a question naming one was
+    # silently answered with the default stat line instead.
+    "threePointFieldGoalsMade": ("avgThreePointFieldGoalsMade", "threePointFieldGoalsMade", "3-pointers"),
+    "fieldGoalsMade": ("avgFieldGoalsMade", "fieldGoalsMade", "field goals"),
+    "freeThrowsMade": ("avgFreeThrowsMade", "freeThrowsMade", "free throws"),
 }
+
+
+def _wanted_stats(slots: dict[str, Any]) -> list[str]:
+    """The stats to report: the one named, or the default line if none was.
+
+    A stat that was NAMED but is not supported must not fall back to the
+    default line - that is how "what was Steph Curry's avg 3pt shot distance"
+    came back as "26.6 points, 3.6 rebounds and 4.7 assists per game". Falling
+    through to the agent is slow; answering a different question is worse."""
+    stat = slots.get("stat")
+    if stat is None or (isinstance(stat, str) and not stat.strip()):
+        return list(STAT_LINE)
+    if stat in PLAYER_STAT_COLUMNS:
+        return [stat]
+    raise TemplateUnsupported(f"no per-game column for stat {stat!r}")
 
 STAT_LINE = ("points", "rebounds", "assists")
 
@@ -333,8 +353,7 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
 
     season = slots.get("season") or current_season()
     season_type = slots.get("season_type") or 2
-    stat = slots.get("stat") if slots.get("stat") in PLAYER_STAT_COLUMNS else None
-    wanted = [stat] if stat else list(STAT_LINE)
+    wanted = _wanted_stats(slots)
 
     columns = ["gamesPlayed"]
     for name in wanted:
@@ -617,6 +636,69 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
 
 SHOT_VALUE_FROM_STAT = {"threePointFieldGoalsMade": 3, "freeThrowsMade": 1}
 
+# The hoop is at (25, 5.25) in shot_chart's coordinate space, in feet - not at
+# the origin. Free throws carry NULL coordinates and must be excluded.
+HOOP_X, HOOP_Y = 25, 5.25
+
+
+def shot_distance(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+    """Average shot distance for one player, optionally by shot value.
+
+    Left to the agent until it got the question wrong in a familiar way: given
+    "what was steph curry's avg 3pt shot distance" it wrote the right distance
+    formula, then dropped BOTH the 3-point filter and the season filter and
+    reported the all-shots, all-seasons average of 16.94 as his current-season
+    three-point distance. The real figure is 23.6.
+
+    The formula is fixed and the columns are known, so nothing here is a
+    judgement call - which is the whole argument for a template."""
+    con = ctx.con
+    text = slots.get("player")
+    if not isinstance(text, str) or not text.strip():
+        raise TemplateUnsupported("shot_distance needs a player name")
+    match resolve_player(con, text):
+        case Entity() as player:
+            pass
+        case Ambiguous(candidates=candidates):
+            return _clarify(text, candidates)
+        case _:
+            raise TemplateUnsupported(f"no player matching {text!r}")
+
+    season = slots.get("season") or current_season()
+    season_type = slots.get("season_type") or 2
+    raw = slots.get("shot_value")
+    stat = slots.get("stat")
+    shot_value = raw if raw in (1, 2, 3) else SHOT_VALUE_FROM_STAT.get(stat if isinstance(stat, str) else "")
+    if shot_value == 1:
+        raise TemplateUnsupported("free throws have no meaningful shot distance")
+
+    where = ["athlete_id = ?", "season = ?", "season_type = ?", "coordinate_x IS NOT NULL"]
+    params: list[Any] = [player.id, season, season_type]
+    if shot_value is not None:
+        where.append("points_attempted = ?")
+        params.append(shot_value)
+    row = con.execute(
+        f"SELECT AVG(SQRT(POWER(coordinate_x - {HOOP_X}, 2) + POWER(coordinate_y - {HOOP_Y}, 2))), COUNT(*) "
+        f"FROM shot_chart WHERE {' AND '.join(where)}",
+        params,
+    ).fetchone()
+
+    average, attempts = (row or (None, 0))
+    period = _period(season, season_type)
+    kind = {2: "2-point ", 3: "3-point "}.get(shot_value or 0, "")
+    if not attempts or average is None:
+        answer = f"No {kind}shots with recorded coordinates for {player.name} in the {period}."
+    else:
+        answer = (
+            f"{player.name}'s average {kind}shot distance in the {period} was "
+            f"{average:.1f} feet, over {attempts:,} attempts with recorded coordinates."
+        )
+    return TemplateResult(
+        summary=f"{player.name} {kind}shot distance, {period}",
+        data={"player": player.name, "season": season, "shot_value": shot_value, "avg_feet": average, "attempts": attempts},
+        answer=answer,
+    )
+
 DEFAULT_SINGLE_GAME_LIMIT = 3
 
 
@@ -790,8 +872,7 @@ def player_compare(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
 
     season = slots.get("season") or current_season()
     season_type = slots.get("season_type") or 2
-    stat = slots.get("stat") if slots.get("stat") in PLAYER_STAT_COLUMNS else None
-    wanted = [stat] if stat else list(STAT_LINE)
+    wanted = _wanted_stats(slots)
     columns = ["gamesPlayed"] + [PLAYER_STAT_COLUMNS[name][0] for name in wanted]
 
     rows: dict[str, dict[str, Any]] = {}
@@ -847,4 +928,5 @@ TEMPLATES: dict[str, Callable[[TemplateContext, dict[str, Any]], TemplateResult]
     "player_compare": player_compare,
     "single_game_high": single_game_high,
     "head_to_head": head_to_head,
+    "shot_distance": shot_distance,
 }

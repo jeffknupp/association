@@ -22,6 +22,7 @@ against a whitelist before it reaches SQL. Nothing here is trusted."""
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -56,6 +57,8 @@ intent must be one of:
   head_to_head     - games between TWO named teams ("how many times did the
                      76ers play Boston", "Lakers vs Celtics record") - set teams
   shot_chart       - render/plot/visualize a player's shots
+  shot_distance    - how FAR a player's shots were ("average 3pt shot distance",
+                     "how far away does Curry shoot from")
   player_compare   - two or more named players side by side ("Luka vs SGA",
                      "compare Curry and Lillard") - set players, not player
   other            - anything else, including per-quarter scoring and shot
@@ -123,6 +126,8 @@ Q: Who led the playoffs in rebounding?
 {"intent":"leaderboard","stat":"rebounds","season_type":"playoffs","limit":1}
 Q: Show me Steph Curry's threes from last season
 {"intent":"shot_chart","player":"Stephen Curry","shot_value":3,"season_ref":"previous"}
+Q: What was Steph Curry's avg 3pt shot distance?
+{"intent":"shot_distance","player":"Stephen Curry","shot_value":3,"season_ref":"current"}
 Q: Show me Wembanyama's shot chart
 {"intent":"shot_chart","player":"Victor Wembanyama","season_ref":"current"}
 """
@@ -148,6 +153,7 @@ ROUTER_SCHEMA: dict[str, Any] = {
                 "team_record",
                 "head_to_head",
                 "shot_chart",
+                "shot_distance",
                 "other",
             ],
         },
@@ -209,6 +215,21 @@ MIN_SEASON = 1990
 # standing rules were written to prevent.
 SEASON_TYPES = {"regular": 2, "playoffs": 3}
 
+# Questions no template can answer, recognised from the question text rather
+# than left to the model to classify. Kept deliberately tiny: this is not a
+# rules engine, it is a short list of subjects that read like a supported shape
+# ("Steph Curry's average X") while asking for something no template computes,
+# so a near-miss template absorbs them and answers confidently.
+#
+# Shot distance was the original entry here, after "what was steph curry's avg
+# 3pt shot distance" came back as "26.6 points, 3.6 rebounds and 4.7 assists
+# per game". It has since earned a template (shot_distance) and been removed
+# from this list - which is the intended lifecycle: a subject lands here only
+# until a template covers it properly.
+_AGENT_ONLY = re.compile(
+    r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+quarter\b|\bper\s+quarter\b|\bby\s+quarter\b"
+)
+
 
 @dataclass
 class Route:
@@ -264,6 +285,10 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
         return None
     if not isinstance(raw, dict) or not isinstance(raw.get("intent"), str):
         return None
+    if _AGENT_ONLY.search(question.lower()):
+        # Slots are kept: the agent sees the conversation, not the Route, but
+        # the log line shows what the model thought before the override.
+        raw["intent"] = "other"
 
     # A blank string is how the model says "no value" for a required slot;
     # dropping it here keeps every template's `slots.get(...) or default`

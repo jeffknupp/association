@@ -406,6 +406,32 @@ So: a `head_to_head` template that resolves names to ids in code, plus a
 guard is unconditional rather than empty-result-only, because the failing query
 was a `COUNT(*)` — one row containing zero, not zero rows.
 
+## `shot_distance`, and a substitution inside a template
+
+"What was steph curry's avg 3pt shot distance" came back as "26.6 points, 3.6
+rebounds and 4.7 assists per game".
+
+**The first bug was in a template, not the agent.** `player_stat` treated an
+unrecognised stat the same as no stat at all and fell back to its default
+stat line — the exact silent substitution this design exists to prevent,
+committed by the code meant to prevent it. `player_compare` had it too. Both
+now separate "no stat named" from "stat named but unsupported"; only the first
+gets a default.
+
+The lesson generalises past this fix: **a default is only safe where the user
+named nothing.** Any template with a fallback should be read with that
+distinction in mind.
+
+Forced to the agent, the question failed again — the correct distance formula,
+with both the 3-point filter and the season filter dropped, reporting an
+all-shots all-seasons 16.94 as a current-season three-point figure (real answer
+23.6). A fixed formula over known columns is template work, so it became one.
+
+The router also gained a very short list of subjects forced to the agent
+regardless of classification, for questions that read like a supported shape.
+Shot distance was its first entry and left it the same day by earning a
+template — that is the lifecycle, not a workaround to accumulate in.
+
 ## What is left
 
 - ~~**`player_compare`**~~ — DONE. The agent got this wrong for a reason no
