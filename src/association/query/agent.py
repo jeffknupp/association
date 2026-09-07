@@ -16,7 +16,7 @@ from typing import Any
 import ollama
 
 from .history import DEFAULT_HISTORY_DIR, RunHistory
-from .prompt import SYSTEM_PROMPT, TOOLS
+from .prompt import NUM_CTX, TOOLS, build_system_prompt
 from .router import route
 from .templates import TEMPLATES, TemplateContext, TemplateUnsupported
 from .toolbox import Toolbox
@@ -25,7 +25,6 @@ MAX_TOOL_ITERATIONS = 8
 MAX_AUTO_SQL_RECOVERIES = 2  # cap on auto-executing SQL the model wrote instead of calling run_sql
 MAX_ERROR_RECOVERIES = 2  # cap on nudging a retry after a tool error, instead of letting it fabricate an answer
 MAX_HISTORY_MESSAGES = 40  # trim oldest turns once conversation grows past this, keep system prompt
-NUM_CTX = 8192  # local model's default (4096) is too small for multi-turn + tool-result JSON
 NARRATE_NUM_CTX = 2048  # the narrator sees one small result object, never the schema
 
 # The narrator's only job is to restate numbers it can already see. It gets no
@@ -91,10 +90,12 @@ class Agent:
             "get_leaderboard": self.toolbox.get_leaderboard,
             "render_shot_chart": self.toolbox.render_shot_chart,
         }
-        self.messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+        # Rebuilt per question in _ask_inner; this is the always-on core only,
+        # so a fresh Agent is usable before any question has been asked.
+        self.messages: list[dict] = [{"role": "system", "content": build_system_prompt("")}]
 
     def reset(self) -> None:
-        self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        self.messages = [{"role": "system", "content": build_system_prompt("")}]
         self.last_question = None
 
     def _trim_history(self) -> None:
@@ -184,6 +185,12 @@ class Agent:
             return fast
 
         self.last_question = question
+        # Only the entries this question needs, rather than all 26 - see
+        # prompt.select_knowledge. Swapping the system message costs one
+        # cache miss on this question's FIRST iteration; the prefix is then
+        # stable for the tool-call rounds after it, which is where the cost
+        # compounded. Rare path, so that is the right way round.
+        self.messages[0] = {"role": "system", "content": build_system_prompt(question)}
         self.messages.append({"role": "user", "content": question})
         auto_recoveries = 0
         error_recoveries = 0

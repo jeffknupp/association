@@ -5,8 +5,9 @@ model call with a router → template → answer pipeline.
 
 **Landed:** stage 1 (router + `threshold_count`), 2.0 (`entities.py`), 2.1
 (`leaderboard`), 2.2 (`player_stat`), 2.3 (double/triple-doubles), 2.4
-(`game_log` + `team_record`), 2.5 (`shot_chart`). **Stage 2 is complete.**
-**Next:** stage 3.
+(`game_log` + `team_record`), 2.5 (`shot_chart`), stage 3 (per-question
+prompt assembly + budget guard). **The migration is complete.** Remaining
+ideas are in "What is left" at the end.
 
 ## Why
 
@@ -219,35 +220,84 @@ season. The answer names the season, so it is visible rather than silent, but
 the year can be wrong. `check_routing.py` asserts only what is reliable here
 and carries a comment saying why.
 
-## Stage 3 — retire the preamble
+## Stage 3 — retire the preamble — DONE, and the plan here was wrong
 
-Delete each KB entry as its template lands (each step above names its own).
-The preamble is the progress bar, and it is also the escape hatch's latency,
-so this is not bookkeeping — it is the second half of the speedup.
+**The deletion plan does not survive contact.** Every step above says which
+KB entries it "retires", and that reasoning was wrong. The agent still writes
+free-form SQL for every `other` question, and those questions hit exactly the
+same schema traps: "compare Luka and SGA" needs the traded-player dedup rule
+and the named-player filtering rule just as much as a leaderboard did.
+Deleting those entries would not retire a cost, it would regress the one path
+that still has to write SQL by hand.
 
-**Projected end state** (from today's measured components):
+What was actually costing something was that **every question paid for all 26
+entries**. So stage 3 assembles the preamble per question instead: an
+always-on core of five rules that apply to any SQL, plus up to three entries
+selected by keyword overlap with the question (`prompt.select_knowledge`).
+Nothing is deleted; almost nothing is loaded.
 
-| component | now | after |
+Selection is plain keyword overlap, not embeddings — it needs no model call
+(the point is to spend less time, not more), it is deterministic and testable,
+and a miss is cheap: a missing entry is what the agent had before that entry
+existed, while a truncated prompt loses the schema itself. Entries whose
+trigger vocabulary differs from their own prose carry explicit `keywords`
+("how FAR was his average three?" never says "distance").
+
+**Measured end state:**
+
+| component | before | after |
 |---|---|---|
-| `TABLE_SUMMARY` | 1,328 | 1,328 (keep — the escape hatch needs it) |
-| KNOWLEDGE_BASE | 6,585 | ~1,775 |
-| standing rules + tool prose | ~880 | ~400 |
-| `TOOLS` | 1,498 | ~193 (`run_sql` + `describe_table` only) |
-| **total** | **10,295** | **~3,700** |
+| `TABLE_SUMMARY` | 1,328 | 1,328 (kept — the fall-through path needs it) |
+| KNOWLEDGE_BASE | 6,585 | 870 always-on + ≤1,500 selected |
+| standing rules + tool prose | ~890 | ~890 |
+| `TOOLS` | 1,498 | 1,246 |
+| **total** | **10,295, truncated to 4,098** | **4,337–5,821, never truncated** |
+
+`get_leaderboard`'s tool schema went 956 → 686 tokens by replacing the
+80-name metric enum with a description: `run_leaderboard` already answers a
+wrong name with a close-match suggestion and the full list, so the model
+recovers in one turn and pays for the list only when it needs it. The tool
+itself is kept — the fall-through path is where a leaderboard that also needs
+an opponent or box-score join ends up.
 
 What stays is the genuinely irreducible material: NetPoints semantics, the
 per-quarter LAG() derivation, shot-distance math, what's computed vs. what
 doesn't exist. That is a real knowledge base. The rest was teaching a model
 to write SQL we already know how to write.
 
-Two guards to add in this stage:
+**The budget guard.** `build_system_prompt` raises `PreambleTooLarge` rather
+than handing ollama a prompt it will quietly cut in half. The original bug was
+silent for four commits; it cannot be silent again. A test asserts every
+assembled prompt fits, so adding a KB entry or a tool description that
+overflows now fails in CI rather than in a wrong answer six weeks later.
 
-1. **A startup assertion** that fails loudly if the rendered preamble exceeds
-   `NUM_CTX`. This bug was silent for four commits (it crossed the limit at
-   `c209516`, "Add get_leaderboard tool"). It must never be silent again.
-2. **Retrieval instead of always-on** for what remains: select 2-3 KB entries
-   by keyword match on the question, so the escape hatch pays ~2,000 tokens
-   rather than ~3,700, and adding an entry stops taxing every future query.
+**`NUM_CTX` is 16384, up from 8192.** The truncation rule was measured, not
+guessed: a prompt *under* `num_ctx` is evaluated in full (a ~3,700-token
+prompt at 8192 came back with `prompt_eval_count` 3,696), and one *over* it is
+cut to roughly half (10,093 at 8192 came back 4,098). A ~5,400-token preamble
+costs ~100s of CPU prefill on a fall-through question — against being quietly
+wrong at 8192. For a path this rare that is the right trade.
+
+**One accepted cost:** a per-question system prompt changes the cached prefix
+between questions, so the agent path no longer reuses the KV cache
+*across* questions. It still reuses it across the tool-call rounds *within* a
+question, which is where the cost compounded (five rounds at ~75s each). Rare
+path; right way round.
+
+## What is left
+
+- **`player_compare`.** "Compare Luka and SGA this season" falls through and
+  the agent gets it wrong — not from a missing rule (it correctly used
+  `current_season()` and ILIKE name matching) but because it expanded "SGA"
+  to `'%Scottie G. Allen%'`. A template plus a nickname table would fix a
+  whole class of these.
+- **`fields` on leaderboards.** "Top 10 in NetPoints alongside their points
+  per game" routes to the `leaderboard` template, which has no slot for the
+  extra columns and answers without them — a silent partial answer. Either
+  add the slot or have the template detect and decline.
+- **A second look at `MAX_ROWS`.** `run_sql` can return 200 rows of JSON into
+  a 16k window. Under the old 8192 that was a truncation risk nobody had
+  measured.
 
 ## Sequencing and verification
 

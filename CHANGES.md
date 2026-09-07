@@ -5,6 +5,54 @@ commit that made it for the full story.
 
 ## 2026-09-06
 
+- **Per-question prompt assembly, and a guard so the context cliff can never
+  be silent again** (stage 3): the preamble that started all of this - 10,295
+  tokens against a `NUM_CTX` of 8192, truncated head-first to 4,098 without an
+  error - is now built per question. Five always-on rules that apply to any
+  SQL, plus up to three `KNOWLEDGE_BASE` entries selected by keyword overlap
+  with the question (`prompt.select_knowledge`). Measured: 4,337-5,821 tokens
+  depending on the question, never truncated.
+
+  The migration plan had called for DELETING each entry as its template
+  landed. That was wrong, and worth recording as wrong: the agent still writes
+  free-form SQL for every question no template covers, and those hit exactly
+  the same traps - "compare Luka and SGA" needs the traded-player dedup rule
+  and the named-player filtering rule just as much as a leaderboard did.
+  Deleting them would not retire a cost, it would regress the one path that
+  still writes SQL by hand. What actually cost something was every question
+  paying for all 26 entries at once. Nothing is deleted now; almost nothing is
+  loaded. Selection is plain keyword overlap rather than embeddings - no model
+  call (the point is to spend less time, not more), deterministic, testable,
+  and a miss is cheap, since a missing entry is just what the agent had before
+  that entry existed. Entries whose trigger vocabulary differs from their own
+  prose carry explicit `keywords`, because "how FAR was his average three?"
+  never says "distance".
+
+  `build_system_prompt` now raises `PreambleTooLarge` rather than handing
+  ollama a prompt it will quietly cut in half, and a test asserts every
+  assembled prompt fits - so adding a KB entry or a tool description that
+  overflows fails in CI rather than in a wrong answer six weeks later. The
+  original bug was silent for four commits.
+
+  `NUM_CTX` raised 8192 -> 16384 on the (now rare) agent path. The truncation
+  rule behind that was measured, not guessed: a prompt UNDER `num_ctx` is
+  evaluated in full (~3,700 tokens at 8192 came back with `prompt_eval_count`
+  3,696), one OVER it is cut to roughly half (10,093 at 8192 came back 4,098).
+  A ~5,400-token preamble costs ~100s of CPU prefill on a fall-through
+  question, against being quietly wrong at 8192. Also cut `get_leaderboard`'s
+  tool schema 956 -> 686 tokens by replacing the 80-name metric enum with a
+  description - `run_leaderboard` already answers a wrong name with a
+  close-match suggestion and the full list, so the model recovers in one turn
+  and pays for the list only when it needs it.
+
+  Accepted cost: a per-question system prompt changes the cached prefix
+  between questions, so the agent path no longer reuses the KV cache ACROSS
+  questions. It still reuses it across the tool-call rounds WITHIN a question,
+  which is where the cost compounded. Confirmed live on a fall-through
+  question: 3 model calls in 122s, down from 5 in 385s, with the agent
+  correctly using `current_season()` and ILIKE name matching that the old
+  truncated prompt had discarded.
+
 - **shot_chart on the fast path, completing stage 2** (2.5):
   `render_shot_chart` extracted out of `Toolbox` into `query/shotchart.py`
   taking `con` and `out_dir` explicitly - the same split `leaderboard.py` got,

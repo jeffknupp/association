@@ -290,11 +290,17 @@ the whole 385s.
 So the router does only the first of the two jobs the agent had been doing at
 once — understand the question — and it needs no schema to do it. The second
 job, producing correct SQL for a known intent, is deterministic and belongs in
-code. Most `KNOWLEDGE_BASE` entries turn out to be teaching the model to write
-SQL the repo already knows how to write, and retire as shapes are ported; the
-ones that survive (NetPoints semantics, the per-quarter `LAG()` derivation,
-shot-distance math) are real domain knowledge, and only the fall-through path
-pays for them.
+code.
+
+The tempting follow-on — delete each `KNOWLEDGE_BASE` entry as its template
+lands — turned out to be wrong, and the plan said so before the measurement
+did. The agent still writes free-form SQL for everything no template covers,
+and those questions hit exactly the same traps: "compare Luka and SGA" needs
+the traded-player dedup rule and the named-player filtering rule just as much
+as a leaderboard did. What actually cost something was that every question
+paid for all 26 entries at once. So the preamble is assembled per question
+instead: 10,295 tokens (truncated to 4,098) became 4,337–5,821 tokens, never
+truncated. Nothing was deleted; almost nothing is loaded.
 
 ## Project layout
 

@@ -3,7 +3,11 @@ definitions, and the growing knowledge base of schema/domain gotchas."""
 
 from __future__ import annotations
 
-from .metrics import CORE_METRIC_NAMES, EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS
+import json
+import re
+from typing import Any
+
+from .metrics import CORE_METRIC_NAMES, EXTRA_FIELD_COLUMNS
 
 KNOWN_TABLES = {
     "teams",
@@ -92,7 +96,7 @@ team_id / athlete_id / event_id are all VARCHAR - join and filter on them as str
 # without it. Keep entries concrete: a copy-pasteable SQL pattern fixes small local models
 # far more reliably than an abstract instruction does. To harden a new failure mode, add an
 # entry here rather than editing prose elsewhere.
-KNOWLEDGE_BASE = [
+KNOWLEDGE_BASE: list[dict[str, Any]] = [
     {
         "topic": "No season named in the question -> default to the CURRENT season",
         "note": (
@@ -159,6 +163,7 @@ KNOWLEDGE_BASE = [
     },
     {
         "topic": "fieldGoalsMade/Attempted already INCLUDES 3-pointers",
+        "keywords": ['twos', 'two', 'pointers', 'shooting', 'field', 'goals'],
         "note": (
             "fieldGoalsMade/fieldGoalsAttempted are TOTAL field goals (2-point AND 3-point "
             "combined) - the standard box-score convention. threePointFieldGoalsMade/Attempted is "
@@ -183,6 +188,7 @@ KNOWLEDGE_BASE = [
     },
     {
         "topic": "Points scored in a specific quarter/period",
+        "keywords": ['quarter', 'period', 'half', 'overtime', 'q1', 'q2', 'q3', 'q4'],
         "note": (
             "NOT a stored column anywhere - player_box_stats/player_season_stats only have GAME "
             "totals. It has to be derived from plays (needs --include-pbp): each scoring play "
@@ -229,6 +235,7 @@ KNOWLEDGE_BASE = [
     },
     {
         "topic": "Shot distance / shot location math",
+        "keywords": ['distance', 'far', 'deep', 'long', 'feet', 'range', 'location', 'coordinates'],
         "note": (
             "shot_chart.coordinate_x/coordinate_y are court position in feet. The hoop is at "
             "(25, 5.25), NOT (0, 0). Free throws have NULL coordinates - always filter "
@@ -335,6 +342,7 @@ KNOWLEDGE_BASE = [
     },
     {
         "topic": "A record/tally (wins, losses, count) alongside a list of games",
+        "keywords": ['record', 'wins', 'losses', 'won', 'lost', 'tally'],
         "note": (
             "Never count wins/losses/totals yourself by reading back over rows you already "
             "listed - a small model WILL miscount or invert the tally (confirmed live: reported "
@@ -513,6 +521,7 @@ KNOWLEDGE_BASE = [
     },
     {
         "topic": "Filtering by an exact calendar date",
+        "keywords": ['date', 'day', 'january', 'february', 'march', 'april', 'may', 'june', 'november', 'december', 'night'],
         "note": (
             "games.date is a full ISO timestamp string like '2026-04-12T22:00Z', not a bare "
             "'YYYY-MM-DD' - WHERE date = '2026-04-12' is valid SQL that silently matches nothing, "
@@ -555,6 +564,7 @@ KNOWLEDGE_BASE = [
     },
     {
         "topic": "Double-double / triple-double definitions",
+        "keywords": ['double', 'triple', 'doubles', 'triples'],
         "note": (
             "This is settled, not worth re-deriving: a double-double is >=10 in TWO of "
             "{points, rebounds, assists, steals, blocks} in one game; a triple-double is >=10 "
@@ -574,6 +584,7 @@ KNOWLEDGE_BASE = [
     },
     {
         "topic": "Advanced stats: what's computed vs. what doesn't exist",
+        "keywords": ['advanced', 'rating', 'per', 'vorp', 'bpm', 'win', 'shares'],
         "note": (
             "player_advanced_stats / player_season_advanced_stats hold true shooting % "
             "(ts_pct), effective FG% (efg_pct), usage rate (usage_pct), and Hollinger game "
@@ -585,6 +596,7 @@ KNOWLEDGE_BASE = [
     },
     {
         "topic": "Rate-stat leaderboards need a minimum sample size (usage_pct, ts_pct, efg_pct)",
+        "keywords": ['qualified', 'minimum', 'qualify', 'rate', 'efficiency'],
         "note": (
             "Prefer get_leaderboard(metric='usage_pct'/'ts_pct'/'efg_pct') over hand-writing this - it "
             "already applies the minimum-games qualifier below by default. Use run_sql directly only "
@@ -616,7 +628,112 @@ KNOWLEDGE_BASE = [
 ]
 
 
-def format_knowledge_base(entries: list[dict]) -> str:
+# The agent's context budget. ollama truncates an over-long prompt head-first
+# and silently: a 10,295-token preamble against NUM_CTX 8192 left only 4,098
+# tokens reaching the model, and what it discarded was TABLE_SUMMARY, both
+# standing rules, and the first ~15 KNOWLEDGE_BASE entries. Nothing errored.
+# See FAST-PATH-MIGRATION.md.
+# Measured behaviour, not a guess: a prompt UNDER num_ctx is evaluated in full
+# (a ~3,700-token prompt at num_ctx 8192 came back with prompt_eval_count
+# 3,696), and one OVER it is cut to roughly half (10,093 tokens at num_ctx 8192
+# came back 4,098). So the whole prompt - preamble plus the conversation on top
+# of it - has to stay under NUM_CTX, and the cliff is silent when it does not.
+#
+# Raised from 8192 now that this path only handles questions no template
+# covers. A ~5,400-token preamble costs ~100s of CPU prefill on a fall-through
+# question, against being quietly wrong at 8192; for a path this rare that is
+# the right trade.
+NUM_CTX = 16384
+# The preamble's share, leaving ~10k for tool-result JSON, the model's replies,
+# and several tool-call rounds. A preamble past this is a bug, not a knob.
+PREAMBLE_TOKEN_BUDGET = 6000
+
+# Rules that apply to ANY SQL the agent writes, so they are never selected
+# against - they would be relevant to every question anyway.
+ALWAYS_ON_TOPICS = frozenset(
+    {
+        "No season named in the question -> default to the CURRENT season",
+        "Always call run_sql - never print SQL as your answer",
+        "IDs in run_sql results",
+        "Column aliases starting with a digit",
+        "Filtering SQL to one named player or team",
+    }
+)
+
+MAX_SELECTED_ENTRIES = 3
+
+# Words too common in NBA questions to discriminate between entries.
+_STOPWORDS = frozenset(
+    """the and for with what which who whom whose how many much most least best worst top from this that
+    they them their there then than have has had was were been being does did doing your you not but all
+    any some more over under about into during season seasons game games player players team teams league
+    show tell give list find get make plot draw are was has had did who how why out per vs the its his her
+    one two set use way new old own see put run also each such only very just than then now""".split()
+)
+
+
+def _terms(text: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z_]{3,}", text.lower()) if w not in _STOPWORDS}
+
+
+def select_knowledge(question: str, entries: list[dict[str, Any]] | None = None, limit: int = MAX_SELECTED_ENTRIES) -> list[dict[str, Any]]:
+    """Pick the few KNOWLEDGE_BASE entries this question actually needs.
+
+    The KB grew 2,416 -> 10,295 tokens in eight days by the reasonable-looking
+    method of appending an entry whenever a real question produced a wrong
+    answer. That method is self-defeating once the total stops fitting: every
+    new entry makes it likelier that the entry which MATTERS is the one
+    truncated away, and every question pays prompt-eval time for all of them.
+
+    Selection is a plain keyword overlap rather than embeddings: it needs no
+    model call (the point is to spend less time, not more), it is deterministic
+    and testable, and a miss is cheap - a missing entry is what the agent had
+    before any of them existed, while a truncated prompt loses the schema
+    itself."""
+    entries = KNOWLEDGE_BASE if entries is None else entries
+    asked = _terms(question)
+    scored: list[tuple[int, dict[str, Any]]] = []
+    for entry in entries:
+        if entry["topic"] in ALWAYS_ON_TOPICS:
+            continue
+        topic_hits = len(asked & _terms(entry["topic"] + " " + " ".join(entry.get("keywords", []))))
+        body_hits = len(asked & _terms(entry["note"]))
+        score = topic_hits * 3 + body_hits
+        if score:
+            scored.append((score, entry))
+    scored.sort(key=lambda pair: -pair[0])
+    return [entry for _, entry in scored[:limit]]
+
+
+def build_system_prompt(question: str) -> str:
+    """The agent's system prompt, assembled per question: the always-on core
+    plus only the entries this question needs."""
+    always_on = [e for e in KNOWLEDGE_BASE if e["topic"] in ALWAYS_ON_TOPICS]
+    prompt = SYSTEM_PROMPT_TEMPLATE.format(knowledge=format_knowledge_base(always_on + select_knowledge(question)))
+    estimated = estimate_tokens(prompt) + estimate_tokens(json.dumps(TOOLS))
+    if estimated > PREAMBLE_TOKEN_BUDGET:
+        raise PreambleTooLarge(
+            f"Assembled preamble is ~{estimated} tokens, over the {PREAMBLE_TOKEN_BUDGET} budget "
+            f"(NUM_CTX={NUM_CTX}). ollama would truncate this head-first and SILENTLY, dropping the "
+            "schema summary and the standing rules while leaving the tool schemas intact. Shorten "
+            "TABLE_SUMMARY, trim a tool description, or lower MAX_SELECTED_ENTRIES - do not raise "
+            "the budget without also raising NUM_CTX."
+        )
+    return prompt
+
+
+def estimate_tokens(text: str) -> int:
+    """Deliberately a slight over-estimate (measured ~4.08 chars/token on this
+    prompt), so the budget check errs toward failing loudly rather than
+    silently truncating."""
+    return len(text) // 4
+
+
+class PreambleTooLarge(RuntimeError):
+    """Raised instead of letting ollama quietly discard most of the prompt."""
+
+
+def format_knowledge_base(entries: list[dict[str, Any]]) -> str:
     blocks = []
     for e in entries:
         block = f"- {e['topic']}: {e['note']}"
@@ -627,7 +744,7 @@ def format_knowledge_base(entries: list[dict]) -> str:
     return "\n".join(blocks)
 
 
-SYSTEM_PROMPT = f"""You are a data analyst answering natural-language questions about NBA \
+SYSTEM_PROMPT_TEMPLATE = f"""You are a data analyst answering natural-language questions about NBA \
 statistics using a local, read-only DuckDB database. You have four tools:
 
 - describe_table(table_name): get exact column names/types for a table. Call this before \
@@ -671,7 +788,7 @@ you couldn't answer the real one.
 
 Known gotchas and patterns for this schema - read before writing SQL or calling a tool. Treat \
 each worked example as the exact pattern to copy, not just an illustration:
-{format_knowledge_base(KNOWLEDGE_BASE)}
+{{knowledge}}
 
 After using tools, give a concise natural-language answer summarizing the result - don't dump \
 raw JSON at the user. If you rendered a shot chart, tell the user the file path that was returned.
@@ -728,9 +845,21 @@ TOOLS = [
                 "type": "object",
                 "properties": {
                     "metric": {
+                        # Deliberately not an enum of all ~80 names: spelled out, that
+                        # single field was ~700 tokens on EVERY agent call. A wrong name
+                        # comes back with a close-match suggestion and the full list (see
+                        # leaderboard.run_leaderboard), so the model recovers in one turn
+                        # and pays for the list only when it actually needs it.
                         "type": "string",
-                        "enum": sorted(LEADERBOARD_METRICS),
-                        "description": "Which metric to rank by.",
+                        "description": (
+                            "Which metric to rank by. Core: "
+                            + ", ".join(sorted(CORE_METRIC_NAMES))
+                            + ". Also any NetPoints play-type category as <category>_o_net_pts / _d_net_pts / "
+                            "_t_net_pts, where <category> is one of two_pt, three_pt, assist, bad_pass, corner, "
+                            "cutting, driving, fade, fast_break, floating, foul, free_throw, hook, layup, "
+                            "mid_range, putback, rebound, rim, total, turnover. Call with a best guess if "
+                            "unsure - a wrong name returns the full list of valid ones."
+                        ),
                     },
                     "season": {
                         "type": "integer",
