@@ -6,7 +6,7 @@ from typing import Any
 import duckdb
 import pytest
 
-from association.query.templates import TemplateUnsupported, leaderboard, threshold_count
+from association.query.templates import TemplateUnsupported, leaderboard, player_stat, threshold_count
 from association.season import current_season
 
 
@@ -167,3 +167,66 @@ def test_threshold_count_honours_playoffs(con: duckdb.DuckDBPyConnection) -> Non
     result = threshold_count(con, {"stat": "points", "threshold": 40, "season_type": 3})
     assert "postseason" in (result.answer or "")
     assert result.data["leaders"] == [{"player": "Bench Guy", "games": 9}]
+
+
+# ---------------- player_stat ----------------
+
+
+@pytest.fixture
+def ps_con() -> duckdb.DuckDBPyConnection:
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.execute(
+        "CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER, "
+        "gamesPlayed INTEGER, avgPoints DOUBLE, points INTEGER, avgRebounds DOUBLE, avgAssists DOUBLE, assists INTEGER)"
+    )
+    c.execute("INSERT INTO players VALUES ('1','Luka Doncic'),('2','Luka Garza'),('3','Nikola Jokic')")
+    s = current_season()
+    c.execute("INSERT INTO player_season_stats_deduped VALUES ('1',?,2,64,33.5,2143,7.7,8.3,531)", [s])
+    c.execute("INSERT INTO player_season_stats_deduped VALUES ('3',?,2,65,27.7,1799,12.9,10.7,697)", [s])
+    return c
+
+
+def test_player_stat_reports_one_named_stat_with_its_total(ps_con: duckdb.DuckDBPyConnection) -> None:
+    result = player_stat(ps_con, {"player": "Luka Doncic", "stat": "points"})
+    assert result.answer == (
+        f"Luka Doncic averaged 33.5 points per game in 64 games in the {current_season()} regular season. That is 2,143 in total."
+    )
+
+
+def test_player_stat_with_no_stat_gives_a_stat_line(ps_con: duckdb.DuckDBPyConnection) -> None:
+    result = player_stat(ps_con, {"player": "Nikola Jokic"})
+    assert result.answer == (
+        f"Nikola Jokic averaged 27.7 points, 12.9 rebounds and 10.7 assists per game in 65 games in the {current_season()} regular season."
+    )
+
+
+def test_player_stat_asks_instead_of_guessing_between_players(ps_con: duckdb.DuckDBPyConnection) -> None:
+    """Neither guess nor fall through: the template knows exactly what is
+    ambiguous, so it says so in ~1.5s instead of handing the agent a problem
+    it would spend minutes guessing at."""
+    result = player_stat(ps_con, {"player": "Luka", "stat": "points"})
+    assert result.answer == "'Luka' matches more than one player - did you mean Luka Doncic or Luka Garza?"
+    assert result.data["candidates"] == ["Luka Doncic", "Luka Garza"]
+
+
+def test_player_stat_unknown_player_falls_through(ps_con: duckdb.DuckDBPyConnection) -> None:
+    with pytest.raises(TemplateUnsupported):
+        player_stat(ps_con, {"player": "Nobody At All"})
+
+
+def test_player_stat_missing_player_slot_falls_through(ps_con: duckdb.DuckDBPyConnection) -> None:
+    with pytest.raises(TemplateUnsupported):
+        player_stat(ps_con, {"stat": "points"})
+
+
+def test_player_stat_reports_a_missing_season_honestly(ps_con: duckdb.DuckDBPyConnection) -> None:
+    result = player_stat(ps_con, {"player": "Luka Doncic", "season": 1999})
+    assert result.answer == "Luka Doncic has no 1999 regular season numbers in the warehouse."
+
+
+def test_player_stat_never_reports_a_total_as_a_per_game_number(ps_con: duckdb.DuckDBPyConnection) -> None:
+    # Regression on phrasing: the total used to be inlined as "33.5 points
+    # (2143 total) per game", which states something false.
+    answer = player_stat(ps_con, {"player": "Luka Doncic", "stat": "points"}).answer or ""
+    assert "(2,143 total) per game" not in answer and "2143" not in answer

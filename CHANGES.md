@@ -5,6 +5,38 @@ commit that made it for the full story.
 
 ## 2026-09-06
 
+- **player_stat on the fast path, and a constrained-decoding lever** (stage
+  2.2): one named player's season numbers, read from
+  `player_season_stats_deduped` so a traded player's multi-row season is
+  already collapsed. Reports per-game and season-total together rather than
+  trying to tell "how many points did X average" from "how many points did X
+  score" - a distinction the router got wrong more often than right, and one
+  that disappears by answering both.
+
+  An incomplete name is answered with a question, not a guess. The migration
+  plan had called for a prominence tiebreak (most minutes, dominance
+  threshold); measured against the real warehouse, no threshold works - on
+  season minutes "Luka" separates only 2.05x (Doncic vs. Garza), and on season
+  points the ratios are 3.8x for "Luka" but 3.1x for "Brown", where Jaylen vs.
+  Bruce Brown is genuinely ambiguous. Any threshold that resolves Luka also
+  resolves Brown, wrongly and silently. So the template returns "'Luka'
+  matches more than one player - did you mean Luka Doncic or Luka Garza?" in
+  ~1.5s instead. That is a handled outcome, not a fall-through: the template
+  knows exactly what is ambiguous, so handing the problem to an agent that
+  would spend minutes and then guess is strictly worse.
+
+  Found while wiring this up: with `stat` optional in `ROUTER_SCHEMA`, the
+  model omitted it even for a question appearing VERBATIM as a worked example
+  in the router prompt, and rewording the prompt did not fix it. Making `stat`
+  required fixed it immediately - a constrained decoder only reliably
+  considers a slot it is required to emit, and answers `""` when there is
+  none (now pruned in `route()`, along with any other blank string slot).
+  Prompt wording persuades; the schema decides. Also set
+  `additionalProperties: false`, which stopped the model inventing junk slots
+  like `shot_value: 0` on player questions. `scripts/check_routing.py` caught
+  this - it went 14/16 before the fix and 16/16 after, which is exactly the
+  regression it exists to catch, since no unit test can.
+
 - **Shared entity resolution + the leaderboard shape on the fast path**
   (migration stages 2.0 and 2.1): new `query/entities.py` unifies the two
   name->id implementations that had grown separately - `get_leaderboard`

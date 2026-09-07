@@ -40,7 +40,8 @@ intent must be one of:
   leaderboard      - rank players by a season stat ("top 5 scorers", "who leads in assists")
   threshold_count  - count a player's games meeting a per-game threshold
                      ("most 30+ point games", "most games with 20+ rebounds")
-  player_stat      - one named player's season numbers ("how many points did Curry average")
+  player_stat      - one named player's season numbers ("how many points did Curry
+                     average", "what are Jokic's numbers") - always set player
   game_log         - list a player's or team's games ("Lakers games in January")
   team_record      - a team's win/loss record
   shot_chart       - render/plot/visualize a player's shots
@@ -48,10 +49,12 @@ intent must be one of:
                      per-quarter scoring, shot distances, and any comparison of
                      two or more named players
 
-stat for threshold_count must be one of: points, rebounds, assists, steals,
-blocks, turnovers, threePointFieldGoalsMade, fieldGoalsMade, freeThrowsMade.
+stat names a box-score category: points, rebounds, assists, steals, blocks,
+turnovers, minutes, threePointFieldGoalsMade, fieldGoalsMade, freeThrowsMade.
+Set it whenever the question names one - for threshold_count, leaderboard and
+player_stat alike. Omit it only when the question asks for overall numbers.
 
-stat for leaderboard may also be a rate or rating metric: ts_pct, efg_pct,
+For leaderboard, stat may instead be a rate or rating metric: ts_pct, efg_pct,
 usage_pct, netpoints, netpoints_per_100, netpoints_offense, netpoints_defense,
 or a NetPoints play-type category like rim_o_net_pts / driving_o_net_pts.
 
@@ -69,6 +72,10 @@ Q: Who were the top 10 in netpoints/100 possessions?
 {"intent":"leaderboard","stat":"netpoints_per_100","limit":10}
 Q: Which player had the most triple-doubles?
 {"intent":"other"}
+Q: How many points did Luka Doncic average in 2024?
+{"intent":"player_stat","player":"Luka Doncic","stat":"points","season":2024}
+Q: What are Jokic's numbers this season?
+{"intent":"player_stat","player":"Nikola Jokic","season_ref":"current"}
 Q: Top 5 scorers on the Lakers?
 {"intent":"leaderboard","stat":"points","team":"Lakers","limit":5}
 Q: Who led the playoffs in rebounding?
@@ -100,7 +107,17 @@ ROUTER_SCHEMA: dict[str, Any] = {
         "limit": {"type": "integer"},
         "shot_value": {"type": "integer"},
     },
-    "required": ["intent"],
+    "additionalProperties": False,
+    # `stat` is required, not because every intent has one, but because a
+    # constrained decoder only reliably CONSIDERS a slot it is required to
+    # emit. Confirmed live: with `stat` optional, "how many points did Luka
+    # Doncic average in 2024?" came back without it even though that exact
+    # question is a worked example in the prompt above - and reworking the
+    # prompt did not fix it. Required, the same question emits
+    # `"stat":"points"`, and a question with no stat emits `""`, which the
+    # blank-slot pruning below drops. Prompt wording persuades; the schema
+    # decides.
+    "required": ["intent", "stat"],
 }
 
 NUM_CTX = 4096  # the router prompt is ~430 tokens; this leaves ample headroom and still fits
@@ -167,7 +184,10 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     if not isinstance(raw, dict) or not isinstance(raw.get("intent"), str):
         return None
 
-    slots = {k: v for k, v in raw.items() if k != "intent"}
+    # A blank string is how the model says "no value" for a required slot;
+    # dropping it here keeps every template's `slots.get(...) or default`
+    # working and keeps the logged Route readable.
+    slots = {k: v for k, v in raw.items() if k != "intent" and not (isinstance(v, str) and not v.strip())}
     resolved_season = _validate_season(slots)
     slots.pop("season_ref", None)
     if resolved_season is None:

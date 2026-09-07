@@ -188,9 +188,9 @@ portable one at a time (see [`FAST-PATH-MIGRATION.md`](FAST-PATH-MIGRATION.md)
 for the remaining shapes and the order they land in). `--no-fast-path` skips
 the router entirely, for comparing the two paths.
 
-Ported so far: `threshold_count` ("most games with 30+ points") and
+Ported so far: `threshold_count` ("most games with 30+ points"),
 `leaderboard` ("top 5 scorers on the Lakers", "who led the playoffs in
-rebounding"). `scripts/check_routing.py` is the routing regression check — a
+rebounding") and `player_stat` ("how many points did Luka average in 2024?"). `scripts/check_routing.py` is the routing regression check — a
 fixed question set through `route()` only, including questions that must
 *not* be answered by a near-miss template.
 
@@ -200,8 +200,11 @@ deliberate distinction: `find_*` returns every candidate best-first and lets
 the caller choose (`render_shot_chart` takes the best match and names the
 others — a chart of the wrong Curry is obvious on sight), while `resolve_*`
 returns `Entity | Ambiguous | NotFound` and never guesses (a *number*
-attributed to the wrong Curry is indistinguishable from a right answer, so
-templates fall through instead).
+attributed to the wrong Curry is indistinguishable from a right answer). Where
+a template can say something useful about the ambiguity it does — `player_stat`
+answers "'Luka' matches more than one player - did you mean Luka Doncic or Luka
+Garza?" in ~1.5s rather than guessing or handing the agent a problem it would
+spend minutes guessing at.
 
 **The fall-through agent** — a local Ollama model gets four tools: `describe_table`
 (schema lookup on demand, so table summaries stay short even for 100+-column

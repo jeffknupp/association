@@ -4,7 +4,7 @@ Staged replacement of the single "understand the question AND write the SQL"
 model call with a router → template → answer pipeline.
 
 **Landed:** stage 1 (router + `threshold_count`), 2.0 (`entities.py`), 2.1
-(`leaderboard`). **Next:** 2.2 `player_stat`, then 2.3–2.5, then stage 3.
+(`leaderboard`), 2.2 (`player_stat`). **Next:** 2.3–2.5, then stage 3.
 
 ## Why
 
@@ -66,13 +66,19 @@ a best match.
 The `team` slot gap is fixed: a worked example (`Top 5 scorers on the Lakers?`)
 was added to `ROUTER_PROMPT` and "Lakers" now resolves.
 
-**Open gap for 2.2:** `resolve_player` correctly reports "Luka" as ambiguous
-(Doncic, Garza, Samanic), and the router does produce bare first names — "How
-many points did Luka average in 2024?" routes with `player: 'Luka'`. Correct,
-but it means every casual first-name reference falls through to the slow path.
-`player_stat` will need a tiebreak on a real signal (season minutes played,
-say) with a dominance threshold, or it will be right and useless. Do not just
-take the first match.
+**How 2.2 resolved the ambiguity gap — not as planned.** The plan called for
+a prominence tiebreak (most minutes, with a dominance threshold). Measured
+against real data, no threshold works: on season minutes "Luka" separates only
+2.05× (Doncic vs. Garza), and on season points the ratios are 3.8× for "Luka"
+but 3.1× for "Brown" — where Jaylen vs. Bruce Brown is genuinely ambiguous.
+Any threshold that resolves Luka also resolves Brown, wrongly and silently.
+
+So `player_stat` **asks** instead: an ambiguous name returns a clarification
+("'Luka' matches more than one player - did you mean Luka Doncic or Luka
+Garza?") in ~1.5s. That is a handled outcome, not a fall-through — the
+template knows exactly what is ambiguous, so passing the problem to an agent
+that would spend minutes and then guess is strictly worse. No threshold to
+tune, no silent misattribution.
 
 ### 2.1 `leaderboard` — highest value — DONE
 
@@ -104,13 +110,24 @@ template does not cover (a leaderboard that also needs an opponent or
 box-score join), so removing the tool is a stage-3 decision with its own
 regression check, not a side effect of landing the template.
 
-### 2.2 `player_stat`
+### 2.2 `player_stat` — DONE
 
-One named player's season numbers. Needs 2.0. Reads
-`player_season_stats_deduped`, so traded-player handling is free.
+One named player's season numbers, from `player_season_stats_deduped` so
+traded-player handling is free. Reports per-game and season-total together
+rather than trying to tell "how many points did X average" from "how many
+points did X score" — a distinction the router got wrong more often than
+right, and one that disappears entirely by answering both.
 
-**Retires:** "Filtering SQL to one named player or team" (297 tok), and the
-remainder of "per game"/"average".
+**A constrained-decoding lever worth remembering:** with `stat` optional in
+`ROUTER_SCHEMA`, the model omitted it even for a question that appears
+verbatim as a worked example in the prompt, and rewording the prompt did not
+fix it. Making `stat` *required* fixed it immediately — a constrained decoder
+only reliably considers a slot it is required to emit, and answers `""` when
+there is none (pruned in `route()`). Prompt wording persuades; the schema
+decides. Reach for the schema first when a slot goes missing.
+
+**Still to retire in stage 3:** "Filtering SQL to one named player or team"
+(297 tok), and the remainder of "per game"/"average".
 
 ### 2.3 `threshold_count` extensions — `double_double` / `triple_double`
 

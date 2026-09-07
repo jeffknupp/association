@@ -21,6 +21,7 @@ import duckdb
 
 from association.season import current_season
 
+from .entities import Ambiguous, Entity, resolve_player
 from .leaderboard import LeaderboardError, resolve_metric, run_leaderboard
 
 # Slot value -> real player_box_stats column. A whitelist, not a passthrough:
@@ -217,7 +218,113 @@ def _phrase_leaderboard(rows: list[dict[str, Any]], label: str, where: str, peri
     return sentence + (f" Next: {', '.join(rest)}." if rest else "")
 
 
+# Slot value -> (per-game column, season-total column or None, label).
+# Reported together, so "how many points did X average" and "how many points
+# did X score" don't have to be told apart from wording - a distinction the
+# router got wrong more often than it got right.
+PLAYER_STAT_COLUMNS = {
+    "points": ("avgPoints", "points", "points"),
+    "rebounds": ("avgRebounds", None, "rebounds"),
+    "assists": ("avgAssists", "assists", "assists"),
+    "steals": ("avgSteals", "steals", "steals"),
+    "blocks": ("avgBlocks", "blocks", "blocks"),
+    "turnovers": ("avgTurnovers", "turnovers", "turnovers"),
+    "minutes": ("avgMinutes", None, "minutes"),
+}
+
+STAT_LINE = ("points", "rebounds", "assists")
+
+
+def player_stat(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> TemplateResult:
+    """One named player's season numbers, from player_season_stats_deduped so
+    a traded player's multi-row season is already collapsed.
+
+    An incomplete name ("Luka", "Curry") is answered with a question rather
+    than a guess. Falling through to the agent for those would cost minutes and
+    end in a guess anyway; picking the most prominent match would silently
+    attribute a number to the wrong player, which is the one failure this
+    architecture is built to prevent. Asking costs ~1.5s and is always right."""
+    text = slots.get("player")
+    if not isinstance(text, str) or not text.strip():
+        raise TemplateUnsupported("player_stat needs a player name")
+
+    match resolve_player(con, text):
+        case Entity() as player:
+            pass
+        case Ambiguous(candidates=candidates):
+            return _clarify(text, candidates)
+        case _:
+            raise TemplateUnsupported(f"no player matching {text!r}")
+
+    season = slots.get("season") or current_season()
+    season_type = slots.get("season_type") or 2
+    stat = slots.get("stat") if slots.get("stat") in PLAYER_STAT_COLUMNS else None
+    wanted = [stat] if stat else list(STAT_LINE)
+
+    columns = ["gamesPlayed"]
+    for name in wanted:
+        per_game, total, _ = PLAYER_STAT_COLUMNS[name]
+        columns.append(per_game)
+        if total:
+            columns.append(total)
+    row = con.execute(
+        f"SELECT {', '.join(columns)} FROM player_season_stats_deduped "
+        "WHERE athlete_id = ? AND season = ? AND season_type = ?",
+        [player.id, season, season_type],
+    ).fetchone()
+
+    period = _period(season, season_type)
+    if row is None:
+        return TemplateResult(
+            summary=f"{player.name}, {period}",
+            data={"player": player.name, "season": season, "stats": {}},
+            answer=f"{player.name} has no {period} numbers in the warehouse.",
+        )
+    values = dict(zip(columns, row, strict=True))
+    return TemplateResult(
+        summary=f"{player.name}, {period}",
+        data={"player": player.name, "season": season, "stats": values},
+        answer=_phrase_player_stat(player.name, period, values, wanted),
+    )
+
+
+def _clarify(text: str, candidates: list[str]) -> TemplateResult:
+    """A handled outcome, not a fall-through: the template knows exactly what
+    is ambiguous, so it says so instead of passing the problem along."""
+    joined = ", ".join(candidates[:-1]) + f" or {candidates[-1]}"
+    return TemplateResult(
+        summary=f"ambiguous player {text!r}",
+        data={"ambiguous": text, "candidates": candidates},
+        answer=f"{text!r} matches more than one player - did you mean {joined}?",
+    )
+
+
+def _phrase_player_stat(name: str, period: str, values: dict[str, Any], wanted: list[str]) -> str:
+    games = values.get("gamesPlayed")
+    parts = []
+    for stat in wanted:
+        per_game_col, _, label = PLAYER_STAT_COLUMNS[stat]
+        per_game = values.get(per_game_col)
+        if per_game is not None:
+            parts.append(f"{_format_value(per_game)} {label}")
+    if not parts:
+        return f"{name} has no {period} numbers in the warehouse."
+    body = ", ".join(parts[:-1]) + f" and {parts[-1]}" if len(parts) > 1 else parts[0]
+    played = f" in {games} games" if games else ""
+    sentence = f"{name} averaged {body} per game{played} in the {period}."
+    # The season total goes in its own clause rather than inline, and only when
+    # a single stat was asked for - inline it read as "33.5 points (2143 total)
+    # per game", which says something false.
+    if len(wanted) == 1:
+        total_col = PLAYER_STAT_COLUMNS[wanted[0]][1]
+        total = values.get(total_col) if total_col else None
+        if total is not None:
+            sentence += f" That is {total:,} in total."
+    return sentence
+
+
 TEMPLATES: dict[str, Callable[[duckdb.DuckDBPyConnection, dict[str, Any]], TemplateResult]] = {
     "threshold_count": threshold_count,
     "leaderboard": leaderboard,
+    "player_stat": player_stat,
 }

@@ -88,9 +88,21 @@ def test_previous_question_is_passed_as_context_for_repl_followups() -> None:
 
 def test_schema_constrains_intent_to_the_known_set() -> None:
     assert "other" in ROUTER_SCHEMA["properties"]["intent"]["enum"]
-    assert ROUTER_SCHEMA["required"] == ["intent"]
+    assert "intent" in ROUTER_SCHEMA["required"]
 
 
 @pytest.mark.parametrize("payload", ['{"intent":"other"}', '{"intent":"leaderboard","limit":10}'])
 def test_unported_intents_still_parse_cleanly(payload: str) -> None:
     assert _route(payload) is not None
+
+
+def test_blank_required_stat_is_dropped_rather_than_passed_along() -> None:
+    """`stat` is required in the schema so the decoder actually considers it;
+    a question with no stat answers with "", which must not reach a template."""
+    got = _route('{"intent":"player_stat","stat":"","player":"Nikola Jokic"}')
+    assert got is not None and "stat" not in got.slots and got.slots["player"] == "Nikola Jokic"
+
+
+def test_schema_requires_stat_so_the_decoder_emits_it() -> None:
+    assert ROUTER_SCHEMA["required"] == ["intent", "stat"]
+    assert ROUTER_SCHEMA["additionalProperties"] is False
