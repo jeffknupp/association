@@ -3,6 +3,66 @@
 Notable changes to `association`, newest first. Each entry links back to the
 commit that made it for the full story.
 
+## 2026-09-06
+
+- **Intent router + deterministic query templates in front of the agent**:
+  `query` and `ai` now route a question through a small classifier before the
+  tool-calling agent ever runs. Motivated by a hard failure: "who had the most
+  30+ point games this season?" failed three times in a row, each taking
+  3-6 minutes and answering a season-scoring-average leaderboard for the wrong
+  season instead. Root cause was not the question - `SYSTEM_PROMPT + TOOLS` had
+  grown to 10,295 tokens against `NUM_CTX = 8192`, and ollama truncates
+  head-first, so only 4,098 tokens ever reached the model. Confirmed with a
+  canary marker at each end of the system prompt: only the tail one came back.
+  The discarded head held `TABLE_SUMMARY` (the entire schema), both standing
+  rules, and the first ~15 `KNOWLEDGE_BASE` entries - including the one whose
+  worked example is exactly this query's `COUNT(*) ... >= threshold` pattern.
+  What survived was the tool schemas, whose descriptions say to always prefer
+  `get_leaderboard`, which is precisely what the model did. Traced the preamble
+  size back through history: it crossed 8192 at `c209516` ("Add get_leaderboard
+  tool") and stayed silent for four commits, growing 2,416 -> 10,295 tokens in
+  eight days without ever shrinking.
+
+  Truncation also explains the latency, which was 100% model prefill (`model
+  385.41s (5 calls), tools 0.04s (3 calls)`): the truncation offset slides as
+  the conversation grows, so ollama's KV prefix cache misses on every
+  iteration. Measured directly - a two-turn conversation runs 70.0s then 62.8s
+  when the prompt is truncated, but 36.5s then 2.9s when it fits.
+
+  New `query/router.py` classifies the question into `{intent, slots}` under a
+  JSON schema passed as ollama's `format`, so decoding is constrained rather
+  than merely prompted - this removes the malformed-tool-call failure mode that
+  `_extract_unrun_sql` and the `pending_error` fabrication guard exist to catch
+  after the fact. Its prompt carries no schema, no SQL and no gotchas (~430
+  tokens), so it fits and stays cached. New `query/templates.py` holds the
+  deterministic side; `threshold_count` is the first shape ported, with every
+  correctness rule (column whitelist, current-season default, regular-season
+  filter, per-token player matching) in code rather than prose.
+
+  Templates phrase their own answers, which is not just cosmetic: ollama keeps
+  one KV cache slot per model by default, so a second model call with a
+  different system prompt evicts the router's cached prefix. Measured - three
+  consecutive router calls run 11.63s / 1.27s / 1.66s, but interleaving a
+  narrator call puts the next router call back to 11.18s. Dropping the narrator
+  removed the eviction, removed the last place on the fast path where a number
+  could be invented, and produced better prose than the model had ("Nikola
+  Jokic had the most games with 20+ rebounds in the 2026 regular season, with
+  5." versus "...playing such games in 5 games").
+
+  Everything not yet ported falls through to the existing agent untouched -
+  unported intents, slots that fail validation, and any router or template
+  failure - so a router slip degrades to the old slow path, never to a wrong
+  answer. Two model slips seen while building it are now handled in code rather
+  than prompt: relative seasons ("last season" once produced `season=20222023`,
+  which as a SQL filter silently matches nothing) resolve from a `season_ref`
+  enum next to `current_season()`, and triple-doubles route to `other` instead
+  of mis-routing into `threshold_count`. Confirmed live: 385s and wrong ->
+  2.50s warm / 12.0s cold and correct, one model call instead of five, 431
+  prompt tokens instead of 4,098. Added `--no-fast-path` to force the agent
+  path for side-by-side comparison, and `FAST-PATH-MIGRATION.md` with the
+  remaining shapes, the `KNOWLEDGE_BASE` entries each retires, and the
+  projected 10,295 -> ~3,700 token preamble.
+
 ## 2026-09-05
 
 - **CLI cleanup: fix confusing/wrong defaults, remove flags that were cheap to

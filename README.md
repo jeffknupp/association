@@ -174,7 +174,24 @@ straight from Parquet already on disk without touching the network, and
 warehouse rebuild rereads every Parquet file, which gets slow as the tree
 grows).
 
-**Query engine** — a local Ollama model gets four tools: `describe_table`
+**Query engine** — a question first hits a small **intent router**
+([`query/router.py`](src/association/query/router.py)): a ~430-token prompt
+carrying no schema and no SQL, decoded under a JSON schema (ollama's `format`)
+so the reply is *constrained* to a well-formed `{intent, slots}` object rather
+than merely asked for one. A recognized intent is answered by a deterministic
+template ([`query/templates.py`](src/association/query/templates.py)) that
+builds and runs the SQL itself and phrases its own answer — no schema in
+context, no SQL generated, no second model call. Anything else falls through
+to the full tool-calling agent below, unchanged. Falling through costs one
+~1.5s round trip and changes no answer, which is what makes question shapes
+portable one at a time (see [`FAST-PATH-MIGRATION.md`](FAST-PATH-MIGRATION.md)
+for the remaining shapes and the order they land in). `--no-fast-path` skips
+the router entirely, for comparing the two paths.
+
+Ported so far: `threshold_count` ("most games with 30+ points", "most games
+with 20+ rebounds").
+
+**The fall-through agent** — a local Ollama model gets four tools: `describe_table`
 (schema lookup on demand, so table summaries stay short even for 100+-column
 tables), `get_leaderboard` (a "top N players by X" query for a fixed, known
 set of metrics — the season default, qualifying minimum sample, and
@@ -205,9 +222,13 @@ final answer (or a traceback, if the call raised) — regardless of whether
 to stderr live; the file always gets everything, so a confusing or wrong
 answer from an unwatched run still has its full evidence on disk afterward.
 Every run also prints a one-line timing summary to stderr (total time, and
-the model-inference-vs-tool-execution split) — in practice the model call
-dominates end-to-end latency by a wide margin (confirmed live: a single
-`get_leaderboard` call took 0.05s against two ~26s model-inference rounds).
+the model-inference-vs-tool-execution split), and logs the router's intent and
+slots when the fast path is taken. In practice model inference dominates
+end-to-end latency by a wide margin, so the timing split reads mostly as a
+count of model round trips: on this 8-core CPU box the same question went from
+`total 385.45s - model 385.41s (5 calls), tools 0.04s (3 calls)` through the
+agent to `total 2.50s - model 2.47s (1 call), tools 0.02s (1 call)` through the
+router and a template.
 
 The warehouse itself also carries two schema-level helpers so ad hoc
 `run_sql` queries (not covered by `get_leaderboard`) don't have to re-derive
@@ -230,6 +251,33 @@ growing checklist exactly. `get_leaderboard` moves the correctness for a
 fixed, known set of metrics out of prose and into code instead, so the
 model's job shrinks to picking a metric name and filling a few slots.
 
+**Why a router in front of all of it** — that argument turned out to
+generalize, and the `KNOWLEDGE_BASE` kept growing until it broke something
+outright. `SYSTEM_PROMPT + TOOLS` reached 10,295 tokens against a `NUM_CTX` of
+8,192; ollama truncates head-first, so only 4,098 tokens ever reached the
+model and the discarded head held `TABLE_SUMMARY`, both standing rules, and
+the first ~15 `KNOWLEDGE_BASE` entries — including the very entry describing
+the "count games over a threshold" pattern. Three consecutive runs of "who had
+the most 30+ point games this season?" answered with a season-scoring-average
+leaderboard for the wrong season instead, taking 385s each. The size crossed
+the limit at `c209516` and stayed silent for four commits.
+
+Two things compound there. A model that has lost the schema to truncation
+guesses column names and reaches for whichever tool description survived; and
+a prompt that doesn't fit misses ollama's KV prefix cache on *every* iteration,
+because the truncation offset slides as the conversation grows (measured: 2.9s
+vs 62.8s on a second turn). Five round trips at ~75s of pure prefill each is
+the whole 385s.
+
+So the router does only the first of the two jobs the agent had been doing at
+once — understand the question — and it needs no schema to do it. The second
+job, producing correct SQL for a known intent, is deterministic and belongs in
+code. Most `KNOWLEDGE_BASE` entries turn out to be teaching the model to write
+SQL the repo already knows how to write, and retire as shapes are ported; the
+ones that survive (NetPoints semantics, the per-quarter `LAG()` derivation,
+shot-distance math) are real domain knowledge, and only the fall-through path
+pays for them.
+
 ## Project layout
 
 ```
@@ -237,7 +285,7 @@ src/association/
   cli.py            entrypoint: data pull|load|check, query, ai
   fetch/            client (curl_cffi — see below), endpoints, parse, storage, pipeline, warehouse
   check/            data coverage report, cross-checked live against ESPN
-  query/            prompt/knowledge base, tools, court renderer, agent loop, REPL
+  query/            intent router, query templates, prompt/knowledge base, tools, court renderer, agent loop, REPL
 scripts/
   backfill_markers.sh   re-derive completion markers for data fetched before they existed
 completions/          generated bash/zsh/fish shell completion scripts (see Setup)

@@ -1,5 +1,5 @@
-"""Regression tests for the SQL-as-prose safety net, and for the thinking-model
-context-growth fix in Agent.ask."""
+"""Regression tests for the SQL-as-prose safety net, the thinking-model
+context-growth fix in Agent.ask, and the router fast path's fall-through."""
 
 from pathlib import Path
 from typing import Any
@@ -52,7 +52,10 @@ def think_agent(tmp_path: Path) -> Agent:
 
     db_path = tmp_path / "test.duckdb"
     duckdb.connect(str(db_path)).close()
-    return Agent("qwen3:8b", str(db_path), tmp_path / "out", think=True, history_dir=tmp_path / ".history")
+    # fast_path=False: every test on this fixture exercises the tool-calling
+    # loop itself, and the router would otherwise consume the first mocked
+    # response before the loop ever sees it.
+    return Agent("qwen3:8b", str(db_path), tmp_path / "out", think=True, history_dir=tmp_path / ".history", fast_path=False)
 
 
 def test_ask_strips_thinking_from_history_before_next_call(monkeypatch: pytest.MonkeyPatch, think_agent: Agent) -> None:
@@ -251,3 +254,63 @@ def test_ask_writes_history_file_even_when_it_raises(monkeypatch: pytest.MonkeyP
     content = files[0].read_text()
     assert "EXCEPTION" in content
     assert "simulated ollama connection failure" in content
+
+
+def _agent(tmp_path: Path, **kwargs: Any) -> Agent:
+    import duckdb
+
+    db_path = tmp_path / "test.duckdb"
+    duckdb.connect(str(db_path)).close()
+    return Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history", **kwargs)
+
+
+def test_fast_path_is_skipped_entirely_when_disabled(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    called = False
+
+    def fake_route(*args: Any, **kwargs: Any) -> None:
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr("association.query.agent.route", fake_route)
+    monkeypatch.setattr(
+        ollama, "chat", lambda **kw: ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="agent answer"))
+    )
+    assert _agent(tmp_path, fast_path=False).ask("q") == "agent answer"
+    assert not called
+
+
+def test_unported_intent_falls_through_to_the_agent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A shape with no template yet must reach the old path unchanged - that is
+    what makes porting one shape at a time safe."""
+    from association.query.router import Route
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="other", slots={}))
+    monkeypatch.setattr(
+        ollama, "chat", lambda **kw: ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="agent answer"))
+    )
+    assert _agent(tmp_path).ask("who had the most triple-doubles?") == "agent answer"
+
+
+def test_router_failure_falls_through_rather_than_erroring(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: None)
+    monkeypatch.setattr(
+        ollama, "chat", lambda **kw: ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="agent answer"))
+    )
+    assert _agent(tmp_path).ask("q") == "agent answer"
+
+
+def test_fast_path_answer_is_recorded_in_conversation_for_later_followups(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The tool loop never runs on the fast path, but a follow-up that DOES
+    fall through still needs to see what was already asked and answered."""
+    from association.query.router import Route
+    from association.query.templates import TemplateResult
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="threshold_count", slots={"stat": "points", "threshold": 30}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"threshold_count": lambda con, slots: TemplateResult(summary="s", data={"leaders": []})})
+    monkeypatch.setattr(
+        ollama, "chat", lambda **kw: ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="narrated answer"))
+    )
+    agent = _agent(tmp_path)
+    assert agent.ask("most 30+ point games?") == "narrated answer"
+    assert agent.last_question == "most 30+ point games?"
+    assert [m["content"] for m in agent.messages[1:]] == ["most 30+ point games?", "narrated answer"]

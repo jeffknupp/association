@@ -39,11 +39,19 @@ Setup for query/ai (one-time):
 Pulling any other model: `ollama pull <name>:<tag>` (browse at https://ollama.com/library).
 Tool-calling support varies by model - check a model's page before swapping --model.
 
---think is much slower than the default (confirmed live on a 16GB M2: qwen3:8b's
-thinking-token volume varies run to run, 3-6x+ the wall time of qwen2.5:7b for the
-same question) - reach for it when investigating a wrong answer, not for routine
-queries. Switching --model between calls also costs ~60-80s to swap the loaded
-model on memory-constrained hardware - avoid alternating models call to call.
+A question matching a ported intent is answered by the router + a deterministic
+SQL template (one model call, ~2.5s warm on an 8-core CPU box); anything else falls
+through to the full tool-calling agent, which is minutes slower. --no-fast-path
+forces the agent path, for comparing the two.
+
+--think applies only to the fall-through agent, and is much slower than the default
+(qwen3:8b's thinking-token volume varies run to run, 3-6x+ the wall time of
+qwen2.5:7b for the same question) - reach for it when investigating a wrong answer,
+not for routine queries. Switching --model between calls also costs ~60-80s to swap
+the loaded model on memory-constrained hardware - avoid alternating models call to
+call. Both paths share one ollama KV cache slot per model by default, so alternating
+--model (or setting OLLAMA_NUM_PARALLEL=1 with mixed prompts) costs a full re-prefill
+each time.
 
 \b
 Shell completion (one-time):
@@ -77,6 +85,12 @@ def _query_engine_options(f: F) -> F:
     f = click.option("--db-path", default=DEFAULT_DB_PATH, show_default=True, help="DuckDB warehouse file.")(f)
     f = click.option("--out-dir", default=DEFAULT_OUT_DIR, show_default=True, help="Directory for rendered shot charts.")(f)
     f = click.option("--verbose", is_flag=True, help="Print tool calls as they happen.")(f)
+    f = click.option(
+        "--no-fast-path",
+        is_flag=True,
+        help="Skip the intent router and answer every question with the full tool-calling agent. "
+        "For comparing the two paths while more question shapes are ported to templates.",
+    )(f)
     f = click.option(
         "--think",
         is_flag=True,
@@ -197,22 +211,22 @@ def data_check(seasons: str | None, season_types: str | None, data_dir: str, rat
 @cli.command("query")
 @click.argument("question")
 @_query_engine_options
-def query(question: str, model: str, db_path: str, out_dir: str, verbose: bool, think: bool) -> None:
+def query(question: str, model: str, db_path: str, out_dir: str, verbose: bool, think: bool, no_fast_path: bool) -> None:
     """Ask one natural-language question about the local data."""
     from .query.agent import Agent
 
-    agent = Agent(model, db_path, Path(out_dir), verbose=verbose, think=think)
+    agent = Agent(model, db_path, Path(out_dir), verbose=verbose, think=think, fast_path=not no_fast_path)
     click.echo(agent.ask(question))
 
 
 @cli.command("ai")
 @_query_engine_options
-def ai(model: str, db_path: str, out_dir: str, verbose: bool, think: bool) -> None:
+def ai(model: str, db_path: str, out_dir: str, verbose: bool, think: bool, no_fast_path: bool) -> None:
     """Interactive REPL - keeps conversation history across questions."""
     from .query.agent import Agent
     from .query.repl import run_repl
 
-    agent = Agent(model, db_path, Path(out_dir), verbose=verbose, think=think)
+    agent = Agent(model, db_path, Path(out_dir), verbose=verbose, think=think, fast_path=not no_fast_path)
     run_repl(agent)
 
 

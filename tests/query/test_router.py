@@ -1,0 +1,83 @@
+"""Tests for the intent router's validation layer - the part that decides what
+the model is and is not trusted to have gotten right."""
+
+from typing import Any
+from unittest.mock import patch
+
+import ollama
+import pytest
+from ollama import ChatResponse, Message
+
+from association.query.router import ROUTER_SCHEMA, Route, route
+from association.season import current_season
+
+
+def _reply(payload: str) -> ChatResponse:
+    return ChatResponse(model="m", message=Message(role="assistant", content=payload))
+
+
+def _route(payload: str, **kwargs: Any) -> Route | None:
+    with patch("association.query.router.ollama.chat", return_value=_reply(payload)):
+        return route("m", "q", **kwargs)
+
+
+def test_parses_intent_and_slots() -> None:
+    got = _route('{"intent":"threshold_count","stat":"points","threshold":30}')
+    assert got == Route(intent="threshold_count", slots={"stat": "points", "threshold": 30})
+
+
+def test_explicit_season_year_is_kept() -> None:
+    got = _route('{"intent":"threshold_count","season":2024}')
+    assert got is not None and got.slots["season"] == 2024
+
+
+def test_nonsense_season_is_dropped_not_passed_to_sql() -> None:
+    # Confirmed live: "last season" once produced season=20222023, which as a
+    # SQL filter would silently match nothing and answer with an empty result.
+    got = _route('{"intent":"threshold_count","season":20222023}')
+    assert got is not None and "season" not in got.slots
+
+
+def test_season_ref_is_resolved_in_code_not_by_the_model() -> None:
+    assert _route('{"intent":"threshold_count","season_ref":"current"}').slots["season"] == current_season()
+    assert _route('{"intent":"threshold_count","season_ref":"previous"}').slots["season"] == current_season() - 1
+
+
+def test_season_ref_never_leaks_through_as_a_slot() -> None:
+    got = _route('{"intent":"threshold_count","season_ref":"current"}')
+    assert got is not None and "season_ref" not in got.slots
+
+
+def test_bad_season_falls_back_to_season_ref() -> None:
+    got = _route('{"intent":"threshold_count","season":20222023,"season_ref":"previous"}')
+    assert got is not None and got.slots["season"] == current_season() - 1
+
+
+def test_unparseable_reply_returns_none_to_fall_through() -> None:
+    assert _route("not json at all") is None
+
+
+def test_missing_intent_returns_none_to_fall_through() -> None:
+    assert _route('{"stat":"points"}') is None
+
+
+def test_unreachable_model_returns_none_rather_than_raising() -> None:
+    with patch("association.query.router.ollama.chat", side_effect=ollama.ResponseError("down")):
+        assert route("m", "q") is None
+
+
+def test_previous_question_is_passed_as_context_for_repl_followups() -> None:
+    with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"other"}')) as chat:
+        route("m", "what about 2025?", previous_question="who led in points?")
+    user_message = chat.call_args.kwargs["messages"][1]["content"]
+    assert "who led in points?" in user_message and "what about 2025?" in user_message
+
+
+def test_schema_constrains_intent_to_the_known_set() -> None:
+    assert "other" in ROUTER_SCHEMA["properties"]["intent"]["enum"]
+    assert ROUTER_SCHEMA["required"] == ["intent"]
+
+
+@pytest.mark.parametrize("payload", ['{"intent":"other"}', '{"intent":"leaderboard","limit":10}'])
+def test_unported_intents_still_parse_cleanly(payload: str) -> None:
+    assert _route(payload) is not None

@@ -145,7 +145,7 @@ def test_query_dispatches_with_question(monkeypatch: pytest.MonkeyPatch) -> None
     captured: dict[str, Any] = {}
 
     class FakeAgent:
-        def __init__(self, model: str, db_path: str, out_dir: object, verbose: bool, think: bool) -> None:
+        def __init__(self, model: str, db_path: str, out_dir: object, verbose: bool, think: bool, fast_path: bool) -> None:
             captured["model"] = model
 
         def ask(self, question: str) -> str:
@@ -164,9 +164,10 @@ def test_ai_dispatches_with_think_and_model(monkeypatch: pytest.MonkeyPatch) -> 
     captured: dict[str, Any] = {}
 
     class FakeAgent:
-        def __init__(self, model: str, db_path: str, out_dir: object, verbose: bool, think: bool) -> None:
+        def __init__(self, model: str, db_path: str, out_dir: object, verbose: bool, think: bool, fast_path: bool) -> None:
             captured["model"] = model
             captured["think"] = think
+            captured["fast_path"] = fast_path
 
     monkeypatch.setattr("association.query.agent.Agent", FakeAgent)
     monkeypatch.setattr("association.query.repl.run_repl", lambda agent: None)
@@ -175,3 +176,4 @@ def test_ai_dispatches_with_think_and_model(monkeypatch: pytest.MonkeyPatch) -> 
     assert result.exit_code == 0, result.output
     assert captured["think"] is True
     assert captured["model"] == "qwen3:8b"
+    assert captured["fast_path"] is True

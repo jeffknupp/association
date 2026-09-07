@@ -3,6 +3,7 @@ guards against the model writing SQL as prose instead of actually running it."""
 
 from __future__ import annotations
 
+import json
 import re
 import shlex
 import sys
@@ -16,6 +17,8 @@ import ollama
 
 from .history import DEFAULT_HISTORY_DIR, RunHistory
 from .prompt import SYSTEM_PROMPT, TOOLS
+from .router import route
+from .templates import TEMPLATES, TemplateUnsupported
 from .toolbox import Toolbox
 
 MAX_TOOL_ITERATIONS = 8
@@ -23,6 +26,16 @@ MAX_AUTO_SQL_RECOVERIES = 2  # cap on auto-executing SQL the model wrote instead
 MAX_ERROR_RECOVERIES = 2  # cap on nudging a retry after a tool error, instead of letting it fabricate an answer
 MAX_HISTORY_MESSAGES = 40  # trim oldest turns once conversation grows past this, keep system prompt
 NUM_CTX = 8192  # local model's default (4096) is too small for multi-turn + tool-result JSON
+NARRATE_NUM_CTX = 2048  # the narrator sees one small result object, never the schema
+
+# The narrator's only job is to restate numbers it can already see. It gets no
+# schema, no tools and no conversation - which is why it needs a fraction of
+# the context (and the wall time) a tool-calling turn does.
+NARRATOR_PROMPT = (
+    "Answer the question in one or two sentences using ONLY the data given. "
+    "Do not add, infer, or round any number that is not present in it. "
+    "If the data is empty, say plainly that there were no matching results."
+)
 
 _SQL_FENCE_RE = re.compile(r"```(?:sql)?\s*\n?(.*?)```", re.IGNORECASE | re.DOTALL)
 
@@ -61,11 +74,14 @@ class Agent:
         verbose: bool = False,
         think: bool = False,
         history_dir: Path = DEFAULT_HISTORY_DIR,
+        fast_path: bool = True,
     ):
         self.model = model
         self.verbose = verbose
         self.think = think
         self.history_dir = history_dir
+        self.fast_path = fast_path
+        self.last_question: str | None = None
         self.toolbox = Toolbox(db_path, out_dir)
         # heterogeneous signatures dispatched generically via **args below -
         # a specific Callable type would make mypy check the wrong signature.
@@ -79,6 +95,7 @@ class Agent:
 
     def reset(self) -> None:
         self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        self.last_question = None
 
     def _trim_history(self) -> None:
         # keep the system prompt (index 0) plus the most recent messages
@@ -104,7 +121,69 @@ class Agent:
             path = history.write(command=command, model=self.model, think=self.think, question=question, answer=answer)
             print(f"[history] {path}  {history.summary_line()}", file=sys.stderr)
 
+    def _narrate(self, question: str, data: dict, history: RunHistory) -> str:
+        """Second and last model call on the fast path. It sees the result rows
+        and nothing else, so the worst it can do is misphrase numbers already in
+        front of it - a far smaller surface than the old path, where a model
+        that had lost the schema to truncation could fabricate a whole answer
+        (confirmed live: literal "[Player Name 1]" placeholders presented as
+        real data)."""
+        t0 = time.monotonic()
+        response = ollama.chat(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": NARRATOR_PROMPT},
+                {"role": "user", "content": f"Question: {question}\nData: {json.dumps(data, default=str)}"},
+            ],
+            options={"num_ctx": NARRATE_NUM_CTX, "temperature": 0},
+        )
+        history.record_model_call(time.monotonic() - t0)
+        return response.message.content or ""
+
+    def _try_fast_path(self, question: str, history: RunHistory) -> str | None:
+        """Route -> deterministic template -> narrate. Returns None to fall
+        through to the full agent, which is the outcome for every intent not
+        yet ported, for slots that fail validation, and for any router or
+        template failure. Falling through costs one ~1-2s round trip and
+        changes no answer; that asymmetry is what makes porting shapes one at
+        a time safe."""
+        if not self.fast_path:
+            return None
+        t0 = time.monotonic()
+        routed = route(self.model, question, previous_question=self.last_question)
+        history.record_model_call(time.monotonic() - t0)
+        if routed is None:
+            history.log("  -> (router) no usable classification, falling through to the agent")
+            return None
+        handler = TEMPLATES.get(routed.intent)
+        history.log(f"  -> (router) intent={routed.intent!r} slots={routed.slots}" + ("" if handler else " - not ported yet, falling through"))
+        if handler is None:
+            return None
+        t0 = time.monotonic()
+        try:
+            result = handler(self.toolbox.con, routed.slots)
+        except TemplateUnsupported as exc:
+            history.log(f"  -> (template) {exc} - falling through to the agent")
+            return None
+        history.record_tool_call(f"template {routed.intent}", time.monotonic() - t0)
+        if result.answer is not None:
+            # No second model call: see TemplateResult on why that is both
+            # faster than it looks and safer than narrating.
+            return result.answer
+        return self._narrate(question, result.data, history)
+
     def _ask_inner(self, question: str, history: RunHistory) -> str:
+        fast = self._try_fast_path(question, history)
+        if fast is not None:
+            # Record the turn in the conversation even though the tool loop
+            # never ran, so a later follow-up that DOES fall through to the
+            # agent still sees what was already asked and answered.
+            self.messages.extend([{"role": "user", "content": question}, {"role": "assistant", "content": fast}])
+            self._trim_history()
+            self.last_question = question
+            return fast
+
+        self.last_question = question
         self.messages.append({"role": "user", "content": question})
         auto_recoveries = 0
         error_recoveries = 0
