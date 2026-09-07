@@ -5,7 +5,7 @@ get_leaderboard resolved teams and errored on ambiguity, render_shot_chart
 resolved players and silently took the first match. Those are both defensible
 for what they do - a chart of the wrong Curry is a visible mistake, a NUMBER
 attributed to the wrong Curry is not - so this module keeps the distinction
-explicit rather than picking one behaviour for everyone:
+explicit rather than picking one behavior for everyone:
 
     find_*    - every candidate, best first. The caller decides.
     resolve_* - one entity, or Ambiguous/NotFound. Never a guess.

@@ -231,7 +231,7 @@ MIN_SEASON = 1990
 # standing rules were written to prevent.
 SEASON_TYPES = {"regular": 2, "playoffs": 3}
 
-# Questions no template can answer, recognised from the question text rather
+# Questions no template can answer, recognized from the question text rather
 # than left to the model to classify. Kept deliberately tiny: this is not a
 # rules engine, it is a short list of subjects that read like a supported shape
 # ("Steph Curry's average X") while asking for something no template computes,

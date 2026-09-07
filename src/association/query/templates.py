@@ -1066,7 +1066,7 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     season = slots.get("season") or current_season()
     season_type = slots.get("season_type") or 2
     # Both orderings, since `games` is home/away-oriented rather than
-    # team-perspective, and the season filter parenthesised around the whole
+    # team-perspective, and the season filter parenthesized around the whole
     # matchup - `A OR B AND season = ...` applies the season to one side only.
     where = [
         "((g.home_team_id = ? AND g.away_team_id = ?) OR (g.home_team_id = ? AND g.away_team_id = ?))",

@@ -6,15 +6,15 @@ commit that made it for the full story.
 ## 2026-09-06
 
 - **NetPoints fingerprint: the six categories that actually partition the
-  total, and defence as its own section**: two corrections to how the
+  total, and defense as its own section**: two corrections to how the
   fingerprint was presented.
 
-  First, the defence column was present but effectively invisible. Sorting one
+  First, the defense column was present but effectively invisible. Sorting one
   combined table by total magnitude buries every defensively significant play
-  type below categories whose defence is ~0 - for SGA, `turnover` carries the
+  type below categories whose defense is ~0 - for SGA, `turnover` carries the
   largest defensive value of any category (170.9) and landed 15th of 21, with
-  `foul` (-82.3) at 3rd only because its OFFENSIVE value is large. Offence and
-  defence now get a section each, sorted by their own side, which is also how
+  `foul` (-82.3) at 3rd only because its OFFENSIVE value is large. Offense and
+  defense now get a section each, sorted by their own side, which is also how
   espnanalytics.com presents it.
 
   Second, and this reverses a claim made in the previous commit: the categories
@@ -28,9 +28,9 @@ commit that made it for the full story.
   total on their own).
 
   So the six are shown as the breakdown, each section printing its own sum so
-  the reader can check it against the headline - offence 8.55 plus defence 1.36
+  the reader can check it against the headline - offense 8.55 plus defense 1.36
   is 9.91 per 100 possessions, the figure `net_points_player` stores
-  independently. The overlapping slices follow as labelled detail, kept out of
+  independently. The overlapping slices follow as labeled detail, kept out of
   the column that is meant to add up.
 
   Also fixes a shadowing bug mypy caught while restructuring: the category list
@@ -102,7 +102,7 @@ commit that made it for the full story.
   averaged 26.6 points, 3.6 rebounds and 4.7 assists per game". Two bugs, and
   the first one was mine rather than the model's.
 
-  `player_stat` treated a stat it did not recognise the same as no stat at all
+  `player_stat` treated a stat it did not recognize the same as no stat at all
   and fell back to its default points/rebounds/assists line - a silent
   substitution inside a template, which is precisely what templates exist to
   prevent. `player_compare` had the identical bug. Both now distinguish "no
@@ -151,7 +151,7 @@ commit that made it for the full story.
   project's whole thesis restated, so the fix is code, not more prose.
 
   New `head_to_head` template resolves both team names to ids, counts games in
-  both home/away directions, parenthesises the matchup so a season filter cannot
+  both home/away directions, parenthesizes the matchup so a season filter cannot
   bind to one side only, and reports the series record. It defaults to the
   current season like every other template rather than answering all-time.
   Separately, `run_sql` now returns a `warning` whenever a query compares an
@@ -291,7 +291,7 @@ commit that made it for the full story.
   after every change rather than trusted from last time. 30/30.
 
 - **Bound run_sql results by tokens, not rows**: a row cap does not bound what
-  comes BACK. Measured, `SELECT * FROM player_game_log LIMIT 200` serialised to
+  comes BACK. Measured, `SELECT * FROM player_game_log LIMIT 200` serialized to
   ~44,000 tokens - nearly three times the whole 16,384-token window, from a
   single tool call. Over `num_ctx` ollama cuts the prompt to about half,
   head-first and silently, throwing away the system prompt: the exact failure

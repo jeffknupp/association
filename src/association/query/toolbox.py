@@ -17,7 +17,7 @@ from .shotchart import render_shot_chart
 
 MAX_ROWS = 200
 # A row cap alone does not bound what comes BACK. Measured: `SELECT * FROM
-# player_game_log LIMIT 200` serialises to ~44,000 tokens - nearly three times
+# player_game_log LIMIT 200` serializes to ~44,000 tokens - nearly three times
 # the whole 16,384-token window, from one tool call. Over num_ctx, ollama cuts
 # the prompt to about half, head-first and silently, which throws away the
 # system prompt: the exact failure this codebase was rebuilt to eliminate,
@@ -58,7 +58,7 @@ def _estimate_tokens(text: str) -> int:
     return len(text) // 4
 
 
-def _serialise(rows: list[dict], row_count: int, hit_row_cap: bool, dropped: int, impossible_filter: tuple[str, str] | None = None) -> str:
+def _serialize(rows: list[dict], row_count: int, hit_row_cap: bool, dropped: int, impossible_filter: tuple[str, str] | None = None) -> str:
     payload: dict[str, Any] = {"rows": rows, "row_count": row_count, "truncated": bool(dropped or hit_row_cap)}
     if impossible_filter:
         column, value = impossible_filter
@@ -82,14 +82,14 @@ def _serialise(rows: list[dict], row_count: int, hit_row_cap: bool, dropped: int
 def _pack_result(rows: list[dict], cols: list[str], hit_row_cap: bool, impossible_filter: tuple[str, str] | None = None) -> str:
     """Return as many rows as fit MAX_RESULT_TOKENS, largest-first by binary
     search, saying how many were dropped."""
-    full = _serialise(rows, len(rows), hit_row_cap, dropped=0, impossible_filter=impossible_filter)
+    full = _serialize(rows, len(rows), hit_row_cap, dropped=0, impossible_filter=impossible_filter)
     if _estimate_tokens(full) <= MAX_RESULT_TOKENS or not rows:
         return full
 
     low, high = 0, len(rows)
     while low < high:
         mid = (low + high + 1) // 2
-        if _estimate_tokens(_serialise(rows[:mid], mid, hit_row_cap, dropped=len(rows) - mid, impossible_filter=impossible_filter)) <= MAX_RESULT_TOKENS:
+        if _estimate_tokens(_serialize(rows[:mid], mid, hit_row_cap, dropped=len(rows) - mid, impossible_filter=impossible_filter)) <= MAX_RESULT_TOKENS:
             low = mid
         else:
             high = mid - 1
@@ -109,7 +109,7 @@ def _pack_result(rows: list[dict], cols: list[str], hit_row_cap: bool, impossibl
             },
             default=str,
         )
-    return _serialise(rows[:low], low, hit_row_cap, dropped=len(rows) - low, impossible_filter=impossible_filter)
+    return _serialize(rows[:low], low, hit_row_cap, dropped=len(rows) - low, impossible_filter=impossible_filter)
 
 
 class Toolbox:

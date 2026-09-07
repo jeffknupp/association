@@ -630,7 +630,7 @@ def test_head_to_head_reports_the_series_record(gl_con: TemplateContext) -> None
 
 def test_head_to_head_applies_the_season_to_the_whole_matchup(gl_con: TemplateContext) -> None:
     # `A OR B AND season = ...` binds the season to one side only; the template
-    # parenthesises the matchup so the filter covers both orderings.
+    # parenthesizes the matchup so the filter covers both orderings.
     assert head_to_head(gl_con, {"teams": ["Knicks", "Celtics"], "season": 1999}).data["games"] == 0
 
 
@@ -860,7 +860,7 @@ def test_player_netpoints_rate_total_reports_season_totals(np_ctx: TemplateConte
 
 def test_player_netpoints_falls_back_to_totals_without_a_possession_count(np_ctx: TemplateContext) -> None:
     # No possession count: report totals and say so, rather than dividing by
-    # nothing or showing an unlabelled unit.
+    # nothing or showing an unlabeled unit.
     np_ctx.con.execute("UPDATE net_points_player_fingerprint SET total_poss = NULL")
     result = player_netpoints(np_ctx, {"player": "SGA"})
     assert next(r for r in result.data["fingerprint"] if r["category"] == "two pt")["total"] == 250.9

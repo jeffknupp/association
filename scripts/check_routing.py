@@ -94,7 +94,7 @@ CASES: list[tuple[str, str, dict]] = [
     ("Show me Wembanyama's shot chart", "shot_chart", {"player": "Victor Wembanyama"}),
     # Confirmed live: routed to player_stat and answered with a points/rebounds/
     # assists stat line, then (once forced to the agent) with an all-shots,
-    # all-seasons average mislabelled as current-season three-point distance.
+    # all-seasons average mislabeled as current-season three-point distance.
     # "3pt" comes back as shot_value 3 or as the equivalent box-score stat
     # depending on wording; shot_distance reads either, so only the intent is
     # asserted rather than the encoding the router happened to pick.

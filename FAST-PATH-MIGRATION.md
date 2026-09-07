@@ -62,7 +62,7 @@ player.
 Landed as `query/entities.py`: `find_*` returns every candidate best-first
 (the caller decides), `resolve_*` returns `Entity | Ambiguous | NotFound` and
 never guesses. `get_leaderboard` and `render_shot_chart` both moved onto it,
-each keeping its existing behaviour — a chart of the wrong Curry is obvious on
+each keeping its existing behavior — a chart of the wrong Curry is obvious on
 sight, a *number* attributed to the wrong Curry is not, so only the chart takes
 a best match.
 
@@ -199,7 +199,7 @@ Two bugs the port surfaced, both real:
   now.
 - `shot_chart` was the only template not defaulting an unspecified season to
   the current one, so "plot Curry's threes" charted his entire career in a
-  single plot (3,665 attempts). Now scoped and labelled like everywhere else.
+  single plot (3,665 attempts). Now scoped and labeled like everywhere else.
 
 **Still to retire in stage 3:** its **366 tokens** of tool schema, plus 2 KB
 entries (177 tok).
@@ -412,7 +412,7 @@ was a `COUNT(*)` — one row containing zero, not zero rows.
 rebounds and 4.7 assists per game".
 
 **The first bug was in a template, not the agent.** `player_stat` treated an
-unrecognised stat the same as no stat at all and fell back to its default
+unrecognized stat the same as no stat at all and fell back to its default
 stat line — the exact silent substitution this design exists to prevent,
 committed by the code meant to prevent it. `player_compare` had it too. Both
 now separate "no stat named" from "stat named but unsupported"; only the first
@@ -525,7 +525,7 @@ uses its own string `season_type`, and the fingerprint table has no
   user asked for is a bug, an extra one is only noise.
 - ~~**A second look at `MAX_ROWS`**~~ — DONE, and it was worse than suspected.
   A row cap does not bound what comes *back*: measured, `SELECT * FROM
-  player_game_log LIMIT 200` serialises to **~44,000 tokens** — nearly three
+  player_game_log LIMIT 200` serializes to **~44,000 tokens** — nearly three
   times the whole 16,384-token window, from a single tool call. Over `num_ctx`
   ollama cuts the prompt to about half, head-first and silently, throwing away
   the system prompt: the exact failure this codebase was rebuilt to eliminate,

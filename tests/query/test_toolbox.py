@@ -348,7 +348,7 @@ def seeded(tmp_path: Path, db_path: str) -> Toolbox:
 
 def test_run_sql_bounds_a_wide_result_by_tokens_not_rows(seeded: Toolbox) -> None:
     """A 200-row cap does not bound what comes BACK: measured, `SELECT * FROM
-    player_game_log LIMIT 200` serialised to ~44,000 tokens - nearly three
+    player_game_log LIMIT 200` serialized to ~44,000 tokens - nearly three
     times the whole context window, from one tool call. Over num_ctx ollama
     cuts the prompt head-first and silently, discarding the system prompt."""
     from association.query.toolbox import MAX_RESULT_TOKENS, _estimate_tokens

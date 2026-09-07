@@ -350,7 +350,7 @@ KNOWLEDGE_BASE: list[dict[str, Any]] = [
 # tokens reaching the model, and what it discarded was TABLE_SUMMARY, both
 # standing rules, and the first ~15 KNOWLEDGE_BASE entries. Nothing errored.
 # See FAST-PATH-MIGRATION.md.
-# Measured behaviour, not a guess: a prompt UNDER num_ctx is evaluated in full
+# Measured behavior, not a guess: a prompt UNDER num_ctx is evaluated in full
 # (a ~3,700-token prompt at num_ctx 8192 came back with prompt_eval_count
 # 3,696), and one OVER it is cut to roughly half (10,093 tokens at num_ctx 8192
 # came back 4,098). So the whole prompt - preamble plus the conversation on top
