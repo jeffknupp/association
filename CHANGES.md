@@ -5,6 +5,34 @@ commit that made it for the full story.
 
 ## 2026-09-06
 
+- **single_game_high: a shape whose absence was a wrong answer**: reported
+  from real use - "who had the most assists in a single game and how many did
+  he have" was answered "Nikola Jokic led the league in assists per game in the
+  2026 regular season, at 10.7", in 1.76s. The real answer was Ryan Nembhard
+  with 23, on 2026-04-13.
+
+  Nothing was broken. There was simply no intent for a single-game MAXIMUM, so
+  the router picked the nearest shape it had (`leaderboard`) and that template
+  answered its own question correctly and confidently. A missing shape does not
+  produce a refusal - it produces a fast, fluent answer to a DIFFERENT question,
+  which is worse than the slow wrong answers this work started from, because
+  nothing about it looks wrong. The fix is a template, not a prompt tweak.
+
+  `single_game_high` reads `player_game_log`, so it reports the value and which
+  game it was ("23, on 2026-04-13 vs CHI"), handles ties, supports a named
+  player ("Jokic's highest rebound total in a single game"), and defaults to
+  the current regular season like every other template. The router's
+  `leaderboard` description now says explicitly that it covers SEASON stats and
+  that single-game questions belong elsewhere - describing the neighbouring
+  shape is part of adding a shape.
+
+  Also observed and worth recording: adding an intent perturbed slot extraction
+  on unrelated questions - "plot Curry's threes from last season" had been
+  keeping its season and started dropping it again, so it is now marked as a
+  known gap alongside the true-shooting one. That is a real property of routing
+  everything through one small model, and the reason `check_routing.py` is run
+  after every change rather than trusted from last time. 30/30.
+
 - **Bound run_sql results by tokens, not rows**: a row cap does not bound what
   comes BACK. Measured, `SELECT * FROM player_game_log LIMIT 200` serialised to
   ~44,000 tokens - nearly three times the whole 16,384-token window, from a

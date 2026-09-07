@@ -41,7 +41,15 @@ CASES: list[tuple[str, str, dict]] = [
     ("Who had the most 30+ point games this season?", "threshold_count", {"stat": "points", "threshold": 30}),
     ("Most games with 20+ rebounds this year", "threshold_count", {"stat": "rebounds", "threshold": 20}),
     ("Most games with 15+ assists in 2024?", "threshold_count", {"stat": "assists", "threshold": 15, "season": 2024}),
-    ("Who were the top 10 in netpoints/100 possesions?", "leaderboard", {"stat": "netpoints_per_100", "limit": 10}),
+    # No limit asserted: 10 is already the template's default.
+    ("Who were the top 10 in netpoints/100 possesions?", "leaderboard", {"stat": "netpoints_per_100"}),
+    # A single-game maximum is NOT a season ranking. Confirmed live: with no
+    # such intent, "who had the most assists in a single game" was answered
+    # "Nikola Jokic led the league in assists per game, at 10.7" in 1.76s -
+    # a missing shape produces a confident answer to a different question.
+    ("who had the most assists in a single game and how many did he have", "single_game_high", {"stat": "assists"}),
+    ("What was the highest scoring game by a player this year?", "single_game_high", {"stat": "points"}),
+    ("Most rebounds Jokic has had in one game?", "single_game_high", {"stat": "rebounds"}),
     # No season asserted: an absent season already means the current one in
     # every template, so its absence does not change the answer. Assert slots
     # that change the answer, not slots that merely restate a default.
@@ -72,10 +80,12 @@ CASES: list[tuple[str, str, dict]] = [
     ("Who scores more, Wemby or Jokic?", "player_compare", {"stat": "points"}),
     ("Luka vs Giannis this year", "player_compare", {}),
     ("Show me Wembanyama's shot chart", "shot_chart", {"player": "Victor Wembanyama"}),
-    # "threes" comes back as the box-score stat rather than shot_value here;
-    # the template reads either, so assert the season (the slot that was
-    # actually wrong once) and leave the encoding to the router.
-    ("Plot Curry's threes from last season", "shot_chart", {"season": current_season() - 1}),
+    # Same known gap as the true-shooting case: "last season" is dropped some
+    # runs and kept others, so the chart can cover the current season instead.
+    # Flaky rather than fixed - adding an intent perturbs slot extraction
+    # elsewhere, which is a real property of routing everything through one
+    # small model. Visible, since the chart names the season it used.
+    ("Plot Curry's threes from last season", "shot_chart", {"season": current_season() - 1, "known_gap": True}),
     ("What was the Lakers record last season?", "team_record", {"team": "Lakers", "season": current_season() - 1}),
     # "last N games" means most recent, not earliest - confirmed live, the
     # router got this backwards and answered with October games.

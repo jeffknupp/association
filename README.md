@@ -190,7 +190,8 @@ the router entirely, for comparing the two paths.
 
 Ported so far: `threshold_count` ("most games with 30+ points"),
 `leaderboard` ("top 5 scorers on the Lakers", "who led the playoffs in
-rebounding", "most triple-doubles"), `player_stat` ("how many points did Luka
+rebounding", "most triple-doubles"), `single_game_high` ("most assists in a
+single game"), `player_stat` ("how many points did Luka
 average in 2024?"), `player_compare` ("Luka vs SGA this season"),
 `team_record`, `game_log` ("the Knicks' last 5 games", "Curry's first game of
 the season") and `shot_chart` — every shape the agent's four tools covered,

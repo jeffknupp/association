@@ -15,6 +15,7 @@ from association.query.templates import (
     player_compare,
     player_stat,
     shot_chart,
+    single_game_high,
     team_record,
     threshold_count,
 )
@@ -523,3 +524,78 @@ def test_leaderboard_drops_a_field_that_restates_the_ranked_metric(lb_con: Templ
     lb_con.con.execute("ALTER TABLE player_season_stats ADD COLUMN avgRebounds DOUBLE")
     result = leaderboard(lb_con, {"stat": "points", "fields": ["rebounds", "points"]})
     assert result.data["fields"] == ["rebounds"]
+
+
+# ---------------- single_game_high ----------------
+
+
+@pytest.fixture
+def sgh_ctx(tmp_path: Path) -> TemplateContext:
+    c = duckdb.connect(":memory:")
+    c.execute(
+        "CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER, season_type INTEGER, "
+        "player_name VARCHAR, game_date VARCHAR, opponent_abbr VARCHAR, assists INTEGER, points INTEGER)"
+    )
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO players VALUES ('1','Ryan Nembhard'),('2','Nikola Jokic')")
+    s = current_season()
+    c.executemany(
+        "INSERT INTO player_game_log VALUES (?,?,?,?,?,?,?,?)",
+        [
+            ("1", s, 2, "Ryan Nembhard", "2026-04-13T00:30Z", "CHI", 23, 8),
+            ("2", s, 2, "Nikola Jokic", "2026-03-26T02:00Z", "DAL", 19, 30),
+            ("2", s, 2, "Nikola Jokic", "2026-01-02T02:00Z", "UTA", 11, 40),
+            ("1", s, 3, "Ryan Nembhard", "2026-05-01T00:30Z", "BOS", 30, 5),
+            ("2", s - 1, 2, "Nikola Jokic", "2025-03-26T02:00Z", "DAL", 25, 30),
+        ],
+    )
+    return TemplateContext(con=c, out_dir=tmp_path)
+
+
+def test_single_game_high_answers_the_question_a_leaderboard_answered_wrongly(sgh_ctx: TemplateContext) -> None:
+    """Confirmed live: with no such intent, "who had the most assists in a
+    single game" was answered "Nikola Jokic led the league in assists per game,
+    at 10.7" in 1.76s. The real answer was Ryan Nembhard with 23."""
+    answer = single_game_high(sgh_ctx, {"stat": "assists"}).answer or ""
+    assert answer.startswith("Ryan Nembhard had the most assists in a single game")
+    assert "23" in answer and "2026-04-13" in answer and "CHI" in answer
+
+
+def test_single_game_high_is_a_maximum_not_an_average(sgh_ctx: TemplateContext) -> None:
+    games = single_game_high(sgh_ctx, {"stat": "assists"}).data["games"]
+    assert games[0]["value"] == 23  # not Jokic's 15.0 average across his two games
+
+
+def test_single_game_high_defaults_to_the_regular_season(sgh_ctx: TemplateContext) -> None:
+    # Nembhard's 30-assist game is postseason and must not win the default.
+    assert single_game_high(sgh_ctx, {"stat": "assists"}).data["games"][0]["value"] == 23
+    assert single_game_high(sgh_ctx, {"stat": "assists", "season_type": 3}).data["games"][0]["value"] == 30
+
+
+def test_single_game_high_defaults_to_the_current_season(sgh_ctx: TemplateContext) -> None:
+    assert single_game_high(sgh_ctx, {"stat": "assists"}).data["season"] == current_season()
+    assert single_game_high(sgh_ctx, {"stat": "assists", "season": current_season() - 1}).data["games"][0]["value"] == 25
+
+
+def test_single_game_high_for_a_named_player(sgh_ctx: TemplateContext) -> None:
+    answer = single_game_high(sgh_ctx, {"stat": "assists", "player": "Nikola Jokic"}).answer or ""
+    assert answer == f"Nikola Jokic's highest assist total in a single game in the {current_season()} regular season was 19, on 2026-03-26 vs DAL."
+
+
+def test_single_game_high_reports_a_tie_as_a_tie(sgh_ctx: TemplateContext) -> None:
+    sgh_ctx.con.execute("UPDATE player_game_log SET assists = 23 WHERE player_name = 'Nikola Jokic' AND opponent_abbr = 'DAL' AND season_type = 2")
+    assert "tied for the most" in (single_game_high(sgh_ctx, {"stat": "assists"}).answer or "")
+
+
+def test_single_game_high_unknown_stat_falls_through(sgh_ctx: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        single_game_high(sgh_ctx, {"stat": "assists); DROP TABLE players; --"})
+
+
+def test_single_game_high_ambiguous_player_asks(sgh_ctx: TemplateContext) -> None:
+    sgh_ctx.con.execute("INSERT INTO players VALUES ('3','Nikola Jovic')")
+    assert "did you mean" in (single_game_high(sgh_ctx, {"stat": "assists", "player": "Nikola"}).answer or "")
+
+
+def test_single_game_high_reports_an_empty_season_honestly(sgh_ctx: TemplateContext) -> None:
+    assert "no 1999 regular season games" in (single_game_high(sgh_ctx, {"stat": "assists", "season": 1999}).answer or "")

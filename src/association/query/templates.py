@@ -617,6 +617,80 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
 
 SHOT_VALUE_FROM_STAT = {"threePointFieldGoalsMade": 3, "freeThrowsMade": 1}
 
+DEFAULT_SINGLE_GAME_LIMIT = 3
+
+
+def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+    """"Most assists in a single game" - a per-game MAXIMUM, not a season
+    ranking.
+
+    Added because the router had no such shape and picked the nearest one:
+    "who had the most assists in a single game and how many did he have?"
+    was answered "Nikola Jokic led the league in assists per game, at 10.7"
+    in 1.76s. The real answer was Ryan Nembhard with 23. A missing shape does
+    not produce a refusal, it produces a confident answer to a different
+    question - which is why the fix is a template, not a prompt tweak."""
+    stat = slots.get("stat")
+    column = THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
+    if column is None:
+        raise TemplateUnsupported(f"single_game_high needs a known stat, got {stat!r}")
+
+    season = slots.get("season") or current_season()
+    season_type = slots.get("season_type") or 2
+    limit = _clamp_limit(slots.get("limit"), default=DEFAULT_SINGLE_GAME_LIMIT)
+
+    where = ["season = ?", "season_type = ?", f"{column} IS NOT NULL"]
+    params: list[Any] = [season, season_type]
+    text = slots.get("player")
+    named_player = None
+    if isinstance(text, str) and text.strip():
+        match resolve_player(ctx.con, text):
+            case Entity() as player:
+                named_player = player
+                where.append("athlete_id = ?")
+                params.append(player.id)
+            case Ambiguous(candidates=candidates):
+                return _clarify(text, candidates)
+            case _:
+                raise TemplateUnsupported(f"no player matching {text!r}")
+
+    rows = ctx.con.execute(
+        f"SELECT player_name, {column}, game_date, opponent_abbr FROM player_game_log "
+        f"WHERE {' AND '.join(where)} ORDER BY {column} DESC, game_date LIMIT ?",
+        [*params, limit],
+    ).fetchall()
+
+    label = STAT_LABELS.get(stat or "", stat or "")
+    period = _period(season, season_type)
+    games = [{"player": r[0], "value": r[1], "date": str(r[2])[:10], "opponent": r[3]} for r in rows]
+    return TemplateResult(
+        summary=f"single-game high, {label}s, {period}",
+        data={"season": season, "stat": stat, "games": games},
+        answer=_phrase_single_game_high(games, label, period, named_player.name if named_player else None),
+    )
+
+
+def _phrase_single_game_high(games: list[dict[str, Any]], label: str, period: str, named_player: str | None) -> str:
+    if not games:
+        who = f"{named_player} has" if named_player else "There are"
+        return f"{who} no {period} games in the warehouse."
+    top = games[0]
+    where = f" vs {top['opponent']}" if top["opponent"] else ""
+    if named_player:
+        return f"{named_player}'s highest {label} total in a single game in the {period} was {top['value']}, on {top['date']}{where}."
+
+    tied = [g for g in games if g["value"] == top["value"]]
+    if len(tied) > 1:
+        names = ", ".join(g["player"] for g in tied[:-1]) + f" and {tied[-1]['player']}"
+        sentence = f"{names} tied for the most {label}s in a single game in the {period}, with {top['value']} each."
+    else:
+        sentence = (
+            f"{top['player']} had the most {label}s in a single game in the {period}: "
+            f"{top['value']}, on {top['date']}{where}."
+        )
+    rest = [f"{g['player']} ({g['value']})" for g in games if g["value"] != top["value"]]
+    return sentence + (f" Next: {', '.join(rest)}." if rest else "")
+
 MAX_COMPARED_PLAYERS = 4
 
 
@@ -703,4 +777,5 @@ TEMPLATES: dict[str, Callable[[TemplateContext, dict[str, Any]], TemplateResult]
     "game_log": game_log,
     "shot_chart": shot_chart,
     "player_compare": player_compare,
+    "single_game_high": single_game_high,
 }

@@ -284,6 +284,36 @@ between questions, so the agent path no longer reuses the KV cache
 question, which is where the cost compounded (five rounds at ~75s each). Rare
 path; right way round.
 
+## `single_game_high` — a shape whose absence was a wrong answer
+
+Reported from real use: "who had the most assists in a single game and how
+many did he have" was answered **"Nikola Jokic led the league in assists per
+game in the 2026 regular season, at 10.7"** — in 1.76s. The real answer was
+Ryan Nembhard with 23, on 2026-04-13.
+
+Nothing was broken. There was simply no intent for a single-game *maximum*, so
+the router picked the nearest shape it had (`leaderboard`) and the template
+answered that question correctly and confidently. **A missing shape does not
+produce a refusal — it produces a fast, fluent answer to a different
+question**, which is worse than the slow wrong answers this migration started
+from, because nothing about it looks wrong.
+
+Two things follow, and both are now in place:
+
+- `single_game_high` reads `player_game_log`, so it reports the value *and*
+  which game it was ("23, on 2026-04-13 vs CHI"). It handles ties, a named
+  player ("Jokic's highest rebound total"), and defaults to the current
+  regular season like every other template.
+- The router's `leaderboard` line now says explicitly that it is for *season*
+  stats and that single-game questions belong elsewhere. Describing the
+  neighbouring shape is part of adding a shape.
+
+**Also observed:** adding an intent perturbed slot extraction on unrelated
+questions — "plot Curry's threes from last season" had been keeping its season
+and started dropping it again. That is a real property of routing everything
+through one small model, and the reason `check_routing.py` exists and is run
+after every change rather than trusted from last time.
+
 ## What is left
 
 - ~~**`player_compare`**~~ — DONE. The agent got this wrong for a reason no
@@ -356,7 +386,7 @@ Verification per shape, since unit tests can't catch a routing regression:
   only (cheap — all cache hits, ~1.5s each), asserting intent and slots, and
   including cases that must NOT be answered by a near-miss template. Grow it
   with every ported shape; it is the regression suite for the part that has no
-  types. Currently 27/27, plus one case marked `known_gap` — reported as GAP
+  types. Currently 30/30, plus cases marked `known_gap` — reported as GAP
   and not counted as a failure, so a real regression still stands out. That
   one is "best true shooting percentage **last season**", where the router
   drops `season_ref` and the answer covers the current season instead; every

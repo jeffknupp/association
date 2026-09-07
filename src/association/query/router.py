@@ -37,7 +37,12 @@ ROUTER_PROMPT = """You classify NBA statistics questions into a query intent and
 Reply with JSON only.
 
 intent must be one of:
-  leaderboard      - rank players by a season stat ("top 5 scorers", "who leads in assists")
+  leaderboard      - rank players by a SEASON stat: a per-game average or a
+                     season total ("top 5 scorers", "who leads in assists")
+  single_game_high - the highest single-GAME total, and which game it was
+                     ("most assists in a single game", "highest scoring game",
+                     "career high this season") - never use leaderboard for
+                     these, a season average is a different question
   threshold_count  - count a player's games meeting a per-game threshold
                      ("most 30+ point games", "most games with 20+ rebounds")
   player_stat      - one named player's season numbers ("how many points did Curry
@@ -77,6 +82,10 @@ Q: Who had the most 30+ point games this season?
 {"intent":"threshold_count","stat":"points","threshold":30,"season_ref":"current"}
 Q: Most games with 20+ rebounds in 2024?
 {"intent":"threshold_count","stat":"rebounds","threshold":20,"season":2024}
+Q: Who had the most assists in a single game and how many did he have?
+{"intent":"single_game_high","stat":"assists","season_ref":"current"}
+Q: What was the highest scoring game by a player this year?
+{"intent":"single_game_high","stat":"points","season_ref":"current"}
 Q: Who were the top 10 in netpoints/100 possessions?
 {"intent":"leaderboard","stat":"netpoints_per_100","limit":10}
 Q: Which player had the most triple-doubles?
@@ -120,7 +129,17 @@ ROUTER_SCHEMA: dict[str, Any] = {
     "properties": {
         "intent": {
             "type": "string",
-            "enum": ["leaderboard", "threshold_count", "player_stat", "player_compare", "game_log", "team_record", "shot_chart", "other"],
+            "enum": [
+                "leaderboard",
+                "single_game_high",
+                "threshold_count",
+                "player_stat",
+                "player_compare",
+                "game_log",
+                "team_record",
+                "shot_chart",
+                "other",
+            ],
         },
         "stat": {"type": "string"},
         "threshold": {"type": "integer"},
