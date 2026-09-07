@@ -6,7 +6,7 @@ from typing import Any
 import duckdb
 import pytest
 
-from association.query.templates import TemplateUnsupported, threshold_count
+from association.query.templates import TemplateUnsupported, leaderboard, threshold_count
 from association.season import current_season
 
 
@@ -105,3 +105,65 @@ def test_answer_reports_a_tie_as_a_tie(con: duckdb.DuckDBPyConnection) -> None:
     con.execute("INSERT INTO player_box_stats SELECT '1', season, 2, 35, 5 FROM player_box_stats LIMIT 5")
     result = threshold_count(con, {"stat": "points", "threshold": 30})
     assert "tied for the most" in (result.answer or "")
+
+
+# ---------------- leaderboard ----------------
+
+
+@pytest.fixture
+def lb_con() -> duckdb.DuckDBPyConnection:
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    c.execute("CREATE TABLE player_season_stats (athlete_id VARCHAR, team_id VARCHAR, season INTEGER, season_type INTEGER, gamesPlayed INTEGER, avgPoints DOUBLE)")
+    c.execute("INSERT INTO players VALUES ('1','Luka Doncic'),('2','Stephen Curry')")
+    c.execute("INSERT INTO teams VALUES ('9','GS','Golden State Warriors'),('6','DAL','Dallas Mavericks')")
+    s = current_season()
+    c.execute("INSERT INTO player_season_stats VALUES ('1','6',?,2,70,33.5),('2','9',?,2,68,27.1),('2','9',?,3,10,31.0)", [s, s, s])
+    return c
+
+
+def test_leaderboard_maps_a_plain_stat_slot_onto_a_real_metric(lb_con: duckdb.DuckDBPyConnection) -> None:
+    result = leaderboard(lb_con, {"stat": "points"})
+    assert result.data["leaders"][0]["display_name"] == "Luka Doncic"
+
+
+def test_leaderboard_phrases_its_own_answer(lb_con: duckdb.DuckDBPyConnection) -> None:
+    result = leaderboard(lb_con, {"stat": "points", "limit": 2})
+    assert result.answer == (
+        f"Luka Doncic led the league in points per game in the {current_season()} regular season, at 33.5. Next: Stephen Curry (27.1)."
+    )
+
+
+def test_leaderboard_names_the_team_when_filtered(lb_con: duckdb.DuckDBPyConnection) -> None:
+    result = leaderboard(lb_con, {"stat": "points", "team": "Warriors"})
+    assert "led the Golden State Warriors" in (result.answer or "")
+
+
+def test_leaderboard_honours_playoffs(lb_con: duckdb.DuckDBPyConnection) -> None:
+    result = leaderboard(lb_con, {"stat": "points", "season_type": 3})
+    assert "postseason" in (result.answer or "") and result.data["leaders"][0]["value"] == 31.0
+
+
+def test_leaderboard_unmapped_stat_falls_through_rather_than_fuzzy_matching(lb_con: duckdb.DuckDBPyConnection) -> None:
+    # Deliberately NOT get_close_matches: silently ranking by whichever metric
+    # scored highest is the substitution failure this design exists to prevent.
+    with pytest.raises(TemplateUnsupported):
+        leaderboard(lb_con, {"stat": "clutchness"})
+
+
+def test_leaderboard_ambiguous_team_falls_through_rather_than_picking_one(lb_con: duckdb.DuckDBPyConnection) -> None:
+    lb_con.execute("INSERT INTO teams VALUES ('12','LAC','LA Clippers'),('13','LAL','Los Angeles Lakers')")
+    with pytest.raises(TemplateUnsupported):
+        leaderboard(lb_con, {"stat": "points", "team": "LA"})
+
+
+def test_leaderboard_unknown_team_falls_through(lb_con: duckdb.DuckDBPyConnection) -> None:
+    with pytest.raises(TemplateUnsupported):
+        leaderboard(lb_con, {"stat": "points", "team": "Not A Team"})
+
+
+def test_threshold_count_honours_playoffs(con: duckdb.DuckDBPyConnection) -> None:
+    result = threshold_count(con, {"stat": "points", "threshold": 40, "season_type": 3})
+    assert "postseason" in (result.answer or "")
+    assert result.data["leaders"] == [{"player": "Bench Guy", "games": 9}]

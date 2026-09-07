@@ -5,6 +5,50 @@ commit that made it for the full story.
 
 ## 2026-09-06
 
+- **Shared entity resolution + the leaderboard shape on the fast path**
+  (migration stages 2.0 and 2.1): new `query/entities.py` unifies the two
+  name->id implementations that had grown separately - `get_leaderboard`
+  resolved teams and errored on ambiguity, `render_shot_chart` resolved
+  players and silently took the first match. Both are defensible for what they
+  do, so the split is now explicit rather than accidental: `find_*` returns
+  every candidate best-first and lets the caller choose, `resolve_*` returns
+  `Entity | Ambiguous | NotFound` and never guesses. Templates use `resolve_*`,
+  because a chart drawn for the wrong Curry is obvious on sight while a NUMBER
+  attributed to the wrong Curry is indistinguishable from a right answer -
+  ambiguity there falls through to the agent instead of being answered. An
+  exact full-name match beats substring siblings, so "Jaylen Brown" resolves
+  even alongside a hypothetical "Jaylen Brown Jr.".
+
+  New `query/leaderboard.py` extracts the "top N players by X" query out of
+  `toolbox.get_leaderboard`, which is now a thin JSON wrapper over it - the
+  fast-path template and the agent tool are one implementation instead of two
+  that can drift. The router's `stat` slot maps onto `LEADERBOARD_METRICS`
+  through an EXPLICIT alias table rather than `get_close_matches`: fuzzy
+  matching is right for suggesting a fix to a model that can then correct
+  itself, but a template silently ranking by whichever metric happened to
+  score highest is exactly the substitution failure this architecture exists
+  to prevent - unmapped names fall through instead.
+
+  Added a `season_type` slot (`regular`/`playoffs`) while here, because
+  without one a playoff question silently answered for the regular season -
+  the same "answered an easier question and said nothing" failure the standing
+  rules were written for. Both templates honour it, and every generated answer
+  now names its season and period outright so a substitution is visible rather
+  than silent.
+
+  New `scripts/check_routing.py` is the regression check for the part of the
+  pipeline with no types: a fixed question set run through `route()` only,
+  asserting intent and slots, including cases that must NOT be answered by a
+  near-miss template (triple-doubles, per-quarter scoring, player
+  comparisons). Currently 13/13 in ~1-2s per question. Confirmed live: "who
+  were the top 10 in netpoints/100 possessions?" went from 31-168s through the
+  agent to 1.8s; "top 5 scorers on the Lakers?" answers in 1.65s with the team
+  resolved and named. `get_leaderboard`'s 939-token tool schema and the four
+  `KNOWLEDGE_BASE` entries it makes redundant are deliberately NOT removed yet
+  - the agent still needs the tool for leaderboards that also need an opponent
+  or box-score join, so that is a stage-3 change with its own regression
+  check, not a side effect of landing the template.
+
 - **Intent router + deterministic query templates in front of the agent**:
   `query` and `ai` now route a question through a small classifier before the
   tool-calling agent ever runs. Motivated by a hard failure: "who had the most

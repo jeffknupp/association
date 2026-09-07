@@ -1,8 +1,10 @@
 # Query fast-path migration
 
 Staged replacement of the single "understand the question AND write the SQL"
-model call with a router → template → answer pipeline. Stage 1 has landed;
-this is the plan for stages 2 and 3.
+model call with a router → template → answer pipeline.
+
+**Landed:** stage 1 (router + `threshold_count`), 2.0 (`entities.py`), 2.1
+(`leaderboard`). **Next:** 2.2 `player_stat`, then 2.3–2.5, then stage 3.
 
 ## Why
 
@@ -39,7 +41,7 @@ asymmetry is the whole reason shapes can be ported one at a time.
 Order is by traffic × cheapness. Each step is independently shippable and
 independently revertable.
 
-### 2.0 Shared entity resolution (prerequisite)
+### 2.0 Shared entity resolution (prerequisite) — DONE
 
 Three of the five shapes below need "Lakers"/"LAL"/"Luka" → a real id.
 `toolbox.get_leaderboard` and `toolbox.render_shot_chart` each already
@@ -54,26 +56,53 @@ a chart and wrong for a number. Templates return `TemplateUnsupported` on
 ambiguity so the question falls through rather than answering about the wrong
 player.
 
-**Known gap this closes:** the router already extracts a `team` slot
-inconsistently — "What was the Lakers record last season?" routed with
-`{'season': 2025}` and no team. Slot extraction for named entities needs a
-worked example per shape in `ROUTER_PROMPT`, and the template must treat a
-missing entity as fall-through, never as "all teams".
+Landed as `query/entities.py`: `find_*` returns every candidate best-first
+(the caller decides), `resolve_*` returns `Entity | Ambiguous | NotFound` and
+never guesses. `get_leaderboard` and `render_shot_chart` both moved onto it,
+each keeping its existing behaviour — a chart of the wrong Curry is obvious on
+sight, a *number* attributed to the wrong Curry is not, so only the chart takes
+a best match.
 
-### 2.1 `leaderboard` — highest value
+The `team` slot gap is fixed: a worked example (`Top 5 scorers on the Lakers?`)
+was added to `ROUTER_PROMPT` and "Lakers" now resolves.
+
+**Open gap for 2.2:** `resolve_player` correctly reports "Luka" as ambiguous
+(Doncic, Garza, Samanic), and the router does produce bare first names — "How
+many points did Luka average in 2024?" routes with `player: 'Luka'`. Correct,
+but it means every casual first-name reference falls through to the slow path.
+`player_stat` will need a tiebreak on a real signal (season minutes played,
+say) with a dominance threshold, or it will be right and useless. Do not just
+take the first match.
+
+### 2.1 `leaderboard` — highest value — DONE
 
 Wraps the existing `toolbox.get_leaderboard`, which is already stage-2-shaped:
 it owns the season default, min-sample floors, and traded-player dedup.
 
-- map the router's `stat` slot onto `LEADERBOARD_METRICS` via the fuzzy
-  matcher already in `get_leaderboard` (`get_close_matches`)
-- on no match, `TemplateUnsupported` → fall through
-- deterministic phrasing: rank, name, value, and the season named outright
+Landed as `query/leaderboard.py`: the query itself was extracted out of
+`toolbox.get_leaderboard`, which is now a thin JSON wrapper over it, so the
+template and the agent tool are one implementation rather than two that drift.
 
-**Retires:** `get_leaderboard`'s **939 tokens** of tool schema from the
-always-on preamble — the single largest fixed cost in `TOOLS`, most of it the
-80-name metric enum. Plus 4 KB entries (~1,574 tok): traded-player dedup,
-"per game"/"average", rate-stat minimum sample, NetPoints per-100 vs total.
+One deviation from the original plan, deliberately: the `stat` slot maps onto
+`LEADERBOARD_METRICS` through an **explicit alias table**, not
+`get_close_matches`. Fuzzy matching is right for suggesting a fix to a model
+that can then correct itself, but a template silently ranking by whichever
+metric scored highest is exactly the substitution failure this architecture
+exists to prevent. Unmapped names fall through.
+
+Also added while here: a `season_type` slot (`regular`/`playoffs`). Without it
+a playoff question silently answered for the regular season — the same
+"answered an easier question and said nothing" failure the standing rules were
+written for. Both templates honour it and name the period in every answer.
+
+**Still to retire in stage 3:** `get_leaderboard`'s **939 tokens** of tool
+schema — the single largest fixed cost in `TOOLS`, most of it the 80-name
+metric enum — plus 4 KB entries (~1,574 tok): traded-player dedup, "per
+game"/"average", rate-stat minimum sample, NetPoints per-100 vs total. Held
+back deliberately: the agent still needs `get_leaderboard` for the shapes the
+template does not cover (a leaderboard that also needs an opponent or
+box-score join), so removing the tool is a stage-3 decision with its own
+regression check, not a side effect of landing the template.
 
 ### 2.2 `player_stat`
 
@@ -146,9 +175,11 @@ KB deletions it earns + a `CHANGES.md` note.
 
 Verification per shape, since unit tests can't catch a routing regression:
 
-- a fixed question set run through `route()` only (cheap — all cache hits,
-  ~1.5s each), asserting intent and slots. Grow it with every ported shape;
-  it is the regression suite for the part that has no types.
+- `scripts/check_routing.py` — a fixed question set run through `route()`
+  only (cheap — all cache hits, ~1.5s each), asserting intent and slots, and
+  including cases that must NOT be answered by a near-miss template. Grow it
+  with every ported shape; it is the regression suite for the part that has no
+  types. Currently 13/13.
 - `--no-fast-path` runs the same question through the old agent for
   side-by-side comparison while both paths exist.
 

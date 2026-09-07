@@ -23,7 +23,20 @@ def _route(payload: str, **kwargs: Any) -> Route | None:
 
 def test_parses_intent_and_slots() -> None:
     got = _route('{"intent":"threshold_count","stat":"points","threshold":30}')
-    assert got == Route(intent="threshold_count", slots={"stat": "points", "threshold": 30})
+    assert got == Route(intent="threshold_count", slots={"stat": "points", "threshold": 30, "season_type": 2})
+
+
+def test_season_type_defaults_to_regular_season() -> None:
+    assert _route('{"intent":"leaderboard","stat":"points"}').slots["season_type"] == 2
+
+
+def test_playoffs_maps_to_the_numeric_season_type_every_table_uses() -> None:
+    # Without this a playoff question silently answers for the regular season.
+    assert _route('{"intent":"leaderboard","stat":"points","season_type":"playoffs"}').slots["season_type"] == 3
+
+
+def test_unknown_season_type_falls_back_to_regular_season() -> None:
+    assert _route('{"intent":"leaderboard","season_type":"summer league"}').slots["season_type"] == 2
 
 
 def test_explicit_season_year_is_kept() -> None:

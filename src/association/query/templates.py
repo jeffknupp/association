@@ -21,6 +21,8 @@ import duckdb
 
 from association.season import current_season
 
+from .leaderboard import LeaderboardError, resolve_metric, run_leaderboard
+
 # Slot value -> real player_box_stats column. A whitelist, not a passthrough:
 # the router's `stat` slot is model-generated text, and this is the only place
 # it can reach SQL. Same reasoning as toolbox.EXTRA_FIELD_COLUMNS.
@@ -51,7 +53,11 @@ STAT_LABELS = {
 }
 
 DEFAULT_LIMIT = 5
+DEFAULT_LEADERBOARD_LIMIT = 10
 MAX_LIMIT = 50
+
+# Named in every answer, so answering the wrong one is visible rather than silent.
+SEASON_TYPE_NAMES = {1: "preseason", 2: "regular season", 3: "postseason"}
 
 
 class TemplateUnsupported(Exception):
@@ -80,9 +86,9 @@ class TemplateResult:
     answer: str | None = None
 
 
-def _clamp_limit(limit: Any) -> int:
+def _clamp_limit(limit: Any, default: int = DEFAULT_LIMIT) -> int:
     if not isinstance(limit, int) or limit < 1:
-        return DEFAULT_LIMIT
+        return default
     return min(limit, MAX_LIMIT)
 
 
@@ -101,11 +107,12 @@ def threshold_count(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> Te
         raise TemplateUnsupported(f"threshold_count needs a known stat and an integer threshold, got {stat!r}/{threshold!r}")
 
     season = slots.get("season") or current_season()
+    season_type = slots.get("season_type") or 2
     limit = _clamp_limit(slots.get("limit"))
     player = slots.get("player")
 
-    where = ["pbs.season = ?", "pbs.season_type = 2", f"pbs.{column} >= ?"]
-    params: list[Any] = [season, threshold]
+    where = ["pbs.season = ?", "pbs.season_type = ?", f"pbs.{column} >= ?"]
+    params: list[Any] = [season, season_type, threshold]
     if isinstance(player, str) and player.strip():
         # Every token must match, so "Luka Doncic" doesn't also match a player
         # sharing only a first name - same approach as render_shot_chart.
@@ -123,39 +130,94 @@ def threshold_count(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> Te
 
     label = STAT_LABELS.get(stat or "", stat or "")
     scope = f"{threshold}+ {label}s"
-    summary = f"games with {scope}, {season} regular season"
+    period = _period(season, season_type)
+    summary = f"games with {scope}, {period}"
     leaders = [{"player": name, "games": games} for name, games in rows]
     return TemplateResult(
         summary=summary,
         data={"question_shape": summary, "season": season, "leaders": leaders},
-        answer=_phrase_threshold_count(rows, scope, season, filtered_to_one_player=bool(player)),
+        answer=_phrase_threshold_count(rows, scope, period, filtered_to_one_player=bool(player)),
     )
 
 
-def _phrase_threshold_count(rows: list[tuple[Any, ...]], scope: str, season: int, filtered_to_one_player: bool) -> str:
+def _period(season: int, season_type: int) -> str:
+    return f"{season} {SEASON_TYPE_NAMES.get(season_type, 'regular season')}"
+
+
+def _phrase_threshold_count(rows: list[tuple[Any, ...]], scope: str, period: str, filtered_to_one_player: bool) -> str:
     """Always names the season outright rather than echoing "this season" back.
     The original failure answered for 2024 while the user meant the current
     season, and said nothing about it - so the season is stated, every time."""
     label = f"games with {scope}"
     if not rows:
         if filtered_to_one_player:
-            return f"That player had no {label} in the {season} regular season."
-        return f"No player had a game with {scope} in the {season} regular season."
+            return f"That player had no {label} in the {period}."
+        return f"No player had a game with {scope} in the {period}."
     if filtered_to_one_player:
         name, games = rows[0]
-        return f"{name} had {games} {label} in the {season} regular season."
+        return f"{name} had {games} {label} in the {period}."
 
     top = rows[0][1]
     tied = [name for name, games in rows if games == top]
     if len(tied) > 1:
         leaders = ", ".join(tied[:-1]) + f" and {tied[-1]}"
-        sentence = f"{leaders} tied for the most {label} in the {season} regular season, with {top} each."
+        sentence = f"{leaders} tied for the most {label} in the {period}, with {top} each."
     else:
-        sentence = f"{rows[0][0]} had the most {label} in the {season} regular season, with {top}."
+        sentence = f"{rows[0][0]} had the most {label} in the {period}, with {top}."
     rest = [f"{name} ({games})" for name, games in rows if games != top]
+    return sentence + (f" Next: {', '.join(rest)}." if rest else "")
+
+
+def _format_value(value: Any) -> str:
+    if isinstance(value, float):
+        return f"{value:.3f}".rstrip("0").rstrip(".") if abs(value) < 1 else f"{value:.2f}".rstrip("0").rstrip(".")
+    return str(value)
+
+
+def leaderboard(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> TemplateResult:
+    """"Top N players by X" for the metrics in LEADERBOARD_METRICS.
+
+    Thin on purpose: run_leaderboard already owns the season default, the
+    per-metric minimum-sample floor and traded-player dedup, and the agent's
+    get_leaderboard tool calls the same function. All this adds is the router
+    slot mapping and deterministic phrasing."""
+    metric = resolve_metric(slots.get("stat"))
+    if metric is None:
+        raise TemplateUnsupported(f"no leaderboard metric for stat {slots.get('stat')!r}")
+    try:
+        result = run_leaderboard(
+            con,
+            metric,
+            season=slots.get("season"),
+            season_type=slots.get("season_type") or 2,
+            team=slots.get("team") if isinstance(slots.get("team"), str) else None,
+            limit=_clamp_limit(slots.get("limit"), default=DEFAULT_LEADERBOARD_LIMIT),
+        )
+    except LeaderboardError as exc:
+        # An ambiguous team, an unknown metric, or a table that needs a
+        # warehouse flag - all reasons to fall through, never to guess.
+        raise TemplateUnsupported(str(exc)) from exc
+
+    period = _period(result.season, result.season_type or 2)
+    where = f"the {result.team_name}" if result.team_name else "the league"
+    summary = f"{result.label}, {period}"
+    return TemplateResult(
+        summary=summary,
+        data={"question_shape": summary, "season": result.season, "leaders": result.rows},
+        answer=_phrase_leaderboard(result.rows, result.label, where, period),
+    )
+
+
+def _phrase_leaderboard(rows: list[dict[str, Any]], label: str, where: str, period: str) -> str:
+    if not rows:
+        return f"No players qualified for {label} in {where} in the {period}."
+    top = rows[0]
+    sentence = f"{top['display_name']} led {where} in {label} in the {period}, at {_format_value(top['value'])}."
+    rest = [f"{r['display_name']} ({_format_value(r['value'])})" for r in rows[1:]]
     return sentence + (f" Next: {', '.join(rest)}." if rest else "")
 
 
 TEMPLATES: dict[str, Callable[[duckdb.DuckDBPyConnection, dict[str, Any]], TemplateResult]] = {
     "threshold_count": threshold_count,
+    "leaderboard": leaderboard,
 }

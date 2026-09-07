@@ -188,8 +188,20 @@ portable one at a time (see [`FAST-PATH-MIGRATION.md`](FAST-PATH-MIGRATION.md)
 for the remaining shapes and the order they land in). `--no-fast-path` skips
 the router entirely, for comparing the two paths.
 
-Ported so far: `threshold_count` ("most games with 30+ points", "most games
-with 20+ rebounds").
+Ported so far: `threshold_count` ("most games with 30+ points") and
+`leaderboard` ("top 5 scorers on the Lakers", "who led the playoffs in
+rebounding"). `scripts/check_routing.py` is the routing regression check — a
+fixed question set through `route()` only, including questions that must
+*not* be answered by a near-miss template.
+
+Name resolution for both paths lives in
+[`query/entities.py`](src/association/query/entities.py). It draws a
+deliberate distinction: `find_*` returns every candidate best-first and lets
+the caller choose (`render_shot_chart` takes the best match and names the
+others — a chart of the wrong Curry is obvious on sight), while `resolve_*`
+returns `Entity | Ambiguous | NotFound` and never guesses (a *number*
+attributed to the wrong Curry is indistinguishable from a right answer, so
+templates fall through instead).
 
 **The fall-through agent** — a local Ollama model gets four tools: `describe_table`
 (schema lookup on demand, so table summaries stay short even for 100+-column
@@ -285,9 +297,10 @@ src/association/
   cli.py            entrypoint: data pull|load|check, query, ai
   fetch/            client (curl_cffi — see below), endpoints, parse, storage, pipeline, warehouse
   check/            data coverage report, cross-checked live against ESPN
-  query/            intent router, query templates, prompt/knowledge base, tools, court renderer, agent loop, REPL
+  query/            intent router, query templates, entity resolution, leaderboard, prompt/knowledge base, tools, court renderer, agent loop, REPL
 scripts/
   backfill_markers.sh   re-derive completion markers for data fetched before they existed
+  check_routing.py      routing regression check for the query fast path (needs ollama)
 completions/          generated bash/zsh/fish shell completion scripts (see Setup)
 tests/              pytest, one file per source module
 .history/           per-run command/trace/timing logs from query|ai (gitignored, see Run history above)

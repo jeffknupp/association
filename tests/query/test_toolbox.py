@@ -165,7 +165,8 @@ def test_get_leaderboard_min_sample_override_widens_the_pool(toolbox: Toolbox) -
 
 
 def test_get_leaderboard_defaults_to_current_season(monkeypatch: pytest.MonkeyPatch, toolbox: Toolbox) -> None:
-    monkeypatch.setattr("association.query.toolbox.current_season", lambda: 2026)
+    # the season default moved into leaderboard.run_leaderboard, which toolbox now wraps
+    monkeypatch.setattr("association.query.leaderboard.current_season", lambda: 2026)
     result = json.loads(toolbox.get_leaderboard(metric="usage_pct"))
     assert result["season"] == 2026
     assert [r["display_name"] for r in result["rows"]] == ["Stephen Curry"]
