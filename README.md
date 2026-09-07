@@ -185,10 +185,16 @@ where writing correct SQL by hand genuinely needs the capacity. Reproduce with
 not accuracy — `qwen3:4b` spent ~20s per question reasoning before emitting the
 same tiny JSON object, against `qwen2.5:3b`'s 1.1s.
 
-Both models fit in RAM together (~6.6GB of 16GB). Set
-`OLLAMA_MAX_LOADED_MODELS=2` to keep them resident: otherwise ollama unloads one
-to load the other whenever a question falls through, which measured **152s** on
-a real fall-through query, nearly all of it swap rather than inference.
+Both models fit in RAM together (~6.6GB of 16GB), and ollama's default already
+holds both — `/api/ps` reports them resident simultaneously, so
+`OLLAMA_MAX_LOADED_MODELS` needs no change. What does bite is the idle unload
+after ~5 minutes, so requests pass `keep_alive` (30m by default, override with
+`ASSOCIATION_KEEP_ALIVE`); that is a per-request field, unlike the server-side
+env vars.
+
+A fall-through question costs ~175s on this box, and it is prefill of the
+agent's preamble, not a model swap — the whole preamble has to be evaluated
+before the first token, at roughly 33 tok/s under a 6-core `CPUQuota`.
 
 **Query engine** — a question first hits a small **intent router**
 ([`query/router.py`](src/association/query/router.py)): a ~430-token prompt

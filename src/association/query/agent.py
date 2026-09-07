@@ -16,6 +16,7 @@ from typing import Any
 import ollama
 
 from .history import DEFAULT_HISTORY_DIR, RunHistory
+from .keepalive import KEEP_ALIVE
 from .prompt import NUM_CTX, TOOLS, build_system_prompt
 from .router import route
 from .templates import TEMPLATES, TemplateContext, TemplateUnsupported
@@ -153,6 +154,7 @@ class Agent:
                 {"role": "system", "content": NARRATOR_PROMPT},
                 {"role": "user", "content": f"Question: {question}\nData: {json.dumps(data, default=str)}"},
             ],
+            keep_alive=KEEP_ALIVE,
             options={"num_ctx": NARRATE_NUM_CTX, "temperature": 0},
         )
         history.record_model_call(time.monotonic() - t0)
@@ -215,7 +217,9 @@ class Agent:
         pending_error_tool: str | None = None
 
         for _ in range(MAX_TOOL_ITERATIONS):
-            chat_kwargs: dict[str, Any] = dict(model=self.model, messages=self.messages, tools=TOOLS, options={"num_ctx": NUM_CTX})
+            chat_kwargs: dict[str, Any] = dict(
+                model=self.model, messages=self.messages, tools=TOOLS, keep_alive=KEEP_ALIVE, options={"num_ctx": NUM_CTX}
+            )
             if self.think:
                 chat_kwargs["think"] = True
             t0 = time.monotonic()

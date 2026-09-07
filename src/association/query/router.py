@@ -29,6 +29,7 @@ import ollama
 
 from association.season import current_season
 
+from .keepalive import KEEP_ALIVE
 from .season_text import season_from_text
 
 # Small enough to stay in ollama's prefix cache across calls, which is what
@@ -249,6 +250,7 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
             model=model,
             messages=[{"role": "system", "content": ROUTER_PROMPT}, {"role": "user", "content": user}],
             format=ROUTER_SCHEMA,
+            keep_alive=KEEP_ALIVE,
             options={"num_ctx": NUM_CTX, "temperature": 0},
         )
         raw = json.loads(response.message.content or "{}")

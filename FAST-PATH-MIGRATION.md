@@ -222,6 +222,14 @@ and carries a comment saying why.
 
 ## Stage 3 — retire the preamble — DONE, and the plan here was wrong
 
+> **Superseded by a later pass.** The reasoning below was right *at the time*:
+> the agent still handled comparisons, game logs and records, so the entries
+> those needed had to stay. Once stages 2.1–2.5 plus `player_compare` and
+> `single_game_high` landed, only genuinely novel questions reach the agent, and
+> fourteen entries were removed — see "Trimming the knowledge base" below.
+> Per-question assembly remains the mechanism; the list it assembles from is
+> now much smaller.
+
 **The deletion plan does not survive contact.** Every step above says which
 KB entries it "retires", and that reasoning was wrong. The agent still writes
 free-form SQL for every `other` question, and those questions hit exactly the
@@ -351,6 +359,30 @@ season". But since trimming the schema buys nothing, the model's `season` /
 the model's slot applies when it doesn't, so phrasings the parser has never
 seen ("in his rookie year") route exactly as well as before. Both `known_gap`
 markers are gone and the check is 30/30 with no gaps.
+
+## Trimming the knowledge base
+
+With every common shape ported, the fall-through path handles only questions no
+template covers, and fourteen entries had nothing left to do. Removed: game
+logs across home and away, records alongside a game list, first/last game,
+single-game-vs-season totals, per-game averages, traded-player dedup,
+double-doubles, shot-chart guidance and `made_only`, rate-stat minimum samples,
+NetPoints rate-vs-total, fingerprint categories, "top N by NetPoints alongside
+box-score stats", and "a specific game implies its season". Each is a rule in
+code now, tested, where it cannot be truncated away or half-remembered.
+
+**The criterion, since it is the reusable part:** a *shape* a template owns
+goes; a *schema fact* that makes arbitrary SQL silently wrong or silently empty
+stays. So `fieldGoalsMade` already including threes stays (wrong math, not an
+error), the ISO-timestamp date trap stays (zero rows, no error), NetPoints'
+string `season_type` stays (matches nothing, no error), and per-quarter scoring
+and shot distance stay because no template derives them. Two tests pin both
+halves of that criterion so the next trim has something to argue against.
+
+6,350 tokens across 26 entries became 2,776 across 12; an assembled preamble is
+now ~5,000–5,500 tokens. This is a side project and every entry is one `git
+revert` away, which is what made an aggressive trim the right call rather than
+a risky one.
 
 ## What is left
 

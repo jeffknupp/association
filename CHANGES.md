@@ -5,6 +5,39 @@ commit that made it for the full story.
 
 ## 2026-09-06
 
+- **Trim the knowledge base to what the fall-through path actually needs, and
+  keep models warm**: with every common shape ported to a template, fourteen
+  `KNOWLEDGE_BASE` entries had nothing left to do - game logs across home and
+  away, records alongside a game list, first/last game, single-game-vs-season
+  totals, per-game averages, traded-player dedup, double-doubles, shot-chart
+  guidance and `made_only`, rate-stat minimum samples, NetPoints rate-vs-total,
+  fingerprint categories, "top N by NetPoints alongside box-score stats", and
+  "a specific game implies its season". Each is a rule in code now, tested,
+  where it cannot be truncated away or half-remembered.
+
+  The criterion, since it is the reusable part: a SHAPE a template owns goes; a
+  SCHEMA FACT that makes arbitrary SQL silently wrong or silently empty stays.
+  So `fieldGoalsMade` already including threes stays (wrong math, not an
+  error), the ISO-timestamp date trap stays (zero rows, no error), NetPoints'
+  string `season_type` stays (matches nothing, no error), and per-quarter
+  scoring and shot distance stay because no template derives them. Two tests
+  pin both halves of that criterion. 6,350 tokens across 26 entries became
+  2,776 across 12, and an assembled preamble is now ~5,000-5,500 tokens.
+
+  Also corrects two claims from the previous commit, both measured wrong.
+  ollama's default ALREADY keeps both the router and agent models resident -
+  `/api/ps` reports qwen2.5:7b and qwen2.5:3b loaded together - so
+  `OLLAMA_MAX_LOADED_MODELS` needs no change, and setting it from this process
+  would be a no-op anyway since the server reads it (a systemd unit here). And
+  the ~175s a fall-through costs is not a model swap: it is prefill of the
+  agent's preamble at roughly 33 tok/s under a 6-core CPUQuota, which happens
+  with both models already resident.
+
+  What does bite is the idle unload after ~5 minutes, costing ~15s to reload
+  the router. Requests now pass `keep_alive` (30m, override with
+  `ASSOCIATION_KEEP_ALIVE`), which is a per-request field and so actually works
+  from the client. Routing check 30/30.
+
 - **Read the season out of the question text, in code**: "last season" is
   arithmetic on a calendar, not language understanding, and it was the slot the
   router most reliably dropped - "plot Curry's threes from last season" and

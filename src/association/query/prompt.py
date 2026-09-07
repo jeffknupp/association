@@ -91,11 +91,25 @@ season_type: 1=preseason, 2=regular season, 3=postseason.
 team_id / athlete_id / event_id are all VARCHAR - join and filter on them as strings.
 """
 
-# A growing, appendable knowledge base of schema/domain facts a model can't get right by
-# guessing - each one was added because a real question produced a wrong or awkward answer
-# without it. Keep entries concrete: a copy-pasteable SQL pattern fixes small local models
-# far more reliably than an abstract instruction does. To harden a new failure mode, add an
-# entry here rather than editing prose elsewhere.
+# Schema/domain facts a model can't get right by guessing - each one was added
+# because a real question produced a wrong or awkward answer without it. Keep
+# entries concrete: a copy-pasteable SQL pattern fixes small local models far
+# more reliably than an abstract instruction does.
+#
+# This list only has to serve the FALL-THROUGH path now: questions no template
+# covers, where the agent still writes SQL by hand. Fourteen entries were
+# removed once their whole subject moved into a template (game logs, records,
+# leaderboards, double-doubles, shot charts, minimum samples, NetPoints rate-vs-
+# total and fingerprint categories) - those rules live in code now, tested,
+# where they cannot be truncated away or half-remembered. Recoverable from git
+# if a gap turns up.
+#
+# What stays is what an arbitrary hand-written query can still trip on: silent
+# traps (a string season_type that matches nothing, an ISO timestamp that makes
+# `date = 'YYYY-MM-DD'` return zero rows), math that is wrong rather than empty
+# (fieldGoalsMade already includes threes), and derivations no template does
+# (per-quarter scoring, shot distance). Add here only when the fall-through
+# path needs it; a shape a template should own belongs in templates.py.
 KNOWLEDGE_BASE: list[dict[str, Any]] = [
     {
         "topic": "No season named in the question -> default to the CURRENT season",
@@ -116,49 +130,6 @@ KNOWLEDGE_BASE: list[dict[str, Any]] = [
             "FROM player_season_stats ps JOIN players p ON p.athlete_id = ps.athlete_id\n"
             "WHERE ps.season = current_season() AND ps.season_type = 2\n"
             "ORDER BY ps.avgPoints DESC LIMIT 1"
-        ),
-    },
-    {
-        "topic": "Single-game vs. season-total stats",
-        "note": (
-            "player_box_stats / team_box_stats rows are PER GAME, not season totals. For a "
-            "season-total or leaderboard-by-volume question, prefer player_season_stats "
-            "(already aggregated) over summing this table yourself. Only aggregate "
-            "player_box_stats yourself when you need something player_season_stats doesn't "
-            "have, e.g. a per-game threshold like 'games with 20+ rebounds'."
-        ),
-        "example": (
-            "-- most games with 20+ rebounds in a season\n"
-            "SELECT p.display_name, COUNT(*) AS games\n"
-            "FROM player_box_stats pbs JOIN players p ON p.athlete_id = pbs.athlete_id\n"
-            "WHERE pbs.season = 2026 AND pbs.season_type = 2 AND pbs.rebounds >= 20\n"
-            "GROUP BY p.display_name ORDER BY games DESC LIMIT 1"
-        ),
-    },
-    {
-        "topic": "Season-total leaderboards and traded players",
-        "note": (
-            "player_season_stats gives a traded player one row PER TEAM STINT plus one "
-            "additional combined row with team_id IS NULL. Without filtering, traded players "
-            "get double/triple-counted. Prefer player_season_stats_deduped instead of "
-            "player_season_stats directly - it already collapses to one row per player (the "
-            "combined row) - no QUALIFY needed. Only query player_season_stats itself with the "
-            "QUALIFY pattern below when you specifically need a single team stint's own row."
-        ),
-        "example": (
-            "-- top 5 by season 3-point attempts\n"
-            "SELECT p.display_name, ps.threePointFieldGoalsAttempted\n"
-            "FROM player_season_stats_deduped ps JOIN players p ON p.athlete_id = ps.athlete_id\n"
-            "WHERE ps.season = current_season() AND ps.season_type = 2\n"
-            "ORDER BY ps.threePointFieldGoalsAttempted DESC LIMIT 5"
-        ),
-    },
-    {
-        "topic": "\"Per game\" / \"average\" questions",
-        "note": (
-            "player_season_stats already has avgPoints, avgAssists, avgRebounds, avgSteals, "
-            "avgBlocks, avgMinutes, etc. Use those directly - do not divide a total column by "
-            "gamesPlayed yourself."
         ),
     },
     {
@@ -248,27 +219,6 @@ KNOWLEDGE_BASE: list[dict[str, Any]] = [
         ),
     },
     {
-        "topic": "Shot charts (visual) vs. shot-related numbers",
-        "note": (
-            "A request to see/plot/visualize shots, or that explicitly says 'shot chart', "
-            "uses the render_shot_chart tool. A request for a NUMBER about shots (a distance, "
-            "a percentage, a count) uses run_sql against shot_chart instead, even though it "
-            "mentions shots - it is not a chart-rendering request."
-        ),
-    },
-    {
-        "topic": "render_shot_chart's made_only parameter",
-        "note": (
-            "Only pass made_only if the user's wording explicitly says made/makes (-> true) "
-            "or missed/misses (-> false). Never default it to false - that silently filters "
-            "to misses-only when the user wanted to see everything."
-        ),
-        "example": (
-            "-- \"three pointers in the first quarter\" -> no made_only key at all:\n"
-            "render_shot_chart(player_name=..., shot_value=3, period=1)"
-        ),
-    },
-    {
         "topic": "Filtering SQL to one named player or team",
         "note": (
             "athlete_id/team_id are opaque VARCHAR ids, not names OR abbreviations. Comparing one "
@@ -291,90 +241,6 @@ KNOWLEDGE_BASE: list[dict[str, Any]] = [
             "-- RIGHT (team by abbreviation):\n"
             "SELECT g.* FROM games g JOIN teams t ON t.team_id = g.home_team_id\n"
             "WHERE t.abbreviation = 'NY' AND g.date LIKE '2026-04-12%'"
-        ),
-    },
-    {
-        "topic": "\"First game\" / \"most recent game\" / \"last game\" of a season",
-        "note": (
-            "These need an explicit ORDER BY on games.date - LIMIT 1 without an ORDER BY "
-            "returns an arbitrary row, not the earliest/latest one. Join to games and sort by "
-            "g.date (ASC for first, DESC for most recent/last), don't try to guess an event_id."
-        ),
-        "example": (
-            "-- Steph Curry's first game of the 2026 season\n"
-            "SELECT g.date, pgl.points, pgl.ts_pct\n"
-            "FROM player_game_log pgl JOIN games g ON g.event_id = pgl.event_id\n"
-            "WHERE pgl.player_name ILIKE '%Curry%' AND pgl.season = 2026 AND pgl.season_type = 2\n"
-            "ORDER BY g.date ASC LIMIT 1"
-        ),
-    },
-    {
-        "topic": "A team's game log across home AND away games (opponent, score, win/loss)",
-        "note": (
-            "games is home/away-oriented, not team-perspective - filtering it by joining "
-            "team_id to only home_team_id (or only away_team_id) silently returns just that "
-            "team's HOME games, missing every away game, with no error. Don't figure out the "
-            "opponent or who won by hand either: team_box_stats has team_id/opponent_team_id/"
-            "home_away (one row per TEAM per game), but who WON lives only on games as "
-            "g.winner_team_id - team_box_stats has no winner column of its own, so "
-            "tbs.winner_team_id is a column-not-found error, not a shortcut. Join team_box_stats "
-            "for the opponent, join games for winner_team_id, select both directly (they "
-            "auto-resolve to names) - don't alias a team name onto a 'winner' column yourself. "
-            "Also SELECT team_score/opponent_score as the CASE-on-home_away "
-            "columns shown below, not raw home_score/away_score - reporting raw home/away score "
-            "in prose forces you to silently guess which number was this team's each row, which "
-            "you WILL get backwards on some rows; the computed columns remove the guess. A query "
-            "that only ever shows one team as the winner across every row, or only ever as the "
-            "home team, is a sign this was done by hand instead - re-check before answering."
-        ),
-        "example": (
-            "-- New York Knicks' last 20 games (home and away), opponent, score, and outcome\n"
-            "SELECT g.date, tbs.home_away, tbs.opponent_team_id,\n"
-            "       CASE WHEN tbs.home_away = 'home' THEN g.home_score ELSE g.away_score END AS team_score,\n"
-            "       CASE WHEN tbs.home_away = 'home' THEN g.away_score ELSE g.home_score END AS opponent_score,\n"
-            "       g.winner_team_id\n"
-            "FROM team_box_stats tbs\n"
-            "JOIN games g ON g.event_id = tbs.event_id\n"
-            "JOIN teams t ON t.team_id = tbs.team_id\n"
-            "WHERE t.display_name ILIKE '%Knicks%' AND tbs.season = 2026 AND tbs.season_type = 2\n"
-            "ORDER BY g.date DESC LIMIT 20"
-        ),
-    },
-    {
-        "topic": "A record/tally (wins, losses, count) alongside a list of games",
-        "keywords": ['record', 'wins', 'losses', 'won', 'lost', 'tally'],
-        "note": (
-            "Never count wins/losses/totals yourself by reading back over rows you already "
-            "listed - a small model WILL miscount or invert the tally (confirmed live: reported "
-            "'7 wins and 13 losses' as the summary for a list that, counted row by row, was "
-            "actually 13-7 the other way). Compute the tally in SQL instead. If the games are "
-            "already limited (e.g. 'last 20 games'), wrap that query in a CTE and aggregate over "
-            "it with a window function, so the count is guaranteed to match exactly the same set "
-            "of rows being displayed - don't run a second, separately-limited query for the "
-            "count, it can drift from the displayed set. When the user asked for BOTH per-game "
-            "detail and a record, your answer needs BOTH: still list every game with its own "
-            "date/score/outcome from the actual rows, don't collapse them into a hand-sorted "
-            "'wins against X, Y, Z / losses against A, B, C' summary instead - confirmed live, "
-            "that grouping-from-memory step (not the aggregate count itself) is where a small "
-            "model misclassifies individual games, even when the total it reports is correct."
-        ),
-        "example": (
-            "-- Knicks' last 20 games AND their record over exactly those 20\n"
-            "WITH last20 AS (\n"
-            "    SELECT g.date, tbs.team_id, tbs.opponent_team_id, tbs.home_away,\n"
-            "           CASE WHEN tbs.home_away = 'home' THEN g.home_score ELSE g.away_score END AS team_score,\n"
-            "           CASE WHEN tbs.home_away = 'home' THEN g.away_score ELSE g.home_score END AS opponent_score,\n"
-            "           g.winner_team_id\n"
-            "    FROM team_box_stats tbs\n"
-            "    JOIN games g ON g.event_id = tbs.event_id\n"
-            "    JOIN teams t ON t.team_id = tbs.team_id\n"
-            "    WHERE t.display_name ILIKE '%Knicks%' AND tbs.season = 2026 AND tbs.season_type = 2\n"
-            "    ORDER BY g.date DESC LIMIT 20\n"
-            ")\n"
-            "SELECT *,\n"
-            "       SUM(CASE WHEN winner_team_id = team_id THEN 1 ELSE 0 END) OVER () AS wins,\n"
-            "       SUM(CASE WHEN winner_team_id != team_id THEN 1 ELSE 0 END) OVER () AS losses\n"
-            "FROM last20 ORDER BY date DESC"
         ),
     },
     {
@@ -401,64 +267,6 @@ KNOWLEDGE_BASE: list[dict[str, Any]] = [
         ),
     },
     {
-        "topic": "NetPoints per-100-possession rate vs. season total (net_points_player)",
-        "note": (
-            "Prefer get_leaderboard(metric='netpoints_total' or 'netpoints_per_100') over hand-writing "
-            "this - it already applies the right minimum-minutes qualifier below. Use run_sql directly "
-            "only when the question also needs something get_leaderboard doesn't do (e.g. an opponent "
-            "or per-game join). Background: overall/offense/defense on net_points_player are SEASON "
-            "CUMULATIVE TOTALS, not a rate - "
-            "confirmed live: two players with the identical 82 games played this season range from "
-            "-194.62 to +164.15, so 'best/worst by NetPoints' using overall alone favors players who "
-            "played more possessions, not players who were better per-possession. For a normalized "
-            "comparison use overall_per_100_poss/offense_per_100_poss/defense_per_100_poss instead - "
-            "these are ESPN Analytics' OWN pre-computed per-100-possession values (confirmed live: "
-            "espnanalytics.com's 'Net Points / 100 Poss' toggle fetches a second file for these, it "
-            "does not compute them in the browser from the totals), not something derived here. "
-            "total_minutes is also available if a per-36 comparison is wanted instead. A player can "
-            "have overall/offense/defense but NULL per-100 fields - a small number of degenerate "
-            "stints (e.g. a single scoreless playoff game, confirmed live) exist in the totals file "
-            "but were dropped from the rate file; treat that as no rate available for that stint, not "
-            "as zero."
-        ),
-        "example": (
-            "-- best qualified players by NetPoints per 100 possessions, not by season total\n"
-            "SELECT p.display_name, npp.overall_per_100_poss, npp.total_minutes\n"
-            "FROM net_points_player npp\n"
-            "JOIN players p ON p.athlete_id = npp.athlete_id\n"
-            "WHERE npp.season = 2026 AND npp.net_points_season_type = 'Regular Season'\n"
-            "  AND npp.overall_per_100_poss IS NOT NULL AND npp.total_minutes >= 500\n"
-            "ORDER BY npp.overall_per_100_poss DESC LIMIT 10"
-        ),
-    },
-    {
-        "topic": "NetPoints Fingerprint categories (net_points_player_fingerprint)",
-        "note": (
-            "Prefer get_leaderboard(metric='<category>_o_net_pts'/'_d_net_pts'/'_t_net_pts') over "
-            "hand-writing this - e.g. rim_o_net_pts for 'best at scoring at the rim', "
-            "turnover_d_net_pts for 'best at forcing turnovers'. Use run_sql directly only for "
-            "something get_leaderboard doesn't do. Background: this table has NO season_type "
-            "column at all (unlike every other NetPoints table) - it's one row per player per "
-            "season, not split by regular/postseason. It also has no traded-player multi-row "
-            "problem the way player_season_stats does (already one row per player per season), "
-            "so no QUALIFY/dedup is needed here. The category columns (two_pt, three_pt, driving, "
-            "fastbreak, rebound, turnover, rim, ... - describe_table for the full 22) are SEASON "
-            "CUMULATIVE totals in the same units as net_points_player.overall, not a rate - same "
-            "caveat as that entry above, a low-minutes player can show an extreme value in one "
-            "category by chance. Bio-looking columns you might expect (height, draft year) aren't "
-            "here - join to players for those instead, this table only has games/minutes/"
-            "total_poss/average_position/usage/assisted_rate beyond the NetPoints categories."
-        ),
-        "example": (
-            "-- best players at scoring at the rim (offense), current season\n"
-            "SELECT p.display_name, f.rim_o_net_pts, f.minutes\n"
-            "FROM net_points_player_fingerprint f\n"
-            "JOIN players p ON p.athlete_id = f.athlete_id\n"
-            "WHERE f.season = current_season()\n"
-            "ORDER BY f.rim_o_net_pts DESC LIMIT 10"
-        ),
-    },
-    {
         "topic": "Per-game NetPoints (net_points_player_game / net_points_team_game)",
         "note": (
             "Only exist if fetched with --include-net-points-daily - if a query against them errors "
@@ -472,38 +280,6 @@ KNOWLEDGE_BASE: list[dict[str, Any]] = [
             "-- a player's NetPoints in one specific game\n"
             "SELECT o_net_pts, d_net_pts, t_net_pts FROM net_points_player_game\n"
             "WHERE athlete_id = ? AND event_id = ?"
-        ),
-    },
-    {
-        "topic": "\"Top N players by NetPoints\" alongside opponent or per-game stats",
-        "note": (
-            "If the question wants an opponent, or per-game stats (points/rebounds/etc.) sitting "
-            "next to a NetPoints value, it means ONE game per player, not a season - use "
-            "net_points_player_game (t_net_pts), not net_points_player.overall. Confirmed live: "
-            "joining the season-level table to player_box_stats on athlete_id+season fans out into "
-            "one row per game the player played, so ORDER BY ... LIMIT 10 returns up to 10 GAMES "
-            "(often nearly all from one or two players whose season total happens to be highest), "
-            "not 10 distinct players - and without an explicit season_type filter on the per-game "
-            "side (net_points_player has no season_type to join on, forcing this mistake), it also "
-            "silently pulls in preseason/postseason games too. net_points_player_game already has "
-            "one row per player per game with its own season/season_type and the same event_id "
-            "player_box_stats uses - join on event_id + athlete_id, not season, and the opponent is "
-            "already sitting right there via player_box_stats.opponent_team_id."
-        ),
-        "example": (
-            "-- top 10 single-game NetPoints performances, with opponent and box score\n"
-            "-- (fieldGoalsMade/Attempted - threePointFieldGoalsMade/Attempted) is the true 2-point\n"
-            "-- split - see the fieldGoalsMade entry below on why fieldGoalsMade alone is NOT that.\n"
-            "SELECT p.display_name, npg.t_net_pts, pbs.opponent_team_id,\n"
-            "       pbs.points, pbs.assists, pbs.rebounds, pbs.blocks, pbs.steals, pbs.turnovers,\n"
-            "       pbs.fieldGoalsAttempted - pbs.threePointFieldGoalsAttempted AS twoPtAttempted,\n"
-            "       pbs.fieldGoalsMade - pbs.threePointFieldGoalsMade AS twoPtMade,\n"
-            "       pbs.threePointFieldGoalsAttempted, pbs.threePointFieldGoalsMade\n"
-            "FROM net_points_player_game npg\n"
-            "JOIN players p ON p.athlete_id = npg.athlete_id\n"
-            "JOIN player_box_stats pbs ON pbs.event_id = npg.event_id AND pbs.athlete_id = npg.athlete_id\n"
-            "WHERE npg.season = 2026 AND npg.season_type = 2\n"
-            "ORDER BY npg.t_net_pts DESC LIMIT 10"
         ),
     },
     {
@@ -545,14 +321,6 @@ KNOWLEDGE_BASE: list[dict[str, Any]] = [
         ),
     },
     {
-        "topic": "A specific game already implies its season",
-        "note": (
-            "When event_id is given (e.g. to render_shot_chart), season and season_type are "
-            "redundant - the tool ignores them once event_id is set. Feel free to omit them "
-            "rather than guess."
-        ),
-    },
-    {
         "topic": "Always call run_sql - never print SQL as your answer",
         "note": (
             "If a query fails or you're unsure of a column name, call describe_table or fix "
@@ -560,26 +328,6 @@ KNOWLEDGE_BASE: list[dict[str, Any]] = [
             "your reply text (e.g. inside a ```sql code block) and stopping - that query never "
             "runs, so the user gets a recipe instead of an answer. Your final reply must be a "
             "natural-language answer built from an actual run_sql result, not a query."
-        ),
-    },
-    {
-        "topic": "Double-double / triple-double definitions",
-        "keywords": ['double', 'triple', 'doubles', 'triples'],
-        "note": (
-            "This is settled, not worth re-deriving: a double-double is >=10 in TWO of "
-            "{points, rebounds, assists, steals, blocks} in one game; a triple-double is >=10 "
-            "in THREE of those same five categories in one game. player_season_stats already "
-            "has this precomputed as doubleDouble/tripleDouble (a COUNT of such games that "
-            "season) - use those columns (with the trade-row QUALIFY pattern above) instead of "
-            "recomputing from player_box_stats."
-        ),
-        "example": (
-            "-- most triple-doubles in a season\n"
-            "SELECT p.display_name, ps.tripleDouble\n"
-            "FROM player_season_stats ps JOIN players p ON p.athlete_id = ps.athlete_id\n"
-            "WHERE ps.season = 2024 AND ps.season_type = 2\n"
-            "QUALIFY ROW_NUMBER() OVER (PARTITION BY ps.athlete_id ORDER BY (ps.team_id IS NULL) DESC) = 1\n"
-            "ORDER BY ps.tripleDouble DESC LIMIT 1"
         ),
     },
     {
@@ -592,37 +340,6 @@ KNOWLEDGE_BASE: list[dict[str, Any]] = [
             "formulas yourself. PER, Win Shares, BPM, and VORP are "
             "not computed anywhere in this dataset - if asked for one of those, say it isn't "
             "available rather than substituting a different stat or inventing a number."
-        ),
-    },
-    {
-        "topic": "Rate-stat leaderboards need a minimum sample size (usage_pct, ts_pct, efg_pct)",
-        "keywords": ['qualified', 'minimum', 'qualify', 'rate', 'efficiency'],
-        "note": (
-            "Prefer get_leaderboard(metric='usage_pct'/'ts_pct'/'efg_pct') over hand-writing this - it "
-            "already applies the minimum-games qualifier below by default. Use run_sql directly only "
-            "if the question needs something get_leaderboard doesn't do. Background: a real query for "
-            "'top 10 by usage rate' with no minimum returned Izaiah "
-            "Brockington at 65.93% (8 games) at #1, and the next 9 spots were all 1-3-game "
-            "stints too - confirmed live: usage_pct is a ratio, so a handful of unusual "
-            "garbage-time minutes can swing it to an extreme value that a real, sustained "
-            "role never reaches. The real usage leaders (Embiid, Giannis, Doncic, ~37-39%) "
-            "were buried below dozens of small-sample flukes. Unlike a season TOTAL (which "
-            "naturally requires volume to rank highly), a rate/percentage stat needs an "
-            "explicit minimum sample - use games_played (player_season_advanced_stats has it "
-            "directly) or total_minutes as a floor. Confirmed live: WHERE games_played >= 20 "
-            "fixes this leaderboard completely. If the user's question gives its own minimum "
-            "(games, minutes, attempts), use that instead of 20 - 20 is just a reasonable "
-            "default for 'best/worst by X%' with no minimum stated. This is the same principle "
-            "as the NetPoints-per-100 entry above (total_minutes >= 500 there) - apply it to "
-            "ts_pct/efg_pct/usage_pct too, not just NetPoints."
-        ),
-        "example": (
-            "-- top 10 by usage rate, season not named -> current_season(), not a hardcoded year\n"
-            "SELECT p.display_name, pas.games_played, pas.usage_pct\n"
-            "FROM player_season_advanced_stats pas\n"
-            "JOIN players p ON p.athlete_id = pas.athlete_id\n"
-            "WHERE pas.season_type = 2 AND pas.season = current_season() AND pas.games_played >= 20\n"
-            "ORDER BY pas.usage_pct DESC LIMIT 10"
         ),
     },
 ]

@@ -69,7 +69,35 @@ def test_selection_picks_the_entry_a_question_actually_needs() -> None:
     assert "Points scored in a specific quarter/period" in _topics("How many points did Jokic score in the 3rd quarter?")
     assert "Shot distance / shot location math" in _topics("How far away was Curry's average three?")
     assert "Filtering by an exact calendar date" in _topics("What happened on April 12?")
-    assert "Double-double / triple-double definitions" in _topics("Who had the most triple doubles?")
+    assert "NetPoints (net_points_player / net_points_team)" in _topics("Who leads in NetPoints against Boston?")
+
+
+def test_entries_a_template_now_owns_are_gone() -> None:
+    """These moved into templates.py, where the rule is code and tested rather
+    than prose the model has to remember. Recoverable from git if a gap turns
+    up; see the note above KNOWLEDGE_BASE."""
+    topics = {e["topic"] for e in KNOWLEDGE_BASE}
+    for gone in (
+        "Double-double / triple-double definitions",
+        "A team's game log across home AND away games (opponent, score, win/loss)",
+        "A record/tally (wins, losses, count) alongside a list of games",
+        "Rate-stat leaderboards need a minimum sample size (usage_pct, ts_pct, efg_pct)",
+        '"First game" / "most recent game" / "last game" of a season',
+    ):
+        assert gone not in topics
+
+
+def test_the_silent_traps_a_hand_written_query_can_still_hit_are_kept() -> None:
+    """Removal criterion: a shape a template owns goes, a schema fact that
+    makes arbitrary SQL silently wrong or silently empty stays."""
+    topics = {e["topic"] for e in KNOWLEDGE_BASE}
+    for kept in (
+        "fieldGoalsMade/Attempted already INCLUDES 3-pointers",
+        "Filtering by an exact calendar date",
+        "NetPoints (net_points_player / net_points_team)",
+        "Points scored in a specific quarter/period",
+    ):
+        assert kept in topics
 
 
 def test_selection_is_capped() -> None:
