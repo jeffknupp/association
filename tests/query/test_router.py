@@ -145,3 +145,26 @@ def test_array_slots_are_bounded() -> None:
         schema = ROUTER_SCHEMA["properties"][name]
         assert schema["type"] == "array"
         assert schema.get("maxItems"), f"{name} has no maxItems"
+
+
+def test_question_text_beats_a_dropped_season_slot() -> None:
+    """The model omits the season on "...last season" often enough that
+    deferring to it silently answered for the current season."""
+    got = _route('{"intent":"leaderboard","stat":"ts_pct"}')
+    assert got is not None and "season" not in got.slots
+    with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"leaderboard","stat":"ts_pct"}')):
+        got = route("m", "Best true shooting percentage last season?")
+    assert got is not None and got.slots["season"] == current_season() - 1
+
+
+def test_question_text_beats_a_wrong_season_slot() -> None:
+    with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"leaderboard","season":2019}')):
+        got = route("m", "who led the league in 2024?")
+    assert got is not None and got.slots["season"] == 2024
+
+
+def test_the_model_slot_still_applies_when_the_text_names_no_season() -> None:
+    """Phrasings the parser has never seen must route as well as before."""
+    with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"leaderboard","season":2021}')):
+        got = route("m", "who led in his rookie year?")
+    assert got is not None and got.slots["season"] == 2021

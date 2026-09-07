@@ -5,6 +5,32 @@ commit that made it for the full story.
 
 ## 2026-09-06
 
+- **Read the season out of the question text, in code**: "last season" is
+  arithmetic on a calendar, not language understanding, and it was the slot the
+  router most reliably dropped - "plot Curry's threes from last season" and
+  "best true shooting percentage last season" both came back with no season at
+  all, so the answer silently covered the CURRENT season. Both were carried as
+  `known_gap` cases in `check_routing.py`; both are now fixed and the check is
+  30/30 with no gaps outstanding.
+
+  New `query/season_text.py` handles "last/previous season", "this season",
+  explicit years, and season spans in either form - `2023-24` and `2023-2024`
+  both mean the season ENDING in 2024, ESPN's convention and the form a
+  hyphen-blind year regex gets exactly one year wrong. It declines to guess
+  when a question names two different years ("compare 2023 and 2024"), ignores
+  out-of-range years and numeric thresholds ("30+ point games" is not a
+  season), and does not mistake "last 5 games" for "last season".
+
+  Deliberately additive rather than a replacement: the model's `season` and
+  `season_ref` slots are KEPT as a fallback, so code wins where it finds an
+  answer and the model's slot applies where it does not, and phrasings the
+  parser has never seen ("in his rookie year") route exactly as well as before.
+  That choice follows directly from the negative result recorded above -
+  removing those properties from the schema bought nothing elsewhere, so there
+  was no reason to give up the fallback to get the fix. Confirmed live: Curry's
+  threes now chart the 2025 season rather than 2026, and true shooting resolves
+  to 2025.
+
 - **Route on a 3B, generate SQL on the 7B**: routing and SQL generation are
   different jobs and were sharing one model. Benchmarked over the 30 real
   questions in `scripts/check_routing.py` (new `scripts/bench_router_models.py`

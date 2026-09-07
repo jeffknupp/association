@@ -65,11 +65,9 @@ CASES: list[tuple[str, str, dict]] = [
         {"stat": "netpoints_per_100"},
     ),
     ("Top 5 scorers with their rebounds and assists", "leaderboard", {"fields": ["rebounds", "assists"]}),
-    # Known gap: "last season" gets dropped here, so the answer covers the
-    # CURRENT season. Visible rather than silent - every template names the
-    # season it used - but the year can be wrong. Requiring season_ref in the
-    # schema was measured and made other slots worse; see FAST-PATH-MIGRATION.md.
-    ("Best true shooting percentage last season?", "leaderboard", {"season": current_season() - 1, "known_gap": True}),
+    # Was a known_gap until the season came out of the question text in code
+    # rather than the model's slot - see query/season_text.py.
+    ("Best true shooting percentage last season?", "leaderboard", {"season": current_season() - 1}),
     ("How many points did Luka Doncic average in 2024?", "player_stat", {"player": "Luka Doncic", "stat": "points", "season": 2024}),
     ("What are Jokic's numbers this season?", "player_stat", {"player": "Nikola Jokic"}),
     ("How many rebounds is Wembanyama averaging?", "player_stat", {"stat": "rebounds"}),
@@ -81,12 +79,7 @@ CASES: list[tuple[str, str, dict]] = [
     ("Who scores more, Wemby or Jokic?", "player_compare", {"stat": "points"}),
     ("Luka vs Giannis this year", "player_compare", {}),
     ("Show me Wembanyama's shot chart", "shot_chart", {"player": "Victor Wembanyama"}),
-    # Same known gap as the true-shooting case: "last season" is dropped some
-    # runs and kept others, so the chart can cover the current season instead.
-    # Flaky rather than fixed - adding an intent perturbs slot extraction
-    # elsewhere, which is a real property of routing everything through one
-    # small model. Visible, since the chart names the season it used.
-    ("Plot Curry's threes from last season", "shot_chart", {"season": current_season() - 1, "known_gap": True}),
+    ("Plot Curry's threes from last season", "shot_chart", {"season": current_season() - 1}),
     ("What was the Lakers record last season?", "team_record", {"team": "Lakers", "season": current_season() - 1}),
     # "last N games" means most recent, not earliest - confirmed live, the
     # router got this backwards and answered with October games.

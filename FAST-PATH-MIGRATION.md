@@ -342,6 +342,16 @@ The eval is at ceiling, so it cannot rule out a small effect, but the honest
 summary is: trim the schema because a slot is better done in code, not because
 trimming buys accuracy elsewhere.
 
+**Which is exactly why `query/season_text.py` landed the way it did.** Reading
+the season out of the question text is worth doing on its own merits — it was
+the slot the router most reliably dropped, and both `known_gap` cases were the
+same failure, answering for the current season when the question said "last
+season". But since trimming the schema buys nothing, the model's `season` /
+`season_ref` slots are *kept as a fallback*: code wins when it finds an answer,
+the model's slot applies when it doesn't, so phrasings the parser has never
+seen ("in his rookie year") route exactly as well as before. Both `known_gap`
+markers are gone and the check is 30/30 with no gaps.
+
 ## What is left
 
 - ~~**`player_compare`**~~ — DONE. The agent got this wrong for a reason no
@@ -414,7 +424,9 @@ Verification per shape, since unit tests can't catch a routing regression:
   only (cheap — all cache hits, ~1.5s each), asserting intent and slots, and
   including cases that must NOT be answered by a near-miss template. Grow it
   with every ported shape; it is the regression suite for the part that has no
-  types. Currently 30/30, plus cases marked `known_gap` — reported as GAP
+  types. Currently 30/30 with no `known_gap` cases outstanding. The marker
+  remains available (reported as GAP, not counted as a failure) for a future
+  weakness that is visible rather than silent. It previously covered — reported as GAP
   and not counted as a failure, so a real regression still stands out. That
   one is "best true shooting percentage **last season**", where the router
   drops `season_ref` and the answer covers the current season instead; every

@@ -29,6 +29,8 @@ import ollama
 
 from association.season import current_season
 
+from .season_text import season_from_text
+
 # Small enough to stay in ollama's prefix cache across calls, which is what
 # makes the fast path fast - see the module docstring. Keep additions terse:
 # one intent line plus one example is ~40 tokens, versus the ~400 a
@@ -210,11 +212,16 @@ class Route:
     slots: dict[str, Any] = field(default_factory=dict)
 
 
-def _validate_season(slots: dict[str, Any]) -> int | None:
+def _validate_season(slots: dict[str, Any], question: str = "") -> int | None:
     """Resolve the season the code's way, not the model's. season_ref is
     deliberately an enum the model can only pick from, because relative-date
     arithmetic ("last season") is arithmetic, not language - it belongs here,
     next to current_season(), not in a prompt."""
+    # The question text first: it is the source, and the model drops this slot
+    # often enough that deferring to it silently answered for the wrong season.
+    from_text = season_from_text(question)
+    if from_text is not None:
+        return from_text
     season = slots.get("season")
     if isinstance(season, int) and MIN_SEASON <= season <= current_season() + 1:
         return season
@@ -254,7 +261,7 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     # dropping it here keeps every template's `slots.get(...) or default`
     # working and keeps the logged Route readable.
     slots = {k: v for k, v in raw.items() if k != "intent" and not (isinstance(v, str) and not v.strip())}
-    resolved_season = _validate_season(slots)
+    resolved_season = _validate_season(slots, question)
     slots.pop("season_ref", None)
     if resolved_season is None:
         slots.pop("season", None)
