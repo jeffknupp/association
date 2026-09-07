@@ -49,8 +49,11 @@ intent must be one of:
                      these, a season average is a different question
   threshold_count  - count a player's games meeting a per-game threshold
                      ("most 30+ point games", "most games with 20+ rebounds")
-  player_stat      - one named player's season numbers ("how many points did Curry
-                     average", "what are Jokic's numbers") - always set player
+  player_stat      - one named player's numbers for ONE season ("how many points
+                     did Curry average", "what are Jokic's numbers") - set player
+  player_history   - one named player's stat across SEVERAL seasons ("3pt% over
+                     the past 4 seasons", "Jokic's scoring by year") - set
+                     player, stat, and limit to the number of seasons
   game_log         - list a player's or team's games, or one specific game
                      ("Lakers last 5 games", "Curry's first game of the season")
   team_record      - one team's win/loss record for a season
@@ -65,7 +68,8 @@ intent must be one of:
                      distances
 
 stat names a box-score category: points, rebounds, assists, steals, blocks,
-turnovers, minutes, threePointFieldGoalsMade, fieldGoalsMade, freeThrowsMade.
+turnovers, minutes, threePointFieldGoalsMade, fieldGoalsMade, freeThrowsMade,
+or a shooting percentage: threePointFieldGoalPct, fieldGoalPct, freeThrowPct.
 Set it whenever the question names one - for threshold_count, leaderboard and
 player_stat alike. Omit it only when the question asks for overall numbers.
 
@@ -104,6 +108,8 @@ Q: Compare Luka and SGA this season
 {"intent":"player_compare","players":["Luka Doncic","Shai Gilgeous-Alexander"],"season_ref":"current"}
 Q: Who scores more, Wemby or Jokic?
 {"intent":"player_compare","players":["Victor Wembanyama","Nikola Jokic"],"stat":"points"}
+Q: What was Klay Thompson's 3pt percentage over the past 4 seasons?
+{"intent":"player_history","player":"Klay Thompson","stat":"threePointFieldGoalPct","limit":4}
 Q: How many points did Luka Doncic average in 2024?
 {"intent":"player_stat","player":"Luka Doncic","stat":"points","season":2024}
 Q: What are Jokic's numbers this season?
@@ -148,6 +154,7 @@ ROUTER_SCHEMA: dict[str, Any] = {
                 "single_game_high",
                 "threshold_count",
                 "player_stat",
+                "player_history",
                 "player_compare",
                 "game_log",
                 "team_record",

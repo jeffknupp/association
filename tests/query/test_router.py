@@ -1,6 +1,7 @@
 """Tests for the intent router's validation layer - the part that decides what
 the model is and is not trusted to have gotten right."""
 
+import re
 from typing import Any
 from unittest.mock import patch
 
@@ -125,8 +126,9 @@ def test_every_intent_the_prompt_describes_is_emittable() -> None:
     """Regression: player_compare was added to the prompt and given a slot, but
     not to the schema enum - so constrained decoding could never emit it, and
     every comparison silently routed to player_stat instead."""
-    described = {line.strip().split()[0] for line in ROUTER_PROMPT.splitlines() if line.startswith("  ") and " - " in line}
-    described = {name for name in described if name.isidentifier()}
+    # An intent line is `  name  - description`; wrapped continuation lines are
+    # indented further and must not be mistaken for intent names.
+    described = set(re.findall(r"^  (\w+)\s+- ", ROUTER_PROMPT, re.MULTILINE))
     assert described, "no intents parsed out of the prompt"
     assert described <= set(ROUTER_SCHEMA["properties"]["intent"]["enum"])
 

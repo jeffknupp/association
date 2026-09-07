@@ -14,6 +14,7 @@ from association.query.templates import (
     head_to_head,
     leaderboard,
     player_compare,
+    player_history,
     player_stat,
     shot_chart,
     shot_distance,
@@ -726,3 +727,55 @@ def test_shot_distance_reports_no_coordinates_honestly(sc_ctx: TemplateContext) 
 def test_shot_distance_without_a_player_falls_through(sc_ctx: TemplateContext) -> None:
     with pytest.raises(TemplateUnsupported):
         shot_distance(sc_ctx, {"shot_value": 3})
+
+
+# ---------------- player_history ----------------
+
+
+def test_player_history_spans_several_seasons(ps_con: TemplateContext) -> None:
+    """Every other template answers about one season, so a multi-season
+    question had nowhere to go and was absorbed by leaderboard."""
+    s = current_season()
+    ps_con.con.execute("INSERT INTO player_season_stats_deduped (athlete_id, season, season_type, gamesPlayed, avgPoints) VALUES ('1',?,2,70,30.0),('1',?,2,72,28.0)", [s - 1, s - 2])
+    result = player_history(ps_con, {"player": "Luka Doncic", "stat": "points", "limit": 3})
+    assert [row["season"] for row in result.data["seasons"]] == [s, s - 1, s - 2]
+
+
+def test_player_history_defaults_to_four_seasons(ps_con: TemplateContext) -> None:
+    from association.query.templates import DEFAULT_HISTORY_SEASONS
+
+    s = current_season()
+    for offset in range(1, 8):
+        ps_con.con.execute("INSERT INTO player_season_stats_deduped (athlete_id, season, season_type, gamesPlayed, avgPoints) VALUES ('1',?,2,70,20.0)", [s - offset])
+    result = player_history(ps_con, {"player": "Luka Doncic", "stat": "points"})
+    assert len(result.data["seasons"]) == DEFAULT_HISTORY_SEASONS
+
+
+def test_player_history_reports_a_percentage_with_its_volume(ps_con: TemplateContext) -> None:
+    # A percentage without makes/attempts is the thing people immediately ask
+    # "out of how many?" about.
+    for col, typ in [("threePointFieldGoalPct", "DOUBLE"), ("threePointFieldGoalsMade", "INTEGER"), ("threePointFieldGoalsAttempted", "INTEGER")]:
+        ps_con.con.execute(f"ALTER TABLE player_season_stats_deduped ADD COLUMN {col} {typ}")
+    ps_con.con.execute("UPDATE player_season_stats_deduped SET threePointFieldGoalPct=38.3, threePointFieldGoalsMade=202, threePointFieldGoalsAttempted=527 WHERE athlete_id='1'")
+    answer = player_history(ps_con, {"player": "Luka Doncic", "stat": "threePointFieldGoalPct"}).answer or ""
+    assert "3PT%" in answer and "3PM" in answer and "3PA" in answer
+    assert "38.3" in answer and "202" in answer and "527" in answer
+
+
+def test_player_history_refuses_a_stat_it_has_no_history_for(ps_con: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        player_history(ps_con, {"player": "Luka Doncic", "stat": "shot_distance"})
+    with pytest.raises(TemplateUnsupported):
+        player_history(ps_con, {"player": "Luka Doncic"})
+
+
+def test_player_history_asks_on_an_ambiguous_player(ps_con: TemplateContext) -> None:
+    assert "did you mean" in (player_history(ps_con, {"player": "Luka", "stat": "points"}).answer or "")
+
+
+def test_leaderboard_refuses_when_a_player_is_named(lb_con: TemplateContext) -> None:
+    """A leaderboard ranks the league or a team, never one named person.
+    Confirmed live: it answered a question about Klay Thompson with the
+    league's true-shooting leaders, Klay silently dropped."""
+    with pytest.raises(TemplateUnsupported):
+        leaderboard(lb_con, {"stat": "points", "player": "Klay Thompson"})

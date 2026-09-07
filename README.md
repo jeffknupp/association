@@ -217,8 +217,9 @@ single game"), `player_stat` ("how many points did Luka
 average in 2024?"), `player_compare` ("Luka vs SGA this season"),
 `team_record`, `head_to_head` ("how many times did the 76ers play Boston"),
 `game_log` ("the Knicks' last 5 games", "Curry's first game of the season"),
-`shot_chart` and `shot_distance` ("avg 3pt shot distance") — every shape the
-agent's four tools covered, plus several they did not.
+`shot_chart`, `shot_distance` ("avg 3pt shot distance") and `player_history`
+("3pt% over the past 4 seasons", reported with makes and attempts) — every shape
+the agent's four tools covered, plus several they did not.
 
 A short list in the router forces questions no template computes straight to
 the agent, regardless of what the model classified them as — "points in the 3rd

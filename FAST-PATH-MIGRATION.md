@@ -432,6 +432,29 @@ regardless of classification, for questions that read like a supported shape.
 Shot distance was its first entry and left it the same day by earning a
 template — that is the lifecycle, not a workaround to accumulate in.
 
+## `player_history`, and a whole dimension nothing covered
+
+"What was klay thompson's 3pt percentage over the past 4 seasons (with
+attempts/makes)" came back as the *league's* true-shooting leaders for 2020,
+with assists and rebounds columns.
+
+This one was structural rather than a slip. **Every template answered about a
+single season.** A multi-season question had nowhere to go, so the router put
+it in the nearest shape it had, and `leaderboard` cheerfully dropped the named
+player. Worth noting as a distinct failure mode from the others in this
+document: the earlier ones were missing *shapes*, this was a missing
+*dimension* cutting across the shapes that existed.
+
+`player_history` reports one player's stat by season, most recent first, four
+seasons by default. Percentages come with makes and attempts, because a
+percentage without volume is the thing people immediately ask "out of how
+many?" about.
+
+`leaderboard` also refuses outright when a `player` slot is set — it ranks the
+league or a team, never one named person. That guard is independent of the
+routing fix and would have made this a slow answer rather than a confident
+wrong one, which is the trade this design keeps choosing.
+
 ## What is left
 
 - ~~**`player_compare`**~~ — DONE. The agent got this wrong for a reason no

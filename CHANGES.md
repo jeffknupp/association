@@ -5,6 +5,34 @@ commit that made it for the full story.
 
 ## 2026-09-06
 
+- **player_history: one player across several seasons**: reported from real
+  use - "what was klay thompson's 3pt percentage over the past 4 seasons (with
+  attempts/makes)" answered with the LEAGUE's true-shooting leaders for 2020,
+  four of them, with assists and rebounds columns. Wrong player, wrong stat,
+  wrong season, wrong columns.
+
+  The cause was structural rather than a slip: every template answered about a
+  SINGLE season, so a multi-season question had nowhere to go and the router
+  put it in the nearest shape it had. `player_history` reports one player's
+  stat by season, most recent first, defaulting to four seasons and taking the
+  count from `limit`. A percentage comes with its makes and attempts, since a
+  percentage without volume behind it is the thing people immediately ask "out
+  of how many?" about - which is exactly what the question asked for. The
+  router's stat vocabulary gained the shooting percentages
+  (threePointFieldGoalPct, fieldGoalPct, freeThrowPct), which had no
+  representation at all.
+
+  `leaderboard` now also refuses outright when a `player` slot is set: it ranks
+  the league or a team, never one named person, and silently dropping the named
+  player is how Klay Thompson's question came back about Robert Williams III.
+  That guard is independent of the routing fix, and would have turned this
+  wrong answer into a slow one rather than a confident one.
+
+  Also fixes the guard test added with `player_compare`: its parser treated
+  wrapped continuation lines in the router prompt as intent names, so it failed
+  on words like "did" and "the" once descriptions grew to two lines. Routing
+  check 36/36.
+
 - **shot_distance, and no more silent stat fallback**: reported from real use -
   "what was steph curry's avg 3pt shot distance" answered "Stephen Curry
   averaged 26.6 points, 3.6 rebounds and 4.7 assists per game". Two bugs, and

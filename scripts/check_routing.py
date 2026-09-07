@@ -70,6 +70,15 @@ CASES: list[tuple[str, str, dict]] = [
     ("Best true shooting percentage last season?", "leaderboard", {"season": current_season() - 1}),
     ("How many points did Luka Doncic average in 2024?", "player_stat", {"player": "Luka Doncic", "stat": "points", "season": 2024}),
     ("What are Jokic's numbers this season?", "player_stat", {"player": "Nikola Jokic"}),
+    # Confirmed live: with no multi-season shape this routed to leaderboard,
+    # dropped the player entirely, and returned the league's true-shooting
+    # leaders for 2020.
+    (
+        "what was klay thompson's 3pt percentage over the past 4 seasons (with attempts/makes)",
+        "player_history",
+        {"player": "Klay Thompson", "stat": "threePointFieldGoalPct", "limit": 4},
+    ),
+    ("Jokic's scoring over the last 3 seasons", "player_history", {"stat": "points"}),
     ("How many rebounds is Wembanyama averaging?", "player_stat", {"stat": "rebounds"}),
     ("Which player had the most triple-doubles?", "leaderboard", {"stat": "triple_double"}),
     ("Most double-doubles this season?", "leaderboard", {"stat": "double_double"}),

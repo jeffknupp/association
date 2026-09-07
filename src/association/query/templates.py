@@ -203,6 +203,12 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     metric = resolve_metric(slots.get("stat"))
     if metric is None:
         raise TemplateUnsupported(f"no leaderboard metric for stat {slots.get('stat')!r}")
+    if isinstance(slots.get("player"), str) and slots["player"].strip():
+        # A leaderboard ranks the league or a team, never one named person.
+        # Confirmed live: "Klay Thompson's 3pt percentage over the past 4
+        # seasons" landed here and came back with the league's true-shooting
+        # leaders, Klay silently dropped.
+        raise TemplateUnsupported(f"a leaderboard cannot answer about one named player ({slots['player']!r})")
     # "top 10 in NetPoints ALONGSIDE their points per game" used to be answered
     # without the second half and without saying so - a silent partial answer,
     # the failure this whole architecture exists to prevent. An unknown field
@@ -310,6 +316,85 @@ PLAYER_STAT_COLUMNS = {
     "fieldGoalsMade": ("avgFieldGoalsMade", "fieldGoalsMade", "field goals"),
     "freeThrowsMade": ("avgFreeThrowsMade", "freeThrowsMade", "free throws"),
 }
+
+
+# Per-season history columns: stat -> (label, [(column, header), ...]).
+# A percentage is reported with its makes and attempts, because a percentage
+# without volume behind it is the thing people ask "out of how many?" about.
+HISTORY_COLUMNS: dict[str, tuple[str, list[tuple[str, str]]]] = {
+    "threePointFieldGoalPct": ("3PT%", [("threePointFieldGoalPct", "3PT%"), ("threePointFieldGoalsMade", "3PM"), ("threePointFieldGoalsAttempted", "3PA")]),
+    "fieldGoalPct": ("FG%", [("fieldGoalPct", "FG%"), ("fieldGoalsMade", "FGM"), ("fieldGoalsAttempted", "FGA")]),
+    "freeThrowPct": ("FT%", [("freeThrowPct", "FT%"), ("freeThrowsMade", "FTM"), ("freeThrowsAttempted", "FTA")]),
+    "points": ("points per game", [("avgPoints", "PPG")]),
+    "rebounds": ("rebounds per game", [("avgRebounds", "RPG")]),
+    "assists": ("assists per game", [("avgAssists", "APG")]),
+    "steals": ("steals per game", [("avgSteals", "SPG")]),
+    "blocks": ("blocks per game", [("avgBlocks", "BPG")]),
+    "minutes": ("minutes per game", [("avgMinutes", "MPG")]),
+    "threePointFieldGoalsMade": ("3-pointers per game", [("avgThreePointFieldGoalsMade", "3PM/G")]),
+}
+
+DEFAULT_HISTORY_SEASONS = 4
+MAX_HISTORY_SEASONS = 20
+
+
+def player_history(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+    """One player's stat across several seasons.
+
+    Every other template answers about a single season, so "what was Klay
+    Thompson's 3pt percentage over the past 4 seasons" had nowhere to go: it
+    routed to `leaderboard`, which dropped the player entirely and returned the
+    league's true-shooting leaders for 2020. A multi-season question needs a
+    multi-season shape."""
+    con = ctx.con
+    text = slots.get("player")
+    if not isinstance(text, str) or not text.strip():
+        raise TemplateUnsupported("player_history needs a player name")
+    match resolve_player(con, text):
+        case Entity() as player:
+            pass
+        case Ambiguous(candidates=candidates):
+            return _clarify(text, candidates)
+        case _:
+            raise TemplateUnsupported(f"no player matching {text!r}")
+
+    stat = slots.get("stat")
+    if not isinstance(stat, str) or stat not in HISTORY_COLUMNS:
+        raise TemplateUnsupported(f"no per-season history for stat {stat!r}")
+    label, columns = HISTORY_COLUMNS[stat]
+
+    season_type = slots.get("season_type") or 2
+    limit = slots.get("limit")
+    seasons = limit if isinstance(limit, int) and 1 <= limit <= MAX_HISTORY_SEASONS else DEFAULT_HISTORY_SEASONS
+    # A named season anchors the range's END rather than replacing it, so
+    # "3pt% over the 4 seasons through 2024" still spans four rows.
+    latest = slots.get("season") or current_season()
+
+    rows = con.execute(
+        f"SELECT season, gamesPlayed, {', '.join(c for c, _ in columns)} FROM player_season_stats_deduped "
+        "WHERE athlete_id = ? AND season_type = ? AND season <= ? ORDER BY season DESC LIMIT ?",
+        [player.id, season_type, latest, seasons],
+    ).fetchall()
+
+    period = SEASON_TYPE_NAMES.get(season_type, "regular season")
+    history = [dict(zip(["season", "games"] + [c for c, _ in columns], r, strict=True)) for r in rows]
+    return TemplateResult(
+        summary=f"{player.name} {label}, last {seasons} {period}s",
+        data={"player": player.name, "stat": stat, "seasons": history},
+        answer=_phrase_history(player.name, label, period, history, columns),
+    )
+
+
+def _phrase_history(name: str, label: str, period: str, history: list[dict[str, Any]], columns: list[tuple[str, str]]) -> str:
+    if not history:
+        return f"The warehouse has no {period} seasons on record for {name}."
+    headers = ["season", "G"] + [h for _, h in columns]
+    keys = ["season", "games"] + [c for c, _ in columns]
+    widths = [max(len(h), *(len(_table_cell(row.get(k))) for row in history)) for h, k in zip(headers, keys, strict=True)]
+    lines = [f"{name}, {label} by {period} (most recent first):", "  ".join(h.rjust(w) for h, w in zip(headers, widths, strict=True))]
+    for row in history:
+        lines.append("  ".join(_table_cell(row.get(k)).rjust(w) for k, w in zip(keys, widths, strict=True)))
+    return "\n".join(lines)
 
 
 def _wanted_stats(slots: dict[str, Any]) -> list[str]:
@@ -929,4 +1014,5 @@ TEMPLATES: dict[str, Callable[[TemplateContext, dict[str, Any]], TemplateResult]
     "single_game_high": single_game_high,
     "head_to_head": head_to_head,
     "shot_distance": shot_distance,
+    "player_history": player_history,
 }
