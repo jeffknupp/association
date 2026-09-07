@@ -25,7 +25,7 @@ from association.season import current_season
 
 from .entities import Ambiguous, Entity, resolve_player, resolve_team
 from .leaderboard import LeaderboardError, resolve_metric, run_leaderboard
-from .metrics import EXTRA_FIELD_COLUMNS
+from .metrics import EXTRA_FIELD_COLUMNS, SEASON_TYPE_LABELS
 from .shotchart import render_shot_chart
 
 # Slot value -> real player_box_stats column. A whitelist, not a passthrough:
@@ -333,6 +333,141 @@ HISTORY_COLUMNS: dict[str, tuple[str, list[tuple[str, str]]]] = {
     "minutes": ("minutes per game", [("avgMinutes", "MPG")]),
     "threePointFieldGoalsMade": ("3-pointers per game", [("avgThreePointFieldGoalsMade", "3PM/G")]),
 }
+
+# espnanalytics.com's "Net Pts Fingerprint": the play-type breakdown behind a
+# player's NetPoints. `total` is the summary rather than a play type, so it is
+# reported on the headline line instead of as a category row.
+FINGERPRINT_SUMMARY_CATEGORY = "total"
+
+
+def player_netpoints(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+    """One player's NetPoints, with the play-type fingerprint.
+
+    NetPoints was exposed only as leaderboard metrics - ways to rank the
+    league - so "what were SGA's netpoint stats this season" had no shape to
+    land in. player_stat correctly refused the unsupported stat and fell
+    through; the agent then called get_leaderboard for the league, dropped SGA
+    entirely, and answered "Nikola Jokic leads the team in NetPoints"."""
+    from association.net_points_categories import FINGERPRINT_CATEGORIES
+
+    con = ctx.con
+    text = slots.get("player")
+    if not isinstance(text, str) or not text.strip():
+        raise TemplateUnsupported("player_netpoints needs a player name")
+    match resolve_player(con, text):
+        case Entity() as player:
+            pass
+        case Ambiguous(candidates=candidates):
+            return _clarify(text, candidates)
+        case _:
+            raise TemplateUnsupported(f"no player matching {text!r}")
+
+    season = slots.get("season") or current_season()
+    season_type = slots.get("season_type") or 2
+    # net_points_player uses its OWN string season_type; filtering it with the
+    # numeric one every other table uses silently matches nothing.
+    label = SEASON_TYPE_LABELS.get(season_type, "Regular Season")
+    headline = con.execute(
+        "SELECT overall, offense, defense, overall_per_100_poss, total_minutes, games FROM net_points_player "
+        "WHERE athlete_id = ? AND season = ? AND net_points_season_type = ?",
+        [player.id, season, label],
+    ).fetchone()
+
+    categories = [c for c in FINGERPRINT_CATEGORIES.values() if c != FINGERPRINT_SUMMARY_CATEGORY]
+    selected = ", ".join(f"{c}_o_net_pts, {c}_d_net_pts, {c}_t_net_pts" for c in categories)
+    # The fingerprint table has no season_type column at all.
+    fingerprint = con.execute(
+        f"SELECT total_poss, {selected} FROM net_points_player_fingerprint WHERE athlete_id = ? AND season = ?",
+        [player.id, season],
+    ).fetchone()
+
+    # Per 100 possessions by default: the fingerprint is for comparing players,
+    # and season totals mostly rank by playing time. Totals stay in `data`, and
+    # the `rate` slot asks for them.
+    possessions = fingerprint[0] if fingerprint else None
+    per_100 = slots.get("rate") != "total" and bool(possessions)
+    scale = 100.0 / possessions if per_100 and possessions else 1.0
+
+    breakdown: list[dict[str, Any]] = []
+    if fingerprint is not None:
+        for index, category in enumerate(categories):
+            o, d, t = fingerprint[1 + index * 3 : 1 + index * 3 + 3]
+            if o is None and d is None and t is None:
+                continue
+            breakdown.append(
+                {
+                    "category": category.replace("_", " "),
+                    "offense": None if o is None else o * scale,
+                    "defense": None if d is None else d * scale,
+                    "total": None if t is None else t * scale,
+                    "offense_season_total": o,
+                    "defense_season_total": d,
+                    "total_season_total": t,
+                }
+            )
+        breakdown.sort(key=lambda row: -abs(row["total"] or 0))
+
+    period = _period(season, season_type)
+    if headline is None and not breakdown:
+        return TemplateResult(
+            summary=f"{player.name} NetPoints, {period}",
+            data={"player": player.name, "season": season},
+            answer=f"The warehouse has no {period} NetPoints for {player.name}.",
+        )
+    return TemplateResult(
+        summary=f"{player.name} NetPoints, {period}",
+        data={"player": player.name, "season": season, "headline": headline, "fingerprint": breakdown},
+        answer=_phrase_netpoints(player.name, period, headline, breakdown, per_100, possessions),
+    )
+
+
+def _phrase_netpoints(
+    name: str,
+    period: str,
+    headline: tuple[Any, ...] | None,
+    breakdown: list[dict[str, Any]],
+    per_100: bool,
+    possessions: float | None,
+) -> str:
+    lines = []
+    if headline is not None:
+        # NOT `per_100`: that is the parameter saying which UNITS the
+        # fingerprint is in, and unpacking over it made a rate=total request
+        # print season totals under a "per 100 possessions" heading.
+        overall, offense, defense, per_100_rate, minutes, games = headline
+        lines.append(
+            f"{name}, NetPoints in the {period}: {_table_cell(overall)} overall "
+            f"({_table_cell(offense)} offense, {_table_cell(defense)} defense)"
+        )
+        detail = []
+        if per_100_rate is not None:
+            detail.append(f"{per_100_rate:.2f} per 100 possessions")
+        if minutes:
+            detail.append(f"{int(minutes):,} minutes")
+        if games:
+            detail.append(f"{int(games)} games")
+        if detail:
+            lines.append("  " + ", ".join(detail) + ".")
+    else:
+        lines.append(f"{name}, NetPoints fingerprint in the {period} (no season totals on record):")
+
+    if not breakdown:
+        lines.append("  No play-type fingerprint on record for this season.")
+        return "\n".join(lines)
+
+    lines.append("")
+    units = "per 100 possessions" if per_100 else "season totals"
+    scope = f" over {possessions:,.0f} possessions" if per_100 and possessions else ""
+    lines.append(f"  Fingerprint by play type, {units}{scope}, largest first (offense / defense / total):")
+    width = max(len(row["category"]) for row in breakdown)
+    lines.append("  " + "category".ljust(width) + "".join(h.rjust(9) for h in ("O", "D", "T")))
+    for row in breakdown:
+        # Two decimals: per-100 fingerprint values are small, and one decimal
+        # collapses most of the play types into the same number.
+        cells = "".join(("-" if row[k] is None else f"{row[k]:.2f}").rjust(9) for k in ("offense", "defense", "total"))
+        lines.append("  " + row["category"].ljust(width) + cells)
+    return "\n".join(lines)
+
 
 DEFAULT_HISTORY_SEASONS = 4
 MAX_HISTORY_SEASONS = 20
@@ -1015,4 +1150,5 @@ TEMPLATES: dict[str, Callable[[TemplateContext, dict[str, Any]], TemplateResult]
     "head_to_head": head_to_head,
     "shot_distance": shot_distance,
     "player_history": player_history,
+    "player_netpoints": player_netpoints,
 }

@@ -15,6 +15,7 @@ from association.query.templates import (
     leaderboard,
     player_compare,
     player_history,
+    player_netpoints,
     player_stat,
     shot_chart,
     shot_distance,
@@ -779,3 +780,88 @@ def test_leaderboard_refuses_when_a_player_is_named(lb_con: TemplateContext) -> 
     league's true-shooting leaders, Klay silently dropped."""
     with pytest.raises(TemplateUnsupported):
         leaderboard(lb_con, {"stat": "points", "player": "Klay Thompson"})
+
+
+# ---------------- player_netpoints ----------------
+
+
+@pytest.fixture
+def np_ctx(tmp_path: Path) -> TemplateContext:
+    from association.net_points_categories import FINGERPRINT_CATEGORIES
+
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO players VALUES ('1','Shai Gilgeous-Alexander')")
+    c.execute(
+        "CREATE TABLE net_points_player (athlete_id VARCHAR, season INTEGER, net_points_season_type VARCHAR, "
+        "overall DOUBLE, offense DOUBLE, defense DOUBLE, overall_per_100_poss DOUBLE, total_minutes DOUBLE, games INTEGER)"
+    )
+    c.execute("INSERT INTO net_points_player VALUES ('1',?,'Regular Season',468.33,403.9,64.43,9.91,2259,68)", [current_season()])
+    cats = list(FINGERPRINT_CATEGORIES.values())
+    cols = ", ".join(f"{cat}_{side}_net_pts DOUBLE" for cat in cats for side in ("o", "d", "t"))
+    c.execute(f"CREATE TABLE net_points_player_fingerprint (athlete_id VARCHAR, season INTEGER, total_poss DOUBLE, {cols})")
+    values = ", ".join("1.0" for _ in cats for _ in range(3))
+    c.execute(f"INSERT INTO net_points_player_fingerprint VALUES ('1', {current_season()}, 4725, {values})")
+    c.execute("UPDATE net_points_player_fingerprint SET two_pt_t_net_pts = 250.9, two_pt_o_net_pts = 251.3")
+    return TemplateContext(con=c, out_dir=tmp_path)
+
+
+def test_player_netpoints_answers_about_the_named_player(np_ctx: TemplateContext) -> None:
+    """Confirmed live: this fell through and the agent answered "Nikola Jokic
+    leads the team in NetPoints", with SGA dropped entirely."""
+    answer = player_netpoints(np_ctx, {"player": "Shai Gilgeous-Alexander"}).answer or ""
+    assert answer.startswith("Shai Gilgeous-Alexander")
+    assert "468.3" in answer and "403.9" in answer and "64.4" in answer
+
+
+def test_player_netpoints_includes_the_play_type_fingerprint(np_ctx: TemplateContext) -> None:
+    result = player_netpoints(np_ctx, {"player": "SGA"})
+    categories = {row["category"] for row in result.data["fingerprint"]}
+    assert "two pt" in categories and "driving" in categories
+    assert "total" not in categories  # the summary, reported on the headline
+
+
+def test_player_netpoints_orders_the_fingerprint_by_magnitude(np_ctx: TemplateContext) -> None:
+    rows = player_netpoints(np_ctx, {"player": "SGA"}).data["fingerprint"]
+    assert rows[0]["category"] == "two pt"
+
+
+def test_player_netpoints_uses_the_string_season_type(np_ctx: TemplateContext) -> None:
+    """net_points_player has its OWN string season_type; filtering it with the
+    numeric one every other table uses silently matches nothing."""
+    assert player_netpoints(np_ctx, {"player": "SGA"}).data["headline"] is not None
+
+
+def test_player_netpoints_reports_a_missing_season_honestly(np_ctx: TemplateContext) -> None:
+    assert "no 1999 regular season NetPoints" in (player_netpoints(np_ctx, {"player": "SGA", "season": 1999}).answer or "")
+
+
+def test_player_netpoints_without_a_player_falls_through(np_ctx: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        player_netpoints(np_ctx, {})
+
+
+def test_player_netpoints_fingerprint_defaults_to_per_100_possessions(np_ctx: TemplateContext) -> None:
+    """Season totals mostly rank by playing time; per 100 possessions is the
+    unit that compares players, which is what the fingerprint is for."""
+    result = player_netpoints(np_ctx, {"player": "SGA"})
+    two_pt = next(r for r in result.data["fingerprint"] if r["category"] == "two pt")
+    assert two_pt["total"] == pytest.approx(250.9 / 4725 * 100, rel=1e-3)
+    assert two_pt["total_season_total"] == 250.9  # the raw total is still available
+    assert "per 100 possessions" in (result.answer or "")
+
+
+def test_player_netpoints_rate_total_reports_season_totals(np_ctx: TemplateContext) -> None:
+    result = player_netpoints(np_ctx, {"player": "SGA", "rate": "total"})
+    two_pt = next(r for r in result.data["fingerprint"] if r["category"] == "two pt")
+    assert two_pt["total"] == 250.9
+    assert "season totals" in (result.answer or "")
+
+
+def test_player_netpoints_falls_back_to_totals_without_a_possession_count(np_ctx: TemplateContext) -> None:
+    # No possession count: report totals and say so, rather than dividing by
+    # nothing or showing an unlabelled unit.
+    np_ctx.con.execute("UPDATE net_points_player_fingerprint SET total_poss = NULL")
+    result = player_netpoints(np_ctx, {"player": "SGA"})
+    assert next(r for r in result.data["fingerprint"] if r["category"] == "two pt")["total"] == 250.9
+    assert "season totals" in (result.answer or "")

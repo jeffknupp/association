@@ -5,6 +5,37 @@ commit that made it for the full story.
 
 ## 2026-09-06
 
+- **player_netpoints: one player's NetPoints and play-type fingerprint**:
+  reported from real use - "what were SGA's netpoint stats this season"
+  answered "Nikola Jokic leads the team in NetPoints this season with a total
+  of 451.24", after 149s and five model calls.
+
+  NetPoints was exposed only as leaderboard METRICS - ways to rank the league -
+  so a question about one player's NetPoints had no shape to land in. The
+  router reasonably chose `player_stat` with stat "netpoints"; that template
+  correctly refused the unsupported stat and fell through (the guard added with
+  shot_distance working as intended); and the agent then called
+  `get_leaderboard` for the league, dropped SGA entirely, and reported Jokic.
+
+  `player_netpoints` reports the season line (overall/offense/defense, per 100
+  possessions, minutes, games) from `net_points_player`, plus the 21 play-type
+  categories from `net_points_player_fingerprint` sorted by magnitude - the
+  breakdown behind espnanalytics.com's "Net Pts Fingerprint". It handles both
+  of that data's traps: `net_points_player` uses its own STRING season_type
+  (filtering it with the numeric one silently matches nothing) and the
+  fingerprint table has no season_type column at all.
+
+  The fingerprint is reported **per 100 possessions by default**, since season
+  totals mostly rank by playing time and the fingerprint exists to compare
+  players; `rate: "total"` asks for totals, and raw totals stay in the result
+  data either way. Cross-checks against the independently stored season rate:
+  the `total` category over 4,725 possessions gives 9.91 per 100, matching
+  `overall_per_100_poss` exactly.
+
+  Found by the tests while adding that: `_phrase_netpoints` unpacked the
+  headline row over its own `per_100` parameter, so a `rate: "total"` request
+  printed season totals under a "per 100 possessions" heading. Routing 38/38.
+
 - **player_history: one player across several seasons**: reported from real
   use - "what was klay thompson's 3pt percentage over the past 4 seasons (with
   attempts/makes)" answered with the LEAGUE's true-shooting leaders for 2020,

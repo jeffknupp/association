@@ -455,6 +455,28 @@ league or a team, never one named person. That guard is independent of the
 routing fix and would have made this a slow answer rather than a confident
 wrong one, which is the trade this design keeps choosing.
 
+## `player_netpoints`: data that existed only as a ranking
+
+"What were SGA's netpoint stats this season" answered "Nikola Jokic leads the
+team in NetPoints", after 149s.
+
+The chain is worth reading, because the guards worked and it still failed. The
+router chose `player_stat` with stat `netpoints` — reasonable. `player_stat`
+refused the unsupported stat rather than substituting its default line, which
+is exactly the fix from the previous report. Then the agent, having fallen
+through, called `get_leaderboard` for the league and dropped the player.
+
+**A guard that turns a wrong answer into a slow one is only worth having if
+something downstream can answer.** NetPoints existed solely as leaderboard
+metrics — ways to rank the league — so there was nothing to fall through *to*.
+
+`player_netpoints` reports the season line plus the 21 play-type categories
+behind espnanalytics.com's "Net Pts Fingerprint", per 100 possessions by
+default (season totals mostly rank by playing time, and the fingerprint exists
+to compare players). It handles both of that data's traps: `net_points_player`
+uses its own string `season_type`, and the fingerprint table has no
+`season_type` column at all.
+
 ## What is left
 
 - ~~**`player_compare`**~~ — DONE. The agent got this wrong for a reason no

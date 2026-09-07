@@ -51,6 +51,8 @@ intent must be one of:
                      ("most 30+ point games", "most games with 20+ rebounds")
   player_stat      - one named player's numbers for ONE season ("how many points
                      did Curry average", "what are Jokic's numbers") - set player
+  player_netpoints - one named player's NetPoints and play-type fingerprint
+                     ("SGA's netpoint stats", "Jokic NetPoints breakdown")
   player_history   - one named player's stat across SEVERAL seasons ("3pt% over
                      the past 4 seasons", "Jokic's scoring by year") - set
                      player, stat, and limit to the number of seasons
@@ -73,7 +75,10 @@ or a shooting percentage: threePointFieldGoalPct, fieldGoalPct, freeThrowPct.
 Set it whenever the question names one - for threshold_count, leaderboard and
 player_stat alike. Omit it only when the question asks for overall numbers.
 
-For leaderboard, stat may instead be double_double, triple_double, or a rate
+NetPoints for ONE named player is player_netpoints, not leaderboard - a
+leaderboard ranks the league. Its fingerprint is reported per 100 possessions;
+set rate to "total" only if the question asks for season totals. For leaderboard, stat may instead be
+double_double, triple_double, or a rate
 or rating metric: ts_pct, efg_pct, usage_pct, netpoints, netpoints_per_100,
 netpoints_offense, netpoints_defense, or a NetPoints play-type category like
 rim_o_net_pts / driving_o_net_pts.
@@ -108,6 +113,8 @@ Q: Compare Luka and SGA this season
 {"intent":"player_compare","players":["Luka Doncic","Shai Gilgeous-Alexander"],"season_ref":"current"}
 Q: Who scores more, Wemby or Jokic?
 {"intent":"player_compare","players":["Victor Wembanyama","Nikola Jokic"],"stat":"points"}
+Q: What were SGA's netpoint stats this season?
+{"intent":"player_netpoints","player":"Shai Gilgeous-Alexander","season_ref":"current"}
 Q: What was Klay Thompson's 3pt percentage over the past 4 seasons?
 {"intent":"player_history","player":"Klay Thompson","stat":"threePointFieldGoalPct","limit":4}
 Q: How many points did Luka Doncic average in 2024?
@@ -155,6 +162,7 @@ ROUTER_SCHEMA: dict[str, Any] = {
                 "threshold_count",
                 "player_stat",
                 "player_history",
+                "player_netpoints",
                 "player_compare",
                 "game_log",
                 "team_record",
@@ -180,6 +188,7 @@ ROUTER_SCHEMA: dict[str, Any] = {
         "season_ref": {"type": "string", "enum": ["current", "previous"]},
         "season_type": {"type": "string", "enum": ["regular", "playoffs"]},
         "order": {"type": "string", "enum": ["recent", "first"]},
+        "rate": {"type": "string", "enum": ["per_100", "total"]},
         "date": {"type": "string"},
         "limit": {"type": "integer"},
         "shot_value": {"type": "integer"},

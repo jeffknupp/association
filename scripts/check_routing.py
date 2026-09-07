@@ -79,6 +79,10 @@ CASES: list[tuple[str, str, dict]] = [
         {"player": "Klay Thompson", "stat": "threePointFieldGoalPct", "limit": 4},
     ),
     ("Jokic's scoring over the last 3 seasons", "player_history", {"stat": "points"}),
+    # Confirmed live: fell through to the agent, which called get_leaderboard
+    # for the league, dropped SGA, and answered "Nikola Jokic leads the team".
+    ("what were SGA's netpoint stats this season", "player_netpoints", {}),
+    ("Show me Wembanyama's NetPoints breakdown", "player_netpoints", {}),
     ("How many rebounds is Wembanyama averaging?", "player_stat", {"stat": "rebounds"}),
     ("Which player had the most triple-doubles?", "leaderboard", {"stat": "triple_double"}),
     ("Most double-doubles this season?", "leaderboard", {"stat": "double_double"}),
