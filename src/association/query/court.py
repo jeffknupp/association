@@ -4,6 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
+# The hoop's position in ESPN's shot coordinate system, in feet - NOT the
+# origin. Defined here because this module owns that coordinate system; the
+# shot-distance math in templates.py measures from the same point, and a rim
+# drawn somewhere other than where distance is measured from is a silent
+# disagreement no test would catch.
+HOOP_X, HOOP_Y = 25, 5.25
+
 
 def render_court_html(title: str, subtitle: str, shots: list[tuple[Any, ...]]) -> str:
     """Simplified NBA half-court in ESPN's shot coordinate system (x: 0-50 court width,
@@ -26,7 +33,7 @@ def render_court_html(title: str, subtitle: str, shots: list[tuple[Any, ...]]) -
       <!-- backboard -->
       <line x1="{sx(22)}" y1="{sy(4)}" x2="{sx(28)}" y2="{sy(4)}" stroke="var(--line)" stroke-width="2"/>
       <!-- rim -->
-      <circle cx="{sx(25)}" cy="{sy(5.25)}" r="{0.75 * scale}" fill="none" stroke="var(--rim)" stroke-width="2"/>
+      <circle cx="{sx(HOOP_X)}" cy="{sy(HOOP_Y)}" r="{0.75 * scale}" fill="none" stroke="var(--rim)" stroke-width="2"/>
       <!-- paint -->
       <rect x="{sx(17)}" y="{sy(19)}" width="{16 * scale}" height="{19 * scale}" fill="none" stroke="var(--line)" stroke-width="2"/>
       <!-- free throw circle -->

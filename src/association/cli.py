@@ -24,7 +24,7 @@ LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR"]
 
 F = TypeVar("F", bound=Callable[..., Any])
 
-CLI_EPILOG = """
+CLI_EPILOG = f"""
 Examples:
 
 \b
@@ -40,8 +40,8 @@ Setup for query/ai (one-time):
 \b
     brew install ollama
     ollama serve &                # or `brew services start ollama`; must be running before use
-    ollama pull qwen2.5:3b        # --router-model default, ~1.9GB - answers most questions on its own
-    ollama pull qwen2.5:7b        # --model default (fall-through agent), ~4.7GB
+    ollama pull {DEFAULT_ROUTER_MODEL}        # --router-model default, ~1.9GB - answers most questions on its own
+    ollama pull {DEFAULT_MODEL}        # --model default (fall-through agent), ~4.7GB
     ollama pull qwen3:8b          # optional: visible reasoning traces (--think) + tool calling, ~5GB
 
 Pulling any other model: `ollama pull <name>:<tag>` (browse at https://ollama.com/library).

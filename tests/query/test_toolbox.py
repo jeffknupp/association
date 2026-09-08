@@ -342,10 +342,11 @@ def test_run_sql_bounds_a_wide_result_by_tokens_not_rows(seeded: Toolbox) -> Non
     player_game_log LIMIT 200` serialized to ~44,000 tokens - nearly three
     times the whole context window, from one tool call. Over num_ctx ollama
     cuts the prompt head-first and silently, discarding the system prompt."""
-    from association.query.toolbox import MAX_RESULT_TOKENS, _estimate_tokens
+    from association.query.prompt import estimate_tokens
+    from association.query.toolbox import MAX_RESULT_TOKENS
 
     result = seeded.run_sql("SELECT * FROM wide")
-    assert _estimate_tokens(result) <= MAX_RESULT_TOKENS
+    assert estimate_tokens(result) <= MAX_RESULT_TOKENS
     payload = json.loads(result)
     assert payload["truncated"] is True
     assert payload["row_count"] < 300

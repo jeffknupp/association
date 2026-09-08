@@ -19,6 +19,7 @@ import duckdb
 
 from association.season import current_season
 
+from .court import HOOP_X, HOOP_Y
 from .entities import Ambiguous, Entity, resolve_player, resolve_team
 from .leaderboard import LeaderboardError, resolve_metric, run_leaderboard
 from .metrics import EXTRA_FIELD_COLUMNS, SEASON_TYPE_LABELS
@@ -376,16 +377,9 @@ def player_netpoints(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     from association.net_points_categories import FINGERPRINT_CATEGORIES
 
     con = ctx.con
-    text = slots.get("player")
-    if not isinstance(text, str) or not text.strip():
-        raise TemplateUnsupported("player_netpoints needs a player name")
-    match resolve_player(con, text):
-        case Entity() as player:
-            pass
-        case Ambiguous(candidates=candidates):
-            return _clarify(text, candidates)
-        case _:
-            raise TemplateUnsupported(f"no player matching {text!r}")
+    player = _resolved_player(con, slots.get("player"), "player_netpoints needs a player name")
+    if isinstance(player, TemplateResult):
+        return player
 
     season = slots.get("season") or current_season()
     season_type = slots.get("season_type") or 2
@@ -578,16 +572,9 @@ def player_history(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
     league. Distinct from the other gaps here: a missing DIMENSION cutting
     across the shapes that existed, not a missing shape."""
     con = ctx.con
-    text = slots.get("player")
-    if not isinstance(text, str) or not text.strip():
-        raise TemplateUnsupported("player_history needs a player name")
-    match resolve_player(con, text):
-        case Entity() as player:
-            pass
-        case Ambiguous(candidates=candidates):
-            return _clarify(text, candidates)
-        case _:
-            raise TemplateUnsupported(f"no player matching {text!r}")
+    player = _resolved_player(con, slots.get("player"), "player_history needs a player name")
+    if isinstance(player, TemplateResult):
+        return player
 
     stat = slots.get("stat")
     if not isinstance(stat, str) or stat not in HISTORY_COLUMNS:
@@ -627,6 +614,17 @@ def _phrase_history(name: str, label: str, period: str, history: list[dict[str, 
     return "\n".join(lines)
 
 
+def _season_row(con: duckdb.DuckDBPyConnection, athlete_id: str, columns: list[str], season: int, season_type: int) -> tuple[Any, ...] | None:
+    """One player's season line. Reads player_season_stats_deduped, the view
+    that has already collapsed a traded player's per-stint rows into one, so no
+    caller has to remember to. `columns` comes from PLAYER_STAT_COLUMNS or
+    HISTORY_COLUMNS - never from a slot."""
+    return con.execute(
+        f"SELECT {', '.join(columns)} FROM player_season_stats_deduped WHERE athlete_id = ? AND season = ? AND season_type = ?",
+        [athlete_id, season, season_type],
+    ).fetchone()
+
+
 def _wanted_stats(slots: dict[str, Any]) -> list[str]:
     """The stats to report: the one named, or the default line if none was.
 
@@ -654,17 +652,9 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     tiebreak was measured and rejected (no threshold separates Luka Doncic from
     Luka Garza without also wrongly resolving "Brown")."""
     con = ctx.con
-    text = slots.get("player")
-    if not isinstance(text, str) or not text.strip():
-        raise TemplateUnsupported("player_stat needs a player name")
-
-    match resolve_player(con, text):
-        case Entity() as player:
-            pass
-        case Ambiguous(candidates=candidates):
-            return _clarify(text, candidates)
-        case _:
-            raise TemplateUnsupported(f"no player matching {text!r}")
+    player = _resolved_player(con, slots.get("player"), "player_stat needs a player name")
+    if isinstance(player, TemplateResult):
+        return player
 
     season = slots.get("season") or current_season()
     season_type = slots.get("season_type") or 2
@@ -676,10 +666,7 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         columns.append(per_game)
         if total:
             columns.append(total)
-    row = con.execute(
-        f"SELECT {', '.join(columns)} FROM player_season_stats_deduped WHERE athlete_id = ? AND season = ? AND season_type = ?",
-        [player.id, season, season_type],
-    ).fetchone()
+    row = _season_row(con, player.id, columns, season, season_type)
 
     period = _period(season, season_type)
     if row is None:
@@ -765,6 +752,22 @@ JOIN games g ON g.event_id = tbs.event_id
 JOIN teams opp ON opp.team_id = tbs.opponent_team_id
 WHERE tbs.team_id = ? AND tbs.season = ? AND tbs.season_type = ?
 """
+
+
+def _resolved_player(con: duckdb.DuckDBPyConnection, text: Any, missing: str = "no player named") -> Entity | TemplateResult:
+    """One player, a clarifying question, or a refusal - the player counterpart
+    to _resolved_team. Returning the TemplateResult rather than raising it keeps
+    ambiguity a handled outcome: the caller answers with the question instead of
+    falling through to an agent that would guess. Callers must forward it."""
+    if not isinstance(text, str) or not text.strip():
+        raise TemplateUnsupported(missing)
+    match resolve_player(con, text):
+        case Entity() as player:
+            return player
+        case Ambiguous(candidates=candidates):
+            return _clarify(text, candidates)
+        case _:
+            raise TemplateUnsupported(f"no player matching {text!r}")
 
 
 def _resolved_team(con: duckdb.DuckDBPyConnection, text: Any) -> Entity | TemplateResult:
@@ -853,16 +856,9 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         rows = con.execute(f"{sql} ORDER BY g.date {'ASC' if ascending else 'DESC'} LIMIT ?", [*params, limit]).fetchall()
         return _team_game_log_result(team.name, period, rows, ascending, date)
 
-    text = slots.get("player")
-    if not isinstance(text, str) or not text.strip():
-        raise TemplateUnsupported("game_log needs a team or a player")
-    match resolve_player(con, text):
-        case Entity() as player:
-            pass
-        case Ambiguous(candidates=candidates):
-            return _clarify(text, candidates)
-        case _:
-            raise TemplateUnsupported(f"no player matching {text!r}")
+    player = _resolved_player(con, slots.get("player"), "game_log needs a team or a player")
+    if isinstance(player, TemplateResult):
+        return player
 
     where = "athlete_id = ? AND season = ? AND season_type = ?"
     params = [player.id, season, season_type]
@@ -907,6 +903,16 @@ def _player_game_log_result(name: str, period: str, rows: list[tuple[Any, ...]],
     return TemplateResult(summary=summary, data={"player": name, "games": games}, answer="\n".join([header, *lines]))
 
 
+def _scoping_game(con: duckdb.DuckDBPyConnection, athlete_id: str, season: int, season_type: int, order: str) -> tuple[Any, ...] | None:
+    """The single game an `order` slot narrows a question to: (event_id, date),
+    or None if the player has no games that season. Both orderings are explicit -
+    LIMIT 1 without an ORDER BY returns an arbitrary row, not the first or last."""
+    return con.execute(
+        f"SELECT event_id, game_date FROM player_game_log WHERE athlete_id = ? AND season = ? AND season_type = ? ORDER BY game_date {'ASC' if order == 'first' else 'DESC'} LIMIT 1",
+        [athlete_id, season, season_type],
+    ).fetchone()
+
+
 def _resolve_chart_player(ctx: TemplateContext, text: str) -> str:
     """The athlete_id render_shot_chart will settle on, so a single-game lookup
     scopes to the same player the chart is drawn for."""
@@ -928,11 +934,7 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     player = slots.get("player")
     if not isinstance(player, str) or not player.strip():
         raise TemplateUnsupported("shot_chart needs a player name")
-    # "Curry's threes" comes back either as shot_value 3 or as the equivalent
-    # box-score stat, depending on the question's wording. Both mean the same
-    # thing; read both rather than fighting the router over which to emit.
-    stat = slots.get("stat")
-    shot_value = slots.get("shot_value") if slots.get("shot_value") in (1, 2, 3) else SHOT_VALUE_FROM_STAT.get(stat if isinstance(stat, str) else "")
+    shot_value = _shot_value(slots)
 
     # "a shot chart of Curry's LAST regular season game" charted the whole
     # season - 803 attempts instead of that game's 22 - because nothing scoped
@@ -942,10 +944,7 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     season_type = slots.get("season_type") or 2
     event_id = None
     if slots.get("order") in ("recent", "first"):
-        found = ctx.con.execute(
-            f"SELECT event_id FROM player_game_log WHERE athlete_id = ? AND season = ? AND season_type = ? ORDER BY game_date {'ASC' if slots['order'] == 'first' else 'DESC'} LIMIT 1",
-            [_resolve_chart_player(ctx, player), season, season_type],
-        ).fetchone()
+        found = _scoping_game(ctx.con, _resolve_chart_player(ctx, player), season, season_type, slots["order"])
         if found is None:
             raise TemplateUnsupported(f"no games found to chart for {player!r}")
         event_id = found[0]
@@ -970,9 +969,19 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
 
 SHOT_VALUE_FROM_STAT = {"threePointFieldGoalsMade": 3, "freeThrowsMade": 1}
 
-# The hoop is at (25, 5.25) in shot_chart's coordinate space, in feet - not at
-# the origin. Free throws carry NULL coordinates and must be excluded.
-HOOP_X, HOOP_Y = 25, 5.25
+
+def _shot_value(slots: dict[str, Any]) -> int | None:
+    """Which shots a question meant. "Curry's threes" arrives either as
+    shot_value 3 or as the equivalent box-score stat depending on wording; both
+    mean the same thing, so read both rather than fight the router over which."""
+    raw = slots.get("shot_value")
+    if raw in (1, 2, 3):
+        return int(raw)
+    stat = slots.get("stat")
+    return SHOT_VALUE_FROM_STAT.get(stat) if isinstance(stat, str) else None
+
+
+# Free throws carry NULL coordinates and must be excluded from distance math.
 
 
 def shot_distance(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
@@ -983,22 +992,13 @@ def shot_distance(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult
     current-season three-point figure (real answer 23.6). A fixed formula over
     known columns is template work."""
     con = ctx.con
-    text = slots.get("player")
-    if not isinstance(text, str) or not text.strip():
-        raise TemplateUnsupported("shot_distance needs a player name")
-    match resolve_player(con, text):
-        case Entity() as player:
-            pass
-        case Ambiguous(candidates=candidates):
-            return _clarify(text, candidates)
-        case _:
-            raise TemplateUnsupported(f"no player matching {text!r}")
+    player = _resolved_player(con, slots.get("player"), "shot_distance needs a player name")
+    if isinstance(player, TemplateResult):
+        return player
 
     season = slots.get("season") or current_season()
     season_type = slots.get("season_type") or 2
-    raw = slots.get("shot_value")
-    stat = slots.get("stat")
-    shot_value = raw if raw in (1, 2, 3) else SHOT_VALUE_FROM_STAT.get(stat if isinstance(stat, str) else "")
+    shot_value = _shot_value(slots)
     if shot_value == 1:
         raise TemplateUnsupported("free throws have no meaningful shot distance")
 
@@ -1009,10 +1009,7 @@ def shot_distance(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult
         params.append(shot_value)
     game_note = ""
     if slots.get("order") in ("recent", "first"):
-        found = con.execute(
-            f"SELECT event_id, game_date FROM player_game_log WHERE athlete_id = ? AND season = ? AND season_type = ? ORDER BY game_date {'ASC' if slots['order'] == 'first' else 'DESC'} LIMIT 1",
-            [player.id, season, season_type],
-        ).fetchone()
+        found = _scoping_game(con, player.id, season, season_type, slots["order"])
         if found is None:
             raise TemplateUnsupported(f"no games found for {player.name}")
         where.append("event_id = ?")
@@ -1061,17 +1058,15 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     where = ["season = ?", "season_type = ?", f"{column} IS NOT NULL"]
     params: list[Any] = [season, season_type]
     text = slots.get("player")
-    named_player = None
+    named_player: Entity | None = None
+    # The player slot is optional here: unset means "the league".
     if isinstance(text, str) and text.strip():
-        match resolve_player(ctx.con, text):
-            case Entity() as player:
-                named_player = player
-                where.append("athlete_id = ?")
-                params.append(player.id)
-            case Ambiguous(candidates=candidates):
-                return _clarify(text, candidates)
-            case _:
-                raise TemplateUnsupported(f"no player matching {text!r}")
+        resolved = _resolved_player(ctx.con, text)
+        if isinstance(resolved, TemplateResult):
+            return resolved
+        named_player = resolved
+        where.append("athlete_id = ?")
+        params.append(resolved.id)
 
     rows = ctx.con.execute(
         f"SELECT player_name, {column}, game_date, opponent_abbr FROM player_game_log WHERE {' AND '.join(where)} ORDER BY {column} DESC, game_date LIMIT ?",
@@ -1328,14 +1323,11 @@ def player_compare(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
 
     resolved: list[Entity] = []
     for name in names[:MAX_COMPARED_PLAYERS]:
-        match resolve_player(con, name):
-            case Entity() as player:
-                if player.id not in {p.id for p in resolved}:
-                    resolved.append(player)
-            case Ambiguous(candidates=candidates):
-                return _clarify(name, candidates)
-            case _:
-                raise TemplateUnsupported(f"no player matching {name!r}")
+        player = _resolved_player(con, name)
+        if isinstance(player, TemplateResult):
+            return player
+        if player.id not in {p.id for p in resolved}:
+            resolved.append(player)
     if len(resolved) < 2:
         raise TemplateUnsupported("the named players resolved to the same person")
 
@@ -1346,10 +1338,7 @@ def player_compare(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
 
     rows: dict[str, dict[str, Any]] = {}
     for player in resolved:
-        row = con.execute(
-            f"SELECT {', '.join(columns)} FROM player_season_stats_deduped WHERE athlete_id = ? AND season = ? AND season_type = ?",
-            [player.id, season, season_type],
-        ).fetchone()
+        row = _season_row(con, player.id, columns, season, season_type)
         rows[player.name] = dict(zip(columns, row, strict=True)) if row else {}
 
     period = _period(season, season_type)

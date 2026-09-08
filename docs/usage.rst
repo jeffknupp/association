@@ -164,15 +164,10 @@ printing to the terminal — open it in a browser. It looks like this:
 Setting up the models
 ---------------------
 
-Two models, for the two jobs described in :doc:`architecture`:
+Two models, for the two jobs described in :doc:`architecture`. :doc:`installation`
+has the ``ollama pull`` commands; both fit in memory together.
 
-.. code-block:: console
-
-   $ ollama pull qwen2.5:3b    # router, ~1.9GB
-   $ ollama pull qwen2.5:7b    # fall-through agent, ~4.7GB
-
-Both fit in memory together. If a question falls through to the agent it will
-take noticeably longer — that path prefills a much larger prompt — which is
+If a question falls through to the agent it will take noticeably longer — that path prefills a much larger prompt — which is
 expected, not a fault.
 
 ``--no-fast-path`` forces every question through the agent, which is useful for

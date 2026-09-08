@@ -15,6 +15,34 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Removed the repeated patterns in `query/`.** None of these were copy-pasted
+  functions - they were the same shape written out again at each call site,
+  which is how they escaped notice:
+
+  - Player resolution existed seven times as an inline `match` block, while
+    teams had had a `_resolved_team` helper all along. `_resolved_player` closes
+    the asymmetry; `templates.py` loses ~50 lines.
+  - The hoop coordinate `(25, 5.25)` was stated in both `court.py`, which draws
+    the rim, and `templates.py`, which measures distance from it. Those two had
+    to agree and nothing made them: a rim drawn somewhere other than where
+    distance is measured is a disagreement no test would catch. It now lives in
+    `court.py`, which owns the coordinate system.
+  - The "first/most recent game" lookup that an `order` slot resolves to was
+    written twice (`_scoping_game`), and the deduped season-line read twice
+    (`_season_row`).
+  - `estimate_tokens` had identical copies in `prompt.py` and `toolbox.py` - the
+    only exact duplicate function in the package. `toolbox.py` imports it now.
+  - Reading `shot_value` off the slots was spelled two different ways in
+    `shot_chart` and `shot_distance` (`_shot_value`).
+
+  The `ollama pull` block appeared in four places; `usage.rst` now points at
+  `installation.rst` rather than restating it, and the CLI epilog interpolates
+  the model defaults instead of naming them, so `--help` cannot disagree with
+  what the flags actually default to. Output is byte-identical. The remaining
+  two copies - `README.md` and `installation.rst` - are both standalone entry
+  points, and the two `(25, 5.25)` literals left in `prompt.py` are worked SQL
+  examples for the model, where a placeholder would be worse than a repeat.
+
 - **One definition of the ollama model defaults**, in `query/models.py`, instead
   of a copy each in `cli.py` and `agent.py`. The copies could drift apart
   silently and the consequence was not cosmetic: `scripts/check_routing.py` reads
