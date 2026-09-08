@@ -5,6 +5,39 @@ commit that made it for the full story.
 
 ## 2026-09-07
 
+- **Packaged for PyPI**: the project now carries the metadata a published
+  package needs - `readme`, a BSD 3-Clause `license` and `LICENSE` file,
+  author, keywords, 15 classifiers and `[project.urls]` - and builds a clean
+  119KB wheel and 200KB sdist. Both were verified by installing into a fresh
+  virtualenv outside the repository and running the CLI, which is the only
+  check that actually proves the entry point and `py.typed` survive packaging.
+  `setuptools` is pinned to `>=77` because the SPDX-string `license` field is
+  an error on older versions.
+
+  A `MANIFEST.in` rounds out the sdist with the shell completions, the
+  changelog and the tests, and explicitly prunes the local artifacts. The
+  prunes are belt-and-braces - setuptools' default sdist would not sweep up the
+  266MB warehouse or the 736MB data tree anyway - but the cost of being wrong
+  there is uploading hundreds of megabytes of scraped data to a public index.
+
+  Two things were wrong for anyone installing from PyPI rather than a checkout.
+  The README's setup block still told users to pull only `qwen2.5:7b` as "the
+  default model", which has been stale since the router was split out: a fresh
+  install following it would have no `qwen2.5:3b` and the fast path would fail
+  on every question. And its ten relative links to source files would 404 on
+  PyPI, which renders the README standalone, so they are now absolute.
+
+  `.github/workflows/publish.yml` publishes via PyPI Trusted Publishing (OIDC),
+  so no API token is stored anywhere. It runs the full gate suite on the tagged
+  commit rather than trusting CI was green, checks that the git tag matches the
+  packaged version, and runs `twine check --strict` - PyPI rejects an
+  unrenderable README at upload time, once the version number is already spent.
+  A manual `workflow_dispatch` can rehearse the whole thing against TestPyPI.
+
+  New `installation` and `releasing` documentation pages. The one step that
+  cannot be automated - registering the trusted publisher on PyPI - is written
+  down in `releasing`.
+
 - **`ruff format` adopted, and gated**: the formatter reads the same
   `line-length = 200` the linter does, so it *joins* the long prompt and SQL
   strings up to that width rather than wrapping them at 88. The assumption

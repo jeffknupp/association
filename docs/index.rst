@@ -17,10 +17,12 @@ the machine.
    :maxdepth: 2
    :caption: Contents
 
+   installation
    architecture
    commands
    usage
    data-sources
+   releasing
    changelog
    api/index
 

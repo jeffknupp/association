@@ -1,4 +1,5 @@
 build/
+dist/
 .claude/scheduled_tasks.lock
 .claude/settings.local.json
 data/

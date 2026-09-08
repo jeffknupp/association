@@ -1,12 +1,36 @@
 [build-system]
-requires = ["setuptools>=68"]
+# >=77 for PEP 639: the `license`-as-SPDX-string and `license-files` fields
+# below are errors on older setuptools.
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "association"
 version = "0.1.0"
 description = "ESPN NBA stats: resumable fetch -> compact Parquet -> DuckDB warehouse -> local-LLM natural-language query"
+readme = "README.md"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+authors = [{ name = "Jeff Knupp", email = "jeff@jeffknupp.com" }]
 requires-python = ">=3.10"
+keywords = ["nba", "basketball", "espn", "duckdb", "parquet", "ollama", "llm", "statistics"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Database",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Typing :: Typed",
+]
 dependencies = [
     "boto3>=1.34",
     "click>=8.1",
@@ -16,6 +40,13 @@ dependencies = [
     "pyarrow>=15.0",
     "tqdm>=4.66",
 ]
+
+[project.urls]
+Homepage = "https://github.com/jeffknupp/association"
+Documentation = "https://github.com/jeffknupp/association#readme"
+Source = "https://github.com/jeffknupp/association"
+Changelog = "https://github.com/jeffknupp/association/blob/master/CHANGES.md"
+Issues = "https://github.com/jeffknupp/association/issues"
 
 [project.scripts]
 association = "association.cli:main"

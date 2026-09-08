@@ -1,0 +1,99 @@
+name: Publish
+
+# Trusted Publishing (OIDC): PyPI verifies the workflow identity directly, so
+# there is no API token to store, rotate, or leak. The trade-off is that the
+# publisher must be registered on PyPI first - see CONTRIBUTING/release notes.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Where to publish
+        required: true
+        default: testpypi
+        type: choice
+        options: [testpypi, pypi]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync environment
+        run: uv sync --frozen --extra dev --extra docs
+
+      # A release is the one moment the whole gate suite must pass, so it runs
+      # here too rather than trusting that CI happened to be green on the tag.
+      - name: Full check suite
+        run: |
+          uv run ruff check src tests scripts
+          uv run ruff format --check src tests scripts
+          uv run mypy src
+          uv run mypy tests
+          scripts/check_types_complete.sh
+          scripts/check_docstrings.py
+          uv run pytest -q
+
+      - name: Verify the tag matches the packaged version
+        # Guards the classic release mistake: tagging v0.2.0 while pyproject
+        # still says 0.1.0, which PyPI would accept as a 0.1.0 re-upload and
+        # then reject as a duplicate - or worse, silently publish the wrong one.
+        if: github.event_name == 'release'
+        run: |
+          version=$(uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$version" != "$tag" ]; then
+            echo "::error::tag $GITHUB_REF_NAME implies version $tag, but pyproject.toml says $version"
+            exit 1
+          fi
+          echo "version $version matches tag $GITHUB_REF_NAME"
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Check metadata renders on PyPI
+        # PyPI rejects a README it cannot render, and does so at upload time -
+        # after the version number is spent. Catch it here instead.
+        run: uvx twine check --strict dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish-testpypi:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    needs: build
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi')
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

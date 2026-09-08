@@ -16,19 +16,27 @@ association ai --think                            # interactive REPL
 ## Setup
 
 ```bash
-uv sync                          # or: pip install -e .
-brew install ollama
+pip install association          # or: uv tool install association
+brew install ollama              # or see https://ollama.com/download
 ollama serve &
-ollama pull qwen2.5:7b           # default model, ~4.7GB
-ollama pull qwen3:8b             # optional: visible reasoning (--think), ~5GB
+ollama pull qwen2.5:3b           # router, the fast path - required, ~1.9GB
+ollama pull qwen2.5:7b           # fall-through agent - required, ~4.7GB
+ollama pull qwen3:8b             # optional: visible reasoning (--think), ~5.2GB
 ```
+
+Both of the first two are needed: the router classifies the question and the
+fall-through agent handles anything the templates do not cover. Ollama keeps
+them resident together (~7GB).
+
+To work on `association` itself, clone the repo and `uv sync --extra dev`
+instead of installing from PyPI.
 
 **Shell completion** (tab-complete subcommands, options, and `--log-level`'s
 choices) — the CLI is built on [Click](https://click.palletsprojects.com),
 which generates these directly from the command definitions, so there's
 nothing to keep in sync by hand. Two ways to enable it:
 
-- Source one of the ready-made scripts in [`completions/`](completions/):
+- Source one of the ready-made scripts in [`completions/`](https://github.com/jeffknupp/association/tree/master/completions):
   ```bash
   # bash
   echo 'source /path/to/association/completions/association.bash' >> ~/.bashrc
@@ -83,7 +91,7 @@ effective FG%, usage rate, and Hollinger game score, per game and per season.
 ESPN's team season stats already carry these natively (`effectiveFGPct`,
 `trueShootingPct`, `paceFactor`), but its player stats endpoint doesn't, so
 only the player side needs a computed layer — see
-[`fetch/advanced_stats.py`](src/association/fetch/advanced_stats.py) for the
+[`fetch/advanced_stats.py`](https://github.com/jeffknupp/association/blob/master/src/association/fetch/advanced_stats.py) for the
 exact formulas and why PER/Win Shares/BPM/VORP are deliberately excluded.
 
 **NetPoints** — ESPN Analytics' current advanced player/team rating (points
@@ -170,7 +178,7 @@ own live, evolving computation while a season is in progress — plain
 existence-check resumability would freeze these at whatever they were the
 first time they were pulled. `standings`/`team_power_index`/NetPoints keep
 re-fetching a season until it's no longer the *current* one
-(`current_season()` in [`association/season.py`](src/association/season.py),
+(`current_season()` in [`association/season.py`](https://github.com/jeffknupp/association/blob/master/src/association/season.py),
 the same year-a-season-ends convention used everywhere else — a season keeps
 re-fetching a little past when it's actually over, until the next one starts
 in October, which is harmless since each is a single cheap request);
@@ -217,16 +225,16 @@ agent's preamble, not a model swap — the whole preamble has to be evaluated
 before the first token, at roughly 33 tok/s under a 6-core `CPUQuota`.
 
 **Query engine** — a question first hits a small **intent router**
-([`query/router.py`](src/association/query/router.py)): a ~430-token prompt
+([`query/router.py`](https://github.com/jeffknupp/association/blob/master/src/association/query/router.py)): a ~430-token prompt
 carrying no schema and no SQL, decoded under a JSON schema (ollama's `format`)
 so the reply is *constrained* to a well-formed `{intent, slots}` object rather
 than merely asked for one. A recognized intent is answered by a deterministic
-template ([`query/templates.py`](src/association/query/templates.py)) that
+template ([`query/templates.py`](https://github.com/jeffknupp/association/blob/master/src/association/query/templates.py)) that
 builds and runs the SQL itself and phrases its own answer — no schema in
 context, no SQL generated, no second model call. Anything else falls through
 to the full tool-calling agent below, unchanged. Falling through costs one
 ~1.5s round trip and changes no answer, which is what makes question shapes
-portable one at a time (see [`FAST-PATH-MIGRATION.md`](FAST-PATH-MIGRATION.md)
+portable one at a time (see [`FAST-PATH-MIGRATION.md`](https://github.com/jeffknupp/association/blob/master/FAST-PATH-MIGRATION.md)
 for the remaining shapes and the order they land in). `--no-fast-path` skips
 the router entirely, for comparing the two paths.
 
@@ -250,7 +258,7 @@ otherwise absorb it and answer confidently. Subjects leave that list when they
 earn a template, as shot distance did.
 
 Names resolve through a curated nickname table
-([`entities.PLAYER_NICKNAMES`](src/association/query/entities.py)) before
+([`entities.PLAYER_NICKNAMES`](https://github.com/jeffknupp/association/blob/master/src/association/query/entities.py)) before
 matching — "SGA", "Wemby", "the Greek Freak" — matched against the whole query
 rather than as substrings, so "book" is Devin Booker and "notebook" is nobody.
 It is deliberately a short, auditable list rather than a popularity heuristic:
@@ -264,7 +272,7 @@ a near-miss template, and cases marked as known gaps so a real regression still
 stands out.
 
 Name resolution for both paths lives in
-[`query/entities.py`](src/association/query/entities.py). It draws a
+[`query/entities.py`](https://github.com/jeffknupp/association/blob/master/src/association/query/entities.py). It draws a
 deliberate distinction: `find_*` returns every candidate best-first and lets
 the caller choose (`render_shot_chart` takes the best match and names the
 others — a chart of the wrong Curry is obvious on sight), while `resolve_*`
@@ -280,7 +288,7 @@ spend minutes guessing at.
 tables), `get_leaderboard` (a "top N players by X" query for a fixed, known
 set of metrics — the season default, qualifying minimum sample, and
 traded-player dedup are all resolved once in Python, in
-[`query/metrics.py`](src/association/query/metrics.py), instead of
+[`query/metrics.py`](https://github.com/jeffknupp/association/blob/master/src/association/query/metrics.py), instead of
 re-derived by the model from prose on every query — see "Design" below for
 why), `run_sql` (read-only, `SELECT`/`WITH` only, backed by a read-only
 DuckDB connection as a hard guarantee, for anything `get_leaderboard` doesn't
@@ -435,7 +443,7 @@ pre-commit install     # one-time, wires the git hook
 pre-commit run --all-files   # run manually against everything
 ```
 
-A third hook enforces [CHANGES.md](CHANGES.md): any commit touching `src/`
+A third hook enforces [CHANGES.md](https://github.com/jeffknupp/association/blob/master/CHANGES.md): any commit touching `src/`
 must also update it, or the commit is rejected.
 
 ## Known limitations

@@ -1,0 +1,16 @@
+# The wheel carries only the package; these round out the sdist so a source
+# checkout from PyPI can run the tests and install shell completions.
+include CHANGES.md
+include README.md
+recursive-include completions association.*
+recursive-include tests *.py
+
+# Belt-and-braces against the large local artifacts. setuptools' default sdist
+# would not sweep these up anyway, but a stray `graft` or a future backend
+# change should not be able to ship a 266MB warehouse or a 736MB data tree.
+prune data
+prune query_output
+prune docs/_build
+prune .history
+prune build
+global-exclude *.duckdb *.duckdb.wal *.pyc __pycache__
