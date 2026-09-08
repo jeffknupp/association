@@ -14,7 +14,7 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
-## Unreleased
+## 1.2.0 - 2026-09-08
 - **Version markers on the public API.** The docs already generate a page for
   every module (`docs/api/index.rst` runs `autosummary` recursively), but nothing
   said when anything appeared, so the reference read as though the package had
