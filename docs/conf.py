@@ -81,6 +81,13 @@ html_title = f"association {release}"
 html_static_path = []
 
 
+# Headings whose command list gets its own code block (and copy button) per
+# line, rather than one shared block for the whole list - "Examples" and the
+# ollama setup steps are each independent commands a reader runs one at a
+# time, not a script to paste as a unit.
+_ONE_BLOCK_PER_LINE_HEADINGS = {"Examples:", "Setup for query/ai (one-time):"}
+
+
 def _epilog_commands_as_code_blocks(app: object, ctx: object, lines: list[str]) -> None:
     """Render the CLI epilog's ``\\b``-marked command lists as real code blocks.
 
@@ -100,10 +107,18 @@ def _epilog_commands_as_code_blocks(app: object, ctx: object, lines: list[str]) 
             while i < len(lines) and lines[i].startswith("| "):
                 block.append(lines[i][2:])
                 i += 1
-            rewritten.append(".. code-block:: console")
-            rewritten.append("")
-            rewritten.extend("   " + entry for entry in block)
-            rewritten.append("")
+            heading = next((entry for entry in reversed(rewritten) if entry), "")
+            if heading in _ONE_BLOCK_PER_LINE_HEADINGS:
+                for entry in block:
+                    rewritten.append(".. code-block:: console")
+                    rewritten.append("")
+                    rewritten.append("   " + entry)
+                    rewritten.append("")
+            else:
+                rewritten.append(".. code-block:: console")
+                rewritten.append("")
+                rewritten.extend("   " + entry for entry in block)
+                rewritten.append("")
         else:
             rewritten.append(line)
             i += 1
