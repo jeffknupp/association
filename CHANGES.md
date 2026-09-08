@@ -14,8 +14,7 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
-## Unreleased
-
+## 1.0.0 - 2026-09-07
 - **Semantic versioning, and tooling to hold to it**: `pyproject.toml` is now
   the only place a version number is written. The package reads it back through
   `importlib.metadata.version` and exposes `association.__version__`,
