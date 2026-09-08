@@ -23,8 +23,9 @@ LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR"]
 F = TypeVar("F", bound=Callable[..., Any])
 
 CLI_EPILOG = """
-\b
 Examples:
+
+\b
     association data pull --seasons 2024
     association data pull --seasons 2022-2024 --season-types 2,3 --include-pbp
     association data load --tables games,player_box_stats
@@ -32,8 +33,9 @@ Examples:
     association query "Who are the top 5 3-point shooters by shot volume?"
     association ai --model qwen3:8b --think --verbose
 
-\b
 Setup for query/ai (one-time):
+
+\b
     brew install ollama
     ollama serve &                # or `brew services start ollama`; must be running before use
     ollama pull qwen2.5:3b        # --router-model default, ~1.9GB - answers most questions on its own
@@ -68,11 +70,13 @@ call. Both paths share one ollama KV cache slot per model by default, so alterna
 --model (or setting OLLAMA_NUM_PARALLEL=1 with mixed prompts) costs a full re-prefill
 each time.
 
-\b
 Shell completion (one-time):
+
+\b
     bash: eval "$(_ASSOCIATION_COMPLETE=bash_source association)"   >> ~/.bashrc
     zsh:  eval "$(_ASSOCIATION_COMPLETE=zsh_source association)"    >> ~/.zshrc
     fish: _ASSOCIATION_COMPLETE=fish_source association | source    >> ~/.config/fish/config.fish
+
 See completions/ in the repo for ready-made static scripts instead of the eval form.
 """
 

@@ -7,27 +7,6 @@ PyPI's `Trusted Publishing
 in the repository: PyPI verifies the GitHub Actions workflow identity over OIDC
 at upload time.
 
-One-time setup
---------------
-
-This part cannot be automated, and must be done before the first release.
-
-#. On PyPI, go to *Your projects* → *Publishing* (or, for a project that does
-   not exist yet, *Add a pending publisher*) and register a publisher with:
-
-   :Owner: ``jeffknupp``
-   :Repository: ``association``
-   :Workflow: ``publish.yml``
-   :Environment: ``pypi``
-
-#. Repeat on `TestPyPI <https://test.pypi.org>`_ with the environment
-   ``testpypi``, so a release can be rehearsed against a throwaway index.
-
-#. In the GitHub repository settings, create the ``pypi`` and ``testpypi``
-   environments. Adding a required reviewer to ``pypi`` is worthwhile: it makes
-   the actual upload a deliberate, approved step rather than a side effect of
-   publishing a release.
-
 Versioning
 ----------
 
@@ -114,9 +93,3 @@ that quietly drifts from what CI verified is worse than one that fails loudly.
 The build runs ``scripts/build_docs.sh``, the same script pre-commit and CI
 run, so the ``-W --keep-going`` that gates a commit also gates the published
 build.
-
-Importing the project on Read the Docs is a one-time manual step, like
-registering the trusted publisher. Once it is imported, update the
-``Documentation`` entry in ``[project.urls]`` to the assigned
-``readthedocs.io`` URL — the slug is not known until then, so it currently
-points at the README on GitHub.

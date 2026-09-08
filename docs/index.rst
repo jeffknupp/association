@@ -18,8 +18,8 @@ the machine.
    :caption: Contents
 
    installation
-   architecture
    commands
+   architecture
    usage
    data-sources
    releasing

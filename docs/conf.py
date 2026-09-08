@@ -37,8 +37,14 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx_autodoc_typehints",
     "sphinx_click",
+    "sphinx_copybutton",
     "myst_parser",
 ]
+
+# Strip the "$ " shell prompt so a copied command is ready to paste, not ready
+# to fail on a stray leading dollar sign.
+copybutton_prompt_text = r"\$ "
+copybutton_prompt_is_regexp = True
 
 templates_path = ["_templates"]
 exclude_patterns = ["_build"]
@@ -73,3 +79,37 @@ html_theme = "furo"
 # render by default, leaving a docs site that never states what it documents.
 html_title = f"association {release}"
 html_static_path = []
+
+
+def _epilog_commands_as_code_blocks(app: object, ctx: object, lines: list[str]) -> None:
+    """Render the CLI epilog's ``\\b``-marked command lists as real code blocks.
+
+    sphinx-click turns every ``\\b``-preserved paragraph into an RST line
+    block (``| some text``), which keeps line breaks but renders as plain
+    text - no monospacing, no highlighting, no copy button. The command
+    examples in :data:`association.cli.CLI_EPILOG` want the same treatment as
+    every other command example in these docs, so runs of line-block text are
+    rewritten here into ``.. code-block:: console`` before Sphinx parses them.
+    """
+    rewritten: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.startswith("| "):
+            block: list[str] = []
+            while i < len(lines) and lines[i].startswith("| "):
+                block.append(lines[i][2:])
+                i += 1
+            rewritten.append(".. code-block:: console")
+            rewritten.append("")
+            rewritten.extend("   " + entry for entry in block)
+            rewritten.append("")
+        else:
+            rewritten.append(line)
+            i += 1
+    lines[:] = rewritten
+
+
+def setup(app: object) -> None:
+    """Register documentation-build-time hooks."""
+    app.connect("sphinx-click-process-epilog", _epilog_commands_as_code_blocks)  # type: ignore[attr-defined]

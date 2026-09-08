@@ -14,6 +14,15 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
+## Unreleased
+- **Command reference examples render as real code blocks**: the CLI epilog's
+  example commands and setup instructions were rendering in the generated
+  docs (`commands.rst`) as an RST line block - preserved line breaks, but
+  plain text, with no monospacing, highlighting, or copy button. A
+  `sphinx-click-process-epilog` hook in `docs/conf.py` now rewrites those runs
+  into `.. code-block:: console` blocks; `association --help`'s terminal
+  output is unchanged. Docs also gained `sphinx-copybutton`, so every code
+  block across the site - not just this one - now has a copy button.
 ## 1.0.0 - 2026-09-07
 - **Semantic versioning, and tooling to hold to it**: `pyproject.toml` is now
   the only place a version number is written. The package reads it back through
