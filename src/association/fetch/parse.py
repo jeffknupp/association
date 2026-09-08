@@ -205,9 +205,7 @@ def parse_game_summary(data: JSON | None, season: int, season_type: int) -> dict
             continue
         sg = stat_groups[0]
         keys = sg.get("keys") or sg.get("names") or []
-        result["glossary"].extend(
-            _glossary_rows(keys, sg.get("labels"), sg.get("descriptions"), "player_box_stats")
-        )
+        result["glossary"].extend(_glossary_rows(keys, sg.get("labels"), sg.get("descriptions"), "player_box_stats"))
         for ath in sg.get("athletes") or []:
             athlete = ath.get("athlete") or {}
             athlete_id = athlete.get("id")
@@ -247,9 +245,7 @@ def parse_game_summary(data: JSON | None, season: int, season_type: int) -> dict
         clock = (p.get("clock") or {}).get("displayValue")
         team_id = (p.get("team") or {}).get("id")
         participants = p.get("participants") or []
-        athlete_ids = [
-            str(pp["athlete"]["id"]) for pp in participants if pp.get("athlete", {}).get("id")
-        ]
+        athlete_ids = [str(pp["athlete"]["id"]) for pp in participants if pp.get("athlete", {}).get("id")]
         primary_athlete_id = athlete_ids[0] if athlete_ids else None
 
         result["plays"].append(
@@ -357,9 +353,7 @@ def parse_player_career_stats(data: JSON | None, athlete_id: str, season_type: i
         return [], []
     for cat in data.get("categories") or []:
         names = cat.get("names") or []
-        glossary.extend(
-            _glossary_rows(names, cat.get("displayNames"), cat.get("descriptions"), "player_season_stats")
-        )
+        glossary.extend(_glossary_rows(names, cat.get("displayNames"), cat.get("descriptions"), "player_season_stats"))
         for entry in cat.get("statistics") or []:
             season_year = (entry.get("season") or {}).get("year")
             team_id = entry.get("teamId")
@@ -379,9 +373,7 @@ def parse_player_career_stats(data: JSON | None, athlete_id: str, season_type: i
     return list(rows.values()), glossary
 
 
-def parse_team_season_stats(
-    data: JSON | None, season: int, season_type: int, team_id: str
-) -> tuple[dict[str, Any] | None, list[Row]]:
+def parse_team_season_stats(data: JSON | None, season: int, season_type: int, team_id: str) -> tuple[dict[str, Any] | None, list[Row]]:
     """A team's season aggregate, flattened from ESPN's nested category/stat
     structure into a single wide row."""
     if not data:
@@ -553,9 +545,7 @@ def parse_net_points_team(data: JSON | None, team_abbr_to_id: dict[str, str]) ->
     return rows
 
 
-def _resolve_net_points_game(
-    team_id: str | None, date: str, team_date_to_game: dict[tuple[str, str], tuple[str, int, int]]
-) -> tuple[str, int, int] | None:
+def _resolve_net_points_game(team_id: str | None, date: str, team_date_to_game: dict[tuple[str, str], tuple[str, int, int]]) -> tuple[str, int, int] | None:
     """NetPoints' per-date files have no ESPN event_id anywhere, but a team
     plays at most one game on a given real-world date - so (team_id, date)
     against this project's OWN already-fetched games table resolves it

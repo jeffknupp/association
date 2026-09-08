@@ -139,7 +139,7 @@ def _clamp_limit(limit: Any, default: int = DEFAULT_LIMIT) -> int:
 
 
 def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
-    """"Most games with N+ of some stat" - the shape that motivated this split.
+    """ "Most games with N+ of some stat" - the shape that motivated this split.
 
     KNOWLEDGE_BASE already carried this exact pattern ("Single-game vs.
     season-total stats"), but it sat in the truncated-away head of the system
@@ -169,9 +169,7 @@ def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResu
     params.append(limit)
 
     rows = con.execute(
-        f"SELECT p.display_name, COUNT(*) AS games FROM player_box_stats pbs "
-        f"JOIN players p ON p.athlete_id = pbs.athlete_id "
-        f"WHERE {' AND '.join(where)} GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT ?",
+        f"SELECT p.display_name, COUNT(*) AS games FROM player_box_stats pbs JOIN players p ON p.athlete_id = pbs.athlete_id WHERE {' AND '.join(where)} GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT ?",
         params,
     ).fetchall()
 
@@ -222,7 +220,7 @@ def _format_value(value: Any) -> str:
 
 
 def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
-    """"Top N players by X" for the metrics in LEADERBOARD_METRICS.
+    """ "Top N players by X" for the metrics in LEADERBOARD_METRICS.
 
     Thin on purpose: run_leaderboard already owns the season default, the
     per-metric minimum-sample floor and traded-player dedup, and the agent's
@@ -417,8 +415,7 @@ def player_netpoints(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     # numeric one every other table uses silently matches nothing.
     label = SEASON_TYPE_LABELS.get(season_type, "Regular Season")
     headline = con.execute(
-        "SELECT overall, offense, defense, overall_per_100_poss, total_minutes, games FROM net_points_player "
-        "WHERE athlete_id = ? AND season = ? AND net_points_season_type = ?",
+        "SELECT overall, offense, defense, overall_per_100_poss, total_minutes, games FROM net_points_player WHERE athlete_id = ? AND season = ? AND net_points_season_type = ?",
         [player.id, season, label],
     ).fetchone()
 
@@ -506,10 +503,7 @@ def _single_game_netpoints(ctx: TemplateContext, player: Entity, season: int, se
         detail.append(f"{o_poss:.0f} offensive and {d_poss:.0f} defensive possessions")
     if wpa is not None:
         detail.append(f"{wpa:+.3f} win probability added")
-    answer = (
-        f"{player.name}, NetPoints in his {which} {period} game ({str(date)[:10]}): "
-        f"{_table_cell(t)} total ({_table_cell(o)} offense, {_table_cell(d)} defense)."
-    )
+    answer = f"{player.name}, NetPoints in his {which} {period} game ({str(date)[:10]}): {_table_cell(t)} total ({_table_cell(o)} offense, {_table_cell(d)} defense)."
     if detail:
         answer += "\n  " + ", ".join(detail) + "."
     answer += "\n  (Per-game NetPoints carry no play-type fingerprint - that is season-level only.)"
@@ -530,10 +524,7 @@ def _phrase_netpoints(
         # fingerprint is in, and unpacking over it made a rate=total request
         # print season totals under a "per 100 possessions" heading.
         overall, offense, defense, per_100_rate, minutes, games = headline
-        lines.append(
-            f"{name}, NetPoints in the {period}: {_table_cell(overall)} overall "
-            f"({_table_cell(offense)} offense, {_table_cell(defense)} defense)"
-        )
+        lines.append(f"{name}, NetPoints in the {period}: {_table_cell(overall)} overall ({_table_cell(offense)} offense, {_table_cell(defense)} defense)")
         detail = []
         if per_100_rate is not None:
             detail.append(f"{per_100_rate:.2f} per 100 possessions")
@@ -627,8 +618,7 @@ def player_history(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
     latest = slots.get("season") or current_season()
 
     rows = con.execute(
-        f"SELECT season, gamesPlayed, {', '.join(c for c, _ in columns)} FROM player_season_stats_deduped "
-        "WHERE athlete_id = ? AND season_type = ? AND season <= ? ORDER BY season DESC LIMIT ?",
+        f"SELECT season, gamesPlayed, {', '.join(c for c, _ in columns)} FROM player_season_stats_deduped WHERE athlete_id = ? AND season_type = ? AND season <= ? ORDER BY season DESC LIMIT ?",
         [player.id, season_type, latest, seasons],
     ).fetchall()
 
@@ -667,6 +657,7 @@ def _wanted_stats(slots: dict[str, Any]) -> list[str]:
         return [stat]
     raise TemplateUnsupported(f"no per-game column for stat {stat!r}")
 
+
 STAT_LINE = ("points", "rebounds", "assists")
 
 
@@ -703,8 +694,7 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         if total:
             columns.append(total)
     row = con.execute(
-        f"SELECT {', '.join(columns)} FROM player_season_stats_deduped "
-        "WHERE athlete_id = ? AND season = ? AND season_type = ?",
+        f"SELECT {', '.join(columns)} FROM player_season_stats_deduped WHERE athlete_id = ? AND season = ? AND season_type = ?",
         [player.id, season, season_type],
     ).fetchone()
 
@@ -897,8 +887,7 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     if date:
         where, params = where + " AND game_date LIKE ?", [*params, f"{date}%"]
     rows = con.execute(
-        f"SELECT game_date, opponent_abbr, minutes, points, rebounds, assists FROM player_game_log "
-        f"WHERE {where} ORDER BY game_date {'ASC' if ascending else 'DESC'} LIMIT ?",
+        f"SELECT game_date, opponent_abbr, minutes, points, rebounds, assists FROM player_game_log WHERE {where} ORDER BY game_date {'ASC' if ascending else 'DESC'} LIMIT ?",
         [*params, limit],
     ).fetchall()
     return _player_game_log_result(player.name, period, rows, ascending, date)
@@ -916,20 +905,13 @@ def _team_game_log_result(name: str, period: str, rows: list[tuple[Any, ...]], a
     summary = f"{name} game log, {period}"
     if not rows:
         return TemplateResult(summary=summary, data={"team": name, "games": []}, answer=f"No {period} games found for the {name}.")
-    games = [
-        {"date": str(r[0])[:10], "home_away": r[1], "opponent": r[2], "team_score": r[3], "opponent_score": r[4], "won": bool(r[5])}
-        for r in rows
-    ]
+    games = [{"date": str(r[0])[:10], "home_away": r[1], "opponent": r[2], "team_score": r[3], "opponent_score": r[4], "won": bool(r[5])} for r in rows]
     # Tallied here, over exactly the rows being shown, rather than left to be
     # counted back out of the listing - that recount is where a wins/losses
     # total gets inverted.
     wins = sum(1 for g in games if g["won"])
     header = f"{name}, {_scope(len(games), ascending, date)} of the {period} ({wins}-{len(games) - wins}):"
-    lines = [
-        f"  {g['date']}  {'W' if g['won'] else 'L'} {g['team_score']}-{g['opponent_score']}  "
-        f"{'vs' if g['home_away'] == 'home' else 'at'} {g['opponent']}"
-        for g in games
-    ]
+    lines = [f"  {g['date']}  {'W' if g['won'] else 'L'} {g['team_score']}-{g['opponent_score']}  {'vs' if g['home_away'] == 'home' else 'at'} {g['opponent']}" for g in games]
     return TemplateResult(summary=summary, data={"team": name, "wins": wins, "games": games}, answer="\n".join([header, *lines]))
 
 
@@ -979,8 +961,7 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     event_id = None
     if slots.get("order") in ("recent", "first"):
         found = ctx.con.execute(
-            "SELECT event_id FROM player_game_log WHERE athlete_id = ? AND season = ? AND season_type = ? "
-            f"ORDER BY game_date {'ASC' if slots['order'] == 'first' else 'DESC'} LIMIT 1",
+            f"SELECT event_id FROM player_game_log WHERE athlete_id = ? AND season = ? AND season_type = ? ORDER BY game_date {'ASC' if slots['order'] == 'first' else 'DESC'} LIMIT 1",
             [_resolve_chart_player(ctx, player), season, season_type],
         ).fetchone()
         if found is None:
@@ -1051,8 +1032,7 @@ def shot_distance(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult
     game_note = ""
     if slots.get("order") in ("recent", "first"):
         found = con.execute(
-            "SELECT event_id, game_date FROM player_game_log WHERE athlete_id = ? AND season = ? AND season_type = ? "
-            f"ORDER BY game_date {'ASC' if slots['order'] == 'first' else 'DESC'} LIMIT 1",
+            f"SELECT event_id, game_date FROM player_game_log WHERE athlete_id = ? AND season = ? AND season_type = ? ORDER BY game_date {'ASC' if slots['order'] == 'first' else 'DESC'} LIMIT 1",
             [player.id, season, season_type],
         ).fetchone()
         if found is None:
@@ -1061,32 +1041,29 @@ def shot_distance(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult
         params.append(found[0])
         game_note = f" in his {'first' if slots['order'] == 'first' else 'most recent'} game ({str(found[1])[:10]})"
     row = con.execute(
-        f"SELECT AVG(SQRT(POWER(coordinate_x - {HOOP_X}, 2) + POWER(coordinate_y - {HOOP_Y}, 2))), COUNT(*) "
-        f"FROM shot_chart WHERE {' AND '.join(where)}",
+        f"SELECT AVG(SQRT(POWER(coordinate_x - {HOOP_X}, 2) + POWER(coordinate_y - {HOOP_Y}, 2))), COUNT(*) FROM shot_chart WHERE {' AND '.join(where)}",
         params,
     ).fetchone()
 
-    average, attempts = (row or (None, 0))
+    average, attempts = row or (None, 0)
     period = _period(season, season_type)
     kind = {2: "2-point ", 3: "3-point "}.get(shot_value or 0, "")
     if not attempts or average is None:
         answer = f"No {kind}shots with recorded coordinates for {player.name}{game_note} in the {period}."
     else:
-        answer = (
-            f"{player.name}'s average {kind}shot distance{game_note or f' in the {period}'} was "
-            f"{average:.1f} feet, over {attempts:,} attempts with recorded coordinates."
-        )
+        answer = f"{player.name}'s average {kind}shot distance{game_note or f' in the {period}'} was {average:.1f} feet, over {attempts:,} attempts with recorded coordinates."
     return TemplateResult(
         summary=f"{player.name} {kind}shot distance, {period}",
         data={"player": player.name, "season": season, "shot_value": shot_value, "avg_feet": average, "attempts": attempts},
         answer=answer,
     )
 
+
 DEFAULT_SINGLE_GAME_LIMIT = 3
 
 
 def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
-    """"Most assists in a single game" - a per-game MAXIMUM, not a season
+    """ "Most assists in a single game" - a per-game MAXIMUM, not a season
     ranking.
 
     Added because the router had no such shape and picked the nearest one:
@@ -1120,8 +1097,7 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
                 raise TemplateUnsupported(f"no player matching {text!r}")
 
     rows = ctx.con.execute(
-        f"SELECT player_name, {column}, game_date, opponent_abbr FROM player_game_log "
-        f"WHERE {' AND '.join(where)} ORDER BY {column} DESC, game_date LIMIT ?",
+        f"SELECT player_name, {column}, game_date, opponent_abbr FROM player_game_log WHERE {' AND '.join(where)} ORDER BY {column} DESC, game_date LIMIT ?",
         [*params, limit],
     ).fetchall()
 
@@ -1149,18 +1125,16 @@ def _phrase_single_game_high(games: list[dict[str, Any]], label: str, period: st
         names = ", ".join(g["player"] for g in tied[:-1]) + f" and {tied[-1]['player']}"
         sentence = f"{names} tied for the most {label}s in a single game in the {period}, with {top['value']} each."
     else:
-        sentence = (
-            f"{top['player']} had the most {label}s in a single game in the {period}: "
-            f"{top['value']}, on {top['date']}{where}."
-        )
+        sentence = f"{top['player']} had the most {label}s in a single game in the {period}: {top['value']}, on {top['date']}{where}."
     rest = [f"{g['player']} ({g['value']})" for g in games if g["value"] != top["value"]]
     return sentence + (f" Next: {', '.join(rest)}." if rest else "")
+
 
 MAX_COMPARED_PLAYERS = 4
 
 
 def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
-    """"How many times did the 76ers play Boston?" - games between two teams.
+    """ "How many times did the 76ers play Boston?" - games between two teams.
 
     Added after that exact question was answered "the Philadelphia 76ers did
     not play against the Boston Celtics" (they played four times). The agent
@@ -1201,8 +1175,7 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     ]
     params: list[Any] = [a.id, b.id, b.id, a.id, season_type, season]
     rows = con.execute(
-        f"SELECT g.date, g.home_team_id, g.home_score, g.away_score, g.winner_team_id "
-        f"FROM games g WHERE {' AND '.join(where)} ORDER BY g.date",
+        f"SELECT g.date, g.home_team_id, g.home_score, g.away_score, g.winner_team_id FROM games g WHERE {' AND '.join(where)} ORDER BY g.date",
         params,
     ).fetchall()
 
@@ -1261,8 +1234,7 @@ def player_compare(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
     rows: dict[str, dict[str, Any]] = {}
     for player in resolved:
         row = con.execute(
-            f"SELECT {', '.join(columns)} FROM player_season_stats_deduped "
-            "WHERE athlete_id = ? AND season = ? AND season_type = ?",
+            f"SELECT {', '.join(columns)} FROM player_season_stats_deduped WHERE athlete_id = ? AND season = ? AND season_type = ?",
             [player.id, season, season_type],
         ).fetchone()
         rows[player.name] = dict(zip(columns, row, strict=True)) if row else {}

@@ -30,6 +30,7 @@ on size and speed.
 Thinking models are disqualified on latency, not accuracy: qwen3:4b spent ~20s
 per question reasoning before emitting the same tiny JSON object.
 """
+
 import json
 import statistics
 import sys
@@ -43,13 +44,14 @@ from association.query.router import ROUTER_PROMPT, ROUTER_SCHEMA, SEASON_TYPES,
 
 
 def route_with(model, question):
-    payload = {"model": model, "stream": False, "format": ROUTER_SCHEMA,
-               "options": {"num_ctx": 4096, "temperature": 0},
-               "messages": [{"role": "system", "content": ROUTER_PROMPT},
-                            {"role": "user", "content": "Q: " + question}]}
-    req = urllib.request.Request("http://localhost:11434/api/chat",
-                                 data=json.dumps(payload).encode(),
-                                 headers={"Content-Type": "application/json"})
+    payload = {
+        "model": model,
+        "stream": False,
+        "format": ROUTER_SCHEMA,
+        "options": {"num_ctx": 4096, "temperature": 0},
+        "messages": [{"role": "system", "content": ROUTER_PROMPT}, {"role": "user", "content": "Q: " + question}],
+    }
+    req = urllib.request.Request("http://localhost:11434/api/chat", data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"})
     t = time.monotonic()
     raw = json.load(urllib.request.urlopen(req, timeout=300))["message"]["content"]
     elapsed = time.monotonic() - t
@@ -89,8 +91,11 @@ def score(model):
             slot_ok += 1
     n = len(CASES)
     return {
-        "model": model, "intent": f"{intent_ok}/{n}", "full": f"{slot_ok}/{n}",
-        "intent_pct": 100 * intent_ok / n, "full_pct": 100 * slot_ok / n,
+        "model": model,
+        "intent": f"{intent_ok}/{n}",
+        "full": f"{slot_ok}/{n}",
+        "intent_pct": 100 * intent_ok / n,
+        "full_pct": 100 * slot_ok / n,
         "median_s": statistics.median(times) if times else float("nan"),
         "p90_s": (sorted(times)[int(len(times) * 0.9)] if len(times) > 2 else max(times, default=float("nan"))),
         "errors": errors,

@@ -97,32 +97,18 @@ LEADERBOARD_METRICS: dict[str, LeaderboardMetric] = {
         default_min_sample=20,
         requires="warehouse rebuilt with `association data load` after player_box_stats was fetched",
     ),
-    "avg_points": LeaderboardMetric(
-        table="player_season_stats", column="avgPoints", label="points per game", dedup_traded=True, min_sample_column="gamesPlayed"
-    ),
-    "avg_rebounds": LeaderboardMetric(
-        table="player_season_stats", column="avgRebounds", label="rebounds per game", dedup_traded=True, min_sample_column="gamesPlayed"
-    ),
-    "avg_assists": LeaderboardMetric(
-        table="player_season_stats", column="avgAssists", label="assists per game", dedup_traded=True, min_sample_column="gamesPlayed"
-    ),
-    "avg_steals": LeaderboardMetric(
-        table="player_season_stats", column="avgSteals", label="steals per game", dedup_traded=True, min_sample_column="gamesPlayed"
-    ),
-    "avg_blocks": LeaderboardMetric(
-        table="player_season_stats", column="avgBlocks", label="blocks per game", dedup_traded=True, min_sample_column="gamesPlayed"
-    ),
+    "avg_points": LeaderboardMetric(table="player_season_stats", column="avgPoints", label="points per game", dedup_traded=True, min_sample_column="gamesPlayed"),
+    "avg_rebounds": LeaderboardMetric(table="player_season_stats", column="avgRebounds", label="rebounds per game", dedup_traded=True, min_sample_column="gamesPlayed"),
+    "avg_assists": LeaderboardMetric(table="player_season_stats", column="avgAssists", label="assists per game", dedup_traded=True, min_sample_column="gamesPlayed"),
+    "avg_steals": LeaderboardMetric(table="player_season_stats", column="avgSteals", label="steals per game", dedup_traded=True, min_sample_column="gamesPlayed"),
+    "avg_blocks": LeaderboardMetric(table="player_season_stats", column="avgBlocks", label="blocks per game", dedup_traded=True, min_sample_column="gamesPlayed"),
     # ESPN precomputes these as a season COUNT of such games, so "most
     # triple-doubles" is a leaderboard, not a per-game threshold recount. A
     # double-double is >=10 in TWO of {points, rebounds, assists, steals,
     # blocks} in one game, a triple-double >=10 in THREE - settled, and
     # already applied upstream in these columns.
-    "double_doubles": LeaderboardMetric(
-        table="player_season_stats", column="doubleDouble", label="double-doubles", dedup_traded=True, min_sample_column="gamesPlayed"
-    ),
-    "triple_doubles": LeaderboardMetric(
-        table="player_season_stats", column="tripleDouble", label="triple-doubles", dedup_traded=True, min_sample_column="gamesPlayed"
-    ),
+    "double_doubles": LeaderboardMetric(table="player_season_stats", column="doubleDouble", label="double-doubles", dedup_traded=True, min_sample_column="gamesPlayed"),
+    "triple_doubles": LeaderboardMetric(table="player_season_stats", column="tripleDouble", label="triple-doubles", dedup_traded=True, min_sample_column="gamesPlayed"),
     "netpoints_total": LeaderboardMetric(
         table="net_points_player",
         column="overall",

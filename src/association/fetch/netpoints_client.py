@@ -35,6 +35,7 @@ class NetPointsDailyClient:
     credentials are issued to anyone who asks, with no account - so the client is
     built lazily and only when a date is actually fetched.
     """
+
     def __init__(self) -> None:
         self._s3: Any = None
 

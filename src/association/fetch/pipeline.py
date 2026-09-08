@@ -55,6 +55,7 @@ class Pipeline:
     resumes where the last one stopped and interrupting is safe. ``force``
     ignores those checkpoints.
     """
+
     def __init__(
         self,
         client: JsonFetcher | None,
@@ -123,10 +124,7 @@ class Pipeline:
         if not storage.exists(path):
             return {}
         table = pq_read(path, columns=["team_id", "abbreviation"])
-        return {
-            str(abbr): str(team_id)
-            for team_id, abbr in zip(table.column("team_id").to_pylist(), table.column("abbreviation").to_pylist(), strict=True)
-        }
+        return {str(abbr): str(team_id) for team_id, abbr in zip(table.column("team_id").to_pylist(), table.column("abbreviation").to_pylist(), strict=True)}
 
     # ---------------- schedule -> event ids ----------------
     def event_ids_for(self, season: int, season_type: int, team_ids: list[str]) -> list[str]:
@@ -145,9 +143,7 @@ class Pipeline:
     def fetch_game(self, event_id: str, season: int, season_type: int) -> None:
         """Fetch one game's summary and write every table it yields: box scores,
         and play-by-play derivatives when ``include_pbp`` is set."""
-        game_path = self._p(
-            "games", f"season={season}", f"season_type={season_type}", f"event_{event_id}.parquet"
-        )
+        game_path = self._p("games", f"season={season}", f"season_type={season_type}", f"event_{event_id}.parquet")
         resolved_marker = self._resolved_marker(season, season_type, event_id)
         if (self._exists(game_path) or storage.is_complete(resolved_marker)) and not self.force:
             return
@@ -180,9 +176,7 @@ class Pipeline:
             parsed["player_box"],
         )
         storage.write_rows(
-            self._p(
-                "team_box_stats", f"season={season}", f"season_type={season_type}", f"event_{event_id}.parquet"
-            ),
+            self._p("team_box_stats", f"season={season}", f"season_type={season_type}", f"event_{event_id}.parquet"),
             parsed["team_box"],
         )
         if self.include_pbp:
@@ -191,9 +185,7 @@ class Pipeline:
                 parsed["plays"],
             )
             storage.write_rows(
-                self._p(
-                    "shot_chart", f"season={season}", f"season_type={season_type}", f"event_{event_id}.parquet"
-                ),
+                self._p("shot_chart", f"season={season}", f"season_type={season_type}", f"event_{event_id}.parquet"),
                 parsed["shot_chart"],
             )
             storage.write_rows(
@@ -251,9 +243,7 @@ class Pipeline:
         path = self._p("player_season_stats", f"athlete_{athlete_id}_type_{season_type}.parquet")
         if storage.exists(path) and not self.force and not force_refresh:
             return
-        data = self._live_client.get_json(
-            endpoints.player_career_stats_url(athlete_id), params={"seasontype": season_type}
-        )
+        data = self._live_client.get_json(endpoints.player_career_stats_url(athlete_id), params={"seasontype": season_type})
         rows, glossary = parse.parse_player_career_stats(data, athlete_id, season_type)
         self._add_glossary(glossary)
         storage.write_rows(path, rows)
@@ -269,9 +259,7 @@ class Pipeline:
             # alone, so without this guard every run re-hits the network for
             # nothing. Skip before the request, not after.
             return
-        path = self._p(
-            "team_season_stats", f"season={season}", f"season_type={season_type}", f"team_{team_id}.parquet"
-        )
+        path = self._p("team_season_stats", f"season={season}", f"season_type={season_type}", f"team_{team_id}.parquet")
         if storage.exists(path) and not self.force and not force_refresh:
             return
         data = self._live_client.get_json(endpoints.team_season_stats_url(season, season_type, team_id))
@@ -382,9 +370,7 @@ class Pipeline:
         path = self._p("games")
         if not path.exists():
             return {}
-        table = ds.dataset(str(path), format="parquet").to_table(
-            columns=["event_id", "season", "season_type", "date", "home_team_id", "away_team_id"]
-        )
+        table = ds.dataset(str(path), format="parquet").to_table(columns=["event_id", "season", "season_type", "date", "home_team_id", "away_team_id"])
         result: dict[tuple[str, str], tuple[str, int, int]] = {}
         for event_id, season, season_type, date, home_id, away_id in zip(
             table.column("event_id").to_pylist(),
@@ -477,9 +463,7 @@ class Pipeline:
                 continue
 
             data = self._net_points_daily_client.get_daily(date, season_folder=season - 1)
-            player_rows, team_rows = parse.parse_net_points_daily(
-                data, date, team_abbr_to_id, team_date_to_game, name_to_athlete_id
-            )
+            player_rows, team_rows = parse.parse_net_points_daily(data, date, team_abbr_to_id, team_date_to_game, name_to_athlete_id)
             storage.write_rows(self._p("net_points_player_game", f"season={season}", f"date={date}.parquet"), player_rows)
             storage.write_rows(self._p("net_points_team_game", f"season={season}", f"date={date}.parquet"), team_rows)
             storage.mark_complete(marker)
@@ -524,9 +508,7 @@ class Pipeline:
             self.fetch_team_season_stats(season, season_type, team_id, force_refresh=not season_complete)
 
         athlete_ids = self.athlete_ids_for(season, season_type)
-        for athlete_id in tqdm(
-            athlete_ids, desc=f"{season} type={season_type} player season stats", leave=False
-        ):
+        for athlete_id in tqdm(athlete_ids, desc=f"{season} type={season_type} player season stats", leave=False):
             self.fetch_player_season_stats(athlete_id, season_type, force_refresh=not season_complete)
 
         if not season_complete:

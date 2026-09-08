@@ -28,10 +28,7 @@ def db_path(tmp_path: Path) -> str:
         "('100', '1', '9', 1, '9:00', false, 'Jump Shot', 24, 22, 3), "
         "('100', '1', '9', 2, '8:00', true, 'Layup', 25, 5, 2)"
     )
-    con.execute(
-        "CREATE TABLE player_season_advanced_stats (season INTEGER, season_type INTEGER, "
-        "athlete_id VARCHAR, games_played INTEGER, usage_pct DOUBLE)"
-    )
+    con.execute("CREATE TABLE player_season_advanced_stats (season INTEGER, season_type INTEGER, athlete_id VARCHAR, games_played INTEGER, usage_pct DOUBLE)")
     con.execute(
         "INSERT INTO player_season_advanced_stats VALUES "
         "(2026, 2, '1', 60, 30.0), "  # Curry: sustained role, real leader once qualified
@@ -49,10 +46,7 @@ def db_path(tmp_path: Path) -> str:
         "(2026, 2, '2', '20', 20, 12.0, 2.5, 1.5, 0.6, 0.2, 25.0), "  # Klay, team stint 2 (traded)
         "(2026, 2, '2', NULL, 50, 13.8, 2.8, 1.8, 0.7, 0.25, 27.0)"  # Klay, combined row - survives dedup
     )
-    con.execute(
-        "CREATE TABLE net_points_player (athlete_id VARCHAR, season INTEGER, net_points_season_type VARCHAR, "
-        "overall DOUBLE, overall_per_100_poss DOUBLE, total_minutes INTEGER)"
-    )
+    con.execute("CREATE TABLE net_points_player (athlete_id VARCHAR, season INTEGER, net_points_season_type VARCHAR, overall DOUBLE, overall_per_100_poss DOUBLE, total_minutes INTEGER)")
     con.execute(
         "INSERT INTO net_points_player VALUES "
         "('1', 2026, 'Regular Season', 300.0, 9.9, 2200), "  # Curry: high total, high rate, real sample
@@ -338,10 +332,7 @@ def seeded(tmp_path: Path, db_path: str) -> Toolbox:
     con.execute("CREATE TABLE narrow AS SELECT i AS id FROM range(300) t(i)")
     con.execute("CREATE TABLE huge AS SELECT repeat('z', 40000) AS blob, 1 AS keep")
     con.execute("INSERT INTO players (athlete_id, display_name) SELECT 'x' || i, 'P' || i FROM range(200) t(i)")
-    con.execute(
-        "INSERT INTO player_season_stats (athlete_id, season, season_type, avgPoints, gamesPlayed) "
-        "SELECT 'x' || i, 2026, 2, i, 40 FROM range(200) t(i)"
-    )
+    con.execute("INSERT INTO player_season_stats (athlete_id, season, season_type, avgPoints, gamesPlayed) SELECT 'x' || i, 2026, 2, i, 40 FROM range(200) t(i)")
     con.close()
     return Toolbox(db_path, tmp_path / "out")
 

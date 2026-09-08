@@ -3,6 +3,28 @@
 Notable changes to `association`, newest first. Each entry links back to the
 commit that made it for the full story.
 
+## 2026-09-07
+
+- **`ruff format` adopted, and gated**: the formatter reads the same
+  `line-length = 200` the linter does, so it *joins* the long prompt and SQL
+  strings up to that width rather than wrapping them at 88. The assumption
+  behind leaving it out - that it would fight the deliberate line length - was
+  simply wrong; nothing it produced exceeded 200 columns.
+
+  Reformatting touched 26 files across `src`, `tests` and `scripts`. Because
+  much of what moved is prompt text that the router and fall-through agent
+  depend on byte-for-byte, the change was verified by hashing
+  `KNOWLEDGE_BASE`, `SYSTEM_PROMPT_TEMPLATE`, `ALWAYS_ON_TOPICS`,
+  `ROUTER_PROMPT` and `ROUTER_SCHEMA` before and after: identical. The edits
+  are all implicit string concatenations being joined (same value, one line)
+  and long SQL being un-wrapped. One is a real fix - a docstring that opened
+  with a quote character (`""""Most games with N+ ...`) was ambiguous to read
+  and is now spaced.
+
+  `ruff format --check src tests scripts` runs in CI, and a `ruff-format` hook
+  runs in pre-commit ordered *after* `ruff --fix`, so an autofix cannot leave a
+  file unformatted.
+
 ## 2026-09-06
 
 - **100% public-API type completeness, and CI**: `pyright --verifytypes
@@ -35,10 +57,10 @@ commit that made it for the full story.
   ruff, mypy over `src` and `tests` separately, type completeness, docstring
   coverage, pytest, and the docs build with `-W`, uploading the built HTML as
   an artifact. `uv sync --frozen` fails if the lockfile has drifted from
-  pyproject rather than silently re-resolving. No `ruff format --check`: this
-  project is deliberately not ruff-formatted (line-length 200, because much of
-  the code is prompt text and SQL fixtures that read worse wrapped), and
-  enabling it would rewrite 27 files to no benefit.
+  pyproject rather than silently re-resolving. The one step left out was `ruff
+  format --check`, on the assumption that the formatter would fight the
+  deliberate line-length of 200 - which turned out to be wrong, and was
+  reversed the next day (see above).
 
 - **Sphinx documentation, and hooks that keep it honest**: `docs/` builds a
   full site - architecture, a command reference generated from the Click CLI

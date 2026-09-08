@@ -118,7 +118,7 @@ class Agent:
     def _trim_history(self) -> None:
         # keep the system prompt (index 0) plus the most recent messages
         if len(self.messages) > MAX_HISTORY_MESSAGES:
-            self.messages = [self.messages[0]] + self.messages[-(MAX_HISTORY_MESSAGES - 1):]
+            self.messages = [self.messages[0]] + self.messages[-(MAX_HISTORY_MESSAGES - 1) :]
 
     def ask(self, question: str) -> str:
         """Wraps _ask_inner so a RunHistory is ALWAYS written on the way out -
@@ -136,9 +136,7 @@ class Agent:
             answer = "EXCEPTION:\n" + traceback.format_exc()
             raise
         finally:
-            path = history.write(
-                command=command, model=self.model, think=self.think, question=question, answer=answer, router_model=self.router_model
-            )
+            path = history.write(command=command, model=self.model, think=self.think, question=question, answer=answer, router_model=self.router_model)
             print(f"[history] {path}  {history.summary_line()}", file=sys.stderr)
 
     def _narrate(self, question: str, data: dict, history: RunHistory) -> str:
@@ -219,9 +217,7 @@ class Agent:
         pending_error_tool: str | None = None
 
         for _ in range(MAX_TOOL_ITERATIONS):
-            chat_kwargs: dict[str, Any] = dict(
-                model=self.model, messages=self.messages, tools=TOOLS, keep_alive=KEEP_ALIVE, options={"num_ctx": NUM_CTX}
-            )
+            chat_kwargs: dict[str, Any] = dict(model=self.model, messages=self.messages, tools=TOOLS, keep_alive=KEEP_ALIVE, options={"num_ctx": NUM_CTX})
             if self.think:
                 chat_kwargs["think"] = True
             t0 = time.monotonic()
@@ -229,10 +225,7 @@ class Agent:
                 response = ollama.chat(**chat_kwargs)
             except ollama.ResponseError as exc:
                 if self.think and "does not support thinking" in str(exc):
-                    raise SystemExit(
-                        f"Error: model {self.model!r} does not support --think "
-                        "(try a thinking-capable model, e.g. qwen3:8b)."
-                    ) from None
+                    raise SystemExit(f"Error: model {self.model!r} does not support --think (try a thinking-capable model, e.g. qwen3:8b).") from None
                 raise
             history.record_model_call(time.monotonic() - t0)
             msg = response.message
@@ -287,8 +280,7 @@ class Agent:
                                 f"{pending_error_tool} again with corrected arguments, keeping every other "
                                 "argument you had already filled in (season, team, fields, limit, etc.) "
                                 "exactly as before - only fix what caused the error. If you can't get it "
-                                "working, say plainly that you couldn't get the data. The error was:\n"
-                                + pending_error
+                                "working, say plainly that you couldn't get the data. The error was:\n" + pending_error
                             ),
                         }
                     )

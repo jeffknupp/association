@@ -125,7 +125,7 @@ KNOWLEDGE_BASE: list[dict[str, Any]] = [
             "happens to be available."
         ),
         "example": (
-            "-- \"who leads the league in points?\" (no season named) -> use the CURRENT season\n"
+            '-- "who leads the league in points?" (no season named) -> use the CURRENT season\n'
             "SELECT p.display_name, ps.avgPoints\n"
             "FROM player_season_stats ps JOIN players p ON p.athlete_id = ps.athlete_id\n"
             "WHERE ps.season = current_season() AND ps.season_type = 2\n"
@@ -134,7 +134,7 @@ KNOWLEDGE_BASE: list[dict[str, Any]] = [
     },
     {
         "topic": "fieldGoalsMade/Attempted already INCLUDES 3-pointers",
-        "keywords": ['twos', 'two', 'pointers', 'shooting', 'field', 'goals'],
+        "keywords": ["twos", "two", "pointers", "shooting", "field", "goals"],
         "note": (
             "fieldGoalsMade/fieldGoalsAttempted are TOTAL field goals (2-point AND 3-point "
             "combined) - the standard box-score convention. threePointFieldGoalsMade/Attempted is "
@@ -159,7 +159,7 @@ KNOWLEDGE_BASE: list[dict[str, Any]] = [
     },
     {
         "topic": "Points scored in a specific quarter/period",
-        "keywords": ['quarter', 'period', 'half', 'overtime', 'q1', 'q2', 'q3', 'q4'],
+        "keywords": ["quarter", "period", "half", "overtime", "q1", "q2", "q3", "q4"],
         "note": (
             "NOT a stored column anywhere - player_box_stats/player_season_stats only have GAME "
             "totals. It has to be derived from plays (needs --include-pbp): each scoring play "
@@ -206,17 +206,13 @@ KNOWLEDGE_BASE: list[dict[str, Any]] = [
     },
     {
         "topic": "Shot distance / shot location math",
-        "keywords": ['distance', 'far', 'deep', 'long', 'feet', 'range', 'location', 'coordinates'],
+        "keywords": ["distance", "far", "deep", "long", "feet", "range", "location", "coordinates"],
         "note": (
             "shot_chart.coordinate_x/coordinate_y are court position in feet. The hoop is at "
             "(25, 5.25), NOT (0, 0). Free throws have NULL coordinates - always filter "
             "coordinate_x IS NOT NULL for distance/location stats."
         ),
-        "example": (
-            "-- average shot distance\n"
-            "SELECT AVG(sqrt(power(coordinate_x - 25, 2) + power(coordinate_y - 5.25, 2)))\n"
-            "FROM shot_chart WHERE athlete_id = ? AND coordinate_x IS NOT NULL"
-        ),
+        "example": ("-- average shot distance\nSELECT AVG(sqrt(power(coordinate_x - 25, 2) + power(coordinate_y - 5.25, 2)))\nFROM shot_chart WHERE athlete_id = ? AND coordinate_x IS NOT NULL"),
     },
     {
         "topic": "Filtering SQL to one named player or team",
@@ -276,28 +272,21 @@ KNOWLEDGE_BASE: list[dict[str, Any]] = [
             "so it was left out rather than guessed. These use the normal numeric season_type (2/3), "
             "not net_points_season_type's string - don't mix the two tables' conventions up."
         ),
-        "example": (
-            "-- a player's NetPoints in one specific game\n"
-            "SELECT o_net_pts, d_net_pts, t_net_pts FROM net_points_player_game\n"
-            "WHERE athlete_id = ? AND event_id = ?"
-        ),
+        "example": ("-- a player's NetPoints in one specific game\nSELECT o_net_pts, d_net_pts, t_net_pts FROM net_points_player_game\nWHERE athlete_id = ? AND event_id = ?"),
     },
     {
         "topic": "Column aliases starting with a digit",
         "note": (
             "An alias like AS 2pta is invalid SQL - an unquoted identifier can't start with a "
-            "digit. Double-quote it (AS \"2pta\") instead of guessing a different spelling or "
+            'digit. Double-quote it (AS "2pta") instead of guessing a different spelling or '
             "dropping the alias - this applies to any column name/alias starting with a number, "
             "not just NetPoints queries."
         ),
-        "example": (
-            "-- WRONG: SELECT points AS 2pta -- syntax error\n"
-            "-- RIGHT: SELECT points AS \"2pta\""
-        ),
+        "example": ('-- WRONG: SELECT points AS 2pta -- syntax error\n-- RIGHT: SELECT points AS "2pta"'),
     },
     {
         "topic": "Filtering by an exact calendar date",
-        "keywords": ['date', 'day', 'january', 'february', 'march', 'april', 'may', 'june', 'november', 'december', 'night'],
+        "keywords": ["date", "day", "january", "february", "march", "april", "may", "june", "november", "december", "night"],
         "note": (
             "games.date is a full ISO timestamp string like '2026-04-12T22:00Z', not a bare "
             "'YYYY-MM-DD' - WHERE date = '2026-04-12' is valid SQL that silently matches nothing, "
@@ -305,11 +294,7 @@ KNOWLEDGE_BASE: list[dict[str, Any]] = [
             "As always: an empty result here means check the filter before concluding the data or "
             "game doesn't exist."
         ),
-        "example": (
-            "-- WRONG: WHERE date = '2026-04-12' -- always empty, no error\n"
-            "-- RIGHT:\n"
-            "SELECT event_id FROM games WHERE date LIKE '2026-04-12%'"
-        ),
+        "example": ("-- WRONG: WHERE date = '2026-04-12' -- always empty, no error\n-- RIGHT:\nSELECT event_id FROM games WHERE date LIKE '2026-04-12%'"),
     },
     {
         "topic": "IDs in run_sql results",
@@ -332,7 +317,7 @@ KNOWLEDGE_BASE: list[dict[str, Any]] = [
     },
     {
         "topic": "Advanced stats: what's computed vs. what doesn't exist",
-        "keywords": ['advanced', 'rating', 'per', 'vorp', 'bpm', 'win', 'shares'],
+        "keywords": ["advanced", "rating", "per", "vorp", "bpm", "win", "shares"],
         "note": (
             "player_advanced_stats / player_season_advanced_stats hold true shooting % "
             "(ts_pct), effective FG% (efg_pct), usage rate (usage_pct), and Hollinger game "
@@ -531,15 +516,13 @@ TOOLS: list[dict[str, Any]] = [
             "name": "run_sql",
             "description": (
                 "Run a read-only SQL SELECT query against the DuckDB warehouse and return rows as JSON. "
-                "For a \"top/best/worst N players by <metric>\" question, use get_leaderboard instead if "
+                'For a "top/best/worst N players by <metric>" question, use get_leaderboard instead if '
                 "the metric is one of its known metrics - only use run_sql for that shape of question "
                 "when the metric isn't covered there."
             ),
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "A DuckDB SELECT statement."}
-                },
+                "properties": {"query": {"type": "string", "description": "A DuckDB SELECT statement."}},
                 "required": ["query"],
             },
         },
@@ -552,10 +535,8 @@ TOOLS: list[dict[str, Any]] = [
                 "Rank players by one of a fixed set of known metrics - the correct table, join, season "
                 "default, minimum-sample qualifier, and traded-player handling are all applied for you. "
                 "Optionally restrict to one team, or add extra box-score columns (points/rebounds/etc.) "
-                "alongside the ranked metric. ALWAYS prefer this over run_sql for a \"top/best/worst N "
-                "players by <metric>\" question when the metric is one of: "
-                + ", ".join(sorted(CORE_METRIC_NAMES))
-                + " - or a NetPoints \"fingerprint\" shot/play-type category (2pt, 3pt, driving, "
+                'alongside the ranked metric. ALWAYS prefer this over run_sql for a "top/best/worst N '
+                'players by <metric>" question when the metric is one of: ' + ", ".join(sorted(CORE_METRIC_NAMES)) + ' - or a NetPoints "fingerprint" shot/play-type category (2pt, 3pt, driving, '
                 "fastbreak, rebound, turnover, rim, etc. - see the metric enum for the full list), each "
                 "as <category>_o_net_pts / _d_net_pts / _t_net_pts for offense/defense/total."
             ),
@@ -570,9 +551,7 @@ TOOLS: list[dict[str, Any]] = [
                         # and pays for the list only when it actually needs it.
                         "type": "string",
                         "description": (
-                            "Which metric to rank by. Core: "
-                            + ", ".join(sorted(CORE_METRIC_NAMES))
-                            + ". Also any NetPoints play-type category as <category>_o_net_pts / _d_net_pts / "
+                            "Which metric to rank by. Core: " + ", ".join(sorted(CORE_METRIC_NAMES)) + ". Also any NetPoints play-type category as <category>_o_net_pts / _d_net_pts / "
                             "_t_net_pts, where <category> is one of two_pt, three_pt, assist, bad_pass, corner, "
                             "cutting, driving, fade, fast_break, floating, foul, free_throw, hook, layup, "
                             "mid_range, putback, rebound, rim, total, turnover. Call with a best guess if "
@@ -581,10 +560,7 @@ TOOLS: list[dict[str, Any]] = [
                     },
                     "season": {
                         "type": "integer",
-                        "description": (
-                            "ESPN season year (season-ending year), e.g. 2024 for the 2023-24 season. "
-                            "Omit if the question doesn't name a season - defaults to the CURRENT season."
-                        ),
+                        "description": ("ESPN season year (season-ending year), e.g. 2024 for the 2023-24 season. Omit if the question doesn't name a season - defaults to the CURRENT season."),
                     },
                     "season_type": {
                         "type": "integer",
@@ -593,9 +569,7 @@ TOOLS: list[dict[str, Any]] = [
                     "min_sample": {
                         "type": "integer",
                         "description": (
-                            "Minimum games/minutes (depends on the metric) to qualify. Omit to use a "
-                            "sensible built-in default - only set this if the user's question gives its "
-                            "own minimum."
+                            "Minimum games/minutes (depends on the metric) to qualify. Omit to use a sensible built-in default - only set this if the user's question gives its own minimum."
                         ),
                     },
                     "team": {

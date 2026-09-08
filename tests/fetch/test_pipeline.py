@@ -37,18 +37,14 @@ class FakeClient:
 
 
 def _teams_response(n: int) -> dict:
-    return {
-        "sports": [{"leagues": [{"teams": [{"team": {"id": str(i), "abbreviation": f"T{i}"}} for i in range(1, n + 1)]}]}]
-    }
+    return {"sports": [{"leagues": [{"teams": [{"team": {"id": str(i), "abbreviation": f"T{i}"}} for i in range(1, n + 1)]}]}]}
 
 
 def _schedule_response(event_ids: list[str]) -> dict:
     return {"events": [{"id": eid} for eid in event_ids]}
 
 
-def _game_summary_with_player(
-    event_id: str, athlete_id: str, completed: bool = True, state: str = "post", home: str = "1", away: str = "2"
-) -> dict:
+def _game_summary_with_player(event_id: str, athlete_id: str, completed: bool = True, state: str = "post", home: str = "1", away: str = "2") -> dict:
     summary = _game_summary(event_id, completed=completed, state=state, home=home, away=away)
     summary["boxscore"]["players"] = [
         {
@@ -107,9 +103,7 @@ def test_run_season_type_marks_complete_when_all_games_resolved(tmp_path: Path) 
     responses: dict[str, Any] = {TEAMS_URL: _teams_response(2)}
     for i in (1, 2):
         responses[_schedule_url(str(i))] = _schedule_response(["100", "101"])
-    responses[SUMMARY_URL] = lambda params: (
-        _game_summary("100", completed=True) if params["event"] == "100" else _game_summary("101", completed=False, state="post")
-    )
+    responses[SUMMARY_URL] = lambda params: _game_summary("100", completed=True) if params["event"] == "100" else _game_summary("101", completed=False, state="post")
     client = FakeClient(responses)
     pipeline = Pipeline(client, tmp_path)
     pipeline.fetch_teams()
@@ -193,9 +187,7 @@ def test_force_bypasses_completion_marker(tmp_path: Path) -> None:
 
 TEAM_SEASON_STATS_URL_T1 = "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2024/types/2/teams/1/statistics"
 PLAYER_CAREER_STATS_URL_10 = "https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/10/stats"
-_PLAYER_CAREER_STATS_RESPONSE = {
-    "categories": [{"names": ["avgPoints"], "statistics": [{"season": {"year": 2024}, "teamId": "1", "stats": ["20.0"]}]}]
-}
+_PLAYER_CAREER_STATS_RESPONSE = {"categories": [{"names": ["avgPoints"], "statistics": [{"season": {"year": 2024}, "teamId": "1", "stats": ["20.0"]}]}]}
 
 
 def test_run_season_type_refreshes_team_and_player_stats_while_season_in_progress(tmp_path: Path) -> None:
@@ -207,9 +199,7 @@ def test_run_season_type_refreshes_team_and_player_stats_while_season_in_progres
     A still-pending game must not block either from being fetched."""
     responses: dict[str, Any] = {TEAMS_URL: _teams_response(1)}
     responses[_schedule_url("1")] = _schedule_response(["500", "501"])
-    responses[SUMMARY_URL] = lambda params: (
-        _game_summary_with_player("500", "10", completed=True) if params["event"] == "500" else _game_summary("501", completed=False, state="pre")
-    )
+    responses[SUMMARY_URL] = lambda params: _game_summary_with_player("500", "10", completed=True) if params["event"] == "500" else _game_summary("501", completed=False, state="pre")
     responses[TEAM_SEASON_STATS_URL_T1] = {"splits": {"categories": [{"stats": [{"name": "blocks", "value": 5.0}]}]}}
     responses[PLAYER_CAREER_STATS_URL_10] = _PLAYER_CAREER_STATS_RESPONSE
     client = FakeClient(responses)
@@ -229,9 +219,7 @@ def test_run_season_type_re_fetches_team_and_player_stats_on_second_pass_while_i
     a second pull must re-fetch both rather than silently keeping stale data."""
     responses: dict[str, Any] = {TEAMS_URL: _teams_response(1)}
     responses[_schedule_url("1")] = _schedule_response(["500", "501"])
-    responses[SUMMARY_URL] = lambda params: (
-        _game_summary_with_player("500", "10", completed=True) if params["event"] == "500" else _game_summary("501", completed=False, state="pre")
-    )
+    responses[SUMMARY_URL] = lambda params: _game_summary_with_player("500", "10", completed=True) if params["event"] == "500" else _game_summary("501", completed=False, state="pre")
     responses[TEAM_SEASON_STATS_URL_T1] = {"splits": {"categories": [{"stats": [{"name": "blocks", "value": 5.0}]}]}}
     responses[PLAYER_CAREER_STATS_URL_10] = _PLAYER_CAREER_STATS_RESPONSE
     client = FakeClient(responses)
@@ -284,9 +272,7 @@ def test_fetch_team_season_stats_skips_network_for_preseason(tmp_path: Path) -> 
 
 def test_fetch_team_season_stats_still_fetches_for_regular_and_postseason(tmp_path: Path) -> None:
     responses = {
-        "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2024/types/2/teams/1/statistics": {
-            "splits": {"categories": [{"stats": [{"name": "blocks", "value": 5.0}]}]}
-        }
+        "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2024/types/2/teams/1/statistics": {"splits": {"categories": [{"stats": [{"name": "blocks", "value": 5.0}]}]}}
     }
     client = FakeClient(responses)
     pipeline = Pipeline(client, tmp_path)
@@ -353,9 +339,7 @@ def test_fetch_net_points_merges_per_100_possession_rate_file(tmp_path: Path) ->
     own "Net Points / 100 Poss" toggle is used, not computed client-side."""
     responses: dict[str, Any] = {
         TEAMS_URL: _teams_response(1),
-        NET_POINTS_PLAYER_URL: [
-            {"dot_com_id": 10, "tm": "T1", "min_season": 2023, "seasonType": "Regular Season", "net_pts_games": 50, "overall": 1.0}
-        ],
+        NET_POINTS_PLAYER_URL: [{"dot_com_id": 10, "tm": "T1", "min_season": 2023, "seasonType": "Regular Season", "net_pts_games": 50, "overall": 1.0}],
         NET_POINTS_PLAYER_100_URL: [
             {
                 "dot_com_id": 10,
@@ -385,9 +369,7 @@ def test_fetch_net_points_merges_per_100_possession_rate_file(tmp_path: Path) ->
 def test_fetch_net_points_skips_writing_files_already_on_disk(tmp_path: Path) -> None:
     responses: dict[str, Any] = {
         TEAMS_URL: _teams_response(1),
-        NET_POINTS_PLAYER_URL: [
-            {"dot_com_id": 10, "tm": "T1", "min_season": 2023, "seasonType": "Regular Season", "net_pts_games": 50, "overall": 1.0}
-        ],
+        NET_POINTS_PLAYER_URL: [{"dot_com_id": 10, "tm": "T1", "min_season": 2023, "seasonType": "Regular Season", "net_pts_games": 50, "overall": 1.0}],
         NET_POINTS_TEAM_URL: {"team4f": '{"teamId": {"0": "T1"}, "Side": {"0": "Total"}, "season": {"0": 2023}}'},
     }
     client = FakeClient(responses)
@@ -404,9 +386,7 @@ def test_fetch_net_points_skips_writing_files_already_on_disk(tmp_path: Path) ->
 def test_fetch_net_points_force_overwrites(tmp_path: Path) -> None:
     responses: dict[str, Any] = {
         TEAMS_URL: _teams_response(1),
-        NET_POINTS_PLAYER_URL: [
-            {"dot_com_id": 10, "tm": "T1", "min_season": 2023, "seasonType": "Regular Season", "net_pts_games": 50, "overall": 1.0}
-        ],
+        NET_POINTS_PLAYER_URL: [{"dot_com_id": 10, "tm": "T1", "min_season": 2023, "seasonType": "Regular Season", "net_pts_games": 50, "overall": 1.0}],
         NET_POINTS_TEAM_URL: {"team4f": '{"teamId": {"0": "T1"}, "Side": {"0": "Total"}, "season": {"0": 2023}}'},
     }
     client = FakeClient(responses)
@@ -571,9 +551,7 @@ def test_fetch_net_points_daily_writes_resolved_rows(tmp_path: Path) -> None:
     )
     _write_players_fixture(tmp_path, [{"athlete_id": "9", "display_name": "Test Player"}])
     client = FakeClient({TEAMS_URL: _teams_response(1)})
-    client.responses[TEAMS_URL] = {
-        "sports": [{"leagues": [{"teams": [{"team": {"id": "18", "abbreviation": "NY"}}]}]}]
-    }
+    client.responses[TEAMS_URL] = {"sports": [{"leagues": [{"teams": [{"team": {"id": "18", "abbreviation": "NY"}}]}]}]}
     pipeline = Pipeline(client, tmp_path)
     pipeline.fetch_teams()
     pipeline._net_points_daily_client = FakeDailyClient(
@@ -657,11 +635,7 @@ def _standings_response() -> dict:
 
 
 def _power_index_response(season: int) -> dict:
-    return {
-        "items": [
-            {"season": season, "seasonType": 2, "team": {"$ref": "http://x/teams/1?x"}, "stats": [{"name": "bpi", "value": 5.0}]}
-        ]
-    }
+    return {"items": [{"season": season, "seasonType": 2, "team": {"$ref": "http://x/teams/1?x"}, "stats": [{"name": "bpi", "value": 5.0}]}]}
 
 
 def test_fetch_standings_refetches_current_season_but_not_a_past_one(tmp_path: Path, monkeypatch: Any) -> None:

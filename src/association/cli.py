@@ -12,8 +12,8 @@ import click
 
 DEFAULT_DATA_DIR = "./data/parquet"
 DEFAULT_DB_PATH = "./nba.duckdb"
-DEFAULT_MODEL = "qwen2.5:7b"          # the fall-through agent: writes SQL by hand
-DEFAULT_ROUTER_MODEL = "qwen2.5:3b"   # the fast path: classify + fill slots
+DEFAULT_MODEL = "qwen2.5:7b"  # the fall-through agent: writes SQL by hand
+DEFAULT_ROUTER_MODEL = "qwen2.5:3b"  # the fast path: classify + fill slots
 DEFAULT_OUT_DIR = "./query_output"
 
 LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR"]
@@ -107,14 +107,12 @@ def _query_engine_options(f: F) -> F:
     f = click.option(
         "--no-fast-path",
         is_flag=True,
-        help="Skip the intent router and answer every question with the full tool-calling agent. "
-        "For comparing the two paths while more question shapes are ported to templates.",
+        help="Skip the intent router and answer every question with the full tool-calling agent. For comparing the two paths while more question shapes are ported to templates.",
     )(f)
     f = click.option(
         "--think",
         is_flag=True,
-        help="Show the model's reasoning trace before each response (requires a thinking-capable "
-        "model, e.g. qwen3:8b - qwen2.5 does not support this).",
+        help="Show the model's reasoning trace before each response (requires a thinking-capable model, e.g. qwen3:8b - qwen2.5 does not support this).",
     )(f)
     return f
 
@@ -134,9 +132,7 @@ def data() -> None:
 @click.option("--season-types", default="2,3", show_default=True, help="1=preseason 2=regular 3=postseason")
 @click.option("--data-dir", default=DEFAULT_DATA_DIR, show_default=True, help="Parquet flat-file root")
 @click.option("--db-path", default=DEFAULT_DB_PATH, show_default=True, help="DuckDB warehouse file")
-@click.option(
-    "--include-pbp", is_flag=True, help="Also parse play-by-play, shot_chart, win_probability (free - same API call, more disk/parse time)"
-)
+@click.option("--include-pbp", is_flag=True, help="Also parse play-by-play, shot_chart, win_probability (free - same API call, more disk/parse time)")
 @click.option(
     "--include-net-points-daily",
     is_flag=True,
@@ -192,8 +188,7 @@ def data_pull(
 @click.option(
     "--tables",
     default=None,
-    help="Comma-separated subset of tables to (re)load, e.g. 'games,player_box_stats' "
-    "(unknown names error out). Default: every table with Parquet files on disk.",
+    help="Comma-separated subset of tables to (re)load, e.g. 'games,player_box_stats' (unknown names error out). Default: every table with Parquet files on disk.",
 )
 @click.option("--log-level", type=click.Choice(LOG_LEVELS), default="INFO", show_default=True)
 def data_load(data_dir: str, db_path: str, tables: str | None, log_level: str) -> None:

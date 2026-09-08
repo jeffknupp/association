@@ -81,8 +81,7 @@ def build(data_dir: Path, db_path: Path, tables: list[str] | None = None) -> Non
                 continue
             glob = str(table_dir / "**" / "*.parquet")
             con.execute(
-                f"CREATE OR REPLACE TABLE {table} AS "
-                "SELECT * FROM read_parquet(?, hive_partitioning=false, union_by_name=true)",
+                f"CREATE OR REPLACE TABLE {table} AS SELECT * FROM read_parquet(?, hive_partitioning=false, union_by_name=true)",
                 [glob],
             )
             count_row = con.execute(f"SELECT count(*) FROM {table}").fetchone()
@@ -138,11 +137,7 @@ def _build_views(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
     # `data load` too.
     has_advanced = "player_advanced_stats" in loaded
     advanced_select = ", pas.ts_pct, pas.efg_pct, pas.usage_pct, pas.game_score" if has_advanced else ""
-    advanced_join = (
-        "LEFT JOIN player_advanced_stats pas ON pas.event_id = pbs.event_id AND pas.athlete_id = pbs.athlete_id"
-        if has_advanced
-        else ""
-    )
+    advanced_join = "LEFT JOIN player_advanced_stats pas ON pas.event_id = pbs.event_id AND pas.athlete_id = pbs.athlete_id" if has_advanced else ""
     con.execute(
         f"""
         CREATE OR REPLACE VIEW player_game_log AS

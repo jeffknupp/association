@@ -44,15 +44,13 @@ def render_court_html(title: str, subtitle: str, shots: list[tuple[Any, ...]]) -
         color = "var(--make)" if made else "var(--miss)"
         label = f"{'MADE' if made else 'MISS'} - {shot_type} - Q{period} {clock} (game {event_id})"
         if made:
-            markers.append(
-                f'<circle cx="{sx(x)}" cy="{sy(y)}" r="5" fill="{color}" fill-opacity="0.75" stroke="{color}" stroke-width="1"><title>{label}</title></circle>'
-            )
+            markers.append(f'<circle cx="{sx(x)}" cy="{sy(y)}" r="5" fill="{color}" fill-opacity="0.75" stroke="{color}" stroke-width="1"><title>{label}</title></circle>')
         else:
             d = 4
             markers.append(
                 f'<g stroke="{color}" stroke-width="2" opacity="0.75"><title>{label}</title>'
-                f'<line x1="{sx(x)-d}" y1="{sy(y)-d}" x2="{sx(x)+d}" y2="{sy(y)+d}"/>'
-                f'<line x1="{sx(x)-d}" y1="{sy(y)+d}" x2="{sx(x)+d}" y2="{sy(y)-d}"/></g>'
+                f'<line x1="{sx(x) - d}" y1="{sy(y) - d}" x2="{sx(x) + d}" y2="{sy(y) + d}"/>'
+                f'<line x1="{sx(x) - d}" y1="{sy(y) + d}" x2="{sx(x) + d}" y2="{sy(y) - d}"/></g>'
             )
 
     return f"""<!doctype html>
@@ -86,7 +84,7 @@ def render_court_html(title: str, subtitle: str, shots: list[tuple[Any, ...]]) -
   <p class="sub">{subtitle}</p>
   <svg width="{W}" height="{H}" viewBox="0 0 {W} {H}">
     {court}
-    {''.join(markers)}
+    {"".join(markers)}
   </svg>
   <div class="legend">
     <span><span class="dot"></span> Made</span>

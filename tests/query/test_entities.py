@@ -18,7 +18,7 @@ def con() -> duckdb.DuckDBPyConnection:
 
 
 def test_resolve_player_refuses_to_guess_between_two_real_players(con: duckdb.DuckDBPyConnection) -> None:
-    """"Curry" is Seth and Stephen. A leaderboard row attributed to the wrong
+    """ "Curry" is Seth and Stephen. A leaderboard row attributed to the wrong
     one is indistinguishable from a right answer, so this must not pick."""
     got = resolve_player(con, "Curry")
     assert isinstance(got, Ambiguous) and got.candidates == ["Seth Curry", "Stephen Curry"]
@@ -79,7 +79,7 @@ def test_nickname_matches_the_whole_query_not_a_substring(con: duckdb.DuckDBPyCo
 
 
 def test_ordinary_first_names_are_deliberately_not_nicknames(con: duckdb.DuckDBPyConnection) -> None:
-    """"Luka" and "Curry" are shared with real players; asking is the honest
+    """ "Luka" and "Curry" are shared with real players; asking is the honest
     answer, and a curated table must not quietly turn into a popularity guess."""
     from association.query.entities import PLAYER_NICKNAMES
 

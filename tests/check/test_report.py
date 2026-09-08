@@ -54,9 +54,7 @@ def test_run_check_offline_accounts_for_resolved_games_in_have_count(tmp_path: P
     assert "3/?" in out  # 2 played + 1 resolved = 3 accounted for, not just 2
 
 
-def test_run_check_cached_complete_skips_live_schedule_call(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_run_check_cached_complete_skips_live_schedule_call(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     """The core fix: a season/type already marked complete by `pull` must not
     trigger a fresh live schedule request - the marker is trusted."""
     _write(tmp_path / "games" / "season=2024" / "season_type=2" / "event_1.parquet", [{"season": 2024, "season_type": 2, "event_id": "1"}])
@@ -76,9 +74,7 @@ def test_run_check_cached_complete_skips_live_schedule_call(
     assert "trusted from local completion marker" in out
 
 
-def test_run_check_force_bypasses_cache_and_hits_live(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_run_check_force_bypasses_cache_and_hits_live(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     _write(tmp_path / "games" / "season=2024" / "season_type=2" / "event_1.parquet", [{"season": 2024, "season_type": 2, "event_id": "1"}])
     (tmp_path / "_complete" / "season=2024").mkdir(parents=True)
     (tmp_path / "_complete" / "season=2024" / "season_type=2.marker").touch()

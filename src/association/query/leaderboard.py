@@ -45,6 +45,7 @@ class LeaderboardResult:
     ``min_sample_applied`` and ``min_sample_column`` are part of the answer, not
     bookkeeping: they are what makes "why is this player missing?" answerable.
     """
+
     metric: str
     label: str
     season: int
@@ -169,10 +170,7 @@ def run_leaderboard(
         # player's deduped/combined row has team_id IS NULL, which would
         # wrongly exclude them from every team's roster even though they really
         # did play for one of their stint teams that season.
-        where.append(
-            f"EXISTS (SELECT 1 FROM player_season_stats pss WHERE pss.athlete_id = t.{spec.id_column} "
-            "AND pss.season = ? AND pss.season_type = ? AND pss.team_id = ?)"
-        )
+        where.append(f"EXISTS (SELECT 1 FROM player_season_stats pss WHERE pss.athlete_id = t.{spec.id_column} AND pss.season = ? AND pss.season_type = ? AND pss.team_id = ?)")
         params.extend([resolved_season, season_type, resolved_team_id])
     qualify = "QUALIFY ROW_NUMBER() OVER (PARTITION BY t.athlete_id ORDER BY (t.team_id IS NULL) DESC) = 1" if spec.dedup_traded else ""
 

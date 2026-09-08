@@ -4,6 +4,8 @@ repos:
     hooks:
       - id: ruff
         args: [--fix]
+      # After the linter, so an autofix can't leave the file unformatted.
+      - id: ruff-format
 
   # Local hooks (not the isolated mirrors-mypy env) so mypy resolves the
   # `association` package and third-party stubs (pytest, duckdb, ...) exactly

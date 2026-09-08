@@ -107,10 +107,7 @@ def test_ask_gives_honest_message_when_recovery_cap_exhausted(monkeypatch: pytes
     live). The final reply must say plainly that it didn't work, not read
     like an action that's still pending."""
     responses = iter(
-        [
-            ChatResponse(model="qwen3:8b", created_at="", done=True, message=Message(role="assistant", content="SELECT 1"))
-            for _ in range(MAX_AUTO_SQL_RECOVERIES)
-        ]
+        [ChatResponse(model="qwen3:8b", created_at="", done=True, message=Message(role="assistant", content="SELECT 1")) for _ in range(MAX_AUTO_SQL_RECOVERIES)]
         + [
             ChatResponse(
                 model="qwen3:8b",
@@ -272,9 +269,7 @@ def test_fast_path_is_skipped_entirely_when_disabled(monkeypatch: pytest.MonkeyP
         called = True
 
     monkeypatch.setattr("association.query.agent.route", fake_route)
-    monkeypatch.setattr(
-        ollama, "chat", lambda **kw: ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="agent answer"))
-    )
+    monkeypatch.setattr(ollama, "chat", lambda **kw: ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="agent answer")))
     assert _agent(tmp_path, fast_path=False).ask("q") == "agent answer"
     assert not called
 
@@ -285,17 +280,13 @@ def test_unported_intent_falls_through_to_the_agent(monkeypatch: pytest.MonkeyPa
     from association.query.router import Route
 
     monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="other", slots={}))
-    monkeypatch.setattr(
-        ollama, "chat", lambda **kw: ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="agent answer"))
-    )
+    monkeypatch.setattr(ollama, "chat", lambda **kw: ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="agent answer")))
     assert _agent(tmp_path).ask("who had the most triple-doubles?") == "agent answer"
 
 
 def test_router_failure_falls_through_rather_than_erroring(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr("association.query.agent.route", lambda *a, **k: None)
-    monkeypatch.setattr(
-        ollama, "chat", lambda **kw: ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="agent answer"))
-    )
+    monkeypatch.setattr(ollama, "chat", lambda **kw: ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="agent answer")))
     assert _agent(tmp_path).ask("q") == "agent answer"
 
 
@@ -307,9 +298,7 @@ def test_fast_path_answer_is_recorded_in_conversation_for_later_followups(monkey
 
     monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="threshold_count", slots={"stat": "points", "threshold": 30}))
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"threshold_count": lambda con, slots: TemplateResult(summary="s", data={"leaders": []})})
-    monkeypatch.setattr(
-        ollama, "chat", lambda **kw: ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="narrated answer"))
-    )
+    monkeypatch.setattr(ollama, "chat", lambda **kw: ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="narrated answer")))
     agent = _agent(tmp_path)
     assert agent.ask("most 30+ point games?") == "narrated answer"
     assert agent.last_question == "most 30+ point games?"

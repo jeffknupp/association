@@ -50,6 +50,8 @@ testpaths = ["tests"]
 [tool.ruff]
 # Generous on purpose: much of this codebase is prompt/schema description
 # strings and SQL fixtures that read worse wrapped than left as one line.
+# The formatter reads this same setting, so `ruff format` joins those strings
+# up to 200 columns rather than fighting them back down to 88.
 line-length = 200
 target-version = "py310"
 

@@ -29,11 +29,11 @@ jobs:
       - name: Lint (ruff)
         run: uv run ruff check src tests scripts
 
-      # No `ruff format --check`: this project is deliberately not
-      # ruff-formatted. line-length is 200 on purpose (see pyproject) because
-      # much of the code is prompt text and SQL fixtures that read worse
-      # wrapped, and enabling the formatter would rewrite 27 files to no
-      # benefit. `ruff check` still enforces the lint rules.
+      - name: Format (ruff)
+        # The formatter inherits line-length = 200 from pyproject, so it joins
+        # the long prompt/SQL strings up to that width instead of wrapping them
+        # at 88 - which is what made adopting it viable here.
+        run: uv run ruff format --check src tests scripts
 
       - name: Types (mypy, src)
         # src and tests are checked separately: combined, mypy resolves the

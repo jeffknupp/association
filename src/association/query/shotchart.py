@@ -74,10 +74,7 @@ def render_shot_chart(
         where.append("made = ?")
         filter_params.append(made_only)
 
-    sql = (
-        "SELECT coordinate_x, coordinate_y, made, shot_type, period, clock, event_id "
-        f"FROM shot_chart WHERE {' AND '.join(where)} AND coordinate_x IS NOT NULL"
-    )
+    sql = f"SELECT coordinate_x, coordinate_y, made, shot_type, period, clock, event_id FROM shot_chart WHERE {' AND '.join(where)} AND coordinate_x IS NOT NULL"
     shots = con.execute(sql, filter_params).fetchall()
     if not shots:
         return f"No shots found for {resolved_name} with the given filters."

@@ -118,6 +118,7 @@ class Toolbox:
     The DuckDB connection is opened read-only, which is a hard guarantee rather
     than a convention: no query the model writes can modify the warehouse.
     """
+
     def __init__(self, db_path: str, out_dir: Path):
         self.con: duckdb.DuckDBPyConnection = duckdb.connect(db_path, read_only=True)
         self.out_dir = out_dir
@@ -198,9 +199,7 @@ class Toolbox:
         model can read the error and correct itself. The fast-path template
         calls run_leaderboard directly - one implementation, two callers."""
         try:
-            result = run_leaderboard(
-                self.con, metric, season=season, season_type=season_type, min_sample=min_sample, team=team, fields=fields, limit=limit
-            )
+            result = run_leaderboard(self.con, metric, season=season, season_type=season_type, min_sample=min_sample, team=team, fields=fields, limit=limit)
         except LeaderboardError as exc:
             return str(exc)
         return json.dumps(

@@ -59,6 +59,7 @@ PLAYER_NICKNAMES = {
 @dataclass(frozen=True)
 class Entity:
     """One resolved player or team: an opaque warehouse id and its display name."""
+
     id: str
     name: str
 
@@ -76,6 +77,7 @@ class Ambiguous:
 class NotFound:
     """Nothing matched ``query`` - distinct from :class:`Ambiguous`, where too
     much did."""
+
     query: str
 
 
@@ -141,7 +143,7 @@ def _resolve(candidates: list[Entity], text: str, exact_keys: tuple[str, ...]) -
 
 
 def resolve_player(con: duckdb.DuckDBPyConnection, text: str) -> Resolution:
-    """"Curry" is genuinely ambiguous (Seth and Stephen), and a leaderboard
+    """ "Curry" is genuinely ambiguous (Seth and Stephen), and a leaderboard
     row attributed to the wrong one is indistinguishable from a right answer."""
     return _resolve(find_players(con, text), text, ("name",))
 

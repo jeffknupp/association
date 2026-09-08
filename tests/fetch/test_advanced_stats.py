@@ -20,20 +20,48 @@ def _write_player_box_stats(data_dir: Path, rows: list[dict]) -> None:
 # One game, one team: player A takes the whole floor-share, player B is the
 # only other player on the team so team totals are easy to hand-check.
 _PLAYER_A = {
-    "event_id": "1", "season": 2024, "season_type": 2, "team_id": "1", "athlete_id": "10",
-    "minutes": 36, "points": 30, "fieldGoalsMade": 10, "fieldGoalsAttempted": 20,
-    "threePointFieldGoalsMade": 2, "threePointFieldGoalsAttempted": 5,
-    "freeThrowsMade": 8, "freeThrowsAttempted": 10,
-    "offensiveRebounds": 1, "defensiveRebounds": 4, "assists": 5, "steals": 2, "blocks": 1,
-    "fouls": 3, "turnovers": 3,
+    "event_id": "1",
+    "season": 2024,
+    "season_type": 2,
+    "team_id": "1",
+    "athlete_id": "10",
+    "minutes": 36,
+    "points": 30,
+    "fieldGoalsMade": 10,
+    "fieldGoalsAttempted": 20,
+    "threePointFieldGoalsMade": 2,
+    "threePointFieldGoalsAttempted": 5,
+    "freeThrowsMade": 8,
+    "freeThrowsAttempted": 10,
+    "offensiveRebounds": 1,
+    "defensiveRebounds": 4,
+    "assists": 5,
+    "steals": 2,
+    "blocks": 1,
+    "fouls": 3,
+    "turnovers": 3,
 }
 _PLAYER_B = {
-    "event_id": "1", "season": 2024, "season_type": 2, "team_id": "1", "athlete_id": "11",
-    "minutes": 204, "points": 10, "fieldGoalsMade": 4, "fieldGoalsAttempted": 10,
-    "threePointFieldGoalsMade": 0, "threePointFieldGoalsAttempted": 0,
-    "freeThrowsMade": 2, "freeThrowsAttempted": 2,
-    "offensiveRebounds": 2, "defensiveRebounds": 6, "assists": 3, "steals": 0, "blocks": 0,
-    "fouls": 1, "turnovers": 1,
+    "event_id": "1",
+    "season": 2024,
+    "season_type": 2,
+    "team_id": "1",
+    "athlete_id": "11",
+    "minutes": 204,
+    "points": 10,
+    "fieldGoalsMade": 4,
+    "fieldGoalsAttempted": 10,
+    "threePointFieldGoalsMade": 0,
+    "threePointFieldGoalsAttempted": 0,
+    "freeThrowsMade": 2,
+    "freeThrowsAttempted": 2,
+    "offensiveRebounds": 2,
+    "defensiveRebounds": 6,
+    "assists": 3,
+    "steals": 0,
+    "blocks": 0,
+    "fouls": 1,
+    "turnovers": 1,
 }
 
 
@@ -78,9 +106,7 @@ def test_ts_pct_and_efg_pct_hand_computed(tmp_path: Path) -> None:
     warehouse.build(data_dir, db_path)
 
     con = duckdb.connect(str(db_path))
-    row = con.execute(
-        "SELECT ts_pct, efg_pct, usage_pct, game_score FROM player_advanced_stats WHERE athlete_id = '10'"
-    ).fetchone()
+    row = con.execute("SELECT ts_pct, efg_pct, usage_pct, game_score FROM player_advanced_stats WHERE athlete_id = '10'").fetchone()
     con.close()
     assert row is not None
     ts_pct, efg_pct, usage_pct, game_score = row
@@ -111,9 +137,7 @@ def test_season_view_aggregates_totals_not_average_of_ratios(tmp_path: Path) -> 
     warehouse.build(data_dir, db_path)
 
     con = duckdb.connect(str(db_path))
-    row = con.execute(
-        "SELECT games_played, ts_pct FROM player_season_advanced_stats WHERE athlete_id = '10'"
-    ).fetchone()
+    row = con.execute("SELECT games_played, ts_pct FROM player_season_advanced_stats WHERE athlete_id = '10'").fetchone()
     con.close()
     assert row is not None
     games_played, ts_pct = row

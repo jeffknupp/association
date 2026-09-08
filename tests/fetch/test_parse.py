@@ -366,9 +366,7 @@ def test_parse_standings_dedupes_across_nested_levels() -> None:
         "children": [
             {
                 "standings": {"entries": [{"team": {"id": "1"}, "stats": [{"name": "wins", "value": 50.0}]}]},
-                "children": [
-                    {"standings": {"entries": [{"team": {"id": "1"}, "stats": [{"name": "wins", "value": 999.0}]}]}}
-                ],
+                "children": [{"standings": {"entries": [{"team": {"id": "1"}, "stats": [{"name": "wins", "value": 999.0}]}]}}],
             }
         ]
     }
@@ -452,9 +450,7 @@ def test_parse_player_career_stats_splits_compound_and_groups_by_season_team() -
                 "names": ["gamesPlayed", "avgFieldGoalsMade-avgFieldGoalsAttempted"],
                 "displayNames": ["GP", "FG"],
                 "descriptions": ["Games Played", "Field Goals"],
-                "statistics": [
-                    {"season": {"year": 2024}, "teamId": "10", "position": "F", "stats": ["70", "5.0-10.0"]}
-                ],
+                "statistics": [{"season": {"year": 2024}, "teamId": "10", "position": "F", "stats": ["70", "5.0-10.0"]}],
             }
         ]
     }
