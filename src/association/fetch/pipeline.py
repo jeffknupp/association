@@ -407,22 +407,17 @@ class Pipeline:
         return {name: next(iter(ids)) for name, ids in by_name.items() if len(ids) == 1}
 
     def _net_points_dates_and_seasons(self) -> dict[str, int]:
-        """NetPoints label -> project season, for every date this project
-        already has at least one local ESPN game for, PLUS each such date
-        minus one day - NetPoints daily data is only fetched for dates
-        already covered, not blindly over the source's full history.
+        """NetPoints label -> project season, for every date with at least one
+        local ESPN game, PLUS each such date minus one day. Daily data is
+        fetched only for dates already covered, not over the source's history.
 
-        The "minus one day" half is required, not an optimization: a local
-        game's true NetPoints label is usually its ESPN date minus one (the
-        UTC-vs-local-date offset - see _resolve_net_points_game), and if that
-        label date has no OTHER local game of its own, it would otherwise
-        never be fetched at all. Confirmed live: a Lakers game with no other
-        local game the literal calendar day before it was silently missed
-        entirely until this was added, not just given a wrong event_id like
-        the back-to-back case. The label's season is reused from its parent
-        date unless that label is itself an independently-known date (i.e.
-        the rare case of a season boundary) - the only failure mode of
-        reusing it is fetching one extra, harmlessly empty S3 key."""
+        The "minus one day" half is required, not an optimization: a game's
+        NetPoints label is usually its ESPN date minus one (the UTC-vs-local
+        offset - see _resolve_net_points_game), and a label date with no OTHER
+        local game of its own would otherwise never be fetched. That missed a
+        Lakers game entirely, rather than merely mislabelling it. The label's
+        season is reused from its parent date unless independently known (a
+        season boundary); reusing it costs at worst one empty S3 key."""
         path = self._p("games")
         if not path.exists():
             return {}
@@ -452,12 +447,10 @@ class Pipeline:
 
         for date in tqdm(sorted(dates_and_seasons), desc="NetPoints daily"):
             season = dates_and_seasons[date]
-            # A date whose rows all fail to resolve (e.g. no teams matched)
-            # writes no parquet file at all (storage.write_rows([]) is a
-            # no-op) - a marker, not file-existence, is what makes that date
-            # skip on the next run instead of being re-fetched forever, the
-            # same class of fix already applied to preseason team-stats and
-            # postponed games elsewhere in this pipeline.
+            # A date whose rows all fail to resolve writes no parquet at all
+            # (write_rows([]) is a no-op), so a MARKER rather than file
+            # existence is what stops it being re-fetched forever - the same
+            # fix already applied to preseason team-stats and postponed games.
             marker = self._p("_net_points_daily_done", f"date={date}.marker")
             if not self.force and storage.is_complete(marker):
                 continue

@@ -456,17 +456,14 @@ def parse_net_points_player(
     team_abbr_to_id: dict[str, str],
     rate_data: list[JSON] | None = None,
 ) -> list[Row]:
-    """NetPoints publishes one flat JSON array covering every historical
-    season in one request - no per-season fetch exists, so this parses the
-    whole thing every pull; the pipeline only writes out season+type files
-    that aren't already on disk.
+    """NetPoints publishes one flat JSON array covering every season in one
+    request - there is no per-season fetch, so this parses the whole thing every
+    pull and the pipeline writes only the season+type files not already on disk.
 
-    NetPoints labels a season by the year it STARTS (e.g. 2025 = the 2025-26
-    season) - ESPN's convention used everywhere else in this project is the
-    year a season ENDS, so `season` here is stored as netpoints_season + 1
-    to stay directly comparable/joinable with every other table's `season`
-    column (confirmed live: a player's netpoints_season=2025 row has the same
-    games-played count as this project's own season=2026 data for them).
+    NetPoints labels a season by the year it STARTS (2025 = the 2025-26 season);
+    every other table here uses ESPN's year-it-ENDS convention. So `season` is
+    stored as netpoints_season + 1, to stay joinable with every other table's
+    `season` column. Verified by games-played matching across the two.
 
     `rate_data` is a second, separate flat file (nba_net_pts100_data.json) on
     the same public bucket - ESPN Analytics' own site fetches it only when its
@@ -546,22 +543,16 @@ def parse_net_points_team(data: JSON | None, team_abbr_to_id: dict[str, str]) ->
 
 
 def _resolve_net_points_game(team_id: str | None, date: str, team_date_to_game: dict[tuple[str, str], tuple[str, int, int]]) -> tuple[str, int, int] | None:
-    """NetPoints' per-date files have no ESPN event_id anywhere, but a team
-    plays at most one game on a given real-world date - so (team_id, date)
-    against this project's OWN already-fetched games table resolves it
-    deterministically, without needing NBA.com's gmID/gameId at all.
+    """NetPoints' per-date files carry no ESPN event_id, but a team plays at
+    most one game per real-world date, so (team_id, date) against our own games
+    table resolves it deterministically.
 
-    The one wrinkle (confirmed live): ESPN's games.date is a UTC timestamp,
-    and NetPoints' date-keyed files use the US-local date - for an evening
-    game these disagree by one day (a real example: an OKC @ NYK game ESPN
-    stores as "2026-03-05T00:00Z" is filed by NetPoints under "2026-03-04").
-    UTC is always ahead of US local time, never behind, so the ESPN date is
-    almost always `date + 1 day` - checked FIRST, not as a fallback. Trying
-    exact `date` first is a real, confirmed bug: a team playing the same
-    opponent on back-to-back nights (e.g. New Orleans @ LA Clippers on both
-    2026-03-19 and -20 ESPN-dates) has its OWN unrelated game sitting at the
-    exact NetPoints-label date, which would silently steal the match before
-    the +1 case - the offset case - ever got a chance to run.
+    The wrinkle: ESPN's games.date is a UTC timestamp and NetPoints uses the
+    US-local date, so an evening game disagrees by one day. UTC is always ahead,
+    never behind, so `date + 1 day` is checked FIRST, not as a fallback -
+    order matters. On back-to-back nights against the same opponent, the team's
+    OWN unrelated game sits at the exact NetPoints-label date and would
+    silently steal the match before the offset case ever ran.
     """
     if team_id is None:
         return None

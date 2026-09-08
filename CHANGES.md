@@ -15,6 +15,15 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Prose pass over `fetch/`.** Same rule as the query side: keep the fact that
+  changes what you write, drop the retelling. What stayed is the material a
+  reader cannot reconstruct - NetPoints labelling a season by the year it
+  STARTS while every other table uses the year it ENDS; the UTC-vs-local date
+  offset and, crucially, *why the +1 day case must be checked first* (on
+  back-to-back nights against the same opponent, the team's own unrelated game
+  sits at the exact NetPoints-label date and would steal the match); why a
+  marker rather than file existence is what stops a date being re-fetched
+  forever; and why PER/WS/BPM/VORP are a deliberate gap rather than an oversight.
 - **Same prose pass across the rest of `query/`, and four stale comments fixed.**
   The wrong ones mattered more than the long ones:
 

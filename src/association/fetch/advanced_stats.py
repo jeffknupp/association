@@ -1,28 +1,21 @@
 """Player-level advanced stats, computed as DuckDB views over player_box_stats
 rather than fetched.
 
-Confirmed live: ESPN's own team season-stats endpoint already carries
-effectiveFGPct/trueShootingPct/paceFactor natively, but its player career-stats
-endpoint has no equivalent (avgPoints/avgAssists/... and ESPN's own
-scoringEfficiency/shootingEfficiency, nothing else) - so only the player side
-has a real gap to fill.
+ESPN's team season-stats endpoint already carries effectiveFGPct /
+trueShootingPct / paceFactor, but the player career-stats endpoint has no
+equivalent, so only the player side has a gap to fill.
 
-Everything here is an exact, closed-form box-score formula (True Shooting %,
-Effective FG%, Usage Rate, Hollinger Game Score) - no season/league-wide
-baseline is needed to compute it, so there's nothing here that can drift out
-of sync with a moving league average. Deliberately NOT included: PER, Win
-Shares, BPM, VORP - those require position estimates and league-average
-pace/efficiency/replacement-level baselines layered on top of a formula this
-size, which is real, correctness-critical complexity a closed-form ratio
-doesn't have. Treat that as a known, deliberate gap (like Real Plus-Minus in
-the README), not an oversight.
+Everything here is an exact closed-form box-score formula (True Shooting %,
+Effective FG%, Usage Rate, Hollinger Game Score), needing no league-wide
+baseline, so nothing here can drift out of sync with a moving league average.
+Deliberately NOT included: PER, Win Shares, BPM, VORP - those need position
+estimates and league-average pace/efficiency/replacement baselines on top, which
+is correctness-critical complexity a closed-form ratio does not have. A known
+gap, not an oversight.
 
-Always built (no opt-in flag) since these views cost nothing beyond a
-CREATE VIEW over data already fetched - no extra network request, no extra
-storage. That these rows are DERIVED rather than sourced from ESPN directly
-is still made visible (the query engine's TABLE_SUMMARY labels them
-"COMPUTED", and this module's own name says the same), just not gated
-behind a flag someone has to remember to pass.
+Always built, with no opt-in flag: a CREATE VIEW over data already fetched costs
+no request and no storage. That these rows are DERIVED stays visible instead -
+TABLE_SUMMARY labels them "COMPUTED", as does this module's name.
 """
 
 from __future__ import annotations
