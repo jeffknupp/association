@@ -114,22 +114,20 @@ class TemplateContext:
 
 @dataclass
 class TemplateResult:
-    """`answer`, when set, is the final prose and NO model call is made at all.
+    """`answer` is the final prose, so the fast path makes NO model call after
+    the router. Required, not optional: ollama keeps one KV cache slot per
+    model, so a second call with a different system prompt evicts the router's
+    prefix (measured: three consecutive router calls run 11.6s / 1.3s / 1.7s,
+    but interleaving one narration call puts the next back to 11.2s). Phrasing
+    every answer here also removes the last place on this path where a number
+    could be invented.
 
-    That is worth more than it looks. ollama keeps one KV cache slot per model
-    by default, so a second call with a different system prompt evicts the
-    router's cached prefix - measured: three consecutive router calls run
-    11.6s / 1.3s / 1.7s, but interleaving a narrator call puts the next router
-    call back to 11.2s. A deterministic answer avoids the eviction AND removes
-    the last place on the fast path where a number could be invented.
-
-    `data` is the fallback for templates that don't phrase their own answer: it
-    is what a narrator model would see, and deliberately carries no ids and no
-    schema - only resolved names and numbers it can restate."""
+    `data` is the same result as structured values - resolved names and numbers,
+    no ids and no schema. Tests assert against it."""
 
     summary: str
     data: dict[str, Any]
-    answer: str | None = None
+    answer: str
 
 
 def _clamp_limit(limit: Any, default: int = DEFAULT_LIMIT) -> int:

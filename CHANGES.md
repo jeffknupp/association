@@ -15,6 +15,19 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Removed the narrator model call from the fast path.** `Agent._narrate`,
+  `NARRATOR_PROMPT` and `NARRATE_NUM_CTX` were unreachable: the call site fired
+  only when a template returned `answer=None`, and all 24 `TemplateResult`
+  constructions set it. The only thing exercising the path was a test that
+  monkeypatched a fake template returning no answer.
+
+  `TemplateResult.answer` is now a required `str` rather than `str | None`, so
+  "the fast path makes no model call after the router" is enforced by the type
+  checker instead of holding by coincidence across every template. That property
+  is load-bearing - a second call with a different system prompt evicts the
+  router's KV prefix, and a narrator is the last place on this path a number
+  could be invented - so it should not have depended on nobody ever omitting a
+  keyword argument.
 - **Removed `FAST-PATH-MIGRATION.md`**: the migration it planned is finished.
   Every shape it listed is implemented - all thirteen templates are registered
   in `TEMPLATES` and present in `ROUTER_SCHEMA`'s intent enum, per-question

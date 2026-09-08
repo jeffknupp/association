@@ -3,7 +3,6 @@ guards against the model writing SQL as prose instead of actually running it."""
 
 from __future__ import annotations
 
-import json
 import re
 import shlex
 import sys
@@ -26,7 +25,6 @@ MAX_TOOL_ITERATIONS = 8
 MAX_AUTO_SQL_RECOVERIES = 2  # cap on auto-executing SQL the model wrote instead of calling run_sql
 MAX_ERROR_RECOVERIES = 2  # cap on nudging a retry after a tool error, instead of letting it fabricate an answer
 MAX_HISTORY_MESSAGES = 40  # trim oldest turns once conversation grows past this, keep system prompt
-NARRATE_NUM_CTX = 2048  # the narrator sees one small result object, never the schema
 
 # Routing and SQL generation are different jobs and want different models.
 # Benchmarked on the 30 real cases in scripts/check_routing.py, every model
@@ -40,15 +38,6 @@ NARRATE_NUM_CTX = 2048  # the narrator sees one small result object, never the s
 # against qwen2.5:3b's 1.1s, reasoning at length before emitting the same tiny
 # JSON object. --think applies to the agent only, never the router.
 DEFAULT_ROUTER_MODEL = "qwen2.5:3b"
-
-# The narrator's only job is to restate numbers it can already see. It gets no
-# schema, no tools and no conversation - which is why it needs a fraction of
-# the context (and the wall time) a tool-calling turn does.
-NARRATOR_PROMPT = (
-    "Answer the question in one or two sentences using ONLY the data given. "
-    "Do not add, infer, or round any number that is not present in it. "
-    "If the data is empty, say plainly that there were no matching results."
-)
 
 _SQL_FENCE_RE = re.compile(r"```(?:sql)?\s*\n?(.*?)```", re.IGNORECASE | re.DOTALL)
 
@@ -139,28 +128,8 @@ class Agent:
             path = history.write(command=command, model=self.model, think=self.think, question=question, answer=answer, router_model=self.router_model)
             print(f"[history] {path}  {history.summary_line()}", file=sys.stderr)
 
-    def _narrate(self, question: str, data: dict, history: RunHistory) -> str:
-        """Second and last model call on the fast path. It sees the result rows
-        and nothing else, so the worst it can do is misphrase numbers already in
-        front of it - a far smaller surface than the old path, where a model
-        that had lost the schema to truncation could fabricate a whole answer
-        (confirmed live: literal "[Player Name 1]" placeholders presented as
-        real data)."""
-        t0 = time.monotonic()
-        response = ollama.chat(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": NARRATOR_PROMPT},
-                {"role": "user", "content": f"Question: {question}\nData: {json.dumps(data, default=str)}"},
-            ],
-            keep_alive=KEEP_ALIVE,
-            options={"num_ctx": NARRATE_NUM_CTX, "temperature": 0},
-        )
-        history.record_model_call(time.monotonic() - t0)
-        return response.message.content or ""
-
     def _try_fast_path(self, question: str, history: RunHistory) -> str | None:
-        """Route -> deterministic template -> narrate. Returns None to fall
+        """Route -> deterministic template -> answer. Returns None to fall
         through to the full agent, which is the outcome for every intent not
         yet ported, for slots that fail validation, and for any router or
         template failure. Falling through costs one ~1-2s round trip and
@@ -186,11 +155,9 @@ class Agent:
             history.log(f"  -> (template) {exc} - falling through to the agent")
             return None
         history.record_tool_call(f"template {routed.intent}", time.monotonic() - t0)
-        if result.answer is not None:
-            # No second model call: see TemplateResult on why that is both
-            # faster than it looks and safer than narrating.
-            return result.answer
-        return self._narrate(question, result.data, history)
+        # No second model call, ever: templates phrase their own answers. See
+        # TemplateResult for why that is both faster and safer than narrating.
+        return result.answer
 
     def _ask_inner(self, question: str, history: RunHistory) -> str:
         fast = self._try_fast_path(question, history)
