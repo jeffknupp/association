@@ -12,10 +12,12 @@ import click
 
 from association import __version__
 
+# query.models holds no heavy imports, so this does not pull ollama or duckdb
+# into CLI startup - unlike the Agent import, which stays lazy below.
+from association.query.models import DEFAULT_MODEL, DEFAULT_ROUTER_MODEL
+
 DEFAULT_DATA_DIR = "./data/parquet"
 DEFAULT_DB_PATH = "./nba.duckdb"
-DEFAULT_MODEL = "qwen2.5:7b"  # the fall-through agent: writes SQL by hand
-DEFAULT_ROUTER_MODEL = "qwen2.5:3b"  # the fast path: classify + fill slots
 DEFAULT_OUT_DIR = "./query_output"
 
 LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR"]

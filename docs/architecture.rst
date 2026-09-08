@@ -88,9 +88,9 @@ Two models
 ----------
 
 Routing and SQL generation want different models. Benchmarked over the routing
-cases in ``scripts/check_routing.py``, every model from 1.5B to 8B scored 28–30
-out of 30 — constrained decoding does the structural work, so the model only
-classifies and fills slots. The router therefore runs a 3B (``--router-model``)
+cases in ``scripts/check_routing.py``, every model from 1.5B to 8B landed within
+a case or two of the rest — constrained decoding does the structural work, so the
+model only classifies and fills slots. The router therefore runs a 3B (``--router-model``)
 while the agent keeps a 7B (``--model``) for hand-written SQL. Reproduce with
 ``scripts/bench_router_models.py``.
 

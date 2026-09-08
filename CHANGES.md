@@ -14,6 +14,23 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
+## Unreleased
+- **One definition of the ollama model defaults**, in `query/models.py`, instead
+  of a copy each in `cli.py` and `agent.py`. The copies could drift apart
+  silently and the consequence was not cosmetic: `scripts/check_routing.py` reads
+  the router default to decide what to validate, so a divergence would have meant
+  the routing check passing against a model the CLI does not ship - while the
+  project's own rule is that the prompt and the router model are one unit, and
+  swapping either invalidates the check.
+
+  The new module deliberately imports nothing heavy, so `cli.py` reads it at
+  module level without pulling ollama or duckdb into startup; the `Agent` import
+  stays lazy. Verified: importing it loads no ollama/duckdb/pyarrow.
+- **Fixed the last stale routing-benchmark count.** `docs/architecture.rst` said
+  models scored "28-30 out of 30" while naming `scripts/check_routing.py`, which
+  has 39 cases. Same claim as the one corrected in `agent.py`, missed on that
+  pass; both now describe the spread without quoting a total that goes stale.
+
 ## 1.1.0 - 2026-09-08
 - **Prose pass over `fetch/`.** Same rule as the query side: keep the fact that
   changes what you write, drop the retelling. What stayed is the material a

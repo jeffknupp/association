@@ -16,6 +16,7 @@ import ollama
 
 from .history import DEFAULT_HISTORY_DIR, RunHistory
 from .keepalive import KEEP_ALIVE
+from .models import DEFAULT_ROUTER_MODEL
 from .prompt import NUM_CTX, TOOLS, build_system_prompt
 from .router import route
 from .templates import TEMPLATES, TemplateContext, TemplateUnsupported, check_scope
@@ -25,18 +26,6 @@ MAX_TOOL_ITERATIONS = 8
 MAX_AUTO_SQL_RECOVERIES = 2  # cap on auto-executing SQL the model wrote instead of calling run_sql
 MAX_ERROR_RECOVERIES = 2  # cap on nudging a retry after a tool error, instead of letting it fabricate an answer
 MAX_HISTORY_MESSAGES = 40  # trim oldest turns once conversation grows past this, keep system prompt
-
-# Routing and SQL generation are different jobs and want different models.
-# Benchmarked over scripts/check_routing.py's cases, every model from 1.5B to
-# 8B scored within one or two of the rest: constrained decoding does the
-# structural work, so classification is not a 7B-sized job. qwen2.5:3b matched
-# qwen2.5:7b at 1.8x the speed and 2.8GB less RAM; the agent keeps the 7B,
-# where hand-writing SQL needs the capacity. Reproduce with
-# scripts/bench_router_models.py.
-#
-# Thinking models are wrong here on latency: qwen3:4b took ~20s per question
-# against qwen2.5:3b's 1.1s to emit the same tiny JSON. --think is agent-only.
-DEFAULT_ROUTER_MODEL = "qwen2.5:3b"
 
 _SQL_FENCE_RE = re.compile(r"```(?:sql)?\s*\n?(.*?)```", re.IGNORECASE | re.DOTALL)
 

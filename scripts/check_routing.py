@@ -27,7 +27,7 @@ import argparse
 import sys
 import time
 
-from association.query.agent import DEFAULT_ROUTER_MODEL
+from association.query.models import DEFAULT_ROUTER_MODEL
 from association.query.router import route
 from association.query.templates import TEMPLATES
 from association.season import current_season
