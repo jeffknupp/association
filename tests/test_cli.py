@@ -182,3 +182,27 @@ def test_ai_dispatches_with_think_and_model(monkeypatch: pytest.MonkeyPatch) -> 
     # Routing and SQL generation run on different models by design.
     assert captured["router_model"] == "qwen2.5:3b"
     assert captured["model"] != captured["router_model"]
+
+
+def test_version_flag_reports_the_packaged_version() -> None:
+    """--version must agree with installed metadata, not a hand-copied literal.
+
+    The whole point of deriving the number from importlib.metadata is that a
+    bump touches pyproject.toml alone; this fails if someone reintroduces a
+    literal that drifts.
+    """
+    from importlib.metadata import version
+
+    for flag in ("--version", "-V"):
+        result = CliRunner().invoke(cli, [flag])
+        assert result.exit_code == 0, result.output
+        assert version("association") in result.output
+
+
+def test_dunder_version_matches_installed_metadata() -> None:
+    """``association.__version__`` is the single source the CLI and docs read."""
+    from importlib.metadata import version
+
+    import association
+
+    assert association.__version__ == version("association")

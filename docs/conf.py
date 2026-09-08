@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sys
 from datetime import date
+from importlib.metadata import version as installed_version
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -16,7 +17,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 project = "association"
 author = "Jeff Knupp"
 copyright = f"{date.today().year}, {author}"
-release = "0.1.0"
+
+# Read the version from installed package metadata rather than repeating the
+# literal here. pyproject.toml is the single source of truth - the publish
+# workflow parses it to check the tag agrees - and a hand-copied number in this
+# file would be the obvious thing to forget on a bump.
+#
+# Read through importlib.metadata rather than `from association import
+# __version__ as release`: that spelling reads as an unused import to the
+# linter, which removes it and leaves `release` silently undefined - Sphinx
+# treats it as optional and builds happily with an empty version.
+release = installed_version("association")
 
 extensions = [
     "sphinx.ext.autodoc",
@@ -57,5 +68,8 @@ myst_enable_extensions = ["colon_fence", "deflist"]
 myst_heading_anchors = 3
 
 html_theme = "furo"
-html_title = "association"
+# Includes the version: Furo shows this in the sidebar, and an explicit
+# html_title otherwise suppresses the project-and-version line it would
+# render by default, leaving a docs site that never states what it documents.
+html_title = f"association {release}"
 html_static_path = []

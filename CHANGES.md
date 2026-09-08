@@ -3,7 +3,43 @@
 Notable changes to `association`, newest first. Each entry links back to the
 commit that made it for the full story.
 
-## 2026-09-07
+Released versions follow [semantic versioning](https://semver.org): the major
+number changes when something that used to work stops working, the minor
+number when something is added, the patch number for fixes. What counts as
+"something that used to work" here is the CLI surface - command and option
+names, output shapes that scripts parse - and the documented Python API, not
+the internal query templates or the router's intent set, which are expected to
+grow continuously.
+
+Sections dated rather than numbered predate the first release, when the project
+had no published version to be compatible with.
+
+## Unreleased
+
+- **Semantic versioning, and tooling to hold to it**: `pyproject.toml` is now
+  the only place a version number is written. The package reads it back through
+  `importlib.metadata.version` and exposes `association.__version__`,
+  `docs/conf.py` imports that instead of repeating the literal, and the CLI
+  grew `-V`/`--version`. The publish workflow already parsed the same file to
+  check the tag agrees, so there is one source of truth and nothing left to
+  forget on a bump.
+
+  `scripts/bump_version.py` takes `major`, `minor`, `patch` or an explicit
+  version, and optionally commits and tags. It refuses to run on a dirty tree,
+  refuses to reuse an existing tag (PyPI would not accept the version twice
+  either), and requires a `## Unreleased` section in this changelog to rename -
+  a release with no description of what changed is worse than one that failed
+  to happen. It never pushes: pushing is the step that makes a release
+  irreversible.
+
+  `scripts/release.sh` creates the GitHub release from an already-pushed tag,
+  using the changelog section for that version as the release notes so the two
+  cannot disagree. It re-checks that the tag, the packaged version and the
+  pushed tag all match before prompting, because publishing the release
+  triggers a PyPI upload that cannot be undone.
+
+  The `Documentation` URL now points at
+  <https://association.readthedocs.io/en/latest/> rather than the GitHub README.
 
 - **Docs build on Read the Docs**: `.readthedocs.yaml` builds the Sphinx site
   on every push and previews it on pull requests. It uses `build.commands` with

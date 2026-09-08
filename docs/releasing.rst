@@ -28,21 +28,59 @@ This part cannot be automated, and must be done before the first release.
    the actual upload a deliberate, approved step rather than a side effect of
    publishing a release.
 
+Versioning
+----------
+
+Released versions follow `semantic versioning <https://semver.org>`_. The
+compatibility promise covers the CLI surface — command and option names, and
+output shapes a script might parse — and the documented Python API. It does not
+cover the query templates or the router's intent set, which are expected to
+grow continuously; a new intent is a minor bump, not a major one.
+
+``pyproject.toml`` holds the only copy of the number. The package reads it back
+through :func:`importlib.metadata.version` and exposes it as
+``association.__version__``; ``docs/conf.py`` imports that; the CLI reports it
+through ``--version``; and the publish workflow parses the same file to check
+the tag agrees. Nothing else needs editing on a bump.
+
 Cutting a release
 -----------------
 
-#. Bump ``version`` in ``pyproject.toml``.
-#. Add a ``CHANGES.md`` entry describing the change (the ``changes-md``
-   pre-commit hook enforces that one exists for any commit touching ``src/``).
-#. Commit and push.
-#. Rehearse if the packaging itself changed: run the *Publish* workflow
-   manually with the target ``testpypi``, then check the result installs::
+#. Describe the change under a ``## Unreleased`` heading in ``CHANGES.md``.
+   This is a hard requirement, not a convention — the bump script stops if the
+   section is missing, because a release with no description of what changed is
+   worse than a release that failed to happen.
+
+#. Bump, commit and tag::
+
+      $ scripts/bump_version.py minor --tag
+
+   Accepts ``major``, ``minor``, ``patch`` or an explicit ``X.Y.Z``. It renames
+   the ``## Unreleased`` heading to the version and today's date, refuses to run
+   on a dirty working tree, and refuses to reuse a tag that already exists —
+   PyPI would not accept a second upload for that version either.
+
+#. Rehearse against TestPyPI if the packaging itself changed: run the *Publish*
+   workflow manually with the target ``testpypi``, then check the result
+   installs::
 
       $ uv run --with association --index-url https://test.pypi.org/simple/ \
-            --extra-index-url https://pypi.org/simple/ association --help
+            --extra-index-url https://pypi.org/simple/ association --version
 
-#. Create a GitHub release tagged ``vX.Y.Z``. Publishing the release triggers
-   the workflow, which runs the full gate suite, builds, and uploads.
+#. Push, then create the release::
+
+      $ git push && git push --tags
+      $ scripts/release.sh X.Y.Z
+
+   ``release.sh`` re-checks that the packaged version, the local tag and the
+   pushed tag all agree, uses the changelog section for that version as the
+   release notes so the two cannot disagree, and prompts before creating
+   anything. Pass ``--draft`` to stage the release without triggering the
+   upload.
+
+Nothing before the final step is irreversible. The bump script never pushes,
+and a local tag can be deleted; publishing the GitHub release is the point of
+no return, because it triggers the PyPI upload.
 
 What the workflow guards
 ------------------------

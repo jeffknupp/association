@@ -43,7 +43,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/jeffknupp/association"
-Documentation = "https://github.com/jeffknupp/association#readme"
+Documentation = "https://association.readthedocs.io/en/latest/"
 Source = "https://github.com/jeffknupp/association"
 Changelog = "https://github.com/jeffknupp/association/blob/master/CHANGES.md"
 Issues = "https://github.com/jeffknupp/association/issues"

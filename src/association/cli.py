@@ -10,6 +10,8 @@ from typing import Any, TypeVar
 
 import click
 
+from association import __version__
+
 DEFAULT_DATA_DIR = "./data/parquet"
 DEFAULT_DB_PATH = "./nba.duckdb"
 DEFAULT_MODEL = "qwen2.5:7b"  # the fall-through agent: writes SQL by hand
@@ -118,6 +120,7 @@ def _query_engine_options(f: F) -> F:
 
 
 @click.group(epilog=CLI_EPILOG, context_settings={"help_option_names": ["-h", "--help"]})
+@click.version_option(__version__, "-V", "--version", prog_name="association")
 def cli() -> None:
     """Fetch, audit, and query ESPN's NBA stats via a local DuckDB warehouse."""
 
