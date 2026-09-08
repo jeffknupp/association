@@ -7,6 +7,7 @@ from typing import Any
 import duckdb
 import pytest
 
+from association.query import shotchart
 from association.query.templates import (
     HONORED_SCOPING,
     TemplateContext,
@@ -426,6 +427,59 @@ def test_shot_chart_ignores_a_nonsense_shot_value(sc_ctx: TemplateContext) -> No
 def test_shot_chart_without_a_player_falls_through(sc_ctx: TemplateContext) -> None:
     with pytest.raises(TemplateUnsupported):
         shot_chart(sc_ctx, {"season": current_season()})
+
+
+def test_a_scoped_chart_uses_the_same_player_it_looked_the_game_up_for(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The chart and the game it is scoped to must be about ONE player.
+
+    shot_chart used to resolve the name twice - once to find the event_id and
+    again inside the renderer - agreeing only by convention. Two independent
+    best-match resolutions can pick differently, and the result would be a chart
+    titled for one Curry scoped to a game the other one played: wrong, and
+    invisible, since the plot looks perfectly normal.
+    """
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.execute(
+        "CREATE TABLE shot_chart (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, "
+        "period INTEGER, clock VARCHAR, made BOOLEAN, shot_type VARCHAR, coordinate_x INTEGER, coordinate_y INTEGER, points_attempted INTEGER)"
+    )
+    c.execute("CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, game_date VARCHAR)")
+    # Two players both matching "Curry", each with their own game and shots.
+    c.execute("INSERT INTO players VALUES ('1','Seth Curry'), ('2','Stephen Curry')")
+    c.executemany(
+        "INSERT INTO player_game_log VALUES (?,?,2,?,?)",
+        [("1", current_season(), "seth_game", "2026-01-02"), ("2", current_season(), "steph_game", "2026-01-03")],
+    )
+    c.executemany(
+        "INSERT INTO shot_chart VALUES (?,?,2,?,1,'10:00',true,'Jump Shot',25,20,3)",
+        [("1", current_season(), "seth_game"), ("2", current_season(), "steph_game")],
+    )
+    ctx = TemplateContext(con=c, out_dir=tmp_path / "out")
+
+    calls = []
+    real = shotchart.find_players
+
+    def counting(con: Any, text: str) -> Any:
+        calls.append(text)
+        return real(con, text)
+
+    monkeypatch.setattr(shotchart, "find_players", counting)
+    result = shot_chart(ctx, {"player": "Curry", "order": "recent", "season": current_season()})
+
+    # The load-bearing assertion: the name is resolved ONCE. Two resolutions
+    # agree only as long as both spell the tie-break the same way, which is a
+    # convention, not a guarantee.
+    assert len(calls) == 1, f"player resolved {len(calls)} times: {calls}"
+
+    answer = result.answer or ""
+    charted, other = ("Seth Curry", "steph_game") if "Seth Curry" in answer else ("Stephen Curry", "seth_game")
+    assert charted in answer
+    written = [f.name for f in ctx.out_dir.glob("*.html")]
+    assert len(written) == 1
+    # The scoping event_id lands in the filename; it must be the charted
+    # player's game, not the other candidate's.
+    assert other not in written[0]
 
 
 def test_shot_chart_defaults_an_unspecified_season_to_the_current_one(sc_ctx: TemplateContext) -> None:

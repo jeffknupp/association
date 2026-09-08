@@ -15,6 +15,26 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A scoped shot chart now resolves the player once.** `shot_chart` resolved
+  the name twice for a question like "chart Curry's last game": once to find the
+  game to scope to, and again inside `render_shot_chart`. Both took the best
+  match, and they agreed only because both spelled the tie-break the same way -
+  a convention, not a guarantee. Had they ever diverged the result would have
+  been a chart titled for one Curry showing a game the other one played: wrong,
+  and invisible, because the plot looks entirely normal.
+
+  Resolution is now a named step (`shotchart.resolve_chart_player`), and
+  `render_for_player` takes the already-resolved player, so a second resolution
+  is not something a caller can accidentally do. This was a latent hazard rather
+  than a live bug - the two paths were identical code and did agree - which is
+  why it needed a structural fix rather than a patch.
+
+  The regression test asserts the name is resolved exactly once, and was
+  confirmed to fail (`player resolved 2 times`) against the old shape before
+  being kept. It also closes a smaller inconsistency: an unknown player used to
+  raise `TemplateUnsupported` when `order` was set and return a message
+  otherwise; now both return the message.
+
 - **Deleted two pieces of dead code.** `TemplateResult.summary` was constructed
   24 times and read exactly nowhere - not by `src/`, not by the tests, not by the
   scripts - so every template was building an f-string nobody would ever see. The

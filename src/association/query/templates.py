@@ -23,7 +23,7 @@ from .court import HOOP_X, HOOP_Y
 from .entities import Ambiguous, Entity, resolve_player, resolve_team
 from .leaderboard import LeaderboardError, resolve_metric, run_leaderboard
 from .metrics import EXTRA_FIELD_COLUMNS, SEASON_TYPE_LABELS
-from .shotchart import render_shot_chart
+from .shotchart import render_for_player, resolve_chart_player
 
 # Slot value -> real player_box_stats column. A whitelist, not a passthrough:
 # the router's `stat` slot is model-generated text, and this is the only place
@@ -899,17 +899,6 @@ def _scoping_game(con: duckdb.DuckDBPyConnection, athlete_id: str, season: int, 
     ).fetchone()
 
 
-def _resolve_chart_player(ctx: TemplateContext, text: str) -> str:
-    """The athlete_id render_shot_chart will settle on, so a single-game lookup
-    scopes to the same player the chart is drawn for."""
-    from .entities import find_players
-
-    candidates = find_players(ctx.con, text)
-    if not candidates:
-        raise TemplateUnsupported(f"no player matching {text!r}")
-    return candidates[0].id
-
-
 def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """Renders one player's shots to a static HTML court plot.
 
@@ -917,28 +906,39 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     so it inherits best-match player handling rather than resolve_player's
     refusal: a chart of the wrong Curry is obvious on sight, and titled with the
     resolved name."""
-    player = slots.get("player")
-    if not isinstance(player, str) or not player.strip():
+    name = slots.get("player")
+    if not isinstance(name, str) or not name.strip():
         raise TemplateUnsupported("shot_chart needs a player name")
     shot_value = _shot_value(slots)
+
+    # Resolved ONCE, here, and the same player is then used both to find the
+    # game to scope to and to draw the chart. Resolving separately for each
+    # would let the two disagree and scope the chart to a game the other
+    # candidate played.
+    resolved = resolve_chart_player(ctx.con, name)
+    if resolved is None:
+        message = f"No player found matching {name!r}."
+        return TemplateResult(data={"message": message}, answer=message)
+    player, ambiguous = resolved
 
     # "a shot chart of Curry's LAST regular season game" charted the whole
     # season - 803 attempts instead of that game's 22 - because nothing scoped
     # the request to one game. `order` means the same here as in game_log, and
-    # resolving it to an event_id is the only way render_shot_chart can scope.
+    # resolving it to an event_id is the only way the chart can scope.
     season = slots.get("season") or current_season()
     season_type = slots.get("season_type") or 2
     event_id = None
     if slots.get("order") in ("recent", "first"):
-        found = _scoping_game(ctx.con, _resolve_chart_player(ctx, player), season, season_type, slots["order"])
+        found = _scoping_game(ctx.con, player.id, season, season_type, slots["order"])
         if found is None:
-            raise TemplateUnsupported(f"no games found to chart for {player!r}")
+            raise TemplateUnsupported(f"no games found to chart for {name!r}")
         event_id = found[0]
 
-    message = render_shot_chart(
+    message = render_for_player(
         ctx.con,
         ctx.out_dir,
         player,
+        ambiguous,
         # An unspecified season means the CURRENT one here, exactly as it does
         # in every other template - passing None through charted a player's
         # entire career in one plot (confirmed live: 3,665 Curry attempts).

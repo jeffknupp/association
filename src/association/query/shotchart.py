@@ -13,7 +13,27 @@ from typing import Any
 import duckdb
 
 from .court import render_court_html
-from .entities import find_players
+from .entities import Entity, find_players
+
+
+def resolve_chart_player(con: duckdb.DuckDBPyConnection, player_name: str) -> tuple[Entity, list[str]] | None:
+    """The player a chart is drawn for, plus any other names that matched.
+
+    find_players, not resolve_player: a chart drawn for the wrong Curry is
+    obvious on sight, so a best match is friendlier than refusing, and the plot
+    is titled with the resolved name. Templates that report NUMBERS use
+    resolve_player, where the same mistake would be invisible.
+
+    Anything needing the athlete_id alongside a chart - scoping to one game, say
+    - must resolve through this and pass the result to render_for_player, NOT
+    resolve separately. Two independent resolutions of the same name can pick
+    different players, which would scope the chart to a game the other one
+    played.
+    """
+    candidates = find_players(con, player_name)
+    if not candidates:
+        return None
+    return candidates[0], [c.name for c in candidates[1:]]
 
 
 def render_shot_chart(
@@ -27,24 +47,50 @@ def render_shot_chart(
     shot_value: int | None = None,
     made_only: bool | None = None,
 ) -> str:
-    """Render one player's shots to a static HTML court plot.
+    """Resolve a player name and render their shots - the agent tool's entry
+    point. A caller that has already resolved the player calls render_for_player.
+    """
+    resolved = resolve_chart_player(con, player_name)
+    if resolved is None:
+        return f"No player found matching {player_name!r}."
+    player, ambiguous = resolved
+    return render_for_player(
+        con,
+        out_dir,
+        player,
+        ambiguous,
+        season=season,
+        season_type=season_type,
+        event_id=event_id,
+        period=period,
+        shot_value=shot_value,
+        made_only=made_only,
+    )
+
+
+def render_for_player(
+    con: duckdb.DuckDBPyConnection,
+    out_dir: Path,
+    player: Entity,
+    ambiguous: list[str],
+    season: int | None = None,
+    season_type: int | None = None,
+    event_id: str | None = None,
+    period: int | None = None,
+    shot_value: int | None = None,
+    made_only: bool | None = None,
+) -> str:
+    """Render an already-resolved player's shots to a static HTML court plot.
 
     Free throws are excluded: they carry no court coordinates. Passing
     ``event_id`` scopes the chart to a single game and makes ``season`` and
     ``season_type`` redundant.
 
     Returns:
-        A human-readable message naming the resolved player, the made/attempted
-        split, and the file written.
+        A human-readable message naming the player, the made/attempted split,
+        and the file written.
     """
-    # find_players, not resolve_player: a chart drawn for the wrong Curry
-    # is obvious on sight, so taking the best match and naming the others
-    # is friendlier here than refusing. Templates use resolve_player.
-    candidates = find_players(con, player_name)
-    if not candidates:
-        return f"No player found matching {player_name!r}."
-    athlete_id, resolved_name = candidates[0].id, candidates[0].name
-    ambiguous = [c.name for c in candidates[1:]]
+    athlete_id, resolved_name = player.id, player.name
 
     # event_id already uniquely identifies one game - season/season_type would be
     # redundant at best and, if the model guesses either one wrong, silently zero
@@ -123,5 +169,5 @@ def render_shot_chart(
 
     msg = f"Rendered shot chart for {resolved_name} ({made}/{total} made, {made / total:.1%}) to {out_path}"
     if ambiguous:
-        msg += f". Note: other players also matched '{player_name}': {ambiguous}"
+        msg += f". Note: other players also matched: {ambiguous}"
     return msg
