@@ -120,7 +120,6 @@ class TemplateResult:
     `data` is the same result as structured values - resolved names and numbers,
     no ids and no schema. Tests assert against it."""
 
-    summary: str
     data: dict[str, Any]
     answer: str
 
@@ -170,7 +169,6 @@ def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResu
     summary = f"games with {scope}, {period}"
     leaders = [{"player": name, "games": games} for name, games in rows]
     return TemplateResult(
-        summary=summary,
         data={"question_shape": summary, "season": season, "leaders": leaders},
         answer=_phrase_threshold_count(rows, scope, period, filtered_to_one_player=bool(player)),
     )
@@ -263,7 +261,6 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         else _phrase_leaderboard(result.rows, result.label, where, period)
     )
     return TemplateResult(
-        summary=summary,
         data={"question_shape": summary, "season": result.season, "fields": fields, "leaders": result.rows},
         answer=answer,
     )
@@ -436,12 +433,10 @@ def player_netpoints(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     period = _period(season, season_type)
     if headline is None and not breakdown:
         return TemplateResult(
-            summary=f"{player.name} NetPoints, {period}",
             data={"player": player.name, "season": season},
             answer=f"The warehouse has no {period} NetPoints for {player.name}.",
         )
     return TemplateResult(
-        summary=f"{player.name} NetPoints, {period}",
         data={"player": player.name, "season": season, "headline": headline, "fingerprint": breakdown},
         answer=_phrase_netpoints(player.name, period, headline, breakdown, per_100, possessions),
     )
@@ -470,7 +465,6 @@ def _single_game_netpoints(ctx: TemplateContext, player: Entity, season: int, se
     if row is None:
         which = "earliest" if order == "first" else "most recent"
         return TemplateResult(
-            summary=f"{player.name} NetPoints, single game",
             data={"player": player.name, "season": season, "game": None},
             answer=f"No per-game NetPoints on record for {player.name}'s {which} {period} game.",
         )
@@ -486,7 +480,7 @@ def _single_game_netpoints(ctx: TemplateContext, player: Entity, season: int, se
     if detail:
         answer += "\n  " + ", ".join(detail) + "."
     answer += "\n  (Per-game NetPoints carry no play-type fingerprint - that is season-level only.)"
-    return TemplateResult(summary=f"{player.name} NetPoints, {game['date']}", data={"player": player.name, "game": game}, answer=answer)
+    return TemplateResult(data={"player": player.name, "game": game}, answer=answer)
 
 
 def _phrase_netpoints(
@@ -596,7 +590,6 @@ def player_history(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
     period = SEASON_TYPE_NAMES.get(season_type, "regular season")
     history = [dict(zip(["season", "games"] + [c for c, _ in columns], r, strict=True)) for r in rows]
     return TemplateResult(
-        summary=f"{player.name} {label}, last {seasons} {period}s",
         data={"player": player.name, "stat": stat, "seasons": history},
         answer=_phrase_history(player.name, label, period, history, columns),
     )
@@ -671,13 +664,11 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     period = _period(season, season_type)
     if row is None:
         return TemplateResult(
-            summary=f"{player.name}, {period}",
             data={"player": player.name, "season": season, "stats": {}},
             answer=f"{player.name} has no {period} numbers in the warehouse.",
         )
     values = dict(zip(columns, row, strict=True))
     return TemplateResult(
-        summary=f"{player.name}, {period}",
         data={"player": player.name, "season": season, "stats": values},
         answer=_phrase_player_stat(player.name, period, values, wanted),
     )
@@ -701,7 +692,6 @@ def _clarify(text: str, candidates: list[str], kind: str = "player") -> Template
     shown, extra = candidates[:MAX_CLARIFY_CANDIDATES], len(candidates) - MAX_CLARIFY_CANDIDATES
     joined = ", ".join(shown[:-1]) + f" or {shown[-1]}" + (f" ({extra} others also match)" if extra > 0 else "")
     return TemplateResult(
-        summary=f"ambiguous {kind} {text!r}",
         data={"ambiguous": text, "candidates": candidates},
         answer=f"{text!r} matches more than one {kind} - did you mean {joined}?",
     )
@@ -808,7 +798,6 @@ def team_record(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     ).fetchone()
     if row is None:
         return TemplateResult(
-            summary=f"{team.name} record, {season}",
             data={"team": team.name, "season": season},
             answer=f"There are no {season} standings for the {team.name} in the warehouse.",
         )
@@ -826,7 +815,6 @@ def team_record(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         extras.append(f"{'won' if streak > 0 else 'lost'} {abs(int(streak))} straight")
     answer += f", {', '.join(extras)}." if extras else "."
     return TemplateResult(
-        summary=f"{team.name} record, {season}",
         data={"team": team.name, "season": season, "wins": wins, "losses": losses, "win_pct": win_pct},
         answer=answer,
     )
@@ -880,9 +868,8 @@ def _scope(count: int, ascending: bool, date: str | None) -> str:
 
 
 def _team_game_log_result(name: str, period: str, rows: list[tuple[Any, ...]], ascending: bool, date: str | None) -> TemplateResult:
-    summary = f"{name} game log, {period}"
     if not rows:
-        return TemplateResult(summary=summary, data={"team": name, "games": []}, answer=f"No {period} games found for the {name}.")
+        return TemplateResult(data={"team": name, "games": []}, answer=f"No {period} games found for the {name}.")
     games = [{"date": str(r[0])[:10], "home_away": r[1], "opponent": r[2], "team_score": r[3], "opponent_score": r[4], "won": bool(r[5])} for r in rows]
     # Tallied here, over exactly the rows being shown, rather than left to be
     # counted back out of the listing - that recount is where a wins/losses
@@ -890,17 +877,16 @@ def _team_game_log_result(name: str, period: str, rows: list[tuple[Any, ...]], a
     wins = sum(1 for g in games if g["won"])
     header = f"{name}, {_scope(len(games), ascending, date)} of the {period} ({wins}-{len(games) - wins}):"
     lines = [f"  {g['date']}  {'W' if g['won'] else 'L'} {g['team_score']}-{g['opponent_score']}  {'vs' if g['home_away'] == 'home' else 'at'} {g['opponent']}" for g in games]
-    return TemplateResult(summary=summary, data={"team": name, "wins": wins, "games": games}, answer="\n".join([header, *lines]))
+    return TemplateResult(data={"team": name, "wins": wins, "games": games}, answer="\n".join([header, *lines]))
 
 
 def _player_game_log_result(name: str, period: str, rows: list[tuple[Any, ...]], ascending: bool, date: str | None) -> TemplateResult:
-    summary = f"{name} game log, {period}"
     if not rows:
-        return TemplateResult(summary=summary, data={"player": name, "games": []}, answer=f"No {period} games found for {name}.")
+        return TemplateResult(data={"player": name, "games": []}, answer=f"No {period} games found for {name}.")
     games = [{"date": str(r[0])[:10], "opponent": r[1], "minutes": r[2], "points": r[3], "rebounds": r[4], "assists": r[5]} for r in rows]
     header = f"{name}, {_scope(len(games), ascending, date)} of the {period}:"
     lines = [f"  {g['date']}  vs {g['opponent']}  {g['points']} pts, {g['rebounds']} reb, {g['assists']} ast" for g in games]
-    return TemplateResult(summary=summary, data={"player": name, "games": games}, answer="\n".join([header, *lines]))
+    return TemplateResult(data={"player": name, "games": games}, answer="\n".join([header, *lines]))
 
 
 def _scoping_game(con: duckdb.DuckDBPyConnection, athlete_id: str, season: int, season_type: int, order: str) -> tuple[Any, ...] | None:
@@ -964,7 +950,7 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     # A "no player found" / "no shots found" message is returned as the answer
     # rather than falling through: the agent has no better source for a chart
     # than the same table this just queried.
-    return TemplateResult(summary="shot chart", data={"message": message}, answer=message)
+    return TemplateResult(data={"message": message}, answer=message)
 
 
 SHOT_VALUE_FROM_STAT = {"threePointFieldGoalsMade": 3, "freeThrowsMade": 1}
@@ -1028,7 +1014,6 @@ def shot_distance(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult
     else:
         answer = f"{player.name}'s average {kind}shot distance{game_note or f' in the {period}'} was {average:.1f} feet, over {attempts:,} attempts with recorded coordinates."
     return TemplateResult(
-        summary=f"{player.name} {kind}shot distance, {period}",
         data={"player": player.name, "season": season, "shot_value": shot_value, "avg_feet": average, "attempts": attempts},
         answer=answer,
     )
@@ -1077,7 +1062,6 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     period = _period(season, season_type)
     games = [{"player": r[0], "value": r[1], "date": str(r[2])[:10], "opponent": r[3]} for r in rows]
     return TemplateResult(
-        summary=f"single-game high, {label}s, {period}",
         data={"season": season, "stat": stat, "games": games},
         answer=_phrase_single_game_high(games, label, period, named_player.name if named_player else None),
     )
@@ -1161,7 +1145,6 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     b_wins = sum(1 for r in rows if r[4] == b.id)
     period = _period(season, season_type)
     return TemplateResult(
-        summary=f"{a.name} vs {b.name}, {period}",
         data={"teams": [a.name, b.name], "games": len(rows), "wins": {a.name: a_wins, b.name: b_wins}},
         answer=_phrase_head_to_head(a.name, b.name, len(rows), a_wins, b_wins, period),
     )
@@ -1272,7 +1255,6 @@ def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> Template
     period_label = _period_label(period)
     period_str = _period(season, season_type)
     vs = f" against the {opponent.name}" if opponent else ""
-    summary = f"{team.name} {period_label} points{vs}, {period_str}"
     opponent_name = opponent.name if opponent else None
 
     games = []
@@ -1283,17 +1265,17 @@ def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> Template
 
     if not games:
         answer = f"The warehouse has no {period_str} games for the {team.name}{vs}."
-        return TemplateResult(summary=summary, data={"team": team.name, "opponent": opponent_name, "games": []}, answer=answer)
+        return TemplateResult(data={"team": team.name, "opponent": opponent_name, "games": []}, answer=answer)
 
     played = [g for g in games if g["points"] is not None]
     if not played:
         plural = "game" if len(games) == 1 else "games"
         answer = f"None of the {team.name}'s {len(games)} {period_str} {plural}{vs} went to the {period_label}."
-        return TemplateResult(summary=summary, data={"team": team.name, "opponent": opponent_name, "games": games}, answer=answer)
+        return TemplateResult(data={"team": team.name, "opponent": opponent_name, "games": games}, answer=answer)
 
     total = sum(g["points"] for g in played)
     data = {"team": team.name, "opponent": opponent_name, "period": period, "games": played, "total": total}
-    return TemplateResult(summary=summary, data=data, answer=_phrase_team_quarter_points(team.name, opponent_name, period_label, period_str, played, total))
+    return TemplateResult(data=data, answer=_phrase_team_quarter_points(team.name, opponent_name, period_label, period_str, played, total))
 
 
 def _phrase_team_quarter_points(team: str, opponent: str | None, period_label: str, period_str: str, games: list[dict[str, Any]], total: int) -> str:
@@ -1343,7 +1325,6 @@ def player_compare(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
 
     period = _period(season, season_type)
     return TemplateResult(
-        summary=f"{' vs '.join(rows)}, {period}",
         data={"season": season, "players": rows},
         answer=_phrase_compare(rows, wanted, period),
     )

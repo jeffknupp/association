@@ -297,7 +297,7 @@ def test_fast_path_answer_is_recorded_in_conversation_for_later_followups(monkey
     from association.query.templates import TemplateResult
 
     monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="threshold_count", slots={"stat": "points", "threshold": 30}))
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"threshold_count": lambda con, slots: TemplateResult(summary="s", data={"leaders": []}, answer="template answer")})
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"threshold_count": lambda con, slots: TemplateResult(data={"leaders": []}, answer="template answer")})
     # No ollama.chat stub: reaching one would itself be the bug. The router is
     # stubbed out above, and a template answers without a model call.
     agent = _agent(tmp_path)

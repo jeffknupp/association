@@ -24,9 +24,9 @@ import duckdb
 from .entities import Ambiguous, Entity, NotFound, resolve_team
 from .metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS, current_season
 
-MAX_ROWS = 200
 # `limit` is model-supplied on the agent path (the template clamps its own):
-# a leaderboard of 5,000 helps nobody and floods the context window.
+# a leaderboard of 5,000 helps nobody and floods the context window. Applied to
+# the SQL LIMIT itself, so the fetch below cannot return more than this.
 MAX_LIMIT = 100
 
 
@@ -177,7 +177,7 @@ def run_leaderboard(
     try:
         cur = con.execute(sql, params)
         cols = [d[0] for d in cur.description]
-        rows = cur.fetchmany(MAX_ROWS)
+        rows = cur.fetchall()
     except Exception as exc:  # e.g. the table needs a warehouse flag that wasn't used
         raise LeaderboardError(f"SQL error: {exc}" + (f" (requires: {spec.requires})" if spec.requires else "")) from exc
 

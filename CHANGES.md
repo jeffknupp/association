@@ -15,6 +15,17 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Deleted two pieces of dead code.** `TemplateResult.summary` was constructed
+  24 times and read exactly nowhere - not by `src/`, not by the tests, not by the
+  scripts - so every template was building an f-string nobody would ever see. The
+  field is gone along with all 24 arguments.
+
+  `leaderboard.py`'s `MAX_ROWS = 200` could never bind: the SQL `LIMIT` is
+  clamped to `MAX_LIMIT = 100` before the query runs, so `fetchmany(200)` always
+  got everything. It also shadowed `toolbox.MAX_ROWS`, which *is* load-bearing,
+  making the two look like one rule applied twice. The fetch is now a plain
+  `fetchall()` and the comment says the clamp is on the LIMIT itself.
+
 - **Removed the repeated patterns in `query/`.** None of these were copy-pasted
   functions - they were the same shape written out again at each call site,
   which is how they escaped notice:
