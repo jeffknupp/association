@@ -15,6 +15,17 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Removed `FAST-PATH-MIGRATION.md`**: the migration it planned is finished.
+  Every shape it listed is implemented - all thirteen templates are registered
+  in `TEMPLATES` and present in `ROUTER_SCHEMA`'s intent enum, per-question
+  preamble assembly and the `PreambleTooLarge` budget guard are in place, and
+  each of its three open "what is left" items (`player_compare`, leaderboard
+  `fields`, token-bounded results) landed. What the document taught that the
+  code does not say for itself already lives in `AGENTS.md` and the comments at
+  the sites concerned; keeping a finished plan around only invites reading it
+  as a description of the present. The dangling `See FAST-PATH-MIGRATION.md`
+  pointer in `prompt.py` is gone with it - the paragraph above it already
+  carries the whole measurement.
 - **`AGENTS.md`, with `CLAUDE.md` symlinked to it**: orientation for agents
   working on this codebase - the gates and why mypy runs twice, the enforced
   conventions, and the failure shapes this project actually produces. It points
