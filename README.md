@@ -9,11 +9,34 @@ no cloud API calls anywhere.
 
 ```bash
 association query "who led the league in assists this season?"
+# Nikola Jokic led the league in assists per game in the 2026 regular season, at 10.7.
+# Next: Cade Cunningham (9.9), Josh Giddey (9.1), Luka Doncic (8.3), Ja Morant (8.1), ...
+
 association query "how many times did the 76ers play the Celtics this season?"
+# The Philadelphia 76ers and the Boston Celtics met 4 times in the 2026 regular
+# season, splitting them 2-2.
+
 association query "Luka Doncic vs Shai Gilgeous-Alexander this season"
+# Luka Doncic vs Shai Gilgeous-Alexander, 2026 regular season:
+#                     Luka Doncic  Shai Gilgeous-Alexander
+# games                        64                       68
+# points                     33.5                     31.1
+
 association query "top 5 rebounders on the Lakers in the playoffs"
+# Deandre Ayton led the Los Angeles Lakers in rebounds per game in the 2026
+# postseason, at 9.6. Next: LeBron James (6.7), Rui Hachimura (4), Austin Reaves (4), ...
+
 association query "Steph Curry's 3pt percentage over the past 4 seasons"
+# Stephen Curry, 3PT% by regular season (most recent first):
+# season   G  3PT%  3PM  3PA
+#   2026  43  39.3  190  484
+#   2025  70  39.7  311  784
+#   2024  74  40.8  357  876
+#   2023  56  42.7  273  639
+
 association query "who had the most assists in a single game this season?"
+# Ryan Nembhard had the most assists in a single game in the 2026 regular season:
+# 23, on 2026-04-13 vs CHI. Next: Isaiah Collier (22), Josh Giddey (19).
 ```
 
 Questions like these hit a fast path and typically answer in a couple of

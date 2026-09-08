@@ -104,8 +104,23 @@ One-shot:
 .. code-block:: console
 
    $ association query "who leads the league in assists?"
-   $ association query "how many times did the 76ers play Boston?"
+   Nikola Jokic led the league in assists per game in the 2026 regular season, at 10.7.
+
+.. code-block:: console
+
+   $ association query "how many times did the 76ers play the Celtics this season?"
+   The Philadelphia 76ers and the Boston Celtics met 4 times in the 2026 regular
+   season, splitting them 2-2.
+
+.. code-block:: console
+
    $ association query "Klay Thompson's 3pt percentage over the past 4 seasons"
+   Klay Thompson, 3PT% by regular season (most recent first):
+   season   G  3PT%  3PM  3PA
+     2026  69  38.3  202  527
+     2025  72  39.1  216  553
+     2024  77  38.7  268  692
+     2023  69  41.2  301  731
 
 Interactive, keeping context between questions:
 
@@ -120,9 +135,11 @@ surprising answer can be diagnosed after the fact:
 .. code-block:: console
 
    $ association query --verbose "most games with 20+ rebounds this season?"
-     [timing] model inference #1: 1.59s
-     -> (router) intent='threshold_count' slots={'stat': 'rebounds', 'threshold': 20, 'season': 2026}
+     [timing] model inference #1: 1.46s
+     -> (router) intent='threshold_count' slots={'stat': 'rebounds', 'threshold': 20, 'season': 2026, 'season_type': 2}
      [timing] template threshold_count: 0.02s
+   Nikola Jokic had the most games with 20+ rebounds in the 2026 regular season, with
+   5. Next: Karl-Anthony Towns (3), Donovan Clingan (2), Andre Drummond (1), Bam Adebayo (1).
 
 Setting up the models
 ---------------------
