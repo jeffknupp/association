@@ -44,7 +44,7 @@ def current_version() -> str:
     """Return the version currently recorded in ``pyproject.toml``."""
     match = VERSION_LINE.search(PYPROJECT.read_text())
     if match is None:
-        sys.exit("error: no `version = \"...\"` line in pyproject.toml")
+        sys.exit('error: no `version = "..."` line in pyproject.toml')
     return match.group(1)
 
 
