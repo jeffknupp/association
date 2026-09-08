@@ -15,6 +15,25 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Same prose pass across the rest of `query/`, and four stale comments fixed.**
+  The wrong ones mattered more than the long ones:
+
+  - `entities.py` said an ambiguous name "falls through to the agent". It has not
+    for some time - templates ask a clarifying question via `_clarify`, which is
+    a handled outcome, and the docstring was describing the behaviour the code
+    was written to replace.
+  - `prompt.py` described the tool as `get_leaderboard(metric, season,
+    season_type, min_sample, limit)`, omitting `team` and `fields`. Both are real
+    and both are in the JSON schema directly below it, so the model was reading a
+    signature narrower than the tool it was calling.
+  - `metrics.py` credited `toolbox.py` with building SQL from it. `toolbox.py`
+    does not import it at all; `leaderboard.py`, `prompt.py` and `templates.py` do.
+  - `agent.py` cited "the 30 real cases in scripts/check_routing.py", which has 39.
+    The count is gone rather than corrected, since any count goes stale.
+
+  The prompt edit was checked the way prompt edits should be: the other four
+  prompt constants hash identically before and after, `git diff --stat` shows one
+  line changed, and the assembled preamble is ~5,803 tokens against the 6,000 budget.
 - **Trimmed the prose in `templates.py`** from 316 lines of comment/docstring to
   278, and fixed two stale ones. Each war story is cut to the fact that changes
   what you write next - the failing query shape, the schema trap, the measured

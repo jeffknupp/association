@@ -1,20 +1,16 @@
 """A small, constrained-decoding intent router that runs BEFORE the tool-calling
 agent.
 
-The agent in agent.py asks one local model to do two jobs at once: understand
-the question AND write correct SQL for it. That forces the entire schema and
-every correctness rule in prompt.py to be resident for every question - ~10k
-tokens of preamble, which does not fit in NUM_CTX, is silently truncated
-head-first by ollama, and (because the truncation offset slides as the
-conversation grows) misses the KV prefix cache on every iteration. Measured on
-an 8-core CPU box: ~70s per model call, every call, with the schema itself
-among the tokens thrown away.
+The agent in agent.py asks one model to understand the question AND write
+correct SQL, which forces prompt.py's whole schema and rule set resident for
+every question - ~10k tokens that ollama truncates head-first and silently, and
+that misses the KV prefix cache every iteration because the truncation offset
+slides. Measured: ~70s per call, with the schema among the discarded tokens.
 
 This module does only the first job. Its prompt carries no schema, no SQL and
-no gotchas - just an intent list and a few examples, ~430 tokens - so it fits,
-stays cached, and answers in ~1-2s warm. Recognized intents are handed to a
-deterministic template in templates.py; everything else falls through to the
-existing agent unchanged.
+no gotchas - an intent list and a few examples, ~430 tokens - so it fits, stays
+cached, and answers in ~1-2s warm. Recognized intents go to a template in
+templates.py; everything else falls through to the agent unchanged.
 
 Slot values are advisory: every one of them is re-validated in templates.py
 against a whitelist before it reaches SQL. Nothing here is trusted."""
@@ -157,12 +153,10 @@ Q: Show me Wembanyama's shot chart
 {"intent":"shot_chart","player":"Victor Wembanyama","season_ref":"current"}
 """
 
-# A JSON schema passed as ollama's `format`, so decoding is CONSTRAINED to a
-# well-formed object rather than merely asked for one. This removes the
-# malformed/hallucinated tool-call failure mode outright - a class the old
-# design could only defend against after the fact (see agent.py's
-# _extract_unrun_sql and the pending_error fabrication guard), and one no
-# amount of prompting reliably fixes on a small local model.
+# Passed as ollama's `format`, so decoding is CONSTRAINED to a well-formed
+# object rather than merely asked for one. That removes the malformed-tool-call
+# failure mode outright - the class agent.py's _extract_unrun_sql and
+# fabrication guard can only catch after the fact.
 ROUTER_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -216,21 +210,17 @@ ROUTER_SCHEMA: dict[str, Any] = {
         },
     },
     "additionalProperties": False,
-    # `stat` is required, not because every intent has one, but because a
-    # constrained decoder only reliably CONSIDERS a slot it is required to
-    # emit. Confirmed live: with `stat` optional, "how many points did Luka
-    # Doncic average in 2024?" came back without it even though that exact
-    # question is a worked example in the prompt above - and reworking the
-    # prompt did not fix it. Required, the same question emits
-    # `"stat":"points"`, and a question with no stat emits `""`, which the
-    # blank-slot pruning below drops. Prompt wording persuades; the schema
-    # decides.
-    # Only `stat`. Requiring `season_ref` too was measured and reverted: it
-    # fixed one dropped season but crowded out others, and "most games with 15+
-    # assists in 2024?" started coming back with season_ref "current" and no
-    # season at all - a named year silently replaced by the current one, which
-    # is worse than the miss it was meant to fix. The lever is real but not
-    # free; require the one slot that pays for itself, not every slot.
+    # `stat` is required not because every intent has one, but because a
+    # constrained decoder only reliably CONSIDERS a slot it must emit: optional,
+    # it was dropped even for a question appearing verbatim as a worked example
+    # above, and rewording the prompt did not fix it. Required, a question with
+    # no stat emits `""`, which the blank-slot pruning below drops. Prompt
+    # wording persuades; the schema decides.
+    #
+    # Only `stat`, though. Requiring `season_ref` too was measured and reverted:
+    # it fixed one dropped season but crowded out others, replacing a named year
+    # with the current one - worse than the miss it was meant to fix. Require
+    # the one slot that pays for itself, not every slot you wish were filled.
     "required": ["intent", "stat"],
 }
 
@@ -248,35 +238,26 @@ MIN_SEASON = 1990
 # standing rules were written to prevent.
 SEASON_TYPES = {"regular": 2, "playoffs": 3}
 
-# Questions no template can answer, recognized from the question text rather
-# than left to the model to classify. Kept deliberately tiny: this is not a
-# rules engine, it is a short list of subjects that read like a supported shape
-# ("Steph Curry's average X") while asking for something no template computes,
-# so a near-miss template absorbs them and answers confidently.
-#
-# Shot distance was the original entry here, after "what was steph curry's avg
-# 3pt shot distance" came back as "26.6 points, 3.6 rebounds and 4.7 assists
-# per game". It has since earned a template (shot_distance) and been removed
-# from this list - which is the intended lifecycle: a subject lands here only
-# until a template covers it properly.
-# "Fouling out" is six personal fouls - an NBA rule, not a judgement call, and
-# not something a 3B reliably knows. Confirmed live: the router got the shape
-# right (threshold_count) but emitted stat "fouls committed" and threshold 1,
-# which the template correctly refused, and the question then hung in the agent
-# until it was aborted at 95s. Normalized here so the rule lives in one place.
+# Questions no template can answer, recognized from the text rather than left
+# to the model. Deliberately tiny: not a rules engine, just subjects that read
+# like a supported shape ("Steph Curry's average X") while asking for something
+# no template computes, so a near-miss template absorbs them confidently.
+# Shot distance was the first entry and left by earning a template - a subject
+# belongs here only until one covers it.
+# "Fouling out" is six personal fouls - an NBA rule, not something a 3B knows.
+# It got the shape right (threshold_count) but emitted stat "fouls committed"
+# and threshold 1; the template refused, and the question then hung in the agent
+# until aborted at 95s. Normalized here so the rule lives in one place.
 _FOULED_OUT = re.compile(r"\bfoul(?:ed|s|ing)?\s+out\b")
 FOUL_OUT_THRESHOLD = 6
 
 _AGENT_ONLY = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+quarter\b|\bper\s+quarter\b|\bby\s+quarter\b")
 
 
-# A TEAM's quarter score (no player named) is exempted below: it is answered
-# exactly from games.home_linescores/away_linescores by
-# templates.team_quarter_points, with no plays table and no LAG() derivation
-# needed at all - see that function's docstring for why this shape earned a
-# template rather than another KNOWLEDGE_BASE paragraph. A PLAYER's quarter
-# score still has no template (it genuinely needs the fragile plays-table
-# derivation) and stays forced to the agent.
+# A TEAM's quarter score (no player named) is exempted below: linescores answer
+# it exactly, via templates.team_quarter_points. A PLAYER's still has no
+# template - it needs the fragile plays-table derivation - and stays forced to
+# the agent.
 def _is_team_quarter_points(raw: dict[str, Any]) -> bool:
     return raw.get("intent") == "team_quarter_points" and not (isinstance(raw.get("player"), str) and raw["player"].strip())
 

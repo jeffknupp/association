@@ -27,16 +27,15 @@ MAX_ERROR_RECOVERIES = 2  # cap on nudging a retry after a tool error, instead o
 MAX_HISTORY_MESSAGES = 40  # trim oldest turns once conversation grows past this, keep system prompt
 
 # Routing and SQL generation are different jobs and want different models.
-# Benchmarked on the 30 real cases in scripts/check_routing.py, every model
-# from 1.5B to 8B scored 28-30/30, because constrained decoding does the
-# structural work and the model only classifies and fills slots - not a
-# 7B-sized job. qwen2.5:3b matched qwen2.5:7b's 29/30 at 1.8x the speed and
-# 2.8GB less RAM. The fall-through agent keeps the 7B, where writing correct
-# SQL by hand genuinely needs the capacity.
+# Benchmarked over scripts/check_routing.py's cases, every model from 1.5B to
+# 8B scored within one or two of the rest: constrained decoding does the
+# structural work, so classification is not a 7B-sized job. qwen2.5:3b matched
+# qwen2.5:7b at 1.8x the speed and 2.8GB less RAM; the agent keeps the 7B,
+# where hand-writing SQL needs the capacity. Reproduce with
+# scripts/bench_router_models.py.
 #
-# Thinking models are actively wrong here: qwen3:4b took ~20s per question
-# against qwen2.5:3b's 1.1s, reasoning at length before emitting the same tiny
-# JSON object. --think applies to the agent only, never the router.
+# Thinking models are wrong here on latency: qwen3:4b took ~20s per question
+# against qwen2.5:3b's 1.1s to emit the same tiny JSON. --think is agent-only.
 DEFAULT_ROUTER_MODEL = "qwen2.5:3b"
 
 _SQL_FENCE_RE = re.compile(r"```(?:sql)?\s*\n?(.*?)```", re.IGNORECASE | re.DOTALL)
@@ -130,11 +129,9 @@ class Agent:
 
     def _try_fast_path(self, question: str, history: RunHistory) -> str | None:
         """Route -> deterministic template -> answer. Returns None to fall
-        through to the full agent, which is the outcome for every intent not
-        yet ported, for slots that fail validation, and for any router or
-        template failure. Falling through costs one ~1-2s round trip and
-        changes no answer; that asymmetry is what makes porting shapes one at
-        a time safe."""
+        through to the agent: an unported intent, slots that fail validation, or
+        any router or template failure. Falling through costs one ~1-2s round
+        trip and changes no answer."""
         if not self.fast_path:
             return None
         t0 = time.monotonic()

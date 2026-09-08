@@ -2,13 +2,11 @@
 agent's get_leaderboard tool are the same code rather than two implementations
 that can drift.
 
-Every correctness rule this schema needs is applied here rather than left to
-the model to remember and re-derive per query: the season defaults to the
-CURRENT one (see current_season()) rather than whichever season happens to have
-data loaded; a qualifying minimum sample (games or minutes, per metric) is
-applied by default for rate/percentage metrics, since those - confirmed live -
-let a tiny sample (a garbage-time cameo, a 1-game call-up) swing to an extreme
-value no sustained role reaches; a traded player is deduplicated to one row.
+Every correctness rule is applied here rather than left to the model to
+re-derive per query: the season defaults to the CURRENT one rather than
+whichever happens to have data loaded; rate and percentage metrics get a
+qualifying minimum sample, since a garbage-time cameo otherwise tops the board;
+a traded player is deduplicated to one row.
 
 `team` and `fields` are deliberately narrow (a resolved team filter and a fixed
 whitelist of extra box-score columns) rather than a free-text filter/column

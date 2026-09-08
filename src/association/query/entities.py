@@ -1,18 +1,15 @@
 """Resolving a name the model produced ("Lakers", "LAL", "Curry") to a real id.
 
-Three callers need this and two of them had grown their own version:
-get_leaderboard resolved teams and errored on ambiguity, render_shot_chart
-resolved players and silently took the first match. Those are both defensible
-for what they do - a chart of the wrong Curry is a visible mistake, a NUMBER
-attributed to the wrong Curry is not - so this module keeps the distinction
-explicit rather than picking one behavior for everyone:
+Callers want different things from an ambiguous name - a chart of the wrong
+Curry is a visible mistake, a NUMBER attributed to the wrong Curry is not - so
+both behaviours stay available rather than one being picked for everyone:
 
     find_*    - every candidate, best first. The caller decides.
     resolve_* - one entity, or Ambiguous/NotFound. Never a guess.
 
-Templates use resolve_*, because a template's whole job is to be trusted with
-a number. Ambiguity there is returned, not resolved, so the question falls
-through to the agent instead of being answered about the wrong player."""
+Templates use resolve_*, because a template's job is to be trusted with a
+number. Ambiguity is returned as a value, and the template asks a clarifying
+question (see templates._clarify) rather than guessing or falling through."""
 
 from __future__ import annotations
 

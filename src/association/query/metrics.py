@@ -2,10 +2,10 @@
 "top N players by X" query for a fixed, known set of metrics, decided once
 here in code instead of re-derived by the model from prose on every query.
 
-Standalone module (no dependency on prompt.py or toolbox.py) so both can
-import from it - toolbox.py uses it to build SQL, prompt.py uses it to list
-known metrics in the get_leaderboard tool description - without a circular
-import between the two."""
+Standalone (it imports nothing from the rest of query/) so every consumer can
+read it without a cycle: leaderboard.py builds SQL from it, prompt.py lists the
+known metrics in the get_leaderboard tool description, templates.py validates
+router slots against it."""
 
 from __future__ import annotations
 

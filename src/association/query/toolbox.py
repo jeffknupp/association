@@ -16,22 +16,18 @@ from .prompt import KNOWN_TABLES
 from .shotchart import render_shot_chart
 
 MAX_ROWS = 200
-# A row cap alone does not bound what comes BACK. Measured: `SELECT * FROM
-# player_game_log LIMIT 200` serializes to ~44,000 tokens - nearly three times
-# the whole 16,384-token window, from one tool call. Over num_ctx, ollama cuts
-# the prompt to about half, head-first and silently, which throws away the
-# system prompt: the exact failure this codebase was rebuilt to eliminate,
-# reachable by the `SELECT *` a small model writes constantly. So results are
-# bounded by TOKENS, and the model is told plainly when rows were dropped.
+# A row cap does not bound what comes BACK: `SELECT * FROM player_game_log
+# LIMIT 200` serializes to ~44,000 tokens, nearly three times the whole window,
+# from one tool call - and over num_ctx ollama silently discards the system
+# prompt. Reachable by the `SELECT *` a small model writes constantly, so
+# results are bounded by TOKENS and dropped rows are reported.
 MAX_RESULT_TOKENS = 2000
 
-# Every id in this warehouse is an all-digit VARCHAR ('20' for the 76ers,
-# '3975' for Curry). Comparing one to a name or abbreviation is valid SQL that
-# matches nothing - no error, no warning - and the model then reports the empty
-# result as fact: "the Philadelphia 76ers did not play against the Boston
-# Celtics" (they played four times, and the query said home_team_id = 'PHI').
-# The rule against this was in the prompt, verbatim, with that exact wrong form
-# as a worked example, and the model wrote it anyway. So it is detected here.
+# Every id here is an all-digit VARCHAR ('20' for the 76ers). Comparing one to
+# a name or abbreviation is valid SQL matching nothing - no error - and the
+# empty result then gets reported as fact ("the 76ers did not play Boston";
+# they played four times). The prompt carried the rule against it verbatim,
+# with that wrong form as a worked example, and the model wrote it anyway.
 _ID_LITERAL = re.compile(r"\b(\w*_id)\s*(?:=|!=|<>)\s*'([^']*)'", re.IGNORECASE)
 
 # column name -> (lookup table, id column in that table, name column in that table)

@@ -489,7 +489,7 @@ statistics using a local, read-only DuckDB database. You have four tools:
 - describe_table(table_name): get exact column names/types for a table. Call this before \
 writing SQL against a table you have not already described in this conversation - do not \
 guess column names.
-- get_leaderboard(metric, season, season_type, min_sample, limit): rank players by one of a \
+- get_leaderboard(metric, season, season_type, min_sample, team, fields, limit): rank players by one of a \
 fixed set of known metrics ({", ".join(sorted(CORE_METRIC_NAMES))}) - PLUS every NetPoints \
 "fingerprint" shot/play-type category (two_pt, two_pt_shooting, three_pt, three_pt_shooting, \
 assist, bad_pass, corner, cutting, driving, fade, fast_break, floating, foul, free_throw, hook, \
