@@ -1,469 +1,168 @@
 # association
 
-A local-first NBA stats pipeline: resumable fetch from ESPN's (undocumented)
-stats APIs into compact Parquet flat files, a DuckDB analytics warehouse built
-from them, and a natural-language query interface powered entirely by a local
-LLM via [Ollama](https://ollama.com) — no cloud API calls anywhere.
+A local-first NBA stats pipeline: fetch from ESPN's stats APIs into Parquet,
+build a DuckDB analytics warehouse from it, and ask questions about it in
+plain English — answered by a local LLM via [Ollama](https://ollama.com), with
+no cloud API calls anywhere.
 
+## Ask it something
+
+```bash
+association query "who led the league in assists this season?"
+association query "how many times did the 76ers play the Celtics this season?"
+association query "Luka Doncic vs Shai Gilgeous-Alexander this season"
+association query "top 5 rebounders on the Lakers in the playoffs"
+association query "Steph Curry's 3pt percentage over the past 4 seasons"
+association query "who had the most assists in a single game this season?"
 ```
-association data pull --seasons 2020-2026        # fetch, resumable
-association data load --tables games,standings   # rebuild the warehouse from Parquet already on disk
-association data check                            # audit coverage vs. ESPN
-association query "who led the league in assists?"
-association ai --think                            # interactive REPL
-```
+
+Questions like these hit a fast path and typically answer in a couple of
+seconds. Anything outside that set still gets answered — it falls through to
+a general-purpose agent that writes its own SQL against the warehouse, just
+more slowly. `association ai` opens an interactive REPL that keeps context
+between questions.
+
+## Features
+
+- **Resumable, rate-limited fetch** from ESPN's stats APIs — checkpointed per
+  game and season, safe to interrupt, cheap to re-run
+- **A local DuckDB warehouse** built from the Parquet on disk, rebuildable any
+  time without touching the network
+- **Data coverage auditing** — cross-check what's on disk against what ESPN
+  reports, optionally live
+- **Natural-language queries with no cloud calls** — everything runs against
+  a local Ollama model
+- **Fast, deterministic answers** for common question shapes (leaderboards,
+  head-to-head, comparisons, game logs, shot charts, multi-season history, …),
+  with a tool-calling agent as fallback for anything else
+- **Computed advanced stats** ESPN's API doesn't expose directly — true
+  shooting %, effective FG%, usage rate, game score
+- **NetPoints ratings** from ESPN Analytics — player/team ratings plus a
+  per-play-type "fingerprint" breakdown
+- **A full trace of every query** — command, tool calls, timing, and answer —
+  written to disk regardless of verbosity
+- **Shell completion** for bash, zsh, and fish
 
 ## Setup
 
 ```bash
 pip install association          # or: uv tool install association
-brew install ollama              # or see https://ollama.com/download
+brew install ollama               # or see https://ollama.com/download
 ollama serve &
-ollama pull qwen2.5:3b           # router, the fast path - required, ~1.9GB
-ollama pull qwen2.5:7b           # fall-through agent - required, ~4.7GB
-ollama pull qwen3:8b             # optional: visible reasoning (--think), ~5.2GB
+ollama pull qwen2.5:3b            # router, the fast path - required, ~1.9GB
+ollama pull qwen2.5:7b            # fall-through agent - required, ~4.7GB
+ollama pull qwen3:8b              # optional: visible reasoning (--think), ~5.2GB
 ```
 
 Both of the first two are needed: the router classifies the question and the
-fall-through agent handles anything the templates do not cover. Ollama keeps
-them resident together (~7GB).
+fall-through agent handles anything the templates don't cover.
 
 To work on `association` itself, clone the repo and `uv sync --extra dev`
 instead of installing from PyPI.
 
-**Shell completion** (tab-complete subcommands, options, and `--log-level`'s
-choices) — the CLI is built on [Click](https://click.palletsprojects.com),
-which generates these directly from the command definitions, so there's
-nothing to keep in sync by hand. Two ways to enable it:
+### Hardware
 
-- Source one of the ready-made scripts in [`completions/`](https://github.com/jeffknupp/association/tree/master/completions):
-  ```bash
-  # bash
-  echo 'source /path/to/association/completions/association.bash' >> ~/.bashrc
-  # zsh
-  echo 'source /path/to/association/completions/association.zsh' >> ~/.zshrc
-  # fish
-  cp completions/association.fish ~/.config/fish/completions/
-  ```
-- Or generate it fresh (picks up any future CLI changes automatically):
-  ```bash
-  eval "$(_ASSOCIATION_COMPLETE=bash_source association)"   # bash, in ~/.bashrc
-  eval "$(_ASSOCIATION_COMPLETE=zsh_source association)"    # zsh, in ~/.zshrc
-  _ASSOCIATION_COMPLETE=fish_source association | source    # fish, in ~/.config/fish/config.fish
-  ```
+Recommended: 16GB of RAM. The router and fall-through models together use
+about 7GB once both are loaded, leaving headroom for DuckDB and the OS. No GPU
+is required.
 
-The `completions/` scripts are generated, not hand-written - after changing a
-command or option in `cli.py`, regenerate them with
-`./scripts/generate_completions.sh`.
+On a lighter machine, the router model alone (`qwen2.5:3b`) covers most
+everyday questions through the fast path. Skip pulling `qwen2.5:7b` if RAM is
+tight — questions the fast path can't answer will just fail instead of
+falling through, rather than running slowly.
+
+### Shell completion
+
+Tab-complete subcommands, options, and `--log-level`'s choices — generated
+directly from the CLI's own command definitions, so there's nothing to keep in
+sync by hand.
+
+```bash
+# bash
+echo 'source /path/to/association/completions/association.bash' >> ~/.bashrc
+# zsh
+echo 'source /path/to/association/completions/association.zsh' >> ~/.zshrc
+# fish
+cp completions/association.fish ~/.config/fish/completions/
+```
+
+Or generate it fresh, which picks up any future CLI changes automatically:
+
+```bash
+eval "$(_ASSOCIATION_COMPLETE=bash_source association)"   # bash, in ~/.bashrc
+eval "$(_ASSOCIATION_COMPLETE=zsh_source association)"    # zsh, in ~/.zshrc
+_ASSOCIATION_COMPLETE=fish_source association | source    # fish, in ~/.config/fish/config.fish
+```
 
 ## Documentation
 
-Full documentation — architecture, a generated command reference, usage
-recipes, data-source notes and the complete API — builds with Sphinx:
+Full documentation — architecture, a command reference, usage recipes, data
+source notes, and the complete API — is at
+[association.readthedocs.io](https://association.readthedocs.io/en/latest/),
+or build it locally:
 
-```
+```bash
 uv sync --extra docs
 scripts/build_docs.sh          # docs/_build/html/index.html
 ```
 
-The build runs as a pre-commit hook with `-W`, so a broken cross-reference or a
-module missing from the API tree fails the commit. Companion hooks enforce 100%
-docstring coverage on `src/` (autodoc renders an undocumented function
-perfectly happily, just uselessly) and 100% public-API type completeness via
-`pyright --verifytypes`.
+## Data
 
-Every check also runs in CI on push and pull request — ruff, mypy over `src`
-and `tests`, type completeness, docstring coverage, the test suite, and the
-docs build — with the built HTML uploaded as an artifact.
-
-## Data model
-
-Fetches teams, games/box scores (player and team level), standings, player
-and team season stats, ESPN's Basketball Power Index, and optionally
-play-by-play/shot charts/win probability. Grain and table design borrow the
-dimension/fact split popularized by the `nbadb` project, built directly
-against what ESPN's API actually returns rather than reimplementing it.
-
-**Computed tables** (always built, not sourced from ESPN — see "Query engine"
-below for why this isn't gated behind a flag):
-`player_advanced_stats` and `player_season_advanced_stats` — true shooting %,
-effective FG%, usage rate, and Hollinger game score, per game and per season.
-ESPN's team season stats already carry these natively (`effectiveFGPct`,
-`trueShootingPct`, `paceFactor`), but its player stats endpoint doesn't, so
-only the player side needs a computed layer — see
-[`fetch/advanced_stats.py`](https://github.com/jeffknupp/association/blob/master/src/association/fetch/advanced_stats.py) for the
-exact formulas and why PER/Win Shares/BPM/VORP are deliberately excluded.
-
-**NetPoints** — ESPN Analytics' current advanced player/team rating (points
-contributed above average, split into offense/defense), from
-[espnanalytics.com](https://espnanalytics.com), not ESPN's own API:
-
-- `net_points_player` / `net_points_team` (season-level, **fetched by
-  default**): public, unauthenticated JSON on S3. Confirmed live: no
-  `robots.txt` disallow, no auth/CORS barrier. Uses its own team-abbreviation
-  scheme (translated to this project's team_id at parse time — see
-  `fetch/parse.py`'s `NET_POINTS_ABBREV_TO_ESPN`) and its own
-  season-*starts* convention (converted to season-*ends* on ingest).
-  `overall`/`offense`/`defense` are season CUMULATIVE totals, not a rate —
-  `overall_per_100_poss`/`offense_per_100_poss`/`defense_per_100_poss` (plus
-  `total_minutes`) come from a second, separate file on the same public
-  bucket (`nba_net_pts100_data.json`), joined in by player+season+season-type.
-  Confirmed live: espnanalytics.com's own "Net Points / 100 Poss" toggle
-  fetches that second file rather than computing the rate in the browser, so
-  this reuses ESPN Analytics' own numbers rather than approximating one.
-- `net_points_player_fingerprint` (season-level, **fetched by default**):
-  behind espnanalytics.com's "Net Pts Fingerprint" page — a per-player
-  breakdown by shot/play type (2pt, 3pt, driving, fastbreak, rebound,
-  turnover, and 17 more), each split into offense/defense/total NetPoints —
-  66 NetPoints columns per player-season. One file per season on the same
-  public bucket as the season-level file above, but this one returns 403
-  (not the usual 404/400) for a season with no file yet — confirmed live,
-  handled the same way `netpoints_client.py` already handles its bucket's
-  own AccessDenied quirk. Keyed by NBA.com's own player id like the per-game
-  data below, with the same exact-display-name-match resolution (ambiguous/
-  unmatched names dropped, not guessed). Bio fields the source also carries
-  (height, draft year, date of birth) aren't kept — real, already-sourced-
-  from-ESPN data on `players`, not duplicated from a second source that
-  might disagree.
-- `net_points_player_game` / `net_points_team_game` (per-game, **opt-in**
-  via `--include-net-points-daily`): the source's own per-game/per-player
-  breakdown, one request per date already covered locally rather than per
-  player or per game. This bucket rejects unsigned requests — reached via
-  the same anonymous AWS Cognito identity-pool credential exchange
-  espnanalytics.com's own frontend uses (see `fetch/netpoints_client.py`),
-  needing `boto3`. Every field in this data uses NBA.com's own player/team/
-  game IDs, not ESPN's, with no crosswalk provided — resolved instead by
-  matching (team, calendar date) against this project's own already-fetched
-  `games` table (a team plays at most one game per date, so this is exact,
-  not a guess), and by exact player display-name match against `players`
-  (ambiguous or unmatched names are left out rather than guessed). One
-  real wrinkle, confirmed live: ESPN's `games.date` is UTC and can land a
-  full calendar day ahead of the US-local date NetPoints files under (e.g.
-  an OKC @ NYK game ESPN stores as `2026-03-05T00:00Z` is filed under
-  `2026-03-04`) — resolution checks date+1 FIRST, falling back to the exact
-  date only if that misses (checking exact-date first was a real, confirmed
-  bug: a team playing the same opponent on back-to-back nights has its own
-  unrelated game sitting at the exact label date, stealing the match before
-  the offset case could run). The fetch set also includes each local date
-  minus one day, not just the dates ESPN itself reports — otherwise a
-  date whose only local game's true label is the day before, with no other
-  local game to trigger fetching that day, is silently never fetched at
-  all (confirmed live, a Lakers game was missed entirely this way). Only
-  the genuinely new fields are kept (the NetPoints metric itself, plus
-  usage/possession/win-probability-added context); real box-score numbers
-  ESPN already provides (points, rebounds, minutes, ...) aren't duplicated
-  from this second source.
-
-## Design
-
-**Storage** — one small Parquet file per unit of fetched work (one game, one
-player-season, etc.), written atomically (temp file + rename). A file's
-existence *is* the resumability checkpoint; no separate manifest to drift out
-of sync.
-
-**Completion markers** — resumability at the file level doesn't scale to
-"is this whole season already done" without re-deriving it every run. A
-`_complete/season=X/season_type=Y.marker` sentinel makes that an O(1) check:
-once every game ESPN's schedule reports for a season+type is either played
-(has a `games/*.parquet` row) or permanently settled as never-played
-(postponed/cancelled — tracked separately as a `_resolved/*.marker`), the
-season is marked closed and every future `pull` or `check` skips it outright
-instead of re-hitting ESPN's schedule endpoint.
-
-**In-season data stays current, not frozen at first pull** — per-game data
-(box scores, play-by-play) is correctly immutable once fetched, but
-season-*aggregate* data (`standings`, `team_season_stats`, `team_power_index`,
-`player_season_stats`, and NetPoints' season-level tables) reflects ESPN's
-own live, evolving computation while a season is in progress — plain
-existence-check resumability would freeze these at whatever they were the
-first time they were pulled. `standings`/`team_power_index`/NetPoints keep
-re-fetching a season until it's no longer the *current* one
-(`current_season()` in [`association/season.py`](https://github.com/jeffknupp/association/blob/master/src/association/season.py),
-the same year-a-season-ends convention used everywhere else — a season keeps
-re-fetching a little past when it's actually over, until the next one starts
-in October, which is harmless since each is a single cheap request);
-`team_season_stats`/
-`player_season_stats` (one request per team/player) instead re-fetch based on
-the season+type's own completion marker, so they stop as soon as that
-season+type is genuinely done rather than waiting for the calendar to roll
-over. `data check`'s table only reports row *counts*, not freshness — it
-can't distinguish current-season data from stale current-season data, only
-`--live` cross-checks against ESPN catch that.
-
-**Warehouse** — a DuckDB file built from the Parquet tree via `read_parquet`
-with `union_by_name` (tolerates schema drift between files, e.g. an early-
-season stat ESPN hasn't computed yet) and *not* hive-partitioned (every row
-already embeds its own `season`/`season_type`/`team_id` columns, so inferring
-a second copy from the directory layout only invites type collisions).
-Rebuilding the warehouse is idempotent and cheap — safe to re-run any time.
-`data pull` rebuilds it automatically after fetching; `data load` rebuilds it
-straight from Parquet already on disk without touching the network, and
-`--tables` scopes that to a subset instead of rescanning everything (a full
-warehouse rebuild rereads every Parquet file, which gets slow as the tree
-grows).
-
-**Two models by design** — routing and SQL generation are different jobs.
-Benchmarked over the 30 real questions in `scripts/check_routing.py`, every
-model from 1.5B to 8B scored 28–30/30 on routing, because constrained decoding
-does the structural work and the model only has to classify and fill slots.
-`qwen2.5:3b` matched `qwen2.5:7b`'s score at 1.8× the speed and 2.8GB less RAM,
-so it is the `--router-model` default; the fall-through agent keeps the 7B,
-where writing correct SQL by hand genuinely needs the capacity. Reproduce with
-`scripts/bench_router_models.py`. Thinking models are disqualified on latency,
-not accuracy — `qwen3:4b` spent ~20s per question reasoning before emitting the
-same tiny JSON object, against `qwen2.5:3b`'s 1.1s.
-
-Both models fit in RAM together (~6.6GB of 16GB), and ollama's default already
-holds both — `/api/ps` reports them resident simultaneously, so
-`OLLAMA_MAX_LOADED_MODELS` needs no change. What does bite is the idle unload
-after ~5 minutes, so requests pass `keep_alive` (30m by default, override with
-`ASSOCIATION_KEEP_ALIVE`); that is a per-request field, unlike the server-side
-env vars.
-
-A fall-through question costs ~175s on this box, and it is prefill of the
-agent's preamble, not a model swap — the whole preamble has to be evaluated
-before the first token, at roughly 33 tok/s under a 6-core `CPUQuota`.
-
-**Query engine** — a question first hits a small **intent router**
-([`query/router.py`](https://github.com/jeffknupp/association/blob/master/src/association/query/router.py)): a ~430-token prompt
-carrying no schema and no SQL, decoded under a JSON schema (ollama's `format`)
-so the reply is *constrained* to a well-formed `{intent, slots}` object rather
-than merely asked for one. A recognized intent is answered by a deterministic
-template ([`query/templates.py`](https://github.com/jeffknupp/association/blob/master/src/association/query/templates.py)) that
-builds and runs the SQL itself and phrases its own answer — no schema in
-context, no SQL generated, no second model call. Anything else falls through
-to the full tool-calling agent below, unchanged. Falling through costs one
-~1.5s round trip and changes no answer, which is what makes question shapes
-portable one at a time (see [`FAST-PATH-MIGRATION.md`](https://github.com/jeffknupp/association/blob/master/FAST-PATH-MIGRATION.md)
-for the remaining shapes and the order they land in). `--no-fast-path` skips
-the router entirely, for comparing the two paths.
-
-Ported so far: `threshold_count` ("most games with 30+ points"),
-`leaderboard` ("top 5 scorers on the Lakers", "who led the playoffs in
-rebounding", "most triple-doubles"), `single_game_high` ("most assists in a
-single game"), `player_stat` ("how many points did Luka
-average in 2024?"), `player_compare` ("Luka vs SGA this season"),
-`team_record`, `head_to_head` ("how many times did the 76ers play Boston"),
-`game_log` ("the Knicks' last 5 games", "Curry's first game of the season"),
-`shot_chart`, `shot_distance` ("avg 3pt shot distance"), `player_history`
-("3pt% over the past 4 seasons", reported with makes and attempts) and
-`player_netpoints` (one player's NetPoints plus the play-type "fingerprint"
-behind them, per 100 possessions) — every shape the agent's four tools covered,
-plus several they did not.
-
-A short list in the router forces questions no template computes straight to
-the agent, regardless of what the model classified them as — "points in the 3rd
-quarter" reads exactly like a supported shape, so a near-miss template will
-otherwise absorb it and answer confidently. Subjects leave that list when they
-earn a template, as shot distance did.
-
-Names resolve through a curated nickname table
-([`entities.PLAYER_NICKNAMES`](https://github.com/jeffknupp/association/blob/master/src/association/query/entities.py)) before
-matching — "SGA", "Wemby", "the Greek Freak" — matched against the whole query
-rather than as substrings, so "book" is Devin Booker and "notebook" is nobody.
-It is deliberately a short, auditable list rather than a popularity heuristic:
-"Luka" and "Curry" are not in it, because they are shared with real players
-and the clarifying question is the honest answer. A leaderboard can also carry extra
-per-game columns ("top 10 in NetPoints with their points and minutes"), which
-switches the answer to a table and prints the qualifying minimum in its header.
-`scripts/check_routing.py` is the routing regression check — a fixed question
-set through `route()` only, including questions that must *not* be answered by
-a near-miss template, and cases marked as known gaps so a real regression still
-stands out.
-
-Name resolution for both paths lives in
-[`query/entities.py`](https://github.com/jeffknupp/association/blob/master/src/association/query/entities.py). It draws a
-deliberate distinction: `find_*` returns every candidate best-first and lets
-the caller choose (`render_shot_chart` takes the best match and names the
-others — a chart of the wrong Curry is obvious on sight), while `resolve_*`
-returns `Entity | Ambiguous | NotFound` and never guesses (a *number*
-attributed to the wrong Curry is indistinguishable from a right answer). Where
-a template can say something useful about the ambiguity it does — `player_stat`
-answers "'Luka' matches more than one player - did you mean Luka Doncic or Luka
-Garza?" in ~1.5s rather than guessing or handing the agent a problem it would
-spend minutes guessing at.
-
-**The fall-through agent** — a local Ollama model gets four tools: `describe_table`
-(schema lookup on demand, so table summaries stay short even for 100+-column
-tables), `get_leaderboard` (a "top N players by X" query for a fixed, known
-set of metrics — the season default, qualifying minimum sample, and
-traded-player dedup are all resolved once in Python, in
-[`query/metrics.py`](https://github.com/jeffknupp/association/blob/master/src/association/query/metrics.py), instead of
-re-derived by the model from prose on every query — see "Design" below for
-why), `run_sql` (read-only, `SELECT`/`WITH` only, backed by a read-only
-DuckDB connection as a hard guarantee, for anything `get_leaderboard` doesn't
-cover; results are bounded by *tokens* rather than rows, since a 200-row
-`SELECT *` measured at ~44,000 tokens — three times the context window — and
-would silently truncate the system prompt out of the conversation; a query
-comparing an `*_id` column to a non-numeric literal comes back with a warning,
-because ids here are all-digit strings and such a filter matches nothing
-without erroring), and `render_shot_chart` (renders a static HTML/SVG court plot). A
-growing `KNOWLEDGE_BASE` of concrete schema/domain gotchas (hoop coordinates,
-a trade-mid-season double-counting trap in season stats, double-double/
-triple-double definitions, ...) gets appended to whenever a real question
-produces a wrong answer — small local models follow a copy-pasteable SQL
-pattern far more reliably than an abstract instruction. Two hard backstops in
-the agent loop: if the model ends a turn by printing SQL as prose instead of
-calling `run_sql`, it extracts and runs it anyway rather than handing back an
-unexecuted recipe; and if it tries to finalize an answer right after an
-unrecovered `run_sql`/`get_leaderboard` error, it's refused a nudge to retry
-instead — confirmed live, without this a query error once produced a
-fabricated answer with literal `[Player Name 1]`-style placeholder text
-presented as real data.
-
-**Run history** — every `query`/`ai` call writes a file under `.history/`
-(gitignored), named with a random hash, holding the command invoked, the full
-tool-call/thinking trace, per-model-call and per-tool-call timing, and the
-final answer (or a traceback, if the call raised) — regardless of whether
-`--verbose` was passed. `--verbose` only additionally echoes that same trace
-to stderr live; the file always gets everything, so a confusing or wrong
-answer from an unwatched run still has its full evidence on disk afterward.
-Every run also prints a one-line timing summary to stderr (total time, and
-the model-inference-vs-tool-execution split), and logs the router's intent and
-slots when the fast path is taken. In practice model inference dominates
-end-to-end latency by a wide margin, so the timing split reads mostly as a
-count of model round trips: on this 8-core CPU box the same question went from
-`total 385.45s - model 385.41s (5 calls), tools 0.04s (3 calls)` through the
-agent to `total 2.50s - model 2.47s (1 call), tools 0.02s (1 call)` through the
-router and a template.
-
-The warehouse itself also carries two schema-level helpers so ad hoc
-`run_sql` queries (not covered by `get_leaderboard`) don't have to re-derive
-common correctness rules either: a `current_season()` SQL macro (the year a
-season ENDS, computed from today's real date — the same rule `get_leaderboard`
-applies in Python) and a `player_season_stats_deduped` view (one row per
-player per season, already collapsed past the traded-player multi-row trap).
-
-**Why a dedicated leaderboard tool at all** — real "top N players by X"
-questions kept failing in different ways even with a `KNOWLEDGE_BASE` entry
-covering each one: a season default that got dropped as soon as a second
-filter was also needed, a minimum-sample rule that only applied to the one
-metric it was written for, and — worst — two runs of the identical question
-with the same *thinking* model producing two different metrics and answers
-five minutes apart. Every `KNOWLEDGE_BASE` entry makes the model responsible
-for remembering and re-deriving one more rule from prose on every query, and
-that stops composing reliably as the list grows — more "thinking" time
-doesn't fix a fundamentally stochastic process being asked to reproduce a
-growing checklist exactly. `get_leaderboard` moves the correctness for a
-fixed, known set of metrics out of prose and into code instead, so the
-model's job shrinks to picking a metric name and filling a few slots.
-
-**Why a router in front of all of it** — that argument turned out to
-generalize, and the `KNOWLEDGE_BASE` kept growing until it broke something
-outright. `SYSTEM_PROMPT + TOOLS` reached 10,295 tokens against a `NUM_CTX` of
-8,192; ollama truncates head-first, so only 4,098 tokens ever reached the
-model and the discarded head held `TABLE_SUMMARY`, both standing rules, and
-the first ~15 `KNOWLEDGE_BASE` entries — including the very entry describing
-the "count games over a threshold" pattern. Three consecutive runs of "who had
-the most 30+ point games this season?" answered with a season-scoring-average
-leaderboard for the wrong season instead, taking 385s each. The size crossed
-the limit at `c209516` and stayed silent for four commits.
-
-Two things compound there. A model that has lost the schema to truncation
-guesses column names and reaches for whichever tool description survived; and
-a prompt that doesn't fit misses ollama's KV prefix cache on *every* iteration,
-because the truncation offset slides as the conversation grows (measured: 2.9s
-vs 62.8s on a second turn). Five round trips at ~75s of pure prefill each is
-the whole 385s.
-
-So the router does only the first of the two jobs the agent had been doing at
-once — understand the question — and it needs no schema to do it. The second
-job, producing correct SQL for a known intent, is deterministic and belongs in
-code.
-
-The tempting follow-on — delete each `KNOWLEDGE_BASE` entry as its template
-lands — turned out to be wrong, and the plan said so before the measurement
-did. The agent still writes free-form SQL for everything no template covers,
-and those questions hit exactly the same traps: "compare Luka and SGA" needs
-the traded-player dedup rule and the named-player filtering rule just as much
-as a leaderboard did. What actually cost something was that every question
-paid for all 26 entries at once. So the preamble is assembled per question
-instead: 10,295 tokens (truncated to 4,098) became 4,337–5,821 tokens, never
-truncated. Nothing was deleted; almost nothing is loaded.
+Fetches teams, games/box scores, standings, player and team season stats,
+ESPN's Basketball Power Index, and optionally play-by-play, shot charts, and
+win probability. It also pulls NetPoints — ESPN Analytics' advanced
+player/team rating — from a separate, unauthenticated source. See
+[Data sources](https://association.readthedocs.io/en/latest/data-sources.html)
+for exactly what's fetched from where, and
+[Architecture](https://association.readthedocs.io/en/latest/architecture.html)
+for how the warehouse and query engine are built from it.
 
 ## Project layout
 
 ```
 src/association/
   cli.py            entrypoint: data pull|load|check, query, ai
-  fetch/            client (curl_cffi — see below), endpoints, parse, storage, pipeline, warehouse
+  fetch/            client, endpoints, parse, storage, pipeline, warehouse
   check/            data coverage report, cross-checked live against ESPN
   query/            intent router, query templates, entity resolution, leaderboard, shot chart, prompt/knowledge base, tools, court renderer, agent loop, REPL
 scripts/
   backfill_markers.sh   re-derive completion markers for data fetched before they existed
   check_routing.py      routing regression check for the query fast path (needs ollama)
   bench_router_models.py  score candidate router models on that same question set
-completions/          generated bash/zsh/fish shell completion scripts (see Setup)
+completions/          generated bash/zsh/fish shell completion scripts
 tests/              pytest, one file per source module
-.history/           per-run command/trace/timing logs from query|ai (gitignored, see Run history above)
+.history/           per-run command/trace/timing logs from query|ai (gitignored)
 ```
 
-## Notable implementation details
-
-- **TLS fingerprinting**: ESPN's CDN blocks plain `requests`/`httpx` with a
-  403 even with a browser User-Agent — only `curl` and TLS-impersonating
-  clients get through. The HTTP client uses `curl_cffi` for this reason;
-  swapping it back to `requests` will silently break every fetch.
-- **Preseason has no team season stats** on ESPN's side at all (confirmed
-  live, not a gap) — the fetcher skips that request rather than re-querying
-  an endpoint that structurally never returns data.
-- Season numbering follows ESPN's convention: the year a season *ends*
-  (the 2023-24 season is `season=2024`) - except NetPoints' own source data,
-  which labels a season by the year it *starts*; converted on ingest so the
-  stored `season` column matches every other table.
-- NetPoints' season-level files (espnanalytics.com, not espn.com) need none
-  of the TLS-impersonation tricks above - a plain request succeeds. Its
-  per-game bucket is the opposite problem: it rejects unsigned requests
-  outright, needing a Cognito credential exchange instead (see the NetPoints
-  section above and `fetch/netpoints_client.py`).
-
-## Testing
-
-```bash
-uv sync --extra dev
-pytest -q
-```
-
-Tests are regression-first: most exist because a specific real bug (a pyarrow
-type-collision crash, a shot-chart sentinel coordinate, a postponed game that
-would've been re-fetched forever, ...) produced wrong or crashing output, not
-because a line of code needed generic coverage.
-
-## Linting / type checking
-
-`ruff` and `mypy` run as pre-commit hooks (`ruff --fix`, then `mypy` over
-`src/` and, separately, `tests/`). The whole codebase is fully type-annotated
-and mypy runs with `disallow_untyped_defs`/`disallow_incomplete_defs` - new
-code without annotations fails the hook, it's not just checking whatever
-happens to already have hints.
+## Development
 
 ```bash
 uv sync --extra dev
 pre-commit install     # one-time, wires the git hook
-pre-commit run --all-files   # run manually against everything
+pytest -q
 ```
 
-A third hook enforces [CHANGES.md](https://github.com/jeffknupp/association/blob/master/CHANGES.md): any commit touching `src/`
-must also update it, or the commit is rejected.
+`ruff` and `mypy` run as pre-commit hooks, along with docstring coverage and
+type completeness checks on `src/`. The same checks run in CI on push and pull
+request, alongside the docs build. Any commit touching `src/` must also update
+[CHANGES.md](https://github.com/jeffknupp/association/blob/master/CHANGES.md),
+enforced by a pre-commit hook.
 
 ## Known limitations
 
 - ESPN's stats API is undocumented and unofficial — endpoints or shapes can
   change without notice.
-- ESPN's own Real Plus-Minus (RPM) isn't available at a stable JSON endpoint
-  (only ever found rendered into a webpage) - NetPoints (see above) is its
-  successor and *is* included. PER, Win Shares, BPM, and VORP are still not
-  included, for a different reason: see `player_advanced_stats` above.
-- NetPoints only has data back to the 2018-19 season (`season=2019`) -
-  nothing earlier exists on their side, confirmed live (both the season-level
-  and per-game endpoints).
-- `net_points_team` (season-level) only ever reflects the single current
-  season - `net_points_team_game` (per-game, `--include-net-points-daily`)
-  has full history instead.
-- `net_points_player_game` matches players by exact display-name text -
-  formatting differences between ESPN's and NetPoints' own name spelling
-  (accents, suffixes) will leave a real player's game rows unmatched rather
-  than wrongly matched, but that does mean a small amount of real coverage
-  gets dropped silently instead of guessed.
+- ESPN's own Real Plus-Minus (RPM) isn't available at a stable JSON endpoint —
+  NetPoints (see above) is its successor and *is* included. PER, Win Shares,
+  BPM, and VORP are not included; see the computed advanced stats notes in the
+  docs for why.
+- NetPoints only has data back to the 2018-19 season — nothing earlier exists
+  on their side.
+- `net_points_team` (season-level) only ever reflects the current season;
+  `net_points_team_game` (per-game, `--include-net-points-daily`) has full
+  history instead.
+- `net_points_player_game` matches players by exact display-name text, so
+  spelling differences between sources can leave a real player's game rows
+  unmatched rather than wrongly matched.
 - `data check --live` cross-checks are opt-in and can be slow for seasons
   without a local completion marker yet — `pull` first to build those up.
