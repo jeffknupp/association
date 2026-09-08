@@ -10,6 +10,10 @@ untidiness.
 
 Deliberately free of heavy imports so `cli.py` can read it at module level
 without pulling in ollama and duckdb at startup.
+
+.. versionadded:: 1.2.0
+   Replaces the copies previously in :mod:`association.cli` and
+   :mod:`association.query.agent`.
 """
 
 from __future__ import annotations

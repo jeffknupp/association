@@ -119,7 +119,13 @@ class TemplateResult:
     could be invented.
 
     `data` is the same result as structured values - resolved names and numbers,
-    no ids and no schema. Tests assert against it."""
+    no ids and no schema. Tests assert against it.
+
+    .. versionchanged:: 1.2.0
+       ``answer`` is required rather than optional, making "the fast path makes
+       no model call after the router" a type-checked property. The unused
+       ``summary`` field was removed.
+    """
 
     data: dict[str, Any]
     answer: str
@@ -1226,7 +1232,10 @@ def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> Template
     to 'PHI' - the id-vs-abbreviation mistake its own always-on rule warns
     against, on every call. A compound shape (quarter math AND a named
     opponent) is what this model fails at even with both rules in its
-    prompt."""
+    prompt.
+
+    .. versionadded:: 1.1.0
+    """
     con = ctx.con
     period = slots.get("period")
     if not isinstance(period, int) or not 1 <= period <= 10:

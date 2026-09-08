@@ -15,6 +15,27 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Version markers on the public API.** The docs already generate a page for
+  every module (`docs/api/index.rst` runs `autosummary` recursively), but nothing
+  said when anything appeared, so the reference read as though the package had
+  always looked this way. `.. versionadded::` / `.. versionchanged::` now mark
+  what moved: `query.models`, `shotchart.resolve_chart_player` and
+  `render_for_player` as added in 1.2.0, `team_quarter_points` in 1.1.0, and the
+  reshaping of `TemplateResult`, `render_shot_chart`, `AGENT_NUM_CTX` and
+  `ROUTER_NUM_CTX`. Verified by grepping the rendered HTML, not by the build
+  exiting 0 - four "Added in version" and four "Changed in version".
+
+  `AGENTS.md` gains the convention, including the two things that bite: docstrings
+  are reStructuredText and the docs build runs under `-W`, so a malformed one
+  fails a gate; and a module-level constant needs an attribute docstring for a
+  directive to attach to it.
+- **`bump_version.py` now refreshes `uv.lock`.** The lock records the project's
+  own version, and rewriting `pyproject.toml` alone left it a release behind -
+  both v1.0.0 and v1.1.0 were tagged with a stale lock, and 1.0.0 needed a
+  follow-up "sync uv.lock" commit to correct it. CI and Read the Docs install
+  with `--frozen`, so the lock is what they actually build from. The bump now
+  runs `uv lock`, asserts the new version landed in it, and commits it alongside.
+
 - **Organisation pass on `query/`.** The last needless function-local import is
   gone; `cli.py`'s remaining ones now carry a comment saying they are deliberate,
   since they keep duckdb, pyarrow and ollama out of `--help` and a future tidy-up

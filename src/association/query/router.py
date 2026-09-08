@@ -225,6 +225,11 @@ ROUTER_SCHEMA: dict[str, Any] = {
 }
 
 ROUTER_NUM_CTX = 4096  # the router prompt is ~430 tokens; this leaves ample headroom and still fits
+"""The router's context window.
+
+.. versionchanged:: 1.2.0
+   Renamed from ``NUM_CTX``, which collided with the agent's own window.
+"""
 
 # ESPN's earliest season in this warehouse, and a season can legitimately be
 # next year's during the autumn rollover - anything outside this is a model

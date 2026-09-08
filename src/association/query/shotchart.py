@@ -29,6 +29,8 @@ def resolve_chart_player(con: duckdb.DuckDBPyConnection, player_name: str) -> tu
     resolve separately. Two independent resolutions of the same name can pick
     different players, which would scope the chart to a game the other one
     played.
+
+    .. versionadded:: 1.2.0
     """
     candidates = find_players(con, player_name)
     if not candidates:
@@ -48,7 +50,12 @@ def render_shot_chart(
     made_only: bool | None = None,
 ) -> str:
     """Resolve a player name and render their shots - the agent tool's entry
-    point. A caller that has already resolved the player calls render_for_player.
+    point. A caller that has already resolved the player calls
+    :func:`render_for_player`.
+
+    .. versionchanged:: 1.2.0
+       Resolution split out into :func:`resolve_chart_player` and the rendering
+       body into :func:`render_for_player`. This signature is unchanged.
     """
     resolved = resolve_chart_player(con, player_name)
     if resolved is None:
@@ -89,6 +96,8 @@ def render_for_player(
     Returns:
         A human-readable message naming the player, the made/attempted split,
         and the file written.
+
+    .. versionadded:: 1.2.0
     """
     athlete_id, resolved_name = player.id, player.name
 

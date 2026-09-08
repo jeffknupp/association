@@ -382,6 +382,11 @@ KNOWLEDGE_BASE: list[dict[str, Any]] = [
 # question, against being quietly wrong at 8192; for a path this rare that is
 # the right trade.
 AGENT_NUM_CTX = 16384
+"""The fall-through agent's context window.
+
+.. versionchanged:: 1.2.0
+   Renamed from ``NUM_CTX``, which collided with the router's own window.
+"""
 # The preamble's share, leaving ~10k for tool-result JSON, the model's replies,
 # and several tool-call rounds. A preamble past this is a bug, not a knob.
 PREAMBLE_TOKEN_BUDGET = 6000

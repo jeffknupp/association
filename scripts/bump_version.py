@@ -28,6 +28,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = ROOT / "pyproject.toml"
 CHANGELOG = ROOT / "CHANGES.md"
+LOCK = ROOT / "uv.lock"
 
 # Deliberately stricter than PEP 440, which would also accept 1.0.0.post1,
 # 1.0.0a1 and 1.0 - this project promises plain semantic versioning, and the
@@ -86,6 +87,20 @@ def rewrite_pyproject(current: str, version: str) -> None:
     PYPROJECT.write_text(text.replace(f'version = "{current}"', f'version = "{version}"', 1))
 
 
+def relock(version: str) -> None:
+    """Refresh ``uv.lock`` so the tagged commit is self-consistent.
+
+    The lock records the project's own version, and rewriting pyproject.toml
+    alone leaves it a release behind - v1.0.0 and v1.1.0 were both tagged with a
+    stale lock, and one needed a follow-up "sync uv.lock" commit. CI and Read
+    the Docs both install with ``--frozen``, so the lock is what they actually
+    build from.
+    """
+    subprocess.run(["uv", "lock", "--quiet"], cwd=ROOT, check=True)
+    if f'version = "{version}"' not in LOCK.read_text():
+        sys.exit(f"error: uv.lock still does not record {version} after `uv lock`")
+
+
 def stamp_changelog(version: str) -> None:
     """Rename the ``## Unreleased`` heading to this version and today's date."""
     text = CHANGELOG.read_text()
@@ -114,11 +129,12 @@ def main() -> int:
     check_tag_free(version)
 
     rewrite_pyproject(current, version)
+    relock(version)
     stamp_changelog(version)
     print(f"{current} -> {version}")
 
     if args.commit:
-        subprocess.run(["git", "add", "pyproject.toml", "CHANGES.md"], cwd=ROOT, check=True)
+        subprocess.run(["git", "add", "pyproject.toml", "uv.lock", "CHANGES.md"], cwd=ROOT, check=True)
         subprocess.run(["git", "commit", "-m", f"Release {version}"], cwd=ROOT, check=True)
     if args.tag:
         subprocess.run(["git", "tag", "-a", f"v{version}", "-m", f"association {version}"], cwd=ROOT, check=True)

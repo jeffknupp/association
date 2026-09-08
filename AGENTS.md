@@ -44,6 +44,19 @@ Add to the `## Unreleased` section.
 - **Every public module, class and function needs a docstring** — a separate
   gate from the Sphinx build, because autodoc renders an undocumented function
   perfectly happily, just uselessly.
+- **Docstrings are published.** `docs/api/index.rst` runs `autosummary` over the
+  whole package recursively, so every public module gets a page without anyone
+  adding it. Two consequences: docstrings are reStructuredText, not plain text
+  (`` `x` `` is a *reference*, not code — use ``` ``x`` ``` for a literal), and
+  the docs build runs under `-W`, so a malformed one fails the gate.
+- **Mark public API changes with a version directive.** A new public function,
+  class or module gets `.. versionadded:: X.Y.Z` at the end of its docstring; a
+  renamed or reshaped one gets `.. versionchanged:: X.Y.Z` saying what moved.
+  Use the version being released next, not the current one. Only the public
+  surface is worth marking — internal helpers and the template/intent set are
+  explicitly outside the compatibility promise (see the preamble in
+  `CHANGES.md`). Module-level constants need an attribute docstring (a string
+  literal directly *after* the assignment) for the directive to attach.
 - Comments explain *why*, especially where the code looks odd. Most of the odd
   code here is load-bearing.
 
@@ -125,3 +138,9 @@ The habits that caught real bugs here, in rough order of how often they paid:
 `docs/releasing.rst` has the procedure. Short version: describe the change
 under `## Unreleased`, then `scripts/bump_version.py minor --tag`, push, then
 `scripts/release.sh X.Y.Z`. Nothing before the final step is irreversible.
+
+Before bumping, check that anything added or reshaped on the public surface
+carries a `.. versionadded::` / `.. versionchanged::` for the version about to
+go out. `git diff v<previous>..HEAD` over `src/` is the honest way to find them;
+the API pages are generated, so an unmarked change simply appears with no
+history rather than failing anything.
