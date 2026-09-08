@@ -15,6 +15,18 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Trimmed the prose in `templates.py`** from 316 lines of comment/docstring to
+  278, and fixed two stale ones. Each war story is cut to the fact that changes
+  what you write next - the failing query shape, the schema trap, the measured
+  number - and the retelling around it is gone. `team_quarter_points`'s
+  21-line docstring is the clearest case: it now says a player's quarter score
+  needs the plays-table derivation and a team's does not, instead of narrating
+  three model calls.
+
+  The two stale ones: a pointer to `toolbox.EXTRA_FIELD_COLUMNS` (it lives in
+  `metrics.py`), and a module docstring still describing the template migration
+  as in progress. Also removed a duplicate comment above `PLAYER_STAT_COLUMNS`
+  that said the same thing twice, a leftover from a merge.
 - **Removed the narrator model call from the fast path.** `Agent._narrate`,
   `NARRATOR_PROMPT` and `NARRATE_NUM_CTX` were unreachable: the call site fired
   only when a template returned `answer=None`, and all 24 `TemplateResult`

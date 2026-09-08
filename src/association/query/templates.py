@@ -1,15 +1,11 @@
 """Deterministic query templates: the second half of the router/template split
 described in router.py.
 
-Given an intent and its slots, these build and run the SQL themselves. Every
-correctness rule they need lives here, in code, rather than as prose the model
-has to re-derive per query - the same move get_leaderboard already made for
-"top N by metric", extended to the other recurring question shapes.
-
-Only intents present in TEMPLATES are handled; anything else (including a
-recognized intent whose slots don't validate) falls through to the full agent
-untouched. That is what makes the migration incremental: a shape is ported by
-adding a function here, and its KNOWLEDGE_BASE entry then becomes deletable."""
+Given an intent and its slots, these build and run the SQL themselves, so every
+correctness rule lives in code rather than as prose the model re-derives per
+query. Only intents present in TEMPLATES are handled; anything else - including
+a recognized intent whose slots don't validate - falls through to the agent
+untouched."""
 
 from __future__ import annotations
 
@@ -30,7 +26,7 @@ from .shotchart import render_shot_chart
 
 # Slot value -> real player_box_stats column. A whitelist, not a passthrough:
 # the router's `stat` slot is model-generated text, and this is the only place
-# it can reach SQL. Same reasoning as toolbox.EXTRA_FIELD_COLUMNS.
+# it can reach SQL. Same reasoning as metrics.EXTRA_FIELD_COLUMNS.
 THRESHOLD_STAT_COLUMNS = {
     "points": "points",
     "rebounds": "rebounds",
@@ -68,12 +64,10 @@ SEASON_TYPE_NAMES = {1: "preseason", 2: "regular season", 3: "postseason"}
 
 
 # Slots that narrow WHICH games an answer covers. A template that ignores one
-# does not give a narrower answer, it gives a different one and says nothing -
-# confirmed live three times: a shot chart of "his last game" drew the whole
-# season (803 attempts, not 14), NetPoints for "his last game" reported all 43,
-# and a record "over their last 10 games" would have reported the full season.
-# Each was a slot the router extracted CORRECTLY and the template dropped, so
-# the routing check cannot catch them; only this can.
+# gives a different answer, not a broader one, and says nothing - confirmed
+# three times ("his last game" charting a whole season, and so on). The router
+# extracts these CORRECTLY in each case, so check_routing cannot catch a
+# template dropping them; only this can.
 SCOPING_SLOTS = frozenset({"order", "date"})
 
 # What each template actually honours. Anything not listed here honours none.
@@ -139,11 +133,9 @@ def _clamp_limit(limit: Any, default: int = DEFAULT_LIMIT) -> int:
 def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """ "Most games with N+ of some stat" - the shape that motivated this split.
 
-    KNOWLEDGE_BASE already carried this exact pattern ("Single-game vs.
-    season-total stats"), but it sat in the truncated-away head of the system
-    prompt, so three consecutive runs answered a season-averages leaderboard
-    instead and presented it as the answer. Encoded here it cannot be
-    truncated, misremembered, or silently substituted."""
+    A KNOWLEDGE_BASE entry covered it, but sat in the truncated-away head of the
+    prompt, so three consecutive runs answered with a season-averages
+    leaderboard instead. In code it cannot be truncated or substituted."""
     con = ctx.con
     stat = slots.get("stat")
     column = THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
@@ -220,10 +212,9 @@ def _format_value(value: Any) -> str:
 def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """ "Top N players by X" for the metrics in LEADERBOARD_METRICS.
 
-    Thin on purpose: run_leaderboard already owns the season default, the
-    per-metric minimum-sample floor and traded-player dedup, and the agent's
-    get_leaderboard tool calls the same function. All this adds is the router
-    slot mapping and deterministic phrasing."""
+    Thin on purpose: run_leaderboard owns the season default, minimum-sample
+    floor and traded-player dedup, and the agent's get_leaderboard tool calls
+    the same function. This adds slot mapping and phrasing."""
     con = ctx.con
     metric = resolve_metric(slots.get("stat"))
     if metric is None:
@@ -243,11 +234,9 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     if unknown:
         raise TemplateUnsupported(f"unknown leaderboard field(s) {unknown}")
     # Deduplicated, order preserved: the router repeats itself sometimes
-    # (confirmed live: ["points","minutes","minutes"]), and a repeat is a
-    # harmless slip, not a reason to spend minutes in the agent. A field that
-    # restates the ranked metric is dropped too - asked for "top scorers with
-    # their rebounds and assists" the model also returned "points", which
-    # rendered 33.5 twice under two different headings.
+    # (["points","minutes","minutes"]), which is a slip, not a reason to spend
+    # minutes in the agent. A field restating the ranked metric goes too - it
+    # rendered the same 33.5 twice under two headings.
     fields = [f for f in dict.fromkeys(requested) if metric != f"avg_{f}"]
     try:
         result = run_leaderboard(
@@ -323,11 +312,10 @@ def _tabulate_leaderboard(
     return "\n".join(lines)
 
 
-# Slot value -> (per-game column, season-total column or None, label).
-# Reported together, so "how many points did X average" and "how many points
-# did X score" don't have to be told apart from wording - a distinction the
-# router got wrong more often than it got right.
-# stat -> (per-game column, season-total column or None, display label)
+# stat -> (per-game column, season-total column or None, display label).
+# Per-game and total are reported together, so "how many points did X average"
+# and "how many did X score" need not be told apart from wording - a
+# distinction the router got wrong more often than right.
 PLAYER_STAT_COLUMNS: dict[str, tuple[str, str | None, str]] = {
     "points": ("avgPoints", "points", "points"),
     "rebounds": ("avgRebounds", None, "rebounds"),
@@ -380,11 +368,11 @@ FINGERPRINT_PARTITION = ("two_pt", "three_pt", "free_throw", "turnover", "reboun
 def player_netpoints(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """One player's NetPoints, with the play-type fingerprint.
 
-    NetPoints was exposed only as leaderboard metrics - ways to rank the
-    league - so "what were SGA's netpoint stats this season" had no shape to
-    land in. player_stat correctly refused the unsupported stat and fell
-    through; the agent then called get_leaderboard for the league, dropped SGA
-    entirely, and answered "Nikola Jokic leads the team in NetPoints"."""
+    NetPoints existed only as leaderboard metrics - ways to rank the league - so
+    a question about one player had nowhere to land: the guard in player_stat
+    fired correctly, then the agent ranked the league and dropped the player. A
+    guard that turns a wrong answer into a slow one needs something to fall
+    through TO."""
     from association.net_points_categories import FINGERPRINT_CATEGORIES
 
     con = ctx.con
@@ -469,9 +457,8 @@ def _single_game_netpoints(ctx: TemplateContext, player: Entity, season: int, se
     """One game's NetPoints, from net_points_player_game.
 
     That table is opt-in (`data pull --include-net-points-daily`) and, unlike
-    net_points_player, uses the normal numeric season_type. It carries no
-    play-type fingerprint - that is season-level only - so a single-game answer
-    is o/d/t NetPoints, possessions, usage and win-probability added."""
+    net_points_player, uses the normal numeric season_type. No play-type
+    fingerprint - that is season-level only."""
     period = _period(season, season_type)
     try:
         row = ctx.con.execute(
@@ -586,11 +573,10 @@ MAX_HISTORY_SEASONS = 20
 def player_history(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """One player's stat across several seasons.
 
-    Every other template answers about a single season, so "what was Klay
-    Thompson's 3pt percentage over the past 4 seasons" had nowhere to go: it
-    routed to `leaderboard`, which dropped the player entirely and returned the
-    league's true-shooting leaders for 2020. A multi-season question needs a
-    multi-season shape."""
+    Every other template answers about a single season, so a multi-season
+    question routed to `leaderboard`, which dropped the player and ranked the
+    league. Distinct from the other gaps here: a missing DIMENSION cutting
+    across the shapes that existed, not a missing shape."""
     con = ctx.con
     text = slots.get("player")
     if not isinstance(text, str) or not text.strip():
@@ -663,11 +649,10 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """One named player's season numbers, from player_season_stats_deduped so
     a traded player's multi-row season is already collapsed.
 
-    An incomplete name ("Luka", "Curry") is answered with a question rather
-    than a guess. Falling through to the agent for those would cost minutes and
-    end in a guess anyway; picking the most prominent match would silently
-    attribute a number to the wrong player, which is the one failure this
-    architecture is built to prevent. Asking costs ~1.5s and is always right."""
+    An incomplete name ("Luka", "Curry") is answered with a question, not a
+    guess: falling through costs minutes and guesses anyway, and a prominence
+    tiebreak was measured and rejected (no threshold separates Luka Doncic from
+    Luka Garza without also wrongly resolving "Brown")."""
     con = ctx.con
     text = slots.get("player")
     if not isinstance(text, str) or not text.strip():
@@ -763,12 +748,11 @@ DEFAULT_GAME_LOG_LIMIT = 10
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 # games is home/away-oriented, not team-perspective: joining team_id to only
-# home_team_id silently returns just that team's HOME games, with no error.
-# team_box_stats has the team-perspective row (team_id, opponent_team_id,
-# home_away), but who WON lives only on games.winner_team_id. team_score /
-# opponent_score are computed from home_away rather than reported raw, because
-# raw home_score/away_score forces a per-row guess about which number was this
-# team's - one that gets made backwards on some rows.
+# home_team_id silently returns that team's HOME games, with no error.
+# team_box_stats carries the team-perspective row (team_id, opponent_team_id,
+# home_away); who WON lives only on games.winner_team_id. team_score /
+# opponent_score are derived from home_away rather than read raw, since raw
+# home_score/away_score needs a per-row guess that goes backwards sometimes.
 _TEAM_GAMES_SQL = """
 SELECT g.date,
        tbs.home_away,
@@ -938,9 +922,9 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """Renders one player's shots to a static HTML court plot.
 
     Uses shotchart.render_shot_chart, the same function the agent tool calls,
-    and so inherits its best-match player handling rather than resolve_player's
-    refusal: a chart drawn for the wrong Curry is obvious on sight, and the
-    plot is titled with the resolved name."""
+    so it inherits best-match player handling rather than resolve_player's
+    refusal: a chart of the wrong Curry is obvious on sight, and titled with the
+    resolved name."""
     player = slots.get("player")
     if not isinstance(player, str) or not player.strip():
         raise TemplateUnsupported("shot_chart needs a player name")
@@ -994,14 +978,10 @@ HOOP_X, HOOP_Y = 25, 5.25
 def shot_distance(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """Average shot distance for one player, optionally by shot value.
 
-    Left to the agent until it got the question wrong in a familiar way: given
-    "what was steph curry's avg 3pt shot distance" it wrote the right distance
-    formula, then dropped BOTH the 3-point filter and the season filter and
-    reported the all-shots, all-seasons average of 16.94 as his current-season
-    three-point distance. The real figure is 23.6.
-
-    The formula is fixed and the columns are known, so nothing here is a
-    judgement call - which is the whole argument for a template."""
+    The agent wrote the right distance formula, then dropped both the 3-point
+    filter and the season filter, reporting an all-shots all-seasons 16.94 as a
+    current-season three-point figure (real answer 23.6). A fixed formula over
+    known columns is template work."""
     con = ctx.con
     text = slots.get("player")
     if not isinstance(text, str) or not text.strip():
@@ -1064,12 +1044,11 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     """ "Most assists in a single game" - a per-game MAXIMUM, not a season
     ranking.
 
-    Added because the router had no such shape and picked the nearest one:
-    "who had the most assists in a single game and how many did he have?"
-    was answered "Nikola Jokic led the league in assists per game, at 10.7"
-    in 1.76s. The real answer was Ryan Nembhard with 23. A missing shape does
-    not produce a refusal, it produces a confident answer to a different
-    question - which is why the fix is a template, not a prompt tweak."""
+    With no such intent the router picked the nearest shape it had: "most
+    assists in a single game" was answered with a season average, in 1.76s, off
+    by 13. A missing shape does not produce a refusal - it produces a confident
+    answer to a different question, so the fix is a template, not prompt
+    wording."""
     stat = slots.get("stat")
     column = THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
     if column is None:
@@ -1134,27 +1113,22 @@ MAX_COMPARED_PLAYERS = 4
 def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """ "How many times did the 76ers play Boston?" - games between two teams.
 
-    Added after that exact question was answered "the Philadelphia 76ers did
-    not play against the Boston Celtics" (they played four times). The agent
-    wrote `home_team_id = 'PHI'`, but team_id is an opaque numeric VARCHAR
-    ('20'), so the filter silently matched nothing - and it did that with the
-    rule against it, complete with a worked WRONG example, in its prompt.
-    Resolving names to ids here is the only fix that holds."""
+    That question was answered "they did not play" (they played four times).
+    The agent wrote `home_team_id = 'PHI'` against an opaque numeric VARCHAR
+    ('20'), so the filter matched nothing - with the rule against it, and a
+    worked WRONG example, in its prompt. Prompting cannot fix that; resolving
+    names to ids in code can."""
     con = ctx.con
-    # Confirmed live: rephrasing that same question with a city name instead of
-    # a nickname ("...play Boston?" rather than "...play the Celtics?") makes
-    # the router put the subject team in `team` and only the other side in
-    # `teams` (a one-element list), rather than both in `teams` as the prompt
-    # asks - `team` resolves fine on its own (entities.find_teams("Boston")
-    # matches "Boston Celtics"), so the miss is this slot split, not name
-    # resolution. Treating `team` as a third candidate absorbs that split
-    # instead of rejecting a fully-answerable question to the agent's SQL.
+    # A city name rather than a nickname ("...play Boston?") makes the router
+    # split the two teams across `team` and `teams` instead of putting both in
+    # `teams`. Name resolution is fine either way, so treating `team` as a third
+    # candidate absorbs the split rather than rejecting an answerable question.
     teams_slot = slots.get("teams")
     names = [n for n in teams_slot if isinstance(n, str) and n.strip()] if isinstance(teams_slot, list) else []
     team_slot = slots.get("team")
     if isinstance(team_slot, str) and team_slot.strip() and team_slot not in names:
         names = [team_slot, *names]
-    if len({n for n in names}) < 2:
+    if len(set(names)) < 2:
         raise TemplateUnsupported("head_to_head needs two team names")
 
     resolved: list[Entity] = []
@@ -1168,11 +1142,10 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         raise TemplateUnsupported("the named teams resolved to the same team")
 
     a, b = resolved
-    # The standing rule every other template follows: no season named means the
-    # CURRENT one. "All time" is a defensible reading of a head-to-head, but
-    # answering a different span than the rest of the system - silently - is the
-    # substitution this whole design exists to prevent. The answer names the
-    # season, so asking for another one is one follow-up away.
+    # No season named means the CURRENT one, as everywhere else. "All time" is
+    # a defensible reading here, but silently answering a different span than
+    # the rest of the system is the substitution this design exists to prevent.
+    # The answer names the season, so another one is a follow-up away.
     season = slots.get("season") or current_season()
     season_type = slots.get("season_type") or 2
     # Both orderings, since `games` is home/away-oriented rather than
@@ -1210,13 +1183,11 @@ def _phrase_head_to_head(a: str, b: str, games: int, a_wins: int, b_wins: int, p
     return f"{lead}; the {leader} won the series {trailing}."
 
 
-# games is home/away-oriented; team_box_stats already carries the team's own
-# perspective (opponent_team_id, home_away), the same join game_log uses to
-# avoid re-deriving which side of a game was "this team" from team_id
-# comparisons. g.home_linescores/away_linescores are the exact, official
-# comma-separated per-period score for that side (index 0 = Q1, 1 = Q2, 2 =
-# Q3, 3 = Q4, 4+ = OT1/OT2/...) - no plays table, no LAG(), no --include-pbp
-# needed at all, unlike the per-PLAYER version of this question.
+# The same team-perspective join game_log uses, so which side of a game was
+# "this team" is never re-derived from team_id comparisons.
+# home_linescores/away_linescores hold the official per-period score for that
+# side (index 0 = Q1 ... 4+ = OT1/OT2/...) - no plays table, no LAG(), no
+# --include-pbp, unlike the per-PLAYER version of this question.
 _TEAM_QUARTER_SQL = """
 SELECT g.date,
        CASE WHEN tbs.home_away = 'home' THEN g.home_linescores ELSE g.away_linescores END AS own_linescores,
@@ -1258,27 +1229,20 @@ def _period_label(period: int) -> str:
 
 
 def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
-    """A team's total points in ONE quarter/period - this season, or narrowed
-    to games against one named opponent.
+    """A team's total points in ONE quarter/period, optionally narrowed to one
+    named opponent.
 
-    Confirmed live: "how many points did the 76ers score in the 4th quarter
-    against Boston this season?" is deliberately kept off the fast path by
-    _AGENT_ONLY in router.py (see the exemption there) whenever it looks like
-    a per-PLAYER quarter question, which genuinely has no template and needs
-    the plays-table LAG() derivation in prompt.py's KNOWLEDGE_BASE. But this
-    exact question named a TEAM, not a player, and the agent spent 3 model
-    calls (~150s) on it anyway: first filtering a games.period column that
-    doesn't exist plus a LAG() over play_id, then abandoning the opponent JOIN
-    entirely and comparing home_team_id directly to 'PHI'/'BOS' - the opaque
-    id vs. abbreviation mistake its own ALWAYS-ON prompt rule warns against,
-    on every single one of those calls. A compound shape (quarter math AND a
-    named opponent together) is exactly what this model keeps getting wrong
-    under added complexity even with both relevant rules already in its
-    prompt - so it is worth a template of its own, not a better-worded
-    knowledge base entry it still has to combine correctly itself. And unlike
-    the player version, games.home_linescores/away_linescores already store
-    the official per-period score directly, so this needs no derivation at
-    all - a plain lookup, not an approximation."""
+    A PLAYER's quarter score has no template - it needs the plays-table LAG()
+    derivation - and router.py's _AGENT_ONLY forces those to the agent. A TEAM's
+    does not: home_linescores/away_linescores already store the official
+    per-period score, so this is a lookup rather than a derivation.
+
+    Worth a template because the agent spent ~150s over 3 calls getting it
+    wrong: a games.period column that doesn't exist, then home_team_id compared
+    to 'PHI' - the id-vs-abbreviation mistake its own always-on rule warns
+    against, on every call. A compound shape (quarter math AND a named
+    opponent) is what this model fails at even with both rules in its
+    prompt."""
     con = ctx.con
     period = slots.get("period")
     if not isinstance(period, int) or not 1 <= period <= 10:
@@ -1354,9 +1318,7 @@ def _phrase_team_quarter_points(team: str, opponent: str | None, period_label: s
 def player_compare(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """Two or more named players' season numbers side by side.
 
-    Previously fell through to the agent, which got it wrong for a reason no
-    KNOWLEDGE_BASE entry could fix: it wrote correct SQL (current_season(),
-    ILIKE name matching) but expanded "SGA" to '%Scottie G. Allen%' and
+    The agent wrote correct SQL but expanded "SGA" to '%Scottie G. Allen%' and
     compared Luka Doncic to Luka Garza. Nickname resolution is a lookup, not
     something to hope a 7B model knows - see entities.PLAYER_NICKNAMES."""
     con = ctx.con
