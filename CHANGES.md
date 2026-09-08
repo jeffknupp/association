@@ -15,6 +15,23 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **`AGENTS.md`, with `CLAUDE.md` symlinked to it**: orientation for agents
+  working on this codebase - the gates and why mypy runs twice, the enforced
+  conventions, and the failure shapes this project actually produces. It points
+  at `docs/architecture.rst` for design rather than restating it, so the two
+  cannot drift.
+
+  The section worth having is the recurring bug shape: every query failure
+  found during development was a *missing or too-narrow* shape, never a broken
+  one, which surfaces as a fast fluent answer to a different question than the
+  one asked. Alongside it are the data traps that cost real time - the season
+  named for the year it ends, the three NetPoints tables that disagree about
+  `season_type`, and the six fingerprint categories that partition the total
+  while the other fifteen overlap.
+
+  `CLAUDE.md` is a symlink rather than a copy: one file, no drift, and both
+  naming conventions resolve to it.
+
 - **`head_to_head` no longer refuses a matchup just because the router split
   the two teams across slots**: "how many times did the 76ers play Boston?"
   (a city name, not a nickname) reliably routed the second team into `teams`
