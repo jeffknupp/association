@@ -14,7 +14,7 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
-## Unreleased
+## 1.1.0 - 2026-09-08
 - **Prose pass over `fetch/`.** Same rule as the query side: keep the fact that
   changes what you write, drop the retelling. What stayed is the material a
   reader cannot reconstruct - NetPoints labelling a season by the year it
