@@ -141,6 +141,26 @@ surprising answer can be diagnosed after the fact:
    Nikola Jokic had the most games with 20+ rebounds in the 2026 regular season, with
    5. Next: Karl-Anthony Towns (3), Donovan Clingan (2), Andre Drummond (1), Bam Adebayo (1).
 
+Shot charts
+-----------
+
+Needs play-by-play data (``--include-pbp``, see above) for the seasons
+involved:
+
+.. code-block:: console
+
+   $ association query "plot Stephen Curry's shot chart from his last game this season"
+   Rendered shot chart for Stephen Curry (7/14 made, 50.0%) to query_output/shotchart_stephen_curry_401811054.html
+
+The command writes a self-contained, theme-aware HTML/SVG file rather than
+printing to the terminal — open it in a browser. It looks like this:
+
+.. figure:: _static/curry_shotchart_example.png
+   :alt: Half-court shot chart for Stephen Curry's last regular-season game, showing makes and misses plotted by location.
+   :width: 380px
+
+   Stephen Curry, April 13, 2026 (GS @ LAC) — real output from the query above.
+
 Setting up the models
 ---------------------
 

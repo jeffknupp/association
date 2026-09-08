@@ -31,9 +31,13 @@ def render_court_html(title: str, subtitle: str, shots: list[tuple[Any, ...]]) -
       <rect x="{sx(17)}" y="{sy(19)}" width="{16 * scale}" height="{19 * scale}" fill="none" stroke="var(--line)" stroke-width="2"/>
       <!-- free throw circle -->
       <circle cx="{sx(25)}" cy="{sy(19)}" r="{6 * scale}" fill="none" stroke="var(--line)" stroke-width="1.5" stroke-dasharray="4,3"/>
-      <!-- three point arc (approx, radius 23.75, corners straight to y=14) -->
+      <!-- three point arc (approx, radius 23.75, corners straight to y=14).
+           sweep-flag=1: the arc must bulge away from the baseline (toward
+           half court), not back toward it - with sweep-flag=0 here it drew
+           the minor arc on the near side of the chord, dipping the arc
+           *below* the baseline instead of arcing out toward half court. -->
       <path d="M {sx(3)} {sy(0)} L {sx(3)} {sy(14)}
-               A {23.75 * scale} {23.75 * scale} 0 0 0 {sx(47)} {sy(14)}
+               A {23.75 * scale} {23.75 * scale} 0 0 1 {sx(47)} {sy(14)}
                L {sx(47)} {sy(0)}" fill="none" stroke="var(--line)" stroke-width="2"/>
       <!-- half court line -->
       <line x1="0" y1="{sy(47)}" x2="{W}" y2="{sy(47)}" stroke="var(--line)" stroke-width="1" stroke-dasharray="3,3"/>

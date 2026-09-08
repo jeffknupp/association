@@ -37,6 +37,15 @@ had no published version to be compatible with.
   into `.. code-block:: console` blocks; `association --help`'s terminal
   output is unchanged. Docs also gained `sphinx-copybutton`, so every code
   block across the site - not just this one - now has a copy button.
+- **Fix: the three-point line rendered upside down in shot charts**. The arc
+  in `query/court.py`'s SVG path used the wrong sweep-flag, so instead of
+  bowing away from the basket toward half court it drew the minor arc on the
+  near side of the chord - dipping *below* the baseline instead. Confirmed via
+  the SVG spec's own endpoint-to-center arc math (the arc's midpoint landed at
+  y=478, past the baseline at y=470, instead of y=182 above the corners).
+  `tests/query/test_court.py` gained a regression test that parses the
+  rendered arc and asserts it bulges toward smaller y.
+
 ## 1.0.0 - 2026-09-07
 - **Semantic versioning, and tooling to hold to it**: `pyproject.toml` is now
   the only place a version number is written. The package reads it back through

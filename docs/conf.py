@@ -78,7 +78,7 @@ html_theme = "furo"
 # html_title otherwise suppresses the project-and-version line it would
 # render by default, leaving a docs site that never states what it documents.
 html_title = f"association {release}"
-html_static_path = []
+html_static_path = ["_static"]
 
 
 # Headings whose command list gets its own code block (and copy button) per

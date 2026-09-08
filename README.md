@@ -45,6 +45,18 @@ a general-purpose agent that writes its own SQL against the warehouse, just
 more slowly. `association ai` opens an interactive REPL that keeps context
 between questions.
 
+Some questions render a chart instead of text:
+
+```bash
+association query "plot Stephen Curry's shot chart from his last game this season"
+# Rendered shot chart for Stephen Curry (7/14 made, 50.0%) to query_output/shotchart_stephen_curry_401811054.html
+```
+
+<img src="docs/_static/curry_shotchart_example.png" alt="Half-court shot chart for Stephen Curry's last regular-season game, showing makes and misses plotted by location" width="380">
+
+That needs play-by-play data pulled first (`--include-pbp`), and writes a
+self-contained, theme-aware HTML/SVG file — open it in a browser.
+
 ## Features
 
 - **Resumable, rate-limited fetch** from ESPN's stats APIs — checkpointed per
