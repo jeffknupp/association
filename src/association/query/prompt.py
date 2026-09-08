@@ -368,20 +368,20 @@ KNOWLEDGE_BASE: list[dict[str, Any]] = [
 
 
 # The agent's context budget. ollama truncates an over-long prompt head-first
-# and silently: a 10,295-token preamble against NUM_CTX 8192 left only 4,098
+# and silently: a 10,295-token preamble against a 8192 window left only 4,098
 # tokens reaching the model, and what it discarded was TABLE_SUMMARY, both
 # standing rules, and the first ~15 KNOWLEDGE_BASE entries. Nothing errored.
 # Measured behavior, not a guess: a prompt UNDER num_ctx is evaluated in full
 # (a ~3,700-token prompt at num_ctx 8192 came back with prompt_eval_count
 # 3,696), and one OVER it is cut to roughly half (10,093 tokens at num_ctx 8192
 # came back 4,098). So the whole prompt - preamble plus the conversation on top
-# of it - has to stay under NUM_CTX, and the cliff is silent when it does not.
+# of it - has to stay under AGENT_NUM_CTX, and the cliff is silent when it does not.
 #
 # Raised from 8192 now that this path only handles questions no template
 # covers. A ~5,400-token preamble costs ~100s of CPU prefill on a fall-through
 # question, against being quietly wrong at 8192; for a path this rare that is
 # the right trade.
-NUM_CTX = 16384
+AGENT_NUM_CTX = 16384
 # The preamble's share, leaving ~10k for tool-result JSON, the model's replies,
 # and several tool-call rounds. A preamble past this is a bug, not a knob.
 PREAMBLE_TOKEN_BUDGET = 6000
@@ -452,10 +452,10 @@ def build_system_prompt(question: str) -> str:
     if estimated > PREAMBLE_TOKEN_BUDGET:
         raise PreambleTooLarge(
             f"Assembled preamble is ~{estimated} tokens, over the {PREAMBLE_TOKEN_BUDGET} budget "
-            f"(NUM_CTX={NUM_CTX}). ollama would truncate this head-first and SILENTLY, dropping the "
+            f"(AGENT_NUM_CTX={AGENT_NUM_CTX}). ollama would truncate this head-first and SILENTLY, dropping the "
             "schema summary and the standing rules while leaving the tool schemas intact. Shorten "
             "TABLE_SUMMARY, trim a tool description, or lower MAX_SELECTED_ENTRIES - do not raise "
-            "the budget without also raising NUM_CTX."
+            "the budget without also raising AGENT_NUM_CTX."
         )
     return prompt
 

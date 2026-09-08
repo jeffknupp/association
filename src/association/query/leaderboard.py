@@ -21,8 +21,10 @@ from typing import Any
 
 import duckdb
 
+from association.season import current_season
+
 from .entities import Ambiguous, Entity, NotFound, resolve_team
-from .metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS, current_season
+from .metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS
 
 # `limit` is model-supplied on the agent path (the template clamps its own):
 # a leaderboard of 5,000 helps nobody and floods the context window. Applied to

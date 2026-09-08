@@ -224,7 +224,7 @@ ROUTER_SCHEMA: dict[str, Any] = {
     "required": ["intent", "stat"],
 }
 
-NUM_CTX = 4096  # the router prompt is ~430 tokens; this leaves ample headroom and still fits
+ROUTER_NUM_CTX = 4096  # the router prompt is ~430 tokens; this leaves ample headroom and still fits
 
 # ESPN's earliest season in this warehouse, and a season can legitimately be
 # next year's during the autumn rollover - anything outside this is a model
@@ -309,7 +309,7 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
             messages=[{"role": "system", "content": ROUTER_PROMPT}, {"role": "user", "content": user}],
             format=ROUTER_SCHEMA,
             keep_alive=KEEP_ALIVE,
-            options={"num_ctx": NUM_CTX, "temperature": 0},
+            options={"num_ctx": ROUTER_NUM_CTX, "temperature": 0},
         )
         raw = json.loads(response.message.content or "{}")
     except (ollama.ResponseError, json.JSONDecodeError, ConnectionError):

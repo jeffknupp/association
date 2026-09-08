@@ -15,6 +15,28 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Organisation pass on `query/`.** The last needless function-local import is
+  gone; `cli.py`'s remaining ones now carry a comment saying they are deliberate,
+  since they keep duckdb, pyarrow and ollama out of `--help` and a future tidy-up
+  would otherwise "fix" them. `current_season` had two import paths - four
+  modules took it from `association.season` and `leaderboard.py` from a
+  re-export in `metrics.py`; the re-export is gone. And the two different
+  `NUM_CTX` constants, 4,096 for the router and 16,384 for the agent, are now
+  `ROUTER_NUM_CTX` and `AGENT_NUM_CTX`, so a reader cannot mistake one window
+  for the other.
+
+  `templates.py` had definitions sitting well below their first use -
+  `_table_cell` was ~1,100 lines under it, `_resolved_player` ~370, `STAT_LINE`
+  was defined *after* the function reading it, and `MAX_COMPARED_PLAYERS` sat
+  above `head_to_head` while belonging to `player_compare`. Nothing is now
+  defined more than 200 lines after first use.
+
+  **Not split into a package, deliberately.** With the duplication gone the
+  seams turned out poor: six helpers are shared by 3 to 11 templates each
+  (`_period` by 11, `_resolved_player` by 7), so a split by subject would move
+  most of the file into a shared module and buy indirection rather than
+  decoupling. The reading-order problem was the real pain, and that is fixed.
+
 - **A scoped shot chart now resolves the player once.** `shot_chart` resolved
   the name twice for a question like "chart Curry's last game": once to find the
   game to scope to, and again inside `render_shot_chart`. Both took the best

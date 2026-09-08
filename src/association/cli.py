@@ -167,6 +167,9 @@ def data_pull(
     log_level: str,
 ) -> None:
     """Resumable fetch from ESPN into Parquet + the DuckDB warehouse."""
+    # Imported inside each command, not at module level, so `association
+    # --help` and tab-completion do not pay to import duckdb, pyarrow and
+    # ollama. Leave them here.
     from .fetch import warehouse
     from .fetch.client import ESPNClient
     from .fetch.pipeline import Pipeline

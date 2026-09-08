@@ -12,10 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from association.net_points_categories import FINGERPRINT_CATEGORIES, FINGERPRINT_SIDE_LABELS
-from association.season import current_season
 
 __all__ = [
-    "current_season",
     "SEASON_TYPE_LABELS",
     "LeaderboardMetric",
     "LEADERBOARD_METRICS",

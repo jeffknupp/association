@@ -1,7 +1,7 @@
 """Tests for per-question prompt assembly and the preamble budget check.
 
 The bug these exist for: SYSTEM_PROMPT + TOOLS reached 10,295 tokens against a
-NUM_CTX of 8192, ollama truncated head-first and silently, and only 4,098
+context window of 8192, ollama truncated head-first and silently, and only 4,098
 tokens reached the model - discarding the schema summary, both standing rules,
 and the first ~15 KNOWLEDGE_BASE entries. It stayed silent for four commits.
 """
@@ -11,10 +11,10 @@ import json
 import pytest
 
 from association.query.prompt import (
+    AGENT_NUM_CTX,
     ALWAYS_ON_TOPICS,
     KNOWLEDGE_BASE,
     MAX_SELECTED_ENTRIES,
-    NUM_CTX,
     PREAMBLE_TOKEN_BUDGET,
     TOOLS,
     PreambleTooLarge,
@@ -45,7 +45,7 @@ def test_every_assembled_prompt_fits_the_budget() -> None:
 def test_budget_leaves_real_room_for_the_conversation() -> None:
     # A prompt under num_ctx is evaluated in full; one over it is cut to about
     # half, silently. The preamble must leave room for tool results on top.
-    assert PREAMBLE_TOKEN_BUDGET < NUM_CTX // 2
+    assert PREAMBLE_TOKEN_BUDGET < AGENT_NUM_CTX // 2
 
 
 def test_an_oversized_preamble_raises_instead_of_being_truncated(monkeypatch: pytest.MonkeyPatch) -> None:

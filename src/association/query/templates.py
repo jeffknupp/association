@@ -17,6 +17,7 @@ from typing import Any
 
 import duckdb
 
+from association.net_points_categories import FINGERPRINT_CATEGORIES
 from association.season import current_season
 
 from .court import HOOP_X, HOOP_Y
@@ -130,6 +131,50 @@ def _clamp_limit(limit: Any, default: int = DEFAULT_LIMIT) -> int:
     return min(limit, MAX_LIMIT)
 
 
+# ---- resolving a name to an entity, shared by every template below ----
+
+MAX_CLARIFY_CANDIDATES = 5
+
+
+def _clarify(text: str, candidates: list[str], kind: str = "player") -> TemplateResult:
+    """A handled outcome, not a fall-through: the template knows exactly what
+    is ambiguous, so it says so instead of passing the problem along."""
+    shown, extra = candidates[:MAX_CLARIFY_CANDIDATES], len(candidates) - MAX_CLARIFY_CANDIDATES
+    joined = ", ".join(shown[:-1]) + f" or {shown[-1]}" + (f" ({extra} others also match)" if extra > 0 else "")
+    return TemplateResult(
+        data={"ambiguous": text, "candidates": candidates},
+        answer=f"{text!r} matches more than one {kind} - did you mean {joined}?",
+    )
+
+
+def _resolved_player(con: duckdb.DuckDBPyConnection, text: Any, missing: str = "no player named") -> Entity | TemplateResult:
+    """One player, a clarifying question, or a refusal - the player counterpart
+    to _resolved_team. Returning the TemplateResult rather than raising it keeps
+    ambiguity a handled outcome: the caller answers with the question instead of
+    falling through to an agent that would guess. Callers must forward it."""
+    if not isinstance(text, str) or not text.strip():
+        raise TemplateUnsupported(missing)
+    match resolve_player(con, text):
+        case Entity() as player:
+            return player
+        case Ambiguous(candidates=candidates):
+            return _clarify(text, candidates)
+        case _:
+            raise TemplateUnsupported(f"no player matching {text!r}")
+
+
+def _resolved_team(con: duckdb.DuckDBPyConnection, text: Any) -> Entity | TemplateResult:
+    if not isinstance(text, str) or not text.strip():
+        raise TemplateUnsupported("no team named")
+    match resolve_team(con, text):
+        case Entity() as team:
+            return team
+        case Ambiguous(candidates=candidates):
+            return _clarify(text, candidates, kind="team")
+        case _:
+            raise TemplateUnsupported(f"no team matching {text!r}")
+
+
 def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """ "Most games with N+ of some stat" - the shape that motivated this split.
 
@@ -200,6 +245,14 @@ def _phrase_threshold_count(rows: list[tuple[Any, ...]], scope: str, period: str
         sentence = f"{rows[0][0]} had the most {label} in the {period}, with {top}."
     rest = [f"{name} ({games})" for name, games in rows if games != top]
     return sentence + (f" Next: {', '.join(rest)}." if rest else "")
+
+
+def _table_cell(value: Any) -> str:
+    """A value in an aligned column: a fixed decimal, never trailing-zero
+    stripped - "25" next to "27.7" reads as a different unit."""
+    if value is None:
+        return "-"
+    return f"{value:.1f}" if isinstance(value, float) else str(value)
 
 
 def _format_value(value: Any) -> str:
@@ -371,8 +424,6 @@ def player_netpoints(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     fired correctly, then the agent ranked the league and dropped the player. A
     guard that turns a wrong answer into a slow one needs something to fall
     through TO."""
-    from association.net_points_categories import FINGERPRINT_CATEGORIES
-
     con = ctx.con
     player = _resolved_player(con, slots.get("player"), "player_netpoints needs a player name")
     if isinstance(player, TemplateResult):
@@ -618,6 +669,9 @@ def _season_row(con: duckdb.DuckDBPyConnection, athlete_id: str, columns: list[s
     ).fetchone()
 
 
+STAT_LINE = ("points", "rebounds", "assists")
+
+
 def _wanted_stats(slots: dict[str, Any]) -> list[str]:
     """The stats to report: the one named, or the default line if none was.
 
@@ -631,9 +685,6 @@ def _wanted_stats(slots: dict[str, Any]) -> list[str]:
     if stat in PLAYER_STAT_COLUMNS:
         return [stat]
     raise TemplateUnsupported(f"no per-game column for stat {stat!r}")
-
-
-STAT_LINE = ("points", "rebounds", "assists")
 
 
 def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
@@ -671,29 +722,6 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     return TemplateResult(
         data={"player": player.name, "season": season, "stats": values},
         answer=_phrase_player_stat(player.name, period, values, wanted),
-    )
-
-
-MAX_CLARIFY_CANDIDATES = 5
-
-
-def _as_int(value: Any) -> str:
-    return str(int(value)) if isinstance(value, (int, float)) else str(value)
-
-
-def _ordinal(n: int) -> str:
-    suffix = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
-    return f"{n}{suffix}"
-
-
-def _clarify(text: str, candidates: list[str], kind: str = "player") -> TemplateResult:
-    """A handled outcome, not a fall-through: the template knows exactly what
-    is ambiguous, so it says so instead of passing the problem along."""
-    shown, extra = candidates[:MAX_CLARIFY_CANDIDATES], len(candidates) - MAX_CLARIFY_CANDIDATES
-    joined = ", ".join(shown[:-1]) + f" or {shown[-1]}" + (f" ({extra} others also match)" if extra > 0 else "")
-    return TemplateResult(
-        data={"ambiguous": text, "candidates": candidates},
-        answer=f"{text!r} matches more than one {kind} - did you mean {joined}?",
     )
 
 
@@ -744,32 +772,13 @@ WHERE tbs.team_id = ? AND tbs.season = ? AND tbs.season_type = ?
 """
 
 
-def _resolved_player(con: duckdb.DuckDBPyConnection, text: Any, missing: str = "no player named") -> Entity | TemplateResult:
-    """One player, a clarifying question, or a refusal - the player counterpart
-    to _resolved_team. Returning the TemplateResult rather than raising it keeps
-    ambiguity a handled outcome: the caller answers with the question instead of
-    falling through to an agent that would guess. Callers must forward it."""
-    if not isinstance(text, str) or not text.strip():
-        raise TemplateUnsupported(missing)
-    match resolve_player(con, text):
-        case Entity() as player:
-            return player
-        case Ambiguous(candidates=candidates):
-            return _clarify(text, candidates)
-        case _:
-            raise TemplateUnsupported(f"no player matching {text!r}")
+def _as_int(value: Any) -> str:
+    return str(int(value)) if isinstance(value, (int, float)) else str(value)
 
 
-def _resolved_team(con: duckdb.DuckDBPyConnection, text: Any) -> Entity | TemplateResult:
-    if not isinstance(text, str) or not text.strip():
-        raise TemplateUnsupported("no team named")
-    match resolve_team(con, text):
-        case Entity() as team:
-            return team
-        case Ambiguous(candidates=candidates):
-            return _clarify(text, candidates, kind="team")
-        case _:
-            raise TemplateUnsupported(f"no team matching {text!r}")
+def _ordinal(n: int) -> str:
+    suffix = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
 
 
 def team_record(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
@@ -1086,9 +1095,6 @@ def _phrase_single_game_high(games: list[dict[str, Any]], label: str, period: st
     return sentence + (f" Next: {', '.join(rest)}." if rest else "")
 
 
-MAX_COMPARED_PLAYERS = 4
-
-
 def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """ "How many times did the 76ers play Boston?" - games between two teams.
 
@@ -1292,6 +1298,9 @@ def _phrase_team_quarter_points(team: str, opponent: str | None, period_label: s
     return "\n".join([header, *lines])
 
 
+MAX_COMPARED_PLAYERS = 4
+
+
 def player_compare(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """Two or more named players' season numbers side by side.
 
@@ -1328,12 +1337,6 @@ def player_compare(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
         data={"season": season, "players": rows},
         answer=_phrase_compare(rows, wanted, period),
     )
-
-
-def _table_cell(value: Any) -> str:
-    if value is None:
-        return "-"
-    return f"{value:.1f}" if isinstance(value, float) else str(value)
 
 
 def _phrase_compare(rows: dict[str, dict[str, Any]], wanted: list[str], period: str) -> str:

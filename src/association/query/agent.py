@@ -17,7 +17,7 @@ import ollama
 from .history import DEFAULT_HISTORY_DIR, RunHistory
 from .keepalive import KEEP_ALIVE
 from .models import DEFAULT_ROUTER_MODEL
-from .prompt import NUM_CTX, TOOLS, build_system_prompt
+from .prompt import AGENT_NUM_CTX, TOOLS, build_system_prompt
 from .router import route
 from .templates import TEMPLATES, TemplateContext, TemplateUnsupported, check_scope
 from .toolbox import Toolbox
@@ -170,7 +170,7 @@ class Agent:
         pending_error_tool: str | None = None
 
         for _ in range(MAX_TOOL_ITERATIONS):
-            chat_kwargs: dict[str, Any] = dict(model=self.model, messages=self.messages, tools=TOOLS, keep_alive=KEEP_ALIVE, options={"num_ctx": NUM_CTX})
+            chat_kwargs: dict[str, Any] = dict(model=self.model, messages=self.messages, tools=TOOLS, keep_alive=KEEP_ALIVE, options={"num_ctx": AGENT_NUM_CTX})
             if self.think:
                 chat_kwargs["think"] = True
             t0 = time.monotonic()
