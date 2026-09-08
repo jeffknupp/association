@@ -22,6 +22,7 @@ from association.query.templates import (
     shot_chart,
     shot_distance,
     single_game_high,
+    team_quarter_points,
     team_record,
     threshold_count,
 )
@@ -272,6 +273,39 @@ def gl_con(tmp_path: Path) -> TemplateContext:
         [s, s],
     )
     c.execute("INSERT INTO team_box_stats VALUES ('e1',?,2,'18','2','home'),('e2',?,2,'18','2','away')", [s, s])
+    return TemplateContext(con=c, out_dir=tmp_path)
+
+
+@pytest.fixture
+def tq_con(tmp_path: Path) -> TemplateContext:
+    """games.home_linescores/away_linescores plus the team_box_stats rows for
+    BOTH sides of each game (team_quarter_points needs a team's own
+    perspective row regardless of which side of the matchup it queries from,
+    unlike gl_con, which only ever queries the Knicks)."""
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    c.execute(
+        "CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR, "
+        "home_team_id VARCHAR, away_team_id VARCHAR, home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR, "
+        "home_linescores VARCHAR, away_linescores VARCHAR)"
+    )
+    c.execute("CREATE TABLE team_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, opponent_team_id VARCHAR, home_away VARCHAR)")
+    c.execute("INSERT INTO teams VALUES ('18','NY','New York Knicks'),('2','BOS','Boston Celtics'),('5','LAL','Los Angeles Lakers')")
+    s = current_season()
+    c.execute(
+        "INSERT INTO games VALUES "
+        "('e1',?,2,'2026-04-10T22:00Z','18','2',112,95,'18','30,25,28,29','20,25,25,25'),"
+        "('e2',?,2,'2026-04-12T22:00Z','2','18',110,96,'2','25,30,25,30','20,20,28,28'),"
+        "('e3',?,2,'2026-04-14T22:00Z','18','5',108,100,'18','10,32,36,30','25,25,25,25')",
+        [s, s, s],
+    )
+    c.execute(
+        "INSERT INTO team_box_stats VALUES "
+        "('e1',?,2,'18','2','home'),('e1',?,2,'2','18','away'),"
+        "('e2',?,2,'18','2','away'),('e2',?,2,'2','18','home'),"
+        "('e3',?,2,'18','5','home'),('e3',?,2,'5','18','away')",
+        [s, s, s, s, s, s],
+    )
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
@@ -661,6 +695,76 @@ def test_head_to_head_reads_the_second_team_from_the_team_slot(gl_con: TemplateC
 def test_head_to_head_ignores_a_team_slot_that_only_restates_teams(gl_con: TemplateContext) -> None:
     with pytest.raises(TemplateUnsupported):
         head_to_head(gl_con, {"team": "Knicks", "teams": ["Knicks"]})
+
+
+def test_team_quarter_points_reads_each_games_own_side_of_linescores(tq_con: TemplateContext) -> None:
+    """Regression: "how many points did the 76ers score in the 4th quarter
+    against Boston this season?" forced the router's _AGENT_ONLY override to
+    the agent, which spent 3 model calls (~150s) filtering a nonexistent
+    games.period column, then a broken LAG() over play_id, then comparing
+    home_team_id directly to an abbreviation - the opaque-id mistake its own
+    prompt warns against. games.home_linescores/away_linescores already store
+    the exact per-period score for each side; this just has to read the right
+    one for each game (home vs away), not always the same column."""
+    result = team_quarter_points(tq_con, {"team": "Knicks", "period": 1, "season": current_season()})
+    assert result.data["total"] == 60  # 30 (home in e1) + 20 (away in e2) + 10 (home in e3)
+    assert len(result.data["games"]) == 3
+
+
+def test_team_quarter_points_filters_to_a_named_opponent(tq_con: TemplateContext) -> None:
+    result = team_quarter_points(tq_con, {"team": "Knicks", "opponent": "Celtics", "period": 4, "season": current_season()})
+    assert result.data["total"] == 57  # 29 (e1) + 28 (e2) - e3 (vs Lakers) excluded
+    assert len(result.data["games"]) == 2
+    assert "Boston Celtics" in (result.answer or "")
+
+
+def test_team_quarter_points_reports_no_games_honestly(tq_con: TemplateContext) -> None:
+    # The Lakers and Celtics never played each other in this fixture (only
+    # each played the Knicks) - an empty result must say so, not answer 0.
+    result = team_quarter_points(tq_con, {"team": "Lakers", "opponent": "Celtics", "period": 1, "season": current_season()})
+    assert result.data["games"] == []
+    assert "no" in (result.answer or "").lower()
+
+
+def test_team_quarter_points_reports_a_period_no_game_reached(tq_con: TemplateContext) -> None:
+    # Every game in the fixture has exactly 4 quarters on record - asking for
+    # a 5th (overtime) must say none of the games went there, not silently
+    # answer 0 or crash on a short list index.
+    result = team_quarter_points(tq_con, {"team": "Knicks", "opponent": "Celtics", "period": 5, "season": current_season()})
+    assert "overtime" in (result.answer or "").lower()
+    assert "total" not in result.data
+
+
+def test_team_quarter_points_refuses_a_named_player(tq_con: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        team_quarter_points(tq_con, {"team": "Knicks", "period": 4, "player": "Jalen Brunson"})
+
+
+def test_team_quarter_points_refuses_a_missing_period(tq_con: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        team_quarter_points(tq_con, {"team": "Knicks"})
+
+
+def test_team_quarter_points_refuses_the_team_as_its_own_opponent(tq_con: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        team_quarter_points(tq_con, {"team": "Knicks", "opponent": "New York Knicks", "period": 1})
+
+
+def test_team_quarter_points_phrases_a_single_game_directly(tq_con: TemplateContext) -> None:
+    result = team_quarter_points(tq_con, {"team": "Knicks", "opponent": "Lakers", "period": 1, "season": current_season()})
+    assert result.data["total"] == 10
+    assert "2026-04-14" in (result.answer or "") or str(current_season()) in (result.answer or "")
+
+
+def test_team_quarter_points_summarizes_rather_than_tables_many_games(tq_con: TemplateContext, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A whole-season, no-opponent question can span dozens of games - listing
+    # every one is unreadable, so above a small cap this reports the total
+    # and average instead of a per-game breakdown.
+    monkeypatch.setattr("association.query.templates._QUARTER_BREAKDOWN_LIMIT", 1)
+    result = team_quarter_points(tq_con, {"team": "Knicks", "period": 1, "season": current_season()})
+    answer = result.answer or ""
+    assert "averaging" in answer
+    assert "2026-04-10" not in answer
 
 
 def test_player_stat_refuses_a_named_stat_it_cannot_provide(ps_con: TemplateContext) -> None:

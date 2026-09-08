@@ -88,6 +88,18 @@ CASES: list[tuple[str, str, dict]] = [
     ("Most double-doubles this season?", "leaderboard", {"stat": "double_double"}),
     # Not ported - these must fall through, NOT be answered by a near-miss template.
     ("How many points did Jokic score in the 3rd quarter against Boston?", "other", {}),
+    # A TEAM's (not a player's) quarter score IS ported - templates.team_quarter_points
+    # reads it straight from games.home_linescores/away_linescores, no plays table
+    # needed. Confirmed live: before this template and its router exemption existed,
+    # this exact question tripped _AGENT_ONLY (any "Nth quarter" text forced "other")
+    # and the agent then spent 3 model calls (~150s) on SQL that filtered a
+    # nonexistent games.period column, a broken LAG() over play_id, and finally
+    # compared home_team_id directly to 'PHI'/'BOS' - the opaque-id-vs-abbreviation
+    # mistake its own ALWAYS-ON prompt rule warns against, on every one of those
+    # calls, despite the head-to-head and quarter KNOWLEDGE_BASE entries both already
+    # being selected for it. See router._is_team_quarter_points for the exemption and
+    # tests/query/test_router.py for the coverage that exercises it without ollama.
+    ("How many points did the 76ers score in the 4th quarter against Boston this season?", "team_quarter_points", {"period": 4}),
     ("Compare Luka and SGA this season", "player_compare", {}),
     ("Who scores more, Wemby or Jokic?", "player_compare", {"stat": "points"}),
     ("Luka vs Giannis this year", "player_compare", {}),

@@ -1212,6 +1212,147 @@ def _phrase_head_to_head(a: str, b: str, games: int, a_wins: int, b_wins: int, p
     return f"{lead}; the {leader} won the series {trailing}."
 
 
+# games is home/away-oriented; team_box_stats already carries the team's own
+# perspective (opponent_team_id, home_away), the same join game_log uses to
+# avoid re-deriving which side of a game was "this team" from team_id
+# comparisons. g.home_linescores/away_linescores are the exact, official
+# comma-separated per-period score for that side (index 0 = Q1, 1 = Q2, 2 =
+# Q3, 3 = Q4, 4+ = OT1/OT2/...) - no plays table, no LAG(), no --include-pbp
+# needed at all, unlike the per-PLAYER version of this question.
+_TEAM_QUARTER_SQL = """
+SELECT g.date,
+       CASE WHEN tbs.home_away = 'home' THEN g.home_linescores ELSE g.away_linescores END AS own_linescores,
+       opp.display_name AS opponent
+FROM team_box_stats tbs
+JOIN games g ON g.event_id = tbs.event_id
+JOIN teams opp ON opp.team_id = tbs.opponent_team_id
+"""
+
+# Above this many games, a full per-game breakdown is unreadable rather than
+# informative - it only fires when no opponent narrows the season down (a
+# real head-to-head, regular season or playoffs, is never more than ~7 games).
+_QUARTER_BREAKDOWN_LIMIT = 12
+
+
+def _linescores(raw: Any) -> list[int]:
+    """games.home_linescores/away_linescores: '25,32,25,26' -> [25, 32, 25, 26].
+    Not every game reaches overtime, so the list can be shorter than a
+    requested OT period asks for - callers treat a missing index as "this game
+    didn't go there", not as zero points."""
+    if not isinstance(raw, str) or not raw.strip():
+        return []
+    out = []
+    for part in raw.split(","):
+        part = part.strip()
+        if part:
+            try:
+                out.append(int(part))
+            except ValueError:
+                continue
+    return out
+
+
+def _period_label(period: int) -> str:
+    if 1 <= period <= 4:
+        return f"{_ordinal(period)} quarter"
+    ot = period - 4
+    return "overtime" if ot == 1 else f"{_ordinal(ot)} overtime"
+
+
+def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+    """A team's total points in ONE quarter/period - this season, or narrowed
+    to games against one named opponent.
+
+    Confirmed live: "how many points did the 76ers score in the 4th quarter
+    against Boston this season?" is deliberately kept off the fast path by
+    _AGENT_ONLY in router.py (see the exemption there) whenever it looks like
+    a per-PLAYER quarter question, which genuinely has no template and needs
+    the plays-table LAG() derivation in prompt.py's KNOWLEDGE_BASE. But this
+    exact question named a TEAM, not a player, and the agent spent 3 model
+    calls (~150s) on it anyway: first filtering a games.period column that
+    doesn't exist plus a LAG() over play_id, then abandoning the opponent JOIN
+    entirely and comparing home_team_id directly to 'PHI'/'BOS' - the opaque
+    id vs. abbreviation mistake its own ALWAYS-ON prompt rule warns against,
+    on every single one of those calls. A compound shape (quarter math AND a
+    named opponent together) is exactly what this model keeps getting wrong
+    under added complexity even with both relevant rules already in its
+    prompt - so it is worth a template of its own, not a better-worded
+    knowledge base entry it still has to combine correctly itself. And unlike
+    the player version, games.home_linescores/away_linescores already store
+    the official per-period score directly, so this needs no derivation at
+    all - a plain lookup, not an approximation."""
+    con = ctx.con
+    period = slots.get("period")
+    if not isinstance(period, int) or not 1 <= period <= 10:
+        raise TemplateUnsupported(f"team_quarter_points needs an integer period 1-10, got {period!r}")
+    if isinstance(slots.get("player"), str) and slots["player"].strip():
+        # No template computes a PLAYER's quarter score - see the docstring.
+        raise TemplateUnsupported("team_quarter_points cannot answer for a named player")
+
+    team = _resolved_team(con, slots.get("team"))
+    if isinstance(team, TemplateResult):
+        return team
+
+    opponent: Entity | None = None
+    opponent_text = slots.get("opponent")
+    if isinstance(opponent_text, str) and opponent_text.strip():
+        resolved_opponent = _resolved_team(con, opponent_text)
+        if isinstance(resolved_opponent, TemplateResult):
+            return resolved_opponent
+        opponent = resolved_opponent
+        if opponent.id == team.id:
+            raise TemplateUnsupported("team_quarter_points opponent must differ from the team")
+
+    season = slots.get("season") or current_season()
+    season_type = slots.get("season_type") or 2
+    where = ["tbs.team_id = ?", "tbs.season = ?", "tbs.season_type = ?"]
+    params: list[Any] = [team.id, season, season_type]
+    if opponent is not None:
+        where.append("tbs.opponent_team_id = ?")
+        params.append(opponent.id)
+    rows = con.execute(f"{_TEAM_QUARTER_SQL} WHERE {' AND '.join(where)} ORDER BY g.date", params).fetchall()
+
+    period_label = _period_label(period)
+    period_str = _period(season, season_type)
+    vs = f" against the {opponent.name}" if opponent else ""
+    summary = f"{team.name} {period_label} points{vs}, {period_str}"
+    opponent_name = opponent.name if opponent else None
+
+    games = []
+    for date, own_linescores, opp_name in rows:
+        scores = _linescores(own_linescores)
+        points = scores[period - 1] if period - 1 < len(scores) else None
+        games.append({"date": str(date)[:10], "opponent": opp_name, "points": points})
+
+    if not games:
+        answer = f"The warehouse has no {period_str} games for the {team.name}{vs}."
+        return TemplateResult(summary=summary, data={"team": team.name, "opponent": opponent_name, "games": []}, answer=answer)
+
+    played = [g for g in games if g["points"] is not None]
+    if not played:
+        plural = "game" if len(games) == 1 else "games"
+        answer = f"None of the {team.name}'s {len(games)} {period_str} {plural}{vs} went to the {period_label}."
+        return TemplateResult(summary=summary, data={"team": team.name, "opponent": opponent_name, "games": games}, answer=answer)
+
+    total = sum(g["points"] for g in played)
+    data = {"team": team.name, "opponent": opponent_name, "period": period, "games": played, "total": total}
+    return TemplateResult(summary=summary, data=data, answer=_phrase_team_quarter_points(team.name, opponent_name, period_label, period_str, played, total))
+
+
+def _phrase_team_quarter_points(team: str, opponent: str | None, period_label: str, period_str: str, games: list[dict[str, Any]], total: int) -> str:
+    if len(games) == 1:
+        g = games[0]
+        return f"The {team} scored {g['points']} points in the {period_label} against the {g['opponent']} on {g['date']} ({period_str})."
+    if len(games) > _QUARTER_BREAKDOWN_LIMIT:
+        avg = total / len(games)
+        vs = f" against the {opponent}" if opponent else ""
+        return f"The {team} scored {total} total points in the {period_label} across {len(games)} {period_str} games{vs}, averaging {avg:.1f} per game."
+    header = f"The {team}, {period_label} scoring" + (f" against the {opponent}" if opponent else "")
+    header += f", {period_str} ({len(games)} games, {total} total):"
+    lines = [f"  {g['date']}  {g['points']}  vs {g['opponent']}" for g in games]
+    return "\n".join([header, *lines])
+
+
 def player_compare(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """Two or more named players' season numbers side by side.
 
@@ -1295,6 +1436,7 @@ TEMPLATES: dict[str, Callable[[TemplateContext, dict[str, Any]], TemplateResult]
     "player_compare": player_compare,
     "single_game_high": single_game_high,
     "head_to_head": head_to_head,
+    "team_quarter_points": team_quarter_points,
     "shot_distance": shot_distance,
     "player_history": player_history,
     "player_netpoints": player_netpoints,

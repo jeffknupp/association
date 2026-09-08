@@ -61,13 +61,20 @@ intent must be one of:
   team_record      - one team's win/loss record for a season
   head_to_head     - games between TWO named teams ("how many times did the
                      76ers play Boston", "Lakers vs Celtics record") - set teams
+  team_quarter_points - a named TEAM's total points in ONE quarter/period this
+                     season, optionally against one named opponent - NEVER for
+                     a named PLAYER ("how many points did the 76ers score in
+                     the 4th quarter", "Celtics 3rd quarter scoring against
+                     the Lakers") - set team, period (1-4 for Q1-Q4, 5+ for
+                     OT1/OT2/...), and opponent when a second team is named
   shot_chart       - render/plot/visualize a player's shots
   shot_distance    - how FAR a player's shots were ("average 3pt shot distance",
                      "how far away does Curry shoot from")
   player_compare   - two or more named players side by side ("Luka vs SGA",
                      "compare Curry and Lillard") - set players, not player
-  other            - anything else, including per-quarter scoring and shot
-                     distances
+  other            - anything else, including a named PLAYER's per-quarter
+                     scoring (team_quarter_points is only for a TEAM's) and
+                     shot distances
 
 stat names a box-score category: points, rebounds, assists, steals, blocks,
 turnovers, minutes, fouls, threePointFieldGoalsMade, fieldGoalsMade, freeThrowsMade,
@@ -108,6 +115,8 @@ Q: Who were the top 10 in netpoints/100 possessions?
 {"intent":"leaderboard","stat":"netpoints_per_100","limit":10}
 Q: How many points did Jokic score in the 3rd quarter against Boston?
 {"intent":"other"}
+Q: How many points did the 76ers score in the 4th quarter against Boston this season?
+{"intent":"team_quarter_points","team":"Philadelphia 76ers","period":4,"opponent":"Boston Celtics","season_ref":"current"}
 Q: Which player had the most triple-doubles?
 {"intent":"leaderboard","stat":"triple_double","limit":1}
 Q: Compare Luka and SGA this season
@@ -170,6 +179,7 @@ ROUTER_SCHEMA: dict[str, Any] = {
                 "game_log",
                 "team_record",
                 "head_to_head",
+                "team_quarter_points",
                 "shot_chart",
                 "shot_distance",
                 "other",
@@ -187,6 +197,10 @@ ROUTER_SCHEMA: dict[str, Any] = {
         "players": {"type": "array", "items": {"type": "string"}, "maxItems": 4},
         "team": {"type": "string"},
         "teams": {"type": "array", "items": {"type": "string"}, "maxItems": 2},
+        # team_quarter_points only. 1-4 for Q1-Q4, 5+ for OT1/OT2/... - the same
+        # convention render_shot_chart's own `period` tool parameter already uses.
+        "period": {"type": "integer"},
+        "opponent": {"type": "string"},
         "season": {"type": "integer"},
         "season_ref": {"type": "string", "enum": ["current", "previous"]},
         "season_type": {"type": "string", "enum": ["regular", "playoffs"]},
@@ -256,6 +270,17 @@ FOUL_OUT_THRESHOLD = 6
 _AGENT_ONLY = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+quarter\b|\bper\s+quarter\b|\bby\s+quarter\b")
 
 
+# A TEAM's quarter score (no player named) is exempted below: it is answered
+# exactly from games.home_linescores/away_linescores by
+# templates.team_quarter_points, with no plays table and no LAG() derivation
+# needed at all - see that function's docstring for why this shape earned a
+# template rather than another KNOWLEDGE_BASE paragraph. A PLAYER's quarter
+# score still has no template (it genuinely needs the fragile plays-table
+# derivation) and stays forced to the agent.
+def _is_team_quarter_points(raw: dict[str, Any]) -> bool:
+    return raw.get("intent") == "team_quarter_points" and not (isinstance(raw.get("player"), str) and raw["player"].strip())
+
+
 @dataclass
 class Route:
     """`slots` holds only values that survived validation - a dropped slot is
@@ -315,7 +340,7 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
         raw["intent"] = "threshold_count"
         raw["stat"] = "fouls"
         raw["threshold"] = FOUL_OUT_THRESHOLD
-    if _AGENT_ONLY.search(low):
+    if _AGENT_ONLY.search(low) and not _is_team_quarter_points(raw):
         # Slots are kept: the agent sees the conversation, not the Route, but
         # the log line shows what the model thought before the override.
         raw["intent"] = "other"

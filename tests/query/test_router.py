@@ -196,6 +196,37 @@ def test_questions_no_template_computes_are_forced_to_the_agent(question: str) -
     assert got is not None and got.intent == "other"
 
 
+def test_a_team_quarter_question_is_exempted_from_the_agent_only_override() -> None:
+    """Regression: "how many points did the 76ers score in the 4th quarter
+    against Boston this season?" tripped _AGENT_ONLY like any other "Nth
+    quarter" question and was forced to the agent, which then spent 3 model
+    calls (~150s) on SQL that filtered a nonexistent games.period column, a
+    broken LAG() over play_id, and finally comparing home_team_id directly to
+    an abbreviation. Unlike a PLAYER's quarter score, a TEAM's is answered
+    exactly from games.home_linescores/away_linescores - templates.
+    team_quarter_points - so this compound shape is exempted rather than
+    routed to the agent."""
+    payload = '{"intent":"team_quarter_points","team":"Philadelphia 76ers","period":4,"opponent":"Boston Celtics"}'
+    with patch("association.query.router.ollama.chat", return_value=_reply(payload)):
+        got = route("m", "How many points did the 76ers score in the 4th quarter against Boston this season?")
+    assert got is not None and got.intent == "team_quarter_points"
+    assert got.slots["team"] == "Philadelphia 76ers" and got.slots["opponent"] == "Boston Celtics"
+
+
+def test_a_player_quarter_question_still_forces_the_agent_even_if_misrouted() -> None:
+    """Defensive: if the router ever emits team_quarter_points alongside a
+    named player (it shouldn't - the prompt says this intent is never for a
+    player), the override must still win rather than trust that slot combo."""
+    payload = '{"intent":"team_quarter_points","team":"Philadelphia 76ers","period":4,"player":"Joel Embiid"}'
+    with patch("association.query.router.ollama.chat", return_value=_reply(payload)):
+        got = route("m", "How many points did Embiid score in the 4th quarter against Boston?")
+    assert got is not None and got.intent == "other"
+
+
+def test_team_quarter_points_is_in_the_schema_enum() -> None:
+    assert "team_quarter_points" in ROUTER_SCHEMA["properties"]["intent"]["enum"]
+
+
 def test_an_ordinary_question_is_not_forced_to_the_agent() -> None:
     with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"player_stat","player":"Stephen Curry"}')):
         got = route("m", "how many points does Curry average?")

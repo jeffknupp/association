@@ -37,7 +37,8 @@ KNOWN_TABLES = {
 TABLE_SUMMARY = """
 teams               - one row per NBA team (team_id, abbreviation, display_name, ...)
 players             - one row per player (athlete_id, display_name, position_abbr, ...)
-games               - one row per game (event_id, season, season_type, date, home/away team_id + score, winner_team_id, venue, status)
+games               - one row per game (event_id, season, season_type, date, home/away team_id + score, winner_team_id, venue,
+                      status, home_linescores/away_linescores - per-period score CSV for that side, e.g. '25,32,25,26')
 player_box_stats    - one row per player PER GAME (points, rebounds, assists, fieldGoalsMade/Attempted, threePointFieldGoalsMade/Attempted, freeThrowsMade/Attempted, etc.)
 team_box_stats      - one row per team PER GAME (team-level totals for the same categories)
 player_season_stats - one row per player per season per season_type: SEASON totals (fieldGoalsMade, points, ...) and PER-GAME averages (avgPoints, avgAssists, ...), both already computed by ESPN
@@ -161,9 +162,14 @@ KNOWLEDGE_BASE: list[dict[str, Any]] = [
         "topic": "Points scored in a specific quarter/period",
         "keywords": ["quarter", "period", "half", "overtime", "q1", "q2", "q3", "q4"],
         "note": (
-            "NOT a stored column anywhere - player_box_stats/player_season_stats only have GAME "
-            "totals. It has to be derived from plays (needs --include-pbp): each scoring play "
-            "carries the RUNNING home_score/away_score, so a made play's own point value is that "
+            "A named TEAM's (not a player's) quarter score needs no derivation: "
+            "games.home_linescores/away_linescores already store it as a CSV per side "
+            "('25,32,25,26' = Q1-Q4, a 5th+ value is OT) - pick the side via "
+            "team_box_stats.home_away, split on ',', index [period-1]. A named PLAYER's is "
+            "different: it is NOT a stored column anywhere - player_box_stats/player_season_stats "
+            "only have GAME totals. It has to be derived from plays (needs --include-pbp): each "
+            "scoring play carries the RUNNING "
+            "home_score/away_score, so a made play's own point value is that "
             "running score minus the immediately PRIOR scoring play's score for the same side - "
             "computed with LAG() over ALL scoring plays in the game (ordered by period, then by "
             "clock converted to seconds-remaining - NOT by play_id, which is NOT reliably "
@@ -201,7 +207,16 @@ KNOWLEDGE_BASE: list[dict[str, Any]] = [
             ")\n"
             "-- filter to one player only here, AFTER the window function above has already run\n"
             "SELECT event_id, period, SUM(pts) AS period_points FROM deltas\n"
-            "WHERE athlete_id = ? GROUP BY event_id, period HAVING SUM(pts) > 15"
+            "WHERE athlete_id = ? GROUP BY event_id, period HAVING SUM(pts) > 15\n"
+            "\n"
+            "-- same, but for a PLAYER's quarter points against a NAMED opponent: join+parenthesize\n"
+            "-- the opponent as ONE unit, same rule as the head-to-head entry above\n"
+            "SELECT d.event_id, SUM(d.pts) FROM deltas d\n"
+            "JOIN games g2 ON g2.event_id = d.event_id\n"
+            "JOIN teams ta ON ta.team_id = g2.home_team_id JOIN teams tb ON tb.team_id = g2.away_team_id\n"
+            "WHERE d.athlete_id = ? AND d.period = 3\n"
+            "  AND ((ta.abbreviation = 'PHI' AND tb.abbreviation = 'BOS') OR (ta.abbreviation = 'BOS' AND tb.abbreviation = 'PHI'))\n"
+            "GROUP BY d.event_id"
         ),
     },
     {

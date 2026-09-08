@@ -46,6 +46,32 @@ had no published version to be compatible with.
   still reaches it. `scripts/check_routing.py` and
   `tests/query/test_templates.py` both gained coverage for the split-slot
   shape.
+- **A new `team_quarter_points` template answers a named team's quarter/period
+  score, including against a named opponent**: router.py's `_AGENT_ONLY`
+  regex deliberately forces every "Nth quarter" question to the agent, since
+  a PLAYER's quarter score has no stored column and needs a fragile plays-table
+  `LAG()` derivation. A TEAM's quarter score got caught by the same regex even
+  though it needs no derivation at all - `games.home_linescores`/
+  `away_linescores` already store it exactly, per side, as a comma-separated
+  list. Confirmed live: "how many points did the 76ers score in the 4th
+  quarter against Boston this season?" spent 3 model calls (~150s) on SQL
+  that filtered a nonexistent `games.period` column, then a broken `LAG()`
+  over `play_id`, then abandoned the opponent JOIN entirely and compared
+  `home_team_id` directly to `'PHI'`/`'BOS'` - the opaque-id-vs-abbreviation
+  mistake the agent's own ALWAYS-ON prompt rule warns against, on every one of
+  those calls, even with the relevant head-to-head and quarter-scoring
+  knowledge-base entries both already selected for the question. The router
+  gained a `team_quarter_points` intent (with `period` and `opponent` slots)
+  and an exemption from `_AGENT_ONLY` for it - a named player still forces the
+  agent - and the new template reads the correct side's linescores per game
+  (via `team_box_stats.home_away`, the same join `game_log` already uses)
+  rather than deriving anything, so it needs no `--include-pbp` data at all.
+  The agent's knowledge base also gained a pointer to the linescores shortcut
+  for any team-level question that still reaches it, and a combined worked
+  example (quarter math *and* an opponent JOIN together) for the player-level
+  case that still has no template. `TABLE_SUMMARY`, `tests/query/test_router.py`,
+  `tests/query/test_templates.py`, and `scripts/check_routing.py` all gained
+  coverage.
 - **Command reference examples render as real code blocks**: the CLI epilog's
   example commands and setup instructions were rendering in the generated
   docs (`commands.rst`) as an RST line block - preserved line breaks, but
