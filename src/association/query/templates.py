@@ -1143,8 +1143,20 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     rule against it, complete with a worked WRONG example, in its prompt.
     Resolving names to ids here is the only fix that holds."""
     con = ctx.con
-    names = slots.get("teams")
-    if not isinstance(names, list) or len({n for n in names if isinstance(n, str) and n.strip()}) < 2:
+    # Confirmed live: rephrasing that same question with a city name instead of
+    # a nickname ("...play Boston?" rather than "...play the Celtics?") makes
+    # the router put the subject team in `team` and only the other side in
+    # `teams` (a one-element list), rather than both in `teams` as the prompt
+    # asks - `team` resolves fine on its own (entities.find_teams("Boston")
+    # matches "Boston Celtics"), so the miss is this slot split, not name
+    # resolution. Treating `team` as a third candidate absorbs that split
+    # instead of rejecting a fully-answerable question to the agent's SQL.
+    teams_slot = slots.get("teams")
+    names = [n for n in teams_slot if isinstance(n, str) and n.strip()] if isinstance(teams_slot, list) else []
+    team_slot = slots.get("team")
+    if isinstance(team_slot, str) and team_slot.strip() and team_slot not in names:
+        names = [team_slot, *names]
+    if len({n for n in names}) < 2:
         raise TemplateUnsupported("head_to_head needs two team names")
 
     resolved: list[Entity] = []

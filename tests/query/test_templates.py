@@ -646,6 +646,23 @@ def test_head_to_head_asks_on_an_ambiguous_team(gl_con: TemplateContext) -> None
     assert "did you mean" in (head_to_head(gl_con, {"teams": ["LA", "Celtics"]}).answer or "")
 
 
+def test_head_to_head_reads_the_second_team_from_the_team_slot(gl_con: TemplateContext) -> None:
+    """Regression: "how many times did the Knicks play Boston?" - a city name
+    with no nickname - routes the router to split the two teams across `team`
+    and a one-element `teams`, rather than both into `teams` as its prompt
+    asks (confirmed live: qwen2.5:3b, "...play Boston?" vs. "...play the
+    Celtics?"). `team` resolves the city name on its own; the miss was this
+    slot split, not name resolution, so a real one-vs-one matchup should still
+    answer rather than fall through to the agent."""
+    result = head_to_head(gl_con, {"team": "Knicks", "teams": ["Celtics"], "season": current_season()})
+    assert result.data["games"] == 2
+
+
+def test_head_to_head_ignores_a_team_slot_that_only_restates_teams(gl_con: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        head_to_head(gl_con, {"team": "Knicks", "teams": ["Knicks"]})
+
+
 def test_player_stat_refuses_a_named_stat_it_cannot_provide(ps_con: TemplateContext) -> None:
     """Confirmed live: an unsupported stat fell back to the default stat line,
     so "avg 3pt shot distance" was answered with points/rebounds/assists."""

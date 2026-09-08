@@ -15,6 +15,20 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **`head_to_head` no longer refuses a matchup just because the router split
+  the two teams across slots**: "how many times did the 76ers play Boston?"
+  (a city name, not a nickname) reliably routed the second team into `teams`
+  as a one-element list and the first into the singular `team` slot instead
+  of both into `teams`, so the template's two-name check failed and the
+  question fell through to the agent - which then answered 45 games for a
+  pair of teams that met 4 times, from unparenthesized SQL that let its
+  season filter apply to only one team (`home_team_id = A OR home_team_id = B
+  AND season = ?`). `head_to_head` now treats a `team` slot as a third
+  candidate rather than rejecting the question, and the agent's knowledge
+  base gained a worked example of the correct parenthesization for anyone who
+  still reaches it. `scripts/check_routing.py` and
+  `tests/query/test_templates.py` both gained coverage for the split-slot
+  shape.
 - **Command reference examples render as real code blocks**: the CLI epilog's
   example commands and setup instructions were rendering in the generated
   docs (`commands.rst`) as an RST line block - preserved line breaks, but

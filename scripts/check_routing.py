@@ -105,6 +105,17 @@ CASES: list[tuple[str, str, dict]] = [
     # Confirmed live: with no such intent this routed to team_record, fell
     # through, and the agent answered that two teams who met four times had
     # never played.
+    #
+    # Only the intent is asserted: for a city name with no nickname ("Boston"
+    # rather than "the Celtics"), qwen2.5:3b reliably splits the two teams
+    # across `team` and a one-element `teams` instead of both into `teams` -
+    # a slot shape this script can't see past (it checks route() only, never
+    # the template). That split used to make head_to_head refuse the question
+    # and fall through to the agent's SQL (which then answered 45, not 4) even
+    # though the intent above was already correct; templates.head_to_head now
+    # treats `team` as a third candidate rather than rejecting it - see
+    # test_head_to_head_reads_the_second_team_from_the_team_slot in
+    # tests/query/test_templates.py for the coverage that actually exercises it.
     ("how many times did the 76ers play boston?", "head_to_head", {}),
     ("Lakers vs Celtics record this season", "head_to_head", {}),
     # "last N games" means most recent, not earliest - confirmed live, the

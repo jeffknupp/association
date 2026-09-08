@@ -240,6 +240,28 @@ KNOWLEDGE_BASE: list[dict[str, Any]] = [
         ),
     },
     {
+        "topic": "Counting games between two teams (head-to-head / matchup questions)",
+        "keywords": ["played", "matchup", "versus", "series", "opponent", "against"],
+        "note": (
+            "games is home/away-oriented, not team-perspective: a two-team matchup needs BOTH "
+            "orderings, (home_team_id = A AND away_team_id = B) OR (home_team_id = B AND away_team_id "
+            "= A). Parenthesize that whole OR before ANDing in season/season_type - `home_team_id = A "
+            "OR home_team_id = B AND season = ?` binds the AND to only the second team (ordinary SQL "
+            "operator precedence, not a bug in the data), so the season filter silently applies to one "
+            "side only and the count comes back inflated by that team's home games in every OTHER "
+            "season too. No season named in the question means the CURRENT one, same as every other "
+            "question here - confirmed live, an unparenthesized version of this query answered 45 "
+            "games for a pair of teams that met 4 times."
+        ),
+        "example": (
+            "-- WRONG: WHERE home_team_id = ? OR home_team_id = ? AND season = ? -- season filters only the 2nd team\n"
+            "-- RIGHT:\n"
+            "SELECT g.* FROM games g JOIN teams ta ON ta.team_id = g.home_team_id JOIN teams tb ON tb.team_id = g.away_team_id\n"
+            "WHERE ((ta.abbreviation = 'PHI' AND tb.abbreviation = 'BOS') OR (ta.abbreviation = 'BOS' AND tb.abbreviation = 'PHI'))\n"
+            "  AND g.season = 2026 AND g.season_type = 2"
+        ),
+    },
+    {
         "topic": "NetPoints (net_points_player / net_points_team)",
         "note": (
             "These have NO season_type column at all - only net_points_season_type, a STRING "
