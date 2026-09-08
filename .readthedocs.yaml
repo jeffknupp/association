@@ -1,0 +1,25 @@
+# Read the Docs build configuration.
+# https://docs.readthedocs.io/en/stable/config-file/v2.html
+version: 2
+
+build:
+  os: ubuntu-24.04
+  tools:
+    python: "3.13"
+
+  # `commands` rather than the `python.install` shorthand, so the docs are
+  # built from uv.lock with `--frozen`. That matters here: the toolchain has
+  # already been broken once by an unpinned upgrade (Sphinx 9 is incompatible
+  # with sphinx-click, hence the `sphinx>=8.1,<9` pin in pyproject), and a
+  # resolver free to pick new versions on Read the Docs' builders would let
+  # the published docs drift away from what CI verified.
+  #
+  # `uv sync` creates .venv in the checkout, which is exactly where
+  # build_docs.sh looks for sphinx-build.
+  commands:
+    - pip install uv
+    - uv sync --frozen --extra docs
+    # The same script pre-commit and CI run, so the published build is gated
+    # by the same -W --keep-going. A warning fails the build here too, rather
+    # than shipping a broken cross-reference to readthedocs.io.
+    - scripts/build_docs.sh "$READTHEDOCS_OUTPUT/html"

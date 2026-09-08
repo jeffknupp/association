@@ -62,3 +62,23 @@ because PyPI rejects a README it cannot render, and does so at upload time.
 Version numbers are never reused: PyPI refuses to accept a file for a version
 that already exists, even after a deletion, so a broken release is fixed by
 publishing the next patch version rather than by re-uploading.
+
+Hosted documentation
+--------------------
+
+``.readthedocs.yaml`` builds this site on Read the Docs on every push, and on
+pull requests as a preview. It installs from ``uv.lock`` with ``--frozen``
+rather than letting a resolver pick fresh versions, because the toolchain has
+already been broken once by an unpinned upgrade — Sphinx 9 is incompatible
+with ``sphinx-click``, hence the ``sphinx>=8.1,<9`` pin — and a published build
+that quietly drifts from what CI verified is worse than one that fails loudly.
+
+The build runs ``scripts/build_docs.sh``, the same script pre-commit and CI
+run, so the ``-W --keep-going`` that gates a commit also gates the published
+build.
+
+Importing the project on Read the Docs is a one-time manual step, like
+registering the trusted publisher. Once it is imported, update the
+``Documentation`` entry in ``[project.urls]`` to the assigned
+``readthedocs.io`` URL — the slug is not known until then, so it currently
+points at the README on GitHub.

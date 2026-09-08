@@ -5,6 +5,20 @@ commit that made it for the full story.
 
 ## 2026-09-07
 
+- **Docs build on Read the Docs**: `.readthedocs.yaml` builds the Sphinx site
+  on every push and previews it on pull requests. It uses `build.commands` with
+  `uv sync --frozen` rather than the `python.install` shorthand, so the
+  published docs are built from `uv.lock` instead of whatever a resolver picks
+  on the builder - this toolchain has already been broken once by an unpinned
+  upgrade (Sphinx 9 against sphinx-click), and docs that drift from what CI
+  verified are worse than docs that fail loudly.
+
+  `scripts/build_docs.sh` now takes an optional output directory, defaulting to
+  `docs/_build/html`, so Read the Docs builds through the same script as
+  pre-commit and CI. One caller of `sphinx-build` means the `-W --keep-going`
+  that gates a commit is the same one that gates the published build, rather
+  than two flag lists drifting apart.
+
 - **Packaged for PyPI**: the project now carries the metadata a published
   package needs - `readme`, a BSD 3-Clause `license` and `LICENSE` file,
   author, keywords, 15 classifiers and `[project.urls]` - and builds a clean
