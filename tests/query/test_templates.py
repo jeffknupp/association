@@ -197,7 +197,7 @@ def ps_con(tmp_path: Path) -> TemplateContext:
         "CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER, "
         "gamesPlayed INTEGER, avgPoints DOUBLE, points INTEGER, avgRebounds DOUBLE, avgAssists DOUBLE, assists INTEGER)"
     )
-    c.execute("INSERT INTO players VALUES ('1','Luka Doncic'),('2','Luka Garza'),('3','Nikola Jokic')")
+    c.execute("INSERT INTO players VALUES ('1','Luka Doncic'),('2','Luka Garza'),('3','Nikola Jokic'),('4','Stephen Curry'),('5','Seth Curry')")
     s = current_season()
     c.execute("INSERT INTO player_season_stats_deduped VALUES ('1',?,2,64,33.5,2143,7.7,8.3,531)", [s])
     c.execute("INSERT INTO player_season_stats_deduped VALUES ('3',?,2,65,27.7,1799,12.9,10.7,697)", [s])
@@ -218,9 +218,9 @@ def test_player_stat_asks_instead_of_guessing_between_players(ps_con: TemplateCo
     """Neither guess nor fall through: the template knows exactly what is
     ambiguous, so it says so in ~1.5s instead of handing the agent a problem
     it would spend minutes guessing at."""
-    result = player_stat(ps_con, {"player": "Luka", "stat": "points"})
-    assert result.answer == "'Luka' matches more than one player - did you mean Luka Doncic or Luka Garza?"
-    assert result.data["candidates"] == ["Luka Doncic", "Luka Garza"]
+    result = player_stat(ps_con, {"player": "Curry", "stat": "points"})
+    assert result.answer == "'Curry' matches more than one player - did you mean Seth Curry or Stephen Curry?"
+    assert result.data["candidates"] == ["Seth Curry", "Stephen Curry"]
 
 
 def test_player_stat_unknown_player_falls_through(ps_con: TemplateContext) -> None:
@@ -522,8 +522,8 @@ def test_player_compare_resolves_a_nickname(ps_con: TemplateContext) -> None:
 
 
 def test_player_compare_asks_rather_than_guessing_an_ambiguous_name(ps_con: TemplateContext) -> None:
-    answer = player_compare(ps_con, {"players": ["Luka", "Nikola Jokic"]}).answer or ""
-    assert "did you mean Luka Doncic or Luka Garza?" in answer
+    answer = player_compare(ps_con, {"players": ["Curry", "Nikola Jokic"]}).answer or ""
+    assert "did you mean Seth Curry or Stephen Curry?" in answer
 
 
 def test_player_compare_needs_two_distinct_players(ps_con: TemplateContext) -> None:
@@ -933,7 +933,7 @@ def test_player_history_refuses_a_stat_it_has_no_history_for(ps_con: TemplateCon
 
 
 def test_player_history_asks_on_an_ambiguous_player(ps_con: TemplateContext) -> None:
-    assert "did you mean" in (player_history(ps_con, {"player": "Luka", "stat": "points"}).answer or "")
+    assert "did you mean" in (player_history(ps_con, {"player": "Curry", "stat": "points"}).answer or "")
 
 
 def test_leaderboard_refuses_when_a_player_is_named(lb_con: TemplateContext) -> None:

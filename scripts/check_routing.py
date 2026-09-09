@@ -27,6 +27,7 @@ import argparse
 import sys
 import time
 
+from association.query.entities import override_nicknames
 from association.query.models import DEFAULT_ROUTER_MODEL
 from association.query.router import route
 from association.query.templates import TEMPLATES
@@ -157,6 +158,21 @@ CASES: list[tuple[str, str, dict]] = [
     # The router often expands a nickname to the full name ("Celtics" ->
     # "Boston Celtics"); both resolve, so only the intent is asserted here.
     ("How did the Celtics do in their last 10 games?", "game_log", {}),
+    # Nicknames for players from the older end of the warehouse. The router
+    # does not merely miss these, it INVENTS a player: measured, "The Answer"
+    # became 'Klay Thompson', "The Glove" became 'Jayson Tatum', and "VC"
+    # became 'Victor Claver' - each a real player who resolves cleanly, so the
+    # answer came back confident and about the wrong person. The player slot is
+    # asserted here precisely because it is the thing that was wrong, and these
+    # pass on entities.override_nicknames, applied above - route() alone still
+    # returns the invented name.
+    ("Show me The Answer's avg points", "player_stat", {"player": "Allen Iverson", "stat": "points"}),
+    ("How many points did The Glove average in 1996?", "player_stat", {"player": "Gary Payton", "season": 1996}),
+    ("Show me VC's avg points in 2000", "player_stat", {"player": "Vince Carter", "season": 2000}),
+    ("What did AI average in 2005?", "player_stat", {"player": "Allen Iverson", "season": 2005}),
+    # A first name one player owns in practice. This one the router already
+    # gets right on its own; the case is here so that stops being luck.
+    ("Show me luka's avg points", "player_stat", {"player": "Luka Doncic"}),
 ]
 
 
@@ -171,6 +187,11 @@ def main() -> int:
         started = time.monotonic()
         got = route(args.model, question)
         elapsed = time.monotonic() - started
+        # Assert on the slots a template will actually see, not the router's
+        # raw output: nickname overrides are applied between the two, and a
+        # case about a nickname would otherwise check the wrong thing.
+        if got is not None:
+            override_nicknames(question, got.slots)
         if got is None:
             print(f"FAIL  {elapsed:5.2f}s  {question}\n        router returned nothing", flush=True)
             failures += 1

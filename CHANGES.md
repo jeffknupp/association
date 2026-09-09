@@ -15,6 +15,35 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Nicknames are read from the question, not from the router's guess.** Asking
+  for "The Answer" returned Allen Iverson's numbers only by luck: the 3B router
+  rewrites a nickname it recognizes and *invents* a player for one it does not,
+  and the invented name is a real player who resolves cleanly. Measured, "The
+  Answer" became `player='Klay Thompson'`, "The Glove" became `'Jayson Tatum'`,
+  and "VC" became `'Victor Claver'` - each answered confidently, about the wrong
+  person, in under two seconds. Nothing downstream could catch it, because by
+  then the nickname was gone.
+
+  `entities.override_nicknames` now matches the table against the user's own
+  words and overrides the router's player slot before any template runs. It is
+  deliberately narrow: a single `player` slot only when the question names
+  exactly one nickname, a `players` list only when the counts match, since a
+  wrong override is the same bug in the other direction.
+
+  `PLAYER_NICKNAMES` grows from 21 to 78, sourced from Wikipedia's list of
+  basketball nicknames and filtered to players the warehouse actually holds -
+  which starts at 1993-94, so Bird and Kareem are not there to be named. The
+  new entries reach the players the router got wrong: Iverson, Carter, Payton,
+  Olajuwon, Malone, Robinson, Rodman, Pierce, Garnett, Webber, Hardaway.
+  `scripts/check_nicknames.py` verifies against a built warehouse that every
+  value names exactly one player and no key is a name belonging to somebody
+  else.
+
+  First names now resolve where they used to ask: "luka" is Doncic, "kobe" is
+  Bryant. A question carrying only a shorthand cannot reliably have meant Luka
+  Garza or Kobe Bufkin, so the clarifying question bought nothing. A shared
+  *surname* still asks - "brown" offers ten candidates, and should - and so
+  does "curry", where Seth and Stephen are both real answers.
 - **`association data check` takes 17 seconds instead of 7.5 minutes.** It
   gathered every count with its own filtered query - one per cell of the
   report - and none of these Parquet trees is hive partitioned, so `WHERE

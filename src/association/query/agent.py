@@ -13,6 +13,7 @@ from typing import Any
 import ollama
 
 from .answer import Answer, AnsweredBy, Artifact, Timing
+from .entities import override_nicknames
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .keepalive import KEEP_ALIVE
 from .models import DEFAULT_ROUTER_MODEL
@@ -192,6 +193,10 @@ class Agent:
         if routed is None:
             history.log("  -> (router) no usable classification, falling through to the agent")
             return None
+        # Before anything reads a slot: the router rewrites nicknames, and
+        # rewrites some of them to the wrong player. See entities.override_nicknames.
+        for was, now in override_nicknames(question, routed.slots):
+            history.log(f"  -> (nickname) {was!r} -> {now!r} (from the question, overriding the router)")
         handler = TEMPLATES.get(routed.intent)
         history.log(f"  -> (router) intent={routed.intent!r} slots={routed.slots}" + ("" if handler else " - not ported yet, falling through"))
         if handler is None:
