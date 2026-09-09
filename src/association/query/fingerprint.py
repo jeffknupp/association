@@ -27,7 +27,7 @@ import duckdb
 from association.season import current_season
 
 from .answer import Artifact, RenderResult
-from .entities import Ambiguous, Availability, Entity, clarification
+from .entities import Ambiguous, Availability, Entity, clarification, no_match
 from .radar import VALUE_ZERO_FRACTION, Axis, Cell, Series, render_fingerprint_html
 
 
@@ -608,7 +608,7 @@ def render_fingerprint(
     for name in player_name.split(" vs "):
         found = resolve_chart_player(con, name.strip(), FINGERPRINT_AVAILABILITY, season)
         if found is None:
-            return RenderResult(f"No player found matching {name.strip()!r}.", None)
+            return RenderResult(no_match(con, name.strip()), None)
         if isinstance(found, Ambiguous):
             return RenderResult(clarification(name.strip(), found.candidates), None)
         player, also = found

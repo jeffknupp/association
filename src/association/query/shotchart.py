@@ -14,7 +14,7 @@ import duckdb
 
 from .answer import Artifact, RenderResult
 from .court import render_court_html
-from .entities import Ambiguous, Availability, Entity, clarification, find_players, narrow_to_available
+from .entities import Ambiguous, Availability, Entity, clarification, find_players, narrow_to_available, no_match
 
 SHOT_AVAILABILITY = Availability("shot_chart")
 """Where a shot chart's rows live, for narrowing an ambiguous name to the
@@ -113,7 +113,7 @@ def render_shot_chart(
     # something the question never said.
     resolved = resolve_chart_player(con, player_name, SHOT_AVAILABILITY, season)
     if resolved is None:
-        return RenderResult(f"No player found matching {player_name!r}.", None)
+        return RenderResult(no_match(con, player_name), None)
     if isinstance(resolved, Ambiguous):
         return RenderResult(clarification(player_name, resolved.candidates), None)
     player, ambiguous = resolved

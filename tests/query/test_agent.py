@@ -261,6 +261,51 @@ def _agent(tmp_path: Path, **kwargs: Any) -> Agent:
     return Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history", **kwargs)
 
 
+def _agent_with_players(tmp_path: Path, *names: str) -> Agent:
+    """An agent over a warehouse holding exactly ``names``, for the checks that
+    run against the question's own words."""
+    import duckdb
+
+    db_path = tmp_path / "test.duckdb"
+    con = duckdb.connect(str(db_path))
+    con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    for i, name in enumerate(names):
+        con.execute("INSERT INTO players VALUES (?, ?)", [str(i), name])
+    con.close()
+    return Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history")
+
+
+def test_the_fast_path_replaces_a_player_the_question_never_named(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Measured live: "compare sga and embiid" routed to Jusuf Nurkic in the
+    second slot and answered with a confident table about him. The template is
+    not reached until the names are the question's."""
+    from association.query.router import Route
+    from association.query.templates import TemplateResult
+
+    seen: list[str] = []
+
+    def record(ctx: Any, slots: dict[str, Any]) -> TemplateResult:
+        seen.extend(slots["players"])
+        return TemplateResult(data={}, answer="templated")
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="player_compare", slots={"players": ["Shai Gilgeous-Alexander", "Jusuf Nurkic"]}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_compare": record})
+    _agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic").ask("compare sga and embiid")
+    assert seen == ["Shai Gilgeous-Alexander", "Joel Embiid"]
+
+
+def test_a_player_the_question_cannot_account_for_falls_through_to_the_agent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Nothing in the question to put in its place, so the template does not
+    run at all. Falling through is slow; answering about Nurkic is wrong."""
+    from association.query.router import Route
+    from association.query.templates import TemplateResult
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="player_compare", slots={"players": ["Jusuf Nurkic", "Joel Embiid"]}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_compare": lambda ctx, slots: TemplateResult(data={}, answer="templated")})
+    monkeypatch.setattr(ollama, "chat", lambda **kw: ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="agent answer")))
+    assert _agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic").ask("compare the two best centers").text == "agent answer"
+
+
 def test_fast_path_is_skipped_entirely_when_disabled(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     called = False
 

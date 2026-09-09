@@ -107,6 +107,50 @@ fact is actually missing: the season, the player, or the match. They are
 different sentences, and the wrong one sends the reader to look in the wrong
 place.
 
+**The router invents names, and an invented name resolves.** This is the
+worst-behaved version of the shape above, because nothing about the answer
+looks wrong. "Compare sga and embiid" routed to
+`['Shai Gilgeous-Alexander', 'Jusuf Nurkic']` and produced a correct table of
+two real players, one of whom the question never mentioned - every check after
+the router passed, because "Jusuf Nurkic" is a real person who resolves
+cleanly. The nickname version of this was already known
+(`override_nicknames`: "The Answer" became Klay Thompson); the general version
+is that **any** router-supplied name may be fiction.
+
+So a name is checked against the question before a template reads it -
+`entities.override_invented_players`. What counts as the question supporting a
+name is deliberately generous, because the router's expansions are usually the
+useful kind: the word itself, a near spelling of it (the router silently
+corrects typos), a nickname, or the initials ("KAT", "SGA"). Any ONE word of
+the name is enough, since half a name is how a question normally carries one -
+what this catches is a name with no half in the question at all. Two rules
+about what happens next, and both matter:
+
+- **Replace only from what the question itself names, and only when the count
+  is exact** - the same discipline `override_nicknames` uses. `players_named_in`
+  is strict about what naming somebody means: a span must equal a *whole word*
+  of exactly one player's name. Substring matching reads "the highest scoring
+  game" as naming Jaron Blossomgame; word-boundary matching reads "with" as
+  naming Jeff Withey; and allowing a one-letter span makes the possessive left
+  behind by "Jokic's" name John S. Williams, who is in nine of the routing
+  corpus's questions.
+- **Do not trim a name back to the part the question holds.** Tempting, and
+  wrong: "how many points did Luka average" would trim `Luka Doncic` to `Luka`,
+  which is ambiguous against Luka Garza. Expanding half a name is the router
+  doing its job.
+
+**Before saying nothing matched, check whether something nearly did.** The
+other half of the same bug: "compare sga and embid" routed to `'Jemel Embiid'`,
+and since `find_players` requires every token to match, one fabricated word
+buried a player the warehouse holds. `entities.suggest_players` backs a
+multi-word name off to its surname - exact matching on one fewer token, not
+fuzzy - and then looks for near spellings, which is the only thing that reaches
+the user's own typo ("embid" is not a substring of "Embiid", so no ILIKE finds
+it). Two things keep it honest: it never substitutes, it only asks, and a
+suggestion naming more than `MAX_CLARIFY_CANDIDATES` players is dropped
+entirely, because a name near 25 players narrowed nothing and reading out a
+directory is not a suggestion.
+
 **A best match is only safe where a wrong one is visible.** Charts resolved
 names best-match on the reasoning that the plot is titled with the name that
 won — sound, until the wrong name is *why* no plot gets drawn, which is
@@ -161,6 +205,15 @@ slower SQL-writing agent; that is by design, not a bug.
   with no `side` at all — 6/6 at temperature 0. `stat` is required, so the
   adjective is spent there first. The whole fingerprint got drawn where its
   defensive half was asked for.
+
+  The same slot has a second, opposite failure: **a required slot is one the
+  decoder fills whether or not the question asked for it.** `stat` came back as
+  `'points'` on "compare sga and embiid" 12 times out of 12, which narrowed
+  `player_compare` to one average and undid the whole-line default it exists
+  for. `route()` drops it for that intent only. Note why the word list can be
+  loose there and could not be anywhere else: for a comparison, a missed word
+  widens the answer to a line that still holds the stat asked about, while
+  `leaderboard` with no stat has nothing to rank by.
 
   Two ways out, and prefer the second. Making the slot *required* works (that
   is why `stat` is) but was measured and reverted for `season_ref`, because

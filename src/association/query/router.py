@@ -355,6 +355,36 @@ def _validate_side(slots: dict[str, Any], question: str) -> str | None:
     return side if isinstance(side, str) and side in SIDE_VALUES else None
 
 
+# The words a question uses when it is actually asking about one stat, as
+# opposed to asking who is better. Loose on purpose, and safe because of where
+# it is used: see :func:`_named_a_stat`.
+_STAT_WORDS = re.compile(
+    r"\b(points?|scor\w*|pts|rebound\w*|boards|reb|assist\w*|passing|dimes|ast|steal\w*|stl|block\w*|blk|"
+    r"turnover\w*|giveaways?|fouls?|minutes?|mins?|shoot\w*|shots?|three\w*|3pt|3-point\w*|field goals?|free throws?|"
+    r"percentage|efficien\w*|usage|double-doubles?|triple-doubles?)\b",
+    re.IGNORECASE,
+)
+
+
+def _named_a_stat(question: str) -> bool:
+    """Whether the question asked about a particular stat at all.
+
+    ``stat`` is the one REQUIRED slot in ``ROUTER_SCHEMA``, so the model fills
+    it on every question whether or not the question named one: "compare sga
+    and embiid" comes back with ``stat='points'`` 12 times out of 12. For
+    ``player_compare`` that slot is not a detail - it collapses the whole line
+    the template exists to show back to the single average it used to print.
+
+    The same fix as ``_validate_side``, and forgiving in both directions
+    *because it is used for one intent only*. A word this misses widens a
+    comparison to the full line, which still holds the stat asked about; a word
+    it matches too eagerly leaves the behavior exactly as it was. Neither can
+    produce a wrong number, which is why the list may be loose here and could
+    not be if `leaderboard` read it.
+    """
+    return bool(_STAT_WORDS.search(question))
+
+
 def route(model: str, question: str, previous_question: str | None = None) -> Route | None:
     """Classify one question. Returns None if the model is unreachable or
     replies with something unparseable - the caller falls through to the full
@@ -403,6 +433,11 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     slots["season_type"] = SEASON_TYPES.get(requested_type, 2) if isinstance(requested_type, str) else 2
     # fingerprint only - `side` means nothing to any other template, and adding
     # it elsewhere would put a slot in the trace that nothing reads.
+    # player_compare only: every other template either needs the stat or
+    # ignores it, and dropping it for `leaderboard` would leave it with no
+    # metric to rank by.
+    if raw["intent"] == "player_compare" and not _named_a_stat(question):
+        slots.pop("stat", None)
     if raw["intent"] == "fingerprint":
         side = _validate_side(slots, question)
         if side is None:

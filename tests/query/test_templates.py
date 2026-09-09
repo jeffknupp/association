@@ -621,6 +621,26 @@ def test_player_compare_asks_rather_than_guessing_an_ambiguous_name(ps_con: Temp
     assert "did you mean Seth Curry or Stephen Curry?" in answer
 
 
+def test_player_compare_suggests_the_player_a_fabricated_name_meant(ps_con: TemplateContext) -> None:
+    """The router answered "compare sga and embid" with 'Jemel Embiid' - the
+    surname corrected, the given name invented - and every token has to match,
+    so a name the warehouse holds was buried by one made-up word."""
+    answer = player_compare(ps_con, {"players": ["Luka Doncic", "Jemel Jokic"]}).answer or ""
+    assert answer == "No player found matching 'Jemel Jokic' - did you mean Nikola Jokic?"
+
+
+def test_player_compare_answers_a_near_miss_rather_than_falling_through(ps_con: TemplateContext) -> None:
+    """Handled here for the same reason ambiguity is: the agent would resolve
+    the same name against the same table, more slowly."""
+    answer = player_compare(ps_con, {"players": ["Luka Doncic", "Nikoal Jokic"]}).answer or ""
+    assert "did you mean Nikola Jokic?" in answer
+
+
+def test_a_name_with_nothing_near_it_still_falls_through(ps_con: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        player_compare(ps_con, {"players": ["Luka Doncic", "Asdf Qwerty"]})
+
+
 def test_player_compare_needs_two_distinct_players(ps_con: TemplateContext) -> None:
     with pytest.raises(TemplateUnsupported):
         player_compare(ps_con, {"players": ["Luka Doncic"]})

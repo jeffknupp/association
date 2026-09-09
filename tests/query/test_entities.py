@@ -10,9 +10,13 @@ from association.query.entities import (
     NotFound,
     find_players,
     nicknames_in,
+    no_match,
+    override_invented_players,
     override_nicknames,
+    players_named_in,
     resolve_player,
     resolve_team,
+    suggest_players,
 )
 
 
@@ -25,7 +29,15 @@ def con() -> duckdb.DuckDBPyConnection:
     # by accident, and "Alexander" starts a word in a hyphenated surname.
     c.execute(
         "INSERT INTO players VALUES ('1','Stephen Curry'),('2','Seth Curry'),('3','Luka Doncic'),('4','Jaylen Brown'),('5','Jaylen Brown Jr.'),"
-        "('6','Cedric Ceballos'),('7','LaMelo Ball'),('8','Nickeil Alexander-Walker'),('11','Kyle Alexander')"
+        "('6','Cedric Ceballos'),('7','LaMelo Ball'),('8','Nickeil Alexander-Walker'),('11','Kyle Alexander'),"
+        # 12-15 are the router's inventions and what it invents them next to.
+        # John S. Williams is real, and is what a possessive "Jokic's" matches
+        # if a stray one-letter word is allowed to name somebody.
+        "('12','Joel Embiid'),('13','Jusuf Nurkic'),('14','John S. Williams'),('15','Klay Thompson'),"
+        # 16-17 are the two the measurement caught: "game" lands inside
+        # Blossomgame and "with" starts Withey, so an ordinary question reads
+        # as naming both unless a span has to equal a whole word.
+        "('16','Jaron Blossomgame'),('17','Jeff Withey')"
     )
     c.execute("INSERT INTO teams VALUES ('13','LAL','Los Angeles Lakers'),('12','LAC','LA Clippers'),('9','GS','Golden State Warriors')")
     return c
@@ -204,3 +216,132 @@ def test_override_does_nothing_without_a_nickname() -> None:
     slots = {"player": "Jaylen Brown"}
     assert override_nicknames("How many points does Jaylen Brown average?", slots) == []
     assert slots["player"] == "Jaylen Brown"
+
+
+# ---------------- names the question does not support ----------------
+
+
+def test_a_player_the_question_never_mentions_is_replaced_by_one_it_does(con: duckdb.DuckDBPyConnection) -> None:
+    """The bug this exists for, measured live: "compare sga and embiid" routed
+    to ['Shai Gilgeous-Alexander', 'Jusuf Nurkic'] and answered with a fluent
+    table of two real players, one of whom the question never named. Nothing
+    downstream could notice - "Jusuf Nurkic" resolves perfectly."""
+    slots = {"players": ["Shai Gilgeous-Alexander", "Jusuf Nurkic"]}
+    changed, invented = override_invented_players(con, "compare sga and embiid", slots)
+    assert slots["players"] == ["Shai Gilgeous-Alexander", "Joel Embiid"]
+    assert changed == [("Jusuf Nurkic", "Joel Embiid")] and invented == []
+
+
+def test_an_invented_name_with_nothing_to_replace_it_is_reported_rather_than_answered(con: duckdb.DuckDBPyConnection) -> None:
+    """Reported, not repaired: the caller falls through to the agent, which at
+    least reads the question. What must not happen is answering about Nurkic."""
+    slots = {"players": ["Jusuf Nurkic", "Joel Embiid"]}
+    changed, invented = override_invented_players(con, "compare the two best centers", slots)
+    assert changed == [] and invented == ["Jusuf Nurkic", "Joel Embiid"]
+    assert slots["players"] == ["Jusuf Nurkic", "Joel Embiid"]
+
+
+def test_half_a_name_in_the_question_supports_the_whole_of_it(con: duckdb.DuckDBPyConnection) -> None:
+    """Expanding "Luka" to "Luka Doncic" is the router doing its job. Trimming
+    the name back to what the question literally holds would undo it - "Luka"
+    alone is ambiguous against Luka Garza in the real warehouse."""
+    slots = {"player": "Luka Doncic"}
+    assert override_invented_players(con, "how many points did Luka average?", slots) == ([], [])
+    assert slots["player"] == "Luka Doncic"
+
+
+def test_a_near_spelling_still_counts_as_naming_somebody(con: duckdb.DuckDBPyConnection) -> None:
+    """ "compare sga and embid" - the router corrected the surname and invented
+    the given name. The surname is a trace of the question, so this leaves the
+    slot alone and lets resolution answer with a suggestion rather than
+    replacing a name the question half-supports."""
+    slots = {"players": ["Shai Gilgeous-Alexander", "Jemel Embiid"]}
+    assert override_invented_players(con, "compare sga and embid", slots) == ([], [])
+
+
+def test_initials_count_as_naming_somebody(con: duckdb.DuckDBPyConnection) -> None:
+    """ "KAT" and "SGA" are how questions carry a name the nickname table may
+    not have. Without this, expanding one would look like an invention and
+    every such question would fall through to the agent."""
+    slots = {"players": ["Jaylen Brown", "Joel Embiid"]}
+    assert override_invented_players(con, "compare jb and embiid", slots) == ([], [])
+
+
+def test_a_nickname_the_question_uses_counts_as_naming_somebody(con: duckdb.DuckDBPyConnection) -> None:
+    slots = {"player": "Allen Iverson"}
+    assert override_invented_players(con, "Show me The Answer's avg points", slots) == ([], [])
+
+
+def test_no_player_slot_is_nothing_to_check(con: duckdb.DuckDBPyConnection) -> None:
+    assert override_invented_players(con, "who led the league in scoring?", {"stat": "points"}) == ([], [])
+
+
+# ---------------- what the question itself names ----------------
+
+
+def test_players_named_in_reads_names_and_nicknames_in_order(con: duckdb.DuckDBPyConnection) -> None:
+    assert players_named_in(con, "compare sga and embiid") == ["Shai Gilgeous-Alexander", "Joel Embiid"]
+
+
+def test_a_possessive_s_is_not_a_player(con: duckdb.DuckDBPyConnection) -> None:
+    """ "Klay Thompson's" splits into a stray one-letter word, which is a whole
+    word of "John S. Williams" - measured against the warehouse, that put him
+    in nine of the routing corpus's questions."""
+    assert players_named_in(con, "what was klay thompson's 3pt percentage") == ["Klay Thompson"]
+
+
+def test_an_ordinary_word_that_only_looks_like_a_name_is_not_one(con: duckdb.DuckDBPyConnection) -> None:
+    """Substring matching would read "the highest scoring game" as naming
+    Jaron Blossomgame and "with" as naming Jeff Withey, so a span has to equal
+    a whole word of the name."""
+    assert players_named_in(con, "what was the highest scoring game with 20 rebounds?") == []
+
+
+def test_a_surname_two_players_share_names_neither_of_them(con: duckdb.DuckDBPyConnection) -> None:
+    """This overrules the router, so it may only speak where it is certain."""
+    assert players_named_in(con, "plot curry's threes") == []
+
+
+# ---------------- did you mean ----------------
+
+
+def test_a_fabricated_given_name_falls_back_to_the_surname(con: duckdb.DuckDBPyConnection) -> None:
+    """Exact matching on one fewer token, not fuzzy: every token has to match,
+    so one made-up word buried a player the warehouse holds."""
+    assert [p.name for p in suggest_players(con, "Jemel Embiid")] == ["Joel Embiid"]
+
+
+def test_a_misspelling_the_router_did_not_correct_finds_the_player(con: duckdb.DuckDBPyConnection) -> None:
+    """ "embid" is not a substring of "Embiid", so no amount of ILIKE reaches
+    it and no amount of trusting the question helps - the typo is the
+    question."""
+    assert [p.name for p in suggest_players(con, "embid")] == ["Joel Embiid"]
+
+
+def test_nothing_close_suggests_nobody(con: duckdb.DuckDBPyConnection) -> None:
+    assert suggest_players(con, "asdf qwerty") == []
+    assert suggest_players(con, "") == []
+
+
+def test_an_incidental_substring_is_not_a_suggestion(con: duckdb.DuckDBPyConnection) -> None:
+    """The backoff takes word-boundary matches only. "All" lands inside
+    "Ceballos" and "Ball", and suggesting either is worse than saying nothing."""
+    assert suggest_players(con, "Nobody At All") == []
+
+
+def test_a_suggestion_too_long_to_be_one_is_dropped() -> None:
+    """A name near a dozen players narrowed nothing. Reading out a directory is
+    not a suggestion, and the question is better off falling through."""
+    con = duckdb.connect(":memory:")
+    con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    con.execute("INSERT INTO players SELECT i::VARCHAR, 'Chris Smit' || chr((97 + i)::INTEGER) FROM range(8) t(i)")
+    assert suggest_players(con, "Chris Smit") == []  # the surname backoff
+    assert suggest_players(con, "Smitz") == []  # and the near-spelling pass
+
+
+def test_no_match_names_the_near_miss(con: duckdb.DuckDBPyConnection) -> None:
+    assert no_match(con, "Jemel Embiid") == "No player found matching 'Jemel Embiid' - did you mean Joel Embiid?"
+
+
+def test_no_match_says_only_that_when_nothing_is_near(con: duckdb.DuckDBPyConnection) -> None:
+    assert no_match(con, "asdf qwerty") == "No player found matching 'asdf qwerty'."

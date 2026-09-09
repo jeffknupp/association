@@ -7,7 +7,8 @@ contract - a prompt change can silently start routing "who leads in points" to
 through route() only (no SQL, no answer), asserting intent and the slots that
 matter, and prints per-question latency.
 
-Needs ollama running with the model loaded. Cheap after the first call: the
+Needs ollama running with the model loaded, and a built warehouse - the second
+override checks the router's player names against the roster. Cheap after the first call: the
 router prompt is small enough to stay in the KV cache, so questions after the
 first typically land in 1-2s.
 
@@ -16,7 +17,7 @@ ollama into a reload loop that wedges it for minutes - and note that ollama
 reloads the model whenever num_ctx changes, so interleaving router calls
 (4096) with agent calls (16384) costs a full ~60-80s model load each way.
 
-    python scripts/check_routing.py [--model qwen2.5:3b]
+    python scripts/check_routing.py [--model qwen2.5:3b] [--db-path ./nba.duckdb]
 
 Add a case whenever a shape is ported or a mis-route is found in the wild.
 """
@@ -27,7 +28,9 @@ import argparse
 import sys
 import time
 
-from association.query.entities import override_nicknames
+import duckdb
+
+from association.query.entities import override_invented_players, override_nicknames
 from association.query.models import DEFAULT_ROUTER_MODEL
 from association.query.router import route
 from association.query.templates import TEMPLATES
@@ -173,6 +176,12 @@ CASES: list[tuple[str, str, dict]] = [
     # A first name one player owns in practice. This one the router already
     # gets right on its own; the case is here so that stops being luck.
     ("Show me luka's avg points", "player_stat", {"player": "Luka Doncic"}),
+    # The same invention without a nickname to blame it on: measured live,
+    # this came back with 'Jusuf Nurkic' in the second slot and answered with a
+    # confident table about him. It passes on
+    # entities.override_invented_players, applied above - route() alone still
+    # returns Nurkic, which is why the slot is what this case asserts.
+    ("compare sga and embiid", "player_compare", {"players": ["Shai Gilgeous-Alexander", "Joel Embiid"]}),
 ]
 
 
@@ -180,8 +189,12 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     # Defaults to the model the router actually ships with, not the agent's.
     parser.add_argument("--model", default=DEFAULT_ROUTER_MODEL)
+    # A warehouse, because the second override checks the router's names
+    # against the roster - see entities.override_invented_players.
+    parser.add_argument("--db-path", default="./nba.duckdb")
     args = parser.parse_args()
 
+    con = duckdb.connect(args.db_path, read_only=True)
     failures = 0
     for question, want_intent, want_slots in CASES:
         started = time.monotonic()
@@ -192,6 +205,7 @@ def main() -> int:
         # case about a nickname would otherwise check the wrong thing.
         if got is not None:
             override_nicknames(question, got.slots)
+            override_invented_players(con, question, got.slots)
         if got is None:
             print(f"FAIL  {elapsed:5.2f}s  {question}\n        router returned nothing", flush=True)
             failures += 1

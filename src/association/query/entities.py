@@ -210,6 +210,155 @@ def override_nicknames(question: str, slots: dict[str, Any]) -> list[tuple[str, 
     return changed
 
 
+# Words of a name or a question, split on anything that is not a letter so
+# "Gilgeous-Alexander" is two words and "Jokic's" is "Jokic" and a stray "s".
+def _words(text: str) -> list[str]:
+    return [w for w in re.split(r"[^A-Za-z]+", text) if w]
+
+
+def _initials(name: str) -> str:
+    """ "kat" for Karl-Anthony Towns - what a question calls a player when it
+    uses neither their name nor a nickname anybody wrote down."""
+    words = _words(name)
+    return "".join(w[0] for w in words).casefold() if len(words) > 1 else ""
+
+
+def players_named_in(con: duckdb.DuckDBPyConnection, question: str) -> list[str]:
+    """Players the question itself names, in the order it names them.
+
+    The generalization of :func:`nicknames_in` from the curated table to the
+    whole roster, and the same idea: the question is the only place a name the
+    user actually typed still exists. Spans of three words down to one are
+    tried left to right, longest first, so "karl anthony towns" is read as one
+    name rather than three.
+
+    Deliberately strict about what counts as naming somebody, because this is
+    used to overrule the router. A span matches only if it is a nickname key or
+    if every word of it equals a whole word of exactly one player's name -
+    substring matching would read "What was the highest scoring game" as naming
+    Jaron Blossomgame, and word-boundary matching would read "with" as naming
+    Jeff Withey. Single words shorter than three letters are ignored for the
+    same reason: the possessive left behind by "Jokic's" is an "s", which is a
+    whole word of "John S. Williams".
+
+    .. versionadded:: 2.1.0
+    """
+    words = _words(question)
+    found: list[str] = []
+    index = 0
+    while index < len(words):
+        for size in (3, 2, 1):
+            if index + size > len(words):
+                continue
+            span = words[index : index + size]
+            nickname = PLAYER_NICKNAMES.get(" ".join(span).casefold())
+            if nickname is not None:
+                found.append(nickname)
+                index += size
+                break
+            if any(len(w) < 3 for w in span):
+                continue
+            where = " AND ".join(["list_contains(regexp_split_to_array(lower(display_name), '[^a-z]+'), ?)"] * size)
+            rows = con.execute(f"SELECT display_name FROM players WHERE {where} LIMIT 2", [w.casefold() for w in span]).fetchall()
+            if len(rows) == 1:
+                found.append(rows[0][0])
+                index += size
+                break
+        else:
+            index += 1
+    seen: list[str] = []
+    for name in found:
+        if name not in seen:
+            seen.append(name)
+    return seen
+
+
+def _grounded(con: duckdb.DuckDBPyConnection, question: str, name: str) -> bool:
+    """Whether ``question`` shows any trace of ``name`` at all.
+
+    Any one word is enough, because half a name is how a question usually
+    carries one ("Jokic", "Luka"), and the router is expected to supply the
+    other half. What this catches is a name with no half in the question at
+    all.
+
+    Four ways to leave a trace, all of them things the router legitimately does
+    to a name: the word itself, a near spelling of it (the user's typo, which
+    the router often silently corrects), a nickname, or the initials.
+    """
+    asked = _words(question)
+    lowered = {w.casefold() for w in asked}
+    if _initials(name) in lowered or name in nicknames_in(question):
+        return True
+    for word in _words(name):
+        if word.casefold() in lowered:
+            return True
+        if len(word) < 3:
+            continue  # a near spelling of a word this short is a different word
+        nearest = con.execute("SELECT list_min(list_transform(?::VARCHAR[], q -> damerau_levenshtein(lower(q), ?)))", [asked, word.casefold()]).fetchone()
+        if nearest is not None and nearest[0] is not None and nearest[0] <= _edit_budget(word):
+            return True
+    return False
+
+
+def override_invented_players(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any]) -> tuple[list[tuple[str, str]], list[str]]:
+    """Replace router-supplied player names the question does not support, or
+    report the ones that cannot be replaced. Mutates ``slots``.
+
+    :func:`override_nicknames` fixes a nickname the router rewrote wrongly.
+    This is the same failure without the nickname: asked to "compare sga and
+    embiid" the 3B router emitted ``['Shai Gilgeous-Alexander', 'Jusuf
+    Nurkic']`` and the answer was a fluent, correct-looking table of two real
+    players, one of whom the question never mentioned. Nothing downstream could
+    notice - "Jusuf Nurkic" resolves perfectly.
+
+    So every name is checked against the question before a template reads it,
+    and a name with no trace there is not answered about. Where the question
+    names somebody nothing else claims, that player takes its place; where it
+    does not, the name is reported and the caller falls through to the agent,
+    which at least reads the question. Guessing is not on the list.
+
+    Returns:
+        The ``(was, now)`` pairs replaced, and the ungrounded names that could
+        not be replaced. A non-empty second element means the slots are not
+        safe to answer from, even though the first may also be non-empty.
+
+    .. versionadded:: 2.1.0
+    """
+    slot = "players" if isinstance(slots.get("players"), list) else "player"
+    values = slots.get(slot)
+    named = [v for v in (values if isinstance(values, list) else [values]) if isinstance(v, str) and v.strip()]
+    if not named:
+        return [], []
+
+    ungrounded = [name for name in named if not _grounded(con, question, name)]
+    if not ungrounded:
+        return [], []
+
+    # Only the names nothing already accounts for are available as
+    # replacements: "compare sga and embiid" names two players, and one of them
+    # is the slot that came through fine.
+    kept = [name for name in named if name not in ungrounded]
+    spare = [name for name in players_named_in(con, question) if not any(_shares_word(name, k) for k in kept)]
+    if len(spare) != len(ungrounded):
+        return [], ungrounded
+
+    changed = []
+    replacement = dict(zip(ungrounded, spare, strict=True))
+    if slot == "players" and isinstance(values, list):
+        for i, was in enumerate(values):
+            if was in replacement:
+                values[i] = replacement[was]
+                changed.append((str(was), replacement[was]))
+    else:
+        slots[slot] = replacement[named[0]]
+        changed.append((named[0], replacement[named[0]]))
+    return changed, []
+
+
+def _shares_word(one: str, other: str) -> bool:
+    return bool({w.casefold() for w in _words(one) if len(w) >= 3} & {w.casefold() for w in _words(other) if len(w) >= 3})
+
+
 @dataclass(frozen=True)
 class Entity:
     """One resolved player or team: an opaque warehouse id and its display name."""
@@ -260,6 +409,107 @@ def clarification(text: str, candidates: list[str], kind: str = "player") -> str
     shown, extra = candidates[:MAX_CLARIFY_CANDIDATES], len(candidates) - MAX_CLARIFY_CANDIDATES
     joined = ", ".join(shown[:-1]) + f" or {shown[-1]}" + (f" ({extra} others also match)" if extra > 0 else "")
     return f"{text!r} matches more than one {kind} - did you mean {joined}?"
+
+
+# What "close enough" means, per token, when nothing matched exactly. Scaled to
+# the token's length because one edit is a different claim about "Jr" than
+# about "Antetokounmpo": a token of three letters or fewer must match a word
+# outright, and only a long one is allowed two edits. Measured against the
+# 3,101 names in ``players`` - at these budgets "Jokick" offers Nikola Jokic
+# alone (at two, also Nikola Jovic), and "asdf", "goat", "coach" and "the
+# answer" offer nothing at all.
+def _edit_budget(token: str) -> int:
+    return 0 if len(token) <= 3 else 1 if len(token) <= 6 else 2
+
+
+# The distance from one query token to the NEAREST word of a display name,
+# split on non-letters so the halves of "Gilgeous-Alexander" are two words.
+_NEAREST_WORD = "list_min(list_transform(regexp_split_to_array(display_name, '[^A-Za-z]+'), w -> damerau_levenshtein(lower(w), lower(?))))"
+
+
+def suggest_players(con: duckdb.DuckDBPyConnection, text: str) -> list[Entity]:
+    """Players ``text`` plausibly meant, when it matched none of them exactly.
+
+    Reached only after :func:`find_players` has come back empty, so it costs
+    nothing on a question that works and it replaces an answer that was going
+    to fail anyway. Two passes, in order, because they answer different
+    failures:
+
+    1. **The surname alone.** The router invents the half of a name the
+       question does not contain. Asked to "compare sga and embid" it emitted
+       ``'Jemel Embiid'`` - the surname corrected, the given name made up - and
+       since every token must match, one fabricated word buried a player the
+       warehouse holds. Dropping back to the last token is exact matching, not
+       fuzzy, and recovers Joel Embiid.
+    2. **Near spellings.** The user's own typo, which trusting the question
+       cannot fix: "embid" is not a substring of "Embiid", so ILIKE never sees
+       it. Every token must still be within :func:`_edit_budget` of some word
+       of the name, and it is that AND across tokens that keeps the answer
+       short - "Larry Bird" suggests nobody, because no Bird in the warehouse
+       has a given name near "Larry".
+
+    Suggestions are dropped entirely when there are more than
+    ``MAX_CLARIFY_CANDIDATES`` of them. A long list is not a suggestion: it
+    means the name was too common to narrow anything ("Smith" is within one
+    edit of 25 players), and the question is better off falling through than
+    reading out a directory.
+
+    Returns:
+        Closest first, at most ``MAX_CLARIFY_CANDIDATES`` of them; empty when
+        nothing is close enough to be worth naming.
+
+    .. versionadded:: 2.1.0
+    """
+    tokens = [t for t in text.split() if t]
+    if not tokens:
+        return []
+
+    if len(tokens) > 1 and len(tokens[-1]) > 2:
+        # Word-boundary matches only. find_players falls back to incidental
+        # substring hits when nothing starts with the token, which is fine for
+        # a name somebody typed and wrong for one being guessed at: backing
+        # "Nobody At All" off to "All" otherwise suggests Bo Wall.
+        start = re.compile(_WORD_START + re.escape(tokens[-1]), re.IGNORECASE)
+        kept = [player for player in find_players(con, tokens[-1]) if start.search(player.name)]
+        if kept:
+            return kept if len(kept) <= MAX_CLARIFY_CANDIDATES else []
+
+    gaps = ", ".join(f"{_NEAREST_WORD} AS gap{i}" for i in range(len(tokens)))
+    where = " AND ".join(f"gap{i} <= ?" for i in range(len(tokens)))
+    order = " + ".join(f"gap{i}" for i in range(len(tokens)))
+    rows = con.execute(
+        f"SELECT athlete_id, display_name FROM (SELECT athlete_id, display_name, {gaps} FROM players) WHERE {where} ORDER BY {order}, display_name LIMIT {MAX_CLARIFY_CANDIDATES + 1}",
+        [*tokens, *(_edit_budget(t) for t in tokens)],
+    ).fetchall()
+    return [] if len(rows) > MAX_CLARIFY_CANDIDATES else [Entity(id=str(r[0]), name=r[1]) for r in rows]
+
+
+def no_match(con: duckdb.DuckDBPyConnection, text: str, kind: str = "player") -> str:
+    """The sentence for a name nothing matched, naming near misses when there
+    are any.
+
+    The counterpart to :func:`clarification`, and here for the same reason:
+    four entry points reach a name that matched nothing, and a person asking
+    the same question twice should not get two different sentences depending on
+    which one answered it.
+
+    .. versionadded:: 2.1.0
+    """
+    return suggestion(text, [player.name for player in suggest_players(con, text)], kind)
+
+
+def suggestion(text: str, candidates: list[str], kind: str = "player") -> str:
+    """The sentence itself, given names :func:`suggest_players` already found.
+
+    Split from :func:`no_match` for the one caller that has the candidates in
+    hand and would otherwise search for them twice.
+
+    .. versionadded:: 2.1.0
+    """
+    if not candidates:
+        return f"No {kind} found matching {text!r}."
+    joined = (", ".join(candidates[:-1]) + " or " if len(candidates) > 1 else "") + candidates[-1]
+    return f"No {kind} found matching {text!r} - did you mean {joined}?"
 
 
 @dataclass(frozen=True)

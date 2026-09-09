@@ -331,3 +331,32 @@ def test_an_ordinary_foul_question_is_not_rewritten() -> None:
     with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"leaderboard","stat":"fouls"}')):
         got = route("m", "who commits the most fouls?")
     assert got is not None and got.intent == "leaderboard" and "threshold" not in got.slots
+
+
+def _compare(question: str, payload: str = '{"intent":"player_compare","stat":"points","players":["Shai Gilgeous-Alexander","Joel Embiid"]}') -> Route:
+    with patch("association.query.router.ollama.chat", return_value=_reply(payload)):
+        got = route("m", question)
+    assert got is not None
+    return got
+
+
+def test_a_comparison_that_named_no_stat_does_not_keep_one() -> None:
+    """`stat` is required, so the decoder fills it whether or not the question
+    named a stat - "compare sga and embiid" comes back with stat='points' 12
+    times out of 12. Left in place it collapses the whole line player_compare
+    exists to show back to one average."""
+    assert "stat" not in _compare("compare sga and embiid").slots
+
+
+def test_a_comparison_that_did_name_a_stat_keeps_it() -> None:
+    """ "who scores more" is a question about scoring, and narrowing to it is
+    the behavior that must survive."""
+    assert _compare("who scores more, sga or embiid?").slots["stat"] == "points"
+    assert _compare("compare sga and embiid on rebounding").slots["stat"] == "points"
+
+
+def test_only_a_comparison_drops_an_unasked_stat() -> None:
+    """`leaderboard` has nothing to rank by without it, and no question phrases
+    every metric it means."""
+    got = _compare("who led the league last season?", '{"intent":"leaderboard","stat":"points"}')
+    assert got.slots["stat"] == "points"

@@ -23,7 +23,7 @@ from association.season import current_season
 
 from .answer import Artifact
 from .court import HOOP_X, HOOP_Y
-from .entities import Ambiguous, Entity, clarification, resolve_player, resolve_team
+from .entities import Ambiguous, Entity, clarification, no_match, resolve_player, resolve_team, suggest_players, suggestion
 from .fingerprint import FINGERPRINT_AVAILABILITY, FINGERPRINT_VIEWS, FingerprintUnavailable, render_for_players
 from .leaderboard import LeaderboardError, resolve_metric, run_leaderboard
 from .metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS
@@ -272,6 +272,13 @@ def _resolved_player(con: duckdb.DuckDBPyConnection, text: Any, missing: str = "
         case Ambiguous(candidates=candidates):
             return _clarify(text, candidates)
         case _:
+            # A near miss is answered rather than passed along, for the same
+            # reason ambiguity is: the agent would resolve the same name
+            # against the same table, and a name nothing matches is a fact,
+            # not a shape this template happens not to cover.
+            near = [player.name for player in suggest_players(con, text)]
+            if near:
+                return TemplateResult(data={"unmatched": text, "suggestions": near}, answer=suggestion(text, near))
             raise TemplateUnsupported(f"no player matching {text!r}")
 
 
@@ -1070,7 +1077,7 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     # candidate played.
     resolved = resolve_chart_player(ctx.con, name, SHOT_AVAILABILITY, season)
     if resolved is None:
-        message = f"No player found matching {name!r}."
+        message = no_match(ctx.con, name)
         return TemplateResult(data={"message": message}, answer=message)
     if isinstance(resolved, Ambiguous):
         return _clarify(name, resolved.candidates)
@@ -1144,7 +1151,7 @@ def fingerprint(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     for name in names:
         found = resolve_chart_player(ctx.con, name, FINGERPRINT_AVAILABILITY, season)
         if found is None:
-            message = f"No player found matching {name!r}."
+            message = no_match(ctx.con, name)
             return TemplateResult(data={"message": message}, answer=message)
         if isinstance(found, Ambiguous):
             return _clarify(name, found.candidates)

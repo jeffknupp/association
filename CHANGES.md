@@ -15,6 +15,50 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A comparison that named no stat shows the whole line again.** `stat` is the
+  one required slot in `ROUTER_SCHEMA`, so the model fills it on every question
+  whether the question named a stat or not: "compare sga and embiid" came back
+  with `stat='points'` 12 times out of 12, which narrowed the comparison to a
+  single average and quietly undid the wider default. `route()` now drops an
+  unasked `stat` for `player_compare` alone - the same "read it from the
+  question" fix `_validate_side` makes, and safe to keep loose because a word
+  it misses only widens a comparison, while `leaderboard` would have nothing
+  left to rank by.
+
+- **A player the question never mentions is no longer answered about.** Asked
+  to "compare sga and embiid", the 3B router returned
+  `['Shai Gilgeous-Alexander', 'Jusuf Nurkic']` and the answer was a fluent,
+  correct-looking table of two real players, one of whom the question never
+  named. Nothing downstream could notice: "Jusuf Nurkic" resolves perfectly, so
+  every check after the router passed.
+
+  `entities.override_invented_players` now checks each router-supplied name
+  against the question before a template reads it, the same way
+  `override_nicknames` already checked nicknames. A name leaves a trace in four
+  ways, all of them things the router legitimately does - the word itself, a
+  near spelling of it, a nickname, or the initials ("KAT", "SGA") - and a name
+  with none of them is not answered about. Where the question names somebody
+  nothing else accounts for, that player takes its place; where it does not,
+  the question falls through to the agent, which at least reads it. Measured
+  over the whole `check_routing.py` corpus, no correctly-routed player slot
+  moves, and the check costs 0.08ms a question.
+
+- **A name nothing matches says what it might have meant.** The other half of
+  the same failure: "compare sga and embid" routed to `'Jemel Embiid'` - the
+  surname corrected, the given name invented - and since every token must
+  match, one fabricated word buried a player the warehouse holds. That fell
+  through to the agent, which resolves the same name against the same table.
+
+  `entities.suggest_players` now backs a multi-word name off to its surname
+  (exact matching on one fewer token, not fuzzy) and then, failing that, looks
+  for near spellings of every token - which is what reaches the user's own
+  typo, since "embid" is not a substring of "Embiid" and no amount of trusting
+  the question finds it. The four places that reported "No player found
+  matching X" share one sentence through `entities.no_match`, and
+  `player_compare` answers with it rather than falling through. A suggestion
+  naming more than five players is dropped: that is a directory, not a
+  suggestion.
+
 - **A player comparison shows the whole line, and the NetPoints summary with
   it.** "Compare Luka and SGA" answered with games, points, rebounds and
   assists - the same three-stat default `player_stat` uses. But the two

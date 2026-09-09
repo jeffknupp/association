@@ -13,7 +13,7 @@ from typing import Any
 import ollama
 
 from .answer import Answer, AnsweredBy, Artifact, Timing
-from .entities import override_nicknames
+from .entities import override_invented_players, override_nicknames
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .keepalive import KEEP_ALIVE
 from .models import DEFAULT_ROUTER_MODEL
@@ -200,6 +200,15 @@ class Agent:
         handler = TEMPLATES.get(routed.intent)
         history.log(f"  -> (router) intent={routed.intent!r} slots={routed.slots}" + ("" if handler else " - not ported yet, falling through"))
         if handler is None:
+            return None
+        # The router invents whole names, not only nicknames: "compare sga and
+        # embiid" came back with Jusuf Nurkic in the second slot, and every
+        # stage after this one would have answered about him perfectly.
+        grounded, invented = override_invented_players(self.toolbox.con, question, routed.slots)
+        for was, now in grounded:
+            history.log(f"  -> (player) {was!r} -> {now!r} (from the question, overriding the router)")
+        if invented:
+            history.log(f"  -> (player) {', '.join(repr(name) for name in invented)} appears nowhere in the question - falling through to the agent")
             return None
         t0 = time.monotonic()
         try:
