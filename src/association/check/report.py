@@ -62,30 +62,30 @@ def discover_season_types(data_dir: Path) -> list[int]:
     return sorted(types)
 
 
-def _local_count(con: duckdb.DuckDBPyConnection, table_dir: Path, season: int, season_type: int | None = None) -> int:
+def _counts_by(con: duckdb.DuckDBPyConnection, table_dir: Path, *keys: str) -> dict[tuple[object, ...], int]:
+    """Row counts for a whole table at once, keyed by ``keys``.
+
+    One scan per table, not one per cell of the report. Each of these trees is
+    read in full whichever way it is counted - the files are laid out under
+    ``season=X/season_type=Y`` directories but are read raw, not hive
+    partitioned (see the note in ``fetch.warehouse``), so a ``WHERE season =
+    ...`` prunes no files and saves no I/O. Counting each season/season_type
+    with its own filtered query therefore re-read all 40,558 ``games`` files
+    once per row of the report: 74 scans at 3.2s each, where the single grouped
+    scan they collapse into takes 3.0s.
+
+    Missing keys are absent rather than zero; callers use ``.get(key, 0)``, so
+    a season with no rows reports 0 exactly as it did when it was its own
+    query returning no matches.
+    """
     if not table_dir.exists() or not any(table_dir.rglob("*.parquet")):
-        return 0
-    where = f"season = {season}"
-    if season_type is not None:
-        where += f" AND season_type = {season_type}"
+        return {}
     glob = str(table_dir / "**" / "*.parquet")
-    row = con.execute(f"SELECT count(*) FROM read_parquet(?, union_by_name=true) WHERE {where}", [glob]).fetchone()
-    assert row is not None  # COUNT(*) always returns exactly one row
-    return row[0]
-
-
-def _net_points_player_count(con: duckdb.DuckDBPyConnection, data_dir: Path, season: int, season_type: int) -> int:
-    label = NET_POINTS_TYPE_LABEL.get(season_type)
-    table_dir = data_dir / "net_points_player"
-    if label is None or not table_dir.exists() or not any(table_dir.rglob("*.parquet")):
-        return 0
-    glob = str(table_dir / "**" / "*.parquet")
-    row = con.execute(
-        "SELECT count(*) FROM read_parquet(?, union_by_name=true) WHERE season = ? AND net_points_season_type = ?",
-        [glob, season, label],
-    ).fetchone()
-    assert row is not None  # COUNT(*) always returns exactly one row
-    return row[0]
+    # Interpolated, not bound: these are column names, and every one of them is
+    # a literal in the caller below, never anything read off disk or the CLI.
+    cols = ", ".join(keys)
+    rows = con.execute(f"SELECT {cols}, count(*) FROM read_parquet(?, union_by_name=true) GROUP BY {cols}", [glob]).fetchall()
+    return {tuple(r[:-1]): r[-1] for r in rows}
 
 
 def _resolved_count(data_dir: Path, season: int, season_type: int) -> int:
@@ -128,6 +128,19 @@ def run_check(
     pipeline = Pipeline(client, data_dir)
     team_ids = pipeline.team_ids() if live else []
 
+    # Counted up front, one scan per table, and indexed into per row below.
+    # standings and team_power_index are per-season only - they carry no
+    # season_type column at all, so grouping by one would not bind.
+    # net_points_player keys off its own string label rather than the numeric
+    # 2/3 the rest of these use (see NET_POINTS_TYPE_LABEL).
+    std_counts = _counts_by(con, data_dir / "standings", "season")
+    bpi_counts = _counts_by(con, data_dir / "team_power_index", "season")
+    games_counts = _counts_by(con, data_dir / "games", "season", "season_type")
+    tss_counts = _counts_by(con, data_dir / "team_season_stats", "season", "season_type")
+    shot_counts = _counts_by(con, data_dir / "shot_chart", "season", "season_type")
+    np_daily_counts = _counts_by(con, data_dir / "net_points_player_game", "season", "season_type")
+    np_counts = _counts_by(con, data_dir / "net_points_player", "season", "net_points_season_type")
+
     cols = ["season", "type", "complete", "games (have/expected)", "standings", "team_stats", "bpi", "players", "shots", "net_pts", "np_gm"]
     widths = [6, 10, 8, 23, 9, 10, 4, 7, 8, 7, 6]
     print(" ".join(c.rjust(w) for c, w in zip(cols, widths, strict=True)))
@@ -137,14 +150,14 @@ def run_check(
     any_net_points = False
     any_net_points_daily = False
     for season in seasons:
-        std_count = _local_count(con, data_dir / "standings", season)
-        bpi_count = _local_count(con, data_dir / "team_power_index", season)
+        std_count = std_counts.get((season,), 0)
+        bpi_count = bpi_counts.get((season,), 0)
         for season_type in season_types:
             marker = data_dir / "_complete" / f"season={season}" / f"season_type={season_type}.marker"
             is_cached_complete = marker.exists()
             complete = "yes" if is_cached_complete else "no"
 
-            have_games = _local_count(con, data_dir / "games", season, season_type)
+            have_games = games_counts.get((season, season_type), 0)
             resolved = _resolved_count(data_dir, season, season_type)
             have = have_games + resolved  # played + confirmed-never-played both count as "accounted for"
 
@@ -159,13 +172,14 @@ def run_check(
             else:
                 games_str = f"{have}/?"
 
-            tss_count = _local_count(con, data_dir / "team_season_stats", season, season_type)
+            tss_count = tss_counts.get((season, season_type), 0)
             players = len(pipeline.athlete_ids_for(season, season_type))
-            shots = _local_count(con, data_dir / "shot_chart", season, season_type)
-            net_pts = _net_points_player_count(con, data_dir, season, season_type)
+            shots = shot_counts.get((season, season_type), 0)
+            label = NET_POINTS_TYPE_LABEL.get(season_type)
+            net_pts = np_counts.get((season, label), 0) if label is not None else 0
             if season_type in NET_POINTS_TYPE_LABEL:
                 any_net_points = True
-            net_pts_daily = _local_count(con, data_dir / "net_points_player_game", season, season_type)
+            net_pts_daily = np_daily_counts.get((season, season_type), 0)
             if net_pts_daily:
                 any_net_points_daily = True
 

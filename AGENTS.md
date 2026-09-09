@@ -182,6 +182,15 @@ file that then got renamed into place looking perfectly normal. `--rate-limit`
 still bounds the request rate across all workers; raising it alone does nothing,
 because the limiter never had to sleep in the first place.
 
+**Filtering a read by season prunes no files.** The trees are laid out under
+`season=X/season_type=Y` directories but read raw, not hive partitioned (the
+reason is in the comment above `TABLES` — the directory names would collide
+with the embedded columns), so `WHERE season = 2024` over `read_parquet` is a
+filter applied *after* reading all 40,558 `games` files, not a way to read
+fewer. `data check` counted one season/season_type per query on that
+assumption and took 7.5 minutes for what one grouped scan does in 3 seconds.
+Count once and group; do not filter in a loop.
+
 **A full `warehouse.build()` is memory-hungry.** It needs
 `preserve_insertion_order=false` (set in `_tune`); without it, loading `plays`
 from 17,500 files dies at 12.4 GiB. Each table is its own statement, so an OOM

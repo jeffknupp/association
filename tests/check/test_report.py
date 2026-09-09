@@ -8,6 +8,7 @@ complete by `pull`.
 """
 
 from pathlib import Path
+from typing import Any
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -145,3 +146,57 @@ def test_run_check_reports_net_points_daily_count(tmp_path: Path, capsys: pytest
     assert lines[0].split()[-1] == "2"
     assert "np_gm" in out
     assert "net_points_player_game" in out
+
+
+def test_run_check_scans_each_table_once_regardless_of_how_many_seasons(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression: the counts were gathered with one filtered query per cell of
+    the report, and none of these trees is hive partitioned, so `WHERE season =
+    ...` pruned no files - every query re-read the whole table. A full check
+    scanned all 40,558 `games` files once per row and took 454s; it now takes
+    16.6s and prints the identical table.
+
+    Counted at the connection rather than at the helper, so this measures the
+    scans actually issued rather than that a particular helper was called - the
+    old shape passes any test written against the new one's name.
+
+    Asserted as "does not grow with the report" rather than as a fixed number:
+    the per-cell scan is what made this quadratic, and a fixed number would
+    need updating for every column added.
+    """
+    for season in (2021, 2022, 2023, 2024):
+        for season_type in (2, 3):
+            _write(
+                tmp_path / "games" / f"season={season}" / f"season_type={season_type}" / "event_1.parquet",
+                [{"season": season, "season_type": season_type, "event_id": "1"}],
+            )
+
+    def count_scans(seasons: list[int], season_types: list[int]) -> int:
+        scans = 0
+        real_connect = report.duckdb.connect
+
+        class CountingConnection:
+            """A proxy, not a monkeypatched attribute: DuckDBPyConnection is a C
+            type and does not accept one."""
+
+            def __init__(self, con: Any) -> None:
+                self._con = con
+
+            def execute(self, sql: str, *a: Any, **kw: Any) -> Any:
+                nonlocal scans
+                if "read_parquet" in sql:
+                    scans += 1
+                return self._con.execute(sql, *a, **kw)
+
+            def __getattr__(self, name: str) -> Any:
+                return getattr(self._con, name)
+
+        monkeypatch.setattr(report.duckdb, "connect", lambda *a, **kw: CountingConnection(real_connect(*a, **kw)))
+        report.run_check(tmp_path, seasons=seasons, season_types=season_types, live=False)
+        monkeypatch.undo()
+        return scans
+
+    one_cell = count_scans([2024], [2])
+    eight_cells = count_scans([2021, 2022, 2023, 2024], [2, 3])
+
+    assert one_cell > 0  # the fixture really is being scanned
+    assert eight_cells == one_cell

@@ -15,6 +15,14 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **`association data check` takes 17 seconds instead of 7.5 minutes.** It
+  gathered every count with its own filtered query - one per cell of the
+  report - and none of these Parquet trees is hive partitioned, so `WHERE
+  season = ...` pruned no files and each query re-read the table in full. With
+  37 seasons and 2 season types that was 74 scans of all 40,558 `games` files
+  (238s) and 74 more of `shot_chart` (160s), 87% of the runtime between them.
+  Each table is now counted once, grouped by season and season type, and the
+  report indexes into that. The printed table is unchanged, byte for byte.
 - **`data load` no longer runs out of memory building the warehouse.** A full
   build was killed by the OOM killer partway through, leaving the tables it had
   already replaced and the rest at their old contents. The cause was DuckDB's
