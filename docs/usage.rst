@@ -96,6 +96,29 @@ endpoints (standings, season stats, power index) are treated as live and
 refreshed while the season is in progress, so per-game averages do not go
 stale.
 
+Re-running a pull over seasons that are already complete costs a handful of
+:func:`os.stat` calls and nothing else — no requests, and no warehouse rebuild:
+
+.. code-block:: console
+
+   $ time association data pull --seasons 2024
+   NetPoints already on disk for 2024 - skipping
+   season 2024 type 2 already complete - skipping
+   season 2024 type 3 already complete - skipping
+   nothing fetched - warehouse left as it is (use `association data load` to rebuild it anyway)
+   real 0m0.477s
+
+Two things make that true. A pull only fetches NetPoints for the seasons it was
+asked for — the source is one league-wide file covering every season, so a pull
+of 2024 used to download and reparse all of it and rewrite the *current*
+season's file as a side effect. And the warehouse is reloaded only for the
+tables the run actually wrote: a full rebuild rescans the entire Parquet tree,
+which on a mature warehouse is over a hundred thousand files.
+
+The consequence worth knowing: NetPoints for a season you have not pulled will
+not appear by pulling a different one. Pull the range you want
+(``--seasons 2019-2026``), or ``association data load`` after the fact.
+
 Asking questions
 ----------------
 

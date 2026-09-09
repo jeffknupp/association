@@ -23,6 +23,44 @@ had no published version to be compatible with.
   say to install from a release tag until PyPI is reachable again; both notes
   are written to be deleted in one commit when it is.
 
+## Unreleased
+- **A pull over completed seasons is instant again.** `association data pull
+  --seasons 2024` on a season already on disk took over a minute and ended in
+  an out-of-memory crash; it now takes 0.5s and makes no network request.
+
+  Three separate causes, each fixed:
+
+  - **NetPoints was fetched on every run, for every season.** The source is one
+    league-wide flat file, so there was no per-season request to skip - but
+    there was the whole download to skip, and there was no reason to rewrite
+    2026's file during a pull of 2024. `fetch_net_points` now takes the seasons
+    being pulled, writes only those, and skips the download entirely when each
+    of them is finished and already on disk. Seasons before 2019 are skipped
+    outright: NetPoints does not go back further, and the bucket answers 403.
+  - **The warehouse was rebuilt in full after every pull**, including one that
+    fetched nothing. `Pipeline` now records which tables it wrote and the CLI
+    reloads only those; a run that wrote nothing rebuilds nothing. A warehouse
+    that does not exist yet is still built in full.
+  - **A full rebuild ran out of memory.** Loading `plays` from 17,500 Parquet
+    files died with "could not allocate block of size 32.0 KiB (12.4 GiB/12.4
+    GiB used)", and since each table is its own statement, the build aborted
+    with the earlier tables already replaced and the rest left at their old
+    contents. The build connection now sets `preserve_insertion_order=false`,
+    which lets DuckDB stream the scan; row order carries no meaning in any of
+    these tables. A full `data load` of 8.0M plays, 4.2M win-probability rows
+    and 3.7M shots now completes in about 85 seconds.
+
+  The behavior change to know about: a pull no longer backfills NetPoints for
+  seasons it was not asked for. Pull the range you want, or run `data load`.
+- **The stat glossary no longer shrinks with every partial pull.** It was
+  written from only the endpoints a given run fetched, replacing whatever was
+  on disk - so a current-season pull cut it from 140 keys to 94, dropping the
+  box-score entries nothing was going to re-derive. It now merges with the file
+  on disk, prefers freshly fetched descriptions, and does not rewrite an
+  unchanged file (which would otherwise rebuild a warehouse table on every
+  pull). Pre-existing, and invisible until the rebuild became conditional on
+  what a run actually wrote.
+
 ## 1.4.0 - 2026-09-08
 - **The agent can render fingerprints too.** `render_fingerprint` is now a tool
   the fall-through agent can call, not only a fast-path template, so a question

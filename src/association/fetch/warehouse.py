@@ -73,6 +73,7 @@ def build(data_dir: Path, db_path: Path, tables: list[str] | None = None) -> Non
     data_dir = Path(data_dir)
     con = duckdb.connect(str(db_path))
     try:
+        _tune(con)
         _build_macros(con)
         for table in target_tables:
             table_dir = data_dir / table
@@ -95,6 +96,21 @@ def build(data_dir: Path, db_path: Path, tables: list[str] | None = None) -> Non
         _build_views(con, existing)
     finally:
         con.close()
+
+
+def _tune(con: duckdb.DuckDBPyConnection) -> None:
+    """Settings a full rebuild needs to survive.
+
+    ``preserve_insertion_order=false`` lets DuckDB stream a large scan instead
+    of buffering it in the order the files happened to be read. Without it,
+    loading `plays` from 17,500 Parquet files died with "could not allocate
+    block of size 32.0 KiB (12.4 GiB/12.4 GiB used)" - and because each table
+    is its own statement, the rebuild aborted with the earlier tables already
+    replaced and the rest silently left at their old contents. Row order in
+    these tables carries no meaning: every one of them has its own keys and
+    every query orders explicitly.
+    """
+    con.execute("SET preserve_insertion_order=false")
 
 
 def _build_macros(con: duckdb.DuckDBPyConnection) -> None:

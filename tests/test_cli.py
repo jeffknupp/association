@@ -206,3 +206,54 @@ def test_dunder_version_matches_installed_metadata() -> None:
     import association
 
     assert association.__version__ == version("association")
+
+
+# ---------------- which tables a pull rebuilds ----------------
+
+
+class _WrittenPipeline:
+    """A Pipeline stand-in that reports having written a fixed set of tables."""
+
+    written: set[str] = set()
+
+    def __init__(self, client: object, data_dir: object, **kwargs: Any) -> None:
+        pass
+
+    def run(self, seasons: list[int], season_types: list[int]) -> None:
+        pass
+
+
+def _pull_with(monkeypatch: pytest.MonkeyPatch, written: set[str], db_exists: bool) -> list[Any]:
+    """Run `data pull` with a faked pipeline and warehouse; return build calls."""
+    build_calls: list[Any] = []
+
+    pipeline_class = type("Pipeline", (_WrittenPipeline,), {"written": written})
+    monkeypatch.setattr("association.fetch.pipeline.Pipeline", pipeline_class)
+    monkeypatch.setattr("association.fetch.client.ESPNClient", lambda **k: object())
+    monkeypatch.setattr("association.fetch.warehouse.build", lambda *a, **k: build_calls.append((a, k)))
+    monkeypatch.setattr("pathlib.Path.exists", lambda self: db_exists)
+
+    result = CliRunner().invoke(data_pull, ["--seasons", "2024"])
+    assert result.exit_code == 0, result.output
+    return build_calls
+
+
+def test_a_pull_that_fetched_nothing_does_not_rebuild_the_warehouse(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The reason `data pull` on a finished season took over a minute: the
+    rebuild rescans the whole Parquet tree - 126,000 files here - and it ran
+    unconditionally, including after a run that fetched nothing at all."""
+    assert _pull_with(monkeypatch, written=set(), db_exists=True) == []
+
+
+def test_a_pull_rebuilds_only_the_tables_it_wrote(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _pull_with(monkeypatch, written={"games", "player_box_stats"}, db_exists=True)
+    assert len(calls) == 1
+    assert calls[0][1]["tables"] == ["games", "player_box_stats"]
+
+
+def test_a_missing_warehouse_is_built_in_full_however_little_was_fetched(monkeypatch: pytest.MonkeyPatch) -> None:
+    """There is nothing for a subset to be a subset of - and the Parquet on
+    disk may be from an earlier or interrupted run."""
+    calls = _pull_with(monkeypatch, written={"games"}, db_exists=False)
+    assert len(calls) == 1
+    assert calls[0][1].get("tables") is None

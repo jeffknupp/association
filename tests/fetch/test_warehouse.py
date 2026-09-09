@@ -1,6 +1,7 @@
 """Regression + sanity tests for the DuckDB warehouse builder."""
 
 from pathlib import Path
+from typing import Any
 
 import duckdb
 import pyarrow as pa
@@ -361,3 +362,32 @@ def test_build_loads_net_points_daily_tables(tmp_path: Path) -> None:
     con.close()
     assert player_row == (3.0,)
     assert team_row == (1.0,)
+
+
+def test_build_loads_through_a_connection_that_does_not_preserve_insertion_order(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A full rebuild of `plays` from 17,500 Parquet files died with "could not
+    allocate block of size 32.0 KiB (12.4 GiB/12.4 GiB used)" until this was
+    turned off - and because each table is its own statement, the rebuild
+    aborted with the earlier tables already replaced and the rest left at their
+    old contents. Row order carries no meaning in any of these tables.
+
+    Asserted on the connection `build` itself loads through: the setting is
+    per-session, so a fresh connection opened afterwards would report the
+    default no matter what the build did.
+    """
+    data_dir = tmp_path / "parquet"
+    d = data_dir / "teams"
+    d.mkdir(parents=True)
+    pq.write_table(pa.Table.from_pylist([{"team_id": "1", "abbreviation": "BOS"}]), d / "teams.parquet")
+
+    seen: list[Any] = []
+    real_tune = warehouse._tune
+
+    def spy(con: duckdb.DuckDBPyConnection) -> None:
+        real_tune(con)
+        seen.append(con.execute("SELECT current_setting('preserve_insertion_order')").fetchone())
+
+    monkeypatch.setattr(warehouse, "_tune", spy)
+    warehouse.build(data_dir, tmp_path / "w.duckdb")
+
+    assert seen == [(False,)]

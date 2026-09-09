@@ -16,6 +16,8 @@ from association import __version__
 # into CLI startup - unlike the Agent import, which stays lazy below.
 from association.query.models import DEFAULT_MODEL, DEFAULT_ROUTER_MODEL
 
+log: logging.Logger = logging.getLogger("association.cli")
+
 DEFAULT_DATA_DIR = "./data/parquet"
 DEFAULT_DB_PATH = "./nba.duckdb"
 DEFAULT_OUT_DIR = "./query_output"
@@ -191,7 +193,30 @@ def data_pull(
     pipeline.run(parsed_seasons, parsed_season_types)
 
     if not fetch_only:
-        warehouse.build(data_dir_path, db_path_path)
+        _rebuild_changed(warehouse, data_dir_path, db_path_path, pipeline.written)
+
+
+def _rebuild_changed(warehouse: Any, data_dir: Path, db_path: Path, written: set[str]) -> None:
+    """Reload only the tables this pull actually wrote.
+
+    A full rebuild rescans the whole Parquet tree - 126,000 files and minutes
+    of work on a mature warehouse - so doing it after a pull that fetched
+    nothing is the single reason `data pull` on a finished season was slow.
+    A run that wrote nothing needs no rebuild at all.
+
+    A warehouse that does not exist yet is built in full regardless: the
+    Parquet on disk may be from earlier runs (or an interrupted one), and there
+    would be nothing for a subset to be a subset OF.
+    """
+    if not db_path.exists():
+        log.info("no warehouse at %s yet - building every table", db_path)
+        warehouse.build(data_dir, db_path)
+        return
+    if not written:
+        log.info("nothing fetched - warehouse left as it is (use `association data load` to rebuild it anyway)")
+        return
+    log.info("rebuilding changed tables: %s", ", ".join(sorted(written)))
+    warehouse.build(data_dir, db_path, tables=sorted(written))
 
 
 @data.command("load")

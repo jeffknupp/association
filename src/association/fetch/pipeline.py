@@ -25,6 +25,16 @@ from .netpoints_client import NetPointsDailyClient
 
 log: logging.Logger = logging.getLogger("association.fetch.pipeline")
 
+NET_POINTS_FIRST_SEASON = 2019
+"""Earliest season espnanalytics.com's NetPoints covers (the 2018-19 season).
+
+Anything older is not missing data to be fetched later - it does not exist, and
+the bucket answers 403 for it. Used to decide whether a pull needs the NetPoints
+files at all.
+
+.. versionadded:: 1.5.0
+"""
+
 
 class JsonFetcher(Protocol):
     """What the pipeline needs from an HTTP client: one method.
@@ -73,6 +83,15 @@ class Pipeline:
         self.force = force
         self.glossary: dict[str, dict[str, Any]] = {}
         self._net_points_daily_client: DailyNetPointsFetcher | None = None
+        self.written: set[str] = set()
+        """Warehouse tables this run actually wrote a Parquet file for.
+
+        The warehouse is rebuilt per table from the whole Parquet tree, which
+        for this dataset means rescanning 126,000 files and several minutes -
+        so a run that fetched nothing must be able to say so and skip it. Every
+        write goes through :meth:`_write_rows`, which records the table here,
+        rather than calling ``storage`` directly.
+        """
 
     @property
     def _live_client(self) -> JsonFetcher:
@@ -89,6 +108,26 @@ class Pipeline:
     def _exists(self, path: Path) -> bool:
         return storage.exists(path) and not self.force
 
+    def _write_rows(self, path: Path, rows: list[dict[str, Any]]) -> None:
+        """Write rows and record which table they belong to.
+
+        The table name is the first path component under the root, which is how
+        the Parquet tree is laid out and how warehouse.build globs it - deriving
+        it here rather than passing it in means a new fetch method cannot forget
+        to declare what it wrote, and a stale warehouse is invisible until
+        someone queries it and gets an old answer.
+        """
+        if not rows:
+            # storage.write_rows writes nothing for an empty list, so recording
+            # the table would schedule a rebuild for a file that never appeared.
+            return
+        storage.write_rows(path, rows)
+        self.written.add(path.relative_to(self.root).parts[0])
+
+    def _write_row(self, path: Path, row: dict[str, Any]) -> None:
+        """One-record counterpart to :meth:`_write_rows`."""
+        self._write_rows(path, [row])
+
     def _add_glossary(self, rows: list[dict]) -> None:
         for r in rows:
             key = r.get("stat_key")
@@ -104,7 +143,7 @@ class Pipeline:
             return
         data = self._live_client.get_json(endpoints.teams_url(), params={"limit": 50})
         rows = parse.parse_teams(data)
-        storage.write_rows(path, rows)
+        self._write_rows(path, rows)
 
     def team_ids(self) -> list[str]:
         """Every team id, read back from the teams file on disk."""
@@ -165,8 +204,8 @@ class Pipeline:
             # else: still pending (future/in-progress) - don't checkpoint, retry next run.
             return
 
-        storage.write_row(game_path, game_row)
-        storage.write_rows(
+        self._write_row(game_path, game_row)
+        self._write_rows(
             self._p(
                 "player_box_stats",
                 f"season={season}",
@@ -175,20 +214,20 @@ class Pipeline:
             ),
             parsed["player_box"],
         )
-        storage.write_rows(
+        self._write_rows(
             self._p("team_box_stats", f"season={season}", f"season_type={season_type}", f"event_{event_id}.parquet"),
             parsed["team_box"],
         )
         if self.include_pbp:
-            storage.write_rows(
+            self._write_rows(
                 self._p("plays", f"season={season}", f"season_type={season_type}", f"event_{event_id}.parquet"),
                 parsed["plays"],
             )
-            storage.write_rows(
+            self._write_rows(
                 self._p("shot_chart", f"season={season}", f"season_type={season_type}", f"event_{event_id}.parquet"),
                 parsed["shot_chart"],
             )
-            storage.write_rows(
+            self._write_rows(
                 self._p(
                     "win_probability",
                     f"season={season}",
@@ -205,7 +244,7 @@ class Pipeline:
         path = self._p("players", f"athlete_{athlete_id}.parquet")
         if storage.exists(path):
             return
-        storage.write_row(path, bio)
+        self._write_row(path, bio)
 
     def _resolved_marker(self, season: int, season_type: int, event_id: str) -> Path:
         return self._p("_resolved", f"season={season}", f"season_type={season_type}", f"event_{event_id}.marker")
@@ -246,7 +285,7 @@ class Pipeline:
         data = self._live_client.get_json(endpoints.player_career_stats_url(athlete_id), params={"seasontype": season_type})
         rows, glossary = parse.parse_player_career_stats(data, athlete_id, season_type)
         self._add_glossary(glossary)
-        storage.write_rows(path, rows)
+        self._write_rows(path, rows)
 
     # ---------------- team season stats ----------------
     def fetch_team_season_stats(self, season: int, season_type: int, team_id: str, force_refresh: bool = False) -> None:
@@ -266,7 +305,7 @@ class Pipeline:
         row, glossary = parse.parse_team_season_stats(data, season, season_type, team_id)
         self._add_glossary(glossary)
         if row:
-            storage.write_row(path, row)
+            self._write_row(path, row)
 
     # ---------------- standings ----------------
     def fetch_standings(self, season: int) -> None:
@@ -284,7 +323,7 @@ class Pipeline:
         data = self._live_client.get_json(endpoints.standings_url(), params={"season": season})
         rows, glossary = parse.parse_standings(data, season)
         self._add_glossary(glossary)
-        storage.write_rows(path, rows)
+        self._write_rows(path, rows)
 
     # ---------------- power index (BPI) ----------------
     def fetch_power_index(self, season: int) -> None:
@@ -296,17 +335,60 @@ class Pipeline:
         data = self._live_client.get_json(endpoints.power_index_url(season))
         rows, glossary = parse.parse_power_index(data)
         self._add_glossary(glossary)
-        storage.write_rows(path, rows)
+        self._write_rows(path, rows)
 
     # ---------------- NetPoints (espnanalytics.com) ----------------
-    def fetch_net_points(self) -> None:
-        """Both NetPoints files are single flat downloads (not parameterized by
-        season/team), so there's no per-unit network call to skip the way there
-        is for games/player-stats - always fetch, but only overwrite a
-        season(+type) file that's either not already on disk or still the
-        current season (values shift daily while a season is in progress -
-        same reasoning as fetch_standings/fetch_power_index above; respects
-        --force same as everywhere else)."""
+    def _net_points_wanted(self, seasons: list[int]) -> set[int]:
+        """The requested seasons NetPoints could have data for at all."""
+        return {season for season in seasons if season >= NET_POINTS_FIRST_SEASON}
+
+    def _net_points_needed(self, seasons: list[int]) -> bool:
+        """Whether the NetPoints flat files are worth downloading this run.
+
+        They are single league-wide downloads covering every season at once, so
+        there is no per-season request to skip - the choice is to fetch all of
+        it or none. Previously it was always fetched, which meant a pull of one
+        finished season still spent a download, a parse of every season's rows,
+        and a rewrite of the CURRENT season's files - and that rewrite then
+        made the warehouse rebuild non-empty, turning an "everything is already
+        complete" run into a multi-minute one.
+
+        Fetch when any requested season is the current one (values shift daily
+        while it is in progress) or has no player file yet. A finished season
+        already on disk needs nothing.
+        """
+        wanted = self._net_points_wanted(seasons)
+        if not wanted:
+            return False
+        if self.force:
+            return True
+        # Only the player file is checked. The team feed carries the current
+        # season alone, so requiring a file per season there would make this
+        # true forever for every historical season.
+        return any(season >= current_season() or not any(self._p("net_points_player", f"season={season}").glob("*.parquet")) for season in wanted)
+
+    def fetch_net_points(self, seasons: list[int]) -> None:
+        """Season-level NetPoints for the requested seasons.
+
+        Both files are single flat downloads (not parameterized by season or
+        team), so there's no per-unit network call to skip the way there is for
+        games/player-stats. What IS skippable is the whole download - see
+        :meth:`_net_points_needed` - and everything outside the seasons the run
+        was asked for: a pull of 2024 has no business rewriting 2026's file.
+
+        Within the requested seasons, a file is only overwritten if it is
+        missing or still the current season (values shift daily while a season
+        is in progress - same reasoning as fetch_standings/fetch_power_index
+        above; respects --force same as everywhere else).
+
+        .. versionchanged:: 1.5.0
+           Takes the seasons being pulled, and writes only those. Previously it
+           fetched and wrote every season the source carried, on every run.
+        """
+        wanted = self._net_points_wanted(seasons)
+        if not self._net_points_needed(seasons):
+            log.info("NetPoints already on disk for %s - skipping", ", ".join(str(s) for s in sorted(wanted)) or "the requested seasons")
+            return
         team_abbr_to_id = self.team_abbr_to_id()
 
         player_data = self._live_client.get_json(endpoints.net_points_player_url())
@@ -315,24 +397,28 @@ class Pipeline:
         by_season_type: dict[tuple[int, str], list[dict]] = {}
         for row in player_rows:
             season, season_type = row["season"], row["net_points_season_type"]
+            if season not in wanted:
+                continue
             by_season_type.setdefault((season, season_type), []).append(row)
         for (season, season_type), rows in by_season_type.items():
             slug = season_type.lower().replace(" ", "_")
             path = self._p("net_points_player", f"season={season}", f"{slug}.parquet")
             if storage.exists(path) and not self.force and season < current_season():
                 continue
-            storage.write_rows(path, rows)
+            self._write_rows(path, rows)
 
         team_data = self._live_client.get_json(endpoints.net_points_team_url())
         team_rows = parse.parse_net_points_team(team_data, team_abbr_to_id)
         by_season: dict[int, list[dict]] = {}
         for row in team_rows:
+            if row["season"] not in wanted:
+                continue
             by_season.setdefault(row["season"], []).append(row)
         for season, rows in by_season.items():
             path = self._p("net_points_team", f"season={season}", "net_points_team.parquet")
             if storage.exists(path) and not self.force and season < current_season():
                 continue
-            storage.write_rows(path, rows)
+            self._write_rows(path, rows)
 
     def fetch_net_points_fingerprint(self, season: int) -> None:
         """espnanalytics.com's "Net Pts Fingerprint" page - a per-player
@@ -358,7 +444,7 @@ class Pipeline:
             return
         rows = parse.parse_net_points_fingerprint(data, self.team_abbr_to_id(), self._name_to_athlete_id())
         if rows:
-            storage.write_rows(path, rows)
+            self._write_rows(path, rows)
 
     def _team_date_to_game(self) -> dict[tuple[str, str], tuple[str, int, int]]:
         """(team_id, date) -> (event_id, season, season_type), built from
@@ -457,18 +543,40 @@ class Pipeline:
 
             data = self._net_points_daily_client.get_daily(date, season_folder=season - 1)
             player_rows, team_rows = parse.parse_net_points_daily(data, date, team_abbr_to_id, team_date_to_game, name_to_athlete_id)
-            storage.write_rows(self._p("net_points_player_game", f"season={season}", f"date={date}.parquet"), player_rows)
-            storage.write_rows(self._p("net_points_team_game", f"season={season}", f"date={date}.parquet"), team_rows)
+            self._write_rows(self._p("net_points_player_game", f"season={season}", f"date={date}.parquet"), player_rows)
+            self._write_rows(self._p("net_points_team_game", f"season={season}", f"date={date}.parquet"), team_rows)
             storage.mark_complete(marker)
 
     # ---------------- glossary ----------------
     def write_glossary(self) -> None:
         """Write the stat glossary, so a column name can be explained without
-        guessing at what it means."""
-        if not self.glossary:
-            return
+        guessing at what it means.
+
+        Merged with what is already on disk rather than replacing it. A run only
+        collects glossary entries from the endpoints it actually fetched, so a
+        pull that skipped everything already checkpointed would otherwise
+        overwrite a full glossary with the handful of keys that run happened to
+        see - confirmed live, a current-season pull cut it from 140 keys to 94,
+        and the keys it dropped were the box-score ones nothing was going to
+        re-derive.
+
+        Unchanged content is not rewritten, so a pull with nothing new to say
+        leaves the file (and therefore the warehouse) alone.
+
+        .. versionchanged:: 1.5.0
+           Merges with the glossary on disk instead of replacing it.
+        """
         path = self._p("stat_glossary", "stat_glossary.parquet")
-        storage.write_rows(path, list(self.glossary.values()))
+        existing: dict[str, dict[str, Any]] = {}
+        if storage.exists(path):
+            for row in pq.read_table(path).to_pylist():
+                key = row.get("stat_key")
+                if key:
+                    existing[str(key)] = row
+        merged = {**existing, **self.glossary}
+        if not merged or merged == existing:
+            return
+        self._write_rows(path, list(merged.values()))
 
     # ---------------- completion marker ----------------
     def _complete_marker(self, season: int, season_type: int) -> Path:
@@ -525,7 +633,7 @@ class Pipeline:
             log.error("No teams returned from ESPN - aborting.")
             return
 
-        self.fetch_net_points()
+        self.fetch_net_points(seasons)
 
         for season in seasons:
             log.info("== season %s ==", season)

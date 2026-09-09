@@ -326,7 +326,7 @@ def test_fetch_net_points_writes_one_file_per_season_and_type(tmp_path: Path) ->
     client = FakeClient(responses)
     pipeline = Pipeline(client, tmp_path)
     pipeline.fetch_teams()
-    pipeline.fetch_net_points()
+    pipeline.fetch_net_points([2024])
 
     assert (tmp_path / "net_points_player" / "season=2024" / "regular_season.parquet").exists()
     assert (tmp_path / "net_points_player" / "season=2024" / "playoffs.parquet").exists()
@@ -356,7 +356,7 @@ def test_fetch_net_points_merges_per_100_possession_rate_file(tmp_path: Path) ->
     client = FakeClient(responses)
     pipeline = Pipeline(client, tmp_path)
     pipeline.fetch_teams()
-    pipeline.fetch_net_points()
+    pipeline.fetch_net_points([2024])
 
     table = ds.dataset(str(tmp_path / "net_points_player" / "season=2024" / "regular_season.parquet")).to_table()
     row = table.to_pylist()[0]
@@ -375,11 +375,11 @@ def test_fetch_net_points_skips_writing_files_already_on_disk(tmp_path: Path) ->
     client = FakeClient(responses)
     pipeline = Pipeline(client, tmp_path)
     pipeline.fetch_teams()
-    pipeline.fetch_net_points()
+    pipeline.fetch_net_points([2024])
 
     player_file = tmp_path / "net_points_player" / "season=2024" / "regular_season.parquet"
     written_at = player_file.stat().st_mtime_ns
-    pipeline.fetch_net_points()
+    pipeline.fetch_net_points([2024])
     assert player_file.stat().st_mtime_ns == written_at  # not rewritten - still resumable on the write side
 
 
@@ -392,8 +392,8 @@ def test_fetch_net_points_force_overwrites(tmp_path: Path) -> None:
     client = FakeClient(responses)
     pipeline = Pipeline(client, tmp_path, force=True)
     pipeline.fetch_teams()
-    pipeline.fetch_net_points()
-    pipeline.fetch_net_points()  # must not raise even with --force
+    pipeline.fetch_net_points([2024])
+    pipeline.fetch_net_points([2024])  # must not raise even with --force
     assert (tmp_path / "net_points_player" / "season=2024" / "regular_season.parquet").exists()
 
 
@@ -414,7 +414,7 @@ def test_fetch_net_points_refetches_current_season_but_not_a_past_one(tmp_path: 
     client = FakeClient(responses)
     pipeline = Pipeline(client, tmp_path)
     pipeline.fetch_teams()
-    pipeline.fetch_net_points()
+    pipeline.fetch_net_points([2023, 2024])
 
     past_file = tmp_path / "net_points_player" / "season=2023" / "regular_season.parquet"  # min_season 2022 -> season 2023, in the past
     current_file = tmp_path / "net_points_player" / "season=2024" / "regular_season.parquet"  # min_season 2023 -> season 2024, "current"
@@ -422,7 +422,7 @@ def test_fetch_net_points_refetches_current_season_but_not_a_past_one(tmp_path: 
     current_written_at = current_file.stat().st_mtime_ns
 
     time.sleep(0.01)  # guarantee a distinguishable mtime if the file IS rewritten
-    pipeline.fetch_net_points()
+    pipeline.fetch_net_points([2023, 2024])
     assert past_file.stat().st_mtime_ns == past_written_at  # past season - untouched
     assert current_file.stat().st_mtime_ns > current_written_at  # current season - refreshed
 
@@ -672,3 +672,167 @@ def test_fetch_power_index_refetches_current_season_but_not_a_past_one(tmp_path:
     pipeline.fetch_power_index(2023)
     pipeline.fetch_power_index(2024)
     assert len(client.calls) == calls_before + 1  # only the current season re-fetched
+
+
+# ---------------- what a run costs when there is nothing to do ----------------
+
+
+def _net_points_pipeline(tmp_path: Path, **kwargs: Any) -> tuple[Pipeline, FakeClient]:
+    responses: dict[str, Any] = {
+        TEAMS_URL: _teams_response(1),
+        NET_POINTS_PLAYER_URL: [{"dot_com_id": 10, "tm": "T1", "min_season": 2023, "seasonType": "Regular Season", "net_pts_games": 50, "overall": 1.0}],
+        NET_POINTS_TEAM_URL: {"team4f": '{"teamId": {"0": "T1"}, "Side": {"0": "Total"}, "season": {"0": 2023}}'},
+    }
+    client = FakeClient(responses)
+    pipeline = Pipeline(client, tmp_path, **kwargs)
+    pipeline.fetch_teams()
+    return pipeline, client
+
+
+def test_net_points_is_not_downloaded_again_for_a_season_already_on_disk(tmp_path: Path, monkeypatch: Any) -> None:
+    """The flat files are one league-wide download, so the old code fetched and
+    parsed all of them on every run - a pull of one finished season paid for it
+    every time, and the rewrite of the CURRENT season's file that followed made
+    the warehouse rebuild non-empty, which is where the minute went."""
+    monkeypatch.setattr("association.fetch.pipeline.current_season", lambda: 2026)
+    pipeline, client = _net_points_pipeline(tmp_path)
+    pipeline.fetch_net_points([2024])
+    assert (tmp_path / "net_points_player" / "season=2024" / "regular_season.parquet").exists()
+
+    before = len(client.calls)
+    pipeline.fetch_net_points([2024])
+    assert client.calls[before:] == []  # not one request, not just no writes
+
+
+def test_net_points_is_still_downloaded_for_a_season_with_no_file_yet(tmp_path: Path, monkeypatch: Any) -> None:
+    monkeypatch.setattr("association.fetch.pipeline.current_season", lambda: 2026)
+    pipeline, client = _net_points_pipeline(tmp_path)
+    pipeline.fetch_net_points([2024])
+    before = len(client.calls)
+    pipeline.fetch_net_points([2024, 2025])  # 2025 has nothing on disk
+    assert client.calls[before:] != []
+
+
+def test_net_points_is_still_downloaded_for_the_current_season(tmp_path: Path, monkeypatch: Any) -> None:
+    """Values shift daily while a season is in progress; only a finished one
+    is safe to consider done."""
+    monkeypatch.setattr("association.fetch.pipeline.current_season", lambda: 2024)
+    pipeline, client = _net_points_pipeline(tmp_path)
+    pipeline.fetch_net_points([2024])
+    before = len(client.calls)
+    pipeline.fetch_net_points([2024])
+    assert client.calls[before:] != []
+
+
+def test_net_points_is_skipped_entirely_for_seasons_it_cannot_cover(tmp_path: Path) -> None:
+    """NetPoints starts at 2018-19. A pull of 2005 must not download the files
+    to discover that, every run, forever."""
+    pipeline, client = _net_points_pipeline(tmp_path)
+    before = len(client.calls)
+    pipeline.fetch_net_points([2005])
+    assert client.calls[before:] == []
+    assert not (tmp_path / "net_points_player").exists()
+
+
+def test_net_points_writes_only_the_seasons_asked_for(tmp_path: Path, monkeypatch: Any) -> None:
+    """A pull of 2024 rewriting 2026's file is what made an "everything is
+    already complete" run rebuild the warehouse."""
+    monkeypatch.setattr("association.fetch.pipeline.current_season", lambda: 2026)
+    responses: dict[str, Any] = {
+        TEAMS_URL: _teams_response(1),
+        NET_POINTS_PLAYER_URL: [
+            {"dot_com_id": 10, "tm": "T1", "min_season": 2023, "seasonType": "Regular Season", "net_pts_games": 50, "overall": 1.0},
+            {"dot_com_id": 11, "tm": "T1", "min_season": 2025, "seasonType": "Regular Season", "net_pts_games": 50, "overall": 2.0},
+        ],
+        NET_POINTS_TEAM_URL: {"team4f": '{"teamId": {"0": "T1"}, "Side": {"0": "Total"}, "season": {"0": 2023}}'},
+    }
+    pipeline = Pipeline(FakeClient(responses), tmp_path)
+    pipeline.fetch_teams()
+    pipeline.fetch_net_points([2024])
+    assert (tmp_path / "net_points_player" / "season=2024").exists()
+    assert not (tmp_path / "net_points_player" / "season=2026").exists()
+
+
+def test_a_run_records_which_tables_it_wrote(tmp_path: Path, monkeypatch: Any) -> None:
+    """The warehouse is rebuilt per table from the whole Parquet tree, so a run
+    has to be able to say what changed - and a run that changed nothing has to
+    be able to say that too."""
+    monkeypatch.setattr("association.fetch.pipeline.current_season", lambda: 2026)
+    pipeline, _ = _net_points_pipeline(tmp_path)
+    assert pipeline.written == {"teams"}
+
+    pipeline.fetch_net_points([2024])
+    assert pipeline.written == {"teams", "net_points_player", "net_points_team"}
+
+
+def test_a_second_run_over_finished_seasons_records_nothing_written(tmp_path: Path, monkeypatch: Any) -> None:
+    monkeypatch.setattr("association.fetch.pipeline.current_season", lambda: 2026)
+    pipeline, client = _net_points_pipeline(tmp_path)
+    pipeline.fetch_net_points([2024])
+
+    second = Pipeline(client, tmp_path)
+    second.fetch_teams()
+    second.fetch_net_points([2024])
+    assert second.written == set()
+
+
+# ---------------- the stat glossary ----------------
+
+
+def _glossary_keys(tmp_path: Path) -> set[str]:
+    table = ds.dataset(str(tmp_path / "stat_glossary" / "stat_glossary.parquet"), format="parquet").to_table()
+    return {row["stat_key"] for row in table.to_pylist()}
+
+
+def test_write_glossary_merges_with_what_is_already_on_disk(tmp_path: Path) -> None:
+    """A run only collects glossary entries from the endpoints it actually
+    fetched. Overwriting meant a pull that skipped everything checkpointed
+    replaced the full glossary with the few keys it happened to see - confirmed
+    live, 140 keys down to 94, losing exactly the box-score ones that nothing
+    was going to re-derive."""
+    first = Pipeline(None, tmp_path)
+    first.glossary = {"points": {"stat_key": "points", "description": "points"}, "assists": {"stat_key": "assists", "description": "assists"}}
+    first.write_glossary()
+
+    second = Pipeline(None, tmp_path)
+    second.glossary = {"wins": {"stat_key": "wins", "description": "wins"}}
+    second.write_glossary()
+
+    assert _glossary_keys(tmp_path) == {"points", "assists", "wins"}
+
+
+def test_write_glossary_prefers_the_freshly_fetched_description(tmp_path: Path) -> None:
+    first = Pipeline(None, tmp_path)
+    first.glossary = {"points": {"stat_key": "points", "description": "old"}}
+    first.write_glossary()
+
+    second = Pipeline(None, tmp_path)
+    second.glossary = {"points": {"stat_key": "points", "description": "new"}}
+    second.write_glossary()
+
+    table = ds.dataset(str(tmp_path / "stat_glossary" / "stat_glossary.parquet"), format="parquet").to_table()
+    assert table.to_pylist() == [{"stat_key": "points", "description": "new"}]
+
+
+def test_write_glossary_does_not_rewrite_an_unchanged_file(tmp_path: Path) -> None:
+    """Otherwise every pull marks stat_glossary as written, and a run with
+    nothing new to say rebuilds a warehouse table for no reason."""
+    first = Pipeline(None, tmp_path)
+    first.glossary = {"points": {"stat_key": "points", "description": "points"}}
+    first.write_glossary()
+
+    second = Pipeline(None, tmp_path)
+    second.glossary = {"points": {"stat_key": "points", "description": "points"}}
+    second.write_glossary()
+    assert second.written == set()
+
+
+def test_write_glossary_with_nothing_collected_leaves_the_file_alone(tmp_path: Path) -> None:
+    first = Pipeline(None, tmp_path)
+    first.glossary = {"points": {"stat_key": "points", "description": "points"}}
+    first.write_glossary()
+
+    second = Pipeline(None, tmp_path)
+    second.write_glossary()
+    assert _glossary_keys(tmp_path) == {"points"}
+    assert second.written == set()
