@@ -21,7 +21,12 @@ def con() -> duckdb.DuckDBPyConnection:
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
-    c.execute("INSERT INTO players VALUES ('1','Stephen Curry'),('2','Seth Curry'),('3','Luka Doncic'),('4','Jaylen Brown'),('5','Jaylen Brown Jr.')")
+    # 6-9 exist for the word-boundary ranking: "Ball" lands inside "Ceballos"
+    # by accident, and "Alexander" starts a word in a hyphenated surname.
+    c.execute(
+        "INSERT INTO players VALUES ('1','Stephen Curry'),('2','Seth Curry'),('3','Luka Doncic'),('4','Jaylen Brown'),('5','Jaylen Brown Jr.'),"
+        "('6','Cedric Ceballos'),('7','LaMelo Ball'),('8','Nickeil Alexander-Walker'),('11','Kyle Alexander')"
+    )
     c.execute("INSERT INTO teams VALUES ('13','LAL','Los Angeles Lakers'),('12','LAC','LA Clippers'),('9','GS','Golden State Warriors')")
     return c
 
@@ -53,9 +58,47 @@ def test_empty_text_is_not_found_rather_than_everyone(con: duckdb.DuckDBPyConnec
 
 
 def test_find_players_returns_all_candidates_best_first(con: duckdb.DuckDBPyConnection) -> None:
-    # render_shot_chart relies on this: a chart of the wrong Curry is visible
-    # on sight, so it takes the first and names the rest.
+    # The chart path relies on this ordering: it narrows these candidates to
+    # the ones with data for the season asked about, and falls back to the
+    # first when that leaves nobody.
     assert [c.name for c in find_players(con, "Curry")] == ["Seth Curry", "Stephen Curry"]
+
+
+def test_a_name_that_starts_a_word_beats_one_it_only_lands_inside(con: duckdb.DuckDBPyConnection) -> None:
+    """Substring matching kept "Ball" honestly ambiguous - between LaMelo Ball
+    and Cedric Ceballos, which is not a question anybody would ask. Measured
+    against the warehouse, this changed 46 surnames' best match and every one
+    of them was an improvement: "Bey" was Mike Tobey, "Ford" was Al Horford."""
+    assert [c.name for c in find_players(con, "Ball")] == ["LaMelo Ball"]
+    assert resolve_player(con, "Ball") == Entity(id="7", name="LaMelo Ball")
+
+
+def test_both_halves_of_a_hyphenated_name_start_a_word(con: duckdb.DuckDBPyConnection) -> None:
+    """The boundary is any non-letter rather than a space, so "Alexander"
+    reaches Nickeil Alexander-Walker and Shai Gilgeous-Alexander. Requiring a
+    space would have demoted both below Kyle Alexander and then dropped them
+    entirely."""
+    assert {c.name for c in find_players(con, "Alexander")} == {"Kyle Alexander", "Nickeil Alexander-Walker"}
+    assert isinstance(resolve_player(con, "Alexander"), Ambiguous)
+
+
+def test_every_declared_availability_names_a_real_table() -> None:
+    """The table name is interpolated into SQL, so a typo is a runtime error on
+    a path only an ambiguous name reaches. Checked against the query package's
+    own list of tables rather than a warehouse, so it stays offline."""
+    from association.query.fingerprint import FINGERPRINT_AVAILABILITY
+    from association.query.prompt import KNOWN_TABLES
+    from association.query.shotchart import SHOT_AVAILABILITY
+
+    for available in (SHOT_AVAILABILITY, FINGERPRINT_AVAILABILITY):
+        assert available.table in KNOWN_TABLES, available
+
+
+def test_an_interior_match_still_counts_when_nothing_starts_a_word(con: duckdb.DuckDBPyConnection) -> None:
+    """Ranking, not filtering. A fragment that matches nobody at a word
+    boundary still finds the people it does match, so a partial name typed
+    mid-word is answered rather than reported missing."""
+    assert [c.name for c in find_players(con, "urry")] == ["Seth Curry", "Stephen Curry"]
 
 
 def test_resolve_team_by_name_and_by_abbreviation(con: duckdb.DuckDBPyConnection) -> None:

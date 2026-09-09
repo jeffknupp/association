@@ -22,11 +22,11 @@ from association.season import current_season
 
 from .answer import Artifact
 from .court import HOOP_X, HOOP_Y
-from .entities import Ambiguous, Entity, resolve_player, resolve_team
-from .fingerprint import FINGERPRINT_VIEWS, FingerprintUnavailable, render_for_players
+from .entities import Ambiguous, Entity, clarification, resolve_player, resolve_team
+from .fingerprint import FINGERPRINT_AVAILABILITY, FINGERPRINT_VIEWS, FingerprintUnavailable, render_for_players
 from .leaderboard import LeaderboardError, resolve_metric, run_leaderboard
 from .metrics import EXTRA_FIELD_COLUMNS, SEASON_TYPE_LABELS
-from .shotchart import render_for_player, resolve_chart_player
+from .shotchart import SHOT_AVAILABILITY, render_for_player, resolve_chart_player
 
 # Slot value -> real player_box_stats column. A whitelist, not a passthrough:
 # the router's `stat` slot is model-generated text, and this is the only place
@@ -158,18 +158,15 @@ def _clamp_limit(limit: Any, default: int = DEFAULT_LIMIT) -> int:
 
 # ---- resolving a name to an entity, shared by every template below ----
 
-MAX_CLARIFY_CANDIDATES = 5
-
 
 def _clarify(text: str, candidates: list[str], kind: str = "player") -> TemplateResult:
     """A handled outcome, not a fall-through: the template knows exactly what
-    is ambiguous, so it says so instead of passing the problem along."""
-    shown, extra = candidates[:MAX_CLARIFY_CANDIDATES], len(candidates) - MAX_CLARIFY_CANDIDATES
-    joined = ", ".join(shown[:-1]) + f" or {shown[-1]}" + (f" ({extra} others also match)" if extra > 0 else "")
-    return TemplateResult(
-        data={"ambiguous": text, "candidates": candidates},
-        answer=f"{text!r} matches more than one {kind} - did you mean {joined}?",
-    )
+    is ambiguous, so it says so instead of passing the problem along.
+
+    The sentence itself is entities.clarification, because the chart entry
+    points reach the same ambiguity without going through a template and have
+    to phrase it identically."""
+    return TemplateResult(data={"ambiguous": text, "candidates": candidates}, answer=clarification(text, candidates, kind))
 
 
 def _resolved_player(con: duckdb.DuckDBPyConnection, text: Any, missing: str = "no player named") -> Entity | TemplateResult:
@@ -945,22 +942,28 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         raise TemplateUnsupported("shot_chart needs a player name")
     shot_value = _shot_value(slots)
 
-    # Resolved ONCE, here, and the same player is then used both to find the
-    # game to scope to and to draw the chart. Resolving separately for each
-    # would let the two disagree and scope the chart to a game the other
-    # candidate played.
-    resolved = resolve_chart_player(ctx.con, name)
-    if resolved is None:
-        message = f"No player found matching {name!r}."
-        return TemplateResult(data={"message": message}, answer=message)
-    player, ambiguous = resolved
-
     # "a shot chart of Curry's LAST regular season game" charted the whole
     # season - 803 attempts instead of that game's 22 - because nothing scoped
     # the request to one game. `order` means the same here as in game_log, and
     # resolving it to an event_id is the only way the chart can scope.
+    #
+    # Settled before the name is resolved, because the season is what narrows
+    # an ambiguous name to the players who could have taken these shots.
     season = slots.get("season") or current_season()
     season_type = slots.get("season_type") or 2
+
+    # Resolved ONCE, here, and the same player is then used both to find the
+    # game to scope to and to draw the chart. Resolving separately for each
+    # would let the two disagree and scope the chart to a game the other
+    # candidate played.
+    resolved = resolve_chart_player(ctx.con, name, SHOT_AVAILABILITY, season)
+    if resolved is None:
+        message = f"No player found matching {name!r}."
+        return TemplateResult(data={"message": message}, answer=message)
+    if isinstance(resolved, Ambiguous):
+        return _clarify(name, resolved.candidates)
+    player, ambiguous = resolved
+
     event_id = None
     if slots.get("order") in ("recent", "first"):
         found = _scoping_game(ctx.con, player.id, season, season_type, slots["order"])
@@ -1020,13 +1023,19 @@ def fingerprint(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         message = "NetPoints fingerprints are season-level only - the warehouse has no play-type breakdown for a single game, so there is nothing to plot for one."
         return TemplateResult(data={"message": message}, answer=message)
 
+    # Settled before any name is resolved: the season is what narrows an
+    # ambiguous name to the players who have a fingerprint in it.
+    season = slots.get("season") or current_season()
+
     players: list[Entity] = []
     ambiguous: list[str] = []
     for name in names:
-        found = resolve_chart_player(ctx.con, name)
+        found = resolve_chart_player(ctx.con, name, FINGERPRINT_AVAILABILITY, season)
         if found is None:
             message = f"No player found matching {name!r}."
             return TemplateResult(data={"message": message}, answer=message)
+        if isinstance(found, Ambiguous):
+            return _clarify(name, found.candidates)
         player, also = found
         # The same name twice would draw one polygon over itself and report a
         # comparison; deduped on the RESOLVED id, since "SGA" and "Gilgeous"
@@ -1042,7 +1051,6 @@ def fingerprint(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     view = slots.get("side")
     if view not in FINGERPRINT_VIEWS:
         view = "total"
-    season = slots.get("season") or current_season()
     try:
         rendered = render_for_players(ctx.con, ctx.out_dir, players, ambiguous, season, view=view)
     except FingerprintUnavailable as exc:

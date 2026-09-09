@@ -196,6 +196,68 @@ def test_a_season_where_nobody_qualifies_says_so_rather_than_ranking_against_not
         load_fingerprints(con, [_entity("1")], 2026, min_minutes=99999)
 
 
+def test_a_named_player_missing_from_a_populated_season_is_not_reported_as_a_missing_season(con: duckdb.DuckDBPyConnection) -> None:
+    """The bug this file's header describes, in its other direction: a fluent
+    answer to a question nobody asked. "Show me a fingerprint for Maxey" was
+    answered "No NetPoints fingerprint on record for season 2026" - a claim
+    about league-wide coverage, produced because the name had resolved
+    best-match to Marlon Maxey (retired 1994) rather than Tyrese, who is in
+    that season along with 565 others.
+    """
+    with pytest.raises(FingerprintUnavailable) as raised:
+        load_fingerprints(con, [Entity(id="99", name="Ghost Player")], 2026)
+    message = str(raised.value)
+    assert "Ghost Player" in message
+    # The season is populated, and the message has to say so rather than
+    # reading as a coverage gap.
+    assert f"{len(STARS)} players on record" in message
+    assert not re.search(r"no NetPoints fingerprint data for season", message, re.IGNORECASE)
+
+
+def test_other_matches_are_named_when_nothing_could_be_drawn(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
+    """Best-match resolution is safe here only because the plot is titled with
+    the name that won. Nothing is titled when nothing is drawn, so the
+    runners-up have to reach the message on that path too."""
+    with pytest.raises(FingerprintUnavailable, match="other players also matched: Ada Star"):
+        render_for_players(con, tmp_path, [Entity(id="99", name="Ghost Player")], ["Ada Star"], 2026)
+
+
+def test_a_surname_narrows_to_the_player_who_has_a_fingerprint(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
+    """End to end, in the shape that produced the report: two players share a
+    surname, the one sorting first has no fingerprint row, and the question
+    gave only the surname. "Maxey" was Marlon (last played 1994) rather than
+    Tyrese for exactly this reason.
+
+    Only one of them can have produced the plot being asked for, so the name is
+    narrowed to them - elimination, not a preference between people."""
+    con.execute("INSERT INTO players VALUES ('5', 'Aaron Star')")
+    result = render_fingerprint(con, tmp_path, "Star", season=2026)
+    assert result.artifact is not None, result.message
+    assert "Ada Star" in result.message and "Aaron Star" not in result.message
+
+
+def test_a_surname_two_of_whom_have_fingerprints_asks_which(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
+    """Narrowing eliminates; it never chooses. Two players who both have a
+    fingerprint this season are a real question, and it gets asked rather than
+    answered with whichever sorts first."""
+    con.execute("INSERT INTO players VALUES ('5', 'Zed Star')")
+    con.execute("INSERT INTO net_points_player_fingerprint SELECT * REPLACE ('5' AS athlete_id) FROM net_points_player_fingerprint WHERE athlete_id = '2'")
+    result = render_fingerprint(con, tmp_path, "Star", season=2026)
+    assert result.artifact is None
+    assert result.message == "'Star' matches more than one player - did you mean Ada Star or Zed Star?"
+
+
+def test_when_nobody_named_has_a_fingerprint_the_answer_names_who_it_tried(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
+    """The other half of the narrowing rule. When it eliminates EVERYBODY,
+    asking which one was meant buys nothing - neither answer draws a plot - so
+    the best match stands and the message says what it found instead."""
+    con.execute("INSERT INTO players VALUES ('5', 'Aaron Star')")
+    con.execute("INSERT INTO net_points_player_fingerprint SELECT * REPLACE ('6' AS athlete_id, 2025 AS season) FROM net_points_player_fingerprint WHERE athlete_id = '1'")
+    result = render_fingerprint(con, tmp_path, "Star", season=2025)
+    assert result.artifact is None
+    assert result.message == "No NetPoints fingerprint on record for Aaron Star in season 2025, which has 1 player on record. Note: other players also matched: Ada Star."
+
+
 # ---------------- the two scales ----------------
 
 

@@ -414,6 +414,24 @@ def test_shot_chart_writes_a_file_and_reports_its_path(sc_ctx: TemplateContext) 
     assert list((sc_ctx.out_dir).glob("*.html"))
 
 
+def test_shot_chart_narrows_a_surname_to_whoever_took_shots_that_season(sc_ctx: TemplateContext) -> None:
+    """Seth exists and Stephen has the shots, so "Curry" is not a question this
+    season - only one of them can have produced the chart being asked for."""
+    sc_ctx.con.execute("INSERT INTO players VALUES ('2','Seth Curry')")
+    result = shot_chart(sc_ctx, {"player": "Curry", "season": current_season()})
+    assert "Rendered shot chart for Stephen Curry" in (result.answer or "")
+
+
+def test_shot_chart_asks_which_player_when_both_took_shots(sc_ctx: TemplateContext) -> None:
+    """And when narrowing cannot separate them it asks, rather than drawing
+    whichever sorts first and titling the plot with the wrong Curry."""
+    sc_ctx.con.execute("INSERT INTO players VALUES ('2','Seth Curry')")
+    sc_ctx.con.execute(f"INSERT INTO shot_chart VALUES ('2',{current_season()},2,'e2',1,'9:00',TRUE,'Jump Shot',25,20,3)")
+    result = shot_chart(sc_ctx, {"player": "Curry", "season": current_season()})
+    assert result.answer == "'Curry' matches more than one player - did you mean Seth Curry or Stephen Curry?"
+    assert not list(sc_ctx.out_dir.glob("*.html"))
+
+
 def test_shot_chart_reports_no_matching_shots_rather_than_falling_through(sc_ctx: TemplateContext) -> None:
     # The agent has no better source for a chart than the table just queried,
     # so an empty result is the answer, not a reason to spend minutes.
@@ -436,9 +454,13 @@ def test_a_scoped_chart_uses_the_same_player_it_looked_the_game_up_for(tmp_path:
 
     shot_chart used to resolve the name twice - once to find the event_id and
     again inside the renderer - agreeing only by convention. Two independent
-    best-match resolutions can pick differently, and the result would be a chart
-    titled for one Curry scoped to a game the other one played: wrong, and
-    invisible, since the plot looks perfectly normal.
+    resolutions can pick differently, and the result would be a chart titled for
+    one Curry scoped to a game the other one played: wrong, and invisible, since
+    the plot looks perfectly normal.
+
+    Both Currys exist and both played this season; only Stephen took a shot in
+    it, which is what narrows the name to him. The scoping game must then be
+    his, not Seth's.
     """
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
@@ -447,15 +469,17 @@ def test_a_scoped_chart_uses_the_same_player_it_looked_the_game_up_for(tmp_path:
         "period INTEGER, clock VARCHAR, made BOOLEAN, shot_type VARCHAR, coordinate_x INTEGER, coordinate_y INTEGER, points_attempted INTEGER)"
     )
     c.execute("CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, game_date VARCHAR)")
-    # Two players both matching "Curry", each with their own game and shots.
+    # Two players both matching "Curry", each with their own game. Seth's game
+    # is the LATER one, so an unnarrowed "most recent Curry game" would scope to
+    # it - and only Stephen has a shot this season, so the chart must be his.
     c.execute("INSERT INTO players VALUES ('1','Seth Curry'), ('2','Stephen Curry')")
     c.executemany(
         "INSERT INTO player_game_log VALUES (?,?,2,?,?)",
-        [("1", current_season(), "seth_game", "2026-01-02"), ("2", current_season(), "steph_game", "2026-01-03")],
+        [("1", current_season(), "seth_game", "2026-01-03"), ("2", current_season(), "steph_game", "2026-01-02")],
     )
     c.executemany(
         "INSERT INTO shot_chart VALUES (?,?,2,?,1,'10:00',true,'Jump Shot',25,20,3)",
-        [("1", current_season(), "seth_game"), ("2", current_season(), "steph_game")],
+        [("1", current_season() - 1, "seth_old_game"), ("2", current_season(), "steph_game")],
     )
     ctx = TemplateContext(con=c, out_dir=tmp_path / "out")
 
@@ -475,13 +499,12 @@ def test_a_scoped_chart_uses_the_same_player_it_looked_the_game_up_for(tmp_path:
     assert len(calls) == 1, f"player resolved {len(calls)} times: {calls}"
 
     answer = result.answer or ""
-    charted, other = ("Seth Curry", "steph_game") if "Seth Curry" in answer else ("Stephen Curry", "seth_game")
-    assert charted in answer
+    assert "Stephen Curry" in answer
     written = [f.name for f in ctx.out_dir.glob("*.html")]
     assert len(written) == 1
     # The scoping event_id lands in the filename; it must be the charted
     # player's game, not the other candidate's.
-    assert other not in written[0]
+    assert "seth_game" not in written[0] and "steph_game" in written[0]
 
 
 def test_shot_chart_defaults_an_unspecified_season_to_the_current_one(sc_ctx: TemplateContext) -> None:

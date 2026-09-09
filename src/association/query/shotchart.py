@@ -14,16 +14,33 @@ import duckdb
 
 from .answer import Artifact, RenderResult
 from .court import render_court_html
-from .entities import Entity, find_players
+from .entities import Ambiguous, Availability, Entity, clarification, find_players, narrow_to_available
+
+SHOT_AVAILABILITY = Availability("shot_chart")
+"""Where a shot chart's rows live, for narrowing an ambiguous name to the
+players who actually took shots in the season being charted.
+
+.. versionadded:: 2.1.0
+"""
+
+ChartResolution = tuple[Entity, list[str]] | Ambiguous | None
+"""What resolving a chart's player can come to: the player and any other names
+that matched, a question about which of several was meant, or None for a name
+nothing matched.
+
+.. versionadded:: 2.1.0
+"""
 
 
-def resolve_chart_player(con: duckdb.DuckDBPyConnection, player_name: str) -> tuple[Entity, list[str]] | None:
-    """The player a chart is drawn for, plus any other names that matched.
+def resolve_chart_player(con: duckdb.DuckDBPyConnection, player_name: str, available: Availability, season: int | None = None) -> ChartResolution:
+    """The player a chart is drawn for, a clarifying question, or None.
 
-    find_players, not resolve_player: a chart drawn for the wrong Curry is
-    obvious on sight, so a best match is friendlier than refusing, and the plot
-    is titled with the resolved name. Templates that report NUMBERS use
-    resolve_player, where the same mistake would be invisible.
+    Narrowed by data before it is decided, which is what lets a chart keep
+    answering a bare surname without guessing. Of the candidates a name
+    matches, only those with a row in ``available`` for ``season`` could have
+    produced the chart being asked for; dropping the rest is a fact about the
+    warehouse rather than a preference between people. Exactly one left is the
+    answer. Two or more are a real question, and it gets asked.
 
     Anything needing the athlete_id alongside a chart - scoping to one game, say
     - must resolve through this and pass the result to render_for_player, NOT
@@ -32,10 +49,34 @@ def resolve_chart_player(con: duckdb.DuckDBPyConnection, player_name: str) -> tu
     played.
 
     .. versionadded:: 1.2.0
+
+    .. versionchanged:: 2.1.0
+       Takes ``available`` and ``season``, and may return
+       :class:`association.query.entities.Ambiguous`. It previously took the
+       best match unconditionally, on the reasoning that a chart of the wrong
+       Curry is obvious on sight because the plot is titled with the resolved
+       name - which holds only when a plot is drawn. "Maxey" resolved to Marlon
+       Maxey, who last played in 1994, and the answer was a false claim that
+       the warehouse had no fingerprint data for the season. Measured over the
+       566 players with a 2026 fingerprint, 319 have a surname that matches
+       somebody else and 221 surnames league-wide put a player with no
+       fingerprint ahead of one who has it.
     """
     candidates = find_players(con, player_name)
     if not candidates:
         return None
+    if len(candidates) > 1:
+        narrowed = narrow_to_available(con, candidates, available, season)
+        # Narrowing that eliminates EVERYBODY is not a reason to ask which one
+        # was meant: no answer to that question draws a chart either, so the
+        # renderer's own message - which names the player it tried and what the
+        # season does hold - explains more than the question would. So it
+        # narrows only where it discriminates, and otherwise leaves the old
+        # best match in place to fail loudly.
+        if narrowed:
+            candidates = narrowed
+            if len(candidates) > 1:
+                return Ambiguous(query=player_name, candidates=[c.name for c in candidates])
     return candidates[0], [c.name for c in candidates[1:]]
 
 
@@ -61,10 +102,20 @@ def render_shot_chart(
     .. versionchanged:: 2.0.0
        Returns a :class:`association.query.answer.RenderResult` rather than a
        message string, so a caller can reach the file that was drawn.
+
+    .. versionchanged:: 2.1.0
+       May answer with a clarifying question - ``artifact`` None and the
+       message naming the candidates - where an ambiguous name previously drew
+       the best match. See :func:`resolve_chart_player`.
     """
-    resolved = resolve_chart_player(con, player_name)
+    # `season` is passed through as given, None included: an unscoped chart
+    # covers a whole career, so narrowing the name to one year would filter by
+    # something the question never said.
+    resolved = resolve_chart_player(con, player_name, SHOT_AVAILABILITY, season)
     if resolved is None:
         return RenderResult(f"No player found matching {player_name!r}.", None)
+    if isinstance(resolved, Ambiguous):
+        return RenderResult(clarification(player_name, resolved.candidates), None)
     player, ambiguous = resolved
     return render_for_player(
         con,

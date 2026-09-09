@@ -27,7 +27,7 @@ import duckdb
 from association.season import current_season
 
 from .answer import Artifact, RenderResult
-from .entities import Entity
+from .entities import Ambiguous, Availability, Entity, clarification
 from .radar import VALUE_ZERO_FRACTION, Axis, Cell, Series, render_fingerprint_html
 
 
@@ -110,6 +110,13 @@ FINGERPRINT_SIDES: dict[str, str] = {"offense": "o", "defense": "d", "total": "t
 # The category summing each side, reported as the bolded headline above the plot
 # rather than as a spoke - it is the number the spokes break down.
 FINGERPRINT_SUMMARY_CATEGORY = "total"
+
+FINGERPRINT_AVAILABILITY = Availability("net_points_player_fingerprint")
+"""Where a fingerprint's rows live, for narrowing an ambiguous name to the
+players who have a fingerprint in the season being plotted.
+
+.. versionadded:: 2.1.0
+"""
 
 # Minutes a player must have logged to be in the pool a percentile is measured
 # against - the same floor the netpoints leaderboard metrics use. Without it a
@@ -243,7 +250,9 @@ def load_fingerprints(
 
     Raises:
         FingerprintUnavailable: unknown ``view``, no fingerprint rows for the
-            season, or none of the named players has a row in it.
+            season, or none of the named players has a row in it. The last two
+            are separate messages: the first is a fact about the season, the
+            second names the players it could not find.
 
     .. versionadded:: 1.3.0
     """
@@ -323,7 +332,17 @@ def load_fingerprints(
             )
         )
     if not fingerprints:
-        raise FingerprintUnavailable(f"No NetPoints fingerprint on record for season {season}.")
+        # Names the PLAYERS, because the season is known to have rows by the
+        # time control reaches here. This branch used to report the season as
+        # empty, which is a false coverage claim whenever the real cause is a
+        # name that resolved to somebody with no fingerprint: "Maxey" matched
+        # Marlon Maxey (retired 1994) ahead of Tyrese, and season 2026 - which
+        # holds 566 players, Tyrese among them - was reported as having no
+        # fingerprint data at all. A missing player and a missing season are
+        # different facts and now read as different sentences.
+        who = ", ".join(player.name for player in players) if players else "any player"
+        held = f"{len(rows)} player" + ("" if len(rows) == 1 else "s")
+        raise FingerprintUnavailable(f"No NetPoints fingerprint on record for {who} in season {season}, which has {held} on record.")
 
     flat = [value for player_values in pool for value in player_values]
     return fingerprints, LeagueScale(best=max(flat), worst=min(flat), pool_size=len(pool))
@@ -450,7 +469,8 @@ def render_for_players(
         con: A read-only warehouse connection.
         out_dir: Directory the HTML is written to; created if missing.
         players: The players to draw, already resolved to warehouse entities.
-        ambiguous: Other names that also matched, mentioned in the message.
+        ambiguous: Other names that also matched, mentioned in the message -
+            whether or not anything was drawn.
         season: Season-ending year.
         view: ``"total"``, ``"offense"`` or ``"defense"``.
         scale: ``"percentile"`` or ``"value"`` - see :data:`FINGERPRINT_SCALES`.
@@ -474,7 +494,18 @@ def render_for_players(
     """
     if scale not in FINGERPRINT_SCALES:
         raise FingerprintUnavailable(f"scale must be one of {list(FINGERPRINT_SCALES)} - got {scale!r}.")
-    fingerprints, league = load_fingerprints(con, players, season, view=view, min_minutes=min_minutes)
+    try:
+        fingerprints, league = load_fingerprints(con, players, season, view=view, min_minutes=min_minutes)
+    except FingerprintUnavailable as exc:
+        # The other matches are carried onto the failure path, not only the
+        # success one. Names here are resolved best-match, and what makes that
+        # safe is the plot being titled with the name that won - which is
+        # precisely what does not happen when nothing is drawn. Dropping the
+        # runners-up in the one case that needs them is what left "Maxey"
+        # reading as a data gap rather than as an ambiguous name.
+        if not ambiguous:
+            raise
+        raise FingerprintUnavailable(f"{exc} Note: other players also matched: {', '.join(ambiguous)}.") from exc
     # A player with no row in this season's fingerprint file is dropped by
     # load_fingerprints rather than drawn as a zero polygon, which would read as
     # "played and contributed nothing". Named in the message instead.
@@ -557,22 +588,34 @@ def render_fingerprint(
     .. versionchanged:: 2.0.0
        Returns a :class:`association.query.answer.RenderResult` rather than a
        message string, so a caller can reach the file that was drawn.
+
+    .. versionchanged:: 2.1.0
+       Names are narrowed to the players who have a fingerprint in ``season``
+       before the best match is taken, and an ambiguity that survives that is
+       answered with a clarifying question rather than a plot. See
+       :func:`association.query.shotchart.resolve_chart_player`.
     """
     # Imported here, not at module scope: shotchart imports nothing from this
     # module, and a top-level import in the other direction would still be a
     # cycle waiting for the first edit that reverses it.
     from .shotchart import resolve_chart_player
 
+    # Settled before any name is resolved, so a name narrows against the season
+    # that will actually be drawn: "Maxey" is Tyrese in 2026 and nobody at all
+    # in 2005.
+    season = season if season is not None else current_season()
     resolved, ambiguous = [], []
     for name in player_name.split(" vs "):
-        found = resolve_chart_player(con, name.strip())
+        found = resolve_chart_player(con, name.strip(), FINGERPRINT_AVAILABILITY, season)
         if found is None:
             return RenderResult(f"No player found matching {name.strip()!r}.", None)
+        if isinstance(found, Ambiguous):
+            return RenderResult(clarification(name.strip(), found.candidates), None)
         player, also = found
         resolved.append(player)
         ambiguous.extend(also)
     try:
-        rendered = render_for_players(con, out_dir, resolved, ambiguous, season if season is not None else current_season(), view=view, scale=scale)
+        rendered = render_for_players(con, out_dir, resolved, ambiguous, season, view=view, scale=scale)
     except FingerprintUnavailable as exc:
         return RenderResult(str(exc), None)
     return rendered

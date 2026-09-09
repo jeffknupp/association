@@ -15,6 +15,67 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A chart no longer guesses which player a surname meant.** "Show me a
+  fingerprint for Maxey" drew nothing and blamed the warehouse, because
+  "Maxey" resolved best-match to Marlon Maxey, who last played in 1994, rather
+  than Tyrese. Charts resolved names best-match on the reasoning that the plot
+  is titled with the name that won, so a wrong match is obvious on sight - true
+  right up until the wrong match is the reason no plot exists.
+
+  `resolve_chart_player` now narrows the candidates to those with a row in the
+  table the chart is drawn from, for the season being drawn, before taking a
+  best match. This eliminates; it does not prefer. It never chooses between two
+  players who both have the data - that is the prominence tiebreak recorded as
+  measured and rejected above `PLAYER_NICKNAMES` - it only drops the ones who
+  cannot be the answer. One survivor is the answer; two or more get the same
+  clarifying question a numeric template asks.
+
+  Measured against the warehouse: of the 566 players with a 2026 fingerprint,
+  319 have a surname somebody else also matches. Narrowing resolves 100 of
+  those outright and sends the remaining 219 - Wiggins, Bridges, Allen, the
+  Antetokounmpos - to a question that deserves asking. League-wide, 221
+  surnames put a player with no fingerprint ahead of one who has it, and 97 do
+  the same for shot charts.
+
+  When narrowing eliminates *everybody*, the best match stands: no answer to
+  "which one did you mean" draws a plot either, so the renderer's own message
+  says more than the question would.
+
+  The extra query runs only when a name matched more than one player, and costs
+  1.0ms (two candidates) to 3.1ms (ten) warm, 5.5-10.2ms on a cold process -
+  against a question that spends about 3.15s in the router. Measured on the
+  full warehouse, including `shot_chart` at 6.7M rows.
+- **`find_players` ranks a name that starts a word above one it lands inside.**
+  "Ball" offered Cedric Ceballos ahead of LaMelo, "Bey" offered Mike Tobey
+  ahead of Saddiq, and "Ford" offered Al Horford ahead of Aleem Ford - each of
+  them the candidate a chart then drew. Word-boundary matches now sort first
+  and, when there are any, are the whole candidate list, which is the two-step
+  `find_teams` has always used.
+
+  The boundary is any non-letter rather than a space, so both halves of a
+  hyphenated or apostrophed name start a word: "Alexander" still reaches Shai
+  Gilgeous-Alexander and Nickeil Alexander-Walker, "Neal" still reaches
+  Shaquille O'Neal. Substring matching is kept, so a fragment typed mid-word
+  still finds the people it matches. Across the warehouse's 1,899 surnames this
+  changes 46 best matches, resolves 36 names that used to ask, and every
+  changed pick is the more plausible player.
+- **A fingerprint nobody has is no longer reported as a season nobody has.**
+  "Show me a fingerprint for Maxey" answered `No NetPoints fingerprint on
+  record for season 2026` - a claim about league-wide coverage, and a false
+  one: that season holds 566 players and Tyrese Maxey is among them. "Maxey"
+  matches two players and `find_players` orders by name, so best-match
+  resolution took Marlon Maxey, who retired in 1994, and nothing was drawn.
+
+  `load_fingerprints` now names the players when the season has rows and they
+  do not, and says how many players the season does hold. A name that resolved
+  to the wrong person is visible in the answer instead of looking like a gap in
+  the warehouse, and the empty-season message now means only what it says.
+
+  `render_for_players` also carries the other matches onto the failure path.
+  Names here resolve best-match, which is safe because the plot is titled with
+  the name that won - and that is exactly what does not happen when nothing is
+  drawn, so the one case that needed the runners-up was the one discarding
+  them. The answer now ends `Note: other players also matched: Tyrese Maxey.`
 - **Nicknames are read from the question, not from the router's guess.** Asking
   for "The Answer" returned Allen Iverson's numbers only by luck: the 3B router
   rewrites a nickname it recognizes and *invents* a player for one it does not,
