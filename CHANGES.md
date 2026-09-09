@@ -15,6 +15,26 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Charts render inline in the web interface.** A question that draws a shot
+  chart or a fingerprint now shows it in the conversation instead of naming a
+  file path. `GET /api/artifacts/{name}` serves them out of the same directory
+  the CLI writes to, so a chart made at the terminal is viewable in the browser
+  and vice versa - and the CLI still writes the identical standalone file,
+  verified byte-for-byte. Phase 3 of `docs/roadmap-2.0.md`.
+
+  That directory belongs to whoever started the server, and a name arriving
+  over HTTP decides which file comes back, so the name is checked twice: it has
+  to match an allowlist that admits no separator and no `%` (so no encoded one
+  either), and the *resolved* file has to sit directly in the resolved output
+  directory, which is what catches a symlink with an innocent name. Neither
+  check subsumes the other, and both are tested - including at the guard level
+  rather than only through the route, because the router already rejects most
+  traversal names before the guard sees them.
+
+  Charts are drawn in an `<iframe>` with scripts disabled. `court.py` and
+  `radar.py` emit pure HTML, SVG and CSS and never have emitted a script, so
+  nothing is lost; a test asserts that stays true. Same-origin so the page can
+  size the frame from its content, capped, with a link to the full file.
 - **The web interface renders answers per question shape.** `Answer.data` was
   already structured - resolved names and numbers - so seven intents now come
   back as something better than fixed-width text: `leaderboard`,

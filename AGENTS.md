@@ -211,6 +211,18 @@ everything about it is constrained by things measured elsewhere in this file.
 - **`fastapi`/`uvicorn` are the `web` extra**, so CI syncs `--extra web` and a
   missing install must print the `pip install 'association[web]'` line rather
   than raising ImportError.
+- **`GET /api/artifacts/{name}` serves a directory a person owns.** The name is
+  checked twice, and the two checks stop different things: an allowlist regex
+  rules out anything shaped like a path, and resolving the file and requiring
+  it to sit directly in the resolved output directory catches a symlink whose
+  *name* is perfectly innocent. Keep both. Test the guard directly as well as
+  through the route - measured, with the guard removed most traversal names
+  still 404 because Starlette never matches a path parameter containing a
+  separator, so a route-only test proves less than it looks like it does.
+- **Chart iframes run with scripts off.** `court.py` and `radar.py` emit no
+  script and a test asserts they still do not; if one ever needs to, the frame
+  stops working and that test says why. `allow-same-origin` is load-bearing
+  separately - it is how the page reads the chart's height to size the frame.
 - **Print the URL with `flush=True`.** stdout is block-buffered when it is not
   a terminal, and with an ephemeral port that URL is the only way to find the
   server at all.

@@ -279,6 +279,24 @@ renderer decides is not worth a table: "who leads the league in assists?"
 returns a single row, and one row is not a ranking, so it stays a sentence.
 Every rendered answer keeps the full text one click away, beside the trace.
 
+Charts render in the conversation. A question that draws a shot chart or a
+fingerprint shows it inline, served from the same directory the CLI writes to -
+so a chart made at the terminal is viewable in the browser and vice versa, and
+the CLI still writes the identical standalone file it always did.
+
+.. figure:: _static/web_chart_example.png
+   :alt: The web interface showing a half-court shot chart drawn inline in the conversation, with a link to open the full standalone file underneath.
+   :width: 620px
+
+   A shot chart, inline. Real output.
+
+Each chart is drawn in an ``<iframe>`` with scripts disabled: the pages
+:mod:`association.query.court` and :mod:`association.query.radar` produce are
+complete, theme-aware documents of pure HTML, SVG and CSS - they have never
+contained a script - so nothing is lost by refusing to run one, and the
+directory being served is one you can drop files into yourself. A frame taller
+than the cap scrolls, and the link beneath it opens the standalone file.
+
 Three more things about it are deliberate:
 
 * **Each message is a new question.** There is no conversation memory yet, so

@@ -15,13 +15,14 @@ from __future__ import annotations
 
 import json
 import queue
+import re
 import threading
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import duckdb
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -140,6 +141,39 @@ def sse(event: str, payload: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, default=str)}\n\n"
 
 
+ARTIFACT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*\.html$")
+"""What an artifact may be named to be served.
+
+An allowlist, not a denylist of the tricks: it admits exactly the names the
+renderers produce (``shotchart_stephen_curry_401811054.html``) and nothing that
+could describe a path - no separator, no ``%``, so no percent-encoded one
+either, and no leading dot. ``..`` cannot match it because a bare ``..`` has no
+``.html`` suffix and ``../x.html`` contains a separator.
+
+.. versionadded:: 2.0.0
+"""
+
+
+def artifact_path(out_dir: Path, name: str) -> Path | None:
+    """The file to serve for ``name``, or None if there is not one.
+
+    Two independent checks, because they stop different things. The name has to
+    match :data:`ARTIFACT_NAME`, which rules out anything shaped like a path.
+    Then the *resolved* file has to sit directly in the resolved output
+    directory - which is what catches a symlink whose name is perfectly
+    innocent and whose target is not. Neither check subsumes the other.
+
+    .. versionadded:: 2.0.0
+    """
+    if not ARTIFACT_NAME.match(name):
+        return None
+    root = out_dir.resolve()
+    path = (root / name).resolve()
+    if path.parent != root or not path.is_file():
+        return None
+    return path
+
+
 def _warehouse_seasons(db_path: str) -> dict[str, int] | None:
     """First season, last season and game count, or None if the warehouse is
     not there or holds no games yet.
@@ -198,6 +232,23 @@ def create_app(answerer: Answerer, db_path: str, out_dir: Path, model: str, rout
     def ask(request: AskRequest) -> AnswerResponse:
         """Answer one question, waiting for any question ahead of it."""
         return as_response(answerer.ask(request.question, label=f"POST /api/ask {request.question!r}"))
+
+    @app.get("/api/artifacts/{name}")
+    def artifact(name: str) -> FileResponse:
+        """One rendered chart, by the name an answer reported.
+
+        Serves out of the same directory the CLI writes to, so a chart made at
+        the terminal is viewable here and vice versa - and so anything else
+        that happens to be sitting in that directory is reachable too, which is
+        why `artifact_path` is strict about what counts as a name.
+        """
+        path = artifact_path(out_dir, name)
+        if path is None:
+            # 404 rather than 403 for a rejected name: a different status for
+            # "not allowed" than for "not there" would answer the question the
+            # probing was asking.
+            raise HTTPException(status_code=404, detail="no such artifact")
+        return FileResponse(path, media_type="text/html")
 
     @app.get("/api/ask/stream")
     def ask_stream(question: str) -> StreamingResponse:

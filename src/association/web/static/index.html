@@ -152,6 +152,25 @@
     white-space: pre-wrap;
     color: var(--muted);
   }
+  iframe.artifact {
+    display: block;
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    /* Capped rather than left to grow: a fingerprint is a radar plus a
+       twenty-row table, and at full height it would push the rest of the
+       conversation off the screen. Past the cap the frame scrolls, and the
+       link beside it opens the standalone file. */
+    max-height: 640px;
+    background: var(--panel);
+  }
+  .artifact-link {
+    display: inline-block;
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .artifact-link:hover { color: var(--accent); }
   .empty { color: var(--muted); padding: 40px 0; text-align: center; }
   .empty p { margin: 0 0 14px; }
   .examples { display: flex; flex-direction: column; gap: 8px; align-items: center; }
@@ -466,24 +485,77 @@
     return shape.split(",")[0] || firstLine(text);
   }
 
+  // A chart is served by the API out of the same directory the CLI writes to,
+  // and drawn in an iframe rather than inlined into this page. The renderers
+  // in court.py and radar.py emit complete, theme-aware documents that are
+  // correct today; pulling their SVG out to inline it here would be a real
+  // refactor of two modules for a better-integrated look, and this is the
+  // version that risks nothing. Revisit once the look is settled.
+  function chartFrame(art) {
+    const wrap = el("div");
+    const frame = el("iframe", "artifact");
+    frame.src = "/api/artifacts/" + encodeURIComponent(art.name);
+    frame.title = art.kind.replace(/_/g, " ");
+    frame.loading = "lazy";
+    // Same-origin so the height can be read below, but scripts are off: these
+    // pages are pure HTML, SVG and CSS - they have never contained a script -
+    // so nothing legitimate is lost and the directory being served is one a
+    // person can drop files into.
+    frame.setAttribute("sandbox", "allow-same-origin");
+    frame.height = "460";
+    frame.addEventListener("load", () => {
+      try {
+        const doc = frame.contentDocument;
+        if (doc) frame.height = String(doc.documentElement.scrollHeight + 2);
+      } catch (err) {
+        /* keep the default height - a chart at the wrong height still draws */
+      }
+      scroll();
+    });
+    wrap.appendChild(frame);
+    // "full" rather than "open": a fingerprint is taller than the cap above,
+    // so the frame scrolls, and the useful thing to say is that there is more
+    // of it - not merely that it can also be opened elsewhere.
+    const link = el("a", "artifact-link", "open the full " + art.kind.replace(/_/g, " ") + " \u2197");
+    link.href = frame.src;
+    link.target = "_blank";
+    link.rel = "noopener";
+    wrap.appendChild(link);
+    return wrap;
+  }
+
   function renderAnswer(a) {
+    // Charts and a rendered body are independent: an answer can have either,
+    // both, or neither. Every way the body can decline - no renderer, a key the
+    // template stopped producing, a shape not worth a table - still leaves the
+    // charts, which are the part a sentence cannot substitute for.
+    const charts = (a.artifacts || []).map(chartFrame);
+    const out = renderBody(a);
+    if (!out && !charts.length) return null;
+    const box = el("div");
+    if (out) {
+      // A chart is self-describing - court.py and radar.py draw their own
+      // title and subtitle - so a chart-only answer gets no caption here, and
+      // its sentence (which is mostly a file path) goes under the text toggle.
+      if (out.caption) box.appendChild(el("div", "caption", out.caption));
+      if (out.spark) box.appendChild(sparkline(out.spark));
+      box.appendChild(out.body);
+    }
+    for (const chart of charts) box.appendChild(chart);
+    return box;
+  }
+
+  function renderBody(a) {
     const spec = a.intent && RENDERERS[a.intent];
     if (!spec || !a.data) return null;
     // A key the template stopped producing means this renderer is looking at a
     // shape that no longer exists. Fall back rather than render half a table.
     if (spec.needs.some(k => a.data[k] === undefined || a.data[k] === null)) return null;
-    let out;
     try {
-      out = spec.render(a.data, a.text);
+      return spec.render(a.data, a.text) || null;
     } catch (err) {
       return null;  // never let a rendering bug swallow an answer that is fine
     }
-    if (!out) return null;
-    const box = el("div");
-    if (out.caption) box.appendChild(el("div", "caption", out.caption));
-    if (out.spark) box.appendChild(sparkline(out.spark));
-    box.appendChild(out.body);
-    return box;
   }
 
   function el(tag, cls, text) {
@@ -556,7 +628,7 @@
       meta.appendChild(badge);
       if (a.intent) meta.appendChild(el("span", null, a.intent));
       meta.appendChild(el("span", null, a.timing.total_seconds.toFixed(2) + "s"));
-      for (const art of a.artifacts) meta.appendChild(el("span", null, art.name));
+
       // The text is never lost when a table replaced it - it is the same
       // answer the CLI prints, one click away, beside the trace.
       if (rendered) meta.appendChild(disclosure("text", a.text));

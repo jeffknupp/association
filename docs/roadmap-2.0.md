@@ -303,7 +303,7 @@ between them is guarded from the Python side: each renderer declares the
 the page and asserts each one against what the template actually produces, and
 a renamed key fails there instead of silently dropping a table.
 
-### Phase 3 — charts inline
+### Phase 3 — charts inline — **done**
 
 - `GET /api/artifacts/{name}` serves from the agent's output directory, with the
   name validated against that directory (no traversal, no absolute paths).
@@ -317,6 +317,33 @@ a renamed key fails there instead of silently dropping a table.
 
 *Done when:* asking for a chart in the browser shows the chart, and the same
 question via the CLI still writes the same standalone file.
+
+*Verified:* both charts drawn inline in a headless Chromium, light and dark, no
+console errors; and the file the CLI writes for the same question is
+byte-identical to what the route serves.
+
+The iframe was the right recommendation and it is what shipped. Three things
+the plan did not anticipate:
+
+- **The frame is sandboxed with scripts off** (`sandbox="allow-same-origin"`).
+  `court.py` and `radar.py` emit no script and never have, so nothing is lost —
+  and the directory being served is one a person can put files into. A test
+  asserts those two modules still emit no script, because if one ever grew one
+  the frame would silently stop working.
+- **`allow-same-origin` is also what sizes the frame.** The parent reads the
+  child's `scrollHeight` on load, so a chart is drawn at its own height with no
+  script in the child and no `postMessage` protocol. Capped, past which the
+  frame scrolls and the link beside it opens the standalone file.
+- **The route's guard and the router's routing are two different defenses.**
+  Measured: with `artifact_path`'s checks removed, most traversal names still
+  404, because Starlette never matches a path parameter containing a separator.
+  So the traversal tests exist at both levels — the endpoint's behavior, and
+  the guard on its own, which is what would still be holding if the route were
+  ever declared `{name:path}`.
+
+Charts appear on the agent path too, not just the fast path: `Toolbox` records
+what a render tool wrote, so an answer whose chart came from a tool call
+carries it the same way a template's does.
 
 ### After 2.0
 
