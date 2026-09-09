@@ -7,6 +7,13 @@ import pytest
 from click.testing import CliRunner
 
 from association.cli import _parse_season_types, _parse_seasons, cli, data_check, data_load, data_pull, query
+from association.query.answer import Answer, Timing
+
+
+def _answer(text: str) -> Answer:
+    """The shape Agent.ask returns. The CLI reads only `.text`, so the rest is
+    filled with whatever is cheapest to construct."""
+    return Answer(question="q", text=text, answered_by="fast", timing=Timing(0.0, 0.0, 0, 0.0, 0))
 
 
 def test_parse_seasons_single() -> None:
@@ -149,9 +156,10 @@ def test_query_dispatches_with_question(monkeypatch: pytest.MonkeyPatch) -> None
         def __init__(self, model: str, db_path: str, out_dir: object, verbose: bool, think: bool, fast_path: bool, router_model: str) -> None:
             captured["model"] = model
 
-        def ask(self, question: str) -> str:
+        def ask(self, question: str, label: str = "") -> Answer:
             captured["question"] = question
-            return "the answer"
+            captured["label"] = label
+            return _answer("the answer")
 
     monkeypatch.setattr("association.query.agent.Agent", FakeAgent)
     runner = CliRunner()
@@ -159,6 +167,13 @@ def test_query_dispatches_with_question(monkeypatch: pytest.MonkeyPatch) -> None
     assert result.exit_code == 0, result.output
     assert captured["question"] == "who led the league in assists"
     assert "the answer" in result.output
+    # The label is what the history file records as the run's `command`.
+    # Agent.ask no longer reads sys.argv itself and defaults the label to "",
+    # so a CLI that forgot to pass one would write history files with an empty
+    # command line and nothing else would notice. Only its presence can be
+    # checked here: CliRunner invokes the command in-process, so the real
+    # sys.argv is pytest's, not this invocation's.
+    assert captured["label"]
 
 
 def test_query_passes_the_engine_options_through(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -173,8 +188,8 @@ def test_query_passes_the_engine_options_through(monkeypatch: pytest.MonkeyPatch
             captured["fast_path"] = fast_path
             captured["router_model"] = router_model
 
-        def ask(self, question: str) -> str:
-            return "the answer"
+        def ask(self, question: str, label: str = "") -> Answer:
+            return _answer("the answer")
 
     monkeypatch.setattr("association.query.agent.Agent", FakeAgent)
     runner = CliRunner()

@@ -12,6 +12,7 @@ from typing import Any
 
 import duckdb
 
+from .answer import Artifact, RenderResult
 from .court import render_court_html
 from .entities import Entity, find_players
 
@@ -48,7 +49,7 @@ def render_shot_chart(
     period: int | None = None,
     shot_value: int | None = None,
     made_only: bool | None = None,
-) -> str:
+) -> RenderResult:
     """Resolve a player name and render their shots - the agent tool's entry
     point. A caller that has already resolved the player calls
     :func:`render_for_player`.
@@ -56,10 +57,14 @@ def render_shot_chart(
     .. versionchanged:: 1.2.0
        Resolution split out into :func:`resolve_chart_player` and the rendering
        body into :func:`render_for_player`. This signature is unchanged.
+
+    .. versionchanged:: 2.0.0
+       Returns a :class:`association.query.answer.RenderResult` rather than a
+       message string, so a caller can reach the file that was drawn.
     """
     resolved = resolve_chart_player(con, player_name)
     if resolved is None:
-        return f"No player found matching {player_name!r}."
+        return RenderResult(f"No player found matching {player_name!r}.", None)
     player, ambiguous = resolved
     return render_for_player(
         con,
@@ -86,7 +91,7 @@ def render_for_player(
     period: int | None = None,
     shot_value: int | None = None,
     made_only: bool | None = None,
-) -> str:
+) -> RenderResult:
     """Render an already-resolved player's shots to a static HTML court plot.
 
     Free throws are excluded: they carry no court coordinates. Passing
@@ -94,10 +99,19 @@ def render_for_player(
     ``season_type`` redundant.
 
     Returns:
-        A human-readable message naming the player, the made/attempted split,
-        and the file written.
+        A :class:`association.query.answer.RenderResult`: the message naming
+        the player and the made/attempted split, and the file written -
+        ``artifact`` is None when no shots matched, which is an answer rather
+        than a failure.
 
     .. versionadded:: 1.2.0
+
+    .. versionchanged:: 2.0.0
+       Returns a :class:`association.query.answer.RenderResult` instead of a
+       bare message with the path formatted into it, so a caller that wants to
+       show the chart does not have to parse the path back out of a sentence.
+       :func:`association.query.fingerprint.render_for_players` returns the
+       same shape.
     """
     athlete_id, resolved_name = player.id, player.name
 
@@ -132,7 +146,7 @@ def render_for_player(
     sql = f"SELECT coordinate_x, coordinate_y, made, shot_type, period, clock, event_id FROM shot_chart WHERE {' AND '.join(where)} AND coordinate_x IS NOT NULL"
     shots = con.execute(sql, filter_params).fetchall()
     if not shots:
-        return f"No shots found for {resolved_name} with the given filters."
+        return RenderResult(f"No shots found for {resolved_name} with the given filters.", None)
 
     made = sum(1 for s in shots if s[2])
     total = len(shots)
@@ -179,4 +193,4 @@ def render_for_player(
     msg = f"Rendered shot chart for {resolved_name} ({made}/{total} made, {made / total:.1%}) to {out_path}"
     if ambiguous:
         msg += f". Note: other players also matched: {ambiguous}"
-    return msg
+    return RenderResult(msg, Artifact("shot_chart", out_path))

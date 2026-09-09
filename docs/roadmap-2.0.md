@@ -37,24 +37,29 @@ stops working", over the CLI surface and the documented Python API. Three
 things have to change shape, and they are the reason the version number moves
 rather than the fact that there is a new feature.
 
-**`Agent.ask` returns prose and throws the rest away.** `_try_fast_path` gets a
+These are all **done** as of Phase 0 below; they are recorded here as the
+reason the version number moves.
+
+**`Agent.ask` returned prose and threw the rest away.** `_try_fast_path` got a
 `TemplateResult` carrying both `answer` (the phrasing) and `data` (the resolved
 names and numbers, no ids, no schema) and returns only `result.answer`. `data`
-exists precisely so a caller can render the answer itself — today nothing can
-reach it. It has to return a structured result: the text, the intent that
+exists precisely so a caller can render the answer itself, and nothing could
+reach it. It returns a structured result now: the text, the intent that
 produced it, the structured data, and any artifacts written.
 
-**The two renderers disagree about what they return.**
-`fingerprint.render_for_players` returns `(message, path)`;
-`shotchart.render_for_player` returns only a message string with the path
+**The two renderers disagreed about what they return.**
+`fingerprint.render_for_players` returned `(message, path)`;
+`shotchart.render_for_player` returned only a message string with the path
 formatted into the middle of it. Inline rendering needs the path, and parsing
-it back out of a sentence is not a plan. Both should return the same shape.
+it back out of a sentence is not a plan. All four render entry points return
+the same `RenderResult` now.
 
-**`Agent.ask` assumes it is a CLI.** It labels its history entry with
-`shlex.join(sys.argv)` and prints `[history] ...` straight to stderr; the trace
-lines in `RunHistory.log` go to stderr when `verbose`. A server needs those as
+**`Agent.ask` assumed it was a CLI.** It labeled its history entry with
+`shlex.join(sys.argv)` and printed `[history] ...` straight to stderr; the trace
+lines in `RunHistory.log` went to stderr when `verbose`. A server needs those as
 events it can forward to a browser, and needs to say what the request was
-rather than what the process's argv happened to be.
+rather than what the process's argv happened to be. `Agent` takes a `trace`
+callback and `ask` takes a `label`; `RunHistory` takes a `sink`.
 
 **The `ai` subcommand is gone.** The web UI replaces it, so keeping an
 interactive terminal REPL alive would mean maintaining two interactive
@@ -152,7 +157,7 @@ GET  /api/artifacts/{name} a rendered chart, from the output directory
 {
   "question": "who leads the league in assists?",
   "text": "Nikola Jokic led the league in assists per game ...",
-  "path": "fast",
+  "answered_by": "fast",
   "intent": "leaderboard",
   "data": {"season": 2026, "leaders": []},
   "artifacts": [{"kind": "shot_chart", "name": "shotchart_stephen_curry.html"}],
@@ -160,8 +165,9 @@ GET  /api/artifacts/{name} a rendered chart, from the output directory
 }
 ```
 
-`path` is `fast` or `agent`; `intent` and `data` are null when the agent
-answered, since only a template produces them.
+`answered_by` is `fast` or `agent`; `intent` and `data` are null when the agent
+answered, since only a template produces them. (The plan first called this
+field `path`, which reads badly next to an artifact's file path.)
 
 SSE events, in order: `queued` (only if something else is running), `routed`
 (intent and slots), `tool` (name, elapsed) zero or more times, then `answer` or
@@ -173,12 +179,12 @@ why the refactor should give `RunHistory` a sink rather than hardcoding stderr.
 Each phase is shippable and independently useful. Phase 0 is the only one that
 breaks anything.
 
-### Phase 0 — make the answer a value, not a print
+### Phase 0 — make the answer a value, not a print — **done**
 
 No web code. Reshape the query API so a caller other than a terminal can use it.
 
-- `Agent.ask` returns an `Answer` (text, path taken, intent, data, artifacts,
-  timing) instead of `str`. `cli.query` prints `answer.text`; the REPL likewise.
+- `Agent.ask` returns an `Answer` (text, `answered_by`, intent, data, artifacts,
+  timing) instead of `str`. `cli.query` prints `answer.text`.
 - `_try_fast_path` stops discarding `TemplateResult.data`.
 - Both renderers return the same result shape, carrying the written path.
 - `RunHistory` takes an optional callback for its trace lines; stderr echoing
@@ -188,6 +194,21 @@ No web code. Reshape the query API so a caller other than a terminal can use it.
 *Done when:* the CLI's output is byte-identical to 1.6.0 for a sample of
 questions across every intent, and `Answer.data` is populated for each. The
 byte-identical check is the point — this phase must be invisible from outside.
+
+*Verified:* ten questions covering `leaderboard`, `head_to_head`,
+`player_history`, `threshold_count`, `team_record`, `player_compare`,
+`shot_chart`, `fingerprint`, `shot_distance` and `game_log`, run against a
+1.6.0 worktree and against this branch on the same warehouse — byte-identical
+on all ten, `data` populated on all ten, and both chart questions reporting the
+file they wrote as an artifact.
+
+Two things changed from the plan as written. `Answer.answered_by` carries the
+`"fast"`/`"agent"` distinction rather than a field named `path`, which sat too
+close to `Artifact.path` to keep straight. And the two *tool-level* renderers
+(`render_shot_chart`, `render_fingerprint`) return the same `RenderResult` as
+the two lower-level ones rather than staying strings: the agent reaches charts
+only through those, so leaving them as prose would have meant the agent path
+could never report an artifact.
 
 ### Phase 1 — `association web`, text answers
 

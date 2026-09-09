@@ -15,6 +15,36 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **BREAKING: an answer is a value, not a printed string.**
+  `Agent.ask` now returns an `Answer` (`association.query.answer`) instead of
+  the answer text: the text, which path answered (`"fast"` or `"agent"`), the
+  intent, the template's structured `data`, the files written, and the timing.
+  Callers print `answer.text`.
+
+  The fast path already computed all of it and threw most of it away.
+  `TemplateResult.data` exists so a caller can render an answer itself, and
+  `_try_fast_path` returned only `result.answer`, so nothing ever could - which
+  is the first thing the 2.0 web UI needs. Phase 0 of `docs/roadmap-2.0.md`.
+
+  Three smaller reshapings come with it, all on the same theme of the engine
+  assuming it was talking to a terminal:
+
+  - **Both chart renderers return the same shape.**
+    `shotchart.render_for_player` and `render_shot_chart` returned a message
+    with the file path formatted into the middle of a sentence;
+    `fingerprint.render_for_players` returned `(message, path)` and
+    `render_fingerprint` a message. All four now return a `RenderResult`
+    (message, and the `Artifact` written - `None` when nothing was drawn), so
+    showing a chart does not mean parsing a path back out of prose.
+  - **`RunHistory` takes a `sink`** for its live trace, defaulting to stderr.
+    The file still records every line regardless of `--verbose`, as before.
+  - **`Agent.ask` takes a `label`** for the history file's `command:` line
+    instead of reading `shlex.join(sys.argv)`, which is only ever true of a
+    CLI. `Agent` also takes a `trace` callback, so nothing in the engine writes
+    to a terminal on its own.
+
+  The CLI is unchanged: verified byte-identical to 1.6.0 across ten questions
+  covering ten intents, with `Answer.data` populated for every one.
 - **The `ai` REPL is gone.** The web UI planned for 2.0 (see
   `docs/roadmap-2.0.md`) replaces it, and keeping both would mean two
   interactive front-ends with different capabilities over one engine. Removed

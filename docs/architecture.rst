@@ -84,6 +84,38 @@ verbatim, with that exact wrong form spelled out as a worked example.
 A template cannot make that mistake, because resolving a name to an id is code
 that runs the same way every time.
 
+What an answer is
+-----------------
+
+:meth:`association.query.agent.Agent.ask` returns an
+:class:`association.query.answer.Answer`, not a string. ``answer.text`` is what
+the CLI prints and is the whole of what the CLI ever showed; everything beside
+it is what the pipeline had already computed and thrown away.
+
+The important field is ``answered_by``: ``"fast"`` for router → template, and
+``"agent"`` for the fall-through. That distinction is not bookkeeping. It is the
+single most useful thing a reader can know about an answer's reliability —
+whether a template built the sentence from code, or a 7B model wrote the SQL —
+and it was previously visible only by watching the trace go past.
+
+``intent`` and ``data`` are populated on the fast path and ``None`` on the
+other, because only a template produces them. ``data`` is the same answer as
+resolved names and numbers, and it exists so a caller can render the result
+itself rather than parse the sentence. ``artifacts`` names the files a question
+wrote, which a chart's caller previously had to recover from the middle of the
+message it was formatted into.
+
+Both paths reach charts differently, which is why artifacts arrive from two
+places: a template renders straight to disk and reports what it wrote, while
+the agent renders through a tool whose return value is prose the *model* reads,
+so :class:`association.query.toolbox.Toolbox` records the file on the side.
+
+The live trace is a sink rather than a print. :class:`association.query.history.RunHistory`
+records every line to the run's history file regardless, and hands it to
+``sink`` — stderr by default — when ``verbose``. Nothing in the engine writes
+to a terminal on its own any more, which is what lets a caller other than a
+terminal forward the trace somewhere else.
+
 Two models
 ----------
 

@@ -18,6 +18,7 @@ import duckdb
 import pytest
 
 from association.net_points_categories import FINGERPRINT_CATEGORIES
+from association.query.answer import RenderResult
 from association.query.entities import Entity
 from association.query.fingerprint import (
     FINGERPRINT_SKILLS,
@@ -30,6 +31,15 @@ from association.query.fingerprint import (
     skills_for,
 )
 from association.query.radar import PLOT_RADIUS, VALUE_ZERO_FRACTION, Axis, Cell, Series, render_fingerprint_html
+
+
+def _drawn(result: RenderResult) -> Path:
+    """The file a render wrote. Asserting it is not None here rather than in
+    every caller keeps the "nothing was drawn" case from silently becoming an
+    AttributeError three lines later."""
+    assert result.artifact is not None, result.message
+    return result.artifact.path
+
 
 # One player is a league-best rim scorer who forces no turnovers, one is his
 # mirror image, one is average, one is below the minutes floor. Every value
@@ -166,12 +176,12 @@ def test_a_player_below_the_floor_is_still_drawn_and_said_to_be_below_it(con: du
     that silently is not of them is the failure this project keeps producing."""
     fingerprints, _ = load_fingerprints(con, [_entity("4")], 2026, min_minutes=500)
     assert fingerprints[0].qualified is False
-    message, _ = render_for_players(con, tmp_path, [_entity("4")], [], 2026)
+    message = render_for_players(con, tmp_path, [_entity("4")], [], 2026).message
     assert "under 500 minutes" in message
 
 
 def test_a_player_with_no_row_is_named_rather_than_drawn_as_zeroes(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    message, _ = render_for_players(con, tmp_path, [_entity("1"), Entity(id="99", name="Ghost Player")], [], 2026)
+    message = render_for_players(con, tmp_path, [_entity("1"), Entity(id="99", name="Ghost Player")], [], 2026).message
     assert "No fingerprint on record for: Ghost Player" in message
     assert "Ghost Player" not in message.split("No fingerprint on record")[0]
 
@@ -235,7 +245,7 @@ def test_the_first_axis_points_straight_up_and_they_run_clockwise() -> None:
 
 
 def test_every_polygon_has_one_vertex_per_axis(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    _, path = render_for_players(con, tmp_path, [_entity("1"), _entity("2")], [], 2026)
+    path = _drawn(render_for_players(con, tmp_path, [_entity("1"), _entity("2")], [], 2026))
     for points in _polygons(path.read_text()):
         assert len(points) == len(FINGERPRINT_SKILLS)
 
@@ -243,7 +253,7 @@ def test_every_polygon_has_one_vertex_per_axis(con: duckdb.DuckDBPyConnection, t
 def test_no_vertex_escapes_the_outer_ring(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
     """A radius over 1.0 draws outside the ring it is measured against, which
     reads as better than the league best."""
-    _, path = render_for_players(con, tmp_path, [_entity("1")], [], 2026, scale="value")
+    path = _drawn(render_for_players(con, tmp_path, [_entity("1")], [], 2026, scale="value"))
     for points in _polygons(path.read_text()):
         for x, y in points:
             # A hair over, not 1e-6: coordinates are written to two decimals.
@@ -251,7 +261,7 @@ def test_no_vertex_escapes_the_outer_ring(con: duckdb.DuckDBPyConnection, tmp_pa
 
 
 def test_the_headline_is_rendered_above_the_plot(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    _, path = render_for_players(con, tmp_path, [_entity("1")], [], 2026)
+    path = _drawn(render_for_players(con, tmp_path, [_entity("1")], [], 2026))
     html = path.read_text()
     head = html.split("<svg")[0]
     assert "<b>+2.00</b> total net pts / 100" in head
@@ -260,14 +270,14 @@ def test_the_headline_is_rendered_above_the_plot(con: duckdb.DuckDBPyConnection,
 
 
 def test_the_table_carries_the_numbers_the_plot_only_shows_as_a_shape(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    _, path = render_for_players(con, tmp_path, [_entity("1")], [], 2026)
+    path = _drawn(render_for_players(con, tmp_path, [_entity("1")], [], 2026))
     html = path.read_text()
     assert html.count('<tr><th scope="row"') == len(FINGERPRINT_SKILLS)
     assert "+2.00" in html  # Ada Star's rim value per 100, spelled out
 
 
 def test_a_view_draws_only_that_side(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    _, path = render_for_players(con, tmp_path, [_entity("1")], [], 2026, view="defense")
+    path = _drawn(render_for_players(con, tmp_path, [_entity("1")], [], 2026, view="defense"))
     html = path.read_text()
     assert html.count('<tr><th scope="row"') == len(skills_for("defense"))
     assert "defensive skills only" in html
@@ -286,7 +296,7 @@ def _shaded(html: str) -> list[tuple[str, str, float]]:
 
 
 def test_the_leader_of_each_category_is_shaded_in_their_own_color(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    _, path = render_for_players(con, tmp_path, [_entity("1"), _entity("2")], [], 2026)
+    path = _drawn(render_for_players(con, tmp_path, [_entity("1"), _entity("2")], [], 2026))
     shaded = dict((label, series) for label, series, _ in _shaded(path.read_text()))
     # Ada Star is series a and leads rim scoring; Bo Wall is series b and leads
     # forced turnovers. Shading the wrong side is the whole point of this test.
@@ -295,7 +305,7 @@ def test_the_leader_of_each_category_is_shaded_in_their_own_color(con: duckdb.Du
 
 
 def test_only_one_cell_per_row_is_shaded(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    _, path = render_for_players(con, tmp_path, [_entity("1"), _entity("2")], [], 2026)
+    path = _drawn(render_for_players(con, tmp_path, [_entity("1"), _entity("2")], [], 2026))
     labels = [label for label, _, _ in _shaded(path.read_text())]
     assert len(labels) == len(set(labels))
 
@@ -303,7 +313,7 @@ def test_only_one_cell_per_row_is_shaded(con: duckdb.DuckDBPyConnection, tmp_pat
 def test_a_tied_category_is_not_shaded_for_either_player(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
     """Every skill but those two is 0.0 for both. A highlight anywhere else
     would invent a winner out of a tie."""
-    _, path = render_for_players(con, tmp_path, [_entity("1"), _entity("2")], [], 2026)
+    path = _drawn(render_for_players(con, tmp_path, [_entity("1"), _entity("2")], [], 2026))
     labels = {label for label, _, _ in _shaded(path.read_text())}
     assert labels == {"rim scoring", "forcing TOs"}
 
@@ -313,14 +323,14 @@ def test_the_shade_is_proportional_to_the_gap(con: duckdb.DuckDBPyConnection, tm
     100, the widest gap in the table; a skill she leads by a tenth of that must
     be visibly lighter."""
     con.execute("UPDATE net_points_player_fingerprint SET corner_o_net_pts = 10.0 WHERE athlete_id = '1'")
-    _, path = render_for_players(con, tmp_path, [_entity("1"), _entity("2")], [], 2026)
+    path = _drawn(render_for_players(con, tmp_path, [_entity("1"), _entity("2")], [], 2026))
     alphas = {label: alpha for label, _, alpha in _shaded(path.read_text())}
     assert alphas["rim scoring"] > alphas["corner 3s"]
     assert alphas["corner 3s"] > 0  # but still visible: a real lead, narrowly
 
 
 def test_a_single_player_table_is_not_shaded(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    _, path = render_for_players(con, tmp_path, [_entity("1")], [], 2026)
+    path = _drawn(render_for_players(con, tmp_path, [_entity("1")], [], 2026))
     assert _shaded(path.read_text()) == []
 
 
@@ -335,25 +345,25 @@ def test_a_name_with_html_in_it_cannot_break_out_of_the_page() -> None:
 
 
 def test_render_fingerprint_resolves_a_partial_name(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    assert "Ada Star" in render_fingerprint(con, tmp_path, "Ada", season=2026)
+    assert "Ada Star" in render_fingerprint(con, tmp_path, "Ada", season=2026).message
 
 
 def test_render_fingerprint_compares_two_names(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    assert "Ada Star vs Bo Wall" in render_fingerprint(con, tmp_path, "Ada vs Bo", season=2026)
+    assert "Ada Star vs Bo Wall" in render_fingerprint(con, tmp_path, "Ada vs Bo", season=2026).message
 
 
 def test_render_fingerprint_reports_an_unknown_name_rather_than_raising(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    assert render_fingerprint(con, tmp_path, "Nobody At All", season=2026) == "No player found matching 'Nobody At All'."
+    assert render_fingerprint(con, tmp_path, "Nobody At All", season=2026) == RenderResult("No player found matching 'Nobody At All'.", None)
 
 
 def test_render_fingerprint_reports_a_missing_season_rather_than_raising(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    assert "no NetPoints fingerprint data for season 1999" in render_fingerprint(con, tmp_path, "Ada", season=1999)
+    assert "no NetPoints fingerprint data for season 1999" in render_fingerprint(con, tmp_path, "Ada", season=1999).message
 
 
 def test_the_table_is_grouped_the_way_the_plot_is(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
     """One section per group, in plot order. Sorting across groups instead
     would list the skills in an order the radar never shows, and the table is
     what the radar is checked against."""
-    _, path = render_for_players(con, tmp_path, [_entity("1")], [], 2026)
+    path = _drawn(render_for_players(con, tmp_path, [_entity("1")], [], 2026))
     sections = re.findall(r'<th scope="rowgroup"[^>]*>([^<]+)</th>', path.read_text())
     assert sections == list(dict.fromkeys(skill.group for skill in FINGERPRINT_SKILLS))

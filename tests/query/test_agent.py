@@ -89,7 +89,7 @@ def test_ask_strips_thinking_from_history_before_next_call(monkeypatch: pytest.M
         return next(responses)
 
     monkeypatch.setattr(ollama, "chat", fake_chat)
-    result = think_agent.ask("some question")
+    result = think_agent.ask("some question").text
 
     assert result == "Final answer."
     assert len(calls) == 2
@@ -122,7 +122,7 @@ def test_ask_gives_honest_message_when_recovery_cap_exhausted(monkeypatch: pytes
         return next(responses)
 
     monkeypatch.setattr(ollama, "chat", fake_chat)
-    result = think_agent.ask("some question")
+    result = think_agent.ask("some question").text
 
     assert "wasn't able to get a working query" in result
     assert "SELECT 1" in result
@@ -162,7 +162,7 @@ def test_ask_blocks_fabricated_answer_right_after_tool_error_and_retries(monkeyp
 
     monkeypatch.setattr(ollama, "chat", fake_chat)
     think_agent.dispatch["run_sql"] = fake_run_sql
-    result = think_agent.ask("some question")
+    result = think_agent.ask("some question").text
 
     assert result == "Real answer."
     assert "[Player Name 1]" not in result
@@ -194,7 +194,7 @@ def test_ask_gives_honest_message_when_error_recovery_cap_exhausted(monkeypatch:
 
     monkeypatch.setattr(ollama, "chat", fake_chat)
     think_agent.dispatch["run_sql"] = fake_run_sql
-    result = think_agent.ask("some question")
+    result = think_agent.ask("some question").text
 
     assert "ran into an error" in result
     assert "bogus_column" in result
@@ -217,7 +217,7 @@ def test_ask_writes_history_file_even_without_verbose(monkeypatch: pytest.Monkey
         return ChatResponse(model="qwen2.5:7b", created_at="", done=True, message=Message(role="assistant", content="Final answer."))
 
     monkeypatch.setattr(ollama, "chat", fake_chat)
-    result = agent.ask("some question")
+    result = agent.ask("some question").text
 
     assert result == "Final answer."
     files = list(history_dir.glob("*.log"))
@@ -270,7 +270,7 @@ def test_fast_path_is_skipped_entirely_when_disabled(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr("association.query.agent.route", fake_route)
     monkeypatch.setattr(ollama, "chat", lambda **kw: ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="agent answer")))
-    assert _agent(tmp_path, fast_path=False).ask("q") == "agent answer"
+    assert _agent(tmp_path, fast_path=False).ask("q").text == "agent answer"
     assert not called
 
 
@@ -281,13 +281,13 @@ def test_unported_intent_falls_through_to_the_agent(monkeypatch: pytest.MonkeyPa
 
     monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="other", slots={}))
     monkeypatch.setattr(ollama, "chat", lambda **kw: ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="agent answer")))
-    assert _agent(tmp_path).ask("who had the most triple-doubles?") == "agent answer"
+    assert _agent(tmp_path).ask("who had the most triple-doubles?").text == "agent answer"
 
 
 def test_router_failure_falls_through_rather_than_erroring(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr("association.query.agent.route", lambda *a, **k: None)
     monkeypatch.setattr(ollama, "chat", lambda **kw: ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="agent answer")))
-    assert _agent(tmp_path).ask("q") == "agent answer"
+    assert _agent(tmp_path).ask("q").text == "agent answer"
 
 
 def test_fast_path_answer_is_recorded_in_conversation_for_later_followups(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -301,7 +301,7 @@ def test_fast_path_answer_is_recorded_in_conversation_for_later_followups(monkey
     # No ollama.chat stub: reaching one would itself be the bug. The router is
     # stubbed out above, and a template answers without a model call.
     agent = _agent(tmp_path)
-    assert agent.ask("most 30+ point games?") == "template answer"
+    assert agent.ask("most 30+ point games?").text == "template answer"
     assert agent.last_question == "most 30+ point games?"
     assert [m["content"] for m in agent.messages[1:]] == ["most 30+ point games?", "template answer"]
 
@@ -330,3 +330,107 @@ def test_every_tool_schema_names_its_required_parameters(think_agent: Agent) -> 
         parameters = inspect.signature(think_agent.dispatch[function["name"]]).parameters
         for name in function["parameters"]["properties"]:
             assert name in parameters, f"{function['name']} advertises {name!r}, which its handler does not accept"
+
+
+def test_the_fast_path_carries_out_the_intent_and_data_it_used_to_discard(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """TemplateResult.data existed so a caller could render the answer itself,
+    and _try_fast_path returned only result.answer, so nothing ever could.
+    That is the whole reason Phase 0 of the 2.0 plan exists."""
+    from association.query.router import Route
+    from association.query.templates import TemplateResult
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="leaderboard", slots={"stat": "points"}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"leaderboard": lambda con, slots: TemplateResult(data={"leaders": ["Jokic"]}, answer="Jokic.")})
+    answer = _agent(tmp_path).ask("who leads the league in scoring?")
+
+    assert answer.text == "Jokic."
+    assert answer.answered_by == "fast"
+    assert answer.intent == "leaderboard"
+    assert answer.data == {"leaders": ["Jokic"]}
+    assert answer.question == "who leads the league in scoring?"
+
+
+def test_an_agent_answer_has_no_intent_or_data_rather_than_an_empty_one(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Only a template produces those. None says so; {} would read as "the
+    template ran and found nothing", which is a different claim."""
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: None)
+    monkeypatch.setattr(ollama, "chat", lambda **kw: ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="agent answer")))
+    answer = _agent(tmp_path).ask("q")
+
+    assert answer.answered_by == "agent"
+    assert answer.intent is None
+    assert answer.data is None
+
+
+def test_a_fast_path_answer_carries_the_chart_the_template_wrote(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from association.query.answer import Artifact
+    from association.query.router import Route
+    from association.query.templates import TemplateResult
+
+    drawn = Artifact("shot_chart", tmp_path / "shotchart_x.html")
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="shot_chart", slots={"player": "x"}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"shot_chart": lambda con, slots: TemplateResult(data={}, answer="Rendered.", artifacts=[drawn])})
+    assert _agent(tmp_path).ask("chart x").artifacts == [drawn]
+
+
+def test_an_agent_answer_carries_the_chart_a_tool_call_wrote(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A render tool returns prose to the model, because prose is all the model
+    can read - so the file it wrote reaches the caller only because Toolbox
+    records it on the side."""
+    from association.query.answer import Artifact
+
+    agent = _agent(tmp_path, fast_path=False)
+    drawn = Artifact("fingerprint", tmp_path / "fingerprint_x.html")
+
+    def fake_chat(**kwargs: Any) -> ChatResponse:
+        agent.toolbox.artifacts.append(drawn)  # what Toolbox._rendered does
+        return ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="Drew it."))
+
+    monkeypatch.setattr(ollama, "chat", fake_chat)
+    assert agent.ask("plot x").artifacts == [drawn]
+
+
+def test_one_questions_charts_are_never_reported_as_the_nexts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A Toolbox outlives any single question, so an undrained list would have
+    every later answer claiming to have drawn the first one's chart."""
+    from association.query.answer import Artifact
+
+    agent = _agent(tmp_path, fast_path=False)
+    agent.toolbox.artifacts.append(Artifact("fingerprint", tmp_path / "stale.html"))
+    monkeypatch.setattr(ollama, "chat", lambda **kw: ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="answer")))
+    assert agent.ask("something else entirely").artifacts == []
+
+
+def test_the_history_label_comes_from_the_caller_not_the_process(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """`shlex.join(sys.argv)` describes a CLI invocation and nothing else - for
+    a server handling many questions it is the same wrong string every time."""
+    import duckdb
+
+    db_path = tmp_path / "test.duckdb"
+    duckdb.connect(str(db_path)).close()
+    history_dir = tmp_path / ".history"
+    agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=history_dir, fast_path=False)
+    monkeypatch.setattr(ollama, "chat", lambda **kw: ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="a")))
+
+    agent.ask("q", label="POST /api/ask")
+
+    assert "command: POST /api/ask" in next(iter(history_dir.glob("*.log"))).read_text()
+
+
+def test_a_trace_sink_takes_the_place_of_stderr_entirely(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Including the [history] line, which printed unconditionally - a server
+    that captured the trace but still wrote that one to its own terminal would
+    have gone half-way."""
+    import duckdb
+
+    db_path = tmp_path / "test.duckdb"
+    duckdb.connect(str(db_path)).close()
+    seen: list[str] = []
+    agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history", fast_path=False, verbose=True, trace=seen.append)
+    monkeypatch.setattr(ollama, "chat", lambda **kw: ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="a")))
+
+    agent.ask("q")
+
+    assert any(line.startswith("[history] ") for line in seen)
+    assert any("model inference #1" in line for line in seen)
+    assert capsys.readouterr().err == ""

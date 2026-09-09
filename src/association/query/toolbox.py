@@ -11,6 +11,7 @@ from typing import Any
 
 import duckdb
 
+from .answer import Artifact, RenderResult
 from .fingerprint import render_fingerprint
 from .leaderboard import LeaderboardError, run_leaderboard
 from .prompt import KNOWN_TABLES, estimate_tokens
@@ -116,6 +117,21 @@ class Toolbox:
         self.con: duckdb.DuckDBPyConnection = duckdb.connect(db_path, read_only=True)
         self.out_dir = out_dir
         self.out_dir.mkdir(parents=True, exist_ok=True)
+        # A tool returns prose to the model, which is all the model can use -
+        # so the file a render tool wrote would otherwise be reachable only by
+        # parsing it back out of that prose. Agent.ask drains this per question.
+        self.artifacts: list[Artifact] = []
+
+    def take_artifacts(self) -> list[Artifact]:
+        """Everything rendered since this was last called, and clear it.
+
+        Drained rather than read so one question's charts are never reported as
+        the next one's - a Toolbox outlives any single question.
+
+        .. versionadded:: 2.0.0
+        """
+        drained, self.artifacts = self.artifacts, []
+        return drained
 
     def _enrich_ids_with_names(self, cols: list[str], rows: list[dict]) -> None:
         """Add a '<col>_name' (or 'athlete_name'/'team_name') field alongside any
@@ -220,17 +236,24 @@ class Toolbox:
         made_only: bool | None = None,
     ) -> str:
         """The agent-tool face of shotchart.render_shot_chart - the fast-path
-        template calls the same function with the same connection and out_dir."""
-        return render_shot_chart(
-            self.con,
-            self.out_dir,
-            player_name,
-            season=season,
-            season_type=season_type,
-            event_id=event_id,
-            period=period,
-            shot_value=shot_value,
-            made_only=made_only,
+        template calls the same function with the same connection and out_dir.
+
+        .. versionchanged:: 2.0.0
+           Records the rendered file on :attr:`artifacts`. Still returns prose,
+           because that is what goes back to the model.
+        """
+        return self._rendered(
+            render_shot_chart(
+                self.con,
+                self.out_dir,
+                player_name,
+                season=season,
+                season_type=season_type,
+                event_id=event_id,
+                period=period,
+                shot_value=shot_value,
+                made_only=made_only,
+            )
         )
 
     def render_fingerprint(
@@ -244,5 +267,14 @@ class Toolbox:
         template calls the same function with the same connection and out_dir.
 
         .. versionadded:: 1.4.0
+
+        .. versionchanged:: 2.0.0
+           Records the rendered file on :attr:`artifacts`, as
+           :meth:`render_shot_chart` does.
         """
-        return render_fingerprint(self.con, self.out_dir, player_name, season=season, view=view, scale=scale)
+        return self._rendered(render_fingerprint(self.con, self.out_dir, player_name, season=season, view=view, scale=scale))
+
+    def _rendered(self, result: RenderResult) -> str:
+        if result.artifact is not None:
+            self.artifacts.append(result.artifact)
+        return result.message

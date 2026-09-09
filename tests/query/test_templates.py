@@ -1294,3 +1294,33 @@ def test_fingerprint_does_not_compare_a_player_with_himself(fp_ctx: TemplateCont
     # Two spellings of one name drew one polygon over itself and called it a
     # comparison.
     assert fingerprint(fp_ctx, {"players": ["Shai Gilgeous-Alexander", "Shai"]}).data["players"] == ["Shai Gilgeous-Alexander"]
+
+
+def test_a_chart_template_reports_the_file_it_wrote_as_an_artifact(sc_ctx: TemplateContext) -> None:
+    """The path used to exist only inside the message, so showing the chart
+    meant parsing a sentence. It is a value now, and this is what says so."""
+    result = shot_chart(sc_ctx, {"player": "Stephen Curry", "season": current_season()})
+    assert [a.kind for a in result.artifacts] == ["shot_chart"]
+    assert result.artifacts[0].path.exists()
+    assert result.artifacts[0].name.endswith(".html")
+    assert result.data["path"] == str(result.artifacts[0].path)
+
+
+def test_a_chart_template_that_drew_nothing_reports_no_artifact(sc_ctx: TemplateContext) -> None:
+    """ "No shots found" is a real answer, not a failure - but there is no file,
+    and claiming one would give a caller a path that does not exist."""
+    result = shot_chart(sc_ctx, {"player": "Stephen Curry", "season": 1999})
+    assert result.artifacts == []
+    assert result.data["path"] is None
+
+
+def test_the_fingerprint_template_reports_the_file_it_wrote_as_an_artifact(fp_ctx: TemplateContext) -> None:
+    result = fingerprint(fp_ctx, {"player": "Shai Gilgeous-Alexander"})
+    assert [a.kind for a in result.artifacts] == ["fingerprint"]
+    assert result.artifacts[0].path.exists()
+
+
+def test_templates_that_write_nothing_report_no_artifacts(lb_con: TemplateContext) -> None:
+    """The default has to be empty, not unset: a caller iterates artifacts on
+    every answer, and a None here would be an AttributeError on the common path."""
+    assert leaderboard(lb_con, {"stat": "points"}).artifacts == []

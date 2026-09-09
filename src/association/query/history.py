@@ -13,19 +13,39 @@ from __future__ import annotations
 import sys
 import time
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
 DEFAULT_HISTORY_DIR = Path(".history")
 
 
-class RunHistory:
-    """`log()` always records a line; it's only ever ALSO printed to stderr
-    when `verbose` is true - the file gets everything either way."""
+def echo_to_stderr(line: str) -> None:
+    """The default trace sink: what a terminal wants, and what this class did
+    unconditionally before a sink could be supplied.
 
-    def __init__(self, verbose: bool, history_dir: Path = DEFAULT_HISTORY_DIR) -> None:
+    .. versionadded:: 2.0.0
+    """
+    print(line, file=sys.stderr)
+
+
+class RunHistory:
+    """`log()` always records a line; it's only ever ALSO handed to `sink`
+    when `verbose` is true - the file gets everything either way.
+
+    `sink` is where a live trace goes. It defaults to stderr, which is the only
+    place it ever went; a server passes its own so the same lines can be
+    forwarded to a browser as they happen, instead of being recovered from the
+    history file after the run is over.
+
+    .. versionchanged:: 2.0.0
+       Added ``sink``.
+    """
+
+    def __init__(self, verbose: bool, history_dir: Path = DEFAULT_HISTORY_DIR, sink: Callable[[str], None] = echo_to_stderr) -> None:
         self.verbose = verbose
         self.history_dir = history_dir
+        self.sink = sink
         self.lines: list[str] = []
         self.model_calls: int = 0
         self.model_seconds: float = 0.0
@@ -34,10 +54,10 @@ class RunHistory:
         self._start = time.monotonic()
 
     def log(self, line: str) -> None:
-        """Record a trace line, and echo it to stderr when ``verbose``."""
+        """Record a trace line, and pass it to ``sink`` when ``verbose``."""
         self.lines.append(line)
         if self.verbose:
-            print(line, file=sys.stderr)
+            self.sink(line)
 
     def record_model_call(self, elapsed: float) -> None:
         """Count one model round trip. These dominate wall time, so the count

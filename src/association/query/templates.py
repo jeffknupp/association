@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +20,7 @@ import duckdb
 from association.net_points_categories import FINGERPRINT_CATEGORIES
 from association.season import current_season
 
+from .answer import Artifact
 from .court import HOOP_X, HOOP_Y
 from .entities import Ambiguous, Entity, resolve_player, resolve_team
 from .fingerprint import FINGERPRINT_VIEWS, FingerprintUnavailable, render_for_players
@@ -129,16 +130,24 @@ class TemplateResult:
     could be invented.
 
     `data` is the same result as structured values - resolved names and numbers,
-    no ids and no schema. Tests assert against it.
+    no ids and no schema. Tests assert against it, and from 2.0 it is carried
+    out to the caller in :class:`association.query.answer.Answer` rather than
+    discarded once `answer` had been read.
+
+    `artifacts` is whatever the template wrote to disk - a chart, or nothing.
 
     .. versionchanged:: 1.2.0
        ``answer`` is required rather than optional, making "the fast path makes
        no model call after the router" a type-checked property. The unused
        ``summary`` field was removed.
+
+    .. versionchanged:: 2.0.0
+       Added ``artifacts``.
     """
 
     data: dict[str, Any]
     answer: str
+    artifacts: list[Artifact] = field(default_factory=list)
 
 
 def _clamp_limit(limit: Any, default: int = DEFAULT_LIMIT) -> int:
@@ -959,7 +968,7 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
             raise TemplateUnsupported(f"no games found to chart for {name!r}")
         event_id = found[0]
 
-    message = render_for_player(
+    rendered = render_for_player(
         ctx.con,
         ctx.out_dir,
         player,
@@ -975,7 +984,12 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     # A "no player found" / "no shots found" message is returned as the answer
     # rather than falling through: the agent has no better source for a chart
     # than the same table this just queried.
-    return TemplateResult(data={"message": message}, answer=message)
+    artifact = rendered.artifact
+    return TemplateResult(
+        data={"message": rendered.message, "player": player.name, "path": str(artifact.path) if artifact else None},
+        answer=rendered.message,
+        artifacts=[artifact] if artifact else [],
+    )
 
 
 def fingerprint(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
@@ -1030,14 +1044,22 @@ def fingerprint(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         view = "total"
     season = slots.get("season") or current_season()
     try:
-        message, path = render_for_players(ctx.con, ctx.out_dir, players, ambiguous, season, view=view)
+        rendered = render_for_players(ctx.con, ctx.out_dir, players, ambiguous, season, view=view)
     except FingerprintUnavailable as exc:
         # Returned, not raised: the agent has no better source for this plot
         # than the table this just read, so falling through would only be slow.
         return TemplateResult(data={"message": str(exc)}, answer=str(exc))
+    artifact = rendered.artifact
     return TemplateResult(
-        data={"players": [p.name for p in players], "season": season, "side": view, "path": str(path), "message": message},
-        answer=message,
+        data={
+            "players": [p.name for p in players],
+            "season": season,
+            "side": view,
+            "path": str(artifact.path) if artifact else None,
+            "message": rendered.message,
+        },
+        answer=rendered.message,
+        artifacts=[artifact] if artifact else [],
     )
 
 

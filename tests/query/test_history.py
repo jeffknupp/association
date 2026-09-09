@@ -73,3 +73,25 @@ def test_two_runs_get_different_hashes(tmp_path: Path) -> None:
     path1 = RunHistory(verbose=False, history_dir=history_dir).write(command="c", model="m", think=False, question="q", answer="a")
     path2 = RunHistory(verbose=False, history_dir=history_dir).write(command="c", model="m", think=False, question="q", answer="a")
     assert path1 != path2
+
+
+def test_a_sink_replaces_stderr_for_the_live_trace(capsys: pytest.CaptureFixture[str]) -> None:
+    """The trace went to stderr and nowhere else, which is why a server had no
+    way to forward it. With a sink it goes wherever the caller says - and stops
+    going to stderr, or a server would also be writing to its own terminal."""
+    seen: list[str] = []
+    history = RunHistory(verbose=True, sink=seen.append)
+    history.log("routed")
+    history.record_model_call(1.0)
+
+    assert seen == ["routed", "  [timing] model inference #1: 1.00s"]
+    assert history.lines == seen  # the file still gets everything, as always
+    assert capsys.readouterr().err == ""
+
+
+def test_a_sink_is_still_gated_on_verbose(capsys: pytest.CaptureFixture[str]) -> None:
+    """`verbose` means "trace live" regardless of where live goes. A sink that
+    fired anyway would make every non-verbose run pay for a trace nobody reads."""
+    seen: list[str] = []
+    RunHistory(verbose=False, sink=seen.append).log("quiet line")
+    assert seen == []

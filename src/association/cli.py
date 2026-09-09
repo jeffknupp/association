@@ -275,10 +275,15 @@ def data_check(seasons: str | None, season_types: str | None, data_dir: str, rat
 @_query_engine_options
 def query(question: str, model: str, router_model: str, db_path: str, out_dir: str, verbose: bool, think: bool, no_fast_path: bool) -> None:
     """Ask one natural-language question about the local data."""
+    import shlex
+    import sys
+
     from .query.agent import Agent
 
     agent = Agent(model, db_path, Path(out_dir), verbose=verbose, think=think, fast_path=not no_fast_path, router_model=router_model)
-    click.echo(agent.ask(question))
+    # Agent.ask no longer reads sys.argv - a caller says what the request was,
+    # and for this caller that really is the command line.
+    click.echo(agent.ask(question, label=shlex.join(sys.argv)).text)
 
 
 def main() -> None:

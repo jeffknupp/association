@@ -26,6 +26,7 @@ import duckdb
 
 from association.season import current_season
 
+from .answer import Artifact, RenderResult
 from .entities import Entity
 from .radar import VALUE_ZERO_FRACTION, Axis, Cell, Series, render_fingerprint_html
 
@@ -442,7 +443,7 @@ def render_for_players(
     view: str = "total",
     scale: str = "percentile",
     min_minutes: int = FINGERPRINT_MIN_MINUTES,
-) -> tuple[str, Path]:
+) -> RenderResult:
     """Render already-resolved players' fingerprints to one radar plot.
 
     Args:
@@ -456,13 +457,20 @@ def render_for_players(
         min_minutes: The pool floor passed to :func:`load_fingerprints`.
 
     Returns:
-        A human-readable message, and the file written.
+        A :class:`association.query.answer.RenderResult`: the message, and the
+        file written. ``artifact`` is never None here - a fingerprint that
+        cannot be drawn raises instead.
 
     Raises:
         FingerprintUnavailable: nothing could be drawn - see
             :func:`load_fingerprints`.
 
     .. versionadded:: 1.3.0
+
+    .. versionchanged:: 2.0.0
+       Returns a :class:`association.query.answer.RenderResult` rather than a
+       ``(message, path)`` tuple, the same shape
+       :func:`association.query.shotchart.render_for_player` now returns.
     """
     if scale not in FINGERPRINT_SCALES:
         raise FingerprintUnavailable(f"scale must be one of {list(FINGERPRINT_SCALES)} - got {scale!r}.")
@@ -509,7 +517,7 @@ def render_for_players(
         message += f". No fingerprint on record for: {', '.join(missing)}"
     if ambiguous:
         message += f". Note: other players also matched: {ambiguous}"
-    return message, out_path
+    return RenderResult(message, Artifact("fingerprint", out_path))
 
 
 def render_fingerprint(
@@ -519,7 +527,7 @@ def render_fingerprint(
     season: int | None = None,
     view: str = "total",
     scale: str = "percentile",
-) -> str:
+) -> RenderResult:
     """Resolve one or more player names and render their fingerprint.
 
     The single-call entry point, and the counterpart to
@@ -540,10 +548,15 @@ def render_fingerprint(
         scale: ``"percentile"`` or ``"value"``.
 
     Returns:
-        A human-readable message naming the player and the file written, or
-        saying why nothing could be drawn.
+        A :class:`association.query.answer.RenderResult` naming the player and
+        the file written, or saying why nothing could be drawn - in which case
+        ``artifact`` is None.
 
     .. versionadded:: 1.3.0
+
+    .. versionchanged:: 2.0.0
+       Returns a :class:`association.query.answer.RenderResult` rather than a
+       message string, so a caller can reach the file that was drawn.
     """
     # Imported here, not at module scope: shotchart imports nothing from this
     # module, and a top-level import in the other direction would still be a
@@ -554,12 +567,12 @@ def render_fingerprint(
     for name in player_name.split(" vs "):
         found = resolve_chart_player(con, name.strip())
         if found is None:
-            return f"No player found matching {name.strip()!r}."
+            return RenderResult(f"No player found matching {name.strip()!r}.", None)
         player, also = found
         resolved.append(player)
         ambiguous.extend(also)
     try:
-        message, _ = render_for_players(con, out_dir, resolved, ambiguous, season if season is not None else current_season(), view=view, scale=scale)
+        rendered = render_for_players(con, out_dir, resolved, ambiguous, season if season is not None else current_season(), view=view, scale=scale)
     except FingerprintUnavailable as exc:
-        return str(exc)
-    return message
+        return RenderResult(str(exc), None)
+    return rendered

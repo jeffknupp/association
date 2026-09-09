@@ -4,8 +4,6 @@ guards against the model writing SQL as prose instead of actually running it."""
 from __future__ import annotations
 
 import re
-import shlex
-import sys
 import time
 import traceback
 from collections.abc import Callable
@@ -14,12 +12,13 @@ from typing import Any
 
 import ollama
 
-from .history import DEFAULT_HISTORY_DIR, RunHistory
+from .answer import Answer, AnsweredBy, Artifact, Timing
+from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .keepalive import KEEP_ALIVE
 from .models import DEFAULT_ROUTER_MODEL
 from .prompt import AGENT_NUM_CTX, TOOLS, build_system_prompt
 from .router import route
-from .templates import TEMPLATES, TemplateContext, TemplateUnsupported, check_scope
+from .templates import TEMPLATES, TemplateContext, TemplateResult, TemplateUnsupported, check_scope
 from .toolbox import Toolbox
 
 MAX_TOOL_ITERATIONS = 8
@@ -66,6 +65,7 @@ class Agent:
         history_dir: Path = DEFAULT_HISTORY_DIR,
         fast_path: bool = True,
         router_model: str = DEFAULT_ROUTER_MODEL,
+        trace: Callable[[str], None] = echo_to_stderr,
     ):
         self.model = model
         self.router_model = router_model
@@ -73,6 +73,7 @@ class Agent:
         self.think = think
         self.history_dir = history_dir
         self.fast_path = fast_path
+        self.trace = trace
         self.last_question: str | None = None
         self.toolbox: Toolbox = Toolbox(db_path, out_dir)
         # heterogeneous signatures dispatched generically via **args below -
@@ -93,30 +94,90 @@ class Agent:
         if len(self.messages) > MAX_HISTORY_MESSAGES:
             self.messages = [self.messages[0]] + self.messages[-(MAX_HISTORY_MESSAGES - 1) :]
 
-    def ask(self, question: str) -> str:
-        """Wraps _ask_inner so a RunHistory is ALWAYS written on the way out -
+    def ask(self, question: str, label: str = "") -> Answer:
+        """Answer one question.
+
+        Wraps _ask_inner so a RunHistory is ALWAYS written on the way out -
         including on an exception - regardless of --verbose. See history.py:
         one file per call, named with a random hash under .history/, meant to
         make a confusing or failed run's full evidence easy to find afterward
-        rather than lost to whatever happened to print to the terminal."""
-        history = RunHistory(self.verbose, self.history_dir)
-        command = shlex.join(sys.argv)
-        answer = ""
+        rather than lost to whatever happened to print to the terminal.
+
+        Args:
+            question: The natural-language question.
+            label: What to record as the run's ``command`` in the history file.
+                A caller says what the request was; this used to be
+                ``shlex.join(sys.argv)``, which is only true of a CLI and says
+                nothing useful about a server handling many questions.
+
+        Returns:
+            An :class:`association.query.answer.Answer`. ``answer.text`` is
+            what the CLI prints; the rest is what it could never show.
+
+        .. versionchanged:: 2.0.0
+           Returns an :class:`association.query.answer.Answer` rather than the
+           answer text alone, and takes ``label`` rather than reading
+           ``sys.argv``.
+        """
+        history = RunHistory(self.verbose, self.history_dir, sink=self.trace)
+        self.toolbox.take_artifacts()  # anything left by a previous question is not this one's
+        recorded = ""
         try:
             answer = self._ask_inner(question, history)
+            recorded = answer.text
             return answer
         except Exception:
-            answer = "EXCEPTION:\n" + traceback.format_exc()
+            recorded = "EXCEPTION:\n" + traceback.format_exc()
             raise
         finally:
-            path = history.write(command=command, model=self.model, think=self.think, question=question, answer=answer, router_model=self.router_model)
-            print(f"[history] {path}  {history.summary_line()}", file=sys.stderr)
+            path = history.write(command=label, model=self.model, think=self.think, question=question, answer=recorded, router_model=self.router_model)
+            self.trace(f"[history] {path}  {history.summary_line()}")
 
-    def _try_fast_path(self, question: str, history: RunHistory) -> str | None:
-        """Route -> deterministic template -> answer. Returns None to fall
-        through to the agent: an unported intent, slots that fail validation, or
-        any router or template failure. Falling through costs one ~1-2s round
-        trip and changes no answer."""
+    def _answer(
+        self,
+        question: str,
+        history: RunHistory,
+        text: str,
+        answered_by: AnsweredBy,
+        intent: str | None = None,
+        data: dict[str, Any] | None = None,
+        artifacts: list[Artifact] | None = None,
+    ) -> Answer:
+        """Assemble the result, reading the timing and the rendered files off
+        the run that just produced it. Every return point in _ask_inner goes
+        through here so none of them can forget one.
+
+        Charts arrive by two routes, hence the two sources: a template renders
+        straight to disk and reports what it wrote, while the agent renders
+        through a tool whose return value is prose the model reads, so the
+        Toolbox has to record the file on the side."""
+        return Answer(
+            question=question,
+            text=text,
+            answered_by=answered_by,
+            timing=Timing(
+                total_seconds=history.total_seconds,
+                model_seconds=history.model_seconds,
+                model_calls=history.model_calls,
+                tool_seconds=history.tool_seconds,
+                tool_calls=history.tool_calls,
+            ),
+            intent=intent,
+            data=data,
+            artifacts=list(artifacts or []) + self.toolbox.take_artifacts(),
+        )
+
+    def _try_fast_path(self, question: str, history: RunHistory) -> tuple[str, TemplateResult] | None:
+        """Route -> deterministic template -> answer, returning the intent
+        alongside the template's whole result. Returns None to fall through to
+        the agent: an unported intent, slots that fail validation, or any
+        router or template failure. Falling through costs one ~1-2s round trip
+        and changes no answer.
+
+        The intent and the TemplateResult are returned, rather than just its
+        `answer` text, because that text is only one of the things the template
+        produced - see TemplateResult.data, which nothing could reach before
+        2.0."""
         if not self.fast_path:
             return None
         t0 = time.monotonic()
@@ -139,18 +200,19 @@ class Agent:
         history.record_tool_call(f"template {routed.intent}", time.monotonic() - t0)
         # No second model call, ever: templates phrase their own answers. See
         # TemplateResult for why that is both faster and safer than narrating.
-        return result.answer
+        return routed.intent, result
 
-    def _ask_inner(self, question: str, history: RunHistory) -> str:
+    def _ask_inner(self, question: str, history: RunHistory) -> Answer:
         fast = self._try_fast_path(question, history)
         if fast is not None:
+            intent, templated = fast
             # Record the turn in the conversation even though the tool loop
             # never ran, so a later follow-up that DOES fall through to the
             # agent still sees what was already asked and answered.
-            self.messages.extend([{"role": "user", "content": question}, {"role": "assistant", "content": fast}])
+            self.messages.extend([{"role": "user", "content": question}, {"role": "assistant", "content": templated.answer}])
             self._trim_history()
             self.last_question = question
-            return fast
+            return self._answer(question, history, templated.answer, "fast", intent=intent, data=templated.data, artifacts=templated.artifacts)
 
         self.last_question = question
         # Only the entries this question needs, rather than all 26 - see
@@ -243,17 +305,20 @@ class Agent:
                     # corrected query" that never ran). Say plainly that it
                     # didn't work, with the last attempt shown, rather than a
                     # reply that only looks like an in-progress action.
-                    return (
+                    return self._answer(
+                        question,
+                        history,
                         "I wasn't able to get a working query after a few attempts. "
                         "The last one I tried was:\n\n```sql\n" + unrun_sql + "\n```\n\n"
-                        "You can run it yourself, or try rephrasing the question."
+                        "You can run it yourself, or try rephrasing the question.",
+                        "agent",
                     )
                 if pending_error:
                     # Recovery cap hit and it's STILL trying to finalize right after
                     # an unrecovered error - say so honestly rather than returning
                     # whatever it fabricated.
-                    return "I ran into an error retrieving that data and wasn't able to recover. The last error was:\n\n" + pending_error
-                return msg.content or ""
+                    return self._answer(question, history, "I ran into an error retrieving that data and wasn't able to recover. The last error was:\n\n" + pending_error, "agent")
+                return self._answer(question, history, msg.content or "", "agent")
 
             for call in msg.tool_calls:
                 name = call.function.name
@@ -281,4 +346,4 @@ class Agent:
                 self.messages.append({"role": "tool", "content": result})
 
         self._trim_history()
-        return "Gave up after too many tool-call iterations."
+        return self._answer(question, history, "Gave up after too many tool-call iterations.", "agent")
