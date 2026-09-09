@@ -14,7 +14,7 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
-## Unreleased
+## 1.4.0 - 2026-09-08
 - **The agent can render fingerprints too.** `render_fingerprint` is now a tool
   the fall-through agent can call, not only a fast-path template, so a question
   the router does not classify as `fingerprint` can still produce the plot
