@@ -53,8 +53,20 @@ class ESPNClient:
         self._local = threading.local()
 
     @property
-    def session(self) -> cf_requests.Session:
-        """This thread's session, created on first use."""
+    def session(self) -> cf_requests.Session[cf_requests.Response]:
+        """This thread's session, created on first use.
+
+        The response type is spelled out rather than left to ``Session``'s
+        default, because curl_cffi only *has* a default on Python 3.13 and up
+        (``TypeVar(default=...)`` did not exist before it). Bare, the type is
+        ``Session[Response]`` or ``Session[Unknown]`` depending on which branch of
+        a ``sys.version_info`` check the type checker took - which is how this
+        passed ``pyright --verifytypes`` on one interpreter and failed it on
+        another.
+
+        .. versionchanged:: 2.0.0
+           Return type parameterized. The object returned is unchanged.
+        """
         session = getattr(self._local, "session", None)
         if session is None:
             session = cf_requests.Session(impersonate=IMPERSONATE)

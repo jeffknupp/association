@@ -15,6 +15,11 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Fixed: `ESPNClient.session`'s return type was unknown on Python 3.12 and
+  below.** curl_cffi's `Session` is generic over its response type and only
+  carries a default on 3.13+ (`TypeVar(default=...)` did not exist before it),
+  so bare it read as `Session[Response]` or `Session[Unknown]` depending on the
+  interpreter. Spelled out now. No runtime change.
 - **Fixed: the type-completeness gate passed locally and failed in CI.**
   `pre-commit` runs hooks under `uv run`, which exports `VIRTUAL_ENV`; CI
   invokes the same script bare, and pyright resolved the package's imports out
