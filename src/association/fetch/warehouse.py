@@ -109,8 +109,30 @@ def _tune(con: duckdb.DuckDBPyConnection) -> None:
     replaced and the rest silently left at their old contents. Row order in
     these tables carries no meaning: every one of them has its own keys and
     every query orders explicitly.
+
+    ``enable_external_file_cache=false`` stops DuckDB retaining the Parquet it
+    reads in memory *after* the statement that read it. The cache is sized for
+    re-reading a few large files; this tree is the opposite shape - 208,000
+    small ones - and it charges far more per file than a file holds. Loading
+    ``games`` alone (40,558 files, 320 MiB on disk) parked 5.6 GiB in it and
+    took the process to 8.5 GiB RSS; with the cache off the same load peaks at
+    1.8 GiB and runs *faster* (6.2s vs 14.2s), because nothing is being copied
+    into a cache no later statement reads.
+
+    It accumulates across statements, and ``build`` loads all 18 tables on one
+    connection, which is what turns a per-table cost into a build-wide one:
+    measured over the first three tables the cache held 5.6, then 6.2, then 6.5
+    GiB, and the process was OOM-killed on the fourth.
+
+    Note that DuckDB itself never raises here - it was accounting for 6.5 GiB
+    against a 12.4 GiB limit when the kernel killed it. That limit defaults to
+    80% of RAM, and RSS runs ~2 GiB above what the buffer manager tracks, so on
+    a 16 GiB machine it is reached only well past the point the process dies.
+    Which is the tell for this failure against the insertion-order one above: a
+    SIGKILL in dmesg, rather than a DuckDB "could not allocate" error.
     """
     con.execute("SET preserve_insertion_order=false")
+    con.execute("SET enable_external_file_cache=false")
 
 
 def _build_macros(con: duckdb.DuckDBPyConnection) -> None:

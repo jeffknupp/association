@@ -391,3 +391,36 @@ def test_build_loads_through_a_connection_that_does_not_preserve_insertion_order
     warehouse.build(data_dir, tmp_path / "w.duckdb")
 
     assert seen == [(False,)]
+
+
+def test_build_loads_through_a_connection_with_the_external_file_cache_off(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """DuckDB's external file cache keeps the Parquet a statement read resident
+    after that statement ends, and it accumulates across the 18 loads `build`
+    runs on one connection. Against this tree - 208,000 small files - it costs
+    far more than the files hold: `games` alone (40,558 files, 320 MiB) parked
+    5.6 GiB in the cache, and a full build under a 6 GiB cap was SIGKILLed on
+    that third table. With the cache off the same build peaks at 3.0 GiB.
+
+    Not a limit DuckDB enforces for us: it was accounting for 6.5 GiB of a 12.4
+    GiB budget when the kernel killed the process, so `memory_limit` never
+    trips and there is no exception to catch - only this setting prevents it.
+
+    Asserted on the connection `build` itself loads through, for the same
+    reason as the insertion-order test above: the setting is per-session.
+    """
+    data_dir = tmp_path / "parquet"
+    d = data_dir / "teams"
+    d.mkdir(parents=True)
+    pq.write_table(pa.Table.from_pylist([{"team_id": "1", "abbreviation": "BOS"}]), d / "teams.parquet")
+
+    seen: list[Any] = []
+    real_tune = warehouse._tune
+
+    def spy(con: duckdb.DuckDBPyConnection) -> None:
+        real_tune(con)
+        seen.append(con.execute("SELECT current_setting('enable_external_file_cache')").fetchone())
+
+    monkeypatch.setattr(warehouse, "_tune", spy)
+    warehouse.build(data_dir, tmp_path / "w.duckdb")
+
+    assert seen == [(False,)]

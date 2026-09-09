@@ -15,6 +15,22 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **`data load` no longer runs out of memory building the warehouse.** A full
+  build was killed by the OOM killer partway through, leaving the tables it had
+  already replaced and the rest at their old contents. The cause was DuckDB's
+  external file cache, which keeps the Parquet a statement read resident after
+  that statement ends and accumulates across the 18 loads a build runs on one
+  connection. It is sized for re-reading a few large files; this tree is
+  208,000 small ones, and it charged far more per file than a file holds -
+  `games` alone (40,558 files, 320 MiB on disk) parked 5.6 GiB in it. The
+  warehouse connection now turns it off: a full build peaks at 3.0 GiB instead
+  of being killed, and is no slower for it.
+
+  Nothing DuckDB would have raised - it was accounting for 6.5 GiB of a 12.4
+  GiB budget when the kernel killed the process, which is why this looked
+  nothing like the earlier `plays` failure that `preserve_insertion_order`
+  fixed. Both settings now sit in `_tune` with the symptom that tells them
+  apart written down.
 - **A chart taller than its frame now says so.** An inline chart is capped, and
   past the cap the frame scrolls - but it clipped its content dead flat, which
   reads as a rendering fault rather than as somewhere to scroll. The lower edge

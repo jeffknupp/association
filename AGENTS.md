@@ -189,6 +189,30 @@ leaves the earlier tables replaced and the rest silently at their old contents
 — the build fails loudly, but the *warehouse* does not look broken afterwards.
 Row order carries no meaning in any of these tables.
 
+It also needs `enable_external_file_cache=false` (same place). DuckDB keeps the
+Parquet a statement read resident after that statement ends, and the cache
+accumulates across the 18 loads a build runs on one connection. It is sized for
+re-reading a few large files; this tree is the opposite shape — 208,000 small
+ones — and it charges far more per file than a file holds. `games` alone (40,558
+files, 320 MiB on disk) parked 5.6 GiB in it; a full build under a 6 GiB cap was
+killed on that third table, and with the cache off the same build peaks at 3.0
+GiB and is no slower.
+
+**The two failures look nothing alike, and only one of them is DuckDB's.** The
+insertion-order one raises `could not allocate ... (12.4 GiB/12.4 GiB used)`.
+The file-cache one is a SIGKILL with nothing in the traceback: DuckDB was
+accounting for 6.5 GiB of a 12.4 GiB budget when the kernel killed the process,
+because `memory_limit` defaults to 80% of RAM and RSS runs ~2 GiB above what the
+buffer manager tracks. So on a 16 GiB machine the limit is only reached well
+past the point the process dies — dmesg is the only place that failure is
+explained, and lowering `memory_limit` bounds the cache but not the overhead
+above it (measured: 4 GiB limit, 6.7 GiB RSS). Turning the cache off is the
+lever that works.
+
+`union_by_name=true` is not the thing to reach for here even though it is what
+makes many files expensive: dropping it fails outright on real schema drift
+(`venue_id` is VARCHAR in the 1993 files and absent in others).
+
 ## Working on the web path
 
 `association web` is a thin layer over the same `Agent` the CLI uses. Almost
