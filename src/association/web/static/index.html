@@ -110,6 +110,48 @@
     max-height: 220px;
     overflow-y: auto;
   }
+  .caption {
+    font-size: 12.5px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  table.answer {
+    border-collapse: collapse;
+    font: 13px/1.5 ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    /* Sized to its content, not stretched across the answer: a five-column
+       table spread over 800px is harder to read across than a narrow one. */
+    width: auto;
+  }
+  table.answer th, table.answer td {
+    padding: 3px 22px 3px 0;
+    text-align: right;
+    white-space: nowrap;
+  }
+  table.answer th.text, table.answer td.text { text-align: left; }
+  table.answer th {
+    font-weight: 600;
+    color: var(--muted);
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 5px;
+  }
+  table.answer td.rank { color: var(--muted); }
+  table.answer tbody tr:first-child td { padding-top: 6px; }
+  /* Wide tables scroll inside the answer rather than widening the page. */
+  .scroller { overflow-x: auto; }
+  .record { display: flex; gap: 22px; align-items: baseline; }
+  .record .wl { font-size: 26px; font-weight: 600; letter-spacing: -.01em; }
+  .record .pct { font: 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--muted); }
+  .spark { display: block; margin: 2px 0 12px; overflow: visible; }
+  .spark path { fill: none; stroke: var(--accent); stroke-width: 1.6; }
+  .spark circle { fill: var(--accent); }
+  .spark text { font: 10px ui-monospace, Menlo, monospace; fill: var(--muted); }
+  details.text summary, details summary { cursor: pointer; }
+  details.text pre {
+    margin: 8px 0 0;
+    font: 12px/1.5 ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    white-space: pre-wrap;
+    color: var(--muted);
+  }
   .empty { color: var(--muted); padding: 40px 0; text-align: center; }
   .empty p { margin: 0 0 14px; }
   .examples { display: flex; flex-direction: column; gap: 8px; align-items: center; }
@@ -211,6 +253,239 @@
   });
   form.addEventListener("submit", e => { e.preventDefault(); ask(); });
 
+  // ---- rendering an answer per intent -------------------------------------
+  //
+  // Answer.data is already structured - resolved names and numbers, no ids and
+  // no schema - so an intent that is a list or a set of side-by-side numbers
+  // can be a real table instead of fixed-width text. Everything else falls
+  // back to the text, which is always in the payload and is what the CLI
+  // prints. That fallback is the normal case, not a failure: an intent with no
+  // renderer here still answers correctly.
+  //
+  // No renderer re-derives a sentence. The phrasing lives in the templates, in
+  // Python, once. What each renderer chooses is a *caption*, and it takes it
+  // either from a scope string the template already computed (leaderboard's
+  // `question_shape`) or from the answer's own first line - never by
+  // reassembling one from the numbers.
+
+  // Cosmetic only. An unmapped key still renders, just with a longer label
+  // derived from its name - never with a wrong number.
+  const LABELS = {
+    display_name: "player", gamesPlayed: "G", games: "G", avgPoints: "PTS", avgRebounds: "REB",
+    avgAssists: "AST", points: "PTS", rebounds: "REB", assists: "AST", minutes: "MIN",
+    threePointFieldGoalPct: "3PT%", threePointFieldGoalsMade: "3PM", threePointFieldGoalsAttempted: "3PA",
+    fieldGoalPct: "FG%", fieldGoalsMade: "FGM", fieldGoalsAttempted: "FGA",
+    freeThrowPct: "FT%", freeThrowsMade: "FTM", freeThrowsAttempted: "FTA",
+    team_score: "for", opponent_score: "against", home_away: "", won: "",
+  };
+
+  function label(key) {
+    if (key in LABELS) return LABELS[key];
+    return key.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/_/g, " ").toLowerCase();
+  }
+
+  function num(v) {
+    if (v === null || v === undefined) return "";
+    if (typeof v !== "number") return String(v);
+    return Number.isInteger(v) ? v.toLocaleString() : v.toFixed(1);
+  }
+
+  function table(headers, rows) {
+    // Alignment is read off the data, not declared per call: a column whose
+    // every value is a number lines up on the right so the digits do, and
+    // anything else - a name, a date, an opponent - goes left. Getting this
+    // from the values means a new renderer cannot forget to say.
+    const numeric = headers.map((_, i) =>
+      rows.some(r => r[i] !== "" && r[i] !== null && r[i] !== undefined) &&
+      rows.every(r => r[i] === "" || r[i] === null || r[i] === undefined || /^-?[\d,]+(\.\d+)?$/.test(String(r[i]))));
+    const t = el("table", "answer");
+    const thead = el("thead");
+    const hr = el("tr");
+    headers.forEach((h, i) => hr.appendChild(el("th", numeric[i] ? null : "text", h)));
+    thead.appendChild(hr);
+    t.appendChild(thead);
+    const tb = el("tbody");
+    for (const row of rows) {
+      const tr = el("tr");
+      row.forEach((cell, i) => {
+        const rank = i === 0 && numeric[0] && headers[0] === "#";
+        const td = el("td", [numeric[i] ? "" : "text", rank ? "rank" : ""].filter(Boolean).join(" ") || null);
+        td.textContent = cell === null || cell === undefined ? "" : String(cell);
+        tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    }
+    t.appendChild(tb);
+    const wrap = el("div", "scroller");
+    wrap.appendChild(t);
+    return wrap;
+  }
+
+  function firstLine(text) { return (text || "").split("\n")[0].replace(/:$/, ""); }
+
+  // A list of rows keyed by `nameKey`, numbered, with `valueKey` and any extra
+  // columns the row happens to carry.
+  function ranked(rows, nameKey, valueKey, valueLabel, extras) {
+    // One row is not a ranking - the rank column and the ordering are the
+    // entire point of this shape. Returning null falls back to the sentence,
+    // which says the same thing better. "Who leads the league in assists?"
+    // routes with limit 1 and lands here constantly.
+    if (rows.length < 2) return null;
+    const headers = ["#", label(nameKey), valueLabel].concat((extras || []).map(label));
+    const body = rows.map((r, i) => [i + 1, r[nameKey], num(r[valueKey])].concat((extras || []).map(k => num(r[k]))));
+    return table(headers, body);
+  }
+
+  function sparkline(points) {
+    // Chronological, left to right, which is the reverse of how the templates
+    // order seasons (most recent first) - a line running backwards in time
+    // would read as the opposite trend.
+    const values = points.map(p => p.value);
+    const lo = Math.min(...values), hi = Math.max(...values);
+    const w = 260, h = 46, pad = 4;
+    const span = hi - lo || 1;
+    const x = i => pad + (i * (w - 2 * pad)) / Math.max(points.length - 1, 1);
+    const y = v => h - pad - ((v - lo) / span) * (h - 2 * pad);
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "spark");
+    svg.setAttribute("viewBox", `0 0 ${w} ${h + 14}`);
+    svg.setAttribute("width", String(w));
+    svg.setAttribute("height", String(h + 14));
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", points.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(" "));
+    svg.appendChild(path);
+    points.forEach((p, i) => {
+      const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      c.setAttribute("cx", x(i).toFixed(1));
+      c.setAttribute("cy", y(p.value).toFixed(1));
+      c.setAttribute("r", "2.2");
+      const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+      title.textContent = `${p.label}: ${num(p.value)}`;
+      c.appendChild(title);
+      svg.appendChild(c);
+    });
+    // Only the endpoints are labelled: a label per season collides at four or
+    // more, and the table underneath carries every one of them anyway.
+    [[0, "start"], [points.length - 1, "end"]].forEach(([i, anchor]) => {
+      if (points.length < 2 && i > 0) return;
+      const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      t.setAttribute("x", x(i).toFixed(1));
+      t.setAttribute("y", String(h + 11));
+      t.setAttribute("text-anchor", anchor === "start" ? "start" : "end");
+      t.textContent = points[i].label;
+      svg.appendChild(t);
+    });
+    return svg;
+  }
+
+  // intent -> {needs, render}. `needs` is the Answer.data keys the renderer
+  // reads; a Python test checks each one against what the template actually
+  // produces, because a renamed key would silently drop the table and fall
+  // back to text, which looks like nothing happened at all.
+  const RENDERERS = {
+    leaderboard: {
+      needs: ["leaders", "question_shape"],
+      render: (d, text) => {
+        const body = ranked(d.leaders, "display_name", "value", firstValueLabel(d, text), d.fields || []);
+        return body && { caption: d.question_shape, body };
+      },
+    },
+    threshold_count: {
+      needs: ["leaders", "question_shape"],
+      render: d => {
+        const body = ranked(d.leaders, "player", "games", "G");
+        return body && { caption: d.question_shape, body };
+      },
+    },
+    single_game_high: {
+      needs: ["games", "stat", "question_shape"],
+      render: d => d.games.length < 2 ? null : ({
+        caption: d.question_shape,
+        body: table(["#", "player", label(d.stat), "date", "opponent"],
+          d.games.map((g, i) => [i + 1, g.player, num(g.value), g.date, g.opponent])),
+      }),
+    },
+    player_history: {
+      needs: ["seasons", "stat", "player"],
+      render: (d, text) => {
+        const rows = d.seasons.slice().reverse();
+        const cols = Object.keys(d.seasons[0] || {}).filter(k => k !== "season");
+        return {
+          caption: firstLine(text),
+          spark: rows.length > 1 ? rows.map(s => ({ label: String(s.season), value: s[d.stat] })) : null,
+          body: table(["season"].concat(cols.map(label)),
+            d.seasons.map(s => [s.season].concat(cols.map(c => num(s[c]))))),
+        };
+      },
+    },
+    player_compare: {
+      needs: ["players"],
+      render: (d, text) => {
+        const names = Object.keys(d.players);
+        const stats = [...new Set(names.flatMap(n => Object.keys(d.players[n])))];
+        // Deliberately not bolding a "winner" per row. More is not better for
+        // turnovers or fouls, and a table that quietly asserted otherwise would
+        // be exactly the confident-and-wrong answer this project guards against.
+        return {
+          caption: firstLine(text),
+          body: table([""].concat(names), stats.map(s => [label(s)].concat(names.map(n => num(d.players[n][s]))))),
+        };
+      },
+    },
+    game_log: {
+      needs: ["games"],
+      render: (d, text) => {
+        if (!d.games.length) return null;
+        const team = d.games[0].team_score !== undefined;
+        const body = team
+          ? table(["date", "", "opponent", "for", "against"],
+              d.games.map(g => [g.date, g.won ? "W" : "L", (g.home_away === "away" ? "at " : "vs ") + g.opponent, num(g.team_score), num(g.opponent_score)]))
+          : table(["date", "opponent", "MIN", "PTS", "REB", "AST"],
+              d.games.map(g => [g.date, "vs " + g.opponent, num(g.minutes), num(g.points), num(g.rebounds), num(g.assists)]));
+        return { caption: firstLine(text), body };
+      },
+    },
+    team_record: {
+      needs: ["wins", "losses", "win_pct", "team"],
+      render: (d, text) => {
+        const card = el("div", "record");
+        card.appendChild(el("span", "wl", `${num(d.wins)}\u2013${num(d.losses)}`));
+        card.appendChild(el("span", "pct", d.win_pct.toFixed(3).replace(/^0/, "")));
+        // The sentence carries the seed and the streak, which are NOT in data.
+        // Dropping it for the card alone would lose them, so it stays whole.
+        return { caption: text, body: card };
+      },
+    },
+  };
+
+  function firstValueLabel(d, text) {
+    // leaderboard's own words for what it ranked by, e.g. "assists per game",
+    // taken from the scope string the template already built rather than
+    // reassembled from the slots.
+    const shape = String(d.question_shape || "");
+    return shape.split(",")[0] || firstLine(text);
+  }
+
+  function renderAnswer(a) {
+    const spec = a.intent && RENDERERS[a.intent];
+    if (!spec || !a.data) return null;
+    // A key the template stopped producing means this renderer is looking at a
+    // shape that no longer exists. Fall back rather than render half a table.
+    if (spec.needs.some(k => a.data[k] === undefined || a.data[k] === null)) return null;
+    let out;
+    try {
+      out = spec.render(a.data, a.text);
+    } catch (err) {
+      return null;  // never let a rendering bug swallow an answer that is fine
+    }
+    if (!out) return null;
+    const box = el("div");
+    if (out.caption) box.appendChild(el("div", "caption", out.caption));
+    if (out.spark) box.appendChild(sparkline(out.spark));
+    box.appendChild(out.body);
+    return box;
+  }
+
   function el(tag, cls, text) {
     const n = document.createElement(tag);
     if (cls) n.className = cls;
@@ -219,6 +494,13 @@
   }
 
   function scroll() { document.querySelector("main").scrollTop = thread.scrollHeight; }
+
+  function disclosure(summary, text, cls) {
+    const details = el("details", cls ? null : "text");
+    details.appendChild(el("summary", null, summary));
+    details.appendChild(el("pre", cls || null, text));
+    return details;
+  }
 
   function ask() {
     const question = input.value.trim();
@@ -259,7 +541,9 @@
     source.addEventListener("answer", e => {
       const a = JSON.parse(e.data);
       answer.innerHTML = "";
-      answer.appendChild(el("pre", null, a.text));
+      // A rendered form when this intent has one, the text otherwise.
+      const rendered = renderAnswer(a);
+      answer.appendChild(rendered || el("pre", null, a.text));
 
       const meta = el("div", "meta");
       const badge = el("span", "badge " + a.answered_by, a.answered_by === "fast" ? "template" : "agent");
@@ -273,12 +557,10 @@
       if (a.intent) meta.appendChild(el("span", null, a.intent));
       meta.appendChild(el("span", null, a.timing.total_seconds.toFixed(2) + "s"));
       for (const art of a.artifacts) meta.appendChild(el("span", null, art.name));
-      if (lines.length) {
-        const details = el("details");
-        details.appendChild(el("summary", null, "trace"));
-        details.appendChild(el("pre", "trace", lines.join("\n")));
-        meta.appendChild(details);
-      }
+      // The text is never lost when a table replaced it - it is the same
+      // answer the CLI prints, one click away, beside the trace.
+      if (rendered) meta.appendChild(disclosure("text", a.text));
+      if (lines.length) meta.appendChild(disclosure("trace", lines.join("\n"), "trace"));
       answer.appendChild(meta);
       scroll();
     });

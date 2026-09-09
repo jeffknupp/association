@@ -1171,8 +1171,13 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     label = STAT_LABELS.get(stat or "", stat or "")
     period = _period(season, season_type)
     games = [{"player": r[0], "value": r[1], "date": str(r[2])[:10], "opponent": r[3]} for r in rows]
+    # `question_shape` names the scope in the same form leaderboard and
+    # threshold_count use it: a caption for a caller that renders the rows
+    # itself and would otherwise have no way to say what season they are from
+    # except by reusing the whole sentence, which already lists them.
+    shape = f"most {label}s in a single game" + (f", {named_player.name}" if named_player else "") + f", {period}"
     return TemplateResult(
-        data={"season": season, "stat": stat, "games": games},
+        data={"question_shape": shape, "season": season, "stat": stat, "games": games},
         answer=_phrase_single_game_high(games, label, period, named_player.name if named_player else None),
     )
 

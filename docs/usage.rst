@@ -253,10 +253,11 @@ with. ``--port`` is there for anyone who wants to bookmark one, and
 ``--db-path``/``--out-dir`` take the same defaults the ``data`` subcommands do.
 
 .. figure:: _static/web_ui_example.png
-   :alt: The web interface, showing two answered questions - a one-line leaderboard answer and a season-by-season table - each labeled with the template that produced it and how long it took.
-   :width: 640px
+   :alt: The web interface, showing a top-5 scoring leaderboard rendered as a table and a four-season 3PT% history rendered as a sparkline over a table, each labeled with the template that produced it and how long it took.
+   :width: 660px
 
-   Two questions, answered by templates. Real output.
+   Two questions, answered by templates and rendered from their structured
+   data. Real output.
 
 It needs the ``web`` extra, which is not installed by default:
 
@@ -264,7 +265,21 @@ It needs the ``web`` extra, which is not installed by default:
 
    $ pip install 'association[web]'
 
-Three things about it are deliberate:
+Answers are rendered per question shape, from the structured data the template
+already produced - a leaderboard or a game log as a table, a multi-season
+history as a sparkline over its numbers, a team's record as a card. This is not
+a second phrasing of the answer: the sentences live in the templates, in
+Python, once, and what a renderer picks is a *caption*, taken either from a
+scope string the template computed (``question_shape``) or from the answer's
+own first line.
+
+An intent with no renderer answers exactly as it always did, in the text the
+CLI prints - which is the normal case, not a failure. So does a shape a
+renderer decides is not worth a table: "who leads the league in assists?"
+returns a single row, and one row is not a ranking, so it stays a sentence.
+Every rendered answer keeps the full text one click away, beside the trace.
+
+Three more things about it are deliberate:
 
 * **Each message is a new question.** There is no conversation memory yet, so
   "what about last year?" will not work. That is a real change in what a

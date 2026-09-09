@@ -257,7 +257,7 @@ Three things worth recording, all decided while building rather than planned:
   below is blocking — ollama's client and DuckDB both — and FastAPI already
   runs `def` endpoints in a threadpool.
 
-### Phase 2 — HTML answers per intent
+### Phase 2 — HTML answers per intent — **done**
 
 `Answer.data` is already structured. Render it.
 
@@ -268,6 +268,40 @@ Three things worth recording, all decided while building rather than planned:
   templates, in Python, once — the browser does not re-derive sentences.
 
 *Done when:* an intent with no renderer still answers correctly, in text.
+
+*Verified:* every renderer exercised against the live warehouse in a headless
+Chromium, both color schemes, no console errors, with the rendered DOM read
+back and checked rather than eyeballed. `shot_distance` and `player_stat` have
+no renderer and answer in text, as they should — their answers are one good
+sentence each.
+
+Seven intents got renderers, not the four named above: `leaderboard`,
+`threshold_count`, `single_game_high`, `player_history`, `player_compare`,
+`game_log` and `team_record` — everything whose answer is a *list* or a set of
+side-by-side numbers.
+
+Four decisions worth recording:
+
+- **A caption, never a re-derived sentence.** Each renderer takes its caption
+  either from a scope string the template already computed
+  (`question_shape`) or from the answer's own first line. `single_game_high`
+  gained a `question_shape` so it could stop reusing its whole sentence, which
+  listed the same rows the table underneath already shows.
+- **A ranking of one is not a table.** "Who leads the league in assists?"
+  routes with `limit` 1, and a one-row table with a rank column says less than
+  the sentence. Those fall back.
+- **`player_compare` does not bold a winner per row.** More is not better for
+  turnovers or fouls, and a table that quietly asserted otherwise would be the
+  confident-and-wrong answer this project exists to avoid.
+- **Column alignment is read off the values**, not declared per renderer: a
+  column whose every value is a number aligns right so the digits line up,
+  anything else aligns left. A new renderer cannot forget to say.
+
+The renderers are JavaScript and the templates are Python, so the contract
+between them is guarded from the Python side: each renderer declares the
+`Answer.data` keys it reads, `tests/web/test_renderers.py` parses those out of
+the page and asserts each one against what the template actually produces, and
+a renamed key fails there instead of silently dropping a table.
 
 ### Phase 3 — charts inline
 

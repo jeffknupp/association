@@ -15,6 +15,29 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **The web interface renders answers per question shape.** `Answer.data` was
+  already structured - resolved names and numbers - so seven intents now come
+  back as something better than fixed-width text: `leaderboard`,
+  `threshold_count`, `single_game_high`, `game_log` and `player_compare` as
+  tables, `player_history` as a sparkline over its numbers, `team_record` as a
+  record card. Phase 2 of `docs/roadmap-2.0.md`.
+
+  Nothing re-derives a sentence. Phrasing stays in the templates, in Python,
+  once; a renderer picks a *caption*, from either a scope string the template
+  computed or the answer's own first line. `single_game_high` gained a
+  `question_shape` to that end, matching `leaderboard` and `threshold_count`.
+
+  An intent with no renderer answers exactly as before, in the text the CLI
+  prints - the normal case, not a failure - and so does a shape not worth a
+  table: "who leads the league in assists?" returns one row, and one row is not
+  a ranking. Every rendered answer keeps the full text one click away.
+
+  The renderers are JavaScript and the templates are Python, so the contract is
+  guarded from the Python side: each renderer declares the `data` keys it
+  reads, and a test parses those out of the page and checks them against what
+  each template actually produces. A renamed key fails that test instead of
+  silently dropping a table and falling back to text, which looks like nothing
+  happened.
 - **Fixed: `ESPNClient.session`'s return type was unknown on Python 3.12 and
   below.** curl_cffi's `Session` is generic over its response type and only
   carries a default on 3.13+ (`TypeVar(default=...)` did not exist before it),
