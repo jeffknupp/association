@@ -24,7 +24,7 @@ jobs:
       - name: Sync environment
         # --frozen: build exactly what uv.lock pins, and fail if the lockfile
         # has drifted from pyproject.toml rather than silently resolving anew.
-        run: uv sync --frozen --extra dev --extra docs
+        run: uv sync --frozen --extra dev --extra docs --extra web
 
       - name: Lint (ruff)
         run: uv run ruff check src tests scripts

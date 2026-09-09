@@ -286,6 +286,23 @@ def query(question: str, model: str, router_model: str, db_path: str, out_dir: s
     click.echo(agent.ask(question, label=shlex.join(sys.argv)).text)
 
 
+@cli.command("web")
+@click.option("--port", type=int, default=0, help="Port to serve on. The default binds a free one and prints the URL.")
+@click.option("--host", default="127.0.0.1", show_default=True, help="Address to bind. Localhost on purpose: this has no authentication.")
+@click.option("--model", default=DEFAULT_MODEL, show_default=True, help="Ollama model for the fall-through agent.")
+@click.option("--router-model", default=DEFAULT_ROUTER_MODEL, show_default=True, help="Ollama model for the intent router.")
+@click.option("--db-path", default=DEFAULT_DB_PATH, show_default=True, help="DuckDB warehouse file.")
+@click.option("--out-dir", default=DEFAULT_OUT_DIR, show_default=True, help="Directory for rendered charts.")
+def web(port: int, host: str, model: str, router_model: str, db_path: str, out_dir: str) -> None:
+    """Serve a local web interface for asking questions, until interrupted.
+
+    Needs the `web` extra: pip install 'association[web]'
+    """
+    from .web.serve import serve
+
+    serve(host, port, db_path, Path(out_dir), model=model, router_model=router_model)
+
+
 def main() -> None:
     """Console-script entry point for the ``association`` command."""
     cli(prog_name="association")

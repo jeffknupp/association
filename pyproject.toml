@@ -53,6 +53,7 @@ association = "association.cli:main"
 
 [project.optional-dependencies]
 dev = [
+    "httpx>=0.27",
     "mypy>=2.3.1",
     "pre-commit>=4.6.2",
     "pyright>=1.1.390",
@@ -67,6 +68,10 @@ docs = [
     "sphinx-click>=6.0",
     "sphinx-copybutton>=0.5",
 ]
+web = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -75,6 +80,11 @@ where = ["src"]
 # treat the package's annotations as authoritative rather than inferring them.
 [tool.setuptools.package-data]
 association = ["py.typed"]
+# The web UI is one self-contained HTML file, and it is the only non-Python
+# thing this package ships. `association web` checks for it at startup rather
+# than on the first request, because a wheel that dropped it would otherwise
+# look like a working server that serves a 404.
+"association.web" = ["static/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

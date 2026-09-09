@@ -15,6 +15,37 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **`association web`: a local web interface.** A chat-shaped page over the
+  same router → template → answer pipeline the CLI uses, served until you quit
+  it. Phase 1 of `docs/roadmap-2.0.md`.
+
+  It needs the new `web` extra (`pip install 'association[web]'`), which adds
+  `fastapi` and `uvicorn`; the core install stays at seven dependencies, and
+  `association web` without them prints the install command rather than a
+  traceback.
+
+  Four things are deliberate rather than incidental:
+
+  - **No default port.** It binds a free one and prints the full URL for the
+    terminal to linkify. A fixed default collides with whatever else is
+    running and has to be explained; `--port` is still there.
+  - **One question at a time.** ollama keeps a single KV cache slot per model,
+    so two questions in flight evict each other's prefix and both come back
+    slow (measured: 1.3s becomes 11.2s). A question that arrives while another
+    is running is told it is waiting.
+  - **Progress streams.** `GET /api/ask/stream` sends the same trace
+    `--verbose` prints as server-sent events, because a fall-through to the
+    agent takes minutes and a spinner for that long is indistinguishable from
+    a hang.
+  - **Every answer says which path produced it.** Whether a template built the
+    sentence from code or a 7B model wrote the SQL is the most useful single
+    thing a reader can know about an answer, so the UI never hides it.
+
+  The API is usable on its own: `POST /api/ask` returns the whole `Answer`,
+  and `GET /api/health` reports the warehouse, the seasons in it, the models,
+  and whether ollama is reachable. There is no conversation memory - each
+  message is an independent question - and no way to turn the fast path off,
+  which is not an oversight: the fast path is the product.
 - **BREAKING: an answer is a value, not a printed string.**
   `Agent.ask` now returns an `Answer` (`association.query.answer`) instead of
   the answer text: the text, which path answered (`"fast"` or `"agent"`), the

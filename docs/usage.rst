@@ -237,6 +237,54 @@ in the color of whoever leads it, more strongly the further ahead they are:
 
    $ association query "compare Shai Gilgeous-Alexander and Nikola Jokic's fingerprints for 2025"
 
+Asking in a browser
+-------------------
+
+``association web`` serves a local chat-shaped page over the same pipeline:
+
+.. code-block:: console
+
+   $ association web
+   association is serving at http://127.0.0.1:40525  (ctrl-c to stop)
+
+There is no default port. It binds a free one and prints the URL, which every
+modern terminal turns into a link — nothing to remember and nothing to collide
+with. ``--port`` is there for anyone who wants to bookmark one, and
+``--db-path``/``--out-dir`` take the same defaults the ``data`` subcommands do.
+
+.. figure:: _static/web_ui_example.png
+   :alt: The web interface, showing two answered questions - a one-line leaderboard answer and a season-by-season table - each labeled with the template that produced it and how long it took.
+   :width: 640px
+
+   Two questions, answered by templates. Real output.
+
+It needs the ``web`` extra, which is not installed by default:
+
+.. code-block:: console
+
+   $ pip install 'association[web]'
+
+Three things about it are deliberate:
+
+* **Each message is a new question.** There is no conversation memory yet, so
+  "what about last year?" will not work. That is a real change in what a
+  question *means* and it deserves its own routing cases rather than arriving
+  as a footnote to a UI release.
+* **Every answer says which path produced it** — ``template`` in green, with
+  the intent, or ``agent`` in orange. Whether a template built the sentence
+  from code or a 7B model wrote the SQL is the most useful single thing you can
+  know about how far to trust an answer, so it is never hidden.
+* **One question at a time.** ollama keeps a single KV cache slot per model, so
+  two questions in flight would evict each other's prefix and both come back
+  slow. A question that arrives while another is running is told it is waiting.
+
+A question that falls through to the agent can take minutes, and the page
+streams the trace while it does — the same lines ``--verbose`` prints — because
+a spinner for two minutes is indistinguishable from a hang.
+
+The server binds to localhost and has no authentication. It has no business
+being reachable by anything but you.
+
 Setting up the models
 ---------------------
 

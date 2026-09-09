@@ -171,6 +171,43 @@ leaves the earlier tables replaced and the rest silently at their old contents
 — the build fails loudly, but the *warehouse* does not look broken afterwards.
 Row order carries no meaning in any of these tables.
 
+## Working on the web path
+
+`association web` is a thin layer over the same `Agent` the CLI uses. Almost
+everything about it is constrained by things measured elsewhere in this file.
+
+- **The server answers one question at a time, and that is not caution.**
+  ollama keeps a single KV cache slot per model, so two questions in flight
+  evict each other's prefix and both come back slow (1.3s becomes 11.2s).
+  `AgentRunner` holds a `threading.Lock` for the whole of `ask`. A
+  `threading.Lock` and not `asyncio.Lock`: everything below is blocking, and
+  FastAPI runs `def` endpoints in a threadpool already.
+- **The trace sink is swapped under that lock**, which is the only thing that
+  makes swapping it safe. If the serialization ever goes, that swap goes with
+  it.
+- **Nothing in `web/app.py` may import a model client.** `Answerer.ready` is a
+  property on the runner precisely so the health check does not reach ollama
+  from the API layer — that is what keeps the web tests offline by
+  construction rather than by discipline. The whole suite still runs with no
+  network and no ollama, and that has to stay true.
+- **Events carry trace lines verbatim.** Do not parse `"-> (router) intent=..."`
+  back into structured fields. Everything a client acts on — which path
+  answered, the intent, the timing, the artifacts — is on the `answer` event,
+  as values, because Phase 0 put it there. Parsing prose back out is the exact
+  move that phase removed.
+- **The page is one self-contained HTML file** with its CSS and JS inline, like
+  the chart renderers' output. That is one asset to survive packaging, declared
+  in `[tool.setuptools.package-data]`, and `serve()` checks it exists at
+  startup rather than serving a 404 on the first request. Verify packaging by
+  installing the wheel into a fresh venv *outside* the repo and loading the
+  page — importing the module proves nothing about the HTML.
+- **`fastapi`/`uvicorn` are the `web` extra**, so CI syncs `--extra web` and a
+  missing install must print the `pip install 'association[web]'` line rather
+  than raising ImportError.
+- **Print the URL with `flush=True`.** stdout is block-buffered when it is not
+  a terminal, and with an ephemeral port that URL is the only way to find the
+  server at all.
+
 ## Data gotchas
 
 - **A season is named for the year it ends.** 2023-24 is season `2024`. See

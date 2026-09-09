@@ -41,7 +41,7 @@ def test_parse_season_types_dedups_and_sorts() -> None:
 
 
 def test_cli_lists_expected_commands() -> None:
-    assert set(cli.commands.keys()) == {"data", "query"}
+    assert set(cli.commands.keys()) == {"data", "query", "web"}
     data_group = cast(click.Group, cli.commands["data"])
     assert set(data_group.commands.keys()) == {"pull", "load", "check"}
 
@@ -321,3 +321,26 @@ def test_data_pull_defaults_to_several_workers(monkeypatch: pytest.MonkeyPatch) 
 
     assert CliRunner().invoke(data_pull, ["--seasons", "2024", "--fetch-only"]).exit_code == 0
     assert captured["kwargs"]["workers"] > 1
+
+
+def test_web_reports_the_install_command_when_the_extra_is_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`fastapi` and `uvicorn` are an optional extra, so not having them is an
+    ordinary configuration state rather than a bug - it gets a sentence, not an
+    ImportError traceback."""
+    import builtins
+
+    from association.cli import web
+
+    real_import = builtins.__import__
+
+    def no_uvicorn(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name == "uvicorn":
+            raise ImportError("No module named 'uvicorn'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", no_uvicorn)
+    result = CliRunner().invoke(web, [])
+
+    assert result.exit_code != 0
+    assert "pip install 'association[web]'" in result.output
+    assert "Traceback" not in result.output

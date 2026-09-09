@@ -69,6 +69,21 @@ association query "plot Shai Gilgeous-Alexander's fingerprint for 2025"
 Naming two players draws both on the same axes and shades each skill to
 whoever leads it.
 
+## Or ask it in a browser
+
+```bash
+pip install 'association[web]'
+association web
+# association is serving at http://127.0.0.1:40525  (ctrl-c to stop)
+```
+
+<img src="docs/_static/web_ui_example.png" alt="The association web interface: two answered questions, a one-line leaderboard answer and a season-by-season table, each labeled with the template that produced it and how long it took" width="640">
+
+No default port — it binds a free one and prints the URL. Each message is a
+new question (there is no conversation memory yet), and every answer says
+whether a template or the fall-through agent produced it, because that is the
+most useful thing you can know about how far to trust it.
+
 ## Features
 
 - **Resumable, rate-limited fetch** from ESPN's stats APIs — checkpointed per
@@ -87,6 +102,8 @@ whoever leads it.
   shooting %, effective FG%, usage rate, game score
 - **NetPoints ratings** from ESPN Analytics — player/team ratings plus a
   per-play-type "fingerprint" breakdown, as numbers or as a radar plot
+- **A local web interface** (`association web`) — the same answers in a
+  chat-shaped page, with progress streamed while a slow question runs
 - **A full trace of every query** — command, tool calls, timing, and answer —
   written to disk regardless of verbosity
 - **Shell completion** for bash, zsh, and fish
@@ -176,10 +193,11 @@ for how the warehouse and query engine are built from it.
 
 ```
 src/association/
-  cli.py            entrypoint: data pull|load|check, query, ai
+  cli.py            entrypoint: data pull|load|check, query, web
   fetch/            client, endpoints, parse, storage, pipeline, warehouse
   check/            data coverage report, cross-checked live against ESPN
   query/            intent router, query templates, entity resolution, leaderboard, shot chart, fingerprint, prompt/knowledge base, tools, court and radar renderers, agent loop
+  web/              the local web interface: HTTP API, one-at-a-time runner, single-page app
 scripts/
   backfill_markers.sh   re-derive completion markers for data fetched before they existed
   check_routing.py      routing regression check for the query fast path (needs ollama)

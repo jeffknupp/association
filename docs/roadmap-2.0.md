@@ -28,7 +28,7 @@ This is a plan, not a description of what exists. Nothing in it is built yet.
   below); the web UI is what an interactive session looks like from 2.0 on.
 - Conversation memory (see [After 2.0](#after-20)).
 - Writing to the warehouse. Query connections stay read-only, as they are now.
-- Replacing the CLI. `query`, `ai` and `data` keep working unchanged.
+- Replacing the CLI. `query` and `data` keep working unchanged.
 
 ## Why this is a major version
 
@@ -64,9 +64,9 @@ callback and `ask` takes a `label`; `RunHistory` takes a `sink`.
 **The `ai` subcommand is gone.** The web UI replaces it, so keeping an
 interactive terminal REPL alive would mean maintaining two interactive
 front-ends with different capabilities against the same engine. Removed already,
-along with `query/repl.py` and `Agent.reset`, which nothing else called. Between
-now and Phase 1 there is no interactive mode on master — `association query`
-answers one question per invocation, as it always has.
+along with `query/repl.py` and `Agent.reset`, which nothing else called. The
+replacement has landed: `association web` is what an interactive session looks
+like from 2.0 on.
 
 None of these are large changes. They are, however, changes to documented
 public API, so they are 2.0 and they should land as one deliberate reshaping
@@ -210,7 +210,7 @@ the two lower-level ones rather than staying strings: the agent reaches charts
 only through those, so leaving them as prose would have meant the agent path
 could never report an artifact.
 
-### Phase 1 — `association web`, text answers
+### Phase 1 — `association web`, text answers — **done**
 
 The MVP: the thing described in the request.
 
@@ -237,6 +237,25 @@ wait that the UI's job is to make legible, not to offer as a mode.
 *Done when:* every question in `scripts/check_routing.py` can be asked in the
 browser and returns the same text the CLI returns, and a deliberate
 fall-through question streams progress rather than appearing to hang.
+
+*Verified:* questions asked in a headless Chromium against a live server, in
+both color schemes, with no console errors; the answers match the CLI's; the
+wheel installed into a fresh venv outside the repo serves the page and answers
+over the API. `POST /api/ask`, `GET /api/ask/stream` and `GET /api/health` all
+tested against a stub answerer, so the suite is still offline.
+
+Three things worth recording, all decided while building rather than planned:
+
+- **A `progress` event carries one trace line verbatim**, rather than parsed
+  `routed`/`tool` events. The engine's trace lines are prose, and turning prose
+  back into structure is exactly what Phase 0 removed from the chart renderers.
+  Every structured fact a client acts on is on the final `answer` event.
+- **Readiness lives on the runner, not the API layer.** `Answerer.ready` is
+  what the health check reports, so `web/app.py` imports no model client at
+  all and the web tests are offline by construction rather than by discipline.
+- **A `threading.Lock` and a worker thread**, not `asyncio.Lock`. Everything
+  below is blocking — ollama's client and DuckDB both — and FastAPI already
+  runs `def` endpoints in a threadpool.
 
 ### Phase 2 — HTML answers per intent
 

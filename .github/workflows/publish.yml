@@ -30,7 +30,7 @@ jobs:
           enable-cache: true
 
       - name: Sync environment
-        run: uv sync --frozen --extra dev --extra docs
+        run: uv sync --frozen --extra dev --extra docs --extra web
 
       # A release is the one moment the whole gate suite must pass, so it runs
       # here too rather than trusting that CI happened to be green on the tag.
