@@ -121,6 +121,34 @@ TEMPLATE_SOURCES: dict[str, tuple[str, ...]] = {
     "fingerprint": ("net_points_player_fingerprint",),
 }
 
+# Templates that read a player name at all - resolving it, filtering on it, or
+# refusing because of it. A name the question does not support is only worth
+# refusing over where the answer would actually be about that player; for
+# `team_record` and `head_to_head` the slot is not read, so a stray one changes
+# nothing. Guarded by test_no_template_outside_player_intents_reads_a_player,
+# which reads the source rather than trusting this list.
+PLAYER_INTENTS: frozenset[str] = frozenset(
+    {
+        "fingerprint",
+        "game_log",
+        "leaderboard",
+        "player_compare",
+        "player_history",
+        "player_netpoints",
+        "player_stat",
+        "shot_chart",
+        "shot_distance",
+        "single_game_high",
+        "team_quarter_points",
+        "threshold_count",
+    }
+)
+"""Intents whose template reads a ``player`` or ``players`` slot.
+
+.. versionadded:: 2.1.0
+"""
+
+
 # Templates that rank players AGAINST each other, rather than reporting the
 # numbers of players the question named. The distinction is the whole reason
 # coverage.Coverage carries two floors: player_season_stats holds Michael

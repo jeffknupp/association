@@ -15,6 +15,35 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A name the question does not support is refused, not passed to the agent.**
+  Falling through was the first fix and it was the wrong one: given
+  "compare fingerprints for embiid vs jokic in 2026", the agent spent 55
+  seconds writing a confident fingerprint - play-type percentages and all - for
+  "Ronaldo Lopes", who does not exist. Same reasoning `check_coverage` already
+  records for a season below a floor: nothing downstream does better, and an
+  agent with nothing to find fills the silence from its own weights. The
+  refusal fires only for the intents whose template actually reads a player
+  slot (`PLAYER_INTENTS`, checked against the templates' own source), since a
+  stray name on a `head_to_head` question changes no answer.
+
+- **A fingerprint that lost a player to a typo says so.** "generate
+  fingerprints for embiid vs jolic in 2026" drew Joel Embiid alone: "jolic"
+  matches nobody and is not close enough to exactly one player to guess at.
+  Recovering it was measured and rejected - a near-spelling search over a
+  question's leftover words finds a spurious player in 29 of 51 corpus
+  questions ("season" is one edit from Tari Eason, "most" from Quinten Post),
+  and it does not find Nikola Jokic either. So the name stays lost and the
+  answer states it, because one polygon where two were asked for is only a
+  failure while nothing mentions it.
+
+- **A fingerprint keeps every player the question named.** The same question
+  arrived as a single `player` slot, so a two-player comparison was answered
+  with one polygon and nothing said so - the project's oldest failure shape.
+  `entities.restore_dropped_players` puts back the players the router dropped,
+  for the fingerprint intent only: two polygons on shared axes is what a
+  comparison means there, while widening a `player_stat` question the same way
+  would answer a different one.
+
 - **A comparison that named no stat shows the whole line again.** `stat` is the
   one required slot in `ROUTER_SCHEMA`, so the model fills it on every question
   whether the question named a stat or not: "compare sga and embiid" came back

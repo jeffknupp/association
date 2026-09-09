@@ -8,6 +8,7 @@ from association.query.entities import (
     Ambiguous,
     Entity,
     NotFound,
+    compared_but_unmatched,
     find_players,
     nicknames_in,
     no_match,
@@ -16,6 +17,7 @@ from association.query.entities import (
     players_named_in,
     resolve_player,
     resolve_team,
+    restore_dropped_players,
     suggest_players,
 )
 
@@ -345,3 +347,46 @@ def test_no_match_names_the_near_miss(con: duckdb.DuckDBPyConnection) -> None:
 
 def test_no_match_says_only_that_when_nothing_is_near(con: duckdb.DuckDBPyConnection) -> None:
     assert no_match(con, "asdf qwerty") == "No player found matching 'asdf qwerty'."
+
+
+# ---------------- players the router dropped ----------------
+
+
+def test_a_question_naming_two_players_is_not_a_fingerprint_of_one(con: duckdb.DuckDBPyConnection) -> None:
+    """ "compare fingerprints for embiid vs jokic in 2026" came back as a single
+    `player` slot. One polygon is not a narrower answer to that - it is a
+    different question, answered without saying so."""
+    slots = {"player": "Jusuf Nurkic"}
+    assert restore_dropped_players(con, "compare fingerprints for embiid vs klay thompson", slots) == ("Jusuf Nurkic", "Joel Embiid and Klay Thompson")
+
+
+def test_slots_that_already_hold_every_name_are_left_alone(con: duckdb.DuckDBPyConnection) -> None:
+    slots = {"players": ["Joel Embiid", "Klay Thompson"]}
+    assert restore_dropped_players(con, "compare fingerprints for embiid and klay thompson", slots) is None
+    assert restore_dropped_players(con, "plot embiid's fingerprint", {"player": "Joel Embiid"}) is None
+
+
+def test_restoring_players_clears_the_single_slot_it_replaces(con: duckdb.DuckDBPyConnection) -> None:
+    """The template prefers `players`, so a stale `player` would sit in the
+    trace saying something the answer did not do."""
+    slots = {"player": "Jusuf Nurkic"}
+    restore_dropped_players(con, "compare fingerprints for embiid vs klay thompson", slots)
+    assert "player" not in slots and slots["players"] == ["Joel Embiid", "Klay Thompson"]
+
+
+def test_a_vs_question_that_matched_one_player_is_flagged(con: duckdb.DuckDBPyConnection) -> None:
+    """ "generate fingerprints for embiid vs jolic" drew Joel Embiid alone. The
+    typo cannot be repaired - measured, a near-spelling search over leftover
+    words finds a spurious player in 29 of 51 corpus questions - so the answer
+    has to say a player is missing rather than quietly drop one."""
+    assert compared_but_unmatched("generate fingerprints for embiid vs jolic in 2026", ["Joel Embiid"])
+
+
+def test_a_vs_question_with_both_players_is_not_flagged(con: duckdb.DuckDBPyConnection) -> None:
+    assert not compared_but_unmatched("fingerprints for embiid vs jokic", ["Joel Embiid", "Nikola Jokic"])
+
+
+def test_a_question_comparing_nobody_is_not_flagged(con: duckdb.DuckDBPyConnection) -> None:
+    """One name and no "vs" is a question about one player, which is not a
+    half-answer to anything."""
+    assert not compared_but_unmatched("plot embiid's fingerprint", ["Joel Embiid"])

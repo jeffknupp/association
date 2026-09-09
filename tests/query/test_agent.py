@@ -294,16 +294,65 @@ def test_the_fast_path_replaces_a_player_the_question_never_named(monkeypatch: p
     assert seen == ["Shai Gilgeous-Alexander", "Joel Embiid"]
 
 
-def test_a_player_the_question_cannot_account_for_falls_through_to_the_agent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Nothing in the question to put in its place, so the template does not
-    run at all. Falling through is slow; answering about Nurkic is wrong."""
+def test_a_player_the_question_cannot_account_for_is_refused_not_passed_on(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Falling through here was measured and is worse: given one of these the
+    agent spent 55 seconds writing a confident fingerprint, percentages
+    included, for "Ronaldo Lopes" - who does not exist. Same reasoning as
+    check_coverage returning its refusal rather than raising it."""
     from association.query.router import Route
     from association.query.templates import TemplateResult
 
     monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="player_compare", slots={"players": ["Jusuf Nurkic", "Joel Embiid"]}))
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_compare": lambda ctx, slots: TemplateResult(data={}, answer="templated")})
     monkeypatch.setattr(ollama, "chat", lambda **kw: ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="agent answer")))
-    assert _agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic").ask("compare the two best centers").text == "agent answer"
+    answer = _agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic").ask("compare the two best centers")
+    assert "was not answered" in answer.text and "Jusuf Nurkic" in answer.text
+    assert "agent answer" not in answer.text and "templated" not in answer.text
+
+
+def test_a_stray_name_on_a_question_no_template_reads_one_for_changes_nothing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """head_to_head never looks at a player slot, so an invented one there
+    cannot make the answer about the wrong person - and refusing over it would
+    break a question that works."""
+    from association.query.router import Route
+    from association.query.templates import TemplateResult
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="head_to_head", slots={"player": "Jusuf Nurkic"}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"head_to_head": lambda ctx, slots: TemplateResult(data={}, answer="templated")})
+    assert _agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic").ask("Lakers vs Celtics record").text == "templated"
+
+
+def test_a_fingerprint_keeps_every_player_the_question_named(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """ "compare fingerprints for embiid vs jokic in 2026" arrived as a single
+    player slot, and one polygon is not half an answer - it is a different
+    question, answered without saying so."""
+    from association.query.router import Route
+    from association.query.templates import TemplateResult
+
+    seen: list[str] = []
+
+    def record(ctx: Any, slots: dict[str, Any]) -> TemplateResult:
+        seen.extend(slots["players"])
+        return TemplateResult(data={}, answer="rendered")
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="fingerprint", slots={"player": "Ben Simmons"}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"fingerprint": record})
+    _agent_with_players(tmp_path, "Joel Embiid", "Nikola Jokic", "Ben Simmons").ask("compare fingerprints for embiid vs jokic in 2026")
+    assert seen == ["Joel Embiid", "Nikola Jokic"]
+
+
+def test_a_fingerprint_that_lost_a_player_to_a_typo_says_so(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """ "generate fingerprints for embiid vs jolic in 2026" drew Joel Embiid
+    alone. The typo cannot be repaired, so the half-answer has to be stated -
+    one polygon where two were asked for, with nothing saying so, is the
+    failure shape this project keeps producing."""
+    from association.query.router import Route
+    from association.query.templates import TemplateResult
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="fingerprint", slots={"player": "Joel Embiid"}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"fingerprint": lambda ctx, slots: TemplateResult(data={}, answer="Rendered.")})
+    answer = _agent_with_players(tmp_path, "Joel Embiid").ask("generate fingerprints for embiid vs jolic in 2026").text
+    assert answer.startswith("Rendered.") and "only one of them matches" in answer
 
 
 def test_fast_path_is_skipped_entirely_when_disabled(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

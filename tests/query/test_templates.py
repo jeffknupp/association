@@ -621,6 +621,22 @@ def test_player_compare_asks_rather_than_guessing_an_ambiguous_name(ps_con: Temp
     assert "did you mean Seth Curry or Stephen Curry?" in answer
 
 
+def test_no_template_outside_player_intents_reads_a_player_slot() -> None:
+    """PLAYER_INTENTS decides whether a name the question does not support is
+    refused or ignored, so a template drifting into reading a player slot
+    without being listed would answer about somebody the question never named.
+    Read out of the source rather than trusted, the way TEMPLATE_SOURCES is
+    checked against TEMPLATES."""
+    import inspect
+
+    from association.query.templates import PLAYER_INTENTS, TEMPLATES
+
+    for intent, handler in TEMPLATES.items():
+        source = inspect.getsource(handler)
+        reads = 'slots.get("player' in source or 'slots["player' in source
+        assert reads == (intent in PLAYER_INTENTS), f"{intent} reads a player slot: {reads}, listed: {intent in PLAYER_INTENTS}"
+
+
 def test_player_compare_suggests_the_player_a_fabricated_name_meant(ps_con: TemplateContext) -> None:
     """The router answered "compare sga and embid" with 'Jemel Embiid' - the
     surname corrected, the given name invented - and every token has to match,

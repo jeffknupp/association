@@ -13,13 +13,13 @@ from typing import Any
 import ollama
 
 from .answer import Answer, AnsweredBy, Artifact, Timing
-from .entities import override_invented_players, override_nicknames
+from .entities import compared_but_unmatched, misread_players, override_invented_players, override_nicknames, restore_dropped_players
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .keepalive import KEEP_ALIVE
 from .models import DEFAULT_ROUTER_MODEL
 from .prompt import AGENT_NUM_CTX, TOOLS, build_system_prompt
 from .router import route
-from .templates import TEMPLATES, TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, check_scope, coverage_caveat
+from .templates import PLAYER_INTENTS, TEMPLATES, TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, check_scope, coverage_caveat
 from .toolbox import Toolbox
 
 MAX_TOOL_ITERATIONS = 8
@@ -174,6 +174,13 @@ class Agent:
             artifacts=list(artifacts or []) + self.toolbox.take_artifacts(),
         )
 
+    @staticmethod
+    def _named_in(slots: dict[str, Any]) -> list[str]:
+        """The player names a Route carries, however the router split them."""
+        listed = slots.get("players")
+        raw = listed if isinstance(listed, list) else [slots.get("player")]
+        return [name for name in raw if isinstance(name, str) and name.strip()]
+
     def _try_fast_path(self, question: str, history: RunHistory) -> tuple[str, TemplateResult] | None:
         """Route -> deterministic template -> answer, returning the intent
         alongside the template's whole result. Returns None to fall through to
@@ -201,15 +208,29 @@ class Agent:
         history.log(f"  -> (router) intent={routed.intent!r} slots={routed.slots}" + ("" if handler else " - not ported yet, falling through"))
         if handler is None:
             return None
+        # A fingerprint draws as many polygons as it is given, and the router
+        # drops the second name often enough that "compare fingerprints for
+        # embiid vs jokic" arrived as one player, answered as half the
+        # question with nothing saying so.
+        if routed.intent == "fingerprint":
+            restored = restore_dropped_players(self.toolbox.con, question, routed.slots)
+            if restored is not None:
+                history.log(f"  -> (player) {restored[0]!r} -> {restored[1]!r} (the question names more players than the router returned)")
         # The router invents whole names, not only nicknames: "compare sga and
         # embiid" came back with Jusuf Nurkic in the second slot, and every
         # stage after this one would have answered about him perfectly.
         grounded, invented = override_invented_players(self.toolbox.con, question, routed.slots)
         for was, now in grounded:
             history.log(f"  -> (player) {was!r} -> {now!r} (from the question, overriding the router)")
-        if invented:
-            history.log(f"  -> (player) {', '.join(repr(name) for name in invented)} appears nowhere in the question - falling through to the agent")
-            return None
+        # Said, not passed along. Falling through was tried and is worse: the
+        # agent answered one of these with a 55-second fingerprint for "Ronaldo
+        # Lopes", a player who does not exist, percentages included. Only where
+        # the template would actually be about that player - a stray name on a
+        # team question changes no answer.
+        if invented and routed.intent in PLAYER_INTENTS:
+            misread = misread_players(invented)
+            history.log(f"  -> (player) {misread}")
+            return routed.intent, TemplateResult(data={"message": misread, "misread": invented}, answer=misread)
         t0 = time.monotonic()
         try:
             check_scope(routed.intent, routed.slots)
@@ -228,6 +249,11 @@ class Agent:
                 note = coverage_caveat(routed.intent, routed.slots)
                 if note:
                     result.answer = f"{result.answer} {note}"
+                # A "vs" question that produced one polygon answered half of
+                # itself. The missing name cannot be recovered - see
+                # entities.compared_but_unmatched - so it is stated instead.
+                if routed.intent == "fingerprint" and compared_but_unmatched(question, self._named_in(routed.slots)):
+                    result.answer = f"{result.answer} Note: the question compares two players, but only one of them matches anybody in the warehouse - check the spelling of the other."
         except TemplateUnsupported as exc:
             history.log(f"  -> (template) {exc} - falling through to the agent")
             return None

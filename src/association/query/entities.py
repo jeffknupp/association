@@ -355,6 +355,86 @@ def override_invented_players(con: duckdb.DuckDBPyConnection, question: str, slo
     return changed, []
 
 
+def restore_dropped_players(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any]) -> tuple[str, str] | None:
+    """Put back players a fingerprint's slots lost. Mutates ``slots``.
+
+    A fingerprint draws as many polygons as it is given, so a question naming
+    two players and a slot holding one is not a narrower question - it is half
+    of the one asked, answered without saying so. Measured: "compare
+    fingerprints for embiid vs jokic in 2026" came back as a single
+    ``player`` slot, and "generate fingerprints for embiid vs jolic in 2026"
+    rendered Joel Embiid alone with the second name simply gone.
+
+    Only for the fingerprint intent, and only in this direction. Two polygons
+    on shared axes IS the comparison there, whereas turning a ``player_stat``
+    question into a comparison because the question mentioned somebody else
+    would be answering a different question.
+
+    Returns:
+        The ``(was, now)`` pair, or None when the slots already carry every
+        player the question names.
+
+    .. versionadded:: 2.1.0
+    """
+    named = players_named_in(con, question)
+    listed = slots.get("players")
+    raw = listed if isinstance(listed, list) else [slots.get("player")]
+    held = [name for name in raw if isinstance(name, str) and name.strip()]
+    if len(named) <= len(held):
+        return None
+    slots["players"] = named
+    slots.pop("player", None)
+    return " and ".join(held) or "nobody", " and ".join(named)
+
+
+# "X vs Y", the one structural signal in a question that two players were
+# meant. Matched whole so "vs" and "versus" count and a surname containing
+# them does not.
+_VERSUS = re.compile(r"\b(?:vs\.?|versus)\b", re.IGNORECASE)
+
+
+def compared_but_unmatched(question: str, held: list[str]) -> bool:
+    """Whether the question pits players against each other and only one of
+    them could be matched to the warehouse.
+
+    A misspelling nothing can repair - "generate fingerprints for embiid vs
+    jolic" drew Joel Embiid alone, because "jolic" matches no player and is not
+    close enough to exactly one to guess at. Recovering it was measured and
+    rejected: a near-spelling search over a question's leftover words finds a
+    spurious player in 29 of 51 corpus questions ("season" is one edit from
+    Tari Eason, "most" from Quinten Post), and it does not find Nikola Jokic
+    here either.
+
+    So the second player stays lost, and the answer says so. That is the whole
+    point: one polygon where two were asked for is the project's oldest failure
+    shape, and it is only a failure while nothing mentions it.
+
+    .. versionadded:: 2.1.0
+    """
+    return len(held) < 2 and bool(_VERSUS.search(question))
+
+
+def misread_players(names: list[str]) -> str:
+    """The sentence for names the question does not support and nothing in it
+    can replace.
+
+    Said rather than passed to the agent, which is the whole point. Measured:
+    "compare fingerprints for embiid vs jokic in 2026" fell through with an
+    invented name, and the agent spent 55 seconds writing a confident
+    fingerprint for "Ronaldo Lopes", who does not exist - percentages and all.
+    The same reasoning as ``templates.check_coverage`` returning its refusal
+    instead of raising it: nothing downstream does better here, and an agent
+    with nothing to find is free to fill the silence from its own weights.
+
+    .. versionadded:: 2.1.0
+    """
+    joined = (", ".join(names[:-1]) + " and " if len(names) > 1 else "") + names[-1]
+    return (
+        f"This was read as a question about {joined}, who the question does not mention - so it was not answered, "
+        "rather than answered about the wrong player. Naming the player in full usually fixes it."
+    )
+
+
 def _shares_word(one: str, other: str) -> bool:
     return bool({w.casefold() for w in _words(one) if len(w) >= 3} & {w.casefold() for w in _words(other) if len(w) >= 3})
 
