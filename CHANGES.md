@@ -14,7 +14,7 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
-## Unreleased
+## 1.6.0 - 2026-09-08
 - **Pulls fetch several games at once.** Fetching is latency-bound: profiling a
   live pull put 96% of the main thread inside one curl call, at 5% CPU, zero
   bytes read from disk, and a 12ms round trip to a CDN whose cold responses take
