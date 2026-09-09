@@ -166,12 +166,6 @@ One-shot:
      2024  77  38.7  268  692
      2023  69  41.2  301  731
 
-Interactive, keeping context between questions:
-
-.. code-block:: console
-
-   $ association ai
-
 Add ``--verbose`` to watch the routing decision and every tool call as they
 happen. The same trace is always written to ``.history/`` regardless, so a
 surprising answer can be diagnosed after the fact:

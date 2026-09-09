@@ -6,7 +6,7 @@ import click
 import pytest
 from click.testing import CliRunner
 
-from association.cli import _parse_season_types, _parse_seasons, ai, cli, data_check, data_load, data_pull, query
+from association.cli import _parse_season_types, _parse_seasons, cli, data_check, data_load, data_pull, query
 
 
 def test_parse_seasons_single() -> None:
@@ -34,7 +34,7 @@ def test_parse_season_types_dedups_and_sorts() -> None:
 
 
 def test_cli_lists_expected_commands() -> None:
-    assert set(cli.commands.keys()) == {"data", "query", "ai"}
+    assert set(cli.commands.keys()) == {"data", "query"}
     data_group = cast(click.Group, cli.commands["data"])
     assert set(data_group.commands.keys()) == {"pull", "load", "check"}
 
@@ -161,7 +161,9 @@ def test_query_dispatches_with_question(monkeypatch: pytest.MonkeyPatch) -> None
     assert "the answer" in result.output
 
 
-def test_ai_dispatches_with_think_and_model(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_query_passes_the_engine_options_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The shared _query_engine_options decorator is the only thing wiring
+    these to the Agent, and a renamed parameter there fails silently."""
     captured: dict[str, Any] = {}
 
     class FakeAgent:
@@ -171,10 +173,12 @@ def test_ai_dispatches_with_think_and_model(monkeypatch: pytest.MonkeyPatch) -> 
             captured["fast_path"] = fast_path
             captured["router_model"] = router_model
 
+        def ask(self, question: str) -> str:
+            return "the answer"
+
     monkeypatch.setattr("association.query.agent.Agent", FakeAgent)
-    monkeypatch.setattr("association.query.repl.run_repl", lambda agent: None)
     runner = CliRunner()
-    result = runner.invoke(ai, ["--think", "--model", "qwen3:8b"])
+    result = runner.invoke(query, ["--think", "--model", "qwen3:8b", "who led the league in blocks"])
     assert result.exit_code == 0, result.output
     assert captured["think"] is True
     assert captured["model"] == "qwen3:8b"

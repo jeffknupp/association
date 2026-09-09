@@ -1,11 +1,11 @@
-"""Records every `query`/`ai` run's command, full event trace, and timing
+"""Records every `query` run's command, full event trace, and timing
 metrics to a file under `.history/`, named with a random hash - regardless of
 whether `--verbose` was passed, so a confusing or failed run's full evidence
 is always on disk afterward, not just whatever happened to print to the
 terminal at the time.
 
 One file per `ask()` call (one real "run" to debug), not one per CLI
-invocation - an `ai` REPL session calls `ask()` once per question, and each
+invocation - a caller that asks several questions calls `ask()` once each, and every
 gets its own history file, the same as a one-shot `query` call would."""
 
 from __future__ import annotations

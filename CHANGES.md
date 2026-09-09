@@ -14,6 +14,19 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
+## Unreleased
+- **The `ai` REPL is gone.** The web UI planned for 2.0 (see
+  `docs/roadmap-2.0.md`) replaces it, and keeping both would mean two
+  interactive front-ends with different capabilities over one engine. Removed
+  with it: `query/repl.py`, `Agent.reset` (nothing else called it), and the
+  REPL's mentions in the CLI epilog, README and usage docs. `association query`
+  is unchanged. Until the web UI lands there is no interactive mode.
+- **A plan for 2.0.** `docs/roadmap-2.0.md` writes down the web interface
+  before any of it exists: what is in scope, the three API reshapings that make
+  it a major version, the constraints the existing system imposes on it (one
+  ollama KV cache slot, two paths that differ by two orders of magnitude), the
+  framework comparison, and four phases with acceptance criteria.
+
 ## 1.6.0 - 2026-09-08
 - **Pulls fetch several games at once.** Fetching is latency-bound: profiling a
   live pull put 96% of the main thread inside one curl call, at 5% CPU, zero

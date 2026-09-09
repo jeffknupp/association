@@ -24,6 +24,8 @@ This is a plan, not a description of what exists. Nothing in it is built yet.
 
 - Any hosted or multi-user deployment. This binds to localhost and has no
   authentication, because it has no business being reachable.
+- The `ai` REPL, which this replaces. It is already gone from master (see
+  below); the web UI is what an interactive session looks like from 2.0 on.
 - Conversation memory (see [After 2.0](#after-20)).
 - Writing to the warehouse. Query connections stay read-only, as they are now.
 - Replacing the CLI. `query`, `ai` and `data` keep working unchanged.
@@ -53,6 +55,13 @@ it back out of a sentence is not a plan. Both should return the same shape.
 lines in `RunHistory.log` go to stderr when `verbose`. A server needs those as
 events it can forward to a browser, and needs to say what the request was
 rather than what the process's argv happened to be.
+
+**The `ai` subcommand is gone.** The web UI replaces it, so keeping an
+interactive terminal REPL alive would mean maintaining two interactive
+front-ends with different capabilities against the same engine. Removed already,
+along with `query/repl.py` and `Agent.reset`, which nothing else called. Between
+now and Phase 1 there is no interactive mode on master — `association query`
+answers one question per invocation, as it always has.
 
 None of these are large changes. They are, however, changes to documented
 public API, so they are 2.0 and they should land as one deliberate reshaping
@@ -184,8 +193,14 @@ byte-identical check is the point — this phase must be invisible from outside.
 
 The MVP: the thing described in the request.
 
-- `association web [--host 127.0.0.1] [--port 8765] [--no-open]`, serving until
-  interrupted, opening a browser by default.
+- `association web`, serving until interrupted. **No default port**: it binds
+  an ephemeral one and prints the full URL — `http://127.0.0.1:54312` — which
+  every modern terminal turns into a link. A fixed default would collide with
+  whatever else is running and would have to be explained; a printed URL never
+  does. `--port` stays available for anyone who wants to bookmark one.
+- `--db-path` and `--out-dir` are startup flags, with the same defaults the
+  `data` subcommands use (`./nba.duckdb`, `./query_output`). They are
+  configuration for the process, not something a request can change.
 - Chat UI: message list, input, answers as monospace text (what the CLI prints).
 - `POST /api/ask` and the SSE stream; one query in flight, others queued.
 - Each message is a fresh query — no history sent to the server.
@@ -193,6 +208,10 @@ The MVP: the thing described in the request.
   the project's rule is that every answer names its scope, and "a template
   answered this deterministically" versus "a 7B model wrote SQL for this" is
   the single most useful thing a reader can know about an answer's reliability.
+
+There is no way to turn the fast path off from the UI, and no plan to add one.
+The fast path *is* the product; the fall-through is a frustrating but bearable
+wait that the UI's job is to make legible, not to offer as a mode.
 
 *Done when:* every question in `scripts/check_routing.py` can be asked in the
 browser and returns the same text the CLI returns, and a deliberate
@@ -269,13 +288,15 @@ into a fresh venv outside the repo and load the page, not just import the module
 unless Phase 2 proves it necessary. Plain HTML, CSS and a small amount of
 JavaScript, matching how `court.py` and `radar.py` already produce pages.
 
-## Open questions
+## Settled, and why
 
-1. **Port.** Fixed default (8765) or ephemeral-and-print? A fixed one is easier
-   to bookmark; an ephemeral one never collides. Leaning fixed with fallback.
-2. **Does `ai` (the REPL) survive?** The web UI is strictly better for the same
-   job once memory lands. Keep both for 2.0; revisit later.
-3. **Is `--no-fast-path` exposed in the UI?** Useful for comparing paths,
-   dangerous as a default. Probably a query-parameter, not a visible control.
-4. **Multiple warehouses.** `--db-path` is a CLI flag today. Server-side it is
-   startup configuration; there is no plan to switch warehouses at runtime.
+These were open when the plan was first written. They are not any more.
+
+1. **No default port.** Bind an ephemeral port and print the full URL for the
+   terminal to linkify. Nothing to remember, nothing to collide with.
+2. **`ai` does not survive.** The web UI is its replacement, not a companion to
+   it. Removed already rather than left to rot until 2.0 ships.
+3. **`--no-fast-path` is not exposed.** The fast path is the product. The
+   fall-through is a wait to be made legible, not a mode to offer.
+4. **One warehouse per process.** `--db-path` is a startup flag matching the
+   `data` subcommands' defaults. No runtime switching.

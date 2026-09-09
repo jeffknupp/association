@@ -42,8 +42,7 @@ association query "who had the most assists in a single game this season?"
 Questions like these hit a fast path and typically answer in a couple of
 seconds. Anything outside that set still gets answered — it falls through to
 a general-purpose agent that writes its own SQL against the warehouse, just
-more slowly. `association ai` opens an interactive REPL that keeps context
-between questions.
+more slowly.
 
 Some questions render a chart instead of text:
 
@@ -180,7 +179,7 @@ src/association/
   cli.py            entrypoint: data pull|load|check, query, ai
   fetch/            client, endpoints, parse, storage, pipeline, warehouse
   check/            data coverage report, cross-checked live against ESPN
-  query/            intent router, query templates, entity resolution, leaderboard, shot chart, fingerprint, prompt/knowledge base, tools, court and radar renderers, agent loop, REPL
+  query/            intent router, query templates, entity resolution, leaderboard, shot chart, fingerprint, prompt/knowledge base, tools, court and radar renderers, agent loop
 scripts/
   backfill_markers.sh   re-derive completion markers for data fetched before they existed
   check_routing.py      routing regression check for the query fast path (needs ollama)

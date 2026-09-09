@@ -88,11 +88,6 @@ class Agent:
         # so a fresh Agent is usable before any question has been asked.
         self.messages: list[dict[str, Any]] = [{"role": "system", "content": build_system_prompt("")}]
 
-    def reset(self) -> None:
-        """Drop the conversation, keeping the agent usable for a fresh question."""
-        self.messages = [{"role": "system", "content": build_system_prompt("")}]
-        self.last_question = None
-
     def _trim_history(self) -> None:
         # keep the system prompt (index 0) plus the most recent messages
         if len(self.messages) > MAX_HISTORY_MESSAGES:

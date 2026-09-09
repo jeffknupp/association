@@ -35,9 +35,9 @@ Examples:
     association data load --tables games,player_box_stats
     association data check --seasons 2020-2024
     association query "Who are the top 5 3-point shooters by shot volume?"
-    association ai --model qwen3:8b --think --verbose
+    association query --model qwen3:8b --think --verbose "Who led the league in blocks?"
 
-Setup for query/ai (one-time):
+Setup for query (one-time):
 
 \b
     brew install ollama
@@ -279,17 +279,6 @@ def query(question: str, model: str, router_model: str, db_path: str, out_dir: s
 
     agent = Agent(model, db_path, Path(out_dir), verbose=verbose, think=think, fast_path=not no_fast_path, router_model=router_model)
     click.echo(agent.ask(question))
-
-
-@cli.command("ai")
-@_query_engine_options
-def ai(model: str, router_model: str, db_path: str, out_dir: str, verbose: bool, think: bool, no_fast_path: bool) -> None:
-    """Interactive REPL - keeps conversation history across questions."""
-    from .query.agent import Agent
-    from .query.repl import run_repl
-
-    agent = Agent(model, db_path, Path(out_dir), verbose=verbose, think=think, fast_path=not no_fast_path, router_model=router_model)
-    run_repl(agent)
 
 
 def main() -> None:
