@@ -20,7 +20,9 @@ uv pip install --quiet --target "$target" --no-deps . >/dev/null
 # cannot be resolved (association.web.app's pydantic models, once the `web`
 # extra is in play) is reported as partially unknown and counted against the
 # score, not ignored as external.
-site="$(.venv/bin/python -c 'import site; print(site.getsitepackages()[0])')"
+# sysconfig's purelib, not site.getsitepackages()[0]: the latter can name the
+# BASE interpreter's site-packages first depending on how the venv was made.
+site="$(.venv/bin/python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
 
 report="$(PYTHONPATH="$target:$site" .venv/bin/pyright --verifytypes association --ignoreexternal 2>&1 || true)"
 score="$(printf '%s\n' "$report" | sed -n 's/^Type completeness score: *\([0-9.]*\)%.*/\1/p' | tail -1)"
@@ -32,7 +34,11 @@ if [[ -z "$score" ]]; then
 fi
 
 if awk "BEGIN{exit !($score < $THRESHOLD)}"; then
-    printf '%s\n' "$report" | grep -E 'error:|warning:' >&2 || true
+    # The whole report, not just the lines matching 'error:' - pyright puts the
+    # SYMBOL on one line and its complaint on the next, so grepping for the
+    # complaint alone prints "Return type is partially unknown" with no way to
+    # tell which return type. That cost a CI round trip.
+    printf '%s\n' "$report" >&2
     echo "type completeness ${score}% is below the required ${THRESHOLD}%" >&2
     exit 1
 fi
