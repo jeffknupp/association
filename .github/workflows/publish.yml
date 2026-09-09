@@ -18,6 +18,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Only for the release-asset upload below; every other step here reads.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -67,6 +70,17 @@ jobs:
         with:
           name: dist
           path: dist/
+
+      # Also attached to the release itself, not only kept as a workflow
+      # artifact: artifacts are deleted after 90 days, so a release whose PyPI
+      # upload has not happened yet would eventually have no downloadable
+      # build at all. Assets on the release are permanent and installable
+      # directly from their URL.
+      - name: Attach the distributions to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" dist/* --clobber
 
   publish-testpypi:
     needs: build

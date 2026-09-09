@@ -1,18 +1,31 @@
 Installation
 ============
 
-From PyPI
----------
+From GitHub
+-----------
+
+.. note::
+
+   ``pip install association`` does not work yet. The PyPI project is
+   unreachable pending an account-access issue, so releases are published to
+   GitHub only for the moment. This section will go back to being *From PyPI*
+   once that is resolved.
+
+Install from a release tag:
 
 .. code-block:: console
 
-   $ pip install association
+   $ pip install git+https://github.com/jeffknupp/association@v1.4.0
 
 Or, to get the CLI on your PATH without adding it to a project environment:
 
 .. code-block:: console
 
-   $ uv tool install association
+   $ uv tool install git+https://github.com/jeffknupp/association@v1.4.0
+
+Releases cut from now on also carry the built wheel and sdist as downloadable
+assets, so ``pip install ./association-X.Y.Z-py3-none-any.whl`` works from a
+local copy. Releases made before that have none attached; use the tag above.
 
 Python 3.10 or newer is required. The package is pure Python and ships no
 compiled extensions, so there is a single wheel for every platform.

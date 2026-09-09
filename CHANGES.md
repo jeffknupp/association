@@ -14,6 +14,15 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
+## Unreleased
+- **Releases carry their own wheel and sdist.** The publish workflow now
+  attaches the built distributions to the GitHub release, not just to the
+  workflow run: workflow artifacts are deleted after 90 days, and with PyPI
+  publishing blocked on an account-access issue, a release could otherwise end
+  up with nothing downloadable at all. `README.md` and `docs/installation.rst`
+  say to install from a release tag until PyPI is reachable again; both notes
+  are written to be deleted in one commit when it is.
+
 ## 1.4.0 - 2026-09-08
 - **The agent can render fingerprints too.** `render_fingerprint` is now a tool
   the fall-through agent can call, not only a fast-path template, so a question

@@ -95,7 +95,7 @@ whoever leads it.
 ## Setup
 
 ```bash
-pip install association          # or: uv tool install association
+uv tool install git+https://github.com/jeffknupp/association@v1.4.0
 brew install ollama               # or see https://ollama.com/download
 ollama serve &
 ollama pull qwen2.5:3b            # router, the fast path - required, ~1.9GB
@@ -103,8 +103,15 @@ ollama pull qwen2.5:7b            # fall-through agent - required, ~4.7GB
 ollama pull qwen3:8b              # optional: visible reasoning (--think), ~5.2GB
 ```
 
-Both of the first two are needed: the router classifies the question and the
-fall-through agent handles anything the templates don't cover.
+Both of the first two models are needed: the router classifies the question and
+the fall-through agent handles anything the templates don't cover.
+
+> **Note** — `pip install association` does not work yet. The PyPI project is
+> unreachable pending an account-access issue, so releases live on GitHub only
+> for now — install from the tag as above. Releases cut from here on also
+> attach their wheel and sdist to the
+> [releases page](https://github.com/jeffknupp/association/releases). This note
+> goes away once PyPI publishing is restored.
 
 To work on `association` itself, clone the repo and `uv sync --extra dev`
 instead of installing from PyPI.
