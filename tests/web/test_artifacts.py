@@ -28,6 +28,7 @@ class Idle:
     def ask(self, question: str, label: str, trace: Callable[[str], None] = lambda line: None) -> Answer:
         return Answer(question=question, text="", answered_by="fast", timing=Timing(0.0, 0.0, 0, 0.0, 0))
 
+
 # Every shape a name could take to escape the output directory, and a couple of
 # ordinary-looking ones that are still not chart names.
 HOSTILE_NAMES = [

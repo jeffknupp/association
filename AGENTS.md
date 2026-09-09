@@ -18,12 +18,23 @@ uv run pytest -q                    # fully offline: no network, no ollama
 Both must be clean. Everything in `pre-commit` also runs in CI
 (`.github/workflows/ci.yml`), so a green local run means a green PR.
 
-That equivalence is not automatic, and it has broken once. `pre-commit` runs
-its hooks under `uv run`, which exports `VIRTUAL_ENV`; CI invokes the same
-scripts bare. `scripts/check_types_complete.sh` resolved imports out of the
-active venv under the first and not the second, so it passed locally and failed
-in CI on the same commit. **A gate script has to work when run directly**, not
-only through `uv run` - test a change to one with plain `bash scripts/x.sh`.
+That equivalence is not automatic, and it has broken three times. All three
+were the local run being *weaker* than CI, never the reverse, so the failure
+mode is always the same: green locally, red on the PR.
+
+- **`--all-files` means every file git knows about, not every file on disk.**
+  A new, untracked test is skipped entirely, so the gates pass while saying
+  nothing about it. `git add` first, then run them. This has cost two CI
+  round trips, on a line-length error and a formatting one.
+- **Read the exit status, not the output.** `pre-commit run --all-files | tail`
+  hides a failure in the *first* hook - and `ruff` is first. Redirect to a file
+  and check `$?`.
+- **A gate script has to work when run directly**, not only through `uv run`.
+  `pre-commit` runs its hooks under `uv run`, which exports `VIRTUAL_ENV`; CI
+  invokes the same scripts bare. `scripts/check_types_complete.sh` resolved
+  imports out of the active venv under the first and not the second, so it
+  passed locally and failed in CI on the same commit. Test a change to one with
+  plain `bash scripts/x.sh`.
 
 Two things about the gates surprise people:
 
