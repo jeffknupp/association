@@ -18,6 +18,13 @@ uv run pytest -q                    # fully offline: no network, no ollama
 Both must be clean. Everything in `pre-commit` also runs in CI
 (`.github/workflows/ci.yml`), so a green local run means a green PR.
 
+That equivalence is not automatic, and it has broken once. `pre-commit` runs
+its hooks under `uv run`, which exports `VIRTUAL_ENV`; CI invokes the same
+scripts bare. `scripts/check_types_complete.sh` resolved imports out of the
+active venv under the first and not the second, so it passed locally and failed
+in CI on the same commit. **A gate script has to work when run directly**, not
+only through `uv run` - test a change to one with plain `bash scripts/x.sh`.
+
 Two things about the gates surprise people:
 
 - **mypy runs twice**, over `src` and `tests` separately, never as one

@@ -15,6 +15,14 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Fixed: the type-completeness gate passed locally and failed in CI.**
+  `pre-commit` runs hooks under `uv run`, which exports `VIRTUAL_ENV`; CI
+  invokes the same script bare, and pyright resolved the package's imports out
+  of the active venv only in the first case. The script now puts the venv's
+  site-packages on `PYTHONPATH` itself, so it gives the same answer either way.
+  Surfaced by the web layer: `--ignoreexternal` does not cover a class whose
+  *base* cannot be resolved, which is what a pydantic model looks like when the
+  optional `web` extra's packages are not on the path.
 - **`association web`: a local web interface.** A chat-shaped page over the
   same router → template → answer pipeline the CLI uses, served until you quit
   it. Phase 1 of `docs/roadmap-2.0.md`.
