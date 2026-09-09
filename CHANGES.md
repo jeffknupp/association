@@ -14,6 +14,16 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
+## Unreleased
+- **A chart taller than its frame now says so.** An inline chart is capped, and
+  past the cap the frame scrolls - but it clipped its content dead flat, which
+  reads as a rendering fault rather than as somewhere to scroll. The lower edge
+  now fades out, and only while there is more below: the fade is dropped at the
+  end of the scroll, where it would otherwise sit over the last row of a
+  fingerprint's table. It is painted in the chart's own background colour, read
+  off the document inside the frame, because a chart page sets its own rather
+  than inheriting the app's.
+
 ## 2.0.0 - 2026-09-09
 - **Charts render inline in the web interface.** A question that draws a shot
   chart or a fingerprint now shows it in the conversation instead of naming a

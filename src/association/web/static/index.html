@@ -164,6 +164,23 @@
     max-height: 640px;
     background: var(--panel);
   }
+  .artifact-frame { position: relative; }
+  /* Only while there is more below: a capped frame otherwise clips its content
+     dead flat, which reads as a rendering fault rather than as somewhere to
+     scroll. Painted in the CHART's own background - read off the document
+     inside, since a chart page sets its own, not this page's --panel - and
+     transparent to clicks and wheel events so it never intercepts a scroll. */
+  .artifact-frame.capped::after {
+    content: "";
+    position: absolute;
+    left: 1px;
+    right: 1px;
+    bottom: 1px;
+    height: 54px;
+    border-radius: 0 0 7px 7px;
+    background: linear-gradient(to bottom, transparent, var(--artifact-bg, var(--panel)));
+    pointer-events: none;
+  }
   .artifact-link {
     display: inline-block;
     margin-top: 6px;
@@ -493,6 +510,7 @@
   // version that risks nothing. Revisit once the look is settled.
   function chartFrame(art) {
     const wrap = el("div");
+    const box = el("div", "artifact-frame");
     const frame = el("iframe", "artifact");
     frame.src = "/api/artifacts/" + encodeURIComponent(art.name);
     frame.title = art.kind.replace(/_/g, " ");
@@ -505,14 +523,14 @@
     frame.height = "460";
     frame.addEventListener("load", () => {
       try {
-        const doc = frame.contentDocument;
-        if (doc) frame.height = String(doc.documentElement.scrollHeight + 2);
+        fit(frame, box);
       } catch (err) {
         /* keep the default height - a chart at the wrong height still draws */
       }
       scroll();
     });
-    wrap.appendChild(frame);
+    box.appendChild(frame);
+    wrap.appendChild(box);
     // "full" rather than "open": a fingerprint is taller than the cap above,
     // so the frame scrolls, and the useful thing to say is that there is more
     // of it - not merely that it can also be opened elsewhere.
@@ -522,6 +540,29 @@
     link.rel = "noopener";
     wrap.appendChild(link);
     return wrap;
+  }
+
+  // Size the frame to the chart it loaded, and mark it when there is more of
+  // the chart than fits.
+  function fit(frame, box) {
+    const doc = frame.contentDocument;
+    if (!doc) return;
+    frame.height = String(doc.documentElement.scrollHeight + 2);
+    // The cap is a CSS rule; read it back rather than repeating the number
+    // here, where it would quietly stop matching the stylesheet.
+    const cap = parseFloat(getComputedStyle(frame).maxHeight);
+    if (!Number.isFinite(cap)) return;
+    const bg = getComputedStyle(doc.body).backgroundColor;
+    if (bg) box.style.setProperty("--artifact-bg", bg);
+    const scroller = doc.scrollingElement || doc.documentElement;
+    const update = () => {
+      const more = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop > 2;
+      // Dropped at the end of the scroll: a fade that stayed would sit over
+      // the last row of a fingerprint's table, which is real content.
+      box.classList.toggle("capped", more);
+    };
+    doc.addEventListener("scroll", update, { passive: true });
+    update();
   }
 
   function renderAnswer(a) {
