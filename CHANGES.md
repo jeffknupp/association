@@ -15,6 +15,38 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A player comparison shows the whole line, and the NetPoints summary with
+  it.** "Compare Luka and SGA" answered with games, points, rebounds and
+  assists - the same three-stat default `player_stat` uses. But the two
+  questions are read differently: "how many points did Luka average" wants the
+  number it asked for, while a comparison is asking which player is better,
+  and three counting stats cannot answer that. They leave out both halves of
+  the defensive line and everything a player gives back.
+
+  `player_compare` now defaults to points, rebounds, assists, steals, blocks,
+  turnovers, fouls and minutes, followed by NetPoints per 100 possessions -
+  overall, offense and defense. Per 100 rather than season totals, because a
+  comparison is exactly the question totals answer badly: they mostly rank by
+  playing time. A table costs nothing per row, and prose is already refused
+  here (the agent's prose version once said a player with 0.4 steals led one
+  with 1.6). Naming a stat still narrows to it, so "who scores more" gets
+  scoring rather than a wall. `player_stat` is unchanged.
+
+  The NetPoints block is supplementary: a player with no row is left blank
+  rather than drawn as +0.00, a season where nobody has one drops the block
+  entirely, and a warehouse where the opt-in NetPoints fetch was never run
+  still answers. `net_points_player` is deliberately absent from this
+  template's `TEMPLATE_SOURCES`, since listing it would put a 2019 coverage
+  floor on every comparison and refuse the 1994-2018 ones outright.
+
+  The web page shows the same rows, reading `netpoints` without requiring it,
+  so a pre-2019 comparison still renders as a table rather than falling back to
+  text. `table()`'s alignment test now accepts a leading `+`; without that, one
+  signed cell would have left-aligned an entire column of digits.
+- **`fouls` is a stat the fast path can answer.** `ROUTER_PROMPT` has always
+  listed it among the stat names the router may emit, but
+  `PLAYER_STAT_COLUMNS` had no entry, so `_wanted_stats` raised and every
+  question naming fouls fell through to the slow agent path.
 - **A question about a season the warehouse cannot reach is refused, with the
   real reason.** Every table starts in a different year and the gaps are
   ESPN's, so an out-of-range question returned nothing - and nothing was then

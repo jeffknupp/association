@@ -195,12 +195,19 @@ def ps_con(tmp_path: Path) -> TemplateContext:
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute(
         "CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER, "
-        "gamesPlayed INTEGER, avgPoints DOUBLE, points INTEGER, avgRebounds DOUBLE, avgAssists DOUBLE, assists INTEGER)"
+        "gamesPlayed INTEGER, avgPoints DOUBLE, points INTEGER, avgRebounds DOUBLE, avgAssists DOUBLE, assists INTEGER, "
+        "avgSteals DOUBLE, avgBlocks DOUBLE, avgTurnovers DOUBLE, avgFouls DOUBLE, avgMinutes DOUBLE, fouls INTEGER)"
     )
     c.execute("INSERT INTO players VALUES ('1','Luka Doncic'),('2','Luka Garza'),('3','Nikola Jokic'),('4','Stephen Curry'),('5','Seth Curry')")
     s = current_season()
-    c.execute("INSERT INTO player_season_stats_deduped VALUES ('1',?,2,64,33.5,2143,7.7,8.3,531)", [s])
-    c.execute("INSERT INTO player_season_stats_deduped VALUES ('3',?,2,65,27.7,1799,12.9,10.7,697)", [s])
+    c.execute("INSERT INTO player_season_stats_deduped VALUES ('1',?,2,64,33.5,2143,7.7,8.3,531,1.4,0.5,4.0,2.1,37.5,134)", [s])
+    c.execute("INSERT INTO player_season_stats_deduped VALUES ('3',?,2,65,27.7,1799,12.9,10.7,697,1.3,0.9,3.6,2.5,34.6,163)", [s])
+    # player_compare reports a NetPoints summary under the box-score line. Only
+    # Luka has a row, so the "some players have none" path is exercised too.
+    c.execute(
+        "CREATE TABLE net_points_player (athlete_id VARCHAR, season INTEGER, net_points_season_type VARCHAR, overall_per_100_poss DOUBLE, offense_per_100_poss DOUBLE, defense_per_100_poss DOUBLE)"
+    )
+    c.execute("INSERT INTO net_points_player VALUES ('1',?,'Regular Season',5.87,5.20,0.67)", [s])
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
@@ -523,6 +530,71 @@ def test_player_compare_puts_players_side_by_side(ps_con: TemplateContext) -> No
     answer = player_compare(ps_con, {"players": ["Luka Doncic", "Nikola Jokic"]}).answer or ""
     assert "Luka Doncic vs Nikola Jokic" in answer
     assert "points" in answer and "33.5" in answer and "27.7" in answer
+
+
+def test_player_compare_defaults_to_the_whole_stat_line(ps_con: TemplateContext) -> None:
+    """A comparison asks which player is better, and three counting stats
+    cannot answer that - they omit both halves of the defensive line and
+    everything a player gives back. A table costs nothing per row, so the rows
+    a comparison turns on are all there by default. player_stat is unchanged:
+    "how many points did Luka average" wants the number it asked for."""
+    answer = player_compare(ps_con, {"players": ["Luka Doncic", "Nikola Jokic"]}).answer or ""
+    for label in ("points", "rebounds", "assists", "steals", "blocks", "turnovers", "fouls", "minutes"):
+        assert f"\n{label}" in answer, label
+    assert "4.0" in answer and "3.6" in answer  # turnovers, which the old line omitted
+
+
+def test_player_compare_shows_the_netpoints_summary(ps_con: TemplateContext) -> None:
+    """Per 100 possessions, not season totals: a comparison is exactly the
+    question totals answer badly, since they mostly rank by playing time."""
+    result = player_compare(ps_con, {"players": ["Luka Doncic", "Nikola Jokic"]})
+    answer = result.answer or ""
+    assert "net pts/100" in answer and "offense" in answer and "defense" in answer
+    assert "+5.87" in answer and "+5.20" in answer and "+0.67" in answer
+    assert result.data["netpoints"]["Luka Doncic"]["overall_per_100_poss"] == 5.87
+
+
+def test_a_player_with_no_netpoints_row_is_blank_rather_than_zero(ps_con: TemplateContext) -> None:
+    """Only Luka has a row in the fixture. Drawing Jokic as +0.00 would read as
+    "contributed nothing" rather than "not on record"."""
+    answer = player_compare(ps_con, {"players": ["Luka Doncic", "Nikola Jokic"]}).answer or ""
+    netpoints_row = next(line for line in answer.splitlines() if line.startswith("net pts/100"))
+    assert "+5.87" in netpoints_row and "+0.00" not in netpoints_row and netpoints_row.rstrip().endswith("-")
+
+
+def test_player_compare_omits_netpoints_entirely_when_nobody_has_any(ps_con: TemplateContext) -> None:
+    """An empty NetPoints block under two 1990s players would read as "both
+    contributed nothing" rather than "this season predates the data"."""
+    ps_con.con.execute("DELETE FROM net_points_player")
+    answer = player_compare(ps_con, {"players": ["Luka Doncic", "Nikola Jokic"]}).answer or ""
+    assert "net pts/100" not in answer
+    assert "33.5" in answer  # the rest of the comparison is unaffected
+
+
+def test_player_compare_survives_a_warehouse_with_no_netpoints_table(ps_con: TemplateContext) -> None:
+    """NetPoints is a separate opt-in fetch, so the table may not exist at all.
+    Unlike per-game NetPoints, which has nothing else to say, a comparison is
+    complete without it - so this drops the section instead of falling through
+    to an agent that has no better source."""
+    ps_con.con.execute("DROP TABLE net_points_player")
+    answer = player_compare(ps_con, {"players": ["Luka Doncic", "Nikola Jokic"]}).answer or ""
+    assert "net pts/100" not in answer and "33.5" in answer
+
+
+def test_a_named_stat_still_narrows_the_comparison(ps_con: TemplateContext) -> None:
+    """ "Who scores more" gets scoring, not a wall."""
+    answer = player_compare(ps_con, {"players": ["Luka Doncic", "Nikola Jokic"], "stat": "points"}).answer or ""
+    assert "\npoints" in answer
+    assert "\nrebounds" not in answer and "\nsteals" not in answer
+
+
+def test_a_comparison_is_not_refused_before_netpoints_begins(ps_con: TemplateContext) -> None:
+    """The NetPoints table is deliberately absent from player_compare's
+    TEMPLATE_SOURCES: listing it would put a 2019 coverage floor on every
+    comparison and refuse the 1994-2018 ones outright."""
+    from association.query.templates import check_coverage
+
+    assert check_coverage("player_compare", {"season": 2005, "season_type": 2}) is None
 
 
 def test_player_compare_uses_a_table_not_prose(ps_con: TemplateContext) -> None:

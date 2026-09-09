@@ -326,6 +326,13 @@
     return Number.isInteger(v) ? v.toLocaleString() : v.toFixed(1);
   }
 
+  function signed(v) {
+    // NetPoints carry their sign as the whole reading: an unmarked "0.42"
+    // beside "-1.10" loses which player helped their team.
+    if (v === null || v === undefined) return "";
+    return typeof v === "number" ? (v >= 0 ? "+" : "") + v.toFixed(2) : String(v);
+  }
+
   function table(headers, rows) {
     // Alignment is read off the data, not declared per call: a column whose
     // every value is a number lines up on the right so the digits do, and
@@ -333,7 +340,7 @@
     // from the values means a new renderer cannot forget to say.
     const numeric = headers.map((_, i) =>
       rows.some(r => r[i] !== "" && r[i] !== null && r[i] !== undefined) &&
-      rows.every(r => r[i] === "" || r[i] === null || r[i] === undefined || /^-?[\d,]+(\.\d+)?$/.test(String(r[i]))));
+      rows.every(r => r[i] === "" || r[i] === null || r[i] === undefined || /^[+-]?[\d,]+(\.\d+)?$/.test(String(r[i]))));
     const t = el("table", "answer");
     const thead = el("thead");
     const hr = el("tr");
@@ -418,6 +425,13 @@
   // reads; a Python test checks each one against what the template actually
   // produces, because a renamed key would silently drop the table and fall
   // back to text, which looks like nothing happened at all.
+  // Mirrors templates.NETPOINTS_COMPARE_ROWS - label, then the data key.
+  const NETPOINTS_ROWS = [
+    ["net pts/100", "overall_per_100_poss"],
+    ["\u00a0\u00a0offense", "offense_per_100_poss"],
+    ["\u00a0\u00a0defense", "defense_per_100_poss"],
+  ];
+
   const RENDERERS = {
     leaderboard: {
       needs: ["leaders", "question_shape"],
@@ -462,10 +476,19 @@
         // Deliberately not bolding a "winner" per row. More is not better for
         // turnovers or fouls, and a table that quietly asserted otherwise would
         // be exactly the confident-and-wrong answer this project guards against.
-        return {
-          caption: firstLine(text),
-          body: table([""].concat(names), stats.map(s => [label(s)].concat(names.map(n => num(d.players[n][s]))))),
-        };
+        const rows = stats.map(s => [label(s)].concat(names.map(n => num(d.players[n][s]))));
+        // The NetPoints summary, per 100 possessions, under the box-score line.
+        // Read off `netpoints` but NOT listed in `needs`: NetPoints starts in
+        // 2019 and is a separate opt-in fetch, so a comparison without it is
+        // complete rather than broken, and requiring the key would drop the
+        // whole table back to text for every earlier season.
+        const net = d.netpoints || {};
+        if (names.some(n => net[n] && Object.keys(net[n]).length)) {
+          for (const [rowLabel, column] of NETPOINTS_ROWS) {
+            rows.push([rowLabel].concat(names.map(n => signed((net[n] || {})[column]))));
+          }
+        }
+        return { caption: firstLine(text), body: table([""].concat(names), rows) };
       },
     },
     game_log: {

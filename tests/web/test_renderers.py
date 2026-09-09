@@ -52,6 +52,25 @@ def _renderers() -> dict[str, list[str]]:
     return {intent: re.findall(r'"([^"]+)"', needs) for intent, needs in found}
 
 
+def test_the_comparison_renderer_reads_netpoints_without_requiring_it() -> None:
+    """The page shows the NetPoints rows when a season has them, but must not
+    list the key in `needs`: NetPoints starts in 2019, and requiring it would
+    drop the whole table back to plain text for every earlier season."""
+    page = INDEX_HTML.read_text()
+    block = re.search(r"player_compare: \{(.*?)\n    \},", page, re.S)
+    assert block is not None, "could not find the player_compare renderer"
+    assert "d.netpoints" in block.group(1), "the renderer no longer reads the NetPoints summary"
+    assert '"netpoints"' not in block.group(1), "netpoints must stay out of `needs` - see the docstring"
+
+
+def test_a_signed_cell_still_counts_as_a_number_for_alignment() -> None:
+    """The NetPoints rows are signed ("+5.87"), and table() reads alignment off
+    the values: one cell the numeric pattern rejects left-aligns the whole
+    column, digits and all."""
+    page = INDEX_HTML.read_text()
+    assert r"/^[+-]?[\d,]+(\.\d+)?$/" in page, "table()'s numeric test no longer accepts a leading +"
+
+
 def test_every_renderer_names_an_intent_that_actually_exists() -> None:
     """A renderer keyed 'leaderboards' would never fire, and nothing else would
     ever say so."""
@@ -91,10 +110,22 @@ def ctx(tmp_path: Path) -> TemplateContext:
     )
     con.execute(
         "CREATE TABLE player_season_stats (athlete_id VARCHAR, team_id VARCHAR, season INTEGER, season_type INTEGER, gamesPlayed INTEGER, "
-        "avgPoints DOUBLE, avgRebounds DOUBLE, avgAssists DOUBLE, points INTEGER, rebounds INTEGER, assists INTEGER)"
+        "avgPoints DOUBLE, avgRebounds DOUBLE, avgAssists DOUBLE, avgSteals DOUBLE, avgBlocks DOUBLE, avgTurnovers DOUBLE, avgFouls DOUBLE, avgMinutes DOUBLE, "
+        "points INTEGER, rebounds INTEGER, assists INTEGER, steals INTEGER, blocks INTEGER, turnovers INTEGER, fouls INTEGER)"
     )
-    con.execute("INSERT INTO player_season_stats VALUES ('1','10',2026,2,2,32.5,9.5,5.5,65,19,11),('1','10',2025,2,2,28.0,8.0,4.0,56,16,8),('2','11',2026,2,1,18.0,4.0,9.0,18,4,9)")
+    con.execute(
+        "INSERT INTO player_season_stats VALUES "
+        "('1','10',2026,2,2,32.5,9.5,5.5,1.5,0.5,2.5,1.5,35.5,65,19,11,3,1,5,3),"
+        "('1','10',2025,2,2,28.0,8.0,4.0,1.0,0.5,2.0,2.0,34.0,56,16,8,2,1,4,4),"
+        "('2','11',2026,2,1,18.0,4.0,9.0,1.0,0.0,2.0,3.0,30.0,18,4,9,1,0,2,3)"
+    )
     con.execute("CREATE OR REPLACE VIEW player_season_stats_deduped AS SELECT * FROM player_season_stats")
+    # player_compare reports a NetPoints summary alongside the box-score line.
+    con.execute(
+        "CREATE TABLE net_points_player (athlete_id VARCHAR, season INTEGER, net_points_season_type VARCHAR, "
+        "overall DOUBLE, offense DOUBLE, defense DOUBLE, overall_per_100_poss DOUBLE, offense_per_100_poss DOUBLE, defense_per_100_poss DOUBLE, total_minutes BIGINT, games BIGINT)"
+    )
+    con.execute("INSERT INTO net_points_player VALUES ('1',2026,'Regular Season',120.0,90.0,30.0,4.5,3.4,1.1,71,2),('2',2026,'Regular Season',-10.0,-4.0,-6.0,-0.8,-0.3,-0.5,30,1)")
     con.execute("CREATE TABLE standings (team_id VARCHAR, season INTEGER, season_type INTEGER, wins DOUBLE, losses DOUBLE, winPercent DOUBLE, playoffSeed DOUBLE, streak DOUBLE)")
     con.execute("INSERT INTO standings VALUES ('10', 2026, 2, 50, 32, 0.6098, 3, 1)")
     con.execute(

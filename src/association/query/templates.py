@@ -367,6 +367,12 @@ def _table_cell(value: Any) -> str:
     return f"{value:.1f}" if isinstance(value, float) else str(value)
 
 
+def _signed_cell(value: Any) -> str:
+    """A NetPoints cell. Signed, because the sign is the whole reading of it -
+    an unmarked "0.42" beside "-1.10" loses which one helped their team."""
+    return "-" if value is None else f"{value:+.2f}"
+
+
 def _format_value(value: Any) -> str:
     if isinstance(value, float):
         return f"{value:.3f}".rstrip("0").rstrip(".") if abs(value) < 1 else f"{value:.2f}".rstrip("0").rstrip(".")
@@ -487,6 +493,9 @@ PLAYER_STAT_COLUMNS: dict[str, tuple[str, str | None, str]] = {
     "blocks": ("avgBlocks", "blocks", "blocks"),
     "turnovers": ("avgTurnovers", "turnovers", "turnovers"),
     "minutes": ("avgMinutes", None, "minutes"),
+    # ROUTER_PROMPT lists `fouls` among the stat names it may emit, and without
+    # a column here every question naming one fell through to the agent.
+    "fouls": ("avgFouls", "fouls", "fouls"),
     # The router emits these routinely; without them a question naming one was
     # silently answered with the default stat line instead.
     "threePointFieldGoalsMade": ("avgThreePointFieldGoalsMade", "threePointFieldGoalsMade", "3-pointers"),
@@ -783,9 +792,22 @@ def _season_row(con: duckdb.DuckDBPyConnection, athlete_id: str, columns: list[s
 
 STAT_LINE = ("points", "rebounds", "assists")
 
+# A comparison's default line is longer than a single player's, because the two
+# answers are read differently. "How many points did Luka average" wants the
+# number it asked for; "compare Luka and SGA" is asking which of them is
+# better, and three counting stats cannot answer that - they leave out both
+# halves of the defensive line and everything a player gives back. Prose is
+# already refused here for the same reason (see _phrase_compare); a table costs
+# nothing per extra row, so the rows a comparison actually turns on are all
+# present by default.
+#
+# A NAMED stat still narrows to that one. Somebody asking "who scores more"
+# gets scoring, not a wall.
+COMPARE_STAT_LINE = ("points", "rebounds", "assists", "steals", "blocks", "turnovers", "fouls", "minutes")
 
-def _wanted_stats(slots: dict[str, Any]) -> list[str]:
-    """The stats to report: the one named, or the default line if none was.
+
+def _wanted_stats(slots: dict[str, Any], default: tuple[str, ...] = STAT_LINE) -> list[str]:
+    """The stats to report: the one named, or ``default`` if none was.
 
     A stat that was NAMED but is not supported must not fall back to the
     default line - that is how "what was Steph Curry's avg 3pt shot distance"
@@ -793,7 +815,7 @@ def _wanted_stats(slots: dict[str, Any]) -> list[str]:
     through to the agent is slow; answering a different question is worse."""
     stat = slots.get("stat")
     if stat is None or (isinstance(stat, str) and not stat.strip()):
-        return list(STAT_LINE)
+        return list(default)
     if stat in PLAYER_STAT_COLUMNS:
         return [stat]
     raise TemplateUnsupported(f"no per-game column for stat {stat!r}")
@@ -1531,7 +1553,7 @@ def player_compare(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
 
     season = slots.get("season") or current_season()
     season_type = slots.get("season_type") or 2
-    wanted = _wanted_stats(slots)
+    wanted = _wanted_stats(slots, COMPARE_STAT_LINE)
     columns = ["gamesPlayed"] + [PLAYER_STAT_COLUMNS[name][0] for name in wanted]
 
     rows: dict[str, dict[str, Any]] = {}
@@ -1539,28 +1561,85 @@ def player_compare(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
         row = _season_row(con, player.id, columns, season, season_type)
         rows[player.name] = dict(zip(columns, row, strict=True)) if row else {}
 
+    net = _compare_netpoints(con, resolved, season, season_type)
     period = _period(season, season_type)
     return TemplateResult(
-        data={"season": season, "players": rows},
-        answer=_phrase_compare(rows, wanted, period),
+        data={"season": season, "players": rows, "netpoints": net},
+        answer=_phrase_compare(rows, wanted, period, net),
     )
 
 
-def _phrase_compare(rows: dict[str, dict[str, Any]], wanted: list[str], period: str) -> str:
+# The NetPoints summary rows, in the order player_netpoints reports them:
+# label -> the net_points_player column it reads. Per 100 possessions, not
+# season totals, because a comparison is exactly the question totals answer
+# badly - they mostly rank by playing time. The same choice fingerprint.py
+# makes, and for the same reason.
+NETPOINTS_COMPARE_ROWS: tuple[tuple[str, str], ...] = (
+    ("net pts/100", "overall_per_100_poss"),
+    ("  offense", "offense_per_100_poss"),
+    ("  defense", "defense_per_100_poss"),
+)
+
+
+def _compare_netpoints(con: duckdb.DuckDBPyConnection, players: list[Entity], season: int, season_type: int) -> dict[str, dict[str, Any]]:
+    """Each player's NetPoints summary, by resolved name. Missing is normal.
+
+    NetPoints starts in 2019 and is a separate opt-in fetch, so this is
+    supplementary rather than required: a player with no row contributes an
+    empty dict and a season with no rows at all drops the section. That is also
+    why `net_points_player` is deliberately NOT in this template's
+    TEMPLATE_SOURCES entry - listing it would put a 2019 coverage floor on
+    every comparison and refuse the 1994-2018 ones outright.
+    """
+    # net_points_player uses its OWN string season_type; filtering it with the
+    # numeric one every other table uses silently matches nothing.
+    label = SEASON_TYPE_LABELS.get(season_type, "Regular Season")
+    selected = ", ".join(column for _, column in NETPOINTS_COMPARE_ROWS)
+    found: dict[str, dict[str, Any]] = {}
+    for player in players:
+        try:
+            row = con.execute(
+                f"SELECT {selected} FROM net_points_player WHERE athlete_id = ? AND season = ? AND net_points_season_type = ?",
+                [player.id, season, label],
+            ).fetchone()
+        except duckdb.Error:
+            # The table only exists if the NetPoints fetch was run. Unlike
+            # _single_game_netpoints, which has nothing else to say, a
+            # comparison is complete without it - so this drops the section
+            # rather than failing the answer.
+            return {}
+        found[player.name] = dict(zip([column for _, column in NETPOINTS_COMPARE_ROWS], row, strict=True)) if row else {}
+    return found
+
+
+def _phrase_compare(rows: dict[str, dict[str, Any]], wanted: list[str], period: str, netpoints: dict[str, dict[str, Any]] | None = None) -> str:
     """A fixed-width table rather than prose. Comparisons are the one shape
     where a sentence actively hurts - the agent's prose version stated that a
     player with 0.4 steals led one with 1.6."""
     names = list(rows)
     missing = [name for name, values in rows.items() if not values]
-    label_width = max(len("games"), *(len(PLAYER_STAT_COLUMNS[name][2]) for name in wanted))
-    name_width = max(len(name) for name in names)
-    header = f"{' ' * label_width}  " + "  ".join(name.rjust(name_width) for name in names)
-    lines = [f"{' vs '.join(names)}, {period}:", header]
-    for label, key in [("games", "gamesPlayed")] + [(PLAYER_STAT_COLUMNS[n][2], PLAYER_STAT_COLUMNS[n][0]) for n in wanted]:
-        # A fixed decimal here, not _format_value: in an aligned column a
-        # trailing-zero-stripped "25" next to "27.7" reads as a different unit.
-        cells = [_table_cell(rows[name].get(key)) for name in names]
-        lines.append(f"{label.ljust(label_width)}  " + "  ".join(c.rjust(name_width) for c in cells))
+    # A fixed decimal in every cell, not _format_value: in an aligned column a
+    # trailing-zero-stripped "25" next to "27.7" reads as a different unit.
+    entries: list[tuple[str, list[str]]] = [("games", [_table_cell(rows[name].get("gamesPlayed")) for name in names])]
+    for stat in wanted:
+        column, _, label = PLAYER_STAT_COLUMNS[stat]
+        entries.append((label, [_table_cell(rows[name].get(column)) for name in names]))
+
+    net = netpoints or {}
+    # Shown only when somebody has a row: an empty NetPoints block under a
+    # comparison of two 1990s players would read as "both contributed nothing"
+    # rather than "this season predates the data".
+    if any(net.get(name) for name in names):
+        entries.append(("", ["" for _ in names]))
+        for label, column in NETPOINTS_COMPARE_ROWS:
+            entries.append((label, [_signed_cell(net.get(name, {}).get(column)) for name in names]))
+
+    label_width = max(len(label) for label, _ in entries)
+    name_width = max(max(len(name) for name in names), *(len(cell) for _, cells in entries for cell in cells))
+    # rstripped so the blank separator row is an empty line rather than a line
+    # of spaces, which shows up as trailing whitespace wherever this is stored.
+    lines = [f"{' vs '.join(names)}, {period}:", (f"{' ' * label_width}  " + "  ".join(name.rjust(name_width) for name in names)).rstrip()]
+    lines += [(f"{label.ljust(label_width)}  " + "  ".join(cell.rjust(name_width) for cell in cells)).rstrip() for label, cells in entries]
     if missing:
         lines.append(f"({', '.join(missing)} has no {period} numbers in the warehouse.)")
     return "\n".join(lines)
