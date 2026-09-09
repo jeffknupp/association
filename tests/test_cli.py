@@ -257,3 +257,48 @@ def test_a_missing_warehouse_is_built_in_full_however_little_was_fetched(monkeyp
     calls = _pull_with(monkeypatch, written={"games"}, db_exists=False)
     assert len(calls) == 1
     assert calls[0][1].get("tables") is None
+
+
+def test_data_pull_passes_workers_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    class FakePipeline:
+        written: set[str] = set()
+
+        def __init__(self, client: object, data_dir: object, **kwargs: Any) -> None:
+            captured["kwargs"] = kwargs
+
+        def run(self, seasons: list[int], season_types: list[int]) -> None:
+            pass
+
+    monkeypatch.setattr("association.fetch.pipeline.Pipeline", FakePipeline)
+    monkeypatch.setattr("association.fetch.client.ESPNClient", lambda **k: captured.setdefault("client", k))
+    monkeypatch.setattr("association.fetch.warehouse.build", lambda *a, **k: None)
+
+    result = CliRunner().invoke(data_pull, ["--seasons", "2024", "--fetch-only", "--workers", "8", "--rate-limit", "10"])
+    assert result.exit_code == 0, result.output
+    assert captured["kwargs"]["workers"] == 8
+    assert captured["client"]["rate_limit"] == 10
+
+
+def test_data_pull_defaults_to_several_workers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Serial fetching ran at 2.4 requests/second against a --rate-limit of 10
+    that never once had to sleep - the default has to actually use the
+    allowance the user asked for."""
+    captured: dict[str, Any] = {}
+
+    class FakePipeline:
+        written: set[str] = set()
+
+        def __init__(self, client: object, data_dir: object, **kwargs: Any) -> None:
+            captured["kwargs"] = kwargs
+
+        def run(self, seasons: list[int], season_types: list[int]) -> None:
+            pass
+
+    monkeypatch.setattr("association.fetch.pipeline.Pipeline", FakePipeline)
+    monkeypatch.setattr("association.fetch.client.ESPNClient", lambda **k: object())
+    monkeypatch.setattr("association.fetch.warehouse.build", lambda *a, **k: None)
+
+    assert CliRunner().invoke(data_pull, ["--seasons", "2024", "--fetch-only"]).exit_code == 0
+    assert captured["kwargs"]["workers"] > 1

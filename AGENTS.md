@@ -151,6 +151,19 @@ seasons already on disk makes no request and rebuilds nothing (0.4s against
   rewriting 2026's file. It used to, and that one rewrite is what made an
   "everything is already complete" run rebuild the entire warehouse.
 
+**Fetching is latency-bound, and the fetch path is threaded.** Profiling a live
+pull put 96% of the main thread inside one curl call, at 5% CPU and zero bytes
+read from disk; ESPN answers a cold game summary in 250-400ms against a 12ms
+round trip. `--workers` (default 4) runs the per-item loops through
+`Pipeline._map`. Two consequences for anything you add there: shared state on
+`Pipeline` needs `_state_lock` (`written` and `glossary` already do), and
+anything writing a path two workers might both write needs a unique temp name —
+`storage.write_rows` handles that, but only because two games sharing a player
+both cache that player's bio, and a shared `.tmp` let them interleave into one
+file that then got renamed into place looking perfectly normal. `--rate-limit`
+still bounds the request rate across all workers; raising it alone does nothing,
+because the limiter never had to sleep in the first place.
+
 **A full `warehouse.build()` is memory-hungry.** It needs
 `preserve_insertion_order=false` (set in `_tune`); without it, loading `plays`
 from 17,500 files dies at 12.4 GiB. Each table is its own statement, so an OOM

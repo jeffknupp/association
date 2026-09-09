@@ -7,10 +7,13 @@ scope never has to re-derive its own completeness on a later run.
 from __future__ import annotations
 
 import logging
+import threading
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date as _date
 from datetime import timedelta as _timedelta
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar
 
 import pyarrow as pa
 import pyarrow.dataset as ds
@@ -24,6 +27,8 @@ from . import endpoints, parse, storage
 from .netpoints_client import NetPointsDailyClient
 
 log: logging.Logger = logging.getLogger("association.fetch.pipeline")
+
+T = TypeVar("T")
 
 NET_POINTS_FIRST_SEASON = 2019
 """Earliest season espnanalytics.com's NetPoints covers (the 2018-19 season).
@@ -73,6 +78,7 @@ class Pipeline:
         include_pbp: bool = False,
         include_net_points_daily: bool = False,
         force: bool = False,
+        workers: int = 1,
     ):
         # client may be None for local-only use (e.g. `data check --offline`,
         # which never calls a network-touching method like event_ids_for).
@@ -81,8 +87,13 @@ class Pipeline:
         self.include_pbp = include_pbp
         self.include_net_points_daily = include_net_points_daily
         self.force = force
+        self.workers: int = max(1, workers)
         self.glossary: dict[str, dict[str, Any]] = {}
         self._net_points_daily_client: DailyNetPointsFetcher | None = None
+        # Guards `written` and `glossary`, both of which every worker mutates.
+        # set.add is atomic under the GIL; the glossary's read-modify-write is
+        # not, and one lock for both is simpler than reasoning about which is.
+        self._state_lock = threading.Lock()
         self.written: set[str] = set()
         """Warehouse tables this run actually wrote a Parquet file for.
 
@@ -108,7 +119,7 @@ class Pipeline:
     def _exists(self, path: Path) -> bool:
         return storage.exists(path) and not self.force
 
-    def _write_rows(self, path: Path, rows: list[dict[str, Any]]) -> None:
+    def _write_rows(self, path: Path, rows: list[dict[str, Any]]) -> None:  # noqa: D401
         """Write rows and record which table they belong to.
 
         The table name is the first path component under the root, which is how
@@ -122,17 +133,45 @@ class Pipeline:
             # the table would schedule a rebuild for a file that never appeared.
             return
         storage.write_rows(path, rows)
-        self.written.add(path.relative_to(self.root).parts[0])
+        with self._state_lock:
+            self.written.add(path.relative_to(self.root).parts[0])
 
     def _write_row(self, path: Path, row: dict[str, Any]) -> None:
         """One-record counterpart to :meth:`_write_rows`."""
         self._write_rows(path, [row])
 
     def _add_glossary(self, rows: list[dict]) -> None:
-        for r in rows:
-            key = r.get("stat_key")
-            if key and key not in self.glossary:
-                self.glossary[key] = r
+        with self._state_lock:
+            for r in rows:
+                key = r.get("stat_key")
+                if key and key not in self.glossary:
+                    self.glossary[key] = r
+
+    def _map(self, work: Callable[[T], None], items: list[T], desc: str, leave: bool = True) -> None:
+        """Run `work` over `items`, with `self.workers` of them in flight.
+
+        Serial when workers == 1, down to the same loop this replaced - the
+        common path stays free of a pool, and so does every test.
+
+        Requests here are latency-bound, not bandwidth- or CPU-bound: profiling
+        a live pull put 96% of the main thread inside one curl call, at 2.4
+        requests/second against a `--rate-limit` of 10 that never once had to
+        sleep. The work is I/O under the GIL, so threads are the right tool and
+        the rate limiter (shared, in ESPNClient) still bounds what ESPN sees.
+
+        An exception from any item propagates, as it did serially, after the
+        pool is torn down.
+        """
+        if self.workers == 1 or len(items) < 2:
+            for item in tqdm(items, desc=desc, leave=leave):
+                work(item)
+            return
+        with ThreadPoolExecutor(max_workers=self.workers, thread_name_prefix="fetch") as pool:
+            # map, not submit+as_completed: it re-raises the first exception in
+            # submission order, which keeps "the first failure aborts the pull"
+            # true regardless of how the work interleaves.
+            for _ in tqdm(pool.map(work, items), total=len(items), desc=desc, leave=leave):
+                pass
 
     # ---------------- teams ----------------
     def fetch_teams(self) -> None:
@@ -592,8 +631,7 @@ class Pipeline:
             return
 
         event_ids = self.event_ids_for(season, season_type, team_ids)
-        for event_id in tqdm(event_ids, desc=f"{season} type={season_type} games"):
-            self.fetch_game(event_id, season, season_type)
+        self._map(lambda event_id: self.fetch_game(event_id, season, season_type), event_ids, desc=f"{season} type={season_type} games")
 
         season_complete = bool(event_ids) and self._resolved_event_count(season, season_type) >= len(event_ids)
 
@@ -605,12 +643,20 @@ class Pipeline:
         # here too (previously gated behind season_complete, so it never even
         # ran during an in-progress season) is what actually keeps player season
         # stats current while games are still being played.
-        for team_id in tqdm(team_ids, desc=f"{season} type={season_type} team season stats", leave=False):
-            self.fetch_team_season_stats(season, season_type, team_id, force_refresh=not season_complete)
+        self._map(
+            lambda team_id: self.fetch_team_season_stats(season, season_type, team_id, force_refresh=not season_complete),
+            team_ids,
+            desc=f"{season} type={season_type} team season stats",
+            leave=False,
+        )
 
         athlete_ids = self.athlete_ids_for(season, season_type)
-        for athlete_id in tqdm(athlete_ids, desc=f"{season} type={season_type} player season stats", leave=False):
-            self.fetch_player_season_stats(athlete_id, season_type, force_refresh=not season_complete)
+        self._map(
+            lambda athlete_id: self.fetch_player_season_stats(athlete_id, season_type, force_refresh=not season_complete),
+            athlete_ids,
+            desc=f"{season} type={season_type} player season stats",
+            leave=False,
+        )
 
         if not season_complete:
             # Some discovered games haven't been played yet (in-progress season) -

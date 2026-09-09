@@ -1,11 +1,13 @@
 """Regression + sanity tests for the fetch pipeline's resumability and the O(1)
 completion-marker optimization, using a fake client (no network)."""
 
+import threading
 import time
 from pathlib import Path
 from typing import Any
 
 import pyarrow.dataset as ds
+import pytest
 from curl_cffi import requests as cf_requests
 
 from association.fetch import storage
@@ -836,3 +838,81 @@ def test_write_glossary_with_nothing_collected_leaves_the_file_alone(tmp_path: P
     second.write_glossary()
     assert _glossary_keys(tmp_path) == {"points"}
     assert second.written == set()
+
+
+# ---------------- concurrency ----------------
+
+
+def test_map_runs_every_item_with_workers(tmp_path: Path) -> None:
+    pipeline = Pipeline(None, tmp_path, workers=4)
+    done: list[int] = []
+    lock = threading.Lock()
+
+    def work(item: int) -> None:
+        with lock:
+            done.append(item)
+
+    pipeline._map(work, list(range(50)), desc="test")
+    assert sorted(done) == list(range(50))
+
+
+def test_map_actually_overlaps_the_work(tmp_path: Path) -> None:
+    """The whole point: ESPN answers a cold game summary in ~250-400ms and the
+    old loop waited for each one before starting the next, so a pull ran at
+    2.4 requests/second against a --rate-limit of 10 that never had to sleep."""
+    pipeline = Pipeline(None, tmp_path, workers=4)
+    in_flight = 0
+    peak = 0
+    lock = threading.Lock()
+    started = threading.Barrier(4, timeout=5)
+
+    def work(_: int) -> None:
+        nonlocal in_flight, peak
+        with lock:
+            in_flight += 1
+            peak = max(peak, in_flight)
+        started.wait()  # deadlocks unless four really are in flight at once
+        with lock:
+            in_flight -= 1
+
+    pipeline._map(work, list(range(8)), desc="test")
+    assert peak == 4
+
+
+def test_map_is_serial_and_pool_free_with_one_worker(tmp_path: Path) -> None:
+    """The default path stays exactly the loop it replaced."""
+    pipeline = Pipeline(None, tmp_path, workers=1)
+    threads: set[int] = set()
+    pipeline._map(lambda _: threads.add(threading.get_ident()), list(range(5)), desc="test")
+    assert threads == {threading.get_ident()}
+
+
+def test_map_propagates_the_first_failure(tmp_path: Path) -> None:
+    """A failing fetch aborted the pull when this was a plain loop; it still
+    must, rather than being swallowed by a future nobody reads."""
+    pipeline = Pipeline(None, tmp_path, workers=4)
+
+    def work(item: int) -> None:
+        if item == 3:
+            raise ValueError("boom")
+
+    with pytest.raises(ValueError, match="boom"):
+        pipeline._map(work, list(range(20)), desc="test")
+
+
+def test_written_and_glossary_survive_concurrent_writers(tmp_path: Path) -> None:
+    """Both are mutated by every worker. The glossary's read-modify-write is
+    not atomic, and a lost update there is a silently smaller glossary."""
+    pipeline = Pipeline(None, tmp_path, workers=8)
+
+    def work(index: int) -> None:
+        pipeline._add_glossary([{"stat_key": f"stat{index}", "description": "d"}])
+        pipeline._write_rows(tmp_path / "standings" / f"season={index}" / "standings.parquet", [{"a": index}])
+
+    pipeline._map(work, list(range(60)), desc="test")
+    assert len(pipeline.glossary) == 60
+    assert pipeline.written == {"standings"}
+
+
+def test_workers_below_one_is_treated_as_serial(tmp_path: Path) -> None:
+    assert Pipeline(None, tmp_path, workers=0).workers == 1

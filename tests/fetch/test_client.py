@@ -95,3 +95,70 @@ def test_get_json_gives_up_after_max_retries(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(client.session, "get", lambda *a, **k: ErrResp())
     with pytest.raises(RuntimeError):
         client.get_json("http://example.com")
+
+
+# ---------------- concurrency ----------------
+
+
+def test_each_thread_gets_its_own_session() -> None:
+    """A curl_cffi session wraps one libcurl handle and cannot be shared, so
+    workers must not fetch through the same one."""
+    import threading
+
+    client = ESPNClient()
+    main = client.session
+    # The sessions themselves are kept, not their ids: a thread-local session is
+    # freed when its thread ends, and the next one can land on the same address.
+    seen: list[object] = []
+    lock = threading.Lock()
+
+    def record() -> None:
+        session = client.session
+        with lock:
+            seen.append(session)
+
+    threads = [threading.Thread(target=record) for _ in range(3)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len({id(session) for session in seen}) == 3
+    assert all(session is not main for session in seen)
+    assert client.session is main  # and the caller keeps the one it had
+
+
+def test_the_rate_limit_is_shared_between_threads() -> None:
+    """The rate limit is a promise about how hard this hits ESPN. Per-thread
+    allowances would multiply it by the worker count - eight workers at
+    --rate-limit 10 would mean 80 requests/second."""
+    import threading
+    import time
+
+    client = ESPNClient(rate_limit=50)  # 20ms apart
+    stamps: list[float] = []
+    lock = threading.Lock()
+
+    def issue() -> None:
+        client._throttle()
+        with lock:
+            stamps.append(time.monotonic())
+
+    threads = [threading.Thread(target=issue) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    stamps.sort()
+    gaps = [b - a for a, b in zip(stamps, stamps[1:], strict=False)]
+    # Generous slack: a loaded machine makes gaps LARGER, never smaller, so a
+    # floor is the safe thing to assert.
+    assert min(gaps) >= 0.015, gaps
+    assert len(stamps) == 6
+
+
+def test_no_throttling_at_all_when_the_rate_limit_is_zero() -> None:
+    client = ESPNClient(rate_limit=0)
+    client._throttle()  # must not raise, must not block
+    assert client._min_interval == 0.0

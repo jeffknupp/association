@@ -152,7 +152,16 @@ def data() -> None:
     "boto3's Cognito credential exchange (see fetch/netpoints_client.py) and matches players by exact "
     "display-name (ambiguous/unmatched names are left unresolved, not guessed).",
 )
-@click.option("--rate-limit", type=float, default=5.0, show_default=True, help="Max requests/second against ESPN")
+@click.option("--rate-limit", type=float, default=5.0, show_default=True, help="Max requests/second against ESPN, across all workers")
+@click.option(
+    "--workers",
+    type=int,
+    default=4,
+    show_default=True,
+    help="How many requests to keep in flight. ESPN answers a cold game summary in ~250-400ms, and requests were "
+    "issued one at a time, so a pull ran at ~2.4/s no matter what --rate-limit said. --rate-limit still bounds the "
+    "request RATE across all workers; this only stops the pull falling short of it. Use 1 for the old serial behavior.",
+)
 @click.option("--force", is_flag=True, help="Re-fetch even if already checkpointed as complete")
 @click.option("--fetch-only", is_flag=True, help="Fetch Parquet files only, skip building the DuckDB warehouse")
 @click.option("--log-level", type=click.Choice(LOG_LEVELS), default="INFO", show_default=True)
@@ -164,6 +173,7 @@ def data_pull(
     include_pbp: bool,
     include_net_points_daily: bool,
     rate_limit: float,
+    workers: int,
     force: bool,
     fetch_only: bool,
     log_level: str,
@@ -189,6 +199,7 @@ def data_pull(
         include_pbp=include_pbp,
         include_net_points_daily=include_net_points_daily,
         force=force,
+        workers=workers,
     )
     pipeline.run(parsed_seasons, parsed_season_types)
 

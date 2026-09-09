@@ -14,6 +14,30 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
+## Unreleased
+- **Pulls fetch several games at once.** Fetching is latency-bound: profiling a
+  live pull put 96% of the main thread inside one curl call, at 5% CPU, zero
+  bytes read from disk, and a 12ms round trip to a CDN whose cold responses take
+  250-400ms. Requests were issued strictly one at a time, so a pull ran at 2.4
+  requests/second against a `--rate-limit` of 10 that never once had to sleep -
+  raising the limit did nothing at all.
+
+  `--workers` (default 4) sets how many requests are in flight. It does not
+  raise what ESPN sees: the rate limiter is shared across threads, so
+  `--rate-limit` still bounds the request rate and this only stops a pull
+  falling short of it. Measured over 12 cold game summaries: 2.32/s serial,
+  5.95/s with four workers. `--workers 1` restores the old behavior exactly,
+  down to running without a thread pool.
+
+  Two things had to become thread-safe. `ESPNClient` now keeps one session per
+  thread - a curl_cffi session wraps a single libcurl handle - while sharing the
+  throttle, because a per-thread allowance would multiply the rate limit by the
+  worker count. And `storage.write_rows` now writes through a temp name unique
+  per process and thread: two games sharing a player both cache that player's
+  bio, so two threads really do write one path at once, and a shared `.tmp` let
+  them interleave into a single file that was then renamed into place looking
+  perfectly normal.
+
 ## 1.5.0 - 2026-09-08
 - **Releases carry their own wheel and sdist.** The publish workflow now
   attaches the built distributions to the GitHub release, not just to the

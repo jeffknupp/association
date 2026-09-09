@@ -96,6 +96,27 @@ endpoints (standings, season stats, power index) are treated as live and
 refreshed while the season is in progress, so per-game averages do not go
 stale.
 
+How fast a pull goes
+--------------------
+
+Fetching is bound by how long ESPN takes to answer, not by your bandwidth, disk
+or CPU. Profiling a live pull put 96% of the main thread inside a single curl
+call, at 5% CPU and zero bytes read from disk. A *cold* game summary — an old
+season nobody has requested lately — takes 250-400ms to come back; a warm one
+takes 30ms. The round trip to the CDN is 12ms of that, so almost all of it is
+the origin thinking.
+
+``--workers`` (default 4) sets how many of those requests are in flight at
+once. It does not raise how hard this hits ESPN: ``--rate-limit`` still bounds
+the request *rate* across all workers, and before this existed a pull could not
+even reach the limit it was given — requests were issued one at a time, so
+``--rate-limit 10`` ran at 2.4 requests/second and the limiter never once had to
+sleep. Measured over 12 cold games: 2.32/s serial, 5.95/s with four workers.
+
+Past roughly ``rate_limit × latency`` workers there is nothing left to gain —
+the rate limit becomes the binding constraint instead of the latency. Use
+``--workers 1`` for the old serial behavior.
+
 Re-running a pull over seasons that are already complete costs a handful of
 :func:`os.stat` calls and nothing else — no requests, and no warehouse rebuild:
 

@@ -3,6 +3,8 @@ completion-marker primitives."""
 
 from pathlib import Path
 
+import pyarrow.parquet as pq
+
 from association.fetch import storage
 
 
@@ -56,3 +58,35 @@ def test_mark_complete_creates_parent_dirs(tmp_path: Path) -> None:
     marker = tmp_path / "a" / "b" / "c.marker"
     storage.mark_complete(marker)
     assert marker.exists()
+
+
+def test_concurrent_writers_of_the_same_path_do_not_corrupt_it(tmp_path: Path) -> None:
+    """Two games sharing a player both cache that player's bio, so with
+    --workers above 1 two threads really do write one path at the same time. A
+    shared .tmp name had them interleaving into a single file, which then got
+    renamed into place looking perfectly normal."""
+    import threading
+
+    path = tmp_path / "players" / "athlete_1.parquet"
+    rows = [{"athlete_id": "1", "display_name": "LeBron James", "padding": "x" * 5000}]
+    barrier = threading.Barrier(8, timeout=10)
+    errors: list[BaseException] = []
+
+    def write() -> None:
+        try:
+            barrier.wait()
+            for _ in range(20):
+                storage.write_rows(path, rows)
+        except BaseException as exc:  # noqa: BLE001 - reported below
+            errors.append(exc)
+
+    threads = [threading.Thread(target=write) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []
+    assert pq.read_table(path).to_pylist() == rows
+    # No scratch files left behind, whichever writer got there last.
+    assert [p.name for p in path.parent.iterdir()] == [path.name]
