@@ -10,9 +10,11 @@ import pytest
 from association.query import shotchart
 from association.query.templates import (
     HONORED_SCOPING,
+    SCOPING_SLOTS,
     TemplateContext,
     TemplateUnsupported,
     check_scope,
+    fingerprint,
     game_log,
     head_to_head,
     leaderboard,
@@ -1209,3 +1211,86 @@ def test_shot_distance_scopes_to_one_game(sc_ctx: TemplateContext) -> None:
     answer = shot_distance(sc_ctx, {"player": "Stephen Curry", "order": "recent"}).answer or ""
     assert "most recent game (2026-04-13)" in answer
     assert "2 attempts" in answer  # the fixture's two shots in e1, not the third in e2
+
+
+# ---------------- fingerprint ----------------
+
+
+@pytest.fixture
+def fp_ctx(tmp_path: Path) -> TemplateContext:
+    from association.net_points_categories import FINGERPRINT_CATEGORIES
+
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO players VALUES ('1','Shai Gilgeous-Alexander'),('2','Bench Guy')")
+    # `total` included: it is not a spoke, but it is the headline above the plot.
+    categories = list(FINGERPRINT_CATEGORIES.values())
+    columns = ", ".join(f"{category}_{side}_net_pts DOUBLE" for category in categories for side in ("o", "d", "t"))
+    c.execute(f"CREATE TABLE net_points_player_fingerprint (athlete_id VARCHAR, season INTEGER, minutes DOUBLE, total_poss DOUBLE, {columns})")
+    values = ", ".join(["1.0"] * (3 * len(categories)))
+    for athlete_id, minutes in (("1", 2000.0), ("2", 1200.0)):
+        c.execute(f"INSERT INTO net_points_player_fingerprint VALUES ('{athlete_id}', {current_season()}, {minutes}, 4000.0, {values})")
+    return TemplateContext(con=c, out_dir=tmp_path)
+
+
+def test_fingerprint_writes_a_file_and_reports_its_path(fp_ctx: TemplateContext) -> None:
+    result = fingerprint(fp_ctx, {"player": "Shai Gilgeous-Alexander"})
+    assert "Rendered NetPoints fingerprint (total) for Shai Gilgeous-Alexander" in result.answer
+    assert list(fp_ctx.out_dir.glob("*.html"))
+
+
+def test_fingerprint_honors_the_side_slot(fp_ctx: TemplateContext) -> None:
+    assert fingerprint(fp_ctx, {"player": "Shai", "side": "defense"}).data["side"] == "defense"
+
+
+def test_fingerprint_ignores_a_nonsense_side(fp_ctx: TemplateContext) -> None:
+    assert fingerprint(fp_ctx, {"player": "Shai", "side": "sideways"}).data["side"] == "total"
+
+
+def test_fingerprint_defaults_to_the_current_season(fp_ctx: TemplateContext) -> None:
+    assert fingerprint(fp_ctx, {"player": "Shai"}).data["season"] == current_season()
+
+
+def test_fingerprint_refuses_a_single_game_rather_than_drawing_the_season(fp_ctx: TemplateContext) -> None:
+    """There is no per-game play-type breakdown in the warehouse at all, so a
+    plot scoped to one game would be the season's shape under a game's title -
+    the exact failure this project keeps producing."""
+    for slots in ({"player": "Shai", "order": "recent"}, {"player": "Shai", "date": "2026-01-02"}):
+        answer = fingerprint(fp_ctx, slots).answer
+        assert "season-level only" in answer
+        assert not list(fp_ctx.out_dir.glob("*.html"))
+
+
+def test_fingerprint_declares_the_game_scoping_it_handles(fp_ctx: TemplateContext) -> None:
+    # It handles them by refusing; check_scope must therefore NOT strip the
+    # request out from under it and fall through to an agent with no better source.
+    check_scope("fingerprint", {"player": "Shai", "order": "recent", "date": "2026-01-02"})
+    assert HONORED_SCOPING["fingerprint"] == SCOPING_SLOTS
+
+
+def test_fingerprint_without_a_player_falls_through(fp_ctx: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        fingerprint(fp_ctx, {})
+
+
+def test_fingerprint_reports_an_unknown_player_rather_than_falling_through(fp_ctx: TemplateContext) -> None:
+    assert "No player found" in fingerprint(fp_ctx, {"player": "Nobody At All"}).answer
+
+
+def test_fingerprint_reports_a_season_with_no_data_rather_than_falling_through(fp_ctx: TemplateContext) -> None:
+    # The agent has no better source than the table this just read.
+    assert "no NetPoints fingerprint data for season 1999" in fingerprint(fp_ctx, {"player": "Shai", "season": 1999}).answer
+
+
+def test_fingerprint_plots_two_players_on_one_radar(fp_ctx: TemplateContext) -> None:
+    """Two polygons on shared axes IS the comparison, so "compare their
+    fingerprints" needs no second intent - only the `players` slot."""
+    result = fingerprint(fp_ctx, {"players": ["Shai Gilgeous-Alexander", "Bench Guy"]})
+    assert result.data["players"] == ["Shai Gilgeous-Alexander", "Bench Guy"]
+    assert "Shai Gilgeous-Alexander vs Bench Guy" in result.answer
+
+
+def test_fingerprint_does_not_compare_a_player_with_himself(fp_ctx: TemplateContext) -> None:
+    # Two spellings of one name drew one polygon over itself and called it a
+    # comparison.
+    assert fingerprint(fp_ctx, {"players": ["Shai Gilgeous-Alexander", "Shai"]}).data["players"] == ["Shai Gilgeous-Alexander"]

@@ -57,6 +57,19 @@ association query "plot Stephen Curry's shot chart from his last game this seaso
 That needs play-by-play data pulled first (`--include-pbp`), and writes a
 self-contained, theme-aware HTML/SVG file — open it in a browser.
 
+A player's NetPoints "fingerprint" — how they add value, across 20 play-type
+skills — renders the same way, and needs no play-by-play:
+
+```bash
+association query "plot Shai Gilgeous-Alexander's fingerprint for 2025"
+# Rendered NetPoints fingerprint (total) for Shai Gilgeous-Alexander (2025, percentile scale) to query_output/fingerprint_shai_gilgeous_alexander_2025_total_percentile.html
+```
+
+<img src="docs/_static/sga_fingerprint_example.png" alt="NetPoints fingerprint radar for Shai Gilgeous-Alexander's 2025 season: 20 play-type skills grouped into scoring, shot types, creation, rebounding and defense, each plotted as a percentile of the league, with a table of the same numbers underneath" width="520">
+
+Naming two players draws both on the same axes and shades each skill to
+whoever leads it.
+
 ## Features
 
 - **Resumable, rate-limited fetch** from ESPN's stats APIs — checkpointed per
@@ -68,12 +81,13 @@ self-contained, theme-aware HTML/SVG file — open it in a browser.
 - **Natural-language queries with no cloud calls** — everything runs against
   a local Ollama model
 - **Fast, deterministic answers** for common question shapes (leaderboards,
-  head-to-head, comparisons, game logs, shot charts, multi-season history, …),
+  head-to-head, comparisons, game logs, shot charts, fingerprints,
+  multi-season history, …),
   with a tool-calling agent as fallback for anything else
 - **Computed advanced stats** ESPN's API doesn't expose directly — true
   shooting %, effective FG%, usage rate, game score
 - **NetPoints ratings** from ESPN Analytics — player/team ratings plus a
-  per-play-type "fingerprint" breakdown
+  per-play-type "fingerprint" breakdown, as numbers or as a radar plot
 - **A full trace of every query** — command, tool calls, timing, and answer —
   written to disk regardless of verbosity
 - **Shell completion** for bash, zsh, and fish
@@ -159,7 +173,7 @@ src/association/
   cli.py            entrypoint: data pull|load|check, query, ai
   fetch/            client, endpoints, parse, storage, pipeline, warehouse
   check/            data coverage report, cross-checked live against ESPN
-  query/            intent router, query templates, entity resolution, leaderboard, shot chart, prompt/knowledge base, tools, court renderer, agent loop, REPL
+  query/            intent router, query templates, entity resolution, leaderboard, shot chart, fingerprint, prompt/knowledge base, tools, court and radar renderers, agent loop, REPL
 scripts/
   backfill_markers.sh   re-derive completion markers for data fetched before they existed
   check_routing.py      routing regression check for the query fast path (needs ollama)

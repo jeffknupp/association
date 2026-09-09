@@ -14,6 +14,40 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
+## Unreleased
+- **NetPoints fingerprint plots.** `association query "plot SGA's fingerprint"`
+  now renders a static HTML radar of a player's play-type NetPoints, the way
+  `shot_chart` renders their shots - a new `fingerprint` router intent and
+  template, with `query.fingerprint` doing the querying and `query.radar` the
+  drawing (the same split `shotchart`/`court` already had).
+
+  It follows espnanalytics.com's own Skill Fingerprint, which is where these
+  numbers come from: the same 20 skills in the same five groups (scoring, shot
+  types, creation, rebounding, defense), net points per 100 possessions, either
+  as a percentile of the league or on one shared value scale, with the
+  overall/offense/defense headline above the plot and every number repeated in a
+  grouped table underneath - a radar is a shape, and the table is what makes it
+  checkable. Naming two players draws both on shared axes and shades each
+  category to whoever leads it, in their color, at an intensity carrying how
+  far ahead they are.
+
+  Three things are deliberate. A skill is a *(category, side)* pair, not a
+  category: rim finishing and rim protection are different skills sharing a
+  column prefix, and drawing one side per plot hid defense entirely. The
+  aggregate categories (`two_pt`, `three_pt`, `total`) are off the radar because
+  they double-count the slices beneath them. And a fingerprint scoped to one
+  game is refused rather than answered with the season's shape - there is no
+  per-game play-type breakdown anywhere in the warehouse, and
+  `HONORED_SCOPING` therefore lists `fingerprint` as honoring `order`/`date`
+  by saying so.
+
+  Not wired into the fall-through agent as a fifth tool: its schema and prose
+  cost ~205 tokens against 95 of headroom under `PREAMBLE_TOKEN_BUDGET`
+  (the worst assembled question measures 5,905 of 6,000), and buying the room by
+  trimming existing tool descriptions is a change to load-bearing prompt text
+  that no offline gate can check. The fast path covers it; the budget is the
+  thing to raise first if the agent should have it too.
+
 ## 1.2.0 - 2026-09-08
 - **Version markers on the public API.** The docs already generate a page for
   every module (`docs/api/index.rst` runs `autosummary` recursively), but nothing

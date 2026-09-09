@@ -161,6 +161,44 @@ printing to the terminal — open it in a browser. It looks like this:
 
    Stephen Curry, April 13, 2026 (GS @ LAC) — real output from the query above.
 
+NetPoints fingerprints
+----------------------
+
+A fingerprint is how a player adds value rather than how much: their NetPoints
+split across 20 play-type skills, in net points per 100 possessions. It needs
+only the NetPoints data (pulled by default), not play-by-play:
+
+.. code-block:: console
+
+   $ association query "plot Shai Gilgeous-Alexander's fingerprint for 2025"
+   Rendered NetPoints fingerprint (total) for Shai Gilgeous-Alexander (2025, percentile scale) to query_output/fingerprint_shai_gilgeous_alexander_2025_total_percentile.html
+
+.. figure:: _static/sga_fingerprint_example.png
+   :alt: NetPoints fingerprint radar for Shai Gilgeous-Alexander's 2025 season, with 20 skills grouped into scoring, shot types, creation, rebounding and defense, and a table of the same numbers underneath.
+   :width: 560px
+
+   Shai Gilgeous-Alexander, 2025 — real output from the query above.
+
+The skills are grouped as espnanalytics.com's own Skill Fingerprint groups
+them, since that is where the numbers come from: scoring, shot types, creation,
+rebounding and defense. Each spoke is a percentile against every player with at
+least 500 minutes that season, so further out is better on every axis — net
+points are already signed toward "good", and a turnover category is negative on
+offense and positive on defense. The same numbers are repeated in the table
+underneath: a radar is a shape, and the table is what makes it checkable.
+
+Two things it will not do. It will not plot one game — the warehouse has an
+offense/defense/total split per game but no play-type breakdown, so a question
+about a single game is answered with that fact rather than with the season's
+shape. And it will not plot a career: a fingerprint is one season.
+
+Naming two players draws both polygons on the same axes and shades each skill
+in the color of whoever leads it, more strongly the further ahead they are:
+
+.. code-block:: console
+
+   $ association query "compare Shai Gilgeous-Alexander and Nikola Jokic's fingerprints for 2025"
+
 Setting up the models
 ---------------------
 

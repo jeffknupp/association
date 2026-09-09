@@ -64,6 +64,12 @@ intent must be one of:
                      the Lakers") - set team, period (1-4 for Q1-Q4, 5+ for
                      OT1/OT2/...), and opponent when a second team is named
   shot_chart       - render/plot/visualize a player's shots
+  fingerprint      - render/plot/visualize a player's NetPoints FINGERPRINT: the
+                     play-type radar ("plot SGA's fingerprint", "show me
+                     Wembanyama's defensive fingerprint chart") - set player,
+                     and set side to "offense", "defense" or "total". Set
+                     players instead of player to plot two on one radar
+                     ("compare SGA and Jokic's fingerprints")
   shot_distance    - how FAR a player's shots were ("average 3pt shot distance",
                      "how far away does Curry shoot from")
   player_compare   - two or more named players side by side ("Luka vs SGA",
@@ -151,6 +157,14 @@ Q: Create a shot chart of Steph Curry's last regular season game
 {"intent":"shot_chart","player":"Stephen Curry","order":"recent","season_ref":"current"}
 Q: Show me Wembanyama's shot chart
 {"intent":"shot_chart","player":"Victor Wembanyama","season_ref":"current"}
+Q: Plot SGA's netpoints fingerprint
+{"intent":"fingerprint","player":"Shai Gilgeous-Alexander","side":"total","season_ref":"current"}
+Q: Show me Wembanyama's defensive fingerprint chart
+{"intent":"fingerprint","player":"Victor Wembanyama","side":"defense","season_ref":"current"}
+Q: Compare SGA and Jokic's fingerprints
+{"intent":"fingerprint","players":["Shai Gilgeous-Alexander","Nikola Jokic"],"side":"total","season_ref":"current"}
+Q: What were SGA's netpoints by play type?
+{"intent":"player_netpoints","player":"Shai Gilgeous-Alexander","season_ref":"current"}
 """
 
 # Passed as ollama's `format`, so decoding is CONSTRAINED to a well-formed
@@ -175,6 +189,7 @@ ROUTER_SCHEMA: dict[str, Any] = {
                 "head_to_head",
                 "team_quarter_points",
                 "shot_chart",
+                "fingerprint",
                 "shot_distance",
                 "other",
             ],
@@ -200,6 +215,9 @@ ROUTER_SCHEMA: dict[str, Any] = {
         "season_type": {"type": "string", "enum": ["regular", "playoffs"]},
         "order": {"type": "string", "enum": ["recent", "first"]},
         "rate": {"type": "string", "enum": ["per_100", "total"]},
+        # fingerprint only: which of the three stored columns per play-type
+        # category to draw.
+        "side": {"type": "string", "enum": ["offense", "defense", "total"]},
         "date": {"type": "string"},
         "limit": {"type": "integer"},
         "shot_value": {"type": "integer"},

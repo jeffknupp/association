@@ -22,6 +22,7 @@ from association.season import current_season
 
 from .court import HOOP_X, HOOP_Y
 from .entities import Ambiguous, Entity, resolve_player, resolve_team
+from .fingerprint import FINGERPRINT_VIEWS, FingerprintUnavailable, render_for_players
 from .leaderboard import LeaderboardError, resolve_metric, run_leaderboard
 from .metrics import EXTRA_FIELD_COLUMNS, SEASON_TYPE_LABELS
 from .shotchart import render_for_player, resolve_chart_player
@@ -57,6 +58,10 @@ STAT_LABELS = {
     "fouls": "foul",
 }
 
+# Beyond three polygons on one radar the shapes stop being separable - and the
+# palette in radar.py holds three series colors for the same reason.
+MAX_FINGERPRINT_PLAYERS = 3
+
 DEFAULT_LIMIT = 5
 DEFAULT_LEADERBOARD_LIMIT = 10
 MAX_LIMIT = 50
@@ -78,6 +83,11 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     "shot_chart": frozenset({"order"}),
     "shot_distance": frozenset({"order"}),
     "player_netpoints": frozenset({"order"}),
+    # Honoured by REFUSING: there is no per-game play-type breakdown in the
+    # warehouse at all, so "his last game's fingerprint" is answered with that
+    # fact. Leaving it unlisted would fall through to an agent with no better
+    # source, which is slower and free to answer the season instead.
+    "fingerprint": frozenset({"order", "date"}),
 }
 
 
@@ -968,6 +978,69 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     return TemplateResult(data={"message": message}, answer=message)
 
 
+def fingerprint(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+    """Renders one or more players' NetPoints fingerprints to a static HTML
+    radar plot.
+
+    Uses fingerprint.render_for_players, and resolves names the same best-match
+    way shot_chart does: a plot titled with the resolved name shows a wrong
+    match on sight, which is what makes best-match safe here and not in a
+    template reporting numbers.
+    """
+    # "compare their fingerprints" arrives as `players`, one name as `player`.
+    # Both draw one plot; two polygons on shared axes IS the comparison, so
+    # this does not need a second intent.
+    names = slots.get("players") if isinstance(slots.get("players"), list) else None
+    names = [n for n in names if isinstance(n, str) and n.strip()] if names else []
+    if not names:
+        single = slots.get("player")
+        if not isinstance(single, str) or not single.strip():
+            raise TemplateUnsupported("fingerprint needs a player name")
+        names = [single]
+    names = names[:MAX_FINGERPRINT_PLAYERS]
+
+    # Season-level only, and said so rather than quietly drawing the season
+    # under a question about one game - net_points_player_game has an
+    # offense/defense/total split and no play-type columns at all.
+    if slots.get("order") in ("recent", "first") or slots.get("date"):
+        message = "NetPoints fingerprints are season-level only - the warehouse has no play-type breakdown for a single game, so there is nothing to plot for one."
+        return TemplateResult(data={"message": message}, answer=message)
+
+    players: list[Entity] = []
+    ambiguous: list[str] = []
+    for name in names:
+        found = resolve_chart_player(ctx.con, name)
+        if found is None:
+            message = f"No player found matching {name!r}."
+            return TemplateResult(data={"message": message}, answer=message)
+        player, also = found
+        # The same name twice would draw one polygon over itself and report a
+        # comparison; deduped on the RESOLVED id, since "SGA" and "Gilgeous"
+        # are two names for one player.
+        if player.id not in {p.id for p in players}:
+            players.append(player)
+        ambiguous.extend(also)
+
+    # The router's word for it is `side`, which is what a question says ("his
+    # defensive fingerprint"); the renderer's is `view`, because each skill
+    # already carries the side it is measured on and this only picks which
+    # skills are drawn.
+    view = slots.get("side")
+    if view not in FINGERPRINT_VIEWS:
+        view = "total"
+    season = slots.get("season") or current_season()
+    try:
+        message, path = render_for_players(ctx.con, ctx.out_dir, players, ambiguous, season, view=view)
+    except FingerprintUnavailable as exc:
+        # Returned, not raised: the agent has no better source for this plot
+        # than the table this just read, so falling through would only be slow.
+        return TemplateResult(data={"message": str(exc)}, answer=str(exc))
+    return TemplateResult(
+        data={"players": [p.name for p in players], "season": season, "side": view, "path": str(path), "message": message},
+        answer=message,
+    )
+
+
 SHOT_VALUE_FROM_STAT = {"threePointFieldGoalsMade": 3, "freeThrowsMade": 1}
 
 
@@ -1382,4 +1455,5 @@ TEMPLATES: dict[str, Callable[[TemplateContext, dict[str, Any]], TemplateResult]
     "shot_distance": shot_distance,
     "player_history": player_history,
     "player_netpoints": player_netpoints,
+    "fingerprint": fingerprint,
 }

@@ -113,7 +113,25 @@ CASES: list[tuple[str, str, dict]] = [
     ("what was steph curry's avg 3pt shot distance", "shot_distance", {}),
     ("How far away does Wembanyama shoot from?", "shot_distance", {}),
     ("Plot Curry's threes from last season", "shot_chart", {"season": current_season() - 1}),
-    ("What was the Lakers record last season?", "team_record", {"team": "Lakers", "season": current_season() - 1}),
+    # A fingerprint plot and a fingerprint's NUMBERS are different intents over
+    # the same table; "plot"/"chart"/"show me" is the whole difference, so both
+    # directions are checked.
+    ("Plot SGA's netpoints fingerprint", "fingerprint", {"player": "Shai Gilgeous-Alexander"}),
+    ("Show me Wembanyama's defensive fingerprint chart", "fingerprint", {"side": "defense"}),
+    # Two fingerprints on one radar is still `fingerprint`, not player_compare:
+    # only the slot changes. Just the intent is asserted - the router splits two
+    # names across `player`/`players` often enough that the template reads both.
+    ("Compare SGA and Jokic's fingerprints", "fingerprint", {}),
+    ("What were SGA's netpoint stats this season?", "player_netpoints", {"player": "Shai Gilgeous-Alexander"}),
+    # The team slot is NOT asserted here. Adding the `fingerprint` intent to the
+    # prompt flipped this question's slot from "Lakers" to "Los Angeles Lakers"
+    # - reproducibly, and with any wording of the added intent line, since the
+    # 3B router is sensitive to the prompt's length as well as its content.
+    # Checked against the warehouse before relaxing it: resolve_team maps both
+    # strings to team_id 13, and team_record returns the same sentence either
+    # way. The season IS asserted, because getting that wrong changes the
+    # answer.
+    ("What was the Lakers record last season?", "team_record", {"season": current_season() - 1}),
     # Confirmed live: with no such intent this routed to team_record, fell
     # through, and the agent answered that two teams who met four times had
     # never played.
