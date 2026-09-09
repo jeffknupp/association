@@ -98,6 +98,57 @@ Thinking models are disqualified on latency rather than accuracy: qwen3:4b
 spent about 20 seconds per question reasoning before emitting the same small
 JSON object that qwen2.5:3b produces in about one.
 
+The tool budget
+---------------
+
+The agent's preamble is capped at
+:data:`association.query.prompt.PREAMBLE_TOKEN_BUDGET` tokens, checked on every
+assembly, because ollama truncates an over-length prompt head-first and in
+silence — the original bug kept the tool schemas and discarded the schema
+summary and the correctness rules.
+
+The cap makes the tool list a *budget*, not a list. Each tool costs roughly 190
+tokens of JSON schema plus a line of prose, and that is charged on every
+question whether or not it is relevant: the schemas are a fixed block, unlike
+the knowledge-base entries, which are already selected per question. Five tools
+and the always-on core leave a few hundred tokens of headroom. A sixth and a
+seventh do not fit.
+
+Raising the cap is the smallest lever and the one with the least left in it.
+It cannot go above ``AGENT_NUM_CTX // 2`` without the preamble starting to
+collide with the conversation, and raising ``AGENT_NUM_CTX`` itself buys room
+at roughly a second of CPU prefill per hundred tokens, on the slowest path in
+the system.
+
+The three real levers, cheapest first:
+
+#. **Fold renderers into one tool.** ``render_shot_chart`` and
+   ``render_fingerprint`` are two ~190-token schemas describing the same verb
+   over different nouns. One ``render(kind, player, season, …)`` with an enum of
+   kinds costs one schema, and each new chart type after that costs an enum
+   value — about five tokens instead of a hundred and ninety. This is the
+   change to make first, and it gets cheaper the more chart types exist.
+
+#. **Select tool schemas per question, the way knowledge-base entries already
+   are.** :func:`association.query.prompt.select_knowledge` scores entries by
+   keyword overlap and includes only what a question needs;
+   ``describe_table``/``run_sql`` would stay always-on and the rest would be
+   selected the same way. The cost then scales with what a question is *about*
+   rather than with how much the system can do. The risk is the inverse of the
+   knowledge base's: a missed entry only makes the agent less informed, while a
+   missed tool makes a capability unreachable — so anything selected out this
+   way must already be covered by the fast path.
+
+#. **Port more shapes to templates.** This does not shrink the preamble; it
+   shrinks how much the preamble matters. Every intent with a template is a
+   question the agent never sees, and the budget only binds on the fall-through
+   path. It is also the only lever that makes answers *faster* rather than
+   merely affordable.
+
+What not to do is quietly trim the standing rules or ``TABLE_SUMMARY`` to make
+room. Those are the text the original truncation bug destroyed, and nothing in
+the test suite can tell that the agent got worse at writing SQL.
+
 Failing loudly
 --------------
 

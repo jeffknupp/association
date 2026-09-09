@@ -388,8 +388,15 @@ AGENT_NUM_CTX = 16384
    Renamed from ``NUM_CTX``, which collided with the router's own window.
 """
 # The preamble's share, leaving ~10k for tool-result JSON, the model's replies,
-# and several tool-call rounds. A preamble past this is a bug, not a knob.
-PREAMBLE_TOKEN_BUDGET = 6000
+# and several tool-call rounds. A preamble past this is a bug, not a knob:
+# raise it only with a reason, and never above AGENT_NUM_CTX // 2, which is the
+# point where a long conversation starts colliding with the prompt itself.
+#
+# Raised from 6000 in 1.4.0 to fit render_fingerprint, which cost ~205 tokens
+# against 95 of headroom. Every tool added from here costs roughly that much,
+# so this number cannot absorb many more of them - see the note on the tool
+# budget in docs/architecture.rst for what to do instead of raising it again.
+PREAMBLE_TOKEN_BUDGET = 6400
 
 # Rules that apply to ANY SQL the agent writes, so they are never selected
 # against - they would be relevant to every question anyway.
@@ -489,7 +496,7 @@ def format_knowledge_base(entries: list[dict[str, Any]]) -> str:
 
 
 SYSTEM_PROMPT_TEMPLATE = f"""You are a data analyst answering natural-language questions about NBA \
-statistics using a local, read-only DuckDB database. You have four tools:
+statistics using a local, read-only DuckDB database. You have five tools:
 
 - describe_table(table_name): get exact column names/types for a table. Call this before \
 writing SQL against a table you have not already described in this conversation - do not \
@@ -510,6 +517,10 @@ opponent/box-score join, single-player lookups, comparisons, standings, counts, 
 - render_shot_chart(player_name, season, season_type, event_id, period, shot_value, \
 made_only): renders a static HTML shot chart (makes vs misses on a simplified court) for one \
 player. Use this only for requests to see/plot/visualize shots.
+- render_fingerprint(player_name, season, view, scale): renders a static HTML radar plot of one \
+player's NetPoints play-type "fingerprint" for one SEASON - the only thing to use for a request \
+to see/plot a fingerprint. There is no per-game fingerprint: say so rather than plotting a season \
+for a question about one game.
 
 Available tables:
 {TABLE_SUMMARY}
@@ -625,6 +636,23 @@ TOOLS: list[dict[str, Any]] = [
                     "limit": {"type": "integer", "description": "How many players to return. Defaults to 10."},
                 },
                 "required": ["metric"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "render_fingerprint",
+            "description": "Radar plot of one player's NetPoints play-type fingerprint for one season. Season level only.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "player_name": {"type": "string", "description": "Full or partial display name."},
+                    "season": {"type": "integer", "description": "Season-ending year, e.g. 2024 for 2023-24. Omit for the current season."},
+                    "view": {"type": "string", "enum": ["total", "offense", "defense"], "description": "Which skills to draw. Defaults to total; set only if asked for one side."},
+                    "scale": {"type": "string", "enum": ["percentile", "value"], "description": "percentile (default) ranks vs the league; value is raw net points per 100."},
+                },
+                "required": ["player_name"],
             },
         },
     },

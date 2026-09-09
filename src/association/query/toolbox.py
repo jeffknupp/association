@@ -1,6 +1,6 @@
 """The tools exposed to the local model: schema lookup, read-only SQL, a
 parameterized leaderboard for the common "top N players by X" question shape,
-and shot chart rendering."""
+and shot chart / NetPoints fingerprint rendering."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from typing import Any
 
 import duckdb
 
+from .fingerprint import render_fingerprint
 from .leaderboard import LeaderboardError, run_leaderboard
 from .prompt import KNOWN_TABLES, estimate_tokens
 from .shotchart import render_shot_chart
@@ -231,3 +232,17 @@ class Toolbox:
             shot_value=shot_value,
             made_only=made_only,
         )
+
+    def render_fingerprint(
+        self,
+        player_name: str,
+        season: int | None = None,
+        view: str = "total",
+        scale: str = "percentile",
+    ) -> str:
+        """The agent-tool face of fingerprint.render_fingerprint - the fast-path
+        template calls the same function with the same connection and out_dir.
+
+        .. versionadded:: 1.4.0
+        """
+        return render_fingerprint(self.con, self.out_dir, player_name, season=season, view=view, scale=scale)

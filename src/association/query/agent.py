@@ -82,6 +82,7 @@ class Agent:
             "run_sql": self.toolbox.run_sql,
             "get_leaderboard": self.toolbox.get_leaderboard,
             "render_shot_chart": self.toolbox.render_shot_chart,
+            "render_fingerprint": self.toolbox.render_fingerprint,
         }
         # Rebuilt per question in _ask_inner; this is the always-on core only,
         # so a fresh Agent is usable before any question has been asked.

@@ -14,6 +14,29 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
+## Unreleased
+- **The agent can render fingerprints too.** `render_fingerprint` is now a tool
+  the fall-through agent can call, not only a fast-path template, so a question
+  the router does not classify as `fingerprint` can still produce the plot
+  rather than a table of numbers. `PREAMBLE_TOKEN_BUDGET` goes from 6000 to
+  6400 to fit it: the worst assembled question now measures 6,179, leaving 221
+  tokens of headroom, and the budget stays well under the `AGENT_NUM_CTX // 2`
+  bound that the existing test asserts.
+
+  Two tests now guard the tool list itself, which is two lists of the same
+  names kept in step by hand: every schema in `TOOLS` has a handler in the
+  agent's dispatch table and vice versa, and every parameter a schema
+  advertises is one its handler actually accepts. A name in one list and not
+  the other is either a `KeyError` the moment the model calls it or a
+  capability the model can never reach.
+
+  `docs/architecture.rst` gains a section on the tool budget, because raising
+  it is nearly out of road: each tool costs ~190 tokens of schema charged on
+  every question, and two more would not fit. It lays out the levers in order -
+  fold the renderers into one `render(kind, ...)` tool, select tool schemas per
+  question the way knowledge-base entries already are, and keep porting shapes
+  to templates so the agent sees fewer questions at all.
+
 ## 1.3.0 - 2026-09-08
 - **NetPoints fingerprint plots.** `association query "plot SGA's fingerprint"`
   now renders a static HTML radar of a player's play-type NetPoints, the way

@@ -304,3 +304,29 @@ def test_fast_path_answer_is_recorded_in_conversation_for_later_followups(monkey
     assert agent.ask("most 30+ point games?") == "template answer"
     assert agent.last_question == "most 30+ point games?"
     assert [m["content"] for m in agent.messages[1:]] == ["most 30+ point games?", "template answer"]
+
+
+def test_every_advertised_tool_can_actually_be_dispatched(think_agent: Agent) -> None:
+    """The tool schemas and the dispatch table are two lists of the same names,
+    kept in step by hand. A name in TOOLS with no handler is a KeyError the
+    moment the model calls it; a handler the schemas never mention is dead code
+    the model cannot reach - which is exactly the state render_fingerprint was
+    left in while it did not fit the preamble budget."""
+    from association.query.prompt import TOOLS
+
+    advertised = {tool["function"]["name"] for tool in TOOLS}
+    assert advertised == set(think_agent.dispatch)
+
+
+def test_every_tool_schema_names_its_required_parameters(think_agent: Agent) -> None:
+    """Under constrained decoding the schema is the whole contract: a required
+    parameter the handler does not accept is a TypeError at call time."""
+    import inspect
+
+    from association.query.prompt import TOOLS
+
+    for tool in TOOLS:
+        function = tool["function"]
+        parameters = inspect.signature(think_agent.dispatch[function["name"]]).parameters
+        for name in function["parameters"]["properties"]:
+            assert name in parameters, f"{function['name']} advertises {name!r}, which its handler does not accept"
