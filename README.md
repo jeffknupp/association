@@ -25,6 +25,15 @@ Every answer says whether a **template** or the fall-through **agent** produced
 it, because that is the most useful thing you can know about how far to trust
 it. Each message is a new question; there is no conversation memory yet.
 
+Shot charts and NetPoints fingerprints draw in the conversation, served from
+the same directory the CLI writes to — so a chart made at the terminal opens in
+the browser, and the CLI still writes the identical standalone file:
+
+<img src="docs/_static/web_chart_dark_example.png" alt="The association web interface in dark mode, showing a half-court shot chart for Stephen Curry drawn inline in the conversation, with a link to open the full standalone file underneath" width="640">
+
+The page follows your system theme, and so do the charts — both screenshots
+above are the same build, one light and one dark.
+
 ## Or from the command line
 
 ```bash
