@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "association"
-version = "1.6.0"
+version = "2.0.0"
 description = "ESPN NBA stats: resumable fetch -> compact Parquet -> DuckDB warehouse -> local-LLM natural-language query"
 readme = "README.md"
 license = "BSD-3-Clause"

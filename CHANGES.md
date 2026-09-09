@@ -14,7 +14,7 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
-## Unreleased
+## 2.0.0 - 2026-09-09
 - **Charts render inline in the web interface.** A question that draws a shot
   chart or a fingerprint now shows it in the conversation instead of naming a
   file path. `GET /api/artifacts/{name}` serves them out of the same directory
