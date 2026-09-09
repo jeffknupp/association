@@ -315,6 +315,46 @@ def _validate_season(slots: dict[str, Any], question: str = "") -> int | None:
     return None
 
 
+# The side of the ball a fingerprint asked for, recognized from the text. The
+# words are matched whole so "offensive" and "defensive" count but a player
+# named Offenberg would not.
+SIDE_WORDS: dict[str, re.Pattern[str]] = {
+    "offense": re.compile(r"\boffens(?:e|ive)\b", re.IGNORECASE),
+    "defense": re.compile(r"\bdefens(?:e|ive)\b", re.IGNORECASE),
+}
+
+# Kept in step with ROUTER_SCHEMA's own enum by
+# test_the_side_values_match_the_router_schema - two hand-maintained lists of
+# the same thing is the shape that already produced the player_compare bug.
+SIDE_VALUES = ("offense", "defense", "total")
+
+
+def _validate_side(slots: dict[str, Any], question: str) -> str | None:
+    """Which half of a fingerprint was asked for, the question first.
+
+    Same reasoning as :func:`_validate_season` reading the year out of the
+    text: the question is the source, and this slot is dropped often enough
+    that deferring to the model silently answers a broader question than the
+    one asked - the whole radar where its defensive half was wanted.
+
+    Why it is dropped is worth writing down, because no prompt wording fixes
+    it. `stat` is the one REQUIRED slot (see ROUTER_SCHEMA), and a constrained
+    decoder fills what it must before what it may: on "Show me Wembanyama's
+    defensive fingerprint chart" the model spends the adjective on
+    stat="defensive" and then omits `side` entirely. Measured 6/6 at
+    temperature 0, and that question appears verbatim as a worked example in
+    ROUTER_PROMPT with the right answer next to it, so it is not a wording the
+    prompt failed to cover.
+    """
+    named = [side for side, pattern in SIDE_WORDS.items() if pattern.search(question)]
+    # Exactly one, or nothing. A question naming both halves is asking for the
+    # whole radar, which is what leaving this unset already means.
+    if len(named) == 1:
+        return named[0]
+    side = slots.get("side")
+    return side if isinstance(side, str) and side in SIDE_VALUES else None
+
+
 def route(model: str, question: str, previous_question: str | None = None) -> Route | None:
     """Classify one question. Returns None if the model is unreachable or
     replies with something unparseable - the caller falls through to the full
@@ -361,4 +401,12 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
         slots["season"] = resolved_season
     requested_type = slots.get("season_type")
     slots["season_type"] = SEASON_TYPES.get(requested_type, 2) if isinstance(requested_type, str) else 2
+    # fingerprint only - `side` means nothing to any other template, and adding
+    # it elsewhere would put a slot in the trace that nothing reads.
+    if raw["intent"] == "fingerprint":
+        side = _validate_side(slots, question)
+        if side is None:
+            slots.pop("side", None)
+        else:
+            slots["side"] = side
     return Route(intent=raw["intent"], slots=slots)

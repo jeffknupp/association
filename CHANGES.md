@@ -15,6 +15,29 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **"Wembanyama's defensive fingerprint" drew the whole fingerprint.** The
+  router filled `stat` with "defensive" and left `side` unset, so the template
+  fell back to its default and plotted all 20 spokes where the 5 defensive ones
+  were asked for - a broader answer than the question, with nothing saying so.
+  Deterministic, measured 6/6 at temperature 0, and failing for that exact
+  wording even though it appears verbatim as a worked example in
+  `ROUTER_PROMPT` with the right answer beside it.
+
+  No prompt wording fixes it, because it is not a wording problem. `stat` is
+  the one *required* slot, and a constrained decoder fills what it must before
+  what it may: the adjective is spent on `stat` and the optional `side` is
+  never considered. So `side` is now read from the question in `route()`, next
+  to `_validate_season`, which reads the season from the question for exactly
+  the same reason.
+
+  `ROUTER_PROMPT` and `ROUTER_SCHEMA` are byte-identical - verified by hashing
+  both before and after - so the model sees the same input and no other
+  question's slots can move. `scripts/check_routing.py` goes 47/48 to 48/48,
+  with the run otherwise line-for-line identical to the previous one.
+
+  Deliberately conservative, like `override_nicknames`: a question naming both
+  halves leaves the slot unset, since that already means the whole radar, and
+  guessing between them would be the same bug facing the other way.
 - **A chart no longer guesses which player a surname meant.** "Show me a
   fingerprint for Maxey" drew nothing and blamed the warehouse, because
   "Maxey" resolved best-match to Marlon Maxey, who last played in 1994, rather

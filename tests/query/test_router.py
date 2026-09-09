@@ -9,7 +9,7 @@ import ollama
 import pytest
 from ollama import ChatResponse, Message
 
-from association.query.router import ROUTER_PROMPT, ROUTER_SCHEMA, Route, route
+from association.query.router import ROUTER_PROMPT, ROUTER_SCHEMA, SIDE_VALUES, Route, route
 from association.season import current_season
 
 
@@ -178,6 +178,82 @@ def test_the_model_slot_still_applies_when_the_text_names_no_season() -> None:
     with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"leaderboard","season":2021}')):
         got = route("m", "who led in his rookie year?")
     assert got is not None and got.slots["season"] == 2021
+
+
+def _fingerprint(payload: str, question: str) -> Route:
+    with patch("association.query.router.ollama.chat", return_value=_reply(payload)):
+        got = route("m", question)
+    assert got is not None
+    return got
+
+
+def test_question_text_beats_a_dropped_side_slot() -> None:
+    """The measured failure, verbatim. `stat` is the one required slot, so a
+    constrained decoder spends the adjective on stat="defensive" and omits
+    `side` - 6/6 at temperature 0, for a question that appears in ROUTER_PROMPT
+    as a worked example with the right answer beside it. Unset, the template
+    draws the whole radar: a broader answer than the question asked for, with
+    nothing saying so."""
+    got = _fingerprint(
+        '{"intent":"fingerprint","stat":"defensive","player":"Victor Wembanyama"}',
+        "Show me Wembanyama's defensive fingerprint chart",
+    )
+    assert got.slots["side"] == "defense"
+
+
+def test_the_offensive_half_is_recognized_too() -> None:
+    got = _fingerprint('{"intent":"fingerprint","stat":"offensive","player":"Nikola Jokic"}', "plot Jokic's offensive fingerprint")
+    assert got.slots["side"] == "offense"
+
+
+def test_a_question_naming_neither_half_leaves_the_side_unset() -> None:
+    """Absent means the whole radar, which is the template's own default - so
+    this must not invent a side for a question that named none."""
+    got = _fingerprint('{"intent":"fingerprint","stat":"","player":"Nikola Jokic"}', "plot Jokic's fingerprint")
+    assert "side" not in got.slots
+
+
+def test_a_question_naming_both_halves_leaves_the_side_unset() -> None:
+    """Deliberately conservative, the same way override_nicknames is: naming
+    both halves is a request for the whole radar, and guessing between them
+    would be the same bug in the other direction."""
+    got = _fingerprint(
+        '{"intent":"fingerprint","stat":"","player":"Nikola Jokic"}',
+        "compare Jokic's offensive and defensive fingerprint",
+    )
+    assert "side" not in got.slots
+
+
+def test_the_model_side_slot_still_applies_when_the_text_names_neither() -> None:
+    """Phrasings the patterns have never seen must route as well as before."""
+    got = _fingerprint('{"intent":"fingerprint","stat":"","player":"Nikola Jokic","side":"defense"}', "plot Jokic's fingerprint on that end")
+    assert got.slots["side"] == "defense"
+
+
+def test_a_bogus_model_side_is_dropped_rather_than_passed_along() -> None:
+    got = _fingerprint('{"intent":"fingerprint","stat":"","player":"Nikola Jokic","side":"sideways"}', "plot Jokic's fingerprint")
+    assert "side" not in got.slots
+
+
+def test_the_side_words_are_matched_whole() -> None:
+    """ "Ant" matching every player with "ant" in their name is the same bug
+    this file's neighbors guard against on the entity side."""
+    got = _fingerprint('{"intent":"fingerprint","stat":"","player":"Cedi Osman"}', "plot Osman's fingerprint")
+    assert "side" not in got.slots
+
+
+def test_the_side_is_only_added_to_a_fingerprint() -> None:
+    """`side` means nothing to any other template, so a defensive-sounding
+    leaderboard question must not grow a slot nothing reads."""
+    got = _fingerprint('{"intent":"leaderboard","stat":"rebounds"}', "who leads the league in defensive rebounds?")
+    assert "side" not in got.slots
+
+
+def test_the_side_values_match_the_router_schema() -> None:
+    """Two hand-maintained lists of the same names is the shape that produced
+    the player_compare bug - a value here the schema cannot emit would be
+    unreachable, and one the schema emits that is missing here gets dropped."""
+    assert set(SIDE_VALUES) == set(ROUTER_SCHEMA["properties"]["side"]["enum"])
 
 
 @pytest.mark.parametrize(
