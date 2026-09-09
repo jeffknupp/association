@@ -17,6 +17,7 @@ from typing import Any
 
 import duckdb
 
+from association.coverage import caveat, unavailable
 from association.net_points_categories import FINGERPRINT_CATEGORIES
 from association.season import current_season
 
@@ -25,7 +26,7 @@ from .court import HOOP_X, HOOP_Y
 from .entities import Ambiguous, Entity, clarification, resolve_player, resolve_team
 from .fingerprint import FINGERPRINT_AVAILABILITY, FINGERPRINT_VIEWS, FingerprintUnavailable, render_for_players
 from .leaderboard import LeaderboardError, resolve_metric, run_leaderboard
-from .metrics import EXTRA_FIELD_COLUMNS, SEASON_TYPE_LABELS
+from .metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS
 from .shotchart import SHOT_AVAILABILITY, render_for_player, resolve_chart_player
 
 # Slot value -> real player_box_stats column. A whitelist, not a passthrough:
@@ -90,6 +91,95 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # source, which is slower and free to answer the season instead.
     "fingerprint": frozenset({"order", "date"}),
 }
+
+
+# Which warehouse tables each template's answer is built from, so a question
+# about a season none of them reach is refused rather than answered with the
+# empty result that season produces. Hand-maintained, like HONORED_SCOPING
+# above and for the same reason - deriving it by scanning for table names
+# picks up every one mentioned in a comment - and guarded by
+# test_every_template_declares_the_tables_it_reads.
+#
+# `leaderboard` is absent on purpose: its table depends on the metric asked
+# for, and _sources_for resolves it per question.
+TEMPLATE_SOURCES: dict[str, tuple[str, ...]] = {
+    "threshold_count": ("player_box_stats",),
+    "single_game_high": ("player_game_log",),
+    "player_stat": ("player_season_stats_deduped",),
+    "player_compare": ("player_season_stats_deduped",),
+    "player_history": ("player_season_stats_deduped",),
+    "player_netpoints": ("net_points_player", "net_points_player_fingerprint"),
+    "team_record": ("standings",),
+    "head_to_head": ("games",),
+    "team_quarter_points": ("team_box_stats", "games"),
+    # A player's log and a team's come from different tables, and _sources_for
+    # picks between them - a team question refused with "Player game logs only
+    # go back to..." names the wrong thing.
+    "game_log": ("games",),
+    "shot_chart": ("shot_chart",),
+    "shot_distance": ("shot_chart",),
+    "fingerprint": ("net_points_player_fingerprint",),
+}
+
+# Templates that rank players AGAINST each other, rather than reporting the
+# numbers of players the question named. The distinction is the whole reason
+# coverage.Coverage carries two floors: player_season_stats holds Michael
+# Jordan's real 1990 line, so "how many did Jordan average" is answerable from
+# it, while "who led the league" is not - the pool it would rank is 217 players
+# out of a ~350-player league, and 7 out of a full league in 1980.
+#
+# player_compare is NOT here. It compares players the question named, which a
+# per-player table answers exactly as well as a single lookup does.
+RANKING_INTENTS = frozenset({"leaderboard", "threshold_count", "single_game_high"})
+
+
+def _sources_for(intent: str, slots: dict[str, Any]) -> tuple[str, ...]:
+    """The tables an answer would be built from, resolved per question because
+    a leaderboard's depends on which metric was asked for."""
+    if intent == "game_log":
+        named_player = isinstance(slots.get("player"), str) and slots["player"].strip()
+        return ("player_game_log",) if named_player else ("games", "team_box_stats")
+    if intent != "leaderboard":
+        return TEMPLATE_SOURCES.get(intent, ())
+    stat = slots.get("stat")
+    metric = resolve_metric(stat) if isinstance(stat, str) else None
+    spec = LEADERBOARD_METRICS.get(metric) if metric else None
+    # An unrecognized metric is left to the template, which refuses it with a
+    # better message than a coverage floor could.
+    return (spec.table,) if spec else ()
+
+
+def check_coverage(intent: str, slots: dict[str, Any]) -> str | None:
+    """Why this question's season is out of reach, or None.
+
+    Returned rather than raised, which is the opposite of :func:`check_scope`
+    and deliberate. check_scope raises so the question falls through to the
+    agent, which may do better. Nothing does better here: the agent would query
+    the same empty tables, more slowly, and is then free to fill the silence
+    from its own weights. The refusal IS the answer.
+
+    .. versionadded:: 2.1.0
+    """
+    season = slots.get("season")
+    if not isinstance(season, int):
+        # No season means the current one, which every table covers.
+        return None
+    season_type = slots.get("season_type")
+    return unavailable(
+        _sources_for(intent, slots),
+        season,
+        season_type if isinstance(season_type, int) else 2,
+        ranking=intent in RANKING_INTENTS,
+    )
+
+
+def coverage_caveat(intent: str, slots: dict[str, Any]) -> str | None:
+    """A note for a season this question can reach but only partly, or None.
+
+    .. versionadded:: 2.1.0
+    """
+    season = slots.get("season")
+    return caveat(_sources_for(intent, slots), season) if isinstance(season, int) else None
 
 
 def check_scope(intent: str, slots: dict[str, Any]) -> None:

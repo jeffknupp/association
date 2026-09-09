@@ -15,6 +15,41 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A question about a season the warehouse cannot reach is refused, with the
+  real reason.** Every table starts in a different year and the gaps are
+  ESPN's, so an out-of-range question returned nothing - and nothing was then
+  phrased as though the filters were wrong, or as a real answer. Both were
+  measured on the current snapshot. A 1996 shot chart said `No shots found for
+  Michael Jordan with the given filters`, blaming the filters for play-by-play
+  that starts in 2002. Worse, a 1980 scoring leaderboard answered `Moses Malone
+  led the league in points per game, at 25.8. Next: Bill Cartwright (21.7),
+  John Long (19.4)` - drawn from a league of **seven players**, with Kareem
+  Abdul-Jabbar, Larry Bird and Julius Erving absent from `players` entirely.
+
+  `association/coverage.py` declares each table's earliest usable season and
+  why it starts there; `templates.check_coverage` refuses below it. The
+  refusal is returned as the answer rather than raised, unlike `check_scope`:
+  falling through would put the same empty tables in front of an agent that is
+  then free to fill the silence.
+
+  A lookup and a ranking get different floors, because they fail differently.
+  `player_season_stats` holds Jordan's real 1990 line, so his own average is
+  still answered; ranking that season is refused, since the pool is 217 players
+  against a ~350-player league. The two refusals are worded differently on
+  purpose - telling somebody there is "no data for 1980" about a warehouse
+  holding Moses Malone's real 1980 line would be the same false-cause answer
+  facing the other way.
+
+  Seasons that exist but only partly - 2002 play-by-play is about half a year -
+  are answered with a caveat rather than refused. Playoffs reach back to 1988
+  where regular seasons only reach 1994, so `games` carries both floors. Season
+  1993, whose rows duplicate 1994, is declared a phantom rather than merely
+  excluded, so it can be verified rather than assumed.
+
+  `scripts/check_coverage.py` checks every floor against a built warehouse -
+  28/28 on this snapshot - the same way `check_nicknames.py` checks the
+  nickname table. Each floor was confirmed by moving it and watching the check
+  fail.
 - **"Wembanyama's defensive fingerprint" drew the whole fingerprint.** The
   router filled `stat` with "defensive" and left `side` unset, so the template
   fell back to its default and plotted all 20 spokes where the 5 defensive ones

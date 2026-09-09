@@ -97,6 +97,27 @@ When adding a template, prefer refusing to guessing. `resolve_*` in
 `query/entities.py` never guesses between candidate players; `leaderboard`
 rejects a named `player`; `team_record` rejects `limit`.
 
+**The same bug has a mirror image: a refusal that names the wrong cause.** It
+reads as honest, so nothing looks wrong. "Show me a fingerprint for Maxey"
+answered `No NetPoints fingerprint on record for season 2026` — a claim about
+league-wide coverage, and false; that season holds 566 players and Tyrese
+Maxey is one of them. The real cause was that "Maxey" had resolved to Marlon
+Maxey, who retired in 1994. Before writing a "no data" message, check which
+fact is actually missing: the season, the player, or the match. They are
+different sentences, and the wrong one sends the reader to look in the wrong
+place.
+
+**A best match is only safe where a wrong one is visible.** Charts resolved
+names best-match on the reasoning that the plot is titled with the name that
+won — sound, until the wrong name is *why* no plot gets drawn, which is
+exactly when the safeguard disappears. `resolve_chart_player` now narrows
+candidates to those with a row in the table the chart is drawn from
+(`entities.narrow_to_available`) and asks when more than one survives. Note
+the shape of that narrowing: it *eliminates* candidates who cannot be the
+answer, and never chooses between two who can. That is what makes it allowed
+where the prominence tiebreak above `PLAYER_NICKNAMES` was measured and
+rejected.
+
 ## Working on the query path
 
 The pipeline is router → template → deterministic answer, with the agent as
@@ -132,6 +153,24 @@ slower SQL-writing agent; that is by design, not a bug.
   the budget. Guarded by
   `test_every_advertised_tool_can_actually_be_dispatched` and
   `test_every_tool_schema_names_its_required_parameters`.
+- **A slot the schema does not require is a slot the decoder may never
+  consider, and no prompt wording fixes that.** `ROUTER_SCHEMA` already records
+  this for `stat`; `side` proved it again. "Show me Wembanyama's defensive
+  fingerprint chart" appears in `ROUTER_PROMPT` verbatim as a worked example
+  with `{"side":"defense"}` beside it, and still emitted `stat="defensive"`
+  with no `side` at all — 6/6 at temperature 0. `stat` is required, so the
+  adjective is spent there first. The whole fingerprint got drawn where its
+  defensive half was asked for.
+
+  Two ways out, and prefer the second. Making the slot *required* works (that
+  is why `stat` is) but was measured and reverted for `season_ref`, because
+  requiring more slots crowds out others. Reading the value **from the question
+  text** in `route()` costs nothing and cannot move any other slot: that is
+  what `_validate_season` does for the year and `_validate_side` now does for
+  the side of the ball. Hash `ROUTER_PROMPT` and `ROUTER_SCHEMA` before and
+  after to prove the model's input is unchanged — if both hashes match, no
+  other question's routing can have moved, and `check_routing.py` should come
+  back line-for-line identical apart from the case you fixed.
 - **Any edit to `ROUTER_PROMPT` moves slots on unrelated questions.** Adding the
   `fingerprint` intent line reproducibly flipped "What was the Lakers record
   last season?" from `team` `"Lakers"` to `"Los Angeles Lakers"` — with *any*
@@ -320,6 +359,43 @@ everything about it is constrained by things measured elsewhere in this file.
   measuring who played longest.
 - Query connections to DuckDB are **read-only**, as a hard guarantee.
 
+**Those floors are enforced, not just documented.** `association/coverage.py`
+holds them as a table — `COVERAGE`, one entry per queryable table — and
+`templates.check_coverage()` refuses a question that lands under one. Add an
+entry whenever a template reads a new table, and declare the template's tables
+in `TEMPLATE_SOURCES`; a template missing from it is one no floor can refuse.
+Three things about that module are load-bearing:
+
+- **It returns the refusal rather than raising it.** That is the opposite of
+  `check_scope()`, and deliberate: `check_scope` raises so the question falls
+  through to an agent that may do better, and nothing does better here. The
+  agent would query the same empty tables, more slowly, and is then free to
+  fill the silence from its own weights.
+- **A lookup and a ranking have different floors.** `player_season_stats` holds
+  Michael Jordan's real 1990 line, so his own average is answerable from it;
+  ranking that season is not, because the pool is 217 players against a
+  ~350-player league. In 1980 the pool is *seven* — and before this existed,
+  "who led the league in scoring in 1980" answered "Moses Malone, at 25.8.
+  Next: Bill Cartwright (21.7)". Kareem, Bird and Erving are not in `players`
+  at all. `first_ranking_season` is that second floor, and `RANKING_INTENTS`
+  says which templates it applies to.
+- **A missing season and an unrepresentative one need different sentences.**
+  Saying "there is no data for 1980" about a warehouse holding Moses Malone's
+  real 1980 line is the same false-cause answer in the other direction, which
+  is why `Floor.unrepresentative` exists.
+
+Seasons that exist but only partly (2002 play-by-play is ~half a year) are
+answered with a caveat instead, and a *phantom* season — 1993, whose rows
+duplicate 1994 — is declared as such so the checker can verify the duplication
+rather than read a full-looking season as a floor set too high.
+
+`scripts/check_coverage.py` verifies every floor against a built warehouse,
+the same way `check_nicknames.py` does for the nickname table: these are claims
+about the data, and pytest runs offline. Run it after editing `COVERAGE` and
+after any pull that reaches further back than the last one. "Usable" there is
+deliberately not "present" — 82 games where a league plays 1,100 is rows, not
+a season.
+
 ## Verifying your work
 
 The habits that caught real bugs here, in rough order of how often they paid:
@@ -341,6 +417,19 @@ The habits that caught real bugs here, in rough order of how often they paid:
   the CLI; nothing else proves the entry point and `py.typed` survived.
 - Prompt text is load-bearing. If a refactor touches it, hash the prompt
   constants before and after and compare.
+- **A same-size edit inside one second can be served from a stale `.pyc`.**
+  Python validates its bytecode cache on `(mtime_to_the_second, size)`, so
+  rewriting `partial=(2002,)` to `partial=(2005,)` and re-running immediately
+  gets the OLD module. This cost a real debugging detour: a checker was
+  "failing" on a source file that was already correct. When a script rewrites a
+  module and re-runs it — perturbation tests especially — clear `__pycache__`
+  or set `PYTHONDONTWRITEBYTECODE=1`.
+- **A guard is worth nothing until you have watched it fail.** Every check
+  added here was confirmed by perturbing what it claims to protect and seeing
+  it catch that: the coverage floors by moving each one, the router's `side`
+  slot by removing the hook. Two "passing" perturbations in this session were
+  actually a stale `.pyc` and a `SyntaxError` in the harness — both of which
+  look exactly like a green run from the outside.
 - **A DuckDB `SET` is per-connection.** A test asserting one has to observe it
   on the connection the code under test used; a freshly opened connection
   reports the default and the assertion looks like a real failure.

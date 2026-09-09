@@ -19,7 +19,7 @@ from .keepalive import KEEP_ALIVE
 from .models import DEFAULT_ROUTER_MODEL
 from .prompt import AGENT_NUM_CTX, TOOLS, build_system_prompt
 from .router import route
-from .templates import TEMPLATES, TemplateContext, TemplateResult, TemplateUnsupported, check_scope
+from .templates import TEMPLATES, TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, check_scope, coverage_caveat
 from .toolbox import Toolbox
 
 MAX_TOOL_ITERATIONS = 8
@@ -204,7 +204,21 @@ class Agent:
         t0 = time.monotonic()
         try:
             check_scope(routed.intent, routed.slots)
-            result = handler(TemplateContext(con=self.toolbox.con, out_dir=self.toolbox.out_dir), routed.slots)
+            # Returned as the answer rather than raised past this point. A
+            # season under a table's floor has no better source anywhere - the
+            # agent would query the same empty tables, more slowly, and is then
+            # free to fill the silence from its own weights.
+            refused = check_coverage(routed.intent, routed.slots)
+            if refused is not None:
+                history.log(f"  -> (coverage) {refused}")
+                result = TemplateResult(data={"message": refused, "season": routed.slots.get("season")}, answer=refused)
+            else:
+                result = handler(TemplateContext(con=self.toolbox.con, out_dir=self.toolbox.out_dir), routed.slots)
+                # A season that IS covered but only partly says so, rather than
+                # reporting half a year as a whole one.
+                note = coverage_caveat(routed.intent, routed.slots)
+                if note:
+                    result.answer = f"{result.answer} {note}"
         except TemplateUnsupported as exc:
             history.log(f"  -> (template) {exc} - falling through to the agent")
             return None
