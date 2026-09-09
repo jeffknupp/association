@@ -14,7 +14,7 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
-## Unreleased
+## 1.3.0 - 2026-09-08
 - **NetPoints fingerprint plots.** `association query "plot SGA's fingerprint"`
   now renders a static HTML radar of a player's play-type NetPoints, the way
   `shot_chart` renders their shots - a new `fingerprint` router intent and
