@@ -14,7 +14,7 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
-## Unreleased
+## 1.5.0 - 2026-09-08
 - **Releases carry their own wheel and sdist.** The publish workflow now
   attaches the built distributions to the GitHub release, not just to the
   workflow run: workflow artifacts are deleted after 90 days, and with PyPI
