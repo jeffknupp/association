@@ -284,6 +284,40 @@ everything about it is constrained by things measured elsewhere in this file.
   (`FINGERPRINT_PARTITION`): two_pt, three_pt, free_throw, turnover, rebound,
   foul. They sum to the season average almost exactly. The other 15 are
   overlapping slices — summing all 21 is meaningless.
+- **Each table starts in a different year, and the gaps are ESPN's, not ours.**
+  A question is only answerable as far back as its *narrowest* table, and there
+  is no pull that fills these in — verified live against three endpoints (the
+  game summary, `core/.../plays`, and the athlete gamelog), all of which return
+  empty for the years below, so `data check` reporting zeros there is correct.
+
+  | Table | Usable from | What is before it |
+  | --- | --- | --- |
+  | `standings` | 1988 | — league-wide and real all the way back (23 teams in 1988, 27 by 1990) |
+  | `games` (postseason) | 1988 | — full 16-team brackets all the way back |
+  | `games` (regular), `player_box_stats`, `team_box_stats`, `team_season_stats` | **1994** | one team's 82 games per season, and nothing at all for 1989-90 |
+  | `plays`, `shot_chart` | 2003 (2002 is ~half) | nothing |
+  | `team_power_index` | 2017 | nothing |
+  | `win_probability` | 2018 | nothing |
+  | NetPoints (all four tables) | 2019 | the bucket answers 403 |
+
+  Two traps in that table. **`shot_chart` is derived from `plays`** — both come
+  out of the same game summary, so there is no separate shot source to fetch
+  for 2002 and earlier. And **season 1993 is a phantom**: ESPN answers
+  `season=1993` and `season=1994` with the identical 1,185 events (1993-11-06
+  to 1994-06-23), so the warehouse holds the 1993-94 season under both labels.
+  It is the only duplicated pair in the warehouse — every other season's event
+  ids are disjoint — so treat 1994 as the earliest real regular season and
+  1993 as a copy of it, not as evidence of a fetch bug. It is confined to
+  `games` and what is derived from it; `standings` comes from a different
+  endpoint and its 1993 rows are genuinely the 1992-93 season.
+
+  **`player_season_stats` looks like an exception and is not.** It reaches back
+  to 1977, because it is fetched per player over a whole career once that
+  player is discovered — and players are discovered from box scores, which
+  start in 1994. So the deep history is only the handful of careers that lasted
+  into 1993-94: 5 players in 1977, 240 in 1988, 668 in 1994. It is a survivor
+  sample, not league-wide coverage, and a leaderboard over it before ~1994 is
+  measuring who played longest.
 - Query connections to DuckDB are **read-only**, as a hard guarantee.
 
 ## Verifying your work
