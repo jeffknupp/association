@@ -108,6 +108,12 @@ had no published version to be compatible with.
   intent, the template's structured `data`, the files written, and the timing.
   Callers print `answer.text`.
 
+  The rest of the reshaped public surface, for anyone using this as a library:
+  `Agent(..., trace=...)` takes the callback its live output goes to;
+  `Toolbox.take_artifacts()` drains the files its render tools wrote, since a
+  tool's own return value is prose the model reads; and `Artifact`,
+  `RenderResult`, `Timing` and `Answer` all live in `association.query.answer`.
+
   The fast path already computed all of it and threw most of it away.
   `TemplateResult.data` exists so a caller can render an answer itself, and
   `_try_fast_path` returned only `result.answer`, so nothing ever could - which

@@ -23,7 +23,10 @@ from ..query.answer import Answer
 
 def discard(line: str) -> None:
     """A trace sink that drops the line. The default for a server, which has no
-    terminal worth writing to - every real request supplies its own."""
+    terminal worth writing to - every real request supplies its own.
+
+    .. versionadded:: 2.0.0
+    """
 
 
 class Answerer(Protocol):

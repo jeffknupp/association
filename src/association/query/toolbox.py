@@ -111,6 +111,11 @@ class Toolbox:
 
     The DuckDB connection is opened read-only, which is a hard guarantee rather
     than a convention: no query the model writes can modify the warehouse.
+
+    .. versionchanged:: 2.0.0
+       Records the files its render tools write, so a caller can reach them -
+       see :meth:`take_artifacts`. A tool's own return value is prose, which is
+       all the model can read.
     """
 
     def __init__(self, db_path: str, out_dir: Path):

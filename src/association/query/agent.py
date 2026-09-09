@@ -53,7 +53,13 @@ def _is_tool_error(result: str) -> bool:
 
 class Agent:
     """Holds conversation state across turns so interactive mode has real
-    multi-turn memory (e.g. "what about for 2025?" referring to the prior question)."""
+    multi-turn memory (e.g. "what about for 2025?" referring to the prior question).
+
+    .. versionchanged:: 2.0.0
+       Takes a ``trace`` callback for its live output, defaulting to stderr, so
+       a caller that is not a terminal can collect it. :meth:`ask` returns an
+       :class:`association.query.answer.Answer` rather than the answer text.
+    """
 
     def __init__(
         self,
