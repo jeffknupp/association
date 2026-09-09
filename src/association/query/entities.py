@@ -454,6 +454,64 @@ def misread_players(names: list[str]) -> str:
     )
 
 
+def undo_name_completion(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any]) -> list[tuple[str, str]]:
+    """Give back the ambiguity the router resolved on its own. Mutates ``slots``.
+
+    "Who is better, tatum or brown" routed to ``['Jayson Tatum', 'Jaylen
+    Brown']``. Tatum is one player and that completion is free; "brown" is ten,
+    and the router choosing Jaylen is exactly the prominence tiebreak measured
+    and rejected above :data:`PLAYER_NICKNAMES` - arriving through the model's
+    guess instead of through code, where nothing downstream can see it. A bare
+    surname is the canonical thing this project asks about, and it stopped
+    asking as soon as the router started completing it.
+
+    So a name the question carries only PART of is cut back to that part, and
+    normal resolution decides: ``find_players`` applies the nickname table
+    first, so "luka" still answers Luka Doncic, and :func:`resolve_player`
+    returns :class:`Ambiguous` for "brown", which is the question being asked.
+
+    Only where the part is ambiguous, which is what keeps this from undoing the
+    router's useful work. Completing "jokic", "embiid" or "wembanyama" changes
+    no answer, and a name the question spells in full is not a part at all.
+    Measured over the ``check_routing.py`` corpus, no slot moves.
+
+    Returns:
+        The ``(was, now)`` pairs cut back, for the trace.
+
+    .. versionadded:: 2.1.0
+    """
+    asked = {word.casefold() for word in _words(question)}
+    nicknamed = nicknames_in(question)
+
+    def part_only(name: str) -> str | None:
+        """The part of ``name`` the question carries, when that part is all it
+        carries and it reaches more than one player."""
+        words = _words(name)
+        matched = [word for word in words if word.casefold() in asked]
+        # A nickname the question actually used is a resolution the curated
+        # table made, not one the router guessed: "steph curry" is Stephen.
+        if not matched or len(matched) == len(words) or name in nicknamed:
+            return None
+        fragment = " ".join(matched)
+        return fragment if len(find_players(con, fragment)) > 1 else None
+
+    changed: list[tuple[str, str]] = []
+    listed = slots.get("players")
+    if isinstance(listed, list):
+        for index, value in enumerate(listed):
+            fragment = part_only(value) if isinstance(value, str) else None
+            if fragment is not None:
+                listed[index] = fragment
+                changed.append((str(value), fragment))
+        return changed
+    value = slots.get("player")
+    fragment = part_only(value) if isinstance(value, str) else None
+    if fragment is not None:
+        slots["player"] = fragment
+        changed.append((value if isinstance(value, str) else "", fragment))
+    return changed
+
+
 def _shares_word(one: str, other: str) -> bool:
     return bool({w.casefold() for w in _words(one) if len(w) >= 3} & {w.casefold() for w in _words(other) if len(w) >= 3})
 

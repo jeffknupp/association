@@ -15,6 +15,19 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A bare surname asks again, even when the router completed it.** "Who is
+  better, tatum or brown" routed to `['Jayson Tatum', 'Jaylen Brown']` and was
+  answered without a question. Tatum is one player and that completion is free;
+  "brown" is ten, and the router picking Jaylen is exactly the prominence
+  tiebreak measured and rejected above `PLAYER_NICKNAMES` - arriving through
+  the model's guess instead of through code, where nothing downstream could
+  see it. `entities.undo_name_completion` cuts a name back to the part the
+  question actually carries whenever that part is ambiguous, and lets normal
+  resolution decide: `find_players` applies the nickname table first, so
+  "luka" still answers Luka Doncic and "steph curry" still answers Stephen,
+  while "brown" and "edwards" ask. Measured over the `check_routing.py`
+  corpus, no slot moves.
+
 - **A name the question does not support is refused, not passed to the agent.**
   Falling through was the first fix and it was the wrong one: given
   "compare fingerprints for embiid vs jokic in 2026", the agent spent 55

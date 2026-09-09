@@ -134,10 +134,19 @@ about what happens next, and the third is the one that was got wrong first:
   naming Jeff Withey; and allowing a one-letter span makes the possessive left
   behind by "Jokic's" name John S. Williams, who is in nine of the routing
   corpus's questions.
-- **Do not trim a name back to the part the question holds.** Tempting, and
-  wrong: "how many points did Luka average" would trim `Luka Doncic` to `Luka`,
-  which is ambiguous against Luka Garza. Expanding half a name is the router
-  doing its job.
+- **Trim a name back to the part the question holds only where that part is
+  ambiguous.** Expanding half a name is usually the router doing its job:
+  "luka", "jokic" and "embiid" each reach exactly one player, so undoing the
+  completion would only cost the question its answer. But "who is better,
+  tatum or brown" routed to `Jaylen Brown`, and "brown" is ten players - that
+  completion is the prominence tiebreak measured and rejected above
+  `PLAYER_NICKNAMES`, arriving through the model's guess where nothing
+  downstream can see it. A bare surname is the canonical thing this project
+  asks about, and it stopped asking the moment the router began completing it.
+  `undo_name_completion` cuts those back and lets normal resolution decide;
+  `find_players` applies the nickname table first, so a shorthand the curated
+  list holds ("luka", "steph curry") still resolves rather than asking.
+  Measured over the routing corpus, no slot moves.
 - **When it cannot be repaired, say so - do not hand it to the agent.** This
   one shipped wrong first, on the reasoning that the agent at least reads the
   question. Measured, that is far worse: "compare fingerprints for embiid vs

@@ -20,6 +20,7 @@ from association.query.entities import (
     resolve_team,
     restore_dropped_players,
     suggest_players,
+    undo_name_completion,
 )
 
 
@@ -414,3 +415,36 @@ def test_a_comparison_that_does_not_say_vs_still_restores(con: duckdb.DuckDBPyCo
 def test_a_refusal_with_no_names_is_still_a_sentence() -> None:
     """Public and typed, so it may not depend on its caller never passing []."""
     assert misread_players([]).endswith("it was not answered.")
+
+
+# ---------------- ambiguity the router resolved on its own ----------------
+
+
+def test_a_bare_surname_asks_even_when_the_router_completed_it(con: duckdb.DuckDBPyConnection) -> None:
+    """The canonical case. "who is better, tatum or brown" routed to Jaylen
+    Brown, and a bare surname is exactly what this project asks about - it
+    stopped asking as soon as the router started completing it."""
+    slots = {"players": ["Luka Doncic", "Jaylen Brown"]}
+    assert undo_name_completion(con, "who is better, doncic or brown", slots) == [("Jaylen Brown", "Brown")]
+    assert isinstance(resolve_player(con, slots["players"][1]), Ambiguous)
+
+
+def test_a_surname_only_one_player_has_is_left_completed(con: duckdb.DuckDBPyConnection) -> None:
+    """Completing "embiid" changes no answer, so undoing it would only cost a
+    question its answer."""
+    slots = {"player": "Joel Embiid"}
+    assert undo_name_completion(con, "compare sga and embiid", slots) == []
+    assert slots == {"player": "Joel Embiid"}
+
+
+def test_a_name_the_question_spells_in_full_is_not_a_part_of_one(con: duckdb.DuckDBPyConnection) -> None:
+    slots = {"player": "Jaylen Brown"}
+    assert undo_name_completion(con, "plot jaylen brown's shot chart", slots) == []
+
+
+def test_a_nickname_the_table_holds_is_a_resolution_not_a_guess(con: duckdb.DuckDBPyConnection) -> None:
+    """PLAYER_NICKNAMES is an audited list; the router's completion is not.
+    Cutting "Stephen Curry" back to "Curry" for a question that said "steph"
+    would ask about something the question already answered."""
+    slots = {"player": "Stephen Curry"}
+    assert undo_name_completion(con, "what was steph curry's 3pt percentage", slots) == []

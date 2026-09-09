@@ -355,6 +355,24 @@ def test_a_fingerprint_that_lost_a_player_to_a_typo_says_so(monkeypatch: pytest.
     assert answer.startswith("Rendered.") and "only one of them matches" in answer
 
 
+def test_the_fast_path_asks_about_a_surname_the_router_completed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """End to end, because the value of this is that the template sees the
+    question's own word and asks - not that a helper returned a string."""
+    from association.query.router import Route
+    from association.query.templates import TemplateResult
+
+    seen: list[str] = []
+
+    def record(ctx: Any, slots: dict[str, Any]) -> TemplateResult:
+        seen.append(slots["player"])
+        return TemplateResult(data={}, answer="answered")
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="player_stat", slots={"player": "Jaylen Brown"}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": record})
+    _agent_with_players(tmp_path, "Jaylen Brown", "Bobby Brown", "Kwame Brown").ask("how many points does brown average?")
+    assert seen == ["Brown"]
+
+
 def test_fast_path_is_skipped_entirely_when_disabled(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     called = False
 

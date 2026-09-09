@@ -13,7 +13,7 @@ from typing import Any
 import ollama
 
 from .answer import Answer, AnsweredBy, Artifact, Timing
-from .entities import compared_but_unmatched, misread_players, override_invented_players, override_nicknames, restore_dropped_players
+from .entities import compared_but_unmatched, misread_players, override_invented_players, override_nicknames, restore_dropped_players, undo_name_completion
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .keepalive import KEEP_ALIVE
 from .models import DEFAULT_ROUTER_MODEL
@@ -231,6 +231,11 @@ class Agent:
             misread = misread_players(invented)
             history.log(f"  -> (player) {misread}")
             return routed.intent, TemplateResult(data={"message": misread, "misread": invented}, answer=misread)
+        # Completing a bare surname is the prominence tiebreak this project
+        # measured and rejected, arriving through the model instead of through
+        # code. "brown" is ten players and has to ask, as it always did.
+        for was, now in undo_name_completion(self.toolbox.con, question, routed.slots):
+            history.log(f"  -> (player) {was!r} -> {now!r} (the question names only part of it, and that part is ambiguous)")
         t0 = time.monotonic()
         try:
             check_scope(routed.intent, routed.slots)
