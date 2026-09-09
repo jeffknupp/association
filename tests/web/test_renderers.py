@@ -73,7 +73,10 @@ def ctx(tmp_path: Path) -> TemplateContext:
     con.execute("INSERT INTO players VALUES ('1', 'Ada Star'), ('2', 'Bo Wall')")
     con.execute("CREATE TABLE teams (team_id VARCHAR, display_name VARCHAR, abbreviation VARCHAR, location VARCHAR, name VARCHAR)")
     con.execute("INSERT INTO teams VALUES ('10', 'Houston Rockets', 'HOU', 'Houston', 'Rockets'), ('11', 'Dallas Mavericks', 'DAL', 'Dallas', 'Mavericks')")
-    con.execute("CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR, home_team_id VARCHAR, away_team_id VARCHAR, winner_team_id VARCHAR, home_score INTEGER, away_score INTEGER)")
+    con.execute(
+        "CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR, home_team_id VARCHAR, "
+        "away_team_id VARCHAR, winner_team_id VARCHAR, home_score INTEGER, away_score INTEGER)"
+    )
     con.execute("INSERT INTO games VALUES ('e1', 2026, 2, '2026-01-01', '10', '11', '10', 110, 100), ('e2', 2026, 2, '2026-01-03', '11', '10', '10', 99, 120)")
     con.execute(
         "CREATE TABLE player_box_stats (event_id VARCHAR, athlete_id VARCHAR, team_id VARCHAR, opponent_team_id VARCHAR, season INTEGER, season_type INTEGER, "
@@ -90,10 +93,7 @@ def ctx(tmp_path: Path) -> TemplateContext:
         "CREATE TABLE player_season_stats (athlete_id VARCHAR, team_id VARCHAR, season INTEGER, season_type INTEGER, gamesPlayed INTEGER, "
         "avgPoints DOUBLE, avgRebounds DOUBLE, avgAssists DOUBLE, points INTEGER, rebounds INTEGER, assists INTEGER)"
     )
-    con.execute(
-        "INSERT INTO player_season_stats VALUES "
-        "('1','10',2026,2,2,32.5,9.5,5.5,65,19,11),('1','10',2025,2,2,28.0,8.0,4.0,56,16,8),('2','11',2026,2,1,18.0,4.0,9.0,18,4,9)"
-    )
+    con.execute("INSERT INTO player_season_stats VALUES ('1','10',2026,2,2,32.5,9.5,5.5,65,19,11),('1','10',2025,2,2,28.0,8.0,4.0,56,16,8),('2','11',2026,2,1,18.0,4.0,9.0,18,4,9)")
     con.execute("CREATE OR REPLACE VIEW player_season_stats_deduped AS SELECT * FROM player_season_stats")
     con.execute("CREATE TABLE standings (team_id VARCHAR, season INTEGER, season_type INTEGER, wins DOUBLE, losses DOUBLE, winPercent DOUBLE, playoffSeed DOUBLE, streak DOUBLE)")
     con.execute("INSERT INTO standings VALUES ('10', 2026, 2, 50, 32, 0.6098, 3, 1)")
