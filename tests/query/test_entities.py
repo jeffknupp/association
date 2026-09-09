@@ -10,6 +10,7 @@ from association.query.entities import (
     NotFound,
     compared_but_unmatched,
     find_players,
+    misread_players,
     nicknames_in,
     no_match,
     override_invented_players,
@@ -39,7 +40,10 @@ def con() -> duckdb.DuckDBPyConnection:
         # 16-17 are the two the measurement caught: "game" lands inside
         # Blossomgame and "with" starts Withey, so an ordinary question reads
         # as naming both unless a span has to equal a whole word.
-        "('16','Jaron Blossomgame'),('17','Jeff Withey')"
+        "('16','Jaron Blossomgame'),('17','Jeff Withey'),"
+        # 18 is the false positive that gates restore_dropped_players: "best"
+        # really is somebody's whole surname.
+        "('18','Travis Best')"
     )
     c.execute("INSERT INTO teams VALUES ('13','LAL','Los Angeles Lakers'),('12','LAC','LA Clippers'),('9','GS','Golden State Warriors')")
     return c
@@ -390,3 +394,23 @@ def test_a_question_comparing_nobody_is_not_flagged(con: duckdb.DuckDBPyConnecti
     """One name and no "vs" is a question about one player, which is not a
     half-answer to anything."""
     assert not compared_but_unmatched("plot embiid's fingerprint", ["Joel Embiid"])
+
+
+def test_a_question_that_compares_nothing_does_not_gain_a_player(con: duckdb.DuckDBPyConnection) -> None:
+    """players_named_in is strict but not infallible - "best" is Travis Best
+    and "boston" is Brandon Boston Jr. Without a comparison in the question,
+    "plot jokic's fingerprint from his best season" drew Travis Best a
+    polygon."""
+    slots = {"player": "Nikola Jokic"}
+    assert restore_dropped_players(con, "plot embiid's fingerprint from his best season", slots) is None
+    assert slots == {"player": "Nikola Jokic"}
+
+
+def test_a_comparison_that_does_not_say_vs_still_restores(con: duckdb.DuckDBPyConnection) -> None:
+    slots = {"player": "Jusuf Nurkic"}
+    assert restore_dropped_players(con, "compare fingerprints for embiid and klay thompson", slots) is not None
+
+
+def test_a_refusal_with_no_names_is_still_a_sentence() -> None:
+    """Public and typed, so it may not depend on its caller never passing []."""
+    assert misread_players([]).endswith("it was not answered.")

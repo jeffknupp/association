@@ -42,7 +42,10 @@ had no published version to be compatible with.
   `entities.restore_dropped_players` puts back the players the router dropped,
   for the fingerprint intent only: two polygons on shared axes is what a
   comparison means there, while widening a `player_stat` question the same way
-  would answer a different one.
+  would answer a different one. Gated on the question saying it compares
+  something, because `players_named_in` is strict but not infallible - "best"
+  is Travis Best and "boston" is Brandon Boston Jr., so "plot jokic's
+  fingerprint from his best season" names two players by its rules.
 
 - **A comparison that named no stat shows the whole line again.** `stat` is the
   one required slot in `ROUTER_SCHEMA`, so the model fills it on every question
@@ -68,7 +71,9 @@ had no published version to be compatible with.
   near spelling of it, a nickname, or the initials ("KAT", "SGA") - and a name
   with none of them is not answered about. Where the question names somebody
   nothing else accounts for, that player takes its place; where it does not,
-  the question falls through to the agent, which at least reads it. Measured
+  the question is refused rather than answered about the wrong player (this
+  first fell through to the agent instead - see the entry above for why that
+  was worse). Measured
   over the whole `check_routing.py` corpus, no correctly-routed player slot
   moves, and the check costs 0.08ms a question.
 

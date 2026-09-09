@@ -30,7 +30,7 @@ import time
 
 import duckdb
 
-from association.query.entities import override_invented_players, override_nicknames
+from association.query.entities import override_invented_players, override_nicknames, restore_dropped_players
 from association.query.models import DEFAULT_ROUTER_MODEL
 from association.query.router import route
 from association.query.templates import TEMPLATES
@@ -182,6 +182,11 @@ CASES: list[tuple[str, str, dict]] = [
     # entities.override_invented_players, applied above - route() alone still
     # returns Nurkic, which is why the slot is what this case asserts.
     ("compare sga and embiid", "player_compare", {"players": ["Shai Gilgeous-Alexander", "Joel Embiid"]}),
+    # Both halves at once: the router put an invented name in a SINGLE player
+    # slot for a question naming two, so this was answered with one polygon
+    # until entities.restore_dropped_players, applied above. route() alone
+    # still returns player='Ben Simmons'.
+    ("compare fingerprints for embiid vs jokic in 2026", "fingerprint", {"players": ["Joel Embiid", "Nikola Jokic"], "season": 2026}),
 ]
 
 
@@ -205,6 +210,8 @@ def main() -> int:
         # case about a nickname would otherwise check the wrong thing.
         if got is not None:
             override_nicknames(question, got.slots)
+            if got.intent == "fingerprint":
+                restore_dropped_players(con, question, got.slots)
             override_invented_players(con, question, got.slots)
         if got is None:
             print(f"FAIL  {elapsed:5.2f}s  {question}\n        router returned nothing", flush=True)

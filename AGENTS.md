@@ -123,8 +123,8 @@ name is deliberately generous, because the router's expansions are usually the
 useful kind: the word itself, a near spelling of it (the router silently
 corrects typos), a nickname, or the initials ("KAT", "SGA"). Any ONE word of
 the name is enough, since half a name is how a question normally carries one -
-what this catches is a name with no half in the question at all. Two rules
-about what happens next, and both matter:
+what this catches is a name with no half in the question at all. Three rules
+about what happens next, and the third is the one that was got wrong first:
 
 - **Replace only from what the question itself names, and only when the count
   is exact** - the same discipline `override_nicknames` uses. `players_named_in`
@@ -138,19 +138,18 @@ about what happens next, and both matter:
   wrong: "how many points did Luka average" would trim `Luka Doncic` to `Luka`,
   which is ambiguous against Luka Garza. Expanding half a name is the router
   doing its job.
-
-**Do not hand a bad name to the agent - say so instead.** The first version of
-the check above fell through when it could not repair a name, on the reasoning
-that the agent at least reads the question. Measured, that is much worse:
-"compare fingerprints for embiid vs jokic in 2026" fell through and the agent
-spent 55 seconds writing a confident fingerprint for **"Ronaldo Lopes"**, a
-player who does not exist, with play-type percentages attached. This is the
-same lesson `check_coverage` already carries - an agent with nothing to find
-fills the silence from its own weights - and it is worth stating twice because
-falling through *feels* like the humble option. Refuse only where the template
-would actually be about that player (`PLAYER_INTENTS`); a stray name on a
-`head_to_head` question changes no answer, and refusing over it would break a
-question that works.
+- **When it cannot be repaired, say so - do not hand it to the agent.** This
+  one shipped wrong first, on the reasoning that the agent at least reads the
+  question. Measured, that is far worse: "compare fingerprints for embiid vs
+  jokic in 2026" fell through and the agent spent 55 seconds writing a
+  confident fingerprint for **"Ronaldo Lopes"**, a player who does not exist,
+  with play-type percentages attached. It is the lesson `check_coverage`
+  already carries - an agent with nothing to find fills the silence from its
+  own weights - and it needs saying twice, because falling through *feels* like
+  the humble option. Refuse only where the template would actually be about
+  that player (`PLAYER_INTENTS`, checked against the templates' own source): a
+  stray name on a `head_to_head` question changes no answer, and refusing over
+  it would break a question that works.
 
 **The router also drops names, not only invents them.** "Compare fingerprints
 for embiid vs jokic" arrived as a single `player` slot, so the answer was one
@@ -159,14 +158,23 @@ so. `restore_dropped_players` puts them back, and only for `fingerprint`, where
 two polygons on shared axes IS the comparison. The same move on `player_stat`
 would turn a question about one player into a question about two.
 
-  What it cannot do is repair a name nobody typed correctly. "embiid vs jolic"
-  loses Jokic, and **fuzzy-matching the question's leftover words to find him
-  was measured and rejected**: it produces a spurious player in 29 of 51 corpus
-  questions ("season" is one edit from Tari Eason, "most" from Quinten Post,
-  "what" from Dejuan Wheat) and does not even find Jokic. So the answer says a
-  player is missing instead - `compared_but_unmatched`. A "vs" in the question
-  is the only structural evidence that two players were meant, and stating the
-  gap is the whole difference between a narrower answer and a wrong one.
+Restoring is gated on the question saying it compares something, because
+`players_named_in` is strict but not infallible: "best" is Travis Best and
+"boston" is Brandon Boston Jr., so "plot jokic's fingerprint from his best
+season" names two players by its rules and drew Travis Best a polygon until
+that gate existed. The gate costs the questions that compare without saying so
+("plot jokic and embiid fingerprints"), which lose the second name exactly as
+they always did.
+
+What none of this can do is repair a name nobody typed correctly. "embiid vs
+jolic" loses Jokic, and **fuzzy-matching the question's leftover words to find
+him was measured and rejected**: it produces a spurious player in 29 of 51
+corpus questions ("season" is one edit from Tari Eason, "most" from Quinten
+Post, "what" from Dejuan Wheat) and does not even find Jokic. So the answer
+says a player is missing instead - `compared_but_unmatched`, which takes "vs"
+and not "compare", since "compare Jokic's fingerprint to last season" compares
+seasons. Stating the gap is the whole difference between a narrower answer and
+a wrong one.
 
 **Why "embiid" specifically.** Worth recording as a shape rather than a name.
 Measured against qwen2.5:3b at temperature 0: lowercase `embiid` in a
@@ -176,10 +184,10 @@ Nurkic) - deterministically, not as noise. `Embiid`, `Joel Embiid` and
 "how many points does embiid average". So it is not that the model lacks the
 name: it is a rare-token surname, uncapitalized, in a frame whose training data
 is dominated by one famous pairing. Every other surname tried in the same slot
-(jokic, luka, wemby, giannis, tatum, curry) is correct. No prompt wording
-fixes this, and the general lesson is the one above: **any** router-supplied
-name may be fiction, so check it against the question rather than collecting
-special cases.
+(jokic, luka, wemby, giannis, tatum, curry) is correct. Which player it
+substitutes moves between sessions - Jusuf Nurkic one day, Ben Simmons the
+next - so there is nothing here to special-case, only a reason to check every
+name against the question.
 
 **Before saying nothing matched, check whether something nearly did.** The
 other half of the same bug: "compare sga and embid" routed to `'Jemel Embiid'`,

@@ -365,6 +365,13 @@ def restore_dropped_players(con: duckdb.DuckDBPyConnection, question: str, slots
     ``player`` slot, and "generate fingerprints for embiid vs jolic in 2026"
     rendered Joel Embiid alone with the second name simply gone.
 
+    Gated on the question saying it compares something at all, which is what
+    keeps players_named_in's few false positives out of a radar: "plot jokic's
+    fingerprint from his best season" names Travis Best by its rules, and
+    without the gate would have drawn him a polygon. The cost is a question
+    that compares without saying so - "plot jokic and embiid fingerprints" -
+    still losing the second name, which is what it did before this existed.
+
     Only for the fingerprint intent, and only in this direction. Two polygons
     on shared axes IS the comparison there, whereas turning a ``player_stat``
     question into a comparison because the question mentioned somebody else
@@ -376,6 +383,8 @@ def restore_dropped_players(con: duckdb.DuckDBPyConnection, question: str, slots
 
     .. versionadded:: 2.1.0
     """
+    if not _COMPARISON.search(question):
+        return None
     named = players_named_in(con, question)
     listed = slots.get("players")
     raw = listed if isinstance(listed, list) else [slots.get("player")]
@@ -387,9 +396,17 @@ def restore_dropped_players(con: duckdb.DuckDBPyConnection, question: str, slots
     return " and ".join(held) or "nobody", " and ".join(named)
 
 
-# "X vs Y", the one structural signal in a question that two players were
-# meant. Matched whole so "vs" and "versus" count and a surname containing
-# them does not.
+# The question saying it compares things at all. Restoring a dropped player
+# needs this, because players_named_in is strict but not infallible: "best" is
+# Travis Best and "boston" is Brandon Boston Jr., so "plot jokic's fingerprint
+# from his best season" names two players by its rules and would otherwise
+# have drawn Travis Best a polygon.
+_COMPARISON = re.compile(r"\b(?:vs\.?|versus|compare[ds]?|comparing|comparison)\b", re.IGNORECASE)
+
+# "X vs Y", the one structural signal that two SUBJECTS were meant. Tighter
+# than _COMPARISON on purpose: "compare Jokic's fingerprint to last season"
+# compares seasons, and a note claiming a player is missing there would be
+# noise. Matched whole so a surname containing "vs" does not count.
 _VERSUS = re.compile(r"\b(?:vs\.?|versus)\b", re.IGNORECASE)
 
 
@@ -428,6 +445,8 @@ def misread_players(names: list[str]) -> str:
 
     .. versionadded:: 2.1.0
     """
+    if not names:
+        return "This question could not be matched to a player, so it was not answered."
     joined = (", ".join(names[:-1]) + " and " if len(names) > 1 else "") + names[-1]
     return (
         f"This was read as a question about {joined}, who the question does not mention - so it was not answered, "
