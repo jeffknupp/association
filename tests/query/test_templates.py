@@ -1392,6 +1392,17 @@ def test_fingerprint_refuses_a_single_game_rather_than_drawing_the_season(fp_ctx
         assert not list(fp_ctx.out_dir.glob("*.html"))
 
 
+def test_the_single_game_refusal_names_what_can_be_answered_instead(fp_ctx: TemplateContext) -> None:
+    """A refusal that only says no sends the reader off to rephrase a question
+    that will never work. The per-game NetPoints TOTAL is on record - it is
+    only the play-type split that is not - so the sentence says which of the
+    two is missing and what to ask for."""
+    answer = fingerprint(fp_ctx, {"player": "Shai", "order": "recent"}).answer
+
+    assert "not among the data that has been pulled" in answer
+    assert "NetPoints in that game" in answer
+
+
 def test_fingerprint_declares_the_game_scoping_it_handles(fp_ctx: TemplateContext) -> None:
     # It handles them by refusing; check_scope must therefore NOT strip the
     # request out from under it and fall through to an agent with no better source.

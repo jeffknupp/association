@@ -187,6 +187,17 @@ CASES: list[tuple[str, str, dict]] = [
     # until entities.restore_dropped_players, applied above. route() alone
     # still returns player='Ben Simmons'.
     ("compare fingerprints for embiid vs jokic in 2026", "fingerprint", {"players": ["Joel Embiid", "Nikola Jokic"], "season": 2026}),
+    # The router fills `order` only where ROUTER_PROMPT tells it to - game_log
+    # and shot_chart - so these three came back with no order at all (3/3 at
+    # temperature 0) and the template drew the whole season under a question
+    # about one game. Read out of the question text instead; the fingerprint
+    # template honours the slot by refusing.
+    ("show me a fingerprint for steph curry's last game in 2026", "fingerprint", {"player": "Stephen Curry", "season": 2026, "order": "recent"}),
+    ("fingerprint for curry's first game of 2026", "fingerprint", {"player": "Stephen Curry", "season": 2026, "order": "first"}),
+    ("plot jokic's fingerprint for his last game", "fingerprint", {"player": "Nikola Jokic", "order": "recent"}),
+    # The other direction, and the reason the patterns allow no filler words:
+    # a season question must not grow an order and get narrowed to one game.
+    ("show me a fingerprint for steph curry in 2026", "fingerprint", {"player": "Stephen Curry", "season": 2026}),
 ]
 
 

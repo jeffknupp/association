@@ -15,6 +15,29 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A fingerprint asked for one game says so, instead of drawing the season.**
+  "Show me a fingerprint for steph curry's last game in 2026" rendered his
+  whole 2026 radar, titled with the season, with nothing saying the question
+  had been widened. The template already refused this correctly - the slot
+  never reached it. `ROUTER_PROMPT` instructs `order` for `game_log` and
+  `shot_chart` only, so a fingerprint question carries no instruction to fill
+  it: measured at temperature 0, "last game" and "first game" phrasings came
+  back with no `order` 3/3, while "most recent game" - the prompt's own wording
+  - came back with it 3/3. The third slot to need the fix `_validate_season`
+  and `_validate_side` already use: `_validate_order` reads it out of the
+  question, for the intents whose templates honour it (`ORDER_INTENTS`, guarded
+  against `HONORED_SCOPING`). `ROUTER_PROMPT` and `ROUTER_SCHEMA` hash
+  identically before and after, so no other question's routing moves.
+
+  The refusal now also names what IS answerable, and names the right cause. A
+  single game's NetPoints total is on record and its play-type split is not -
+  and that split is missing from the *warehouse*, not from the world: ESPN
+  Analytics publishes a second per-date file,
+  `NBA/netpts/<season>/<date>_player.json`, carrying every player's NetPoints
+  across 31 action types per game, which the pull does not read. So the
+  sentence says the data has not been pulled rather than that it does not
+  exist.
+
 - **The agent's SQL connection can no longer read the disk.** `read_only=True`
   protects the database and says nothing about the machine under it: confirmed
   live against the built warehouse, `SELECT * FROM read_csv('/etc/passwd')`

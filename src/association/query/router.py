@@ -355,6 +355,62 @@ def _validate_side(slots: dict[str, Any], question: str) -> str | None:
     return side if isinstance(side, str) and side in SIDE_VALUES else None
 
 
+# How a question names one end of a season's games. Deliberately tight - the
+# ordinal word has to sit directly on "game(s)", optionally across a count
+# ("last 5 games") - because a miss costs nothing and a false positive would
+# narrow a question that asked for a whole season. "Last season's best game"
+# is the shape that rules out allowing filler words in between.
+ORDER_WORDS: dict[str, re.Pattern[str]] = {
+    "recent": re.compile(r"\b(?:last|latest|previous|most\s+recent)\s+(?:\d+\s+)?games?\b", re.IGNORECASE),
+    "first": re.compile(r"\b(?:first|opening|earliest)\s+(?:\d+\s+)?games?\b", re.IGNORECASE),
+}
+
+ORDER_INTENTS: frozenset[str] = frozenset({"fingerprint", "game_log", "player_netpoints", "shot_chart", "shot_distance"})
+"""Intents whose template honours ``order``, so filling it from the question can
+only make the answer match what was asked.
+
+The same list as the ``order`` entries in
+:data:`association.query.templates.HONORED_SCOPING`, kept separately because a
+router that imported the templates would invert the dependency, and guarded by
+``test_the_order_intents_are_the_ones_that_honour_order``. Adding ``order``
+anywhere else would be worse than leaving it off: ``check_scope`` refuses a
+scoping slot the template cannot honour, so a question that answers today would
+start falling through to the agent instead.
+
+.. versionadded:: 2.1.0
+"""
+
+
+def _validate_order(slots: dict[str, Any], question: str) -> str | None:
+    """Which end of the season was asked for, the question first.
+
+    The third slot to need this, after ``season`` and ``side``, and dropped for
+    the same structural reason rather than a wording one: ROUTER_PROMPT
+    instructs ``order`` for ``game_log`` and ``shot_chart`` only, so a
+    fingerprint question carries no instruction to fill it. Measured at
+    temperature 0, "show me a fingerprint for steph curry's last game in 2026"
+    came back with no ``order`` 3/3, and so did "his first game of 2026" and
+    "for his last game" - while "his MOST RECENT game", the prompt's own
+    wording, came back with it 3/3. The prompt is where the model learned the
+    phrase, not the concept.
+
+    That mattered because ``fingerprint`` honours ``order`` by refusing: with
+    the slot missing there was nothing to refuse, so a question about one game
+    was answered with the whole season's radar, titled with the season and
+    saying nothing about the difference.
+
+    Only ever fills a slot the model left empty - never overwrites one, and
+    never removes one. The patterns here are tighter than the model's reading
+    of the question ("his last home game" is a phrasing they miss), so
+    outranking it would trade one silent narrowing for another.
+    """
+    order = slots.get("order")
+    if isinstance(order, str) and order in ORDER_WORDS:
+        return order
+    named = [name for name, pattern in ORDER_WORDS.items() if pattern.search(question)]
+    return named[0] if len(named) == 1 else None
+
+
 # The words a question uses when it is actually asking about one stat, as
 # opposed to asking who is better. Loose on purpose, and safe because of where
 # it is used: see :func:`_named_a_stat`.
@@ -444,4 +500,15 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
             slots.pop("side", None)
         else:
             slots["side"] = side
+    # Only for the templates that honour it - see ORDER_INTENTS for why adding
+    # it anywhere else would cost an answer rather than sharpen one.
+    if raw["intent"] in ORDER_INTENTS:
+        order = _validate_order(slots, question)
+        if order is None:
+            # Only a value the schema cannot emit ever gets dropped here; a
+            # valid one the patterns did not recognize is kept - see
+            # _validate_order.
+            slots.pop("order", None)
+        else:
+            slots["order"] = order
     return Route(intent=raw["intent"], slots=slots)

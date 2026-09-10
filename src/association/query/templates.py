@@ -1163,11 +1163,21 @@ def fingerprint(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         names = [single]
     names = names[:MAX_FINGERPRINT_PLAYERS]
 
-    # Season-level only, and said so rather than quietly drawing the season
-    # under a question about one game - net_points_player_game has an
-    # offense/defense/total split and no play-type columns at all.
+    # Nothing in the warehouse to draw for one game, and said so rather than
+    # quietly drawing the season under a question that asked about a game.
+    #
+    # A gap in what is FETCHED, not in what exists: ESPN Analytics publishes a
+    # second per-date file, `NBA/netpts/<season>/<date>_player.json`, holding
+    # every player's NetPoints split across 31 action types for each game, and
+    # the pull only reads the first one. Until that is fetched and loaded,
+    # net_points_player_game carries an offense/defense/total split and no
+    # play-type columns at all, so this is the honest answer rather than a
+    # permanent one.
     if slots.get("order") in ("recent", "first") or slots.get("date"):
-        message = "NetPoints fingerprints are season-level only - the warehouse has no play-type breakdown for a single game, so there is nothing to plot for one."
+        message = (
+            "NetPoints fingerprints are season-level only in this warehouse - the per-game play-type breakdown is not among the data that has been pulled, so there is nothing to draw for one game. "
+            "A single game's NetPoints total is on record: ask for his NetPoints in that game instead."
+        )
         return TemplateResult(data={"message": message}, answer=message)
 
     # Settled before any name is resolved: the season is what narrows an

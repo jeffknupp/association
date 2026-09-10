@@ -9,7 +9,7 @@ import ollama
 import pytest
 from ollama import ChatResponse, Message
 
-from association.query.router import ROUTER_PROMPT, ROUTER_SCHEMA, SIDE_VALUES, Route, route
+from association.query.router import ORDER_INTENTS, ORDER_WORDS, ROUTER_PROMPT, ROUTER_SCHEMA, SIDE_VALUES, Route, route
 from association.season import current_season
 
 
@@ -360,3 +360,98 @@ def test_only_a_comparison_drops_an_unasked_stat() -> None:
     every metric it means."""
     got = _compare("who led the league last season?", '{"intent":"leaderboard","stat":"points"}')
     assert got.slots["stat"] == "points"
+
+
+def _asking(payload: str, question: str) -> Route:
+    """_routed, but for the checks that read the question text rather than only
+    the payload."""
+    with patch("association.query.router.ollama.chat", return_value=_reply(payload)):
+        got = route("m", question)
+    assert got is not None
+    return got
+
+
+def test_question_text_beats_a_dropped_order_slot() -> None:
+    """The measured failure, verbatim. ROUTER_PROMPT instructs `order` for
+    game_log and shot_chart only, so a fingerprint question carries no
+    instruction to fill it: "show me a fingerprint for steph curry's last game
+    in 2026" came back with no `order` 3/3 at temperature 0. With the slot
+    missing there was nothing for the template to refuse, so a question about
+    one game was answered with the whole season's radar."""
+    got = _asking('{"intent":"fingerprint","stat":"netpoints","player":"Stephen Curry","season":2026}', "show me a fingerprint for steph curry's last game in 2026")
+    assert got.slots["order"] == "recent"
+
+
+def test_the_other_end_of_the_season_is_recognized_too() -> None:
+    got = _asking('{"intent":"fingerprint","stat":"netpoints","player":"Stephen Curry"}', "fingerprint for curry's first game of 2026")
+    assert got.slots["order"] == "first"
+
+
+def test_a_count_between_the_word_and_the_game_still_reads() -> None:
+    got = _asking('{"intent":"game_log","player":"Stephen Curry"}', "curry's last 5 games")
+    assert got.slots["order"] == "recent"
+
+
+def test_a_question_about_a_whole_season_grows_no_order() -> None:
+    """The cost of a false positive: this would narrow a season question to one
+    game, which is the bug being fixed pointing the other way."""
+    got = _asking('{"intent":"fingerprint","stat":"netpoints","player":"Stephen Curry","season":2026}', "show me a fingerprint for steph curry in 2026")
+    assert "order" not in got.slots
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "show me last season's best game for curry",  # the best game OF last season
+        "what was curry's best game in last year's playoffs",
+        "how did curry do in a game last season",
+    ],
+)
+def test_an_ordinal_attached_to_the_season_is_not_a_request_for_one_game(question: str) -> None:
+    """Why the patterns cross at most a count between the word and "game".
+
+    Allowing a word or two instead picks up four right phrasings and two wrong,
+    and these are the wrong ones: the ordinal belongs to the SEASON, and
+    matching it narrows a whole-season question to a single game with nothing
+    saying so. The four it gives up cost only a fall back to the model's own
+    slot, which fills them correctly often enough - see the test below.
+    """
+    got = _asking('{"intent":"game_log","player":"Stephen Curry"}', question)
+    assert "order" not in got.slots
+
+
+def test_the_model_order_slot_still_applies_when_the_text_uses_another_phrasing() -> None:
+    """The patterns are tighter than the model's reading - "his last home game"
+    is one they miss - so a slot the model filled is never overwritten or
+    dropped."""
+    got = _asking('{"intent":"shot_chart","player":"Stephen Curry","order":"recent"}', "curry's shot chart for his last home game")
+    assert got.slots["order"] == "recent"
+
+
+def test_a_bogus_model_order_is_not_trusted_as_a_phrasing_this_missed() -> None:
+    got = _asking('{"intent":"game_log","player":"Stephen Curry","order":"sideways"}', "how did curry do this season")
+    assert got.slots.get("order") != "sideways"
+
+
+def test_the_order_is_only_added_where_a_template_honours_it() -> None:
+    """check_scope REFUSES a scoping slot the template cannot honour, so adding
+    `order` to a player_stat question would not sharpen the answer - it would
+    cost one, by sending a question that works today to the agent instead."""
+    got = _asking('{"intent":"player_stat","stat":"points","player":"Stephen Curry"}', "how many points did curry score in his last game")
+    assert "order" not in got.slots
+
+
+def test_the_order_values_match_the_router_schema() -> None:
+    """Same shape as the side check above: a value here the schema cannot emit
+    would be unreachable, and one it emits that is missing here gets dropped."""
+    assert set(ORDER_WORDS) == set(ROUTER_SCHEMA["properties"]["order"]["enum"])
+
+
+def test_the_order_intents_are_the_ones_that_honour_order() -> None:
+    """Two hand-maintained lists of the same intents, kept apart so the router
+    does not import the templates. An intent honouring `order` and missing here
+    keeps the bug this fixed; one listed here that does not honour it turns
+    into a fall-through."""
+    from association.query.templates import HONORED_SCOPING
+
+    assert ORDER_INTENTS == frozenset(intent for intent, honored in HONORED_SCOPING.items() if "order" in honored)
