@@ -661,10 +661,10 @@ def test_parse_net_points_daily_resolves_via_team_and_date_not_nba_ids() -> None
         ],
     }
     team_abbr_to_id = {"NY": "18"}  # ESPN's real abbreviation for the Knicks is "NY", not "NYK"
-    team_date_to_game = {("18", "2026-04-12"): ("401585183", 2026, 2)}
+    game_index = parse.NetPointsGameIndex([("401585183", 2026, 2, "2026-04-12T23:00Z", "18", "30")])
     name_to_athlete_id = {"Jalen Brunson": "3934672"}
 
-    player_rows, team_rows = parse.parse_net_points_daily(data, "2026-04-12", team_abbr_to_id, team_date_to_game, name_to_athlete_id)
+    player_rows, team_rows = parse.parse_net_points_daily(data, "2026-04-12", team_abbr_to_id, game_index, name_to_athlete_id)
 
     assert player_rows == [
         {
@@ -704,53 +704,103 @@ def test_parse_net_points_daily_resolves_via_team_and_date_not_nba_ids() -> None
     ]
 
 
-def test_parse_net_points_daily_falls_back_to_date_plus_one() -> None:
-    """Regression: ESPN's games.date is UTC and can be a day ahead of the US-
-    local date NetPoints uses for its file naming (confirmed live: a real
-    OKC @ NYK game ESPN stores as 2026-03-05T00:00Z is filed by NetPoints
-    under 2026-03-04). UTC is never behind US local time, so the fallback
-    only ever needs to check date+1, not date-1."""
+def test_parse_net_points_daily_reads_an_evening_tip_as_the_previous_days_file() -> None:
+    """Regression: ESPN's games.date is UTC and is a day ahead of the US
+    Eastern date NetPoints names its files for whenever the tip is after 7pm
+    (confirmed live: a real OKC @ NYK game ESPN stores as 2026-03-05T00:00Z is
+    filed by NetPoints under 2026-03-04)."""
     data = {"player_box": [{"tmName": "NYK", "displayName": "X", "oNetPts": 1.0}], "team_box": []}
-    team_abbr_to_id = {"NY": "18"}
-    team_date_to_game = {("18", "2026-03-05"): ("1", 2026, 2)}  # ESPN's stored date, one day ahead
-    player_rows, _ = parse.parse_net_points_daily(data, "2026-03-04", team_abbr_to_id, team_date_to_game, {"X": "9"})
+    game_index = parse.NetPointsGameIndex([("1", 2026, 2, "2026-03-05T00:00Z", "18", "25")])  # 7pm Eastern on the 4th
+    player_rows, _ = parse.parse_net_points_daily(data, "2026-03-04", {"NY": "18"}, game_index, {"X": "9"})
     assert player_rows[0]["event_id"] == "1"
 
 
-def test_parse_net_points_daily_prefers_date_plus_one_over_exact_match_on_back_to_backs() -> None:
+def test_parse_net_points_daily_picks_the_right_half_of_a_back_to_back() -> None:
     """Regression, confirmed live: New Orleans played the LA Clippers on both
     2026-03-19 and 2026-03-20 (ESPN dates), a real back-to-back against the
-    same opponent. Processing the NetPoints file labeled 2026-03-19 (whose
-    real ESPN date is 2026-03-20, the +1 offset) used to match the WRONG,
-    unrelated New Orleans game that genuinely exists on the exact label date
-    2026-03-19, because exact-date was checked before date+1. date+1 must be
-    tried first, not as a fallback."""
+    same opponent. Matching NetPoints' 2026-03-19 file on the exact ESPN date
+    used to pick the WRONG, unrelated game - the one played the night before,
+    which ESPN stores under 2026-03-19 because it tipped after 7pm Eastern."""
     data = {"player_box": [{"tmName": "NOR", "displayName": "X", "oNetPts": 1.0}], "team_box": []}
-    team_abbr_to_id = {"NO": "3"}
-    team_date_to_game = {
-        ("3", "2026-03-19"): ("wrong-earlier-game", 2026, 2),
-        ("3", "2026-03-20"): ("correct-game", 2026, 2),
-    }
-    player_rows, _ = parse.parse_net_points_daily(data, "2026-03-19", team_abbr_to_id, team_date_to_game, {"X": "9"})
+    game_index = parse.NetPointsGameIndex(
+        [
+            ("wrong-earlier-game", 2026, 2, "2026-03-19T00:30Z", "12", "3"),  # 8:30pm Eastern on the 18th
+            ("correct-game", 2026, 2, "2026-03-20T00:30Z", "3", "12"),  # 8:30pm Eastern on the 19th
+        ]
+    )
+    player_rows, _ = parse.parse_net_points_daily(data, "2026-03-19", {"NO": "3"}, game_index, {"X": "9"})
     assert player_rows[0]["event_id"] == "correct-game"
+
+
+def test_parse_net_points_daily_does_not_write_one_game_from_two_dates() -> None:
+    """The mirror of the back-to-back above, and the bug it hid behind.
+
+    Charlotte played Philadelphia at 7:30pm Eastern on 2025-10-25 (ESPN stores
+    it under 2025-10-25, the tip being before 8pm) and Washington at 6pm on
+    2025-10-26. Resolving on the UTC date, NetPoints' 2025-10-25 file looked
+    at date+1 first and took the Washington game, and its own 2025-10-26 file
+    took the same one again: 401809964 was written twice with different
+    numbers, and the Philadelphia game got none at all. Confirmed against the
+    source's own box score - the 10-25 file gives Ryan Kalkbrenner 14 points,
+    which is the Philadelphia game, and the 10-26 file gives him 4."""
+    data = {"player_box": [{"tmName": "CHA", "displayName": "X", "oNetPts": 1.0}], "team_box": []}
+    game_index = parse.NetPointsGameIndex(
+        [
+            ("at-philadelphia", 2026, 2, "2025-10-25T23:30Z", "20", "30"),
+            ("vs-washington", 2026, 2, "2025-10-26T22:00Z", "27", "30"),
+        ]
+    )
+    first, _ = parse.parse_net_points_daily(data, "2025-10-25", {"CHA": "30"}, game_index, {"X": "9"})
+    second, _ = parse.parse_net_points_daily(data, "2025-10-26", {"CHA": "30"}, game_index, {"X": "9"})
+    assert (first[0]["event_id"], second[0]["event_id"]) == ("at-philadelphia", "vs-washington")
+
+
+def test_net_points_game_index_refuses_a_date_holding_two_of_one_teams_games() -> None:
+    """A team cannot play twice on one date, so a duplicate key is ESPN's
+    clock being wrong rather than a choice to make. The dict this replaced
+    kept whichever row it happened to read last."""
+    index = parse.NetPointsGameIndex(
+        [
+            ("a", 2026, 2, "2026-03-19T23:00Z", "3", "12"),
+            ("b", 2026, 2, "2026-03-19T13:00Z", "3", "18"),  # a tip time no NBA game has
+        ]
+    )
+    assert index.resolve("3", "2026-03-19") is None
+    assert index.resolve("12", "2026-03-19") == ("a", 2026, 2)
+
+
+def test_net_points_game_index_still_places_a_game_with_a_junk_tip_time() -> None:
+    """Four games in late February 2020 are stored hours away from when they
+    were played - Detroit at Portland, a 6pm Pacific tip on 2020-02-23, is
+    recorded as 2020-02-24T12:00Z. The Eastern date read off that is
+    meaningless, so the UTC window the old rule used stays as a fallback: the
+    stored DATE is right even where the time is not."""
+    index = parse.NetPointsGameIndex([("401161490", 2020, 2, "2020-02-24T12:00Z", "22", "8")])
+    assert index.resolve("22", "2020-02-23") == ("401161490", 2020, 2)
+
+
+def test_net_points_game_index_ignores_a_game_it_cannot_read_a_date_from() -> None:
+    index = parse.NetPointsGameIndex([("a", 2026, 2, None, "3", "12"), ("b", 2026, 2, "not a date", "3", "12")])
+    assert index.resolve("3", "2026-03-19") is None
+    assert index.resolve(None, "2026-03-19") is None
 
 
 def test_parse_net_points_daily_drops_rows_with_no_matching_local_game() -> None:
     data = {"player_box": [{"tmName": "NYK", "displayName": "X", "oNetPts": 1.0}], "team_box": []}
-    player_rows, team_rows = parse.parse_net_points_daily(data, "2026-04-12", {"NY": "18"}, {}, {"X": "9"})
+    player_rows, team_rows = parse.parse_net_points_daily(data, "2026-04-12", {"NY": "18"}, parse.NetPointsGameIndex([]), {"X": "9"})
     assert player_rows == []
     assert team_rows == []
 
 
 def test_parse_net_points_daily_ambiguous_or_unmatched_name_leaves_athlete_id_none() -> None:
     data = {"player_box": [{"tmName": "NYK", "displayName": "Unknown Player", "oNetPts": 1.0}], "team_box": []}
-    team_date_to_game = {("18", "2026-04-12"): ("1", 2026, 2)}
-    player_rows, _ = parse.parse_net_points_daily(data, "2026-04-12", {"NY": "18"}, team_date_to_game, {})
+    game_index = parse.NetPointsGameIndex([("1", 2026, 2, "2026-04-12T23:00Z", "18", "30")])
+    player_rows, _ = parse.parse_net_points_daily(data, "2026-04-12", {"NY": "18"}, game_index, {})
     assert player_rows[0]["athlete_id"] is None
 
 
 def test_parse_net_points_daily_handles_missing_data() -> None:
-    assert parse.parse_net_points_daily(None, "2026-04-12", {}, {}, {}) == ([], [])
+    assert parse.parse_net_points_daily(None, "2026-04-12", {}, parse.NetPointsGameIndex([]), {}) == ([], [])
 
 
 def test_net_points_category_normalises_onto_the_season_files_names() -> None:
@@ -792,7 +842,7 @@ def test_parse_net_points_daily_players_is_long_and_resolved_like_its_sibling() 
         data,
         "2026-04-12",
         {"NY": "18"},
-        {("18", "2026-04-12"): ("401585183", 2026, 2)},
+        parse.NetPointsGameIndex([("401585183", 2026, 2, "2026-04-12T23:00Z", "18", "30")]),
         {"Jalen Brunson": "3934672"},
     )
 
@@ -811,7 +861,7 @@ def test_parse_net_points_daily_players_drops_rows_it_cannot_place_in_a_game() -
         {"deanAbbrev": "XXX", "displayName": "Nobody", "actionType": "rim", "oNetPts": 1.0},
         {"deanAbbrev": "NYK", "displayName": "Unknown Player", "actionType": "rim", "oNetPts": 2.0},
     ]
-    rows = parse.parse_net_points_daily_players(data, "2026-04-12", {"NY": "18"}, {("18", "2026-04-12"): ("401585183", 2026, 2)}, {})
+    rows = parse.parse_net_points_daily_players(data, "2026-04-12", {"NY": "18"}, parse.NetPointsGameIndex([("401585183", 2026, 2, "2026-04-12T23:00Z", "18", "30")]), {})
 
     assert [(r["team_id"], r["athlete_id"], r["o_net_pts"]) for r in rows] == [("18", None, 2.0)]
 
@@ -821,7 +871,7 @@ def test_parse_net_points_daily_players_ignores_a_row_with_no_action_type() -> N
         [{"deanAbbrev": "NYK", "displayName": "Jalen Brunson", "oNetPts": 1.0}],
         "2026-04-12",
         {"NY": "18"},
-        {("18", "2026-04-12"): ("401585183", 2026, 2)},
+        parse.NetPointsGameIndex([("401585183", 2026, 2, "2026-04-12T23:00Z", "18", "30")]),
         {"Jalen Brunson": "3934672"},
     )
 

@@ -12,6 +12,7 @@ import json
 import re
 from collections.abc import Iterable
 from datetime import date as _date
+from datetime import datetime as _datetime
 from datetime import timedelta as _timedelta
 from typing import Any
 
@@ -542,32 +543,107 @@ def parse_net_points_team(data: JSON | None, team_abbr_to_id: dict[str, str]) ->
     return rows
 
 
-def _resolve_net_points_game(team_id: str | None, date: str, team_date_to_game: dict[tuple[str, str], tuple[str, int, int]]) -> tuple[str, int, int] | None:
-    """NetPoints' per-date files carry no ESPN event_id, but a team plays at
-    most one game per real-world date, so (team_id, date) against our own games
-    table resolves it deterministically.
+# NetPoints names a daily file for the date the games were PLAYED on, which
+# the NBA reckons in US Eastern time; ESPN stores a UTC timestamp, a day ahead
+# for any tip after 7pm Eastern. Shifted by a fixed five hours rather than
+# through a real time zone: EST and EDT disagree about a tip's calendar date
+# only in the midnight-to-1am Eastern hour, and no NBA game starts there
+# (checked against every timestamp in the warehouse - the only 04:00Z games in
+# the NetPoints era fall in EST months, where the two agree, and the EDT ones
+# are pre-2002 playoff placeholders). A fixed offset also needs no tz database,
+# so this stays right on a machine that has none.
+_EASTERN_OFFSET = _timedelta(hours=5)
 
-    The wrinkle: ESPN's games.date is a UTC timestamp and NetPoints uses the
-    US-local date, so an evening game disagrees by one day. UTC is always ahead,
-    never behind, so `date + 1 day` is checked FIRST, not as a fallback -
-    order matters. On back-to-back nights against the same opponent, the team's
-    OWN unrelated game sits at the exact NetPoints-label date and would
-    silently steal the match before the offset case ever ran.
-    """
-    if team_id is None:
+
+def _eastern_date(timestamp: str) -> str | None:
+    """The US Eastern calendar date of an ESPN ``games.date``, or None if it is
+    not the ``YYYY-MM-DDTHH:MMZ`` shape everything in that column has."""
+    try:
+        moment = _datetime.strptime(timestamp, "%Y-%m-%dT%H:%MZ")
+    except ValueError:
         return None
-    next_day = (_date.fromisoformat(date) + _timedelta(days=1)).isoformat()
-    game = team_date_to_game.get((team_id, next_day))
-    if game is not None:
-        return game
-    return team_date_to_game.get((team_id, date))
+    return (moment - _EASTERN_OFFSET).date().isoformat()
+
+
+class NetPointsGameIndex:
+    """Which ESPN game a NetPoints per-date row is about.
+
+    NetPoints publishes one file per date and puts no ESPN id anywhere in it,
+    so the game has to be recovered from ``(team, date)`` against this
+    project's own ``games`` table. The date is the whole difficulty: the file's
+    label is the US Eastern date the games were played on, while ESPN stores
+    the tip as UTC, which is the next day for any evening game.
+
+    So the index is keyed on each game's own Eastern date, and one exact
+    lookup answers it: a team plays at most one game per Eastern date, ever.
+    What that replaced was a guess between two UTC candidates - ``date + 1``
+    first, then ``date`` - which cannot tell apart the two ways a team's
+    schedule lands on those keys. A team playing Eastern D at 7:30pm (UTC date
+    D) and Eastern D+1 at 6pm (UTC date D+1) has BOTH those games in NetPoints
+    date D's candidate list, and the ``date + 1`` half of the rule took the
+    wrong one; NetPoints date D+1 then claimed it again through the other
+    half. Two dates wrote one game, with different numbers, and no error.
+    Measured over the warehouse: 505 doubly-claimed team-games since 2019, and
+    611 disagreeing ``(event_id, athlete_id)`` pairs in season 2026's
+    ``net_points_player_game`` alone. Reversing the order does not fix it - it
+    only moves the collision onto the back-to-back nights that ordering exists
+    for.
+
+    Two smaller things of the same shape:
+
+    - **A date holding two of a team's games resolves to neither.** One team
+      cannot play twice in a day, so a duplicate key means ESPN's clock is
+      wrong, not that there is a choice to make - and the map this replaced
+      silently kept whichever game it read last. 126 ``(team, UTC date)`` keys
+      in the NetPoints era were shadowed that way.
+    - **The UTC window survives as a fallback**, tried in the old order, for
+      the handful of games whose stored tip time is junk and whose Eastern
+      date is therefore meaningless: four games in late February 2020 are
+      recorded hours away from when they were played (a 6pm PT tip stored as
+      12:00Z). Their NetPoints rows still resolve, and correctly, because the
+      UTC *date* is right even where the time is not.
+
+    .. versionadded:: 2.1.0
+    """
+
+    def __init__(self, games: Iterable[tuple[str, int, int, str | None, str | None, str | None]]) -> None:
+        """Build from ``(event_id, season, season_type, date, home_team_id,
+        away_team_id)`` rows - the ``games`` table's own columns."""
+        self._by_eastern: dict[tuple[str, str], tuple[str, int, int] | None] = {}
+        self._by_utc: dict[tuple[str, str], tuple[str, int, int] | None] = {}
+        for event_id, season, season_type, date, home_team_id, away_team_id in games:
+            if not date:
+                continue
+            game = (str(event_id), int(season), int(season_type))
+            for index, day in ((self._by_eastern, _eastern_date(str(date))), (self._by_utc, str(date)[:10])):
+                if day is None:
+                    continue
+                for team_id in (home_team_id, away_team_id):
+                    if team_id is None:
+                        continue
+                    key = (str(team_id), day)
+                    # A second, different game on one team's date is ESPN's
+                    # clock being wrong. None marks the key unusable rather
+                    # than letting the row read last win it.
+                    index[key] = game if index.get(key, game) == game else None
+
+    def resolve(self, team_id: str | None, date: str) -> tuple[str, int, int] | None:
+        """The ``(event_id, season, season_type)`` of the game this team played
+        on this NetPoints date, or None if there is no unambiguous one."""
+        if team_id is None:
+            return None
+        game = self._by_eastern.get((team_id, date))
+        if game is not None:
+            return game
+        next_day = (_date.fromisoformat(date) + _timedelta(days=1)).isoformat()
+        return self._by_utc.get((team_id, next_day)) or self._by_utc.get((team_id, date))
 
 
 def parse_net_points_daily(
     data: JSON | None,
     date: str,
     team_abbr_to_id: dict[str, str],
-    team_date_to_game: dict[tuple[str, str], tuple[str, int, int]],
+    game_index: NetPointsGameIndex,
     name_to_athlete_id: dict[str, str],
 ) -> tuple[list[Row], list[Row]]:
     """One date's file covers every game played that date, as two blocks:
@@ -582,10 +658,16 @@ def parse_net_points_daily(
     via team+date against this project's own games table instead.
 
     Rows that can't be resolved to a known local game (team unmapped, or no
-    matching game within the date/date+1 window) are dropped rather than
-    written with a null event_id. Player rows are matched to athlete_id by
-    exact displayName - ambiguous or unmatched names are left with
-    athlete_id=None rather than guessed."""
+    unambiguous game on this date - see :class:`NetPointsGameIndex`) are
+    dropped rather than written with a null event_id. Player rows are matched
+    to athlete_id by exact displayName - ambiguous or unmatched names are left
+    with athlete_id=None rather than guessed.
+
+    .. versionchanged:: 2.1.0
+       Takes a :class:`NetPointsGameIndex` in place of the
+       ``(team_id, date) -> game`` dict, which could not distinguish a game
+       from the next night's and wrote both NetPoints dates onto one of them.
+    """
     player_rows: list[Row] = []
     team_rows: list[Row] = []
     if not data:
@@ -593,7 +675,7 @@ def parse_net_points_daily(
 
     for raw in data.get("player_box") or []:
         team_id = _net_points_team_id(raw.get("tmName"), team_abbr_to_id)
-        game = _resolve_net_points_game(team_id, date, team_date_to_game)
+        game = game_index.resolve(team_id, date)
         if game is None:
             continue
         event_id, season, season_type = game
@@ -620,7 +702,7 @@ def parse_net_points_daily(
 
     for raw in data.get("team_box") or []:
         team_id = _net_points_team_id(raw.get("tmName"), team_abbr_to_id)
-        game = _resolve_net_points_game(team_id, date, team_date_to_game)
+        game = game_index.resolve(team_id, date)
         if game is None:
             continue
         event_id, season, season_type = game
@@ -668,7 +750,7 @@ def parse_net_points_daily_players(
     data: list[JSON] | None,
     date: str,
     team_abbr_to_id: dict[str, str],
-    team_date_to_game: dict[tuple[str, str], tuple[str, int, int]],
+    game_index: NetPointsGameIndex,
     name_to_athlete_id: dict[str, str],
 ) -> list[Row]:
     """The play-type split for one date, from the ``_player.json`` file beside
@@ -697,7 +779,7 @@ def parse_net_points_daily_players(
         if not isinstance(action_type, str):
             continue
         team_id = _net_points_team_id(raw.get("deanAbbrev"), team_abbr_to_id)
-        game = _resolve_net_points_game(team_id, date, team_date_to_game)
+        game = game_index.resolve(team_id, date)
         if game is None:
             continue
         display_name = raw.get("displayName")

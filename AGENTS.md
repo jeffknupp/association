@@ -333,6 +333,44 @@ file that then got renamed into place looking perfectly normal. `--rate-limit`
 still bounds the request rate across all workers; raising it alone does nothing,
 because the limiter never had to sleep in the first place.
 
+**A NetPoints date is not an ESPN date, and matching them on the calendar day
+is a guess that mostly works.** NetPoints names each daily file for the US
+Eastern date the games were played on; ESPN stores a UTC tip timestamp, which
+rolls over to the next day for anything after 7pm Eastern. Matching on the UTC
+date meant choosing between `date + 1` and `date`, and *both orderings are
+wrong for some real schedule*: `date`-first steals a back-to-back's first
+night, and `date + 1`-first — what shipped — steals the *next* night, after
+which that next night's own file claims the same game again through the other
+half of the rule. 505 doubly-claimed team-games since 2019, 611 disagreeing
+`(event_id, athlete_id)` pairs in 2026's `net_points_player_game` alone, and
+no error anywhere: the row count looked right and every event_id was a real
+game the player really played in.
+
+The fix is to stop guessing and read the game's own Eastern date off the
+timestamp — `NetPointsGameIndex` in `fetch/parse.py`, one exact lookup, since
+a team plays at most one game per Eastern date. Three things about it are
+load-bearing:
+
+- **A fixed five-hour shift, not a real time zone.** EST and EDT disagree
+  about a tip's calendar date only in the midnight-to-1am Eastern hour, which
+  no NBA game starts in (checked against every timestamp in the warehouse),
+  and a fixed offset needs no tz database on the machine running the pull.
+- **A date holding two of one team's games resolves to neither.** A team
+  cannot play twice in a day, so a duplicate key is ESPN's clock being wrong,
+  not a choice — and the dict this replaced silently kept whichever row it
+  read last, shadowing 126 `(team, UTC date)` keys in the NetPoints era.
+- **The UTC window survives as a fallback**, in the old order. Four games in
+  late February 2020 are stored hours from when they were played (Detroit at
+  Portland, a 6pm Pacific tip, is recorded as `2020-02-24T12:00Z`), so their
+  Eastern date is meaningless while their stored *date* is still right.
+
+The way to check any of this is the source's own box score. The daily file
+carries `pts` beside the NetPoints values and the parser deliberately drops it
+— which makes it a free, independent cross-check that a row landed on the
+right game: NetPoints' 2025-10-25 file gives Ryan Kalkbrenner 14 points and
+its 2025-10-26 file gives him 4, and `player_box_stats` says which game is
+which. `scripts/check_net_points_games.py` runs that over a whole season.
+
 **Filtering a read by season prunes no files.** The trees are laid out under
 `season=X/season_type=Y` directories but read raw, not hive partitioned (the
 reason is in the comment above `TABLES` — the directory names would collide

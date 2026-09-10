@@ -489,36 +489,33 @@ class Pipeline:
         if rows:
             self._write_rows(path, rows)
 
-    def _team_date_to_game(self) -> dict[tuple[str, str], tuple[str, int, int]]:
-        """(team_id, date) -> (event_id, season, season_type), built from
-        games already on disk - this is how NetPoints' per-date rows resolve
-        to an event_id, since NetPoints has no ESPN ids anywhere in its own
-        data. A team plays at most one game per real-world date, so this is
-        an exact, deterministic join - no name/id-matching heuristic needed
-        for games or teams, only for players (see parse.py)."""
+    def _net_points_game_index(self) -> parse.NetPointsGameIndex:
+        """The index NetPoints' per-date rows resolve their event_id through,
+        built from games already on disk - NetPoints has no ESPN ids anywhere
+        in its own data, so the game comes from (team, date) against ours.
+        :class:`~association.fetch.parse.NetPointsGameIndex` owns the rule for
+        turning ESPN's UTC tip into the date NetPoints named its file for.
+
+        .. versionchanged:: 2.1.0
+           Returns an index rather than a ``(team_id, date) -> game`` dict.
+           The dict was keyed on the UTC date, which is not the date NetPoints
+           labels with and which two of a team's games can share.
+        """
         path = self._p("games")
         if not path.exists():
-            return {}
+            return parse.NetPointsGameIndex([])
         table = ds.dataset(str(path), format="parquet").to_table(columns=["event_id", "season", "season_type", "date", "home_team_id", "away_team_id"])
-        result: dict[tuple[str, str], tuple[str, int, int]] = {}
-        for event_id, season, season_type, date, home_id, away_id in zip(
-            table.column("event_id").to_pylist(),
-            table.column("season").to_pylist(),
-            table.column("season_type").to_pylist(),
-            table.column("date").to_pylist(),
-            table.column("home_team_id").to_pylist(),
-            table.column("away_team_id").to_pylist(),
-            strict=True,
-        ):
-            if not date:
-                continue
-            date_part = str(date)[:10]
-            game = (str(event_id), int(season), int(season_type))
-            if home_id is not None:
-                result[(str(home_id), date_part)] = game
-            if away_id is not None:
-                result[(str(away_id), date_part)] = game
-        return result
+        return parse.NetPointsGameIndex(
+            zip(
+                table.column("event_id").to_pylist(),
+                table.column("season").to_pylist(),
+                table.column("season_type").to_pylist(),
+                table.column("date").to_pylist(),
+                table.column("home_team_id").to_pylist(),
+                table.column("away_team_id").to_pylist(),
+                strict=True,
+            )
+        )
 
     def _name_to_athlete_id(self) -> dict[str, str]:
         """display_name -> athlete_id, built from players already on disk.
@@ -542,7 +539,7 @@ class Pipeline:
 
         The "minus one day" half is required, not an optimization: a game's
         NetPoints label is usually its ESPN date minus one (the UTC-vs-local
-        offset - see _resolve_net_points_game), and a label date with no OTHER
+        offset - see NetPointsGameIndex), and a label date with no OTHER
         local game of its own would otherwise never be fetched. That missed a
         Lakers game entirely, rather than merely mislabelling it. The label's
         season is reused from its parent date unless independently known (a
@@ -587,7 +584,7 @@ class Pipeline:
             self._net_points_daily_client = NetPointsDailyClient()
 
         team_abbr_to_id = self.team_abbr_to_id()
-        team_date_to_game = self._team_date_to_game()
+        game_index = self._net_points_game_index()
         name_to_athlete_id = self._name_to_athlete_id()
         dates_and_seasons = self._net_points_dates_and_seasons()
 
@@ -600,7 +597,7 @@ class Pipeline:
             box_marker = self._p("_net_points_daily_done", f"date={date}.marker")
             if self.force or not storage.is_complete(box_marker):
                 data = self._net_points_daily_client.get_daily(date, season_folder=season - 1)
-                player_rows, team_rows = parse.parse_net_points_daily(data, date, team_abbr_to_id, team_date_to_game, name_to_athlete_id)
+                player_rows, team_rows = parse.parse_net_points_daily(data, date, team_abbr_to_id, game_index, name_to_athlete_id)
                 self._write_rows(self._p("net_points_player_game", f"season={season}", f"date={date}.parquet"), player_rows)
                 self._write_rows(self._p("net_points_team_game", f"season={season}", f"date={date}.parquet"), team_rows)
                 storage.mark_complete(box_marker)
@@ -611,7 +608,7 @@ class Pipeline:
                     self._net_points_daily_client.get_daily_players(date, season_folder=season - 1),
                     date,
                     team_abbr_to_id,
-                    team_date_to_game,
+                    game_index,
                     name_to_athlete_id,
                 )
                 self._write_rows(self._p("net_points_player_game_fingerprint", f"season={season}", f"date={date}.parquet"), skill_rows)

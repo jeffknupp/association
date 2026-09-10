@@ -515,16 +515,13 @@ def load_game_fingerprints(
         rows = con.execute(
             f"SELECT f.event_id, f.athlete_id, max(g.t_poss), {', '.join(columns)} "
             "FROM net_points_player_game_fingerprint f "
-            # Possessions come from a subquery already collapsed to one row per
-            # player-game, and are taken with max() rather than any_value():
-            # net_points_player_game holds 611 duplicate (event_id, athlete_id)
-            # pairs in 2026 alone, every one of them DISAGREEING, so any_value
-            # made the percentile pool's own size wobble between runs. Picking
-            # deterministically does not make the underlying rows right - see
-            # the note in AGENTS.md - but a plot that changes when nothing
-            # changed cannot even be checked.
-            "JOIN (SELECT event_id, athlete_id, max(t_poss) AS t_poss FROM net_points_player_game GROUP BY 1, 2) g "
-            "  ON g.event_id = f.event_id AND g.athlete_id = f.athlete_id "
+            # A plain join: net_points_player_game holds one row per
+            # player-game. It used to hold two for 611 of them in 2026 alone,
+            # disagreeing, because two NetPoints dates resolved to one ESPN
+            # game - fixed at the source in NetPointsGameIndex rather than
+            # collapsed here. max() over the group is still what reads the
+            # possessions, since the group is the category pivot.
+            "JOIN net_points_player_game g ON g.event_id = f.event_id AND g.athlete_id = f.athlete_id "
             "WHERE f.season = ? AND f.season_type = ? AND f.athlete_id IS NOT NULL "
             "GROUP BY f.event_id, f.athlete_id",
             [season, season_type],

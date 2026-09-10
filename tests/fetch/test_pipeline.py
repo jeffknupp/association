@@ -527,15 +527,32 @@ def _write_players_fixture(data_dir: Path, rows: list[dict]) -> None:
     storage.write_rows(data_dir / "players" / "f.parquet", rows)
 
 
-def test_team_date_to_game_covers_home_and_away(tmp_path: Path) -> None:
+def test_net_points_game_index_covers_home_and_away(tmp_path: Path) -> None:
     _write_games_fixture(
         tmp_path,
         [{"event_id": "1", "season": 2026, "season_type": 2, "date": "2026-04-12T22:00Z", "home_team_id": "18", "away_team_id": "30"}],
     )
     pipeline = Pipeline(FakeClient({}), tmp_path)
-    mapping = pipeline._team_date_to_game()
-    assert mapping[("18", "2026-04-12")] == ("1", 2026, 2)
-    assert mapping[("30", "2026-04-12")] == ("1", 2026, 2)
+    index = pipeline._net_points_game_index()
+    assert index.resolve("18", "2026-04-12") == ("1", 2026, 2)
+    assert index.resolve("30", "2026-04-12") == ("1", 2026, 2)
+
+
+def test_net_points_game_index_reads_the_date_espn_stored_the_tip_at(tmp_path: Path) -> None:
+    """A 7:30pm Eastern tip is 23:30Z the same day and a 9pm one is 02:00Z the
+    next, so the UTC date the pipeline reads off disk is not the date NetPoints
+    files the game under. Built through the index, both land on the Eastern
+    date the file is named for."""
+    _write_games_fixture(
+        tmp_path,
+        [
+            {"event_id": "early", "season": 2026, "season_type": 2, "date": "2026-04-12T23:30Z", "home_team_id": "18", "away_team_id": "30"},
+            {"event_id": "late", "season": 2026, "season_type": 2, "date": "2026-04-14T02:00Z", "home_team_id": "18", "away_team_id": "2"},
+        ],
+    )
+    index = Pipeline(FakeClient({}), tmp_path)._net_points_game_index()
+    assert index.resolve("18", "2026-04-12") == ("early", 2026, 2)
+    assert index.resolve("18", "2026-04-13") == ("late", 2026, 2)
 
 
 def test_name_to_athlete_id_drops_ambiguous_names(tmp_path: Path) -> None:

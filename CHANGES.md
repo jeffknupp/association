@@ -15,6 +15,44 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Per-game NetPoints rows were landing on the wrong game, and sometimes on
+  the same one twice.** NetPoints names each daily file for the US Eastern
+  date the games were played on and publishes no ESPN id, so the pull
+  recovered the game by matching `(team, date)` against ESPN's own `games` -
+  whose `date` is a UTC tip timestamp, a day ahead for anything after 7pm
+  Eastern. That left a choice between `date + 1` and `date`, and **both
+  orderings are wrong for some real schedule**: `date`-first steals a
+  back-to-back's first night, and `date + 1`-first - what shipped - steals the
+  *next* night, which then claims the same game again out of its own file.
+  Season 2026's `net_points_player_game` held 611 duplicated
+  `(event_id, athlete_id)` pairs, every one disagreeing with its twin, and
+  `net_points_player_game_fingerprint` inherited 17,630 duplicated triples.
+  Nothing looked wrong: the counts were plausible and every event_id was a
+  real game the player really played in.
+
+  The rule now reads the game's own Eastern date off the timestamp instead of
+  guessing which side of midnight UTC it fell on - `NetPointsGameIndex`, one
+  exact lookup, since a team plays at most one game per Eastern date. A fixed
+  five-hour shift rather than a real time zone: EST and EDT disagree about a
+  tip's date only in the midnight-to-1am Eastern hour, which no NBA game
+  starts in, and a fixed offset needs no tz database on the machine running
+  the pull. A date holding two of one team's games now resolves to neither
+  rather than to whichever row was read last - a team cannot play twice in a
+  day, so that is ESPN's clock being wrong, and it had been silently shadowing
+  126 keys. The old UTC window survives as a fallback for the four games in
+  late February 2020 whose stored tip time is hours from when they were played
+  (Detroit at Portland, a 6pm Pacific tip, is recorded as `2020-02-24T12:00Z`),
+  where the date is right even though the time is not.
+
+  Verified against the source's own box score, which is the check that settles
+  it: the daily file carries `pts` beside the NetPoints values and the parser
+  drops it, so it is free, independent evidence of which game a row belongs
+  to. NetPoints' 2025-10-25 file gives Ryan Kalkbrenner 14 points and its
+  2025-10-26 file gives him 4 - the old rule sent both rows to the game where
+  he scored 4. `scripts/check_net_points_games.py` runs that over a season,
+  and the query side's `max(t_poss)` subquery, which existed only to pick
+  deterministically between disagreeing twins, is gone.
+
 - **A fingerprint for a single game.** "Show me a fingerprint for steph curry's
   last game in 2026" now draws that game. The play-type split does exist per
   game - it is in a second file the pull never read, and the claim in the entry

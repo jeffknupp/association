@@ -483,26 +483,23 @@ def test_a_game_under_the_possessions_floor_cannot_set_the_league_best(game_con:
     assert all(value.league_best == 5.0 for value in fingerprints[0].values)
 
 
-def test_duplicate_possession_rows_are_resolved_by_a_rule_not_by_luck(game_con: duckdb.DuckDBPyConnection) -> None:
-    """net_points_player_game really does hold duplicate (event_id, athlete_id)
-    pairs - 611 in 2026 alone, every one disagreeing with its twin (see
-    AGENTS.md; they come from two NetPoints dates resolving to one ESPN game).
+def test_a_duplicated_possession_row_is_still_one_game(game_con: duckdb.DuckDBPyConnection) -> None:
+    """net_points_player_game used to hold duplicate (event_id, athlete_id)
+    pairs - 611 in 2026 alone, every one disagreeing with its twin, from two
+    NetPoints dates resolving to one ESPN game. That is fixed where it was
+    caused (``NetPointsGameIndex``) rather than worked around here, so this no
+    longer asserts which twin wins.
 
-    Read with a plain join and any_value() the pool's own SIZE changed between
-    runs on identical data, which is the one thing that stops a plot being
-    checkable at all. Asserted as the RULE - the largest of the disagreeing
-    rows - rather than as run-to-run stability, because any_value on a small
-    table is stable by accident and would pass while proving nothing.
+    What it does assert is that a duplicate cannot silently resize the
+    percentile pool the whole plot is scaled against, since the join to this
+    table is a plain one.
     """
-    game_con.execute("INSERT INTO net_points_player_game VALUES ('g2', '1', 2026, 2, 15.0)")  # disagrees with the 60.0 already there
+    game_con.execute("INSERT INTO net_points_player_game VALUES ('g2', '1', 2026, 2, 15.0)")
 
     fingerprints, league, _ = load_game_fingerprints(game_con, [Entity(id="1", name="A")], 2026, order="recent")
 
-    # 15.0 is under the floor, so picking the wrong twin drops the game out of
-    # its own pool as well as mislabelling it.
-    assert fingerprints[0].possessions == 60.0
     assert fingerprints[0].qualified
-    assert league.pool_size == 6  # and the duplicated player-game is still ONE game in the pool
+    assert league.pool_size == 6
 
 
 def test_a_player_who_did_not_play_that_season_is_named_not_drawn(game_con: duckdb.DuckDBPyConnection) -> None:
