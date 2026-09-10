@@ -277,6 +277,41 @@ def skills_for(view: str) -> tuple[Skill, ...]:
     return tuple(skill for skill in FINGERPRINT_SKILLS if skill.side == view)
 
 
+def _percentile(values: list[float], value: float) -> float:
+    """Where ``value`` ranks in a SEASON pool, as a fraction with 1.0 the best.
+
+    Counts everyone this value is at least as good as, so the league best comes
+    out at exactly 1.0 and lands on the outer ring the plot labels "league
+    best". Over a season that is also unambiguous: the values are averages over
+    thousands of possessions and exact ties essentially do not occur.
+
+    A single game is the opposite case - see :func:`_percentile_midrank`.
+    """
+    return sum(1 for other in values if other <= value) / len(values)
+
+
+def _percentile_midrank(values: list[float], value: float) -> float:
+    """Where ``value`` ranks in a pool of single GAMES, ties taking the middle
+    of the tied block rather than the top of it.
+
+    Load-bearing here and nowhere else. In one game most players are exactly
+    0.00 in most categories - they attempted no hook shots at all - and
+    counting ``other <= value`` reads that as beating everyone else who also
+    attempted none: measured on a real plot, +0.00 hook shots came out at the
+    89th percentile and +0.00 fadeaways at the 84th, and the radar drew long
+    spokes for skills the player never used. Every number in that table was
+    individually defensible, which is why only looking at the rendered picture
+    caught it.
+
+    Midrank puts "did nothing, like most people" near the middle, which is what
+    it means. It gives up the exact 1.0 at the top, but the game pool is ~11,000
+    so the best game still rounds onto the outer ring.
+    """
+    below = sum(1 for other in values if other < value)
+    tied = sum(1 for other in values if other == value)
+    return (below + tied / 2) / len(values)
+
+
 def load_fingerprints(
     con: duckdb.DuckDBPyConnection,
     players: list[Entity],
@@ -343,10 +378,6 @@ def load_fingerprints(
     # percentile on "+1.20 overall" means what the percentiles under it mean.
     headline_pool = [[headline[index] for headline, _ in qualified] for index in range(len(summary))]
 
-    def percentile(values: list[float], value: float) -> float:
-        """Where ``value`` ranks in ``values``, as a fraction with 1.0 the best."""
-        return sum(1 for other in values if other <= value) / len(values)
-
     fingerprints = []
     for player in players:
         entry = scaled.get(player.id)
@@ -366,7 +397,7 @@ def load_fingerprints(
                     skill=skill,
                     total=value * possessions / 100.0,
                     value=value,
-                    percentile=percentile(others, value),
+                    percentile=_percentile(others, value),
                     league_average=sum(others) / len(others),
                     league_best=max(others),
                 )
@@ -382,9 +413,9 @@ def load_fingerprints(
                 overall=headline[0],
                 offense=headline[1],
                 defense=headline[2],
-                overall_percentile=percentile(headline_pool[0], headline[0]),
-                offense_percentile=percentile(headline_pool[1], headline[1]),
-                defense_percentile=percentile(headline_pool[2], headline[2]),
+                overall_percentile=_percentile(headline_pool[0], headline[0]),
+                offense_percentile=_percentile(headline_pool[1], headline[1]),
+                defense_percentile=_percentile(headline_pool[2], headline[2]),
                 values=skill_values,
             )
         )
@@ -523,10 +554,6 @@ def load_game_fingerprints(
 
     by_axis = [[game[index] for game in pool_values] for index in range(len(skills))]
 
-    def percentile(values: list[float], value: float) -> float:
-        """Where ``value`` ranks in ``values``, as a fraction with 1.0 the best."""
-        return sum(1 for other in values if other <= value) / len(values)
-
     fingerprints: list[PlayerFingerprint] = []
     games: dict[str, GamePlayed] = {}
     for player in players:
@@ -549,15 +576,15 @@ def load_game_fingerprints(
                 overall=headline[0],
                 offense=headline[1],
                 defense=headline[2],
-                overall_percentile=percentile(headline_pool[0], headline[0]),
-                offense_percentile=percentile(headline_pool[1], headline[1]),
-                defense_percentile=percentile(headline_pool[2], headline[2]),
+                overall_percentile=_percentile_midrank(headline_pool[0], headline[0]),
+                offense_percentile=_percentile_midrank(headline_pool[1], headline[1]),
+                defense_percentile=_percentile_midrank(headline_pool[2], headline[2]),
                 values=[
                     SkillValue(
                         skill=skill,
                         total=skill_row[index],
                         value=skill_row[index],
-                        percentile=percentile(by_axis[index], skill_row[index]),
+                        percentile=_percentile_midrank(by_axis[index], skill_row[index]),
                         league_average=sum(by_axis[index]) / len(by_axis[index]),
                         league_best=max(by_axis[index]),
                     )

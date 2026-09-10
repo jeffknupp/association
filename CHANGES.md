@@ -46,6 +46,16 @@ had no published version to be compatible with.
   `net_points_player_game`'s row for that game exactly - a cross-check from a
   different source file.
 
+  A single game's percentiles take the MIDDLE of a tied block rather than the
+  top of it. In one game most players are exactly 0.00 in most categories, so
+  counting everyone a value is at least as good as read "attempted no hook
+  shots" as beating everyone else who also attempted none: +0.00 came out at
+  the 89th percentile and the radar drew a long spoke for a skill the player
+  never used. Every number in that table was individually defensible, and only
+  looking at the rendered plot found it. A season keeps the older definition,
+  where exact ties essentially do not occur and it is what puts the league best
+  exactly on the outer ring.
+
   A `date` is still refused, and now says why: the router supplies a calendar
   date and this picks a player's first or last game of a season, which are
   different questions.

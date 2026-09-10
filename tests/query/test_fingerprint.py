@@ -515,3 +515,29 @@ def test_a_season_with_no_per_game_rows_says_so_rather_than_naming_the_player(ga
     distinction the season loader draws."""
     with pytest.raises(FingerprintUnavailable, match="no per-game NetPoints fingerprint data for season 2019"):
         load_game_fingerprints(game_con, [Entity(id="1", name="A")], 2019, order="recent")
+
+
+def test_doing_nothing_in_a_category_does_not_rank_above_everyone_else_who_did_nothing(game_con: duckdb.DuckDBPyConnection) -> None:
+    """The bug a rendered plot caught and no assertion did.
+
+    In one game most players are exactly 0.00 in most categories - they
+    attempted no hook shots at all. Counting "everyone I am at least as good
+    as" read that as beating all of them: +0.00 hook shots came out at the 89th
+    percentile and the radar drew a long spoke for a skill the player had not
+    used. Every number in the table was individually defensible, which is why
+    only looking at the picture found it.
+    """
+    # Nine players who did nothing in this skill, one who did something.
+    game_con.execute("INSERT INTO games VALUES ('gz', 2026, 2, '2026-04-01')")
+    for athlete_id in range(10, 20):
+        game_con.execute("INSERT INTO net_points_player_game VALUES ('gz', ?, 2026, 2, 60.0)", [str(athlete_id)])
+        for category in CATEGORIES:
+            value = 5.0 if athlete_id == 19 else 0.0
+            game_con.execute("INSERT INTO net_points_player_game_fingerprint VALUES ('gz', 2026, 2, '9', ?, ?, ?, ?, ?)", [str(athlete_id), category, value, value, value])
+
+    fingerprints, _, _ = load_game_fingerprints(game_con, [Entity(id="10", name="Did Nothing")], 2026, order="recent")
+
+    # Strictly below the median is the claim that discriminates: more than half
+    # the pool is at 0.00 or better, so "did nothing" cannot be an above-median
+    # performance. Counting everyone it is at least as good as puts it at .56.
+    assert all(value.percentile < 0.5 for value in fingerprints[0].values)
