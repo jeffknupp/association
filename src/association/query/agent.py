@@ -95,11 +95,60 @@ class Agent:
         # Rebuilt per question in _ask_inner; this is the always-on core only,
         # so a fresh Agent is usable before any question has been asked.
         self.messages: list[dict[str, Any]] = [{"role": "system", "content": build_system_prompt("")}]
+        # Where in `messages` each question was appended, so trimming can drop
+        # whole turns. Not derivable by scanning for role="user": the tool loop
+        # appends its own user messages mid-turn to nudge a retry.
+        self._turn_starts: list[int] = []
+
+    def reset_conversation(self) -> None:
+        """Forget every earlier turn, so the next question starts clean.
+
+        Multi-turn memory is a property of one conversation, and whether a
+        caller HAS one conversation is the caller's to say. An interactive CLI
+        session does; a server answering whoever connects does not, and reusing
+        one Agent there silently made every browser share a history - including
+        ``last_question``, which is fed to the router, so one person's
+        follow-up was resolved against a stranger's question.
+
+        .. versionadded:: 2.1.0
+        """
+        self.messages = [{"role": "system", "content": build_system_prompt("")}]
+        self._turn_starts = []
+        self.last_question = None
 
     def _trim_history(self) -> None:
-        # keep the system prompt (index 0) plus the most recent messages
-        if len(self.messages) > MAX_HISTORY_MESSAGES:
-            self.messages = [self.messages[0]] + self.messages[-(MAX_HISTORY_MESSAGES - 1) :]
+        """Drop the oldest turns once the conversation grows past the cap.
+
+        Whole turns, never half of one. The fixed slice this replaced cut at an
+        offset, which lands inside a turn whenever the arithmetic says so -
+        between an ``assistant`` message carrying ``tool_calls`` and the
+        ``tool`` results answering them - leaving the history opening on a tool
+        result that answers nothing visible. Ollama accepts that rather than
+        rejecting it (measured; it is not the schema error a stricter API would
+        raise), which is what makes it worth fixing here rather than waiting
+        for a crash to report it: nothing fails, and the cost is paid quietly
+        as a JSON blob spending context with no question attached to say what
+        it was for.
+
+        Measuring it narrowed the shape, which is worth writing down because it
+        is not what it looks like. A conversation of uniform turns never splits
+        at all: every turn is an EVEN number of messages while the offset is
+        odd, so the cut lands in the same safe place in every turn forever.
+        What breaks that parity is a round where the model asks for two tools
+        at once, since the loop below appends one ``tool`` message per call.
+        Mixed that way - measured over template answers and two-call agent
+        turns - a quarter of trims orphan a result.
+
+        The cap is a ceiling, not a target: cutting at a turn boundary usually
+        keeps a few messages fewer, and keeps the current turn whole even in
+        the case where one turn alone would exceed it.
+        """
+        if len(self.messages) <= MAX_HISTORY_MESSAGES:
+            return
+        oldest_kept = len(self.messages) - (MAX_HISTORY_MESSAGES - 1)
+        cut = next((start for start in self._turn_starts if start >= oldest_kept), self._turn_starts[-1] if self._turn_starts else len(self.messages))
+        self.messages = [self.messages[0]] + self.messages[cut:]
+        self._turn_starts = [start - cut + 1 for start in self._turn_starts if start >= cut]
 
     def ask(self, question: str, label: str = "") -> Answer:
         """Answer one question.
@@ -274,6 +323,7 @@ class Agent:
             # Record the turn in the conversation even though the tool loop
             # never ran, so a later follow-up that DOES fall through to the
             # agent still sees what was already asked and answered.
+            self._turn_starts.append(len(self.messages))
             self.messages.extend([{"role": "user", "content": question}, {"role": "assistant", "content": templated.answer}])
             self._trim_history()
             self.last_question = question
@@ -286,6 +336,7 @@ class Agent:
         # stable for the tool-call rounds after it, which is where the cost
         # compounded. Rare path, so that is the right way round.
         self.messages[0] = {"role": "system", "content": build_system_prompt(question)}
+        self._turn_starts.append(len(self.messages))
         self.messages.append({"role": "user", "content": question})
         auto_recoveries = 0
         error_recoveries = 0

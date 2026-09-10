@@ -61,7 +61,8 @@ class AgentRunner:
     """An :class:`association.query.agent.Agent` behind a lock.
 
     The Agent is built once and reused, so the DuckDB connection and ollama's
-    keep-alive are not re-established per request.
+    keep-alive are not re-established per request. What is NOT reused is the
+    conversation: see :meth:`ask`.
 
     .. versionadded:: 2.0.0
     """
@@ -100,8 +101,27 @@ class AgentRunner:
         the Agent, not to a call - and swapping it is safe here only because
         this holds the lock while it does so. Restored afterwards so a request
         that has finished cannot keep writing into a closed stream.
+
+        Every request starts a fresh conversation, which is what the docs
+        already promised ("each message is a new question") and what the code
+        did not do: one Agent reused across requests accumulated ONE history
+        shared by every browser that connected. Two costs, and the second is
+        the serious one - the history is context nobody asked to spend, and
+        ``Agent.last_question`` goes to the router as ``previous_question``, so
+        "what about jokic" from one person was routed against whatever a
+        stranger had asked before it. Reset under the lock, where no question
+        is in flight to lose its own history mid-answer.
+
+        Giving the web UI real multi-turn memory means giving it per-client
+        conversations, which needs a session the API does not have yet. Until
+        then this is stateless on purpose rather than by accident.
+
+        .. versionchanged:: 2.1.0
+           Resets the conversation per request instead of sharing one across
+           every client.
         """
         with self._lock:
+            self.agent.reset_conversation()
             previous, self.agent.trace = self.agent.trace, trace
             try:
                 return self.agent.ask(question, label=label)

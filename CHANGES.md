@@ -15,6 +15,52 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **The agent's SQL connection can no longer read the disk.** `read_only=True`
+  protects the database and says nothing about the machine under it: confirmed
+  live against the built warehouse, `SELECT * FROM read_csv('/etc/passwd')`
+  returned rows and `glob('/home/<user>/*')` listed dotfiles, through the same
+  connection `run_sql` uses. Since `run_sql` runs SQL a model wrote from a
+  question a stranger may have phrased, "only SELECT is allowed" was never the
+  boundary it reads as - a SELECT is enough to put a file in the answer. The
+  new `query.toolbox.connect_read_only` adds `enable_external_access=false`,
+  and it costs nothing: no template and no agent tool reads a Parquet file,
+  attaches a database or copies anything, so the warehouse was the whole
+  surface either way. The fetch path is the opposite case and keeps its own
+  connection - building the warehouse IS reading 208,000 files off disk.
+
+- **The web server no longer shares one conversation between every browser.**
+  `AgentRunner` reuses a single Agent so the DuckDB connection and ollama's
+  keep-alive survive between requests - and its conversation was surviving too,
+  which nothing intended and the docs already contradicted ("each message is a
+  new question"). The history was the smaller half; `Agent.last_question` goes
+  to the router as `previous_question`, so one person's "what about jokic" was
+  routed against whatever a stranger had asked before it. `ask` now calls the
+  new `Agent.reset_conversation` under the lock it already holds. Real
+  multi-turn memory for the web UI means per-client conversations, which needs
+  a session the API does not have yet; until then this is stateless on purpose
+  rather than by accident.
+
+- **Trimming a long conversation drops whole turns, never half of one.** The
+  fixed slice cut at an offset, which lands between an `assistant` message
+  carrying `tool_calls` and the `tool` results answering them, leaving the
+  history opening on a result that answers nothing visible. Ollama accepts that
+  rather than rejecting it - measured, so nothing fails and the cost is paid
+  quietly, as a JSON blob spending context with no question attached to say
+  what it was for. Measuring also narrowed the shape, which is not what it
+  looks like: a conversation of uniform turns never splits, because every turn
+  is an even number of messages while the offset is odd, so the cut lands in
+  the same safe place forever. What breaks that parity is a round asking for
+  two tools at once, since the loop appends one `tool` message per call - and
+  mixed that way, a quarter of trims orphan a result.
+
+- **`--log-level` no longer reconfigures logging for the whole process.**
+  `logging.basicConfig` inside `data pull` and `data load` configures the
+  *root* logger, so calling either from anything that had its own logging set
+  up - a library, a test, the web server - replaced it. `_configure_logging`
+  attaches one handler to the `association` logger instead, which every logger
+  in the package is a child of. Same output from the CLI, and nothing outside
+  the package touched.
+
 - **A bare surname asks again, even when the router completed it.** "Who is
   better, tatum or brown" routed to `['Jayson Tatum', 'Jaylen Brown']` and was
   answered without a question. Tatum is one player and that completion is free;

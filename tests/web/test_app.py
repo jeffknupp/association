@@ -223,7 +223,10 @@ def test_two_questions_at_once_are_answered_one_at_a_time(tmp_path: Path) -> Non
 
         trace: Any = None
 
-    runner = AgentRunner(Blocking())  # type: ignore[arg-type]  # only .ask and .trace are touched
+        def reset_conversation(self) -> None:
+            pass
+
+    runner = AgentRunner(Blocking())  # type: ignore[arg-type]  # only .ask, .trace and .reset_conversation are touched
     threads = [threading.Thread(target=lambda: runner.ask("q", label="t")) for _ in range(4)]
     for t in threads:
         t.start()
@@ -249,3 +252,39 @@ def test_a_malformed_ask_is_rejected_rather_than_asked(payload: dict[str, Any], 
     answerer = StubAnswerer()
     assert _client(answerer, tmp_path).post("/api/ask", json=payload).status_code == 422
     assert answerer.asked == []
+
+
+def test_every_request_gets_its_own_conversation(tmp_path: Path) -> None:
+    """One Agent reused across requests shared ONE history with every browser
+    that connected - and `last_question` with it, which the router reads as
+    `previous_question`, so a follow-up was resolved against whatever a
+    stranger had asked. The docs already said each message is a new question;
+    this is what makes that true."""
+    from association.web.runner import AgentRunner
+
+    class Recording:
+        """Just enough Agent to hold a conversation and be asked to drop it."""
+
+        def __init__(self) -> None:
+            self.messages: list[dict[str, Any]] = [{"role": "system", "content": "x"}]
+            self.last_question: str | None = None
+            self.trace: Any = None
+
+        def reset_conversation(self) -> None:
+            self.messages = [{"role": "system", "content": "x"}]
+            self.last_question = None
+
+        def ask(self, question: str, label: str = "") -> Answer:
+            self.messages.append({"role": "user", "content": question})
+            self.last_question = question
+            return _answer("done")
+
+    agent = Recording()
+    runner = AgentRunner(agent)  # type: ignore[arg-type]  # only the four attributes above are touched
+
+    runner.ask("how many points does luka average", label="a")
+    runner.ask("what about jokic", label="b")
+
+    # The second question saw neither the first question nor its answer.
+    assert [m["content"] for m in agent.messages] == ["x", "what about jokic"]
+    assert agent.last_question == "what about jokic"

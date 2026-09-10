@@ -8,7 +8,7 @@ import ollama
 import pytest
 from ollama import ChatResponse, Message
 
-from association.query.agent import MAX_AUTO_SQL_RECOVERIES, MAX_ERROR_RECOVERIES, Agent, _extract_unrun_sql
+from association.query.agent import MAX_AUTO_SQL_RECOVERIES, MAX_ERROR_RECOVERIES, MAX_HISTORY_MESSAGES, Agent, _extract_unrun_sql
 
 
 def test_extract_sql_from_fenced_sql_block() -> None:
@@ -546,3 +546,116 @@ def test_a_trace_sink_takes_the_place_of_stderr_entirely(monkeypatch: pytest.Mon
     assert any(line.startswith("[history] ") for line in seen)
     assert any("model inference #1" in line for line in seen)
     assert capsys.readouterr().err == ""
+
+
+def _record_turn(agent: Agent, question: str, *, tool_calls: int) -> None:
+    """Append one finished turn the way _ask_inner does, and trim after it.
+
+    ``tool_calls=0`` is a template answer; anything higher is an agent turn
+    with that many tools asked for in one round, which is what makes a turn an
+    odd number of messages - see the perturbation below.
+    """
+    agent._turn_starts.append(len(agent.messages))
+    agent.messages.append({"role": "user", "content": question})
+    if tool_calls:
+        agent.messages.append({"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "run_sql", "arguments": {}}} for _ in range(tool_calls)]})
+        agent.messages += [{"role": "tool", "content": '{"rows": []}'} for _ in range(tool_calls)]
+    agent.messages.append({"role": "assistant", "content": f"answer to {question}"})
+    agent._trim_history()
+
+
+def _orphaned_tool_results(messages: list[dict[str, Any]]) -> list[int]:
+    """Indexes of tool results with no assistant tool call above them."""
+    orphans = []
+    outstanding = False
+    for i, message in enumerate(messages):
+        if message.get("role") == "assistant":
+            outstanding = bool(message.get("tool_calls"))
+        elif message.get("role") == "tool":
+            if not outstanding:
+                orphans.append(i)
+    return orphans
+
+
+def test_trimming_never_leaves_a_tool_result_without_the_call_that_asked_for_it(tmp_path: Path) -> None:
+    """The fixed slice this replaced cut at an offset, which lands inside a
+    turn whenever the arithmetic says so: between an assistant message carrying
+    tool_calls and the tool results answering them. Ollama accepts that rather
+    than rejecting it - measured, it is not the schema error a stricter API
+    would raise - so nothing fails and the cost is paid quietly, as a JSON blob
+    spending context with no question attached to say what it was for.
+
+    Driven with the same mix as the perturbation below, since a conversation of
+    uniform turns never splits either way and would prove nothing.
+    """
+    agent = _agent(tmp_path)
+
+    for i in range(30):
+        _record_turn(agent, f"question {i}", tool_calls=[0, 0, 2][i % 3])
+
+    assert len(agent.messages) <= MAX_HISTORY_MESSAGES
+    assert agent.messages[0]["role"] == "system"
+    assert _orphaned_tool_results(agent.messages) == []
+    # The cut lands on a question, not in the middle of answering one, and the
+    # turn just finished survived it whole.
+    assert agent.messages[1]["role"] == "user"
+    assert agent.messages[-5]["content"] == "question 29"  # user, assistant(2 calls), tool, tool, assistant
+
+
+def test_the_fixed_slice_this_replaced_would_have_split_a_turn() -> None:
+    """The perturbation, kept as a test: cutting at a fixed offset orphans a
+    tool result. Without this, a trim that quietly stopped cutting anything at
+    all would pass the check above just as well.
+
+    The pattern matters, and measuring it narrowed the bug. A conversation of
+    uniform turns never splits: every turn is an even number of messages and
+    the offset is odd, so the cut lands in the same place in every turn
+    forever. What breaks that is a round where the model asks for TWO tools at
+    once, since the loop appends one ``tool`` message per call - an odd turn.
+    Mixed that way, a quarter of trims orphan a tool result. Two template
+    answers and one two-call agent turn, repeating, is the shortest
+    reproducer.
+    """
+    kinds = ["fast", "fast", "two calls"]
+    conversation: list[dict[str, Any]] = [{"role": "system", "content": "x"}]
+    split_somewhere = False
+    for i in range(15):
+        conversation.append({"role": "user", "content": f"question {i}"})
+        if kinds[i % len(kinds)] == "two calls":
+            conversation.append({"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "run_sql"}}, {"function": {"name": "describe_table"}}]})
+            conversation += [{"role": "tool", "content": "{}"}, {"role": "tool", "content": "{}"}]
+        conversation.append({"role": "assistant", "content": "answer"})
+        if len(conversation) > MAX_HISTORY_MESSAGES:
+            old_way = [conversation[0]] + conversation[-(MAX_HISTORY_MESSAGES - 1) :]
+            split_somewhere = split_somewhere or bool(_orphaned_tool_results(old_way))
+
+    assert split_somewhere
+
+
+def test_a_turn_longer_than_the_cap_is_kept_whole_rather_than_beheaded(tmp_path: Path) -> None:
+    """A cap is a ceiling on old turns, not a licence to drop the question
+    being answered. Nothing observed produces a turn this long - MAX_TOOL_
+    ITERATIONS bounds it well under the cap - but 'keep whole turns' has to
+    mean the current one too, or the fallback quietly deletes it."""
+    agent = _agent(tmp_path)
+    agent._turn_starts.append(len(agent.messages))
+    agent.messages.append({"role": "user", "content": "the long one"})
+    for _ in range(MAX_HISTORY_MESSAGES + 10):
+        agent.messages.append({"role": "assistant", "content": "thinking"})
+    agent._trim_history()
+
+    assert agent.messages[1] == {"role": "user", "content": "the long one"}
+
+
+def test_resetting_a_conversation_leaves_nothing_of_the_last_one(tmp_path: Path) -> None:
+    """What the web server calls between requests. `last_question` matters as
+    much as the messages do: route() reads it as `previous_question`."""
+    agent = _agent(tmp_path)
+    _record_turn(agent, "how many points does luka average", tool_calls=1)
+    agent.last_question = "how many points does luka average"
+
+    agent.reset_conversation()
+
+    assert [m["role"] for m in agent.messages] == ["system"]
+    assert agent.last_question is None
+    assert agent._turn_starts == []

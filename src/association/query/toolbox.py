@@ -106,20 +106,48 @@ def _pack_result(rows: list[dict], cols: list[str], hit_row_cap: bool, impossibl
     return _serialize(rows[:low], low, hit_row_cap, dropped=len(rows) - low, impossible_filter=impossible_filter)
 
 
+def connect_read_only(db_path: str) -> duckdb.DuckDBPyConnection:
+    """Open the warehouse to be queried: read-only, and with no reach off it.
+
+    ``read_only=True`` protects the *database*, and says nothing at all about
+    the disk under it. DuckDB's table functions still read whatever the process
+    can - confirmed live against the built warehouse, where
+    ``SELECT * FROM read_csv('/etc/passwd')`` returns rows and
+    ``glob('/home/<user>/*')`` lists dotfiles. That matters because
+    :meth:`Toolbox.run_sql` runs SQL a model wrote from a question a stranger
+    may have phrased, so "only SELECT is allowed" is not the boundary it looks
+    like: a SELECT is enough to read a file and put it in the answer.
+
+    ``enable_external_access=false`` closes that, and closes it for free - no
+    template and no agent tool reads a Parquet file, attaches a database or
+    copies anything, so the warehouse is the entire surface either way. The
+    fetch path is the opposite case and keeps its own connection: building the
+    warehouse IS reading 208,000 files off disk.
+
+    .. versionadded:: 2.1.0
+    """
+    return duckdb.connect(db_path, read_only=True, config={"enable_external_access": False})
+
+
 class Toolbox:
     """The tools the fall-through agent can call.
 
     The DuckDB connection is opened read-only, which is a hard guarantee rather
-    than a convention: no query the model writes can modify the warehouse.
+    than a convention: no query the model writes can modify the warehouse. It
+    is also cut off from the filesystem - see :func:`connect_read_only`, which
+    is where the reasoning for that lives.
 
     .. versionchanged:: 2.0.0
        Records the files its render tools write, so a caller can reach them -
        see :meth:`take_artifacts`. A tool's own return value is prose, which is
        all the model can read.
+
+    .. versionchanged:: 2.1.0
+       The connection no longer has any filesystem access.
     """
 
     def __init__(self, db_path: str, out_dir: Path):
-        self.con: duckdb.DuckDBPyConnection = duckdb.connect(db_path, read_only=True)
+        self.con: duckdb.DuckDBPyConnection = connect_read_only(db_path)
         self.out_dir = out_dir
         self.out_dir.mkdir(parents=True, exist_ok=True)
         # A tool returns prose to the model, which is all the model can use -

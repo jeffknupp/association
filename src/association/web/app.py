@@ -27,6 +27,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from ..query.answer import Answer
+from ..query.toolbox import connect_read_only
 from .runner import Answerer
 
 # The page is one self-contained file, inlining its own CSS and JavaScript, for
@@ -178,15 +179,18 @@ def _warehouse_seasons(db_path: str) -> dict[str, int] | None:
     """First season, last season and game count, or None if the warehouse is
     not there or holds no games yet.
 
-    Its own short-lived read-only connection, deliberately: the Agent's
-    connection is busy for as long as a question takes, and a health check that
-    could block behind a 113-second answer would report exactly the wrong thing
-    at exactly the wrong moment.
+    Its own short-lived connection, deliberately: the Agent's connection is
+    busy for as long as a question takes, and a health check that could block
+    behind a 113-second answer would report exactly the wrong thing at exactly
+    the wrong moment. Opened through :func:`association.query.toolbox.connect_read_only`
+    like every other connection on the query side - this one only ever runs the
+    fixed query below, but a second way to open the warehouse is a second place
+    for the next one to be opened wrongly.
     """
     if not Path(db_path).exists():
         return None
     try:
-        con = duckdb.connect(db_path, read_only=True)
+        con = connect_read_only(db_path)
     except duckdb.Error:
         return None
     try:

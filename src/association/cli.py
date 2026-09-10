@@ -24,6 +24,31 @@ DEFAULT_OUT_DIR = "./query_output"
 
 LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR"]
 
+
+def _configure_logging(log_level: str) -> None:
+    """Send this package's log lines to stderr at ``log_level``.
+
+    Deliberately not ``logging.basicConfig``, which configures the *root*
+    logger: called from inside a subcommand it reconfigures logging for the
+    whole process, including for whatever imported us. A CLI owns its
+    interpreter and can get away with that, but these are ordinary functions
+    that a library, a test, or the web server can reach, and none of those
+    asked to have their handlers set.
+
+    Every logger in the package is named ``association.*``, so attaching one
+    handler here catches all of them, and ``propagate = False`` keeps the lines
+    from also going wherever the host sends root's. Idempotent: two commands in
+    one process must not print everything twice.
+    """
+    logger = logging.getLogger("association")
+    logger.setLevel(log_level)
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        logger.addHandler(handler)
+    logger.propagate = False
+
+
 F = TypeVar("F", bound=Callable[..., Any])
 
 CLI_EPILOG = f"""
@@ -186,7 +211,7 @@ def data_pull(
     from .fetch.client import ESPNClient
     from .fetch.pipeline import Pipeline
 
-    logging.basicConfig(level=log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    _configure_logging(log_level)
     parsed_seasons = _parse_seasons(seasons)
     parsed_season_types = _parse_season_types(season_types)
     data_dir_path = Path(data_dir)
@@ -243,7 +268,7 @@ def data_load(data_dir: str, db_path: str, tables: str | None, log_level: str) -
     """(Re)build the DuckDB warehouse from Parquet files already on disk, without fetching."""
     from .fetch import warehouse
 
-    logging.basicConfig(level=log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    _configure_logging(log_level)
     parsed_tables = [t.strip() for t in tables.split(",") if t.strip()] if tables else None
     warehouse.build(Path(data_dir), Path(db_path), tables=parsed_tables)
 

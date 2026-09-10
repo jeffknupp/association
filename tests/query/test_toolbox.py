@@ -414,3 +414,33 @@ def test_a_genuinely_empty_result_is_not_flagged(toolbox: Toolbox) -> None:
 
 def test_a_name_filter_on_a_name_column_is_not_flagged(toolbox: Toolbox) -> None:
     assert "warning" not in json.loads(toolbox.run_sql("SELECT * FROM players WHERE display_name = 'Stephen Curry'"))
+
+
+def test_the_models_connection_cannot_read_files_off_the_disk(toolbox: Toolbox, tmp_path: Path) -> None:
+    """``read_only=True`` protects the database and nothing else.
+
+    Confirmed against the real warehouse before this was closed:
+    ``read_csv('/etc/passwd')`` returned rows and ``glob('/home/<user>/*')``
+    listed dotfiles, through the same connection ``run_sql`` uses. Since
+    ``run_sql`` runs SQL a model wrote from a question a stranger may have
+    phrased, "only SELECT is allowed" was never the boundary it reads as - a
+    SELECT is enough to put a file in the answer.
+    """
+    secret = tmp_path / "secret.txt"
+    secret.write_text("sk-not-a-real-key")
+
+    reads = [
+        f"SELECT content FROM read_text('{secret}')",
+        f"SELECT * FROM read_csv('{secret}', header=false, columns={{'line': 'VARCHAR'}})",
+        f"SELECT * FROM glob('{tmp_path}/*')",
+    ]
+    for query in reads:
+        result = toolbox.run_sql(query)
+        assert "sk-not-a-real-key" not in result, query
+        assert result.startswith("SQL error:"), query
+
+
+def test_closing_the_disk_off_did_not_close_the_warehouse_off(toolbox: Toolbox) -> None:
+    """The other half of the check above: a guard that broke ordinary querying
+    would pass it just as well."""
+    assert "Stephen Curry" in toolbox.run_sql("SELECT display_name FROM players ORDER BY athlete_id")

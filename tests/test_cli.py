@@ -6,7 +6,7 @@ import click
 import pytest
 from click.testing import CliRunner
 
-from association.cli import _parse_season_types, _parse_seasons, cli, data_check, data_load, data_pull, query
+from association.cli import _configure_logging, _parse_season_types, _parse_seasons, cli, data_check, data_load, data_pull, query
 from association.query.answer import Answer, Timing
 
 
@@ -344,3 +344,46 @@ def test_web_reports_the_install_command_when_the_extra_is_missing(monkeypatch: 
     assert result.exit_code != 0
     assert "pip install 'association[web]'" in result.output
     assert "Traceback" not in result.output
+
+
+def test_configuring_logging_leaves_the_root_logger_alone() -> None:
+    """`logging.basicConfig` inside a subcommand reconfigures logging for the
+    whole process, including for whoever imported us. These are ordinary
+    functions a library, a test or the web server can reach, and none of them
+    asked to have their handlers set."""
+    import logging
+
+    root = logging.getLogger()
+    package = logging.getLogger("association")
+    before = (root.level, list(root.handlers))
+    package_handlers = list(package.handlers)
+    package_level = package.level
+    try:
+        _configure_logging("DEBUG")
+
+        assert (root.level, list(root.handlers)) == before
+        assert package.level == logging.DEBUG
+        assert package.handlers  # ... and the package's own lines still go somewhere
+    finally:
+        package.handlers = package_handlers
+        package.setLevel(package_level)
+        package.propagate = True
+
+
+def test_configuring_logging_twice_does_not_print_everything_twice() -> None:
+    """Two commands in one process, or one command in a test session that
+    already ran another."""
+    import logging
+
+    package = logging.getLogger("association")
+    package_handlers = list(package.handlers)
+    package_level = package.level
+    try:
+        _configure_logging("INFO")
+        _configure_logging("DEBUG")
+
+        assert len(package.handlers) == 1
+    finally:
+        package.handlers = package_handlers
+        package.setLevel(package_level)
+        package.propagate = True

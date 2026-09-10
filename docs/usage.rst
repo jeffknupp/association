@@ -302,7 +302,10 @@ Three more things about it are deliberate:
 * **Each message is a new question.** There is no conversation memory yet, so
   "what about last year?" will not work. That is a real change in what a
   question *means* and it deserves its own routing cases rather than arriving
-  as a footnote to a UI release.
+  as a footnote to a UI release. Since 2.1.0 the server *enforces* this rather
+  than merely not implementing it: the Agent is reused for its warm connection
+  and keep-alive, but its conversation is reset per request, so one browser
+  can never answer from another's history.
 * **Every answer says which path produced it** — ``template`` in green, with
   the intent, or ``agent`` in orange. Whether a template built the sentence
   from code or a 7B model wrote the SQL is the most useful single thing you can
