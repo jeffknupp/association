@@ -15,6 +15,52 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A fingerprint for a single game.** "Show me a fingerprint for steph curry's
+  last game in 2026" now draws that game. The play-type split does exist per
+  game - it is in a second file the pull never read, and the claim in the entry
+  below that it was not published was wrong. ESPN Analytics puts two objects on
+  each date: `NBA/netpts/<season>/<date>.json`, which this project already
+  fetched, and `NBA/netpts/<season>/<date>_player.json`, which is long format,
+  one row per player per game per action type, 31 types covering every category
+  the season file holds plus nine it does not. It is what the site's own
+  per-game awards are computed from ("Facilitator" for net points passing,
+  "Corner Pocket" for corner 3s).
+
+  Fetched into `net_points_player_game_fingerprint` under its own checkpoint,
+  so a pull that already has the box-score half backfills only what it is
+  missing. Stored LONG rather than wide: the season file's shape would be 93
+  columns here and would change again the next time ESPN adds a category. The
+  categories are normalised on the way in to the column prefixes the season
+  file uses, over the `FINGERPRINT_CATEGORIES` map that already existed, so one
+  skill list drives both tables.
+
+  Two things about the plot are deliberate and measured. Its numbers are that
+  game's net points, not a per-100 rate - over ~30 possessions a per-100 rate
+  turns one made corner three into a league-leading season figure - and its
+  percentiles rank against every player-*game* in the season rather than
+  against season rates, since a season average is the mean of games like this
+  one and nearly any decent game would land in the 99th percentile against it.
+  The new `Unit` carries the labels with the numbers so a per-game plot is
+  never captioned "per 100 poss". Verified against the warehouse: Curry's
+  2026-04-13 headline reads +6.31 (+2.39 offense, +3.92 defense), matching
+  `net_points_player_game`'s row for that game exactly - a cross-check from a
+  different source file.
+
+  A `date` is still refused, and now says why: the router supplies a calendar
+  date and this picks a player's first or last game of a season, which are
+  different questions.
+
+- **A NetPoints pull no longer spends three quarters of its requests being
+  refused.** Every date with a local game was fetched, back to 1994, but the
+  bucket answers 403 for anything before 2018-10-16. Measured on this
+  warehouse: 7,835 dates, of which 1,769 are in range.
+
+- **`SkillValue` and `PlayerFingerprint` no longer name their fields
+  `per_100`.** They hold a per-100 rate for a season fingerprint and a game's
+  own net points for a per-game one, so `value`, `total`, `league_average`,
+  `league_best`, `overall`, `offense` and `defense` say what is there without
+  claiming a unit the numbers may not be in.
+
 - **A fingerprint asked for one game says so, instead of drawing the season.**
   "Show me a fingerprint for steph curry's last game in 2026" rendered his
   whole 2026 radar, titled with the season, with nothing saying the question

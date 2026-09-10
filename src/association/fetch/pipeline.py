@@ -62,6 +62,10 @@ class DailyNetPointsFetcher(Protocol):
         """One date's NetPoints, or None when that date has no file."""
         ...
 
+    def get_daily_players(self, date: str, season_folder: int) -> list[dict[str, Any]] | None:
+        """One date's per-player, per-action-type NetPoints, or None."""
+        ...
+
 
 class Pipeline:
     """Drives a full fetch: teams, schedules, games, players, aggregates.
@@ -554,14 +558,31 @@ class Pipeline:
         for date, season in list(result.items()):
             prior_day = (_date.fromisoformat(date) - _timedelta(days=1)).isoformat()
             result.setdefault(prior_day, season)
-        return result
+        # NetPoints starts at 2018-10-16 and the bucket answers 403 for
+        # everything before it, so a date below the floor is a request that
+        # cannot succeed. Measured against this warehouse: 7,835 dates have a
+        # local game and 1,769 are in range, so without this three quarters of
+        # the requests a fresh pull makes are spent being refused.
+        return {date: season for date, season in result.items() if season >= NET_POINTS_FIRST_SEASON}
 
     def fetch_net_points_daily(self) -> None:
-        """Opt-in (--include-net-points-daily): one S3 request per date this
+        """Opt-in (--include-net-points-daily): S3 requests per date this
         project has local ESPN games for (not per player, and not per game -
-        NetPoints publishes one file per date covering every game played that
-        day). Needs a different, signed-request client than the rest of this
-        pipeline - see netpoints_client.py for why."""
+        NetPoints publishes per date, covering every game played that day).
+        Needs a different, signed-request client than the rest of this
+        pipeline - see netpoints_client.py for why.
+
+        TWO objects per date, checkpointed separately. They are published
+        together, so one marker would be simpler - but the play-type file was
+        added to this pipeline long after the first, and a shared marker would
+        have made every date already on disk look complete and skip it forever.
+        Separate markers mean a pull that has the box-score half backfills only
+        the half it is missing, at one request per date instead of two.
+
+        .. versionchanged:: 2.1.0
+           Also fetches the per-game play-type split into
+           ``net_points_player_game_fingerprint``.
+        """
         if self._net_points_daily_client is None:
             self._net_points_daily_client = NetPointsDailyClient()
 
@@ -576,15 +597,25 @@ class Pipeline:
             # (write_rows([]) is a no-op), so a MARKER rather than file
             # existence is what stops it being re-fetched forever - the same
             # fix already applied to preseason team-stats and postponed games.
-            marker = self._p("_net_points_daily_done", f"date={date}.marker")
-            if not self.force and storage.is_complete(marker):
-                continue
+            box_marker = self._p("_net_points_daily_done", f"date={date}.marker")
+            if self.force or not storage.is_complete(box_marker):
+                data = self._net_points_daily_client.get_daily(date, season_folder=season - 1)
+                player_rows, team_rows = parse.parse_net_points_daily(data, date, team_abbr_to_id, team_date_to_game, name_to_athlete_id)
+                self._write_rows(self._p("net_points_player_game", f"season={season}", f"date={date}.parquet"), player_rows)
+                self._write_rows(self._p("net_points_team_game", f"season={season}", f"date={date}.parquet"), team_rows)
+                storage.mark_complete(box_marker)
 
-            data = self._net_points_daily_client.get_daily(date, season_folder=season - 1)
-            player_rows, team_rows = parse.parse_net_points_daily(data, date, team_abbr_to_id, team_date_to_game, name_to_athlete_id)
-            self._write_rows(self._p("net_points_player_game", f"season={season}", f"date={date}.parquet"), player_rows)
-            self._write_rows(self._p("net_points_team_game", f"season={season}", f"date={date}.parquet"), team_rows)
-            storage.mark_complete(marker)
+            skill_marker = self._p("_net_points_daily_skills_done", f"date={date}.marker")
+            if self.force or not storage.is_complete(skill_marker):
+                skill_rows = parse.parse_net_points_daily_players(
+                    self._net_points_daily_client.get_daily_players(date, season_folder=season - 1),
+                    date,
+                    team_abbr_to_id,
+                    team_date_to_game,
+                    name_to_athlete_id,
+                )
+                self._write_rows(self._p("net_points_player_game_fingerprint", f"season={season}", f"date={date}.parquet"), skill_rows)
+                storage.mark_complete(skill_marker)
 
     # ---------------- glossary ----------------
     def write_glossary(self) -> None:

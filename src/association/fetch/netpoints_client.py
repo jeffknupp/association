@@ -77,3 +77,34 @@ class NetPointsDailyClient:
             return None
         result: dict[str, Any] = json.loads(body)
         return result
+
+    def get_daily_players(self, date: str, season_folder: int) -> list[dict[str, Any]] | None:
+        """One date's per-player, per-action-type NetPoints, or None when that
+        date has no file.
+
+        A SECOND object for the same date, beside the one :meth:`get_daily`
+        reads, and the only place the play-type split exists per game: the
+        daily file carries three NetPoints values per player-game (offense,
+        defense, total) and the rest of its 57 fields are counting stats, while
+        this one is long-format - one row per player per game per action type,
+        31 types covering every category the season fingerprint file holds plus
+        ten it does not.
+
+        The site loads both to draw one box score, which is how it awards
+        "Facilitator" (most net points passing) and "Corner Pocket" (most on
+        corner 3s) for a single game.
+
+        .. versionadded:: 2.1.0
+        """
+        key = f"NBA/netpts/{season_folder}/{date}_player.json"
+        try:
+            obj = self._client().get_object(Bucket=BUCKET, Key=key)
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in ("NoSuchKey", "AccessDenied"):
+                return None
+            raise
+        body = obj["Body"].read()
+        if not body:
+            return None
+        rows: list[dict[str, Any]] = json.loads(body)
+        return rows

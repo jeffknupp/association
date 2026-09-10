@@ -24,7 +24,7 @@ from association.season import current_season
 from .answer import Artifact
 from .court import HOOP_X, HOOP_Y
 from .entities import Ambiguous, Entity, clarification, no_match, resolve_player, resolve_team, suggest_players, suggestion
-from .fingerprint import FINGERPRINT_AVAILABILITY, FINGERPRINT_VIEWS, FingerprintUnavailable, render_for_players
+from .fingerprint import FINGERPRINT_AVAILABILITY, FINGERPRINT_VIEWS, GAME_FINGERPRINT_AVAILABILITY, FingerprintUnavailable, render_for_players
 from .leaderboard import LeaderboardError, resolve_metric, run_leaderboard
 from .metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS
 from .shotchart import SHOT_AVAILABILITY, render_for_player, resolve_chart_player
@@ -85,10 +85,13 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     "shot_chart": frozenset({"order"}),
     "shot_distance": frozenset({"order"}),
     "player_netpoints": frozenset({"order"}),
-    # Honoured by REFUSING: there is no per-game play-type breakdown in the
-    # warehouse at all, so "his last game's fingerprint" is answered with that
-    # fact. Leaving it unlisted would fall through to an agent with no better
-    # source, which is slower and free to answer the season instead.
+    # `order` is honoured by DRAWING that game, from the long per-game table.
+    # `date` is still honoured by refusing: the router gives a calendar date
+    # and the loader picks a player's first or last game of a season, which are
+    # different questions - answering one with the other is the substitution
+    # this whole module exists to prevent. Both stay listed either way, since
+    # leaving one unlisted falls through to an agent with no better source,
+    # which is slower and free to answer the season instead.
     "fingerprint": frozenset({"order", "date"}),
 }
 
@@ -118,7 +121,7 @@ TEMPLATE_SOURCES: dict[str, tuple[str, ...]] = {
     "game_log": ("games",),
     "shot_chart": ("shot_chart",),
     "shot_distance": ("shot_chart",),
-    "fingerprint": ("net_points_player_fingerprint",),
+    "fingerprint": ("net_points_player_fingerprint", "net_points_player_game_fingerprint"),
 }
 
 # Templates that read a player name at all - resolving it, filtering on it, or
@@ -653,8 +656,9 @@ def _single_game_netpoints(ctx: TemplateContext, player: Entity, season: int, se
     """One game's NetPoints, from net_points_player_game.
 
     That table is opt-in (`data pull --include-net-points-daily`) and, unlike
-    net_points_player, uses the normal numeric season_type. No play-type
-    fingerprint - that is season-level only."""
+    net_points_player, uses the normal numeric season_type. It carries no
+    play-type split of its own - that lives in the sibling
+    net_points_player_game_fingerprint, which the `fingerprint` intent draws."""
     period = _period(season, season_type)
     try:
         row = ctx.con.execute(
@@ -686,7 +690,7 @@ def _single_game_netpoints(ctx: TemplateContext, player: Entity, season: int, se
     answer = f"{player.name}, NetPoints in his {which} {period} game ({str(date)[:10]}): {_table_cell(t)} total ({_table_cell(o)} offense, {_table_cell(d)} defense)."
     if detail:
         answer += "\n  " + ", ".join(detail) + "."
-    answer += "\n  (Per-game NetPoints carry no play-type fingerprint - that is season-level only.)"
+    answer += "\n  (Ask for a fingerprint of that game to see the play-type split behind it.)"
     return TemplateResult(data={"player": player.name, "game": game}, answer=answer)
 
 
@@ -1163,31 +1167,31 @@ def fingerprint(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         names = [single]
     names = names[:MAX_FINGERPRINT_PLAYERS]
 
-    # Nothing in the warehouse to draw for one game, and said so rather than
-    # quietly drawing the season under a question that asked about a game.
-    #
-    # A gap in what is FETCHED, not in what exists: ESPN Analytics publishes a
-    # second per-date file, `NBA/netpts/<season>/<date>_player.json`, holding
-    # every player's NetPoints split across 31 action types for each game, and
-    # the pull only reads the first one. Until that is fetched and loaded,
-    # net_points_player_game carries an offense/defense/total split and no
-    # play-type columns at all, so this is the honest answer rather than a
-    # permanent one.
-    if slots.get("order") in ("recent", "first") or slots.get("date"):
-        message = (
-            "NetPoints fingerprints are season-level only in this warehouse - the per-game play-type breakdown is not among the data that has been pulled, so there is nothing to draw for one game. "
-            "A single game's NetPoints total is on record: ask for his NetPoints in that game instead."
-        )
+    # A question about one game draws that game, from the long per-game table
+    # rather than the season file - see fingerprint.load_game_fingerprints for
+    # why its numbers are the game's own net points and not a per-100 rate. A
+    # `date` is not honoured the same way: the router gives a calendar date and
+    # the loader picks a player's first or last game, which are different
+    # questions, so a dated request still says it cannot answer.
+    order = slots.get("order") if slots.get("order") in ("recent", "first") else None
+    if slots.get("date") and not order:
+        message = "A fingerprint can be drawn for a player's first or most recent game of a season, but not yet for a particular date - ask for their last game instead."
         return TemplateResult(data={"message": message}, answer=message)
 
     # Settled before any name is resolved: the season is what narrows an
     # ambiguous name to the players who have a fingerprint in it.
     season = slots.get("season") or current_season()
+    requested_type = slots.get("season_type")
+    season_type = requested_type if isinstance(requested_type, int) else 2
+    # A one-game plot is narrowed against the table it will actually be drawn
+    # from. Availability in the season file does not imply a row per game, and
+    # the season file has no season_type at all.
+    availability = GAME_FINGERPRINT_AVAILABILITY if order else FINGERPRINT_AVAILABILITY
 
     players: list[Entity] = []
     ambiguous: list[str] = []
     for name in names:
-        found = resolve_chart_player(ctx.con, name, FINGERPRINT_AVAILABILITY, season)
+        found = resolve_chart_player(ctx.con, name, availability, season)
         if found is None:
             message = no_match(ctx.con, name)
             return TemplateResult(data={"message": message}, answer=message)
@@ -1209,7 +1213,7 @@ def fingerprint(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     if view not in FINGERPRINT_VIEWS:
         view = "total"
     try:
-        rendered = render_for_players(ctx.con, ctx.out_dir, players, ambiguous, season, view=view)
+        rendered = render_for_players(ctx.con, ctx.out_dir, players, ambiguous, season, view=view, season_type=season_type, order=order)
     except FingerprintUnavailable as exc:
         # Returned, not raised: the agent has no better source for this plot
         # than the table this just read, so falling through would only be slow.
@@ -1220,6 +1224,7 @@ def fingerprint(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
             "players": [p.name for p in players],
             "season": season,
             "side": view,
+            "scope": "game" if order else "season",
             "path": str(artifact.path) if artifact else None,
             "message": rendered.message,
         },

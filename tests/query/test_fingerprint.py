@@ -26,6 +26,7 @@ from association.query.fingerprint import (
     FingerprintUnavailable,
     build_series,
     load_fingerprints,
+    load_game_fingerprints,
     render_fingerprint,
     render_for_players,
     skills_for,
@@ -147,17 +148,17 @@ def test_percentile_is_measured_against_the_minutes_qualified_pool(con: duckdb.D
     fingerprints, league = load_fingerprints(con, [_entity("1")], 2026, min_minutes=500)
     assert league.pool_size == 3  # Dee Scrub's 100 minutes are below the floor
     rim = next(v for v in fingerprints[0].values if v.skill.label == "rim scoring")
-    assert rim.per_100 == pytest.approx(2.0)  # 100 net points over 5000 possessions
+    assert rim.value == pytest.approx(2.0)  # 100 net points over 5000 possessions
     assert rim.percentile == pytest.approx(1.0)
-    assert rim.league_best_per_100 == pytest.approx(2.0)
-    assert rim.league_average_per_100 == pytest.approx((2.0 + 0.0 + 0.5) / 3)
+    assert rim.league_best == pytest.approx(2.0)
+    assert rim.league_average == pytest.approx((2.0 + 0.0 + 0.5) / 3)
 
 
 def test_offense_and_defense_read_different_columns(con: duckdb.DuckDBPyConnection) -> None:
     """Ada Star scores at the rim and forces nothing; Bo Wall is the mirror.
     Reading the wrong column swaps them, and both plots look normal."""
-    ada = {v.skill.label: v.per_100 for v in load_fingerprints(con, [_entity("1")], 2026)[0][0].values}
-    bo = {v.skill.label: v.per_100 for v in load_fingerprints(con, [_entity("2")], 2026)[0][0].values}
+    ada = {v.skill.label: v.value for v in load_fingerprints(con, [_entity("1")], 2026)[0][0].values}
+    bo = {v.skill.label: v.value for v in load_fingerprints(con, [_entity("2")], 2026)[0][0].values}
     assert ada["rim scoring"] == pytest.approx(2.0)
     assert ada["forcing TOs"] == pytest.approx(0.0)
     assert bo["rim scoring"] == pytest.approx(0.0)
@@ -166,9 +167,9 @@ def test_offense_and_defense_read_different_columns(con: duckdb.DuckDBPyConnecti
 
 def test_the_headline_carries_overall_offense_and_defense(con: duckdb.DuckDBPyConnection) -> None:
     ada = load_fingerprints(con, [_entity("1")], 2026)[0][0]
-    assert ada.offense_per_100 == pytest.approx(2.0)
-    assert ada.defense_per_100 == pytest.approx(0.0)
-    assert ada.overall_per_100 == pytest.approx(2.0)
+    assert ada.offense == pytest.approx(2.0)
+    assert ada.defense == pytest.approx(0.0)
+    assert ada.overall == pytest.approx(2.0)
 
 
 def test_a_player_below_the_floor_is_still_drawn_and_said_to_be_below_it(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
@@ -429,3 +430,88 @@ def test_the_table_is_grouped_the_way_the_plot_is(con: duckdb.DuckDBPyConnection
     path = _drawn(render_for_players(con, tmp_path, [_entity("1")], [], 2026))
     sections = re.findall(r'<th scope="rowgroup"[^>]*>([^<]+)</th>', path.read_text())
     assert sections == list(dict.fromkeys(skill.group for skill in FINGERPRINT_SKILLS))
+
+
+@pytest.fixture
+def game_con() -> duckdb.DuckDBPyConnection:
+    """A season of per-game rows: two players, three games each, plus a bench
+    cameo below the possessions floor."""
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR)")
+    c.execute("CREATE TABLE net_points_player_game (event_id VARCHAR, athlete_id VARCHAR, season INTEGER, season_type INTEGER, t_poss DOUBLE)")
+    columns = "event_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, athlete_id VARCHAR, category VARCHAR"
+    c.execute(f"CREATE TABLE net_points_player_game_fingerprint ({columns}, o_net_pts DOUBLE, d_net_pts DOUBLE, t_net_pts DOUBLE)")
+
+    for index, date in enumerate(("2026-01-05", "2026-02-05", "2026-03-05")):
+        event_id = f"g{index}"
+        c.execute("INSERT INTO games VALUES (?, 2026, 2, ?)", [event_id, date])
+        for athlete_id, size in (("1", 1.0 + index), ("2", 5.0)):
+            c.execute("INSERT INTO net_points_player_game VALUES (?, ?, 2026, 2, 60.0)", [event_id, athlete_id])
+            for category in CATEGORIES:
+                c.execute("INSERT INTO net_points_player_game_fingerprint VALUES (?, 2026, 2, '9', ?, ?, ?, ?, ?)", [event_id, athlete_id, category, size, size, size])
+    # Two possessions of garbage time: in the table, out of the pool.
+    c.execute("INSERT INTO games VALUES ('g9', 2026, 2, '2026-03-06')")
+    c.execute("INSERT INTO net_points_player_game VALUES ('g9', '3', 2026, 2, 2.0)")
+    for category in CATEGORIES:
+        c.execute("INSERT INTO net_points_player_game_fingerprint VALUES ('g9', 2026, 2, '9', '3', ?, 99.0, 99.0, 99.0)", [category])
+    return c
+
+
+def test_a_game_fingerprint_draws_the_game_the_order_asked_for(game_con: duckdb.DuckDBPyConnection) -> None:
+    recent, _, games = load_game_fingerprints(game_con, [Entity(id="1", name="A")], 2026, order="recent")
+    first, _, first_games = load_game_fingerprints(game_con, [Entity(id="1", name="A")], 2026, order="first")
+
+    assert games["1"].date == "2026-03-05" and recent[0].overall == 3.0
+    assert first_games["1"].date == "2026-01-05" and first[0].overall == 1.0
+
+
+def test_the_pool_is_every_player_game_not_every_player(game_con: duckdb.DuckDBPyConnection) -> None:
+    """A percentile against season rates would put nearly any decent game in
+    the 99th, since a season average is the mean of games like it. Six
+    qualifying player-games here, and the cameo below the floor is not one."""
+    _, league, _ = load_game_fingerprints(game_con, [Entity(id="1", name="A")], 2026, order="recent")
+
+    assert league.pool_size == 6
+
+
+def test_a_game_under_the_possessions_floor_cannot_set_the_league_best(game_con: duckdb.DuckDBPyConnection) -> None:
+    """Without the floor, two possessions of garbage time at +99 becomes the
+    number every real performance is drawn against."""
+    fingerprints, league, _ = load_game_fingerprints(game_con, [Entity(id="1", name="A")], 2026, order="recent")
+
+    assert league.best == 5.0
+    assert all(value.league_best == 5.0 for value in fingerprints[0].values)
+
+
+def test_duplicate_possession_rows_are_resolved_by_a_rule_not_by_luck(game_con: duckdb.DuckDBPyConnection) -> None:
+    """net_points_player_game really does hold duplicate (event_id, athlete_id)
+    pairs - 611 in 2026 alone, every one disagreeing with its twin (see
+    AGENTS.md; they come from two NetPoints dates resolving to one ESPN game).
+
+    Read with a plain join and any_value() the pool's own SIZE changed between
+    runs on identical data, which is the one thing that stops a plot being
+    checkable at all. Asserted as the RULE - the largest of the disagreeing
+    rows - rather than as run-to-run stability, because any_value on a small
+    table is stable by accident and would pass while proving nothing.
+    """
+    game_con.execute("INSERT INTO net_points_player_game VALUES ('g2', '1', 2026, 2, 15.0)")  # disagrees with the 60.0 already there
+
+    fingerprints, league, _ = load_game_fingerprints(game_con, [Entity(id="1", name="A")], 2026, order="recent")
+
+    # 15.0 is under the floor, so picking the wrong twin drops the game out of
+    # its own pool as well as mislabelling it.
+    assert fingerprints[0].possessions == 60.0
+    assert fingerprints[0].qualified
+    assert league.pool_size == 6  # and the duplicated player-game is still ONE game in the pool
+
+
+def test_a_player_who_did_not_play_that_season_is_named_not_drawn(game_con: duckdb.DuckDBPyConnection) -> None:
+    with pytest.raises(FingerprintUnavailable, match="Nobody"):
+        load_game_fingerprints(game_con, [Entity(id="404", name="Nobody")], 2026, order="recent")
+
+
+def test_a_season_with_no_per_game_rows_says_so_rather_than_naming_the_player(game_con: duckdb.DuckDBPyConnection) -> None:
+    """The two are different facts and need different sentences - the same
+    distinction the season loader draws."""
+    with pytest.raises(FingerprintUnavailable, match="no per-game NetPoints fingerprint data for season 2019"):
+        load_game_fingerprints(game_con, [Entity(id="1", name="A")], 2019, order="recent")

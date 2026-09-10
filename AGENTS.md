@@ -428,13 +428,48 @@ everything about it is constrained by things measured elsewhere in this file.
   `season.py`.
 - **NetPoints tables disagree with each other about `season_type`.**
   `net_points_player` uses its own *string* column (`net_points_season_type`,
-  e.g. "Regular Season"); `net_points_player_game` uses the normal *numeric*
-  2/3; `net_points_player_fingerprint` has no season_type at all. Filtering the
+  e.g. "Regular Season"); `net_points_player_game` and
+  `net_points_player_game_fingerprint` use the normal *numeric* 2/3;
+  `net_points_player_fingerprint` has no season_type at all. Filtering the
   string column with a numeric matches nothing, with no error.
 - **Only six fingerprint categories partition the total**
   (`FINGERPRINT_PARTITION`): two_pt, three_pt, free_throw, turnover, rebound,
   foul. They sum to the season average almost exactly. The other 15 are
   overlapping slices — summing all 21 is meaningless.
+- **The play-type split exists per game as well as per season, in a second
+  file, and it was missed for months.** ESPN Analytics publishes two objects
+  per date: `NBA/netpts/<season>/<date>.json`, which the pull already read, and
+  `NBA/netpts/<season>/<date>_player.json`, which it did not. The first carries
+  57 fields per player-game with exactly three NetPoints values among them
+  (offense, defense, total) and counting stats for the rest; the second is long
+  format — one row per player per game per action type, 31 types covering every
+  category the season file holds plus nine it does not (`atb`, `bank`, `dunk`,
+  `grenade`, and the dead-ball ones).
+
+  Worth recording as a *method* failure rather than a data note. The season
+  file's absence of a game id was read as "the source does not publish this per
+  game", and the daily file's `assister` / `putback` / `corner`-shaped field
+  NAMES were read as the taxonomy — but their VALUES are integer counts
+  (`pts: 36`, `assister: 4`), not net points. Checking one file's schema and
+  one file's field names, without checking a value against the season columns
+  or looking at what the site's own page fetches, produced a confident and
+  wrong claim about what exists. The site's per-game awards ("Facilitator" for
+  net points passing, "Corner Pocket" for corner 3s) were the visible evidence
+  against it the whole time.
+- **`net_points_player_game_fingerprint` is LONG, and the only such table
+  here.** One row per player per game per `category`, rather than the season
+  file's 66 columns. Deliberate: the wide shape would be 93 columns and would
+  change again the next time ESPN adds a category, and the categories are
+  normalized to the season file's own column prefixes on the way in
+  (`net_points_category`, over the existing `FINGERPRINT_CATEGORIES` map) so
+  one skill list drives both tables. The query side pivots.
+- **A single game's fingerprint is drawn in that game's net points, not per
+  100 possessions.** Over ~30 possessions a per-100 rate turns one made corner
+  three into a league-leading season figure. Its percentiles are ranked against
+  every player-*game* in the season rather than against season rates, since a
+  season average is the mean of games like the one being drawn and nearly any
+  decent game would land in the 99th percentile against it. `Unit` carries the
+  labels with the numbers so a per-game plot is never captioned "per 100 poss".
 - **Each table starts in a different year, and the gaps are ESPN's, not ours.**
   A question is only answerable as far back as its *narrowest* table, and there
   is no pull that fills these in — verified live against three endpoints (the
@@ -449,7 +484,7 @@ everything about it is constrained by things measured elsewhere in this file.
   | `plays`, `shot_chart` | 2003 (2002 is ~half) | nothing |
   | `team_power_index` | 2017 | nothing |
   | `win_probability` | 2018 | nothing |
-  | NetPoints (all four tables) | 2019 | the bucket answers 403 |
+  | NetPoints (all five tables) | 2019 | the bucket answers 403 |
 
   Two traps in that table. **`shot_chart` is derived from `plays`** — both come
   out of the same game summary, so there is no separate shot source to fetch

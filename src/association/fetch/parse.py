@@ -644,6 +644,80 @@ def parse_net_points_daily(
     return player_rows, team_rows
 
 
+# Action types the per-game file carries that the SEASON fingerprint file does
+# not: above-the-break threes, bank shots, dunks, "grenade" (their name for a
+# very deep three), and the dead-ball types. FINGERPRINT_CATEGORIES already
+# maps every category the two files share - the two files use one vocabulary -
+# so only the surplus needs naming here, and it is kept rather than dropped:
+# discarding at fetch time is how a column nothing re-derives goes missing.
+_CAMEL_BOUNDARY = re.compile(r"(?<!^)(?=[A-Z])")
+
+
+def net_points_category(action_type: str) -> str:
+    """The column prefix the season fingerprint uses for one action type.
+
+    Falls back to snake-casing the source name, so a category ESPN adds later
+    arrives under a sane name instead of being dropped for being unrecognized.
+
+    .. versionadded:: 2.1.0
+    """
+    return FINGERPRINT_CATEGORIES.get(action_type) or _CAMEL_BOUNDARY.sub("_", action_type).lower()
+
+
+def parse_net_points_daily_players(
+    data: list[JSON] | None,
+    date: str,
+    team_abbr_to_id: dict[str, str],
+    team_date_to_game: dict[tuple[str, str], tuple[str, int, int]],
+    name_to_athlete_id: dict[str, str],
+) -> list[Row]:
+    """The play-type split for one date, from the ``_player.json`` file beside
+    the one :func:`parse_net_points_daily` reads.
+
+    Long format, one row per player per game per action type, because that is
+    the shape the source publishes and the shape that survives ESPN adding a
+    category: the season fingerprint's 66 columns would become 93 here and
+    change again the next time the taxonomy moves. The query side pivots.
+
+    Resolved exactly like its sibling - team abbreviation and date against this
+    project's own games table for the event_id, exact display name for the
+    athlete_id - because the ids this file carries are NBA.com's, with no
+    crosswalk to ESPN's provided. Note it spells both differently again:
+    ``gmID`` here against ``gmId`` there, and ``deanAbbrev`` against
+    ``tmName``.
+
+    .. versionadded:: 2.1.0
+    """
+    rows: list[Row] = []
+    if not data:
+        return rows
+
+    for raw in data:
+        action_type = raw.get("actionType")
+        if not isinstance(action_type, str):
+            continue
+        team_id = _net_points_team_id(raw.get("deanAbbrev"), team_abbr_to_id)
+        game = _resolve_net_points_game(team_id, date, team_date_to_game)
+        if game is None:
+            continue
+        display_name = raw.get("displayName")
+        event_id, season, season_type = game
+        rows.append(
+            {
+                "event_id": event_id,
+                "season": season,
+                "season_type": season_type,
+                "team_id": team_id,
+                "athlete_id": name_to_athlete_id.get(display_name) if isinstance(display_name, str) else None,
+                "category": net_points_category(action_type),
+                "o_net_pts": raw.get("oNetPts"),
+                "d_net_pts": raw.get("dNetPts"),
+                "t_net_pts": raw.get("tNetPts"),
+            }
+        )
+    return rows
+
+
 def parse_net_points_fingerprint(
     data: JSON | None,
     team_abbr_to_id: dict[str, str],

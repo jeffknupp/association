@@ -504,13 +504,19 @@ def test_fetch_net_points_fingerprint_refetches_current_season_but_not_a_past_on
 class FakeDailyClient:
     """Stand-in for NetPointsDailyClient - no Cognito/S3, canned responses by date."""
 
-    def __init__(self, responses: dict[str, Any]) -> None:
+    def __init__(self, responses: dict[str, Any], skills: dict[str, Any] | None = None) -> None:
         self.responses = responses
+        self.skills = skills or {}
         self.calls: list[str] = []
+        self.skill_calls: list[str] = []
 
     def get_daily(self, date: str, season_folder: int) -> Any:
         self.calls.append(date)
         return self.responses.get(date)
+
+    def get_daily_players(self, date: str, season_folder: int) -> Any:
+        self.skill_calls.append(date)
+        return self.skills.get(date)
 
 
 def _write_games_fixture(data_dir: Path, rows: list[dict]) -> None:
@@ -592,6 +598,7 @@ def test_fetch_net_points_daily_marks_done_even_with_zero_resolved_rows(tmp_path
 
     pipeline.fetch_net_points_daily()
     assert fake_daily.calls == ["2026-04-11", "2026-04-12"]
+    assert fake_daily.skill_calls == ["2026-04-11", "2026-04-12"]
 
     pipeline.fetch_net_points_daily()
     assert fake_daily.calls == ["2026-04-11", "2026-04-12"]  # not called again - markers made both skip

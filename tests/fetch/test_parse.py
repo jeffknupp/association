@@ -751,3 +751,78 @@ def test_parse_net_points_daily_ambiguous_or_unmatched_name_leaves_athlete_id_no
 
 def test_parse_net_points_daily_handles_missing_data() -> None:
     assert parse.parse_net_points_daily(None, "2026-04-12", {}, {}, {}) == ([], [])
+
+
+def test_net_points_category_normalises_onto_the_season_files_names() -> None:
+    """The per-game file and the season file are one taxonomy under two
+    spellings. Normalising here is what lets one skill list drive both tables -
+    unmapped, `mid` and `mid_range` are two categories and the per-game plot
+    draws an empty spoke where the season plot has mid-range."""
+    assert parse.net_points_category("mid") == "mid_range"
+    assert parse.net_points_category("fastbreak") == "fast_break"
+    assert parse.net_points_category("3ptShooting") == "three_pt_shooting"
+    assert parse.net_points_category("badpass") == "bad_pass"
+    assert parse.net_points_category("freethrow") == "free_throw"
+    assert parse.net_points_category("rim") == "rim"
+
+
+def test_net_points_category_keeps_a_type_the_season_file_never_had() -> None:
+    """Nine action types have no season column - above-the-break threes, bank
+    shots, dunks, "grenade", and the dead-ball ones. Snake-cased and kept
+    rather than dropped, so a category ESPN adds later arrives under a sane
+    name instead of vanishing."""
+    assert parse.net_points_category("atb") == "atb"
+    assert parse.net_points_category("grenade") == "grenade"
+    assert parse.net_points_category("jumpball") == "jumpball"
+
+
+def test_parse_net_points_daily_players_is_long_and_resolved_like_its_sibling() -> None:
+    """One row per player per game per action type, with event_id from
+    (team, date) against this project's own games table and athlete_id from an
+    exact display-name match - the per-game file carries only NBA.com's ids.
+
+    Note it spells the same fields differently again: `deanAbbrev` where the
+    sibling file says `tmName`.
+    """
+    data = [
+        {"gmID": "0022500123", "deanAbbrev": "NYK", "displayName": "Jalen Brunson", "actionType": "mid", "oNetPts": 1.5, "dNetPts": 0.2, "tNetPts": 1.7},
+        {"gmID": "0022500123", "deanAbbrev": "NYK", "displayName": "Jalen Brunson", "actionType": "total", "oNetPts": 8.7, "dNetPts": 2.6, "tNetPts": 11.3},
+    ]
+    rows = parse.parse_net_points_daily_players(
+        data,
+        "2026-04-12",
+        {"NY": "18"},
+        {("18", "2026-04-12"): ("401585183", 2026, 2)},
+        {"Jalen Brunson": "3934672"},
+    )
+
+    assert rows == [
+        {"event_id": "401585183", "season": 2026, "season_type": 2, "team_id": "18", "athlete_id": "3934672", "category": "mid_range", "o_net_pts": 1.5, "d_net_pts": 0.2, "t_net_pts": 1.7},
+        {"event_id": "401585183", "season": 2026, "season_type": 2, "team_id": "18", "athlete_id": "3934672", "category": "total", "o_net_pts": 8.7, "d_net_pts": 2.6, "t_net_pts": 11.3},
+    ]
+
+
+def test_parse_net_points_daily_players_drops_rows_it_cannot_place_in_a_game() -> None:
+    """Same fail-safe as the sibling parser: a row that resolves to no local
+    game is dropped rather than written with a null event_id, and an unmatched
+    NAME is kept with a null athlete_id rather than guessed - the game is what
+    the row is about, the player is one of its columns."""
+    data = [
+        {"deanAbbrev": "XXX", "displayName": "Nobody", "actionType": "rim", "oNetPts": 1.0},
+        {"deanAbbrev": "NYK", "displayName": "Unknown Player", "actionType": "rim", "oNetPts": 2.0},
+    ]
+    rows = parse.parse_net_points_daily_players(data, "2026-04-12", {"NY": "18"}, {("18", "2026-04-12"): ("401585183", 2026, 2)}, {})
+
+    assert [(r["team_id"], r["athlete_id"], r["o_net_pts"]) for r in rows] == [("18", None, 2.0)]
+
+
+def test_parse_net_points_daily_players_ignores_a_row_with_no_action_type() -> None:
+    rows = parse.parse_net_points_daily_players(
+        [{"deanAbbrev": "NYK", "displayName": "Jalen Brunson", "oNetPts": 1.0}],
+        "2026-04-12",
+        {"NY": "18"},
+        {("18", "2026-04-12"): ("401585183", 2026, 2)},
+        {"Jalen Brunson": "3934672"},
+    )
+
+    assert rows == []

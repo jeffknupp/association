@@ -31,6 +31,7 @@ KNOWN_TABLES = {
     "net_points_player_fingerprint",
     "net_points_team",
     "net_points_player_game",
+    "net_points_player_game_fingerprint",
     "net_points_team_game",
 }
 
@@ -69,6 +70,10 @@ net_points_player_fingerprint - one row per player per season (NO season_type - 
 net_points_team     - one row per team per season per side ('Offense'/'Defense'/'Total') (avg_team_score, fast_break, fg2, fg3, free_throw, putback, rebound, turnover, total) - current season only
 net_points_player_game - one row per player PER GAME (o/d/t_net_pts, o/d_usage, o/d/t_poss, o/d/t_wpa) - opt-in flag below; normal numeric season_type, unlike the two tables above
 net_points_team_game   - one row per team PER GAME (net_pts_2pt/3pt/shooting/turnover/rebound/freethrow, tot_poss, opp_poss) - opt-in, same as above
+net_points_player_game_fingerprint - the play-type split PER GAME, LONG not wide: one row per player per game per
+                      `category` (same names as net_points_player_fingerprint's column prefixes, plus atb, bank,
+                      dunk, grenade and dead-ball types), with o_net_pts/d_net_pts/t_net_pts. category='total' is
+                      the sum. Opt-in, same as above.
 
 net_points_player_game / net_points_team_game only exist if fetched with --include-net-points-daily - a
 player row can be legitimately absent (not zero, just missing) for a game if their display name couldn't

@@ -1271,11 +1271,12 @@ def test_player_netpoints_order_first_picks_the_earliest_game(np_ctx: TemplateCo
     assert player_netpoints(np_ctx, {"player": "SGA", "order": "first"}).data["game"]["date"] == "2025-10-22"
 
 
-def test_single_game_netpoints_says_there_is_no_fingerprint(np_ctx: TemplateContext) -> None:
-    # The play-type breakdown is season-level only; silently omitting it would
-    # look like the data was missing.
+def test_single_game_netpoints_points_at_the_fingerprint_for_the_split(np_ctx: TemplateContext) -> None:
+    """This template answers one game's NetPoints TOTAL and has no play-type
+    split of its own. Saying nothing would read as the split not existing -
+    which is what it used to say, back when it did not."""
     _add_per_game_netpoints(np_ctx)
-    assert "season-level only" in (player_netpoints(np_ctx, {"player": "SGA", "order": "recent"}).answer or "")
+    assert "Ask for a fingerprint of that game" in (player_netpoints(np_ctx, {"player": "SGA", "order": "recent"}).answer or "")
 
 
 def test_player_netpoints_without_order_still_gives_the_season(np_ctx: TemplateContext) -> None:
@@ -1361,6 +1362,26 @@ def fp_ctx(tmp_path: Path) -> TemplateContext:
     values = ", ".join(["1.0"] * (3 * len(categories)))
     for athlete_id, minutes in (("1", 2000.0), ("2", 1200.0)):
         c.execute(f"INSERT INTO net_points_player_fingerprint VALUES ('{athlete_id}', {current_season()}, {minutes}, 4000.0, {values})")
+
+    # The per-game half: long, not wide, and needing games (for the date a
+    # game is picked by) and net_points_player_game (for the possessions the
+    # percentile pool is floored on).
+    c.execute("CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR)")
+    c.execute("CREATE TABLE net_points_player_game (event_id VARCHAR, athlete_id VARCHAR, season INTEGER, season_type INTEGER, t_poss DOUBLE)")
+    game_fingerprint_columns = "event_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, athlete_id VARCHAR, category VARCHAR"
+    c.execute(f"CREATE TABLE net_points_player_game_fingerprint ({game_fingerprint_columns}, o_net_pts DOUBLE, d_net_pts DOUBLE, t_net_pts DOUBLE)")
+    for event_id, date in (("g1", "2026-01-05"), ("g2", "2026-03-20")):
+        c.execute("INSERT INTO games VALUES (?, ?, 2, ?)", [event_id, current_season(), date])
+        for athlete_id in ("1", "2"):
+            c.execute("INSERT INTO net_points_player_game VALUES (?, ?, ?, 2, 60.0)", [event_id, athlete_id, current_season()])
+            for category in categories:
+                # g2 is the bigger game, so "most recent" and "first" differ in
+                # the numbers as well as in the date.
+                size = 2.0 if event_id == "g2" else 1.0
+                c.execute(
+                    "INSERT INTO net_points_player_game_fingerprint VALUES (?, ?, 2, '9', ?, ?, ?, ?, ?)",
+                    [event_id, current_season(), athlete_id, category, size, size, size * 2],
+                )
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
@@ -1382,25 +1403,52 @@ def test_fingerprint_defaults_to_the_current_season(fp_ctx: TemplateContext) -> 
     assert fingerprint(fp_ctx, {"player": "Shai"}).data["season"] == current_season()
 
 
-def test_fingerprint_refuses_a_single_game_rather_than_drawing_the_season(fp_ctx: TemplateContext) -> None:
-    """There is no per-game play-type breakdown in the warehouse at all, so a
-    plot scoped to one game would be the season's shape under a game's title -
-    the exact failure this project keeps producing."""
-    for slots in ({"player": "Shai", "order": "recent"}, {"player": "Shai", "date": "2026-01-02"}):
-        answer = fingerprint(fp_ctx, slots).answer
-        assert "season-level only" in answer
-        assert not list(fp_ctx.out_dir.glob("*.html"))
+def test_fingerprint_draws_the_game_that_was_asked_for(fp_ctx: TemplateContext) -> None:
+    """The whole point of the scoping: "his last game" draws that game, and the
+    plot is titled with its date rather than with the season - so a reader can
+    tell which game they are looking at."""
+    result = fingerprint(fp_ctx, {"player": "Shai", "order": "recent"})
+
+    assert result.data["scope"] == "game"
+    assert "2026-03-20" in result.answer
+    assert list(fp_ctx.out_dir.glob("*_recent_game_*.html"))
 
 
-def test_the_single_game_refusal_names_what_can_be_answered_instead(fp_ctx: TemplateContext) -> None:
-    """A refusal that only says no sends the reader off to rephrase a question
-    that will never work. The per-game NetPoints TOTAL is on record - it is
-    only the play-type split that is not - so the sentence says which of the
-    two is missing and what to ask for."""
-    answer = fingerprint(fp_ctx, {"player": "Shai", "order": "recent"}).answer
+def test_the_other_end_of_the_season_draws_a_different_game(fp_ctx: TemplateContext) -> None:
+    result = fingerprint(fp_ctx, {"player": "Shai", "order": "first"})
 
-    assert "not among the data that has been pulled" in answer
-    assert "NetPoints in that game" in answer
+    assert "2026-01-05" in result.answer
+
+
+def test_a_game_plot_is_not_captioned_as_a_per_100_rate(fp_ctx: TemplateContext) -> None:
+    """A single game's numbers are that game's net points - a per-100 rate over
+    ~30 possessions turns one made three into a league-leading season figure.
+    The caption has to say which quantity is on the page, or the plot is the
+    right shape under the wrong claim."""
+    fingerprint(fp_ctx, {"player": "Shai", "order": "recent", "scale": "value"})
+    page = next(fp_ctx.out_dir.glob("*_recent_game_*.html")).read_text()
+
+    assert "per 100 poss" not in page
+    assert "in this game" in page
+
+
+def test_a_season_plot_still_says_per_100(fp_ctx: TemplateContext) -> None:
+    """The other half of the check above: a unit label that stopped appearing
+    anywhere would pass it."""
+    fingerprint(fp_ctx, {"player": "Shai"})
+    page = next(p for p in fp_ctx.out_dir.glob("*.html") if "_game_" not in p.name).read_text()
+
+    assert "per 100 poss" in page
+
+
+def test_a_fingerprint_for_a_particular_date_still_says_it_cannot(fp_ctx: TemplateContext) -> None:
+    """`date` is a different question from `order`: the router gives a calendar
+    date and the loader picks a player's first or last game. Answering one with
+    the other is exactly the substitution this template exists to refuse."""
+    answer = fingerprint(fp_ctx, {"player": "Shai", "date": "2026-01-02"}).answer
+
+    assert "not yet for a particular date" in answer
+    assert not list(fp_ctx.out_dir.glob("*.html"))
 
 
 def test_fingerprint_declares_the_game_scoping_it_handles(fp_ctx: TemplateContext) -> None:

@@ -250,6 +250,11 @@ COVERAGE: dict[str, Coverage] = {
         first_season=2019,
         reason="the NetPoints bucket answers 403 for every earlier season",
     ),
+    "net_points_player_game_fingerprint": Coverage(
+        subject="Per-game NetPoints fingerprints",
+        first_season=2019,
+        reason="the NetPoints bucket answers 403 for every earlier season",
+    ),
 }
 
 
