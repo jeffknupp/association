@@ -15,6 +15,16 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **`--workers` now reaches the per-game NetPoints fetch.** It was the last
+  serial loop in the pipeline, and it is S3 round trips end to end: measured
+  on the tail of the re-derivation below, 12 dates a second through the pool
+  against 0.3 one at a time. `--rate-limit` was never the lever here - it
+  bounds what ESPN sees and these requests do not go to ESPN. The three
+  lookups the workers share are built before the pool and never written to
+  afterwards, the writes already go through `_write_rows` under `_state_lock`,
+  and the daily client's lazy Cognito exchange is now built under a lock of
+  its own, so eight workers do not each run their own.
+
 - **Per-game NetPoints rows were landing on the wrong game, and sometimes on
   the same one twice.** NetPoints names each daily file for the US Eastern
   date the games were played on and publishes no ESPN id, so the pull

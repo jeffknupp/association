@@ -519,6 +519,28 @@ class FakeDailyClient:
         return self.skills.get(date)
 
 
+class ThreadRecordingDailyClient(FakeDailyClient):
+    """FakeDailyClient that also records which thread each date ran on, and
+    holds each one long enough that a serial loop cannot look concurrent."""
+
+    def __init__(self) -> None:
+        super().__init__({})
+        self.threads: set[str] = set()
+        self._lock = threading.Lock()
+
+    def get_daily(self, date: str, season_folder: int) -> Any:
+        time.sleep(0.02)
+        with self._lock:
+            self.threads.add(threading.current_thread().name)
+            self.calls.append(date)
+        return None
+
+    def get_daily_players(self, date: str, season_folder: int) -> Any:
+        with self._lock:
+            self.skill_calls.append(date)
+        return None
+
+
 def _write_games_fixture(data_dir: Path, rows: list[dict]) -> None:
     storage.write_rows(data_dir / "games" / "f.parquet", rows)
 
@@ -619,6 +641,33 @@ def test_fetch_net_points_daily_marks_done_even_with_zero_resolved_rows(tmp_path
 
     pipeline.fetch_net_points_daily()
     assert fake_daily.calls == ["2026-04-11", "2026-04-12"]  # not called again - markers made both skip
+
+
+def test_fetch_net_points_daily_runs_dates_through_the_pool(tmp_path: Path) -> None:
+    """The loop is S3 round trips and spent its time waiting - measured, 0.3
+    dates a second serially against 12 with a pool. Asserted as the threads
+    actually used rather than as elapsed time, which would be a flake.
+
+    Every date must still be fetched exactly once: the markers that make a
+    pull cheap to re-run are written per date, from whichever worker got it.
+    """
+    _write_games_fixture(
+        tmp_path,
+        [{"event_id": str(day), "season": 2026, "season_type": 2, "date": f"2026-04-{day:02d}T22:00Z", "home_team_id": "18", "away_team_id": "30"} for day in range(12, 20)],
+    )
+    _write_players_fixture(tmp_path, [])
+    client = FakeClient({TEAMS_URL: {"sports": [{"leagues": [{"teams": [{"team": {"id": "18", "abbreviation": "NY"}}]}]}]}})
+    pipeline = Pipeline(client, tmp_path, workers=4)
+    pipeline.fetch_teams()
+    fake_daily = ThreadRecordingDailyClient()
+    pipeline._net_points_daily_client = fake_daily
+
+    pipeline.fetch_net_points_daily()
+
+    dates = [f"2026-04-{day:02d}" for day in range(11, 20)]
+    assert sorted(fake_daily.calls) == dates
+    assert sorted(fake_daily.skill_calls) == dates
+    assert len(fake_daily.threads) > 1, "every date ran on one thread - the pool is not being used"
 
 
 def test_net_points_dates_and_seasons_includes_day_before_each_local_date(tmp_path: Path) -> None:

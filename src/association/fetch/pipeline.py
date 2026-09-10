@@ -576,9 +576,18 @@ class Pipeline:
         Separate markers mean a pull that has the box-score half backfills only
         the half it is missing, at one request per date instead of two.
 
+        Runs ``--workers`` dates at once, like the rest of the pipeline: these
+        are S3 round trips, so the loop was latency-bound and spent its time
+        waiting (measured, on the tail of a re-derivation: 12 dates a second
+        against 0.3 serially). The three lookups the workers share are built
+        before the pool and never written to afterwards; the writes go through
+        :meth:`_write_rows`, which takes ``_state_lock``, and ``storage``,
+        which gives every temp file a unique name.
+
         .. versionchanged:: 2.1.0
            Also fetches the per-game play-type split into
-           ``net_points_player_game_fingerprint``.
+           ``net_points_player_game_fingerprint``, and fetches dates
+           concurrently rather than one at a time.
         """
         if self._net_points_daily_client is None:
             self._net_points_daily_client = NetPointsDailyClient()
@@ -588,7 +597,11 @@ class Pipeline:
         name_to_athlete_id = self._name_to_athlete_id()
         dates_and_seasons = self._net_points_dates_and_seasons()
 
-        for date in tqdm(sorted(dates_and_seasons), desc="NetPoints daily"):
+        client = self._net_points_daily_client
+
+        def one_date(date: str) -> None:
+            """One date's two objects, each behind its own marker - the unit
+            of work a worker takes, and the unit a re-run skips."""
             season = dates_and_seasons[date]
             # A date whose rows all fail to resolve writes no parquet at all
             # (write_rows([]) is a no-op), so a MARKER rather than file
@@ -596,7 +609,7 @@ class Pipeline:
             # fix already applied to preseason team-stats and postponed games.
             box_marker = self._p("_net_points_daily_done", f"date={date}.marker")
             if self.force or not storage.is_complete(box_marker):
-                data = self._net_points_daily_client.get_daily(date, season_folder=season - 1)
+                data = client.get_daily(date, season_folder=season - 1)
                 player_rows, team_rows = parse.parse_net_points_daily(data, date, team_abbr_to_id, game_index, name_to_athlete_id)
                 self._write_rows(self._p("net_points_player_game", f"season={season}", f"date={date}.parquet"), player_rows)
                 self._write_rows(self._p("net_points_team_game", f"season={season}", f"date={date}.parquet"), team_rows)
@@ -605,7 +618,7 @@ class Pipeline:
             skill_marker = self._p("_net_points_daily_skills_done", f"date={date}.marker")
             if self.force or not storage.is_complete(skill_marker):
                 skill_rows = parse.parse_net_points_daily_players(
-                    self._net_points_daily_client.get_daily_players(date, season_folder=season - 1),
+                    client.get_daily_players(date, season_folder=season - 1),
                     date,
                     team_abbr_to_id,
                     game_index,
@@ -613,6 +626,8 @@ class Pipeline:
                 )
                 self._write_rows(self._p("net_points_player_game_fingerprint", f"season={season}", f"date={date}.parquet"), skill_rows)
                 storage.mark_complete(skill_marker)
+
+        self._map(one_date, sorted(dates_and_seasons), desc="NetPoints daily")
 
     # ---------------- glossary ----------------
     def write_glossary(self) -> None:

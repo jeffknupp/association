@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from typing import Any
 
 import boto3
@@ -38,21 +39,28 @@ class NetPointsDailyClient:
 
     def __init__(self) -> None:
         self._s3: Any = None
+        # The dates are fetched from a thread pool, so the lazy build below is
+        # a race: without this every worker would see None at once and each
+        # would run its own Cognito exchange. A built client is safe to share
+        # (boto3 clients are thread-safe for calls); building one twice is
+        # only wasteful, but it is two extra round trips per pull for nothing.
+        self._lock = threading.Lock()
 
     def _client(self) -> Any:
         # Built lazily (not in __init__) so constructing a Pipeline never makes
         # a network call on its own - only actually fetching a date does.
-        if self._s3 is None:
-            cognito = boto3.client("cognito-identity", region_name=REGION)
-            identity_id = cognito.get_id(IdentityPoolId=IDENTITY_POOL_ID)["IdentityId"]
-            creds = cognito.get_credentials_for_identity(IdentityId=identity_id)["Credentials"]
-            self._s3 = boto3.client(
-                "s3",
-                region_name=REGION,
-                aws_access_key_id=creds["AccessKeyId"],
-                aws_secret_access_key=creds["SecretKey"],
-                aws_session_token=creds["SessionToken"],
-            )
+        with self._lock:
+            if self._s3 is None:
+                cognito = boto3.client("cognito-identity", region_name=REGION)
+                identity_id = cognito.get_id(IdentityPoolId=IDENTITY_POOL_ID)["IdentityId"]
+                creds = cognito.get_credentials_for_identity(IdentityId=identity_id)["Credentials"]
+                self._s3 = boto3.client(
+                    "s3",
+                    region_name=REGION,
+                    aws_access_key_id=creds["AccessKeyId"],
+                    aws_secret_access_key=creds["SecretKey"],
+                    aws_session_token=creds["SessionToken"],
+                )
         return self._s3
 
     def get_daily(self, date: str, season_folder: int) -> dict[str, Any] | None:
