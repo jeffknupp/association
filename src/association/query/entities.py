@@ -930,6 +930,9 @@ def find_teams(con: duckdb.DuckDBPyConnection, text: str) -> list[Entity]:
     silently resolving to whichever team is literally named "LA"), but matches
     that start a word are ranked first - otherwise "LA" offers "Atlanta Hawks"
     as a candidate, which makes a clarification look broken."""
+    # "Sixers" and "Cavs" are no word of any ESPN team name; the router emits
+    # them verbatim often enough that they fell through to the agent.
+    text = _TEAM_NICKNAMES.get(text.strip().casefold(), text)
     rows = con.execute(
         "SELECT team_id, display_name, "
         "  (team_id = ? OR abbreviation ILIKE ? OR display_name ILIKE ? OR display_name ILIKE ?) AS strong "

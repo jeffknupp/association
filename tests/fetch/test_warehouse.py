@@ -102,9 +102,9 @@ def test_build_creates_player_season_stats_deduped_view(tmp_path: Path) -> None:
     pq.write_table(
         pa.Table.from_pylist(
             [
-                {"season": 2026, "season_type": 2, "athlete_id": "1", "team_id": "9", "avgPoints": 15.0},
-                {"season": 2026, "season_type": 2, "athlete_id": "1", "team_id": "20", "avgPoints": 12.0},
-                {"season": 2026, "season_type": 2, "athlete_id": "1", "team_id": None, "avgPoints": 13.8},
+                {"season": 2026, "season_type": 2, "athlete_id": "1", "team_id": "9", "avgPoints": 15.0, "gamesPlayed": 40, "points": 600},
+                {"season": 2026, "season_type": 2, "athlete_id": "1", "team_id": "20", "avgPoints": 12.0, "gamesPlayed": 30, "points": 360},
+                {"season": 2026, "season_type": 2, "athlete_id": "1", "team_id": None, "avgPoints": 13.8, "gamesPlayed": 70, "points": 960},
             ]
         ),
         d / "f.parquet",
@@ -451,3 +451,26 @@ def test_a_phantom_season_does_not_multiply_the_game_log(tmp_path: Path) -> None
     rows = con.execute("SELECT season, count(*) FROM player_game_log GROUP BY 1 ORDER BY 1").fetchall()
     con.close()
     assert rows == [(1993, 1), (1994, 1)]
+
+
+def test_a_postseason_copied_from_the_regular_season_is_dropped(tmp_path: Path) -> None:
+    """ESPN's career endpoint files some regular seasons a second time as the
+    postseason - Eddy Curry has 527 "playoff games". Those rows are dropped;
+    a real run with its own numbers is kept."""
+    rows = [
+        {"athlete_id": "1", "season": 2005, "season_type": 2, "team_id": "4", "gamesPlayed": 63, "points": 1012},
+        {"athlete_id": "1", "season": 2005, "season_type": 3, "team_id": "4", "gamesPlayed": 63, "points": 1012},  # the copy
+        {"athlete_id": "2", "season": 2016, "season_type": 2, "team_id": "5", "gamesPlayed": 76, "points": 1920},
+        {"athlete_id": "2", "season": 2016, "season_type": 3, "team_id": "5", "gamesPlayed": 21, "points": 552},  # a real run
+        {"athlete_id": "3", "season": 2007, "season_type": 3, "team_id": "6", "gamesPlayed": 81, "points": 1576},  # no run is 81 games
+    ]
+    data_dir = tmp_path / "parquet"
+    d = data_dir / "player_season_stats"
+    d.mkdir(parents=True)
+    pq.write_table(pa.Table.from_pylist(rows), d / "f.parquet")
+    db_path = tmp_path / "test.duckdb"
+    warehouse.build(data_dir, db_path)
+    con = duckdb.connect(str(db_path))
+    kept = con.execute("SELECT athlete_id, season_type FROM player_season_stats_deduped ORDER BY 1, 2").fetchall()
+    con.close()
+    assert kept == [("1", 2), ("2", 2), ("2", 3)]

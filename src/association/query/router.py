@@ -512,9 +512,32 @@ SPLIT_WORDS: dict[str, re.Pattern[str]] = {
 RANK_WORDS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("worst", re.compile(r"\bworst\b", re.IGNORECASE)),
     ("best", re.compile(r"\bbest\b", re.IGNORECASE)),
-    ("fewest", re.compile(r"\b(?:fewest|least|lowest)\b", re.IGNORECASE)),
-    ("most", re.compile(r"\b(?:most|highest|top|leads?|leaders?)\b", re.IGNORECASE)),
+    # "slowest pace" is the fewest possessions, "fastest" the most - without
+    # these, "slowest pace" listed the fastest teams first.
+    ("fewest", re.compile(r"\b(?:fewest|least|lowest|slowest)\b", re.IGNORECASE)),
+    ("most", re.compile(r"\b(?:most|highest|top|leads?|leaders?|fastest)\b", re.IGNORECASE)),
 )
+
+# A comparison BELOW a number. No slot says "under", so without this "games
+# with under 14 FTA" reached threshold_count as 14 and was answered as 14 or
+# MORE - the inverse question. A scoping slot no template honours.
+_BELOW = re.compile(r"\b(?:under|fewer\s+than|less\s+than|below|at\s+most|no\s+more\s+than)\s+\d+", re.IGNORECASE)
+
+# Situations a game can be in that no template filters on: the second night of a
+# back-to-back, overtime, a calendar month, a conference or division, the
+# All-Star break. team_record answered each with the whole season's record.
+_SITUATION = re.compile(
+    r"\bback[- ]to[- ]backs?\b|\bb2bs?\b|\bsecond\s+night\b|\bovertime\b|"
+    r"\bin\s+(?:october|november|december|january|february|march|april|may|june)\b|"
+    r"\b(?:east(?:ern)?|west(?:ern)?)\s+conference\b|\bvs\.?\s+the\s+(?:east|west)\b|\bdivision\b|\ball[- ]star\s+break\b",
+    re.IGNORECASE,
+)
+
+# Words that name a TEAM stat, beyond the box-score words _STAT_WORDS knows.
+_TEAM_STAT_WORDS = re.compile(r"\b(?:pace|ratings?|offen\w*|defen\w*|net|possessions?|record|wins?|losses)\b", re.IGNORECASE)
+
+# "vs"/"against", for a game log's last N meetings - see route().
+_VERSUS_WORDS = re.compile(r"\b(?:vs\.?|versus|against)\s", re.IGNORECASE)
 
 _LOSING_STREAK = re.compile(r"\blos(?:ing|s|e)\s+streaks?\b|\bstraight\s+losses\b|\blosses\s+in\s+a\s+row\b|\bskid\b", re.IGNORECASE)
 
@@ -725,6 +748,12 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     without = _name_after(_WITHOUT, question)
     if without is not None:
         slots["without"] = without
+    below = _BELOW.search(question)
+    if below is not None:
+        slots["below"] = below.group(0).casefold()
+    situation = _SITUATION.search(question)
+    if situation is not None:
+        slots["situation"] = situation.group(0).casefold()
     playoff_round = _ROUND_WORDS.search(question)
     if playoff_round is not None:
         slots["round"] = playoff_round.group(0).casefold()
@@ -765,6 +794,26 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     # metric to rank by.
     if raw["intent"] == "player_compare" and not _named_a_stat(question):
         slots.pop("stat", None)
+    # The same drop for two more intents where the required slot is noise when
+    # the question names no stat: "Knicks stats" arrived as stat='points' and
+    # narrowed a team's line to one number, and a team's winning streak arrived
+    # with a stat and no threshold and was refused.
+    if raw["intent"] == "team_stat" and not (_named_a_stat(question) or _TEAM_STAT_WORDS.search(question)):
+        slots.pop("stat", None)
+    if raw["intent"] == "streak" and not _named_a_stat(question):
+        slots.pop("stat", None)
+    # "last 8 games vs pistons" with no season named means the last eight
+    # meetings, wherever they fall - answered from the current season alone it
+    # found four and said so. A season the question names still wins.
+    if (
+        raw["intent"] == "game_log"
+        and _VERSUS_WORDS.search(question)
+        and (isinstance(slots.get("limit"), int) or re.search(r"\blast\b", question, re.IGNORECASE))
+        and season_from_text(question) is None
+        and not _SEASON_WORDS.search(question)
+    ):
+        slots["span"] = "career"
+        slots.pop("season", None)
     if raw["intent"] == "fingerprint":
         side = _validate_side(slots, question)
         if side is None:

@@ -159,7 +159,25 @@ def _build_views(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
         con.execute(
             """
             CREATE OR REPLACE VIEW player_season_stats_deduped AS
-            SELECT * FROM player_season_stats
+            SELECT * FROM player_season_stats pss
+            -- ESPN's career endpoint files some players' regular season a second
+            -- time as their postseason: Eddy Curry has 527 "playoff games" across
+            -- 2002-2008, a season at a time. A postseason line is dropped when it
+            -- claims more than 28 games (four best-of-seven rounds is the most any
+            -- run can hold) or repeats the same season's regular-season games and
+            -- points exactly. Measured: 340 of 7,845 postseason rows, and every
+            -- real run checked survives (LeBron 2016 and 2020, Kawhi 2019, Curry
+            -- 2022). A dropped row leaves "no postseason numbers", which is true.
+            WHERE NOT (
+                pss.season_type = 3 AND (
+                    pss.gamesPlayed > 28
+                    OR EXISTS (
+                        SELECT 1 FROM player_season_stats r
+                        WHERE r.athlete_id = pss.athlete_id AND r.season = pss.season AND r.season_type = 2
+                          AND r.gamesPlayed = pss.gamesPlayed AND r.points = pss.points AND r.gamesPlayed > 0
+                    )
+                )
+            )
             QUALIFY ROW_NUMBER() OVER (
                 PARTITION BY athlete_id, season, season_type ORDER BY (team_id IS NULL) DESC
             ) = 1

@@ -543,3 +543,12 @@ def test_a_player_left_out_is_restored_only_where_one_is_required(scope_con: duc
     optional: dict[str, Any] = {"stat": "points", "threshold": 36}
     scope_from_question(scope_con, "Sga record 36 plus points", optional, reads_player=True)
     assert "player" not in optional
+
+
+@pytest.mark.parametrize(("nickname", "team"), [("Sixers", "Philadelphia 76ers"), ("cavs", "Cleveland Cavaliers"), ("Mavs", "Dallas Mavericks")])
+def test_a_team_nickname_resolves_to_the_team(nickname: str, team: str) -> None:
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, display_name VARCHAR, abbreviation VARCHAR)")
+    c.execute("INSERT INTO teams VALUES ('20','Philadelphia 76ers','PHI'),('5','Cleveland Cavaliers','CLE'),('6','Dallas Mavericks','DAL')")
+    got = resolve_team(c, nickname)
+    assert isinstance(got, Entity) and got.name == team

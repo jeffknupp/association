@@ -2022,3 +2022,54 @@ def test_team_game_log_does_not_call_a_missing_result_a_loss(gl_con: TemplateCon
     result = game_log(gl_con, {"team": "Knicks"})
     assert (result.data["wins"], result.data["losses"]) == (1, 0)
     assert "(1-0, 1 with no recorded result):" in result.answer
+
+
+# ---------------- playoffs before 1993-94, by the year they were played ----------------
+
+
+@pytest.fixture
+def playoff_ctx(tmp_path: Path) -> TemplateContext:
+    """ESPN's labels before 1993-94: the postseason games labelled 1990 are the
+    1991 Finals, and the phantom 1993 is a copy of 1994's games."""
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, display_name VARCHAR, abbreviation VARCHAR)")
+    c.execute("INSERT INTO teams VALUES ('4','Chicago Bulls','CHI'),('13','Los Angeles Lakers','LAL')")
+    c.execute(
+        "CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR, home_team_id VARCHAR, away_team_id VARCHAR, "
+        "home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR, home_linescores VARCHAR, away_linescores VARCHAR)"
+    )
+    rows = [
+        ("f1", 1990, 3, "1991-06-03T01:00Z", "4", "13", 91, 93, "13", "20,25,20,26", "25,20,24,24"),
+        ("f2", 1990, 3, "1991-06-13T01:00Z", "13", "4", 101, 108, "4", "25,25,25,26", "27,27,27,27"),
+        ("x1", 1993, 3, "1994-05-01T01:00Z", "4", "13", 100, 90, "4", "25,25,25,25", "20,20,25,25"),
+        ("x1", 1994, 3, "1994-05-01T01:00Z", "4", "13", 100, 90, "4", "25,25,25,25", "20,20,25,25"),
+    ]
+    c.executemany("INSERT INTO games VALUES (?,?,?,?,?,?,?,?,?,?,?)", rows)
+    c.execute("CREATE TABLE team_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, opponent_team_id VARCHAR, home_away VARCHAR)")
+    boxes: list[tuple[Any, ...]] = []
+    for event, season, season_type, _date, home, away, *_rest in rows:
+        boxes += [(event, season, season_type, home, away, "home"), (event, season, season_type, away, home, "away")]
+    c.executemany("INSERT INTO team_box_stats VALUES (?,?,?,?,?,?)", boxes)
+    return TemplateContext(con=c, out_dir=tmp_path)
+
+
+def test_an_early_playoffs_is_found_by_the_year_it_was_played(playoff_ctx: TemplateContext) -> None:
+    """ESPN labels the 1991 Finals season 1990. Matched by label, "the 1991
+    playoffs" found 1992's, and "the 1990 playoffs" found 1991's."""
+    both = ["Chicago Bulls", "Los Angeles Lakers"]
+    assert head_to_head(playoff_ctx, {"teams": both, "season": 1991, "season_type": 3}).data["games"] == 2
+    assert head_to_head(playoff_ctx, {"teams": both, "season": 1990, "season_type": 3}).data["games"] == 0
+
+
+def test_the_phantom_season_does_not_double_a_playoffs(playoff_ctx: TemplateContext) -> None:
+    assert head_to_head(playoff_ctx, {"teams": ["Chicago Bulls", "Los Angeles Lakers"], "season": 1994, "season_type": 3}).data["games"] == 1
+
+
+def test_team_quarter_points_finds_an_early_playoffs_by_its_year(playoff_ctx: TemplateContext) -> None:
+    got = team_quarter_points(playoff_ctx, {"team": "Chicago Bulls", "period": 1, "season": 1991, "season_type": 3})
+    assert [g["points"] for g in got.data["games"]] == [20, 27]
+
+
+def test_a_team_log_labels_an_early_playoffs_by_its_year(playoff_ctx: TemplateContext) -> None:
+    got = game_log(playoff_ctx, {"team": "Chicago Bulls", "season": 1991, "season_type": 3})
+    assert [g["season"] for g in got.data["games"]] == [1991, 1991]

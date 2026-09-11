@@ -662,3 +662,41 @@ def test_a_count_with_no_threshold_is_a_season_ranking() -> None:
     with no threshold, and fell through."""
     assert _ask("who has the most threes this season", '{"intent":"threshold_count","stat":"threePointFieldGoalsMade"}').intent == "leaderboard"
     assert _ask("most 30 point games this season", '{"intent":"threshold_count","stat":"points"}').intent == "threshold_count"
+
+
+@pytest.mark.parametrize(("question", "rank"), [("slowest pace in the league", "fewest"), ("fastest team this season", "most")])
+def test_pace_words_rank_the_right_end(question: str, rank: str) -> None:
+    """Without these, "slowest pace" listed the fastest teams first."""
+    assert _ask(question, '{"intent":"team_leaderboard","stat":"pace"}').slots["rank"] == rank
+
+
+@pytest.mark.parametrize("question", ["Sga games with under 14 fta in his whole career", "games with less than 20 points", "most games with fewer than 5 turnovers"])
+def test_a_comparison_below_a_number_is_a_scoping_slot(question: str) -> None:
+    """ "under 14 fta" reached threshold_count as 14 and was answered as 14 or more."""
+    assert "below" in _ask(question, '{"intent":"threshold_count","stat":"points","threshold":14}').slots
+
+
+@pytest.mark.parametrize(
+    "question",
+    ["Celtics record on back to backs", "Lakers record in overtime this season", "76ers record in october", "Knicks record vs the east", "best record since the all-star break"],
+)
+def test_a_situation_no_template_filters_on_is_a_scoping_slot(question: str) -> None:
+    assert "situation" in _ask(question, '{"intent":"team_record","team":"X"}').slots
+
+
+def test_a_team_line_with_no_stat_named_keeps_the_whole_line() -> None:
+    """ "Knicks stats" arrived as stat='points'."""
+    assert "stat" not in _ask("Knicks stats this season", '{"intent":"team_stat","team":"New York Knicks","stat":"points"}').slots
+    assert _ask("Knicks pace this season", '{"intent":"team_stat","team":"New York Knicks","stat":"pace"}').slots["stat"] == "pace"
+
+
+def test_a_team_streak_does_not_carry_a_stat_it_never_asked_for() -> None:
+    assert "stat" not in _ask("lakers longest winning streak this season", '{"intent":"streak","team":"Lakers","stat":"points"}').slots
+    assert _ask("most 40 point games in a row", '{"intent":"streak","stat":"points","threshold":40}').slots["stat"] == "points"
+
+
+def test_the_last_n_meetings_reach_back_across_seasons() -> None:
+    got = _ask("jaylen brown last 8 games vs pistons", '{"intent":"game_log","player":"Jaylen Brown","limit":8,"season_ref":"current"}')
+    assert got.slots["span"] == "career" and "season" not in got.slots
+    named = _ask("jaylen brown last 8 games vs pistons this season", '{"intent":"game_log","player":"Jaylen Brown","limit":8,"season_ref":"current"}')
+    assert "span" not in named.slots

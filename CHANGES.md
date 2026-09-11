@@ -15,6 +15,43 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Faults found while building the templates below, fixed where the data is
+  read.** Every agent that built a template hit one of these, and each one
+  produced a wrong answer that nothing flagged.
+  - **Playoffs before 1993-94 were a year off.** ESPN files every season before
+    1993-94 under the year it started. The postseason games labelled 1990 end
+    with the 1991 Finals, so "the 1991 playoffs" returned 1992's.
+    `head_to_head`, `team_quarter_points` and a team's `game_log` now select a
+    postseason by the calendar year it was played in, as `team_record` already
+    did, and exclude the phantom 1993 label. The 1987-88 playoffs are not in
+    ESPN's archive at all, so the postseason floor for `games` and
+    `team_box_stats` is 1989, not 1988, and that refusal now gives its own
+    reason instead of the regular season's. `scripts/check_coverage.py` counts
+    those postseasons the same way.
+  - **Copied postseasons.** ESPN's career endpoint files some regular seasons
+    a second time as the postseason; Eddy Curry had 527 "playoff games".
+    `player_season_stats_deduped` now drops a postseason line that claims more
+    than 28 games or repeats that season's regular-season games and points.
+    That removes 340 of 7,845 rows and keeps every real run checked.
+  - **2003 shots are partial.** 2003's play-by-play is complete, but only 986
+    of its 1,190 games have located shots, so `shot_chart` caveats 2003 as
+    well as 2002.
+  - **Four more narrowing slots the router reads from the question text.**
+    None is honoured yet, so each now refuses where it used to answer a
+    different question:
+    - `below` ("games with under 14 FTA"): threshold_count answered 14 or more,
+      the inverse.
+    - `situation` (back-to-backs, overtime, a month, a conference, the All-Star
+      break): `team_record` answered each with the whole season's record.
+    - "fastest" and "slowest" now rank the right end of a team leaderboard.
+    - A team line or team streak that names no stat no longer carries the one
+      the model filled in.
+  - **"last 8 games vs pistons"** with no season named now reaches back across
+    seasons for the last eight meetings. It used to stop at the current
+    season's four.
+  - **Team nicknames** ("Sixers", "Cavs", "Mavs") resolve to teams instead of
+    falling through.
+
 - **A player's games against one team, his recent form and his career are
   answered now, where the entry below made them refuse.** `game_log` and
   `player_stat` honor `opponent`, `venue`, `span` and `without`, and

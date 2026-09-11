@@ -136,7 +136,10 @@ SEASON_TYPE_NAMES = {1: "preseason", 2: "regular season", 3: "postseason"}
 # honoured by no template at all: nothing in the warehouse records one. `split`
 # and `since` (a range of seasons) are read for every intent for the same reason:
 # a template that is not about splits or ranges answered them with one season.
-SCOPING_SLOTS = frozenset({"order", "date", "opponent", "venue", "span", "without", "round", "split", "since"})
+# `below` ("under 14 FTA") and `situation` (back-to-backs, overtime, a month, a
+# conference) are refused by every template: nothing narrows to either yet, and
+# answering without them answered the inverse or the whole season.
+SCOPING_SLOTS = frozenset({"order", "date", "opponent", "venue", "span", "without", "round", "split", "since", "below", "situation"})
 
 # What each template actually honours. Anything not listed here honours none.
 HONORED_SCOPING: dict[str, frozenset[str]] = {
@@ -1912,7 +1915,7 @@ SELECT g.date,
        CASE WHEN tbs.home_away = 'home' THEN g.away_score ELSE g.home_score END AS opponent_score,
        g.winner_team_id,
        tbs.team_id,
-       tbs.season
+       CASE WHEN tbs.season_type = 3 THEN CAST(substr(g.date, 1, 4) AS INTEGER) ELSE tbs.season END AS season
 FROM team_box_stats tbs
 JOIN games g ON g.event_id = tbs.event_id AND g.season = tbs.season
 JOIN teams opp ON opp.team_id = tbs.opponent_team_id
@@ -2915,10 +2918,30 @@ def _scope(count: int, ascending: bool, date: str | None) -> str:
     return f"first {count} games" if ascending else f"last {count} games"
 
 
+# The season a team's game belongs to, by the project's convention: a
+# postseason by the calendar year it was played in, since ESPN labels every
+# season before 1993-94 by the year it started (see _season_games).
+_TEAM_SEASON = "CASE WHEN tbs.season_type = 3 THEN CAST(substr(g.date, 1, 4) AS INTEGER) ELSE tbs.season END"
+
+
+def _postseason_scope(span: _Span) -> tuple[str, list[Any]]:
+    """_Span.clause for a postseason over ``games`` (aliased ``g``): one
+    playoffs by the calendar year it was played in, or every playoffs from
+    ``span.first`` on - never by label, for the reason _season_games gives.
+    Labelled, a career of playoff games dropped the 1989 playoffs (stored as
+    1988) and printed the 1991 run as "1990"."""
+    if span.season is not None:
+        return _season_games(span.season, 3, "g")
+    phantom = COVERAGE["games"].phantom
+    excluded = f" AND g.season NOT IN ({', '.join('?' for _ in phantom)})" if phantom else ""
+    return f"CAST(substr(g.date, 1, 4) AS INTEGER) >= ?{excluded}", [span.first, *phantom]
+
+
 def _team_game_log(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, *, opponent: Any, venue: Any, date: str | None, limit: int, ascending: bool) -> TemplateResult:
     """A team's games in ``span``, narrowed to an opponent, a venue and a date
     where the question named them."""
-    clause, params = span.clause("tbs.season")
+    # A postseason by the calendar year it was played in - see _season_games.
+    clause, params = _postseason_scope(span) if span.season_type == 3 else span.clause("tbs.season")
     base, base_params = ["tbs.team_id = ?", "tbs.season_type = ?", clause], [team.id, span.season_type, *params]
     extra: list[str] = []
     extra_params: list[Any] = []
@@ -2949,7 +2972,7 @@ def _team_game_log(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, *,
     if not rows:
         # Which fact is missing: the team's games in that span, or the match.
         found = con.execute(
-            f"SELECT COUNT(*), MIN(tbs.season), MAX(tbs.season) FROM team_box_stats tbs WHERE {' AND '.join(base)}",
+            f"SELECT COUNT(*), MIN({_TEAM_SEASON}), MAX({_TEAM_SEASON}) FROM team_box_stats tbs JOIN games g ON g.event_id = tbs.event_id AND g.season = tbs.season WHERE {' AND '.join(base)}",
             base_params,
         ).fetchone()
         total, first, last = found if found else (0, None, None)
@@ -3414,6 +3437,29 @@ def _phrase_single_game_high(games: list[dict[str, Any]], label: str, span: _Gam
     return sentence + (f" Next: {', '.join(rest)}." if rest else "")
 
 
+def _season_games(season: int, season_type: int, alias: str) -> tuple[str, list[Any]]:
+    """SQL selecting one season's games from ``games`` (aliased ``alias``), and
+    its parameters.
+
+    A postseason is selected by the CALENDAR YEAR it was played in, never by
+    its label. ESPN labels every season before 1993-94 by the year it STARTED:
+    the postseason games labelled 1990 end on 1991-06-12, the 1991 Finals, so a
+    label match answered "the 1991 playoffs" with 1992's. Every postseason is
+    played inside the year its season is named for (the 2020 bubble ended in
+    October 2020), so the year is exact for all of them - the same choice
+    ``team_metrics.games_scope`` makes. The phantom 1993 label is excluded, since
+    its games are 1994's and would be counted twice.
+
+    A regular season keeps its label: every regular season a template can reach
+    (1994 on) is labelled by the year it ends.
+    """
+    if season_type == 3:
+        phantom = COVERAGE["games"].phantom
+        excluded = f" AND {alias}.season NOT IN ({', '.join('?' for _ in phantom)})" if phantom else ""
+        return f"CAST(substr({alias}.date, 1, 4) AS INTEGER) = ?{excluded}", [season, *phantom]
+    return f"{alias}.season = ?", [season]
+
+
 def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """ "How many times did the 76ers play Boston?" - games between two teams.
 
@@ -3455,12 +3501,13 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     # Both orderings, since `games` is home/away-oriented rather than
     # team-perspective, and the season filter parenthesized around the whole
     # matchup - `A OR B AND season = ...` applies the season to one side only.
+    season_clause, season_params = _season_games(season, season_type, "g")
     where = [
         "((g.home_team_id = ? AND g.away_team_id = ?) OR (g.home_team_id = ? AND g.away_team_id = ?))",
         "g.season_type = ?",
-        "g.season = ?",
+        season_clause,
     ]
-    params: list[Any] = [a.id, b.id, b.id, a.id, season_type, season]
+    params: list[Any] = [a.id, b.id, b.id, a.id, season_type, *season_params]
     rows = con.execute(
         f"SELECT g.date, g.home_team_id, g.home_score, g.away_score, g.winner_team_id FROM games g WHERE {' AND '.join(where)} ORDER BY g.date",
         params,
@@ -3496,7 +3543,7 @@ SELECT g.date,
        CASE WHEN tbs.home_away = 'home' THEN g.home_linescores ELSE g.away_linescores END AS own_linescores,
        opp.display_name AS opponent
 FROM team_box_stats tbs
-JOIN games g ON g.event_id = tbs.event_id
+JOIN games g ON g.event_id = tbs.event_id AND g.season = tbs.season
 JOIN teams opp ON opp.team_id = tbs.opponent_team_id
 """
 
@@ -3573,8 +3620,9 @@ def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> Template
 
     season = slots.get("season") or current_season()
     season_type = slots.get("season_type") or 2
-    where = ["tbs.team_id = ?", "tbs.season = ?", "tbs.season_type = ?"]
-    params: list[Any] = [team.id, season, season_type]
+    season_clause, season_params = _season_games(season, season_type, "g")
+    where = ["tbs.team_id = ?", season_clause, "tbs.season_type = ?"]
+    params: list[Any] = [team.id, *season_params, season_type]
     if opponent is not None:
         where.append("tbs.opponent_team_id = ?")
         params.append(opponent.id)
