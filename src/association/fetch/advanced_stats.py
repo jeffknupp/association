@@ -125,6 +125,11 @@ def build_views(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
     # season FGA/FTA/points totals), not averaged game-to-game - averaging a
     # ratio across games of wildly different attempt volume overweights low-
     # volume games relative to the standard season-total definition.
+    #
+    # The attempt totals are what ts_pct and efg_pct qualify on (see
+    # query/metrics.py). They are summed here, from the same rows as the
+    # percentages, rather than joined in from player_season_stats: those totals
+    # are ESPN's, and a traded player there has a row per stint plus a combined one.
     con.execute(f"""
         CREATE OR REPLACE VIEW player_season_advanced_stats AS
         WITH {_TEAM_TOTALS_CTE}
@@ -133,6 +138,8 @@ def build_views(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
             pbs.season_type,
             pbs.athlete_id,
             COUNT(pbs.points) AS games_played,
+            CAST(SUM(pbs.fieldGoalsAttempted) AS BIGINT) AS field_goals_attempted,
+            CAST(SUM(pbs.fieldGoalsAttempted) + 0.44 * SUM(pbs.freeThrowsAttempted) AS DOUBLE) AS true_shooting_attempts,
             CAST(SUM(pbs.points) / NULLIF(2.0 * (SUM(pbs.fieldGoalsAttempted) + 0.44 * SUM(pbs.freeThrowsAttempted)), 0) AS DOUBLE) AS ts_pct,
             CAST((SUM(pbs.fieldGoalsMade) + 0.5 * SUM(pbs.threePointFieldGoalsMade)) / NULLIF(SUM(pbs.fieldGoalsAttempted), 0) AS DOUBLE) AS efg_pct,
             CAST(100.0 * SUM((pbs.fieldGoalsAttempted + 0.44 * pbs.freeThrowsAttempted + pbs.turnovers) * (tt.team_minutes / 5.0))

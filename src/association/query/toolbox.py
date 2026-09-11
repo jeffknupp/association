@@ -251,6 +251,8 @@ class Toolbox:
                 "season": result.season,
                 "season_type": result.season_type,
                 "min_sample_applied": result.min_sample_applied,
+                # The unit: 20 is games for usage_pct and attempts for ts_pct.
+                "min_sample_column": result.min_sample_column,
                 "team": result.team,
                 "rows": result.rows,
                 "row_count": len(result.rows),

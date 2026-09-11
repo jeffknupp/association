@@ -141,22 +141,49 @@ LEADERBOARD_METRICS: dict[str, LeaderboardMetric] = {
         default_min_sample=20,
         requires="warehouse rebuilt with `association data load` after player_box_stats was fetched",
     ),
+    # The two shooting percentages qualify on ATTEMPTS, each on its own
+    # denominator, not on games. Twenty games let Kai Jones top 2025's true
+    # shooting at .804 on 109 shots, with Patrick Baldwin Jr.'s 35 third.
+    #
+    # Both floors were calibrated against StatMuse's published 2025 and 2026
+    # top 15s, whose rules are 725 points (TS%) and 300 made field goals (eFG%)
+    # per 82 games:
+    # - 550 true-shooting attempts reproduces 2026's TS% list exactly, and
+    #   2025's but for rank 15, where Okongwu's .6341 and SGA's .6338 swap - the
+    #   725-point rule makes the same swap on these numbers. Anything from 520 to
+    #   576 does the same; 550 is the middle of that, not a measured optimum.
+    # - 480 field-goal attempts puts every published eFG% top-12 player on the
+    #   board in both seasons. The band is 475-491, and its top is 2026's
+    #   leader, Rudy Gobert, at 491 - a round 500 drops the league leader. What
+    #   still differs is the rule and not noise: 3-point shooters with the
+    #   attempts but under 300 makes (2026's Sam Merrill and Isaiah Joe, 7th
+    #   and 8th here, and AJ Green), who push published ranks 13-15 out.
+    # Not the made-shot rules themselves, because a made-shot minimum leans on
+    # the thing it ranks: a better shooter qualifies on fewer attempts.
+    #
+    # The postseason floors are the same per-game rate over 10 games rather
+    # than 82. No published postseason list is qualified at all (StatMuse's
+    # 2025 leader shot 150% on two attempts), so those are scaled, not
+    # calibrated. The season floors are flat, not scaled to the schedule: the
+    # shortened 2020 and 2021 seasons qualify ~155 players against ~180.
     "ts_pct": LeaderboardMetric(
         table="player_season_advanced_stats",
         column="ts_pct",
         label="true shooting %",
-        extra_columns=("games_played",),
-        min_sample_column="games_played",
-        default_min_sample=20,
+        extra_columns=("games_played", "true_shooting_attempts"),
+        min_sample_column="true_shooting_attempts",
+        default_min_sample=550,
+        postseason_min_sample=67,
         requires="warehouse rebuilt with `association data load` after player_box_stats was fetched",
     ),
     "efg_pct": LeaderboardMetric(
         table="player_season_advanced_stats",
         column="efg_pct",
         label="effective FG%",
-        extra_columns=("games_played",),
-        min_sample_column="games_played",
-        default_min_sample=20,
+        extra_columns=("games_played", "field_goals_attempted"),
+        min_sample_column="field_goals_attempted",
+        default_min_sample=480,
+        postseason_min_sample=59,
         requires="warehouse rebuilt with `association data load` after player_box_stats was fetched",
     ),
     "avg_points": LeaderboardMetric(table="player_season_stats", column="avgPoints", label="points per game", dedup_traded=True, min_sample_column="gamesPlayed", career=_career_per_game("points")),

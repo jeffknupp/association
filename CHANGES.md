@@ -15,6 +15,30 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **True shooting and effective FG% leaderboards qualify on attempts, not
+  games.** Twenty games was the whole qualifier, so "best true shooting
+  percentage last season" was led by Kai Jones at .804 on 109 shots, with
+  Patrick Baldwin Jr.'s 35 third. `ts_pct` now needs 550 true-shooting
+  attempts (FGA + 0.44 FTA) and `efg_pct` 480 field-goal attempts, floors
+  checked against StatMuse's published 2025 and 2026 top 15s: the top ten now
+  match in order for TS% in both seasons and for eFG% in 2025. 2026's eFG%
+  differs by the rule itself - StatMuse qualifies on 300 *made* field goals,
+  which shuts out Sam Merrill and Isaiah Joe, who have the attempts. The
+  reasoning, and the band each floor was picked from, is above the two
+  entries in `query/metrics.py`.
+
+  Their postseason floors are 67 and 59, the same rate over 10 games instead
+  of 82, where 20 games had left only the conference finalists and dropped
+  Jarrett Allen's .792 over nine games for Isaiah Joe's .676.
+  `get_leaderboard` returns `min_sample_column` beside `min_sample_applied`,
+  since 20 is games for one metric and 550 is attempts for another.
+
+  `player_season_advanced_stats` gains `field_goals_attempted` and
+  `true_shooting_attempts`, summed from the same box scores as the
+  percentages. An existing warehouse needs an `association data load` (any
+  `--tables` subset: the views are rebuilt on every load) before the view has
+  them; until then these two leaderboards fall through to the agent.
+
 - **Slots the model put in the wrong place are read from the question.** The
   last run over the StatMuse questions found one more wrong answer and a set of
   refusals, each from a mis-filled slot:

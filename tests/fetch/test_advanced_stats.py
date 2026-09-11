@@ -9,6 +9,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from association.fetch import warehouse
+from association.query.metrics import LEADERBOARD_METRICS
 
 
 def _write_player_box_stats(data_dir: Path, rows: list[dict]) -> None:
@@ -144,3 +145,40 @@ def test_season_view_aggregates_totals_not_average_of_ratios(tmp_path: Path) -> 
     assert games_played == 2
     # season TS% = total PTS / (2 * (total FGA + 0.44 * total FTA)) = 36 / (2*(24 + 0.44*12))
     assert ts_pct == pytest.approx(36 / (2 * (24 + 0.44 * 12)))
+
+
+def test_season_view_sums_the_attempts_its_shooting_percentages_qualify_on(tmp_path: Path) -> None:
+    data_dir = tmp_path / "parquet"
+    game_2 = dict(_PLAYER_A, event_id="2", points=6, fieldGoalsMade=2, fieldGoalsAttempted=4, freeThrowsMade=2, freeThrowsAttempted=2)
+    _write_player_box_stats(data_dir, [_PLAYER_A, _PLAYER_B, game_2, dict(_PLAYER_B, event_id="2")])
+    db_path = tmp_path / "test.duckdb"
+
+    warehouse.build(data_dir, db_path)
+
+    con = duckdb.connect(str(db_path))
+    row = con.execute("SELECT field_goals_attempted, true_shooting_attempts FROM player_season_advanced_stats WHERE athlete_id = '10'").fetchone()
+    con.close()
+    assert row is not None
+    field_goals_attempted, true_shooting_attempts = row
+    assert field_goals_attempted == 20 + 4
+    assert true_shooting_attempts == pytest.approx(24 + 0.44 * (10 + 2))
+
+
+def test_every_column_a_leaderboard_metric_names_is_in_the_view(tmp_path: Path) -> None:
+    """metrics.py and this view are two hand-maintained lists of the same
+    column names. A qualifier column missing here is an SQL error on the first
+    question, which falls through to the agent - and the agent ranks on
+    whatever qualifier it thinks of."""
+    data_dir = tmp_path / "parquet"
+    _write_player_box_stats(data_dir, [_PLAYER_A, _PLAYER_B])
+    db_path = tmp_path / "test.duckdb"
+
+    warehouse.build(data_dir, db_path)
+
+    con = duckdb.connect(str(db_path))
+    columns = {r[0] for r in con.execute("DESCRIBE player_season_advanced_stats").fetchall()}
+    con.close()
+    for name, spec in LEADERBOARD_METRICS.items():
+        if spec.table == "player_season_advanced_stats":
+            named = {spec.column, *spec.extra_columns, *([spec.min_sample_column] if spec.min_sample_column else [])}
+            assert named <= columns, f"{name} names {sorted(named - columns)}, which the view does not have"

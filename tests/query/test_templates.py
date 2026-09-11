@@ -191,6 +191,62 @@ def test_threshold_count_honours_playoffs(con: TemplateContext) -> None:
     assert result.data["leaders"] == [{"player": "Bench Guy", "games": 9}]
 
 
+@pytest.fixture
+def shooting_ctx(tmp_path: Path) -> TemplateContext:
+    """Real 2025 rows. On a 20-game qualifier, Kai Jones's 109 shots led the
+    league in true shooting at .804, with Patrick Baldwin Jr.'s 35 third; in
+    the playoffs, the same qualifier kept Thomas Bryant's 33 shots and dropped
+    Jarrett Allen, who shot .792 on 61 in nine games."""
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO players VALUES ('1','Kai Jones'),('2','Patrick Baldwin Jr.'),('3','Jarrett Allen'),('4','Nikola Jokic'),('5','Isaiah Joe'),('6','Thomas Bryant')")
+    c.execute(
+        "CREATE TABLE player_season_advanced_stats (season INTEGER, season_type INTEGER, athlete_id VARCHAR, games_played BIGINT, "
+        "field_goals_attempted BIGINT, true_shooting_attempts DOUBLE, ts_pct DOUBLE, efg_pct DOUBLE)"
+    )
+    c.executemany(
+        "INSERT INTO player_season_advanced_stats VALUES (2025,?,?,?,?,?,?,?)",
+        [
+            (2, "1", 40, 109, 123.08, 0.804, 0.803),
+            (2, "2", 24, 35, 36.76, 0.721, 0.729),
+            (2, "3", 82, 640, 761.88, 0.724, 0.706),
+            (2, "4", 70, 1364, 1562.44, 0.663, 0.627),
+            (3, "3", 9, 61, 76.40, 0.792, 0.721),
+            (3, "5", 21, 73, 79.16, 0.676, 0.651),
+            (3, "6", 20, 33, 39.16, 0.664, 0.621),
+            (3, "4", 14, 268, 312.44, 0.587, 0.539),
+        ],
+    )
+    return TemplateContext(con=c, out_dir=tmp_path)
+
+
+def test_true_shooting_says_which_qualifier_it_ranked_under(shooting_ctx: TemplateContext) -> None:
+    result = leaderboard(shooting_ctx, {"stat": "true_shooting", "season": 2025})
+    assert result.answer == "Jarrett Allen led the league in true shooting % in the 2025 regular season (minimum 550 true-shooting attempts), at 0.724. Next: Nikola Jokic (0.663)."
+
+
+@pytest.mark.parametrize(("stat", "qualifier"), [("true_shooting", "550 true-shooting attempts"), ("efg_pct", "480 field-goal attempts")])
+def test_a_shooting_percentage_qualifies_on_attempts_not_games(shooting_ctx: TemplateContext, stat: str, qualifier: str) -> None:
+    """Both low-volume players have the games; neither has the shots."""
+    result = leaderboard(shooting_ctx, {"stat": stat, "season": 2025})
+    assert [r["display_name"] for r in result.data["leaders"]] == ["Jarrett Allen", "Nikola Jokic"]
+    assert f"2025 regular season (minimum {qualifier})," in (result.answer or "")
+
+
+@pytest.mark.parametrize(("stat", "qualifier"), [("true_shooting", "67 true-shooting attempts"), ("efg_pct", "59 field-goal attempts")])
+def test_a_shooting_percentage_scales_its_qualifier_for_the_postseason(shooting_ctx: TemplateContext, stat: str, qualifier: str) -> None:
+    """The season floor is more than one player reached in the whole 2025
+    postseason, so it cannot carry over, and games cannot stand in for it."""
+    result = leaderboard(shooting_ctx, {"stat": stat, "season": 2025, "season_type": 3})
+    assert [r["display_name"] for r in result.data["leaders"]] == ["Jarrett Allen", "Isaiah Joe", "Nikola Jokic"]
+    assert f"2025 postseason (minimum {qualifier})," in (result.answer or "")
+
+
+def test_an_empty_board_says_what_nobody_met(shooting_ctx: TemplateContext) -> None:
+    result = leaderboard(shooting_ctx, {"stat": "true_shooting", "season": 2024})
+    assert result.answer == "No players qualified for true shooting % in the league in the 2024 regular season (minimum 550 true-shooting attempts)."
+
+
 # ---------------- player_stat ----------------
 
 

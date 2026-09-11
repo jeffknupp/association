@@ -626,7 +626,7 @@ TOOLS: list[dict[str, Any]] = [
                     "min_sample": {
                         "type": "integer",
                         "description": (
-                            "Minimum games/minutes (depends on the metric) to qualify. Omit to use a sensible built-in default - only set this if the user's question gives its own minimum."
+                            "Minimum games/minutes/attempts (depends on the metric) to qualify. Omit to use a sensible built-in default - only set this if the user's question gives its own minimum."
                         ),
                     },
                     "team": {

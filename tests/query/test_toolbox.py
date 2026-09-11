@@ -149,6 +149,7 @@ def test_get_leaderboard_applies_default_minimum_sample(toolbox: Toolbox) -> Non
     names = [r["display_name"] for r in result["rows"]]
     assert names == ["Stephen Curry"]
     assert result["min_sample_applied"] == 20
+    assert result["min_sample_column"] == "games_played"  # the unit: ts_pct's floor is attempts
 
 
 def test_get_leaderboard_min_sample_override_widens_the_pool(toolbox: Toolbox) -> None:

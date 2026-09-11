@@ -903,6 +903,8 @@ MIN_SAMPLE_LABELS = {
     "fieldGoalsAttempted": "field-goal attempts",
     "threePointFieldGoalsAttempted": "3-point attempts",
     "freeThrowsAttempted": "free-throw attempts",
+    "field_goals_attempted": "field-goal attempts",
+    "true_shooting_attempts": "true-shooting attempts",
 }
 
 
