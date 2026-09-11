@@ -739,6 +739,25 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** nothing. An agent can read the pass as a real check.
 - **Next step:** have the hook say it checked nothing when the index is empty.
 
+### The docs gate keeps stale pages after a change to `docs/conf.py` code
+- **Found:** 2026-09-11, merging `92cf1e5` into the season-narrowing branch
+- **Evidence:** `scripts/build_docs.sh` builds incrementally into
+  `docs/_build/html`, with no `-E` and no clean output directory. `92cf1e5`
+  fixed the literal `:rtype:` lines with a function in `docs/conf.py`, not a
+  config value, so Sphinx did not treat the change as one that invalidates its
+  cached environment. After the merge, the pre-commit docs hook passed and
+  `docs/_build/html` still had the literal line on 18 of 40 pages. A fresh
+  build of the same tree into an empty directory had it on 0 of 40, with 18
+  "Return type" fields on the `association.query.entities` page. A page Sphinx
+  does not re-read also re-emits none of its warnings, so the local `-W` gate
+  can pass where a fresh build fails. That is the "local run weaker than CI"
+  shape `AGENTS.md` records for the other gates. CI's own docs build was not
+  checked.
+- **User sees:** nothing directly. An agent reading the built HTML sees stale
+  pages, and a docs warning can go unnoticed until CI.
+- **Next step:** pass `-E` (or clear the output directory) in `build_docs.sh`,
+  and time it against the incremental build.
+
 ### A failed warehouse build leaves no marker
 - **Found:** 2026-09-08 (reported)
 - **Evidence:** each table load is its own statement, so an out-of-memory kill
