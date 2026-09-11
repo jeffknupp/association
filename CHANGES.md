@@ -15,6 +15,47 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Five templates for questions about games under a condition.** The intents
+  were already in the router's schema with nothing to answer them, so every
+  one of these fell through to the agent. They are shapes S4, S6, S10, S12 and
+  S13 of the StatMuse research, and each answers both halves of its comparison
+  side by side:
+
+  | Intent | Answers | Example |
+  | --- | --- | --- |
+  | `player_splits` | per-game averages home/away, starting/bench, in wins/losses, or by month (all four when no split is named); a team's too | "Nikola Jokic home and away splits" |
+  | `with_without` | a team's record in the games a teammate played vs missed, and a player's averages in each | "Celtics record without Tatum" |
+  | `record_when` | a team's record when a player reached a stat threshold vs when he fell short | "Sixers record when Embiid scores 30" |
+  | `player_matchup` | two players' meetings on opposite teams: record, averages, the latest games | "Andre Drummond vs Al Horford game log" |
+  | `streak` | a team's longest winning or losing run, a player's longest run of games at a threshold, or the league's | "most 40 point games in a row" |
+
+  The SQL is in the new `query/conditions.py`, and its module docstring records
+  four facts measured against the warehouse that decide what the answers mean:
+
+  - **"Played" is a box-score row with minutes.** A missed game is a DNP row,
+    no row at all, or (2006-2012) NULL minutes and zeros beside teammates who
+    played.
+  - **A missing box score is unknown, not a missed game.** ESPN lacks about one
+    box score in eight from 2013 to 2018, every player listed with NULL
+    minutes. LeBron James played all 82 games of 2017-18 and has six of these,
+    so read as absences they would have been "Cavaliers without LeBron" games.
+    They are left out of both sides, end a streak, and are counted in the answer.
+  - **Days are US Eastern**, the same fixed shift the NetPoints matching uses,
+    so a 7:30pm tip is not filed under the next day's month.
+  - **0-0 placeholders with no winner (1999-2002) are not losses.**
+
+  "Without" means inside the teammate's time on that team: the stint of box
+  scores from his first appearance there to his last, broken by a trade or a
+  season with no box score at all. StatMuse's "Nets record without KD" counts
+  decades of Nets games before he arrived, and that is the answer this avoids.
+  Cross-checked against standings: every split sums back to the team's
+  record (Celtics 2026, 43-23 without Tatum and 13-3 with him, is their 56-26).
+
+  One data fact found on the way, and not fixed here: before 1993-94 the
+  warehouse files a season under the year it began, so its "1990" postseason
+  is the 1991 playoffs. These templates refuse a pre-1994 postseason season
+  rather than answer it under the wrong year's label.
+
 - **Real questions were being answered about something else, and now refuse
   instead.** 99 questions were run through the fast path to the final answer:
   the routing corpus plus 45 real StatMuse queries. Nine of the StatMuse queries

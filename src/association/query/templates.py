@@ -22,6 +22,38 @@ from association.net_points_categories import FINGERPRINT_CATEGORIES
 from association.season import current_season
 
 from .answer import Artifact
+from .conditions import (
+    _PLAYER_GAME_TABLES,
+    _PLAYER_LINE,
+    _SPLIT_TITLES,
+    _TEAM_GAME_TABLES,
+    _TEAM_LINE,
+    _box_missing,
+    _cell,
+    _game_scope,
+    _longest_runs,
+    _margin,
+    _matchup_line,
+    _meetings,
+    _names,
+    _overlaps,
+    _player_games,
+    _player_streak_rows,
+    _Scope,
+    _split_cells,
+    _split_label,
+    _split_rows,
+    _stints,
+    _table,
+    _team_games,
+    _totals,
+    _unseen,
+    _unseen_meetings,
+    _unseen_note,
+    _win_pct,
+    _with_without_games,
+    _with_without_group,
+)
 from .court import HOOP_X, HOOP_Y
 from .entities import Ambiguous, Entity, clarification, no_match, resolve_player, resolve_team, suggest_players, suggestion
 from .fingerprint import FINGERPRINT_AVAILABILITY, FINGERPRINT_VIEWS, GAME_FINGERPRINT_AVAILABILITY, FingerprintUnavailable, render_for_players
@@ -103,6 +135,13 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # leaving one unlisted falls through to an agent with no better source,
     # which is slower and free to answer the season instead.
     "fingerprint": frozenset({"order", "date"}),
+    # A career is every season on record rather than the current one; see
+    # _condition_scope. `without` is the teammate with_without divides by.
+    "player_splits": frozenset({"span"}),
+    "with_without": frozenset({"span", "without"}),
+    "record_when": frozenset({"span"}),
+    "player_matchup": frozenset({"span"}),
+    "streak": frozenset({"span"}),
 }
 
 
@@ -132,6 +171,13 @@ TEMPLATE_SOURCES: dict[str, tuple[str, ...]] = {
     "shot_chart": ("shot_chart",),
     "shot_distance": ("shot_chart",),
     "fingerprint": ("net_points_player_fingerprint", "net_points_player_game_fingerprint"),
+    # A team's splits and streaks read only the team tables; _sources_for
+    # picks between the two per question.
+    "player_splits": _PLAYER_GAME_TABLES,
+    "with_without": _PLAYER_GAME_TABLES,
+    "record_when": _PLAYER_GAME_TABLES,
+    "player_matchup": _PLAYER_GAME_TABLES,
+    "streak": _PLAYER_GAME_TABLES,
 }
 
 # Templates that read a player name at all - resolving it, filtering on it, or
@@ -147,13 +193,18 @@ PLAYER_INTENTS: frozenset[str] = frozenset(
         "leaderboard",
         "player_compare",
         "player_history",
+        "player_matchup",
         "player_netpoints",
+        "player_splits",
         "player_stat",
+        "record_when",
         "shot_chart",
         "shot_distance",
         "single_game_high",
+        "streak",
         "team_quarter_points",
         "threshold_count",
+        "with_without",
     }
 )
 """Intents whose template reads a ``player`` or ``players`` slot.
@@ -171,7 +222,8 @@ PLAYER_INTENTS: frozenset[str] = frozenset(
 #
 # player_compare is NOT here. It compares players the question named, which a
 # per-player table answers exactly as well as a single lookup does.
-RANKING_INTENTS = frozenset({"leaderboard", "threshold_count", "single_game_high"})
+# `streak` ranks players when no one is named ("most 40 point games in a row").
+RANKING_INTENTS = frozenset({"leaderboard", "threshold_count", "single_game_high", "streak"})
 
 
 def _sources_for(intent: str, slots: dict[str, Any]) -> tuple[str, ...]:
@@ -180,6 +232,13 @@ def _sources_for(intent: str, slots: dict[str, Any]) -> tuple[str, ...]:
     if intent == "game_log":
         named_player = isinstance(slots.get("player"), str) and slots["player"].strip()
         return ("player_game_log",) if named_player else ("games", "team_box_stats")
+    if intent in ("player_splits", "streak"):
+        # A team's splits or streak never touch a player box score, and
+        # charging them that table's floor would refuse a 1990 playoff question
+        # with a sentence about player box scores - the wrong cause.
+        named_player = isinstance(slots.get("player"), str) and slots["player"].strip()
+        by_player = named_player or (intent == "streak" and isinstance(slots.get("threshold"), int))
+        return _PLAYER_GAME_TABLES if by_player else _TEAM_GAME_TABLES
     if intent != "leaderboard":
         return TEMPLATE_SOURCES.get(intent, ())
     stat = slots.get("stat")
@@ -1705,6 +1764,597 @@ def _phrase_compare(rows: dict[str, dict[str, Any]], wanted: list[str], period: 
     return "\n".join(lines)
 
 
+# ---------------- games under a condition ----------------
+#
+# Five templates answering one kind of question: a set of games divided by
+# something that happened in each, with the parts side by side. Their SQL is in
+# conditions.py, whose docstring records what "played", a game's date and a
+# result mean there - each measured against the warehouse, not assumed.
+
+SPLIT_KINDS: tuple[str, ...] = ("home_away", "starter_bench", "wins_losses", "month")
+"""The splits :func:`player_splits` answers, and the values ``router.SPLIT_WORDS`` reads out of a question.
+
+.. versionadded:: 2.1.0
+"""
+
+_DEFAULT_STREAK_LIMIT = 5
+_UNSEEN_ENDS_RUN = " A game with no box score in the warehouse ends a run rather than being carried across, since it cannot be checked."
+_DEFAULT_MEETINGS_LOGGED = 5
+
+# What the model tends to put in the required `stat` slot for "longest winning
+# streak". Anything else is a stat, and a stat with no threshold is refused
+# rather than read as a win streak - "most consecutive double-doubles" must not
+# come back as the Lakers' best run of wins.
+_RESULT_STATS = frozenset({"win", "wins", "winning", "loss", "losses", "losing", "streak", "streaks", "record", "games", "winning streak", "losing streak"})
+
+
+def _condition_scope(season: Any, span: Any, season_type: Any, tables: tuple[str, ...]) -> _Scope:
+    """The games a question covers. No season means the current one - except
+    for a career, where it means every season on record, which is what the
+    word asked for. A season the question named beats "career": the router keeps
+    a named year alongside it, and "career ... in 2015" is asking about 2015."""
+    kind = season_type if season_type in (2, 3) else 2
+    if isinstance(season, int) and not isinstance(season, bool):
+        return _game_scope(season, kind, tables)
+    return _game_scope(None if span == "career" else current_season(), kind, tables)
+
+
+def _where_in(scope: _Scope) -> str:
+    """ "in the 2026 regular season", or "in any regular season on record" for a span with nothing in it."""
+    return f"in the {scope.label()}" if scope.season is not None else f"in any {scope.kind} on record ({scope.first} onward)"
+
+
+def _misfiled_postseason(scope: _Scope) -> TemplateResult | None:
+    """A refusal for a single postseason before 1993-94, or None.
+
+    The team tables hold playoff games back to 1988, but ESPN files every
+    season before 1993-94 under the year it began: the warehouse's "1990"
+    postseason runs from April to June 1991. Answered as asked, "Bulls 1990
+    playoffs" would describe the 1991 playoffs under a 1990 label - the
+    right-looking answer about another year this project keeps producing. A
+    span of seasons starts in 1994 for the same reason (``_game_scope``)."""
+    if not scope.misfiled:
+        return None
+    message = (
+        f"The warehouse files playoff games from before 1993-94 under the year the season began - its {scope.season} postseason is the "
+        f"{(scope.season or 0) + 1} playoffs - so an answer for {scope.season} would be about the wrong year."
+    )
+    return TemplateResult(data={"message": message, "season": scope.season}, answer=message)
+
+
+def _optional_team(con: duckdb.DuckDBPyConnection, text: Any) -> Entity | TemplateResult | None:
+    if not isinstance(text, str) or not text.strip():
+        return None
+    return _resolved_team(con, text)
+
+
+def _no_games(con: duckdb.DuckDBPyConnection, player: Entity, scope: _Scope, team: Entity | None) -> TemplateResult:
+    """Nothing to report for a player, saying which fact is missing.
+
+    Not the season: check_coverage has already refused any season the tables
+    do not reach. What is left is the player - either no box score lists him
+    at all, or the ones that do are all games he sat out, and those are
+    different sentences."""
+    params: dict[str, Any] = {**scope.params(), "player": player.id}
+    where = f"pbs.athlete_id = $player AND {scope.where('pbs')}"
+    if team is not None:
+        where += " AND pbs.team_id = $team"
+        params["team"] = team.id
+    listed = con.execute(f"SELECT COUNT(*) FROM player_box_stats pbs WHERE {where}", params).fetchone()
+    count = int(listed[0]) if listed else 0
+    for_team = f" for the {team.name}" if team else ""
+    if count:
+        which = "it" if count == 1 else "any of them"
+        message = f"{player.name} was listed in {count} box score{'' if count == 1 else 's'}{for_team} {_where_in(scope)} but did not play in {which}."
+    else:
+        message = f"{player.name} has no games{for_team} {_where_in(scope)} in the warehouse."
+    return TemplateResult(data={"player": player.name, "team": team.name if team else None, "span": scope.label(), "games": 0}, answer=message)
+
+
+def player_splits(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+    """A player's per-game averages divided by one condition of the game:
+    home or away, starting or off the bench, won or lost, or the month.
+
+    With no ``split``, all four come back as one table rather than a guess at
+    which was meant: the router reads the split from the question's words
+    (``router.SPLIT_WORDS``) and leaves it unset when they name none or
+    several. A team works too ("76ers wins vs losses") with the team's own
+    per-game line, except that a team has no starter/bench split of its own,
+    which is refused rather than answered with something else.
+
+    A named ``team`` narrows a player's games to that team ("westbrook stats as
+    a starter for kings"), since a traded player's splits are otherwise a mix
+    of two rosters. Only games he played count, and months are the US Eastern
+    date the game was played on - see :mod:`association.query.conditions`.
+
+    .. versionadded:: 2.1.0
+    """
+    con = ctx.con
+    split = slots.get("split")
+    if split is not None and split not in SPLIT_KINDS:
+        raise TemplateUnsupported(f"no split named {split!r}")
+    team = _optional_team(con, slots.get("team"))
+    if isinstance(team, TemplateResult):
+        return team
+
+    name = slots.get("player")
+    if isinstance(name, str) and name.strip():
+        player = _resolved_player(con, name)
+        if isinstance(player, TemplateResult):
+            return player
+        scope = _condition_scope(slots.get("season"), slots.get("span"), slots.get("season_type"), _PLAYER_GAME_TABLES)
+        params: dict[str, Any] = {**scope.params(), "player": player.id}
+        if team is not None:
+            params["team"] = team.id
+        base = _player_games(scope, extra=" AND pbs.team_id = $team" if team else "")
+        games, first, last = _totals(con, base, params)
+        if not games:
+            return _no_games(con, player, scope, team)
+        subject, alias, line, counted = player.name + (f" for the {team.name}" if team else ""), "p", _PLAYER_LINE, f"{games} games he played"
+        data: dict[str, Any] = {"player": player.name, "team": team.name if team else None}
+        caveat = _unseen_note(_unseen(con, scope, base, params))
+    else:
+        if team is None:
+            raise TemplateUnsupported("player_splits needs a player or a team")
+        if split == "starter_bench":
+            # "Bench scoring" is a sum over a team's players - a different
+            # question from any this template answers.
+            raise TemplateUnsupported("a team has no starter/bench split of its own")
+        scope = _condition_scope(slots.get("season"), slots.get("span"), slots.get("season_type"), _TEAM_GAME_TABLES)
+        misfiled = _misfiled_postseason(scope)
+        if misfiled is not None:
+            return misfiled
+        params = {**scope.params(), "team": team.id}
+        base = _team_games(scope, " AND tbs.team_id = $team")
+        games, first, last = _totals(con, base, params)
+        if not games:
+            message = f"The warehouse has no games with a result for the {team.name} {_where_in(scope)}."
+            return TemplateResult(data={"team": team.name, "span": scope.label(), "games": 0}, answer=message)
+        subject, alias, line, counted = f"The {team.name}", "t", _TEAM_LINE, f"{games} games"
+        data = {"player": None, "team": team.name}
+        # The score of a game with no box score is still on record, but its
+        # team box stats are NULL - averaged over the rest, and said so.
+        blank = con.execute(f"SELECT COUNT(*) FILTER (WHERE fieldGoalsAttempted IS NULL) FROM ({base})", params).fetchone()
+        blanks = int(blank[0]) if blank else 0
+        caveat = f" Rebounds, assists, 3-pointers and FG% are missing from {blanks} of those games' box scores and are averaged over the rest." if blanks else ""
+
+    kinds = [split] if split else [k for k in SPLIT_KINDS if alias == "p" or k != "starter_bench"]
+    splits = {kind: _split_rows(con, base, params, alias, line, kind) for kind in kinds}
+    label = scope.label(first, last)
+    rows: list[tuple[str, list[str]]] = []
+    for kind in kinds:
+        if rows:
+            rows.append(("", []))
+        rows += [(_split_label(kind, entry), _split_cells(entry, line)) for entry in splits[kind]]
+    what = _SPLIT_TITLES[split] if split else "splits"
+    notes = []
+    if alias == "p":
+        notes.append("Played means he logged minutes, and W-L is his team's record in those games.")
+    if "month" in kinds:
+        notes.append("Months go by the US Eastern date of the game.")
+    answer = _table(f"{subject}, {what}, {label} ({counted}):", ["G", "W-L", *(h for _, h, _ in line)], rows)
+    notes += [note.strip() for note in (scope.floor_note(first), caveat) if note]
+    answer += "\n" + " ".join(notes)
+    return TemplateResult(data={**data, "span": label, "games": games, "splits": splits}, answer=answer.strip())
+
+
+def with_without(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+    """A team's record in the games a teammate played against the games he
+    missed - and, when the subject is a player, that player's averages in each.
+
+    Both groups are shown side by side, because the comparison is the question.
+    The subject is a team ("Celtics record without Tatum"), or a player whose
+    team is implied ("jalen Duren stats without Cade Cunningham"). The
+    teammate comes from ``without`` or ``with_player`` (both read from the
+    question by the router), or failing those from a second name.
+
+    **Only games inside the teammate's time on that team count.** StatMuse
+    answers "Nets record without KD" all-time with 439-672: decades of Nets
+    games before he arrived, every one a game "without" him. A teammate's time
+    on a team is read from the box scores as a run of rows for that team, from
+    the first to the last - see ``conditions._stints`` for where a run ends -
+    and the answer prints those dates, so what was counted is on the page.
+    "Played" means he logged minutes; a DNP and no box-score row at all are
+    both "out", since a missed game appears both ways.
+
+    .. versionadded:: 2.1.0
+    """
+    con = ctx.con
+    without, with_player = slots.get("without"), slots.get("with_player")
+    asked_without = isinstance(without, str) and bool(without.strip())
+    mate_text: str | None = without if asked_without else with_player if isinstance(with_player, str) and with_player.strip() else None
+    players = slots.get("players")
+    listed: list[Any] = players if isinstance(players, list) else []
+    texts = list(dict.fromkeys(n.strip() for n in [slots.get("player"), *listed] if isinstance(n, str) and n.strip()))
+    team = _optional_team(con, slots.get("team"))
+    if isinstance(team, TemplateResult):
+        return team
+    if mate_text is None:
+        # No "with" or "without" in the question, so the teammate is whichever
+        # name is not the subject: the only name beside a team, or the second
+        # of two. More than that is "record when A and B and C play", which
+        # this does not answer.
+        if team is not None and len(texts) == 1:
+            mate_text, texts = texts[0], []
+        elif team is None and len(texts) == 2:
+            mate_text, texts = texts[1], texts[:1]
+        else:
+            raise TemplateUnsupported(f"with_without needs exactly one teammate, got {texts!r}")
+
+    mate = _resolved_player(con, mate_text, "with_without needs a teammate")
+    if isinstance(mate, TemplateResult):
+        return mate
+    subjects: list[Entity] = []
+    for text in texts:
+        found = _resolved_player(con, text)
+        if isinstance(found, TemplateResult):
+            return found
+        # The router often repeats the teammate in `player`; that is not a subject.
+        if found.id != mate.id and found.id not in {s.id for s in subjects}:
+            subjects.append(found)
+    if len(subjects) > 1:
+        raise TemplateUnsupported(f"with_without answers for one player, got {[s.name for s in subjects]}")
+    subject = subjects[0] if subjects else None
+
+    scope = _condition_scope(slots.get("season"), slots.get("span"), slots.get("season_type"), _PLAYER_GAME_TABLES)
+    mate_stints = _stints(con, mate.id, scope.phantoms)
+    windows = mate_stints if subject is None else _overlaps(_stints(con, subject.id, scope.phantoms), mate_stints)
+    if team is not None:
+        windows = [w for w in windows if w.team_id == team.id]
+    on = f" the {team.name}" if team else ""
+    if not mate_stints:
+        message = f"{mate.name} has no box-score appearance in the warehouse, so there is no time on a team to count games in."
+        return TemplateResult(data={"teammate": mate.name, "groups": []}, answer=message)
+    if not windows:
+        if subject is None:
+            message = f"{mate.name} never appeared in a box score for{on}, so there are no {team.name if team else ''} games with or without him to count."
+        else:
+            message = f"{subject.name} and {mate.name} were never on{on or ' the same team'} together in the box scores on record, so there are no games to divide by whether {mate.name} played."
+        return TemplateResult(data={"teammate": mate.name, "player": subject.name if subject else None, "groups": []}, answer=message)
+
+    games, unknown = _with_without_games(con, scope, windows, mate.id, subject.id if subject else None)
+    team_names = _names(con, "teams", "team_id", {w.team_id for w in windows})
+    spells = "; ".join(f"{team_names[w.team_id]} {w.first} to {w.last}" for w in windows)
+    if not games:
+        whose = f"{mate.name}'s time" if subject is None else f"The time {subject.name} and {mate.name} spent together"
+        message = f"{whose} on the team, as the box scores show it ({spells}), falls outside the {scope.label() if scope.season else 'seasons on record'}."
+        if unknown:
+            # Inside the time, but every game of it without a box score - a
+            # different fact from the time missing the season altogether.
+            message = (
+                f"All {unknown} games inside {whose[0].lower() + whose[1:]} on the team in the {scope.label()} have no box score in the warehouse, so whether {mate.name} played them cannot be told."
+            )
+        return TemplateResult(data={"teammate": mate.name, "player": subject.name if subject else None, "groups": []}, answer=message)
+
+    # Teams in the order the games were played, so a career reads forwards.
+    team_order = list(dict.fromkeys(g["team_id"] for g in sorted(games, key=lambda g: g["day"])))
+    order = (False, True) if asked_without else (True, False)
+    groups: list[dict[str, Any]] = []
+    rows: list[tuple[str, list[str]]] = []
+    for team_id in team_order:
+        for played in order:
+            chosen = [g for g in games if g["team_id"] == team_id and g["mate_played"] == played]
+            group = {"team": team_names[team_id], "teammate_played": played, **_with_without_group(chosen)}
+            groups.append(group)
+            cells = [str(group["games"]), f"{group['wins']}-{group['losses']}", _win_pct(group["wins"], group["games"]), _margin(group["avg_margin"])]
+            if subject is not None:
+                cells += [str(group["player_games"]), *(_cell(group[k]) for k in ("minutes", "points", "rebounds", "assists", "fg_pct"))]
+            prefix = f"{team_names[team_id]}, " if len(team_order) > 1 else ""
+            rows.append((f"{prefix}{mate.name} {'played' if played else 'out'}", cells))
+
+    label = scope.label(min(g["season"] for g in games), max(g["season"] for g in games))
+    counted_teams = ", ".join(team_names[t] for t in team_order)
+    headers = ["G", "W-L", "Win%", "Margin"]
+    if subject is None:
+        title = f"{counted_teams} with and without {mate.name}, {label}:"
+        whose = f"{mate.name}'s time with the team"
+    else:
+        title = f"{subject.name} with and without {mate.name} ({counted_teams}), {label}:"
+        whose = f"the time {subject.name} and {mate.name} were both on the team"
+        headers += ["Played", "MIN", "PTS", "REB", "AST", "FG%"]
+    used = [w for w in windows if any(g["team_id"] == w.team_id and w.first <= g["day"] <= w.last for g in games)]
+    spells = "; ".join(f"{team_names[w.team_id]} {w.first} to {w.last}" if len(team_order) > 1 else f"{w.first} to {w.last}" for w in used)
+    notes = [
+        f"Counted: games inside {whose} ({spells}), which runs from the first box score that lists him there to the last.",
+        f"Played means {mate.name} logged minutes; out is a DNP or no box-score row at all.",
+    ]
+    if unknown:
+        # A game with no box score is not a game he missed - see
+        # conditions._box_missing - so it is on neither side, and said so.
+        notes.append(f"{unknown} game{'' if unknown == 1 else 's'} inside that time {'has' if unknown == 1 else 'have'} no box score, so whether he played is unknown; they are on neither side.")
+    if subject is not None:
+        notes.append(f"G, W-L and margin are the team's; Played counts {subject.name}'s games, and his averages are over those.")
+    answer = _table(title, headers, rows) + "\n" + " ".join(notes)
+    tenure = [{"team": team_names[w.team_id], "from": str(w.first), "to": str(w.last)} for w in used]
+    data = {"teammate": mate.name, "player": subject.name if subject else None, "teams": [team_names[t] for t in team_order], "span": label, "groups": groups, "tenure": tenure}
+    return TemplateResult(data=data, answer=answer)
+
+
+def record_when(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+    """A team's record in the games a named player reached a stat threshold,
+    beside its record in the games he fell short of it.
+
+    "Sixers record when Embiid scores 30" - a count of wins and losses that
+    ``threshold_count`` cannot give, since it counts games and not results. The
+    stat is whitelisted like everywhere else, and both rows are always shown:
+    the question is a comparison even when it names only one side. Only games
+    he played count. The team is his team in each game, so a traded player's
+    record follows him; a named ``team`` narrows it to that one.
+
+    .. versionadded:: 2.1.0
+    """
+    con = ctx.con
+    stat = slots.get("stat")
+    column = THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
+    threshold = slots.get("threshold")
+    if column is None or not isinstance(threshold, int) or isinstance(threshold, bool) or threshold < 1:
+        raise TemplateUnsupported(f"record_when needs a known stat and a positive threshold, got {stat!r}/{threshold!r}")
+    player = _resolved_player(con, slots.get("player"), "record_when needs a player")
+    if isinstance(player, TemplateResult):
+        return player
+    team = _optional_team(con, slots.get("team"))
+    if isinstance(team, TemplateResult):
+        return team
+
+    scope = _condition_scope(slots.get("season"), slots.get("span"), slots.get("season_type"), _PLAYER_GAME_TABLES)
+    params: dict[str, Any] = {**scope.params(), "player": player.id}
+    if team is not None:
+        params["team"] = team.id
+    base = _player_games(scope, extra=" AND pbs.team_id = $team" if team else "")
+    found = con.execute(
+        f"WITH p AS ({base}) SELECT p.{column} >= $threshold, COUNT(*), COUNT(*) FILTER (WHERE p.won), AVG(p.team_score - p.opponent_score), "
+        "MIN(p.season), MAX(p.season), list(DISTINCT p.team_id) FROM p GROUP BY 1",
+        {**params, "threshold": threshold},
+    ).fetchall()
+    if not found:
+        return _no_games(con, player, scope, team)
+
+    by_hit = {bool(row[0]): row for row in found}
+    team_ids = {str(t) for row in found for t in row[6]}
+    names = _names(con, "teams", "team_id", team_ids)
+    unit = f"{STAT_LABELS.get(stat or '', stat or '')}s"
+
+    def group(hit: bool | None) -> dict[str, Any]:
+        """The team's record in the games he reached the threshold (True), fell short (False), or both (None)."""
+        rows = [by_hit[h] for h in ((hit,) if hit is not None else (True, False)) if h in by_hit]
+        games = sum(int(r[1]) for r in rows)
+        wins = sum(int(r[2]) for r in rows)
+        margin = sum((r[3] or 0) * int(r[1]) for r in rows) / games if games else None
+        return {"games": games, "wins": wins, "losses": games - wins, "avg_margin": margin}
+
+    reached, short, every = group(True), group(False), group(None)
+    label = scope.label(min(r[4] for r in found), max(r[5] for r in found))
+    teams = sorted(names.values())
+    whose = f"{teams[0]} record" if len(teams) == 1 else f"Record of {player.name}'s teams ({', '.join(teams)})"
+    title = f"{whose} when {player.name} had {threshold}+ {unit}, {label}:"
+    rows = [(f"{threshold}+ {unit}", reached), (f"under {threshold} {unit}", short), ("all his games", every)]
+    table = _table(title, ["G", "W-L", "Win%", "Margin"], [(name, [str(g["games"]), f"{g['wins']}-{g['losses']}", _win_pct(g["wins"], g["games"]), _margin(g["avg_margin"])]) for name, g in rows])
+    caveat = _unseen_note(_unseen(con, scope, base, params))
+    answer = f"{table}\nOver the {every['games']} games he played; a game he missed is in neither row.{scope.floor_note(min(r[4] for r in found))}{caveat}"
+    data = {"player": player.name, "teams": teams, "stat": stat, "threshold": threshold, "span": label, "reached": reached, "fell_short": short}
+    return TemplateResult(data=data, answer=answer)
+
+
+def player_matchup(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+    """The games two named players both played, on opposite teams: the
+    head-to-head record, each one's averages in those games, and the most
+    recent meetings.
+
+    Not ``player_compare``, which sets two players' season lines side by side
+    whether or not they ever met. The router sends only log, record and
+    head-to-head wordings here ("Andre Drummond vs Al Horford game log"), so
+    this does not second-guess which of the two readings was meant. A game in
+    which they were teammates is not a meeting, and when every shared game was
+    one, the answer says that rather than that they never played.
+
+    .. versionadded:: 2.1.0
+    """
+    con = ctx.con
+    players = slots.get("players")
+    listed: list[Any] = players if isinstance(players, list) else []
+    texts = list(dict.fromkeys(n.strip() for n in [*listed, slots.get("player")] if isinstance(n, str) and n.strip()))
+    if len(texts) != 2:
+        raise TemplateUnsupported(f"player_matchup needs exactly two players, got {texts!r}")
+    resolved: list[Entity] = []
+    for text in texts:
+        found = _resolved_player(con, text)
+        if isinstance(found, TemplateResult):
+            return found
+        resolved.append(found)
+    a, b = resolved
+    if a.id == b.id:
+        raise TemplateUnsupported("the named players resolved to the same person")
+
+    scope = _condition_scope(slots.get("season"), slots.get("span"), slots.get("season_type"), _PLAYER_GAME_TABLES)
+    meetings, together = _meetings(con, scope, a.id, b.id)
+    unseen = _unseen_meetings(con, scope, a.id, b.id)
+    caveat = (
+        f" {unseen} game{'' if unseen == 1 else 's'} between their teams while both were playing for them {'has' if unseen == 1 else 'have'} no box score, so a meeting there is not counted."
+        if unseen
+        else ""
+    )
+    if not meetings:
+        for player in (a, b):
+            if _totals(con, _player_games(scope), {**scope.params(), "player": player.id})[0] == 0:
+                return _no_games(con, player, scope, None)
+        teammates = f" - they were teammates in all {together} games they both played" if together else ""
+        message = f"{a.name} and {b.name} never played against each other {_where_in(scope)}{teammates}.{caveat}"
+        return TemplateResult(data={"players": [a.name, b.name], "meetings": 0, "teammate_games": together}, answer=message)
+
+    wins = sum(1 for m in meetings if m["won"])
+    lines = {a.name: _matchup_line([m["a"] for m in meetings]), b.name: _matchup_line([m["b"] for m in meetings])}
+    label = scope.label(min(m["season"] for m in meetings), max(m["season"] for m in meetings))
+    count = len(meetings)
+    title = f"{a.name} vs {b.name}, {label}: {count} meeting{'' if count == 1 else 's'}, {a.name}'s team won {wins}."
+    summary = [("wins", [str(wins), str(count - wins)])] + [
+        (header, [_cell(lines[p.name][key]) for p in (a, b)]) for key, header in (("minutes", "minutes"), ("points", "points"), ("rebounds", "rebounds"), ("assists", "assists"), ("fg_pct", "FG%"))
+    ]
+    shown = meetings[: _clamp_limit(slots.get("limit"), _DEFAULT_MEETINGS_LOGGED)]
+    abbr = _names(con, "teams", "team_id", {m["team_id"] for m in shown} | {m["opponent_team_id"] for m in shown}, column="abbreviation")
+
+    def line(stats: dict[str, Any]) -> str:
+        """One player's points/rebounds/assists in one meeting, for the log."""
+        return f"{stats['points']}/{stats['rebounds']}/{stats['assists']}"
+
+    log = [(str(m["day"]), [f"{abbr[m['team_id']]} {m['team_score']}-{m['opponent_score']} {abbr[m['opponent_team_id']]}", line(m["a"]), line(m["b"])]) for m in shown]
+    answer = _table(title, [a.name, b.name], summary)
+    answer += "\n\n" + _table(f"Most recent {len(shown)} of {count} (points/rebounds/assists):", ["score", a.name, b.name], log)
+    answer += f"\n{caveat.strip()}" if caveat else ""
+    games = [{"date": str(m["day"]), "won": m["won"], "team_score": m["team_score"], "opponent_score": m["opponent_score"], a.name: m["a"], b.name: m["b"]} for m in shown]
+    data = {"players": [a.name, b.name], "span": label, "meetings": count, "wins": {a.name: wins, b.name: count - wins}, "averages": lines, "games": games}
+    return TemplateResult(data=data, answer=answer)
+
+
+def streak(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+    """The longest run of consecutive games meeting a condition.
+
+    For a team, its longest winning or losing run (``kind``) - within one
+    season, as the record book counts them. With no team named, the league's
+    longest, one per team-season ("longest winning streak in the NBA this
+    season"). For a player, his longest run of games with ``stat`` at or above
+    ``threshold`` ("most 40 point games in a row"), or with no stat his team's
+    longest run of wins in games he played; with no player named, the league's
+    longest such run. A player's run counts only games he played - a game he
+    missed neither extends it nor ends it - and in a career it carries across
+    seasons, as consecutive-game records do (Curry's 3-pointer streak ran
+    through four of them). Each answer says which of those rules applied.
+
+    Games are ordered by their US Eastern date, so two nights either side of
+    midnight UTC land in the order they were played.
+
+    .. versionadded:: 2.1.0
+    """
+    con = ctx.con
+    want_win = slots.get("kind") != "loss"
+    stat, threshold = slots.get("stat"), slots.get("threshold")
+    column = THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
+    named_stat = isinstance(stat, str) and bool(stat.strip()) and stat.strip().casefold() not in _RESULT_STATS
+    has_threshold = isinstance(threshold, int) and not isinstance(threshold, bool)
+    if named_stat and column is None:
+        raise TemplateUnsupported(f"no per-game column for stat {stat!r}")
+    if has_threshold != (column is not None) or (isinstance(threshold, int) and threshold < 1):
+        raise TemplateUnsupported(f"a streak of a stat needs both a known stat and a positive threshold, got {stat!r}/{threshold!r}")
+    by_stat = column is not None
+    unit = f"{STAT_LABELS.get(stat or '', stat or '')}s"
+    result = "winning streak" if want_win else "losing streak"
+    # A player's rows carry the stat as `value` (see conditions._player_streak_rows); a team's carry only `won`.
+    hit = "x.value >= $threshold" if by_stat else "x.won = $want"
+    condition: dict[str, Any] = {"threshold": threshold} if by_stat else {"want": want_win}
+    span = slots.get("span")
+    team = _optional_team(con, slots.get("team"))
+    if isinstance(team, TemplateResult):
+        return team
+
+    name = slots.get("player")
+    if isinstance(name, str) and name.strip():
+        player = _resolved_player(con, name)
+        if isinstance(player, TemplateResult):
+            return player
+        scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), _PLAYER_GAME_TABLES)
+        params: dict[str, Any] = {**scope.params(), "player": player.id}
+        if team is not None:
+            params["team"] = team.id
+        base = _player_games(scope, extra=" AND pbs.team_id = $team" if team else "")
+        games, first, last = _totals(con, base, params)
+        if not games:
+            return _no_games(con, player, scope, team)
+        rows_sql = _player_streak_rows(scope, base, f"p.{column}" if by_stat else "NULL")
+        runs = _longest_runs(con, rows_sql, {**params, **condition}, ("athlete_id",), hit, 3, best_per_partition=False)
+        label = scope.label(first, last)
+        what = f"consecutive games with {threshold}+ {unit}" if by_stat else f"{result} in games he played"
+        rule = "Only games he played count: a game he missed neither extends the run nor ends it" + (", and a run carries on from one season into the next." if scope.season is None else ".")
+        rule += _UNSEEN_ENDS_RUN if _unseen(con, scope, base, params) else ""
+        if not runs:
+            never = f"never had a game with {threshold}+ {unit}" if by_stat else f"never {'won' if want_win else 'lost'} a game he played"
+            return TemplateResult(data={"player": player.name, "span": label, "streaks": []}, answer=f"{player.name} {never} in the {label}.")
+        return _single_streak(f"{player.name}'s longest run of {what}" if by_stat else f"{player.name}'s longest {what}", label, runs, rule, scope, {"player": player.name})
+
+    if team is not None:
+        if by_stat:
+            raise TemplateUnsupported("a team's streak is of wins or losses, not of a stat")
+        scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), _TEAM_GAME_TABLES)
+        misfiled = _misfiled_postseason(scope)
+        if misfiled is not None:
+            return misfiled
+        params = {**scope.params(), "team": team.id}
+        base = _team_games(scope, " AND tbs.team_id = $team")
+        games, first, last = _totals(con, base, params)
+        label = scope.label(first, last)
+        if not games:
+            return TemplateResult(data={"team": team.name, "streaks": []}, answer=f"The warehouse has no games with a result for the {team.name} {_where_in(scope)}.")
+        runs = _longest_runs(con, base, {**params, **condition}, ("team_id", "season"), hit, 3, best_per_partition=False)
+        if not runs:
+            return TemplateResult(data={"team": team.name, "span": label, "streaks": []}, answer=f"The {team.name} did not {'win' if want_win else 'lose'} a game in the {label}.")
+        return _single_streak(
+            f"The {team.name}' longest {result}" if team.name.endswith("s") else f"The {team.name}'s longest {result}",
+            label,
+            runs,
+            "Streaks are counted within one season.",
+            scope,
+            {"team": team.name},
+        )
+
+    # Nobody named: the league's longest, each team-season or player once.
+    tables = _PLAYER_GAME_TABLES if by_stat else _TEAM_GAME_TABLES
+    scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), tables)
+    misfiled = _misfiled_postseason(scope)
+    if misfiled is not None:
+        return misfiled
+    limit = _clamp_limit(slots.get("limit"), _DEFAULT_STREAK_LIMIT)
+    if by_stat:
+        base = _player_streak_rows(scope, _player_games(scope, player=""), f"p.{column}")
+        runs = _longest_runs(con, base, {**scope.params(), **condition}, ("athlete_id",), hit, limit, best_per_partition=True)
+        names = _names(con, "players", "athlete_id", [r["athlete_id"] for r in runs])
+        what, who = f"run of consecutive games with {threshold}+ {unit}", [names[r["athlete_id"]] for r in runs]
+        rule = "Each player's longest run, counting only games he played" + (", carried across seasons." if scope.season is None else ".")
+        rule += _UNSEEN_ENDS_RUN if _totals(con, _box_missing(scope), scope.params())[0] else ""
+    else:
+        # Teams the `teams` table does not hold are exhibition opponents that
+        # turn up in a few regular-season rows (1992-2000), not franchises.
+        base = _team_games(scope, " AND tbs.team_id IN (SELECT team_id FROM teams)")
+        runs = _longest_runs(con, base, {**scope.params(), **condition}, ("team_id", "season"), hit, limit, best_per_partition=True)
+        names = _names(con, "teams", "team_id", [r["team_id"] for r in runs])
+        what = result
+        who = [names[r["team_id"]] + (f" ({r['season']})" if scope.season is None else "") for r in runs]
+        rule = "Each team's longest in a season, counted within that season" + ("; franchises are named as they are today." if scope.season is None else ".")
+    # The span searched, not the seasons the leaders' runs happen to fall in:
+    # "1997-2023" under a question about every season reads as a narrower search.
+    _, first, last = _totals(con, base, scope.params())
+    label = scope.label(first, last)
+    if not runs:
+        nobody = f"No player had a game with {threshold}+ {unit}" if by_stat else "No team has a game with a result"
+        return TemplateResult(data={"span": label, "streaks": []}, answer=f"{nobody} {_where_in(scope)}.")
+    streaks = [
+        {"name": n, "season": r["first_season"] if not by_stat else None, "length": r["length"], "from": str(r["first_day"]), "to": str(r["last_day"]), "open": bool(r["open"])}
+        for n, r in zip(who, runs, strict=True)
+    ]
+    top = [s for s in streaks if s["length"] == streaks[0]["length"]]
+    # A tie is reported as a tie, the way threshold_count reports one.
+    leaders = " and ".join(s["name"] for s in top)
+    headline = f"{leaders} {'shared' if len(top) > 1 else 'had'} the longest {what} of the {label}: {streaks[0]['length']} games."
+    rows = [(s["name"], [str(s["length"]), s["from"], s["to"] + (" *" if s["open"] else "")]) for s in streaks]
+    footnote = " * still going at the last game on record." if any(s["open"] for s in streaks) else ""
+    answer = f"{headline}\n" + _table(f"Longest, {label}:", ["games", "from", "to"], rows) + f"\n{rule}{footnote}"
+    return TemplateResult(
+        data={"span": label, "stat": stat if by_stat else None, "threshold": threshold if by_stat else None, "kind": None if by_stat else ("win" if want_win else "loss"), "streaks": streaks},
+        answer=answer,
+    )
+
+
+def _single_streak(subject: str, label: str, runs: list[dict[str, Any]], rule: str, scope: _Scope, who: dict[str, Any]) -> TemplateResult:
+    """One named player's or team's longest run, with any run that ties it."""
+    top = runs[0]
+    ties = [r for r in runs[1:] if r["length"] == top["length"]]
+    season = f" (the {top['first_season']} season)" if scope.season is None and top["first_season"] == top["last_season"] else ""
+    answer = f"{subject}, {label}: {top['length']} games, {top['first_day']} to {top['last_day']}{season}."
+    if ties:
+        answer += " Matched by " + ", ".join(f"{r['first_day']} to {r['last_day']}" for r in ties) + "."
+    if top["open"] and (scope.season is None or scope.season == current_season()):
+        answer += " It was still going at the last game on record."
+    streaks = [{"length": r["length"], "from": str(r["first_day"]), "to": str(r["last_day"]), "open": bool(r["open"])} for r in [top, *ties]]
+    return TemplateResult(data={**who, "span": label, "streaks": streaks}, answer=f"{answer}\n{rule}")
+
+
 TEMPLATES: dict[str, Callable[[TemplateContext, dict[str, Any]], TemplateResult]] = {
     "threshold_count": threshold_count,
     "leaderboard": leaderboard,
@@ -1720,4 +2370,9 @@ TEMPLATES: dict[str, Callable[[TemplateContext, dict[str, Any]], TemplateResult]
     "player_history": player_history,
     "player_netpoints": player_netpoints,
     "fingerprint": fingerprint,
+    "player_splits": player_splits,
+    "with_without": with_without,
+    "record_when": record_when,
+    "player_matchup": player_matchup,
+    "streak": streak,
 }
