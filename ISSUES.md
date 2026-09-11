@@ -4,7 +4,8 @@ Everything known to be wrong, missing or unverified that still needs follow-up,
 ranked by what a user would see. `AGENTS.md` ("Recording findings") says when
 to add an entry and how. The short version: **record every finding, including
 the ones that are not part of your task, and delete an entry in the same commit
-that fixes it**, saying in `CHANGES.md` which commit fixed it.
+that fixes it.** A fix that touches `src/` also gets a `CHANGES.md` entry; any
+other fix is recorded by its commit message.
 
 ## Priorities
 
