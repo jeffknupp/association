@@ -15,6 +15,26 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Slots the model put in the wrong place are read from the question.** The
+  last run over the StatMuse questions found one more wrong answer and a set of
+  refusals, each from a mis-filled slot:
+  - "kevin durant true shooting percentage career" arrived as
+    `stat='threePointFieldGoalPct'` and was answered with his 3-point
+    percentage. True shooting, eFG% and usage named in a question are now read
+    from it, and `player_stat`, which holds none of them, refuses.
+  - An `order` and a `limit` of one the question never asked for ("evan mobley
+    avg against bucks", "Celtics record without Tatum") are dropped rather than
+    refused.
+  - "luka ft log" goes to `game_log`; a `player_matchup` whose "players"
+    include a team goes to that player's games against it; a `player_history`
+    with no stat named, or asked against a team, becomes the `player_stat` line.
+  - "worst record" ranks the league, "all-NBA" and "worst" are no longer read
+    as teams, and a team metric named in the question ("lowest defensive
+    rating") wins over the one the model invented.
+  - `head_to_head` takes an `opponent` as its second team, and keeps reading
+    names until two different teams resolve.
+  - A player's name in the `team` slot becomes the subject ("Podziemski game
+    log without curry").
 - **Three smaller answers that said something false.**
   - The web page's game log showed "L" for a game with no recorded winner (134
     since 1994). It now shows a dash; the template already sent `won: null`.

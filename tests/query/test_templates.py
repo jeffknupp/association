@@ -2078,3 +2078,16 @@ def test_team_quarter_points_finds_an_early_playoffs_by_its_year(playoff_ctx: Te
 def test_a_team_log_labels_an_early_playoffs_by_its_year(playoff_ctx: TemplateContext) -> None:
     got = game_log(playoff_ctx, {"team": "Chicago Bulls", "season": 1991, "season_type": 3})
     assert [g["season"] for g in got.data["games"]] == [1991, 1991]
+
+
+def test_head_to_head_takes_the_opponent_as_the_other_team(playoff_ctx: TemplateContext) -> None:
+    """ "Celtics vs Bulls head to head record" arrived as team + opponent and was refused."""
+    check_scope("head_to_head", {"team": "Chicago Bulls", "opponent": "Los Angeles Lakers"})
+    got = head_to_head(playoff_ctx, {"team": "Chicago Bulls", "opponent": "Los Angeles Lakers", "season": 1991, "season_type": 3})
+    assert got.data["games"] == 2
+
+
+def test_head_to_head_reads_past_a_team_named_twice(playoff_ctx: TemplateContext) -> None:
+    """The first two names are one team; the opponent after them is the second."""
+    slots = {"team": "Chicago Bulls", "teams": ["Bulls"], "opponent": "Los Angeles Lakers", "season": 1991, "season_type": 3}
+    assert head_to_head(playoff_ctx, slots).data["games"] == 2

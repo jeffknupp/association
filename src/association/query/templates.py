@@ -154,6 +154,8 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     "player_history": frozenset({"span"}),
     # It always read `opponent`; listed now that `opponent` is a scoping slot.
     "team_quarter_points": frozenset({"opponent"}),
+    # The opponent IS the second team of a head-to-head.
+    "head_to_head": frozenset({"opponent"}),
     "shot_chart": frozenset({"order"}),
     "shot_distance": frozenset({"order"}),
     "player_netpoints": frozenset({"order"}),
@@ -3467,16 +3469,26 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     team_slot = slots.get("team")
     if isinstance(team_slot, str) and team_slot.strip() and team_slot not in names:
         names = [team_slot, *names]
+    # The router also writes the other side as `opponent` ("Celtics vs Bulls
+    # head to head" arrives as team + opponent): it is one of the two teams.
+    opponent_slot = slots.get("opponent")
+    if isinstance(opponent_slot, str) and opponent_slot.strip() and opponent_slot not in names:
+        names = [*names, opponent_slot]
     if len(set(names)) < 2:
         raise TemplateUnsupported("head_to_head needs two team names")
 
+    # Until two DIFFERENT teams resolve, not the first two names: "Celtics" in
+    # `team` and "Boston Celtics" in `teams` are one team, and the opponent
+    # after them is the second.
     resolved: list[Entity] = []
-    for name in names[:2]:
+    for name in names:
         team = _resolved_team(con, name)
         if isinstance(team, TemplateResult):
             return team
         if team.id not in {t.id for t in resolved}:
             resolved.append(team)
+        if len(resolved) == 2:
+            break
     if len(resolved) != 2:
         raise TemplateUnsupported("the named teams resolved to the same team")
 

@@ -626,6 +626,19 @@ def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: di
         named = players_named_in(con, question)
         return named[0] if len(named) == 1 else None
 
+    team_text = slots.get("team")
+    if reads_player and team is None and isinstance(team_text, str) and team_text.strip():
+        # A player's name in `team`. Measured: "Podziemski game log without
+        # curry" arrived as team='Podziemski', player='Curry' - the subject in
+        # the team slot and the absent teammate in the player slot.
+        as_player = find_players(con, team_text)
+        held, without = slots.get("player"), slots.get("without")
+        if len(as_player) == 1 and (not held or (isinstance(held, str) and isinstance(without, str) and held.casefold() == without.casefold())):
+            slots.pop("team", None)
+            slots["player"] = as_player[0].name
+            has_player = True
+            notes.append(f"{team_text!r} is a player, not a team; the subject is {as_player[0].name!r}")
+
     if team is not None and not has_player and reads_player:
         # The team in `team` is the opponent, or a team the question never
         # mentioned (the router's guess at the player's own): either way the

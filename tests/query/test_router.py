@@ -700,3 +700,66 @@ def test_the_last_n_meetings_reach_back_across_seasons() -> None:
     assert got.slots["span"] == "career" and "season" not in got.slots
     named = _ask("jaylen brown last 8 games vs pistons this season", '{"intent":"game_log","player":"Jaylen Brown","limit":8,"season_ref":"current"}')
     assert "span" not in named.slots
+
+
+# ---------------- slots the model put in the wrong place, from the final corpus ----------------
+
+
+def test_true_shooting_is_not_answered_as_three_point_percentage() -> None:
+    """Measured: answered with Durant's 3-point percentage."""
+    got = _ask("kevin durant true shooting percentage career", '{"intent":"player_stat","player":"Kevin Durant","stat":"threePointFieldGoalPct"}')
+    assert got.slots["stat"] == "ts_pct"
+
+
+def test_an_order_the_question_never_asked_for_is_dropped() -> None:
+    got = _ask("evan mobley avg against bucks", '{"intent":"player_stat","player":"Evan Mobley","stat":"points","order":"recent","limit":1}')
+    assert "order" not in got.slots and "limit" not in got.slots
+    kept = _ask("Top 5 scorers on the Lakers?", '{"intent":"leaderboard","stat":"points","team":"Lakers","limit":5}')
+    assert kept.slots["limit"] == 5
+
+
+def test_a_log_asked_of_player_stat_is_a_game_log() -> None:
+    assert _ask("luka ft log", '{"intent":"player_stat","player":"Luka Doncic","stat":"freeThrowsMade"}').intent == "game_log"
+
+
+def test_a_matchup_against_a_team_is_a_players_games() -> None:
+    games = _ask("zach lavine vs nuggets last 8 games home", '{"intent":"player_matchup","players":["Zach LaVine","Denver Nuggets"],"limit":8}')
+    assert games.intent == "game_log"
+    line = _ask("how did curry do against the celtics this year", '{"intent":"player_matchup","players":["Stephen Curry","Boston Celtics"]}')
+    assert line.intent == "player_stat"
+    assert _ask("lebron vs kawhi head to head", '{"intent":"player_matchup","players":["LeBron James","Kawhi Leonard"]}').intent == "player_matchup"
+
+
+def test_a_history_with_no_stat_named_is_the_career_line() -> None:
+    got = _ask("Jokic career averages", '{"intent":"player_history","player":"Nikola Jokic","stat":"points","limit":1}')
+    assert got.intent == "player_stat" and "stat" not in got.slots and "limit" not in got.slots
+    assert _ask("Jokic's scoring by year", '{"intent":"player_history","player":"Nikola Jokic","stat":"points"}').intent == "player_history"
+
+
+def test_a_history_against_a_team_is_the_line_against_it() -> None:
+    got = _ask("derozan career points vs knicks", '{"intent":"player_history","player":"DeMar DeRozan","stat":"points","limit":5}')
+    assert got.intent == "player_stat" and got.slots["stat"] == "points" and "limit" not in got.slots
+
+
+def test_best_or_worst_record_ranks_the_league() -> None:
+    got = _ask("worst record 2025-26", '{"intent":"team_record","team":"worst","stat":"win_pct"}')
+    assert got.intent == "team_leaderboard" and got.slots["stat"] == "record" and "team" not in got.slots
+    assert got.slots["rank"] == "worst"
+
+
+def test_the_league_is_not_a_team() -> None:
+    assert "team" not in _ask("Longest winning streak in the NBA this season", '{"intent":"streak","team":"all-NBA"}').slots
+
+
+def test_a_team_metric_named_in_the_question_wins() -> None:
+    from association.query.team_metrics import resolve_team_metric
+
+    got = _ask("Lowest defensive rating by a team this season", '{"intent":"team_leaderboard","stat":"usage_pct_defense","team":"all_teams"}')
+    assert resolve_team_metric(got.slots["stat"]) == "defensive_rating"
+    assert "team" not in got.slots
+
+
+def test_a_per_game_abbreviation_names_a_stat() -> None:
+    """player_stat drops a stat the question never named; "ppg" names one."""
+    got = _ask("lebron ppg this season", '{"intent":"player_stat","player":"LeBron James","stat":"points"}')
+    assert got.slots["stat"] == "points"

@@ -220,6 +220,15 @@ CASES: list[tuple[str, str, dict]] = [
     ("who has the most threes this season", "leaderboard", {"stat": "threePointFieldGoalsMade"}),
     ("career points leaders", "leaderboard", {"span": "career"}),
     ("Knicks home record this season", "team_record", {"venue": "home"}),
+    # From the final corpus run: each was a slot the model put in the wrong place.
+    ("kevin durant true shooting percentage career", "player_stat", {"stat": "ts_pct", "span": "career"}),
+    ("luka ft log", "game_log", {}),
+    ("Jokic career averages", "player_stat", {"span": "career"}),
+    ("zach lavine vs nuggets last 8 games home", "game_log", {"venue": "home"}),
+    ("how did curry do against the celtics this year", "player_stat", {}),
+    ("worst record 2025-26", "team_leaderboard", {"rank": "worst"}),
+    ("Longest winning streak in the NBA this season", "streak", {}),
+    ("Celtics vs Bulls head to head record", "head_to_head", {}),
 ]
 
 
