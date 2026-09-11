@@ -364,6 +364,169 @@ def test_player_stat_never_reports_a_total_as_a_per_game_number(ps_con: Template
     assert "(2,143 total) per game" not in answer and "2143" not in answer
 
 
+# ---------------- a surname, narrowed to the season asked about ----------------
+
+
+@pytest.fixture
+def curry_ctx(tmp_path: Path) -> TemplateContext:
+    """The six Currys the warehouse really holds. "How did curry do against the
+    celtics this year" asked about five of them - Dell, Eddy, JamesOn, Michael
+    and Seth - and hid Stephen behind "(1 others also match)", because the list
+    was sorted by name and cut at five. Four of the five it named never played
+    in the season being asked about.
+
+    Each has a season line in a year he really played; only Seth and Stephen
+    have one in the current season, as in the warehouse."""
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO players VALUES ('1','Dell Curry'),('2','Eddy Curry'),('3','JamesOn Curry'),('4','Michael Curry'),('5','Seth Curry'),('6','Stephen Curry')")
+    c.execute(
+        "CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER, "
+        "gamesPlayed INTEGER, avgPoints DOUBLE, points INTEGER, avgRebounds DOUBLE, avgAssists DOUBLE, assists INTEGER)"
+    )
+    s = current_season()
+    c.executemany(
+        "INSERT INTO player_season_stats_deduped VALUES (?,?,2,60,?,?,3.0,4.0,240)",
+        [("1", 2000, 10.0, 600), ("2", 2005, 13.0, 780), ("3", 2010, 1.0, 3), ("4", 2000, 5.0, 300), ("5", 2014, 5.0, 300), ("5", s, 8.0, 480), ("6", 2010, 17.5, 1400), ("6", s, 26.6, 1600)],
+    )
+    c.execute(
+        "CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER, season_type INTEGER, game_date VARCHAR, "
+        "opponent_abbr VARCHAR, minutes DOUBLE, points INTEGER, rebounds INTEGER, assists INTEGER)"
+    )
+    c.execute("INSERT INTO player_game_log VALUES ('6',?,2,'2026-01-02','BOS',34.0,31,5,6)", [s])
+    return TemplateContext(con=c, out_dir=tmp_path)
+
+
+def test_a_surname_asks_only_about_the_players_who_played_that_season(curry_ctx: TemplateContext) -> None:
+    """The reported answer, verbatim, was "did you mean Dell Curry, Eddy Curry,
+    JamesOn Curry, Michael Curry or Seth Curry (1 others also match)?" - the
+    player almost certainly meant was the one it left out. Seth and Stephen
+    both played this season, so it still asks; it just asks about them."""
+    result = player_stat(curry_ctx, {"player": "Curry", "season": current_season()})
+    assert result.answer == "'Curry' matches more than one player - did you mean Seth Curry or Stephen Curry?"
+    assert result.data["candidates"] == ["Seth Curry", "Stephen Curry"]
+
+
+def test_a_surname_resolves_when_only_one_candidate_played_that_season(curry_ctx: TemplateContext) -> None:
+    """Elimination, not preference: the other five have no row to answer
+    from, so there is nothing left to choose between."""
+    curry_ctx.con.execute("DELETE FROM player_season_stats_deduped WHERE athlete_id = '5'")
+    answer = player_stat(curry_ctx, {"player": "Curry", "stat": "points"}).answer
+    assert answer == f"Stephen Curry averaged 26.6 points per game in 60 games in the {current_season()} regular season. That is 1,600 in total."
+
+
+def test_narrowing_that_eliminates_everybody_still_asks_about_everybody(curry_ctx: TemplateContext) -> None:
+    """No Curry played in 1990, so no answer to "which one?" has numbers - but
+    picking one because the season is empty would be a guess, so the question
+    is asked exactly as it was before narrowing existed."""
+    result = player_stat(curry_ctx, {"player": "Curry", "season": 1990})
+    assert result.data["candidates"] == ["Dell Curry", "Eddy Curry", "JamesOn Curry", "Michael Curry", "Seth Curry", "Stephen Curry"]
+
+
+def test_a_name_given_in_full_is_never_narrowed_away(curry_ctx: TemplateContext) -> None:
+    """ "Gary Payton" also matches Gary Payton II, and only the son has a line
+    this season - as in the warehouse, where the father's last is 2007. A
+    question naming the father in full is about him, and its answer is that he
+    has no numbers, not his son's line because the son is the Payton who does.
+
+    Not "Dell Curry": that name matches one player, so it never reaches the
+    exact-match rule this is about - and a perturbation removing the rule
+    passed against it."""
+    curry_ctx.con.execute("INSERT INTO players VALUES ('7','Gary Payton'),('8','Gary Payton II')")
+    curry_ctx.con.execute("INSERT INTO player_season_stats_deduped VALUES ('7',2007,2,70,5.0,350,2.0,3.0,210),('8',?,2,60,7.0,420,3.0,2.0,120)", [current_season()])
+    answer = player_stat(curry_ctx, {"player": "Gary Payton", "season": current_season()}).answer
+    assert answer == f"Gary Payton has no {current_season()} regular season numbers in the warehouse."
+
+
+def test_a_history_narrows_over_every_season_it_could_read(curry_ctx: TemplateContext) -> None:
+    """A history anchored at 2005 reads each player's last seasons up to 2005,
+    wherever they fall, so only a player with nothing that early is out: Seth,
+    Stephen and JamesOn. Narrowing to 2005 alone would also drop Dell and
+    Michael, whose histories through 2005 are real answers - Eddy, who played
+    in it, is only named first."""
+    result = player_history(curry_ctx, {"player": "Curry", "stat": "points", "season": 2005})
+    assert result.data["candidates"] == ["Eddy Curry", "Dell Curry", "Michael Curry"]
+
+
+def test_a_history_names_whoever_reached_its_last_season_first(curry_ctx: TemplateContext) -> None:
+    """ "Curry's scoring over the last 4 seasons" keeps all six Currys - each
+    has seasons through 2026 to answer with - and so hid Stephen behind the
+    cap exactly as the one-season question did. The two who played in the
+    season the history ends at are named first, and never counted away."""
+    result = player_history(curry_ctx, {"player": "Curry", "stat": "points", "limit": 4})
+    assert result.answer == "'Curry' matches more than one player - did you mean Seth Curry, Stephen Curry, Dell Curry, Eddy Curry or JamesOn Curry (1 other also matches)?"
+
+
+def test_a_career_keeps_every_curry_but_names_the_active_ones_first(curry_ctx: TemplateContext) -> None:
+    """A career question has every season in scope, so Dell's career is as real
+    an answer as Stephen's and nobody is eliminated. Narrowed like one season,
+    it would have been; left unordered, the cap would hide Stephen again."""
+    result = player_stat(curry_ctx, {"player": "Curry", "span": "career"})
+    assert result.data["candidates"] == ["Seth Curry", "Stephen Curry", "Dell Curry", "Eddy Curry", "JamesOn Curry", "Michael Curry"]
+    assert result.answer == "'Curry' matches more than one player - did you mean Seth Curry, Stephen Curry, Dell Curry, Eddy Curry or JamesOn Curry (1 other also matches)?"
+
+
+def test_a_game_log_narrows_to_whoever_has_games_that_season(curry_ctx: TemplateContext) -> None:
+    """No season named means the current one. Dell has games in 2000 and Seth
+    and Stephen this season, so only the two of them are asked about.
+
+    Measured on the warehouse, not in a fixture: after game_log learned spans,
+    its `season` became the raw slot, and passing that through narrowed
+    "curry's last 5 games" over every season - the clarification named Dell,
+    Eddy, JamesOn, Michael and Seth, and hid Stephen again."""
+    curry_ctx.con.execute("INSERT INTO player_game_log VALUES ('1',2000,2,'2000-01-02','BOS',30.0,12,2,3),('5',?,2,'2026-01-03','BOS',20.0,8,1,2)", [current_season()])
+    result = game_log(curry_ctx, {"player": "Curry", "limit": 5, "order": "recent"})
+    assert result.data["candidates"] == ["Seth Curry", "Stephen Curry"]
+
+
+def test_a_without_teammate_is_found_past_the_first_page_of_matches() -> None:
+    """ "Without williams" is 62 players by name. The teammate narrowing read
+    only find_players' first page of ten, so a teammate who sorted eleventh was
+    reported as nobody's teammate at all."""
+    from association.query.entities import Entity
+    from association.query.templates import _resolved_teammate, _Span
+
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    given = ["Alan", "Brandon", "Cody", "Deron", "Eric", "Frank", "Grant", "Hank", "Ike", "Jalen", "Kenrich"]
+    c.executemany("INSERT INTO players VALUES (?, ?)", [(str(i), f"{name} Williams") for i, name in enumerate(given)])
+    c.execute("INSERT INTO players VALUES ('k', 'Klay Thompson')")
+    c.execute("CREATE TABLE player_box_stats (athlete_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR)")
+    c.execute("INSERT INTO player_box_stats VALUES ('k', 2026, 2, '9'), ('10', 2026, 2, '9'), ('0', 2026, 2, '5')")
+    got = _resolved_teammate(c, "Williams", Entity(id="k", name="Klay Thompson"), _Span(2026, 2))
+    assert got == Entity(id="10", name="Kenrich Williams")
+
+
+def test_a_career_high_names_the_currys_playing_now_first(curry_ctx: TemplateContext) -> None:
+    """single_game_high reads a career as every season on record, so Dell stays
+    a candidate - but left unanchored, the list was in name order and the cap
+    would cut Stephen behind the retired Currys."""
+    curry_ctx.con.execute("INSERT INTO player_game_log VALUES ('1',2000,2,'2000-01-02','BOS',30.0,12,2,3),('5',?,2,'2026-01-03','BOS',20.0,8,1,2)", [current_season()])
+    result = single_game_high(curry_ctx, {"stat": "points", "player": "Curry", "span": "career"})
+    assert result.data["candidates"] == ["Seth Curry", "Stephen Curry", "Dell Curry"]
+
+
+def test_netpoints_narrows_against_either_of_the_tables_it_reads(curry_ctx: TemplateContext) -> None:
+    """player_netpoints answers from the season totals OR the fingerprint, and
+    the two disagree about who they hold - 63 player-seasons are in the first
+    only and 8 in the second only. A candidate with a row in either one has an
+    answer, so neither table alone may eliminate him."""
+    curry_ctx.con.execute("CREATE TABLE net_points_player (athlete_id VARCHAR, season INTEGER)")
+    curry_ctx.con.execute("CREATE TABLE net_points_player_fingerprint (athlete_id VARCHAR, season INTEGER)")
+    curry_ctx.con.execute("INSERT INTO net_points_player VALUES ('6', ?)", [current_season()])
+    curry_ctx.con.execute("INSERT INTO net_points_player_fingerprint VALUES ('5', ?)", [current_season()])
+    result = player_netpoints(curry_ctx, {"player": "Curry"})
+    assert result.data["candidates"] == ["Seth Curry", "Stephen Curry"]
+
+
+def test_netpoints_without_its_tables_asks_as_it_always_did(curry_ctx: TemplateContext) -> None:
+    """NetPoints is an opt-in fetch, so its tables may not exist at all. With
+    nothing to narrow against, an ambiguous name gets the question it always
+    got, rather than a catalog error out of the resolver."""
+    result = player_netpoints(curry_ctx, {"player": "Curry"})
+    assert len(result.data["candidates"]) == 6
+
+
 def test_leaderboard_handles_triple_doubles_as_a_metric_not_a_recount(lb_con: TemplateContext) -> None:
     """ESPN precomputes doubleDouble/tripleDouble as a season count, so "most
     triple-doubles" is a leaderboard rather than a per-game threshold recount."""
@@ -592,9 +755,9 @@ def test_a_scoped_chart_uses_the_same_player_it_looked_the_game_up_for(tmp_path:
     calls = []
     real = shotchart.find_players
 
-    def counting(con: Any, text: str) -> Any:
+    def counting(con: Any, text: str, *args: Any, **kwargs: Any) -> Any:
         calls.append(text)
-        return real(con, text)
+        return real(con, text, *args, **kwargs)
 
     monkeypatch.setattr(shotchart, "find_players", counting)
     result = shot_chart(ctx, {"player": "Curry", "order": "recent", "season": current_season()})
@@ -914,7 +1077,11 @@ def test_single_game_high_unknown_stat_falls_through(sgh_ctx: TemplateContext) -
 
 
 def test_single_game_high_ambiguous_player_asks(sgh_ctx: TemplateContext) -> None:
+    # Jovic needs a game this season to be a candidate at all. A name is
+    # narrowed to the players with a row where the answer is read from, and
+    # with Jokic alone in this season's log, "Nikola" is answered about him.
     sgh_ctx.con.execute("INSERT INTO players VALUES ('3','Nikola Jovic')")
+    sgh_ctx.con.execute("INSERT INTO player_game_log VALUES ('3',?,2,'Nikola Jovic','2026-02-01T00:30Z','BOS',4,12)", [current_season()])
     assert "did you mean" in (single_game_high(sgh_ctx, {"stat": "assists", "player": "Nikola"}).answer or "")
 
 

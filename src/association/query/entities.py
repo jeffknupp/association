@@ -10,6 +10,10 @@ both behaviours stay available rather than one being picked for everyone:
 Templates use resolve_*, because a template's job is to be trusted with a
 number. Ambiguity is returned as a value, and the template asks a clarifying
 question (see :func:`clarification`) rather than guessing or falling through.
+Before asking, a template narrows the candidates to those with a row where its
+answer is read from, for the season it will answer about (see
+:func:`resolve_player`): a question about this season's Curry is not a
+question about Dell, who retired in 2002.
 
 Charts take the third road: they narrow with :func:`narrow_to_available` first,
 to the candidates who have the rows the chart would be drawn from, and only ask
@@ -704,10 +708,20 @@ class Entity:
 @dataclass(frozen=True)
 class Ambiguous:
     """`candidates` is for telling the user what to disambiguate between - it
-    is the reason this is a return value and not just None."""
+    is the reason this is a return value and not just None.
+
+    ``active`` counts the candidates, from the front, who played in the season
+    the answer is about. :func:`clarification` names every one of them rather
+    than counting any away; zero means no season narrowed the list, and the
+    ordinary cap applies.
+
+    .. versionchanged:: 2.1.0
+       Added ``active``.
+    """
 
     query: str
     candidates: list[str]
+    active: int = 0
 
 
 @dataclass(frozen=True)
@@ -729,7 +743,7 @@ counting the rest instead.
 """
 
 
-def clarification(text: str, candidates: list[str], kind: str = "player") -> str:
+def clarification(text: str, candidates: list[str], kind: str = "player", active: int = 0) -> str:
     """The "did you mean" sentence for an ambiguous name.
 
     Lives here rather than in :mod:`association.query.templates` because both
@@ -738,10 +752,22 @@ def clarification(text: str, candidates: list[str], kind: str = "player") -> str
     so the same ambiguity does not read two ways depending on which path the
     router happened to take.
 
+    Names the first ``MAX_CLARIFY_CANDIDATES`` in the order given and counts
+    the rest - except the first ``active``, the candidates who played in the
+    season asked about, who are always named. Counting them away is how
+    "Curry" hid Stephen: six Currys sorted by name and cut at five named four
+    men who never played in the season asked about, plus Seth. A caller with a
+    season in hand narrows and orders first (see :func:`resolve_player`) and
+    passes ``Ambiguous.active`` on, so the count only ever stands for players
+    who could not be the answer. The most one season holds under one name is
+    15 Williamses, in 1998 and 1999; 2026 holds 14.
+
     .. versionadded:: 2.1.0
     """
-    shown, extra = candidates[:MAX_CLARIFY_CANDIDATES], len(candidates) - MAX_CLARIFY_CANDIDATES
-    joined = ", ".join(shown[:-1]) + f" or {shown[-1]}" + (f" ({extra} others also match)" if extra > 0 else "")
+    shown = candidates[: max(MAX_CLARIFY_CANDIDATES, active)]
+    extra = len(candidates) - len(shown)
+    rest = "" if extra <= 0 else " (1 other also matches)" if extra == 1 else f" ({extra} others also match)"
+    joined = ", ".join(shown[:-1]) + f" or {shown[-1]}" + rest
     return f"{text!r} matches more than one {kind} - did you mean {joined}?"
 
 
@@ -861,13 +887,30 @@ class Availability:
     table: str
 
 
-def narrow_to_available(con: duckdb.DuckDBPyConnection, candidates: list[Entity], source: Availability, season: int | None = None) -> list[Entity]:
+def narrow_to_available(
+    con: duckdb.DuckDBPyConnection,
+    candidates: list[Entity],
+    source: Availability | tuple[Availability, ...],
+    season: int | None = None,
+    through: int | None = None,
+) -> list[Entity]:
     """The candidates with at least one row in ``source``, in the order given -
     for ``season`` when one is given, and in any season when it is not.
 
     ``season`` is optional because a chart's is: a request that names no season
     is drawn over a whole career, and narrowing that by one year would be
     filtering the candidates by something the question never said.
+
+    ``through`` is for an answer that covers a span rather than one season, and
+    keeps anybody with a row in a season up to and including it. A history
+    anchored at 2005 reads each player's last seasons up to 2005, wherever they
+    fall, so a player who retired in 2002 still has an answer there, and only
+    one who had not started yet is out.
+
+    ``source`` may be several tables, for an answer read from more than one,
+    and a row in ANY of them keeps a candidate, because a row in any of them is
+    an answer. ``player_netpoints`` is the case in point: its two tables
+    disagree about who they hold.
 
     Elimination, never preference. It drops the candidates who cannot be the
     answer to the question asked; it does not choose between two who both can.
@@ -884,15 +927,19 @@ def narrow_to_available(con: duckdb.DuckDBPyConnection, candidates: list[Entity]
 
     .. versionadded:: 2.1.0
     """
-    if not candidates:
+    sources = source if isinstance(source, tuple) else (source,)
+    if not candidates or not sources:
         return []
-    placeholders = ", ".join("?" for _ in candidates)
-    where = f"athlete_id IN ({placeholders})" + ("" if season is None else " AND season = ?")
-    rows = con.execute(
-        f"SELECT DISTINCT athlete_id FROM {source.table} WHERE {where}",
-        [*(c.id for c in candidates)] + ([] if season is None else [season]),
-    ).fetchall()
-    have = {str(row[0]) for row in rows}
+    where = f"athlete_id IN ({', '.join('?' for _ in candidates)})"
+    params: list[Any] = [c.id for c in candidates]
+    if season is not None:
+        where += " AND season = ?"
+        params.append(season)
+    if through is not None:
+        where += " AND season <= ?"
+        params.append(through)
+    union = " UNION ".join(f"SELECT DISTINCT athlete_id FROM {s.table} WHERE {where}" for s in sources)
+    have = {str(row[0]) for row in con.execute(union, params * len(sources)).fetchall()}
     return [c for c in candidates if c.id in have]
 
 
@@ -914,14 +961,20 @@ def _exact(candidates: list[Entity], text: str, keys: tuple[str, ...] = ("name",
 _WORD_START = "(^|[^A-Za-z])"
 
 
-def find_players(con: duckdb.DuckDBPyConnection, text: str) -> list[Entity]:
+def find_players(con: duckdb.DuckDBPyConnection, text: str, limit: int | None = MAX_CANDIDATES) -> list[Entity]:
     """Every token must match, so "Luka Doncic" doesn't also match a player
     sharing only a first name.
+
+    ``limit`` bounds the list for a caller that will read it out. ``None``
+    returns every match, which is what anything narrowing the list has to
+    see: 71 name words match more than ``MAX_CANDIDATES`` players, and
+    narrowing the first page of them is choosing by alphabet.
 
     .. versionchanged:: 2.1.0
        Candidates matching at a word boundary rank first and, when there are
        any, are the only ones returned. Incidental substring hits used to be
        ordered among them purely by name: "Ball" answered with Cedric Ceballos.
+       Takes ``limit``.
     """
     # Matched against the WHOLE query, never as a substring, so "book" resolves
     # to Devin Booker while "notebook" is untouched - and "Ant" stops matching
@@ -942,8 +995,9 @@ def find_players(con: duckdb.DuckDBPyConnection, text: str) -> list[Entity]:
     # truncate the strong matches away in favor of alphabetically earlier weak
     # ones.
     strong = " AND ".join(["regexp_matches(display_name, ?, 'i')"] * len(tokens))
+    bound = "" if limit is None else f" LIMIT {int(limit)}"
     rows = con.execute(
-        f"SELECT athlete_id, display_name, ({strong}) AS strong FROM players WHERE {where} ORDER BY strong DESC, display_name LIMIT {MAX_CANDIDATES}",
+        f"SELECT athlete_id, display_name, ({strong}) AS strong FROM players WHERE {where} ORDER BY strong DESC, display_name{bound}",
         [_WORD_START + re.escape(t) for t in tokens] + [f"%{t}%" for t in tokens],
     ).fetchall()
     matched = [row for row in rows if row[2]] or rows
@@ -983,10 +1037,74 @@ def _resolve(candidates: list[Entity], text: str, exact_keys: tuple[str, ...]) -
     return exact if exact is not None else Ambiguous(query=text, candidates=[c.name for c in candidates])
 
 
-def resolve_player(con: duckdb.DuckDBPyConnection, text: str) -> Resolution:
+def resolve_player(
+    con: duckdb.DuckDBPyConnection,
+    text: str,
+    available: Availability | tuple[Availability, ...] | None = None,
+    season: int | None = None,
+    through: int | None = None,
+) -> Resolution:
     """ "Curry" is genuinely ambiguous (Seth and Stephen), and a leaderboard
-    row attributed to the wrong one is indistinguishable from a right answer."""
-    return _resolve(find_players(con, text), text, ("name",))
+    row attributed to the wrong one is indistinguishable from a right answer.
+
+    Given ``available``, an ambiguous name is first narrowed to the candidates
+    with a row there - for ``season``, or any season up to ``through``, as in
+    :func:`narrow_to_available` - and only the survivors are asked about. "How
+    did curry do this year" asked about Dell, Eddy, JamesOn, Michael and Seth
+    and left Stephen out, because the warehouse holds six Currys and the
+    sentence names five; four of the five never played in the season the
+    answer would be read from. Narrowed, it asks about Seth and Stephen, who
+    both did.
+
+    It eliminates and never chooses, which is what separates it from the
+    prominence tiebreak rejected above ``PLAYER_NICKNAMES``: one survivor is
+    the answer because nobody else has a row to answer from, and two or more
+    are asked about. Three things keep it that way:
+
+    - Every match is narrowed, not :func:`find_players`' first
+      ``MAX_CANDIDATES``. Narrow that page and "the only Johnson with a row"
+      means the only one among the first ten of 47, alphabetically.
+    - A name matched exactly is not narrowed at all. "Gary Payton" also
+      matches Gary Payton II, the only one of them with a 2026 row; a
+      question naming the father in full is about him, and its answer is
+      that he has no numbers - not his son's line.
+    - When narrowing eliminates everybody, everybody is asked about, exactly
+      as before. No answer to "which one?" has data then either, and picking
+      one because the season is empty would be the guess this refuses.
+
+    Whoever played in the season the answer is about is listed first and
+    counted in ``Ambiguous.active``, which :func:`clarification` never cuts.
+    For one season that is every survivor. For a span it is the players who
+    reached its last season: a history through 2026 still has Dell Curry's
+    seasons to answer with, so he stays, but Seth and Stephen are named ahead
+    of him rather than cut behind "1 other also matches". That is an order,
+    not a choice - everybody who survives is still asked about.
+
+    .. versionchanged:: 2.1.0
+       Takes ``available``, ``season`` and ``through``, and narrows an
+       ambiguous name by them before asking.
+    """
+    if not available:
+        return _resolve(find_players(con, text), text, ("name",))
+    everyone = find_players(con, text, limit=None)
+    if len(everyone) < 2 or _exact(everyone, text) is not None:
+        return _resolve(everyone, text, ("name",))
+    narrowed = narrow_to_available(con, everyone, available, season, through)
+    if len(narrowed) == 1:
+        return narrowed[0]
+    if not narrowed:
+        # Nobody left is the old question over the old list - the same first
+        # page find_players returns - rather than every Williams on record.
+        return Ambiguous(query=text, candidates=[c.name for c in everyone[:MAX_CANDIDATES]])
+    if season is not None:
+        current = narrowed
+    elif through is not None:
+        current = narrow_to_available(con, narrowed, available, through)
+    else:
+        current = []
+    named = {c.id for c in current}
+    ordered = current + [c for c in narrowed if c.id not in named]
+    return Ambiguous(query=text, candidates=[c.name for c in ordered], active=len(current))
 
 
 def resolve_team(con: duckdb.DuckDBPyConnection, text: str) -> Resolution:

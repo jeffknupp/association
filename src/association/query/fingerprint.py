@@ -905,7 +905,7 @@ def render_fingerprint(
         if found is None:
             return RenderResult(no_match(con, name.strip()), None)
         if isinstance(found, Ambiguous):
-            return RenderResult(clarification(name.strip(), found.candidates), None)
+            return RenderResult(clarification(name.strip(), found.candidates, active=found.active), None)
         player, also = found
         resolved.append(player)
         ambiguous.extend(also)

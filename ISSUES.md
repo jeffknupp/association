@@ -75,34 +75,6 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   plus-minus), and caveat by team until then. Either way, backfill through the
   real fetch and load path ("Working on the fetch path" in `AGENTS.md`).
 
-### Surname lookups rank alphabetically and cap at ten
-- **Found:** 2026-09-11, final corpus run; widened in the follow-up session, and
-  again while narrowing `threshold_count` by season
-- **Evidence:** "how did curry do against the celtics this year" answers "did you
-  mean Dell Curry, Eddy Curry, JamesOn Curry, Michael Curry or Seth Curry (1
-  others also match)?". Stephen Curry is the one cut off. `find_players` returns
-  the first 10 matches alphabetically, 71 name words match more than 10
-  players, and "Davis" drew Anthony Davis's chart because of the alphabet.
-  - **Narrowing the truncated list picks a player.** `resolve_chart_player`
-    narrows those first 10 to the ones with rows in the season and draws a lone
-    survivor, but the player meant can be past the cut. Comparing
-    `narrow_to_available` over `find_players` at `MAX_CANDIDATES = 10` and
-    unbounded, over the 71 words and every season: one player is drawn where
-    several matching players have rows in 390 (word, season) pairs for
-    `shot_chart` and 122 for `net_points_player_fingerprint`. "Williams" draws
-    Alan Williams's 2016 shot chart (8 have one) and Alondes Williams's 2023
-    fingerprint (14 have one).
-- **User sees:** a clarification that hides the player meant, and in the chart
-  path a chart of the wrong player: "Williams shot chart 2016" draws Alan
-  Williams.
-- **Next step:** **fix in progress** in worktree `peaceful-goldberg-c807ba`. It is
-  staged, not committed, on `5daa007`, and must be rebased on master, which is 20
-  commits ahead. `threshold_count` now narrows by season, and only when fewer
-  than `MAX_CANDIDATES` match (`templates._resolved_player`), so a name at the
-  cap is still asked about and still cut alphabetically. The chart path needs
-  the same guard, or `find_players` has to stop truncating before anything
-  narrows it. `single_game_high` and `streak` still do not narrow by season.
-
 ### Per-game leaderboards for points, rebounds and assists apply no games minimum
 - **Found:** 2026-09-11, template work (agent D); measured in the issues audit
 - **Evidence:** `avg_points` and the other original per-game metrics set
@@ -123,15 +95,22 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   a test in the Fortson shape.
 
 ### The router drops a named player from a single-game high
-- **Found:** 2026-09-11, while fixing name clarification (reported, not re-verified)
-- **Evidence:** "most points curry scored in a game this season" arrived with no
-  `player` slot. `restore_dropped_players` (`query/entities.py`) restores a
-  dropped name for `fingerprint` only.
-- **User sees:** a league-wide answer to a question about one player: Bam
-  Adebayo's season high, not Curry's.
-- **Next step:** add the question to `scripts/check_routing.py` and reproduce it.
-  Then restore a name the question holds for `single_game_high`, under the
-  exact-count rule `override_invented_players` uses.
+- **Found:** 2026-09-11, while fixing name clarification; reproduced the same day
+- **Evidence:** "most points curry scored in a game this season" routed
+  (qwen2.5:3b, temperature 0) to `single_game_high` with slots
+  `{'stat': 'points', 'season_type': 2, 'season': 2026}`: no `player`. Nothing
+  downstream restores it. `restore_dropped_players` acts for `fingerprint` only.
+  `scope_from_question` restores a player only for `PLAYER_REQUIRED_INTENTS`
+  (`record_when`), deliberately, since an empty optional slot means the league
+  (`query/templates.py`). And `players_named_in` could not supply one anyway:
+  "curry" is a whole word of six players' names.
+- **User sees:** a league-wide answer to a question about one player: "Bam
+  Adebayo had the most points in a single game in the 2026 regular season: 83",
+  not Curry's high.
+- **Next step:** add the question to `scripts/check_routing.py`. Then, where a
+  missing player means the league, notice a player-shaped word the slots lost
+  and ask which player was meant rather than restoring one. Measure how often
+  that fires on the corpus first ("best" is Travis Best).
 
 ### "without X and Y" drops the second player
 - **Found:** 2026-09-11, template work (agent C); verified in the issues audit
@@ -415,10 +394,20 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 
 ### `player_history` answers "last N seasons on record", not a calendar window
 - **Found:** 2026-09-11, while fixing name clarification
-- **Evidence:** a player with gaps (the Dell Curry example) gets their last N
-  seasons played, labelled as if they were consecutive.
-- **User sees:** "last 5 seasons" spanning more than five years, with no note.
-- **Next step:** state the actual seasons covered in the answer.
+- **Evidence:** the query reads `season <= ? ORDER BY season DESC LIMIT ?` per
+  player (`player_history` in `query/templates.py`), so a player with gaps, or
+  one who retired, gets their last N seasons played. "Curry's scoring over the
+  last 4 seasons" would give Dell Curry 1999-2002. The header now names the
+  range the rows reach ("by regular season, 2023-2026"), so the seasons are
+  labelled truthfully. Because the template reads that way, name narrowing
+  keeps every Curry for the question, narrowed through the anchor season with
+  Seth and Stephen named first. It cannot drop players with nothing in the
+  calendar window.
+- **User sees:** "last 5 seasons" answered with seasons from years ago, labelled
+  as such but not flagged as outside the window the question asked about.
+- **Next step:** decide whether "last N seasons" means the calendar window. If
+  it does, read that window and narrow names by it too; `narrow_to_available`
+  would need a lower bound it does not take today.
 
 ### Two fingerprints asked for without "vs" or "compare" draw one
 - **Found:** documented in `AGENTS.md` as an accepted cost; listed by the repo audit
@@ -538,6 +527,20 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
     is inherent until a bio source is added.
 - **User sees:** a fall-through to the agent.
 - **Next step:** take them in that order.
+
+### A router-invented name one edit from a real one falls through instead of asking
+- **Found:** 2026-09-11, probing the season-narrowing branch
+- **Evidence:** "how many rebounds does davis average" routed to `player_stat`
+  with `player='Davies (Davic)'`. `override_invented_players` counts it as
+  grounded, since "davies" is one edit from "davis". Nothing matches it, and
+  `suggest_players` offers nobody, so `_resolved_player` raises
+  `TemplateUnsupported`. The likely reason the suggestion pass finds nobody is
+  the parenthesized second token, since every token must be near some word of
+  the name. That was not confirmed. Seen once.
+- **User sees:** the question goes to the agent, rather than asking which Davis
+  was meant.
+- **Next step:** reproduce it. If it recurs, drop punctuated tokens before
+  `suggest_players`, or back off to the word the question holds.
 
 ### Two players against one team has no template
 - **Found:** 2026-09-11, while making `opponent` refuse or narrow
@@ -695,6 +698,56 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** if a modern true-shooting-attempts figure is published there,
   compare it with 550.
 
+### Name narrowing counts a row with no minutes as a game played
+- **Found:** 2026-09-11, season-narrowing branch
+- **Evidence:** a candidate survives `entities.narrow_to_available` with any row
+  in the table for the season, and `player_game_log`/`player_box_stats` carry
+  rows with no minutes. JamesOn Curry has 84 such game-log rows: 82 with Chicago
+  in 2007-08 and 2 with the Clippers in 2009-10. He has one season line (2010,
+  one game, no points).
+- **User sees:** a clarification that also names a player who only sat on the
+  bench that season. It errs toward asking, never toward a wrong player.
+- **Next step:** measure how many asks it widens. If many, narrow the
+  box-score tables on minutes, as `conditions._played` does.
+
+### Clarifications can name twenty players
+- **Found:** 2026-09-11, season-narrowing branch
+- **Evidence:** `Ambiguous.active` makes a clarification name every candidate
+  from the season asked about (`entities.clarification`). The surname with the
+  most players in one season is Williams: 15 in 1998 and 1999, 14 in 2026.
+  "Will" names 18 players in 2026 and 20 in 1998.
+- **User sees:** a long "did you mean" sentence. Whether it reads acceptably in
+  the CLI and on the web page was not checked.
+- **Next step:** look at a 20-name clarification on the web page.
+
+### The CHANGES.md hook passes on an unstaged tree
+- **Found:** 2026-09-11, season-narrowing branch
+- **Evidence:** `scripts/check_changes_md.sh` reads only `git diff --cached`. So
+  `pre-commit run --all-files` with `src/` edited and nothing staged reports
+  "CHANGES.md updated....Passed". With `src/` staged alone, it fails as
+  intended.
+- **User sees:** nothing. An agent can read the pass as a real check.
+- **Next step:** have the hook say it checked nothing when the index is empty.
+
+### The docs gate keeps stale pages after a change to `docs/conf.py` code
+- **Found:** 2026-09-11, merging `92cf1e5` into the season-narrowing branch
+- **Evidence:** `scripts/build_docs.sh` builds incrementally into
+  `docs/_build/html`, with no `-E` and no clean output directory. `92cf1e5`
+  fixed the literal `:rtype:` lines with a function in `docs/conf.py`, not a
+  config value, so Sphinx did not treat the change as one that invalidates its
+  cached environment. After the merge, the pre-commit docs hook passed and
+  `docs/_build/html` still had the literal line on 18 of 40 pages. A fresh
+  build of the same tree into an empty directory had it on 0 of 40, with 18
+  "Return type" fields on the `association.query.entities` page. A page Sphinx
+  does not re-read also re-emits none of its warnings, so the local `-W` gate
+  can pass where a fresh build fails. That is the "local run weaker than CI"
+  shape `AGENTS.md` records for the other gates. CI's own docs build was not
+  checked.
+- **User sees:** nothing directly. An agent reading the built HTML sees stale
+  pages, and a docs warning can go unnoticed until CI.
+- **Next step:** pass `-E` (or clear the output directory) in `build_docs.sh`,
+  and time it against the incremental build.
+
 ### A failed warehouse build leaves no marker
 - **Found:** 2026-09-08 (reported)
 - **Evidence:** each table load is its own statement, so an out-of-memory kill
@@ -703,13 +756,6 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** answers from a half-updated warehouse, with nothing saying so.
 - **Next step:** record a build-complete marker, and have `data check` report a
   build that did not finish.
-
-### Tied leaderboard rows were seen shuffling between runs
-- **Found:** 2026-09-11 (reported, not re-verified)
-- **Evidence:** `query/leaderboard.py` now breaks ties by `display_name`, so the
-  source of the shuffle is not located.
-- **User sees:** the same question listing tied players in a different order.
-- **Next step:** reproduce it with a tied metric before changing anything.
 
 ### The agent can return an empty answer
 - **Found:** 2026-09-08, pre-existing in 1.6.0 (reported, not re-verified)

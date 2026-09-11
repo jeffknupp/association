@@ -86,6 +86,87 @@ def test_find_players_returns_all_candidates_best_first(con: duckdb.DuckDBPyConn
     assert [c.name for c in find_players(con, "Curry")] == ["Seth Curry", "Stephen Curry"]
 
 
+@pytest.fixture
+def johnsons() -> duckdb.DuckDBPyConnection:
+    """Eleven Johnsons, one more than find_players returns, with the first and
+    the eleventh the two who took shots this season. The warehouse has 47
+    Johnsons and 71 name words that match more than ten players."""
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    given = ["Aaron", "Brice", "Cameron", "Dakari", "Eric", "Frank", "George", "Hal", "Ivan", "Jalen", "Keldon"]
+    c.executemany("INSERT INTO players VALUES (?, ?)", [(str(i), f"{name} Johnson") for i, name in enumerate(given)])
+    c.execute("CREATE TABLE shot_chart (athlete_id VARCHAR, season INTEGER)")
+    c.execute("INSERT INTO shot_chart VALUES ('0', 2026), ('10', 2026), ('5', 2010)")
+    return c
+
+
+def test_narrowing_sees_every_match_rather_than_the_first_ten(johnsons: duckdb.DuckDBPyConnection) -> None:
+    """Narrowing the first MAX_CANDIDATES alphabetically is not elimination: it
+    left Aaron as the only Johnson with shots and drew his chart, because
+    Keldon - who also has shots - sorted eleventh and was never looked at.
+    Measured on the warehouse's 2026 shot charts, that turned 23 ambiguous
+    names into a single player: "Davis" drew Anthony Davis with four players
+    eligible, "Robinson" drew Duncan Robinson with four."""
+    from association.query.entities import Availability
+    from association.query.shotchart import resolve_chart_player
+
+    shots = Availability("shot_chart")
+    assert len(find_players(johnsons, "Johnson")) == 10
+    assert len(find_players(johnsons, "Johnson", limit=None)) == 11
+    assert resolve_player(johnsons, "Johnson", shots, 2026) == Ambiguous(query="Johnson", candidates=["Aaron Johnson", "Keldon Johnson"], active=2)
+    assert resolve_chart_player(johnsons, "Johnson", shots, 2026) == Ambiguous(query="Johnson", candidates=["Aaron Johnson", "Keldon Johnson"], active=2)
+
+
+def test_every_player_from_the_season_asked_about_is_named_however_many(johnsons: duckdb.DuckDBPyConnection) -> None:
+    """The cap only ever counts away players who could not be the answer. Seven
+    Johnsons took shots this season, more than the five a clarification names
+    by default, and cutting any of them would hide a real candidate the way
+    Stephen Curry was hidden. 2026 has 14 Williamses; this names all of them."""
+    from association.query.entities import Availability, clarification
+    from association.query.shotchart import resolve_chart_player
+
+    johnsons.execute("INSERT INTO shot_chart SELECT athlete_id, 2026 FROM players WHERE athlete_id IN ('1', '2', '3', '4', '6')")
+    shots = Availability("shot_chart")
+    asked = resolve_player(johnsons, "Johnson", shots, 2026)
+    assert isinstance(asked, Ambiguous) and asked.active == len(asked.candidates) == 7
+    sentence = clarification("Johnson", asked.candidates, active=asked.active)
+    assert all(name in sentence for name in asked.candidates) and "other" not in sentence
+
+    charted = resolve_chart_player(johnsons, "Johnson", shots, 2026)
+    assert isinstance(charted, Ambiguous) and charted.active == 7
+    # With no season, nobody played in "the season asked about", and the cap
+    # applies as it always did - otherwise this would read out every Johnson
+    # who ever took a shot.
+    unscoped = resolve_chart_player(johnsons, "Johnson", shots)
+    assert isinstance(unscoped, Ambiguous) and unscoped.active == 0
+
+
+def test_narrowing_against_several_tables_keeps_a_row_in_any_of_them(johnsons: duckdb.DuckDBPyConnection) -> None:
+    from association.query.entities import Availability, narrow_to_available
+
+    johnsons.execute("CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER)")
+    johnsons.execute("INSERT INTO player_game_log VALUES ('3', 2026)")
+    everyone = find_players(johnsons, "Johnson", limit=None)
+    kept = narrow_to_available(johnsons, everyone, (Availability("shot_chart"), Availability("player_game_log")), 2026)
+    assert [c.name for c in kept] == ["Aaron Johnson", "Dakari Johnson", "Keldon Johnson"]
+
+
+def test_a_span_keeps_anybody_with_a_row_up_to_its_last_season(johnsons: duckdb.DuckDBPyConnection) -> None:
+    from association.query.entities import Availability, narrow_to_available
+
+    everyone = find_players(johnsons, "Johnson", limit=None)
+    assert [c.name for c in narrow_to_available(johnsons, everyone, Availability("shot_chart"), through=2012)] == ["Frank Johnson"]
+
+
+def test_a_capped_clarification_counts_what_it_leaves_out_in_english() -> None:
+    """ "(1 others also match)" was the exact phrase that hid Stephen Curry."""
+    from association.query.entities import clarification
+
+    six = ["Dell Curry", "Eddy Curry", "JamesOn Curry", "Michael Curry", "Seth Curry", "Stephen Curry"]
+    assert clarification("Curry", six).endswith("or Seth Curry (1 other also matches)?")
+    assert clarification("Curry", [*six, "Wardell Curry"]).endswith("(2 others also match)?")
+
+
 def test_a_name_that_starts_a_word_beats_one_it_only_lands_inside(con: duckdb.DuckDBPyConnection) -> None:
     """Substring matching kept "Ball" honestly ambiguous - between LaMelo Ball
     and Cedric Ceballos, which is not a question anybody would ask. Measured
@@ -108,11 +189,16 @@ def test_every_declared_availability_names_a_real_table() -> None:
     """The table name is interpolated into SQL, so a typo is a runtime error on
     a path only an ambiguous name reaches. Checked against the query package's
     own list of tables rather than a warehouse, so it stays offline."""
-    from association.query.fingerprint import FINGERPRINT_AVAILABILITY
+    from association.query import fingerprint, shotchart, templates
+    from association.query.entities import Availability
     from association.query.prompt import KNOWN_TABLES
-    from association.query.shotchart import SHOT_AVAILABILITY
 
-    for available in (SHOT_AVAILABILITY, FINGERPRINT_AVAILABILITY):
+    # Every one each module declares, tuples included, rather than a list here
+    # that a new template's narrowing table would have to remember to join.
+    declared = [v for module in (shotchart, fingerprint, templates) for v in vars(module).values()]
+    flat = [a for v in declared for a in (v if isinstance(v, tuple) else (v,)) if isinstance(a, Availability)]
+    assert {a.table for a in flat} >= {"shot_chart", "net_points_player_fingerprint", "player_season_stats_deduped", "player_game_log"}
+    for available in flat:
         assert available.table in KNOWN_TABLES, available
 
 
