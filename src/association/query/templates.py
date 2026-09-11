@@ -1107,13 +1107,13 @@ def _single_game_netpoints(ctx: TemplateContext, player: Entity, season: int, se
         )
     event_id, date, o, d, t, o_poss, d_poss, wpa = row
     which = "first" if order == "first" else "most recent"
-    game = {"event_id": event_id, "date": str(date)[:10], "offense": o, "defense": d, "total": t}
+    game = {"event_id": event_id, "date": _eastern_date(date), "offense": o, "defense": d, "total": t}
     detail = []
     if o_poss is not None and d_poss is not None:
         detail.append(f"{o_poss:.0f} offensive and {d_poss:.0f} defensive possessions")
     if wpa is not None:
         detail.append(f"{wpa:+.3f} win probability added")
-    answer = f"{player.name}, NetPoints in his {which} {period} game ({str(date)[:10]}): {_table_cell(t)} total ({_table_cell(o)} offense, {_table_cell(d)} defense)."
+    answer = f"{player.name}, NetPoints in his {which} {period} game ({_eastern_date(date)}): {_table_cell(t)} total ({_table_cell(o)} offense, {_table_cell(d)} defense)."
     if detail:
         answer += "\n  " + ", ".join(detail) + "."
     answer += "\n  (Ask for a fingerprint of that game to see the play-type split behind it.)"

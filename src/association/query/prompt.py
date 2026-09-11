@@ -228,11 +228,11 @@ KNOWLEDGE_BASE: list[dict[str, Any]] = [
         "topic": "Shot distance / shot location math",
         "keywords": ["distance", "far", "deep", "long", "feet", "range", "location", "coordinates"],
         "note": (
-            "shot_chart.coordinate_x/coordinate_y are court position in feet. The hoop is at "
-            "(25, 5.25), NOT (0, 0). Free throws have NULL coordinates - always filter "
-            "coordinate_x IS NOT NULL for distance/location stats."
+            "shot_chart.coordinate_x/coordinate_y are feet, y measured FROM THE RIM: the hoop "
+            "is at (25, 0), NOT (25, 5.25). Exclude free throws by shot_type "
+            "(NOT ILIKE 'Free Throw%'), never by coordinates."
         ),
-        "example": ("-- average shot distance\nSELECT AVG(sqrt(power(coordinate_x - 25, 2) + power(coordinate_y - 5.25, 2)))\nFROM shot_chart WHERE athlete_id = ? AND coordinate_x IS NOT NULL"),
+        "example": ("-- average shot distance\nSELECT AVG(sqrt(power(coordinate_x - 25, 2) + power(coordinate_y, 2)))\nFROM shot_chart WHERE athlete_id = ? AND shot_type NOT ILIKE 'Free Throw%'"),
     },
     {
         "topic": "Filtering SQL to one named player or team",

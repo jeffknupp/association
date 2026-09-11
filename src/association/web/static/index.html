@@ -496,9 +496,11 @@
       render: (d, text) => {
         if (!d.games.length) return null;
         const team = d.games[0].team_score !== undefined;
+        // A game with no recorded winner is neither W nor L - 134 since 1994 -
+        // and the template sends `won: null` for one rather than guessing.
         const body = team
           ? table(["date", "", "opponent", "for", "against"],
-              d.games.map(g => [g.date, g.won ? "W" : "L", (g.home_away === "away" ? "at " : "vs ") + g.opponent, num(g.team_score), num(g.opponent_score)]))
+              d.games.map(g => [g.date, g.won === true ? "W" : g.won === false ? "L" : "\u2013", (g.home_away === "away" ? "at " : "vs ") + g.opponent, num(g.team_score), num(g.opponent_score)]))
           : table(["date", "opponent", "MIN", "PTS", "REB", "AST"],
               d.games.map(g => [g.date, "vs " + g.opponent, num(g.minutes), num(g.points), num(g.rebounds), num(g.assists)]));
         return { caption: firstLine(text), body };

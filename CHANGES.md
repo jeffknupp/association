@@ -15,6 +15,17 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Three smaller answers that said something false.**
+  - The web page's game log showed "L" for a game with no recorded winner (134
+    since 1994). It now shows a dash; the template already sent `won: null`.
+  - A single game's NetPoints printed its UTC date, a day late for any evening
+    tip. It now prints the day the game was played, like every other template.
+  - The fall-through agent's knowledge base still told it the hoop was at
+    (25, 5.25) and that free throws have no coordinates. Both are wrong: the
+    rim is at (25, 0), and free throws carry a position under the rim through
+    2018. So its hand-written distance SQL was three feet short. The entry now
+    matches `court.py`, at no extra length against the preamble's token budget.
+
 - **Faults found while building the templates below, fixed where the data is
   read.** Every agent that built a template hit one of these, and each one
   produced a wrong answer that nothing flagged.

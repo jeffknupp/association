@@ -517,9 +517,10 @@ everything about it is constrained by things measured elsewhere in this file.
   | Table | Usable from | What is before it |
   | --- | --- | --- |
   | `standings` | 1988 | — league-wide and real all the way back (23 teams in 1988, 27 by 1990) |
-  | `games` (postseason) | 1988 | — full 16-team brackets all the way back |
+  | `games`, `team_box_stats` (postseason) | 1989 | — full brackets all the way back; the 1987-88 playoffs are not in ESPN's archive |
   | `games` (regular), `player_box_stats`, `team_box_stats`, `team_season_stats` | **1994** | one team's 82 games per season, and nothing at all for 1989-90 |
-  | `plays`, `shot_chart` | 2003 (2002 is ~half) | nothing |
+  | `plays` | 2003 (2002 is ~half) | nothing |
+  | `shot_chart` | 2002, caveated for 2002 (509 of 1,190 games) and 2003 (986) | nothing |
   | `team_power_index` | 2017 | nothing |
   | `win_probability` | 2018 | nothing |
   | NetPoints (all five tables) | 2019 | the bucket answers 403 |
@@ -534,6 +535,17 @@ everything about it is constrained by things measured elsewhere in this file.
   1993 as a copy of it, not as evidence of a fetch bug. It is confined to
   `games` and what is derived from it; `standings` comes from a different
   endpoint and its 1993 rows are genuinely the 1992-93 season.
+
+  A third trap, and the phantom's cause: **before 1993-94, ESPN labels a season
+  by the year it STARTED.** The postseason games labelled 1990 end on
+  1991-06-12, the 1991 Finals, and 1993 and 1994 are one season because the
+  labelling changed between them. The regular seasons that early sit under
+  the 1994 floor anyway; the postseasons do not. So a postseason is selected
+  by the calendar year it was played in, never by label
+  (`templates._season_games`, `team_metrics.games_scope`, and
+  `check_coverage.py`'s counts), which is exact for every season: every
+  postseason is played inside the year its season is named for. Matched by
+  label, "the 1991 playoffs" answered 1992's.
 
   **`player_season_stats` looks like an exception and is not.** It reaches back
   to 1977, because it is fetched per player over a whole career once that
@@ -553,6 +565,21 @@ everything about it is constrained by things measured elsewhere in this file.
   before trusting a constant. Never filter `points_attempted` for a shot's
   value; read `shotchart.SHOT_VALUE_SQL`, which derives it where ESPN left it
   0 and keeps the per-season refusals and caveats beside it.
+- **ESPN's career endpoint copies some regular seasons into the postseason.**
+  Eddy Curry has 527 "playoff games" in `player_season_stats`: seven regular
+  seasons, each filed a second time as a postseason. `player_season_stats_deduped`
+  drops a postseason line claiming more than 28 games (four best-of-seven
+  rounds is the most a run can hold) or repeating that season's regular-season
+  games and points exactly: 340 of 7,845 rows, every real run checked kept.
+  Read the deduped view for postseason lines; the raw table still has them.
+- **About one regular-season game in eight from 2013 to 2018 has an empty box
+  score.** 322-332 team-games a season (13.1-13.5%; none in 2011-12 or 2019+)
+  list every player as having played, with NULL minutes and every stat 0, and a
+  NULL team box row. Anything summing `player_box_stats` over those seasons is
+  about 87% of ESPN's own season totals, and a streak or a with/without split
+  cannot tell whether a player sat those games out. The templates that read
+  per-game rows say how many games they could not see; a refetch of those games
+  has not been tried.
 - Query connections to DuckDB are **read-only**, as a hard guarantee.
 
 **Those floors are enforced, not just documented.** `association/coverage.py`
@@ -626,6 +653,16 @@ The habits that caught real bugs here, in rough order of how often they paid:
   slot by removing the hook. Two "passing" perturbations in this session were
   actually a stale `.pyc` and a `SyntaxError` in the harness — both of which
   look exactly like a green run from the outside.
+- **Branches built in parallel collide on private helper names, silently.**
+  Four templates were built on separate branches at once, and five times two of
+  them had independently written a module-level helper with the same name:
+  `_eastern_date`, `_stints`, `_no_games` twice, `_pct`, `_season_name`. Git
+  merged each without a conflict, the later `def` replaced the earlier, and
+  the first branch's callers got the other branch's function - 14 failing tests
+  after one merge, 28 after another, green on both branches before it. mypy's
+  `no-redef` and ruff's F811 catch it, but only when the gates run on the
+  merged tree. After merging parallel work, scan for duplicated top-level
+  names before reading anything into either side's green tests.
 - **A DuckDB `SET` is per-connection.** A test asserting one has to observe it
   on the connection the code under test used; a freshly opened connection
   reports the default and the assertion looks like a real failure.
