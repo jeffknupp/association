@@ -54,6 +54,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   streaks that skip a whole team's season without saying so.
 - **Next step:** fold it into whatever fixes the 2013-18 seasons - rebuild the
   lines from `plays` where they exist, or caveat by team.
+- **GitHub:** #67
 
 ### Nearly every Bulls and Pelicans box score from 2013 to 2018 is zeros
 - **Found:** 2026-09-11, template work; characterized in the issues audit
@@ -1077,3 +1078,4 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   free throw's coordinates would be reading nothing for recent seasons.
 - **Next step:** none until something reads them. Recorded so the next reader
   does not mistake the gap for a parser fault.
+- **GitHub:** #68
