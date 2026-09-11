@@ -57,6 +57,46 @@ had no published version to be compatible with.
   - "qtr", "q4" and "first half" now reach the agent like "4th quarter" did.
 
   A team ranking asked as a player ranking is sent to `team_leaderboard`.
+- **Team questions have templates: records, season numbers, rankings and
+  ESPN's power index.** "Knicks home record" was refused and "which team scores
+  the most points per game" fell through, and `team_season_stats` and
+  `team_power_index` were read by no template at all. Most of the work was
+  finding out which of their numbers can be believed.
+
+  - `team_record` honours `venue`, `opponent` and `span`, and answers a
+    postseason instead of refusing one. A season's record and its home/road
+    split are the standings' own; the "Home"/"Road" strings agree with a tally
+    of `games` for every team-season from 1994 to 2026 once each era's
+    neutral-site rule is applied (through 2024 a neutral-site game counts for
+    its designated home team, from 2025 for neither). Anything else is tallied
+    from `games`, which has to be cleaned first: 0-0 phantoms with no winner
+    (50 in 1999, 82 in 2000), a second event id for a game already listed, 1993
+    under two labels, and the NBA Cup final, a regular-season game no standings
+    count - left out of the record and mentioned beside it. Cleaned, the tally
+    matches standings for every team-season from 1994 to 2026. Postseasons are
+    found by the year they were played, because `games` labels every one before
+    1994 by the year its season started: the games labelled 1990 end with the
+    1991 Finals. Where the game list and a team's own totals disagree - the
+    2000 and 2001 postseasons hold 15 of the Lakers' 23 games and 10 of their
+    16 - the answer says so. A conference is refused by name, since nothing in
+    the warehouse says which teams are in one.
+  - `team_stat` and `team_leaderboard` read a new whitelist of team metrics,
+    `query.team_metrics`. There is no rating column, so offensive, defensive
+    and net rating are derived, and neither input could be taken as stored.
+    ESPN's `possessions` counts every turnover twice before 2013 (114 a game in
+    1994, against a real ~96), so possessions are recomputed as
+    FGA - OREB + TOV + 0.44 x FTA with the turnover column that is right in each
+    era; from 2009 that reproduces ESPN's own figure exactly. Points allowed are
+    summed from `games` and used only where that game count equals the team's
+    own - the 2000 regular season fails it for 28 of 29 teams, and is refused
+    rather than rated. Checked: the 2026 Knicks' defensive rating is 110.47,
+    100 x standings' 9,030 points allowed over ESPN's 8,173.92 possessions.
+  - `team_outlook` reads ESPN's BPI, which is sparse - 2026 has a play-in
+    snapshot of 13 teams and a postseason one of 12, and no regular-season one -
+    so every answer names its snapshot, date and size, and a team missing from
+    it is told which snapshots exist rather than that there is no data. Where a
+    team stands is counted within the snapshot, because ESPN's rank columns hold
+    values like 26,058 before 2022.
 
 - **1993-94 player games were listed four times.** `player_game_log` joined
   `games` and `player_advanced_stats` on `event_id` alone, and ESPN files the
