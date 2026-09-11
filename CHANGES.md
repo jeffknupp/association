@@ -19,7 +19,10 @@ had no published version to be compatible with.
   - The web page's game log showed "L" for a game with no recorded winner (134
     since 1994). It now shows a dash; the template already sent `won: null`.
   - A single game's NetPoints printed its UTC date, a day late for any evening
-    tip. It now prints the day the game was played, like every other template.
+    tip. So did a single-game fingerprint's title, a shot distance's "in his
+    most recent game" note and a team's quarter-by-quarter list. Each now
+    prints the day the game was played, from one shared
+    `season.eastern_date` - the query package had held two copies of it.
   - The fall-through agent's knowledge base still told it the hoop was at
     (25, 5.25) and that free throws have no coordinates. Both are wrong: the
     rim is at (25, 0), and free throws carry a position under the rim through

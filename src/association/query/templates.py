@@ -21,6 +21,7 @@ import duckdb
 from association.coverage import COVERAGE, POSTSEASON, caveat, unavailable
 from association.net_points_categories import FINGERPRINT_CATEGORIES
 from association.season import current_season
+from association.season import eastern_date as _eastern_date
 
 from .answer import Artifact
 from .conditions import (
@@ -605,18 +606,6 @@ def _empty_note(found: tuple[int, int | None, int | None], name: str | None, con
 # NetPointsGameIndex uses and for its reason - EST and EDT disagree about a
 # tip's date only between midnight and 1am Eastern, when no game starts.
 _EASTERN_SHIFT = timedelta(hours=5)
-
-
-def _eastern_date(stamp: Any) -> str:
-    """The calendar day a game was played, from its stored UTC timestamp."""
-    text = str(stamp)
-    if "T" not in text:
-        return text[:10]
-    try:
-        moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
-    except ValueError:
-        return text[:10]
-    return (moment - _EASTERN_SHIFT).date().isoformat()
 
 
 def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
@@ -3336,7 +3325,7 @@ def shot_distance(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult
             raise TemplateUnsupported(f"no games found for {player.name}")
         where.append("event_id = ?")
         params.append(found[0])
-        game_note = f" in his {'first' if slots['order'] == 'first' else 'most recent'} game ({str(found[1])[:10]})"
+        game_note = f" in his {'first' if slots['order'] == 'first' else 'most recent'} game ({_eastern_date(found[1])})"
     row = con.execute(f"SELECT AVG({SHOT_DISTANCE_SQL}), COUNT(*) FROM shot_chart WHERE {' AND '.join(where)}", params).fetchone()
 
     average, attempts = row or (None, 0)
@@ -3637,7 +3626,7 @@ def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> Template
     for date, own_linescores, opp_name in rows:
         scores = _linescores(own_linescores)
         points = scores[period - 1] if period - 1 < len(scores) else None
-        games.append({"date": str(date)[:10], "opponent": opp_name, "points": points})
+        games.append({"date": _eastern_date(date), "opponent": opp_name, "points": points})
 
     if not games:
         answer = f"The warehouse has no {period_str} games for the {team.name}{vs}."

@@ -1429,7 +1429,9 @@ def test_shot_distance_scopes_to_one_game(sc_ctx: TemplateContext) -> None:
     sc_ctx.con.execute("INSERT INTO player_game_log VALUES ('1',?,2,'e2','2026-01-01T00:00Z')", [current_season()])
     sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e2',1,'2:00',TRUE,'Jump Shot',25,40,3,'40-foot three point jumper')", [current_season()])
     answer = shot_distance(sc_ctx, {"player": "Stephen Curry", "order": "recent"}).answer or ""
-    assert "most recent game (2026-04-13)" in answer
+    # e1 tips at 2026-04-13T00:30Z - 8:30pm Eastern on the 12th, the day it was
+    # played. The UTC day this used to assert was the bug.
+    assert "most recent game (2026-04-12)" in answer
     assert "2 attempts" in answer  # the fixture's two shots in e1, not the third in e2
 
 

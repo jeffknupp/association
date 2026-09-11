@@ -24,7 +24,7 @@ from pathlib import Path
 
 import duckdb
 
-from association.season import current_season
+from association.season import current_season, eastern_date
 
 from .answer import Artifact, RenderResult
 from .entities import Ambiguous, Availability, Entity, clarification, no_match
@@ -612,7 +612,7 @@ def _game_for(con: duckdb.DuckDBPyConnection, athlete_id: str, season: int, seas
         f"GROUP BY f.event_id, gm.date ORDER BY gm.date {'ASC' if order == 'first' else 'DESC'} LIMIT 1",
         [athlete_id, season, season_type],
     ).fetchone()
-    return None if row is None else GamePlayed(event_id=str(row[0]), date=str(row[1])[:10])
+    return None if row is None else GamePlayed(event_id=str(row[0]), date=eastern_date(row[1]))
 
 
 def _radius(value: float, percentile: float, scale: str, league: LeagueScale) -> float:
