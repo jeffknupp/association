@@ -531,3 +531,15 @@ def test_a_player_is_only_restored_where_a_template_reads_one(scope_con: duckdb.
     slots: dict[str, Any] = {"team": "Boston Celtics"}
     scope_from_question(scope_con, "jaylen brown last 8 games vs pistons", slots, reads_player=False)
     assert slots == {"team": "Boston Celtics", "opponent": "Detroit Pistons"}
+
+
+def test_a_player_left_out_is_restored_only_where_one_is_required(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """ "Sga record 36 plus points" came back with no player at all. An optional
+    player slot left empty means the league, so only a template that needs one
+    gets it back."""
+    slots: dict[str, Any] = {"stat": "points", "threshold": 36}
+    scope_from_question(scope_con, "Sga record 36 plus points", slots, reads_player=True, needs_player=True)
+    assert slots["player"] == "Shai Gilgeous-Alexander"
+    optional: dict[str, Any] = {"stat": "points", "threshold": 36}
+    scope_from_question(scope_con, "Sga record 36 plus points", optional, reads_player=True)
+    assert "player" not in optional

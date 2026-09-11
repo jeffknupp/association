@@ -381,6 +381,38 @@ def _validate_side(slots: dict[str, Any], question: str) -> str | None:
 _PLAYOFF_WORDS = re.compile(r"\b(?:playoffs?|post-?season|finals|elimination|game\s+(?:7|seven))\b", re.IGNORECASE)
 
 
+# One round or game of the postseason. No table carries a round or a series
+# game number, so no template can narrow to one: "tatum stats in the 2024 finals"
+# was answered with his whole 2024 postseason, 19 games where the Finals were 5.
+# A scoping slot, so every template refuses it rather than widening the question.
+_ROUND_WORDS = re.compile(r"\bfinals\b|\b(?:first|second)\s+round\b|\bsemi-?finals?\b|\bgame\s+(?:7|seven)s?\b", re.IGNORECASE)
+
+
+# A range of seasons rather than one. "since 2020" is every season from the one
+# ending in 2020; a decade ("the 2010s") is the seasons ending in it. Stated this
+# way, not guessed at, so a template that honours it can print the exact range.
+_SINCE = re.compile(r"\bsince\s+(?:the\s+)?((?:19|20)\d\d)\b", re.IGNORECASE)
+_DECADE = re.compile(r"\b(?:the\s+)?((?:19|20)\d)0'?s\b", re.IGNORECASE)
+
+# "record" asked with a counting intent means wins and losses, not a count of
+# games. Measured: "Sixers record when Embiid scores 30 points this season" came
+# back as threshold_count and was answered with the league's 30-point games,
+# Embiid dropped.
+_RECORD = re.compile(r"\brecord\b", re.IGNORECASE)
+
+
+def _validate_range(question: str) -> tuple[int, int | None] | None:
+    """The first and last season a range covers - (first, None) for an open one."""
+    since = _SINCE.search(question)
+    if since is not None:
+        return int(since.group(1)), None
+    decade = _DECADE.search(question)
+    if decade is not None:
+        first = int(decade.group(1) + "0")
+        return first, first + 9
+    return None
+
+
 def _validate_season_type(question: str) -> int:
     """The season type the question asks about: the postseason only when it
     says so. The model's own slot is not consulted - see _PLAYOFF_WORDS."""
@@ -603,6 +635,8 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
         # count of team games do not, and answering either with players is the
         # substitution this exists to stop.
         raw["intent"] = "team_leaderboard" if raw["intent"] == "leaderboard" else "other"
+    if raw["intent"] == "threshold_count" and _RECORD.search(question):
+        raw["intent"] = "record_when"
 
     # A blank string is how the model says "no value" for a required slot;
     # dropping it here keeps every template's `slots.get(...) or default`
@@ -632,17 +666,33 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     without = _name_after(_WITHOUT, question)
     if without is not None:
         slots["without"] = without
+    playoff_round = _ROUND_WORDS.search(question)
+    if playoff_round is not None:
+        slots["round"] = playoff_round.group(0).casefold()
+    # Measured: "most 3 pointers made since 2020" became season=2020 and was
+    # answered as "the most games with 0+ 3-pointers in the 2020 regular season".
+    seasons = _validate_range(question)
+    if seasons is not None:
+        slots["since"] = seasons[0]
+        if seasons[1] is not None:
+            slots["until"] = seasons[1]
+        slots.pop("season", None)
+    # A split is read for every intent, not only player_splits: it is a scoping
+    # slot, so the template that answers one honours it and every other refuses.
+    # Measured: "Joe Ingles stats when starting vs coming off the bench" was
+    # answered with his season minutes, "Giannis stats by month" with his points
+    # by season.
+    splits = [name for name, pattern in SPLIT_WORDS.items() if pattern.search(question)]
+    if len(splits) == 1:
+        slots["split"] = splits[0]
     # Intent-specific: each means nothing to any other template, so each is
     # only added where one reads it - the same rule `side` follows below.
     if raw["intent"] == "with_without":
         with_player = _name_after(_WITH, question)
         if with_player is not None and without is None:
             slots["with_player"] = with_player
-    if raw["intent"] == "player_splits":
-        splits = [name for name, pattern in SPLIT_WORDS.items() if pattern.search(question)]
-        if len(splits) == 1:
-            slots["split"] = splits[0]
-            slots.pop("venue", None)  # a split over venues is not a filter to one
+    if raw["intent"] == "player_splits" and slots.get("split") == "home_away":
+        slots.pop("venue", None)  # a split over venues is not a filter to one
     if raw["intent"] == "team_leaderboard":
         rank = next((name for name, pattern in RANK_WORDS if pattern.search(question)), None)
         if rank is not None:

@@ -1536,3 +1536,22 @@ def test_scope_guard_refuses_what_the_question_text_narrowed_to(intent: str, slo
 
 def test_team_quarter_points_still_honours_the_opponent_it_always_read() -> None:
     check_scope("team_quarter_points", {"team": "Philadelphia 76ers", "period": 4, "opponent": "Boston Celtics"})
+
+
+def test_no_template_narrows_to_a_playoff_round() -> None:
+    """Nothing in the warehouse records a round or a series game number."""
+    assert not any("round" in honored for honored in HONORED_SCOPING.values())
+    with pytest.raises(TemplateUnsupported, match="different span"):
+        check_scope("player_stat", {"player": "Jayson Tatum", "round": "finals"})
+
+
+def test_a_zero_threshold_is_refused_rather_than_counting_every_game(con: TemplateContext) -> None:
+    """Measured: "most 3 pointers made since 2020" arrived as threshold 0."""
+    with pytest.raises(TemplateUnsupported, match="counts every game"):
+        threshold_count(con, {"stat": "points", "threshold": 0})
+
+
+@pytest.mark.parametrize(("intent", "slots"), [("player_stat", {"player": "Joe Ingles", "split": "starter_bench"}), ("leaderboard", {"stat": "points", "since": 2020})])
+def test_a_split_or_a_range_is_refused_where_nothing_honours_it(intent: str, slots: dict[str, Any]) -> None:
+    with pytest.raises(TemplateUnsupported, match="different span"):
+        check_scope(intent, slots)

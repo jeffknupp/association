@@ -586,3 +586,47 @@ def test_abbreviated_quarters_and_halves_go_to_the_agent(question: str) -> None:
 def test_a_team_half_is_not_a_quarter_either() -> None:
     assert _ask("Celtics 2nd half scoring this season", '{"intent":"team_quarter_points","team":"Boston Celtics","period":2}').intent == "other"
     assert _ask("76ers 4th qtr points vs boston", '{"intent":"team_quarter_points","team":"Philadelphia 76ers","period":4}').intent == "team_quarter_points"
+
+
+@pytest.mark.parametrize(
+    ("question", "playoff_round"),
+    [
+        ("tatum stats in the 2024 finals", "finals"),
+        ("Chris Paul playoff game 7 record", "game 7"),
+        ("jokic stats in the second round", "second round"),
+        ("tatum stats in the 2024 playoffs", None),  # the whole postseason is answerable
+    ],
+)
+def test_a_playoff_round_is_read_from_the_question(question: str, playoff_round: str | None) -> None:
+    """ "tatum stats in the 2024 finals" was answered with his whole 2024
+    postseason - 19 games, where the Finals were 5."""
+    assert _ask(question, '{"intent":"player_stat"}').slots.get("round") == playoff_round
+
+
+def test_a_split_is_read_for_every_intent_so_others_can_refuse_it() -> None:
+    """Measured: routed to player_stat and answered with his season minutes."""
+    got = _ask("Joe Ingles stats when starting vs coming off the bench", '{"intent":"player_stat","player":"Joe Ingles","stat":"minutes"}')
+    assert got.slots["split"] == "starter_bench"
+
+
+@pytest.mark.parametrize(
+    ("question", "since", "until"),
+    [
+        ("most 3 pointers made since 2020", 2020, None),
+        ("most steals by bucks players 2010s", 2010, 2019),
+        ("most points this season", None, None),
+    ],
+)
+def test_a_range_of_seasons_replaces_the_one_the_model_picked(question: str, since: int | None, until: int | None) -> None:
+    """Measured: "since 2020" became season=2020, answered as one season."""
+    got = _ask(question, '{"intent":"leaderboard","stat":"points","season":2020}')
+    assert got.slots.get("since") == since and got.slots.get("until") == until
+    if since is not None:
+        assert "season" not in got.slots
+
+
+def test_a_record_asked_as_a_count_goes_to_record_when() -> None:
+    """Measured: answered with the league's 30-point-game counts, Embiid dropped."""
+    got = _ask("Sixers record when Embiid scores 30 points this season", '{"intent":"threshold_count","stat":"points","threshold":30}')
+    assert got.intent == "record_when"
+    assert _ask("most 30 point games this season", '{"intent":"threshold_count","stat":"points","threshold":30}').intent == "threshold_count"

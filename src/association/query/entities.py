@@ -583,7 +583,7 @@ def _team_grounded(con: duckdb.DuckDBPyConnection, question: str, team: Entity) 
     return bool(carried & asked)
 
 
-def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], *, reads_player: bool) -> list[str]:
+def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], *, reads_player: bool, needs_player: bool = False) -> list[str]:
     """Put a team the question plays AGAINST where a template will see it.
     Mutates ``slots``; returns a line per change, for the trace.
 
@@ -609,7 +609,10 @@ def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: di
 
     Restoring a player follows :func:`override_invented_players`' discipline:
     only when the question names exactly one player, and only for a template
-    that reads one (``reads_player``).
+    that reads one (``reads_player``). A player the router simply left out is
+    restored only where the template cannot answer without one
+    (``needs_player``): "Sga record 36 plus points" came back with no player
+    at all, and an optional player slot left empty means "the league".
 
     .. versionadded:: 2.1.0
     """
@@ -646,6 +649,12 @@ def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: di
                 slots["player"] = kept[0]
             else:
                 slots["players"] = kept
+
+    if needs_player and not slots.get("player") and not slots.get("players"):
+        player = only_player()
+        if player is not None:
+            slots["player"] = player
+            notes.append(f"player {player!r} (from the question; the router left it out)")
 
     if versus is not None and not slots.get("opponent"):
         carried = [slots.get("team"), *(slots.get("teams") or [])]

@@ -19,7 +19,7 @@ from .keepalive import KEEP_ALIVE
 from .models import DEFAULT_ROUTER_MODEL
 from .prompt import AGENT_NUM_CTX, TOOLS, build_system_prompt
 from .router import route
-from .templates import PLAYER_INTENTS, TEMPLATES, TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, check_scope, coverage_caveat
+from .templates import PLAYER_INTENTS, PLAYER_REQUIRED_INTENTS, TEMPLATES, TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, check_scope, coverage_caveat
 from .toolbox import Toolbox
 
 MAX_TOOL_ITERATIONS = 8
@@ -268,7 +268,7 @@ class Agent:
         # Before the name checks below, because this is where a team the
         # router mistook for a player leaves `players`, and a player it dropped
         # in favor of his team comes back. See entities.scope_from_question.
-        for change in scope_from_question(self.toolbox.con, question, routed.slots, reads_player=routed.intent in PLAYER_INTENTS):
+        for change in scope_from_question(self.toolbox.con, question, routed.slots, reads_player=routed.intent in PLAYER_INTENTS, needs_player=routed.intent in PLAYER_REQUIRED_INTENTS):
             history.log(f"  -> (scope) {change}")
         # The router invents whole names, not only nicknames: "compare sga and
         # embiid" came back with Jusuf Nurkic in the second slot, and every

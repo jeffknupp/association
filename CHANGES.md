@@ -58,6 +58,22 @@ had no published version to be compatible with.
 
   A team ranking asked as a player ranking is sent to `team_leaderboard`.
 
+  A second pass over the ten StatMuse queries the fast path still answered
+  found four more cases of the same shape. These now refuse too:
+
+  - **A playoff round.** "tatum stats in the 2024 finals" was answered with his
+    whole postseason: 19 games, where the Finals were five. Nothing in the
+    warehouse records a round, so no template can honour one.
+  - **A split asked of a template that is not about splits.** "Joe Ingles stats
+    when starting vs coming off the bench" came back as his season minutes.
+  - **A range of seasons.** "most 3 pointers made since 2020" became one season
+    and a threshold of 0, and was answered as "the most games with 0+
+    3-pointers". A zero threshold, which counts every game, is refused as well.
+  - **A record asked as a count.** "Sixers record when Embiid scores 30" was
+    answered with the league's 30-point games. It now goes to `record_when`, and
+    the question's one named player is restored wherever that template needs
+    one.
+
 - **1993-94 player games were listed four times.** `player_game_log` joined
   `games` and `player_advanced_stats` on `event_id` alone, and ESPN files the
   1993-94 season's 1,185 events under both 1993 and 1994 (the phantom in

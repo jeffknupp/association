@@ -78,14 +78,17 @@ SEASON_TYPE_NAMES = {1: "preseason", 2: "regular season", 3: "postseason"}
 # extracts these CORRECTLY in each case, so check_routing cannot catch a
 # template dropping them; only this can.
 #
-# The four after those are read from the question text by the router and by
+# The five after those are read from the question text by the router and by
 # entities.scope_from_question, never asked of the model, and exist for the same
 # reason. Measured against real StatMuse queries before they did: "jaylen brown
 # last 8 games vs pistons" answered with the Celtics' last 8 games, "Knicks
 # home record" with their overall record, "career points leaders" with this
 # season's, and "Podziemski game log without curry" with his whole log. Each
-# was fast, fluent and about something else.
-SCOPING_SLOTS = frozenset({"order", "date", "opponent", "venue", "span", "without"})
+# was fast, fluent and about something else. `round` ("finals", "game 7") is
+# honoured by no template at all: nothing in the warehouse records one. `split`
+# and `since` (a range of seasons) are read for every intent for the same reason:
+# a template that is not about splits or ranges answered them with one season.
+SCOPING_SLOTS = frozenset({"order", "date", "opponent", "venue", "span", "without", "round", "split", "since"})
 
 # What each template actually honours. Anything not listed here honours none.
 HONORED_SCOPING: dict[str, frozenset[str]] = {
@@ -157,6 +160,19 @@ PLAYER_INTENTS: frozenset[str] = frozenset(
     }
 )
 """Intents whose template reads a ``player`` or ``players`` slot.
+
+.. versionadded:: 2.1.0
+"""
+
+
+PLAYER_REQUIRED_INTENTS: frozenset[str] = frozenset({"record_when"})
+"""Intents whose template cannot answer at all without a player, so a player the
+router left out is worth restoring from the question.
+
+Deliberately not every intent that reads one: where the player is optional -
+``threshold_count``, ``single_game_high`` - an empty slot means "the league", and
+filling it would turn a league question into a question about somebody the
+question may only appear to name ("best" is Travis Best).
 
 .. versionadded:: 2.1.0
 """
@@ -347,6 +363,11 @@ def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResu
     threshold = slots.get("threshold")
     if column is None or not isinstance(threshold, int):
         raise TemplateUnsupported(f"threshold_count needs a known stat and an integer threshold, got {stat!r}/{threshold!r}")
+    if threshold < 1:
+        # ">= 0" counts every game, which is never the question: measured, "most 3
+        # pointers made since 2020" arrived as threshold 0 and was answered as
+        # "the most games with 0+ 3-pointers".
+        raise TemplateUnsupported(f"a threshold of {threshold} counts every game - not a question threshold_count answers")
 
     season = slots.get("season") or current_season()
     season_type = slots.get("season_type") or 2
