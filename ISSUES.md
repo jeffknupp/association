@@ -71,11 +71,14 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   counts, streaks, splits and with/without answers. For example: "Anthony
   Davis game log 2015", "Butler 30-point games 2017". Box-score points are
   86.5-87.3% of season totals across 2013-2018.
-- **Next step:** refetch 400828004, 400459778 (a CHI playoff game) and 400975625
-  with `--force`. If ESPN now returns stats, refetch all 1,025 events. If not,
-  rebuild the box lines from `plays` (everything except minutes and
-  plus-minus), and caveat by team until then. Either way, backfill through the
-  real fetch and load path ("Working on the fetch path" in `AGENTS.md`).
+- **A refetch does not fix it.** A full pull of 1988-2026 with current code on
+  2026-09-11, into a separate warehouse, reproduced `player_box_stats` and
+  `team_box_stats` exactly: 1,100,170 and 86,988 rows, zero differences. ESPN
+  still serves the zeroed lines today.
+- **Next step:** rebuild the box lines for those 1,025 events from `plays`,
+  which holds them (everything except minutes and plus-minus), or caveat by
+  team. Do it through the real fetch and load path ("Working on the fetch path"
+  in `AGENTS.md`).
 
 ### Per-game leaderboards for points, rebounds and assists apply no games minimum
 - **Found:** 2026-09-11, template work (agent D); measured in the issues audit
@@ -144,9 +147,11 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   contributed nothing (`fetch/parse.py`).
 - **User sees:** totals leaderboards and career sums silently drop these
   seasons. Seth Curry's career points lose every season from 2014 on.
-- **Next step:** refetch athlete 2326307's career stats through the pipeline. If
-  the totals are still missing, fill them from `avg × gamesPlayed` at load and
-  say so.
+- **A refetch does not fix it.** The 2026-09-11 pull reproduced
+  `player_season_stats` exactly apart from 13 `position` values, so ESPN still
+  serves these lines with the totals category missing.
+- **Next step:** fill the totals from `avg × gamesPlayed` at load, and say so in
+  the answer.
 
 ### The 2000 and 2001 playoffs stop before the Finals
 - **Found:** 2026-09-11, template work (agent B); characterized in the issues audit
@@ -168,9 +173,15 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   Playoff records are short for the teams that went deepest. All of it is
   stated as fact, with no caveat. Only `team_record` notices, through
   `_game_list_gaps`.
-- **Next step:** re-discover the events for 2000-06-02 to 06-19 and 2001-05-27 to
-  06-15, by date or from the finalists' schedules. Until then, add `partial=`
-  caveats to `COVERAGE` for these two postseasons.
+- **A refetch does not fix it either.** The same 2026-09-11 pull returned the
+  same 70 rows for the 2000 postseason, ending on the same date, 2000-06-01,
+  and `games` matched the existing warehouse exactly across all 43,494 rows.
+  Games are discovered from each team's schedule, and ESPN's schedules do not
+  list them.
+- **Next step:** discover these dates from the scoreboard endpoint instead of
+  from team schedules, since the missing games are the ones no team's schedule
+  returns. Until then, add `partial=` caveats to `COVERAGE` for the two
+  postseasons.
 
 ### `games` holds placeholder, duplicate and phantom rows that templates count
 - **Found:** 2026-09-11, template work (agent B), the repo audit and the issues audit
@@ -211,6 +222,9 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** "how many times did the Mavs play the 76ers in 2003" counts one
   game twice, and 1999-2000 matchups count 0-0 "meetings" nobody won. Playoff
   records are inflated for ORL 1995, SEA 1997 and 2000, and PHX and POR 1999.
+- **They are ESPN's rows, not ours.** The 2026-09-11 pull reproduced `games`
+  exactly, placeholders, duplicates and phantoms included, so no fetch or parse
+  change removes them.
 - **Next step:** at load, exclude rows with a team id not in `teams`, a
   date-only stamp and no box rows. Then build `head_to_head` and `conditions` on
   one shared filtered game list.
@@ -239,7 +253,9 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
     - `fouls` averages 0.04, against a real 19.99.
 
     FGM, FGA, 3PM, FTM and rebounds are right. 2017 and 2019 come from the same
-    code with the same column order, so ESPN is the likely cause (unverified).
+    code with the same column order, so ESPN is the cause. Confirmed on
+    2026-09-11: a clean pull with current code reproduced `team_box_stats`
+    exactly, so the misaligned values come from the source, not the parser.
   - **1994-2012 turnovers:** `turnovers` is 0 in nearly every row (2,322-2,459
     rows a season in 2000-2011), and `teamTurnovers` copies `totalTurnovers`.
     Only `totalTurnovers` is usable.
@@ -268,6 +284,8 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   `dedup_traded` both prefer the NULL-team row.
 - **User sees:** "Eric Murdock 1995-96 stats" answers 9 games at 6.9 points a
   game. `player_compare` and `player_history` show the same wrong line.
+- **A refetch does not fix it.** The same pull reproduced every one of these
+  rows; the combined line is what ESPN's career endpoint returns.
 - **Next step:** use the combined row only when it equals its stints' sum, and
   sum the stints otherwise. Add a warehouse test in the Murdock shape.
 
@@ -419,6 +437,50 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   note that a second name was dropped.
 - **Next step:** when two players are named and only one is drawn, say so,
   without restoring the second.
+
+### The NetPoints season fingerprint matches players mid-pull, so a name can be lost
+- **Found:** 2026-09-11, comparing a fresh full pull against the existing warehouse
+- **Evidence:** `fetch_net_points_fingerprint(season)` runs inside the season
+  loop in `Pipeline.pull`, and resolves NetPoints' `displayName` through
+  `_name_to_athlete_id()`, which drops a name shared by more than one player
+  already on disk. So the map depends on how many players the pull has
+  discovered so far. Comparing the existing warehouse with a 1988-2026 pull on
+  2026-09-11, `net_points_player_fingerprint` differs by 12 rows, and every
+  athlete involved shares a display name with exactly one other player:
+  - **10 rows only in the old warehouse**, whose pull fetched 2020-2026 first:
+    Corey Brewer (2020), Henry Ellenson (2020, 2021), Greg Monroe (2022), Mike
+    James (2021), Brandon Williams (2022, 2024, 2025), Ray Spalding (2021),
+    Wayne Selden (2022).
+  - **2 rows only in the fresh warehouse**, whose pull went 1988 upward and so
+    knew the older Wayne Selden and Daryl Macon before their namesakes existed:
+    both in 2019.
+  
+  21 display names in `players` are shared by 42 players, so this can hit any
+  of them. The per-game NetPoints tables are unaffected: `fetch_net_points_daily`
+  runs after the loop, when every player is on disk, and those tables matched
+  exactly.
+- **User sees:** a fingerprint that is missing for a player who has one, with no
+  reason given, and a warehouse whose contents depend on the order seasons were
+  pulled.
+- **Next step:** build the name map once, after the season loop, from the
+  complete `players` table, and re-resolve the fingerprint files then. Keep the
+  source `displayName` on the row either way, so an unmatched name can be
+  recovered.
+
+### Per-game NetPoints rows whose name did not match keep no name
+- **Found:** 2026-09-11, building the warehouse comparison harness
+- **Evidence:** `parse_net_points_daily` and `parse_net_points_daily_players`
+  store `athlete_id = None` when the display name matches no single player, and
+  drop the name. `net_points_player_game` has 2,190 such rows, and
+  `net_points_player_game_fingerprint` has 64,210. Nothing on the row says who
+  they were: 159 keys in the first table and 4,657 in the second hold two or
+  more rows that differ only in their values, and 701 of those groups are exact
+  copies.
+- **User sees:** nothing for those players, with no caveat, and a query grouping
+  by (event_id, athlete_id) counts the unmatched rows as duplicates.
+- **Next step:** keep the source `displayName` (and NBA.com's id) on the row.
+  Then count unmatched names per season to find which spellings the exact match
+  misses.
 
 ## P3: refusal or gap
 
@@ -896,3 +958,40 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   "Next: ...".
 - **User sees:** a docs example shorter than the real output.
 - **Next step:** correct the comment, and paste the example's full answer.
+\n
+### A player's bio is fetched once and never refreshed
+- **Found:** 2026-09-11, comparing a fresh full pull against the existing warehouse
+- **Evidence:** `Pipeline._cache_player_bio` returns early when the file exists,
+  so a bio is whatever ESPN said the day that player was first seen. Against a
+  2026-09-11 pull, 270 of 3,101 `players` rows differ: 265 jersey numbers, 8
+  short names (Enes Kanter is now "E. Freedom", Jimmy Butler "J. Butler III")
+  and one position. The same reclassification moves 13 `player_season_stats`
+  rows and 11 rows of `player_season_stats_deduped` (`PG` to `G`, athlete
+  3907387).
+- **User sees:** nothing today. No template reads `jersey`, `short_name`,
+  `position_abbr` or `position`; they appear only in the agent's schema summary.
+  Anything that starts reading them gets a stale value.
+- **Next step:** re-fetch a bio when it is older than some age, or on `--force`,
+  and record when it was fetched. Note that jersey and position are
+  point-in-time facts stored as if they were static.
+
+### The stat glossary keeps whichever source described a key last
+- **Found:** 2026-09-11, comparing a fresh full pull against the existing warehouse
+- **Evidence:** `Pipeline.write_glossary` merges `{**existing, **self.glossary}`,
+  so the last run to describe a key wins, and a key described by two endpoints
+  takes whichever ran last. Both warehouses hold 211 keys, and `points` differs:
+  the existing one says label "Points", description "Total Points", source
+  `standings`; the fresh one says "PTS", "Points", source `player_box_stats`.
+- **User sees:** nothing yet; no template reads the glossary. The agent can, and
+  would get whichever description was written last.
+- **Next step:** decide a source precedence per key, or keep one row per source.
+
+### The warehouse file keeps the space of every load it has had
+- **Found:** 2026-09-11, comparing a fresh full pull against the existing warehouse
+- **Evidence:** the same 19 tables and 4 views, with identical row counts, take
+  1.73 GiB in the existing warehouse against 0.92 GiB in the freshly built
+  one. `warehouse.build` replaces tables in place, and DuckDB reuses the file's
+  free space only for later writes, so repeated partial loads leave it behind.
+- **User sees:** nothing. It is disk and a slower cold read.
+- **Next step:** build into a temporary file and swap it in, or run a periodic
+  compaction, if the size matters.
