@@ -42,6 +42,19 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 
 ## P1: wrong answer
 
+### Vancouver's whole 1996 season has an empty box score
+- **Found:** 2026-09-11, writing DATA.md
+- **Evidence:** all 82 of Vancouver's 1995-96 games, and one more, are stored
+  with every player row at NULL minutes and zero stats: the same shape as the
+  Chicago and New Orleans seasons. It had been counted as "5 games with no box
+  score in 1996" and attributed to no team.
+- **Source:** DATA.md, "Vancouver's whole 1996 season has an empty box score too"
+- **User sees:** the same wrong answers as the 2013-18 seasons, for anything
+  reading 1996 box scores: a Grizzlies game log of zeros, and counts, highs and
+  streaks that skip a whole team's season without saying so.
+- **Next step:** fold it into whatever fixes the 2013-18 seasons - rebuild the
+  lines from `plays` where they exist, or caveat by team.
+
 ### Nearly every Bulls and Pelicans box score from 2013 to 2018 is zeros
 - **Found:** 2026-09-11, template work; characterized in the issues audit
 - **Evidence:** a team-game is empty when every player row has NULL minutes and
@@ -79,6 +92,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   which holds them (everything except minutes and plus-minus), or caveat by
   team. Do it through the real fetch and load path ("Working on the fetch path"
   in `AGENTS.md`).
+- **Source:** DATA.md, "Every Chicago and New Orleans game from 2013 to 2018 has an empty box score"
 - **GitHub:** #1
 
 ### The router drops a named player from a single-game high
@@ -124,6 +138,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   serves these lines with the totals category missing.
 - **Next step:** fill the totals from `avg × gamesPlayed` at load, and say so in
   the answer.
+- **Source:** DATA.md, "246 season lines are served with no totals"
 - **GitHub:** #5
 
 ### The 2000 and 2001 playoffs stop before the Finals
@@ -155,6 +170,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   from team schedules, since the missing games are the ones no team's schedule
   returns. Until then, add `partial=` caveats to `COVERAGE` for the two
   postseasons.
+- **Source:** DATA.md, "The 2000 and 2001 playoffs stop before the Finals"
 - **GitHub:** #6
 
 ### `games` holds placeholder, duplicate and phantom rows that templates count
@@ -202,6 +218,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** at load, exclude rows with a team id not in `teams`, a
   date-only stamp and no box rows. Then build `head_to_head` and `conditions` on
   one shared filtered game list.
+- **Source:** DATA.md, "`games` carries placeholder, duplicate and phantom rows"
 - **GitHub:** #7
 
 ### 2018 team box scores have values under the wrong column names
@@ -241,6 +258,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   for turnovers before 2013.
 - **Next step:** at load, rebuild the 2018 columns and the pre-2013 turnover
   columns from player-box sums. Refetch one 2018 event to confirm the cause.
+- **Source:** DATA.md, "2018 team box scores hold values under the wrong column names"
 - **GitHub:** #8
 
 ### Traded players' combined season rows are wrong in 26 cases
@@ -264,6 +282,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   rows; the combined line is what ESPN's career endpoint returns.
 - **Next step:** use the combined row only when it equals its stints' sum, and
   sum the stints otherwise. Add a warehouse test in the Murdock shape.
+- **Source:** DATA.md, "Traded players' combined season rows disagree with their own stints"
 - **GitHub:** #9
 
 ## P2: misleading or incomplete
@@ -303,6 +322,10 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   numbers.
 - **Next step:** compute a `cup_final` flag once at load, and apply it in
   `conditions`, `head_to_head` and the box-derived regular-season aggregates.
+  Take the flag from NetPoints, which labels the game `IST Championship` (69
+  rows in `net_points_player_game`), rather than inferring it from "the last
+  neutral-site game in Las Vegas", which breaks when the venue moves.
+- **Source:** DATA.md, "The NBA Cup final is stored as a regular-season game"
 - **GitHub:** #11
 
 ### `fg_pct` and `efg_pct` qualify on different floors over the same denominator
@@ -336,20 +359,21 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Evidence:**
   - **2000 regular season:** `games` holds 1,166 of 1,189 real games. 18 teams
     have 80 of their 82, 10 have 81, and LAC has all 82.
-  - **Real regular-season games with no box score:** 5 in 1994, 5 in 1996, 6 in
-    1997, 4 in 1998 and 4 in 2000. Almost all are road games at UTAH, CLE or
-    WSH.
+  - **Real regular-season games with no box score:** 6 in 1994, 83 in 1996, 6
+    in 1997, 5 in 1998, 5 in 2000 and 1 in 2003. Most are road games at UTAH,
+    CLE or WSH. The 1996 figure is not scattered: 82 of those games are
+    Vancouver's entire schedule, which has its own entry above.
   - **Real postseason games with no box score:** the entire 1997 ECF CHI-MIA
     (`170520014`, `170522014`, `170524004`, `170526004`, `170528014`),
     `150614019` (1995 Finals), `160502025` (1996 SAC-SEA) and `230503026` (1998
     UTAH-HOU).
-  - **2002 scores:** 20 points short across 6 teams, with equal game counts.
   - **NULL minutes in 2006-2012** mean the player did not appear. Dropping those
     rows raised 2009's games-played agreement from 30 to 378 of 445 players.
 - **User sees:** small shortfalls, with no caveat, in box-derived answers for
   those seasons.
 - **Next step:** refetch the listed events through the pipeline. Check that every
   box-derived template treats NULL minutes as "did not play".
+- **Source:** DATA.md, "Real postseason games with no box score"
 - **GitHub:** #14
 
 ### The 2026 shot chart holds more shots than the box score
@@ -365,6 +389,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** check whether box scores leave out buzzer heaves (a shot after
   the horn, or one ESPN logs but does not credit). If they do, filter the chart
   the same way.
+- **Source:** DATA.md, "The 2026 shot chart holds more shots than the box score"
 - **GitHub:** #15
 
 ### `with_without` undercounts a season-long absence
@@ -386,6 +411,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   name.
 - **Next step:** build a per-season team-name table from each game's own team
   names, and use it wherever a historical game is printed.
+- **Source:** DATA.md, "`teams` holds only the 30 current franchises"
 - **GitHub:** #17
 
 ### A retired player's question defaults to the current season
@@ -454,6 +480,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   complete `players` table, and re-resolve the fingerprint files then. Keep the
   source `displayName` on the row either way, so an unmatched name can be
   recovered.
+- **Source:** DATA.md, "NetPoints publishes a display name, not a player id"
 - **GitHub:** #21
 
 ### Per-game NetPoints rows whose name did not match keep no name
@@ -470,6 +497,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** keep the source `displayName` (and NBA.com's id) on the row.
   Then count unmatched names per season to find which spellings the exact match
   misses.
+- **Source:** DATA.md, "NetPoints publishes a display name, not a player id"
 - **GitHub:** #22
 
 ## P3: refusal or gap
@@ -513,6 +541,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** a refusal for "who leads the East". For "Western Conference
   standings", a slow agent answer with nothing to ground it.
 - **Next step:** a static team-to-conference table, per season.
+- **Source:** DATA.md, "No conference, division or birth-date data anywhere"
 - **GitHub:** #25
 
 ### A player's career TS% is refused
@@ -535,6 +564,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** `team_outlook` has nothing for most teams in past seasons.
 - **Next step:** write dated snapshots going forward. Past seasons cannot be
   recovered.
+- **Source:** DATA.md, "ESPN's power index keeps only postseason teams"
 - **GitHub:** #27
 
 ### A games minimum cannot be given to the agent's TS%/eFG% leaderboard tool
@@ -593,6 +623,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
     is inherent until a bio source is added.
 - **User sees:** a fall-through to the agent.
 - **Next step:** take them in that order.
+- **Source:** DATA.md, "No conference, division or birth-date data anywhere"
 - **GitHub:** #32
 
 ### A router-invented name one edit from a real one falls through instead of asking
@@ -748,6 +779,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
     of 7,941.
 - **User sees:** nothing. An agent reads wrong facts.
 - **Next step:** correct all three.
+- **Source:** DATA.md, "ESPN's `possessions` counts every turnover twice before 2013"
 - **GitHub:** #43
 
 ### Broad `except duckdb.Error` in `_single_game_netpoints`
@@ -862,14 +894,16 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
     minutes on average, in every season from 2013 to 2026 (24,000-28,600 a
     season). 13,160 of 2026's are starters. Only `fetch/parse.py` touches the
     column. `did_not_play` is the field that says whether a player sat.
-  - `plusMinus` is NULL on 14.3% of box rows. That is exactly the rows with
-    NULL minutes, not a random gap.
+  - `plusMinus` is NULL on 14.3% of box rows: a subset of the rows with NULL
+    minutes, not the same set. 83,224 rows have no minutes but a real
+    plus-minus.
   - `team_season_stats.plusMinus` is a -1.0 placeholder.
   - `largestLead` is filled on 47,480 of 83,261 non-empty team box rows, and
     `leadChanges` on 2,018.
   - `net_points_team` holds 2026 only, which is inherent to the source.
 - **User sees:** nothing today. Any template that starts reading these would.
 - **Next step:** measure each one before a template reads it.
+- **Source:** DATA.md, "`dnp_reason` is set on players who played"
 - **GitHub:** #53
 
 ### Team box scores disagree slightly with player-box sums in 2019, 2021 and 2026
@@ -885,6 +919,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   be off by a count in a few games.
 - **Next step:** compare a handful of the disagreeing games against the source
   box score.
+- **Source:** DATA.md, "Team box scores disagree slightly with player-box sums in some seasons"
 - **GitHub:** #54
 
 ### Shots past half court are counted but drawn off the canvas
@@ -1005,6 +1040,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** re-fetch a bio when it is older than some age, or on `--force`,
   and record when it was fetched. Note that jersey and position are
   point-in-time facts stored as if they were static.
+- **Source:** DATA.md, "A player's bio is point-in-time, stored as if it were static"
 - **GitHub:** #64
 
 ### The stat glossary keeps whichever source described a key last
@@ -1017,6 +1053,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** nothing yet; no template reads the glossary. The agent can, and
   would get whichever description was written last.
 - **Next step:** decide a source precedence per key, or keep one row per source.
+- **Source:** DATA.md, "One stat key is described differently by two endpoints"
 - **GitHub:** #65
 
 ### The warehouse file keeps the space of every load it has had
@@ -1029,3 +1066,14 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** build into a temporary file and swap it in, or run a periodic
   compaction, if the size matters.
 - **GitHub:** #66
+
+### Free-throw coordinates stop after 2018
+- **Found:** 2026-09-11, writing DATA.md
+- **Evidence:** free throws carry a court position through 2018 and then stop:
+  93 of 60,813 in 2019, and none by 2026.
+- **Source:** DATA.md, "Free throws carry a court position from 2002 to 2018"
+- **User sees:** nothing today. A shot chart excludes free throws by value, not
+  by position, so the gap changes no answer. Anything that started reading a
+  free throw's coordinates would be reading nothing for recent seasons.
+- **Next step:** none until something reads them. Recorded so the next reader
+  does not mistake the gap for a parser fault.
