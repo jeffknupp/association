@@ -96,25 +96,6 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Source:** DATA.md, "Every Chicago and New Orleans game from 2013 to 2018 has an empty box score"
 - **GitHub:** #1
 
-### The router drops a named player from a single-game high
-- **Found:** 2026-09-11, while fixing name clarification; reproduced the same day
-- **Evidence:** "most points curry scored in a game this season" routed
-  (qwen2.5:3b, temperature 0) to `single_game_high` with slots
-  `{'stat': 'points', 'season_type': 2, 'season': 2026}`: no `player`. Nothing
-  downstream restores it. `restore_dropped_players` acts for `fingerprint` only.
-  `scope_from_question` restores a player only for `PLAYER_REQUIRED_INTENTS`
-  (`record_when`), deliberately, since an empty optional slot means the league
-  (`query/templates.py`). And `players_named_in` could not supply one anyway:
-  "curry" is a whole word of six players' names.
-- **User sees:** a league-wide answer to a question about one player: "Bam
-  Adebayo had the most points in a single game in the 2026 regular season: 83",
-  not Curry's high.
-- **Next step:** add the question to `scripts/check_routing.py`. Then, where a
-  missing player means the league, notice a player-shaped word the slots lost
-  and ask which player was meant rather than restoring one. Measure how often
-  that fires on the corpus first ("best" is Travis Best).
-- **GitHub:** #3
-
 ### 246 season lines have NULL totals
 - **Found:** 2026-09-11, issues audit
 - **Evidence:** in `player_season_stats`, 104 regular-season rows (42 players)

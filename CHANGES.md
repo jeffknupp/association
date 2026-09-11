@@ -15,6 +15,21 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A single-game high keeps the player the question named.** "most points
+  curry scored in a game this season" came back from the router as
+  `single_game_high` with no player slot at all, and the answer was the
+  league's high - Bam Adebayo's - to a question about one man. The player is
+  optional for that template (an empty slot means the league), so nothing
+  downstream restored it, and `players_named_in` could not: "curry" is six
+  players and it refuses to guess between them.
+
+  The subject is now read from the question's grammar - a name before a scoring
+  verb, or carrying a possessive - and handed to normal resolution, which asks
+  "did you mean Seth Curry or Stephen Curry?". A word scan could not do this:
+  "best" is Travis Best, "game" is Jaron Blossomgame, "high" is Haywood
+  Highsmith and "single" is four players, so scanning would answer "the highest
+  scoring game by a player this year" about somebody. Read from the text, so
+  `ROUTER_PROMPT` and `ROUTER_SCHEMA` are unchanged.
 - **Per-game leaderboards for points, rebounds, assists, steals and blocks
   apply a games minimum.** These five ranked every board unqualified, so the
   fewest games was the easiest route to the top of one: "who led the league in

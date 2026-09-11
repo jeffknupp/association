@@ -222,6 +222,10 @@ CASES: list[tuple[str, str, dict]] = [
     ("lebron vs kawhi head to head", "player_matchup", {}),
     ("lakers longest winning streak this season", "streak", {}),
     ("Diabate career high assists", "single_game_high", {"stat": "assists", "span": "career"}),
+    # The model drops the player here and the slot is optional, so nothing
+    # downstream restored it: the answer was the league's high, to a question
+    # about one man. Read from the question's grammar - see _subject_named_in.
+    ("most points curry scored in a game this season", "single_game_high", {"stat": "points", "player": "curry"}),
     ("who has the most threes this season", "leaderboard", {"stat": "threePointFieldGoalsMade"}),
     ("career points leaders", "leaderboard", {"span": "career"}),
     ("Knicks home record this season", "team_record", {"venue": "home"}),

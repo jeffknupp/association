@@ -461,6 +461,39 @@ def _validate_venue(question: str) -> str | None:
 # season named ("career high this season") it means that season's best, and it
 # is a worked example of single_game_high in ROUTER_PROMPT.
 _CAREER_HIGH = re.compile(r"\bcareer[- ]highs?\b", re.IGNORECASE)
+
+# The subject of a single-game high, when the model drops it. Measured live:
+# "most points curry scored in a game this season" comes back as
+# single_game_high with NO player slot, and the answer is the league's high -
+# Bam Adebayo's - to a question about one man. The player slot is optional
+# there (an empty one means "the league"), so nothing downstream restores it,
+# and players_named_in cannot: "curry" is six players and it refuses to guess.
+#
+# So the subject is read from the GRAMMAR rather than from a word list. A word
+# scan cannot work here: "best" is Travis Best, "game" is Jaron Blossomgame,
+# "high" is Haywood Highsmith and "single" is four players, so scanning would
+# hijack "the highest scoring game by a player this year". A name before a
+# scoring verb, or carrying a possessive, is a subject; the question words are
+# excluded because "who scored the most" names nobody.
+_SUBJECT_WORDS = frozenset({"who", "what", "which", "that", "he", "she", "they", "it", "player", "anyone", "someone", "nobody", "team", "one", "the", "and", "any"})
+_SUBJECT_OF_HIGH = re.compile(r"\b([A-Za-z][A-Za-z.'\-]{2,})(?:'s\b|\s+(?:scored|scores|score|dropped|put\s+up|hung|shot))", re.IGNORECASE)
+
+
+def _subject_named_in(question: str) -> str | None:
+    """The word a single-game-high question makes its subject, or None.
+
+    Returns the question's own word, not a resolved player: resolution decides
+    whether it names somebody, and asks when it is ambiguous. "curry" then
+    answers "did you mean Seth Curry or Stephen Curry?", which is the question
+    asked - where the league's high is not.
+    """
+    for match in _SUBJECT_OF_HIGH.finditer(question):
+        word = match.group(1)
+        if word.casefold() not in _SUBJECT_WORDS:
+            return word
+    return None
+
+
 _SPAN_WORDS = re.compile(r"\b(?:career|all[- ]time|ever|(?:in|of)\s+(?:nba\s+)?history|of\s+all\s+time)\b", re.IGNORECASE)
 _SEASON_WORDS = re.compile(r"\b(?:this|last|next)\s+(?:season|year)\b", re.IGNORECASE)
 
@@ -965,6 +998,13 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     ):
         slots["span"] = "career"
         slots.pop("season", None)
+    if raw["intent"] == "single_game_high" and not slots.get("player") and not slots.get("players"):
+        # An optional slot the model dropped, restored from the question's own
+        # grammar - see _subject_named_in. Only where the template reads one
+        # player: a leaderboard with no player IS the league's ranking.
+        subject = _subject_named_in(question)
+        if subject is not None:
+            slots["player"] = subject
     if raw["intent"] == "fingerprint":
         side = _validate_side(slots, question)
         if side is None:

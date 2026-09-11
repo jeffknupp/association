@@ -810,3 +810,33 @@ def test_a_model_season_before_1990_is_kept() -> None:
     """The model's `season` slot had the same 1990 floor as the text, so a 1980 it filled in was dropped."""
     got = _ask("who led the league in scoring back then", '{"intent":"leaderboard","stat":"points","season":1980}')
     assert got.slots["season"] == 1980
+
+
+def test_a_single_game_high_keeps_the_player_the_question_names() -> None:
+    """Measured live: "most points curry scored in a game this season" came back
+    as single_game_high with no player at all, and the answer was the league's
+    high - Bam Adebayo's - to a question about one man. players_named_in cannot
+    restore it, since "curry" is six players and it refuses to guess, so the
+    subject is read from the grammar and resolution asks which Curry."""
+    got = _ask("most points curry scored in a game this season", '{"intent":"single_game_high","stat":"points","season_ref":"current"}')
+    assert got.slots["player"] == "curry"
+    possessive = _ask("curry's highest scoring game this season", '{"intent":"single_game_high","stat":"points","season_ref":"current"}')
+    assert possessive.slots["player"] == "curry"
+
+
+def test_a_league_wide_single_game_high_stays_league_wide() -> None:
+    """The other half: a question naming nobody must not gain a player. "best"
+    is Travis Best, "game" is Jaron Blossomgame and "high" is Haywood
+    Highsmith, so a word scan would answer these about somebody."""
+    for question in (
+        "What was the highest scoring game by a player this year?",
+        "who had the most assists in a single game and how many did he have",
+        "who scored the most points in a game this season",
+    ):
+        got = _ask(question, '{"intent":"single_game_high","stat":"points","season_ref":"current"}')
+        assert "player" not in got.slots, question
+
+
+def test_the_model_s_own_player_is_not_overwritten() -> None:
+    got = _ask("most points Stephen Curry scored in a game this season", '{"intent":"single_game_high","stat":"points","player":"Stephen Curry"}')
+    assert got.slots["player"] == "Stephen Curry"
