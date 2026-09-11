@@ -14,6 +14,33 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
+## Unreleased
+
+- **Per-game leaderboards for points, rebounds, assists, steals and blocks
+  apply a games minimum.** These five ranked every board unqualified, so the
+  fewest games was the easiest route to the top of one: "who led the league in
+  rebounding in 2001" answered Danny Fortson, who played 6 games, where
+  Dikembe Mutombo led it over 79, and "who led the 2023 playoffs in scoring"
+  answered Kawhi Leonard on 2 games rather than Devin Booker on 17. Measured
+  over 1994-2026, two regular-season boards and 15 postseason ones were led
+  from under the floors. They now use the same 20 games, and 5 in the
+  postseason, that every newer per-game metric already used, and the answer
+  names the qualifier it applied ("minimum 20 games") the way a percentage
+  already named its attempts.
+
+  Counts are deliberately left alone. A season total, a double-double count
+  and a cumulative NetPoints figure need volume to rank at all, and no board
+  of one was ever led from under these floors - the two triple-double boards
+  that were are right, since nobody records more triple-doubles than he plays
+  games. Career leaderboards already qualified and are unchanged.
+
+  The five are now built by the same helper the newer per-game metrics use, so
+  "a per-game metric" has one definition rather than two that can disagree,
+  and a test over the whole registry fails if another arrives without both
+  floors. That is what was missing: the omission read as deliberate, because a
+  metric naming a qualifying column and no threshold is how this registry says
+  "rank this unqualified".
+
 ## 2.1.0 - 2026-09-11
 The largest release so far on the query side. It adds eight new kinds of
 question, and most existing ones can now be narrowed the way real questions

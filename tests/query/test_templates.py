@@ -9,6 +9,7 @@ import pytest
 
 from association.query import shotchart
 from association.query.entities import MAX_CANDIDATES
+from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from association.query.templates import (
     HONORED_SCOPING,
     SCOPING_SLOTS,
@@ -205,7 +206,7 @@ def test_leaderboard_maps_a_plain_stat_slot_onto_a_real_metric(lb_con: TemplateC
 
 def test_leaderboard_phrases_its_own_answer(lb_con: TemplateContext) -> None:
     result = leaderboard(lb_con, {"stat": "points", "limit": 2})
-    assert result.answer == (f"Luka Doncic led the league in points per game in the {current_season()} regular season, at 33.5. Next: Stephen Curry (27.1).")
+    assert result.answer == (f"Luka Doncic led the league in points per game in the {current_season()} regular season (minimum 20 games), at 33.5. Next: Stephen Curry (27.1).")
 
 
 def test_leaderboard_names_the_team_when_filtered(lb_con: TemplateContext) -> None:
@@ -296,6 +297,78 @@ def test_a_shooting_percentage_scales_its_qualifier_for_the_postseason(shooting_
 def test_an_empty_board_says_what_nobody_met(shooting_ctx: TemplateContext) -> None:
     result = leaderboard(shooting_ctx, {"stat": "true_shooting", "season": 2024})
     assert result.answer == "No players qualified for true shooting % in the league in the 2024 regular season (minimum 550 true-shooting attempts)."
+
+
+@pytest.fixture
+def games_ctx(tmp_path: Path) -> TemplateContext:
+    """Real rows in the two shapes that had no games qualifier.
+
+    Danny Fortson played 6 games in 2000-01 and averaged 16.3 rebounds, which
+    led the league; Dikembe Mutombo, who actually led it, averaged 13.5 over
+    79. In the 2023 playoffs Kawhi Leonard played 2 games at 34.5 points and
+    led the postseason; Devin Booker led it at 33.7 over 17.
+    """
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO players VALUES ('1','Danny Fortson'),('2','Dikembe Mutombo'),('3','Ben Wallace'),('4','Kawhi Leonard'),('5','Devin Booker'),('6','Anthony Edwards')")
+    c.execute(
+        "CREATE TABLE player_season_stats (athlete_id VARCHAR, team_id VARCHAR, season INTEGER, season_type INTEGER, gamesPlayed INTEGER, "
+        "avgRebounds DOUBLE, totalRebounds INTEGER, avgPoints DOUBLE, points INTEGER)"
+    )
+    c.executemany(
+        "INSERT INTO player_season_stats VALUES (?,?,?,?,?,?,?,?,?)",
+        [
+            ("1", "5", 2001, 2, 6, 16.3, 98, 11.3, 68),
+            ("2", "6", 2001, 2, 79, 13.5, 1071, 11.7, 926),
+            ("3", "7", 2001, 2, 80, 13.2, 1052, 6.4, 511),
+            ("4", "8", 2023, 3, 2, 5.5, 11, 34.5, 69),
+            ("5", "9", 2023, 3, 17, 4.7, 80, 33.7, 573),
+            ("6", "10", 2023, 3, 5, 6.0, 30, 31.6, 158),
+        ],
+    )
+    return TemplateContext(con=c, out_dir=tmp_path)
+
+
+def test_a_per_game_leaderboard_qualifies_on_games(games_ctx: TemplateContext) -> None:
+    """Regression: "who led the league in rebounding in 2001" answered Danny
+    Fortson, on 6 games. Measured over 1994-2026 against the warehouse, two
+    regular-season boards (2000 and 2001 rebounding) and 15 postseason ones
+    were led from under the floors the newer per-game metrics already used."""
+    result = leaderboard(games_ctx, {"stat": "rebounds", "season": 2001})
+    assert [r["display_name"] for r in result.data["leaders"]] == ["Dikembe Mutombo", "Ben Wallace"]
+    assert result.data["min_sample"] == PER_GAME_MIN_GAMES
+
+
+def test_a_per_game_leaderboard_names_the_qualifier_it_applied(games_ctx: TemplateContext) -> None:
+    """A floor nobody is told about is why "why isn't Fortson here?" has no
+    answer - and the leader's own 79 games are the reason he is."""
+    answer = leaderboard(games_ctx, {"stat": "rebounds", "season": 2001}).answer
+    assert answer == "Dikembe Mutombo led the league in rebounds per game in the 2001 regular season (minimum 20 games), at 13.5. Next: Ben Wallace (13.2)."
+
+
+def test_a_per_game_leaderboard_scales_its_qualifier_for_the_postseason(games_ctx: TemplateContext) -> None:
+    """20 games is more than a title run, so the season floor cannot carry
+    over; 5 is more than a first-round sweep. Kawhi Leonard's 2 games led 2023
+    playoff scoring, and Anthony Edwards's 5 still qualify."""
+    result = leaderboard(games_ctx, {"stat": "points", "season": 2023, "season_type": 3})
+    assert [r["display_name"] for r in result.data["leaders"]] == ["Devin Booker", "Anthony Edwards"]
+    assert result.data["min_sample"] == PER_GAME_MIN_POSTSEASON_GAMES
+    assert "(minimum 5 games)" in (result.answer or "")
+
+
+def test_every_per_game_metric_carries_both_games_qualifiers() -> None:
+    """The bug was one omission in a list, so the guard is over the whole list
+    rather than the three stats it was reported for. A per-game average with
+    no floor is led by whoever played fewest games. Counting metrics are
+    deliberately not here: a season total or a double-double count needs
+    volume to rank at all, and measured over 1994-2026 no season total, and no
+    double-double count, was ever led from under these floors."""
+    unqualified = [
+        name
+        for name, spec in LEADERBOARD_METRICS.items()
+        if spec.table == "player_season_stats" and spec.column.startswith("avg") and (spec.default_min_sample != PER_GAME_MIN_GAMES or spec.postseason_min_sample != PER_GAME_MIN_POSTSEASON_GAMES)
+    ]
+    assert unqualified == []
 
 
 # ---------------- player_stat ----------------

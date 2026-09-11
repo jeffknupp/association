@@ -80,8 +80,19 @@ class LeaderboardMetric:
     the qualifying threshold that keeps small-sample flukes (a garbage-time
     cameo, a 1-game call-up) from dominating a rate/percentage ranking -
     confirmed live necessary for usage_pct and NetPoints per-100-possession
-    values, not needed (and left off) for season-total/average box-score
-    stats, which naturally require volume to rank highly.
+    values, and necessary for every per-game average too, where the fewest
+    games is the easiest way to the top of a board.
+
+    A COUNT is the exception and the only one: a season total, a
+    double-double count and a cumulative NetPoints figure all need volume to
+    rank at all, so they carry ``min_sample_column`` (a question may still
+    give its own minimum) and no floor of their own.
+
+    ``min_sample_column`` without a ``default_min_sample`` therefore means
+    "ranked unqualified unless asked otherwise", which is a claim about the
+    metric - not an omission to be read as one. It was read as one for the
+    five original per-game averages, and they ranked unqualified for as long
+    as it was.
 
     ``ratio`` ranks makes over attempts, computed from the two season totals,
     instead of ``column``. ESPN's percentage columns are rounded to one decimal
@@ -99,6 +110,10 @@ class LeaderboardMetric:
 
     .. versionchanged:: 2.1.0
        Added ``ratio``, ``postseason_min_sample`` and ``career``.
+
+    .. versionchanged:: 2.1.1
+       Every per-game average now carries the games qualifiers, so a ranking
+       by one is qualified in both season types.
     """
 
     table: str
@@ -129,6 +144,36 @@ CAREER_MIN_POSTSEASON_GAMES = 50
 
 def _career_per_game(total: str) -> CareerAggregate:
     return CareerAggregate(numerator=total, denominator="gamesPlayed", min_sample=CAREER_MIN_GAMES, postseason_min_sample=CAREER_MIN_POSTSEASON_GAMES)
+
+
+# The season qualifier for a per-game rate: the same 20 games usage and true
+# shooting already use. Measured on 2025-26 without one, "fouls per game" was
+# led by a player with three games and "minutes per game" had a six-game
+# player fourth. The postseason's is 5 - more than a first-round sweep.
+#
+# Both are flat, not scaled to the schedule, and measured against the whole
+# warehouse that holds: over 1994-2026 the thinnest regular season still
+# qualifies 336 players (1999, the 50-game lockout year) of 440, and the
+# thinnest postseason 92 of 185. No board anywhere goes empty at these floors,
+# so the cost of applying them is a small-sample leader and nothing else.
+PER_GAME_MIN_GAMES = 20
+PER_GAME_MIN_POSTSEASON_GAMES = 5
+
+
+def _per_game(column: str, total: str | None, label: str) -> LeaderboardMetric:
+    # `total` is the season-total column behind the average; minutes has none,
+    # so its career value is games-weighted from the averages instead.
+    return LeaderboardMetric(
+        table="player_season_stats",
+        column=column,
+        label=label,
+        dedup_traded=True,
+        extra_columns=("gamesPlayed",),
+        min_sample_column="gamesPlayed",
+        default_min_sample=PER_GAME_MIN_GAMES,
+        postseason_min_sample=PER_GAME_MIN_POSTSEASON_GAMES,
+        career=_career_per_game(total) if total else CareerAggregate(numerator=column, weighted=True, min_sample=CAREER_MIN_GAMES, postseason_min_sample=CAREER_MIN_POSTSEASON_GAMES),
+    )
 
 
 LEADERBOARD_METRICS: dict[str, LeaderboardMetric] = {
@@ -186,20 +231,30 @@ LEADERBOARD_METRICS: dict[str, LeaderboardMetric] = {
         postseason_min_sample=59,
         requires="warehouse rebuilt with `association data load` after player_box_stats was fetched",
     ),
-    "avg_points": LeaderboardMetric(table="player_season_stats", column="avgPoints", label="points per game", dedup_traded=True, min_sample_column="gamesPlayed", career=_career_per_game("points")),
-    "avg_rebounds": LeaderboardMetric(
-        table="player_season_stats", column="avgRebounds", label="rebounds per game", dedup_traded=True, min_sample_column="gamesPlayed", career=_career_per_game("totalRebounds")
-    ),
-    "avg_assists": LeaderboardMetric(
-        table="player_season_stats", column="avgAssists", label="assists per game", dedup_traded=True, min_sample_column="gamesPlayed", career=_career_per_game("assists")
-    ),
-    "avg_steals": LeaderboardMetric(table="player_season_stats", column="avgSteals", label="steals per game", dedup_traded=True, min_sample_column="gamesPlayed", career=_career_per_game("steals")),
-    "avg_blocks": LeaderboardMetric(table="player_season_stats", column="avgBlocks", label="blocks per game", dedup_traded=True, min_sample_column="gamesPlayed", career=_career_per_game("blocks")),
+    # Built by the same helper the newer per-game metrics use, so there is one
+    # definition of "a per-game metric" rather than two that can disagree.
+    # These five were the two: each carried min_sample_column with no floor to
+    # apply to it, which reads as deliberate and ranked every board
+    # unqualified. Danny Fortson's 6 games led 2001 rebounding at 16.3 (it was
+    # Dikembe Mutombo) and Kawhi Leonard's 2 led 2023 playoff scoring.
+    "avg_points": _per_game("avgPoints", "points", "points per game"),
+    "avg_rebounds": _per_game("avgRebounds", "totalRebounds", "rebounds per game"),
+    "avg_assists": _per_game("avgAssists", "assists", "assists per game"),
+    "avg_steals": _per_game("avgSteals", "steals", "steals per game"),
+    "avg_blocks": _per_game("avgBlocks", "blocks", "blocks per game"),
     # ESPN precomputes these as a season COUNT of such games, so "most
     # triple-doubles" is a leaderboard, not a per-game threshold recount. A
     # double-double is >=10 in TWO of {points, rebounds, assists, steals,
     # blocks} in one game, a triple-double >=10 in THREE - settled, and
     # already applied upstream in these columns.
+    #
+    # No games floor, unlike the averages above, because a count is
+    # self-limiting: nobody records more triple-doubles than he plays games.
+    # Measured over 1994-2026, no double-double board and no season-total
+    # board was ever led from under these floors, and the two triple-double
+    # boards that were are right - Kevin Garnett's 2 in the 2000 playoffs beat
+    # everybody else's 1. A floor here would delete a true answer rather than
+    # correct a wrong one.
     "double_doubles": LeaderboardMetric(
         table="player_season_stats", column="doubleDouble", label="double-doubles", dedup_traded=True, min_sample_column="gamesPlayed", career=CareerAggregate(numerator="doubleDouble")
     ),
@@ -287,33 +342,9 @@ for _src_category, _our_prefix in FINGERPRINT_CATEGORIES.items():
 FINGERPRINT_METRIC_NAMES = frozenset(LEADERBOARD_METRICS) - CORE_METRIC_NAMES
 
 
-# The season qualifier for a per-game rate: the same 20 games usage and true
-# shooting already use. Measured on 2025-26 without one, "fouls per game" was
-# led by a player with three games and "minutes per game" had a six-game
-# player fourth. The postseason's is 5 - more than a first-round sweep.
-PER_GAME_MIN_GAMES = 20
-PER_GAME_MIN_POSTSEASON_GAMES = 5
-
-
 def _season_total(column: str, label: str) -> LeaderboardMetric:
     # No qualifier: a season total needs volume to rank at all.
     return LeaderboardMetric(table="player_season_stats", column=column, label=label, dedup_traded=True, min_sample_column="gamesPlayed", career=CareerAggregate(numerator=column))
-
-
-def _per_game(column: str, total: str | None, label: str) -> LeaderboardMetric:
-    # `total` is the season-total column behind the average; minutes has none,
-    # so its career value is games-weighted from the averages instead.
-    return LeaderboardMetric(
-        table="player_season_stats",
-        column=column,
-        label=label,
-        dedup_traded=True,
-        extra_columns=("gamesPlayed",),
-        min_sample_column="gamesPlayed",
-        default_min_sample=PER_GAME_MIN_GAMES,
-        postseason_min_sample=PER_GAME_MIN_POSTSEASON_GAMES,
-        career=_career_per_game(total) if total else CareerAggregate(numerator=column, weighted=True, min_sample=CAREER_MIN_GAMES, postseason_min_sample=CAREER_MIN_POSTSEASON_GAMES),
-    )
 
 
 def _percentage(column: str, made: str, attempted: str, label: str, qualifiers: tuple[int, int, int, int]) -> LeaderboardMetric:

@@ -115,9 +115,13 @@ def ctx(tmp_path: Path) -> TemplateContext:
         "avgPoints DOUBLE, avgRebounds DOUBLE, avgAssists DOUBLE, avgSteals DOUBLE, avgBlocks DOUBLE, avgTurnovers DOUBLE, avgFouls DOUBLE, avgMinutes DOUBLE, "
         "points INTEGER, rebounds INTEGER, assists INTEGER, steals INTEGER, blocks INTEGER, turnovers INTEGER, fouls INTEGER)"
     )
+    # Ada Star's 40 games clear the leaderboard's 20-game qualifier. Under it,
+    # the `leaderboard` case below produces an EMPTY board - which still has a
+    # `leaders` key, so the contract test passes while proving nothing. The
+    # cases exist to produce populated shapes; see CASES above.
     con.execute(
         "INSERT INTO player_season_stats VALUES "
-        "('1','10',2026,2,2,32.5,9.5,5.5,1.5,0.5,2.5,1.5,35.5,65,19,11,3,1,5,3),"
+        "('1','10',2026,2,40,32.5,9.5,5.5,1.5,0.5,2.5,1.5,35.5,1300,380,220,60,20,100,60),"
         "('1','10',2025,2,2,28.0,8.0,4.0,1.0,0.5,2.0,2.0,34.0,56,16,8,2,1,4,4),"
         "('2','11',2026,2,1,18.0,4.0,9.0,1.0,0.0,2.0,3.0,30.0,18,4,9,1,0,2,3)"
     )

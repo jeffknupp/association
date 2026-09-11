@@ -81,26 +81,6 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   in `AGENTS.md`).
 - **GitHub:** #1
 
-### Per-game leaderboards for points, rebounds and assists apply no games minimum
-- **Found:** 2026-09-11, template work (agent D); measured in the issues audit
-- **Evidence:** `avg_points` and the other original per-game metrics set
-  `min_sample_column="gamesPlayed"` with no `default_min_sample`
-  (`query/metrics.py`). `leaderboard.default_min_sample()` therefore applies
-  none in either season type. The newer per-game metrics use
-  `PER_GAME_MIN_GAMES` (20) and `PER_GAME_MIN_POSTSEASON_GAMES` (5). Leaders
-  below those floors in `player_season_stats_deduped`, 1994 onward:
-  - **Regular season:** rebounds in 2000 (Dennis Rodman, 12 games, 14.3) and
-    2001 (Danny Fortson, 6 games, 16.3; Dikembe Mutombo led).
-  - **Postseason:** 15 season-stat leaders. Kawhi Leonard leads 2023 scoring
-    on 2 games (34.5), and Rod Strickland leads 1995 assists on 3.
-- **User sees:** "who led the league in rebounding in 2001" answers Danny
-  Fortson, and "who led the 2023 playoffs in scoring" answers Kawhi Leonard.
-  No qualifier is stated, because none was applied.
-- **Next step:** give the original per-game metrics the same
-  `PER_GAME_MIN_GAMES`/`PER_GAME_MIN_POSTSEASON_GAMES` the newer ones use. Add
-  a test in the Fortson shape.
-- **GitHub:** #2
-
 ### The router drops a named player from a single-game high
 - **Found:** 2026-09-11, while fixing name clarification; reproduced the same day
 - **Evidence:** "most points curry scored in a game this season" routed

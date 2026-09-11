@@ -189,7 +189,10 @@ routing check (``scripts/check_routing.py``) and StatMuse's query feed.
 
 * **Rankings by any stat**: "who has the most threes this season", "Best true
   shooting percentage last season?". A percentage qualifies on attempts, and the
-  answer names the qualifier ("minimum 200 3-point attempts").
+  answer names the qualifier ("minimum 200 3-point attempts"). A per-game
+  average qualifies on games - 20 in a season, 5 in the postseason - so a
+  scoring or rebounding title is not won on a handful of games. A season total
+  or a count has no qualifier: it needs the volume to rank at all.
 * **A player's numbers**: a season line ("What are Jokic's numbers this
   season?"), narrowed to one opponent ("evan mobley avg against bucks"), to home
   or away games, or to the games a teammate missed; and a career ("Jokic career
