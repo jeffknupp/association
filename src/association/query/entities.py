@@ -605,7 +605,9 @@ def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: di
     that cannot restrict to one refuses it (templates.check_scope) instead of
     answering about every opponent. A team the slots already carry - both
     sides of ``head_to_head``, the opponent ``team_quarter_points`` was given -
-    is left exactly as it was.
+    is left exactly as it was, with one exception: the team the question plays
+    against, filed in ``team`` beside a player a ``reads_player`` template
+    reads, is that player's opponent and moves there.
 
     Restoring a player follows :func:`override_invented_players`' discipline:
     only when the question names exactly one player, and only for a template
@@ -668,6 +670,16 @@ def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: di
         if player is not None:
             slots["player"] = player
             notes.append(f"player {player!r} (from the question; the router left it out)")
+
+    if reads_player and has_player and team is not None and versus is not None and team.id == versus.id and not slots.get("opponent"):
+        # The team the question plays AGAINST, filed as the subject's team
+        # beside a player the router kept. Left there, nothing reads it: the
+        # check below leaves a team already in `team` alone, which is how
+        # head_to_head carries its own side, so no opponent was set and
+        # check_scope had nothing to refuse. Measured: "compare curry and
+        # lebron vs the celtics" came back with team='Boston Celtics'.
+        slots.pop("team", None)
+        notes.append(f"{team.name!r} is the team the question plays against, not the subject's")
 
     if versus is not None and not slots.get("opponent"):
         carried = [slots.get("team"), *(slots.get("teams") or [])]

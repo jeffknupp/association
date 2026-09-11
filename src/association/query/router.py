@@ -590,6 +590,16 @@ _TEAM_WORD = re.compile(
     re.IGNORECASE,
 )
 
+
+def _is_team_name(name: str) -> bool:
+    """Whether a name the model put in ``players`` is a team's: its LAST word is
+    a nickname. Checked against the warehouse: all 30 team names end in one and
+    none of 3,080 player names does, while "Magic Johnson" holds one as his
+    first name - and a match anywhere in the name took him for a team."""
+    words = name.split()
+    return bool(words) and _TEAM_WORD.fullmatch(words[-1]) is not None
+
+
 # "best record" and "worst record" rank the league; with no team named they are
 # team_leaderboard's question. Measured: "worst record 2025-26" came back as
 # team_record with team='worst'.
@@ -751,9 +761,18 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
         raw["intent"] = "record_when"
     if raw["intent"] == "fingerprint" and not _FINGERPRINT_WORDS.search(question):
         raw["intent"] = "shot_chart" if _SHOT_WORDS.search(question) else "other"
+    listed = [name for name in raw.get("players") or [] if isinstance(name, str)]
+    if raw["intent"] == "player_compare" and sum(map(_is_team_name, listed)) == 1 and len(listed) == 2:
+        # One player compared with a team is his games against it. Measured:
+        # "compare curry vs the celtics this season" arrived as player_compare
+        # with the Celtics in `players`; scope_from_question made them the
+        # opponent, which player_compare cannot honor, so the question fell
+        # through to the agent while player_stat answers it exactly. Two
+        # players and a team stay a comparison, and refuse the opponent.
+        raw["intent"] = "player_stat"
     if raw["intent"] == "player_stat" and _LOG_WORDS.search(question):
         raw["intent"] = "game_log"
-    if raw["intent"] == "player_matchup" and any(isinstance(name, str) and _TEAM_WORD.search(name) for name in raw.get("players") or []):
+    if raw["intent"] == "player_matchup" and any(map(_is_team_name, listed)):
         # One of the "two players" is a team: this is a player's games against
         # it. entities.scope_from_question moves the team to `opponent`.
         raw["intent"] = "game_log" if _LOG_WORDS.search(question) or _GAMES_WORDS.search(question) else "player_stat"

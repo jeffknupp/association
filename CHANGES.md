@@ -15,6 +15,32 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **One player "compared" with a team is answered as his games against it.**
+  "compare curry vs the celtics this season" arrived as `player_compare` with
+  the Celtics as the second "player". Once they became the `opponent`,
+  `player_compare` - which reads season lines only - refused it, and the
+  question fell through to the agent while `player_stat` answers it exactly. It
+  goes to `player_stat` now; two players and a team stay a comparison, and
+  still refuse the opponent rather than comparing whole seasons. Checked by hand
+  against the box scores: 22.5 / 5.0 / 6.5 over Curry's 2 games against Boston
+  in 2024-25, and for 2025-26 "none of them", which is right - he missed both,
+  inside a gap in his log from 31 January to 6 April.
+  - A team in `players` is recognized by its LAST word being a nickname. The
+    `player_matchup` reroute matched one anywhere in the name, which sent
+    "magic johnson vs larry bird head to head" to `player_stat` - which refused
+    it - instead of the head-to-head template. All 30 team names end in a
+    nickname, and none of the warehouse's 3,080 player names does.
+- **The team a player's question plays against is the opponent, whichever
+  slot the router files it in.** "compare curry and lebron vs the celtics" came
+  back with `team='Boston Celtics'` beside the two players. `scope_from_question`
+  left it there - a team already in `team` is how `head_to_head` carries its
+  own side - so no `opponent` was set, `check_scope` had nothing to refuse, and
+  nothing read the slot. With "steph curry" the answer was their whole 2025-26
+  lines, Curry's 43 games beside LeBron's 60, when Curry played none of them
+  against Boston. Where the template reads a player and one is present, that
+  team now moves to `opponent`, so `player_stat` and `game_log` answer over
+  those games and every other template refuses. `head_to_head` and the team
+  templates are untouched.
 - **True shooting and effective FG% leaderboards qualify on attempts, not
   games.** Twenty games was the whole qualifier, so "best true shooting
   percentage last season" was led by Kai Jones at .804 on 109 shots, with

@@ -492,6 +492,28 @@ def test_a_team_is_not_a_player_to_compare(scope_con: duckdb.DuckDBPyConnection)
     assert slots == {"player": "Stephen Curry", "opponent": "Boston Celtics"}
 
 
+def test_an_opponent_filed_as_the_team_beside_a_player_becomes_the_opponent(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """Measured: came back with team='Boston Celtics' beside both players. No
+    template read it and no opponent was set, so nothing refused."""
+    slots: dict[str, Any] = {"players": ["Stephen Curry", "LeBron James"], "team": "Boston Celtics"}
+    scope_from_question(scope_con, "compare curry and lebron vs the celtics", slots, reads_player=True)
+    assert slots == {"players": ["Stephen Curry", "LeBron James"], "opponent": "Boston Celtics"}
+    one: dict[str, Any] = {"player": "Stephen Curry", "team": "Boston Celtics"}
+    scope_from_question(scope_con, "how did steph curry do against the celtics last season", one, reads_player=True)
+    assert one == {"player": "Stephen Curry", "opponent": "Boston Celtics"}
+
+
+def test_a_team_beside_a_player_stays_unless_the_question_plays_against_it(scope_con: duckdb.DuckDBPyConnection) -> None:
+    # His own team, which no "vs" names.
+    slots: dict[str, Any] = {"player": "LeBron James", "team": "Los Angeles Lakers"}
+    assert scope_from_question(scope_con, "lebron points for the lakers", slots, reads_player=True) == []
+    assert slots == {"player": "LeBron James", "team": "Los Angeles Lakers"}
+    # A template that reads no player keeps its team whatever the question says.
+    kept: dict[str, Any] = {"player": "Stephen Curry", "team": "Boston Celtics"}
+    scope_from_question(scope_con, "curry vs the celtics", kept, reads_player=False)
+    assert kept["team"] == "Boston Celtics"
+
+
 def test_both_sides_of_a_head_to_head_are_left_alone(scope_con: duckdb.DuckDBPyConnection) -> None:
     slots: dict[str, Any] = {"teams": ["Los Angeles Lakers", "Boston Celtics"]}
     assert scope_from_question(scope_con, "Lakers vs Celtics record this season", slots, reads_player=False) == []
