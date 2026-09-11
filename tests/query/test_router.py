@@ -728,6 +728,21 @@ def test_a_matchup_against_a_team_is_a_players_games() -> None:
     line = _ask("how did curry do against the celtics this year", '{"intent":"player_matchup","players":["Stephen Curry","Boston Celtics"]}')
     assert line.intent == "player_stat"
     assert _ask("lebron vs kawhi head to head", '{"intent":"player_matchup","players":["LeBron James","Kawhi Leonard"]}').intent == "player_matchup"
+    # "Magic" is a team word, but a first name is not a team.
+    assert _ask("magic johnson vs larry bird head to head", '{"intent":"player_matchup","players":["Magic Johnson","Larry Bird"]}').intent == "player_matchup"
+
+
+def test_a_comparison_of_one_player_with_a_team_is_his_games_against_it() -> None:
+    """Measured: arrived as player_compare with the Celtics in `players`, and
+    fell through to the agent once the Celtics became the opponent."""
+    line = _ask("compare curry vs the celtics this season", '{"intent":"player_compare","players":["Stephen Curry","Boston Celtics"],"stat":"points"}')
+    assert line.intent == "player_stat"
+    # Still dropped: the stat is the one the decoder is forced to fill.
+    assert "stat" not in line.slots
+    # Two players against a team is still a comparison, refused on its opponent.
+    both = _ask("compare curry and lebron vs the celtics", '{"intent":"player_compare","players":["Stephen Curry","LeBron James","Boston Celtics"]}')
+    assert both.intent == "player_compare"
+    assert _ask("compare magic johnson and larry bird", '{"intent":"player_compare","players":["Magic Johnson","Larry Bird"]}').intent == "player_compare"
 
 
 def test_a_history_with_no_stat_named_is_the_career_line() -> None:

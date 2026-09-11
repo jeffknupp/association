@@ -527,23 +527,6 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** a fall-through to the agent.
 - **Next step:** take them in that order.
 
-### A comparison left with one player falls through instead of answering the opponent split
-- **Found:** 2026-09-11, merging the season-narrowing branch
-- **Evidence:** "how did curry do against the celtics this year" routed to
-  `player_compare` with `players=['Stephen Curry', 'Boston Celtics']`
-  (qwen2.5:3b, temperature 0). The reported instance routed to `player_stat`
-  with `opponent='Boston Celtics'` instead. `scope_from_question` moves the
-  Celtics into `opponent` and leaves one player, but the intent stays
-  `player_compare`, which does not honor `opponent`. So `check_scope` raises
-  "player_compare cannot honour ['opponent']". `player_stat` answers the same
-  question correctly: "Stephen Curry played 43 games in the 2026 regular
-  season, none of them vs the Boston Celtics". He has no box-score row in
-  either Warriors-Celtics game (2026-02-20, 2026-03-18).
-- **User sees:** the question goes to the slow agent. What the agent answers was
-  not measured.
-- **Next step:** after `scope_from_question`, hand a `player_compare` left with
-  one player to `player_stat`. Add the question to `scripts/check_routing.py`.
-
 ### A router-invented name one edit from a real one falls through instead of asking
 - **Found:** 2026-09-11, probing the season-narrowing branch
 - **Evidence:** "how many rebounds does davis average" routed to `player_stat`
@@ -558,7 +541,48 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** reproduce it. If it recurs, drop punctuated tokens before
   `suggest_players`, or back off to the word the question holds.
 
+### Two players against one team has no template
+- **Found:** 2026-09-11, while making `opponent` refuse or narrow
+- **Evidence:** `player_compare` and `player_matchup` read season lines and
+  honor no `opponent` (`HONORED_SCOPING`, `query/templates.py`), so "compare
+  curry and lebron vs the celtics" refuses on the template path and falls
+  through (1 run through the fast path). Before the fix that moved the
+  Celtics out of `team`, it compared the two players' whole 2026 seasons.
+  `_narrow_player_games` already builds one player's box-score line against
+  one opponent for `player_stat`. The question was constructed while testing,
+  not seen in the StatMuse feed.
+- **User sees:** a fall-through to the agent. What the agent answers was not
+  measured (it needs the agent model).
+- **Next step:** let `player_compare` honor `opponent` by building each
+  player's line through `_narrow_player_games`.
+
 ## P4: tooling, docs, low impact
+
+### "...against the celtics last season" is answered as a game log
+- **Found:** 2026-09-11, while making `opponent` refuse or narrow
+- **Evidence:** "how did steph curry do against the celtics last season"
+  routed to `game_log` (1 run) and listed his 2 games, not his averages over
+  them. The trace logs the intent after `route()` rewrites it. `route()` sends a
+  `player_matchup` naming a team to `game_log` whenever `_GAMES_WORDS` matches,
+  and it matches the "last" in "last season" (checked offline). Whether the
+  model chose `game_log` itself was not separated.
+- **User sees:** the right games, as a list rather than a line. The same
+  question with "this year" answers with the line.
+- **Next step:** log the raw router output for the question when ollama is
+  free. If it is the matchup rule, stop "last season" counting as "last N
+  games".
+
+### A player's single qualifying game reads "1 games"
+- **Found:** 2026-09-11, while narrowing `threshold_count` by season
+- **Evidence:** `templates._phrase_threshold_count` builds the named-player
+  sentence as `f"{player} had {games} {label} {when}."` with `label` always
+  "games with ...", so one game prints "Aay Jones had 1 games with 30+ points in
+  the 2026 regular season." (seen in a test fixture). The league-wide sentences
+  are not affected.
+- **User sees:** a plural typo in "how many 40-point games did Brunson have
+  this season" whenever the answer is one.
+- **Next step:** say "1 game with" when `games == 1`, and add the case to
+  `test_answer_for_a_single_named_player`.
 
 ### Data commands and check scripts default to paths a worktree does not have
 - **Found:** 2026-09-11, routing check, then repo audit
@@ -709,10 +733,14 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   message as a failure.
 
 ### Columns that look wrong but that nothing reads
-- **Found:** 2026-09-11, template and shot work
+- **Found:** 2026-09-11, template and shot work; `dnp_reason` widened while
+  making `opponent` refuse or narrow
 - **Evidence:**
-  - 13,160 starters who played in 2026 carry a `dnp_reason`, all "COACH'S
-    DECISION".
+  - `dnp_reason` is set on 382,435 box rows where the player played, about a
+    third of `player_box_stats`: 382,378 of them "COACH'S DECISION", at 22.7
+    minutes on average, in every season from 2013 to 2026 (24,000-28,600 a
+    season). 13,160 of 2026's are starters. Only `fetch/parse.py` touches the
+    column. `did_not_play` is the field that says whether a player sat.
   - `plusMinus` is NULL on 14.3% of box rows. That is exactly the rows with
     NULL minutes, not a random gap.
   - `team_season_stats.plusMinus` is a -1.0 placeholder.

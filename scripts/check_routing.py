@@ -226,6 +226,12 @@ CASES: list[tuple[str, str, dict]] = [
     ("Jokic career averages", "player_stat", {"span": "career"}),
     ("zach lavine vs nuggets last 8 games home", "game_log", {"venue": "home"}),
     ("how did curry do against the celtics this year", "player_stat", {}),
+    # Came back as player_compare with the Celtics as the second "player".
+    ("compare curry vs the celtics this season", "player_stat", {"opponent": "Boston Celtics"}),
+    # Came back with the Celtics in `team` beside two players, where no
+    # template read them: the two whole seasons were compared. With the
+    # opponent in place, player_compare refuses it instead.
+    ("compare curry and lebron vs the celtics", "player_compare", {"opponent": "Boston Celtics"}),
     ("worst record 2025-26", "team_leaderboard", {"rank": "worst"}),
     ("Longest winning streak in the NBA this season", "streak", {}),
     ("Celtics vs Bulls head to head record", "head_to_head", {}),

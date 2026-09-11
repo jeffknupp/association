@@ -665,7 +665,8 @@ def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResu
        Honours ``span`` "career": every box score since 1993-94, for the league
        or for one player, saying which. A named player is resolved to one
        person; every player whose name contained the words used to be counted,
-       and the top one reported.
+       and the top one reported. An ambiguous name is narrowed to the players
+       with a box score in the season asked about before it is asked about.
     """
     con = ctx.con
     stat = slots.get("stat")
@@ -687,7 +688,9 @@ def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResu
     # Resolved to one person, as every other template does. This used to be an
     # ILIKE per word, so "Curry" counted Seth's games and Stephen's and reported
     # whichever had more - the prominence tiebreak AGENTS.md records as measured
-    # and rejected, applied silently.
+    # and rejected, applied silently. Narrowed by who has a box score in the
+    # season, NOT by who has a qualifying game: that would let the answer pick
+    # the player, which is the same tiebreak by another route.
     player: Entity | None = None
     if isinstance(slots.get("player"), str) and slots["player"].strip():
         resolved = _resolved_player(con, slots["player"], available=_BOX_SCORES, season=season, through=_career_end(season))
