@@ -753,6 +753,17 @@ next agent has to rediscover from scratch, or never does.
 
   Either way, whoever merges the work re-reads the file afterwards and
   re-ranks it.
+- **Open a GitHub issue for each entry you added, once your work is done.**
+  `ISSUES.md` is the source of truth; the issues mirror it so they can be
+  assigned, searched and notified on. Do it at the end, not while you are still
+  finding things, and only for entries that are new. `scripts/sync_issues.py`
+  does it: it opens one issue per entry that has no `- **GitHub:** #N` line,
+  titles it with the entry's heading, uses the entry text as the body, labels
+  it by priority (`P1: wrong answer`, `P2: misleading`, `P3: gap`, `P4: low`,
+  plus `bug` or `enhancement`), and writes the number back into the entry. Pass
+  `--area` to add one of `data`, `query`, `tooling` or `documentation`. Run it
+  with `--dry-run` first. When a fix removes an entry, close its issue in the
+  same breath and name the commit.
 
 ## Releasing
 

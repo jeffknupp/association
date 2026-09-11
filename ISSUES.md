@@ -79,6 +79,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   which holds them (everything except minutes and plus-minus), or caveat by
   team. Do it through the real fetch and load path ("Working on the fetch path"
   in `AGENTS.md`).
+- **GitHub:** #1
 
 ### Per-game leaderboards for points, rebounds and assists apply no games minimum
 - **Found:** 2026-09-11, template work (agent D); measured in the issues audit
@@ -98,6 +99,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** give the original per-game metrics the same
   `PER_GAME_MIN_GAMES`/`PER_GAME_MIN_POSTSEASON_GAMES` the newer ones use. Add
   a test in the Fortson shape.
+- **GitHub:** #2
 
 ### The router drops a named player from a single-game high
 - **Found:** 2026-09-11, while fixing name clarification; reproduced the same day
@@ -116,6 +118,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   missing player means the league, notice a player-shaped word the slots lost
   and ask which player was meant rather than restoring one. Measure how often
   that fires on the corpus first ("best" is Travis Best).
+- **GitHub:** #3
 
 ### "without X and Y" drops the second player
 - **Found:** 2026-09-11, template work (agent C); verified in the issues audit
@@ -127,6 +130,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   record when brandon miller and lamelo and knueppel play this year".
 - **Next step:** refuse when the phrase holds "and" or a comma (small and
   honest), or read every name and require all of them.
+- **GitHub:** #4
 
 ### 246 season lines have NULL totals
 - **Found:** 2026-09-11, issues audit
@@ -152,6 +156,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   serves these lines with the totals category missing.
 - **Next step:** fill the totals from `avg × gamesPlayed` at load, and say so in
   the answer.
+- **GitHub:** #5
 
 ### The 2000 and 2001 playoffs stop before the Finals
 - **Found:** 2026-09-11, template work (agent B); characterized in the issues audit
@@ -182,6 +187,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   from team schedules, since the missing games are the ones no team's schedule
   returns. Until then, add `partial=` caveats to `COVERAGE` for the two
   postseasons.
+- **GitHub:** #6
 
 ### `games` holds placeholder, duplicate and phantom rows that templates count
 - **Found:** 2026-09-11, template work (agent B), the repo audit and the issues audit
@@ -228,6 +234,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** at load, exclude rows with a team id not in `teams`, a
   date-only stamp and no box rows. Then build `head_to_head` and `conditions` on
   one shared filtered game list.
+- **GitHub:** #7
 
 ### 2018 team box scores have values under the wrong column names
 - **Found:** 2026-09-11, template work (agent B); characterized in the issues audit
@@ -266,6 +273,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   for turnovers before 2013.
 - **Next step:** at load, rebuild the 2018 columns and the pre-2013 turnover
   columns from player-box sums. Refetch one 2018 event to confirm the cause.
+- **GitHub:** #8
 
 ### Traded players' combined season rows are wrong in 26 cases
 - **Found:** 2026-09-11, template work (agent D); counted in the issues audit
@@ -288,6 +296,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   rows; the combined line is what ESPN's career endpoint returns.
 - **Next step:** use the combined row only when it equals its stints' sum, and
   sum the stints otherwise. Add a warehouse test in the Murdock shape.
+- **GitHub:** #9
 
 ## P2: misleading or incomplete
 
@@ -302,6 +311,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** return a refusal naming the missing round data, the way
   `_conference_refusal` does. Deriving rounds from series order is a separate
   P3 job.
+- **GitHub:** #10
 
 ### The NBA Cup final is counted as a regular-season game in most answers
 - **Found:** 2026-09-11, transcript review; verified in the issues audit
@@ -325,6 +335,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   numbers.
 - **Next step:** compute a `cup_final` flag once at load, and apply it in
   `conditions`, `head_to_head` and the box-derived regular-season aggregates.
+- **GitHub:** #11
 
 ### `fg_pct` and `efg_pct` qualify on different floors over the same denominator
 - **Found:** 2026-09-11, while qualifying true shooting and eFG% on attempts (`f66e1f1`)
@@ -338,6 +349,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   excludes, and a player who qualifies for one percentage and not the other.
 - **Next step:** check `fg_pct` against a published list. Then either share one
   number, or say in each comment why they differ.
+- **GitHub:** #12
 
 ### Shooting qualifiers are flat across shortened seasons
 - **Found:** 2026-09-11, while qualifying true shooting and eFG% (`f66e1f1`)
@@ -349,6 +361,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   stated, but it is harsher than the published one.
 - **Next step:** scale the floor per team game, and keep `min_sample_applied`
   honest about the scaled number.
+- **GitHub:** #13
 
 ### Smaller game and box-score gaps, 1994-2003
 - **Found:** 2026-09-11, template work (agents A, D) and the issues audit
@@ -369,6 +382,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   those seasons.
 - **Next step:** refetch the listed events through the pipeline. Check that every
   box-derived template treats NULL minutes as "did not play".
+- **GitHub:** #14
 
 ### The 2026 shot chart holds more shots than the box score
 - **Found:** 2026-09-11, shot-frame fix (shot agent)
@@ -383,6 +397,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** check whether box scores leave out buzzer heaves (a shot after
   the horn, or one ESPN logs but does not credit). If they do, filter the chart
   the same way.
+- **GitHub:** #15
 
 ### `with_without` undercounts a season-long absence
 - **Found:** 2026-09-11, template work (agent C)
@@ -393,6 +408,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   "without" games, or too few.
 - **Next step:** read roster tenure from `player_season_stats` team rows, not
   from box-score presence.
+- **GitHub:** #16
 
 ### Historical teams are shown under today's names
 - **Found:** 2026-09-11, template work (agent A)
@@ -402,6 +418,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   name.
 - **Next step:** build a per-season team-name table from each game's own team
   names, and use it wherever a historical game is printed.
+- **GitHub:** #17
 
 ### A retired player's question defaults to the current season
 - **Found:** 2026-09-08 (reported, not re-verified)
@@ -411,6 +428,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   his career.
 - **Next step:** when a player has no rows in the defaulted season, answer their
   last season or career, and say so.
+- **GitHub:** #18
 
 ### `player_history` answers "last N seasons on record", not a calendar window
 - **Found:** 2026-09-11, while fixing name clarification
@@ -428,6 +446,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** decide whether "last N seasons" means the calendar window. If
   it does, read that window and narrow names by it too; `narrow_to_available`
   would need a lower bound it does not take today.
+- **GitHub:** #19
 
 ### Two fingerprints asked for without "vs" or "compare" draw one
 - **Found:** documented in `AGENTS.md` as an accepted cost; listed by the repo audit
@@ -437,6 +456,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   note that a second name was dropped.
 - **Next step:** when two players are named and only one is drawn, say so,
   without restoring the second.
+- **GitHub:** #20
 
 ### The NetPoints season fingerprint matches players mid-pull, so a name can be lost
 - **Found:** 2026-09-11, comparing a fresh full pull against the existing warehouse
@@ -466,6 +486,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   complete `players` table, and re-resolve the fingerprint files then. Keep the
   source `displayName` on the row either way, so an unmatched name can be
   recovered.
+- **GitHub:** #21
 
 ### Per-game NetPoints rows whose name did not match keep no name
 - **Found:** 2026-09-11, building the warehouse comparison harness
@@ -481,6 +502,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** keep the source `displayName` (and NBA.com's id) on the row.
   Then count unmatched names per season to find which spellings the exact match
   misses.
+- **GitHub:** #22
 
 ## P3: refusal or gap
 
@@ -498,6 +520,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** first `since` for `leaderboard`/`threshold_count`, reusing the
   career-span code. Then `situation` for `team_record`: back-to-backs need the
   Eastern date (`season.eastern_date`).
+- **GitHub:** #23
 
 ### A player's stats by quarter or half
 - **Found:** 2026-09-11, query-shape research (10% of the StatMuse feed)
@@ -509,6 +532,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** "rj barrett 4th qtr log" always goes to the agent.
 - **Next step:** materialize per-player, per-period points at warehouse build,
   reconcile them against the box score, then add a template with a 2003 floor.
+- **GitHub:** #24
 
 ### No conference or division data
 - **Found:** 2026-09-11, template work (agent B) and repo audit
@@ -521,6 +545,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** a refusal for "who leads the East". For "Western Conference
   standings", a slow agent answer with nothing to ground it.
 - **Next step:** a static team-to-conference table, per season.
+- **GitHub:** #25
 
 ### A player's career TS% is refused
 - **Found:** 2026-09-11, final corpus run
@@ -531,6 +556,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   give is fixed.
 - **Next step:** add TS% and eFG% to `player_stat` as computed ratios, like
   `SHOOTING_STATS`.
+- **GitHub:** #26
 
 ### The power index (BPI) keeps one snapshot per season
 - **Found:** 2026-09-11, template work (agent B) and repo audit
@@ -541,6 +567,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** `team_outlook` has nothing for most teams in past seasons.
 - **Next step:** write dated snapshots going forward. Past seasons cannot be
   recovered.
+- **GitHub:** #27
 
 ### A games minimum cannot be given to the agent's TS%/eFG% leaderboard tool
 - **Found:** 2026-09-11, while qualifying true shooting and eFG% (`f66e1f1`)
@@ -553,6 +580,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   write SQL, more slowly.
 - **Next step:** accept a `min_games` alongside `min_sample` in the tool, if the
   budget allows.
+- **GitHub:** #28
 
 ### Fingerprint for a specific date
 - **Found:** before 2026-09-11 (docstring)
@@ -561,6 +589,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** a helpful refusal.
 - **Next step:** resolve the date to the player's game with `_eastern_day`, then
   draw the single-game fingerprint.
+- **GitHub:** #29
 
 ### Franchise career leaderboards
 - **Found:** before 2026-09-11 (docstring)
@@ -568,6 +597,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   is decided". The rule for relocated franchises is open.
 - **User sees:** a refusal for "timberwolves career leaders in total points".
 - **Next step:** decide the relocation rule, then map it.
+- **GitHub:** #30
 
 ### Data no template reads
 - **Found:** 2026-09-11, field audit
@@ -583,6 +613,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   NetPoints and paint or fast-break points go to the agent.
 - **Next step:** re-run the field audit after each template round, and take the
   most-asked shapes first.
+- **GitHub:** #31
 
 ### Shapes deferred for lack of data or logic
 - **Found:** 2026-09-11, query-shape research
@@ -594,6 +625,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
     is inherent until a bio source is added.
 - **User sees:** a fall-through to the agent.
 - **Next step:** take them in that order.
+- **GitHub:** #32
 
 ### A router-invented name one edit from a real one falls through instead of asking
 - **Found:** 2026-09-11, probing the season-narrowing branch
@@ -608,6 +640,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   was meant.
 - **Next step:** reproduce it. If it recurs, drop punctuated tokens before
   `suggest_players`, or back off to the word the question holds.
+- **GitHub:** #33
 
 ### Two players against one team has no template
 - **Found:** 2026-09-11, while making `opponent` refuse or narrow
@@ -623,6 +656,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   measured (it needs the agent model).
 - **Next step:** let `player_compare` honor `opponent` by building each
   player's line through `_narrow_player_games`.
+- **GitHub:** #34
 
 ## P4: tooling, docs, low impact
 
@@ -639,6 +673,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** log the raw router output for the question when ollama is
   free. If it is the matchup rule, stop "last season" counting as "last N
   games".
+- **GitHub:** #35
 
 ### A player's single qualifying game reads "1 games"
 - **Found:** 2026-09-11, while narrowing `threshold_count` by season
@@ -651,6 +686,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   this season" whenever the answer is one.
 - **Next step:** say "1 game with" when `games == 1`, and add the case to
   `test_answer_for_a_single_named_player`.
+- **GitHub:** #36
 
 ### Data commands and check scripts default to paths a worktree does not have
 - **Found:** 2026-09-11, routing check, then repo audit
@@ -663,6 +699,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   wrong files.
 - **Next step:** default to the main checkout's files, found through
   `git rev-parse --git-common-dir`.
+- **GitHub:** #37
 
 ### A warehouse built before a view change is not detected
 - **Found:** 2026-09-11, while qualifying true shooting and eFG% (`f66e1f1`)
@@ -676,6 +713,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** in `data check` or at startup, compare the stored views' columns
   against what the code reads. The backfill rule in `AGENTS.md` ("Working on the
   fetch path") is the process half of this.
+- **GitHub:** #38
 
 ### A fresh worktree cannot run the gates with `uv run` alone
 - **Found:** 2026-09-11, while qualifying true shooting and eFG% (`f66e1f1`)
@@ -684,6 +722,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   `uv sync --frozen --extra dev --extra docs --extra web` (CI's line) has run.
 - **User sees:** nothing. An agent loses time.
 - **Next step:** add the sync line to "Before you commit" in `AGENTS.md`.
+- **GitHub:** #39
 
 ### The docs gate passes with field markup printed as text
 - **Found:** 2026-09-11, fixing the literal `:rtype:` lines
@@ -697,6 +736,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** make `build_docs.sh` fail when the text of
   `api/generated/*.html` contains `:rtype:`, `:param ` or `:type `. Watch it
   fail by removing the shim in `docs/conf.py`.
+- **GitHub:** #40
 
 ### An incremental docs build ignores a behavior change in `docs/conf.py`
 - **Found:** 2026-09-11, fixing the literal `:rtype:` lines
@@ -711,6 +751,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   a working one, and the pre-commit docs gate is green either way.
 - **Next step:** pass `-E` in `build_docs.sh`, or rebuild from scratch when
   `docs/conf.py` is newer than the build environment.
+- **GitHub:** #41
 
 ### The `:rtype:` shim in `docs/conf.py` waits on dropping Python 3.10
 - **Found:** 2026-09-11, fixing the literal `:rtype:` lines
@@ -722,6 +763,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** when 3.10 is dropped, upgrade and delete
   `_rtype_insert_index` in the same commit. Check the rendered pages after the
   move from Sphinx 8.1.3 to 8.2; nobody has.
+- **GitHub:** #42
 
 ### Three wrong statements in the docs
 - **Found:** 2026-09-11, repo audit and issues audit
@@ -738,6 +780,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
     of 7,941.
 - **User sees:** nothing. An agent reads wrong facts.
 - **Next step:** correct all three.
+- **GitHub:** #43
 
 ### Broad `except duckdb.Error` in `_single_game_netpoints`
 - **Found:** 2026-09-11, repo audit
@@ -746,6 +789,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   missing-table error.
 - **User sees:** a SQL bug reported as "unavailable", then a slow fall-through.
 - **Next step:** catch `duckdb.CatalogException` only.
+- **GitHub:** #44
 
 ### Postseason shooting floors are scaled, not calibrated
 - **Found:** 2026-09-11, while qualifying true shooting and eFG% (`f66e1f1`)
@@ -755,6 +799,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   They leave 81-92 qualified players per postseason in 2025 and 2026.
 - **User sees:** a stated but uncalibrated postseason qualifier.
 - **Next step:** none until a published postseason rule is found.
+- **GitHub:** #45
 
 ### Basketball-Reference's qualifying rule was never read directly
 - **Found:** 2026-09-11, while qualifying true shooting and eFG% (`f66e1f1`)
@@ -764,6 +809,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** nothing.
 - **Next step:** if a modern true-shooting-attempts figure is published there,
   compare it with 550.
+- **GitHub:** #46
 
 ### Name narrowing counts a row with no minutes as a game played
 - **Found:** 2026-09-11, season-narrowing branch
@@ -776,6 +822,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   bench that season. It errs toward asking, never toward a wrong player.
 - **Next step:** measure how many asks it widens. If many, narrow the
   box-score tables on minutes, as `conditions._played` does.
+- **GitHub:** #47
 
 ### Clarifications can name twenty players
 - **Found:** 2026-09-11, season-narrowing branch
@@ -786,6 +833,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** a long "did you mean" sentence. Whether it reads acceptably in
   the CLI and on the web page was not checked.
 - **Next step:** look at a 20-name clarification on the web page.
+- **GitHub:** #48
 
 ### The CHANGES.md hook passes on an unstaged tree
 - **Found:** 2026-09-11, season-narrowing branch
@@ -795,6 +843,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   intended.
 - **User sees:** nothing. An agent can read the pass as a real check.
 - **Next step:** have the hook say it checked nothing when the index is empty.
+- **GitHub:** #49
 
 ### The docs gate keeps stale pages after a change to `docs/conf.py` code
 - **Found:** 2026-09-11, merging `92cf1e5` into the season-narrowing branch
@@ -816,6 +865,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   pages, and a docs warning can go unnoticed until CI.
 - **Next step:** pass `-E` (or clear the output directory) in `build_docs.sh`,
   and time it against the incremental build.
+- **GitHub:** #50
 
 ### A failed warehouse build leaves no marker
 - **Found:** 2026-09-08 (reported)
@@ -825,6 +875,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** answers from a half-updated warehouse, with nothing saying so.
 - **Next step:** record a build-complete marker, and have `data check` report a
   build that did not finish.
+- **GitHub:** #51
 
 ### The agent can return an empty answer
 - **Found:** 2026-09-08, pre-existing in 1.6.0 (reported, not re-verified)
@@ -832,6 +883,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** a blank answer after a long wait.
 - **Next step:** reproduce it, then have the agent loop treat an empty final
   message as a failure.
+- **GitHub:** #52
 
 ### Columns that look wrong but that nothing reads
 - **Found:** 2026-09-11, template and shot work; `dnp_reason` widened while
@@ -850,6 +902,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   - `net_points_team` holds 2026 only, which is inherent to the source.
 - **User sees:** nothing today. Any template that starts reading these would.
 - **Next step:** measure each one before a template reads it.
+- **GitHub:** #53
 
 ### Team box scores disagree slightly with player-box sums in 2019, 2021 and 2026
 - **Found:** 2026-09-11, issues audit
@@ -864,6 +917,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   be off by a count in a few games.
 - **Next step:** compare a handful of the disagreeing games against the source
   box score.
+- **GitHub:** #54
 
 ### Shots past half court are counted but drawn off the canvas
 - **Found:** 2026-09-11, shot-frame fix
@@ -872,6 +926,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** a subtitle count one or two higher than the number of dots.
 - **Next step:** clamp heaves to the edge of the plot, or note them in the
   subtitle.
+- **GitHub:** #55
 
 ### A slow agent answer cannot be cancelled
 - **Found:** before 2026-09-11 (`web/app.py` comment, `roadmap-2.0.md`)
@@ -879,6 +934,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   cancelled flag checked between tool calls, is not built.
 - **User sees:** the next question waits behind an abandoned one.
 - **Next step:** build the flag.
+- **GitHub:** #56
 
 ### The agent's tool budget is full
 - **Found:** before 2026-09-11 (`docs/architecture.rst`, "The tool budget")
@@ -894,6 +950,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   `render_fingerprint` into one tool, is not done.
 - **User sees:** nothing yet. It blocks any new agent tool.
 - **Next step:** fold the two render tools when a new tool is next needed.
+- **GitHub:** #57
 
 ### The PyPI upload fails
 - **Found:** documented in `AGENTS.md` ("Releasing")
@@ -902,6 +959,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** releases only on GitHub.
 - **Next step:** register the publisher once the account is back, then upload
   each tagged version.
+- **GitHub:** #58
 
 ### The router prompt's documented size is five times too small
 - **Found:** 2026-09-11, docs survey for 2.1.0
@@ -918,6 +976,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** read `prompt_eval_count` from one router call and correct both
   comments. Then add a test that fails when `ROUTER_PROMPT` plus a long question
   passes a set budget, the way `PreambleTooLarge` guards the agent.
+- **GitHub:** #59
 
 ### The release script does not update the install pins
 - **Found:** 2026-09-11, docs survey for 2.1.0
@@ -929,6 +988,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** install instructions that install an old release.
 - **Next step:** have the bump script rewrite `@v<current>` to `@v<new>` in both
   files, and refuse if a pin names neither version.
+- **GitHub:** #60
 
 ### British spellings in `src/`
 - **Found:** 2026-09-11, docs survey for 2.1.0
@@ -940,6 +1000,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   docs.
 - **Next step:** replace them, with a CHANGES line, since the change touches
   `src/`.
+- **GitHub:** #61
 
 ### A coverage caveat is added to a refusal that drew nothing
 - **Found:** 2026-09-11, docs edits for 2.1.0
@@ -948,6 +1009,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   season caveat for 2002 shots, attached to an answer that covers nothing.
 - **User sees:** a refusal that also claims to cover part of a season.
 - **Next step:** skip `coverage_caveat` when the template's result is a refusal.
+- **GitHub:** #62
 
 ### Stale leftovers from the 2.0 REPL and an example that stopped early
 - **Found:** 2026-09-11, docs edits for 2.1.0
@@ -959,6 +1021,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** a docs example shorter than the real output.
 - **Next step:** correct the comment, and paste the example's full answer.
 \n
+- **GitHub:** #63
 ### A player's bio is fetched once and never refreshed
 - **Found:** 2026-09-11, comparing a fresh full pull against the existing warehouse
 - **Evidence:** `Pipeline._cache_player_bio` returns early when the file exists,
@@ -974,6 +1037,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** re-fetch a bio when it is older than some age, or on `--force`,
   and record when it was fetched. Note that jersey and position are
   point-in-time facts stored as if they were static.
+- **GitHub:** #64
 
 ### The stat glossary keeps whichever source described a key last
 - **Found:** 2026-09-11, comparing a fresh full pull against the existing warehouse
@@ -985,6 +1049,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** nothing yet; no template reads the glossary. The agent can, and
   would get whichever description was written last.
 - **Next step:** decide a source precedence per key, or keep one row per source.
+- **GitHub:** #65
 
 ### The warehouse file keeps the space of every load it has had
 - **Found:** 2026-09-11, comparing a fresh full pull against the existing warehouse
@@ -995,3 +1060,4 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** nothing. It is disk and a slower cold read.
 - **Next step:** build into a temporary file and swap it in, or run a periodic
   compaction, if the size matters.
+- **GitHub:** #66
