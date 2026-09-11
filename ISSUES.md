@@ -4,7 +4,8 @@ Everything known to be wrong, missing or unverified that still needs follow-up,
 ranked by what a user would see. `AGENTS.md` ("Recording findings") says when
 to add an entry and how. The short version: **record every finding, including
 the ones that are not part of your task, and delete an entry in the same commit
-that fixes it**, saying in `CHANGES.md` which commit fixed it.
+that fixes it.** A fix that touches `src/` also gets a `CHANGES.md` entry; any
+other fix is recorded by its commit message.
 
 ## Priorities
 
@@ -627,6 +628,44 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** nothing. An agent loses time.
 - **Next step:** add the sync line to "Before you commit" in `AGENTS.md`.
 
+### The docs gate passes with field markup printed as text
+- **Found:** 2026-09-11, fixing the literal `:rtype:` lines
+- **Evidence:** `scripts/build_docs.sh` passed `-W` while 68 functions on 18 of
+  40 API pages printed a literal `:rtype: ...` line. A field marker inside a
+  paragraph is valid reStructuredText, so docutils had nothing to warn about.
+  Sphinx's fallback also added a real Return type field, so each of those
+  functions showed its return type twice. It was found only by grepping the
+  built HTML.
+- **User sees:** stray markup in the published API docs, and nothing fails.
+- **Next step:** make `build_docs.sh` fail when the text of
+  `api/generated/*.html` contains `:rtype:`, `:param ` or `:type `. Watch it
+  fail by removing the shim in `docs/conf.py`.
+
+### An incremental docs build ignores a behavior change in `docs/conf.py`
+- **Found:** 2026-09-11, fixing the literal `:rtype:` lines
+- **Evidence:** after the `:rtype:` shim went into `docs/conf.py`,
+  `build_docs.sh` over an existing `docs/_build` still produced all 68
+  literals. Sphinx re-reads sources only when a registered config value
+  changes, and a patched function is not one, so it reused the pickled
+  doctrees. Only `rm -rf docs/_build` showed the fix. CI builds from a clean
+  checkout. A clean build took 11 seconds here. What `-E` would cost on every
+  commit was not measured.
+- **User sees:** nothing. An agent can read a stale build as a failed fix or as
+  a working one, and the pre-commit docs gate is green either way.
+- **Next step:** pass `-E` in `build_docs.sh`, or rebuild from scratch when
+  `docs/conf.py` is newer than the build environment.
+
+### The `:rtype:` shim in `docs/conf.py` waits on dropping Python 3.10
+- **Found:** 2026-09-11, fixing the literal `:rtype:` lines
+- **Evidence:** `docs/conf.py` backports sphinx-autodoc-typehints 3.2.0's
+  placement guard over the locked 3.0.1. 3.2.0 needs Sphinx 8.2 and Python
+  3.11, and `requires-python` is `>=3.10`. The shim is gated on the installed
+  version, so an upgrade makes it inert rather than wrong.
+- **User sees:** nothing.
+- **Next step:** when 3.10 is dropped, upgrade and delete
+  `_rtype_insert_index` in the same commit. Check the rendered pages after the
+  move from Sphinx 8.1.3 to 8.2; nobody has.
+
 ### Three wrong statements in the docs
 - **Found:** 2026-09-11, repo audit and issues audit
 - **Evidence:**
@@ -668,22 +707,6 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** nothing.
 - **Next step:** if a modern true-shooting-attempts figure is published there,
   compare it with 550.
-
-### 18 of 40 API doc pages print a literal `:rtype:` line
-- **Found:** 2026-09-11, name-clarification session; re-counted after merging master
-- **Evidence:** in the docs built from `bdf1e99`, 18 of the 40 pages under
-  `docs/_build/html/api/generated/` show `:rtype:` as body text. Before that
-  merge it was 14 of 38. In `association.query.entities` it is on
-  `nicknames_in`, `override_nicknames`, `no_match`, `find_players`,
-  `clarification` and `resolve_player`. Each of those docstrings ends in a
-  `versionadded`/`versionchanged` directive and has no `Returns:` section.
-  `suggest_players`, which has one, and `resolve_team`, which has no directive,
-  render correctly. The likely cause is `sphinx_autodoc_typehints` inserting
-  the field with no blank line before it (`autodoc_typehints = "description"`
-  in `docs/conf.py`). That was not confirmed.
-- **User sees:** stray markup in the published API docs.
-- **Next step:** find the setting or version that places the field correctly,
-  then grep the built HTML for `:rtype:` until it is gone.
 
 ### Name narrowing counts a row with no minutes as a game played
 - **Found:** 2026-09-11, season-narrowing branch

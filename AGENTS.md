@@ -738,9 +738,10 @@ next agent has to rediscover from scratch, or never does.
   outranks a refusal, and a refusal outranks a gap nobody asks about. That is
   the ordering of the failure shape at the top of this file.
 - **Fixing an issue removes it.** Delete the entry in the same commit as the
-  fix and say what changed in `CHANGES.md`. If the fix is partial, rewrite the
-  entry to what remains. The file is the list of what is still open, not a
-  history.
+  fix. If the fix touches `src/`, also say what changed in `CHANGES.md` (the
+  rule under "Before you commit"); otherwise the commit message is the record.
+  If the fix is partial, rewrite the entry to what remains. The file is the list
+  of what is still open, not a history.
 - **Subagents record findings too, and their prompt has to say so.** An agent
   reports what it was asked about and nothing else, so every prompt that
   dispatches one must ask for incidental findings. Two cases:
