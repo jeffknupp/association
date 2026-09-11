@@ -13,8 +13,85 @@ from typing import Any
 import duckdb
 
 from .answer import Artifact, RenderResult
-from .court import render_court_html
+from .court import BEYOND_THE_ARC_SQL, HAS_POSITION_SQL, render_court_html
 from .entities import Ambiguous, Availability, Entity, clarification, find_players, narrow_to_available, no_match
+
+UNSEPARABLE_SHOT_VALUES: dict[int, str] = {
+    2002: (
+        "ESPN did not label 2002's shots as twos or threes, and unlike every later season its shot descriptions do not name every three - counted against the "
+        "box score they miss about one in sixty - so threes cannot be reliably separated from twos"
+    ),
+}
+"""Seasons where nothing reliably says whether a shot was a two or a three, by
+season, with the reason. A question filtered to twos or threes in one of them
+is refused rather than answered from whatever subset happens to be labeled.
+
+.. versionadded:: 2.1.0
+"""
+
+DERIVED_SHOT_VALUES: dict[int, str] = {
+    2003: ("ESPN did not label 2003's shots as twos or threes, so they are read from each shot's description, whose count of threes matches the box score's to within 0.01%"),
+    2022: (
+        "ESPN labeled only 4% of 2022's shots as twos or threes, so the rest are read from the description where it says and otherwise from where the shot "
+        "was taken against the three-point line, which counts 0.2% more threes than the box score does"
+    ),
+}
+"""Seasons whose shot values are mostly derived rather than labeled by ESPN,
+with the caveat an answer filtered to twos or threes carries.
+
+.. versionadded:: 2.1.0
+"""
+
+TEXT_NAMES_EVERY_THREE_UNTIL = 2012
+"""The last season whose shot descriptions name every three.
+
+Through 2012 "three point" is in the description of every shot ESPN labels a
+three and of no shot it labels a two - 100.00% agreement in each of 2004-2012.
+From 2013 step-backs and pull-ups stop saying so (99.66% in 2013, 95.45% by
+2024), and only the shot's position is left to decide.
+
+.. versionadded:: 2.1.0
+"""
+
+_UNSEPARABLE = ", ".join(str(s) for s in sorted(UNSEPARABLE_SHOT_VALUES))
+
+SHOT_VALUE_SQL = f"""(CASE
+    WHEN shot_type ILIKE '%free throw%' THEN 1
+    WHEN points_attempted IN (2, 3) THEN points_attempted
+    WHEN description ILIKE '%three point%' THEN 3
+    WHEN description ILIKE '%two point%' THEN 2
+    WHEN season IN ({_UNSEPARABLE}) THEN NULL
+    WHEN season <= {TEXT_NAMES_EVERY_THREE_UNTIL} THEN 2
+    WHEN NOT {HAS_POSITION_SQL} THEN NULL
+    WHEN {BEYOND_THE_ARC_SQL} THEN 3
+    ELSE 2
+END)"""
+"""A ``shot_chart`` row's value - 1, 2 or 3 - as SQL, or NULL where nothing
+establishes it. The one definition every shot-value filter reads.
+
+``points_attempted`` cannot be filtered on directly, because **0 there means
+unlabeled, not zero points**: every shot of 2002 and 2003, 96% of 2022's, and
+about a quarter of each season's from 2004 to 2012 - every one of those a miss,
+so "his twos" answered from the labels alone came out at a 72% field goal
+percentage. So the label is used where there is one, and otherwise, in order:
+
+- ``shot_type`` for free throws, which are unlabeled in 2002, 2003 and 2022;
+- the description, where it says "three point" or "two point" - a label ESPN
+  wrote in prose, which disagrees with its numeric label on at most 3 shots a
+  season;
+- through :data:`TEXT_NAMES_EVERY_THREE_UNTIL`, a two, since those seasons'
+  descriptions name every three;
+- after it, the shot's position against the three-point line
+  (:data:`association.query.court.BEYOND_THE_ARC_SQL`), which matches ESPN's
+  own labels on 99.83-99.94% of shots in every season it labeled.
+
+Counted against the box score's three-point attempts per player-game, the
+result matches in 99.3-100% of games in every season but 2002 - which is
+:data:`UNSEPARABLE_SHOT_VALUES`, and NULL here for any shot neither labeled nor
+described.
+
+.. versionadded:: 2.1.0
+"""
 
 SHOT_AVAILABILITY = Availability("shot_chart")
 """Where a shot chart's rows live, for narrowing an ambiguous name to the
@@ -106,7 +183,9 @@ def render_shot_chart(
     .. versionchanged:: 2.1.0
        May answer with a clarifying question - ``artifact`` None and the
        message naming the candidates - where an ambiguous name previously drew
-       the best match. See :func:`resolve_chart_player`.
+       the best match. See :func:`resolve_chart_player`. ``shot_value`` now
+       reaches unlabeled shots, and may be refused for a season that cannot
+       separate them; see :func:`render_for_player`.
     """
     # `season` is passed through as given, None included: an unscoped chart
     # covers a whole career, so narrowing the name to one year would filter by
@@ -145,9 +224,10 @@ def render_for_player(
 ) -> RenderResult:
     """Render an already-resolved player's shots to a static HTML court plot.
 
-    Free throws are excluded: they carry no court coordinates. Passing
-    ``event_id`` scopes the chart to a single game and makes ``season`` and
-    ``season_type`` redundant.
+    Free throws are excluded, and so is any shot with no recorded position -
+    see :data:`association.query.court.HAS_POSITION_SQL`. Passing ``event_id``
+    scopes the chart to a single game and makes ``season`` and ``season_type``
+    redundant.
 
     Returns:
         A :class:`association.query.answer.RenderResult`: the message naming
@@ -163,6 +243,16 @@ def render_for_player(
        show the chart does not have to parse the path back out of a sentence.
        :func:`association.query.fingerprint.render_for_players` returns the
        same shape.
+
+    .. versionchanged:: 2.1.0
+       ``shot_value`` is read through :data:`SHOT_VALUE_SQL` rather than
+       ``points_attempted``, whose 0 means unlabeled: Stephen Curry's 2022
+       threes charted 38 of 751 attempts, every one a miss. A season in
+       :data:`UNSEPARABLE_SHOT_VALUES` is refused, one in
+       :data:`DERIVED_SHOT_VALUES` says so, ``shot_value=1`` is refused
+       because a free throw has no position worth drawing, and free throws no
+       longer reach an unfiltered chart - from 2002 to 2018 they carry a fixed
+       position under the rim and were drawn there as shots.
     """
     athlete_id, resolved_name = player.id, player.name
 
@@ -173,7 +263,13 @@ def render_for_player(
         season = None
         season_type = None
 
-    where = ["athlete_id = ?"]
+    if shot_value == 1:
+        return RenderResult("Free throws are all taken from the same line and carry no court position worth drawing, so there is no free-throw chart to render.", None)
+    kind = {2: "2PT attempts", 3: "3PT attempts"}.get(shot_value or 0, f"{shot_value}pt attempts")
+    if shot_value is not None and season in UNSEPARABLE_SHOT_VALUES:
+        return RenderResult(f"{UNSEPARABLE_SHOT_VALUES[season]}. A chart of {resolved_name}'s {kind} in {season} cannot be drawn.", None)
+
+    where = ["athlete_id = ?", HAS_POSITION_SQL]
     filter_params: list[Any] = [athlete_id]
     if season is not None:
         where.append("season = ?")
@@ -188,16 +284,32 @@ def render_for_player(
         where.append("period = ?")
         filter_params.append(period)
     if shot_value is not None:
-        where.append("points_attempted = ?")
+        # NULL is kept here so it can be counted and said, rather than dropped
+        # by the filter where nobody would know.
+        where.append(f"({SHOT_VALUE_SQL} = ? OR {SHOT_VALUE_SQL} IS NULL)")
         filter_params.append(shot_value)
+    else:
+        where.append(f"{SHOT_VALUE_SQL} IS DISTINCT FROM 1")
     if made_only is not None:
         where.append("made = ?")
         filter_params.append(made_only)
 
-    sql = f"SELECT coordinate_x, coordinate_y, made, shot_type, period, clock, event_id FROM shot_chart WHERE {' AND '.join(where)} AND coordinate_x IS NOT NULL"
-    shots = con.execute(sql, filter_params).fetchall()
+    sql = f"SELECT coordinate_x, coordinate_y, made, shot_type, period, clock, event_id, season, {SHOT_VALUE_SQL} FROM shot_chart WHERE {' AND '.join(where)}"
+    rows = con.execute(sql, filter_params).fetchall()
+    kept = [r for r in rows if shot_value is None or r[8] == shot_value]
+    unknown = [r for r in rows if shot_value is not None and r[8] is None]
+    notes = []
+    if unknown:
+        # Only reachable across seasons (a career or one game): a single
+        # unseparable season was refused above.
+        why = "; ".join(UNSEPARABLE_SHOT_VALUES.get(s, f"nothing records their value in {s}") for s in sorted({r[7] for r in unknown}))
+        notes.append(f"left out {len(unknown):,} {'shot' if len(unknown) == 1 else 'shots'} that cannot be told apart as twos or threes: {why}")
+    if shot_value is not None:
+        notes.extend(DERIVED_SHOT_VALUES[s] for s in sorted({r[7] for r in kept} & DERIVED_SHOT_VALUES.keys()))
+    shots = [r[:7] for r in kept]
     if not shots:
-        return RenderResult(f"No shots found for {resolved_name} with the given filters.", None)
+        message = f"No shots found for {resolved_name} with the given filters."
+        return RenderResult(" Note: ".join([message, *notes]) + ("." if notes else ""), None)
 
     made = sum(1 for s in shots if s[2])
     total = len(shots)
@@ -244,4 +356,6 @@ def render_for_player(
     msg = f"Rendered shot chart for {resolved_name} ({made}/{total} made, {made / total:.1%}) to {out_path}"
     if ambiguous:
         msg += f". Note: other players also matched: {ambiguous}"
+    for note in notes:
+        msg += f". Note: {note}"
     return RenderResult(msg, Artifact("shot_chart", out_path))

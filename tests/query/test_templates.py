@@ -405,11 +405,13 @@ def sc_ctx(tmp_path: Path) -> TemplateContext:
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute(
         "CREATE TABLE shot_chart (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, "
-        "period INTEGER, clock VARCHAR, made BOOLEAN, shot_type VARCHAR, coordinate_x INTEGER, coordinate_y INTEGER, points_attempted INTEGER)"
+        "period INTEGER, clock VARCHAR, made BOOLEAN, shot_type VARCHAR, coordinate_x INTEGER, coordinate_y INTEGER, points_attempted INTEGER, description VARCHAR)"
     )
     c.execute("INSERT INTO players VALUES ('1','Stephen Curry')")
+    # Two labeled threes from the top of the arc, 26 feet from the rim at
+    # (25, 0) - a real three's position, so the label and the line agree.
     c.executemany(
-        "INSERT INTO shot_chart VALUES ('1',?,2,'e1',1,'10:00',?,'Jump Shot',25,20,3)",
+        "INSERT INTO shot_chart VALUES ('1',?,2,'e1',1,'10:00',?,'Jump Shot',25,26,3,'26-foot three point jumper')",
         [(current_season(), True), (current_season(), False)],
     )
     return TemplateContext(con=c, out_dir=tmp_path / "out")
@@ -433,7 +435,7 @@ def test_shot_chart_asks_which_player_when_both_took_shots(sc_ctx: TemplateConte
     """And when narrowing cannot separate them it asks, rather than drawing
     whichever sorts first and titling the plot with the wrong Curry."""
     sc_ctx.con.execute("INSERT INTO players VALUES ('2','Seth Curry')")
-    sc_ctx.con.execute(f"INSERT INTO shot_chart VALUES ('2',{current_season()},2,'e2',1,'9:00',TRUE,'Jump Shot',25,20,3)")
+    sc_ctx.con.execute(f"INSERT INTO shot_chart VALUES ('2',{current_season()},2,'e2',1,'9:00',TRUE,'Jump Shot',25,26,3,'26-foot three point jumper')")
     result = shot_chart(sc_ctx, {"player": "Curry", "season": current_season()})
     assert result.answer == "'Curry' matches more than one player - did you mean Seth Curry or Stephen Curry?"
     assert not list(sc_ctx.out_dir.glob("*.html"))
@@ -473,7 +475,7 @@ def test_a_scoped_chart_uses_the_same_player_it_looked_the_game_up_for(tmp_path:
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute(
         "CREATE TABLE shot_chart (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, "
-        "period INTEGER, clock VARCHAR, made BOOLEAN, shot_type VARCHAR, coordinate_x INTEGER, coordinate_y INTEGER, points_attempted INTEGER)"
+        "period INTEGER, clock VARCHAR, made BOOLEAN, shot_type VARCHAR, coordinate_x INTEGER, coordinate_y INTEGER, points_attempted INTEGER, description VARCHAR)"
     )
     c.execute("CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, game_date VARCHAR)")
     # Two players both matching "Curry", each with their own game. Seth's game
@@ -485,7 +487,7 @@ def test_a_scoped_chart_uses_the_same_player_it_looked_the_game_up_for(tmp_path:
         [("1", current_season(), "seth_game", "2026-01-03"), ("2", current_season(), "steph_game", "2026-01-02")],
     )
     c.executemany(
-        "INSERT INTO shot_chart VALUES (?,?,2,?,1,'10:00',true,'Jump Shot',25,20,3)",
+        "INSERT INTO shot_chart VALUES (?,?,2,?,1,'10:00',true,'Jump Shot',25,26,3,'26-foot three point jumper')",
         [("1", current_season() - 1, "seth_old_game"), ("2", current_season(), "steph_game")],
     )
     ctx = TemplateContext(con=c, out_dir=tmp_path / "out")
@@ -517,7 +519,7 @@ def test_a_scoped_chart_uses_the_same_player_it_looked_the_game_up_for(tmp_path:
 def test_shot_chart_defaults_an_unspecified_season_to_the_current_one(sc_ctx: TemplateContext) -> None:
     """Passing None through charted a player's entire career in one plot
     (confirmed live: 3,665 Curry attempts across every season)."""
-    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',2019,2,'e9',1,'5:00',TRUE,'Jump Shot',10,10,2)")
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',2019,2,'e9',1,'5:00',TRUE,'Jump Shot',10,10,2,'makes 18-foot jumper')")
     answer = shot_chart(sc_ctx, {"player": "Stephen Curry"}).answer or ""
     # Only this season's two shots, not the 2019 one as well.
     assert "1/2 made" in answer and str(current_season()) in answer
@@ -683,7 +685,7 @@ def test_player_compare_is_capped(ps_con: TemplateContext) -> None:
 def test_shot_chart_reads_threes_from_either_slot(sc_ctx: TemplateContext) -> None:
     """ "Curry's threes" comes back as shot_value 3 or as the equivalent
     box-score stat depending on wording; both mean the same thing."""
-    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e2',1,'9:00',TRUE,'Layup',5,5,2)", [current_season()])
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e2',1,'9:00',TRUE,'Layup',5,5,2,'makes layup')", [current_season()])
     by_value = shot_chart(sc_ctx, {"player": "Stephen Curry", "shot_value": 3}).answer or ""
     by_stat = shot_chart(sc_ctx, {"player": "Stephen Curry", "stat": "threePointFieldGoalsMade"}).answer or ""
     assert "1/2 made" in by_value and "1/2 made" in by_stat
@@ -986,21 +988,111 @@ def test_shot_distance_filters_to_the_shot_value_asked_for(sc_ctx: TemplateConte
     """Confirmed live: the agent wrote the right distance formula, then dropped
     both the 3-point filter and the season filter and reported an all-shots,
     all-seasons average of 16.94 as a current-season three-point distance."""
-    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e5',1,'1:00',TRUE,'Layup',25,7,2)", [current_season()])
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e5',1,'1:00',TRUE,'Layup',25,1,2,'makes layup')", [current_season()])
     threes = shot_distance(sc_ctx, {"player": "Stephen Curry", "shot_value": 3})
     everything = shot_distance(sc_ctx, {"player": "Stephen Curry"})
     assert threes.data["attempts"] == 2 and everything.data["attempts"] == 3
     assert threes.data["avg_feet"] > everything.data["avg_feet"]
 
 
-def test_shot_distance_measures_from_the_hoop_not_the_origin(sc_ctx: TemplateContext) -> None:
-    # The hoop is at (25, 5.25); the fixture's shot sits at (25, 20).
+def test_shot_distance_measures_from_the_rim(sc_ctx: TemplateContext) -> None:
+    """The rim is at (25, 0) in ESPN's coordinates - y is measured from it, not
+    from the baseline - so the fixture's shot at (25, 26) is 26 feet out. The
+    old frame put the rim at (25, 5.25) and made it 20.75, which is how Stephen
+    Curry's 2026 threes came out at 23.6 feet, inside the line."""
     result = shot_distance(sc_ctx, {"player": "Stephen Curry", "shot_value": 3})
-    assert 14.0 < result.data["avg_feet"] < 15.5
+    assert result.data["avg_feet"] == pytest.approx(26.0)
+
+
+def test_shot_distance_counts_threes_espn_left_unlabeled(sc_ctx: TemplateContext) -> None:
+    """``points_attempted`` is 0 for an unlabeled shot, not a zero-point one,
+    and 96% of 2022 is unlabeled: filtered on it, "Curry's threes in 2022"
+    averaged 38 of his 751 attempts, every one a miss. The description names
+    one of these as a three and the position names the other."""
+    sc_ctx.con.executemany(
+        "INSERT INTO shot_chart VALUES ('1',?,2,'e7',1,'2:00',?,'Jump Shot',?,?,0,?)",
+        [(current_season(), True, 25, 25, "makes 25-foot three point jumper"), (current_season(), False, 2, 3, "misses 23-foot step back jumpshot")],
+    )
+    assert shot_distance(sc_ctx, {"player": "Stephen Curry", "shot_value": 3}).data["attempts"] == 4
+
+
+def test_shot_distance_leaves_out_free_throws_that_carry_a_position(sc_ctx: TemplateContext) -> None:
+    """From 2002 to 2018 every free throw has a position under the rim, so
+    "has coordinates" does not exclude them - they averaged in as zero-foot
+    shots."""
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e1',1,'3:00',TRUE,'Free Throw - 1 of 2',25,0,1,'makes free throw 1 of 2')", [current_season()])
+    result = shot_distance(sc_ctx, {"player": "Stephen Curry"})
+    assert result.data["attempts"] == 2
+    assert result.data["avg_feet"] == pytest.approx(26.0)
+
+
+def test_shot_distance_leaves_out_shots_with_no_position(sc_ctx: TemplateContext) -> None:
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e1',1,'4:00',TRUE,'Layup Shot',0,0,2,'makes layup')", [current_season()])
+    assert shot_distance(sc_ctx, {"player": "Stephen Curry"}).data["attempts"] == 2
+
+
+def test_shot_distance_refuses_threes_in_a_season_that_cannot_tell_them_apart(sc_ctx: TemplateContext) -> None:
+    """2002 has no labels and descriptions that miss threes, so answering from
+    what it has would be a narrower answer with nothing saying so. The refusal
+    names that cause - not an absence of data, since the same season still
+    answers for all of a player's shots."""
+    sc_ctx.con.executemany(
+        "INSERT INTO shot_chart VALUES ('1',2002,2,'e8',1,'5:00',TRUE,'Jump Shot',?,?,0,?)",
+        [(25, 25, "made 25 ft Three Point Jumper."), (47, 0, "made Jumper.")],
+    )
+    refused = shot_distance(sc_ctx, {"player": "Stephen Curry", "season": 2002, "shot_value": 3})
+    assert "avg_feet" not in refused.data
+    assert (refused.answer or "").startswith(shotchart.UNSEPARABLE_SHOT_VALUES[2002])
+    assert shot_distance(sc_ctx, {"player": "Stephen Curry", "season": 2002}).data["attempts"] == 2
+
+
+def test_shot_distance_says_when_a_seasons_shot_values_are_derived(sc_ctx: TemplateContext) -> None:
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',2022,2,'e9',1,'6:00',TRUE,'Jump Shot',25,26,0,'makes 26-foot three point jumper')")
+    threes = shot_distance(sc_ctx, {"player": "Stephen Curry", "season": 2022, "shot_value": 3})
+    assert threes.data["attempts"] == 1
+    assert shotchart.DERIVED_SHOT_VALUES[2022] in (threes.answer or "")
+    # A question about all shots does not rest on the derivation, so says nothing.
+    assert "Note" not in (shot_distance(sc_ctx, {"player": "Stephen Curry", "season": 2022}).answer or "")
+
+
+def test_shot_chart_draws_threes_espn_left_unlabeled(sc_ctx: TemplateContext) -> None:
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e7',1,'2:00',TRUE,'Jump Shot',2,3,0,'makes 23-foot step back jumpshot')", [current_season()])
+    result = shot_chart(sc_ctx, {"player": "Stephen Curry", "season": current_season(), "shot_value": 3})
+    assert "(2/3 made" in (result.answer or "")
+
+
+def test_shot_chart_refuses_threes_in_a_season_that_cannot_tell_them_apart(sc_ctx: TemplateContext) -> None:
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',2002,2,'e8',1,'5:00',TRUE,'Jump Shot',25,25,0,'made 25 ft Three Point Jumper.')")
+    result = shot_chart(sc_ctx, {"player": "Stephen Curry", "season": 2002, "shot_value": 3})
+    assert (result.answer or "").startswith(shotchart.UNSEPARABLE_SHOT_VALUES[2002])
+    assert not list(sc_ctx.out_dir.glob("*.html"))
+
+
+def test_shot_chart_leaves_free_throws_off_the_court(sc_ctx: TemplateContext) -> None:
+    """A 2002-2018 free throw has a position under the rim, and was drawn
+    there as a shot."""
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e1',1,'3:00',TRUE,'Free Throw - 1 of 2',25,0,1,'makes free throw 1 of 2')", [current_season()])
+    assert "(1/2 made" in (shot_chart(sc_ctx, {"player": "Stephen Curry", "season": current_season()}).answer or "")
+
+
+def test_a_free_throw_chart_is_refused_rather_than_drawn(sc_ctx: TemplateContext) -> None:
+    result = shot_chart(sc_ctx, {"player": "Stephen Curry", "season": current_season(), "shot_value": 1})
+    assert "no free-throw chart" in (result.answer or "")
+    assert not list(sc_ctx.out_dir.glob("*.html"))
+
+
+def test_a_career_chart_says_which_shots_it_left_out(sc_ctx: TemplateContext) -> None:
+    """One unseparable season is refused outright. Across seasons the chart
+    draws what can be told apart and says what it could not, rather than
+    dropping it where nobody would know."""
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',2002,2,'e8',1,'5:00',FALSE,'Jump Shot',47,0,0,'missed Jumper.')")
+    rendered = shotchart.render_shot_chart(sc_ctx.con, sc_ctx.out_dir, "Stephen Curry", shot_value=3)
+    assert "(1/2 made" in rendered.message
+    assert "left out 1 shot that cannot be told apart as twos or threes" in rendered.message
 
 
 def test_shot_distance_scopes_to_the_current_season_by_default(sc_ctx: TemplateContext) -> None:
-    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',2019,2,'e6',1,'1:00',TRUE,'Jump Shot',25,40,3)")
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',2019,2,'e6',1,'1:00',TRUE,'Jump Shot',25,40,3,'40-foot three point jumper')")
     assert shot_distance(sc_ctx, {"player": "Stephen Curry", "shot_value": 3}).data["attempts"] == 2
 
 
@@ -1213,7 +1305,7 @@ def test_shot_chart_scopes_to_a_single_game_when_order_is_set(sc_ctx: TemplateCo
         "INSERT INTO player_game_log VALUES ('1',?,2,'e1','2026-01-01T00:00Z'),('1',?,2,'eLast','2026-04-13T00:30Z')",
         [current_season(), current_season()],
     )
-    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'eLast',1,'2:00',TRUE,'Jump Shot',25,26,3)", [current_season()])
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'eLast',1,'2:00',TRUE,'Jump Shot',25,26,3,'26-foot three point jumper')", [current_season()])
     answer = shot_chart(sc_ctx, {"player": "Stephen Curry", "order": "recent"}).answer or ""
     assert "1/1 made" in answer  # only the one shot from the last game
     assert "eLast" in answer
@@ -1339,7 +1431,7 @@ def test_shot_distance_scopes_to_one_game(sc_ctx: TemplateContext) -> None:
     sc_ctx.con.execute("INSERT INTO player_game_log VALUES ('1',?,2,'e1','2026-04-13T00:30Z')", [current_season()])
     # A second game whose shots must NOT be counted.
     sc_ctx.con.execute("INSERT INTO player_game_log VALUES ('1',?,2,'e2','2026-01-01T00:00Z')", [current_season()])
-    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e2',1,'2:00',TRUE,'Jump Shot',25,40,3)", [current_season()])
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e2',1,'2:00',TRUE,'Jump Shot',25,40,3,'40-foot three point jumper')", [current_season()])
     answer = shot_distance(sc_ctx, {"player": "Stephen Curry", "order": "recent"}).answer or ""
     assert "most recent game (2026-04-13)" in answer
     assert "2 attempts" in answer  # the fixture's two shots in e1, not the third in e2

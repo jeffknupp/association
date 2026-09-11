@@ -22,12 +22,12 @@ from association.net_points_categories import FINGERPRINT_CATEGORIES
 from association.season import current_season
 
 from .answer import Artifact
-from .court import HOOP_X, HOOP_Y
+from .court import HAS_POSITION_SQL, SHOT_DISTANCE_SQL
 from .entities import Ambiguous, Entity, clarification, no_match, resolve_player, resolve_team, suggest_players, suggestion
 from .fingerprint import FINGERPRINT_AVAILABILITY, FINGERPRINT_VIEWS, GAME_FINGERPRINT_AVAILABILITY, FingerprintUnavailable, render_for_players
 from .leaderboard import LeaderboardError, resolve_metric, run_leaderboard
 from .metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS
-from .shotchart import SHOT_AVAILABILITY, render_for_player, resolve_chart_player
+from .shotchart import DERIVED_SHOT_VALUES, SHOT_AVAILABILITY, SHOT_VALUE_SQL, UNSEPARABLE_SHOT_VALUES, render_for_player, resolve_chart_player
 
 # Slot value -> real player_box_stats column. A whitelist, not a passthrough:
 # the router's `stat` slot is model-generated text, and this is the only place
@@ -1278,16 +1278,20 @@ def _shot_value(slots: dict[str, Any]) -> int | None:
     return SHOT_VALUE_FROM_STAT.get(stat) if isinstance(stat, str) else None
 
 
-# Free throws carry NULL coordinates and must be excluded from distance math.
-
-
 def shot_distance(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """Average shot distance for one player, optionally by shot value.
 
-    The agent wrote the right distance formula, then dropped both the 3-point
-    filter and the season filter, reporting an all-shots all-seasons 16.94 as a
-    current-season three-point figure (real answer 23.6). A fixed formula over
-    known columns is template work."""
+    The agent wrote a distance formula, then dropped both the 3-point filter
+    and the season filter, reporting an all-shots all-seasons 16.94 as a
+    current-season three-point figure. A fixed formula over known columns is
+    template work - but "fixed" is only as good as the frame: this template
+    then measured from a hoop 5.25 feet from where the data puts it, and
+    answered Stephen Curry's 2026 threes with 23.6 feet, inside the line. From
+    the rim (see court.HOOP_Y) they average 27.6.
+
+    Shot values come from shotchart.SHOT_VALUE_SQL rather than
+    ``points_attempted``, which is 0 for an unlabeled shot: "Curry's threes in
+    2022" averaged 38 of his 751 attempts, every one of them a miss."""
     con = ctx.con
     player = _resolved_player(con, slots.get("player"), "shot_distance needs a player name")
     if isinstance(player, TemplateResult):
@@ -1298,11 +1302,19 @@ def shot_distance(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult
     shot_value = _shot_value(slots)
     if shot_value == 1:
         raise TemplateUnsupported("free throws have no meaningful shot distance")
+    period = _period(season, season_type)
+    kind = {2: "2-point ", 3: "3-point "}.get(shot_value or 0, "")
+    if shot_value is not None and season in UNSEPARABLE_SHOT_VALUES:
+        # Returned, not raised: the agent reads the same unlabeled rows.
+        message = f"{UNSEPARABLE_SHOT_VALUES[season]}. {player.name}'s average {kind}shot distance in the {period} cannot be given; his average over all shots can."
+        return TemplateResult(data={"player": player.name, "season": season, "shot_value": shot_value, "message": message}, answer=message)
 
-    where = ["athlete_id = ?", "season = ?", "season_type = ?", "coordinate_x IS NOT NULL"]
+    # Free throws are excluded by value, not by a missing position: from 2002
+    # to 2018 they carry a fixed one under the rim, and averaged in as shots.
+    where = ["athlete_id = ?", "season = ?", "season_type = ?", HAS_POSITION_SQL, f"{SHOT_VALUE_SQL} IS DISTINCT FROM 1"]
     params: list[Any] = [player.id, season, season_type]
     if shot_value is not None:
-        where.append("points_attempted = ?")
+        where.append(f"{SHOT_VALUE_SQL} = ?")
         params.append(shot_value)
     game_note = ""
     if slots.get("order") in ("recent", "first"):
@@ -1312,18 +1324,15 @@ def shot_distance(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult
         where.append("event_id = ?")
         params.append(found[0])
         game_note = f" in his {'first' if slots['order'] == 'first' else 'most recent'} game ({str(found[1])[:10]})"
-    row = con.execute(
-        f"SELECT AVG(SQRT(POWER(coordinate_x - {HOOP_X}, 2) + POWER(coordinate_y - {HOOP_Y}, 2))), COUNT(*) FROM shot_chart WHERE {' AND '.join(where)}",
-        params,
-    ).fetchone()
+    row = con.execute(f"SELECT AVG({SHOT_DISTANCE_SQL}), COUNT(*) FROM shot_chart WHERE {' AND '.join(where)}", params).fetchone()
 
     average, attempts = row or (None, 0)
-    period = _period(season, season_type)
-    kind = {2: "2-point ", 3: "3-point "}.get(shot_value or 0, "")
     if not attempts or average is None:
         answer = f"No {kind}shots with recorded coordinates for {player.name}{game_note} in the {period}."
     else:
         answer = f"{player.name}'s average {kind}shot distance{game_note or f' in the {period}'} was {average:.1f} feet, over {attempts:,} attempts with recorded coordinates."
+        if shot_value is not None and season in DERIVED_SHOT_VALUES:
+            answer += f" Note: {DERIVED_SHOT_VALUES[season]}."
     return TemplateResult(
         data={"player": player.name, "season": season, "shot_value": shot_value, "avg_feet": average, "attempts": attempts},
         answer=answer,

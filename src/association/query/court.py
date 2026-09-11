@@ -1,53 +1,165 @@
-"""Renders a simplified NBA half-court as a self-contained HTML/SVG page."""
+"""ESPN's shot coordinate frame, and a simplified NBA half-court drawn in it as
+a self-contained HTML/SVG page."""
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
-# The hoop's position in ESPN's shot coordinate system, in feet - NOT the
-# origin. Defined here because this module owns that coordinate system; the
-# shot-distance math in templates.py measures from the same point, and a rim
-# drawn somewhere other than where distance is measured from is a silent
-# disagreement no test would catch.
-HOOP_X, HOOP_Y = 25, 5.25
+# The frame is defined here, once, because this module draws in it: the
+# shot-distance math in templates.py and the shot-value rule in shotchart.py
+# measure from the same point, and a rim drawn somewhere other than where
+# distance is measured from is a silent disagreement no test would catch.
+
+HOOP_X = 25
+"""The rim's x in ESPN's shot coordinates, in feet: x runs 0-50 from one
+sideline to the other."""
+
+HOOP_Y = 0
+"""The rim's y in ESPN's shot coordinates, in feet. **y is measured from the
+rim, not the baseline** - the baseline sits at -5.25, which is why the table's
+smallest y is -5.
+
+Measured, not assumed. Most shot descriptions carry their own distance ("makes
+26-foot three point jumper"), and from 2002 through 2012 that distance equals
+``round(hypot(x - 25, y))`` for every one of them - 100.0% of 1.3 million shots.
+From 2013 the coordinates are rounded from a finer position and 99.8% agree to
+within a foot. No y-scale is needed: fitting one alongside the hoop gives
+1.000.
+
+From 2023-11-02 on, the descriptions run 0.64 feet short of this point, as if
+the hoop had moved a foot. The coordinates did not: the three-point line
+separates ESPN's own two- and three-point labels exactly as well in 2024-2026
+(99.93%) as in 2023 (99.93%), and measurably worse from a hoop a foot out
+(99.72%). The prose changed overnight; the frame did not.
+
+.. versionchanged:: 2.1.0
+   Was 5.25, the rim's distance from the baseline, on the assumption that y
+   started there. It does not, so every distance came out short - Stephen
+   Curry's 2026 threes averaged 23.6 feet, inside a 23.75-foot line, and a
+   line-geometry rule called only 35,374 of 2023's 89,908 labeled threes a
+   three. The chart drew each shot 5.25 feet closer to the baseline than it
+   was taken.
+"""
+
+RIM_TO_BASELINE = 5.25
+"""Feet from the rim's center back to the baseline. Used only to draw the
+court: the data has no baseline, only the rim.
+
+.. versionadded:: 2.1.0
+"""
+
+THREE_POINT_RADIUS = 23.75
+"""The three-point arc's radius from the rim's center, in feet. Unchanged for
+every season shot data covers (2002 on).
+
+.. versionadded:: 2.1.0
+"""
+
+CORNER_THREE_X = 22
+"""The corner three's distance from the rim, measured across the court. The
+line runs straight up from the baseline at this distance until it meets the
+arc.
+
+.. versionadded:: 2.1.0
+"""
+
+CORNER_THREE_Y = math.sqrt(THREE_POINT_RADIUS**2 - CORNER_THREE_X**2)
+"""Where the straight corner line meets the arc, in feet above the rim
+(8.95).
+
+.. versionadded:: 2.1.0
+"""
+
+THREE_POINT_CUTOFF = 23.5
+"""The distance beyond which a shot off the corner counts as a three, in
+this table's coordinates - a quarter-foot inside the painted 23.75.
+
+The allowance is for the coordinates being whole feet: a shot taken just
+beyond the line can be stored at a point that measures 23.5-something. Chosen
+by measurement against ESPN's own labels, which it matches on 99.83-99.94% of
+shots in every labeled season 2004-2026, against 99.69-99.94% at 23.75.
+
+.. versionadded:: 2.1.0
+"""
+
+SHOT_DISTANCE_SQL = f"SQRT(POWER(coordinate_x - {HOOP_X}, 2) + POWER(coordinate_y - {HOOP_Y}, 2))"
+"""A ``shot_chart`` row's distance from the rim in feet, as SQL.
+
+.. versionadded:: 2.1.0
+"""
+
+HAS_POSITION_SQL = "(coordinate_x IS NOT NULL AND NOT (coordinate_x = 0 AND coordinate_y = 0))"
+"""Whether a ``shot_chart`` row records where the shot was taken, as SQL.
+
+NULL is ESPN's "no position" from 2019 on. ``(0, 0)`` is the same thing
+earlier: it is a point on the sideline, where nobody can shoot from, and 2002
+puts 7,109 shots there - a third of them described as layups or two-pointers.
+Every other season has at most 107.
+
+.. versionadded:: 2.1.0
+"""
+
+BEYOND_THE_ARC_SQL = f"((ABS(coordinate_x - {HOOP_X}) >= {CORNER_THREE_X} AND coordinate_y - {HOOP_Y} <= {CORNER_THREE_Y:.2f}) OR {SHOT_DISTANCE_SQL} >= {THREE_POINT_CUTOFF})"
+"""Whether a positioned ``shot_chart`` row was taken beyond the three-point
+line, as SQL: in either corner, or past :data:`THREE_POINT_CUTOFF` anywhere
+else. Only meaningful where :data:`HAS_POSITION_SQL` holds.
+
+.. versionadded:: 2.1.0
+"""
 
 
 def render_court_html(title: str, subtitle: str, shots: list[tuple[Any, ...]]) -> str:
-    """Simplified NBA half-court in ESPN's shot coordinate system (x: 0-50 court width,
-    y: 0 at baseline increasing toward half court), makes/misses as distinct markers."""
+    """Simplified NBA half-court in ESPN's shot coordinate system, makes and
+    misses as distinct markers.
+
+    Shots are plotted at their coordinates as stored - x 0-50 across the court,
+    y in feet from the rim - and the court is drawn around :data:`HOOP_X`,
+    :data:`HOOP_Y`, so a shot and the lines it is judged against share one
+    frame.
+
+    .. versionchanged:: 2.1.0
+       The court is drawn around the rim at (25, 0), where the data puts it.
+       It previously put the rim 5.25 feet up from ``y = 0``, which drew every
+       shot 5.25 feet short of where it was taken: the typical three landed on
+       or inside the arc.
+    """
     W, H = 500, 470  # 10px per foot, court width 50 x half-court length 47
     scale = 10
+    baseline = HOOP_Y - RIM_TO_BASELINE
 
     def sx(x: float) -> float:
         """Court x (0-50 feet, sideline to sideline) to SVG x."""
         return x * scale
 
     def sy(y: float) -> float:
-        """Court y (0 at the baseline) to SVG y, which grows downward."""
-        return H - y * scale  # baseline at bottom
+        """Court y (feet from the rim) to SVG y, which grows downward."""
+        return H - (y - baseline) * scale  # baseline at bottom
 
+    left_corner, right_corner = HOOP_X - CORNER_THREE_X, HOOP_X + CORNER_THREE_X
+    corner_top = HOOP_Y + CORNER_THREE_Y
     court = f"""
       <rect x="0" y="0" width="{W}" height="{H}" fill="var(--court)" stroke="var(--line)" stroke-width="2"/>
       <!-- baseline -->
-      <line x1="0" y1="{sy(0)}" x2="{W}" y2="{sy(0)}" stroke="var(--line)" stroke-width="2"/>
-      <!-- backboard -->
-      <line x1="{sx(22)}" y1="{sy(4)}" x2="{sx(28)}" y2="{sy(4)}" stroke="var(--line)" stroke-width="2"/>
+      <line x1="0" y1="{sy(baseline)}" x2="{W}" y2="{sy(baseline)}" stroke="var(--line)" stroke-width="2"/>
+      <!-- backboard, 4ft in from the baseline -->
+      <line x1="{sx(HOOP_X - 3)}" y1="{sy(baseline + 4)}" x2="{sx(HOOP_X + 3)}" y2="{sy(baseline + 4)}" stroke="var(--line)" stroke-width="2"/>
       <!-- rim -->
       <circle cx="{sx(HOOP_X)}" cy="{sy(HOOP_Y)}" r="{0.75 * scale}" fill="none" stroke="var(--rim)" stroke-width="2"/>
-      <!-- paint -->
-      <rect x="{sx(17)}" y="{sy(19)}" width="{16 * scale}" height="{19 * scale}" fill="none" stroke="var(--line)" stroke-width="2"/>
+      <!-- paint, 16ft wide out to the free throw line 19ft from the baseline -->
+      <rect x="{sx(HOOP_X - 8)}" y="{sy(baseline + 19)}" width="{16 * scale}" height="{19 * scale}" fill="none" stroke="var(--line)" stroke-width="2"/>
       <!-- free throw circle -->
-      <circle cx="{sx(25)}" cy="{sy(19)}" r="{6 * scale}" fill="none" stroke="var(--line)" stroke-width="1.5" stroke-dasharray="4,3"/>
-      <!-- three point arc (approx, radius 23.75, corners straight to y=14).
-           sweep-flag=1: the arc must bulge away from the baseline (toward
-           half court), not back toward it - with sweep-flag=0 here it drew
-           the minor arc on the near side of the chord, dipping the arc
+      <circle cx="{sx(HOOP_X)}" cy="{sy(baseline + 19)}" r="{6 * scale}" fill="none" stroke="var(--line)" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <!-- three point arc: straight up each corner, then an arc centered on
+           the rim. sweep-flag=1: the arc must bulge away from the baseline
+           (toward half court), not back toward it - with sweep-flag=0 here it
+           drew the minor arc on the near side of the chord, dipping the arc
            *below* the baseline instead of arcing out toward half court. -->
-      <path d="M {sx(3)} {sy(0)} L {sx(3)} {sy(14)}
-               A {23.75 * scale} {23.75 * scale} 0 0 1 {sx(47)} {sy(14)}
-               L {sx(47)} {sy(0)}" fill="none" stroke="var(--line)" stroke-width="2"/>
+      <path d="M {sx(left_corner):.2f} {sy(baseline):.2f} L {sx(left_corner):.2f} {sy(corner_top):.2f}
+               A {THREE_POINT_RADIUS * scale} {THREE_POINT_RADIUS * scale} 0 0 1 {sx(right_corner):.2f} {sy(corner_top):.2f}
+               L {sx(right_corner):.2f} {sy(baseline):.2f}" fill="none" stroke="var(--line)" stroke-width="2"/>
       <!-- half court line -->
-      <line x1="0" y1="{sy(47)}" x2="{W}" y2="{sy(47)}" stroke="var(--line)" stroke-width="1" stroke-dasharray="3,3"/>
+      <line x1="0" y1="{sy(baseline + 47)}" x2="{W}" y2="{sy(baseline + 47)}" stroke="var(--line)" stroke-width="1" stroke-dasharray="3,3"/>
     """
 
     markers = []
