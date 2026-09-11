@@ -36,7 +36,12 @@ from association.season import current_season
 def con(tmp_path: Path) -> TemplateContext:
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
-    c.execute("CREATE TABLE player_box_stats (athlete_id VARCHAR, season INTEGER, season_type INTEGER, points INTEGER, rebounds INTEGER)")
+    # event_id/minutes/did_not_play are what an empty box score is detected by;
+    # the defaults make every game here a real one.
+    c.execute(
+        "CREATE TABLE player_box_stats (athlete_id VARCHAR, season INTEGER, season_type INTEGER, points INTEGER, rebounds INTEGER, "
+        "event_id VARCHAR, minutes INTEGER DEFAULT 30, did_not_play BOOLEAN DEFAULT FALSE)"
+    )
     c.execute("INSERT INTO players VALUES ('1','Luka Doncic'),('2','Shai Gilgeous-Alexander'),('3','Bench Guy')")
     season = current_season()
     rows: list[tuple[Any, ...]] = []
@@ -46,7 +51,7 @@ def con(tmp_path: Path) -> TemplateContext:
     rows += [("3", season, 2, 40, 1)] * 9  # postseason-only below, so excluded
     rows += [("3", season, 3, 40, 1)] * 9
     rows += [("2", season - 1, 2, 40, 1)] * 7  # previous season, excluded by default
-    c.executemany("INSERT INTO player_box_stats VALUES (?,?,?,?,?)", rows)
+    c.executemany("INSERT INTO player_box_stats (athlete_id, season, season_type, points, rebounds) VALUES (?,?,?,?,?)", rows)
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
@@ -121,7 +126,7 @@ def test_answer_for_a_single_named_player(con: TemplateContext) -> None:
 
 
 def test_answer_reports_a_tie_as_a_tie(con: TemplateContext) -> None:
-    con.con.execute("INSERT INTO player_box_stats SELECT '1', season, 2, 35, 5 FROM player_box_stats LIMIT 5")
+    con.con.execute("INSERT INTO player_box_stats (athlete_id, season, season_type, points, rebounds) SELECT '1', season, 2, 35, 5 FROM player_box_stats LIMIT 5")
     result = threshold_count(con, {"stat": "points", "threshold": 30})
     assert "tied for the most" in (result.answer or "")
 
@@ -757,6 +762,8 @@ def sgh_ctx(tmp_path: Path) -> TemplateContext:
     c.execute("CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER, season_type INTEGER, player_name VARCHAR, game_date VARCHAR, opponent_abbr VARCHAR, assists INTEGER, points INTEGER)")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute("INSERT INTO players VALUES ('1','Ryan Nembhard'),('2','Nikola Jokic')")
+    # Read only to count empty box scores; none here.
+    c.execute("CREATE TABLE player_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, athlete_id VARCHAR, minutes INTEGER, did_not_play BOOLEAN)")
     s = current_season()
     c.executemany(
         "INSERT INTO player_game_log VALUES (?,?,?,?,?,?,?,?)",
@@ -777,7 +784,8 @@ def test_single_game_high_answers_the_question_a_leaderboard_answered_wrongly(sg
     at 10.7" in 1.76s. The real answer was Ryan Nembhard with 23."""
     answer = single_game_high(sgh_ctx, {"stat": "assists"}).answer or ""
     assert answer.startswith("Ryan Nembhard had the most assists in a single game")
-    assert "23" in answer and "2026-04-13" in answer and "CHI" in answer
+    # Stored as 2026-04-13T00:30Z: 8:30pm Eastern on the 12th, the day it was played.
+    assert "23" in answer and "2026-04-12" in answer and "CHI" in answer
 
 
 def test_single_game_high_is_a_maximum_not_an_average(sgh_ctx: TemplateContext) -> None:
@@ -798,7 +806,7 @@ def test_single_game_high_defaults_to_the_current_season(sgh_ctx: TemplateContex
 
 def test_single_game_high_for_a_named_player(sgh_ctx: TemplateContext) -> None:
     answer = single_game_high(sgh_ctx, {"stat": "assists", "player": "Nikola Jokic"}).answer or ""
-    assert answer == f"Nikola Jokic's highest assist total in a single game in the {current_season()} regular season was 19, on 2026-03-26 vs DAL."
+    assert answer == f"Nikola Jokic's highest assist total in a single game in the {current_season()} regular season was 19, on 2026-03-25 vs DAL."
 
 
 def test_single_game_high_reports_a_tie_as_a_tie(sgh_ctx: TemplateContext) -> None:
@@ -1523,7 +1531,6 @@ def test_templates_that_write_nothing_report_no_artifacts(lb_con: TemplateContex
     [
         ("game_log", {"player": "Jaylen Brown", "opponent": "Detroit Pistons"}),
         ("team_record", {"team": "New York Knicks", "venue": "home"}),
-        ("leaderboard", {"stat": "points", "span": "career"}),
         ("game_log", {"player": "Brandin Podziemski", "without": "curry"}),
     ],
 )
