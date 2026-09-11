@@ -13,6 +13,10 @@ priority. Read the entries for the area you are about to touch, and add what
 you find to it, including findings that are not part of your task (see
 "Recording findings").
 
+What the *source* does — ESPN's wrong values, missing games, odd labeling and
+per-table history — is catalogued separately in `DATA.md`. `ISSUES.md` is what
+we do about it. Read `DATA.md` before trusting a column.
+
 ## Before you commit
 
 ```bash
@@ -519,26 +523,16 @@ everything about it is constrained by things measured elsewhere in this file.
   (`FINGERPRINT_PARTITION`): two_pt, three_pt, free_throw, turnover, rebound,
   foul. They sum to the season average almost exactly. The other 15 are
   overlapping slices — summing all 21 is meaningless.
-- **The play-type split exists per game as well as per season, in a second
-  file, and it was missed for months.** ESPN Analytics publishes two objects
-  per date: `NBA/netpts/<season>/<date>.json`, which the pull already read, and
-  `NBA/netpts/<season>/<date>_player.json`, which it did not. The first carries
-  57 fields per player-game with exactly three NetPoints values among them
-  (offense, defense, total) and counting stats for the rest; the second is long
-  format — one row per player per game per action type, 31 types covering every
-  category the season file holds plus nine it does not (`atb`, `bank`, `dunk`,
-  `grenade`, and the dead-ball ones).
-
-  Worth recording as a *method* failure rather than a data note. The season
-  file's absence of a game id was read as "the source does not publish this per
-  game", and the daily file's `assister` / `putback` / `corner`-shaped field
-  NAMES were read as the taxonomy — but their VALUES are integer counts
+- **Do not conclude a source does not publish something from one file's
+  schema.** ESPN Analytics publishes *two* objects per date, and the per-game
+  play-type one went unread for months because the season file had no game id
+  and the daily file's `assister` / `putback` / `corner`-shaped field NAMES
+  were read as the taxonomy — but their VALUES are integer counts
   (`pts: 36`, `assister: 4`), not net points. Checking one file's schema and
   one file's field names, without checking a value against the season columns
   or looking at what the site's own page fetches, produced a confident and
-  wrong claim about what exists. The site's per-game awards ("Facilitator" for
-  net points passing, "Corner Pocket" for corner 3s) were the visible evidence
-  against it the whole time.
+  wrong claim about what exists. `DATA.md` ("The play-type split exists per
+  game as well as per season") has what the two files actually hold.
 - **`net_points_player_game_fingerprint` is LONG, and the only such table
   here.** One row per player per game per `category`, rather than the season
   file's 66 columns. Deliberate: the wide shape would be 93 columns and would
@@ -555,78 +549,43 @@ everything about it is constrained by things measured elsewhere in this file.
   labels with the numbers so a per-game plot is never captioned "per 100 poss".
 - **Each table starts in a different year, and the gaps are ESPN's, not ours.**
   A question is only answerable as far back as its *narrowest* table, and there
-  is no pull that fills these in — verified live against three endpoints (the
-  game summary, `core/.../plays`, and the athlete gamelog), all of which return
-  empty for the years below, so `data check` reporting zeros there is correct.
-
-  | Table | Usable from | What is before it |
-  | --- | --- | --- |
-  | `standings` | 1988 | — league-wide and real all the way back (23 teams in 1988, 27 by 1990) |
-  | `games`, `team_box_stats` (postseason) | 1989 | — full brackets all the way back; the 1987-88 playoffs are not in ESPN's archive |
-  | `games` (regular), `player_box_stats`, `team_box_stats`, `team_season_stats` | **1994** | one team's 82 games per season, and nothing at all for 1989-90 |
-  | `plays` | 2003 (2002 is ~half) | nothing |
-  | `shot_chart` | 2002, caveated for 2002 (509 of 1,190 games) and 2003 (986) | nothing |
-  | `team_power_index` | 2017 | nothing |
-  | `win_probability` | 2018 | nothing |
-  | NetPoints (all five tables) | 2019 | the bucket answers 403 |
-
-  Two traps in that table. **`shot_chart` is derived from `plays`** — both come
-  out of the same game summary, so there is no separate shot source to fetch
-  for 2002 and earlier. And **season 1993 is a phantom**: ESPN answers
-  `season=1993` and `season=1994` with the identical 1,185 events (1993-11-06
-  to 1994-06-23), so the warehouse holds the 1993-94 season under both labels.
-  It is the only duplicated pair in the warehouse — every other season's event
-  ids are disjoint — so treat 1994 as the earliest real regular season and
-  1993 as a copy of it, not as evidence of a fetch bug. It is confined to
-  `games` and what is derived from it; `standings` comes from a different
-  endpoint and its 1993 rows are genuinely the 1992-93 season.
-
-  A third trap, and the phantom's cause: **before 1993-94, ESPN labels a season
-  by the year it STARTED.** The postseason games labelled 1990 end on
-  1991-06-12, the 1991 Finals, and 1993 and 1994 are one season because the
-  labelling changed between them. The regular seasons that early sit under
-  the 1994 floor anyway; the postseasons do not. So a postseason is selected
-  by the calendar year it was played in, never by label
-  (`templates._season_games`, `team_metrics.games_scope`, and
-  `check_coverage.py`'s counts), which is exact for every season: every
-  postseason is played inside the year its season is named for. Matched by
-  label, "the 1991 playoffs" answered 1992's.
-
-  **`player_season_stats` looks like an exception and is not.** It reaches back
-  to 1977, because it is fetched per player over a whole career once that
-  player is discovered — and players are discovered from box scores, which
-  start in 1994. So the deep history is only the handful of careers that lasted
-  into 1993-94: 5 players in 1977, 240 in 1988, 668 in 1994. It is a survivor
-  sample, not league-wide coverage, and a leaderboard over it before ~1994 is
-  measuring who played longest.
+  is no pull that fills these in. **`DATA.md` ("Coverage floors") has the table
+  and what is before each floor**; `association/coverage.py` is the enforced
+  copy. Three rules to carry while writing code:
+  - **Select a postseason by the calendar year it was played in, never by
+    label** (`templates._season_games`, `team_metrics.games_scope`,
+    `check_coverage.py`). Before 1993-94 ESPN labels a season by the year it
+    STARTED, so matched by label "the 1991 playoffs" answered 1992's.
+  - **Season 1993 is a phantom** — its 1,185 events are the identical rows
+    ESPN returns for 1994. Treat 1994 as the earliest real regular season, and
+    **key joins over that era on `season` as well as `event_id`**, or every
+    1993-94 player-game is listed twice over.
+  - **`player_season_stats` reaches back to 1977 but is a survivor sample**, so
+    a lookup and a ranking have different floors (`first_ranking_season`).
 - **Shot coordinates measure y from the rim, not the baseline, and
   `points_attempted = 0` means unlabeled, not zero points.** The rim is at
-  `(25, 0)` (`court.HOOP_Y`), and assuming otherwise broke nothing visibly:
-  distances were plausible, just three feet short, and a court drawn around
-  the same wrong point looked self-consistent. What caught it was the data's
-  own second opinion - the distance each shot's description states - and that
-  is the method worth keeping: where a column has a sibling that restates it
-  (a described distance, a box score's attempts), fit against the sibling
-  before trusting a constant. Never filter `points_attempted` for a shot's
-  value; read `shotchart.SHOT_VALUE_SQL`, which derives it where ESPN left it
-  0 and keeps the per-season refusals and caveats beside it.
-- **ESPN's career endpoint copies some regular seasons into the postseason.**
-  Eddy Curry has 527 "playoff games" in `player_season_stats`: seven regular
-  seasons, each filed a second time as a postseason. `player_season_stats_deduped`
-  drops a postseason line claiming more than 28 games (four best-of-seven
-  rounds is the most a run can hold) or repeating that season's regular-season
-  games and points exactly: 340 of 7,845 rows, every real run checked kept.
-  Read the deduped view for postseason lines; the raw table still has them.
-- **About one regular-season game in eight from 2013 to 2018 has an empty box
-  score.** 322-332 team-games a season (13.1-13.5%; none in 2011-12 or 2019+)
-  list every player as having played, with NULL minutes and every stat 0, and a
-  NULL team box row. Anything summing `player_box_stats` over those seasons is
-  about 87% of ESPN's own season totals, and a streak or a with/without split
-  cannot tell whether a player sat those games out. The templates that read
-  per-game rows say how many games they could not see; a refetch of those games
-  has not been tried. It is not scattered: it is all but two of the Chicago and
-  New Orleans games in those six seasons, including their playoff series (1,025
-  events), and their plays and shots survived. `ISSUES.md` has the numbers and the next step.
+  `(25, 0)` (`court.HOOP_Y`). **Never filter `points_attempted` for a shot's
+  value**; read `shotchart.SHOT_VALUE_SQL`, which derives it where ESPN left it
+  0 and keeps the per-season refusals and caveats beside it. Free throws carry
+  a position through 2018, so "has coordinates" does not exclude them. The
+  numbers and the seasons are in `DATA.md`; the method that caught it is worth
+  keeping: **where a column has a sibling that restates it (a described
+  distance, a box score's attempts), fit against the sibling before trusting a
+  constant.**
+- **ESPN's career endpoint copies some regular seasons into the postseason**,
+  so **read `player_season_stats_deduped` for postseason lines; the raw table
+  still has them.** The view drops a postseason line claiming more than 28
+  games (four best-of-seven rounds is the most a run can hold) or repeating
+  that season's regular-season games and points exactly. `DATA.md` has the
+  evidence and the counts.
+- **Whole team-seasons of box scores are empty, and they are not scattered
+  games.** Every Chicago and New Orleans game from 2013 to 2018 but two, and
+  every Vancouver game in 1996, lists each player as having played with NULL
+  minutes and every stat 0, beside a NULL team box row. Anything summing
+  `player_box_stats` over 2013-2018 is about 87% of ESPN's own season totals,
+  and a streak or a with/without split cannot tell whether a player sat those
+  games out. **Say how many games a per-game answer could not see** — that is
+  what `_empty_box_scores` is for. `DATA.md` has the counts and the seasons.
 - Query connections to DuckDB are **read-only**, as a hard guarantee.
 
 **Those floors are enforced, not just documented.** `association/coverage.py`
@@ -723,6 +682,17 @@ the missing 2000 and 2001 playoff games while checking coverage floors. Each
 then lived only in a chat report. A finding that is not in the file is one the
 next agent has to rediscover from scratch, or never does.
 
+- **A fault in the source goes in `DATA.md`; what we do about it goes in
+  `ISSUES.md`.** They are two halves of one finding and they are not
+  interchangeable. `DATA.md` records what ESPN does — the wrong value, the
+  missing games, the odd label — as a fact with evidence, and it is not a task:
+  it gets no GitHub issue and nothing closes it, because nothing we write
+  changes what the source serves. `ISSUES.md` records what we do about it — the
+  fix, the workaround, the caveat — and that entry links back to the `DATA.md`
+  section it comes from. Establish which half you have before you write it up:
+  "ESPN files the 1990 postseason under 1989" is `DATA.md`, "select a postseason
+  by the year it was played" is `ISSUES.md`. A fault nobody has to act on yet is
+  a `DATA.md` entry alone.
 - **What counts.** A data inconsistency (numbers that disagree with a sibling
   column, with the source, or with reality), a bug or wrong-answer risk you did
   not fix, a question shape that is refused or mis-routed, a tooling or gate
@@ -742,9 +712,11 @@ next agent has to rediscover from scratch, or never does.
   rule under "Before you commit"); otherwise the commit message is the record.
   If the fix is partial, rewrite the entry to what remains. The file is the list
   of what is still open, not a history.
-- **Subagents record findings too, and their prompt has to say so.** An agent
-  reports what it was asked about and nothing else, so every prompt that
-  dispatches one must ask for incidental findings. Two cases:
+- **Subagents record findings too, and their prompt has to say so**, in both
+  files. An agent reports what it was asked about and nothing else, so every
+  prompt that dispatches one must ask for incidental findings, and must say
+  that a fault in the source goes in `DATA.md` while what we do about it goes
+  in `ISSUES.md`, linking to the `DATA.md` entry. Two cases:
   - An agent working in its own worktree appends to its copy of `ISSUES.md`,
     and the entries merge with the rest of its branch. Two branches adding
     entries conflict on adjacent lines; keep both sides.
