@@ -18,7 +18,7 @@ from typing import Any
 
 import duckdb
 
-from association.coverage import COVERAGE, caveat, unavailable
+from association.coverage import COVERAGE, POSTSEASON, caveat, unavailable
 from association.net_points_categories import FINGERPRINT_CATEGORIES
 from association.season import current_season
 
@@ -26,7 +26,7 @@ from .answer import Artifact
 from .court import HAS_POSITION_SQL, SHOT_DISTANCE_SQL
 from .entities import Ambiguous, Entity, clarification, find_players, no_match, resolve_player, resolve_team, suggest_players, suggestion
 from .fingerprint import FINGERPRINT_AVAILABILITY, FINGERPRINT_VIEWS, GAME_FINGERPRINT_AVAILABILITY, FingerprintUnavailable, render_for_players
-from .leaderboard import LeaderboardError, resolve_metric, run_leaderboard
+from .leaderboard import SEASON_TOTAL_OF, LeaderboardError, not_a_postseason_copy, resolve_metric, run_career_leaderboard, run_leaderboard
 from .metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS
 from .shotchart import DERIVED_SHOT_VALUES, SHOT_AVAILABILITY, SHOT_VALUE_SQL, UNSEPARABLE_SHOT_VALUES, render_for_player, resolve_chart_player
 
@@ -114,6 +114,12 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # leaving one unlisted falls through to an agent with no better source,
     # which is slower and free to answer the season instead.
     "fingerprint": frozenset({"order", "date"}),
+    # `span` "career" is honoured by summing every season: a career leaderboard
+    # from the per-team season rows, and a career count or high from every box
+    # score since 1993-94. Each answer names the pool, since neither is all-time.
+    "leaderboard": frozenset({"span"}),
+    "threshold_count": frozenset({"span"}),
+    "single_game_high": frozenset({"span"}),
 }
 
 
@@ -127,8 +133,11 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
 # `leaderboard` is absent on purpose: its table depends on the metric asked
 # for, and _sources_for resolves it per question.
 TEMPLATE_SOURCES: dict[str, tuple[str, ...]] = {
-    "threshold_count": ("player_box_stats",),
-    "single_game_high": ("player_game_log",),
+    # player_season_stats is read to tell whether a named player's career began
+    # before the box scores do. Listed after the box-score table so a season
+    # under both floors is refused in the box scores' words, not as a ranking.
+    "threshold_count": ("player_box_stats", "player_season_stats"),
+    "single_game_high": ("player_game_log", "player_box_stats", "player_season_stats"),
     # The season line by default and box scores once the question narrows the
     # games, so _sources_for picks per question: a 1990 season line is
     # answerable, and a 1990 line against one opponent is not.
@@ -219,7 +228,7 @@ def _sources_for(intent: str, slots: dict[str, Any]) -> tuple[str, ...]:
     if intent != "leaderboard":
         return TEMPLATE_SOURCES.get(intent, ())
     stat = slots.get("stat")
-    metric = resolve_metric(stat) if isinstance(stat, str) else None
+    metric = resolve_metric(stat, career=slots.get("span") == "career") if isinstance(stat, str) else None
     spec = LEADERBOARD_METRICS.get(metric) if metric else None
     # An unrecognized metric is left to the template, which refuses it with a
     # better message than a coverage floor could.
@@ -371,12 +380,156 @@ def _resolved_team(con: duckdb.DuckDBPyConnection, text: Any) -> Entity | Templa
             raise TemplateUnsupported(f"no team matching {text!r}")
 
 
+# ---- one season of box scores, or a career of them ----
+
+
+def _career_span(intent: str, span: Any, season: Any) -> bool:
+    """True for a career question, False for a one-season one; raises for a
+    span this template cannot honour.
+
+    A career with a year named is refused rather than read. The router keeps a
+    year the question named alongside "career", so "most points ever in a game
+    in 2024" (that season), "career leaders since 2015" (a range) and "career
+    points through 2010" (a cutoff) all arrive as the same two slots. Answering
+    any of them as one of the others is the substitution this module exists to
+    prevent."""
+    if not span:
+        return False
+    if span != "career":
+        raise TemplateUnsupported(f"{intent} cannot honour span {span!r}")
+    if isinstance(season, int):
+        raise TemplateUnsupported(f"{intent} cannot tell whether a career span with {season} named means that season, since it, or through it")
+    return True
+
+
+def _season_label(season: int) -> str:
+    """1994 -> "1993-94", the way a person names a season."""
+    return f"{season - 1}-{season % 100:02d}"
+
+
+def _box_scope(alias: str, season: int | None, season_type: int) -> tuple[str, list[Any]]:
+    """The WHERE clause for one season of box scores, or for a career of them.
+
+    A career starts at the box scores' floor, and that floor is also what keeps
+    1993 out: ESPN answers season=1993 with the same games as 1994 (coverage's
+    phantom), so a career counted from 1993 counts every 1993-94 game twice -
+    26,350 duplicate player-games."""
+    if season is None:
+        return f"{alias}.season >= ? AND {alias}.season_type = ?", [COVERAGE["player_box_stats"].first_season, season_type]
+    return f"{alias}.season = ? AND {alias}.season_type = ?", [season, season_type]
+
+
+@dataclass(frozen=True)
+class _GameSpan:
+    """How an answer built from box scores names the games it covers."""
+
+    when: str  # "in the 2026 regular season" - follows a verb
+    caption: str  # a noun phrase, for question_shape
+    games: str  # "2026 regular season games" - for "no ... in the warehouse"
+    since: str  # the box scores' first season, "1993-94"
+    preface: str = ""  # said FIRST, when the span is narrower than the question
+    league_note: bool = False  # a league-wide career, which is not all-time
+
+
+def _game_span(con: duckdb.DuckDBPyConnection, season: int | None, season_type: int, player: Entity | None) -> _GameSpan:
+    """Name what a box-score answer covers - and, for a named player's career,
+    whether the box scores hold it at all.
+
+    Michael Jordan's career began in 1984-85, and the box scores here begin in
+    1993-94. His "career high" from them is 55, not 69: fluent, real, and an
+    answer to a different question. So a career that began before the box
+    scores is answered for the part they hold, and says so before the number
+    rather than after it - the reader who stops at the number has been told."""
+    kind = SEASON_TYPE_NAMES.get(season_type, "regular season")
+    floor = COVERAGE["player_box_stats"].first_season
+    since = _season_label(floor)
+    if season is not None:
+        period = _period(season, season_type)
+        return _GameSpan(when=f"in the {period}", caption=period, games=f"{period} games", since=since)
+    if player is None:
+        return _GameSpan(when=f"in the {kind} since {since}", caption=f"{kind} since {since}", games=f"{kind} games since {since}", since=since, league_note=True)
+    began, ended = _seasons_on_record(con, player.id, season_type)
+    if isinstance(began, int) and began < floor:
+        preface = f"Box scores here begin in {since}, and {player.name}'s {kind} career began in {_season_label(began)}, so his whole career is not in them. "
+        return _GameSpan(when=f"in the {kind} since {since}", caption=f"{kind} since {since}", games=f"{kind} games since {since}", since=since, preface=preface)
+    years = f" ({_season_label(began)} through {_season_label(ended)})" if isinstance(began, int) and isinstance(ended, int) else ""
+    return _GameSpan(when=f"in his {kind} career{years}", caption=f"{kind} career{years}", games=f"{kind} games", since=since)
+
+
+def _seasons_on_record(con: duckdb.DuckDBPyConnection, athlete_id: str, season_type: int) -> tuple[Any, Any]:
+    """A player's first and last season in the per-player season table, which
+    reaches back to 1976-77 - before any box score here. A postseason copied
+    from the regular season is not a postseason on record."""
+    copy = f" AND {not_a_postseason_copy(('points',))}" if season_type == POSTSEASON else ""
+    row = con.execute(f"SELECT MIN(t.season), MAX(t.season) FROM player_season_stats t WHERE t.athlete_id = ? AND t.season_type = ?{copy}", [athlete_id, season_type]).fetchone()
+    return (row[0], row[1]) if row else (None, None)
+
+
+def _empty_box_scores(con: duckdb.DuckDBPyConnection, season: int | None, season_type: int, athlete_id: str | None) -> tuple[int, int | None, int | None]:
+    """Games in scope whose box score is empty: (count, first season, last season).
+
+    Every game from 2012-13 through 2017-18 has a box score, but 161-166 a
+    season hold nothing - every player's minutes NULL and every stat 0. LeBron
+    James's 76 games of 2012-13 are all present and sum to 1,835 points, against
+    the season table's 2,036. A zero can hide a real maximum or a real count but
+    never invent one, so the answer stands - and says how many games it could
+    not see. For a player, only the empty games he actually played in count."""
+    scope, params = _box_scope("b", season, season_type)
+    empty = f"SELECT b.event_id, b.season FROM player_box_stats b WHERE {scope} GROUP BY b.event_id, b.season HAVING MAX(b.minutes) IS NULL"
+    if athlete_id is None:
+        sql = f"SELECT COUNT(*), MIN(season), MAX(season) FROM ({empty})"
+    else:
+        sql = (
+            f"SELECT COUNT(*), MIN(r.season), MAX(r.season) FROM player_box_stats r JOIN ({empty}) e ON e.event_id = r.event_id AND e.season = r.season "
+            "WHERE r.athlete_id = ? AND NOT COALESCE(r.did_not_play, FALSE)"
+        )
+        params.append(athlete_id)
+    row = con.execute(sql, params).fetchone()
+    return (int(row[0]), row[1], row[2]) if row else (0, None, None)
+
+
+def _empty_note(found: tuple[int, int | None, int | None], name: str | None, consequence: str) -> str:
+    count, first, last = found
+    if not count or first is None or last is None:
+        return ""
+    whose = f"{count:,} of {name}'s games" if name else f"{count:,} {'game' if count == 1 else 'games'}"
+    between = f"in {_season_label(first)}" if first == last else f"between {_season_label(first)} and {_season_label(last)}"
+    return f" {whose} {between} {'has' if count == 1 else 'have'} an empty box score in this warehouse, so {consequence}."
+
+
+# games.date is UTC, and a 7pm Eastern tip is already the next day there:
+# LeBron James's 61 against Charlotte, on 3 March 2014, is stored as
+# 2014-03-04T00:30Z. A fixed five-hour shift, as fetch/parse.py's
+# NetPointsGameIndex uses and for its reason - EST and EDT disagree about a
+# tip's date only between midnight and 1am Eastern, when no game starts.
+_EASTERN_SHIFT = timedelta(hours=5)
+
+
+def _eastern_date(stamp: Any) -> str:
+    """The calendar day a game was played, from its stored UTC timestamp."""
+    text = str(stamp)
+    if "T" not in text:
+        return text[:10]
+    try:
+        moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return text[:10]
+    return (moment - _EASTERN_SHIFT).date().isoformat()
+
+
 def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """ "Most games with N+ of some stat" - the shape that motivated this split.
 
     A KNOWLEDGE_BASE entry covered it, but sat in the truncated-away head of the
     prompt, so three consecutive runs answered with a season-averages
-    leaderboard instead. In code it cannot be truncated or substituted."""
+    leaderboard instead. In code it cannot be truncated or substituted.
+
+    .. versionchanged:: 2.1.0
+       Honours ``span`` "career": every box score since 1993-94, for the league
+       or for one player, saying which. A named player is resolved to one
+       person; every player whose name contained the words used to be counted,
+       and the top one reported.
+    """
     con = ctx.con
     stat = slots.get("stat")
     column = THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
@@ -389,34 +542,54 @@ def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResu
         # "the most games with 0+ 3-pointers".
         raise TemplateUnsupported(f"a threshold of {threshold} counts every game - not a question threshold_count answers")
 
-    season = slots.get("season") or current_season()
+    career = _career_span("threshold_count", slots.get("span"), slots.get("season"))
+    season = None if career else (slots.get("season") or current_season())
     season_type = slots.get("season_type") or 2
     limit = _clamp_limit(slots.get("limit"))
-    player = slots.get("player")
 
-    where = ["pbs.season = ?", "pbs.season_type = ?", f"pbs.{column} >= ?"]
-    params: list[Any] = [season, season_type, threshold]
-    if isinstance(player, str) and player.strip():
-        # Every token must match, so "Luka Doncic" doesn't also match a player
-        # sharing only a first name - same approach as render_shot_chart.
-        for token in player.split():
-            where.append("p.display_name ILIKE ?")
-            params.append(f"%{token}%")
+    # Resolved to one person, as every other template does. This used to be an
+    # ILIKE per word, so "Curry" counted Seth's games and Stephen's and reported
+    # whichever had more - the prominence tiebreak AGENTS.md records as measured
+    # and rejected, applied silently.
+    player: Entity | None = None
+    if isinstance(slots.get("player"), str) and slots["player"].strip():
+        resolved = _resolved_player(con, slots["player"])
+        if isinstance(resolved, TemplateResult):
+            return resolved
+        player = resolved
+
+    scope, params = _box_scope("pbs", season, season_type)
+    where = [scope, f"pbs.{column} >= ?"]
+    params.append(threshold)
+    if player is not None:
+        where.append("pbs.athlete_id = ?")
+        params.append(player.id)
     params.append(limit)
-
+    # Grouped by athlete_id, not by name: two players can share one.
     rows = con.execute(
-        f"SELECT p.display_name, COUNT(*) AS games FROM player_box_stats pbs JOIN players p ON p.athlete_id = pbs.athlete_id WHERE {' AND '.join(where)} GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT ?",
+        f"SELECT p.display_name, COUNT(*) AS games FROM player_box_stats pbs JOIN players p ON p.athlete_id = pbs.athlete_id "
+        f"WHERE {' AND '.join(where)} GROUP BY pbs.athlete_id, p.display_name ORDER BY 2 DESC, 1 LIMIT ?",
         params,
     ).fetchall()
 
     label = STAT_LABELS.get(stat or "", stat or "")
-    scope = f"{threshold}+ {label}s"
-    period = _period(season, season_type)
-    summary = f"games with {scope}, {period}"
+    scope_text = f"{threshold}+ {label}s"
+    span = _game_span(con, season, season_type, player)
+    empty = _empty_box_scores(con, season, season_type, player.id if player else None)
+    answer = span.preface + _phrase_threshold_count(rows, scope_text, span.when, player.name if player else None)
+    if span.league_note:
+        answer += f" Box scores begin in {span.since}, so these are not all-time counts: a career that began earlier is counted only from {span.since}."
+    answer += _empty_note(empty, player.name if player else None, "the count may be low" if player else "these counts may be low")
     leaders = [{"player": name, "games": games} for name, games in rows]
     return TemplateResult(
-        data={"question_shape": summary, "season": season, "leaders": leaders},
-        answer=_phrase_threshold_count(rows, scope, period, filtered_to_one_player=bool(player)),
+        data={
+            "question_shape": f"games with {scope_text}, {span.caption}",
+            "season": season,
+            "span": "career" if career else None,
+            "leaders": leaders,
+            "empty_box_scores": empty[0],
+        },
+        answer=answer,
     )
 
 
@@ -424,26 +597,25 @@ def _period(season: int, season_type: int) -> str:
     return f"{season} {SEASON_TYPE_NAMES.get(season_type, 'regular season')}"
 
 
-def _phrase_threshold_count(rows: list[tuple[Any, ...]], scope: str, period: str, filtered_to_one_player: bool) -> str:
+def _phrase_threshold_count(rows: list[tuple[Any, ...]], scope: str, when: str, player: str | None) -> str:
     """Always names the season outright rather than echoing "this season" back.
     The original failure answered for 2024 while the user meant the current
-    season, and said nothing about it - so the season is stated, every time."""
+    season, and said nothing about it - so the season is stated, every time.
+    ``when`` is that statement: one season, or a career and where it starts."""
     label = f"games with {scope}"
+    if player is not None:
+        games = rows[0][1] if rows else 0
+        return f"{player} had {games} {label} {when}." if games else f"{player} had no {label} {when}."
     if not rows:
-        if filtered_to_one_player:
-            return f"That player had no {label} in the {period}."
-        return f"No player had a game with {scope} in the {period}."
-    if filtered_to_one_player:
-        name, games = rows[0]
-        return f"{name} had {games} {label} in the {period}."
+        return f"No player had a game with {scope} {when}."
 
     top = rows[0][1]
     tied = [name for name, games in rows if games == top]
     if len(tied) > 1:
         leaders = ", ".join(tied[:-1]) + f" and {tied[-1]}"
-        sentence = f"{leaders} tied for the most {label} in the {period}, with {top} each."
+        sentence = f"{leaders} tied for the most {label} {when}, with {top} each."
     else:
-        sentence = f"{rows[0][0]} had the most {label} in the {period}, with {top}."
+        sentence = f"{rows[0][0]} had the most {label} {when}, with {top}."
     rest = [f"{name} ({games})" for name, games in rows if games != top]
     return sentence + (f" Next: {', '.join(rest)}." if rest else "")
 
@@ -473,11 +645,24 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
 
     Thin on purpose: run_leaderboard owns the season default, minimum-sample
     floor and traded-player dedup, and the agent's get_leaderboard tool calls
-    the same function. This adds slot mapping and phrasing."""
+    the same function. This adds slot mapping and phrasing.
+
+    .. versionchanged:: 2.1.0
+       Honours ``span`` "career", ranking whole careers (see
+       :func:`~association.query.leaderboard.run_career_leaderboard`) and
+       saying whose. ``rate`` "total" ranks a season total rather than a
+       per-game average. Every stat name the router is taught now maps to a
+       metric, and a qualifier, when one applies, is named in the answer.
+    """
     con = ctx.con
-    metric = resolve_metric(slots.get("stat"))
+    career = _career_span("leaderboard", slots.get("span"), slots.get("season"))
+    metric = resolve_metric(slots.get("stat"), career=career)
     if metric is None:
         raise TemplateUnsupported(f"no leaderboard metric for stat {slots.get('stat')!r}")
+    if slots.get("rate") == "total":
+        # `stat` names a category, never which of its two readings; "most
+        # points this season" is a total and "leads in points" a per-game rate.
+        metric = SEASON_TOTAL_OF.get(metric, metric)
     if isinstance(slots.get("player"), str) and slots["player"].strip():
         # A leaderboard ranks the league or a team, never one named person.
         # Confirmed live: "Klay Thompson's 3pt percentage over the past 4
@@ -497,6 +682,8 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     # minutes in the agent. A field restating the ranked metric goes too - it
     # rendered the same 33.5 twice under two headings.
     fields = [f for f in dict.fromkeys(requested) if metric != f"avg_{f}"]
+    if career:
+        return _career_leaderboard(con, metric, slots, fields)
     try:
         result = run_leaderboard(
             con,
@@ -515,29 +702,115 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     period = _period(result.season, result.season_type or 2)
     where = f"the {result.team_name}" if result.team_name else "the league"
     summary = f"{result.label}, {period}"
+    ratio = LEADERBOARD_METRICS[metric].ratio
     answer = (
-        _tabulate_leaderboard(result.rows, result.label, where, period, fields, result.min_sample_applied, result.min_sample_column)
+        _tabulate_leaderboard(result.rows, result.label, where, period, fields, result.min_sample_applied, result.min_sample_column, ratio)
         if fields
-        else _phrase_leaderboard(result.rows, result.label, where, period)
+        else _phrase_leaderboard(result.rows, result.label, where, period, _qualifier(result.min_sample_applied, result.min_sample_column), ratio)
     )
     return TemplateResult(
-        data={"question_shape": summary, "season": result.season, "fields": fields, "leaders": result.rows},
+        data={"question_shape": summary, "season": result.season, "fields": fields, "min_sample": result.min_sample_applied, "leaders": result.rows},
         answer=answer,
     )
 
 
-def _phrase_leaderboard(rows: list[dict[str, Any]], label: str, where: str, period: str) -> str:
+def _career_leaderboard(con: duckdb.DuckDBPyConnection, metric: str, slots: dict[str, Any], fields: list[str]) -> TemplateResult:
+    """A career ranking, on its own path because its pool is its own - see
+    :func:`~association.query.leaderboard.run_career_leaderboard`."""
+    if fields:
+        raise TemplateUnsupported("a career leaderboard cannot add per-game columns")
+    if isinstance(slots.get("team"), str) and slots["team"].strip():
+        # A franchise's career list sums the per-team rows by team, and where a
+        # franchise moved, which years are the franchise's is a question of its
+        # own. Refused until that is decided, rather than answered with the
+        # league's list under the team's name.
+        raise TemplateUnsupported("franchise career leaderboards are not supported")
+    season_type = slots.get("season_type") or 2
+    try:
+        result = run_career_leaderboard(con, metric, season_type=season_type, limit=_clamp_limit(slots.get("limit"), default=DEFAULT_LEADERBOARD_LIMIT))
+    except LeaderboardError as exc:
+        raise TemplateUnsupported(str(exc)) from exc
+    kind = SEASON_TYPE_NAMES.get(season_type, "regular season")
+    label = f"career {result.label.removeprefix('total ')}"
+    since = _season_label(result.pool_first_season)
+    qualifier = _qualifier(result.min_sample_applied, result.min_sample_column)
+    return TemplateResult(
+        data={
+            "question_shape": f"{label}, {kind}, players active since {since}",
+            "season": None,
+            "span": "career",
+            "pool_first_season": result.pool_first_season,
+            "fields": [],
+            "min_sample": result.min_sample_applied,
+            "leaders": result.rows,
+        },
+        answer=_phrase_career_leaderboard(result.rows, label, kind, since, qualifier, LEADERBOARD_METRICS[metric].ratio),
+    )
+
+
+def _phrase_career_leaderboard(rows: list[dict[str, Any]], label: str, kind: str, since: str, qualifier: str, ratio: tuple[str, str] | None) -> str:
+    """Says whose careers, every time. The pool is every player active in
+    1993-94 or later, counted over his whole career, and nobody whose career
+    ended before it - Kareem Abdul-Jabbar is not in the warehouse at all - so
+    presenting it as "all-time" would be the unrepresentative ranking
+    coverage.py's second floor exists to refuse."""
+    gap = f"Careers that ended before {since} are not in this warehouse, so this is not an all-time list."
     if not rows:
-        return f"No players qualified for {label} in {where} in the {period}."
+        return f"No player qualified for {label} in the {kind}{qualifier}. {gap}"
     top = rows[0]
-    sentence = f"{top['display_name']} led {where} in {label} in the {period}, at {_format_value(top['value'])}."
-    rest = [f"{r['display_name']} ({_format_value(r['value'])})" for r in rows[1:]]
+    years = f"{_season_label(top['first_season'])} through {_season_label(top['last_season'])}"
+    detail = f", over {int(top['games']):,} games ({years})" if top.get("games") else ""
+    sentence = f"Among players active in {since} or later, {top['display_name']} leads in {label} in the {kind}{qualifier}: {_leader_value(top, ratio)}{detail}."
+    rest = [f"{r['display_name']} ({_leader_value(r, ratio, short=True)})" for r in rows[1:]]
+    return " ".join([sentence, *([f"Next: {', '.join(rest)}."] if rest else []), gap])
+
+
+def _leader_value(row: dict[str, Any], ratio: tuple[str, str] | None, *, short: bool = False) -> str:
+    """A ranked value as a reader expects it: a percentage as one, with the
+    makes and attempts behind it - the "out of how many?" a bare percentage
+    always draws - and a count with its thousands separated."""
+    value = row.get("value")
+    if value is None:
+        return "-"
+    if ratio:
+        made, attempted = row.get(ratio[0]), row.get(ratio[1])
+        text = f"{value * 100:.1f}%"
+        return text if short or made is None or attempted is None else f"{text} ({int(made):,} of {int(attempted):,})"
+    if isinstance(value, int):
+        return f"{value:,}"
+    # ESPN's averages carry one decimal, and "4" beside "3.8" reads as a count.
+    return f"{value:.1f}" if isinstance(value, float) and value == round(value, 1) and abs(value) >= 1 else _format_value(value)
+
+
+def _qualifier(min_sample: int | None, column: str | None) -> str:
+    """ " (minimum 200 3-point attempts)", or nothing. Shown because it answers
+    "why isn't X here?" before it is asked - and makes an empty early-season
+    board say why it is empty."""
+    if not min_sample:
+        return ""
+    return f" (minimum {min_sample:,} {MIN_SAMPLE_LABELS.get(column or '', column or '')})"
+
+
+def _phrase_leaderboard(rows: list[dict[str, Any]], label: str, where: str, period: str, qualifier: str = "", ratio: tuple[str, str] | None = None) -> str:
+    if not rows:
+        return f"No players qualified for {label} in {where} in the {period}{qualifier}."
+    top = rows[0]
+    sentence = f"{top['display_name']} led {where} in {label} in the {period}{qualifier}, at {_leader_value(top, ratio)}."
+    rest = [f"{r['display_name']} ({_leader_value(r, ratio, short=True)})" for r in rows[1:]]
     return sentence + (f" Next: {', '.join(rest)}." if rest else "")
 
 
 # The qualifying column's real name is not something to put in front of a
 # reader ("total_minutes", "gamesPlayed").
-MIN_SAMPLE_LABELS = {"total_minutes": "minutes", "gamesPlayed": "games", "games_played": "games", "minutes": "minutes"}
+MIN_SAMPLE_LABELS = {
+    "total_minutes": "minutes",
+    "gamesPlayed": "games",
+    "games_played": "games",
+    "minutes": "minutes",
+    "fieldGoalsAttempted": "field-goal attempts",
+    "threePointFieldGoalsAttempted": "3-point attempts",
+    "freeThrowsAttempted": "free-throw attempts",
+}
 
 
 def _tabulate_leaderboard(
@@ -548,19 +821,19 @@ def _tabulate_leaderboard(
     fields: list[str],
     min_sample: int | None,
     min_sample_column: str | None,
+    ratio: tuple[str, str] | None = None,
 ) -> str:
     """A table once extra columns are asked for - a sentence carrying three
     numbers per player across ten players is unreadable, and the qualifying
     minimum belongs on screen so "why isn't X here?" has a visible answer."""
+    header_note = _qualifier(min_sample, min_sample_column)
     if not rows:
-        return f"No players qualified for {label} in {where} in the {period}."
-    unit = MIN_SAMPLE_LABELS.get(min_sample_column or "", min_sample_column or "")
-    header_note = f" (minimum {min_sample} {unit})".rstrip() if min_sample else ""
+        return f"No players qualified for {label} in {where} in the {period}{header_note}."
     columns = [(label, "value")] + [(f, f) for f in fields]
     name_width = max(len(r["display_name"]) for r in rows)
     # The ranked metric keeps its own precision (9.91, not 9.9); the extra
     # box-score columns are per-game averages, where one decimal is the norm.
-    cell = lambda row, key: _format_value(row[key]) if key == "value" else _table_cell(row.get(key))  # noqa: E731
+    cell = lambda row, key: _leader_value(row, ratio, short=True) if key == "value" else _table_cell(row.get(key))  # noqa: E731
     widths = [max(len(title), *(len(cell(r, key)) for r in rows)) for title, key in columns]
     lines = [f"{label}, {where}, {period}{header_note}:"]
     lines.append(" " * name_width + "  " + "  ".join(t.rjust(w) for (t, _), w in zip(columns, widths, strict=True)))
@@ -939,23 +1212,9 @@ def _wanted_stats(slots: dict[str, Any], default: tuple[str, ...] = STAT_LINE) -
 # pistons" listed the Celtics' last eight games, and "Podziemski game log
 # without curry" listed every game he played.
 
-# games.date is the UTC tip time, a day ahead for any evening game, while the
-# date a person means is the US Eastern one the game was played on. A fixed
-# five-hour shift rather than a time zone - fetch.parse._EASTERN_OFFSET records
-# why that is exact for every NBA tip time and needs no tz database.
-_EASTERN_SHIFT = timedelta(hours=5)
+# ESPN's one timestamp shape. The Eastern date of one is _eastern_date, defined
+# once above - both branches of this module added their own copy.
 _ESPN_TIMESTAMP = "%Y-%m-%dT%H:%MZ"
-
-
-def _eastern_date(raw: Any) -> str:
-    """The Eastern calendar date of a ``games.date`` timestamp; the first ten
-    characters of anything that is not one."""
-    text = str(raw)
-    try:
-        moment = datetime.strptime(text, _ESPN_TIMESTAMP)
-    except ValueError:
-        return text[:10]
-    return (moment - _EASTERN_SHIFT).date().isoformat()
 
 
 def _eastern_day(day: str) -> tuple[str, str]:
@@ -2192,18 +2451,26 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     assists in a single game" was answered with a season average, in 1.76s, off
     by 13. A missing shape does not produce a refusal - it produces a confident
     answer to a different question, so the fix is a template, not prompt
-    wording."""
+    wording.
+
+    .. versionchanged:: 2.1.0
+       Honours ``span`` "career": a named player's career high, or the league's
+       best since 1993-94, each saying what it covers. A game's date is the
+       Eastern calendar day it was played; it used to be the UTC day it is
+       stored under, a day late for every game tipping after 7pm Eastern.
+    """
     stat = slots.get("stat")
     column = THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
     if column is None:
         raise TemplateUnsupported(f"single_game_high needs a known stat, got {stat!r}")
 
-    season = slots.get("season") or current_season()
+    career = _career_span("single_game_high", slots.get("span"), slots.get("season"))
+    season = None if career else (slots.get("season") or current_season())
     season_type = slots.get("season_type") or 2
     limit = _clamp_limit(slots.get("limit"), default=DEFAULT_SINGLE_GAME_LIMIT)
 
-    where = ["season = ?", "season_type = ?", f"{column} IS NOT NULL"]
-    params: list[Any] = [season, season_type]
+    scope, params = _box_scope("l", season, season_type)
+    where = [scope, f"l.{column} IS NOT NULL"]
     text = slots.get("player")
     named_player: Entity | None = None
     # The player slot is optional here: unset means "the league".
@@ -2212,43 +2479,48 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
         if isinstance(resolved, TemplateResult):
             return resolved
         named_player = resolved
-        where.append("athlete_id = ?")
+        where.append("l.athlete_id = ?")
         params.append(resolved.id)
 
     rows = ctx.con.execute(
-        f"SELECT player_name, {column}, game_date, opponent_abbr FROM player_game_log WHERE {' AND '.join(where)} ORDER BY {column} DESC, game_date LIMIT ?",
+        f"SELECT l.player_name, l.{column}, l.game_date, l.opponent_abbr FROM player_game_log l WHERE {' AND '.join(where)} ORDER BY l.{column} DESC, l.game_date LIMIT ?",
         [*params, limit],
     ).fetchall()
 
     label = STAT_LABELS.get(stat or "", stat or "")
-    period = _period(season, season_type)
-    games = [{"player": r[0], "value": r[1], "date": str(r[2])[:10], "opponent": r[3]} for r in rows]
+    span = _game_span(ctx.con, season, season_type, named_player)
+    games = [{"player": r[0], "value": r[1], "date": _eastern_date(r[2]), "opponent": r[3]} for r in rows]
     # `question_shape` names the scope in the same form leaderboard and
     # threshold_count use it: a caption for a caller that renders the rows
     # itself and would otherwise have no way to say what season they are from
     # except by reusing the whole sentence, which already lists them.
-    shape = f"most {label}s in a single game" + (f", {named_player.name}" if named_player else "") + f", {period}"
+    shape = f"most {label}s in a single game" + (f", {named_player.name}" if named_player else "") + f", {span.caption}"
+    answer = span.preface + _phrase_single_game_high(games, label, span, named_player.name if named_player else None)
+    if span.league_note:
+        answer += f" Box scores begin in {span.since}, so this is not an all-time record: earlier games are not in this warehouse."
+    empty = _empty_box_scores(ctx.con, season, season_type, named_player.id if named_player else None)
+    answer += _empty_note(empty, named_player.name if named_player else None, "a bigger game may be missing")
     return TemplateResult(
-        data={"question_shape": shape, "season": season, "stat": stat, "games": games},
-        answer=_phrase_single_game_high(games, label, period, named_player.name if named_player else None),
+        data={"question_shape": shape, "season": season, "span": "career" if career else None, "stat": stat, "games": games, "empty_box_scores": empty[0]},
+        answer=answer,
     )
 
 
-def _phrase_single_game_high(games: list[dict[str, Any]], label: str, period: str, named_player: str | None) -> str:
+def _phrase_single_game_high(games: list[dict[str, Any]], label: str, span: _GameSpan, named_player: str | None) -> str:
     if not games:
         who = f"{named_player} has" if named_player else "There are"
-        return f"{who} no {period} games in the warehouse."
+        return f"{who} no {span.games} in the warehouse."
     top = games[0]
     where = f" vs {top['opponent']}" if top["opponent"] else ""
     if named_player:
-        return f"{named_player}'s highest {label} total in a single game in the {period} was {top['value']}, on {top['date']}{where}."
+        return f"{named_player}'s highest {label} total in a single game {span.when} was {top['value']}, on {top['date']}{where}."
 
     tied = [g for g in games if g["value"] == top["value"]]
     if len(tied) > 1:
         names = ", ".join(g["player"] for g in tied[:-1]) + f" and {tied[-1]['player']}"
-        sentence = f"{names} tied for the most {label}s in a single game in the {period}, with {top['value']} each."
+        sentence = f"{names} tied for the most {label}s in a single game {span.when}, with {top['value']} each."
     else:
-        sentence = f"{top['player']} had the most {label}s in a single game in the {period}: {top['value']}, on {top['date']}{where}."
+        sentence = f"{top['player']} had the most {label}s in a single game {span.when}: {top['value']}, on {top['date']}{where}."
     rest = [f"{g['player']} ({g['value']})" for g in games if g["value"] != top["value"]]
     return sentence + (f" Next: {', '.join(rest)}." if rest else "")
 

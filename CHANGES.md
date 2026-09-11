@@ -71,6 +71,67 @@ had no published version to be compatible with.
   box-score answers above leave those lines out of every average and say how
   many they left out. `threshold_count` and anything else that sums
   `player_box_stats` over those seasons still counts them as games of zeros.
+
+- **Career leaderboards, career highs and career counts, each saying whose
+  careers they cover.** `leaderboard`, `single_game_high` and `threshold_count`
+  now honour `span` "career" instead of refusing it:
+
+  - "career points leaders" ranks career totals: LeBron James, 43,440, the sum
+    of his season rows. A bare stat name reads as a total in a career and per
+    game in a season, as it always did. A career average (`avg_points`) is
+    games-weighted and needs 400 games (50 in the postseason).
+  - A career high or count reads every box score since 1993-94 for one player
+    or for the league.
+
+  None of these is an all-time answer, and each says so. Players are discovered
+  from box scores, which begin in 1993-94. So the pool is every career that
+  reached that season, counted in full, and nobody whose career ended before it.
+  Kareem Abdul-Jabbar is not in the warehouse. A player whose career began
+  earlier gets that sentence *before* the number. Michael Jordan's highest game
+  in these box scores is 55, and the answer says his career began in 1984-85
+  first.
+
+  A career with a year named is refused rather than read, because "in 2024",
+  "since 2015" and "through 2010" all arrive as the same two slots. A franchise
+  career list is also refused, and so is a career ranking by usage, true
+  shooting or NetPoints.
+
+- **Every stat name the router is taught now ranks by something.** Turnovers,
+  minutes, fouls, the three kinds of make, and FG%, 3P% and FT% all fell through
+  to the agent from `leaderboard`. There are 16 new metrics (`BOX_SCORE_METRIC_NAMES`):
+  - season totals;
+  - per-game rates, which need 20 games (5 in the postseason);
+  - shooting percentages, qualified on attempts. The minimums are 400 FGA, 200
+    3PA and 125 FTA a season, and 2,000 / 1,000 / 600 over a career.
+
+  The qualifier is named in the answer. A percentage shows its makes and
+  attempts ("47.8% (117 of 245)"). `rate` "total" asks for a season total
+  instead of the per-game default. The new metrics stay out of the agent's tool
+  description, which has about 120 tokens of headroom; the agent reaches them by
+  name.
+
+- **Four data faults now handled where these answers read the data.**
+  - *Copied postseasons.* 437 postseason rows in `player_season_stats` copy
+    the same player's regular season. Eddy Curry never played a playoff game
+    and had 527 "playoff games". His 2006-07 copy (1,576 points) topped that
+    postseason's scoring total, and a career playoff list put him second.
+    Leaderboards now drop these copies.
+  - *Empty combined rows.* A traded player's combined row can be empty, as
+    Moses Malone's 1976-77 row is, so career sums use the per-team rows.
+  - *Double-counted 1993-94.* A career over box scores starts at 1994. Starting
+    at the 1993 phantom counts every 1993-94 game twice.
+  - *Empty box scores.* From 2012-13 through 2017-18, 161-166 games a season
+    have box scores with every line blank. A count or high that touches them
+    now says how many it could not see.
+
+- **`single_game_high` dates a game by the day it was played.** It printed the
+  UTC date, which is a day late for any tip after 7pm Eastern. LeBron James's
+  61 was on 3 March 2014, not the 4th.
+
+- **`threshold_count` resolves a named player to one person.** It matched every
+  name containing the words, so "Curry" counted Seth's games and Stephen's
+  together.
+
 - **Real questions were being answered about something else, and now refuse
   instead.** 99 questions were run through the fast path to the final answer:
   the routing corpus plus 45 real StatMuse queries. Nine of the StatMuse queries
