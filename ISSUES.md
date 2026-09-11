@@ -624,6 +624,44 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** nothing. An agent loses time.
 - **Next step:** add the sync line to "Before you commit" in `AGENTS.md`.
 
+### The docs gate passes with field markup printed as text
+- **Found:** 2026-09-11, fixing the literal `:rtype:` lines
+- **Evidence:** `scripts/build_docs.sh` passed `-W` while 68 functions on 18 of
+  40 API pages printed a literal `:rtype: ...` line. A field marker inside a
+  paragraph is valid reStructuredText, so docutils had nothing to warn about.
+  Sphinx's fallback also added a real Return type field, so each of those
+  functions showed its return type twice. It was found only by grepping the
+  built HTML.
+- **User sees:** stray markup in the published API docs, and nothing fails.
+- **Next step:** make `build_docs.sh` fail when the text of
+  `api/generated/*.html` contains `:rtype:`, `:param ` or `:type `. Watch it
+  fail by removing the shim in `docs/conf.py`.
+
+### An incremental docs build ignores a behavior change in `docs/conf.py`
+- **Found:** 2026-09-11, fixing the literal `:rtype:` lines
+- **Evidence:** after the `:rtype:` shim went into `docs/conf.py`,
+  `build_docs.sh` over an existing `docs/_build` still produced all 68
+  literals. Sphinx re-reads sources only when a registered config value
+  changes, and a patched function is not one, so it reused the pickled
+  doctrees. Only `rm -rf docs/_build` showed the fix. CI builds from a clean
+  checkout. A clean build took 11 seconds here. What `-E` would cost on every
+  commit was not measured.
+- **User sees:** nothing. An agent can read a stale build as a failed fix or as
+  a working one, and the pre-commit docs gate is green either way.
+- **Next step:** pass `-E` in `build_docs.sh`, or rebuild from scratch when
+  `docs/conf.py` is newer than the build environment.
+
+### The `:rtype:` shim in `docs/conf.py` waits on dropping Python 3.10
+- **Found:** 2026-09-11, fixing the literal `:rtype:` lines
+- **Evidence:** `docs/conf.py` backports sphinx-autodoc-typehints 3.2.0's
+  placement guard over the locked 3.0.1. 3.2.0 needs Sphinx 8.2 and Python
+  3.11, and `requires-python` is `>=3.10`. The shim is gated on the installed
+  version, so an upgrade makes it inert rather than wrong.
+- **User sees:** nothing.
+- **Next step:** when 3.10 is dropped, upgrade and delete
+  `_rtype_insert_index` in the same commit. Check the rendered pages after the
+  move from Sphinx 8.1.3 to 8.2; nobody has.
+
 ### Three wrong statements in the docs
 - **Found:** 2026-09-11, repo audit and issues audit
 - **Evidence:**
@@ -665,12 +703,6 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** nothing.
 - **Next step:** if a modern true-shooting-attempts figure is published there,
   compare it with 550.
-
-### 14 of 38 API doc pages print a literal `:rtype:` line
-- **Found:** 2026-09-11 (reported, not re-verified)
-- **Evidence:** seen in the built HTML by the name-clarification session.
-- **User sees:** stray markup in the published API docs.
-- **Next step:** build the docs and grep the HTML for `:rtype:`.
 
 ### A failed warehouse build leaves no marker
 - **Found:** 2026-09-08 (reported)
