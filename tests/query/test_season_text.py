@@ -82,3 +82,12 @@ def test_a_numeric_threshold_is_not_a_season() -> None:
 def test_last_n_games_is_not_last_season() -> None:
     # "last 5 games" must not trip the "last ... " pattern.
     assert season_from_text("Show me the Knicks last 5 games") is None
+
+
+def test_a_year_before_the_data_starts_is_still_read() -> None:
+    """The floor here is the league's first season, not the warehouse's. A year below a table's floor has to
+    reach coverage.py to be refused with the reason. At 1990 it was dropped, and "who led the league in scoring
+    in 1980" was answered with the current season's leaders."""
+    assert season_from_text("who led the league in scoring in 1980") == 1980
+    assert season_from_text("Bulls record in 1985") == 1985
+    assert season_from_text("stats from 1946") is None

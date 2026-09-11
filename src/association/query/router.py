@@ -27,7 +27,7 @@ import ollama
 from association.season import current_season
 
 from .keepalive import KEEP_ALIVE
-from .season_text import season_from_text
+from .season_text import MIN_SEASON, season_from_text
 from .team_metrics import STAT_ALIASES
 
 # Small enough to stay in ollama's prefix cache across calls, which is what
@@ -276,12 +276,6 @@ ROUTER_NUM_CTX = 4096  # the router prompt is ~430 tokens; this leaves ample hea
    Renamed from ``NUM_CTX``, which collided with the agent's own window.
 """
 
-# ESPN's earliest season in this warehouse, and a season can legitimately be
-# next year's during the autumn rollover - anything outside this is a model
-# slip (confirmed live: "last season" once produced season=20222023), so it is
-# dropped rather than passed to SQL as a filter that silently matches nothing.
-MIN_SEASON = 1990
-
 # The model picks a word; the numeric season_type every table uses is looked up
 # here. Without this slot a playoff question silently answers for the regular
 # season - the same "answered an easier question and said nothing" failure the
@@ -340,6 +334,11 @@ def _validate_season(slots: dict[str, Any], question: str = "") -> int | None:
     if from_text is not None:
         return from_text
     season = slots.get("season")
+    # MIN_SEASON is the league's first season, not a data floor (coverage.py
+    # refuses those, with the reason), and a season can legitimately be next
+    # year's during the autumn rollover. Anything outside is a model slip -
+    # confirmed live: "last season" once produced season=20222023 - so it is
+    # dropped rather than passed to SQL as a filter that silently matches nothing.
     if isinstance(season, int) and MIN_SEASON <= season <= current_season() + 1:
         return season
     ref = slots.get("season_ref")

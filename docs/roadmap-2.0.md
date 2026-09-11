@@ -3,8 +3,9 @@
 A local web UI for asking questions — a conversational-looking app over the
 existing query pipeline — served by `association web` and backed by an HTTP API.
 
-This is a plan, not a description of what exists. Nothing in it is built yet.
-`architecture.rst` remains the source of truth for the system as it is today.
+This was the plan for 2.0. All four phases shipped in 2.0.0, and the page is
+kept as the record of what was decided and why. `architecture.rst` is the
+source of truth for the system as it is today.
 
 ## Scope
 
@@ -348,8 +349,13 @@ carries it the same way a template's does.
 ### After 2.0
 
 - **Conversation memory.** The router already accepts `previous_question`, and
-  the REPL already uses it; the agent already keeps `messages`. Turning it on is
-  small. It is out of 2.0 because it changes what a question *means* — "what
+  the agent already keeps `messages` and `last_question`, but nothing carries
+  them from one question to the next. The `ai` REPL that did is gone, and since
+  2.1.0 the web server resets the conversation on every request
+  (`AgentRunner.ask` calls `Agent.reset_conversation`), because one shared
+  `Agent` had been giving every browser the same history. Turning memory on for
+  the web UI needs per-client conversations, which needs a session the API does
+  not have yet. It is out of 2.0 because it changes what a question *means* — "what
   about last year?" is a different failure surface, and it deserves its own
   routing cases rather than being a footnote to a UI release.
 - **Export a conversation** (the transcript, or a single answer, as HTML).

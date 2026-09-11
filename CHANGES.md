@@ -15,6 +15,61 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+
+The largest release so far on the query side. It adds eight new kinds of
+question, and most existing ones can now be narrowed the way real questions
+narrow them. The headline changes are below; each is detailed in its entry
+further down.
+
+- **New question types.**
+  - A team's numbers, team rankings, and a team's outlook (BPI, playoff and
+    title odds).
+  - A player's splits: home and away, starter and bench, wins and losses, and
+    by month.
+  - A team's record, or a player's line, with and without a teammate.
+  - A team's record when a player reaches a number.
+  - The games two players played against each other.
+  - Winning and losing streaks.
+- **Questions narrowed the way people ask them.** A player's games and
+  averages against one team, at home or away, over a career, or without a
+  teammate. Career leaderboards for counting stats, averages and shooting
+  percentages (usage, true shooting, eFG% and NetPoints have no career
+  ranking). Career highs and career counts.
+- **Names resolved from what the question says.** A name the router invented,
+  dropped or completed is checked against the question. An ambiguous surname is
+  narrowed to the players who played in the season asked about, and every match
+  is considered, not just the first ten alphabetically.
+- **Answers that were wrong, now right.**
+  - True shooting and eFG% leaders qualify on attempts.
+  - Shot distances are measured from the rim, not from a point 5.25 feet
+    away from it.
+  - A postseason before 1994 is found by the year it was played.
+  - ESPN's copied postseason lines are dropped.
+  - Every game is dated by the day it was played.
+  - Per-game NetPoints rows land on the right game.
+- **Narrow questions no longer get broader answers.** Some filters no template
+  can apply yet: a playoff round, a season range, "under N", back-to-backs. A
+  question with one of these now goes to the slower agent instead of being
+  answered by a template about something else. A season the warehouse cannot
+  reach is refused, with the reason.
+- **Four holes an outside review found are closed.** Among them, the agent's
+  SQL connection can no longer read the disk, and the web server no longer
+  shares one conversation between every browser.
+
+Known gaps and data faults are listed, ranked, in `ISSUES.md`. Among them:
+every Chicago and New Orleans game from 2013 to 2018 but two has an empty box
+score, and the 2000 and 2001 playoffs stop before the Finals.
+
+- **A year before 1990 is read from the question.** The question text and the
+  router's `season` slot both discarded any year below 1990, a floor that
+  predates `coverage.py`. So "who led the league in scoring in 1980" was
+  answered with the current season's leaders, and "Bulls record in 1985" with
+  their current record. The floor is now the league's first season (1947), in
+  one constant instead of two. A year below a table's first season reaches the
+  coverage check and is refused, with the reason.
+- **`--include-net-points-daily` says what it fetches.** Its help now names the
+  per-game play-type table it also writes, and says it makes two requests per
+  date, not one.
 - **An ambiguous name is narrowed to the season being asked about before
   anybody is asked which one was meant.** "How did curry do against the
   celtics this year" answered `'Curry' matches more than one player - did you
@@ -183,7 +238,7 @@ had no published version to be compatible with.
   read.** Every agent that built a template hit one of these, and each one
   produced a wrong answer that nothing flagged.
   - **Playoffs before 1993-94 were a year off.** ESPN files every season before
-    1993-94 under the year it started. The postseason games labelled 1990 end
+    1993-94 under the year it started. The postseason games labeled 1990 end
     with the 1991 Finals, so "the 1991 playoffs" returned 1992's.
     `head_to_head`, `team_quarter_points` and a team's `game_log` now select a
     postseason by the calendar year it was played in, as `team_record` already
@@ -201,8 +256,9 @@ had no published version to be compatible with.
     of its 1,190 games have located shots, so `shot_chart` caveats 2003 as
     well as 2002.
   - **Four more narrowing slots the router reads from the question text.**
-    None is honoured yet, so each now refuses where it used to answer a
-    different question:
+    None is honored yet, so a question carrying `below` or `situation` now
+    falls through to the agent where it used to be answered as a different
+    question:
     - `below` ("games with under 14 FTA"): threshold_count answered 14 or more,
       the inverse.
     - `situation` (back-to-backs, overtime, a month, a conference, the All-Star
@@ -275,7 +331,7 @@ had no published version to be compatible with.
 
 - **Career leaderboards, career highs and career counts, each saying whose
   careers they cover.** `leaderboard`, `single_game_high` and `threshold_count`
-  now honour `span` "career" instead of refusing it:
+  now honor `span` "career" instead of refusing it:
 
   - "career points leaders" ranks career totals: LeBron James, 43,440, the sum
     of his season rows. A bare stat name reads as a total in a career and per
@@ -394,7 +450,7 @@ had no published version to be compatible with.
   Every one of these is the router answering a narrower question's slots with a
   broader template, so every fix is the same move this project already makes for
   `order` and `date`. The question text is read for what it narrows to, and a
-  template that cannot honour that refuses (`check_scope`) instead of answering
+  template that cannot honor that refuses (`check_scope`) instead of answering
   about everything:
 
   - `opponent`, the team after "vs"/"against", via
@@ -422,7 +478,7 @@ had no published version to be compatible with.
   `team_power_index` were read by no template at all. Most of the work was
   finding out which of their numbers can be believed.
 
-  - `team_record` honours `venue`, `opponent` and `span`, and answers a
+  - `team_record` honors `venue`, `opponent` and `span`, and answers a
     postseason instead of refusing one. A season's record and its home/road
     split are the standings' own; the "Home"/"Road" strings agree with a tally
     of `games` for every team-season from 1994 to 2026 once each era's
@@ -434,7 +490,7 @@ had no published version to be compatible with.
     count - left out of the record and mentioned beside it. Cleaned, the tally
     matches standings for every team-season from 1994 to 2026. Postseasons are
     found by the year they were played, because `games` labels every one before
-    1994 by the year its season started: the games labelled 1990 end with the
+    1994 by the year its season started: the games labeled 1990 end with the
     1991 Finals. Where the game list and a team's own totals disagree - the
     2000 and 2001 postseasons hold 15 of the Lakers' 23 games and 10 of their
     16 - the answer says so. A conference is refused by name, since nothing in
@@ -458,16 +514,20 @@ had no published version to be compatible with.
     values like 26,058 before 2022.
 
   A second pass over the ten StatMuse queries the fast path still answered
-  found four more cases of the same shape. These now refuse too:
+  found four more cases of the same shape. None is answered about something
+  else any more:
 
   - **A playoff round.** "tatum stats in the 2024 finals" was answered with his
     whole postseason: 19 games, where the Finals were five. Nothing in the
-    warehouse records a round, so no template can honour one.
+    warehouse records a round, so no template can honor one, and the question
+    falls through to the agent (`check_scope`).
   - **A split asked of a template that is not about splits.** "Joe Ingles stats
-    when starting vs coming off the bench" came back as his season minutes.
+    when starting vs coming off the bench" came back as his season minutes. It
+    falls through to the agent too.
   - **A range of seasons.** "most 3 pointers made since 2020" became one season
     and a threshold of 0, and was answered as "the most games with 0+
-    3-pointers". A zero threshold, which counts every game, is refused as well.
+    3-pointers". It falls through to the agent, and so does any zero
+    threshold, which counts every game.
   - **A record asked as a count.** "Sixers record when Embiid scores 30" was
     answered with the league's 30-point games. It now goes to `record_when`, and
     the question's one named player is restored wherever that template needs
@@ -628,7 +688,7 @@ had no published version to be compatible with.
   so a pull that already has the box-score half backfills only what it is
   missing. Stored LONG rather than wide: the season file's shape would be 93
   columns here and would change again the next time ESPN adds a category. The
-  categories are normalised on the way in to the column prefixes the season
+  categories are normalized on the way in to the column prefixes the season
   file uses, over the `FINGERPRINT_CATEGORIES` map that already existed, so one
   skill list drives both tables.
 
@@ -640,7 +700,7 @@ had no published version to be compatible with.
   one and nearly any decent game would land in the 99th percentile against it.
   The new `Unit` carries the labels with the numbers so a per-game plot is
   never captioned "per 100 poss". Verified against the warehouse: Curry's
-  2026-04-13 headline reads +6.31 (+2.39 offense, +3.92 defense), matching
+  2026-04-12 headline reads +6.31 (+2.39 offense, +3.92 defense), matching
   `net_points_player_game`'s row for that game exactly - a cross-check from a
   different source file.
 
@@ -679,7 +739,7 @@ had no published version to be compatible with.
   back with no `order` 3/3, while "most recent game" - the prompt's own wording
   - came back with it 3/3. The third slot to need the fix `_validate_season`
   and `_validate_side` already use: `_validate_order` reads it out of the
-  question, for the intents whose templates honour it (`ORDER_INTENTS`, guarded
+  question, for the intents whose templates honor it (`ORDER_INTENTS`, guarded
   against `HONORED_SCOPING`). `ROUTER_PROMPT` and `ROUTER_SCHEMA` hash
   identically before and after, so no other question's routing moves.
 
@@ -887,7 +947,7 @@ had no published version to be compatible with.
   facing the other way.
 
   Seasons that exist but only partly - 2002 play-by-play is about half a year -
-  are answered with a caveat rather than refused. Playoffs reach back to 1988
+  are answered with a caveat rather than refused. Playoffs reach back to 1989
   where regular seasons only reach 1994, so `games` carries both floors. Season
   1993, whose rows duplicate 1994, is declared a phantom rather than merely
   excluded, so it can be verified rather than assumed.
@@ -1038,7 +1098,7 @@ had no published version to be compatible with.
   reads as a rendering fault rather than as somewhere to scroll. The lower edge
   now fades out, and only while there is more below: the fade is dropped at the
   end of the scroll, where it would otherwise sit over the last row of a
-  fingerprint's table. It is painted in the chart's own background colour, read
+  fingerprint's table. It is painted in the chart's own background color, read
   off the document inside the frame, because a chart page sets its own rather
   than inheriting the app's.
 

@@ -22,6 +22,11 @@ through :func:`importlib.metadata.version` and exposes it as
 through ``--version``; and the publish workflow parses the same file to check
 the tag agrees. Nothing else needs editing on a bump.
 
+The exception, while PyPI is unreachable, is the install commands in
+``README.md`` and :doc:`installation`, which pin a release tag. Update them in
+the bump commit, or they keep pointing at an old release: they said ``v1.4.0``
+through 2.0.0.
+
 Cutting a release
 -----------------
 

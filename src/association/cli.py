@@ -172,8 +172,9 @@ def data() -> None:
 @click.option(
     "--include-net-points-daily",
     is_flag=True,
-    help="Also fetch per-game NetPoints (net_points_player_game/net_points_team_game) - one extra, "
-    "signed S3 request per date already covered locally, not per game or per player. Opt-in: needs "
+    help="Also fetch per-game NetPoints (net_points_player_game/net_points_team_game) and the per-game "
+    "play-type split (net_points_player_game_fingerprint) - two extra, signed S3 requests per date already "
+    "covered locally (one per file), not per game or per player. Opt-in: needs "
     "boto3's Cognito credential exchange (see fetch/netpoints_client.py) and matches players by exact "
     "display-name (ambiguous/unmatched names are left unresolved, not guessed).",
 )

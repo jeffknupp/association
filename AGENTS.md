@@ -624,9 +624,9 @@ everything about it is constrained by things measured elsewhere in this file.
   about 87% of ESPN's own season totals, and a streak or a with/without split
   cannot tell whether a player sat those games out. The templates that read
   per-game rows say how many games they could not see; a refetch of those games
-  has not been tried. It is not scattered: it is every Chicago and New Orleans
-  game in those six seasons, including their playoff series (1,025 events), and
-  their plays and shots survived. `ISSUES.md` has the numbers and the next step.
+  has not been tried. It is not scattered: it is all but two of the Chicago and
+  New Orleans games in those six seasons, including their playoff series (1,025
+  events), and their plays and shots survived. `ISSUES.md` has the numbers and the next step.
 - Query connections to DuckDB are **read-only**, as a hard guarantee.
 
 **Those floors are enforced, not just documented.** `association/coverage.py`

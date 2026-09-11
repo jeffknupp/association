@@ -42,7 +42,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 
 ## P1: wrong answer
 
-### Every Bulls and Pelicans box score from 2013 to 2018 is zeros
+### Nearly every Bulls and Pelicans box score from 2013 to 2018 is zeros
 - **Found:** 2026-09-11, template work; characterized in the issues audit
 - **Evidence:** a team-game is empty when every player row has NULL minutes and
   every stat is 0, and its `team_box_stats` row is all NULL.
@@ -55,6 +55,8 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
     involve neither: 400278127, 400278386, 400278387, 400278388, 400489088,
     400900132 and 400975285. The postseason empties are every CHI series in 2013,
     2014, 2015 and 2017, and NO's in 2015 and 2018.
+  - **Two games escaped it:** 400828584 (2016, LAL v CHI) and one 2017 playoff
+    game have real box scores.
   - **The source.** The raw Parquet has the same zeros, written 2026-09-08. The
     parser only writes 0 when ESPN sends "0", so ESPN apparently served zeroed
     lines. That is inferred, not checked against the live source.
@@ -450,9 +452,12 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Found:** 2026-09-11, template work (agent B) and repo audit
 - **Evidence:** `games.conference_game` is False on all 43,494 rows
   (`fetch/parse.py` reads `conferenceCompetition`). No table maps a team to a
-  conference, so `_conference_refusal` refuses "Western Conference standings" by
-  name.
-- **User sees:** a refusal for conference standings, or "who leads the East".
+  conference. `_conference_refusal` refuses a conference named as the
+  subject ("who leads the east"). A phrase like "Western Conference standings"
+  or "record in the eastern conference" matches `router._SITUATION` first, so
+  `check_scope` hands it to the agent, which has no conference data either.
+- **User sees:** a refusal for "who leads the East". For "Western Conference
+  standings", a slow agent answer with nothing to ground it.
 - **Next step:** a static team-to-conference table, per season.
 
 ### A player's career TS% is refused
@@ -742,7 +747,9 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   does not re-read also re-emits none of its warnings, so the local `-W` gate
   can pass where a fresh build fails. That is the "local run weaker than CI"
   shape `AGENTS.md` records for the other gates. CI's own docs build was not
-  checked.
+  checked. A change to `cli.py` alone does the same to `commands.html`: after
+  the 2.1.0 help-text change, the page kept its 2026-09-10 build until a clean
+  build replaced it.
 - **User sees:** nothing directly. An agent reading the built HTML sees stale
   pages, and a docs warning can go unnoticed until CI.
 - **Next step:** pass `-E` (or clear the output directory) in `build_docs.sh`,
@@ -813,8 +820,15 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 
 ### The agent's tool budget is full
 - **Found:** before 2026-09-11 (`docs/architecture.rst`, "The tool budget")
-- **Evidence:** five tools leave about 220 tokens of headroom, so a sixth does
-  not fit. The cheapest lever, folding `render_shot_chart` and
+- **Evidence:** measured 2026-09-11 with `prompt.estimate_tokens`, the budget
+  check's own counter. The five tool schemas cost 1,442 tokens. With no
+  knowledge entries selected, the preamble is 4,743 tokens, leaving 1,657 of
+  headroom against `PREAMBLE_TOKEN_BUDGET = 6400`. With the three largest
+  entries selected, it is 6,302, leaving 98. So a sixth tool does not fit, and a
+  question that selects the largest entries is one short entry away from
+  `PreambleTooLarge`. The docs disagree about the headroom, and all three are
+  wrong: `docs/architecture.rst` says "a few hundred tokens", `AGENTS.md` says
+  "about 220", and the 2.1.0 changelog says "about 120". The cheapest lever, folding `render_shot_chart` and
   `render_fingerprint` into one tool, is not done.
 - **User sees:** nothing yet. It blocks any new agent tool.
 - **Next step:** fold the two render tools when a new tool is next needed.
@@ -826,3 +840,59 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** releases only on GitHub.
 - **Next step:** register the publisher once the account is back, then upload
   each tagged version.
+
+### The router prompt's documented size is five times too small
+- **Found:** 2026-09-11, docs survey for 2.1.0
+- **Evidence:** `query/router.py` says the prompt is "~430 tokens", in both its
+  published module docstring and the comment on `ROUTER_NUM_CTX`.
+  `ROUTER_PROMPT` is now 9,989 characters, about 2,500 tokens at four
+  characters a token. That is an estimate, not measured with the tokenizer.
+  The context is `ROUTER_NUM_CTX = 4096`, and there is no budget guard like
+  `PREAMBLE_TOKEN_BUDGET`. ollama truncates an over-length prompt
+  head-first, silently.
+- **User sees:** nothing yet, with about 1,500 tokens of headroom. A few more
+  intent lines and the head of the prompt starts to disappear. Every question
+  then routes worse, and there is no error.
+- **Next step:** read `prompt_eval_count` from one router call and correct both
+  comments. Then add a test that fails when `ROUTER_PROMPT` plus a long question
+  passes a set budget, the way `PreambleTooLarge` guards the agent.
+
+### The release script does not update the install pins
+- **Found:** 2026-09-11, docs survey for 2.1.0
+- **Evidence:** because PyPI is unreachable, `README.md` and
+  `docs/installation.rst` pin `git+https://github.com/jeffknupp/association@vX.Y.Z`.
+  `scripts/bump_version.py` rewrites only `pyproject.toml`, `uv.lock` and
+  `CHANGES.md`. So the pins said `v1.4.0` through three later releases, until
+  they were updated by hand for 2.1.0.
+- **User sees:** install instructions that install an old release.
+- **Next step:** have the bump script rewrite `@v<current>` to `@v<new>` in both
+  files, and refuse if a pin names neither version.
+
+### British spellings in `src/`
+- **Found:** 2026-09-11, docs survey for 2.1.0
+- **Evidence:** there are 24 hits for honour, normalis- and colour in `src/`.
+  Some are user-visible: the `check_scope` trace message ("cannot honour") and
+  docstrings in `query/router.py` that are published. `AGENTS.md` requires
+  American spelling, and the 2.1.0 changelog was corrected.
+- **User sees:** "honour" in a `--verbose` trace, and mixed spelling in the API
+  docs.
+- **Next step:** replace them, with a CHANGES line, since the change touches
+  `src/`.
+
+### A coverage caveat is added to a refusal that drew nothing
+- **Found:** 2026-09-11, docs edits for 2.1.0
+- **Evidence:** "plot Kobe Bryant's threes in 2002" is refused, and the answer
+  still ends "...so the answer covers part of the year". That is the partial-
+  season caveat for 2002 shots, attached to an answer that covers nothing.
+- **User sees:** a refusal that also claims to cover part of a season.
+- **Next step:** skip `coverage_caveat` when the template's result is a refusal.
+
+### Stale leftovers from the 2.0 REPL and an example that stopped early
+- **Found:** 2026-09-11, docs edits for 2.1.0
+- **Evidence:** a comment in `router.route()` says "The `ai` REPL gets real
+  follow-ups", but the REPL was removed in 2.0.0 and nothing passes
+  `previous_question` now. In `docs/usage.rst`, the example "who leads the
+  league in assists?" shows only the first sentence of an answer that continues
+  "Next: ...".
+- **User sees:** a docs example shorter than the real output.
+- **Next step:** correct the comment, and paste the example's full answer.

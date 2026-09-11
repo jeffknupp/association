@@ -26,8 +26,10 @@ with ``--include-pbp``. It costs no extra requests, only parse time and disk:
 
    $ association data pull --seasons 2026 --include-pbp
 
-NetPoints, including the play-type fingerprint, is a separate opt-in because it
-needs a credential exchange (see :doc:`data-sources`):
+NetPoints season ratings and the season fingerprint come with every pull, from
+public files. The per-game NetPoints tables, including the per-game play-type
+split a single game's fingerprint is drawn from, are a separate opt-in, because
+they need a credential exchange (see :doc:`data-sources`):
 
 .. code-block:: console
 
@@ -159,7 +161,7 @@ One-shot:
 .. code-block:: console
 
    $ association query "Klay Thompson's 3pt percentage over the past 4 seasons"
-   Klay Thompson, 3PT% by regular season (most recent first):
+   Klay Thompson, 3PT% by regular season, 2023-2026 (most recent first):
    season   G  3PT%  3PM  3PA
      2026  69  38.3  202  527
      2025  72  39.1  216  553
@@ -179,11 +181,66 @@ surprising answer can be diagnosed after the fact:
    Nikola Jokic had the most games with 20+ rebounds in the 2026 regular season, with
    5. Next: Karl-Anthony Towns (3), Donovan Clingan (2), Andre Drummond (1), Bam Adebayo (1).
 
+What you can ask
+----------------
+
+The fast path answers these shapes. The questions below are real ones, from the
+routing check (``scripts/check_routing.py``) and StatMuse's query feed.
+
+* **Rankings by any stat**: "who has the most threes this season", "Best true
+  shooting percentage last season?". A percentage qualifies on attempts, and the
+  answer names the qualifier ("minimum 200 3-point attempts").
+* **A player's numbers**: a season line ("What are Jokic's numbers this
+  season?"), narrowed to one opponent ("evan mobley avg against bucks"), to home
+  or away games, or to the games a teammate missed; and a career ("Jokic career
+  averages").
+* **Games, highs and counts**: "Show me the Knicks last 5 games", "luka ft
+  log", "Most rebounds Jokic has had in one game?", "Who had the most 30+ point
+  games this season?", "Diabate career high assists".
+* **Careers**: "career points leaders". A career answer covers the careers that
+  reached 1993-94, and says it is not an all-time list.
+* **Games under a condition**: splits ("Nikola Jokic home and away splits",
+  "Giannis Antetokounmpo stats by month", and starting or off the bench, in wins
+  or losses), with and without a teammate ("Celtics record without Tatum"), a
+  team's record when a player reaches a number ("Sixers record when Embiid
+  scores 30 points this season"), two players' meetings ("lebron vs kawhi head
+  to head") and streaks ("lakers longest winning streak this season").
+* **Teams**: a record ("What was the Lakers record last season?"), home or road
+  ("Knicks home record this season"), against one team ("Lakers vs Celtics
+  record this season"), a season's numbers ("Knicks pace this season"),
+  rankings ("which team scores the most points per game", "Lowest defensive
+  rating by a team this season"), and ESPN's power index and playoff odds
+  ("what are the celtics playoff odds").
+
+A surname several players share is narrowed to the players who played in the
+season asked about, and the answer asks which one you meant when more than one
+is left: "how did curry do against the celtics this year" asks whether you
+meant Seth Curry or Stephen Curry.
+
+Some questions are not answered by a template:
+
+* **A season before a table's data starts** is refused, with the reason: "Shot
+  charts only go back to 2002 - shots are derived from play-by-play, which ESPN
+  does not have before 2002." :doc:`data-sources` lists where each kind of data
+  starts.
+* **A narrowing no template honors**, such as "under 14 FTA", back-to-backs,
+  "in the Finals" or "since 2020", goes to the agent rather than being answered
+  for everything.
+* **A conference** named as the subject ("who leads the east") is refused,
+  because nothing in the warehouse records which teams are in one. Asked as a
+  filter ("Celtics record in the eastern conference", "Western Conference
+  standings"), it is one of the narrowings above and goes to the agent.
+
 Shot charts
 -----------
 
 Needs play-by-play data (``--include-pbp``, see above) for the seasons
-involved:
+involved. Shots reach back to 2001-02. ESPN located only part of 2001-02's and
+2002-03's shots (509 and 986 of 1,190 games), and answers for those seasons say
+so. 2001-02 has a second gap: nothing reliably separates its twos from its
+threes, so a chart or a shot distance limited to twos or threes in that season
+is refused. A free-throw chart is refused in every season, since free throws
+carry no court position worth drawing.
 
 .. code-block:: console
 
@@ -197,7 +254,7 @@ printing to the terminal — open it in a browser. It looks like this:
    :alt: Half-court shot chart for Stephen Curry's last regular-season game, showing makes and misses plotted by location.
    :width: 380px
 
-   Stephen Curry, April 13, 2026 (GS @ LAC) — real output from the query above.
+   Stephen Curry, April 12, 2026 (GS @ LAC) — real output from the query above.
 
 NetPoints fingerprints
 ----------------------
@@ -209,7 +266,7 @@ only the NetPoints data (pulled by default), not play-by-play:
 .. code-block:: console
 
    $ association query "plot Shai Gilgeous-Alexander's fingerprint for 2025"
-   Rendered NetPoints fingerprint (total) for Shai Gilgeous-Alexander (2025, percentile scale) to query_output/fingerprint_shai_gilgeous_alexander_2025_total_percentile.html
+   Rendered NetPoints fingerprint (total) for Shai Gilgeous-Alexander (2025 season, percentile scale) to query_output/fingerprint_shai_gilgeous_alexander_2025_total_percentile.html
 
 .. figure:: _static/sga_fingerprint_example.png
    :alt: NetPoints fingerprint radar for Shai Gilgeous-Alexander's 2025 season, with 20 skills grouped into scoring, shot types, creation, rebounding and defense, and a table of the same numbers underneath.
@@ -225,10 +282,17 @@ points are already signed toward "good", and a turnover category is negative on
 offense and positive on defense. The same numbers are repeated in the table
 underneath: a radar is a shape, and the table is what makes it checkable.
 
-Two things it will not do. It will not plot one game — the warehouse has an
-offense/defense/total split per game but no play-type breakdown, so a question
-about a single game is answered with that fact rather than with the season's
-shape. And it will not plot a career: a fingerprint is one season.
+A fingerprint can also be drawn for one game: a player's first or last game of
+a season ("steph curry's fingerprint from his last game"). It is drawn in that
+game's own net points rather than a per-100 rate, because over about 30
+possessions a per-100 rate turns one made corner three into a league-leading
+figure. Each percentile ranks against every player-game of that season rather
+than against season rates. It needs the per-game NetPoints pull
+(``--include-net-points-daily``, see above). The game is picked as a player's
+first or last of the season, not by date: a question naming a date is told to
+ask for the last game instead.
+
+It will not plot a career: a fingerprint is one season, or one game.
 
 Naming two players draws both polygons on the same axes and shades each skill
 in the color of whoever leads it, more strongly the further ahead they are:

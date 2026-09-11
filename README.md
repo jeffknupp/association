@@ -47,16 +47,20 @@ association query "how many times did the 76ers play the Celtics this season?"
 
 association query "Luka Doncic vs Shai Gilgeous-Alexander this season"
 # Luka Doncic vs Shai Gilgeous-Alexander, 2026 regular season:
-#                     Luka Doncic  Shai Gilgeous-Alexander
-# games                        64                       68
-# points                     33.5                     31.1
+#                          Luka Doncic  Shai Gilgeous-Alexander
+# games                             64                       68
+# points                          33.5                     31.1
+# rebounds                         7.7                      4.3
+# assists                          8.3                      6.6
+# ...
+# net pts/100                    +6.55                    +9.91
 
 association query "top 5 rebounders on the Lakers in the playoffs"
 # Deandre Ayton led the Los Angeles Lakers in rebounds per game in the 2026
-# postseason, at 9.6. Next: LeBron James (6.7), Rui Hachimura (4), Austin Reaves (4), ...
+# postseason, at 9.6. Next: LeBron James (6.7), Austin Reaves (4.0), Rui Hachimura (4.0), Luke Kennard (3.5).
 
 association query "Steph Curry's 3pt percentage over the past 4 seasons"
-# Stephen Curry, 3PT% by regular season (most recent first):
+# Stephen Curry, 3PT% by regular season, 2023-2026 (most recent first):
 # season   G  3PT%  3PM  3PA
 #   2026  43  39.3  190  484
 #   2025  70  39.7  311  784
@@ -65,7 +69,7 @@ association query "Steph Curry's 3pt percentage over the past 4 seasons"
 
 association query "who had the most assists in a single game this season?"
 # Ryan Nembhard had the most assists in a single game in the 2026 regular season:
-# 23, on 2026-04-13 vs CHI. Next: Isaiah Collier (22), Josh Giddey (19).
+# 23, on 2026-04-12 vs CHI. Next: Isaiah Collier (22), Josh Giddey (19).
 ```
 
 Questions like these hit a fast path and typically answer in a couple of
@@ -85,8 +89,10 @@ StatMuse's live query feed. For example:
 - **Careers**: "career points leaders", "Jokic career averages"
 - **Team rankings, lines and outlook**: "which team scores the most points per game", "Knicks home record", "what are the celtics playoff odds"
 
-A question that narrows to something no template can honour, such as "under 14 FTA", "on
-back-to-backs" or "in the Finals", is refused. It is not answered for everything instead.
+A question that narrows to something no template can honor, such as "under 14 FTA", "on
+back-to-backs" or "in the Finals", is not answered for everything instead: it goes to the
+slower agent, which writes its own SQL. A question about a season a table does not reach,
+such as a 1996 shot chart, is refused, and the answer says why.
 
 Some questions render a chart instead of text:
 
@@ -105,13 +111,18 @@ skills — renders the same way, and needs no play-by-play:
 
 ```bash
 association query "plot Shai Gilgeous-Alexander's fingerprint for 2025"
-# Rendered NetPoints fingerprint (total) for Shai Gilgeous-Alexander (2025, percentile scale) to query_output/fingerprint_shai_gilgeous_alexander_2025_total_percentile.html
+# Rendered NetPoints fingerprint (total) for Shai Gilgeous-Alexander (2025 season, percentile scale) to query_output/fingerprint_shai_gilgeous_alexander_2025_total_percentile.html
 ```
 
 <img src="docs/_static/sga_fingerprint_example.png" alt="NetPoints fingerprint radar for Shai Gilgeous-Alexander's 2025 season: 20 play-type skills grouped into scoring, shot types, creation, rebounding and defense, each plotted as a percentile of the league, with a table of the same numbers underneath" width="520">
 
 Naming two players draws both on the same axes and shades each skill to
 whoever leads it.
+
+Asking about one game ("steph curry's fingerprint from his last game") draws
+that game in its own net points rather than a per-100 rate. It needs the
+per-game NetPoints files, which are an opt-in pull
+(`--include-net-points-daily`).
 
 ## Features
 
@@ -123,9 +134,10 @@ whoever leads it.
   reports, optionally live
 - **Natural-language queries with no cloud calls** — everything runs against
   a local Ollama model
-- **Fast, deterministic answers** for common question shapes (leaderboards,
-  head-to-head, comparisons, game logs, shot charts, fingerprints,
-  multi-season history, …),
+- **Fast, deterministic answers** for common question shapes (rankings by
+  any stat or over a career, player and team lines, splits, with/without a
+  teammate, streaks, head-to-head, comparisons, game logs, shot charts,
+  fingerprints, multi-season history, …),
   with a tool-calling agent as fallback for anything else
 - **Computed advanced stats** ESPN's API doesn't expose directly — true
   shooting %, effective FG%, usage rate, game score
@@ -141,7 +153,7 @@ whoever leads it.
 ## Setup
 
 ```bash
-uv tool install git+https://github.com/jeffknupp/association@v1.4.0
+uv tool install git+https://github.com/jeffknupp/association@v2.1.0
 brew install ollama               # or see https://ollama.com/download
 ollama serve &
 ollama pull qwen2.5:3b            # router, the fast path - required, ~1.9GB
@@ -224,17 +236,21 @@ for how the warehouse and query engine are built from it.
 ```
 src/association/
   cli.py            entrypoint: data pull|load|check, query, web
+  coverage.py       the season each table's data starts in, and the refusal for a season before it
   fetch/            client, endpoints, parse, storage, pipeline, warehouse
   check/            data coverage report, cross-checked live against ESPN
-  query/            intent router, query templates, entity resolution, leaderboard, shot chart, fingerprint, prompt/knowledge base, tools, court and radar renderers, agent loop
+  query/            intent router, query templates, entity resolution, leaderboard, conditions (splits, with/without, streaks), leaderboard and team metrics, shot chart, fingerprint, prompt/knowledge base, tools, court and radar renderers, agent loop
   web/              the local web interface: HTTP API, one-at-a-time runner, single-page app
 scripts/
   backfill_markers.sh   re-derive completion markers for data fetched before they existed
   check_routing.py      routing regression check for the query fast path (needs ollama)
   bench_router_models.py  score candidate router models on that same question set
+  check_coverage.py     verify each table's coverage floor against a built warehouse
+  check_nicknames.py    verify the player nickname table against a built warehouse
+  check_net_points_games.py  verify which game each per-game NetPoints row lands on
 completions/          generated bash/zsh/fish shell completion scripts
 tests/              pytest, one file per source module
-.history/           per-run command/trace/timing logs from query|ai (gitignored)
+.history/           one command/trace/timing log per question, from query and web (gitignored)
 ```
 
 ## Development
@@ -264,8 +280,25 @@ enforced by a pre-commit hook.
 - `net_points_team` (season-level) only ever reflects the current season;
   `net_points_team_game` (per-game, `--include-net-points-daily`) has full
   history instead.
-- `net_points_player_game` matches players by exact display-name text, so
-  spelling differences between sources can leave a real player's game rows
-  unmatched rather than wrongly matched.
+- `net_points_player_game` and `net_points_player_game_fingerprint` (both
+  per-game, `--include-net-points-daily`) match players by exact display-name
+  text, so spelling differences between sources can leave a real player's game
+  rows unmatched rather than wrongly matched.
+- **Tables start in different seasons.** Standings from 1987-88; playoffs from
+  1989; box scores and regular-season games from 1993-94; play-by-play from
+  2001-02 (about half of that season); shot charts from 2001-02 (only part of
+  2001-02 and 2002-03); ESPN's power index from 2016-17; win probability from
+  2017-18; NetPoints from 2018-19. These are ESPN's gaps, and no pull fills
+  them. A question below a table's floor is refused with the reason.
+- **Careers.** Career answers cover only careers that reached 1993-94, because
+  players are found through box scores: Kareem Abdul-Jabbar, Larry Bird and
+  Julius Erving are not in the warehouse, and a career list says it is not
+  all-time.
+- **Empty box scores.** Every game Chicago or New Orleans played from 2012-13
+  to 2017-18, playoffs included, has an empty box score for both teams, apart
+  from two games. Most answers built from box scores say how many games they
+  could not see.
+- **No round or conference data.** Nothing records a playoff round or a team's
+  conference.
 - `data check --live` cross-checks are opt-in and can be slow for seasons
   without a local completion marker yet — `pull` first to build those up.

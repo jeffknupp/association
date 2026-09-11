@@ -33,7 +33,8 @@ Load
 :mod:`association.fetch.warehouse` builds ``nba.duckdb`` from whatever Parquet
 is on disk — no network. It also creates the derived pieces the query engine
 relies on: the ``current_season()`` macro, the ``player_season_stats_deduped``
-view that collapses a traded player's multiple rows, and the computed advanced
+view that collapses a traded player's multiple rows and drops the postseason
+lines ESPN's career endpoint copied from a regular season, and the computed advanced
 stats in :mod:`association.fetch.advanced_stats`.
 
 Rebuilding is idempotent and cheap, so it is the right loop when iterating on
@@ -63,7 +64,9 @@ to stay in the KV cache — typically one model call of 1–2 seconds.
 Each owns one question shape and builds its own SQL, with every correctness
 rule in code rather than in prose: season defaults, traded-player dedup,
 minimum-sample floors, the home/away perspective flip, the string
-``season_type`` that NetPoints uses. They phrase their own answers, so the
+``season_type`` that NetPoints uses, the season each table's data starts in
+(:mod:`association.coverage`), and dating a game by its US Eastern day rather
+than ESPN's UTC timestamp (:func:`association.season.eastern_date`). They phrase their own answers, so the
 common case is a single model call end to end.
 
 **The agent** (:mod:`association.query.agent`) is the fall-through for
@@ -193,6 +196,14 @@ that:
 * Templates declare which scope slots they honor
   (:func:`association.query.templates.check_scope`); a question scoped to
   particular games falls through rather than being answered for a season.
+* A question about a season a table cannot reach is refused, with the reason
+  (:func:`association.query.templates.check_coverage`). The refusal is returned
+  as the answer rather than raised, because the agent would query the same
+  empty tables and is then free to fill the silence from its own weights.
+* Slots the router drops or files in the wrong place are read from the
+  question text, and a player name the question does not support is refused
+  rather than answered about
+  (:func:`association.query.entities.override_invented_players`).
 * :func:`association.query.prompt.build_system_prompt` raises rather than
   handing ollama a prompt it would quietly truncate.
 * :meth:`association.query.toolbox.Toolbox.run_sql` bounds results by tokens
@@ -206,6 +217,6 @@ Auditing
 
 :mod:`association.check.report` compares what is on disk against what the
 endpoints say should exist, per season and season type, and can cross-check
-live with ``--live``. Every ``query``/``ai`` run also writes a full trace to
+live with ``--live``. Every question, from ``query`` or ``association web``, also writes a full trace to
 ``.history/`` — the command, the routing decision, every tool call, per-call
 timings, and the final answer — whether or not ``--verbose`` was passed.

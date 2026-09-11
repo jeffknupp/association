@@ -15,13 +15,13 @@ Install from a release tag:
 
 .. code-block:: console
 
-   $ pip install git+https://github.com/jeffknupp/association@v1.4.0
+   $ pip install git+https://github.com/jeffknupp/association@v2.1.0
 
 Or, to get the CLI on your PATH without adding it to a project environment:
 
 .. code-block:: console
 
-   $ uv tool install git+https://github.com/jeffknupp/association@v1.4.0
+   $ uv tool install git+https://github.com/jeffknupp/association@v2.1.0
 
 Releases cut from now on also carry the built wheel and sdist as downloadable
 assets, so ``pip install ./association-X.Y.Z-py3-none-any.whl`` works from a

@@ -778,3 +778,9 @@ def test_a_per_game_abbreviation_names_a_stat() -> None:
     """player_stat drops a stat the question never named; "ppg" names one."""
     got = _ask("lebron ppg this season", '{"intent":"player_stat","player":"LeBron James","stat":"points"}')
     assert got.slots["stat"] == "points"
+
+
+def test_a_model_season_before_1990_is_kept() -> None:
+    """The model's `season` slot had the same 1990 floor as the text, so a 1980 it filled in was dropped."""
+    got = _ask("who led the league in scoring back then", '{"intent":"leaderboard","stat":"points","season":1980}')
+    assert got.slots["season"] == 1980
