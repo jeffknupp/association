@@ -28,6 +28,7 @@ from association.season import current_season
 
 from .keepalive import KEEP_ALIVE
 from .season_text import season_from_text
+from .team_metrics import STAT_ALIASES
 
 # Small enough to stay in ollama's prefix cache across calls, which is what
 # makes the fast path fast - see the module docstring. Keep additions terse:
@@ -54,6 +55,7 @@ intent must be one of:
                      player, stat, and limit to the number of seasons
   game_log         - list a player's or team's games, or one specific game
                      ("Lakers last 5 games", "Curry's first game of the season")
+                     - set opponent for games against one named team
   team_record      - one team's win/loss record for a season
   head_to_head     - games between TWO named teams ("how many times did the
                      76ers play Boston", "Lakers vs Celtics record") - set teams
@@ -74,9 +76,16 @@ intent must be one of:
                      "how far away does Curry shoot from")
   player_compare   - two or more named players side by side ("Luka vs SGA",
                      "compare Curry and Lillard") - set players, not player
+  team_stat        - one TEAM's numbers ("Celtics points per game") - set team
+  team_leaderboard - rank TEAMS by a stat ("best defense", "best record")
+  team_outlook     - a team's BPI, playoff or title odds, projections - set team
+  player_splits    - one player's home/away, starter/bench, wins/losses or monthly splits
+  with_without     - a record or stats with or without a teammate
+  record_when      - a team's record in games a player reached a stat threshold
+  player_matchup   - games two named players played AGAINST each other
+  streak           - longest winning/losing streak, or straight games with N+ of a stat
   other            - anything else, including a named PLAYER's per-quarter
-                     scoring (team_quarter_points is only for a TEAM's) and
-                     shot distances
+                     scoring (team_quarter_points is only for a TEAM's)
 
 stat names a box-score category: points, rebounds, assists, steals, blocks,
 turnovers, minutes, fouls, threePointFieldGoalsMade, fieldGoalsMade, freeThrowsMade,
@@ -165,6 +174,16 @@ Q: Compare SGA and Jokic's fingerprints
 {"intent":"fingerprint","players":["Shai Gilgeous-Alexander","Nikola Jokic"],"side":"total","season_ref":"current"}
 Q: What were SGA's netpoints by play type?
 {"intent":"player_netpoints","player":"Shai Gilgeous-Alexander","season_ref":"current"}
+Q: jaylen brown last 8 games vs pistons
+{"intent":"game_log","player":"Jaylen Brown","opponent":"Detroit Pistons","order":"recent","limit":8}
+Q: Nikola Jokic home and away splits
+{"intent":"player_splits","player":"Nikola Jokic","season_ref":"current"}
+Q: Celtics record without Tatum
+{"intent":"with_without","team":"Boston Celtics","season_ref":"current"}
+Q: lebron vs kawhi head to head
+{"intent":"player_matchup","players":["LeBron James","Kawhi Leonard"]}
+Q: Lakers longest winning streak this season
+{"intent":"streak","team":"Los Angeles Lakers","season_ref":"current"}
 """
 
 # Passed as ollama's `format`, so decoding is CONSTRAINED to a well-formed
@@ -191,6 +210,14 @@ ROUTER_SCHEMA: dict[str, Any] = {
                 "shot_chart",
                 "fingerprint",
                 "shot_distance",
+                "team_stat",
+                "team_leaderboard",
+                "team_outlook",
+                "player_splits",
+                "with_without",
+                "record_when",
+                "player_matchup",
+                "streak",
                 "other",
             ],
         },
@@ -274,7 +301,15 @@ SEASON_TYPES = {"regular": 2, "playoffs": 3}
 _FOULED_OUT = re.compile(r"\bfoul(?:ed|s|ing)?\s+out\b")
 FOUL_OUT_THRESHOLD = 6
 
-_AGENT_ONLY = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+quarter\b|\bper\s+quarter\b|\bby\s+quarter\b")
+_AGENT_ONLY = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+(?:quarter|qtr|q)\b|\bq[1-4]\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b")
+
+# A half is never a quarter, so no template answers one - not even for a TEAM,
+# where team_quarter_points reads a period number and the model maps "first half"
+# onto period 1. Kept apart from _AGENT_ONLY for that reason: the team exemption
+# below applies to quarters only. "rj barrett 4th qtr log" is why both patterns
+# grew abbreviations - it slipped past "quarter" and game_log answered with his
+# whole last game.
+_HALF_WORDS = re.compile(r"\b(?:first|second|1st|2nd)\s+half\b|\b[12]h\b|\bhalftime\b", re.IGNORECASE)
 
 
 # A TEAM's quarter score (no player named) is exempted below: linescores answer
@@ -355,6 +390,239 @@ def _validate_side(slots: dict[str, Any], question: str) -> str | None:
     return side if isinstance(side, str) and side in SIDE_VALUES else None
 
 
+# The postseason, named in the question. The model sets season_type="playoffs"
+# on questions that never mention them - measured at temperature 0, "Sga record
+# 36 plus points" and "lebron vs kawhi 2015" both came back as playoff questions,
+# and "tatum stats in the 2024 finals" came back as a regular-season one. Read
+# from the text for the same reason the year is: the question is the source,
+# and the model is wrong in both directions. "Title" and "championship" are left
+# out on purpose - "title odds" is a regular-season projection.
+_PLAYOFF_WORDS = re.compile(r"\b(?:playoffs?|post-?season|finals|elimination|game\s+(?:7|seven))\b", re.IGNORECASE)
+
+
+# One round or game of the postseason. No table carries a round or a series
+# game number, so no template can narrow to one: "tatum stats in the 2024 finals"
+# was answered with his whole 2024 postseason, 19 games where the Finals were 5.
+# A scoping slot, so every template refuses it rather than widening the question.
+_ROUND_WORDS = re.compile(r"\bfinals\b|\b(?:first|second)\s+round\b|\bsemi-?finals?\b|\bgame\s+(?:7|seven)s?\b", re.IGNORECASE)
+
+
+# A range of seasons rather than one. "since 2020" is every season from the one
+# ending in 2020; a decade ("the 2010s") is the seasons ending in it. Stated this
+# way, not guessed at, so a template that honours it can print the exact range.
+_SINCE = re.compile(r"\bsince\s+(?:the\s+)?((?:19|20)\d\d)\b", re.IGNORECASE)
+_DECADE = re.compile(r"\b(?:the\s+)?((?:19|20)\d)0'?s\b", re.IGNORECASE)
+
+# "record" asked with a counting intent means wins and losses, not a count of
+# games. Measured: "Sixers record when Embiid scores 30 points this season" came
+# back as threshold_count and was answered with the league's 30-point games,
+# Embiid dropped.
+_RECORD = re.compile(r"\brecord\b", re.IGNORECASE)
+
+
+def _validate_range(question: str) -> tuple[int, int | None] | None:
+    """The first and last season a range covers - (first, None) for an open one."""
+    since = _SINCE.search(question)
+    if since is not None:
+        return int(since.group(1)), None
+    decade = _DECADE.search(question)
+    if decade is not None:
+        first = int(decade.group(1) + "0")
+        return first, first + 9
+    return None
+
+
+def _validate_season_type(question: str) -> int:
+    """The season type the question asks about: the postseason only when it
+    says so. The model's own slot is not consulted - see _PLAYOFF_WORDS."""
+    return SEASON_TYPES["playoffs"] if _PLAYOFF_WORDS.search(question) else SEASON_TYPES["regular"]
+
+
+# Where a game was played. "Far away" and "fade away" are shot descriptions,
+# not venues - "How far away does Wembanyama shoot from?" is a routing case.
+_HOME = re.compile(r"\bhome\b(?!\s+runs?)", re.IGNORECASE)
+_AWAY = re.compile(r"(?<!far )(?<!fade )\b(?:away|road)\b", re.IGNORECASE)
+
+
+def _validate_venue(question: str) -> str | None:
+    """ "home" or "away" when the question restricts itself to one of them.
+
+    Both at once is a SPLIT ("home and away splits"), not a filter, so it sets
+    nothing here - see _validate_split. A template that cannot restrict to a
+    venue refuses one rather than answering the whole season: "Knicks home
+    record this season" was answered 53-29, their overall record.
+    """
+    home, away = bool(_HOME.search(question)), bool(_AWAY.search(question))
+    if home == away:
+        return None
+    return "home" if home else "away"
+
+
+# A whole career rather than one season. "Career high" is the exception: with a
+# season named ("career high this season") it means that season's best, and it
+# is a worked example of single_game_high in ROUTER_PROMPT.
+_CAREER_HIGH = re.compile(r"\bcareer[- ]highs?\b", re.IGNORECASE)
+_SPAN_WORDS = re.compile(r"\b(?:career|all[- ]time|ever|(?:in|of)\s+(?:nba\s+)?history|of\s+all\s+time)\b", re.IGNORECASE)
+_SEASON_WORDS = re.compile(r"\b(?:this|last|next)\s+(?:season|year)\b", re.IGNORECASE)
+
+
+def _validate_span(question: str) -> str | None:
+    """ "career" when the question asks about more than one season's worth of
+    games at once. Measured before this existed: "career points leaders" and
+    "Jokic career averages" were both answered with one season, fluently."""
+    text = question
+    if _CAREER_HIGH.search(text) and (season_from_text(question) is not None or _SEASON_WORDS.search(text)):
+        text = _CAREER_HIGH.sub(" ", text)
+    return "career" if _SPAN_WORDS.search(text) else None
+
+
+# The words that end a teammate's name in "without X this season" and the like.
+_NAME_STOPWORDS = frozenset(
+    "this last in on since during for vs vs. versus against at and when while game games season seasons record stats stat playing played plays from over the a an any his her their".split()
+)
+_WITHOUT = re.compile(r"\bwithout\s+([A-Za-z][A-Za-z.'\-]*(?:\s+[A-Za-z][A-Za-z.'\-]*){0,2})", re.IGNORECASE)
+_WITH = re.compile(r"\bwith\s+([A-Za-z][A-Za-z.'\-]*(?:\s+[A-Za-z][A-Za-z.'\-]*){0,2})", re.IGNORECASE)
+
+
+def _name_after(pattern: re.Pattern[str], question: str) -> str | None:
+    """The name following ``pattern``'s keyword, up to the first word that
+    cannot be part of one. None when no name follows at all - "without a
+    turnover" names nobody, and must not become a teammate called "a"."""
+    match = pattern.search(question)
+    if match is None:
+        return None
+    words: list[str] = []
+    for word in match.group(1).split():
+        if word.casefold() in _NAME_STOPWORDS:
+            break
+        words.append(word)
+    return " ".join(words) or None
+
+
+# Which split a player_splits question asks for. Exactly one or nothing.
+SPLIT_WORDS: dict[str, re.Pattern[str]] = {
+    "home_away": re.compile(r"\bhome\b.{0,15}\b(?:away|road)\b|\b(?:away|road)\b.{0,15}\bhome\b", re.IGNORECASE),
+    "starter_bench": re.compile(r"\b(?:starter|starting|starts|bench|reserve)\b", re.IGNORECASE),
+    "wins_losses": re.compile(r"\bin\s+(?:wins|losses)\b|\bwins\s+(?:vs\.?|versus|and|or)\s+losses\b", re.IGNORECASE),
+    "month": re.compile(r"\b(?:by|each|per)\s+month\b|\bmonthly\b", re.IGNORECASE),
+}
+
+# Which end of a team ranking was asked for. The four are not two pairs: for a
+# stat where lower is better, "fewest turnovers" and "worst in turnovers" sit
+# at opposite ends, so the template - which knows the stat - resolves them.
+RANK_WORDS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("worst", re.compile(r"\bworst\b", re.IGNORECASE)),
+    ("best", re.compile(r"\bbest\b", re.IGNORECASE)),
+    # "slowest pace" is the fewest possessions, "fastest" the most - without
+    # these, "slowest pace" listed the fastest teams first.
+    ("fewest", re.compile(r"\b(?:fewest|least|lowest|slowest)\b", re.IGNORECASE)),
+    ("most", re.compile(r"\b(?:most|highest|top|leads?|leaders?|fastest)\b", re.IGNORECASE)),
+)
+
+# A comparison BELOW a number. No slot says "under", so without this "games
+# with under 14 FTA" reached threshold_count as 14 and was answered as 14 or
+# MORE - the inverse question. A scoping slot no template honours.
+_BELOW = re.compile(r"\b(?:under|fewer\s+than|less\s+than|below|at\s+most|no\s+more\s+than)\s+\d+", re.IGNORECASE)
+
+# Situations a game can be in that no template filters on: the second night of a
+# back-to-back, overtime, a calendar month, a conference or division, the
+# All-Star break. team_record answered each with the whole season's record.
+_SITUATION = re.compile(
+    r"\bback[- ]to[- ]backs?\b|\bb2bs?\b|\bsecond\s+night\b|\bovertime\b|"
+    r"\bin\s+(?:october|november|december|january|february|march|april|may|june)\b|"
+    r"\b(?:east(?:ern)?|west(?:ern)?)\s+conference\b|\bvs\.?\s+the\s+(?:east|west)\b|\bdivision\b|\ball[- ]star\s+break\b",
+    re.IGNORECASE,
+)
+
+# Words that name a TEAM stat, beyond the box-score words _STAT_WORDS knows.
+_TEAM_STAT_WORDS = re.compile(r"\b(?:pace|ratings?|offen\w*|defen\w*|net|possessions?|record|wins?|losses)\b", re.IGNORECASE)
+
+# "vs"/"against", for a game log's last N meetings - see route().
+_VERSUS_WORDS = re.compile(r"\b(?:vs\.?|versus|against)\s", re.IGNORECASE)
+
+_LOSING_STREAK = re.compile(r"\blos(?:ing|s|e)\s+streaks?\b|\bstraight\s+losses\b|\blosses\s+in\s+a\s+row\b|\bskid\b", re.IGNORECASE)
+
+# A ranking of TEAMS, asked with a player-ranking intent. Measured: "which team
+# scores the most points per game" came back as `leaderboard` and was answered
+# with the players' scoring leaders - a table of real, correct numbers about the
+# wrong kind of thing.
+_TEAM_SUBJECT = re.compile(
+    r"\b(?:which|what)\s+teams?\b|\bby\s+(?:a\s+)?teams?\b|\bper\s+team\b|\bteams?\s+(?:with\s+the|that|leaders|rankings?)\b",
+    re.IGNORECASE,
+)
+_PLAYER_RANKING_INTENTS = frozenset({"leaderboard", "single_game_high", "threshold_count"})
+
+# A fingerprint is one named artifact, and a question that never names it is not
+# asking for one. Measured: "Plot Curry's threes from last season" came back as
+# `fingerprint` under two different prompt revisions, having routed correctly
+# only while the prompt happened to be a particular length.
+_FINGERPRINT_WORDS = re.compile(r"\bfinger\s?prints?\b|\bradar\b|\bnet\s?points?\b|\bplay[- ]types?\b", re.IGNORECASE)
+_SHOT_WORDS = re.compile(r"\bshots?\b|\bthrees\b|\b3s\b|\b(?:3|three)[- ]?pointers?\b|\bjumpers?\b|\blayups?\b|\bdunks?\b|\bchart\b", re.IGNORECASE)
+
+# A per-game threshold, stated in the question ("scores 30 points", "36 plus
+# points", "40 point games"). "3 point" is a shot type, not a threshold of three.
+_THRESHOLD = re.compile(r"\b(\d{1,3})\s*(?:\+|plus|or\s+more)?\s*(points?|pts|rebounds?|boards|assists?|steals?|blocks?|turnovers?|threes|3s)\b", re.IGNORECASE)
+_THRESHOLD_INTENTS = frozenset({"threshold_count", "record_when", "streak"})
+
+# Rate stats the prompt never lists as a player `stat`, so the model reaches for
+# the nearest one it knows. Measured: "kevin durant true shooting percentage
+# career" came back as stat='threePointFieldGoalPct' and was answered with his
+# 3-point percentage - a different stat, fluently. Named in the question, the
+# stat is read from it; a template that has no such stat then refuses.
+_ADVANCED_STAT_WORDS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("ts_pct", re.compile(r"\btrue[- ]shooting\b|\bts\s?%|\bts\s+pct\b", re.IGNORECASE)),
+    ("efg_pct", re.compile(r"\beffective\s+(?:field\s+goal|fg)\b|\befg\b", re.IGNORECASE)),
+    ("usage_pct", re.compile(r"\busage\b", re.IGNORECASE)),
+)
+_ADVANCED_STAT_INTENTS = frozenset({"player_stat", "player_compare", "player_history", "leaderboard", "game_log"})
+
+# A game log asked for by name. Measured: "luka ft log" routed to player_stat
+# and was answered with a season average.
+_LOG_WORDS = re.compile(r"\b(?:game\s*logs?|gamelogs?|logs?)\b|\b(?:each|every|by)\s+game\b", re.IGNORECASE)
+_GAMES_WORDS = re.compile(r"\bgames?\b|\blast\b", re.IGNORECASE)
+
+# The thirty team nicknames, and the shorthand a question uses for some. Only to
+# tell a team from a player in a slot the model filled: "zach lavine vs nuggets"
+# came back as player_matchup with players ['Zach LaVine', 'Denver Nuggets'].
+_TEAM_WORD = re.compile(
+    r"\b(?:hawks|celtics|nets|hornets|bulls|cavaliers|cavs|mavericks|mavs|nuggets|pistons|warriors|rockets|pacers|clippers|lakers|"
+    r"grizzlies|heat|bucks|timberwolves|wolves|pelicans|knicks|thunder|magic|76ers|sixers|suns|blazers|kings|spurs|raptors|jazz|wizards)\b",
+    re.IGNORECASE,
+)
+
+# "best record" and "worst record" rank the league; with no team named they are
+# team_leaderboard's question. Measured: "worst record 2025-26" came back as
+# team_record with team='worst'.
+_BEST_WORST_RECORD = re.compile(r"\b(?:best|worst)\s+records?\b", re.IGNORECASE)
+
+# A `team` slot that names the league rather than a team - "all-NBA",
+# "all_teams", "worst" - measured on three questions, each of which then
+# refused as an unknown team.
+_PSEUDO_TEAM = re.compile(r"(?:the\s+)?(?:all[-_ ]?nba|nba|league|all[-_ ]?teams?|teams?|every\s+team|worst|best)", re.IGNORECASE)
+
+
+def _team_metric_in(question: str) -> str | None:
+    """The longest team-metric alias the question names ("defensive rating"),
+    or None. The model invents team stats ("usage_pct_defense" for "lowest
+    defensive rating"), and the question says which one it meant."""
+    text = question.casefold()
+    for alias in sorted(STAT_ALIASES, key=len, reverse=True):
+        if re.search(r"(?<![a-z0-9])" + re.escape(alias) + r"(?![a-z0-9])", text):
+            return alias
+    return None
+
+
+def _threshold_from_text(question: str) -> int | None:
+    """The first per-game threshold the question states, or None."""
+    for match in _THRESHOLD.finditer(question):
+        number = int(match.group(1))
+        if number == 3 and match.group(2).casefold().startswith("point"):
+            continue
+        if number >= 1:
+            return number
+    return None
+
+
 # How a question names one end of a season's games. Deliberately tight - the
 # ordinal word has to sit directly on "game(s)", optionally across a count
 # ("last 5 games") - because a miss costs nothing and a false positive would
@@ -417,7 +685,7 @@ def _validate_order(slots: dict[str, Any], question: str) -> str | None:
 _STAT_WORDS = re.compile(
     r"\b(points?|scor\w*|pts|rebound\w*|boards|reb|assist\w*|passing|dimes|ast|steal\w*|stl|block\w*|blk|"
     r"turnover\w*|giveaways?|fouls?|minutes?|mins?|shoot\w*|shots?|three\w*|3pt|3-point\w*|field goals?|free throws?|"
-    r"percentage|efficien\w*|usage|double-doubles?|triple-doubles?)\b",
+    r"percentage|efficien\w*|usage|double-doubles?|triple-doubles?|ppg|rpg|apg|spg|bpg|fg|ft|3p|ts|efg)\b",
     re.IGNORECASE,
 )
 
@@ -470,10 +738,42 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
         raw["intent"] = "threshold_count"
         raw["stat"] = "fouls"
         raw["threshold"] = FOUL_OUT_THRESHOLD
-    if _AGENT_ONLY.search(low) and not _is_team_quarter_points(raw):
+    if (_AGENT_ONLY.search(low) and not _is_team_quarter_points(raw)) or _HALF_WORDS.search(low):
         # Slots are kept: the agent sees the conversation, not the Route, but
         # the log line shows what the model thought before the override.
         raw["intent"] = "other"
+    if raw["intent"] in _PLAYER_RANKING_INTENTS and _TEAM_SUBJECT.search(question):
+        # A team ranking has a template; a team's single-game record and a
+        # count of team games do not, and answering either with players is the
+        # substitution this exists to stop.
+        raw["intent"] = "team_leaderboard" if raw["intent"] == "leaderboard" else "other"
+    if raw["intent"] == "threshold_count" and _RECORD.search(question):
+        raw["intent"] = "record_when"
+    if raw["intent"] == "fingerprint" and not _FINGERPRINT_WORDS.search(question):
+        raw["intent"] = "shot_chart" if _SHOT_WORDS.search(question) else "other"
+    if raw["intent"] == "player_stat" and _LOG_WORDS.search(question):
+        raw["intent"] = "game_log"
+    if raw["intent"] == "player_matchup" and any(isinstance(name, str) and _TEAM_WORD.search(name) for name in raw.get("players") or []):
+        # One of the "two players" is a team: this is a player's games against
+        # it. entities.scope_from_question moves the team to `opponent`.
+        raw["intent"] = "game_log" if _LOG_WORDS.search(question) or _GAMES_WORDS.search(question) else "player_stat"
+    rerouted_to_line = False
+    if raw["intent"] == "player_history" and (not _named_a_stat(question) or (_VERSUS_WORDS.search(question) and _TEAM_WORD.search(question))):
+        # A season-by-season history of one stat is neither "career averages"
+        # (no stat named - the whole line) nor a career against one team.
+        # Measured: "Jokic career averages" answered with points by season,
+        # "derozan career points vs knicks" refused on its opponent.
+        raw["intent"] = "player_stat"
+        rerouted_to_line = True
+    if raw["intent"] == "team_record" and _BEST_WORST_RECORD.search(question) and not _TEAM_WORD.search(question):
+        raw["intent"] = "team_leaderboard"
+        raw["stat"] = "record"
+        raw.pop("team", None)
+    if raw["intent"] == "player_stat" and _CAREER_HIGH.search(question):
+        # A career high is one game's total, which player_stat never reports.
+        # Measured: "Diabate career high assists" was answered with his assists
+        # per game.
+        raw["intent"] = "single_game_high"
 
     # A blank string is how the model says "no value" for a required slot;
     # dropping it here keeps every template's `slots.get(...) or default`
@@ -485,15 +785,116 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
         slots.pop("season", None)
     else:
         slots["season"] = resolved_season
-    requested_type = slots.get("season_type")
-    slots["season_type"] = SEASON_TYPES.get(requested_type, 2) if isinstance(requested_type, str) else 2
-    # fingerprint only - `side` means nothing to any other template, and adding
-    # it elsewhere would put a slot in the trace that nothing reads.
-    # player_compare only: every other template either needs the stat or
-    # ignores it, and dropping it for `leaderboard` would leave it with no
-    # metric to rank by.
-    if raw["intent"] == "player_compare" and not _named_a_stat(question):
+    slots["season_type"] = _validate_season_type(question)
+    if raw["intent"] in _THRESHOLD_INTENTS and not isinstance(slots.get("threshold"), int):
+        # Measured: "Sixers record when Embiid scores 30 points" came back with
+        # the intent right and no threshold at all.
+        threshold = _threshold_from_text(question)
+        if threshold is not None:
+            slots["threshold"] = threshold
+    if raw["intent"] == "threshold_count" and not isinstance(slots.get("threshold"), int):
+        # A count of games needs a threshold. Without one, "who has the most
+        # threes" is a season ranking - measured, it arrived here with none and
+        # fell through.
+        raw["intent"] = "leaderboard"
+    # The scoping slots below are read from the question and never asked of the
+    # model: none is in ROUTER_SCHEMA, so adding them changed no grammar and can
+    # have moved no other question's routing. A template that cannot honour one
+    # refuses it (templates.check_scope) rather than answering a broader question.
+    span = _validate_span(question)
+    if span is not None:
+        slots["span"] = span
+        # A career is every season. A year the MODEL filled in ("current", by
+        # default) would narrow it back to one; a year the question named is kept.
+        if season_from_text(question) is None:
+            slots.pop("season", None)
+    venue = _validate_venue(question)
+    if venue is not None:
+        slots["venue"] = venue
+    without = _name_after(_WITHOUT, question)
+    if without is not None:
+        slots["without"] = without
+    below = _BELOW.search(question)
+    if below is not None:
+        slots["below"] = below.group(0).casefold()
+    situation = _SITUATION.search(question)
+    if situation is not None:
+        slots["situation"] = situation.group(0).casefold()
+    playoff_round = _ROUND_WORDS.search(question)
+    if playoff_round is not None:
+        slots["round"] = playoff_round.group(0).casefold()
+    # Measured: "most 3 pointers made since 2020" became season=2020 and was
+    # answered as "the most games with 0+ 3-pointers in the 2020 regular season".
+    seasons = _validate_range(question)
+    if seasons is not None:
+        slots["since"] = seasons[0]
+        if seasons[1] is not None:
+            slots["until"] = seasons[1]
+        slots.pop("season", None)
+    # A split is read for every intent, not only player_splits: it is a scoping
+    # slot, so the template that answers one honours it and every other refuses.
+    # Measured: "Joe Ingles stats when starting vs coming off the bench" was
+    # answered with his season minutes, "Giannis stats by month" with his points
+    # by season.
+    splits = [name for name, pattern in SPLIT_WORDS.items() if pattern.search(question)]
+    if len(splits) == 1:
+        slots["split"] = splits[0]
+    # Intent-specific: each means nothing to any other template, so each is
+    # only added where one reads it - the same rule `side` follows below.
+    if raw["intent"] == "with_without":
+        with_player = _name_after(_WITH, question)
+        if with_player is not None and without is None:
+            slots["with_player"] = with_player
+    if raw["intent"] == "player_splits" and slots.get("split") == "home_away":
+        slots.pop("venue", None)  # a split over venues is not a filter to one
+    if raw["intent"] == "team_leaderboard":
+        rank = next((name for name, pattern in RANK_WORDS if pattern.search(question)), None)
+        if rank is not None:
+            slots["rank"] = rank
+    if raw["intent"] == "streak":
+        slots["kind"] = "loss" if _LOSING_STREAK.search(question) else "win"
+    # For the two templates whose default is a whole line, which still holds
+    # any stat the word list missed. Dropping it for `leaderboard` would leave
+    # it with no metric to rank by. Measured on player_stat: "Jokic career
+    # averages" arrived with stat='points' and "LeBron James career playoff
+    # stats" with stat='career_playoffs'.
+    if raw["intent"] in ("player_compare", "player_stat") and not _named_a_stat(question):
         slots.pop("stat", None)
+    if rerouted_to_line:
+        # A history's `limit` counted seasons; the line it became has none.
+        for key in ("limit", "fields"):
+            slots.pop(key, None)
+    if raw["intent"] in _ADVANCED_STAT_INTENTS:
+        advanced = next((metric for metric, pattern in _ADVANCED_STAT_WORDS if pattern.search(question)), None)
+        if advanced is not None:
+            slots["stat"] = advanced
+    team_slot = slots.get("team")
+    if isinstance(team_slot, str) and _PSEUDO_TEAM.fullmatch(team_slot.strip()):
+        slots.pop("team", None)
+    # The same drop for two more intents where the required slot is noise when
+    # the question names no stat: "Knicks stats" arrived as stat='points' and
+    # narrowed a team's line to one number, and a team's winning streak arrived
+    # with a stat and no threshold and was refused.
+    if raw["intent"] == "team_stat" and not (_named_a_stat(question) or _TEAM_STAT_WORDS.search(question)):
+        slots.pop("stat", None)
+    if raw["intent"] in ("team_stat", "team_leaderboard"):
+        named_metric = _team_metric_in(question)
+        if named_metric is not None:
+            slots["stat"] = named_metric
+    if raw["intent"] == "streak" and not _named_a_stat(question):
+        slots.pop("stat", None)
+    # "last 8 games vs pistons" with no season named means the last eight
+    # meetings, wherever they fall - answered from the current season alone it
+    # found four and said so. A season the question names still wins.
+    if (
+        raw["intent"] == "game_log"
+        and _VERSUS_WORDS.search(question)
+        and (isinstance(slots.get("limit"), int) or re.search(r"\blast\b", question, re.IGNORECASE))
+        and season_from_text(question) is None
+        and not _SEASON_WORDS.search(question)
+    ):
+        slots["span"] = "career"
+        slots.pop("season", None)
     if raw["intent"] == "fingerprint":
         side = _validate_side(slots, question)
         if side is None:
@@ -511,4 +912,13 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
             slots.pop("order", None)
         else:
             slots["order"] = order
+    elif slots.get("order") and not any(pattern.search(question) for pattern in ORDER_WORDS.values()):
+        # An `order` the model added to an intent that cannot honour one, on a
+        # question naming no game at either end. Measured: "evan mobley avg
+        # against bucks" and "Celtics record without Tatum" both arrived with
+        # order='recent' and limit=1, and check_scope refused them. A limit of
+        # one rode in with it and goes too; a real one ("top 5") stays.
+        slots.pop("order", None)
+        if slots.get("limit") == 1:
+            slots.pop("limit", None)
     return Route(intent=raw["intent"], slots=slots)

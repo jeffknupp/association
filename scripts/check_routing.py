@@ -30,10 +30,10 @@ import time
 
 import duckdb
 
-from association.query.entities import override_invented_players, override_nicknames, restore_dropped_players
+from association.query.entities import override_invented_players, override_nicknames, restore_dropped_players, scope_from_question
 from association.query.models import DEFAULT_ROUTER_MODEL
 from association.query.router import route
-from association.query.templates import TEMPLATES
+from association.query.templates import PLAYER_INTENTS, PLAYER_REQUIRED_INTENTS, TEMPLATES
 from association.season import current_season
 
 # (question, expected intent, expected slots). A list-valued expectation is a
@@ -59,7 +59,9 @@ CASES: list[tuple[str, str, dict]] = [
     # every template, so its absence does not change the answer. Assert slots
     # that change the answer, not slots that merely restate a default.
     ("Who leads the league in assists?", "leaderboard", {"stat": "assists"}),
-    ("Top 5 scorers on the Lakers?", "leaderboard", {"stat": "points", "team": "Lakers", "limit": 5}),
+    # No team asserted: the model writes "Lakers" or "Los Angeles Lakers" depending on the prompt's length,
+    # both resolve to team_id 13, and AGENTS.md says a case asserts what changes the answer, not the encoding.
+    ("Top 5 scorers on the Lakers?", "leaderboard", {"stat": "points", "limit": 5}),
     ("Who led the playoffs in rebounding?", "leaderboard", {"stat": "rebounds", "season_type": 3}),
     (
         "Top 10 in NetPoints per 100 possessions with their points and minutes",
@@ -198,6 +200,35 @@ CASES: list[tuple[str, str, dict]] = [
     # The other direction, and the reason the patterns allow no filler words:
     # a season question must not grow an order and get narrowed to one game.
     ("show me a fingerprint for steph curry in 2026", "fingerprint", {"player": "Stephen Curry", "season": 2026}),
+    # Shapes from real StatMuse queries (see CHANGES.md). Before these existed,
+    # each was answered fast and about something else - the player swapped for
+    # his own team, the opponent dropped, one season for a career.
+    ("jaylen brown last 8 games vs pistons", "game_log", {"player": "Jaylen Brown"}),
+    ("Demar derozan gamelog against nuggets", "game_log", {}),
+    ("evan mobley avg against bucks", "player_stat", {}),
+    ("which team scores the most points per game", "team_leaderboard", {}),
+    ("Lowest defensive rating by a team this season", "team_leaderboard", {}),
+    ("Knicks pace this season", "team_stat", {}),
+    ("what are the celtics playoff odds", "team_outlook", {}),
+    ("Nikola Jokic home and away splits", "player_splits", {"split": "home_away"}),
+    ("Giannis Antetokounmpo stats by month", "player_splits", {"split": "month"}),
+    ("Celtics record without Tatum", "with_without", {"without": "Tatum"}),
+    ("Sixers record when Embiid scores 30 points this season", "record_when", {"threshold": 30}),
+    ("lebron vs kawhi head to head", "player_matchup", {}),
+    ("lakers longest winning streak this season", "streak", {}),
+    ("Diabate career high assists", "single_game_high", {"stat": "assists", "span": "career"}),
+    ("who has the most threes this season", "leaderboard", {"stat": "threePointFieldGoalsMade"}),
+    ("career points leaders", "leaderboard", {"span": "career"}),
+    ("Knicks home record this season", "team_record", {"venue": "home"}),
+    # From the final corpus run: each was a slot the model put in the wrong place.
+    ("kevin durant true shooting percentage career", "player_stat", {"stat": "ts_pct", "span": "career"}),
+    ("luka ft log", "game_log", {}),
+    ("Jokic career averages", "player_stat", {"span": "career"}),
+    ("zach lavine vs nuggets last 8 games home", "game_log", {"venue": "home"}),
+    ("how did curry do against the celtics this year", "player_stat", {}),
+    ("worst record 2025-26", "team_leaderboard", {"rank": "worst"}),
+    ("Longest winning streak in the NBA this season", "streak", {}),
+    ("Celtics vs Bulls head to head record", "head_to_head", {}),
 ]
 
 
@@ -223,6 +254,9 @@ def main() -> int:
             override_nicknames(question, got.slots)
             if got.intent == "fingerprint":
                 restore_dropped_players(con, question, got.slots)
+            # The same order agent.py applies them in: this is where a player
+            # the router swapped for his own team comes back.
+            scope_from_question(con, question, got.slots, reads_player=got.intent in PLAYER_INTENTS, needs_player=got.intent in PLAYER_REQUIRED_INTENTS)
             override_invented_players(con, question, got.slots)
         if got is None:
             print(f"FAIL  {elapsed:5.2f}s  {question}\n        router returned nothing", flush=True)

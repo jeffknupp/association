@@ -26,9 +26,12 @@ had no published version to be compatible with.
 
   Every template that resolves a player (`player_stat`, `player_compare`,
   `player_history`, `player_netpoints`, `game_log`, `shot_distance`,
-  `single_game_high`) now narrows the candidates to those with a row in the
-  table its answer is read from, for the season it will answer about - the
-  rule charts already followed. It eliminates and never chooses: one survivor
+  `single_game_high`, `threshold_count`, `player_splits`, `with_without`,
+  `record_when`, `player_matchup`, `streaks`) now narrows the candidates to
+  those with a row in the table its answer is read from, for the season or
+  span it will answer about - the rule charts already followed. A career has
+  every season in scope, so it eliminates nobody who ever played, but it names
+  whoever plays now first. It eliminates and never chooses: one survivor
   is the answer because nobody else has a row to answer from, and two or more
   are asked about, as Seth and Stephen still are. Three edges are deliberate.
   A name matched in full is not narrowed, so "Gary Payton" in 2026 is still
@@ -50,7 +53,9 @@ had no published version to be compatible with.
   Anthony Davis with JD Davison, Nigel Hayes-Davis and Trayce Jackson-Davis
   eligible, and in the fingerprints "Brown" drew Bruce Brown with two more
   Browns who had one. Narrowing now reads every match (`find_players(...,
-  limit=None)`), on both paths, and those names ask. A clarification also
+  limit=None)`), on both paths and for the teammate a "without" names - which
+  was narrowed to his teammates over the same first page - and those names
+  ask. A clarification also
   names every candidate from the season asked about rather than counting any
   away (`Ambiguous.active`, passed to `clarification`) - 2026 has 14 players
   surnamed Williams, and all of them are named - and a history names whoever
@@ -78,6 +83,449 @@ had no published version to be compatible with.
   The extra work runs only for a name that matches more than one player: 2-9ms
   more for one season ("Curry" to "Williams") and up to 16ms for a history
   span, warm, against a question that spends about 3s in the router.
+- **True shooting and effective FG% leaderboards qualify on attempts, not
+  games.** Twenty games was the whole qualifier, so "best true shooting
+  percentage last season" was led by Kai Jones at .804 on 109 shots, with
+  Patrick Baldwin Jr.'s 35 third. `ts_pct` now needs 550 true-shooting
+  attempts (FGA + 0.44 FTA) and `efg_pct` 480 field-goal attempts, floors
+  checked against StatMuse's published 2025 and 2026 top 15s: the top ten now
+  match in order for TS% in both seasons and for eFG% in 2025. 2026's eFG%
+  differs by the rule itself - StatMuse qualifies on 300 *made* field goals,
+  which shuts out Sam Merrill and Isaiah Joe, who have the attempts. The
+  reasoning, and the band each floor was picked from, is above the two
+  entries in `query/metrics.py`.
+
+  Their postseason floors are 67 and 59, the same rate over 10 games instead
+  of 82, where 20 games had left only the conference finalists and dropped
+  Jarrett Allen's .792 over nine games for Isaiah Joe's .676.
+  `get_leaderboard` returns `min_sample_column` beside `min_sample_applied`,
+  since 20 is games for one metric and 550 is attempts for another.
+
+  `player_season_advanced_stats` gains `field_goals_attempted` and
+  `true_shooting_attempts`, summed from the same box scores as the
+  percentages. An existing warehouse needs an `association data load` (any
+  `--tables` subset: the views are rebuilt on every load) before the view has
+  them; until then these two leaderboards fall through to the agent.
+
+- **Slots the model put in the wrong place are read from the question.** The
+  last run over the StatMuse questions found one more wrong answer and a set of
+  refusals, each from a mis-filled slot:
+  - "kevin durant true shooting percentage career" arrived as
+    `stat='threePointFieldGoalPct'` and was answered with his 3-point
+    percentage. True shooting, eFG% and usage named in a question are now read
+    from it, and `player_stat`, which holds none of them, refuses.
+  - An `order` and a `limit` of one the question never asked for ("evan mobley
+    avg against bucks", "Celtics record without Tatum") are dropped rather than
+    refused.
+  - "luka ft log" goes to `game_log`; a `player_matchup` whose "players"
+    include a team goes to that player's games against it; a `player_history`
+    with no stat named, or asked against a team, becomes the `player_stat` line.
+  - "worst record" ranks the league, "all-NBA" and "worst" are no longer read
+    as teams, and a team metric named in the question ("lowest defensive
+    rating") wins over the one the model invented.
+  - `head_to_head` takes an `opponent` as its second team, and keeps reading
+    names until two different teams resolve.
+  - A player's name in the `team` slot becomes the subject ("Podziemski game
+    log without curry").
+- **Three smaller answers that said something false.**
+  - The web page's game log showed "L" for a game with no recorded winner (134
+    since 1994). It now shows a dash; the template already sent `won: null`.
+  - A single game's NetPoints printed its UTC date, a day late for any evening
+    tip. So did a single-game fingerprint's title, a shot distance's "in his
+    most recent game" note and a team's quarter-by-quarter list. Each now
+    prints the day the game was played, from one shared
+    `season.eastern_date` - the query package had held two copies of it.
+  - The fall-through agent's knowledge base still told it the hoop was at
+    (25, 5.25) and that free throws have no coordinates. Both are wrong: the
+    rim is at (25, 0), and free throws carry a position under the rim through
+    2018. So its hand-written distance SQL was three feet short. The entry now
+    matches `court.py`, at no extra length against the preamble's token budget.
+
+- **Faults found while building the templates below, fixed where the data is
+  read.** Every agent that built a template hit one of these, and each one
+  produced a wrong answer that nothing flagged.
+  - **Playoffs before 1993-94 were a year off.** ESPN files every season before
+    1993-94 under the year it started. The postseason games labelled 1990 end
+    with the 1991 Finals, so "the 1991 playoffs" returned 1992's.
+    `head_to_head`, `team_quarter_points` and a team's `game_log` now select a
+    postseason by the calendar year it was played in, as `team_record` already
+    did, and exclude the phantom 1993 label. The 1987-88 playoffs are not in
+    ESPN's archive at all, so the postseason floor for `games` and
+    `team_box_stats` is 1989, not 1988, and that refusal now gives its own
+    reason instead of the regular season's. `scripts/check_coverage.py` counts
+    those postseasons the same way.
+  - **Copied postseasons.** ESPN's career endpoint files some regular seasons
+    a second time as the postseason; Eddy Curry had 527 "playoff games".
+    `player_season_stats_deduped` now drops a postseason line that claims more
+    than 28 games or repeats that season's regular-season games and points.
+    That removes 340 of 7,845 rows and keeps every real run checked.
+  - **2003 shots are partial.** 2003's play-by-play is complete, but only 986
+    of its 1,190 games have located shots, so `shot_chart` caveats 2003 as
+    well as 2002.
+  - **Four more narrowing slots the router reads from the question text.**
+    None is honoured yet, so each now refuses where it used to answer a
+    different question:
+    - `below` ("games with under 14 FTA"): threshold_count answered 14 or more,
+      the inverse.
+    - `situation` (back-to-backs, overtime, a month, a conference, the All-Star
+      break): `team_record` answered each with the whole season's record.
+    - "fastest" and "slowest" now rank the right end of a team leaderboard.
+    - A team line or team streak that names no stat no longer carries the one
+      the model filled in.
+  - **"last 8 games vs pistons"** with no season named now reaches back across
+    seasons for the last eight meetings. It used to stop at the current
+    season's four.
+  - **Team nicknames** ("Sixers", "Cavs", "Mavs") resolve to teams instead of
+    falling through.
+
+- **A player's games against one team, his recent form and his career are
+  answered now, where the entry below made them refuse.** `game_log` and
+  `player_stat` honor `opponent`, `venue`, `span` and `without`, and
+  `player_history` honors `span`. Run against the real warehouse:
+
+  | Asked | Now |
+  | --- | --- |
+  | "jaylen brown last 8 games vs pistons" | his 4 games against Detroit this season, saying there are only 4; with "career", his last 8 meetings (2024-2026) |
+  | "evan mobley avg against bucks" | 21.3 / 9.7 / 4.7 over the 3 games he played against them - a fourth was a DNP |
+  | "Podziemski game log without curry" | asks which Curry, since Seth joined the Warriors in December; with Stephen named, the 39 games Stephen missed |
+  | "Jokic career averages" | 22.2 / 11.1 / 7.5 over 810 games, 2016-2026 |
+  | "What is Jokic's 3 point percentage this season" | 38.0% (112 of 295) - it used to fall through to the agent |
+
+  - A player's log lists the games he played, adds the columns a named stat
+    needs (FTM and FTA for "luka ft log", FGM and FGA for "kyle kuzma last 7
+    games fgm") and ends with per-game averages over exactly the rows listed. A
+    real stat it has no column for is refused rather than dropped, and so is a
+    `threshold`. `player_stat` refuses a `limit`: an average over the last N
+    games is that log's average row, not the season line.
+  - `without` means the teammate did not play - a did-not-play entry or no row
+    at all, since Stephen Curry's 2026 is 43 rows and none of them is a DNP -
+    while he was on the same team. There is no roster table, so that is read off
+    his own rows: the season's start counts if he ended the previous one on that
+    team, the end counts unless he was traded away, and a mid-season arrival
+    counts from his first game. LeBron James's first 2026 row is 2025-11-19, and
+    Austin Reaves's 16 games without him include the 11 before it.
+  - An ambiguous `without` name is narrowed to the players who were actually
+    teammates - elimination, as `narrow_to_available` does - and asks only
+    between those.
+  - A career is summed from `player_season_stats_deduped` as totals over games,
+    never an average of averages. Michael Jordan comes back with 32,292 points in
+    1,072 games and 5,987 in 179 playoff games, and Kobe Bryant with 33,643 in
+    1,346: the real totals.
+  - Narrowed questions are answered from box scores, so they carry the
+    box-score floor: Jordan's 1990 season line still answers, his 1990 line
+    against the Knicks refuses, and a career against an opponent says his box
+    scores begin in 1993-94.
+  - An empty answer names what is actually missing: "played 65 games in the
+    2026 regular season, none of them vs the Denver Nuggets" rather than
+    "no games found", and "was not his teammate" rather than "did not miss
+    any".
+  - Dates are the Eastern date a game was played on. `date` matched the UTC day
+    before, so "Jaylen Brown's game on 2026-01-19" found nothing, and asking
+    for 2026-01-20 found the 19th's game.
+  - A team's log listed every 1993-94 game twice (164 rows for the Celtics'
+    82). It joined `games` on event_id alone, and the phantom 1993 season shares
+    those ids; it keys on season too now. A game with no recorded winner (134
+    since 1994, mostly the 1999 lockout season) shows "?" and is left out of the
+    record, where it used to be counted as a loss.
+- **Box scores from 2013 to 2018 are missing about an eighth of their points.**
+  About 13% of team-games in those seasons list every player as having played,
+  with no minutes and every stat zero, so summing a season's box scores gives
+  87% of ESPN's season totals (2017: 225,786 points against 258,855). The
+  box-score answers above leave those lines out of every average and say how
+  many they left out. `threshold_count` and anything else that sums
+  `player_box_stats` over those seasons still counts them as games of zeros.
+
+- **Career leaderboards, career highs and career counts, each saying whose
+  careers they cover.** `leaderboard`, `single_game_high` and `threshold_count`
+  now honour `span` "career" instead of refusing it:
+
+  - "career points leaders" ranks career totals: LeBron James, 43,440, the sum
+    of his season rows. A bare stat name reads as a total in a career and per
+    game in a season, as it always did. A career average (`avg_points`) is
+    games-weighted and needs 400 games (50 in the postseason).
+  - A career high or count reads every box score since 1993-94 for one player
+    or for the league.
+
+  None of these is an all-time answer, and each says so. Players are discovered
+  from box scores, which begin in 1993-94. So the pool is every career that
+  reached that season, counted in full, and nobody whose career ended before it.
+  Kareem Abdul-Jabbar is not in the warehouse. A player whose career began
+  earlier gets that sentence *before* the number. Michael Jordan's highest game
+  in these box scores is 55, and the answer says his career began in 1984-85
+  first.
+
+  A career with a year named is refused rather than read, because "in 2024",
+  "since 2015" and "through 2010" all arrive as the same two slots. A franchise
+  career list is also refused, and so is a career ranking by usage, true
+  shooting or NetPoints.
+
+- **Every stat name the router is taught now ranks by something.** Turnovers,
+  minutes, fouls, the three kinds of make, and FG%, 3P% and FT% all fell through
+  to the agent from `leaderboard`. There are 16 new metrics (`BOX_SCORE_METRIC_NAMES`):
+  - season totals;
+  - per-game rates, which need 20 games (5 in the postseason);
+  - shooting percentages, qualified on attempts. The minimums are 400 FGA, 200
+    3PA and 125 FTA a season, and 2,000 / 1,000 / 600 over a career.
+
+  The qualifier is named in the answer. A percentage shows its makes and
+  attempts ("47.8% (117 of 245)"). `rate` "total" asks for a season total
+  instead of the per-game default. The new metrics stay out of the agent's tool
+  description, which has about 120 tokens of headroom; the agent reaches them by
+  name.
+
+- **Four data faults now handled where these answers read the data.**
+  - *Copied postseasons.* 437 postseason rows in `player_season_stats` copy
+    the same player's regular season. Eddy Curry never played a playoff game
+    and had 527 "playoff games". His 2006-07 copy (1,576 points) topped that
+    postseason's scoring total, and a career playoff list put him second.
+    Leaderboards now drop these copies.
+  - *Empty combined rows.* A traded player's combined row can be empty, as
+    Moses Malone's 1976-77 row is, so career sums use the per-team rows.
+  - *Double-counted 1993-94.* A career over box scores starts at 1994. Starting
+    at the 1993 phantom counts every 1993-94 game twice.
+  - *Empty box scores.* From 2012-13 through 2017-18, 161-166 games a season
+    have box scores with every line blank. A count or high that touches them
+    now says how many it could not see.
+
+- **`single_game_high` dates a game by the day it was played.** It printed the
+  UTC date, which is a day late for any tip after 7pm Eastern. LeBron James's
+  61 was on 3 March 2014, not the 4th.
+
+- **`threshold_count` resolves a named player to one person.** It matched every
+  name containing the words, so "Curry" counted Seth's games and Stephen's
+  together.
+
+- **Five templates for questions about games under a condition.** The intents
+  were already in the router's schema with nothing to answer them, so every
+  one of these fell through to the agent. They are shapes S4, S6, S10, S12 and
+  S13 of the StatMuse research, and each answers both halves of its comparison
+  side by side:
+
+  | Intent | Answers | Example |
+  | --- | --- | --- |
+  | `player_splits` | per-game averages home/away, starting/bench, in wins/losses, or by month (all four when no split is named); a team's too | "Nikola Jokic home and away splits" |
+  | `with_without` | a team's record in the games a teammate played vs missed, and a player's averages in each | "Celtics record without Tatum" |
+  | `record_when` | a team's record when a player reached a stat threshold vs when he fell short | "Sixers record when Embiid scores 30" |
+  | `player_matchup` | two players' meetings on opposite teams: record, averages, the latest games | "Andre Drummond vs Al Horford game log" |
+  | `streak` | a team's longest winning or losing run, a player's longest run of games at a threshold, or the league's | "most 40 point games in a row" |
+
+  The SQL is in the new `query/conditions.py`, and its module docstring records
+  four facts measured against the warehouse that decide what the answers mean:
+
+  - **"Played" is a box-score row with minutes.** A missed game is a DNP row,
+    no row at all, or (2006-2012) NULL minutes and zeros beside teammates who
+    played.
+  - **A missing box score is unknown, not a missed game.** ESPN lacks about one
+    box score in eight from 2013 to 2018, every player listed with NULL
+    minutes. LeBron James played all 82 games of 2017-18 and has six of these,
+    so read as absences they would have been "Cavaliers without LeBron" games.
+    They are left out of both sides, end a streak, and are counted in the answer.
+  - **Days are US Eastern**, the same fixed shift the NetPoints matching uses,
+    so a 7:30pm tip is not filed under the next day's month.
+  - **0-0 placeholders with no winner (1999-2002) are not losses.**
+
+  "Without" means inside the teammate's time on that team: the stint of box
+  scores from his first appearance there to his last, broken by a trade or a
+  season with no box score at all. StatMuse's "Nets record without KD" counts
+  decades of Nets games before he arrived, and that is the answer this avoids.
+  Cross-checked against standings: every split sums back to the team's
+  record (Celtics 2026, 43-23 without Tatum and 13-3 with him, is their 56-26).
+
+  One data fact found on the way, and not fixed here: before 1993-94 the
+  warehouse files a season under the year it began, so its "1990" postseason
+  is the 1991 playoffs. These templates refuse a pre-1994 postseason season
+  rather than answer it under the wrong year's label.
+
+- **Real questions were being answered about something else, and now refuse
+  instead.** 99 questions were run through the fast path to the final answer:
+  the routing corpus plus 45 real StatMuse queries. Nine of the StatMuse queries
+  came back fast, fluent and wrong:
+
+  | Asked | Answered |
+  | --- | --- |
+  | "jaylen brown last 8 games vs pistons" | the Celtics' last eight games |
+  | "Luka Doncic game log vs Lakers" | the Lakers' log |
+  | "Knicks home record" | their overall 53-29 |
+  | "career points leaders" | this season's scoring leaders |
+  | "which team scores the most points per game" | the players' leaders |
+  | "Podziemski game log without curry" | his whole log |
+  | "rj barrett 4th qtr log" | his whole last game |
+
+  Two more were answered for the postseason without mentioning it.
+
+  Every one of these is the router answering a narrower question's slots with a
+  broader template, so every fix is the same move this project already makes for
+  `order` and `date`. The question text is read for what it narrows to, and a
+  template that cannot honour that refuses (`check_scope`) instead of answering
+  about everything:
+
+  - `opponent`, the team after "vs"/"against", via
+    `entities.scope_from_question`. That function also undoes the router's two
+    ways of losing the player: putting his own team in `team`, or putting the
+    opponent there.
+  - `venue` (home/away).
+  - `span` ("career", "all-time"; a "career high this season" is still that
+    season's best).
+  - `without` (a teammate).
+
+  None of the four is in `ROUTER_SCHEMA`, so the model's grammar did not change.
+  Two more slots are read the same way:
+
+  - `season_type` now comes from the question, never the model. It was wrong in
+    both directions: "Sga record 36 plus points" and "lebron vs kawhi 2015" came
+    back as playoff questions, and "tatum stats in the 2024 finals" as a
+    regular-season one.
+  - "qtr", "q4" and "first half" now reach the agent like "4th quarter" did.
+
+  A team ranking asked as a player ranking is sent to `team_leaderboard`.
+- **Team questions have templates: records, season numbers, rankings and
+  ESPN's power index.** "Knicks home record" was refused and "which team scores
+  the most points per game" fell through, and `team_season_stats` and
+  `team_power_index` were read by no template at all. Most of the work was
+  finding out which of their numbers can be believed.
+
+  - `team_record` honours `venue`, `opponent` and `span`, and answers a
+    postseason instead of refusing one. A season's record and its home/road
+    split are the standings' own; the "Home"/"Road" strings agree with a tally
+    of `games` for every team-season from 1994 to 2026 once each era's
+    neutral-site rule is applied (through 2024 a neutral-site game counts for
+    its designated home team, from 2025 for neither). Anything else is tallied
+    from `games`, which has to be cleaned first: 0-0 phantoms with no winner
+    (50 in 1999, 82 in 2000), a second event id for a game already listed, 1993
+    under two labels, and the NBA Cup final, a regular-season game no standings
+    count - left out of the record and mentioned beside it. Cleaned, the tally
+    matches standings for every team-season from 1994 to 2026. Postseasons are
+    found by the year they were played, because `games` labels every one before
+    1994 by the year its season started: the games labelled 1990 end with the
+    1991 Finals. Where the game list and a team's own totals disagree - the
+    2000 and 2001 postseasons hold 15 of the Lakers' 23 games and 10 of their
+    16 - the answer says so. A conference is refused by name, since nothing in
+    the warehouse says which teams are in one.
+  - `team_stat` and `team_leaderboard` read a new whitelist of team metrics,
+    `query.team_metrics`. There is no rating column, so offensive, defensive
+    and net rating are derived, and neither input could be taken as stored.
+    ESPN's `possessions` counts every turnover twice before 2013 (114 a game in
+    1994, against a real ~96), so possessions are recomputed as
+    FGA - OREB + TOV + 0.44 x FTA with the turnover column that is right in each
+    era; from 2009 that reproduces ESPN's own figure exactly. Points allowed are
+    summed from `games` and used only where that game count equals the team's
+    own - the 2000 regular season fails it for 28 of 29 teams, and is refused
+    rather than rated. Checked: the 2026 Knicks' defensive rating is 110.47,
+    100 x standings' 9,030 points allowed over ESPN's 8,173.92 possessions.
+  - `team_outlook` reads ESPN's BPI, which is sparse - 2026 has a play-in
+    snapshot of 13 teams and a postseason one of 12, and no regular-season one -
+    so every answer names its snapshot, date and size, and a team missing from
+    it is told which snapshots exist rather than that there is no data. Where a
+    team stands is counted within the snapshot, because ESPN's rank columns hold
+    values like 26,058 before 2022.
+
+  A second pass over the ten StatMuse queries the fast path still answered
+  found four more cases of the same shape. These now refuse too:
+
+  - **A playoff round.** "tatum stats in the 2024 finals" was answered with his
+    whole postseason: 19 games, where the Finals were five. Nothing in the
+    warehouse records a round, so no template can honour one.
+  - **A split asked of a template that is not about splits.** "Joe Ingles stats
+    when starting vs coming off the bench" came back as his season minutes.
+  - **A range of seasons.** "most 3 pointers made since 2020" became one season
+    and a threshold of 0, and was answered as "the most games with 0+
+    3-pointers". A zero threshold, which counts every game, is refused as well.
+  - **A record asked as a count.** "Sixers record when Embiid scores 30" was
+    answered with the league's 30-point games. It now goes to `record_when`, and
+    the question's one named player is restored wherever that template needs
+    one.
+
+- **The router knows the new question shapes, at the smallest prompt that
+  kept every existing question in place.** `ROUTER_PROMPT` gained the eight new
+  intents and five worked examples: a game log against one opponent, splits,
+  with/without a teammate, two players' matchup, and a streak.
+
+  The first version of this, with a longer line per intent and twelve examples,
+  was measured and cut back. It added about 720 tokens, raised the router's
+  mean latency from 2.3 to 3.4 seconds, and broke three questions that had
+  routed correctly on every earlier run, all of them fingerprint or shot-chart
+  questions about Curry. That is the prompt-length sensitivity AGENTS.md
+  describes. The shipped version adds about 300 tokens.
+
+  Four facts the question states outright are now read from its text in
+  `route()`, which costs no tokens and cannot move another question's slots:
+
+  - A fingerprint is only a fingerprint when the question names one.
+    "Plot Curry's threes from last season" routed to `fingerprint` under both
+    prompt revisions.
+  - A per-game threshold the model left out ("scores 30 points", "36 plus
+    points") is read from the question; "3 point" is a shot type, not a
+    threshold of three.
+  - A "career high" asked with `player_stat` goes to `single_game_high`.
+  - A `threshold_count` still without a threshold is a season ranking and goes
+    to `leaderboard`. "who has the most threes" arrived with none and fell
+    through.
+
+  `check_routing.py` now applies `scope_from_question` the way `agent.py`
+  does, so it asserts on the slots a template actually sees, and it gained
+  17 cases from real StatMuse queries. On the shipped prompt 70 of its 71
+  cases passed; the 71st asserted the literal team string the model chose
+  ("Lakers" against "Los Angeles Lakers", the same team), which AGENTS.md
+  says a case must not do, and now asserts only what changes the answer.
+
+- **1993-94 player games were listed four times.** `player_game_log` joined
+  `games` and `player_advanced_stats` on `event_id` alone, and ESPN files the
+  1993-94 season's 1,185 events under both 1993 and 1994 (the phantom in
+  `coverage.py`). So each of those player-games matched two game rows and two
+  advanced-stat rows: 112,780 rows for 28,195 games. A game log or single-game
+  high over those seasons repeated every row. The joins are now keyed on
+  `season` too. Measured first: `games.season` equals `player_box_stats.season`
+  for every row, so the extra key drops nothing.
+
+- **Shot distances and shot charts were measured from a rim 5.25 feet from
+  where the data puts it, and every "threes" or "twos" question read only the
+  shots ESPN happened to label.** Two bugs in one pipeline, both of the kind
+  this project keeps producing: fast, fluent, and about a different question.
+
+  `court.py` put the rim at `(25, 5.25)`, on the assumption that
+  `coordinate_y` starts at the baseline. It starts at the rim. Most shot
+  descriptions carry their own distance ("makes 26-foot three point jumper"),
+  and from 2002 through 2012 that distance equals `round(hypot(x - 25, y))` for
+  all 1.3 million of them; later seasons agree to within a foot on 99.8%. So
+  every distance came out short - Stephen Curry's 2026 threes averaged 23.6
+  feet, inside a 23.75-foot line, where from the rim they average 27.6 - and
+  the chart drew its court around the same wrong point, putting every shot
+  5.25 feet nearer the baseline than it was taken and a typical three on or
+  inside the arc. `HOOP_Y` is now 0 (the baseline sits at -5.25), the court is
+  drawn in the data's own frame, and the geometry the rest of the pipeline
+  needs lives beside it: `SHOT_DISTANCE_SQL`, `BEYOND_THE_ARC_SQL` and
+  `HAS_POSITION_SQL`.
+
+  One thing that looks like a counterexample and is not: from 2023-11-02 the
+  descriptions run 0.64 feet short of the rim, as if it had moved a foot. The
+  coordinates did not - the three-point line separates ESPN's own labels
+  exactly as well after that date as before it (99.93%), and worse from a rim
+  a foot out (99.72%). ESPN changed its prose, not its frame.
+
+  Separately, `points_attempted = 0` means *unlabeled*, not zero points, and
+  both `shot_distance` and the shot chart filtered on it as a value. It is 0
+  for every shot of 2002 and 2003, 96% of 2022's, and 23-28% of the field
+  goals of each season from 2004 to 2012 - every one of those a miss. "Curry's
+  threes in 2022" charted 38 of his 751 attempts, all misses; his 2010 twos
+  were 501 attempts at 72.3% instead of 763 at 47.4%; Kobe Bryant's 2003 threes
+  were "No 3-point shots". `shotchart.SHOT_VALUE_SQL` now derives a value
+  where ESPN left none: the label, else `shot_type` for a free throw, else the
+  description where it says "three point" or "two point", else - through
+  2012, whose descriptions name every three - a two, else the shot's position
+  against the line. Counted against the box score's three-point attempts it
+  matches in 99.6-100% of player-games in every season from 2003 on, and 99.3%
+  in 2022. 2002 does not get there (99.05%, with 1.6% of its threes unnamed and
+  a third of its unlabeled shots undescribed), so a two- or three-point
+  question about 2002 is refused with that reason; 2003 and 2022, which rest
+  mostly on the derivation, answer with a note saying so.
+
+  Also: from 2002 to 2018 every free throw carries a position under the rim,
+  so "has coordinates" never excluded them. An unfiltered chart drew them as
+  shots, and Curry's 2010 shot distance averaged in all 200 of his free throws
+  among 1,343 "attempts" (1,143 now). They are excluded by value. `(0, 0)`, a
+  point on the sideline that 2002 uses for 7,109 shots, counts as no position.
+  A free-throw chart is refused rather than drawn as a dot. The example chart
+  in the README and `docs/usage.rst` is redrawn from the same game.
 
 - **`--workers` now reaches the per-game NetPoints fetch.** It was the last
   serial loop in the pipeline, and it is S3 round trips end to end: measured

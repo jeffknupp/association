@@ -41,8 +41,22 @@ def _season_type_column(con: duckdb.DuckDBPyConnection, table: str) -> bool:
     return "season_type" in {row[0] for row in con.execute(f"DESCRIBE {table}").fetchall()}
 
 
+# `games` and `team_box_stats` label every season before 1993-94 by the year it
+# STARTED, so their postseasons are counted by the calendar year they were
+# played in - the same selection the templates make (templates._season_games).
+# Counted by label, the first playoffs on record (1989's, stored as 1988) read
+# as a usable season below a correct floor.
+_CALENDAR_POSTSEASON_TABLES = frozenset({"games", "team_box_stats"})
+
+
 def _counts(con: duckdb.DuckDBPyConnection, table: str, season_type: int | None) -> dict[int, int]:
     """Rows per season, for one season type or for the whole table."""
+    if season_type == POSTSEASON and table in _CALENDAR_POSTSEASON_TABLES:
+        join, date = ("", "t.date") if table == "games" else (" JOIN games g ON g.event_id = t.event_id AND g.season = t.season", "g.date")
+        phantom = COVERAGE[table].phantom
+        excluded = f" AND t.season NOT IN ({', '.join(str(p) for p in phantom)})" if phantom else ""
+        rows = con.execute(f"SELECT CAST(substr({date}, 1, 4) AS INTEGER), count(*) FROM {table} t{join} WHERE t.season_type = {POSTSEASON}{excluded} GROUP BY 1").fetchall()
+        return {int(year): n for year, n in rows}
     where = "" if season_type is None else f" WHERE season_type = {season_type}"
     return {int(s): n for s, n in con.execute(f"SELECT season, count(*) FROM {table}{where} GROUP BY 1").fetchall()}
 

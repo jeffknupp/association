@@ -1,6 +1,8 @@
 """Tests for name -> id resolution, and specifically for the distinction
 between find_* (caller decides) and resolve_* (never guesses)."""
 
+from typing import Any
+
 import duckdb
 import pytest
 
@@ -19,6 +21,7 @@ from association.query.entities import (
     resolve_player,
     resolve_team,
     restore_dropped_players,
+    scope_from_question,
     suggest_players,
     undo_name_completion,
 )
@@ -534,3 +537,112 @@ def test_a_nickname_the_table_holds_is_a_resolution_not_a_guess(con: duckdb.Duck
     would ask about something the question already answered."""
     slots = {"player": "Stephen Curry"}
     assert undo_name_completion(con, "what was steph curry's 3pt percentage", slots) == []
+
+
+# ---------------- scope_from_question: the team a question plays against ----------------
+
+
+@pytest.fixture
+def scope_con() -> duckdb.DuckDBPyConnection:
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, display_name VARCHAR, abbreviation VARCHAR)")
+    c.execute(
+        "INSERT INTO teams VALUES ('2','Boston Celtics','BOS'),('8','Detroit Pistons','DET'),('13','Los Angeles Lakers','LAL'),"
+        "('12','LA Clippers','LAC'),('20','Philadelphia 76ers','PHI'),('18','New York Knicks','NY')"
+    )
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO players VALUES ('1','Jaylen Brown'),('2','Luka Doncic'),('3','Stephen Curry'),('4','Seth Curry'),('5','Brandon Boston Jr.'),('6','Kawhi Leonard'),('7','LeBron James')")
+    return c
+
+
+def test_a_player_the_router_swapped_for_his_own_team_comes_back(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """Measured: routed to game_log with team='Boston Celtics' and no player, and
+    answered with the Celtics' last eight games."""
+    slots: dict[str, Any] = {"team": "Boston Celtics", "limit": 8}
+    notes = scope_from_question(scope_con, "jaylen brown last 8 games vs pistons", slots, reads_player=True)
+    assert slots == {"player": "Jaylen Brown", "opponent": "Detroit Pistons", "limit": 8}
+    assert len(notes) == 2
+
+
+def test_an_opponent_in_the_team_slot_becomes_the_opponent(scope_con: duckdb.DuckDBPyConnection) -> None:
+    slots: dict[str, Any] = {"team": "Los Angeles Lakers"}
+    scope_from_question(scope_con, "Luka Doncic game log vs Lakers this season", slots, reads_player=True)
+    assert slots == {"player": "Luka Doncic", "opponent": "Los Angeles Lakers"}
+
+
+def test_a_team_is_not_a_player_to_compare(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """ "boston" alone names Brandon Boston Jr., so leaving the Celtics in
+    `players` was a comparison with a player nobody asked about."""
+    slots: dict[str, Any] = {"players": ["Stephen Curry", "Boston Celtics"]}
+    scope_from_question(scope_con, "how did curry do against the celtics this year", slots, reads_player=True)
+    assert slots == {"player": "Stephen Curry", "opponent": "Boston Celtics"}
+
+
+def test_both_sides_of_a_head_to_head_are_left_alone(scope_con: duckdb.DuckDBPyConnection) -> None:
+    slots: dict[str, Any] = {"teams": ["Los Angeles Lakers", "Boston Celtics"]}
+    assert scope_from_question(scope_con, "Lakers vs Celtics record this season", slots, reads_player=False) == []
+    assert slots == {"teams": ["Los Angeles Lakers", "Boston Celtics"]}
+
+
+def test_an_opponent_the_router_already_gave_is_left_alone(scope_con: duckdb.DuckDBPyConnection) -> None:
+    slots: dict[str, Any] = {"team": "Philadelphia 76ers", "opponent": "Boston Celtics", "period": 4}
+    assert scope_from_question(scope_con, "76ers 4th quarter points against boston", slots, reads_player=False) == []
+
+
+def test_a_player_comparison_names_no_opponent(scope_con: duckdb.DuckDBPyConnection) -> None:
+    slots: dict[str, Any] = {"players": ["LeBron James", "Kawhi Leonard"]}
+    assert scope_from_question(scope_con, "lebron vs kawhi 2015", slots, reads_player=True) == []
+    assert slots == {"players": ["LeBron James", "Kawhi Leonard"]}
+
+
+def test_la_is_two_teams_and_names_no_opponent(scope_con: duckdb.DuckDBPyConnection) -> None:
+    slots: dict[str, Any] = {"player": "Stephen Curry"}
+    assert scope_from_question(scope_con, "curry vs la", slots, reads_player=True) == []
+
+
+def test_a_team_nickname_grounds_the_team_slot(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """ "sixers" is no word of "Philadelphia 76ers", but it is the team."""
+    slots: dict[str, Any] = {"team": "Philadelphia 76ers"}
+    assert scope_from_question(scope_con, "Top 5 scorers on the sixers", slots, reads_player=True) == []
+    assert slots == {"team": "Philadelphia 76ers"}
+
+
+def test_a_team_nickname_names_an_opponent(scope_con: duckdb.DuckDBPyConnection) -> None:
+    slots: dict[str, Any] = {"player": "Jaylen Brown"}
+    scope_from_question(scope_con, "jaylen brown against the sixers", slots, reads_player=True)
+    assert slots["opponent"] == "Philadelphia 76ers"
+
+
+def test_a_player_is_only_restored_where_a_template_reads_one(scope_con: duckdb.DuckDBPyConnection) -> None:
+    slots: dict[str, Any] = {"team": "Boston Celtics"}
+    scope_from_question(scope_con, "jaylen brown last 8 games vs pistons", slots, reads_player=False)
+    assert slots == {"team": "Boston Celtics", "opponent": "Detroit Pistons"}
+
+
+def test_a_player_left_out_is_restored_only_where_one_is_required(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """ "Sga record 36 plus points" came back with no player at all. An optional
+    player slot left empty means the league, so only a template that needs one
+    gets it back."""
+    slots: dict[str, Any] = {"stat": "points", "threshold": 36}
+    scope_from_question(scope_con, "Sga record 36 plus points", slots, reads_player=True, needs_player=True)
+    assert slots["player"] == "Shai Gilgeous-Alexander"
+    optional: dict[str, Any] = {"stat": "points", "threshold": 36}
+    scope_from_question(scope_con, "Sga record 36 plus points", optional, reads_player=True)
+    assert "player" not in optional
+
+
+@pytest.mark.parametrize(("nickname", "team"), [("Sixers", "Philadelphia 76ers"), ("cavs", "Cleveland Cavaliers"), ("Mavs", "Dallas Mavericks")])
+def test_a_team_nickname_resolves_to_the_team(nickname: str, team: str) -> None:
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, display_name VARCHAR, abbreviation VARCHAR)")
+    c.execute("INSERT INTO teams VALUES ('20','Philadelphia 76ers','PHI'),('5','Cleveland Cavaliers','CLE'),('6','Dallas Mavericks','DAL')")
+    got = resolve_team(c, nickname)
+    assert isinstance(got, Entity) and got.name == team
+
+
+def test_a_player_in_the_team_slot_becomes_the_subject(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """Measured: team='Podziemski', player='Curry' for "Podziemski game log without curry"."""
+    scope_con.execute("INSERT INTO players VALUES ('9','Brandin Podziemski')")
+    slots: dict[str, Any] = {"player": "Curry", "team": "Podziemski", "without": "curry"}
+    scope_from_question(scope_con, "Podziemski game log without curry", slots, reads_player=True)
+    assert slots["player"] == "Brandin Podziemski" and "team" not in slots and slots["without"] == "curry"

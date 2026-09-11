@@ -73,6 +73,21 @@ seconds. Anything outside that set still gets answered — it falls through to
 a general-purpose agent that writes its own SQL against the warehouse, just
 more slowly.
 
+The templates cover the shapes real NBA stat questions take, measured against
+StatMuse's live query feed. For example:
+
+- **Against one opponent**: "jaylen brown last 8 games vs pistons", "evan mobley avg against bucks"
+- **Splits**: "Nikola Jokic home and away splits", "Joe Ingles stats when starting vs coming off the bench"
+- **With or without a teammate**: "Celtics record without Tatum"
+- **A record under a condition**: "Sixers record when Embiid scores 30 points"
+- **Two players' meetings**: "lebron vs kawhi head to head"
+- **Streaks**: "Lakers longest winning streak this season"
+- **Careers**: "career points leaders", "Jokic career averages"
+- **Team rankings, lines and outlook**: "which team scores the most points per game", "Knicks home record", "what are the celtics playoff odds"
+
+A question that narrows to something no template can honour, such as "under 14 FTA", "on
+back-to-backs" or "in the Finals", is refused. It is not answered for everything instead.
+
 Some questions render a chart instead of text:
 
 ```bash

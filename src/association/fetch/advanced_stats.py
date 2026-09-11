@@ -63,13 +63,15 @@ _REQUIRED_COLUMNS = {
 # needed.
 _TEAM_TOTALS_CTE = """
     team_totals AS (
-        SELECT event_id, team_id,
+        SELECT event_id, season, team_id,
                SUM(minutes) AS team_minutes,
                SUM(fieldGoalsAttempted) AS team_fga,
                SUM(freeThrowsAttempted) AS team_fta,
                SUM(turnovers) AS team_tov
         FROM player_box_stats
-        GROUP BY event_id, team_id
+        -- season too: the phantom 1993 season shares its event ids with 1994
+        -- (see coverage.py), and grouping on event_id alone summed both copies.
+        GROUP BY event_id, season, team_id
     )
 """
 
@@ -116,13 +118,18 @@ def build_views(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
                       / (pbs.minutes * (tt.team_fga + 0.44 * tt.team_fta + tt.team_tov)) END AS DOUBLE) AS usage_pct,
             CAST({_GAME_SCORE_EXPR} AS DOUBLE) AS game_score
         FROM player_box_stats pbs
-        JOIN team_totals tt ON tt.event_id = pbs.event_id AND tt.team_id = pbs.team_id
+        JOIN team_totals tt ON tt.event_id = pbs.event_id AND tt.team_id = pbs.team_id AND tt.season = pbs.season
     """)
 
     # Season aggregate: rate stats are summed-then-divided (season TS% from
     # season FGA/FTA/points totals), not averaged game-to-game - averaging a
     # ratio across games of wildly different attempt volume overweights low-
     # volume games relative to the standard season-total definition.
+    #
+    # The attempt totals are what ts_pct and efg_pct qualify on (see
+    # query/metrics.py). They are summed here, from the same rows as the
+    # percentages, rather than joined in from player_season_stats: those totals
+    # are ESPN's, and a traded player there has a row per stint plus a combined one.
     con.execute(f"""
         CREATE OR REPLACE VIEW player_season_advanced_stats AS
         WITH {_TEAM_TOTALS_CTE}
@@ -131,13 +138,15 @@ def build_views(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
             pbs.season_type,
             pbs.athlete_id,
             COUNT(pbs.points) AS games_played,
+            CAST(SUM(pbs.fieldGoalsAttempted) AS BIGINT) AS field_goals_attempted,
+            CAST(SUM(pbs.fieldGoalsAttempted) + 0.44 * SUM(pbs.freeThrowsAttempted) AS DOUBLE) AS true_shooting_attempts,
             CAST(SUM(pbs.points) / NULLIF(2.0 * (SUM(pbs.fieldGoalsAttempted) + 0.44 * SUM(pbs.freeThrowsAttempted)), 0) AS DOUBLE) AS ts_pct,
             CAST((SUM(pbs.fieldGoalsMade) + 0.5 * SUM(pbs.threePointFieldGoalsMade)) / NULLIF(SUM(pbs.fieldGoalsAttempted), 0) AS DOUBLE) AS efg_pct,
             CAST(100.0 * SUM((pbs.fieldGoalsAttempted + 0.44 * pbs.freeThrowsAttempted + pbs.turnovers) * (tt.team_minutes / 5.0))
                 / NULLIF(SUM(pbs.minutes * (tt.team_fga + 0.44 * tt.team_fta + tt.team_tov)), 0) AS DOUBLE) AS usage_pct,
             CAST(AVG({_GAME_SCORE_EXPR}) AS DOUBLE) AS avg_game_score
         FROM player_box_stats pbs
-        JOIN team_totals tt ON tt.event_id = pbs.event_id AND tt.team_id = pbs.team_id
+        JOIN team_totals tt ON tt.event_id = pbs.event_id AND tt.team_id = pbs.team_id AND tt.season = pbs.season
         GROUP BY pbs.season, pbs.season_type, pbs.athlete_id
     """)
     log.info("advanced stats views built: %s", ", ".join(VIEWS))

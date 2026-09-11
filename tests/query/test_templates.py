@@ -36,7 +36,12 @@ from association.season import current_season
 def con(tmp_path: Path) -> TemplateContext:
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
-    c.execute("CREATE TABLE player_box_stats (athlete_id VARCHAR, season INTEGER, season_type INTEGER, points INTEGER, rebounds INTEGER)")
+    # event_id/minutes/did_not_play are what an empty box score is detected by;
+    # the defaults make every game here a real one.
+    c.execute(
+        "CREATE TABLE player_box_stats (athlete_id VARCHAR, season INTEGER, season_type INTEGER, points INTEGER, rebounds INTEGER, "
+        "event_id VARCHAR, minutes INTEGER DEFAULT 30, did_not_play BOOLEAN DEFAULT FALSE)"
+    )
     c.execute("INSERT INTO players VALUES ('1','Luka Doncic'),('2','Shai Gilgeous-Alexander'),('3','Bench Guy')")
     season = current_season()
     rows: list[tuple[Any, ...]] = []
@@ -46,7 +51,7 @@ def con(tmp_path: Path) -> TemplateContext:
     rows += [("3", season, 2, 40, 1)] * 9  # postseason-only below, so excluded
     rows += [("3", season, 3, 40, 1)] * 9
     rows += [("2", season - 1, 2, 40, 1)] * 7  # previous season, excluded by default
-    c.executemany("INSERT INTO player_box_stats VALUES (?,?,?,?,?)", rows)
+    c.executemany("INSERT INTO player_box_stats (athlete_id, season, season_type, points, rebounds) VALUES (?,?,?,?,?)", rows)
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
@@ -121,7 +126,7 @@ def test_answer_for_a_single_named_player(con: TemplateContext) -> None:
 
 
 def test_answer_reports_a_tie_as_a_tie(con: TemplateContext) -> None:
-    con.con.execute("INSERT INTO player_box_stats SELECT '1', season, 2, 35, 5 FROM player_box_stats LIMIT 5")
+    con.con.execute("INSERT INTO player_box_stats (athlete_id, season, season_type, points, rebounds) SELECT '1', season, 2, 35, 5 FROM player_box_stats LIMIT 5")
     result = threshold_count(con, {"stat": "points", "threshold": 30})
     assert "tied for the most" in (result.answer or "")
 
@@ -184,6 +189,62 @@ def test_threshold_count_honours_playoffs(con: TemplateContext) -> None:
     result = threshold_count(con, {"stat": "points", "threshold": 40, "season_type": 3})
     assert "postseason" in (result.answer or "")
     assert result.data["leaders"] == [{"player": "Bench Guy", "games": 9}]
+
+
+@pytest.fixture
+def shooting_ctx(tmp_path: Path) -> TemplateContext:
+    """Real 2025 rows. On a 20-game qualifier, Kai Jones's 109 shots led the
+    league in true shooting at .804, with Patrick Baldwin Jr.'s 35 third; in
+    the playoffs, the same qualifier kept Thomas Bryant's 33 shots and dropped
+    Jarrett Allen, who shot .792 on 61 in nine games."""
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO players VALUES ('1','Kai Jones'),('2','Patrick Baldwin Jr.'),('3','Jarrett Allen'),('4','Nikola Jokic'),('5','Isaiah Joe'),('6','Thomas Bryant')")
+    c.execute(
+        "CREATE TABLE player_season_advanced_stats (season INTEGER, season_type INTEGER, athlete_id VARCHAR, games_played BIGINT, "
+        "field_goals_attempted BIGINT, true_shooting_attempts DOUBLE, ts_pct DOUBLE, efg_pct DOUBLE)"
+    )
+    c.executemany(
+        "INSERT INTO player_season_advanced_stats VALUES (2025,?,?,?,?,?,?,?)",
+        [
+            (2, "1", 40, 109, 123.08, 0.804, 0.803),
+            (2, "2", 24, 35, 36.76, 0.721, 0.729),
+            (2, "3", 82, 640, 761.88, 0.724, 0.706),
+            (2, "4", 70, 1364, 1562.44, 0.663, 0.627),
+            (3, "3", 9, 61, 76.40, 0.792, 0.721),
+            (3, "5", 21, 73, 79.16, 0.676, 0.651),
+            (3, "6", 20, 33, 39.16, 0.664, 0.621),
+            (3, "4", 14, 268, 312.44, 0.587, 0.539),
+        ],
+    )
+    return TemplateContext(con=c, out_dir=tmp_path)
+
+
+def test_true_shooting_says_which_qualifier_it_ranked_under(shooting_ctx: TemplateContext) -> None:
+    result = leaderboard(shooting_ctx, {"stat": "true_shooting", "season": 2025})
+    assert result.answer == "Jarrett Allen led the league in true shooting % in the 2025 regular season (minimum 550 true-shooting attempts), at 0.724. Next: Nikola Jokic (0.663)."
+
+
+@pytest.mark.parametrize(("stat", "qualifier"), [("true_shooting", "550 true-shooting attempts"), ("efg_pct", "480 field-goal attempts")])
+def test_a_shooting_percentage_qualifies_on_attempts_not_games(shooting_ctx: TemplateContext, stat: str, qualifier: str) -> None:
+    """Both low-volume players have the games; neither has the shots."""
+    result = leaderboard(shooting_ctx, {"stat": stat, "season": 2025})
+    assert [r["display_name"] for r in result.data["leaders"]] == ["Jarrett Allen", "Nikola Jokic"]
+    assert f"2025 regular season (minimum {qualifier})," in (result.answer or "")
+
+
+@pytest.mark.parametrize(("stat", "qualifier"), [("true_shooting", "67 true-shooting attempts"), ("efg_pct", "59 field-goal attempts")])
+def test_a_shooting_percentage_scales_its_qualifier_for_the_postseason(shooting_ctx: TemplateContext, stat: str, qualifier: str) -> None:
+    """The season floor is more than one player reached in the whole 2025
+    postseason, so it cannot carry over, and games cannot stand in for it."""
+    result = leaderboard(shooting_ctx, {"stat": stat, "season": 2025, "season_type": 3})
+    assert [r["display_name"] for r in result.data["leaders"]] == ["Jarrett Allen", "Isaiah Joe", "Nikola Jokic"]
+    assert f"2025 postseason (minimum {qualifier})," in (result.answer or "")
+
+
+def test_an_empty_board_says_what_nobody_met(shooting_ctx: TemplateContext) -> None:
+    result = leaderboard(shooting_ctx, {"stat": "true_shooting", "season": 2024})
+    assert result.answer == "No players qualified for true shooting % in the league in the 2024 regular season (minimum 550 true-shooting attempts)."
 
 
 # ---------------- player_stat ----------------
@@ -345,11 +406,53 @@ def test_a_history_names_whoever_reached_its_last_season_first(curry_ctx: Templa
     assert result.answer == "'Curry' matches more than one player - did you mean Seth Curry, Stephen Curry, Dell Curry, Eddy Curry or JamesOn Curry (1 other also matches)?"
 
 
+def test_a_career_keeps_every_curry_but_names_the_active_ones_first(curry_ctx: TemplateContext) -> None:
+    """A career question has every season in scope, so Dell's career is as real
+    an answer as Stephen's and nobody is eliminated. Narrowed like one season,
+    it would have been; left unordered, the cap would hide Stephen again."""
+    result = player_stat(curry_ctx, {"player": "Curry", "span": "career"})
+    assert result.data["candidates"] == ["Seth Curry", "Stephen Curry", "Dell Curry", "Eddy Curry", "JamesOn Curry", "Michael Curry"]
+    assert result.answer == "'Curry' matches more than one player - did you mean Seth Curry, Stephen Curry, Dell Curry, Eddy Curry or JamesOn Curry (1 other also matches)?"
+
+
 def test_a_game_log_narrows_to_whoever_has_games_that_season(curry_ctx: TemplateContext) -> None:
-    """Seth has a season line this year but no games in the log the answer is
-    read from, so he could not be the answer to this question."""
-    answer = game_log(curry_ctx, {"player": "Curry", "limit": 1}).answer or ""
-    assert answer.startswith(f"Stephen Curry, most recent game of the {current_season()} regular season:")
+    """No season named means the current one. Dell has games in 2000 and Seth
+    and Stephen this season, so only the two of them are asked about.
+
+    Measured on the warehouse, not in a fixture: after game_log learned spans,
+    its `season` became the raw slot, and passing that through narrowed
+    "curry's last 5 games" over every season - the clarification named Dell,
+    Eddy, JamesOn, Michael and Seth, and hid Stephen again."""
+    curry_ctx.con.execute("INSERT INTO player_game_log VALUES ('1',2000,2,'2000-01-02','BOS',30.0,12,2,3),('5',?,2,'2026-01-03','BOS',20.0,8,1,2)", [current_season()])
+    result = game_log(curry_ctx, {"player": "Curry", "limit": 5, "order": "recent"})
+    assert result.data["candidates"] == ["Seth Curry", "Stephen Curry"]
+
+
+def test_a_without_teammate_is_found_past_the_first_page_of_matches() -> None:
+    """ "Without williams" is 62 players by name. The teammate narrowing read
+    only find_players' first page of ten, so a teammate who sorted eleventh was
+    reported as nobody's teammate at all."""
+    from association.query.entities import Entity
+    from association.query.templates import _resolved_teammate, _Span
+
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    given = ["Alan", "Brandon", "Cody", "Deron", "Eric", "Frank", "Grant", "Hank", "Ike", "Jalen", "Kenrich"]
+    c.executemany("INSERT INTO players VALUES (?, ?)", [(str(i), f"{name} Williams") for i, name in enumerate(given)])
+    c.execute("INSERT INTO players VALUES ('k', 'Klay Thompson')")
+    c.execute("CREATE TABLE player_box_stats (athlete_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR)")
+    c.execute("INSERT INTO player_box_stats VALUES ('k', 2026, 2, '9'), ('10', 2026, 2, '9'), ('0', 2026, 2, '5')")
+    got = _resolved_teammate(c, "Williams", Entity(id="k", name="Klay Thompson"), _Span(2026, 2))
+    assert got == Entity(id="10", name="Kenrich Williams")
+
+
+def test_a_career_high_names_the_currys_playing_now_first(curry_ctx: TemplateContext) -> None:
+    """single_game_high reads a career as every season on record, so Dell stays
+    a candidate - but left unanchored, the list was in name order and the cap
+    would cut Stephen behind the retired Currys."""
+    curry_ctx.con.execute("INSERT INTO player_game_log VALUES ('1',2000,2,'2000-01-02','BOS',30.0,12,2,3),('5',?,2,'2026-01-03','BOS',20.0,8,1,2)", [current_season()])
+    result = single_game_high(curry_ctx, {"stat": "points", "player": "Curry", "span": "career"})
+    assert result.data["candidates"] == ["Seth Curry", "Stephen Curry", "Dell Curry"]
 
 
 def test_netpoints_narrows_against_either_of_the_tables_it_reads(curry_ctx: TemplateContext) -> None:
@@ -440,23 +543,8 @@ def tq_con(tmp_path: Path) -> TemplateContext:
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
-def test_team_record_formats_a_double_backed_record_as_integers(gl_con: TemplateContext) -> None:
-    # standings stores wins/losses as DOUBLE; "53.0-29.0" makes a correct
-    # answer look untrustworthy.
-    answer = team_record(gl_con, {"team": "Knicks"}).answer or ""
-    assert "53-29" in answer and "53.0" not in answer
-    assert "(.646)" in answer and "4th seed" in answer and "won 3 straight" in answer
-
-
-def test_team_record_falls_through_for_playoffs(gl_con: TemplateContext) -> None:
-    # standings has no season_type, so a playoff record must not be answered
-    # with the regular-season number under a playoff-sounding label.
-    with pytest.raises(TemplateUnsupported):
-        team_record(gl_con, {"team": "Knicks", "season_type": 3})
-
-
-def test_team_record_reports_a_missing_season_honestly(gl_con: TemplateContext) -> None:
-    assert "no 1999 standings" in (team_record(gl_con, {"team": "Knicks", "season": 1999}).answer or "")
+# team_record's own tests are in test_team_templates.py, over a fixture with
+# the standings columns it reads.
 
 
 def test_game_log_includes_home_and_away_games(gl_con: TemplateContext) -> None:
@@ -526,11 +614,13 @@ def sc_ctx(tmp_path: Path) -> TemplateContext:
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute(
         "CREATE TABLE shot_chart (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, "
-        "period INTEGER, clock VARCHAR, made BOOLEAN, shot_type VARCHAR, coordinate_x INTEGER, coordinate_y INTEGER, points_attempted INTEGER)"
+        "period INTEGER, clock VARCHAR, made BOOLEAN, shot_type VARCHAR, coordinate_x INTEGER, coordinate_y INTEGER, points_attempted INTEGER, description VARCHAR)"
     )
     c.execute("INSERT INTO players VALUES ('1','Stephen Curry')")
+    # Two labeled threes from the top of the arc, 26 feet from the rim at
+    # (25, 0) - a real three's position, so the label and the line agree.
     c.executemany(
-        "INSERT INTO shot_chart VALUES ('1',?,2,'e1',1,'10:00',?,'Jump Shot',25,20,3)",
+        "INSERT INTO shot_chart VALUES ('1',?,2,'e1',1,'10:00',?,'Jump Shot',25,26,3,'26-foot three point jumper')",
         [(current_season(), True), (current_season(), False)],
     )
     return TemplateContext(con=c, out_dir=tmp_path / "out")
@@ -554,7 +644,7 @@ def test_shot_chart_asks_which_player_when_both_took_shots(sc_ctx: TemplateConte
     """And when narrowing cannot separate them it asks, rather than drawing
     whichever sorts first and titling the plot with the wrong Curry."""
     sc_ctx.con.execute("INSERT INTO players VALUES ('2','Seth Curry')")
-    sc_ctx.con.execute(f"INSERT INTO shot_chart VALUES ('2',{current_season()},2,'e2',1,'9:00',TRUE,'Jump Shot',25,20,3)")
+    sc_ctx.con.execute(f"INSERT INTO shot_chart VALUES ('2',{current_season()},2,'e2',1,'9:00',TRUE,'Jump Shot',25,26,3,'26-foot three point jumper')")
     result = shot_chart(sc_ctx, {"player": "Curry", "season": current_season()})
     assert result.answer == "'Curry' matches more than one player - did you mean Seth Curry or Stephen Curry?"
     assert not list(sc_ctx.out_dir.glob("*.html"))
@@ -594,7 +684,7 @@ def test_a_scoped_chart_uses_the_same_player_it_looked_the_game_up_for(tmp_path:
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute(
         "CREATE TABLE shot_chart (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, "
-        "period INTEGER, clock VARCHAR, made BOOLEAN, shot_type VARCHAR, coordinate_x INTEGER, coordinate_y INTEGER, points_attempted INTEGER)"
+        "period INTEGER, clock VARCHAR, made BOOLEAN, shot_type VARCHAR, coordinate_x INTEGER, coordinate_y INTEGER, points_attempted INTEGER, description VARCHAR)"
     )
     c.execute("CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, game_date VARCHAR)")
     # Two players both matching "Curry", each with their own game. Seth's game
@@ -606,7 +696,7 @@ def test_a_scoped_chart_uses_the_same_player_it_looked_the_game_up_for(tmp_path:
         [("1", current_season(), "seth_game", "2026-01-03"), ("2", current_season(), "steph_game", "2026-01-02")],
     )
     c.executemany(
-        "INSERT INTO shot_chart VALUES (?,?,2,?,1,'10:00',true,'Jump Shot',25,20,3)",
+        "INSERT INTO shot_chart VALUES (?,?,2,?,1,'10:00',true,'Jump Shot',25,26,3,'26-foot three point jumper')",
         [("1", current_season() - 1, "seth_old_game"), ("2", current_season(), "steph_game")],
     )
     ctx = TemplateContext(con=c, out_dir=tmp_path / "out")
@@ -638,7 +728,7 @@ def test_a_scoped_chart_uses_the_same_player_it_looked_the_game_up_for(tmp_path:
 def test_shot_chart_defaults_an_unspecified_season_to_the_current_one(sc_ctx: TemplateContext) -> None:
     """Passing None through charted a player's entire career in one plot
     (confirmed live: 3,665 Curry attempts across every season)."""
-    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',2019,2,'e9',1,'5:00',TRUE,'Jump Shot',10,10,2)")
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',2019,2,'e9',1,'5:00',TRUE,'Jump Shot',10,10,2,'makes 18-foot jumper')")
     answer = shot_chart(sc_ctx, {"player": "Stephen Curry"}).answer or ""
     # Only this season's two shots, not the 2019 one as well.
     assert "1/2 made" in answer and str(current_season()) in answer
@@ -804,7 +894,7 @@ def test_player_compare_is_capped(ps_con: TemplateContext) -> None:
 def test_shot_chart_reads_threes_from_either_slot(sc_ctx: TemplateContext) -> None:
     """ "Curry's threes" comes back as shot_value 3 or as the equivalent
     box-score stat depending on wording; both mean the same thing."""
-    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e2',1,'9:00',TRUE,'Layup',5,5,2)", [current_season()])
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e2',1,'9:00',TRUE,'Layup',5,5,2,'makes layup')", [current_season()])
     by_value = shot_chart(sc_ctx, {"player": "Stephen Curry", "shot_value": 3}).answer or ""
     by_stat = shot_chart(sc_ctx, {"player": "Stephen Curry", "stat": "threePointFieldGoalsMade"}).answer or ""
     assert "1/2 made" in by_value and "1/2 made" in by_stat
@@ -878,6 +968,8 @@ def sgh_ctx(tmp_path: Path) -> TemplateContext:
     c.execute("CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER, season_type INTEGER, player_name VARCHAR, game_date VARCHAR, opponent_abbr VARCHAR, assists INTEGER, points INTEGER)")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute("INSERT INTO players VALUES ('1','Ryan Nembhard'),('2','Nikola Jokic')")
+    # Read only to count empty box scores; none here.
+    c.execute("CREATE TABLE player_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, athlete_id VARCHAR, minutes INTEGER, did_not_play BOOLEAN)")
     s = current_season()
     c.executemany(
         "INSERT INTO player_game_log VALUES (?,?,?,?,?,?,?,?)",
@@ -898,7 +990,8 @@ def test_single_game_high_answers_the_question_a_leaderboard_answered_wrongly(sg
     at 10.7" in 1.76s. The real answer was Ryan Nembhard with 23."""
     answer = single_game_high(sgh_ctx, {"stat": "assists"}).answer or ""
     assert answer.startswith("Ryan Nembhard had the most assists in a single game")
-    assert "23" in answer and "2026-04-13" in answer and "CHI" in answer
+    # Stored as 2026-04-13T00:30Z: 8:30pm Eastern on the 12th, the day it was played.
+    assert "23" in answer and "2026-04-12" in answer and "CHI" in answer
 
 
 def test_single_game_high_is_a_maximum_not_an_average(sgh_ctx: TemplateContext) -> None:
@@ -919,7 +1012,7 @@ def test_single_game_high_defaults_to_the_current_season(sgh_ctx: TemplateContex
 
 def test_single_game_high_for_a_named_player(sgh_ctx: TemplateContext) -> None:
     answer = single_game_high(sgh_ctx, {"stat": "assists", "player": "Nikola Jokic"}).answer or ""
-    assert answer == f"Nikola Jokic's highest assist total in a single game in the {current_season()} regular season was 19, on 2026-03-26 vs DAL."
+    assert answer == f"Nikola Jokic's highest assist total in a single game in the {current_season()} regular season was 19, on 2026-03-25 vs DAL."
 
 
 def test_single_game_high_reports_a_tie_as_a_tie(sgh_ctx: TemplateContext) -> None:
@@ -1111,21 +1204,111 @@ def test_shot_distance_filters_to_the_shot_value_asked_for(sc_ctx: TemplateConte
     """Confirmed live: the agent wrote the right distance formula, then dropped
     both the 3-point filter and the season filter and reported an all-shots,
     all-seasons average of 16.94 as a current-season three-point distance."""
-    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e5',1,'1:00',TRUE,'Layup',25,7,2)", [current_season()])
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e5',1,'1:00',TRUE,'Layup',25,1,2,'makes layup')", [current_season()])
     threes = shot_distance(sc_ctx, {"player": "Stephen Curry", "shot_value": 3})
     everything = shot_distance(sc_ctx, {"player": "Stephen Curry"})
     assert threes.data["attempts"] == 2 and everything.data["attempts"] == 3
     assert threes.data["avg_feet"] > everything.data["avg_feet"]
 
 
-def test_shot_distance_measures_from_the_hoop_not_the_origin(sc_ctx: TemplateContext) -> None:
-    # The hoop is at (25, 5.25); the fixture's shot sits at (25, 20).
+def test_shot_distance_measures_from_the_rim(sc_ctx: TemplateContext) -> None:
+    """The rim is at (25, 0) in ESPN's coordinates - y is measured from it, not
+    from the baseline - so the fixture's shot at (25, 26) is 26 feet out. The
+    old frame put the rim at (25, 5.25) and made it 20.75, which is how Stephen
+    Curry's 2026 threes came out at 23.6 feet, inside the line."""
     result = shot_distance(sc_ctx, {"player": "Stephen Curry", "shot_value": 3})
-    assert 14.0 < result.data["avg_feet"] < 15.5
+    assert result.data["avg_feet"] == pytest.approx(26.0)
+
+
+def test_shot_distance_counts_threes_espn_left_unlabeled(sc_ctx: TemplateContext) -> None:
+    """``points_attempted`` is 0 for an unlabeled shot, not a zero-point one,
+    and 96% of 2022 is unlabeled: filtered on it, "Curry's threes in 2022"
+    averaged 38 of his 751 attempts, every one a miss. The description names
+    one of these as a three and the position names the other."""
+    sc_ctx.con.executemany(
+        "INSERT INTO shot_chart VALUES ('1',?,2,'e7',1,'2:00',?,'Jump Shot',?,?,0,?)",
+        [(current_season(), True, 25, 25, "makes 25-foot three point jumper"), (current_season(), False, 2, 3, "misses 23-foot step back jumpshot")],
+    )
+    assert shot_distance(sc_ctx, {"player": "Stephen Curry", "shot_value": 3}).data["attempts"] == 4
+
+
+def test_shot_distance_leaves_out_free_throws_that_carry_a_position(sc_ctx: TemplateContext) -> None:
+    """From 2002 to 2018 every free throw has a position under the rim, so
+    "has coordinates" does not exclude them - they averaged in as zero-foot
+    shots."""
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e1',1,'3:00',TRUE,'Free Throw - 1 of 2',25,0,1,'makes free throw 1 of 2')", [current_season()])
+    result = shot_distance(sc_ctx, {"player": "Stephen Curry"})
+    assert result.data["attempts"] == 2
+    assert result.data["avg_feet"] == pytest.approx(26.0)
+
+
+def test_shot_distance_leaves_out_shots_with_no_position(sc_ctx: TemplateContext) -> None:
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e1',1,'4:00',TRUE,'Layup Shot',0,0,2,'makes layup')", [current_season()])
+    assert shot_distance(sc_ctx, {"player": "Stephen Curry"}).data["attempts"] == 2
+
+
+def test_shot_distance_refuses_threes_in_a_season_that_cannot_tell_them_apart(sc_ctx: TemplateContext) -> None:
+    """2002 has no labels and descriptions that miss threes, so answering from
+    what it has would be a narrower answer with nothing saying so. The refusal
+    names that cause - not an absence of data, since the same season still
+    answers for all of a player's shots."""
+    sc_ctx.con.executemany(
+        "INSERT INTO shot_chart VALUES ('1',2002,2,'e8',1,'5:00',TRUE,'Jump Shot',?,?,0,?)",
+        [(25, 25, "made 25 ft Three Point Jumper."), (47, 0, "made Jumper.")],
+    )
+    refused = shot_distance(sc_ctx, {"player": "Stephen Curry", "season": 2002, "shot_value": 3})
+    assert "avg_feet" not in refused.data
+    assert (refused.answer or "").startswith(shotchart.UNSEPARABLE_SHOT_VALUES[2002])
+    assert shot_distance(sc_ctx, {"player": "Stephen Curry", "season": 2002}).data["attempts"] == 2
+
+
+def test_shot_distance_says_when_a_seasons_shot_values_are_derived(sc_ctx: TemplateContext) -> None:
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',2022,2,'e9',1,'6:00',TRUE,'Jump Shot',25,26,0,'makes 26-foot three point jumper')")
+    threes = shot_distance(sc_ctx, {"player": "Stephen Curry", "season": 2022, "shot_value": 3})
+    assert threes.data["attempts"] == 1
+    assert shotchart.DERIVED_SHOT_VALUES[2022] in (threes.answer or "")
+    # A question about all shots does not rest on the derivation, so says nothing.
+    assert "Note" not in (shot_distance(sc_ctx, {"player": "Stephen Curry", "season": 2022}).answer or "")
+
+
+def test_shot_chart_draws_threes_espn_left_unlabeled(sc_ctx: TemplateContext) -> None:
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e7',1,'2:00',TRUE,'Jump Shot',2,3,0,'makes 23-foot step back jumpshot')", [current_season()])
+    result = shot_chart(sc_ctx, {"player": "Stephen Curry", "season": current_season(), "shot_value": 3})
+    assert "(2/3 made" in (result.answer or "")
+
+
+def test_shot_chart_refuses_threes_in_a_season_that_cannot_tell_them_apart(sc_ctx: TemplateContext) -> None:
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',2002,2,'e8',1,'5:00',TRUE,'Jump Shot',25,25,0,'made 25 ft Three Point Jumper.')")
+    result = shot_chart(sc_ctx, {"player": "Stephen Curry", "season": 2002, "shot_value": 3})
+    assert (result.answer or "").startswith(shotchart.UNSEPARABLE_SHOT_VALUES[2002])
+    assert not list(sc_ctx.out_dir.glob("*.html"))
+
+
+def test_shot_chart_leaves_free_throws_off_the_court(sc_ctx: TemplateContext) -> None:
+    """A 2002-2018 free throw has a position under the rim, and was drawn
+    there as a shot."""
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e1',1,'3:00',TRUE,'Free Throw - 1 of 2',25,0,1,'makes free throw 1 of 2')", [current_season()])
+    assert "(1/2 made" in (shot_chart(sc_ctx, {"player": "Stephen Curry", "season": current_season()}).answer or "")
+
+
+def test_a_free_throw_chart_is_refused_rather_than_drawn(sc_ctx: TemplateContext) -> None:
+    result = shot_chart(sc_ctx, {"player": "Stephen Curry", "season": current_season(), "shot_value": 1})
+    assert "no free-throw chart" in (result.answer or "")
+    assert not list(sc_ctx.out_dir.glob("*.html"))
+
+
+def test_a_career_chart_says_which_shots_it_left_out(sc_ctx: TemplateContext) -> None:
+    """One unseparable season is refused outright. Across seasons the chart
+    draws what can be told apart and says what it could not, rather than
+    dropping it where nobody would know."""
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',2002,2,'e8',1,'5:00',FALSE,'Jump Shot',47,0,0,'missed Jumper.')")
+    rendered = shotchart.render_shot_chart(sc_ctx.con, sc_ctx.out_dir, "Stephen Curry", shot_value=3)
+    assert "(1/2 made" in rendered.message
+    assert "left out 1 shot that cannot be told apart as twos or threes" in rendered.message
 
 
 def test_shot_distance_scopes_to_the_current_season_by_default(sc_ctx: TemplateContext) -> None:
-    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',2019,2,'e6',1,'1:00',TRUE,'Jump Shot',25,40,3)")
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',2019,2,'e6',1,'1:00',TRUE,'Jump Shot',25,40,3,'40-foot three point jumper')")
     assert shot_distance(sc_ctx, {"player": "Stephen Curry", "shot_value": 3}).data["attempts"] == 2
 
 
@@ -1338,7 +1521,7 @@ def test_shot_chart_scopes_to_a_single_game_when_order_is_set(sc_ctx: TemplateCo
         "INSERT INTO player_game_log VALUES ('1',?,2,'e1','2026-01-01T00:00Z'),('1',?,2,'eLast','2026-04-13T00:30Z')",
         [current_season(), current_season()],
     )
-    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'eLast',1,'2:00',TRUE,'Jump Shot',25,26,3)", [current_season()])
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'eLast',1,'2:00',TRUE,'Jump Shot',25,26,3,'26-foot three point jumper')", [current_season()])
     answer = shot_chart(sc_ctx, {"player": "Stephen Curry", "order": "recent"}).answer or ""
     assert "1/1 made" in answer  # only the one shot from the last game
     assert "eLast" in answer
@@ -1385,7 +1568,9 @@ def test_player_netpoints_scopes_to_one_game_when_order_is_set(np_ctx: TemplateC
     the whole season - 43 games - because nothing scoped it."""
     _add_per_game_netpoints(np_ctx)
     result = player_netpoints(np_ctx, {"player": "SGA", "order": "recent"})
-    assert result.data["game"]["date"] == "2026-04-13"
+    # eLast tips at 2026-04-13T00:30Z - 8:30pm Eastern on the 12th, the day it
+    # was played. The UTC day this used to assert was the bug.
+    assert result.data["game"]["date"] == "2026-04-12"
     answer = result.answer or ""
     assert "6.3 total" in answer and "most recent" in answer
     assert "Offense," not in answer  # not the season breakdown
@@ -1393,7 +1578,8 @@ def test_player_netpoints_scopes_to_one_game_when_order_is_set(np_ctx: TemplateC
 
 def test_player_netpoints_order_first_picks_the_earliest_game(np_ctx: TemplateContext) -> None:
     _add_per_game_netpoints(np_ctx)
-    assert player_netpoints(np_ctx, {"player": "SGA", "order": "first"}).data["game"]["date"] == "2025-10-22"
+    # 2025-10-22T00:00Z is 8pm Eastern on October 21st.
+    assert player_netpoints(np_ctx, {"player": "SGA", "order": "first"}).data["game"]["date"] == "2025-10-21"
 
 
 def test_single_game_netpoints_points_at_the_fingerprint_for_the_split(np_ctx: TemplateContext) -> None:
@@ -1464,9 +1650,11 @@ def test_shot_distance_scopes_to_one_game(sc_ctx: TemplateContext) -> None:
     sc_ctx.con.execute("INSERT INTO player_game_log VALUES ('1',?,2,'e1','2026-04-13T00:30Z')", [current_season()])
     # A second game whose shots must NOT be counted.
     sc_ctx.con.execute("INSERT INTO player_game_log VALUES ('1',?,2,'e2','2026-01-01T00:00Z')", [current_season()])
-    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e2',1,'2:00',TRUE,'Jump Shot',25,40,3)", [current_season()])
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e2',1,'2:00',TRUE,'Jump Shot',25,40,3,'40-foot three point jumper')", [current_season()])
     answer = shot_distance(sc_ctx, {"player": "Stephen Curry", "order": "recent"}).answer or ""
-    assert "most recent game (2026-04-13)" in answer
+    # e1 tips at 2026-04-13T00:30Z - 8:30pm Eastern on the 12th, the day it was
+    # played. The UTC day this used to assert was the bug.
+    assert "most recent game (2026-04-12)" in answer
     assert "2 attempts" in answer  # the fixture's two shots in e1, not the third in e2
 
 
@@ -1580,7 +1768,9 @@ def test_fingerprint_declares_the_game_scoping_it_handles(fp_ctx: TemplateContex
     # It handles them by refusing; check_scope must therefore NOT strip the
     # request out from under it and fall through to an agent with no better source.
     check_scope("fingerprint", {"player": "Shai", "order": "recent", "date": "2026-01-02"})
-    assert HONORED_SCOPING["fingerprint"] == SCOPING_SLOTS
+    # The game-scoping pair specifically - SCOPING_SLOTS also holds opponent,
+    # venue, span and without, none of which a fingerprint can narrow to.
+    assert {"order", "date"} <= HONORED_SCOPING["fingerprint"] <= SCOPING_SLOTS
 
 
 def test_fingerprint_without_a_player_falls_through(fp_ctx: TemplateContext) -> None:
@@ -1639,3 +1829,488 @@ def test_templates_that_write_nothing_report_no_artifacts(lb_con: TemplateContex
     """The default has to be empty, not unset: a caller iterates artifacts on
     every answer, and a None here would be an AttributeError on the common path."""
     assert leaderboard(lb_con, {"stat": "points"}).artifacts == []
+
+
+@pytest.mark.parametrize(
+    ("intent", "slots"),
+    [
+        # game_log answers the real queries behind these now ("jaylen brown last
+        # 8 games vs pistons", "Podziemski game log without curry"), so the
+        # refusal is checked on templates that still cannot narrow that way.
+        ("shot_distance", {"player": "Jaylen Brown", "opponent": "Detroit Pistons"}),
+        ("player_netpoints", {"player": "Brandin Podziemski", "without": "curry"}),
+        ("player_history", {"player": "Nikola Jokic", "stat": "points", "opponent": "Boston Celtics"}),
+    ],
+)
+def test_scope_guard_refuses_what_the_question_text_narrowed_to(intent: str, slots: dict[str, Any]) -> None:
+    """The real StatMuse queries behind these slots were each answered for
+    every opponent, every venue, one season, or every game respectively."""
+    with pytest.raises(TemplateUnsupported, match="different span"):
+        check_scope(intent, slots)
+
+
+def test_scope_guard_lets_through_what_the_player_templates_now_honor() -> None:
+    check_scope("game_log", {"player": "Jaylen Brown", "opponent": "Detroit Pistons", "venue": "home", "span": "career", "without": "x", "order": "recent"})
+    check_scope("player_stat", {"player": "Evan Mobley", "opponent": "Milwaukee Bucks", "venue": "away", "span": "career", "without": "x"})
+    check_scope("player_history", {"player": "Nikola Jokic", "span": "career"})
+
+
+def test_team_quarter_points_still_honours_the_opponent_it_always_read() -> None:
+    check_scope("team_quarter_points", {"team": "Philadelphia 76ers", "period": 4, "opponent": "Boston Celtics"})
+
+
+def test_no_template_narrows_to_a_playoff_round() -> None:
+    """Nothing in the warehouse records a round or a series game number."""
+    assert not any("round" in honored for honored in HONORED_SCOPING.values())
+    with pytest.raises(TemplateUnsupported, match="different span"):
+        check_scope("player_stat", {"player": "Jayson Tatum", "round": "finals"})
+
+
+def test_a_zero_threshold_is_refused_rather_than_counting_every_game(con: TemplateContext) -> None:
+    """Measured: "most 3 pointers made since 2020" arrived as threshold 0."""
+    with pytest.raises(TemplateUnsupported, match="counts every game"):
+        threshold_count(con, {"stat": "points", "threshold": 0})
+
+
+@pytest.mark.parametrize(("intent", "slots"), [("player_stat", {"player": "Joe Ingles", "split": "starter_bench"}), ("leaderboard", {"stat": "points", "since": 2020})])
+def test_a_split_or_a_range_is_refused_where_nothing_honours_it(intent: str, slots: dict[str, Any]) -> None:
+    with pytest.raises(TemplateUnsupported, match="different span"):
+        check_scope(intent, slots)
+
+
+# ---------------- one player's games: game_log and player_stat, narrowed ----------------
+
+_BOX_COLUMNS = (
+    "event_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, opponent_team_id VARCHAR, athlete_id VARCHAR, did_not_play BOOLEAN, "
+    "minutes INTEGER, points INTEGER, rebounds INTEGER, assists INTEGER, steals INTEGER, blocks INTEGER, turnovers INTEGER, fouls INTEGER, plusMinus INTEGER, "
+    "fieldGoalsMade INTEGER, fieldGoalsAttempted INTEGER, threePointFieldGoalsMade INTEGER, threePointFieldGoalsAttempted INTEGER, "
+    "freeThrowsMade INTEGER, freeThrowsAttempted INTEGER, offensiveRebounds INTEGER, defensiveRebounds INTEGER"
+)
+
+
+def _box(
+    event: str, season: int, team: str, opponent: str, athlete: str, *, dnp: bool = False, minutes: int | None = 30, pts: int = 0, reb: int = 0, ast: int = 0, ftm: int = 0, fta: int = 0
+) -> tuple[Any, ...]:
+    """One player_box_stats row. ``minutes=None`` is the empty line ESPN leaves
+    (listed as played, no minutes, every stat zero); ``dnp`` is a did-not-play
+    entry, whose stats are NULL."""
+    if dnp:
+        return (event, season, 2, team, opponent, athlete, True, *([None] * 17))
+    return (event, season, 2, team, opponent, athlete, False, minutes, pts, reb, ast, 1, 0, 2, 3, 0, pts // 2, pts, 0, 0, ftm, fta, 0, 0)
+
+
+@pytest.fixture
+def pg_ctx(tmp_path: Path) -> TemplateContext:
+    """A Warriors season in miniature, built to exercise every narrowing. ``s``
+    is the current season.
+
+    ====  =====  ==============  ====================  =============
+    game  season  matchup         tip (UTC)             Eastern date
+    ====  =====  ==============  ====================  =============
+    e1    s      BOS at GS       {s-1}-11-02T00:30Z    {s-1}-11-01
+    e2    s      GS at DET       {s-1}-12-02T00:30Z    {s-1}-12-01
+    e3    s      DET at GS       {s}-01-10T20:00Z      {s}-01-10
+    e4    s      GS at LAL       {s}-02-10T03:00Z      {s}-02-09
+    e6    s      BOS at GS       {s}-03-01T00:30Z      {s}-02-28
+    e5    s-1    DET at GS       {s-1}-03-01T00:30Z    {s-1}-02-28
+    e7    s-1    DET at BOS      {s-1}-02-01T00:30Z
+    e8    1995   CHI at DET, and its phantom copy under 1993
+    ====  =====  ==============  ====================  =============
+
+    Podziemski plays e1, e2, e3 and e5, is DNP in e4 and has an empty line in
+    e6. Stephen Curry plays e1 and e5, is DNP in e3, and has no row in e2 or e4.
+    Seth Curry was a Celtic last season (e7) and joins the Warriors at e3.
+    Kuminga ended last season a Warrior (e5) and first appears this one at e3.
+    """
+    s = current_season()
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.execute(
+        "INSERT INTO players VALUES ('10','Brandin Podziemski'),('11','Stephen Curry'),('12','Seth Curry'),('13','Jaylen Brown'),('14','Dell Curry'),('15','Jonathan Kuminga'),('20','Michael Jordan')"
+    )
+    c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO teams VALUES ('1','GS','Golden State Warriors'),('2','BOS','Boston Celtics'),('3','DET','Detroit Pistons'),('4','LAL','Los Angeles Lakers'),('5','CHI','Chicago Bulls')")
+    c.execute(
+        "CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR, home_team_id VARCHAR, away_team_id VARCHAR, "
+        "home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR)"
+    )
+    c.executemany(
+        "INSERT INTO games VALUES (?, ?, 2, ?, ?, ?, ?, ?, ?)",
+        [
+            ("e1", s, f"{s - 1}-11-02T00:30Z", "1", "2", 110, 100, "1"),
+            ("e2", s, f"{s - 1}-12-02T00:30Z", "3", "1", 99, 105, "1"),
+            ("e3", s, f"{s}-01-10T20:00Z", "1", "3", 101, 120, "3"),
+            ("e4", s, f"{s}-02-10T03:00Z", "4", "1", 100, 90, "4"),
+            ("e6", s, f"{s}-03-01T00:30Z", "1", "2", 100, 95, "1"),
+            ("e5", s - 1, f"{s - 1}-03-01T00:30Z", "1", "3", 100, 90, "1"),
+            ("e7", s - 1, f"{s - 1}-02-01T00:30Z", "2", "3", 100, 90, "2"),
+            ("e8", 1995, "1995-03-20T00:30Z", "3", "5", 90, 100, "5"),
+            ("e8", 1993, "1995-03-20T00:30Z", "3", "5", 90, 100, "5"),
+        ],
+    )
+    c.execute(f"CREATE TABLE player_box_stats ({_BOX_COLUMNS})")
+    c.executemany(
+        f"INSERT INTO player_box_stats VALUES ({', '.join('?' for _ in range(24))})",
+        [
+            _box("e1", s, "1", "2", "10", pts=10, reb=5, ast=3, ftm=2, fta=3),
+            _box("e2", s, "1", "3", "10", minutes=32, pts=20, reb=7, ast=5, ftm=4, fta=4),
+            _box("e3", s, "1", "3", "10", minutes=28, pts=15, reb=4, ast=6, ftm=1, fta=2),
+            _box("e4", s, "1", "4", "10", dnp=True),
+            _box("e6", s, "1", "2", "10", minutes=None),
+            _box("e5", s - 1, "1", "3", "10", minutes=20, pts=8, reb=2, ast=1),
+            _box("e1", s, "1", "2", "11", pts=30),
+            _box("e3", s, "1", "3", "11", dnp=True),
+            _box("e6", s, "1", "2", "11", minutes=None),
+            _box("e5", s - 1, "1", "3", "11", pts=25),
+            _box("e7", s - 1, "2", "3", "12", pts=12),
+            _box("e3", s, "1", "3", "12", pts=5),
+            _box("e4", s, "1", "4", "12", pts=7),
+            _box("e5", s - 1, "1", "3", "15", pts=10),
+            _box("e3", s, "1", "3", "15", pts=9),
+            _box("e1", s, "2", "1", "13", pts=25),
+            _box("e7", s - 1, "2", "3", "13", pts=30),
+            _box("e8", 1995, "5", "3", "20", minutes=40, pts=40),
+            _box("e8", 1993, "5", "3", "20", minutes=40, pts=40),
+        ],
+    )
+    # The warehouse's own view, joins and all - keyed on season as well as
+    # event_id, so the phantom 1993 row joins its own games row only.
+    c.execute(
+        "CREATE VIEW player_game_log AS SELECT pbs.*, p.display_name AS player_name, g.date AS game_date, t.abbreviation AS team_abbr, o.abbreviation AS opponent_abbr "
+        "FROM player_box_stats pbs LEFT JOIN players p ON p.athlete_id = pbs.athlete_id LEFT JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season "
+        "LEFT JOIN teams t ON t.team_id = pbs.team_id LEFT JOIN teams o ON o.team_id = pbs.opponent_team_id"
+    )
+    c.execute(
+        "CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER, gamesPlayed INTEGER, avgPoints DOUBLE, points INTEGER, "
+        "avgRebounds DOUBLE, totalRebounds INTEGER, avgAssists DOUBLE, assists INTEGER, avgMinutes DOUBLE, threePointFieldGoalsMade INTEGER, threePointFieldGoalsAttempted INTEGER)"
+    )
+    c.executemany(
+        "INSERT INTO player_season_stats_deduped VALUES (?, ?, 2, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            ("10", s, 70, 14.0, 980, 5.0, 350, 4.0, 280, 30.0, 100, 280),
+            ("10", s - 1, 30, 8.0, 240, 3.0, 90, 2.0, 60, 20.0, 20, 60),
+            ("20", 1990, 82, 33.6, 2753, 6.9, 565, 6.3, 519, 39.0, 92, 245),
+        ],
+    )
+    return TemplateContext(con=c, out_dir=tmp_path)
+
+
+def test_game_log_lists_only_the_games_against_the_named_opponent(pg_ctx: TemplateContext) -> None:
+    """Before the contract commit, "jaylen brown last 8 games vs pistons" listed
+    the Celtics' last eight games against anybody."""
+    result = game_log(pg_ctx, {"player": "Brandin Podziemski", "opponent": "Detroit Pistons"})
+    assert [g["opponent"] for g in result.data["games"]] == ["DET", "DET"]
+    assert result.answer.startswith(f"Brandin Podziemski vs the Detroit Pistons, last 2 games of the {current_season()} regular season:")
+
+
+def test_a_career_log_against_an_opponent_crosses_seasons(pg_ctx: TemplateContext) -> None:
+    s = current_season()
+    result = game_log(pg_ctx, {"player": "Brandin Podziemski", "opponent": "Detroit Pistons", "span": "career", "limit": 8})
+    assert [g["season"] for g in result.data["games"]] == [s, s, s - 1]
+    assert f"last 3 games of his career ({s - 1}-{s} regular seasons):" in result.answer
+    assert "Only 3 games vs the Detroit Pistons in his box scores." in result.answer
+
+
+def test_a_short_season_log_says_how_many_there_were_and_where_the_rest_are(pg_ctx: TemplateContext) -> None:
+    answer = game_log(pg_ctx, {"player": "Brandin Podziemski", "opponent": "Detroit Pistons", "limit": 8}).answer
+    assert f"Only 2 games vs the Detroit Pistons in the {current_season()} regular season - ask about his career to reach earlier seasons." in answer
+
+
+def test_game_log_honors_venue(pg_ctx: TemplateContext) -> None:
+    home = game_log(pg_ctx, {"player": "Brandin Podziemski", "venue": "home"}).data["games"]
+    away = game_log(pg_ctx, {"player": "Brandin Podziemski", "venue": "away"}).data["games"]
+    assert [g["home_away"] for g in home] == ["home", "home"]
+    assert [g["opponent"] for g in away] == ["DET"]
+
+
+def test_game_log_lists_only_games_he_played_and_says_what_it_left_out(pg_ctx: TemplateContext) -> None:
+    """The DNP in e4 is not a game he played; the empty line in e6 is not a
+    game anybody can average. The empty line is counted in the answer, since in
+    2013-2018 about one team-game in eight looks like it."""
+    result = game_log(pg_ctx, {"player": "Brandin Podziemski"})
+    assert len(result.data["games"]) == 3
+    assert "Not counted: 1 game in this span whose box score lists him with no minutes and no stats." in result.answer
+
+
+def test_game_log_averages_exactly_the_games_it_lists(pg_ctx: TemplateContext) -> None:
+    result = game_log(pg_ctx, {"player": "Brandin Podziemski", "limit": 2})
+    assert [g["points"] for g in result.data["games"]] == [15, 20]
+    assert result.data["averages"]["points"] == pytest.approx(17.5)
+    average_row = next(line for line in result.answer.splitlines() if line.strip().startswith("per game"))
+    assert "17.5" in average_row
+
+
+def test_a_named_stat_adds_its_columns_to_the_log(pg_ctx: TemplateContext) -> None:
+    result = game_log(pg_ctx, {"player": "Brandin Podziemski", "stat": "freeThrowPct"})
+    titles = result.answer.splitlines()[1].split()
+    assert titles[-3:] == ["FTM", "FTA", "FT%"]
+    # Over the listed games: 2 of 3, 4 of 4, 1 of 2 - a total, not a mean of percentages.
+    assert result.data["averages"]["freeThrowPct"] == pytest.approx(100 * 7 / 9)
+
+
+def test_a_real_stat_the_log_cannot_show_is_refused_rather_than_dropped(pg_ctx: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        game_log(pg_ctx, {"player": "Brandin Podziemski", "stat": "ts_pct"})
+    # Not a stat at all - the required slot filled with something - adds nothing.
+    assert game_log(pg_ctx, {"player": "Brandin Podziemski", "stat": "game log"}).data["columns"] == ["MIN", "PTS", "REB", "AST"]
+
+
+def test_game_log_dates_are_the_eastern_day_the_game_was_played(pg_ctx: TemplateContext) -> None:
+    """e2 tipped at 00:30 UTC on the 2nd - 7:30pm Eastern on the 1st. Matching
+    the UTC day found it under the wrong date and missed it under the right one."""
+    s = current_season()
+    games = game_log(pg_ctx, {"player": "Brandin Podziemski", "opponent": "Detroit Pistons"}).data["games"]
+    assert games[-1]["date"] == f"{s - 1}-12-01"
+    assert [g["date"] for g in game_log(pg_ctx, {"player": "Brandin Podziemski", "date": f"{s - 1}-12-01"}).data["games"]] == [f"{s - 1}-12-01"]
+    assert game_log(pg_ctx, {"player": "Brandin Podziemski", "date": f"{s - 1}-12-02"}).data["games"] == []
+
+
+def test_a_date_finds_its_game_whatever_season_the_router_assumed(pg_ctx: TemplateContext) -> None:
+    s = current_season()
+    result = game_log(pg_ctx, {"player": "Brandin Podziemski", "date": f"{s - 1}-02-28", "season": s})
+    assert [g["season"] for g in result.data["games"]] == [s - 1]
+
+
+def test_without_counts_a_did_not_play_entry_and_a_missing_row_alike(pg_ctx: TemplateContext) -> None:
+    """An injured player mostly has no row at all: Stephen Curry's 2026 is 43
+    rows for an 82-game Warriors season, none of them did-not-play."""
+    s = current_season()
+    result = game_log(pg_ctx, {"player": "Brandin Podziemski", "without": "Stephen Curry"})
+    assert sorted(g["date"] for g in result.data["games"]) == [f"{s - 1}-12-01", f"{s}-01-10"]
+    assert "a did-not-play entry, or no line in the box score at all" in result.answer
+
+
+def test_without_asks_between_two_teammates_who_share_a_name(pg_ctx: TemplateContext) -> None:
+    answer = game_log(pg_ctx, {"player": "Brandin Podziemski", "without": "curry"}).answer
+    assert answer == "'curry' matches more than one player - did you mean Seth Curry or Stephen Curry?"
+
+
+def test_without_narrows_a_shared_name_to_that_seasons_teammates(pg_ctx: TemplateContext) -> None:
+    # Last season Seth was a Celtic and Dell was long retired: only one Curry could be meant.
+    result = game_log(pg_ctx, {"player": "Brandin Podziemski", "without": "curry", "season": current_season() - 1})
+    assert result.data["without"] == "Stephen Curry"
+
+
+def test_a_mid_season_arrival_is_not_missing_from_the_games_before_he_came(pg_ctx: TemplateContext) -> None:
+    """Seth Curry joins at e3. The Warriors' games before that were not played
+    "without" a man who was on another team's books."""
+    answer = game_log(pg_ctx, {"player": "Brandin Podziemski", "without": "Seth Curry"}).answer
+    assert answer == f"Brandin Podziemski played 3 games in the {current_season()} regular season, none of them without Seth Curry."
+
+
+def test_a_teammate_carried_over_is_on_the_team_before_his_first_game(pg_ctx: TemplateContext) -> None:
+    """LeBron James's first 2026 row is 2025-11-19; the Lakers' games before it
+    were played without him. Kuminga here is the same shape."""
+    result = game_log(pg_ctx, {"player": "Brandin Podziemski", "without": "Jonathan Kuminga"})
+    assert [g["opponent"] for g in result.data["games"]] == ["DET", "BOS"]
+
+
+def test_without_somebody_who_was_never_a_teammate_says_so(pg_ctx: TemplateContext) -> None:
+    answer = game_log(pg_ctx, {"player": "Brandin Podziemski", "without": "Jaylen Brown"}).answer
+    assert answer == f"Jaylen Brown was not Brandin Podziemski's teammate in any of his 3 games in the {current_season()} regular season."
+
+
+def test_no_games_against_an_opponent_is_not_no_games(pg_ctx: TemplateContext) -> None:
+    """The refusal names the missing fact: he has games, none of them against
+    that team. "No games found for him" would send the reader to the wrong place."""
+    answer = game_log(pg_ctx, {"player": "Brandin Podziemski", "opponent": "Los Angeles Lakers"}).answer
+    assert answer == f"Brandin Podziemski played 3 games in the {current_season()} regular season, none of them vs the Los Angeles Lakers."
+
+
+def test_a_season_with_no_games_at_all_says_that(pg_ctx: TemplateContext) -> None:
+    s = current_season() - 5
+    assert game_log(pg_ctx, {"player": "Brandin Podziemski", "season": s}).answer == f"No {s} regular season games found for Brandin Podziemski."
+
+
+def test_a_career_never_counts_the_phantom_season_twice(pg_ctx: TemplateContext) -> None:
+    """1993 is a full copy of 1993-94 under another label; a career that read it
+    would list every one of those games twice."""
+    result = game_log(pg_ctx, {"player": "Michael Jordan", "span": "career"})
+    assert [g["season"] for g in result.data["games"]] == [1995]
+    assert "Box scores begin with the 1993-94 season, so his 1990-1993 seasons are not counted." in result.answer
+
+
+@pytest.mark.parametrize("template", [game_log, player_stat])
+def test_a_career_and_a_named_season_at_once_is_refused(pg_ctx: TemplateContext, template: Any) -> None:
+    with pytest.raises(TemplateUnsupported):
+        template(pg_ctx, {"player": "Brandin Podziemski", "span": "career", "season": current_season()})
+
+
+def test_game_log_refuses_a_threshold_rather_than_ignoring_it(pg_ctx: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        game_log(pg_ctx, {"player": "Brandin Podziemski", "stat": "fieldGoalsAttempted", "threshold": 15})
+
+
+def test_player_stat_averages_the_games_against_an_opponent(pg_ctx: TemplateContext) -> None:
+    """ "evan mobley avg against bucks" refused before this - and before the
+    refusal, it was answered with his whole season."""
+    result = player_stat(pg_ctx, {"player": "Brandin Podziemski", "opponent": "Detroit Pistons", "stat": "points"})
+    assert result.answer == f"Brandin Podziemski averaged 17.5 points per game in 2 games vs the Detroit Pistons in the {current_season()} regular season. That is 35 in total."
+
+
+def test_player_stat_honors_venue_and_a_teammates_absence(pg_ctx: TemplateContext) -> None:
+    assert player_stat(pg_ctx, {"player": "Brandin Podziemski", "venue": "home", "stat": "points"}).data["stats"]["avgPoints"] == 12.5
+    without = player_stat(pg_ctx, {"player": "Brandin Podziemski", "without": "Stephen Curry", "stat": "points"}).data["stats"]
+    assert (without["gamesPlayed"], without["avgPoints"]) == (2, 17.5)
+
+
+def test_player_stat_says_one_game_not_one_games(pg_ctx: TemplateContext) -> None:
+    answer = player_stat(pg_ctx, {"player": "Brandin Podziemski", "opponent": "Boston Celtics", "stat": "points"}).answer
+    assert "per game in 1 game vs the Boston Celtics" in answer
+
+
+def test_player_stat_career_is_totals_over_games_not_an_average_of_averages(pg_ctx: TemplateContext) -> None:
+    """(980 + 240) / (70 + 30) = 12.2. The mean of the two season averages would
+    be 11.0 - a number no reader could reproduce from the career line."""
+    s = current_season()
+    result = player_stat(pg_ctx, {"player": "Brandin Podziemski", "span": "career"})
+    assert result.data["stats"]["avgPoints"] == 12.2
+    assert f"in 100 games over his career (2 regular seasons, {s - 1}-{s})" in result.answer
+
+
+def test_player_stat_answers_a_shooting_percentage_with_its_makes_and_attempts(pg_ctx: TemplateContext) -> None:
+    """ "What is Jokic's 3 point percentage this season" fell through to the agent."""
+    s = current_season()
+    season = player_stat(pg_ctx, {"player": "Brandin Podziemski", "stat": "threePointFieldGoalPct"}).answer
+    assert season == f"Brandin Podziemski shot 35.7% on 3-pointers (100 of 280) in 70 games in the {s} regular season."
+    career = player_stat(pg_ctx, {"player": "Brandin Podziemski", "stat": "threePointFieldGoalPct", "span": "career"}).answer
+    assert "35.3% on 3-pointers (120 of 340)" in career
+    against = player_stat(pg_ctx, {"player": "Brandin Podziemski", "stat": "freeThrowPct", "opponent": "Detroit Pistons"}).answer
+    assert "83.3% on free throws (5 of 6) in 2 games vs the Detroit Pistons" in against
+
+
+def test_player_stat_refuses_a_limit_rather_than_answering_the_season(pg_ctx: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        player_stat(pg_ctx, {"player": "Brandin Podziemski", "limit": 10})
+
+
+def test_player_stat_names_the_real_cause_when_nothing_matches(pg_ctx: TemplateContext) -> None:
+    answer = player_stat(pg_ctx, {"player": "Brandin Podziemski", "opponent": "Los Angeles Lakers"}).answer
+    assert answer == f"Brandin Podziemski played 3 games in the {current_season()} regular season, none of them vs the Los Angeles Lakers."
+
+
+def test_a_narrowed_question_carries_the_box_score_floor() -> None:
+    """Jordan's 1990 season line is real and answerable; his 1990 line against
+    one opponent needs box scores, which start in 1993-94."""
+    from association.query.templates import check_coverage
+
+    assert check_coverage("player_stat", {"player": "Michael Jordan", "season": 1990, "season_type": 2}) is None
+    assert check_coverage("player_stat", {"player": "Michael Jordan", "season": 1990, "season_type": 2, "opponent": "New York Knicks"}) is not None
+    assert check_coverage("game_log", {"player": "Michael Jordan", "season": 1990, "season_type": 2}) is not None
+
+
+def test_player_history_career_is_every_season(ps_con: TemplateContext) -> None:
+    """ "Jokic's scoring by year, career" came back as the default four seasons,
+    under a heading that did not say how many it had left out."""
+    s = current_season()
+    for offset in range(1, 8):
+        ps_con.con.execute("INSERT INTO player_season_stats_deduped (athlete_id, season, season_type, gamesPlayed, avgPoints) VALUES ('1',?,2,70,20.0)", [s - offset])
+    result = player_history(ps_con, {"player": "Luka Doncic", "stat": "points", "span": "career", "limit": 4})
+    assert len(result.data["seasons"]) == 8
+    assert result.answer.startswith(f"Luka Doncic, points per game by regular season, career, {s - 7}-{s} (most recent first):")
+    four = player_history(ps_con, {"player": "Luka Doncic", "stat": "points"}).answer
+    assert four.startswith(f"Luka Doncic, points per game by regular season, {s - 3}-{s} (most recent first):")
+
+
+def test_team_game_log_honors_opponent_and_venue(gl_con: TemplateContext) -> None:
+    home = game_log(gl_con, {"team": "Knicks", "venue": "home"})
+    assert [g["date"] for g in home.data["games"]] == ["2026-04-10"]
+    assert home.answer.startswith(f"New York Knicks at home, most recent game of the {current_season()} regular season (1-0):")
+    assert len(game_log(gl_con, {"team": "Knicks", "opponent": "Boston Celtics"}).data["games"]) == 2
+
+
+def test_team_game_log_says_when_it_never_met_the_opponent(gl_con: TemplateContext) -> None:
+    gl_con.con.execute("INSERT INTO teams VALUES ('13','LAL','Los Angeles Lakers')")
+    answer = game_log(gl_con, {"team": "Knicks", "opponent": "Los Angeles Lakers"}).answer
+    assert answer == f"The New York Knicks played 2 games in the {current_season()} regular season, none of them vs the Los Angeles Lakers."
+
+
+def test_team_game_log_leaves_without_to_with_without(gl_con: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        game_log(gl_con, {"team": "Knicks", "without": "Jalen Brunson"})
+
+
+def test_team_game_log_career_says_all_time(gl_con: TemplateContext) -> None:
+    result = game_log(gl_con, {"team": "Knicks", "span": "career"})
+    assert len(result.data["games"]) == 2
+    assert f"(all-time, {current_season()} regular season) (1-1):" in result.answer
+
+
+def test_team_game_log_is_not_doubled_by_a_phantom_season(gl_con: TemplateContext) -> None:
+    """The phantom 1993 shares every event id with 1994, and a join on event_id
+    alone listed each of those games twice - 164 rows for the Celtics' 82."""
+    gl_con.con.execute("INSERT INTO games VALUES ('e1',?,2,'2026-04-10T22:00Z','18','2',112,95,'18')", [current_season() - 1])
+    assert len(game_log(gl_con, {"team": "Knicks"}).data["games"]) == 2
+
+
+def test_team_game_log_does_not_call_a_missing_result_a_loss(gl_con: TemplateContext) -> None:
+    """134 games since 1994 have no winner recorded - "not the winner" is not the
+    same fact as "lost"."""
+    gl_con.con.execute("UPDATE games SET winner_team_id = NULL WHERE event_id = 'e2'")
+    result = game_log(gl_con, {"team": "Knicks"})
+    assert (result.data["wins"], result.data["losses"]) == (1, 0)
+    assert "(1-0, 1 with no recorded result):" in result.answer
+
+
+# ---------------- playoffs before 1993-94, by the year they were played ----------------
+
+
+@pytest.fixture
+def playoff_ctx(tmp_path: Path) -> TemplateContext:
+    """ESPN's labels before 1993-94: the postseason games labelled 1990 are the
+    1991 Finals, and the phantom 1993 is a copy of 1994's games."""
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, display_name VARCHAR, abbreviation VARCHAR)")
+    c.execute("INSERT INTO teams VALUES ('4','Chicago Bulls','CHI'),('13','Los Angeles Lakers','LAL')")
+    c.execute(
+        "CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR, home_team_id VARCHAR, away_team_id VARCHAR, "
+        "home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR, home_linescores VARCHAR, away_linescores VARCHAR)"
+    )
+    rows = [
+        ("f1", 1990, 3, "1991-06-03T01:00Z", "4", "13", 91, 93, "13", "20,25,20,26", "25,20,24,24"),
+        ("f2", 1990, 3, "1991-06-13T01:00Z", "13", "4", 101, 108, "4", "25,25,25,26", "27,27,27,27"),
+        ("x1", 1993, 3, "1994-05-01T01:00Z", "4", "13", 100, 90, "4", "25,25,25,25", "20,20,25,25"),
+        ("x1", 1994, 3, "1994-05-01T01:00Z", "4", "13", 100, 90, "4", "25,25,25,25", "20,20,25,25"),
+    ]
+    c.executemany("INSERT INTO games VALUES (?,?,?,?,?,?,?,?,?,?,?)", rows)
+    c.execute("CREATE TABLE team_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, opponent_team_id VARCHAR, home_away VARCHAR)")
+    boxes: list[tuple[Any, ...]] = []
+    for event, season, season_type, _date, home, away, *_rest in rows:
+        boxes += [(event, season, season_type, home, away, "home"), (event, season, season_type, away, home, "away")]
+    c.executemany("INSERT INTO team_box_stats VALUES (?,?,?,?,?,?)", boxes)
+    return TemplateContext(con=c, out_dir=tmp_path)
+
+
+def test_an_early_playoffs_is_found_by_the_year_it_was_played(playoff_ctx: TemplateContext) -> None:
+    """ESPN labels the 1991 Finals season 1990. Matched by label, "the 1991
+    playoffs" found 1992's, and "the 1990 playoffs" found 1991's."""
+    both = ["Chicago Bulls", "Los Angeles Lakers"]
+    assert head_to_head(playoff_ctx, {"teams": both, "season": 1991, "season_type": 3}).data["games"] == 2
+    assert head_to_head(playoff_ctx, {"teams": both, "season": 1990, "season_type": 3}).data["games"] == 0
+
+
+def test_the_phantom_season_does_not_double_a_playoffs(playoff_ctx: TemplateContext) -> None:
+    assert head_to_head(playoff_ctx, {"teams": ["Chicago Bulls", "Los Angeles Lakers"], "season": 1994, "season_type": 3}).data["games"] == 1
+
+
+def test_team_quarter_points_finds_an_early_playoffs_by_its_year(playoff_ctx: TemplateContext) -> None:
+    got = team_quarter_points(playoff_ctx, {"team": "Chicago Bulls", "period": 1, "season": 1991, "season_type": 3})
+    assert [g["points"] for g in got.data["games"]] == [20, 27]
+
+
+def test_a_team_log_labels_an_early_playoffs_by_its_year(playoff_ctx: TemplateContext) -> None:
+    got = game_log(playoff_ctx, {"team": "Chicago Bulls", "season": 1991, "season_type": 3})
+    assert [g["season"] for g in got.data["games"]] == [1991, 1991]
+
+
+def test_head_to_head_takes_the_opponent_as_the_other_team(playoff_ctx: TemplateContext) -> None:
+    """ "Celtics vs Bulls head to head record" arrived as team + opponent and was refused."""
+    check_scope("head_to_head", {"team": "Chicago Bulls", "opponent": "Los Angeles Lakers"})
+    got = head_to_head(playoff_ctx, {"team": "Chicago Bulls", "opponent": "Los Angeles Lakers", "season": 1991, "season_type": 3})
+    assert got.data["games"] == 2
+
+
+def test_head_to_head_reads_past_a_team_named_twice(playoff_ctx: TemplateContext) -> None:
+    """The first two names are one team; the opponent after them is the second."""
+    slots = {"team": "Chicago Bulls", "teams": ["Bulls"], "opponent": "Los Angeles Lakers", "season": 1991, "season_type": 3}
+    assert head_to_head(playoff_ctx, slots).data["games"] == 2

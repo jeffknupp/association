@@ -55,12 +55,13 @@ class Floor:
     reason: str
     coverage: Coverage
     unrepresentative: bool = False
+    subject: str = ""
 
     def refusal(self, asked: int) -> str:
         """The sentence shown to a person who asked about ``asked``."""
         if self.unrepresentative:
             return f"A league-wide ranking for {asked} would not be one - {self.reason}. Rankings are answerable from {self.season} onward; {asked} numbers for a player you name are still available."
-        return f"{self.coverage.subject} only go back to {self.season} - {self.reason}. There is no data for {asked}, and no pull would add any."
+        return f"{self.subject or self.coverage.subject} only go back to {self.season} - {self.reason}. There is no data for {asked}, and no pull would add any."
 
 
 @dataclass(frozen=True)
@@ -97,6 +98,8 @@ class Coverage:
     first_season: int
     reason: str
     postseason_first_season: int | None = None
+    postseason_subject: str = ""
+    postseason_reason: str = ""
     first_ranking_season: int | None = None
     ranking_reason: str = ""
     partial: tuple[int, ...] = ()
@@ -108,12 +111,15 @@ class Coverage:
 
         .. versionadded:: 2.1.0
         """
-        first = self.first_season
+        first, reason, subject = self.first_season, self.reason, ""
         if season_type == POSTSEASON and self.postseason_first_season is not None:
-            first = self.postseason_first_season
+            # Its own words where it has them: refusing "the 1988 playoffs" with
+            # the regular season's reason ("one team's 82 games") names the
+            # wrong cause.
+            first, reason, subject = self.postseason_first_season, self.postseason_reason or self.reason, self.postseason_subject
         if ranking and self.first_ranking_season is not None and self.first_ranking_season > first:
             return Floor(self.first_ranking_season, self.ranking_reason, self, unrepresentative=True)
-        return Floor(first, self.reason, self)
+        return Floor(first, reason, self, subject=subject)
 
 
 # Sourced from the coverage table in AGENTS.md and re-measured against the
@@ -139,14 +145,25 @@ COVERAGE: dict[str, Coverage] = {
             "ESPN has one team's 82 games per season before that and nothing at all for 1989-90, and it answers season=1993 with the identical 1,185 events "
             "it returns for 1994, so 1993 is a duplicate label rather than the 1992-93 season"
         ),
-        postseason_first_season=1988,
+        # The postseason is selected by the calendar year it was played in
+        # (templates._season_games), which is why its floor reads 1989 where the
+        # first stored label is 1988.
+        postseason_first_season=1989,
+        postseason_subject="Playoff games",
+        postseason_reason=(
+            "ESPN files every season before 1993-94 under the year it STARTED, so the postseason it labels 1988 is the 1989 playoffs, and the 1987-88 playoffs are not in its archive at all"
+        ),
         phantom=(1993,),
     ),
     "team_box_stats": Coverage(
         subject="Team box scores",
         first_season=1994,
         reason="they come from the same game summaries as `games`, which hold one team's schedule per season before 1994 and nothing for 1989-90",
-        postseason_first_season=1988,
+        postseason_first_season=1989,
+        postseason_subject="Playoff team box scores",
+        postseason_reason=(
+            "ESPN files every season before 1993-94 under the year it STARTED, so the postseason it labels 1988 is the 1989 playoffs, and the 1987-88 playoffs are not in its archive at all"
+        ),
         phantom=(1993,),
     ),
     "player_box_stats": Coverage(
@@ -217,8 +234,10 @@ COVERAGE: dict[str, Coverage] = {
         subject="Shot charts",
         first_season=2002,
         reason="shots are derived from play-by-play, which ESPN does not have before 2002",
-        partial=(2002,),
-        partial_note="2002 is about half a season of play-by-play (114,886 shots against 218,635 in 2003), so it covers part of the year rather than all of it",
+        # 2003's play-by-play is complete (1,189 of 1,190 games) but its shots
+        # are not: about 200 games' plays carry no located shot.
+        partial=(2002, 2003),
+        partial_note=("ESPN's shot data covers only part of that season's games - 509 of 2002's 1,190 and 986 of 2003's - so the answer covers part of the year rather than all of it"),
     ),
     "team_power_index": Coverage(
         subject="Team power index ratings",

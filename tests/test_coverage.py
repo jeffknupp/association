@@ -115,14 +115,30 @@ def test_a_table_with_no_declared_floor_is_skipped_rather_than_assumed() -> None
 def test_a_half_season_is_answered_with_a_caveat_rather_than_refused() -> None:
     assert check_coverage("shot_chart", {"season": 2002, "season_type": REGULAR_SEASON}) is None
     note = coverage_caveat("shot_chart", {"season": 2002})
-    assert note is not None and "half a season" in note
+    assert note is not None and "part of the year" in note
 
 
 def test_a_full_season_carries_no_caveat() -> None:
-    assert coverage_caveat("shot_chart", {"season": 2003}) is None
-    assert caveat(("shot_chart",), 2003) is None
+    # 2005, not 2003: measured, 2003 has located shots for only 986 of its 1,190
+    # games, and is a partial season itself.
+    assert coverage_caveat("shot_chart", {"season": 2005}) is None
+    assert caveat(("shot_chart",), 2005) is None
 
 
 @pytest.mark.parametrize("intent", sorted(RANKING_INTENTS))
 def test_ranking_intents_are_all_real_intents(intent: str) -> None:
     assert intent in TEMPLATES
+
+
+def test_the_first_playoffs_on_record_is_1989_and_the_refusal_says_why() -> None:
+    """ESPN's archive files the 1989 playoffs under 1988 and has no 1987-88
+    postseason at all, so "the 1988 playoffs" is refused - in the postseason's
+    own words, not the regular season's "one team's 82 games"."""
+    got = check_coverage("head_to_head", {"season": 1988, "season_type": POSTSEASON})
+    assert got is not None and got.startswith("Playoff games only go back to 1989") and "82 games" not in got
+    assert check_coverage("head_to_head", {"season": 1989, "season_type": POSTSEASON}) is None
+
+
+def test_2003_shots_carry_a_partial_season_caveat() -> None:
+    assert coverage_caveat("shot_chart", {"season": 2003}) is not None
+    assert coverage_caveat("shot_chart", {"season": 2004}) is None

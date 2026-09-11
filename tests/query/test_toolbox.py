@@ -20,13 +20,13 @@ def db_path(tmp_path: Path) -> str:
     con.execute(
         "CREATE TABLE shot_chart (event_id VARCHAR, athlete_id VARCHAR, team_id VARCHAR, "
         "period INTEGER, clock VARCHAR, made BOOLEAN, shot_type VARCHAR, "
-        "coordinate_x INTEGER, coordinate_y INTEGER, points_attempted INTEGER)"
+        "coordinate_x INTEGER, coordinate_y INTEGER, points_attempted INTEGER, season INTEGER, description VARCHAR)"
     )
     con.execute(
         "INSERT INTO shot_chart VALUES "
-        "('100', '1', '9', 1, '10:00', true, 'Jump Shot', 25, 20, 3), "
-        "('100', '1', '9', 1, '9:00', false, 'Jump Shot', 24, 22, 3), "
-        "('100', '1', '9', 2, '8:00', true, 'Layup', 25, 5, 2)"
+        "('100', '1', '9', 1, '10:00', true, 'Jump Shot', 25, 26, 3, 2026, 'Stephen Curry makes 26-foot three point jumper'), "
+        "('100', '1', '9', 1, '9:00', false, 'Jump Shot', 24, 25, 3, 2026, 'Stephen Curry misses 25-foot three point jumper'), "
+        "('100', '1', '9', 2, '8:00', true, 'Layup', 25, 1, 2, 2026, 'Stephen Curry makes layup')"
     )
     con.execute("CREATE TABLE player_season_advanced_stats (season INTEGER, season_type INTEGER, athlete_id VARCHAR, games_played INTEGER, usage_pct DOUBLE)")
     con.execute(
@@ -149,6 +149,7 @@ def test_get_leaderboard_applies_default_minimum_sample(toolbox: Toolbox) -> Non
     names = [r["display_name"] for r in result["rows"]]
     assert names == ["Stephen Curry"]
     assert result["min_sample_applied"] == 20
+    assert result["min_sample_column"] == "games_played"  # the unit: ts_pct's floor is attempts
 
 
 def test_get_leaderboard_min_sample_override_widens_the_pool(toolbox: Toolbox) -> None:
