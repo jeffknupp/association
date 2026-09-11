@@ -11,6 +11,13 @@ import sys
 from datetime import date
 from importlib.metadata import version as installed_version
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+import sphinx_autodoc_typehints
+from packaging.version import Version
+
+if TYPE_CHECKING:
+    from sphinx.application import Sphinx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -65,6 +72,40 @@ autodoc_typehints = "description"
 typehints_use_signature = False
 napoleon_google_docstring = True
 napoleon_numpy_docstring = False
+
+_upstream_rtype_insert_index = sphinx_autodoc_typehints.get_insert_index
+
+
+def _rtype_insert_index(app: Sphinx, lines: list[str]) -> sphinx_autodoc_typehints.InsertIndexInfo | None:
+    """Never put ``:rtype:`` directly under a line of prose.
+
+    A docstring with no ``Args:`` or ``Returns:`` section gets its ``:rtype:``
+    inserted just above the first block that is not a paragraph - here, 66
+    times out of 68, the ``.. versionadded::`` the conventions put last.
+    sphinx-autodoc-typehints before 3.2.0 inserts it with no blank line in
+    front, so reStructuredText reads the field as one more line of the
+    paragraph above: 68 literal ``:rtype: list[str]`` strings across 18 API
+    pages, and no warning for ``-W`` to fail on.
+
+    This is 3.2.0's own fix, backported: when the line above the insertion
+    point holds text, put the field at the end of the docstring instead. Not
+    the upgrade itself, because 3.2.0 needs Sphinx 8.2 and Python 3.11 and the
+    docs extra still resolves for 3.10. And not a blank line in front of the
+    field where it landed: autodoc adds the Parameters to whatever field list
+    a docstring already has, and makes its own at the end only when there is
+    none, so a Return type left above a bullet list would pull the Parameters
+    up there with it. At the end, it joins them where they already render.
+    """
+    found = _upstream_rtype_insert_index(app, lines)
+    if found is not None and found.found_directive and found.insert_index and lines[found.insert_index - 1]:
+        return sphinx_autodoc_typehints.InsertIndexInfo(insert_index=len(lines))
+    return found
+
+
+# Gated on the version, so the shim stops applying the moment the lock moves to
+# a release that carries the fix itself - delete it then.
+if Version(installed_version("sphinx-autodoc-typehints")) < Version("3.2.0"):
+    sphinx_autodoc_typehints.get_insert_index = _rtype_insert_index
 
 intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
 # Fetched at build time; a network hiccup should not fail a commit.
