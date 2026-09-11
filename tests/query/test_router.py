@@ -630,3 +630,35 @@ def test_a_record_asked_as_a_count_goes_to_record_when() -> None:
     got = _ask("Sixers record when Embiid scores 30 points this season", '{"intent":"threshold_count","stat":"points","threshold":30}')
     assert got.intent == "record_when"
     assert _ask("most 30 point games this season", '{"intent":"threshold_count","stat":"points","threshold":30}').intent == "threshold_count"
+
+
+def test_a_fingerprint_is_only_what_the_question_names() -> None:
+    """Measured under two prompt revisions: "Plot Curry's threes from last
+    season" came back as a fingerprint."""
+    assert _ask("Plot Curry's threes from last season", '{"intent":"fingerprint","player":"Stephen Curry"}').intent == "shot_chart"
+    assert _ask("how does wemby add value", '{"intent":"fingerprint","player":"Victor Wembanyama"}').intent == "other"
+    assert _ask("Show me Wembanyama's defensive fingerprint chart", '{"intent":"fingerprint"}').intent == "fingerprint"
+
+
+def test_a_career_high_is_a_single_game_not_an_average() -> None:
+    assert _ask("Diabate career high assists", '{"intent":"player_stat","player":"Moussa Diabate","stat":"assists"}').intent == "single_game_high"
+
+
+@pytest.mark.parametrize(
+    ("question", "threshold"),
+    [
+        ("Sixers record when Embiid scores 30 points this season", 30),
+        ("Sga record 36 plus points", 36),
+        ("most 40 point games in a row", 40),
+        ("most 3 point makes in a game", None),  # a shot type, not a threshold of three
+    ],
+)
+def test_a_threshold_the_model_left_out_is_read_from_the_question(question: str, threshold: int | None) -> None:
+    assert _ask(question, '{"intent":"record_when","stat":"points"}').slots.get("threshold") == threshold
+
+
+def test_a_count_with_no_threshold_is_a_season_ranking() -> None:
+    """Measured: "who has the most threes this season" arrived as threshold_count
+    with no threshold, and fell through."""
+    assert _ask("who has the most threes this season", '{"intent":"threshold_count","stat":"threePointFieldGoalsMade"}').intent == "leaderboard"
+    assert _ask("most 30 point games this season", '{"intent":"threshold_count","stat":"points"}').intent == "threshold_count"

@@ -54,6 +54,7 @@ intent must be one of:
                      player, stat, and limit to the number of seasons
   game_log         - list a player's or team's games, or one specific game
                      ("Lakers last 5 games", "Curry's first game of the season")
+                     - set opponent for games against one named team
   team_record      - one team's win/loss record for a season
   head_to_head     - games between TWO named teams ("how many times did the
                      76ers play Boston", "Lakers vs Celtics record") - set teams
@@ -74,9 +75,16 @@ intent must be one of:
                      "how far away does Curry shoot from")
   player_compare   - two or more named players side by side ("Luka vs SGA",
                      "compare Curry and Lillard") - set players, not player
+  team_stat        - one TEAM's numbers ("Celtics points per game") - set team
+  team_leaderboard - rank TEAMS by a stat ("best defense", "best record")
+  team_outlook     - a team's BPI, playoff or title odds, projections - set team
+  player_splits    - one player's home/away, starter/bench, wins/losses or monthly splits
+  with_without     - a record or stats with or without a teammate
+  record_when      - a team's record in games a player reached a stat threshold
+  player_matchup   - games two named players played AGAINST each other
+  streak           - longest winning/losing streak, or straight games with N+ of a stat
   other            - anything else, including a named PLAYER's per-quarter
-                     scoring (team_quarter_points is only for a TEAM's) and
-                     shot distances
+                     scoring (team_quarter_points is only for a TEAM's)
 
 stat names a box-score category: points, rebounds, assists, steals, blocks,
 turnovers, minutes, fouls, threePointFieldGoalsMade, fieldGoalsMade, freeThrowsMade,
@@ -165,6 +173,16 @@ Q: Compare SGA and Jokic's fingerprints
 {"intent":"fingerprint","players":["Shai Gilgeous-Alexander","Nikola Jokic"],"side":"total","season_ref":"current"}
 Q: What were SGA's netpoints by play type?
 {"intent":"player_netpoints","player":"Shai Gilgeous-Alexander","season_ref":"current"}
+Q: jaylen brown last 8 games vs pistons
+{"intent":"game_log","player":"Jaylen Brown","opponent":"Detroit Pistons","order":"recent","limit":8}
+Q: Nikola Jokic home and away splits
+{"intent":"player_splits","player":"Nikola Jokic","season_ref":"current"}
+Q: Celtics record without Tatum
+{"intent":"with_without","team":"Boston Celtics","season_ref":"current"}
+Q: lebron vs kawhi head to head
+{"intent":"player_matchup","players":["LeBron James","Kawhi Leonard"]}
+Q: Lakers longest winning streak this season
+{"intent":"streak","team":"Los Angeles Lakers","season_ref":"current"}
 """
 
 # Passed as ollama's `format`, so decoding is CONSTRAINED to a well-formed
@@ -510,6 +528,29 @@ _TEAM_SUBJECT = re.compile(
 )
 _PLAYER_RANKING_INTENTS = frozenset({"leaderboard", "single_game_high", "threshold_count"})
 
+# A fingerprint is one named artifact, and a question that never names it is not
+# asking for one. Measured: "Plot Curry's threes from last season" came back as
+# `fingerprint` under two different prompt revisions, having routed correctly
+# only while the prompt happened to be a particular length.
+_FINGERPRINT_WORDS = re.compile(r"\bfinger\s?prints?\b|\bradar\b|\bnet\s?points?\b|\bplay[- ]types?\b", re.IGNORECASE)
+_SHOT_WORDS = re.compile(r"\bshots?\b|\bthrees\b|\b3s\b|\b(?:3|three)[- ]?pointers?\b|\bjumpers?\b|\blayups?\b|\bdunks?\b|\bchart\b", re.IGNORECASE)
+
+# A per-game threshold, stated in the question ("scores 30 points", "36 plus
+# points", "40 point games"). "3 point" is a shot type, not a threshold of three.
+_THRESHOLD = re.compile(r"\b(\d{1,3})\s*(?:\+|plus|or\s+more)?\s*(points?|pts|rebounds?|boards|assists?|steals?|blocks?|turnovers?|threes|3s)\b", re.IGNORECASE)
+_THRESHOLD_INTENTS = frozenset({"threshold_count", "record_when", "streak"})
+
+
+def _threshold_from_text(question: str) -> int | None:
+    """The first per-game threshold the question states, or None."""
+    for match in _THRESHOLD.finditer(question):
+        number = int(match.group(1))
+        if number == 3 and match.group(2).casefold().startswith("point"):
+            continue
+        if number >= 1:
+            return number
+    return None
+
 
 # How a question names one end of a season's games. Deliberately tight - the
 # ordinal word has to sit directly on "game(s)", optionally across a count
@@ -637,6 +678,13 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
         raw["intent"] = "team_leaderboard" if raw["intent"] == "leaderboard" else "other"
     if raw["intent"] == "threshold_count" and _RECORD.search(question):
         raw["intent"] = "record_when"
+    if raw["intent"] == "fingerprint" and not _FINGERPRINT_WORDS.search(question):
+        raw["intent"] = "shot_chart" if _SHOT_WORDS.search(question) else "other"
+    if raw["intent"] == "player_stat" and _CAREER_HIGH.search(question):
+        # A career high is one game's total, which player_stat never reports.
+        # Measured: "Diabate career high assists" was answered with his assists
+        # per game.
+        raw["intent"] = "single_game_high"
 
     # A blank string is how the model says "no value" for a required slot;
     # dropping it here keeps every template's `slots.get(...) or default`
@@ -649,6 +697,17 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     else:
         slots["season"] = resolved_season
     slots["season_type"] = _validate_season_type(question)
+    if raw["intent"] in _THRESHOLD_INTENTS and not isinstance(slots.get("threshold"), int):
+        # Measured: "Sixers record when Embiid scores 30 points" came back with
+        # the intent right and no threshold at all.
+        threshold = _threshold_from_text(question)
+        if threshold is not None:
+            slots["threshold"] = threshold
+    if raw["intent"] == "threshold_count" and not isinstance(slots.get("threshold"), int):
+        # A count of games needs a threshold. Without one, "who has the most
+        # threes" is a season ranking - measured, it arrived here with none and
+        # fell through.
+        raw["intent"] = "leaderboard"
     # The scoping slots below are read from the question and never asked of the
     # model: none is in ROUTER_SCHEMA, so adding them changed no grammar and can
     # have moved no other question's routing. A template that cannot honour one

@@ -74,6 +74,39 @@ had no published version to be compatible with.
     the question's one named player is restored wherever that template needs
     one.
 
+- **The router knows the new question shapes, at the smallest prompt that
+  kept every existing question in place.** `ROUTER_PROMPT` gained the eight new
+  intents and five worked examples: a game log against one opponent, splits,
+  with/without a teammate, two players' matchup, and a streak.
+
+  The first version of this, with a longer line per intent and twelve examples,
+  was measured and cut back. It added about 720 tokens, raised the router's
+  mean latency from 2.3 to 3.4 seconds, and broke three questions that had
+  routed correctly on every earlier run, all of them fingerprint or shot-chart
+  questions about Curry. That is the prompt-length sensitivity AGENTS.md
+  describes. The shipped version adds about 300 tokens.
+
+  Four facts the question states outright are now read from its text in
+  `route()`, which costs no tokens and cannot move another question's slots:
+
+  - A fingerprint is only a fingerprint when the question names one.
+    "Plot Curry's threes from last season" routed to `fingerprint` under both
+    prompt revisions.
+  - A per-game threshold the model left out ("scores 30 points", "36 plus
+    points") is read from the question; "3 point" is a shot type, not a
+    threshold of three.
+  - A "career high" asked with `player_stat` goes to `single_game_high`.
+  - A `threshold_count` still without a threshold is a season ranking and goes
+    to `leaderboard`. "who has the most threes" arrived with none and fell
+    through.
+
+  `check_routing.py` now applies `scope_from_question` the way `agent.py`
+  does, so it asserts on the slots a template actually sees, and it gained
+  17 cases from real StatMuse queries. On the shipped prompt 70 of its 71
+  cases passed; the 71st asserted the literal team string the model chose
+  ("Lakers" against "Los Angeles Lakers", the same team), which AGENTS.md
+  says a case must not do, and now asserts only what changes the answer.
+
 - **1993-94 player games were listed four times.** `player_game_log` joined
   `games` and `player_advanced_stats` on `event_id` alone, and ESPN files the
   1993-94 season's 1,185 events under both 1993 and 1994 (the phantom in
