@@ -8,6 +8,11 @@ For how the system is designed — the three stages, the router/agent split, why
 templates instead of better prompting — read `docs/architecture.rst`. That is
 the source of truth for design, and this file does not restate it.
 
+What is known to be wrong, missing or unverified is in `ISSUES.md`, ranked by
+priority. Read the entries for the area you are about to touch, and add what
+you find to it, including findings that are not part of your task (see
+"Recording findings").
+
 ## Before you commit
 
 ```bash
@@ -320,6 +325,46 @@ seasons already on disk makes no request and rebuilds nothing (0.4s against
   rewriting 2026's file. It used to, and that one rewrite is what made an
   "everything is already complete" run rebuild the entire warehouse.
 
+**A change that alters warehouse data is not finished until the warehouse
+holds it.** This covers a parser fix, a new or reshaped view, a new column, a
+corrected derived table, and a fetch fix. A fix merged but never loaded looks
+done in the code and stays wrong in every answer. The view fixes in `e1cc1c8`
+were in the code for hours, and reached the warehouse only when someone ran a
+separate `data load`. Do both halves:
+
+- **The fetch path must produce the corrected data by itself.** A fresh
+  `association data pull` of an affected season has to come out right with no
+  manual step. Add a test that pins the correction, with a fixture in the shape
+  of the real bad row.
+- **Backfill what is already on disk and in the warehouse.** Which command
+  depends on where the fix lives:
+  - **Anything built at load time** (views and derived tables in
+    `fetch/warehouse.py`): run `association data load`, or
+    `association data load --tables <names>` for a subset. It rebuilds from the
+    Parquet already on disk.
+  - **A parser or fetch fix:** the Parquet on disk was written by the old code,
+    so a load alone changes nothing. Re-fetch the affected seasons with
+    `association data pull --seasons <range> --force`, adding `--include-pbp`
+    when plays or shots are involved. The pull reloads the tables it wrote.
+  - **Anything narrower** (a list of event ids, one athlete's career): a
+    one-off script is fine, **but only if it runs the real code path**. It must
+    fetch through the `Pipeline` fetch methods, write through `_write_rows`,
+    and load through `warehouse.build` or `association data load`. Commit it
+    under `scripts/` so the backfill can be re-run.
+
+  Never patch a Parquet file or the DuckDB file directly, and never run an
+  `UPDATE` against the warehouse. The next `data load` rebuilds from Parquet
+  and silently undoes it, and a fresh pull would not reproduce it.
+
+  Both commands default to `./data/parquet` and `./nba.duckdb`, relative to
+  the current directory, and a worktree has neither. Run them from the main
+  checkout, or pass `--data-dir` and `--db-path` pointing at its files.
+- **Then re-measure** against the rebuilt warehouse, with the query that found
+  the problem. Update or delete the `ISSUES.md` entry to match. If you cannot
+  run the backfill yourself (no network, or no permission to write the
+  warehouse), say so in your report. Give the exact command, and leave the
+  `ISSUES.md` entry open with "fixed in code, not yet backfilled".
+
 **Fetching is latency-bound, and the fetch path is threaded.** Profiling a live
 pull put 96% of the main thread inside one curl call, at 5% CPU and zero bytes
 read from disk; ESPN answers a cold game summary in 250-400ms against a 12ms
@@ -579,7 +624,9 @@ everything about it is constrained by things measured elsewhere in this file.
   about 87% of ESPN's own season totals, and a streak or a with/without split
   cannot tell whether a player sat those games out. The templates that read
   per-game rows say how many games they could not see; a refetch of those games
-  has not been tried.
+  has not been tried. It is not scattered: it is every Chicago and New Orleans
+  game in those six seasons, including their playoff series (1,025 events), and
+  their plays and shots survived. `ISSUES.md` has the numbers and the next step.
 - Query connections to DuckDB are **read-only**, as a hard guarantee.
 
 **Those floors are enforced, not just documented.** `association/coverage.py`
@@ -666,6 +713,45 @@ The habits that caught real bugs here, in rough order of how often they paid:
 - **A DuckDB `SET` is per-connection.** A test asserting one has to observe it
   on the connection the code under test used; a freshly opened connection
   reports the default and the assertion looks like a real failure.
+
+## Recording findings
+
+**Anything that needs follow-up goes in `ISSUES.md`, including what you were
+not looking for.** Most of this project's data problems were found in passing:
+the empty 2013-18 box scores turned up while building a streak template, and
+the missing 2000 and 2001 playoff games while checking coverage floors. Each
+then lived only in a chat report. A finding that is not in the file is one the
+next agent has to rediscover from scratch, or never does.
+
+- **What counts.** A data inconsistency (numbers that disagree with a sibling
+  column, with the source, or with reality), a bug or wrong-answer risk you did
+  not fix, a question shape that is refused or mis-routed, a tooling or gate
+  problem, a doc that is wrong. Not ideas, not features nobody has asked for,
+  and not something you fix in the same change.
+- **Record it before you finish, even when it is out of scope.** Measure first
+  where it is cheap: a count and a season beat "looks off". An entry needs a
+  title, the evidence (the query or `file:line`, with numbers), what a user
+  would see (a wrong answer, a refusal, or nothing), a next step, and a
+  priority.
+- **Rank by what a user sees, not by how interesting it is.** The priority
+  definitions are at the top of `ISSUES.md`. A wrong answer delivered fluently
+  outranks a refusal, and a refusal outranks a gap nobody asks about. That is
+  the ordering of the failure shape at the top of this file.
+- **Fixing an issue removes it.** Delete the entry in the same commit as the
+  fix and say what changed in `CHANGES.md`. If the fix is partial, rewrite the
+  entry to what remains. The file is the list of what is still open, not a
+  history.
+- **Subagents record findings too, and their prompt has to say so.** An agent
+  reports what it was asked about and nothing else, so every prompt that
+  dispatches one must ask for incidental findings. Two cases:
+  - An agent working in its own worktree appends to its copy of `ISSUES.md`,
+    and the entries merge with the rest of its branch. Two branches adding
+    entries conflict on adjacent lines; keep both sides.
+  - A read-only agent (research, audits) ends its report with a "Findings for
+    ISSUES.md" section, and the agent that dispatched it transcribes them.
+
+  Either way, whoever merges the work re-reads the file afterwards and
+  re-ranks it.
 
 ## Releasing
 
