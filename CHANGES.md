@@ -15,6 +15,70 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **An ambiguous name is narrowed to the season being asked about before
+  anybody is asked which one was meant.** "How did curry do against the
+  celtics this year" answered `'Curry' matches more than one player - did you
+  mean Dell Curry, Eddy Curry, JamesOn Curry, Michael Curry or Seth Curry (1
+  others also match)?`. The warehouse holds six Currys, the list was sorted by
+  name and the sentence names five, so the one it left out was Stephen - and
+  four of the five it did name never played in 2026. It now asks `did you mean
+  Seth Curry or Stephen Curry?`, the two who did.
+
+  Every template that resolves a player (`player_stat`, `player_compare`,
+  `player_history`, `player_netpoints`, `game_log`, `shot_distance`,
+  `single_game_high`) now narrows the candidates to those with a row in the
+  table its answer is read from, for the season it will answer about - the
+  rule charts already followed. It eliminates and never chooses: one survivor
+  is the answer because nobody else has a row to answer from, and two or more
+  are asked about, as Seth and Stephen still are. Three edges are deliberate.
+  A name matched in full is not narrowed, so "Gary Payton" in 2026 is still
+  told the father has no numbers rather than given his son's line. When
+  narrowing eliminates everybody, the question is asked exactly as before. And
+  `player_history` narrows over every season up to the one it is anchored at,
+  since a history through 2026 still has Dell Curry's seasons to answer with.
+  `player_netpoints` keeps a candidate with a row in either of its two tables,
+  which disagree about who they hold (63 player-seasons are in the totals
+  only, 8 in the fingerprint only). `_resolved_player` now requires the table,
+  so a template cannot resolve a name without saying where its answer comes
+  from - mypy refuses it.
+
+  The cap was the other half. `find_players` returns the first ten matches
+  alphabetically, and 71 name words match more than ten players ("Williams"
+  matches 62), so narrowing that page was choosing by alphabet - which the
+  chart path had been doing. In 2026's shot charts, 23 names drew one player
+  while others matching the name also had shots on a later page: "Davis" drew
+  Anthony Davis with JD Davison, Nigel Hayes-Davis and Trayce Jackson-Davis
+  eligible, and in the fingerprints "Brown" drew Bruce Brown with two more
+  Browns who had one. Narrowing now reads every match (`find_players(...,
+  limit=None)`), on both paths, and those names ask. A clarification also
+  names every candidate from the season asked about rather than counting any
+  away (`Ambiguous.active`, passed to `clarification`) - 2026 has 14 players
+  surnamed Williams, and all of them are named - and a history names whoever
+  reached its last season first, so "Curry's scoring over the last 4 seasons"
+  lists Seth and Stephen ahead of Dell. What the "others also match" count
+  covers is now only ever players who could not be the answer, and it says "1
+  other" when there is one.
+
+  Measured against the warehouse, over 6,325 player names, name words and
+  nicknames under nine template scopes: every one of the 5,349 that resolve to
+  a single player today resolves to the same player. Of the 976 that ask, for
+  2026 season lines 276 now resolve to the one candidate with a row, 191 ask
+  about fewer players, 484 have nobody in the season and ask as before, and 25
+  ask about as many or more - players the first page had hidden. No
+  clarification in any scope counts away a player from the season asked
+  about. Over the `check_routing.py` corpus, routed once and answered before
+  and after through the agent's own slot pipeline, one answer changed - "What
+  was Curry's first game of the season?" still asks, now between Seth and
+  Stephen - and every name that resolved still does. Charts do change names
+  that resolve today, and on purpose: besides the 23 above, 8 names in 2026's
+  shot charts drew a best match with no shots while several matches had them
+  ("Bob", "Marcus", "Scott") and now ask, and 4 draw the one match with data
+  instead of a best match without.
+
+  The extra work runs only for a name that matches more than one player: 2-9ms
+  more for one season ("Curry" to "Williams") and up to 16ms for a history
+  span, warm, against a question that spends about 3s in the router.
+
 - **`--workers` now reaches the per-game NetPoints fetch.** It was the last
   serial loop in the pipeline, and it is S3 round trips end to end: measured
   on the tail of the re-derivation below, 12 dates a second through the pool

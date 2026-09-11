@@ -14,7 +14,7 @@ import duckdb
 
 from .answer import Artifact, RenderResult
 from .court import render_court_html
-from .entities import Ambiguous, Availability, Entity, clarification, find_players, narrow_to_available, no_match
+from .entities import MAX_CANDIDATES, Ambiguous, Availability, Entity, clarification, find_players, narrow_to_available, no_match
 
 SHOT_AVAILABILITY = Availability("shot_chart")
 """Where a shot chart's rows live, for narrowing an ambiguous name to the
@@ -61,8 +61,17 @@ def resolve_chart_player(con: duckdb.DuckDBPyConnection, player_name: str, avail
        566 players with a 2026 fingerprint, 319 have a surname that matches
        somebody else and 221 surnames league-wide put a player with no
        fingerprint ahead of one who has it.
+
+       Every match is narrowed, not the first ``MAX_CANDIDATES``. Narrowing a
+       page cut by name drew Anthony Davis for "Davis" while JD Davison, Nigel
+       Hayes-Davis and Trayce Jackson-Davis also had 2026 shots, and 22 more
+       names did the same that season.
     """
-    candidates = find_players(con, player_name)
+    # Every match, not find_players' first page. Narrowing a page cut
+    # alphabetically chooses by name rather than eliminating: Anthony Davis was
+    # the only "Davis" on the first page with 2026 shots, and the three more
+    # who had them sorted past it.
+    candidates = find_players(con, player_name, limit=None)
     if not candidates:
         return None
     if len(candidates) > 1:
@@ -73,11 +82,16 @@ def resolve_chart_player(con: duckdb.DuckDBPyConnection, player_name: str, avail
         # season does hold - explains more than the question would. So it
         # narrows only where it discriminates, and otherwise leaves the old
         # best match in place to fail loudly.
+        if len(narrowed) > 1:
+            # Every survivor played in the season charted, so none may be
+            # counted away - unless no season was given, and nobody did.
+            return Ambiguous(query=player_name, candidates=[c.name for c in narrowed], active=0 if season is None else len(narrowed))
         if narrowed:
-            candidates = narrowed
-            if len(candidates) > 1:
-                return Ambiguous(query=player_name, candidates=[c.name for c in candidates])
-    return candidates[0], [c.name for c in candidates[1:]]
+            return narrowed[0], []
+    # The runners-up a failure message mentions are the page find_players has
+    # always returned, rather than every Williams in the warehouse.
+    shown = candidates[:MAX_CANDIDATES]
+    return shown[0], [c.name for c in shown[1:]]
 
 
 def render_shot_chart(
@@ -115,7 +129,7 @@ def render_shot_chart(
     if resolved is None:
         return RenderResult(no_match(con, player_name), None)
     if isinstance(resolved, Ambiguous):
-        return RenderResult(clarification(player_name, resolved.candidates), None)
+        return RenderResult(clarification(player_name, resolved.candidates, active=resolved.active), None)
     player, ambiguous = resolved
     return render_for_player(
         con,

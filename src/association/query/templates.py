@@ -23,7 +23,7 @@ from association.season import current_season
 
 from .answer import Artifact
 from .court import HOOP_X, HOOP_Y
-from .entities import Ambiguous, Entity, clarification, no_match, resolve_player, resolve_team, suggest_players, suggestion
+from .entities import Ambiguous, Availability, Entity, clarification, no_match, resolve_player, resolve_team, suggest_players, suggestion
 from .fingerprint import FINGERPRINT_AVAILABILITY, FINGERPRINT_VIEWS, GAME_FINGERPRINT_AVAILABILITY, FingerprintUnavailable, render_for_players
 from .leaderboard import LeaderboardError, resolve_metric, run_leaderboard
 from .metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS
@@ -280,28 +280,62 @@ def _clamp_limit(limit: Any, default: int = DEFAULT_LIMIT) -> int:
 # ---- resolving a name to an entity, shared by every template below ----
 
 
-def _clarify(text: str, candidates: list[str], kind: str = "player") -> TemplateResult:
+def _clarify(text: str, candidates: list[str], kind: str = "player", active: int = 0) -> TemplateResult:
     """A handled outcome, not a fall-through: the template knows exactly what
     is ambiguous, so it says so instead of passing the problem along.
 
     The sentence itself is entities.clarification, because the chart entry
     points reach the same ambiguity without going through a template and have
     to phrase it identically."""
-    return TemplateResult(data={"ambiguous": text, "candidates": candidates}, answer=clarification(text, candidates, kind))
+    return TemplateResult(data={"ambiguous": text, "candidates": candidates}, answer=clarification(text, candidates, kind, active))
 
 
-def _resolved_player(con: duckdb.DuckDBPyConnection, text: Any, missing: str = "no player named") -> Entity | TemplateResult:
+# Where each player template's answer is read from, for narrowing an ambiguous
+# name to the candidates with a row there. The tables TEMPLATE_SOURCES
+# declares, or the per-game table a one-game answer reads instead - so a
+# candidate these eliminate is one whose answer would have been empty.
+_SEASON_LINES = Availability("player_season_stats_deduped")
+_GAME_LOGS = Availability("player_game_log")
+# player_netpoints reads the season totals AND the fingerprint, and the two
+# disagree about who they hold: measured, 63 player-seasons are in the first
+# only and 8 in the second only. A row in either is an answer.
+_NET_POINTS = (Availability("net_points_player"), FINGERPRINT_AVAILABILITY)
+_NET_POINTS_GAMES = Availability("net_points_player_game")
+
+
+def _resolved_player(
+    con: duckdb.DuckDBPyConnection,
+    text: Any,
+    missing: str = "no player named",
+    *,
+    available: Availability | tuple[Availability, ...],
+    season: int | None = None,
+    through: int | None = None,
+) -> Entity | TemplateResult:
     """One player, a clarifying question, or a refusal - the player counterpart
     to _resolved_team. Returning the TemplateResult rather than raising it keeps
     ambiguity a handled outcome: the caller answers with the question instead of
-    falling through to an agent that would guess. Callers must forward it."""
+    falling through to an agent that would guess. Callers must forward it.
+
+    `available` is required, so no template can resolve a name without saying
+    where its answer comes from: an ambiguous name is narrowed to the players
+    with a row there, for `season` or any season up to `through`, before
+    anybody is asked about. See entities.resolve_player - "Curry" this season
+    asked about four men who never played in it and left out Stephen."""
     if not isinstance(text, str) or not text.strip():
         raise TemplateUnsupported(missing)
-    match resolve_player(con, text):
+    try:
+        resolution = resolve_player(con, text, available, season, through)
+    except duckdb.CatalogException:
+        # The NetPoints tables exist only if that opt-in fetch was run. With
+        # nothing to narrow against the name is asked about as it always was,
+        # and the template's own query reports the missing table.
+        resolution = resolve_player(con, text)
+    match resolution:
         case Entity() as player:
             return player
-        case Ambiguous(candidates=candidates):
-            return _clarify(text, candidates)
+        case Ambiguous(candidates=candidates, active=active):
+            return _clarify(text, candidates, active=active)
         case _:
             # A near miss is answered rather than passed along, for the same
             # reason ambiguity is: the agent would resolve the same name
@@ -584,18 +618,20 @@ def player_netpoints(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     guard that turns a wrong answer into a slow one needs something to fall
     through TO."""
     con = ctx.con
-    player = _resolved_player(con, slots.get("player"), "player_netpoints needs a player name")
-    if isinstance(player, TemplateResult):
-        return player
-
+    # Settled before the name is resolved: the season is what narrows an
+    # ambiguous name to the players with NetPoints in it.
     season = slots.get("season") or current_season()
     season_type = slots.get("season_type") or 2
+    one_game = slots.get("order") in ("recent", "first")
+    player = _resolved_player(con, slots.get("player"), "player_netpoints needs a player name", available=_NET_POINTS_GAMES if one_game else _NET_POINTS, season=season)
+    if isinstance(player, TemplateResult):
+        return player
 
     # "NetPoints from his LAST regular season game" was answered with the whole
     # season - 43 games - because nothing scoped it. Per-game NetPoints live in
     # their own table, with no fingerprint breakdown, so this is a different
     # answer rather than a filtered one.
-    if slots.get("order") in ("recent", "first"):
+    if one_game:
         return _single_game_netpoints(ctx, player, season, season_type, slots["order"])
 
     # net_points_player uses its OWN string season_type; filtering it with the
@@ -777,7 +813,13 @@ def player_history(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
     league. Distinct from the other gaps here: a missing DIMENSION cutting
     across the shapes that existed, not a missing shape."""
     con = ctx.con
-    player = _resolved_player(con, slots.get("player"), "player_history needs a player name")
+    # A named season anchors the range's END rather than replacing it, so
+    # "3pt% over the 4 seasons through 2024" still spans four rows.
+    latest = slots.get("season") or current_season()
+    # Narrowed over every season the history could read, not the last N: the
+    # query takes each player's last seasons up to `latest` wherever they fall,
+    # so a player who retired a decade earlier still has an answer here.
+    player = _resolved_player(con, slots.get("player"), "player_history needs a player name", available=_SEASON_LINES, through=latest)
     if isinstance(player, TemplateResult):
         return player
 
@@ -789,9 +831,6 @@ def player_history(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
     season_type = slots.get("season_type") or 2
     limit = slots.get("limit")
     seasons = limit if isinstance(limit, int) and 1 <= limit <= MAX_HISTORY_SEASONS else DEFAULT_HISTORY_SEASONS
-    # A named season anchors the range's END rather than replacing it, so
-    # "3pt% over the 4 seasons through 2024" still spans four rows.
-    latest = slots.get("season") or current_season()
 
     rows = con.execute(
         f"SELECT season, gamesPlayed, {', '.join(c for c, _ in columns)} FROM player_season_stats_deduped WHERE athlete_id = ? AND season_type = ? AND season <= ? ORDER BY season DESC LIMIT ?",
@@ -869,11 +908,11 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     tiebreak was measured and rejected (no threshold separates Luka Doncic from
     Luka Garza without also wrongly resolving "Brown")."""
     con = ctx.con
-    player = _resolved_player(con, slots.get("player"), "player_stat needs a player name")
+    season = slots.get("season") or current_season()
+    player = _resolved_player(con, slots.get("player"), "player_stat needs a player name", available=_SEASON_LINES, season=season)
     if isinstance(player, TemplateResult):
         return player
 
-    season = slots.get("season") or current_season()
     season_type = slots.get("season_type") or 2
     wanted = _wanted_stats(slots)
 
@@ -1026,7 +1065,7 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         rows = con.execute(f"{sql} ORDER BY g.date {'ASC' if ascending else 'DESC'} LIMIT ?", [*params, limit]).fetchall()
         return _team_game_log_result(team.name, period, rows, ascending, date)
 
-    player = _resolved_player(con, slots.get("player"), "game_log needs a team or a player")
+    player = _resolved_player(con, slots.get("player"), "game_log needs a team or a player", available=_GAME_LOGS, season=season)
     if isinstance(player, TemplateResult):
         return player
 
@@ -1112,7 +1151,7 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         message = no_match(ctx.con, name)
         return TemplateResult(data={"message": message}, answer=message)
     if isinstance(resolved, Ambiguous):
-        return _clarify(name, resolved.candidates)
+        return _clarify(name, resolved.candidates, active=resolved.active)
     player, ambiguous = resolved
 
     event_id = None
@@ -1196,7 +1235,7 @@ def fingerprint(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
             message = no_match(ctx.con, name)
             return TemplateResult(data={"message": message}, answer=message)
         if isinstance(found, Ambiguous):
-            return _clarify(name, found.candidates)
+            return _clarify(name, found.candidates, active=found.active)
         player, also = found
         # The same name twice would draw one polygon over itself and report a
         # comparison; deduped on the RESOLVED id, since "SGA" and "Gilgeous"
@@ -1258,11 +1297,11 @@ def shot_distance(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult
     current-season three-point figure (real answer 23.6). A fixed formula over
     known columns is template work."""
     con = ctx.con
-    player = _resolved_player(con, slots.get("player"), "shot_distance needs a player name")
+    season = slots.get("season") or current_season()
+    player = _resolved_player(con, slots.get("player"), "shot_distance needs a player name", available=SHOT_AVAILABILITY, season=season)
     if isinstance(player, TemplateResult):
         return player
 
-    season = slots.get("season") or current_season()
     season_type = slots.get("season_type") or 2
     shot_value = _shot_value(slots)
     if shot_value == 1:
@@ -1326,7 +1365,7 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     named_player: Entity | None = None
     # The player slot is optional here: unset means "the league".
     if isinstance(text, str) and text.strip():
-        resolved = _resolved_player(ctx.con, text)
+        resolved = _resolved_player(ctx.con, text, available=_GAME_LOGS, season=season)
         if isinstance(resolved, TemplateResult):
             return resolved
         named_player = resolved
@@ -1591,9 +1630,10 @@ def player_compare(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
     if not isinstance(names, list) or len({n for n in names if isinstance(n, str) and n.strip()}) < 2:
         raise TemplateUnsupported("player_compare needs at least two distinct player names")
 
+    season = slots.get("season") or current_season()
     resolved: list[Entity] = []
     for name in names[:MAX_COMPARED_PLAYERS]:
-        player = _resolved_player(con, name)
+        player = _resolved_player(con, name, available=_SEASON_LINES, season=season)
         if isinstance(player, TemplateResult):
             return player
         if player.id not in {p.id for p in resolved}:
@@ -1601,7 +1641,6 @@ def player_compare(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
     if len(resolved) < 2:
         raise TemplateUnsupported("the named players resolved to the same person")
 
-    season = slots.get("season") or current_season()
     season_type = slots.get("season_type") or 2
     wanted = _wanted_stats(slots, COMPARE_STAT_LINE)
     columns = ["gamesPlayed"] + [PLAYER_STAT_COLUMNS[name][0] for name in wanted]
