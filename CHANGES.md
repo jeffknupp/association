@@ -14,8 +14,7 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
-## Unreleased
-
+## 2.1.0 - 2026-09-11
 The largest release so far on the query side. It adds eight new kinds of
 question, and most existing ones can now be narrowed the way real questions
 narrow them. The headline changes are below; each is detailed in its entry
