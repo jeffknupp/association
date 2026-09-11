@@ -57,7 +57,7 @@ from .conditions import (
     _with_without_group,
 )
 from .court import HAS_POSITION_SQL, SHOT_DISTANCE_SQL
-from .entities import Ambiguous, Entity, clarification, find_players, no_match, resolve_player, resolve_team, suggest_players, suggestion
+from .entities import MAX_CANDIDATES, Ambiguous, Availability, Entity, clarification, find_players, narrow_to_available, no_match, resolve_player, resolve_team, suggest_players, suggestion
 from .fingerprint import FINGERPRINT_AVAILABILITY, FINGERPRINT_VIEWS, GAME_FINGERPRINT_AVAILABILITY, FingerprintUnavailable, render_for_players
 from .leaderboard import SEASON_TOTAL_OF, LeaderboardError, not_a_postseason_copy, resolve_metric, run_career_leaderboard, run_leaderboard
 from .metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS
@@ -450,17 +450,35 @@ def _clarify(text: str, candidates: list[str], kind: str = "player") -> Template
     return TemplateResult(data={"ambiguous": text, "candidates": candidates}, answer=clarification(text, candidates, kind))
 
 
-def _resolved_player(con: duckdb.DuckDBPyConnection, text: Any, missing: str = "no player named") -> Entity | TemplateResult:
+def _resolved_player(con: duckdb.DuckDBPyConnection, text: Any, missing: str = "no player named", *, available: Availability | None = None, season: int | None = None) -> Entity | TemplateResult:
     """One player, a clarifying question, or a refusal - the player counterpart
     to _resolved_team. Returning the TemplateResult rather than raising it keeps
     ambiguity a handled outcome: the caller answers with the question instead of
-    falling through to an agent that would guess. Callers must forward it."""
+    falling through to an agent that would guess. Callers must forward it.
+
+    With ``available``, an ambiguous name is first narrowed to the candidates
+    with a row in that table for ``season`` (any season when None) - the
+    elimination resolve_chart_player does, never a preference between two who
+    both have one. Where it eliminates everybody, the question is asked about
+    all of them, as it was before: answering for a player with no games at all
+    would be a sentence about the wrong missing fact."""
     if not isinstance(text, str) or not text.strip():
         raise TemplateUnsupported(missing)
     match resolve_player(con, text):
         case Entity() as player:
             return player
         case Ambiguous(candidates=candidates):
+            # Only when the candidates are the whole list. find_players stops at
+            # MAX_CANDIDATES, alphabetically, so a list that reaches it may be
+            # missing the player meant, and a lone survivor of it is not the
+            # lone survivor: measured, "Williams" in 2023 would have answered
+            # Alondes Williams, where 14 players the name matches played.
+            if available is not None and len(candidates) < MAX_CANDIDATES:
+                narrowed = narrow_to_available(con, find_players(con, text), available, season)
+                if len(narrowed) == 1:
+                    return narrowed[0]
+                if narrowed:
+                    return _clarify(text, [c.name for c in narrowed])
             return _clarify(text, candidates)
         case _:
             # A near miss is answered rather than passed along, for the same
@@ -609,6 +627,10 @@ def _empty_note(found: tuple[int, int | None, int | None], name: str | None, con
 # tip's date only between midnight and 1am Eastern, when no game starts.
 _EASTERN_SHIFT = timedelta(hours=5)
 
+# Where a count of a player's games is read from, for narrowing a name to the
+# players who could have any.
+_BOX_SCORE_AVAILABILITY = Availability("player_box_stats")
+
 
 def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """ "Most games with N+ of some stat" - the shape that motivated this split.
@@ -621,7 +643,8 @@ def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResu
        Honours ``span`` "career": every box score since 1993-94, for the league
        or for one player, saying which. A named player is resolved to one
        person; every player whose name contained the words used to be counted,
-       and the top one reported.
+       and the top one reported. An ambiguous name is narrowed to the players
+       with a box score in the season asked about before it is asked about.
     """
     con = ctx.con
     stat = slots.get("stat")
@@ -643,10 +666,12 @@ def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResu
     # Resolved to one person, as every other template does. This used to be an
     # ILIKE per word, so "Curry" counted Seth's games and Stephen's and reported
     # whichever had more - the prominence tiebreak AGENTS.md records as measured
-    # and rejected, applied silently.
+    # and rejected, applied silently. Narrowed by who has a box score in the
+    # season, NOT by who has a qualifying game: that would let the answer pick
+    # the player, which is the same tiebreak by another route.
     player: Entity | None = None
     if isinstance(slots.get("player"), str) and slots["player"].strip():
-        resolved = _resolved_player(con, slots["player"])
+        resolved = _resolved_player(con, slots["player"], available=_BOX_SCORE_AVAILABILITY, season=season)
         if isinstance(resolved, TemplateResult):
             return resolved
         player = resolved

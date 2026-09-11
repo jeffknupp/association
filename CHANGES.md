@@ -41,6 +41,17 @@ had no published version to be compatible with.
   team now moves to `opponent`, so `player_stat` and `game_log` answer over
   those games and every other template refuses. `head_to_head` and the team
   templates are untouched.
+- **`threshold_count` answers a surname only one player with games that season
+  has.** "How many 30-point games did Curry have last season" asked which
+  Curry was meant even when only one of them played; the name is now narrowed
+  to players with a box score in the season asked about, the way the charts
+  already narrowed it, and answered when exactly one is left. Two who both
+  played are still asked about, even when only one of them reached the
+  threshold - letting the count choose the player would be the prominence
+  tiebreak again. A name matching ten or more players is not narrowed at all:
+  the candidate list stops at ten, alphabetically, so the player meant may not
+  be in it, and "Williams" in 2023 would have answered Alondes Williams where
+  14 players matching the name played.
 - **True shooting and effective FG% leaderboards qualify on attempts, not
   games.** Twenty games was the whole qualifier, so "best true shooting
   percentage last season" was led by Kai Jones at .804 on 109 shots, with

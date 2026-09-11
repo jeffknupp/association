@@ -8,6 +8,7 @@ import duckdb
 import pytest
 
 from association.query import shotchart
+from association.query.entities import MAX_CANDIDATES
 from association.query.templates import (
     HONORED_SCOPING,
     SCOPING_SLOTS,
@@ -123,6 +124,56 @@ def test_answer_reports_an_empty_result_honestly(con: TemplateContext) -> None:
 def test_answer_for_a_single_named_player(con: TemplateContext) -> None:
     result = threshold_count(con, {"stat": "rebounds", "threshold": 20, "player": "Luka Doncic"})
     assert result.answer == f"Luka Doncic had 3 games with 20+ rebounds in the {current_season()} regular season."
+
+
+@pytest.fixture
+def currys(tmp_path: Path) -> TemplateContext:
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO players VALUES ('7','Stephen Curry'),('8','Seth Curry')")
+    c.execute(
+        "CREATE TABLE player_box_stats (athlete_id VARCHAR, season INTEGER, season_type INTEGER, points INTEGER, event_id VARCHAR, minutes INTEGER DEFAULT 30, did_not_play BOOLEAN DEFAULT FALSE)"
+    )
+    season = current_season()
+    rows: list[tuple[Any, ...]] = []
+    rows += [("7", season, 2, 35)] * 3 + [("8", season, 2, 31)] * 5  # both have 30-point games
+    rows += [("7", season - 1, 2, 32)] * 2  # only Stephen played
+    rows += [("7", season - 2, 2, 12)] * 4 + [("8", season - 2, 2, 30)]  # both played, only Seth reached 30
+    c.executemany("INSERT INTO player_box_stats (athlete_id, season, season_type, points) VALUES (?,?,?,?)", rows)
+    return TemplateContext(con=c, out_dir=tmp_path)
+
+
+@pytest.mark.parametrize("back", [0, 2, 3])
+def test_a_name_two_players_could_answer_to_is_asked_about(currys: TemplateContext, back: int) -> None:
+    """Asked, not counted for whichever Curry leads. Two seasons back only Seth
+    has a qualifying game, but both played: narrowing on the answer rather than
+    on who played would be the prominence tiebreak by another route. Three back
+    neither played, and the question is asked about both, as it always was."""
+    result = threshold_count(currys, {"stat": "points", "threshold": 30, "player": "Curry", "season": current_season() - back})
+    assert result.data == {"ambiguous": "Curry", "candidates": ["Seth Curry", "Stephen Curry"]}
+
+
+def test_a_name_only_one_player_with_games_that_season_answers_to_is_answered(currys: TemplateContext) -> None:
+    season = current_season() - 1
+    result = threshold_count(currys, {"stat": "points", "threshold": 30, "player": "Curry", "season": season})
+    assert result.answer == f"Stephen Curry had 2 games with 30+ points in the {season} regular season."
+
+
+def test_a_name_at_the_candidate_cap_is_asked_about_rather_than_narrowed(tmp_path: Path) -> None:
+    """find_players stops at MAX_CANDIDATES, alphabetically, so narrowing that
+    list can leave one survivor while a player past the cut played too - the
+    first Jones here, where the last one also has games. Measured on the real
+    warehouse, "Williams" in 2023 answered Alondes Williams."""
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.executemany("INSERT INTO players VALUES (?,?)", [(str(i), f"{chr(ord('A') + i)}ay Jones") for i in range(MAX_CANDIDATES + 1)])
+    c.execute(
+        "CREATE TABLE player_box_stats (athlete_id VARCHAR, season INTEGER, season_type INTEGER, points INTEGER, event_id VARCHAR, minutes INTEGER DEFAULT 30, did_not_play BOOLEAN DEFAULT FALSE)"
+    )
+    played = [("0", current_season(), 2, 30), (str(MAX_CANDIDATES), current_season(), 2, 30)]  # the first Jones, and the one the cap cuts off
+    c.executemany("INSERT INTO player_box_stats (athlete_id, season, season_type, points) VALUES (?,?,?,?)", played)
+    result = threshold_count(TemplateContext(con=c, out_dir=tmp_path), {"stat": "points", "threshold": 30, "player": "Jones"})
+    assert result.data.get("ambiguous") == "Jones", result.answer
 
 
 def test_answer_reports_a_tie_as_a_tie(con: TemplateContext) -> None:

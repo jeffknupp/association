@@ -75,19 +75,32 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   real fetch and load path ("Working on the fetch path" in `AGENTS.md`).
 
 ### Surname lookups rank alphabetically and cap at ten
-- **Found:** 2026-09-11, final corpus run; widened in the follow-up session
+- **Found:** 2026-09-11, final corpus run; widened in the follow-up session, and
+  again while narrowing `threshold_count` by season
 - **Evidence:** "how did curry do against the celtics this year" answers "did you
   mean Dell Curry, Eddy Curry, JamesOn Curry, Michael Curry or Seth Curry (1
   others also match)?". Stephen Curry is the one cut off. `find_players` returns
   the first 10 matches alphabetically, 71 name words match more than 10
   players, and "Davis" drew Anthony Davis's chart because of the alphabet.
+  - **Narrowing the truncated list picks a player.** `resolve_chart_player`
+    narrows those first 10 to the ones with rows in the season and draws a lone
+    survivor, but the player meant can be past the cut. Comparing
+    `narrow_to_available` over `find_players` at `MAX_CANDIDATES = 10` and
+    unbounded, over the 71 words and every season: one player is drawn where
+    several matching players have rows in 390 (word, season) pairs for
+    `shot_chart` and 122 for `net_points_player_fingerprint`. "Williams" draws
+    Alan Williams's 2016 shot chart (8 have one) and Alondes Williams's 2023
+    fingerprint (14 have one).
 - **User sees:** a clarification that hides the player meant, and in the chart
-  path a chart of the wrong player.
+  path a chart of the wrong player: "Williams shot chart 2016" draws Alan
+  Williams.
 - **Next step:** **fix in progress** in worktree `peaceful-goldberg-c807ba`. It is
   staged, not committed, on `5daa007`, and must be rebased on master, which is 20
-  commits ahead. `recursing-tesla-c2e356` holds an overlapping uncommitted change
-  to `threshold_count` only. `single_game_high` and `streak` still do not narrow
-  by season.
+  commits ahead. `threshold_count` now narrows by season, and only when fewer
+  than `MAX_CANDIDATES` match (`templates._resolved_player`), so a name at the
+  cap is still asked about and still cut alphabetically. The chart path needs
+  the same guard, or `find_players` has to stop truncating before anything
+  narrows it. `single_game_high` and `streak` still do not narrow by season.
 
 ### Per-game leaderboards for points, rebounds and assists apply no games minimum
 - **Found:** 2026-09-11, template work (agent D); measured in the issues audit
@@ -555,6 +568,18 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** log the raw router output for the question when ollama is
   free. If it is the matchup rule, stop "last season" counting as "last N
   games".
+
+### A player's single qualifying game reads "1 games"
+- **Found:** 2026-09-11, while narrowing `threshold_count` by season
+- **Evidence:** `templates._phrase_threshold_count` builds the named-player
+  sentence as `f"{player} had {games} {label} {when}."` with `label` always
+  "games with ...", so one game prints "Aay Jones had 1 games with 30+ points in
+  the 2026 regular season." (seen in a test fixture). The league-wide sentences
+  are not affected.
+- **User sees:** a plural typo in "how many 40-point games did Brunson have
+  this season" whenever the answer is one.
+- **Next step:** say "1 game with" when `games == 1`, and add the case to
+  `test_answer_for_a_single_named_player`.
 
 ### Data commands and check scripts default to paths a worktree does not have
 - **Found:** 2026-09-11, routing check, then repo audit
