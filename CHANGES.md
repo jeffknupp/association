@@ -15,7 +15,6 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
-
 - **Per-game leaderboards for points, rebounds, assists, steals and blocks
   apply a games minimum.** These five ranked every board unqualified, so the
   fewest games was the easiest route to the top of one: "who led the league in
@@ -40,6 +39,39 @@ had no published version to be compatible with.
   floors. That is what was missing: the omission read as deliberate, because a
   metric naming a qualifying column and no threshold is how this registry says
   "rank this unqualified".
+- **Fix: "without X and Y" was answered about X alone.** The router read only
+  the FIRST name out of a "without" or "with" phrase, so "Celtics record
+  without Tatum and Brown" arrived as `without='Tatum'` and "Lakers record
+  without Lebron and AD this season" as `'Lebron'`. The answer then covered the
+  games one of the named players missed and said nothing about the other: a
+  narrower question, answered fluently, with the dropped name nowhere on the
+  page. Real questions have this shape - the StatMuse feed has "hornets record
+  when brandon miller and lamelo and knueppel play this year".
+
+  `router._names_after` now reads every name the phrase holds, joined by "and",
+  "or", "nor" or a comma, and the three templates that honour `without`
+  (`with_without`, `game_log`, `player_stat`) require all of them: a game
+  counts as "without" only where NONE of the named players played, and
+  `with_without`'s "with" row only where every one of them did. The games in
+  between - one played, one sat - go on the other row, which is what stops a
+  two-player question being answered about one player. `with_without` counts
+  only the time the named players were all on the same team, as it already did
+  for one, and its rows name which side is which ("Tatum and Brown out"
+  against "Tatum or Brown played").
+
+  Read out of the question text, so `ROUTER_PROMPT` and `ROUTER_SCHEMA` are
+  unchanged (both hashed before and after) and no other question's routing can
+  have moved - the same lever `_validate_season` and `_validate_side` use. The
+  phrase parser also learned the question words ("how", "what", "who"...) as
+  name terminators, so "without Tatum and how many wins" still reads one name
+  rather than making a teammate out of the tail of the sentence.
+
+  The `without` and `with_player` slots are lists of names now; a bare string
+  is still read as one name (`entities.teammate_names`), since slot values are
+  advisory everywhere else here. `player_stat` and `game_log` report
+  `data["without"]` as a list, and `with_without` gained `data["teammates"]`.
+  `scripts/check_routing.py` gained the two-name case, and the `ISSUES.md` P1
+  entry it came from is closed.
 
 ## 2.1.0 - 2026-09-11
 The largest release so far on the query side. It adds eight new kinds of

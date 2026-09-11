@@ -57,7 +57,7 @@ from .conditions import (
     _with_without_group,
 )
 from .court import HAS_POSITION_SQL, SHOT_DISTANCE_SQL
-from .entities import Ambiguous, Availability, Entity, clarification, find_players, no_match, resolve_player, resolve_team, suggest_players, suggestion
+from .entities import Ambiguous, Availability, Entity, clarification, find_players, no_match, resolve_player, resolve_team, suggest_players, suggestion, teammate_names
 from .fingerprint import FINGERPRINT_AVAILABILITY, FINGERPRINT_VIEWS, GAME_FINGERPRINT_AVAILABILITY, FingerprintUnavailable, render_for_players
 from .leaderboard import SEASON_TOTAL_OF, LeaderboardError, not_a_postseason_copy, resolve_metric, run_career_leaderboard, run_leaderboard
 from .metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS
@@ -1384,6 +1384,13 @@ def _count_games(count: int) -> str:
     return f"{count:,} game{'' if count == 1 else 's'}"
 
 
+def _joined(names: list[str], word: str = "and") -> str:
+    """ "A", "A and B", "A, B and C" - a list of names as a sentence holds it."""
+    if len(names) <= 1:
+        return names[0] if names else ""
+    return f"{', '.join(names[:-1])} {word} {names[-1]}"
+
+
 def _rounded(value: Any) -> float | None:
     """A computed per-game figure to one decimal, as ESPN's stored ones are -
     "21.33 points" next to a stored "27.7" reads as a different unit."""
@@ -1489,8 +1496,11 @@ class _Narrowed:
     extra_params: list[Any] = field(default_factory=list)
     opponent: Entity | None = None
     venue: str | None = None
-    without: Entity | None = None
-    tenure: tuple[str, list[Any]] | None = None
+    # Every teammate the question named, with that teammate's tenure clause
+    # beside it. All of them at once: a game is "without" them only when none
+    # of them played it, so a dropped name would answer a wider question.
+    without: list[Entity] = field(default_factory=list)
+    tenure: list[tuple[str, list[Any]]] = field(default_factory=list)
     date: str | None = None
 
     def clauses(self, *, narrowed: bool = True, recorded: bool = True) -> tuple[str, list[Any]]:
@@ -1511,8 +1521,8 @@ class _Narrowed:
             parts.append(f"vs the {self.opponent.name}")
         if self.venue:
             parts.append("at home" if self.venue == "home" else "on the road")
-        if self.without is not None:
-            parts.append(f"without {self.without.name}")
+        if self.without:
+            parts.append(f"without {_joined([mate.name for mate in self.without])}")
         if self.date and dated:
             parts.append(f"on {self.date}")
         return "".join(f" {part}" for part in parts)
@@ -1544,13 +1554,19 @@ def _narrow_player_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _
         narrowed.venue = _checked_venue(venue)
         narrowed.extra.append("(g.home_team_id = pgl.team_id) = ?")
         narrowed.extra_params.append(narrowed.venue == "home")
-    if without:
-        mate = _resolved_teammate(con, without, player, span)
+    # Every name the question gave, required together: "without Tatum and
+    # Brown" is the games NEITHER played. Reading only the first answered a
+    # question about two players with the games one of them missed - fluently,
+    # and with nothing in the answer saying the other had been dropped.
+    for text in teammate_names(without):
+        mate = _resolved_teammate(con, text, player, span)
         if isinstance(mate, TemplateResult):
             return mate
-        narrowed.without = mate
-        narrowed.tenure = _tenure_clause(con, mate, span)
-        tenure, tenure_params = narrowed.tenure
+        if any(mate.id == held.id for held in narrowed.without):
+            continue  # the same man named twice narrows nothing
+        tenure, tenure_params = _tenure_clause(con, mate, span)
+        narrowed.without.append(mate)
+        narrowed.tenure.append((tenure, tenure_params))
         narrowed.extra += [tenure, f"NOT {_TEAMMATE_PLAYED}"]
         narrowed.extra_params += [*tenure_params, mate.id]
     return narrowed
@@ -1677,11 +1693,13 @@ def _no_narrowed_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _Sp
             return f"{player.name} has no {span.kind} box scores in the warehouse, which begin with the {_season_name(span.first)} season."
         return f"No {span.during()[len('in the ') :]} games found for {player.name}."
     during = span.during(first, last)
-    if narrowed.without is not None and narrowed.tenure is not None:
-        tenure, tenure_params = narrowed.tenure
+    # One at a time: with two teammates named, the fact that is missing is
+    # which of them never shared a team with him, and saying "one of them did
+    # not" sends the reader to look in the wrong place.
+    for mate, (tenure, tenure_params) in zip(narrowed.without, narrowed.tenure, strict=True):
         together = con.execute(f"SELECT COUNT(*) {_PLAYER_GAMES} WHERE {where} AND {tenure}", [*params, *tenure_params]).fetchone()
         if not together or not together[0]:
-            return f"{narrowed.without.name} was not {player.name}'s teammate in any of his {_count_games(total)} {during}."
+            return f"{mate.name} was not {player.name}'s teammate in any of his {_count_games(total)} {during}."
     return f"{player.name} played {_count_games(total)} {during}, none of them{narrowed.filters()}."
 
 
@@ -1690,10 +1708,10 @@ def _box_score_notes(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span
     taken to mean, the empty lines left out, and - unless ``career_note`` is
     off, as it is for one dated game - a career older than the box scores."""
     notes = []
-    if narrowed.without is not None:
-        notes.append(
-            f"Without {narrowed.without.name} means games he did not play while on the same team - a did-not-play entry, or no line in the box score at all, which is how most injuries appear."
-        )
+    if narrowed.without:
+        names = [mate.name for mate in narrowed.without]
+        who = "he did not play" if len(names) == 1 else ("neither of them played" if len(names) == 2 else "none of them played")
+        notes.append(f"Without {_joined(names)} means games {who} while on the same team - a did-not-play entry, or no line in the box score at all, which is how most injuries appear.")
     where, params = narrowed.clauses(recorded=False)
     row = con.execute(f"SELECT COUNT(*) {_PLAYER_GAMES} WHERE {where}", params).fetchone()
     empty = row[0] if row else 0
@@ -1765,6 +1783,10 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        Honors ``opponent``, ``venue``, ``without`` and ``span``, answers
        shooting percentages, and refuses a ``limit`` - a player's numbers over
        his last N games is a game log, which averages the games it lists.
+
+    .. versionchanged:: 2.2.0
+       ``without`` takes every teammate the question names and counts a game
+       only where none of them played.
     """
     con = ctx.con
     # Settled before the name is resolved: the span, and the table it is read
@@ -1878,7 +1900,7 @@ def _box_score_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span:
         "span": "career" if span.career else None,
         "opponent": narrowed.opponent.name if narrowed.opponent else None,
         "venue": narrowed.venue,
-        "without": narrowed.without.name if narrowed.without else None,
+        "without": [mate.name for mate in narrowed.without],
     }
     if row is None or not row[0]:
         message = _no_narrowed_games(con, player, span, narrowed)
@@ -2029,11 +2051,6 @@ def _tally(wins: int, losses: int) -> str:
 def _possessive(name: str) -> str:
     """ "the Knicks'" but "the Thunder's" - a team name is plural only sometimes."""
     return f"{name}'" if name.endswith("s") else f"{name}'s"
-
-
-def _joined(items: list[str]) -> str:
-    """ "a, b and c"."""
-    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + f" and {items[-1]}"
 
 
 VENUE_WORDS = {"home": "at home", "away": "on the road"}
@@ -2918,6 +2935,10 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        ``date`` as well as for display. A player's log leaves out games he did
        not play, shows the columns a named stat needs and ends with an average
        row; a ``threshold`` is refused rather than ignored.
+
+    .. versionchanged:: 2.2.0
+       ``without`` takes every teammate the question names and lists a game
+       only where none of them played.
     """
     con = ctx.con
     season_type = slots.get("season_type") or 2
@@ -3110,7 +3131,7 @@ def _player_game_log(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span
         "span": "career" if span.career and not narrowed.date else None,
         "opponent": narrowed.opponent.name if narrowed.opponent else None,
         "venue": narrowed.venue,
-        "without": narrowed.without.name if narrowed.without else None,
+        "without": [mate.name for mate in narrowed.without],
     }
     if not rows:
         message = _no_narrowed_games(con, player, span, narrowed)
@@ -4035,8 +4056,18 @@ def with_without(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     Both groups are shown side by side, because the comparison is the question.
     The subject is a team ("Celtics record without Tatum"), or a player whose
     team is implied ("jalen Duren stats without Cade Cunningham"). The
-    teammate comes from ``without`` or ``with_player`` (both read from the
+    teammates come from ``without`` or ``with_player`` (both read from the
     question by the router), or failing those from a second name.
+
+    **A question naming two teammates is divided by both of them.** "Celtics
+    record without Tatum and Brown" is the games NEITHER of them played, and
+    "record when A and B play" the games both did; the games where one played
+    and one sat belong to neither of those, and go on the other row. They have
+    to be answered together, because answering for whichever name came first
+    is the same fluent answer to a narrower question this module exists to
+    stop - and with the second name simply gone, nothing in the answer says
+    so. Only the time they were ALL on the same team is counted, for the same
+    reason one teammate's tenure is.
 
     **Only games inside the teammate's time on that team count.** StatMuse
     answers "Nets record without KD" all-time with 439-672: decades of Nets
@@ -4048,73 +4079,105 @@ def with_without(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     both "out", since a missed game appears both ways.
 
     .. versionadded:: 2.1.0
+
+    .. versionchanged:: 2.2.0
+       Divides by every teammate the question names at once, rather than by
+       the first of them.
     """
     con = ctx.con
-    without, with_player = slots.get("without"), slots.get("with_player")
-    asked_without = isinstance(without, str) and bool(without.strip())
-    mate_text: str | None = without if asked_without else with_player if isinstance(with_player, str) and with_player.strip() else None
+    mate_texts = teammate_names(slots.get("without"))
+    asked_without = bool(mate_texts)
+    if not asked_without:
+        mate_texts = teammate_names(slots.get("with_player"))
     players = slots.get("players")
     listed: list[Any] = players if isinstance(players, list) else []
     texts = list(dict.fromkeys(n.strip() for n in [slots.get("player"), *listed] if isinstance(n, str) and n.strip()))
     team = _optional_team(con, slots.get("team"))
     if isinstance(team, TemplateResult):
         return team
-    if mate_text is None:
+    if not mate_texts:
         # No "with" or "without" in the question, so the teammate is whichever
         # name is not the subject: the only name beside a team, or the second
         # of two. More than that is "record when A and B and C play", which
         # this does not answer.
         if team is not None and len(texts) == 1:
-            mate_text, texts = texts[0], []
+            mate_texts, texts = texts, []
         elif team is None and len(texts) == 2:
-            mate_text, texts = texts[1], texts[:1]
+            mate_texts, texts = texts[1:], texts[:1]
         else:
             raise TemplateUnsupported(f"with_without needs exactly one teammate, got {texts!r}")
 
     scope = _condition_scope(slots.get("season"), slots.get("span"), slots.get("season_type"), _PLAYER_GAME_TABLES)
-    mate = _resolved_player(con, mate_text, "with_without needs a teammate", available=_BOX_SCORES, season=scope.season, through=_career_end(scope.season))
-    if isinstance(mate, TemplateResult):
-        return mate
+    mates: list[Entity] = []
+    for text in mate_texts:
+        found = _resolved_player(con, text, "with_without needs a teammate", available=_BOX_SCORES, season=scope.season, through=_career_end(scope.season))
+        if isinstance(found, TemplateResult):
+            return found
+        if found.id not in {m.id for m in mates}:
+            mates.append(found)
     subjects: list[Entity] = []
     for text in texts:
         found = _resolved_player(con, text, available=_BOX_SCORES, season=scope.season, through=_career_end(scope.season))
         if isinstance(found, TemplateResult):
             return found
-        # The router often repeats the teammate in `player`; that is not a subject.
-        if found.id != mate.id and found.id not in {s.id for s in subjects}:
+        # The router often repeats a teammate in `player`; that is not a subject.
+        if found.id not in {m.id for m in mates} and found.id not in {s.id for s in subjects}:
             subjects.append(found)
     if len(subjects) > 1:
         raise TemplateUnsupported(f"with_without answers for one player, got {[s.name for s in subjects]}")
     subject = subjects[0] if subjects else None
 
-    mate_stints = _stints(con, mate.id, scope.phantoms)
-    windows = mate_stints if subject is None else _overlaps(_stints(con, subject.id, scope.phantoms), mate_stints)
+    named = [m.name for m in mates]
+    all_of, any_of = _joined(named), _joined(named, "or")
+    stints = [_stints(con, m.id, scope.phantoms) for m in mates]
+    absent = next((m for m, spells in zip(mates, stints, strict=True) if not spells), None)
+    if absent is not None:
+        # Named, rather than reported as "one of them": which player the
+        # warehouse has never seen is the fact that is missing.
+        message = f"{absent.name} has no box-score appearance in the warehouse, so there is no time on a team to count games in."
+        return TemplateResult(data={"teammate": absent.name, "teammates": named, "groups": []}, answer=message)
+    windows = stints[0]
+    for spells in stints[1:]:
+        windows = _overlaps(windows, spells)
+    if subject is not None:
+        windows = _overlaps(_stints(con, subject.id, scope.phantoms), windows)
     if team is not None:
         windows = [w for w in windows if w.team_id == team.id]
     on = f" the {team.name}" if team else ""
-    if not mate_stints:
-        message = f"{mate.name} has no box-score appearance in the warehouse, so there is no time on a team to count games in."
-        return TemplateResult(data={"teammate": mate.name, "groups": []}, answer=message)
     if not windows:
-        if subject is None:
-            message = f"{mate.name} never appeared in a box score for{on}, so there are no {team.name if team else ''} games with or without him to count."
+        if subject is None and len(mates) == 1:
+            message = f"{all_of} never appeared in a box score for{on}, so there are no {team.name if team else ''} games with or without him to count."
         else:
-            message = f"{subject.name} and {mate.name} were never on{on or ' the same team'} together in the box scores on record, so there are no games to divide by whether {mate.name} played."
-        return TemplateResult(data={"teammate": mate.name, "player": subject.name if subject else None, "groups": []}, answer=message)
+            whom = _joined([subject.name, *named]) if subject is not None else all_of
+            played_phrase = "he played" if len(mates) == 1 else "they all played"
+            message = f"{whom} were never on{on or ' the same team'} together in the box scores on record, so there are no games to divide by whether {played_phrase}."
+        return TemplateResult(data={"teammate": all_of, "teammates": named, "player": subject.name if subject else None, "groups": []}, answer=message)
 
-    games, unknown = _with_without_games(con, scope, windows, mate.id, subject.id if subject else None)
+    games, unknown = _with_without_games(con, scope, windows, [m.id for m in mates], subject.id if subject else None)
     team_names = _names(con, "teams", "team_id", {w.team_id for w in windows})
-    spells = "; ".join(f"{team_names[w.team_id]} {w.first} to {w.last}" for w in windows)
+    spell_text = "; ".join(f"{team_names[w.team_id]} {w.first} to {w.last}" for w in windows)
     if not games:
-        whose = f"{mate.name}'s time" if subject is None else f"The time {subject.name} and {mate.name} spent together"
-        message = f"{whose} on the team, as the box scores show it ({spells}), falls outside the {scope.label() if scope.season else 'seasons on record'}."
+        whose = f"{all_of}'s time" if subject is None else f"The time {_joined([subject.name, *named])} spent together"
+        message = f"{whose} on the team, as the box scores show it ({spell_text}), falls outside the {scope.label() if scope.season else 'seasons on record'}."
         if unknown:
             # Inside the time, but every game of it without a box score - a
             # different fact from the time missing the season altogether.
             message = (
-                f"All {unknown} games inside {whose[0].lower() + whose[1:]} on the team in the {scope.label()} have no box score in the warehouse, so whether {mate.name} played them cannot be told."
+                f"All {unknown} games inside {whose[0].lower() + whose[1:]} on the team in the {scope.label()} have no box score in the warehouse, so whether {all_of} played them cannot be told."
             )
-        return TemplateResult(data={"teammate": mate.name, "player": subject.name if subject else None, "groups": []}, answer=message)
+        return TemplateResult(data={"teammate": all_of, "teammates": named, "player": subject.name if subject else None, "groups": []}, answer=message)
+
+    def with_them(game: dict[str, Any]) -> bool:
+        """Whether a game belongs on the "played" row rather than the "out" one.
+
+        One teammate splits the games in two and there is nothing to decide.
+        Two do not: "without A and B" asks for the games NEITHER played, so a
+        game one of them played belongs on the other row, while "with A and B"
+        asks for the games BOTH played. Either way the question's own side is
+        exact and everything else is the remainder - which is what keeps a
+        two-player question from being answered about one of them.
+        """
+        return game["mates_played"] > 0 if asked_without else game["mates_played"] == len(mates)
 
     # Teams in the order the games were played, so a career reads forwards.
     team_order = list(dict.fromkeys(g["team_id"] for g in sorted(games, key=lambda g: g["day"])))
@@ -4123,31 +4186,37 @@ def with_without(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     rows: list[tuple[str, list[str]]] = []
     for team_id in team_order:
         for played in order:
-            chosen = [g for g in games if g["team_id"] == team_id and g["mate_played"] == played]
+            chosen = [g for g in games if g["team_id"] == team_id and with_them(g) == played]
             group = {"team": team_names[team_id], "teammate_played": played, **_with_without_group(chosen)}
             groups.append(group)
             cells = [str(group["games"]), f"{group['wins']}-{group['losses']}", _win_pct(group["wins"], group["games"]), _margin(group["avg_margin"])]
             if subject is not None:
                 cells += [str(group["player_games"]), *(_cell(group[k]) for k in ("minutes", "points", "rebounds", "assists", "fg_pct"))]
             prefix = f"{team_names[team_id]}, " if len(team_order) > 1 else ""
-            rows.append((f"{prefix}{mate.name} {'played' if played else 'out'}", cells))
+            # "A and B out" against "A or B played": the row label says which
+            # of the two it is, since with two names they are not opposites.
+            whom = (any_of if asked_without else all_of) if played else (all_of if asked_without else any_of)
+            rows.append((f"{prefix}{whom} {'played' if played else 'out'}", cells))
 
     label = scope.label(min(g["season"] for g in games), max(g["season"] for g in games))
     counted_teams = ", ".join(team_names[t] for t in team_order)
     headers = ["G", "W-L", "Win%", "Margin"]
     if subject is None:
-        title = f"{counted_teams} with and without {mate.name}, {label}:"
-        whose = f"{mate.name}'s time with the team"
+        title = f"{counted_teams} with and without {all_of}, {label}:"
+        whose = f"{all_of}'s time with the team" if len(mates) == 1 else f"the time {all_of} were on the team together"
     else:
-        title = f"{subject.name} with and without {mate.name} ({counted_teams}), {label}:"
-        whose = f"the time {subject.name} and {mate.name} were both on the team"
+        title = f"{subject.name} with and without {all_of} ({counted_teams}), {label}:"
+        whose = f"the time {subject.name} and {all_of} were both on the team" if len(mates) == 1 else f"the time {_joined([subject.name, *named])} were on the team together"
         headers += ["Played", "MIN", "PTS", "REB", "AST", "FG%"]
     used = [w for w in windows if any(g["team_id"] == w.team_id and w.first <= g["day"] <= w.last for g in games)]
-    spells = "; ".join(f"{team_names[w.team_id]} {w.first} to {w.last}" if len(team_order) > 1 else f"{w.first} to {w.last}" for w in used)
-    notes = [
-        f"Counted: games inside {whose} ({spells}), which runs from the first box score that lists him there to the last.",
-        f"Played means {mate.name} logged minutes; out is a DNP or no box-score row at all.",
-    ]
+    spell_text = "; ".join(f"{team_names[w.team_id]} {w.first} to {w.last}" if len(team_order) > 1 else f"{w.first} to {w.last}" for w in used)
+    notes = [f"Counted: games inside {whose} ({spell_text}), which runs from the first box score that lists {'him' if len(mates) == 1 else 'them'} there to the last."]
+    if len(mates) == 1:
+        notes.append(f"Played means {all_of} logged minutes; out is a DNP or no box-score row at all.")
+    elif asked_without:
+        notes.append(f"Out means none of {all_of} logged minutes - a DNP or no box-score row at all; the other row is every game at least one of them played.")
+    else:
+        notes.append(f"Played means every one of {all_of} logged minutes; the other row is every game at least one of them missed - a DNP or no box-score row at all.")
     if unknown:
         # A game with no box score is not a game he missed - see
         # conditions._box_missing - so it is on neither side, and said so.
@@ -4156,7 +4225,7 @@ def with_without(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         notes.append(f"G, W-L and margin are the team's; Played counts {subject.name}'s games, and his averages are over those.")
     answer = _table(title, headers, rows) + "\n" + " ".join(notes)
     tenure = [{"team": team_names[w.team_id], "from": str(w.first), "to": str(w.last)} for w in used]
-    data = {"teammate": mate.name, "player": subject.name if subject else None, "teams": [team_names[t] for t in team_order], "span": label, "groups": groups, "tenure": tenure}
+    data = {"teammate": all_of, "teammates": named, "player": subject.name if subject else None, "teams": [team_names[t] for t in team_order], "span": label, "groups": groups, "tenure": tenure}
     return TemplateResult(data=data, answer=answer)
 
 

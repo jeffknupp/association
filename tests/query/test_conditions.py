@@ -233,6 +233,38 @@ def test_with_and_without_is_counted_inside_his_time_on_the_team(league: Templat
     assert result.answer.splitlines()[2].startswith("Jayson Tatum out")  # a "without" question leads with it
 
 
+def test_without_two_teammates_counts_only_the_games_neither_played(league: TemplateContext) -> None:
+    """The measured bug: "Celtics record without Tatum and Brown" dropped the
+    second name and answered about Tatum alone (1-1 here). With Brown sitting
+    out e3 as well, e3 is the only game neither of them played."""
+    league.con.execute(
+        "INSERT INTO player_box_stats VALUES ('e3', ?, 2, ?, ?, ?, FALSE, FALSE, 10, 4, 2, 1, 0, 0, 0, 0, 2, 4, 0, 1)",
+        [S, BOS, PHI, JOURNEYMAN],
+    )  # e3 keeps a box score once Brown sits: without it the game counts as one nobody can tell
+    league.con.execute("UPDATE player_box_stats SET did_not_play = TRUE, minutes = NULL WHERE athlete_id = ? AND event_id = 'e3'", [BROWN])
+    result = with_without(league, _slots(team="Boston Celtics", without=["Tatum", "Jaylen Brown"]))
+    groups = {g["teammate_played"]: g for g in result.data["groups"]}
+    assert (groups[False]["wins"], groups[False]["losses"]) == (1, 0)  # e3
+    assert (groups[True]["wins"], groups[True]["losses"]) == (2, 2)  # e1, e2, e4, e7
+    assert result.data["teammates"] == ["Jayson Tatum", "Jaylen Brown"]
+    assert "Jayson Tatum and Jaylen Brown out" in result.answer
+
+
+def test_with_two_teammates_counts_only_the_games_both_played(league: TemplateContext) -> None:
+    """The mirror of the same rule: "record when A and B play" is the games
+    both of them played, not the games either did."""
+    league.con.execute(
+        "INSERT INTO player_box_stats VALUES ('e3', ?, 2, ?, ?, ?, FALSE, FALSE, 10, 4, 2, 1, 0, 0, 0, 0, 2, 4, 0, 1)",
+        [S, BOS, PHI, JOURNEYMAN],
+    )  # e3 keeps a box score once Brown sits: without it the game counts as one nobody can tell
+    league.con.execute("UPDATE player_box_stats SET did_not_play = TRUE, minutes = NULL WHERE athlete_id = ? AND event_id = 'e3'", [BROWN])
+    result = with_without(league, _slots(team="Boston Celtics", with_player=["Jayson Tatum", "Jaylen Brown"]))
+    groups = {g["teammate_played"]: g for g in result.data["groups"]}
+    assert (groups[True]["wins"], groups[True]["losses"]) == (2, 1)  # e1, e4, e7
+    assert (groups[False]["wins"], groups[False]["losses"]) == (1, 1)  # e2, e3
+    assert result.answer.splitlines()[2].startswith("Jayson Tatum and Jaylen Brown played")
+
+
 def test_a_game_before_he_arrived_is_not_a_game_without_him(league: TemplateContext) -> None:
     """The StatMuse failure: "Nets record without KD all-time" counted decades
     of Nets games before he arrived. e0z is a Celtics win before Tatum's first

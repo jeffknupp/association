@@ -638,8 +638,8 @@ def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: di
         # curry" arrived as team='Podziemski', player='Curry' - the subject in
         # the team slot and the absent teammate in the player slot.
         as_player = find_players(con, team_text)
-        held, without = slots.get("player"), slots.get("without")
-        if len(as_player) == 1 and (not held or (isinstance(held, str) and isinstance(without, str) and held.casefold() == without.casefold())):
+        held, without = slots.get("player"), teammate_names(slots.get("without"))
+        if len(as_player) == 1 and (not held or (isinstance(held, str) and any(held.casefold() == name.casefold() for name in without))):
             slots.pop("team", None)
             slots["player"] = as_player[0].name
             has_player = True
@@ -691,6 +691,21 @@ def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: di
             slots["opponent"] = versus.name
             notes.append(f"opponent {versus.name!r} (from the question)")
     return notes
+
+
+def teammate_names(value: Any) -> list[str]:
+    """The teammates a ``without`` or ``with_player`` slot names, in order.
+
+    The router reads every name the phrase holds - "without Tatum and Brown" is
+    two people - so the slot is a list. A bare string is still read as one
+    name: slot values are advisory everywhere else in this package, and a
+    reader that understood only one shape would be one stray route away from
+    answering nothing.
+
+    .. versionadded:: 2.2.0
+    """
+    values = value if isinstance(value, list) else [value]
+    return [v.strip() for v in values if isinstance(v, str) and v.strip()]
 
 
 def _shares_word(one: str, other: str) -> bool:

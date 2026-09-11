@@ -665,6 +665,6 @@ def test_a_team_nickname_resolves_to_the_team(nickname: str, team: str) -> None:
 def test_a_player_in_the_team_slot_becomes_the_subject(scope_con: duckdb.DuckDBPyConnection) -> None:
     """Measured: team='Podziemski', player='Curry' for "Podziemski game log without curry"."""
     scope_con.execute("INSERT INTO players VALUES ('9','Brandin Podziemski')")
-    slots: dict[str, Any] = {"player": "Curry", "team": "Podziemski", "without": "curry"}
+    slots: dict[str, Any] = {"player": "Curry", "team": "Podziemski", "without": ["curry"]}
     scope_from_question(scope_con, "Podziemski game log without curry", slots, reads_player=True)
-    assert slots["player"] == "Brandin Podziemski" and "team" not in slots and slots["without"] == "curry"
+    assert slots["player"] == "Brandin Podziemski" and "team" not in slots and slots["without"] == ["curry"]

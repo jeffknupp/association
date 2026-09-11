@@ -2204,6 +2204,20 @@ def test_without_counts_a_did_not_play_entry_and_a_missing_row_alike(pg_ctx: Tem
     assert "a did-not-play entry, or no line in the box score at all" in result.answer
 
 
+def test_without_two_teammates_means_neither_of_them_played(pg_ctx: TemplateContext) -> None:
+    """ "Celtics record without Tatum and Brown" read only the first name, so
+    the answer covered the games without ONE of them. Podziemski played e1, e2
+    and e3 this season: Curry played e1 and missed e2 and e3, Kuminga played e3
+    and missed e1 and e2. Only e2 was played without both."""
+    s = current_season()
+    result = game_log(pg_ctx, {"player": "Brandin Podziemski", "without": ["Stephen Curry", "Jonathan Kuminga"]})
+    assert [g["date"] for g in result.data["games"]] == [f"{s - 1}-12-01"]
+    assert result.data["without"] == ["Stephen Curry", "Jonathan Kuminga"]
+    assert "without Stephen Curry and Jonathan Kuminga" in result.answer
+    # The one-name question is the same question it always was.
+    assert len(game_log(pg_ctx, {"player": "Brandin Podziemski", "without": ["Stephen Curry"]}).data["games"]) == 2
+
+
 def test_without_asks_between_two_teammates_who_share_a_name(pg_ctx: TemplateContext) -> None:
     answer = game_log(pg_ctx, {"player": "Brandin Podziemski", "without": "curry"}).answer
     assert answer == "'curry' matches more than one player - did you mean Seth Curry or Stephen Curry?"
@@ -2212,7 +2226,7 @@ def test_without_asks_between_two_teammates_who_share_a_name(pg_ctx: TemplateCon
 def test_without_narrows_a_shared_name_to_that_seasons_teammates(pg_ctx: TemplateContext) -> None:
     # Last season Seth was a Celtic and Dell was long retired: only one Curry could be meant.
     result = game_log(pg_ctx, {"player": "Brandin Podziemski", "without": "curry", "season": current_season() - 1})
-    assert result.data["without"] == "Stephen Curry"
+    assert result.data["without"] == ["Stephen Curry"]
 
 
 def test_a_mid_season_arrival_is_not_missing_from_the_games_before_he_came(pg_ctx: TemplateContext) -> None:
@@ -2276,6 +2290,14 @@ def test_player_stat_honors_venue_and_a_teammates_absence(pg_ctx: TemplateContex
     assert player_stat(pg_ctx, {"player": "Brandin Podziemski", "venue": "home", "stat": "points"}).data["stats"]["avgPoints"] == 12.5
     without = player_stat(pg_ctx, {"player": "Brandin Podziemski", "without": "Stephen Curry", "stat": "points"}).data["stats"]
     assert (without["gamesPlayed"], without["avgPoints"]) == (2, 17.5)
+
+
+def test_player_stat_without_two_teammates_averages_only_the_games_neither_played(pg_ctx: TemplateContext) -> None:
+    """e2 is the one game Podziemski played without both of them - 20 points.
+    Read as a question about Curry alone it was 2 games and 17.5."""
+    result = player_stat(pg_ctx, {"player": "Brandin Podziemski", "without": ["Stephen Curry", "Jonathan Kuminga"], "stat": "points"})
+    assert (result.data["stats"]["gamesPlayed"], result.data["stats"]["avgPoints"]) == (1, 20.0)
+    assert "without Stephen Curry and Jonathan Kuminga" in result.answer
 
 
 def test_player_stat_says_one_game_not_one_games(pg_ctx: TemplateContext) -> None:

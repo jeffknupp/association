@@ -433,30 +433,42 @@ def _within(windows: Sequence[_Stint], team_id: str, day: date) -> bool:
     return any(w.team_id == team_id and w.first <= day <= w.last for w in windows)
 
 
-def _with_without_games(con: duckdb.DuckDBPyConnection, scope: _Scope, windows: Sequence[_Stint], mate: str, subject: str | None) -> tuple[list[dict[str, Any]], int]:
-    """Every game a window's team played inside that window, marked with
-    whether the teammate played it, and the subject's line where he did - and,
-    separately, how many games inside the windows have no box score, which
-    belong on neither side."""
+def _with_without_games(con: duckdb.DuckDBPyConnection, scope: _Scope, windows: Sequence[_Stint], mates: Sequence[str], subject: str | None) -> tuple[list[dict[str, Any]], int]:
+    """Every game a window's team played inside that window, marked with HOW
+    MANY of the named teammates played it, and the subject's line where he did
+    - and, separately, how many games inside the windows have no box score,
+    which belong on neither side.
+
+    A count rather than a flag, because with two teammates the two questions
+    stop being one split: "without A and B" is the games NEITHER played, "with
+    A and B" the games both did, and the games in between belong to neither
+    phrasing's named group. With one name the count is 0 or 1 and the caller's
+    two groups are exactly what they always were.
+
+    Counted in a correlated subquery rather than a join per teammate: a join
+    would have to be repeated per name, and a single join over a list would
+    return one row per teammate who played rather than one row per game.
+    """
     teams = sorted({w.team_id for w in windows})
     played_by = f"LEFT JOIN player_box_stats s ON s.event_id = t.event_id AND s.season = t.season AND s.team_id = t.team_id AND s.athlete_id = $subject AND {_played('s')}"
-    params: dict[str, Any] = {**scope.params(), "teams": teams, "mate": mate}
+    params: dict[str, Any] = {**scope.params(), "teams": teams, "mates": list(mates)}
     if subject is not None:
         params["subject"] = subject
     rows = con.execute(
         f"""
         WITH t AS ({_team_games(scope, " AND list_contains($teams, tbs.team_id)")})
-        SELECT t.team_id, t.season, t.day, t.won, t.team_score - t.opponent_score, m.athlete_id IS NOT NULL,
+        SELECT t.team_id, t.season, t.day, t.won, t.team_score - t.opponent_score,
+               (SELECT COUNT(*) FROM player_box_stats m
+                 WHERE m.event_id = t.event_id AND m.season = t.season AND m.team_id = t.team_id AND list_contains($mates, m.athlete_id) AND {_played("m")}) AS mates_played,
                {"s.minutes, s.points, s.rebounds, s.assists, s.fieldGoalsMade, s.fieldGoalsAttempted" if subject else "NULL, NULL, NULL, NULL, NULL, NULL"},
                EXISTS (
                    SELECT 1 FROM player_box_stats q WHERE q.event_id = t.event_id AND q.team_id = t.team_id AND q.season = t.season AND q.minutes IS NOT NULL
                ) AS box
         FROM t
-        LEFT JOIN player_box_stats m ON m.event_id = t.event_id AND m.season = t.season AND m.team_id = t.team_id AND m.athlete_id = $mate AND {_played("m")}
         {played_by if subject else ""}""",
         params,
     ).fetchall()
-    keys = ("team_id", "season", "day", "won", "margin", "mate_played", "minutes", "points", "rebounds", "assists", "fgm", "fga")
+    keys = ("team_id", "season", "day", "won", "margin", "mates_played", "minutes", "points", "rebounds", "assists", "fgm", "fga")
     inside = [row for row in rows if _within(windows, str(row[0]), row[2])]
     return [dict(zip(keys, row[:-1], strict=True)) for row in inside if row[-1]], sum(1 for row in inside if not row[-1])
 

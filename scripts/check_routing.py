@@ -212,7 +212,12 @@ CASES: list[tuple[str, str, dict]] = [
     ("what are the celtics playoff odds", "team_outlook", {}),
     ("Nikola Jokic home and away splits", "player_splits", {"split": "home_away"}),
     ("Giannis Antetokounmpo stats by month", "player_splits", {"split": "month"}),
-    ("Celtics record without Tatum", "with_without", {"without": "Tatum"}),
+    ("Celtics record without Tatum", "with_without", {"without": ["Tatum"]}),
+    # Both names. "Celtics record without Tatum and Brown" came back as 'Tatum'
+    # alone, and the answer covered the games without ONE of the two players -
+    # a different question, answered fluently. Read from the question text, so
+    # ROUTER_PROMPT and ROUTER_SCHEMA are untouched and no other case can move.
+    ("Celtics record without Tatum and Brown", "with_without", {"without": ["Tatum", "Brown"]}),
     ("Sixers record when Embiid scores 30 points this season", "record_when", {"threshold": 30}),
     ("lebron vs kawhi head to head", "player_matchup", {}),
     ("lakers longest winning streak this season", "streak", {}),

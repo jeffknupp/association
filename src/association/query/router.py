@@ -476,26 +476,78 @@ def _validate_span(question: str) -> str | None:
 
 
 # The words that end a teammate's name in "without X this season" and the like.
+# The question words are here for the same reason the prepositions are: each
+# can follow a name, and none of them is one - without them "without Tatum and
+# how many wins" reads "how many wins" as a second teammate and refuses a
+# question that used to answer.
 _NAME_STOPWORDS = frozenset(
-    "this last in on since during for vs vs. versus against at and when while game games season seasons record stats stat playing played plays from over the a an any his her their".split()
+    "this last in on since during for vs vs. versus against at when while game games season seasons record stats stat playing played plays from over the a an any his her their "
+    "how what who whose why many much did does do is are was were has have had than to of by not no".split()
 )
-_WITHOUT = re.compile(r"\bwithout\s+([A-Za-z][A-Za-z.'\-]*(?:\s+[A-Za-z][A-Za-z.'\-]*){0,2})", re.IGNORECASE)
-_WITH = re.compile(r"\bwith\s+([A-Za-z][A-Za-z.'\-]*(?:\s+[A-Za-z][A-Za-z.'\-]*){0,2})", re.IGNORECASE)
+
+# What separates one name from the next INSIDE the phrase, rather than ending
+# it. "or" joins exactly as "and" does - "without Tatum or Brown" is still the
+# games neither of them played - and a comma is how a list of three is written.
+_NAME_JOINERS = frozenset({"and", "or", "nor", "&", "+", ","})
+
+# A run of name-shaped words, joined by whitespace, commas or ampersands. The
+# first word must start with a letter, so "without 20 points" still names
+# nobody; the repetition is bounded because an unbounded one would read half a
+# sentence as a name.
+_NAME_PHRASE = r"[A-Za-z][A-Za-z.'\-]*(?:[\s,&+]+[A-Za-z][A-Za-z.'\-]*){0,8}"
+_WITHOUT = re.compile(rf"\bwithout\s+({_NAME_PHRASE})", re.IGNORECASE)
+_WITH = re.compile(rf"\bwith\s+({_NAME_PHRASE})", re.IGNORECASE)
+_NAME_TOKENS = re.compile(r"[A-Za-z][A-Za-z.'\-]*|[,&+]")
+
+# As many words as the old single-name pattern allowed, now per name rather
+# than per phrase.
+_MAX_NAME_WORDS = 3
 
 
-def _name_after(pattern: re.Pattern[str], question: str) -> str | None:
-    """The name following ``pattern``'s keyword, up to the first word that
-    cannot be part of one. None when no name follows at all - "without a
-    turnover" names nobody, and must not become a teammate called "a"."""
+def _names_after(pattern: re.Pattern[str], question: str) -> list[str]:
+    """Every name the phrase after ``pattern``'s keyword holds, in order.
+
+    Empty when no name follows at all - "without a turnover" names nobody, and
+    must not become a teammate called "a".
+
+    This reads ALL of them, and that is the whole point. Reading only the first
+    answered "Celtics record without Tatum and Brown" with the games Tatum
+    missed: a different question, answered fluently, with nothing in the answer
+    saying the second player had been dropped. The templates that honour
+    ``without`` require every name (see ``templates.with_without``), so the
+    parser must hand them every name or the requirement has nothing to work
+    with.
+
+    A name ends at a word that cannot be part of one (:data:`_NAME_STOPWORDS`),
+    which ends the whole phrase; a joiner (:data:`_NAME_JOINERS`) ends the name
+    and starts the next. A joiner with nothing before it names nobody, so
+    "with and without Tatum" reads no "with" name rather than an empty one.
+    """
     match = pattern.search(question)
     if match is None:
-        return None
+        return []
+    names: list[str] = []
     words: list[str] = []
-    for word in match.group(1).split():
-        if word.casefold() in _NAME_STOPWORDS:
+
+    def close() -> bool:
+        """End the name being read; False when there was none, which ends the phrase."""
+        if not words:
+            return False
+        names.append(" ".join(words))
+        words.clear()
+        return True
+
+    for token in _NAME_TOKENS.findall(match.group(1)):
+        lowered = token.casefold()
+        if lowered in _NAME_JOINERS:
+            if not close():
+                break
+            continue
+        if lowered in _NAME_STOPWORDS or len(words) >= _MAX_NAME_WORDS:
             break
-        words.append(word)
-    return " ".join(words) or None
+        words.append(token)
+    close()
+    return names
 
 
 # Which split a player_splits question asks for. Exactly one or nothing.
@@ -829,8 +881,8 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     venue = _validate_venue(question)
     if venue is not None:
         slots["venue"] = venue
-    without = _name_after(_WITHOUT, question)
-    if without is not None:
+    without = _names_after(_WITHOUT, question)
+    if without:
         slots["without"] = without
     below = _BELOW.search(question)
     if below is not None:
@@ -860,8 +912,8 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     # Intent-specific: each means nothing to any other template, so each is
     # only added where one reads it - the same rule `side` follows below.
     if raw["intent"] == "with_without":
-        with_player = _name_after(_WITH, question)
-        if with_player is not None and without is None:
+        with_player = _names_after(_WITH, question)
+        if with_player and not without:
             slots["with_player"] = with_player
     if raw["intent"] == "player_splits" and slots.get("split") == "home_away":
         slots.pop("venue", None)  # a split over venues is not a filter to one

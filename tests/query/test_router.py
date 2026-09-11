@@ -518,21 +518,47 @@ def test_a_named_year_survives_a_career_word() -> None:
 @pytest.mark.parametrize(
     ("question", "without"),
     [
-        ("Podziemski game log without curry", "curry"),
-        ("jalen Duren stats without Cade Cunningham this season", "Cade Cunningham"),
-        ("Celtics record without Tatum", "Tatum"),
+        ("Podziemski game log without curry", ["curry"]),
+        ("jalen Duren stats without Cade Cunningham this season", ["Cade Cunningham"]),
+        ("Celtics record without Tatum", ["Tatum"]),
         ("most games without a turnover", None),  # names nobody
     ],
 )
-def test_a_missing_teammate_is_read_from_the_question(question: str, without: str | None) -> None:
+def test_a_missing_teammate_is_read_from_the_question(question: str, without: list[str] | None) -> None:
     assert _ask(question, '{"intent":"game_log"}').slots.get("without") == without
+
+
+@pytest.mark.parametrize(
+    ("question", "without"),
+    [
+        ("Celtics record without Tatum and Brown", ["Tatum", "Brown"]),
+        ("Lakers record without Lebron and AD this season", ["Lebron", "AD"]),
+        ("Celtics record without Tatum, Brown and Holiday", ["Tatum", "Brown", "Holiday"]),
+        # "or" joins the same way "and" does: neither of them played either way.
+        ("hornets record without brandon miller or lamelo", ["brandon miller", "lamelo"]),
+        # "and" with nothing in front of it names nobody, so the phrase still
+        # starts at the name that follows "without".
+        ("Celtics record with and without Tatum", ["Tatum"]),
+    ],
+)
+def test_every_name_a_without_phrase_holds_is_read(question: str, without: list[str]) -> None:
+    """The measured bug: only the first name came back, so the answer covered
+    the games without ONE of the players and said nothing about the other - a
+    different question, answered fluently."""
+    assert _ask(question, '{"intent":"with_without"}').slots.get("without") == without
 
 
 def test_with_a_teammate_is_only_read_for_the_template_that_uses_it() -> None:
     """ "with" is everywhere ("games with 30+ points"), so outside with_without it
     would be noise at best."""
-    assert _ask("jjj stats with ja morant last season", '{"intent":"with_without"}').slots["with_player"] == "ja morant"
+    assert _ask("jjj stats with ja morant last season", '{"intent":"with_without"}').slots["with_player"] == ["ja morant"]
     assert "with_player" not in _ask("jjj stats with ja morant last season", '{"intent":"player_stat"}').slots
+
+
+def test_a_with_phrase_keeps_every_name_the_same_way() -> None:
+    """The same defect on the other keyword: "record when A and B play" is a
+    real question shape, and one name of it is a different question."""
+    assert _ask("jjj stats with ja morant and desmond bane last season", '{"intent":"with_without"}').slots["with_player"] == ["ja morant", "desmond bane"]
 
 
 @pytest.mark.parametrize(

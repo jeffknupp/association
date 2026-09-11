@@ -100,18 +100,6 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   that fires on the corpus first ("best" is Travis Best).
 - **GitHub:** #3
 
-### "without X and Y" drops the second player
-- **Found:** 2026-09-11, template work (agent C); verified in the issues audit
-- **Evidence:** `router._name_after(_WITHOUT, ...)` returns `'Tatum'` for
-  "Celtics record without Tatum and Brown", and `'Lebron'` for "Lakers record
-  without Lebron and AD this season".
-- **User sees:** a with/without answer about one absent player, presented as the
-  answer to a question about two. A real feed question of this shape: "hornets
-  record when brandon miller and lamelo and knueppel play this year".
-- **Next step:** refuse when the phrase holds "and" or a comma (small and
-  honest), or read every name and require all of them.
-- **GitHub:** #4
-
 ### 246 season lines have NULL totals
 - **Found:** 2026-09-11, issues audit
 - **Evidence:** in `player_season_stats`, 104 regular-season rows (42 players)
