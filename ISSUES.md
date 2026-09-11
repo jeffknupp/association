@@ -607,16 +607,6 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   against what the code reads. The backfill rule in `AGENTS.md` ("Working on the
   fetch path") is the process half of this.
 
-### `CHANGES.md` has two `## Unreleased` headings
-- **Found:** 2026-09-11, repo audit
-- **Evidence:** the second heading holds entries committed two minutes before
-  Release 1.5.0, whose bump renamed only the first heading.
-  `scripts/bump_version.py` replaces with `count=1` and does not warn.
-- **User sees:** an "Unreleased" section in the middle of the published
-  changelog.
-- **Next step:** fold the orphaned entries into 1.5.0, and make the script refuse
-  when there is more than one heading.
-
 ### A fresh worktree cannot run the gates with `uv run` alone
 - **Found:** 2026-09-11, while qualifying true shooting and eFG% (`f66e1f1`)
 - **Evidence:** `uv run` creates the worktree's venv without the `dev` extra, so

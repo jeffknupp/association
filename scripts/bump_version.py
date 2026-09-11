@@ -81,6 +81,20 @@ def check_tag_free(version: str) -> None:
         sys.exit(f"error: tag v{version} already exists - PyPI will not accept a second upload for it either")
 
 
+def check_changelog() -> None:
+    """Stop before anything is rewritten unless CHANGES.md has exactly one ``## Unreleased`` section.
+
+    Checked here rather than in stamp_changelog, which runs after pyproject.toml
+    and uv.lock are already bumped. A second heading is the failure that happened:
+    only the first is stamped, and the rest sits in the history as "Unreleased"
+    under an older version."""
+    headings = len(UNRELEASED.findall(CHANGELOG.read_text()))
+    if headings == 0:
+        sys.exit("error: no `## Unreleased` section in CHANGES.md - describe the release before cutting it")
+    if headings > 1:
+        sys.exit(f"error: CHANGES.md has {headings} `## Unreleased` headings - only the first would be stamped, leaving the rest in the history as unreleased; merge them first")
+
+
 def rewrite_pyproject(current: str, version: str) -> None:
     """Replace the version line in ``pyproject.toml``."""
     text = PYPROJECT.read_text()
@@ -127,6 +141,7 @@ def main() -> int:
 
     check_clean_tree()
     check_tag_free(version)
+    check_changelog()
 
     rewrite_pyproject(current, version)
     relock(version)

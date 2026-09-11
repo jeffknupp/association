@@ -1141,8 +1141,6 @@ had no published version to be compatible with.
   up with nothing downloadable at all. `README.md` and `docs/installation.rst`
   say to install from a release tag until PyPI is reachable again; both notes
   are written to be deleted in one commit when it is.
-
-## Unreleased
 - **A pull over completed seasons is instant again.** `association data pull
   --seasons 2024` on a season already on disk took over a minute and ended in
   an out-of-memory crash; it now takes 0.5s and makes no network request.
