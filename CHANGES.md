@@ -15,6 +15,62 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A player's games against one team, his recent form and his career are
+  answered now, where the entry below made them refuse.** `game_log` and
+  `player_stat` honor `opponent`, `venue`, `span` and `without`, and
+  `player_history` honors `span`. Run against the real warehouse:
+
+  | Asked | Now |
+  | --- | --- |
+  | "jaylen brown last 8 games vs pistons" | his 4 games against Detroit this season, saying there are only 4; with "career", his last 8 meetings (2024-2026) |
+  | "evan mobley avg against bucks" | 21.3 / 9.7 / 4.7 over the 3 games he played against them - a fourth was a DNP |
+  | "Podziemski game log without curry" | asks which Curry, since Seth joined the Warriors in December; with Stephen named, the 39 games Stephen missed |
+  | "Jokic career averages" | 22.2 / 11.1 / 7.5 over 810 games, 2016-2026 |
+  | "What is Jokic's 3 point percentage this season" | 38.0% (112 of 295) - it used to fall through to the agent |
+
+  - A player's log lists the games he played, adds the columns a named stat
+    needs (FTM and FTA for "luka ft log", FGM and FGA for "kyle kuzma last 7
+    games fgm") and ends with per-game averages over exactly the rows listed. A
+    real stat it has no column for is refused rather than dropped, and so is a
+    `threshold`. `player_stat` refuses a `limit`: an average over the last N
+    games is that log's average row, not the season line.
+  - `without` means the teammate did not play - a did-not-play entry or no row
+    at all, since Stephen Curry's 2026 is 43 rows and none of them is a DNP -
+    while he was on the same team. There is no roster table, so that is read off
+    his own rows: the season's start counts if he ended the previous one on that
+    team, the end counts unless he was traded away, and a mid-season arrival
+    counts from his first game. LeBron James's first 2026 row is 2025-11-19, and
+    Austin Reaves's 16 games without him include the 11 before it.
+  - An ambiguous `without` name is narrowed to the players who were actually
+    teammates - elimination, as `narrow_to_available` does - and asks only
+    between those.
+  - A career is summed from `player_season_stats_deduped` as totals over games,
+    never an average of averages. Michael Jordan comes back with 32,292 points in
+    1,072 games and 5,987 in 179 playoff games, and Kobe Bryant with 33,643 in
+    1,346: the real totals.
+  - Narrowed questions are answered from box scores, so they carry the
+    box-score floor: Jordan's 1990 season line still answers, his 1990 line
+    against the Knicks refuses, and a career against an opponent says his box
+    scores begin in 1993-94.
+  - An empty answer names what is actually missing: "played 65 games in the
+    2026 regular season, none of them vs the Denver Nuggets" rather than
+    "no games found", and "was not his teammate" rather than "did not miss
+    any".
+  - Dates are the Eastern date a game was played on. `date` matched the UTC day
+    before, so "Jaylen Brown's game on 2026-01-19" found nothing, and asking
+    for 2026-01-20 found the 19th's game.
+  - A team's log listed every 1993-94 game twice (164 rows for the Celtics'
+    82). It joined `games` on event_id alone, and the phantom 1993 season shares
+    those ids; it keys on season too now. A game with no recorded winner (134
+    since 1994, mostly the 1999 lockout season) shows "?" and is left out of the
+    record, where it used to be counted as a loss.
+- **Box scores from 2013 to 2018 are missing about an eighth of their points.**
+  About 13% of team-games in those seasons list every player as having played,
+  with no minutes and every stat zero, so summing a season's box scores gives
+  87% of ESPN's season totals (2017: 225,786 points against 258,855). The
+  box-score answers above leave those lines out of every average and say how
+  many they left out. `threshold_count` and anything else that sums
+  `player_box_stats` over those seasons still counts them as games of zeros.
 - **Real questions were being answered about something else, and now refuse
   instead.** 99 questions were run through the fast path to the final answer:
   the routing corpus plus 45 real StatMuse queries. Nine of the StatMuse queries

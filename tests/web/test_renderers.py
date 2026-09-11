@@ -97,16 +97,18 @@ def ctx(tmp_path: Path) -> TemplateContext:
         "away_team_id VARCHAR, winner_team_id VARCHAR, home_score INTEGER, away_score INTEGER)"
     )
     con.execute("INSERT INTO games VALUES ('e1', 2026, 2, '2026-01-01', '10', '11', '10', 110, 100), ('e2', 2026, 2, '2026-01-03', '11', '10', '10', 99, 120)")
+    # did_not_play is on every real row, and a player's game log reads it: a
+    # DNP is not a game he played.
     con.execute(
         "CREATE TABLE player_box_stats (event_id VARCHAR, athlete_id VARCHAR, team_id VARCHAR, opponent_team_id VARCHAR, season INTEGER, season_type INTEGER, "
-        "minutes INTEGER, points INTEGER, rebounds INTEGER, assists INTEGER, steals INTEGER, blocks INTEGER, turnovers INTEGER, fouls INTEGER, "
+        "did_not_play BOOLEAN, minutes INTEGER, points INTEGER, rebounds INTEGER, assists INTEGER, steals INTEGER, blocks INTEGER, turnovers INTEGER, fouls INTEGER, "
         "threePointFieldGoalsMade INTEGER, fieldGoalsMade INTEGER, freeThrowsMade INTEGER)"
     )
     con.execute(
         "INSERT INTO player_box_stats VALUES "
-        "('e1','1','10','11',2026,2,36,34,10,5,1,1,2,2,4,12,6),"
-        "('e2','1','10','11',2026,2,35,31,9,6,2,0,3,1,3,11,6),"
-        "('e1','2','11','10',2026,2,30,18,4,9,1,0,2,3,2,7,2)"
+        "('e1','1','10','11',2026,2,FALSE,36,34,10,5,1,1,2,2,4,12,6),"
+        "('e2','1','10','11',2026,2,FALSE,35,31,9,6,2,0,3,1,3,11,6),"
+        "('e1','2','11','10',2026,2,FALSE,30,18,4,9,1,0,2,3,2,7,2)"
     )
     con.execute(
         "CREATE TABLE player_season_stats (athlete_id VARCHAR, team_id VARCHAR, season INTEGER, season_type INTEGER, gamesPlayed INTEGER, "
