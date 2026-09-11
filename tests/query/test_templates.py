@@ -324,23 +324,8 @@ def tq_con(tmp_path: Path) -> TemplateContext:
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
-def test_team_record_formats_a_double_backed_record_as_integers(gl_con: TemplateContext) -> None:
-    # standings stores wins/losses as DOUBLE; "53.0-29.0" makes a correct
-    # answer look untrustworthy.
-    answer = team_record(gl_con, {"team": "Knicks"}).answer or ""
-    assert "53-29" in answer and "53.0" not in answer
-    assert "(.646)" in answer and "4th seed" in answer and "won 3 straight" in answer
-
-
-def test_team_record_falls_through_for_playoffs(gl_con: TemplateContext) -> None:
-    # standings has no season_type, so a playoff record must not be answered
-    # with the regular-season number under a playoff-sounding label.
-    with pytest.raises(TemplateUnsupported):
-        team_record(gl_con, {"team": "Knicks", "season_type": 3})
-
-
-def test_team_record_reports_a_missing_season_honestly(gl_con: TemplateContext) -> None:
-    assert "no 1999 standings" in (team_record(gl_con, {"team": "Knicks", "season": 1999}).answer or "")
+# team_record's own tests are in test_team_templates.py, over a fixture with
+# the standings columns it reads.
 
 
 def test_game_log_includes_home_and_away_games(gl_con: TemplateContext) -> None:
@@ -1625,7 +1610,6 @@ def test_templates_that_write_nothing_report_no_artifacts(lb_con: TemplateContex
         # 8 games vs pistons", "Podziemski game log without curry"), so the
         # refusal is checked on templates that still cannot narrow that way.
         ("shot_distance", {"player": "Jaylen Brown", "opponent": "Detroit Pistons"}),
-        ("team_record", {"team": "New York Knicks", "venue": "home"}),
         ("player_netpoints", {"player": "Brandin Podziemski", "without": "curry"}),
         ("player_history", {"player": "Nikola Jokic", "stat": "points", "opponent": "Boston Celtics"}),
     ],

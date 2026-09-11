@@ -128,8 +128,14 @@ def ctx(tmp_path: Path) -> TemplateContext:
         "overall DOUBLE, offense DOUBLE, defense DOUBLE, overall_per_100_poss DOUBLE, offense_per_100_poss DOUBLE, defense_per_100_poss DOUBLE, total_minutes BIGINT, games BIGINT)"
     )
     con.execute("INSERT INTO net_points_player VALUES ('1',2026,'Regular Season',120.0,90.0,30.0,4.5,3.4,1.1,71,2),('2',2026,'Regular Season',-10.0,-4.0,-6.0,-0.8,-0.3,-0.5,30,1)")
-    con.execute("CREATE TABLE standings (team_id VARCHAR, season INTEGER, season_type INTEGER, wins DOUBLE, losses DOUBLE, winPercent DOUBLE, playoffSeed DOUBLE, streak DOUBLE)")
-    con.execute("INSERT INTO standings VALUES ('10', 2026, 2, 50, 32, 0.6098, 3, 1)")
+    con.execute(
+        "CREATE TABLE standings (team_id VARCHAR, season INTEGER, season_type INTEGER, wins DOUBLE, losses DOUBLE, winPercent DOUBLE, playoffSeed DOUBLE, streak DOUBLE, "
+        'gamesBehind DOUBLE, "Home" VARCHAR, "Road" VARCHAR, "Last Ten Games" VARCHAR, avgPointsFor DOUBLE, avgPointsAgainst DOUBLE, differential DOUBLE)'
+    )
+    con.execute("INSERT INTO standings VALUES ('10', 2026, 2, 50, 32, 0.6098, 3, 1, 4, '28-13', '22-19', '6-4', 115.2, 111.0, 4.2)")
+    # team_record checks a season's standings against the team's own game count.
+    con.execute("CREATE TABLE team_season_stats (season INTEGER, season_type INTEGER, team_id VARCHAR, gamesPlayed DOUBLE)")
+    con.execute("INSERT INTO team_season_stats VALUES (2026, 2, '10', 82)")
     con.execute(
         "CREATE OR REPLACE VIEW player_game_log AS SELECT pbs.*, p.display_name AS player_name, g.date AS game_date, t.abbreviation AS team_abbr, o.abbreviation AS opponent_abbr "
         "FROM player_box_stats pbs LEFT JOIN players p ON p.athlete_id = pbs.athlete_id LEFT JOIN games g ON g.event_id = pbs.event_id "
