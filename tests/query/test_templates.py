@@ -1345,7 +1345,9 @@ def test_player_netpoints_scopes_to_one_game_when_order_is_set(np_ctx: TemplateC
     the whole season - 43 games - because nothing scoped it."""
     _add_per_game_netpoints(np_ctx)
     result = player_netpoints(np_ctx, {"player": "SGA", "order": "recent"})
-    assert result.data["game"]["date"] == "2026-04-13"
+    # eLast tips at 2026-04-13T00:30Z - 8:30pm Eastern on the 12th, the day it
+    # was played. The UTC day this used to assert was the bug.
+    assert result.data["game"]["date"] == "2026-04-12"
     answer = result.answer or ""
     assert "6.3 total" in answer and "most recent" in answer
     assert "Offense," not in answer  # not the season breakdown
@@ -1353,7 +1355,8 @@ def test_player_netpoints_scopes_to_one_game_when_order_is_set(np_ctx: TemplateC
 
 def test_player_netpoints_order_first_picks_the_earliest_game(np_ctx: TemplateContext) -> None:
     _add_per_game_netpoints(np_ctx)
-    assert player_netpoints(np_ctx, {"player": "SGA", "order": "first"}).data["game"]["date"] == "2025-10-22"
+    # 2025-10-22T00:00Z is 8pm Eastern on October 21st.
+    assert player_netpoints(np_ctx, {"player": "SGA", "order": "first"}).data["game"]["date"] == "2025-10-21"
 
 
 def test_single_game_netpoints_points_at_the_fingerprint_for_the_split(np_ctx: TemplateContext) -> None:
