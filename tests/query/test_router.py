@@ -41,7 +41,9 @@ def test_season_type_defaults_to_regular_season() -> None:
 
 def test_playoffs_maps_to_the_numeric_season_type_every_table_uses() -> None:
     # Without this a playoff question silently answers for the regular season.
-    assert _routed('{"intent":"leaderboard","stat":"points","season_type":"playoffs"}').slots["season_type"] == 3
+    # Which one it is comes from the question, not the model - see the scoping
+    # tests at the end of this file for the measurements behind that.
+    assert _ask("Who led the league in scoring in the playoffs?", '{"intent":"leaderboard","stat":"points","season_type":"playoffs"}').slots["season_type"] == 3
 
 
 def test_unknown_season_type_falls_back_to_regular_season() -> None:
@@ -455,3 +457,132 @@ def test_the_order_intents_are_the_ones_that_honour_order() -> None:
     from association.query.templates import HONORED_SCOPING
 
     assert ORDER_INTENTS == frozenset(intent for intent, honored in HONORED_SCOPING.items() if "order" in honored)
+
+
+# ---------------- scoping read from the question text ----------------
+#
+# Each of these existed because a real StatMuse query was answered fast, fluently
+# and about something else. None is in ROUTER_SCHEMA - they are read from the
+# text - so the model's answer is given here only to show it is not consulted.
+
+
+def _ask(question: str, payload: str) -> Route:
+    """route() on a real question, with the model's reply fixed."""
+    with patch("association.query.router.ollama.chat", return_value=_reply(payload)):
+        got = route("m", question)
+    assert got is not None
+    return got
+
+
+def test_the_postseason_comes_from_the_question_not_the_model() -> None:
+    """Measured both ways at temperature 0: "Sga record 36 plus points" came back
+    as a playoff question, and "tatum stats in the 2024 finals" as a
+    regular-season one."""
+    assert _ask("Sga record 36 plus points", '{"intent":"threshold_count","season_type":"playoffs"}').slots["season_type"] == 2
+    assert _ask("tatum stats in the 2024 finals", '{"intent":"player_stat","season_type":"regular"}').slots["season_type"] == 3
+    assert _ask("Who led the playoffs in rebounding?", '{"intent":"leaderboard"}').slots["season_type"] == 3
+
+
+@pytest.mark.parametrize(
+    ("question", "venue"),
+    [
+        ("Knicks home record this season", "home"),
+        ("Warriors record on the road", "away"),
+        ("zach lavine vs nuggets last 8 games home", "home"),
+        ("How far away does Wembanyama shoot from?", None),  # a distance, and a routing case
+        ("Nikola Jokic home and away splits", None),  # both halves is a split, not a filter
+    ],
+)
+def test_a_venue_is_read_from_the_question(question: str, venue: str | None) -> None:
+    assert _ask(question, '{"intent":"team_record"}').slots.get("venue") == venue
+
+
+def test_a_career_is_every_season_so_the_models_default_year_is_dropped() -> None:
+    got = _ask("career points leaders", '{"intent":"leaderboard","stat":"points","season_ref":"current"}')
+    assert got.slots["span"] == "career"
+    assert "season" not in got.slots
+
+
+def test_a_career_high_in_a_named_season_is_that_seasons_best() -> None:
+    """ "career high this season" is a worked example of single_game_high in
+    ROUTER_PROMPT - it means the season's best, and must not become a career."""
+    assert "span" not in _ask("what is his career high this season", '{"intent":"single_game_high","stat":"points"}').slots
+    assert _ask("Diabate career high assists", '{"intent":"single_game_high","stat":"assists"}').slots["span"] == "career"
+
+
+def test_a_named_year_survives_a_career_word() -> None:
+    got = _ask("most points ever scored in a game in 2024", '{"intent":"single_game_high","stat":"points"}')
+    assert got.slots["span"] == "career" and got.slots["season"] == 2024
+
+
+@pytest.mark.parametrize(
+    ("question", "without"),
+    [
+        ("Podziemski game log without curry", "curry"),
+        ("jalen Duren stats without Cade Cunningham this season", "Cade Cunningham"),
+        ("Celtics record without Tatum", "Tatum"),
+        ("most games without a turnover", None),  # names nobody
+    ],
+)
+def test_a_missing_teammate_is_read_from_the_question(question: str, without: str | None) -> None:
+    assert _ask(question, '{"intent":"game_log"}').slots.get("without") == without
+
+
+def test_with_a_teammate_is_only_read_for_the_template_that_uses_it() -> None:
+    """ "with" is everywhere ("games with 30+ points"), so outside with_without it
+    would be noise at best."""
+    assert _ask("jjj stats with ja morant last season", '{"intent":"with_without"}').slots["with_player"] == "ja morant"
+    assert "with_player" not in _ask("jjj stats with ja morant last season", '{"intent":"player_stat"}').slots
+
+
+@pytest.mark.parametrize(
+    ("question", "split"),
+    [
+        ("Nikola Jokic home and away splits", "home_away"),
+        ("Joe Ingles stats when starting vs coming off the bench", "starter_bench"),
+        ("Giannis Antetokounmpo stats by month", "month"),
+        ("Tatum stats in wins vs losses", "wins_losses"),
+    ],
+)
+def test_a_split_is_read_from_the_question(question: str, split: str) -> None:
+    got = _ask(question, '{"intent":"player_splits"}')
+    assert got.slots["split"] == split
+    assert "venue" not in got.slots
+
+
+@pytest.mark.parametrize(
+    ("question", "rank"),
+    [
+        ("which team has the fewest turnovers", "fewest"),
+        ("best defense in the league", "best"),
+        ("worst three point shooting team", "worst"),
+        ("team with the most threes", "most"),
+    ],
+)
+def test_a_team_ranking_reads_which_end_was_asked_for(question: str, rank: str) -> None:
+    assert _ask(question, '{"intent":"team_leaderboard"}').slots["rank"] == rank
+
+
+def test_a_streak_reads_whether_it_is_a_losing_one() -> None:
+    assert _ask("lakers longest losing streak this season", '{"intent":"streak"}').slots["kind"] == "loss"
+    assert _ask("lakers longest winning streak this season", '{"intent":"streak"}').slots["kind"] == "win"
+
+
+def test_a_team_ranking_asked_as_a_player_ranking_is_rerouted() -> None:
+    """Measured: "which team scores the most points per game" was answered with
+    the players' scoring leaders."""
+    assert _ask("which team scores the most points per game", '{"intent":"leaderboard","stat":"points"}').intent == "team_leaderboard"
+    assert _ask("which team has the most threes in a playoff game", '{"intent":"single_game_high","stat":"threePointFieldGoalsMade"}').intent == "other"
+    assert _ask("Top 5 scorers on the Lakers?", '{"intent":"leaderboard","stat":"points"}').intent == "leaderboard"
+
+
+@pytest.mark.parametrize("question", ["rj barrett 4th qtr log", "kd q4 points last game", "tatum first half stats", "harrison barnes 1st q stats"])
+def test_abbreviated_quarters_and_halves_go_to_the_agent(question: str) -> None:
+    """ "rj barrett 4th qtr log" slipped past a pattern that only knew "quarter",
+    and game_log answered with his whole last game."""
+    assert _ask(question, '{"intent":"game_log","player":"X"}').intent == "other"
+
+
+def test_a_team_half_is_not_a_quarter_either() -> None:
+    assert _ask("Celtics 2nd half scoring this season", '{"intent":"team_quarter_points","team":"Boston Celtics","period":2}').intent == "other"
+    assert _ask("76ers 4th qtr points vs boston", '{"intent":"team_quarter_points","team":"Philadelphia 76ers","period":4}').intent == "team_quarter_points"

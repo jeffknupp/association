@@ -13,7 +13,7 @@ from typing import Any
 import ollama
 
 from .answer import Answer, AnsweredBy, Artifact, Timing
-from .entities import compared_but_unmatched, misread_players, override_invented_players, override_nicknames, restore_dropped_players, undo_name_completion
+from .entities import compared_but_unmatched, misread_players, override_invented_players, override_nicknames, restore_dropped_players, scope_from_question, undo_name_completion
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .keepalive import KEEP_ALIVE
 from .models import DEFAULT_ROUTER_MODEL
@@ -265,6 +265,11 @@ class Agent:
             restored = restore_dropped_players(self.toolbox.con, question, routed.slots)
             if restored is not None:
                 history.log(f"  -> (player) {restored[0]!r} -> {restored[1]!r} (the question names more players than the router returned)")
+        # Before the name checks below, because this is where a team the
+        # router mistook for a player leaves `players`, and a player it dropped
+        # in favor of his team comes back. See entities.scope_from_question.
+        for change in scope_from_question(self.toolbox.con, question, routed.slots, reads_player=routed.intent in PLAYER_INTENTS):
+            history.log(f"  -> (scope) {change}")
         # The router invents whole names, not only nicknames: "compare sga and
         # embiid" came back with Jusuf Nurkic in the second slot, and every
         # stage after this one would have answered about him perfectly.

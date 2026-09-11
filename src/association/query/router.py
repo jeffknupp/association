@@ -191,6 +191,14 @@ ROUTER_SCHEMA: dict[str, Any] = {
                 "shot_chart",
                 "fingerprint",
                 "shot_distance",
+                "team_stat",
+                "team_leaderboard",
+                "team_outlook",
+                "player_splits",
+                "with_without",
+                "record_when",
+                "player_matchup",
+                "streak",
                 "other",
             ],
         },
@@ -274,7 +282,15 @@ SEASON_TYPES = {"regular": 2, "playoffs": 3}
 _FOULED_OUT = re.compile(r"\bfoul(?:ed|s|ing)?\s+out\b")
 FOUL_OUT_THRESHOLD = 6
 
-_AGENT_ONLY = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+quarter\b|\bper\s+quarter\b|\bby\s+quarter\b")
+_AGENT_ONLY = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+(?:quarter|qtr|q)\b|\bq[1-4]\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b")
+
+# A half is never a quarter, so no template answers one - not even for a TEAM,
+# where team_quarter_points reads a period number and the model maps "first half"
+# onto period 1. Kept apart from _AGENT_ONLY for that reason: the team exemption
+# below applies to quarters only. "rj barrett 4th qtr log" is why both patterns
+# grew abbreviations - it slipped past "quarter" and game_log answered with his
+# whole last game.
+_HALF_WORDS = re.compile(r"\b(?:first|second|1st|2nd)\s+half\b|\b[12]h\b|\bhalftime\b", re.IGNORECASE)
 
 
 # A TEAM's quarter score (no player named) is exempted below: linescores answer
@@ -353,6 +369,114 @@ def _validate_side(slots: dict[str, Any], question: str) -> str | None:
         return named[0]
     side = slots.get("side")
     return side if isinstance(side, str) and side in SIDE_VALUES else None
+
+
+# The postseason, named in the question. The model sets season_type="playoffs"
+# on questions that never mention them - measured at temperature 0, "Sga record
+# 36 plus points" and "lebron vs kawhi 2015" both came back as playoff questions,
+# and "tatum stats in the 2024 finals" came back as a regular-season one. Read
+# from the text for the same reason the year is: the question is the source,
+# and the model is wrong in both directions. "Title" and "championship" are left
+# out on purpose - "title odds" is a regular-season projection.
+_PLAYOFF_WORDS = re.compile(r"\b(?:playoffs?|post-?season|finals|elimination|game\s+(?:7|seven))\b", re.IGNORECASE)
+
+
+def _validate_season_type(question: str) -> int:
+    """The season type the question asks about: the postseason only when it
+    says so. The model's own slot is not consulted - see _PLAYOFF_WORDS."""
+    return SEASON_TYPES["playoffs"] if _PLAYOFF_WORDS.search(question) else SEASON_TYPES["regular"]
+
+
+# Where a game was played. "Far away" and "fade away" are shot descriptions,
+# not venues - "How far away does Wembanyama shoot from?" is a routing case.
+_HOME = re.compile(r"\bhome\b(?!\s+runs?)", re.IGNORECASE)
+_AWAY = re.compile(r"(?<!far )(?<!fade )\b(?:away|road)\b", re.IGNORECASE)
+
+
+def _validate_venue(question: str) -> str | None:
+    """ "home" or "away" when the question restricts itself to one of them.
+
+    Both at once is a SPLIT ("home and away splits"), not a filter, so it sets
+    nothing here - see _validate_split. A template that cannot restrict to a
+    venue refuses one rather than answering the whole season: "Knicks home
+    record this season" was answered 53-29, their overall record.
+    """
+    home, away = bool(_HOME.search(question)), bool(_AWAY.search(question))
+    if home == away:
+        return None
+    return "home" if home else "away"
+
+
+# A whole career rather than one season. "Career high" is the exception: with a
+# season named ("career high this season") it means that season's best, and it
+# is a worked example of single_game_high in ROUTER_PROMPT.
+_CAREER_HIGH = re.compile(r"\bcareer[- ]highs?\b", re.IGNORECASE)
+_SPAN_WORDS = re.compile(r"\b(?:career|all[- ]time|ever|(?:in|of)\s+(?:nba\s+)?history|of\s+all\s+time)\b", re.IGNORECASE)
+_SEASON_WORDS = re.compile(r"\b(?:this|last|next)\s+(?:season|year)\b", re.IGNORECASE)
+
+
+def _validate_span(question: str) -> str | None:
+    """ "career" when the question asks about more than one season's worth of
+    games at once. Measured before this existed: "career points leaders" and
+    "Jokic career averages" were both answered with one season, fluently."""
+    text = question
+    if _CAREER_HIGH.search(text) and (season_from_text(question) is not None or _SEASON_WORDS.search(text)):
+        text = _CAREER_HIGH.sub(" ", text)
+    return "career" if _SPAN_WORDS.search(text) else None
+
+
+# The words that end a teammate's name in "without X this season" and the like.
+_NAME_STOPWORDS = frozenset(
+    "this last in on since during for vs vs. versus against at and when while game games season seasons record stats stat playing played plays from over the a an any his her their".split()
+)
+_WITHOUT = re.compile(r"\bwithout\s+([A-Za-z][A-Za-z.'\-]*(?:\s+[A-Za-z][A-Za-z.'\-]*){0,2})", re.IGNORECASE)
+_WITH = re.compile(r"\bwith\s+([A-Za-z][A-Za-z.'\-]*(?:\s+[A-Za-z][A-Za-z.'\-]*){0,2})", re.IGNORECASE)
+
+
+def _name_after(pattern: re.Pattern[str], question: str) -> str | None:
+    """The name following ``pattern``'s keyword, up to the first word that
+    cannot be part of one. None when no name follows at all - "without a
+    turnover" names nobody, and must not become a teammate called "a"."""
+    match = pattern.search(question)
+    if match is None:
+        return None
+    words: list[str] = []
+    for word in match.group(1).split():
+        if word.casefold() in _NAME_STOPWORDS:
+            break
+        words.append(word)
+    return " ".join(words) or None
+
+
+# Which split a player_splits question asks for. Exactly one or nothing.
+SPLIT_WORDS: dict[str, re.Pattern[str]] = {
+    "home_away": re.compile(r"\bhome\b.{0,15}\b(?:away|road)\b|\b(?:away|road)\b.{0,15}\bhome\b", re.IGNORECASE),
+    "starter_bench": re.compile(r"\b(?:starter|starting|starts|bench|reserve)\b", re.IGNORECASE),
+    "wins_losses": re.compile(r"\bin\s+(?:wins|losses)\b|\bwins\s+(?:vs\.?|versus|and|or)\s+losses\b", re.IGNORECASE),
+    "month": re.compile(r"\b(?:by|each|per)\s+month\b|\bmonthly\b", re.IGNORECASE),
+}
+
+# Which end of a team ranking was asked for. The four are not two pairs: for a
+# stat where lower is better, "fewest turnovers" and "worst in turnovers" sit
+# at opposite ends, so the template - which knows the stat - resolves them.
+RANK_WORDS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("worst", re.compile(r"\bworst\b", re.IGNORECASE)),
+    ("best", re.compile(r"\bbest\b", re.IGNORECASE)),
+    ("fewest", re.compile(r"\b(?:fewest|least|lowest)\b", re.IGNORECASE)),
+    ("most", re.compile(r"\b(?:most|highest|top|leads?|leaders?)\b", re.IGNORECASE)),
+)
+
+_LOSING_STREAK = re.compile(r"\blos(?:ing|s|e)\s+streaks?\b|\bstraight\s+losses\b|\blosses\s+in\s+a\s+row\b|\bskid\b", re.IGNORECASE)
+
+# A ranking of TEAMS, asked with a player-ranking intent. Measured: "which team
+# scores the most points per game" came back as `leaderboard` and was answered
+# with the players' scoring leaders - a table of real, correct numbers about the
+# wrong kind of thing.
+_TEAM_SUBJECT = re.compile(
+    r"\b(?:which|what)\s+teams?\b|\bby\s+(?:a\s+)?teams?\b|\bper\s+team\b|\bteams?\s+(?:with\s+the|that|leaders|rankings?)\b",
+    re.IGNORECASE,
+)
+_PLAYER_RANKING_INTENTS = frozenset({"leaderboard", "single_game_high", "threshold_count"})
 
 
 # How a question names one end of a season's games. Deliberately tight - the
@@ -470,10 +594,15 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
         raw["intent"] = "threshold_count"
         raw["stat"] = "fouls"
         raw["threshold"] = FOUL_OUT_THRESHOLD
-    if _AGENT_ONLY.search(low) and not _is_team_quarter_points(raw):
+    if (_AGENT_ONLY.search(low) and not _is_team_quarter_points(raw)) or _HALF_WORDS.search(low):
         # Slots are kept: the agent sees the conversation, not the Route, but
         # the log line shows what the model thought before the override.
         raw["intent"] = "other"
+    if raw["intent"] in _PLAYER_RANKING_INTENTS and _TEAM_SUBJECT.search(question):
+        # A team ranking has a template; a team's single-game record and a
+        # count of team games do not, and answering either with players is the
+        # substitution this exists to stop.
+        raw["intent"] = "team_leaderboard" if raw["intent"] == "leaderboard" else "other"
 
     # A blank string is how the model says "no value" for a required slot;
     # dropping it here keeps every template's `slots.get(...) or default`
@@ -485,8 +614,41 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
         slots.pop("season", None)
     else:
         slots["season"] = resolved_season
-    requested_type = slots.get("season_type")
-    slots["season_type"] = SEASON_TYPES.get(requested_type, 2) if isinstance(requested_type, str) else 2
+    slots["season_type"] = _validate_season_type(question)
+    # The scoping slots below are read from the question and never asked of the
+    # model: none is in ROUTER_SCHEMA, so adding them changed no grammar and can
+    # have moved no other question's routing. A template that cannot honour one
+    # refuses it (templates.check_scope) rather than answering a broader question.
+    span = _validate_span(question)
+    if span is not None:
+        slots["span"] = span
+        # A career is every season. A year the MODEL filled in ("current", by
+        # default) would narrow it back to one; a year the question named is kept.
+        if season_from_text(question) is None:
+            slots.pop("season", None)
+    venue = _validate_venue(question)
+    if venue is not None:
+        slots["venue"] = venue
+    without = _name_after(_WITHOUT, question)
+    if without is not None:
+        slots["without"] = without
+    # Intent-specific: each means nothing to any other template, so each is
+    # only added where one reads it - the same rule `side` follows below.
+    if raw["intent"] == "with_without":
+        with_player = _name_after(_WITH, question)
+        if with_player is not None and without is None:
+            slots["with_player"] = with_player
+    if raw["intent"] == "player_splits":
+        splits = [name for name, pattern in SPLIT_WORDS.items() if pattern.search(question)]
+        if len(splits) == 1:
+            slots["split"] = splits[0]
+            slots.pop("venue", None)  # a split over venues is not a filter to one
+    if raw["intent"] == "team_leaderboard":
+        rank = next((name for name, pattern in RANK_WORDS if pattern.search(question)), None)
+        if rank is not None:
+            slots["rank"] = rank
+    if raw["intent"] == "streak":
+        slots["kind"] = "loss" if _LOSING_STREAK.search(question) else "win"
     # fingerprint only - `side` means nothing to any other template, and adding
     # it elsewhere would put a slot in the trace that nothing reads.
     # player_compare only: every other template either needs the stat or

@@ -1455,7 +1455,9 @@ def test_fingerprint_declares_the_game_scoping_it_handles(fp_ctx: TemplateContex
     # It handles them by refusing; check_scope must therefore NOT strip the
     # request out from under it and fall through to an agent with no better source.
     check_scope("fingerprint", {"player": "Shai", "order": "recent", "date": "2026-01-02"})
-    assert HONORED_SCOPING["fingerprint"] == SCOPING_SLOTS
+    # The game-scoping pair specifically - SCOPING_SLOTS also holds opponent,
+    # venue, span and without, none of which a fingerprint can narrow to.
+    assert {"order", "date"} <= HONORED_SCOPING["fingerprint"] <= SCOPING_SLOTS
 
 
 def test_fingerprint_without_a_player_falls_through(fp_ctx: TemplateContext) -> None:
@@ -1514,3 +1516,23 @@ def test_templates_that_write_nothing_report_no_artifacts(lb_con: TemplateContex
     """The default has to be empty, not unset: a caller iterates artifacts on
     every answer, and a None here would be an AttributeError on the common path."""
     assert leaderboard(lb_con, {"stat": "points"}).artifacts == []
+
+
+@pytest.mark.parametrize(
+    ("intent", "slots"),
+    [
+        ("game_log", {"player": "Jaylen Brown", "opponent": "Detroit Pistons"}),
+        ("team_record", {"team": "New York Knicks", "venue": "home"}),
+        ("leaderboard", {"stat": "points", "span": "career"}),
+        ("game_log", {"player": "Brandin Podziemski", "without": "curry"}),
+    ],
+)
+def test_scope_guard_refuses_what_the_question_text_narrowed_to(intent: str, slots: dict[str, Any]) -> None:
+    """The four real StatMuse queries behind these slots were each answered for
+    every opponent, every venue, one season, or every game respectively."""
+    with pytest.raises(TemplateUnsupported, match="different span"):
+        check_scope(intent, slots)
+
+
+def test_team_quarter_points_still_honours_the_opponent_it_always_read() -> None:
+    check_scope("team_quarter_points", {"team": "Philadelphia 76ers", "period": 4, "opponent": "Boston Celtics"})

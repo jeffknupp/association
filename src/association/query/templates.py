@@ -77,11 +77,21 @@ SEASON_TYPE_NAMES = {1: "preseason", 2: "regular season", 3: "postseason"}
 # three times ("his last game" charting a whole season, and so on). The router
 # extracts these CORRECTLY in each case, so check_routing cannot catch a
 # template dropping them; only this can.
-SCOPING_SLOTS = frozenset({"order", "date"})
+#
+# The four after those are read from the question text by the router and by
+# entities.scope_from_question, never asked of the model, and exist for the same
+# reason. Measured against real StatMuse queries before they did: "jaylen brown
+# last 8 games vs pistons" answered with the Celtics' last 8 games, "Knicks
+# home record" with their overall record, "career points leaders" with this
+# season's, and "Podziemski game log without curry" with his whole log. Each
+# was fast, fluent and about something else.
+SCOPING_SLOTS = frozenset({"order", "date", "opponent", "venue", "span", "without"})
 
 # What each template actually honours. Anything not listed here honours none.
 HONORED_SCOPING: dict[str, frozenset[str]] = {
     "game_log": frozenset({"order", "date"}),
+    # It always read `opponent`; listed now that `opponent` is a scoping slot.
+    "team_quarter_points": frozenset({"opponent"}),
     "shot_chart": frozenset({"order"}),
     "shot_distance": frozenset({"order"}),
     "player_netpoints": frozenset({"order"}),

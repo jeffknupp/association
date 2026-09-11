@@ -176,7 +176,14 @@ def _build_views(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
     # `data load` too.
     has_advanced = "player_advanced_stats" in loaded
     advanced_select = ", pas.ts_pct, pas.efg_pct, pas.usage_pct, pas.game_score" if has_advanced else ""
-    advanced_join = "LEFT JOIN player_advanced_stats pas ON pas.event_id = pbs.event_id AND pas.athlete_id = pbs.athlete_id" if has_advanced else ""
+    # Every join keyed on season as well as event_id. ESPN answers season=1993
+    # and season=1994 with the same 1,185 events (see coverage.py's phantom), so
+    # an event_id alone matches two games rows and two advanced-stat rows, and
+    # every player-game in those seasons came back FOUR times - 112,780 rows for
+    # 28,195 games, each one a duplicate a game log or single-game high would
+    # list. games.season always equals player_box_stats.season (checked: 0 rows
+    # disagree), so the extra key drops nothing.
+    advanced_join = "LEFT JOIN player_advanced_stats pas ON pas.event_id = pbs.event_id AND pas.athlete_id = pbs.athlete_id AND pas.season = pbs.season" if has_advanced else ""
     con.execute(
         f"""
         CREATE OR REPLACE VIEW player_game_log AS
@@ -189,7 +196,7 @@ def _build_views(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
             {advanced_select}
         FROM player_box_stats pbs
         LEFT JOIN players p ON p.athlete_id = pbs.athlete_id
-        LEFT JOIN games g ON g.event_id = pbs.event_id
+        LEFT JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season
         LEFT JOIN teams t ON t.team_id = pbs.team_id
         LEFT JOIN teams o ON o.team_id = pbs.opponent_team_id
         {advanced_join}

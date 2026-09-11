@@ -512,6 +512,149 @@ def undo_name_completion(con: duckdb.DuckDBPyConnection, question: str, slots: d
     return changed
 
 
+# What a question calls a team beyond the words of its ESPN name. Only the
+# ones no word of the display name already carries: "Knicks", "Celtics" and
+# "Blazers" need nothing here, "sixers" and "cavs" do.
+_TEAM_NICKNAMES: dict[str, str] = {
+    "sixers": "Philadelphia 76ers",
+    "philly": "Philadelphia 76ers",
+    "cavs": "Cleveland Cavaliers",
+    "mavs": "Dallas Mavericks",
+    "wolves": "Minnesota Timberwolves",
+    "twolves": "Minnesota Timberwolves",
+    "dubs": "Golden State Warriors",
+    "clips": "LA Clippers",
+    "pels": "New Orleans Pelicans",
+    "nola": "New Orleans Pelicans",
+    "nugs": "Denver Nuggets",
+    "grizz": "Memphis Grizzlies",
+    "wiz": "Washington Wizards",
+}
+
+# "vs", "versus", "against" or "v" and whatever follows. Whether what follows is
+# a team is decided against the teams table, not here: "lebron vs kawhi" is two
+# players and must stay a comparison.
+_AGAINST = re.compile(r"\b(?:vs\.?|versus|against|v\.?)\s+(?:the\s+)?(.+)", re.IGNORECASE)
+
+
+def _team_named(con: duckdb.DuckDBPyConnection, text: Any) -> Entity | None:
+    """The one team ``text`` names outright - an id, an abbreviation, a nickname,
+    or a name match starting a word - or None. Never a substring guess: "LA"
+    is two teams and stays None, which is the point."""
+    if not isinstance(text, str) or not text.strip():
+        return None
+    text = _TEAM_NICKNAMES.get(text.strip().casefold(), text.strip())
+    try:
+        rows = con.execute(
+            "SELECT team_id, display_name FROM teams WHERE team_id = ? OR abbreviation ILIKE ? OR display_name ILIKE ? OR display_name ILIKE ? LIMIT 2",
+            [text, text, f"{text}%", f"% {text}%"],
+        ).fetchall()
+    except duckdb.CatalogException:
+        # A warehouse without `teams` (a partial load) has no team to find.
+        # Everything here is best-effort: finding none leaves the slots exactly
+        # as the router gave them, which is never worse than before this ran.
+        return None
+    return Entity(id=str(rows[0][0]), name=rows[0][1]) if len(rows) == 1 else None
+
+
+def _team_after_versus(con: duckdb.DuckDBPyConnection, question: str) -> Entity | None:
+    """The team a question sets a subject AGAINST ("jaylen brown last 8 games vs
+    pistons"), or None. Spans of three words down to one are tried, so "vs new
+    york" is the Knicks rather than an ambiguous "new"."""
+    for match in _AGAINST.finditer(question):
+        words = _words(match.group(1))[:3]
+        for size in (3, 2, 1):
+            if size <= len(words) and len(" ".join(words[:size])) >= 2:
+                team = _team_named(con, " ".join(words[:size]))
+                if team is not None:
+                    return team
+    return None
+
+
+def _team_grounded(con: duckdb.DuckDBPyConnection, question: str, team: Entity) -> bool:
+    """Whether the question shows any trace of ``team`` - a word of its name,
+    its abbreviation, or a nickname. The team counterpart of :func:`_grounded`."""
+    row = con.execute("SELECT abbreviation, display_name FROM teams WHERE team_id = ?", [team.id]).fetchone()
+    if row is None:
+        return True  # nothing to check it against; leave it alone
+    asked = {word.casefold() for word in _words(question)}
+    carried = {word.casefold() for word in _words(row[1])} | {str(row[0]).casefold()}
+    carried |= {nickname for nickname, name in _TEAM_NICKNAMES.items() if name == row[1]}
+    return bool(carried & asked)
+
+
+def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], *, reads_player: bool) -> list[str]:
+    """Put a team the question plays AGAINST where a template will see it.
+    Mutates ``slots``; returns a line per change, for the trace.
+
+    The router has an ``opponent`` slot but is only ever taught it for team
+    quarter scoring, so on every other shape the opposing team either vanishes
+    or lands in the wrong slot. Measured against real StatMuse queries, the
+    single most common shape there is (a third of the feed):
+
+    - "jaylen brown last 8 games vs pistons" routed to ``game_log`` with
+      ``team='Boston Celtics'`` - his team, which the question never names -
+      and no player. The answer was the Celtics' last eight games.
+    - "Luka Doncic game log vs Lakers" put the Lakers in ``team`` and dropped
+      Luka: the Lakers' log.
+    - "how did curry do against the celtics" put the Celtics in ``players``,
+      where "boston" resolves to Brandon Boston Jr.
+
+    So the question is read for the team after "vs"/"against", and each of
+    those is undone. The resulting ``opponent`` is a scoping slot: a template
+    that cannot restrict to one refuses it (templates.check_scope) instead of
+    answering about every opponent. A team the slots already carry - both
+    sides of ``head_to_head``, the opponent ``team_quarter_points`` was given -
+    is left exactly as it was.
+
+    Restoring a player follows :func:`override_invented_players`' discipline:
+    only when the question names exactly one player, and only for a template
+    that reads one (``reads_player``).
+
+    .. versionadded:: 2.1.0
+    """
+    notes: list[str] = []
+    versus = _team_after_versus(con, question)
+    has_player = bool(slots.get("player")) or bool(slots.get("players"))
+    team = _team_named(con, slots.get("team"))
+
+    def only_player() -> str | None:
+        """The one player the question names, or None if it names none or several."""
+        named = players_named_in(con, question)
+        return named[0] if len(named) == 1 else None
+
+    if team is not None and not has_player and reads_player:
+        # The team in `team` is the opponent, or a team the question never
+        # mentioned (the router's guess at the player's own): either way the
+        # player it displaced is the subject.
+        displaced = versus is not None and team.id == versus.id
+        if displaced or not _team_grounded(con, question, team):
+            player = only_player()
+            if player is not None:
+                slots.pop("team", None)
+                slots["player"] = player
+                notes.append(f"{team.name!r} was {'the opponent' if displaced else 'not in the question'}; the subject is {player!r}")
+                team = None
+
+    listed = slots.get("players")
+    if versus is not None and isinstance(listed, list):
+        kept = [name for name in listed if not ((found := _team_named(con, name)) is not None and found.id == versus.id)]
+        if len(kept) != len(listed):
+            notes.append(f"{versus.name!r} is a team, not a player to compare")
+            if len(kept) == 1:
+                slots.pop("players", None)
+                slots["player"] = kept[0]
+            else:
+                slots["players"] = kept
+
+    if versus is not None and not slots.get("opponent"):
+        carried = [slots.get("team"), *(slots.get("teams") or [])]
+        if not any((found := _team_named(con, name)) is not None and found.id == versus.id for name in carried):
+            slots["opponent"] = versus.name
+            notes.append(f"opponent {versus.name!r} (from the question)")
+    return notes
+
+
 def _shares_word(one: str, other: str) -> bool:
     return bool({w.casefold() for w in _words(one) if len(w) >= 3} & {w.casefold() for w in _words(other) if len(w) >= 3})
 

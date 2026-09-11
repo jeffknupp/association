@@ -15,6 +15,58 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Real questions were being answered about something else, and now refuse
+  instead.** 99 questions were run through the fast path to the final answer:
+  the routing corpus plus 45 real StatMuse queries. Nine of the StatMuse queries
+  came back fast, fluent and wrong:
+
+  | Asked | Answered |
+  | --- | --- |
+  | "jaylen brown last 8 games vs pistons" | the Celtics' last eight games |
+  | "Luka Doncic game log vs Lakers" | the Lakers' log |
+  | "Knicks home record" | their overall 53-29 |
+  | "career points leaders" | this season's scoring leaders |
+  | "which team scores the most points per game" | the players' leaders |
+  | "Podziemski game log without curry" | his whole log |
+  | "rj barrett 4th qtr log" | his whole last game |
+
+  Two more were answered for the postseason without mentioning it.
+
+  Every one of these is the router answering a narrower question's slots with a
+  broader template, so every fix is the same move this project already makes for
+  `order` and `date`. The question text is read for what it narrows to, and a
+  template that cannot honour that refuses (`check_scope`) instead of answering
+  about everything:
+
+  - `opponent`, the team after "vs"/"against", via
+    `entities.scope_from_question`. That function also undoes the router's two
+    ways of losing the player: putting his own team in `team`, or putting the
+    opponent there.
+  - `venue` (home/away).
+  - `span` ("career", "all-time"; a "career high this season" is still that
+    season's best).
+  - `without` (a teammate).
+
+  None of the four is in `ROUTER_SCHEMA`, so the model's grammar did not change.
+  Two more slots are read the same way:
+
+  - `season_type` now comes from the question, never the model. It was wrong in
+    both directions: "Sga record 36 plus points" and "lebron vs kawhi 2015" came
+    back as playoff questions, and "tatum stats in the 2024 finals" as a
+    regular-season one.
+  - "qtr", "q4" and "first half" now reach the agent like "4th quarter" did.
+
+  A team ranking asked as a player ranking is sent to `team_leaderboard`.
+
+- **1993-94 player games were listed four times.** `player_game_log` joined
+  `games` and `player_advanced_stats` on `event_id` alone, and ESPN files the
+  1993-94 season's 1,185 events under both 1993 and 1994 (the phantom in
+  `coverage.py`). So each of those player-games matched two game rows and two
+  advanced-stat rows: 112,780 rows for 28,195 games. A game log or single-game
+  high over those seasons repeated every row. The joins are now keyed on
+  `season` too. Measured first: `games.season` equals `player_box_stats.season`
+  for every row, so the extra key drops nothing.
+
 - **`--workers` now reaches the per-game NetPoints fetch.** It was the last
   serial loop in the pipeline, and it is S3 round trips end to end: measured
   on the tail of the re-derivation below, 12 dates a second through the pool

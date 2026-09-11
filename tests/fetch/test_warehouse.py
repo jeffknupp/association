@@ -123,8 +123,8 @@ def test_build_creates_player_game_log_view_when_dependencies_present(tmp_path: 
     fixtures = {
         "teams": {"team_id": "1", "abbreviation": "BOS"},
         "players": {"athlete_id": "10", "display_name": "Test Player"},
-        "games": {"event_id": "100", "date": "2024-01-01"},
-        "player_box_stats": {"event_id": "100", "athlete_id": "10", "team_id": "1", "opponent_team_id": "1", "points": 20},
+        "games": {"event_id": "100", "season": 2024, "date": "2024-01-01"},
+        "player_box_stats": {"event_id": "100", "season": 2024, "athlete_id": "10", "team_id": "1", "opponent_team_id": "1", "points": 20},
     }
     for table, row in fixtures.items():
         d = data_dir / table
@@ -181,7 +181,7 @@ def test_player_game_log_gains_advanced_columns(tmp_path: Path) -> None:
     fixtures: dict[str, dict] = {
         "teams": {"team_id": "1", "abbreviation": "BOS"},
         "players": {"athlete_id": "10", "display_name": "Test Player"},
-        "games": {"event_id": "100", "date": "2024-01-01"},
+        "games": {"event_id": "100", "season": 2024, "date": "2024-01-01"},
         "player_box_stats": _ADVANCED_STATS_PLAYER_BOX_ROW,
     }
     for table, row in fixtures.items():
@@ -206,8 +206,8 @@ def test_player_game_log_has_no_advanced_columns_when_box_stats_incomplete(tmp_p
     fixtures: dict[str, dict] = {
         "teams": {"team_id": "1", "abbreviation": "BOS"},
         "players": {"athlete_id": "10", "display_name": "Test Player"},
-        "games": {"event_id": "100", "date": "2024-01-01"},
-        "player_box_stats": {"event_id": "100", "athlete_id": "10", "team_id": "1", "opponent_team_id": "1", "points": 20},
+        "games": {"event_id": "100", "season": 2024, "date": "2024-01-01"},
+        "player_box_stats": {"event_id": "100", "season": 2024, "athlete_id": "10", "team_id": "1", "opponent_team_id": "1", "points": 20},
     }
     for table, row in fixtures.items():
         _write_table_fixture(data_dir, table, row)
@@ -224,7 +224,7 @@ def test_player_game_log_has_no_advanced_columns_when_box_stats_incomplete(tmp_p
 def test_build_with_tables_subset_only_loads_requested_tables(tmp_path: Path) -> None:
     data_dir = tmp_path / "parquet"
     _write_table_fixture(data_dir, "teams", {"team_id": "1", "abbreviation": "BOS"})
-    _write_table_fixture(data_dir, "games", {"event_id": "100", "date": "2024-01-01"})
+    _write_table_fixture(data_dir, "games", {"event_id": "100", "season": 2024, "date": "2024-01-01"})
     db_path = tmp_path / "test.duckdb"
 
     warehouse.build(data_dir, db_path, tables=["teams"])
@@ -251,8 +251,8 @@ def test_partial_reload_still_builds_views_from_previously_loaded_tables(tmp_pat
     fixtures: dict[str, dict] = {
         "teams": {"team_id": "1", "abbreviation": "BOS"},
         "players": {"athlete_id": "10", "display_name": "Test Player"},
-        "games": {"event_id": "100", "date": "2024-01-01"},
-        "player_box_stats": {"event_id": "100", "athlete_id": "10", "team_id": "1", "opponent_team_id": "1", "points": 20},
+        "games": {"event_id": "100", "season": 2024, "date": "2024-01-01"},
+        "player_box_stats": {"event_id": "100", "season": 2024, "athlete_id": "10", "team_id": "1", "opponent_team_id": "1", "points": 20},
     }
     for table, row in fixtures.items():
         _write_table_fixture(data_dir, table, row)
@@ -424,3 +424,30 @@ def test_build_loads_through_a_connection_with_the_external_file_cache_off(tmp_p
     warehouse.build(data_dir, tmp_path / "w.duckdb")
 
     assert seen == [(False,)]
+
+
+def test_a_phantom_season_does_not_multiply_the_game_log(tmp_path: Path) -> None:
+    """ESPN files the 1993-94 season's events under both 1993 and 1994 (the
+    phantom in coverage.py), so one event_id sits in `games` twice. Joined on
+    event_id alone, every player-game in those seasons came back four times -
+    112,780 log rows for 28,195 games on the real warehouse - and a game log or
+    single-game high listed each game four times over."""
+    data_dir = tmp_path / "parquet"
+    for season in (1993, 1994):
+        d = data_dir / "games" / f"season={season}"
+        d.mkdir(parents=True)
+        pq.write_table(pa.Table.from_pylist([{"event_id": "100", "season": season, "date": "1994-01-01"}]), d / "f.parquet")
+        box = dict(_ADVANCED_STATS_PLAYER_BOX_ROW, season=season)
+        b = data_dir / "player_box_stats" / f"season={season}"
+        b.mkdir(parents=True)
+        pq.write_table(pa.Table.from_pylist([box]), b / "f.parquet")
+    _write_table_fixture(data_dir, "teams", {"team_id": "1", "abbreviation": "BOS"})
+    _write_table_fixture(data_dir, "players", {"athlete_id": "10", "display_name": "Test Player"})
+
+    db_path = tmp_path / "test.duckdb"
+    warehouse.build(data_dir, db_path)
+
+    con = duckdb.connect(str(db_path))
+    rows = con.execute("SELECT season, count(*) FROM player_game_log GROUP BY 1 ORDER BY 1").fetchall()
+    con.close()
+    assert rows == [(1993, 1), (1994, 1)]
