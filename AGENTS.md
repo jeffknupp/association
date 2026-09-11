@@ -542,6 +542,17 @@ everything about it is constrained by things measured elsewhere in this file.
   into 1993-94: 5 players in 1977, 240 in 1988, 668 in 1994. It is a survivor
   sample, not league-wide coverage, and a leaderboard over it before ~1994 is
   measuring who played longest.
+- **Shot coordinates measure y from the rim, not the baseline, and
+  `points_attempted = 0` means unlabeled, not zero points.** The rim is at
+  `(25, 0)` (`court.HOOP_Y`), and assuming otherwise broke nothing visibly:
+  distances were plausible, just three feet short, and a court drawn around
+  the same wrong point looked self-consistent. What caught it was the data's
+  own second opinion - the distance each shot's description states - and that
+  is the method worth keeping: where a column has a sibling that restates it
+  (a described distance, a box score's attempts), fit against the sibling
+  before trusting a constant. Never filter `points_attempted` for a shot's
+  value; read `shotchart.SHOT_VALUE_SQL`, which derives it where ESPN left it
+  0 and keeps the per-season refusals and caveats beside it.
 - Query connections to DuckDB are **read-only**, as a hard guarantee.
 
 **Those floors are enforced, not just documented.** `association/coverage.py`

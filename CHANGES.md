@@ -15,6 +15,56 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Shot distances and shot charts were measured from a rim 5.25 feet from
+  where the data puts it, and every "threes" or "twos" question read only the
+  shots ESPN happened to label.** Two bugs in one pipeline, both of the kind
+  this project keeps producing: fast, fluent, and about a different question.
+
+  `court.py` put the rim at `(25, 5.25)`, on the assumption that
+  `coordinate_y` starts at the baseline. It starts at the rim. Most shot
+  descriptions carry their own distance ("makes 26-foot three point jumper"),
+  and from 2002 through 2012 that distance equals `round(hypot(x - 25, y))` for
+  all 1.3 million of them; later seasons agree to within a foot on 99.8%. So
+  every distance came out short - Stephen Curry's 2026 threes averaged 23.6
+  feet, inside a 23.75-foot line, where from the rim they average 27.6 - and
+  the chart drew its court around the same wrong point, putting every shot
+  5.25 feet nearer the baseline than it was taken and a typical three on or
+  inside the arc. `HOOP_Y` is now 0 (the baseline sits at -5.25), the court is
+  drawn in the data's own frame, and the geometry the rest of the pipeline
+  needs lives beside it: `SHOT_DISTANCE_SQL`, `BEYOND_THE_ARC_SQL` and
+  `HAS_POSITION_SQL`.
+
+  One thing that looks like a counterexample and is not: from 2023-11-02 the
+  descriptions run 0.64 feet short of the rim, as if it had moved a foot. The
+  coordinates did not - the three-point line separates ESPN's own labels
+  exactly as well after that date as before it (99.93%), and worse from a rim
+  a foot out (99.72%). ESPN changed its prose, not its frame.
+
+  Separately, `points_attempted = 0` means *unlabeled*, not zero points, and
+  both `shot_distance` and the shot chart filtered on it as a value. It is 0
+  for every shot of 2002 and 2003, 96% of 2022's, and 23-28% of the field
+  goals of each season from 2004 to 2012 - every one of those a miss. "Curry's
+  threes in 2022" charted 38 of his 751 attempts, all misses; his 2010 twos
+  were 501 attempts at 72.3% instead of 763 at 47.4%; Kobe Bryant's 2003 threes
+  were "No 3-point shots". `shotchart.SHOT_VALUE_SQL` now derives a value
+  where ESPN left none: the label, else `shot_type` for a free throw, else the
+  description where it says "three point" or "two point", else - through
+  2012, whose descriptions name every three - a two, else the shot's position
+  against the line. Counted against the box score's three-point attempts it
+  matches in 99.6-100% of player-games in every season from 2003 on, and 99.3%
+  in 2022. 2002 does not get there (99.05%, with 1.6% of its threes unnamed and
+  a third of its unlabeled shots undescribed), so a two- or three-point
+  question about 2002 is refused with that reason; 2003 and 2022, which rest
+  mostly on the derivation, answer with a note saying so.
+
+  Also: from 2002 to 2018 every free throw carries a position under the rim,
+  so "has coordinates" never excluded them. An unfiltered chart drew them as
+  shots, and Curry's 2010 shot distance averaged in all 200 of his free throws
+  among 1,343 "attempts" (1,143 now). They are excluded by value. `(0, 0)`, a
+  point on the sideline that 2002 uses for 7,109 shots, counts as no position.
+  A free-throw chart is refused rather than drawn as a dot. The example chart
+  in the README and `docs/usage.rst` is redrawn from the same game.
+
 - **`--workers` now reaches the per-game NetPoints fetch.** It was the last
   serial loop in the pipeline, and it is S3 round trips end to end: measured
   on the tail of the re-derivation below, 12 dates a second through the pool
