@@ -1089,20 +1089,26 @@ def test_leaderboard_drops_a_field_that_restates_the_ranked_metric(lb_con: Templ
 @pytest.fixture
 def sgh_ctx(tmp_path: Path) -> TemplateContext:
     c = duckdb.connect(":memory:")
-    c.execute("CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER, season_type INTEGER, player_name VARCHAR, game_date VARCHAR, opponent_abbr VARCHAR, assists INTEGER, points INTEGER)")
+    # `minutes` is last so the positional INSERTs below (and in the tests that
+    # add a row of their own) keep their order. A NULL there is the empty line
+    # ESPN leaves, which single_game_high must not read as a game played.
+    c.execute(
+        "CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER, season_type INTEGER, player_name VARCHAR, "
+        "game_date VARCHAR, opponent_abbr VARCHAR, assists INTEGER, points INTEGER, minutes INTEGER)"
+    )
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute("INSERT INTO players VALUES ('1','Ryan Nembhard'),('2','Nikola Jokic')")
     # Read only to count empty box scores; none here.
     c.execute("CREATE TABLE player_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, athlete_id VARCHAR, minutes INTEGER, did_not_play BOOLEAN)")
     s = current_season()
     c.executemany(
-        "INSERT INTO player_game_log VALUES (?,?,?,?,?,?,?,?)",
+        "INSERT INTO player_game_log VALUES (?,?,?,?,?,?,?,?,?)",
         [
-            ("1", s, 2, "Ryan Nembhard", "2026-04-13T00:30Z", "CHI", 23, 8),
-            ("2", s, 2, "Nikola Jokic", "2026-03-26T02:00Z", "DAL", 19, 30),
-            ("2", s, 2, "Nikola Jokic", "2026-01-02T02:00Z", "UTA", 11, 40),
-            ("1", s, 3, "Ryan Nembhard", "2026-05-01T00:30Z", "BOS", 30, 5),
-            ("2", s - 1, 2, "Nikola Jokic", "2025-03-26T02:00Z", "DAL", 25, 30),
+            ("1", s, 2, "Ryan Nembhard", "2026-04-13T00:30Z", "CHI", 23, 8, 30),
+            ("2", s, 2, "Nikola Jokic", "2026-03-26T02:00Z", "DAL", 19, 30, 34),
+            ("2", s, 2, "Nikola Jokic", "2026-01-02T02:00Z", "UTA", 11, 40, 36),
+            ("1", s, 3, "Ryan Nembhard", "2026-05-01T00:30Z", "BOS", 30, 5, 31),
+            ("2", s - 1, 2, "Nikola Jokic", "2025-03-26T02:00Z", "DAL", 25, 30, 33),
         ],
     )
     return TemplateContext(con=c, out_dir=tmp_path)
@@ -1154,12 +1160,55 @@ def test_single_game_high_ambiguous_player_asks(sgh_ctx: TemplateContext) -> Non
     # narrowed to the players with a row where the answer is read from, and
     # with Jokic alone in this season's log, "Nikola" is answered about him.
     sgh_ctx.con.execute("INSERT INTO players VALUES ('3','Nikola Jovic')")
-    sgh_ctx.con.execute("INSERT INTO player_game_log VALUES ('3',?,2,'Nikola Jovic','2026-02-01T00:30Z','BOS',4,12)", [current_season()])
+    sgh_ctx.con.execute("INSERT INTO player_game_log VALUES ('3',?,2,'Nikola Jovic','2026-02-01T00:30Z','BOS',4,12,26)", [current_season()])
     assert "did you mean" in (single_game_high(sgh_ctx, {"stat": "assists", "player": "Nikola"}).answer or "")
 
 
 def test_single_game_high_reports_an_empty_season_honestly(sgh_ctx: TemplateContext) -> None:
     assert "no 1999 regular season games" in (single_game_high(sgh_ctx, {"stat": "assists", "season": 1999}).answer or "")
+
+
+def _all_box_scores_empty(ctx: TemplateContext, name: str) -> None:
+    """One player whose whole season is the empty line ESPN leaves: listed as
+    having played, no minutes, every stat 0. Anthony Davis's 2015 in miniature."""
+    s = current_season()
+    ctx.con.execute("INSERT INTO players VALUES ('9',?)", [name])
+    ctx.con.executemany(
+        "INSERT INTO player_game_log VALUES ('9',?,2,?,?,'ORL',0,0,NULL)",
+        [(s, name, "2026-01-05T00:30Z"), (s, name, "2026-01-08T00:30Z")],
+    )
+    ctx.con.executemany("INSERT INTO player_box_stats VALUES (?,?,2,'9',NULL,FALSE)", [("x1", s), ("x2", s)])
+
+
+def test_a_zero_from_an_empty_box_score_never_wins_a_single_game_high(sgh_ctx: TemplateContext) -> None:
+    """The P1 this fixes. Every Chicago and New Orleans box score from 2013 to
+    2018 is zeros, so before the guard the maximum over them WAS one of those
+    zeros, reported with a date: "Anthony Davis's highest point total in a
+    single game in the 2015 regular season was 0, on 2014-10-28 vs ORL."
+    Fluent, specific and false."""
+    _all_box_scores_empty(sgh_ctx, "Zion Williamson")
+    answer = single_game_high(sgh_ctx, {"stat": "points", "player": "Zion Williamson"}).answer or ""
+    assert "was 0" not in answer
+    assert f"no {current_season()} regular season games with a box score" in answer
+
+
+def test_an_empty_box_score_season_says_which_fact_is_missing(sgh_ctx: TemplateContext) -> None:
+    """The mirror-image bug the guard could have introduced: "he has no games"
+    is false of a player who played them, and sends the reader to look for a
+    missing season rather than a missing box score. The count and the years
+    have to be in the sentence."""
+    _all_box_scores_empty(sgh_ctx, "Zion Williamson")
+    answer = single_game_high(sgh_ctx, {"stat": "points", "player": "Zion Williamson"}).answer or ""
+    # The bare sentence must NOT appear. This is the assertion that carries the
+    # test: the count and the years below come from _empty_note, which runs
+    # either way, so asserting only those passed even with this branch blinded.
+    assert f"no {current_season()} regular season games in the warehouse" not in answer
+    assert f"no {current_season()} regular season games with a box score in the warehouse" in answer
+    assert "2 of Zion Williamson's games" in answer
+    # Said of a season with no games at all, the plain sentence is still right.
+    plain = single_game_high(sgh_ctx, {"stat": "assists", "season": 1999}).answer or ""
+    assert "no 1999 regular season games in the warehouse" in plain
+    assert "with a box score" not in plain
 
 
 # ---------------- head_to_head ----------------

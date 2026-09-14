@@ -80,19 +80,48 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
     there and 0 in his box scores.
   - **The caveat undersells it.** `_empty_box_scores` caveats count the games;
     they do not say "every Bulls and Pelicans game".
-- **User sees:** zeros read as real games for whole seasons of Anthony Davis,
-  Jimmy Butler and Derrick Rose, in game logs, single-game highs, threshold
-  counts, streaks, splits and with/without answers. For example: "Anthony
-  Davis game log 2015", "Butler 30-point games 2017". Box-score points are
-  86.5-87.3% of season totals across 2013-2018.
+- **User sees (re-measured live 2026-09-14; the original claim here was too
+  broad, and three of the six paths it named were already sound):**
+  - **`single_game_high` answered a zero as a real maximum** - "Anthony Davis's
+    highest point total in a single game in the 2015 regular season was 0, on
+    2014-10-28 vs ORL". Fluent, dated and false. **Fixed 2026-09-14**: the
+    template now reads only lines with minutes.
+  - **`game_log` names the wrong cause.** It already leaves these lines out, so
+    it says "No 2015 regular season games found for Anthony Davis" - of a man
+    who played 68. Split out as its own P2 entry.
+  - **`threshold_count` is low but honest**: "Anthony Davis had no games with
+    20+ points in the 2015 regular season. 68 of Anthony Davis's games in
+    2014-15 have an empty box score in this warehouse, so the count may be
+    low." The real answer is about 59. The caveat fires and is accurate; only
+    "may be low" undersells "every one of them".
+  - **Streaks, splits and with/without were never affected**: `conditions`
+    guards every read with `_played()`, which already requires
+    `minutes IS NOT NULL`.
+  - Box-score points remain 86.5-87.3% of season totals across 2013-2018, so
+    anything summing the box scores is still short.
 - **A refetch does not fix it.** A full pull of 1988-2026 with current code on
   2026-09-11, into a separate warehouse, reproduced `player_box_stats` and
   `team_box_stats` exactly: 1,100,170 and 86,988 rows, zero differences. ESPN
   still serves the zeroed lines today.
-- **Next step:** rebuild the box lines for those 1,025 events from `plays`,
-  which holds them (everything except minutes and plus-minus), or caveat by
-  team. Do it through the real fetch and load path ("Working on the fetch path"
-  in `AGENTS.md`).
+- **No other ESPN source has the data** (probed live 2026-09-14; see DATA.md
+  for the detail). The CDN box score on a different host serves the same zeros,
+  the core API exposes no per-athlete per-game statistics at any path, and the
+  athlete gamelog omits the games outright. The gamelog also proves the gap
+  follows the *franchise*: Derrick Rose reads 0, 0, 0, 1, 61, 25 across
+  2013-2018 and Aaron Brooks 51, 65, 0, 1, 60, 26, each zero exactly in his
+  Chicago years. So rebuilding from `plays` is the only route to a per-game
+  number, and there is nothing to re-fetch.
+- **Next step:** rebuild the box lines for those 1,025 events from `plays`
+  into a **separate, clearly-labeled table that no existing template reads**,
+  rather than into `player_box_stats`. Measured against 2015 games whose box
+  score survived, a reconstruction is exact for free throws (100%), blocks and
+  rebounds (99.8%), assists (99.6%), field goals made (99.6%) and attempted
+  (99.5%), steals (99.1%), three-pointers made (98.6%) and points (98.3%), but
+  only 96.8% for 3PA, 92.5% for turnovers and 83.3% for fouls - and it can
+  recover neither minutes nor plus-minus. Those are not box-score-grade numbers
+  uniformly, which is why they must not be indistinguishable from real ones.
+  Document the fidelity per column on the table itself. Build it at load time
+  ("Working on the fetch path" in `AGENTS.md`).
 - **Source:** DATA.md, "Every Chicago and New Orleans game from 2013 to 2018 has an empty box score"
 - **GitHub:** #1
 
@@ -268,6 +297,26 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **GitHub:** #9
 
 ## P2: misleading or incomplete
+
+### A game log over empty box scores says the games do not exist
+- **Found:** 2026-09-14, measuring what the empty 2013-18 box scores actually
+  break
+- **Evidence:** `game_log` filters on `_RECORDED` (`pgl.minutes IS NOT NULL`),
+  so the empty lines are correctly left out - but when that removes everything,
+  `_no_narrowed_games` (`query/templates.py`) falls to its `if not total`
+  branch and reports the span as holding no games. Live against the warehouse:
+  `game_log {"player": "Anthony Davis", "season": 2015}` answers "No 2015
+  regular season games found for Anthony Davis." He played 68.
+- **Source:** DATA.md, "Every Chicago and New Orleans game from 2013 to 2018 has an empty box score"
+- **User sees:** a refusal that is confident and names the wrong missing fact -
+  the season, rather than the box scores - and so sends the reader to look in
+  the wrong place. This is the mirror-image bug `AGENTS.md` describes, and the
+  same one `single_game_high` was given a sentence for on 2026-09-14.
+- **Next step:** in `_no_narrowed_games`, when the span holds no recorded games
+  but `_empty_box_scores` counts some, say so instead - "his 68 games in
+  2014-15 have an empty box score" - the way `_phrase_single_game_high` now
+  does. Watch it fail before believing it.
+- **GitHub:** #72
 
 ### A named playoff round falls through to the agent, which has no better source
 - **Found:** 2026-09-11, repo audit
@@ -683,26 +732,36 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   a query every few seconds.
 - **GitHub:** #70
 
-### The pipeline trace is a raw log, with no readable summary
+### The web page never says what data the warehouse actually holds
 - **Found:** 2026-09-14, requested
-- **Evidence:** the trace shown while answering, and folded into the `trace`
-  disclosure afterwards, is engine lines verbatim
-  (`-> (router) intent=...`). That is deliberate on the wire - `web/app.py`
-  says events carry trace lines verbatim and that parsing them back into
-  structured fields is the move Phase 0 removed - but it means the page has
-  prose where a reader wants a summary. What a reader actually wants to know
-  is on the `answer` event already, as values: `answered_by`, `intent` and the
-  timing split. What is *not* exposed as values: the slots the router filled,
-  the names that resolved and to whom, which scoping slot was refused, and
-  whether a coverage floor or caveat applied.
-- **User sees:** to understand why an answer came out as it did - which
-  template, which Curry, why a season was refused - they read a log.
-- **Next step:** add a short expandable summary above the raw trace: the path
-  that answered, the intent, the router's slots, the resolved names, anything
-  refused or caveated, and the timing. Build it from values on the `answer`
-  event, adding fields to the payload where they are missing. Do not derive it
-  by parsing the trace text - that is the thing `web/app.py` explicitly warns
-  against, and it would break the moment a trace line is reworded.
+- **Evidence:** the page's only claim about coverage is the status line written
+  once at load - "3,043 games, 1994-2026" - built from `/api/health`, whose
+  `_warehouse_seasons` is a `min(season)`, `max(season)` and `count(*)` over
+  `games` alone. That range is true and misleading in exactly the way
+  `coverage.py` exists to prevent: it reads as "1994 to 2026 is answerable",
+  when box scores start in 1994, play-by-play in 2003 (2002 is about half),
+  shot charts in 2002 (partial through 2003) and NetPoints in 2019. The real
+  per-season, per-season_type coverage is already computed by
+  `association data check` (`check/report.py`) and the enforced floors already
+  live in `coverage.py`; neither reaches the page.
+- **User sees:** no way to tell what is answerable before asking. A 2016 shot
+  chart and a 2016 NetPoints fingerprint look equally reasonable to ask for,
+  and only one of them is.
+- **Next step:** surface a readable subset of `data check` at the top right of
+  a session, grouped by what a season actually supports, in three tiers:
+  - **box score** - `games`, `player_box_stats`, `team_box_stats`
+  - **+ play-by-play** - adds `plays` and `shot_chart`
+  - **+ NetPoints** - adds the five NetPoints tables
+
+  Show the season span each tier covers and mark the partial and phantom
+  seasons `coverage.py` already declares. Three constraints. Read the tiers
+  from `COVERAGE` rather than restating them in the page, or they become a
+  fourth copy of the floors to drift out of date. Compute the counts at
+  startup or cache them: `data check` scans the Parquet tree, and the health
+  endpoint is on the path a polling indicator would hammer. And keep it
+  honest about the difference `coverage.py` already draws - a season can be
+  present, partial, unrepresentative for ranking, or a phantom, and "1994" is
+  not one number for every table.
 - **GitHub:** #71
 
 ## P4: tooling, docs, low impact

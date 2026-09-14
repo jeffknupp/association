@@ -15,6 +15,25 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A zero from an empty box score can no longer win a single-game high.**
+  "What was Anthony Davis's highest-scoring game in 2015?" answered "0, on
+  2014-10-28 vs ORL" - fluent, dated, and false. Every Chicago and New Orleans
+  box score from 2013 to 2018, and Vancouver's whole 1996, is stored with every
+  player listed as having played, no minutes, and every stat 0. Those lines
+  hold `0` rather than NULL, so they passed the "is not NULL" test beside them,
+  and where a whole team-season is empty the maximum over it is one of the
+  zeros.
+
+  `single_game_high` now reads only lines with minutes, the same line
+  `_played()` already drew in `conditions` - which is why streaks, splits and
+  with/without were never affected. Measured against the warehouse, no
+  unaffected answer moves: Davis's 2019 high is still 48, the 2015 league high
+  is still Kyrie Irving's 57, and Stephen Curry's 2015 high is still 51.
+
+  The refusal it leaves says which fact is missing. "He has no games" is false
+  of a player who played 68 of them, so a season whose box scores are all empty
+  now answers "no 2015 regular season games **with a box score** in the
+  warehouse", and the note that follows gives the count and the years.
 - **A single-game high keeps the player the question named.** "most points
   curry scored in a game this season" came back from the router as
   `single_game_high` with no player slot at all, and the answer was the

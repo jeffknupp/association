@@ -3461,7 +3461,16 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     limit = _clamp_limit(slots.get("limit"), default=DEFAULT_SINGLE_GAME_LIMIT)
 
     scope, params = _box_scope("l", season, season_type)
-    where = [scope, f"l.{column} IS NOT NULL"]
+    # A line with no minutes is a game with NO BOX SCORE, not a game he played
+    # and did nothing in. Those lines carry 0 rather than NULL, so they survive
+    # the NULL check beside this one - and where a whole team-season is empty
+    # (every Chicago and New Orleans season from 2013 to 2018, and Vancouver's
+    # 1996), a zero then wins the maximum outright: "Anthony Davis's highest
+    # point total in a single game in the 2015 regular season was 0, on
+    # 2014-10-28 vs ORL" - fluent, dated, and false. This is the same line
+    # _played() draws in `conditions`, which is why streaks and splits were
+    # never affected by it.
+    where = [scope, f"l.{column} IS NOT NULL", "l.minutes IS NOT NULL"]
     text = slots.get("player")
     named_player: Entity | None = None
     # The player slot is optional here: unset means "the league".
@@ -3486,20 +3495,31 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     # itself and would otherwise have no way to say what season they are from
     # except by reusing the whole sentence, which already lists them.
     shape = f"most {label}s in a single game" + (f", {named_player.name}" if named_player else "") + f", {span.caption}"
-    answer = span.preface + _phrase_single_game_high(games, label, span, named_player.name if named_player else None)
+    # Counted BEFORE the sentence is built, because when the guard above has
+    # left nothing it is the difference between "he has no games" and "his
+    # games have no box score" - which are different facts.
+    empty = _empty_box_scores(ctx.con, season, season_type, named_player.id if named_player else None)
+    who = named_player.name if named_player else None
+    answer = span.preface + _phrase_single_game_high(games, label, span, who, empty=empty)
     if span.league_note:
         answer += f" Box scores begin in {span.since}, so this is not an all-time record: earlier games are not in this warehouse."
-    empty = _empty_box_scores(ctx.con, season, season_type, named_player.id if named_player else None)
-    answer += _empty_note(empty, named_player.name if named_player else None, "a bigger game may be missing")
+    answer += _empty_note(empty, who, "a bigger game may be missing" if games else "there is no per-game high to read from them")
     return TemplateResult(
         data={"question_shape": shape, "season": season, "span": "career" if career else None, "stat": stat, "games": games, "empty_box_scores": empty[0]},
         answer=answer,
     )
 
 
-def _phrase_single_game_high(games: list[dict[str, Any]], label: str, span: _GameSpan, named_player: str | None) -> str:
+def _phrase_single_game_high(games: list[dict[str, Any]], label: str, span: _GameSpan, named_player: str | None, *, empty: tuple[int, int | None, int | None] = (0, None, None)) -> str:
     if not games:
         who = f"{named_player} has" if named_player else "There are"
+        # "No games" and "no games WITH A BOX SCORE" are different claims, and
+        # the first said of a player who played 68 of them is the wrong-cause
+        # refusal this project keeps producing: true-sounding, and it sends the
+        # reader to look for a missing season rather than a missing box score.
+        # _empty_note then names the count and the years.
+        if empty[0]:
+            return f"{who} no {span.games} with a box score in the warehouse."
         return f"{who} no {span.games} in the warehouse."
     top = games[0]
     where = f" vs {top['opponent']}" if top["opponent"] else ""

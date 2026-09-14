@@ -69,9 +69,34 @@ likewise.
 - **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull.**
   `player_box_stats` and `team_box_stats` came back byte-identical, 1,100,170
   and 86,988 rows with zero differences. ESPN still serves the zeroed lines.
+- **Is it anywhere else on ESPN? No — four independent sources probed live on
+  2026-09-14, and none has it.**
+  - The **game summary** (what the pull reads) serves the zeros.
+  - The **CDN box score**, `cdn.espn.com/core/nba/boxscore?xhr=1&gameId=...`, a
+    different host and a different path, serves the *same* zeros. So the zeros
+    are ESPN's, not an artifact of how `fetch/parse.py` reads the summary.
+  - The **core API** exposes no per-athlete, per-game statistics at all.
+    `events/{id}/competitions/{id}/competitors/{team}/roster` returns each
+    player with `starter`, `didNotPlay` and `reason` but no statistics
+    reference, and `.../roster/{athlete}/statistics` is a 404.
+  - The **athlete gamelog**
+    (`WEB_V3/athletes/{id}/gamelog?season=`) does not serve them empty — it
+    **omits the games entirely**.
+- **The gap follows the franchise, not the season or the player**, which the
+  gamelog shows cleanly. Regular-season events it returns, 2013 through 2018:
+  Anthony Davis (New Orleans throughout) 0, 1, 0, 1, 1, 1; **Derrick Rose 0, 0,
+  0, 1, 61, 25**; **Aaron Brooks 51, 65, 0, 1, 60, 26**. Rose's and Brooks's
+  zero years are exactly their Chicago years, and both have full gamelogs for
+  the seasons they played elsewhere. LeBron James, on neither team, reads 70,
+  73, 64, 71, 70, 77. Where our box scores are good the gamelog agrees with
+  them to within a game, so it is a sound source that simply lacks this data
+  too.
 - **How we handle it:** `_empty_box_scores` (`query/templates.py`) counts the
-  games a per-game answer could not see and says so. The caveat undersells it —
-  it gives a count, not "every Bulls and Pelicans game".
+  games a per-game answer could not see and says so; the caveat gives a count,
+  not "every Bulls and Pelicans game". Since 2026-09-14 `single_game_high` also
+  refuses to read these lines at all, because a stat column on them is `0`
+  rather than NULL and the maximum over a wholly empty season was one of those
+  zeros.
 - **Tracked in:** ISSUES.md, "Nearly every Bulls and Pelicans box score from
   2013 to 2018 is zeros" (#1).
 
@@ -169,8 +194,22 @@ likewise.
   combined rows in the traded-players entry below. Lou Amundson (2007-2016) and
   David Wood (1989-1997) recur the same way, as do postseason lines for Nazr
   Mohammed (12 rows), Zach Randolph (9), Theo Ratliff (8) and Gabe Vincent (7).
-- **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull**, which
-  reproduced `player_season_stats` exactly apart from 13 `position` values.
+- **Does a refetch fix it?** **Not from the same endpoint** — the 2026-09-11
+  fresh pull reproduced `player_season_stats` exactly apart from 13 `position`
+  values. **But a different ESPN endpoint has the totals**, found live on
+  2026-09-14: `CORE_V2/seasons/{season}/types/{season_type}/athletes/{id}/statistics`
+  returns a real `points` for exactly the rows the career endpoint leaves NULL.
+  Seth Curry 2024, 2025 and 2026 come back 226, 444 and 71; the postseason rows
+  work the same way (Gabe Vincent 2026 → 26, Thomas Bryant 2025 → 52); and it
+  reaches back at least to 1989 (David Wood 1991 → 432). It also exposes 112
+  stat names against the 51 columns we store, including `PER`, `RPM`, `ORPM`,
+  `DRPM`, `VORP`, `WARP` and the whole `avg48*` family.
+- **One catch, and it is the reason this is not a drop-in fix:** that endpoint
+  has **no team dimension**. It is keyed by (season, season_type, athlete), so
+  for a player traded mid-season it returns the *combined* total against every
+  one of his stint rows — all three of David Wood's 1996 rows (21, 4 and 37
+  games) come back 208. The combined line is fetchable; splitting it across
+  stints is not, and `avg × gamesPlayed` is still what a stint row needs.
 - **How we handle it:** nothing yet. Totals leaderboards and career sums drop
   these seasons silently.
 - **Tracked in:** ISSUES.md, "246 season lines have NULL totals" (#5).
@@ -222,6 +261,35 @@ likewise.
   subject. Anything by age is refused or falls through.
 - **Tracked in:** ISSUES.md, "No conference or division data" (#25) and
   "Shapes deferred for lack of data or logic" (#32).
+
+### The athlete gamelog is a second source for per-game lines, and it counts All-Star games
+
+- **What ESPN does:** `WEB_V3/athletes/{id}/gamelog?season=` returns one row
+  per game for a player, carrying exactly the box line we store — MIN, FG,
+  FG%, 3PT, 3P%, FT, FT%, REB, AST, BLK, STL, PF, TO, PTS — grouped under
+  `seasonTypes`. Nothing in the pull reads it today; box lines come from the
+  game summary instead.
+- **Evidence it agrees with us:** for players on unaffected teams its
+  regular-season counts match `player_box_stats` to within a game (LeBron James
+  2013-2018: 70, 73, 64, 71, 70, 77 against our 69, 72, 63, 70, 69, 76 — the
+  difference is the All-Star game, below). So it is a usable cross-check, and a
+  candidate source if the summary is ever wrong in a *recoverable* way.
+- **Two quirks to know before reading it.**
+  - **It files the All-Star game under the regular season.** Anthony Davis's
+    stray "regular-season" events in 2014, 2016, 2017 and 2018 are All-Star
+    games, including `400935635`, his 52-point record. None of them is in our
+    `games`, and they should not be: their team ids (31 and 32, Eastern and
+    Western Conf All-Stars) are the same non-franchise ids that make the
+    phantom rows in "`games` carries placeholder, duplicate and phantom rows".
+  - **The `seasontype` parameter is ignored.** `?season=2015&seasontype=2`
+    returns byte-identical JSON to `?season=2015`, as do `seasonType`, `type`
+    and `split`. The only way to select is to read the `seasonTypes` array out
+    of the response.
+- **Does a refetch fix anything with it?** For the empty 2013-2018 Chicago and
+  New Orleans box scores, **no** — it omits those games entirely (see that
+  entry).
+- **Tracked in:** nothing yet; recorded so the next reader does not have to
+  re-probe it.
 
 ---
 
