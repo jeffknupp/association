@@ -579,13 +579,22 @@ everything about it is constrained by things measured elsewhere in this file.
   that season's regular-season games and points exactly. `DATA.md` has the
   evidence and the counts.
 - **Whole team-seasons of box scores are empty, and they are not scattered
-  games.** Every Chicago and New Orleans game from 2013 to 2018 but two, and
-  every Vancouver game in 1996, lists each player as having played with NULL
-  minutes and every stat 0, beside a NULL team box row. Anything summing
+  games.** Every Chicago and New Orleans game from 2013 to 2018 but two lists
+  each player as having played with NULL minutes and every stat 0, beside a
+  NULL team box row — 1,025 events, both tables empty. Anything summing
   `player_box_stats` over 2013-2018 is about 87% of ESPN's own season totals,
   and a streak or a with/without split cannot tell whether a player sat those
   games out. **Say how many games a per-game answer could not see** — that is
   what `_empty_box_scores` is for. `DATA.md` has the counts and the seasons.
+
+  **Do not confuse that with the team-box-only fault**, which looks similar and
+  is not. Vancouver 1996, Chicago 2000 and Chicago 1999 have an all-NULL
+  `team_box_stats` row for every game beside **real player rows with real
+  minutes** — so a per-player answer is fine and only team-level reads are
+  affected. An earlier note here called Vancouver 1996 "the same shape" as
+  Chicago and New Orleans; it was measured on `team_box_stats` alone and is
+  wrong. `player_box_stats` holds 785 Vancouver rows with minutes, 12 a game,
+  which is the league-normal roster size that season.
 - Query connections to DuckDB are **read-only**, as a hard guarantee.
 
 **Those floors are enforced, not just documented.** `association/coverage.py`

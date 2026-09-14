@@ -12,7 +12,7 @@ from pathlib import Path
 
 import duckdb
 
-from . import advanced_stats
+from . import advanced_stats, reconstructed_box
 
 log: logging.Logger = logging.getLogger("association.fetch.warehouse")
 
@@ -93,6 +93,10 @@ def build(data_dir: Path, db_path: Path, tables: list[str] | None = None) -> Non
 
         existing = _existing_tables(con)
         advanced_stats.build_views(con, existing)
+        # Needs `plays` as well as `player_box_stats`, and is built from the
+        # tables already loaded, so it sits beside the advanced-stat views
+        # rather than in _build_views, which only knows about box scores.
+        reconstructed_box.build_views(con, existing)
         existing = _existing_tables(con)  # refresh so player_game_log can join the views just created
         _build_views(con, existing)
     finally:

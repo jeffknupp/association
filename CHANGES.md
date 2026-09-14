@@ -15,10 +15,32 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A box line rebuilt from play-by-play, for the games ESPN serves empty.**
+  New view `player_box_stats_reconstructed`, built at load time over the 1,024
+  events (of 1,025, all in 2013-2018) that have an empty box score and surviving
+  plays. No other ESPN source has these numbers: the CDN box score on a
+  different host serves the same zeros, the core API exposes no per-game athlete
+  statistics, and the athlete gamelog omits the games - which also shows the gap
+  follows the franchise, since Derrick Rose reads 0, 0, 0, 1, 61, 25 across
+  2013-2018 and Aaron Brooks 51, 65, 0, 1, 60, 26, each zero exactly in his
+  Chicago years.
+
+  It is kept deliberately apart from `player_box_stats`: its own view covering
+  only the empty games, snake_case columns so a derived value never looks like a
+  fetched one, and absent from `KNOWN_TABLES` so the SQL agent can neither read
+  nor describe it. No template reads it. A player who appears in no play is
+  absent rather than zero, because a zero that reads as a real performance is
+  the exact bug this whole area is about.
+
+  Accuracy is documented per column on the module, and is not uniform: free
+  throws 100%, blocks and rebounds 99.8%, assists 99.6%, field goals 99.5-99.6%,
+  points 98.3% per game - but season totals are exact only 51.7% of the time
+  (within 2, 72.2%), biased low, and 2016 is much the worst season. Minutes and
+  plus-minus cannot be recovered at all.
 - **A zero from an empty box score can no longer win a single-game high.**
   "What was Anthony Davis's highest-scoring game in 2015?" answered "0, on
   2014-10-28 vs ORL" - fluent, dated, and false. Every Chicago and New Orleans
-  box score from 2013 to 2018, and Vancouver's whole 1996, is stored with every
+  box score from 2013 to 2018 is stored with every
   player listed as having played, no minutes, and every stat 0. Those lines
   hold `0` rather than NULL, so they passed the "is not NULL" test beside them,
   and where a whole team-season is empty the maximum over it is one of the

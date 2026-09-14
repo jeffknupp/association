@@ -42,20 +42,6 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 
 ## P1: wrong answer
 
-### Vancouver's whole 1996 season has an empty box score
-- **Found:** 2026-09-11, writing DATA.md
-- **Evidence:** all 82 of Vancouver's 1995-96 games, and one more, are stored
-  with every player row at NULL minutes and zero stats: the same shape as the
-  Chicago and New Orleans seasons. It had been counted as "5 games with no box
-  score in 1996" and attributed to no team.
-- **Source:** DATA.md, "Vancouver's whole 1996 season has an empty box score too"
-- **User sees:** the same wrong answers as the 2013-18 seasons, for anything
-  reading 1996 box scores: a Grizzlies game log of zeros, and counts, highs and
-  streaks that skip a whole team's season without saying so.
-- **Next step:** fold it into whatever fixes the 2013-18 seasons - rebuild the
-  lines from `plays` where they exist, or caveat by team.
-- **GitHub:** #67
-
 ### Nearly every Bulls and Pelicans box score from 2013 to 2018 is zeros
 - **Found:** 2026-09-11, template work; characterized in the issues audit
 - **Evidence:** a team-game is empty when every player row has NULL minutes and
@@ -111,17 +97,22 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   2013-2018 and Aaron Brooks 51, 65, 0, 1, 60, 26, each zero exactly in his
   Chicago years. So rebuilding from `plays` is the only route to a per-game
   number, and there is nothing to re-fetch.
-- **Next step:** rebuild the box lines for those 1,025 events from `plays`
-  into a **separate, clearly-labeled table that no existing template reads**,
-  rather than into `player_box_stats`. Measured against 2015 games whose box
-  score survived, a reconstruction is exact for free throws (100%), blocks and
-  rebounds (99.8%), assists (99.6%), field goals made (99.6%) and attempted
-  (99.5%), steals (99.1%), three-pointers made (98.6%) and points (98.3%), but
-  only 96.8% for 3PA, 92.5% for turnovers and 83.3% for fouls - and it can
-  recover neither minutes nor plus-minus. Those are not box-score-grade numbers
-  uniformly, which is why they must not be indistinguishable from real ones.
-  Document the fidelity per column on the table itself. Build it at load time
-  ("Working on the fetch path" in `AGENTS.md`).
+- **Done 2026-09-14 - the rebuild exists.** `player_box_stats_reconstructed`
+  (`fetch/reconstructed_box.py`) is a load-time view over the 1,024 of these
+  1,025 events that have plays, with fidelity documented per column on the
+  module. It is deliberately separate: its own view over the empty games only,
+  snake_case columns, no template reads it, and it is absent from
+  `KNOWN_TABLES` so the SQL agent can neither query nor describe it. A player
+  appearing in no play is absent rather than zero.
+- **Next step:** decide whether anything should READ it, and in what words. Per
+  game it is strong (points 98.3% exact, free throws 100%, assists 99.6%), but
+  a SEASON total rebuilds exactly only 51.7% of the time, within 2 points 72.2%,
+  biased low - and 2016 is much the worst (mean -16.8 points, 180 of its
+  scoring plays typed `Not Available`). So it can say roughly what a game looked
+  like and cannot be quoted as a record. Until that is settled the warehouse
+  just holds it. The rest of this entry stands unchanged: box-derived sums over
+  2013-2018 are still about 87% of ESPN's own season totals, and no refetch
+  changes that.
 - **Source:** DATA.md, "Every Chicago and New Orleans game from 2013 to 2018 has an empty box score"
 - **GitHub:** #1
 
@@ -298,6 +289,38 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 
 ## P2: misleading or incomplete
 
+### Vancouver 1996 has an empty TEAM box, not an empty player box
+- **Found:** 2026-09-11 writing DATA.md; **re-measured and corrected 2026-09-14**,
+  which also moved it from P1 to here
+- **Evidence:** this entry used to say all 82 games were stored "with every
+  player row at NULL minutes and zero stats: the same shape as the Chicago and
+  New Orleans seasons". Measured on **both** tables, that is wrong, and the two
+  faults are not the same shape at all:
+  - `team_box_stats`: 82 of 82 Vancouver rows are all-NULL. This half was right.
+  - `player_box_stats`: 936 rows across 78 of the 82 games, 12 a game - the
+    league-normal roster size that season (2,189 of 1996's team-games have
+    exactly 12) - and only 151 of those 936 rows lack minutes. **The player box
+    is real.** For contrast, Chicago and New Orleans across 2013-2018 have
+    *zero* player rows with minutes.
+  - Vancouver's box points total 7,030 against ESPN's own season table's 7,362.
+    That shortfall is the 4 games missing from `player_box_stats` outright, not
+    a zeroed season.
+  - Only **5** of 1,189 games in 1996 have no player box rows at all - which is
+    exactly the "5 in 1996" figure this entry was created to overturn. The
+    original figure was correct.
+  - **The same shape occurs twice more and was never recorded:** Chicago 2000
+    (82 all-NULL team rows beside 834 player rows with minutes) and Chicago
+    1999 (50 beside 546).
+- **Source:** DATA.md, "Vancouver 1996 is an empty TEAM box, not an empty player box"
+- **User sees:** nothing at all for a per-player question - those rows are
+  sound. A team-level read of 1996 Vancouver, 2000 Chicago or 1999 Chicago gets
+  NULLs, and `_empty_box_scores` does not count these (it tests player minutes),
+  so such an answer carries no caveat.
+- **Next step:** rebuild the team line by summing the player rows at load time.
+  That works here precisely because the player rows survived, which is what
+  makes this fault different from 2013-2018 and cheaper to fix.
+- **GitHub:** #67
+
 ### A game log over empty box scores says the games do not exist
 - **Found:** 2026-09-14, measuring what the empty 2013-18 box scores actually
   break
@@ -390,10 +413,12 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Evidence:**
   - **2000 regular season:** `games` holds 1,166 of 1,189 real games. 18 teams
     have 80 of their 82, 10 have 81, and LAC has all 82.
-  - **Real regular-season games with no box score:** 6 in 1994, 83 in 1996, 6
-    in 1997, 5 in 1998, 5 in 2000 and 1 in 2003. Most are road games at UTAH,
-    CLE or WSH. The 1996 figure is not scattered: 82 of those games are
-    Vancouver's entire schedule, which has its own entry above.
+  - **Real regular-season games with no box score:** 6 in 1994, **5** in 1996,
+    6 in 1997, 5 in 1998, 5 in 2000 and 1 in 2003. Most are road games at UTAH,
+    CLE or WSH. (This read "83 in 1996" until 2026-09-14. That number counted
+    empty *team box* rows, not games missing a player box score; Vancouver's
+    1996 player rows are real. See "Vancouver 1996 has an empty TEAM box" under
+    P2.)
   - **Real postseason games with no box score:** the entire 1997 ECF CHI-MIA
     (`170520014`, `170522014`, `170524004`, `170526004`, `170528014`),
     `150614019` (1995 Finals), `160502025` (1996 SAC-SEA) and `230503026` (1998

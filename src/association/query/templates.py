@@ -3464,12 +3464,11 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     # A line with no minutes is a game with NO BOX SCORE, not a game he played
     # and did nothing in. Those lines carry 0 rather than NULL, so they survive
     # the NULL check beside this one - and where a whole team-season is empty
-    # (every Chicago and New Orleans season from 2013 to 2018, and Vancouver's
-    # 1996), a zero then wins the maximum outright: "Anthony Davis's highest
-    # point total in a single game in the 2015 regular season was 0, on
-    # 2014-10-28 vs ORL" - fluent, dated, and false. This is the same line
-    # _played() draws in `conditions`, which is why streaks and splits were
-    # never affected by it.
+    # (every Chicago and New Orleans season from 2013 to 2018), a zero then
+    # wins the maximum outright: "Anthony Davis's highest point total in a
+    # single game in the 2015 regular season was 0, on 2014-10-28 vs ORL" -
+    # fluent, dated, and false. This is the same line _played() draws in
+    # `conditions`, which is why streaks and splits were never affected by it.
     where = [scope, f"l.{column} IS NOT NULL", "l.minutes IS NOT NULL"]
     text = slots.get("player")
     named_player: Entity | None = None

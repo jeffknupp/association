@@ -100,27 +100,38 @@ likewise.
 - **Tracked in:** ISSUES.md, "Nearly every Bulls and Pelicans box score from
   2013 to 2018 is zeros" (#1).
 
-### Vancouver's whole 1996 season has an empty box score too
+### Vancouver 1996 is an empty TEAM box, not an empty player box
 
-- **What ESPN does:** the same zeroed-box-score fault as the entry above, in a
-  season nobody had attributed to a team. Every 1995-96 Vancouver Grizzlies
-  game has an empty team box line.
-- **Evidence:** **re-measured 2026-09-11 and larger than previously recorded.**
-  125 empty regular-season team-box rows in 1996, of which the Grizzlies (id
-  `MEM`, Vancouver at the time) own 82 — their complete schedule. Counted by
-  game, 42 real 1996 regular-season games are empty on both sides and a further
-  41 on one side, so 83 games are touched, not the "5 in 1996" that
-  `ISSUES.md` records under the smaller 1994-2003 gaps. The same recount moves
-  three neighboring years: 1994 is 6 fully empty games (recorded as 5), 1998 is
-  5 (recorded as 4), 2000 is 5 (recorded as 4), and 2003 has 1 that was not
-  listed at all. 1997 is 6, as recorded.
+- **What ESPN does:** serves an all-NULL `team_box_stats` row for every
+  Vancouver game in 1995-96, while serving that season's **player** box scores
+  normally. This is a different fault from the Chicago and New Orleans entry
+  above, where both tables are empty, and it was recorded here as the same one
+  until 2026-09-14.
+- **Evidence (re-measured on BOTH tables, 2026-09-14):**
+  - `team_box_stats`: 82 of 82 Vancouver rows are all-NULL. The original entry
+    was right about this half, and it was measured on this table alone.
+  - `player_box_stats`: 936 rows across 78 of the 82 games, 12 rows a game —
+    the league-normal roster size that season, since 2,189 of 1996's
+    team-games have exactly 12 — and only 151 of the 936 rows lack minutes.
+    **The player box is real.** For contrast, Chicago and New Orleans across
+    2013-2018 have *zero* player rows with minutes.
+  - Vancouver's box points total 7,030 against ESPN's own season table's 7,362.
+    That gap is the 4 games absent from `player_box_stats` entirely, not a
+    zeroed season.
+  - Only **5** of 1,189 games in 1996 have no player box rows at all: 160127072,
+    160207100, 160324082, 160329100 and 160405003. That is the "5 in 1996"
+    figure this entry was written to overturn, and it was correct.
+- **The same shape occurs twice more**, and had never been recorded: **Chicago
+  2000** (82 all-NULL team rows beside 834 player rows with minutes) and
+  **Chicago 1999** (50 beside 546). Those are the only three team-seasons in
+  the warehouse with an all-NULL team box and a real player box.
 - **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull**, which
   reproduced `team_box_stats` exactly.
-- **How we handle it:** nothing specific. `_empty_box_scores` counts these the
-  same way it counts the 2013-2018 ones, so a 1996 answer carries a count but
-  no named cause.
-- **Tracked in:** ISSUES.md, "Smaller game and box-score gaps, 1994-2003"
-  (#14) — whose 1996 figure this entry corrects.
+- **How we handle it:** nothing yet, and `_empty_box_scores` does NOT catch
+  these — it tests player minutes, which are present here — so a team-level
+  answer for these three seasons carries no caveat at all.
+- **Tracked in:** ISSUES.md, "Vancouver 1996 has an empty TEAM box, not an
+  empty player box" (#67).
 
 ### The 2000 and 2001 playoffs stop before the Finals
 
