@@ -104,15 +104,26 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   snake_case columns, no template reads it, and it is absent from
   `KNOWN_TABLES` so the SQL agent can neither query nor describe it. A player
   appearing in no play is absent rather than zero.
-- **Next step:** decide whether anything should READ it, and in what words. Per
-  game it is strong (points 98.3% exact, free throws 100%, assists 99.6%), but
-  a SEASON total rebuilds exactly only 51.7% of the time, within 2 points 72.2%,
-  biased low - and 2016 is much the worst (mean -16.8 points, 180 of its
-  scoring plays typed `Not Available`). So it can say roughly what a game looked
-  like and cannot be quoted as a record. Until that is settled the warehouse
-  just holds it. The rest of this entry stands unchanged: box-derived sums over
-  2013-2018 are still about 87% of ESPN's own season totals, and no refetch
-  changes that.
+- **Done 2026-09-14 - the warehouse now uses it.** `player_box_stats_filled`
+  (same module) is `player_box_stats` with those figures substituted into the
+  empty lines and a `reconstructed` flag on exactly those rows. Measured: 21,169
+  of 1,100,170 rows substituted, row count conserved, and Anthony Davis's 2015
+  reads 68 games / 1,656 points against ESPN's own 68 / 1,656, with his 14
+  did-not-play rows correctly left alone. It never touches a real line, never
+  invents `minutes`, and drops the stored `plusMinus` on a substituted row -
+  that column is a uniform 0 placeholder across all 21,169, not data.
+- **Next step - the last piece.** No template reads `player_box_stats_filled`
+  yet; `player_game_log` and the box-score templates still read the stored
+  table. Wire them to it and make the answer SAY the figures were rebuilt
+  wherever `reconstructed` is true. The wording matters more than the plumbing:
+  per game the rebuild is strong (points 98.3% exact, free throws 100%,
+  assists 99.6%), but a SEASON total is exact only 51.7% of the time, biased
+  low, with 2016 much the worst (mean -16.8 points, 180 of its scoring plays
+  typed `Not Available`). So it can say roughly what a game looked like and
+  must not be quoted as a record. Deferred while three agents hold
+  `templates.py`, `conditions.py` and `warehouse.py`.
+- The rest of this entry stands unchanged: box-derived sums over 2013-2018 are
+  still about 87% of ESPN's own season totals, and no refetch changes that.
 - **Source:** DATA.md, "Every Chicago and New Orleans game from 2013 to 2018 has an empty box score"
 - **GitHub:** #1
 

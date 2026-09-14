@@ -15,6 +15,25 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **The warehouse answers from the rebuild where the stored line is empty.**
+  New view `player_box_stats_filled`: `player_box_stats` with the rebuilt
+  figures dropped into the 21,169 empty lines, under the stored table's own
+  column names so it is a drop-in, plus a `reconstructed` flag marking exactly
+  those rows. Anthony Davis's 2015 - stored as 82 games of zeros - reads 68
+  games and 1,656 points through it, beside 14 rows correctly left as
+  did-not-play. ESPN's own season table says 68 and 1,656.
+
+  Three things it will not do. It never substitutes into a real line, so a
+  player who genuinely scored 0 keeps his 0. It never invents `minutes`, which
+  play-by-play cannot recover. And it drops the stored `plusMinus` on a
+  substituted row rather than passing it through: that column looks like
+  surviving data - it is not NULL, unlike every stat beside it - but across all
+  21,169 rows it takes exactly one value, 0, and every team-game sums to 0.0.
+  It is the same fabricated zero as the stats, wearing a different face.
+
+  Neither view is in `KNOWN_TABLES`, so the SQL agent reaches neither. A
+  substituted figure carries an obligation to say it was rebuilt, and an agent
+  writing its own SQL has nowhere to put that.
 - **A box line rebuilt from play-by-play, for the games ESPN serves empty.**
   New view `player_box_stats_reconstructed`, built at load time over the 1,024
   events (of 1,025, all in 2013-2018) that have an empty box score and surviving

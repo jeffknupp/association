@@ -14,13 +14,65 @@ import pyarrow.parquet as pq
 
 from association.fetch import warehouse
 
-# event e1 is the empty game: both players listed, neither with minutes.
-# event e2 is a normal game, and must stay out of the view entirely.
+_STATS = (
+    "points",
+    "fieldGoalsMade",
+    "fieldGoalsAttempted",
+    "threePointFieldGoalsMade",
+    "threePointFieldGoalsAttempted",
+    "freeThrowsMade",
+    "freeThrowsAttempted",
+    "rebounds",
+    "offensiveRebounds",
+    "defensiveRebounds",
+    "assists",
+    "steals",
+    "blocks",
+    "turnovers",
+    "fouls",
+)
+
+
+def _box(event: str, athlete: str, *, minutes: int | None, points: int = 0) -> dict[str, Any]:
+    """One `player_box_stats` row. ``minutes=None`` with every stat 0 is the
+    empty line ESPN serves for these games; a row with minutes is a real one."""
+    row: dict[str, Any] = {
+        "event_id": event,
+        "season": 2015,
+        "season_type": 2,
+        "team_id": "1",
+        "opponent_team_id": "2",
+        "athlete_id": athlete,
+        "minutes": minutes,
+        "starter": False,
+        "did_not_play": False,
+        "dnp_reason": "COACH'S DECISION",
+        "ejected": False,
+        "plusMinus": None if minutes is None else 4,
+    }
+    row.update({stat: 0 for stat in _STATS})
+    row["points"] = points
+    return row
+
+
+def _stored_plus_minus(row: dict[str, Any], value: int) -> dict[str, Any]:
+    """An empty line that carries ESPN's placeholder plus-minus. Measured over
+    the warehouse's 21,169 substituted rows it is always exactly 0 - never
+    NULL - which is what makes it look like surviving data."""
+    return {**row, "plusMinus": value}
+
+
+# event e1 is the empty game: three players listed, none with minutes.
+# event e2 is a normal game, and must stay out of the rebuild entirely.
+# "real_zero" genuinely scored nothing in e2 and must keep his 0.
 _BOX_ROWS = [
-    {"event_id": "e1", "season": 2015, "season_type": 2, "team_id": "1", "opponent_team_id": "2", "athlete_id": "a", "minutes": None},
-    {"event_id": "e1", "season": 2015, "season_type": 2, "team_id": "1", "opponent_team_id": "2", "athlete_id": "b", "minutes": None},
-    {"event_id": "e1", "season": 2015, "season_type": 2, "team_id": "1", "opponent_team_id": "2", "athlete_id": "bench", "minutes": None},
-    {"event_id": "e2", "season": 2015, "season_type": 2, "team_id": "1", "opponent_team_id": "2", "athlete_id": "a", "minutes": 30},
+    # The empty lines carry ESPN's placeholder plusMinus=0, exactly as the real
+    # ones do. A None here would let the nulling be removed with no test failing.
+    _stored_plus_minus(_box("e1", "a", minutes=None), 0),
+    _stored_plus_minus(_box("e1", "b", minutes=None), 0),
+    _stored_plus_minus(_box("e1", "bench", minutes=None), 0),
+    _box("e2", "a", minutes=30, points=22),
+    _box("e2", "real_zero", minutes=12, points=0),
 ]
 
 
@@ -137,4 +189,92 @@ def test_the_view_is_skipped_without_plays(tmp_path: Path) -> None:
     tables = {r[0] for r in con.execute("SHOW TABLES").fetchall()}
     con.close()
     assert "player_box_stats_reconstructed" not in tables
+    assert "player_box_stats_filled" not in tables
     assert "player_box_stats" in tables
+
+
+# ---------------- player_box_stats_filled ----------------
+
+
+def _filled(con: duckdb.DuckDBPyConnection, event: str, athlete: str) -> dict[str, Any]:
+    cur = con.execute("SELECT * FROM player_box_stats_filled WHERE event_id = ? AND athlete_id = ?", [event, athlete])
+    names = [d[0] for d in cur.description]
+    got = cur.fetchone()
+    assert got is not None, f"no filled row for {athlete!r} in {event!r}"
+    return dict(zip(names, got, strict=True))
+
+
+def _scalar(con: duckdb.DuckDBPyConnection, sql: str) -> Any:
+    """One value from a one-row query. ``fetchone()`` is typed as optional, so
+    the assertion is what lets a count be read without a type error."""
+    got = con.execute(sql).fetchone()
+    assert got is not None
+    return got[0]
+
+
+def test_an_empty_line_takes_its_figures_from_the_rebuild(tmp_path: Path) -> None:
+    con = _build(tmp_path)
+    a = _filled(con, "e1", "a")
+    con.close()
+    assert a["reconstructed"] is True
+    assert a["points"] == 4  # the stored row says 0
+    assert a["freeThrowsAttempted"] == 2
+    assert a["defensiveRebounds"] == 1
+
+
+def test_a_real_line_is_left_exactly_as_stored(tmp_path: Path) -> None:
+    con = _build(tmp_path)
+    a = _filled(con, "e2", "a")
+    con.close()
+    assert a["reconstructed"] is False
+    assert a["points"] == 22
+    assert a["minutes"] == 30
+
+
+def test_a_genuine_zero_in_a_real_game_is_not_substituted(tmp_path: Path) -> None:
+    """The distinction the whole view turns on. A player who really scored
+    nothing keeps his 0; only a line with NO box score is filled in."""
+    con = _build(tmp_path)
+    z = _filled(con, "e2", "real_zero")
+    con.close()
+    assert z["reconstructed"] is False
+    assert z["points"] == 0
+    assert z["minutes"] == 12
+
+
+def test_every_stored_row_survives_exactly_once(tmp_path: Path) -> None:
+    """The view substitutes; it must never add or drop a row. `bench` appears
+    in no play, so he has no rebuilt figures - he must still be here, unflagged,
+    rather than vanishing with the rebuild's INNER join."""
+    con = _build(tmp_path)
+    stored = _scalar(con, "SELECT count(*) FROM player_box_stats")
+    filled = _scalar(con, "SELECT count(*) FROM player_box_stats_filled")
+    bench = _filled(con, "e1", "bench")
+    con.close()
+    assert filled == stored == 5
+    assert bench["reconstructed"] is False
+    assert bench["points"] == 0
+
+
+def test_minutes_are_never_invented(tmp_path: Path) -> None:
+    """Play-by-play cannot recover minutes, so a substituted row keeps its NULL
+    rather than being given a plausible number."""
+    con = _build(tmp_path)
+    rows = _scalar(con, "SELECT count(*) FROM player_box_stats_filled WHERE reconstructed AND minutes IS NOT NULL")
+    con.close()
+    assert rows == 0
+
+
+def test_the_placeholder_plus_minus_is_dropped_not_passed_through(tmp_path: Path) -> None:
+    """`plusMinus` survives on an empty line where every stat beside it is
+    NULL, which makes it look like real data. Measured over the warehouse's
+    21,169 substituted rows it takes exactly one value, 0, and every team-game
+    sums to 0.0 - a placeholder, not a plus-minus. The fixture's empty rows
+    carry that same 0, and it must not reach a reader as one."""
+    con = _build(tmp_path)
+    a = _filled(con, "e1", "a")
+    real = _filled(con, "e2", "a")
+    con.close()
+    assert a["plusMinus"] is None
+    # A real row keeps the value it was stored with.
+    assert real["plusMinus"] == 4

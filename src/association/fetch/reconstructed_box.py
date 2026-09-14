@@ -87,6 +87,24 @@ classify, so they land in ``points`` without landing in the shot columns.
 The honest summary for a reader: this is good enough to say what a game roughly
 looked like, and not good enough to quote as a record.
 
+The two views, and which one to read
+------------------------------------
+
+``player_box_stats_reconstructed`` is the rebuild alone: one row per player per
+game, for the empty games only. Read it to see what the rebuild says.
+
+``player_box_stats_filled`` is ``player_box_stats`` with those figures dropped
+into the empty lines, and it is the one a query should read. It has the same
+column names as the stored table, so it is a drop-in, plus one extra:
+``reconstructed``, true on exactly the rows whose numbers were rebuilt. A
+caller that reads a substituted figure and does not pass that flag on is
+quoting a derived number as ESPN's - so the flag is part of the contract, not a
+debugging aid. ``minutes`` and ``plusMinus`` stay NULL on a substituted row.
+
+Neither view is in :data:`association.query.prompt.KNOWN_TABLES`, so the SQL
+agent reaches neither. That is deliberate for the filled view too: an agent
+writing its own SQL has nowhere to put the caveat that the flag demands.
+
 Two notes on how the numbers are read out of ``plays``, both measured rather
 than assumed. A shot is identified by what its ``type`` NAMES - several real
 shot types contain no word "Shot" (``Driving Finger Roll Layup``,
@@ -109,15 +127,61 @@ log: logging.Logger = logging.getLogger("association.fetch.reconstructed_box")
 
 #: The views this module builds.
 #:
+#: ``player_box_stats_reconstructed`` is the rebuild on its own, covering only
+#: the empty games. ``player_box_stats_filled`` is ``player_box_stats`` with
+#: those rebuilt figures dropped into the empty lines and a ``reconstructed``
+#: flag saying which rows they are - a drop-in for a reader that wants the
+#: warehouse's best answer rather than a hole, and which is obliged to pass the
+#: flag on to whoever reads it.
+#:
 #: .. versionadded:: 2.2.0
-VIEWS: list[str] = ["player_box_stats_reconstructed"]
+VIEWS: list[str] = ["player_box_stats_reconstructed", "player_box_stats_filled"]
+
+# Every stat column the filled view substitutes, as (stored camelCase name,
+# rebuilt snake_case name). Written out rather than derived from the schema so
+# that adding a column to one side and not the other is a visible edit here,
+# not a silently missing substitution.
+_FILLED_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("points", "points"),
+    ("fieldGoalsMade", "field_goals_made"),
+    ("fieldGoalsAttempted", "field_goals_attempted"),
+    ("threePointFieldGoalsMade", "three_point_field_goals_made"),
+    ("threePointFieldGoalsAttempted", "three_point_field_goals_attempted"),
+    ("freeThrowsMade", "free_throws_made"),
+    ("freeThrowsAttempted", "free_throws_attempted"),
+    ("rebounds", "rebounds"),
+    ("offensiveRebounds", "offensive_rebounds"),
+    ("defensiveRebounds", "defensive_rebounds"),
+    ("assists", "assists"),
+    ("steals", "steals"),
+    ("blocks", "blocks"),
+    ("turnovers", "turnovers"),
+    ("fouls", "fouls"),
+)
 
 # Columns each source table must have before the view can be built. A partial
 # `data load --tables` subset, or a genuinely thin ESPN response, skips this
 # view with a logged reason rather than failing the whole warehouse build - the
 # same contract advanced_stats.build_views keeps.
 _REQUIRED_PLAYS_COLUMNS = {"event_id", "season", "athlete_id", "participant_athlete_ids", "type", "text", "scoring_play"}
-_REQUIRED_BOX_COLUMNS = {"event_id", "season", "season_type", "team_id", "opponent_team_id", "athlete_id", "minutes"}
+# Derived from _FILLED_COLUMNS rather than listed again, so a column added to
+# the substitution table cannot be left out of the guard: the earlier version of
+# this set omitted `opponent_team_id`, which the SELECT reads, and a thin table
+# would have passed the guard and then failed on the SQL.
+_REQUIRED_BOX_COLUMNS = {
+    "event_id",
+    "season",
+    "season_type",
+    "team_id",
+    "opponent_team_id",
+    "athlete_id",
+    "minutes",
+    "starter",
+    "did_not_play",
+    "dnp_reason",
+    "ejected",
+    "plusMinus",
+} | {stored for stored, _ in _FILLED_COLUMNS}
 
 # A shot attempt, named positively. See the module docstring: defining it by
 # exclusion instead swept in plays that are not attempts and cost 22 points of
@@ -253,4 +317,48 @@ def build_views(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
         FROM player_box_stats b
         JOIN totals t ON t.event_id = b.event_id AND t.season = b.season AND t.athlete_id = b.athlete_id
     """)
-    log.info("reconstructed box score view built: %s", ", ".join(VIEWS))
+
+    # The same rows, with the rebuild dropped into the holes. Two rules make
+    # this safe to read where reading `player_box_stats` directly is not:
+    #
+    #   - It substitutes ONLY into an empty line, and that comes entirely from
+    #     the rebuild's own scope: `player_box_stats_reconstructed` covers the
+    #     wholly-empty games and nothing else, so a player who truly scored 0
+    #     in a real game has no row to join to and keeps his 0. An explicit
+    #     `AND b.minutes IS NULL` was here and has been REMOVED: perturbation
+    #     showed no test could reach it (deleting it broke nothing), and a
+    #     guard nothing can exercise is a claim, not a check. If the rebuild is
+    #     ever widened past the empty games, put it back AND write the test
+    #     that fails without it.
+    #   - Every substituted row is flagged. `reconstructed` is not decoration:
+    #     a caller that reads these figures without passing it on is quoting a
+    #     derived number as ESPN's, which is the failure this whole area is
+    #     about. See the accuracy table in the module docstring - per season
+    #     these are exact only about half the time.
+    #
+    # `minutes` needs no handling: the stored value on an empty line is already
+    # NULL, which is what makes the join find it.
+    #
+    # `plusMinus` DOES need handling, and the reason is worth recording.
+    # It looks like surviving data on these rows - it is not NULL, unlike every
+    # stat beside it - but measured over all 21,169 substituted rows it takes
+    # exactly ONE distinct value, 0, and each team-game's plus-minus sums to
+    # exactly 0.0. That is the same fabricated zero as the stats, wearing a
+    # different face, so it is nulled rather than passed through. Play-by-play
+    # cannot recover a real one: it would need the lineup on the floor for every
+    # possession, which is what minutes would have told us.
+    substitutions = ",\n            ".join(f"CASE WHEN r.athlete_id IS NOT NULL THEN r.{rebuilt} ELSE b.{stored} END AS {stored}" for stored, rebuilt in _FILLED_COLUMNS)
+    con.execute(f"""
+        CREATE OR REPLACE VIEW player_box_stats_filled AS
+        SELECT
+            b.event_id, b.season, b.season_type, b.team_id, b.opponent_team_id, b.athlete_id,
+            b.starter, b.did_not_play, b.dnp_reason, b.ejected,
+            b.minutes,
+            CASE WHEN r.athlete_id IS NOT NULL THEN NULL ELSE b.plusMinus END AS plusMinus,
+            (r.athlete_id IS NOT NULL) AS reconstructed,
+            {substitutions}
+        FROM player_box_stats b
+        LEFT JOIN player_box_stats_reconstructed r
+               ON r.event_id = b.event_id AND r.season = b.season AND r.athlete_id = b.athlete_id
+    """)
+    log.info("reconstructed box score views built: %s", ", ".join(VIEWS))
