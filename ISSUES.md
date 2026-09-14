@@ -639,6 +639,72 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   player's line through `_narrow_player_games`.
 - **GitHub:** #34
 
+### The web page keeps no history, so closing the tab loses every answer
+- **Found:** 2026-09-14, requested
+- **Evidence:** each turn is built straight into the DOM
+  (`ask()` in `web/static/index.html`) and nothing else holds it: there is no
+  `localStorage`, no `sessionStorage` and no server-side store, and
+  `AgentRunner` (`web/runner.py`) keeps only the lock and the current question.
+  A reload, a crash or a server restart loses the thread. The artifacts a
+  question produced do survive, as files in the output directory, but nothing
+  records which question drew them, so an orphaned chart cannot be traced back
+  to what was asked.
+- **User sees:** no way to reread yesterday's answer, compare two runs of the
+  same question, or send somebody a link to one.
+- **Next step:** persist each turn - question, the `answer` payload, the trace
+  lines and the artifact names. Decide first where it lives: `localStorage` is
+  a one-file change and stays per-browser, a server-side store is shareable and
+  puts history beside the artifacts it references. Then serve it
+  (`GET /api/history`) and rebuild the thread from it at load. The renderers
+  already work from the `answer` payload alone, so a stored turn replays
+  without re-asking.
+- **Priority note:** ranked here as a gap rather than P4 because it is the
+  whole session a user loses, not a detail of one answer.
+- **GitHub:** #69
+
+### The connection indicator is written once at load and never updated
+- **Found:** 2026-09-14, requested
+- **Evidence:** `web/static/index.html` calls `/api/health` exactly once, on
+  load, and writes a status line from it ("3,043 games, 1994-2026", plus
+  "ollama unreachable" when `ollama_ready` is false; "server unreachable" if
+  the fetch itself fails). Nothing polls afterwards. If ollama stops, the
+  server restarts, or the warehouse is replaced mid-session, the page goes on
+  showing what was true when it was opened. The data needed is already on the
+  response: `HealthResponse` carries `ollama_ready` and `busy`, and both are
+  live properties on the runner. The `queued` SSE event, which says a question
+  is waiting behind another, is rendered only as a line of trace text.
+- **User sees:** a page that looks connected when it is not. The first sign of
+  trouble is asking a question and waiting for a failure.
+- **Next step:** poll `/api/health` on an interval and on window focus, and
+  render a real indicator with the states the server already distinguishes -
+  connected, busy, queued, ollama down, server unreachable. One caution:
+  `_warehouse_seasons` opens its own DuckDB connection per call, so cache the
+  season figures and poll only the liveness fields, or the indicator pays for
+  a query every few seconds.
+- **GitHub:** #70
+
+### The pipeline trace is a raw log, with no readable summary
+- **Found:** 2026-09-14, requested
+- **Evidence:** the trace shown while answering, and folded into the `trace`
+  disclosure afterwards, is engine lines verbatim
+  (`-> (router) intent=...`). That is deliberate on the wire - `web/app.py`
+  says events carry trace lines verbatim and that parsing them back into
+  structured fields is the move Phase 0 removed - but it means the page has
+  prose where a reader wants a summary. What a reader actually wants to know
+  is on the `answer` event already, as values: `answered_by`, `intent` and the
+  timing split. What is *not* exposed as values: the slots the router filled,
+  the names that resolved and to whom, which scoping slot was refused, and
+  whether a coverage floor or caveat applied.
+- **User sees:** to understand why an answer came out as it did - which
+  template, which Curry, why a season was refused - they read a log.
+- **Next step:** add a short expandable summary above the raw trace: the path
+  that answered, the intent, the router's slots, the resolved names, anything
+  refused or caveated, and the timing. Build it from values on the `answer`
+  event, adding fields to the payload where they are missing. Do not derive it
+  by parsing the trace text - that is the thing `web/app.py` explicitly warns
+  against, and it would break the moment a trace line is reworded.
+- **GitHub:** #71
+
 ## P4: tooling, docs, low impact
 
 ### "...against the celtics last season" is answered as a game log
@@ -1005,8 +1071,8 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   "Next: ...".
 - **User sees:** a docs example shorter than the real output.
 - **Next step:** correct the comment, and paste the example's full answer.
-\n
 - **GitHub:** #63
+
 ### A player's bio is fetched once and never refreshed
 - **Found:** 2026-09-11, comparing a fresh full pull against the existing warehouse
 - **Evidence:** `Pipeline._cache_player_bio` returns early when the file exists,

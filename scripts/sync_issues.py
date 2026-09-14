@@ -55,7 +55,7 @@ def labels_for(section: str) -> list[str]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="print what would be created, create nothing")
-    ap.add_argument("--area", choices=("data", "query", "tooling", "documentation"), help="area label for every issue this run creates")
+    ap.add_argument("--area", choices=("data", "query", "tooling", "documentation", "web"), help="area label for every issue this run creates")
     args = ap.parse_args()
     path = ROOT / "ISSUES.md"
     text = path.read_text()
