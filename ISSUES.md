@@ -341,6 +341,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   the preamble does not mention. Fix the health line either way; it is one
   identifier.
 - **Source:** DATA.md, "`games` carries placeholder, duplicate and phantom rows"
+- **GitHub:** #73
 
 ### A named playoff round falls through to the agent, which has no better source
 - **Found:** 2026-09-11, repo audit
@@ -582,6 +583,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   includes team rebounds and so is not a player sum, so it likely has to be
   NULL. Refetch one 2008 event first, to confirm ESPN is the cause.
 - **Source:** DATA.md, "2008's team rebound columns hold something other than rebounds"
+- **GitHub:** #74
 
 ### A team's rebounds are not comparable across 2021 and 2022
 - **Found:** 2026-09-14, while fixing #8
@@ -601,6 +603,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   what ESPN now publishes — or caveat a span that crosses 2021. Check
   `team_metrics` for the same exposure on `team_season_stats`.
 - **Source:** DATA.md, "The team `totalRebounds` column stops including team rebounds in 2022"
+- **GitHub:** #75
 ### A date-only game stamp is dated a day early for half the season
 - **Found:** 2026-09-14, building the shared `real_games` list (issue #7)
 - **Evidence:** ESPN writes a game whose tip time it does not have as midnight
@@ -631,6 +634,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   does. If the stamp's own date is right, read a date-only stamp as its written
   date rather than shifting it.
 - **Source:** DATA.md, "`games` carries placeholder, duplicate and phantom rows"
+- **GitHub:** #76
 
 ## P3: refusal or gap
 
@@ -894,6 +898,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   whose rows are per-team and which this endpoint cannot split.
 - **Source:** DATA.md, "The career endpoint drops its totals category,
   unpredictably and in part"
+- **GitHub:** #77
 
 ## P4: tooling, docs, low impact
 
@@ -911,6 +916,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   `fetch/team_box_repair.py` already does. One predicate, `pointsInPaint = -1`,
   and no season needs naming.
 - **Source:** DATA.md, "`pointsInPaint` is -1 before 2009, and two lead columns exist only in 2026"
+- **GitHub:** #78
 
 ### "...against the celtics last season" is answered as a game log
 - **Found:** 2026-09-11, while making `opponent` refuse or narrow
@@ -1347,6 +1353,17 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   - **2026-09-14:** the same endpoint, the same keys, serves a `totals` category
     for **87 of the 107** affected files. An independent 20-player sample the
     same day split 16 with totals, 4 without.
+  - **Five files resist the repair, and the cause is NOT yet established.** The
+    backfill re-fetched 102 career files at 20:22 - 97 came back with totals, 5
+    came back averages-only (26 columns, no `points` column at all) - and a
+    second run at 20:27 got the same 5 thin again. Yet a direct probe in
+    between, same URL and same `seasontype=2`, parsed Seth Curry to 16 of 18
+    rows with points (2016 → 299, 2017 → 898). **An earlier draft of this entry
+    called that minutes-scale instability; that was a guess and is withdrawn.**
+    What is measured: the pipeline's fetch gets a thin payload for these five
+    twice, a direct probe gets a full one, and `seasontype=2` versus no
+    parameter makes no difference. The difference lies somewhere between the
+    two callers, not established.
 - **What this is not.** The withdrawn version inferred "the pull never issued a
   request" from Parquet mtimes in the MAIN tree — which can say nothing about a
   pull that wrote into a separate tree by design — and on that basis named four
@@ -1362,4 +1379,8 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** keep dating these claims (every one in `DATA.md` already says
   2026-09-11) and treat one older than a release as unverified rather than
   false. The cheap re-verification is a forced fetch of a single affected key,
-  not a whole pull.
+  not a whole pull. And because the flip happens inside a single run, a
+  backfill over this endpoint should be **re-run until the count stops
+  falling** rather than trusted after one pass - re-running costs only the rows
+  still NULL.
+- **GitHub:** #79
