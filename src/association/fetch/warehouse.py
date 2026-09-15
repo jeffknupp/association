@@ -12,7 +12,7 @@ from pathlib import Path
 
 import duckdb
 
-from . import advanced_stats, reconstructed_box
+from . import advanced_stats, reconstructed_box, team_box_repair
 
 log: logging.Logger = logging.getLogger("association.fetch.warehouse")
 
@@ -92,6 +92,10 @@ def build(data_dir: Path, db_path: Path, tables: list[str] | None = None) -> Non
             log.info("%s: %d rows", table, count)
 
         existing = _existing_tables(con)
+        # Rewrites team_box_stats in place, correcting two faults in what ESPN
+        # serves (see fetch/team_box_repair.py). Ahead of every view, so nothing
+        # built below can read the uncorrected columns.
+        team_box_repair.repair(con, existing)
         advanced_stats.build_views(con, existing)
         # Needs `plays` as well as `player_box_stats`, and is built from the
         # tables already loaded, so it sits beside the advanced-stat views
