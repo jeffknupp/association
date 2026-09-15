@@ -16,6 +16,7 @@ from typing import Any
 import duckdb
 import pytest
 
+from association.fetch import real_games
 from association.query.team_metrics import TEAM_METRICS, descending_for, resolve_team_metric
 from association.query.templates import (
     TemplateContext,
@@ -159,6 +160,11 @@ def team_ctx(tmp_path: Path) -> TemplateContext:
         (2024, 2, "2024-04-14T00:00Z", "18", 3.0, 1.0, 2.0, 50, 32, 50, 32, 100.0, 10.0, 5.0, 2.0, 0.5, 12),
     ]
     c.executemany(f"INSERT INTO team_power_index VALUES ({', '.join('?' for _ in range(17))})", [(r[0], r[1], r[3], r[2], *r[4:]) for r in bpi])
+    # The shared filtered list TEAM_GAMES_SQL is built on: "ghost" and the
+    # second event id for g1 are dropped by it, and "ph" - one game under two
+    # SEASON labels - is deliberately NOT, so TEAM_GAMES_SQL's own QUALIFY
+    # still has the phantom season to collapse.
+    real_games.build_table(c, {"games", "teams"})
     return TemplateContext(con=c, out_dir=tmp_path)
 
 

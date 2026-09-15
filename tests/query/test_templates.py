@@ -7,6 +7,7 @@ from typing import Any
 import duckdb
 import pytest
 
+from association.fetch import real_games
 from association.query import shotchart
 from association.query.entities import MAX_CANDIDATES
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
@@ -631,6 +632,15 @@ def gl_con(tmp_path: Path) -> TemplateContext:
         [s, s],
     )
     c.execute("INSERT INTO team_box_stats VALUES ('e1',?,2,'18','2','home'),('e2',?,2,'18','2','away')", [s, s])
+    # Two rows that are not games, in the two shapes ESPN really serves: a 0-0
+    # placeholder with no winner (1999 and 2000 hold 132 of them, 133 involving
+    # Chicago) and a second event id for e1 an hour later (2003-01-04 DAL-PHI
+    # is stored as both 230104006 and 400222658). BOTH carry team_box_stats
+    # rows, because every `games` row does - which is why joining that table
+    # filtered out neither of them.
+    c.execute("INSERT INTO games VALUES ('e3',?,2,'2026-04-14T17:00Z','18','2',0,0,NULL),('e1b',?,2,'2026-04-10T23:00Z','18','2',112,95,'18')", [s, s])
+    c.execute("INSERT INTO team_box_stats VALUES ('e3',?,2,'18','2','home'),('e1b',?,2,'18','2','home')", [s, s])
+    real_games.build_table(c, {"games", "teams"})
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
@@ -664,6 +674,7 @@ def tq_con(tmp_path: Path) -> TemplateContext:
         "('e3',?,2,'18','5','home'),('e3',?,2,'5','18','away')",
         [s, s, s, s, s, s],
     )
+    real_games.build_table(c, {"games", "teams"})
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
@@ -1171,6 +1182,24 @@ def test_head_to_head_counts_games_in_both_directions(gl_con: TemplateContext) -
     four times had never played."""
     result = head_to_head(gl_con, {"teams": ["Knicks", "Celtics"], "season": current_season()})
     assert result.data["games"] == 2  # one home, one away
+
+
+def test_head_to_head_counts_only_rows_that_are_games(gl_con: TemplateContext) -> None:
+    """Regression: it counted every row of `games`, so "how many times did the
+    Mavs play the 76ers in 2003" answered 3 for a season holding 2 - one game
+    stored under two event ids - and 1999-2000 matchups counted 0-0 meetings
+    nobody won. Both shapes are in the fixture; read from `games` this is 4."""
+    assert head_to_head(gl_con, {"teams": ["Knicks", "Celtics"], "season": current_season()}).data["games"] == 2
+
+
+def test_a_team_log_leaves_out_rows_that_are_not_games(gl_con: TemplateContext) -> None:
+    """The same two rows, through the team game log. This was believed to be
+    safe because the log joins team_box_stats - but EVERY `games` row has a
+    team_box_stats row, so the join filtered nothing and a 1999 or 2000 Bulls
+    log listed placeholders as games."""
+    games = game_log(gl_con, {"team": "Knicks"}).data["games"]
+    assert len(games) == 2
+    assert all(g["opponent_score"] is not None and g["won"] is not None for g in games)
 
 
 def test_head_to_head_reports_the_series_record(gl_con: TemplateContext) -> None:
@@ -2386,13 +2415,24 @@ def test_team_game_log_is_not_doubled_by_a_phantom_season(gl_con: TemplateContex
     """The phantom 1993 shares every event id with 1994, and a join on event_id
     alone listed each of those games twice - 164 rows for the Celtics' 82."""
     gl_con.con.execute("INSERT INTO games VALUES ('e1',?,2,'2026-04-10T22:00Z','18','2',112,95,'18')", [current_season() - 1])
+    # Rebuilt, or the new row never reaches the list the log reads and this
+    # asserts 2 without having exercised the season-keyed join at all. The two
+    # rows are in different seasons, so `real_games` keeps both - collapsing a
+    # season label is TEAM_GAMES_SQL's job, not its.
+    real_games.build_table(gl_con.con, {"games", "teams"})
     assert len(game_log(gl_con, {"team": "Knicks"}).data["games"]) == 2
 
 
 def test_team_game_log_does_not_call_a_missing_result_a_loss(gl_con: TemplateContext) -> None:
-    """134 games since 1994 have no winner recorded - "not the winner" is not the
-    same fact as "lost"."""
-    gl_con.con.execute("UPDATE games SET winner_team_id = NULL WHERE event_id = 'e2'")
+    """ "Not the winner" is not the same fact as "lost".
+
+    Perturbed into `real_games` rather than into `games` underneath it, because
+    the two are no longer the same question: a row with no winner is a 0-0
+    placeholder, which `real_games` drops, so nulling one in `games` would test
+    that the game disappears rather than that a missing result is not a loss.
+    The guard this protects is now defensive - the filtered list has no NULL
+    winner in it - and this is the only way left to watch it work."""
+    gl_con.con.execute("UPDATE real_games SET winner_team_id = NULL WHERE event_id = 'e2'")
     result = game_log(gl_con, {"team": "Knicks"})
     assert (result.data["wins"], result.data["losses"]) == (1, 0)
     assert "(1-0, 1 with no recorded result):" in result.answer
@@ -2424,6 +2464,7 @@ def playoff_ctx(tmp_path: Path) -> TemplateContext:
     for event, season, season_type, _date, home, away, *_rest in rows:
         boxes += [(event, season, season_type, home, away, "home"), (event, season, season_type, away, home, "away")]
     c.executemany("INSERT INTO team_box_stats VALUES (?,?,?,?,?,?)", boxes)
+    real_games.build_table(c, {"games", "teams"})
     return TemplateContext(con=c, out_dir=tmp_path)
 
 

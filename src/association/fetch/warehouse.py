@@ -12,7 +12,7 @@ from pathlib import Path
 
 import duckdb
 
-from . import advanced_stats
+from . import advanced_stats, real_games
 
 log: logging.Logger = logging.getLogger("association.fetch.warehouse")
 
@@ -93,6 +93,9 @@ def build(data_dir: Path, db_path: Path, tables: list[str] | None = None) -> Non
 
         existing = _existing_tables(con)
         advanced_stats.build_views(con, existing)
+        # Rebuilt on every call, including a partial `data load --tables games`,
+        # so the filtered list can never be a pull behind the table it filters.
+        real_games.build_table(con, existing)
         existing = _existing_tables(con)  # refresh so player_game_log can join the views just created
         _build_views(con, existing)
     finally:

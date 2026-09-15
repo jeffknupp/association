@@ -344,7 +344,7 @@ likewise.
   - **Duplicates** — the same game under two event ids. 2003-01-04 DAL-PHI
     102-83 is stored as both `230104006` (17:30Z) and `400222658` (18:30Z),
     same teams, same score, one hour apart.
-  - **Phantoms that carry a winner** — date-only `T04:00Z` stamps, no box rows,
+  - **Phantoms that carry a winner** — a date-only stamp, no PLAYER box rows,
     often a team id missing from `teams`: `131205075` (team 75, filed under
     *both* 1993 and 1994), `150611014` (MIA-ORL, actually Houston's 1995 Finals
     Game 3, and Miami has no 1995 postseason), `170429031` and `170501031`
@@ -352,18 +352,46 @@ likewise.
     `200422100`/`200424100`/`200505100` (team 100) and `200501028` (a copy of
     TOR-NY). They make 1994 and 1998 one game long against `team_season_stats`,
     by exactly 225 and 175 points.
+  - **A date-only stamp is `T04:00Z` OR `T05:00Z`** — midnight US Eastern under
+    EDT and under EST. This entry read "`T04:00Z`" until 2026-09-14, which is
+    four of the eleven phantoms short: `131205075`, `171209083` and the two
+    1992 team-75 rows are winter games and carry `T05:00Z`.
+  - **Every `games` row has `team_box_stats` rows**, phantoms and placeholders
+    included — measured 2026-09-14, 43,494 of 43,494. Only the PLAYER box is
+    absent. This entry used to say the team `game_log` was safe "because it
+    joins `team_box_stats`, which the phantoms lack"; that was wrong on its
+    facts, and the log listed them. The 302 `team_box_stats` rows belonging to
+    the 151 junk rows are **entirely NULL** — 0 of 302 carry rebounds or field
+    goals — so nothing that SUMS that table was ever inflated by them; what
+    they did was make the rows exist for a join to find.
+  - **No other table has rows for them.** `player_box_stats`, `plays` and
+    `shot_chart` hold **0** rows against the 151 dropped events, which is why
+    every player-level path was already immune.
+  - **"No box score" is not by itself evidence of a phantom.** All 595 games
+    from 1988-1992 are stored date-only and have no player box score, because
+    ESPN publishes none before 1993-94 — and 30-odd real games from 1994 on
+    have no box score either (the whole 1997 ECF, the 1995 Finals Game 5, 1996
+    SAC-SEA, 1998 UTAH-HOU). Every one of those real games carries a real tip
+    time; only the phantoms carry both a date-only stamp and no box score in a
+    season that has box scores.
   - **Team ids absent from `teams`**, re-counted 2026-09-11: `1202` (7 rows,
     1999-2000), `75` (6 rows, 1992-1994), `1300` (3, 1999-2000), `100` (3,
     2000), `31` (2, 1997), `125` (1, 1988), `83` (1, 1998).
 - **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull**, which
   reproduced `games` exactly — placeholders, duplicates and phantoms included.
-- **How we handle it:** unevenly. `team_metrics.TEAM_GAMES_SQL` drops
-  placeholders and same-day duplicates but keeps phantoms that have a winner;
-  `conditions` filters only on `winner_team_id IS NOT NULL`; `head_to_head`
-  counts every one of these rows; the team `game_log` joins `team_box_stats`,
-  which the phantoms lack.
-- **Tracked in:** ISSUES.md, "`games` holds placeholder, duplicate and phantom
-  rows that templates count" (#7).
+- **How we handle it:** one shared filtered list. `real_games`
+  (`fetch/real_games.py`) is built at load time and keeps 43,343 of the 43,494
+  rows; `head_to_head`, `conditions`, `team_metrics.TEAM_GAMES_SQL`, the team
+  `game_log` and `team_quarter_points` all read it instead of `games`. It does
+  NOT collapse season 1993, which is a phantom SEASON rather than a phantom row
+  — that stays with `coverage.py` and the cross-season `QUALIFY` in
+  `TEAM_GAMES_SQL`. Until 2026-09-14 each path filtered a different subset:
+  `TEAM_GAMES_SQL` dropped placeholders and same-day duplicates but kept every
+  phantom that had a winner, `conditions` filtered only on
+  `winner_team_id IS NOT NULL`, and `head_to_head` and the team `game_log`
+  filtered nothing.
+- **Tracked in:** ISSUES.md, "The SQL agent and the web health line still read
+  raw `games`" — what remains after the load-time list.
 
 ### The 2026 shot chart holds more shots than the box score
 

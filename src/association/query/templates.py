@@ -214,6 +214,10 @@ TEMPLATE_SOURCES: dict[str, tuple[str, ...]] = {
     "player_history": ("player_season_stats_deduped",),
     "player_netpoints": ("net_points_player", "net_points_player_fingerprint"),
     "team_record": ("standings",),
+    # Answered from `real_games`, but the FLOOR is `games`': the filtered list
+    # is the same data with the rows that are not games removed, and it reaches
+    # exactly as far back. Declaring `real_games` would need a second, identical
+    # COVERAGE entry to drift out of step with the first.
     "head_to_head": ("games",),
     "team_quarter_points": ("team_box_stats", "games"),
     # A player's log and a team's come from different tables, and _sources_for
@@ -1978,10 +1982,14 @@ _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # home_score/away_score needs a per-row guess that goes backwards sometimes.
 #
 # Joined on season as well as event_id: the phantom 1993 shares every event id
-# with 1994, so a 1994 log keyed on event_id alone listed each game twice. The
-# winner is returned raw rather than compared, because 134 games since 1994
-# (the 1999 lockout season's, mostly) have none recorded, and "not the winner"
-# is not the same fact as "lost".
+# with 1994, so a 1994 log keyed on event_id alone listed each game twice.
+#
+# Read from `real_games`, the one filtered list (fetch/real_games.py): this
+# join used to be over `games`, on the belief that joining team_box_stats
+# excluded the junk rows by itself. It does not - EVERY games row has a
+# team_box_stats row, phantoms and 0-0 placeholders included - so a 1999 or
+# 2000 Bulls log listed placeholder games. The winner is still returned raw
+# rather than compared, since a NULL there and a loss are different facts.
 _TEAM_GAMES_SQL = """
 SELECT g.date,
        tbs.home_away,
@@ -1992,7 +2000,7 @@ SELECT g.date,
        tbs.team_id,
        CASE WHEN tbs.season_type = 3 THEN CAST(substr(g.date, 1, 4) AS INTEGER) ELSE tbs.season END AS season
 FROM team_box_stats tbs
-JOIN games g ON g.event_id = tbs.event_id AND g.season = tbs.season
+JOIN real_games g ON g.event_id = tbs.event_id AND g.season = tbs.season
 JOIN teams opp ON opp.team_id = tbs.opponent_team_id
 """
 
@@ -3051,7 +3059,7 @@ def _team_game_log(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, *,
     if not rows:
         # Which fact is missing: the team's games in that span, or the match.
         found = con.execute(
-            f"SELECT COUNT(*), MIN({_TEAM_SEASON}), MAX({_TEAM_SEASON}) FROM team_box_stats tbs JOIN games g ON g.event_id = tbs.event_id AND g.season = tbs.season WHERE {' AND '.join(base)}",
+            f"SELECT COUNT(*), MIN({_TEAM_SEASON}), MAX({_TEAM_SEASON}) FROM team_box_stats tbs JOIN real_games g ON g.event_id = tbs.event_id AND g.season = tbs.season WHERE {' AND '.join(base)}",
             base_params,
         ).fetchone()
         total, first, last = found if found else (0, None, None)
@@ -3598,7 +3606,7 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     ]
     params: list[Any] = [a.id, b.id, b.id, a.id, season_type, *season_params]
     rows = con.execute(
-        f"SELECT g.date, g.home_team_id, g.home_score, g.away_score, g.winner_team_id FROM games g WHERE {' AND '.join(where)} ORDER BY g.date",
+        f"SELECT g.date, g.home_team_id, g.home_score, g.away_score, g.winner_team_id FROM real_games g WHERE {' AND '.join(where)} ORDER BY g.date",
         params,
     ).fetchall()
 
@@ -3632,7 +3640,7 @@ SELECT g.date,
        CASE WHEN tbs.home_away = 'home' THEN g.home_linescores ELSE g.away_linescores END AS own_linescores,
        opp.display_name AS opponent
 FROM team_box_stats tbs
-JOIN games g ON g.event_id = tbs.event_id AND g.season = tbs.season
+JOIN real_games g ON g.event_id = tbs.event_id AND g.season = tbs.season
 JOIN teams opp ON opp.team_id = tbs.opponent_team_id
 """
 

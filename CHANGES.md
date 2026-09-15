@@ -15,6 +15,37 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Rows that are not games are no longer counted as games.** `games` holds
+  three kinds of row ESPN serves alongside the real ones, and each read path
+  filtered a different subset of them, so the same warehouse answered the same
+  question differently depending on which template got it. "How many times did
+  the Mavs play the 76ers in 2003" answered 3 for a season holding 2 - one game
+  stored under both `230104006` and `400222658` - and 1999-2000 matchups
+  counted 0-0 placeholders as meetings nobody won.
+
+  There is now one filtered list, `real_games`, built at load time
+  (`fetch/real_games.py`) and read by `head_to_head`, `conditions`,
+  `team_metrics`, the team game log and `team_quarter_points` alike. It drops
+  151 of `games`' 43,494 rows: 134 placeholders scored 0-0 with no winner, 23
+  team-slots naming an id no franchise has, 11 phantoms carrying a winner but
+  no box score and a date-only stamp, and the one same-day duplicate left after
+  those. Measured against the warehouse, the playoff records it corrects land
+  on the real ones - Orlando 1995 from 11-11 to 11-10, Seattle 1997 from 7-7 to
+  6-6 and 2000 from 2-6 to 2-3, Phoenix 1999 from 0-4 to 0-3, Portland 1999
+  from 8-6 to 7-6 - and Miami stops having a 1995 postseason it never played.
+  Chicago's 1999 game list falls from 100 rows to the 50 its standings line
+  says it played, and 2000's from 162 to 80.
+
+  Two things it deliberately does not do. It does not drop a game that is
+  simply older than the box scores: every 1988-1992 game is stored date-only
+  with no box score, so the phantom rule fires only where that season and
+  season type have box scores at all. And it does not collapse season 1993,
+  which is a phantom SEASON rather than a phantom row - that stays with
+  `coverage.py` and the cross-season `QUALIFY` in `TEAM_GAMES_SQL`, which are
+  the only things that can tell it from a real season.
+
+  **Needs a `data load`**: the list is built at load time, so a warehouse built
+  before this change does not have it.
 - **A single-game high keeps the player the question named.** "most points
   curry scored in a game this season" came back from the router as
   `single_game_high` with no player slot at all, and the answer was the
