@@ -12,12 +12,14 @@ Game 5 of the Final.
 
 ESPN's daily scoreboard is a second, independent list and it HAS those games -
 `200607013` is Finals Game 1 - and their summaries carry full box scores.
-`Pipeline.event_ids_for` now reads it for every postseason, so a fresh pull
-produces them by itself; this script is for a tree that was already pulled,
-whose `_complete` markers would otherwise skip the season entirely.
+A postseason pull now makes a second discovery pass over the scoreboard once
+the schedule's games are on disk, so a fresh pull produces these by itself;
+this script is for a tree that was already pulled, whose `_complete` markers
+would otherwise skip the season entirely.
 
-It runs the real code path - the same `event_ids_for` discovery and
-`fetch_game` write - so nothing here can drift from what a normal pull does.
+It runs the real code path - the same schedule discovery, the same scoreboard
+scan and the same `fetch_game` write - so nothing here can drift from what a
+normal pull does.
 Re-runnable: a game already on disk is skipped by `fetch_game` itself.
 
 **2001 stays incomplete afterwards, and that is ESPN's gap, not a bug here.**

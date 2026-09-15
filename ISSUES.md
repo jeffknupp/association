@@ -48,9 +48,13 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Found:** 2026-09-11, template work (agent B); 2000 fixed and this rewritten 2026-09-15
 - **Fixed for 2000.** The games ESPN's team schedules drop ARE on its daily
   scoreboard, which is a second, independent list of what was played.
-  `Pipeline.event_ids_for` now scans it forward from each postseason's last
-  known game (`POSTSEASON_SCAN_DAYS`, 28 days), and
+  A postseason pull now makes a second discovery pass over it once the
+  schedule's games are on disk, scanning forward from the latest date stored
+  (`POSTSEASON_SCAN_DAYS`, 28 days), and
   `scripts/backfill_missing_playoffs.py` ran it over the two affected seasons.
+  The ordering is load-bearing: the first version scanned during discovery,
+  before anything was fetched, so it had no date to anchor on and a
+  from-scratch pull of 2000 found none of the six Finals games.
   Nine games recovered, including the whole LAL-IND Final: the 2000 postseason
   went 70 -> 79 games, and **every team in it now matches ESPN's own
   `team_season_stats` exactly** (LAL 15 -> 23, IND 16 -> 23, POR 14 -> 16; zero

@@ -19,10 +19,17 @@ had no published version to be compatible with.
   read.** Games are discovered from each team's schedule, and ESPN's schedules
   simply stop: the 2000 postseason ended on 2000-06-01, missing the whole
   LAL-IND Final, WCF Games 6-7 and ECF Game 6. Its daily scoreboard is a
-  second, independent list and **has** those games, so `event_ids_for` now
-  scans it forward from each postseason's last known game. Nine games
-  recovered (70 -> 79), and every team in that postseason now matches ESPN's
-  own season totals exactly - the Lakers went from 15 games to 23.
+  second, independent list and **has** those games, so a postseason pull now
+  makes a second discovery pass over it once the schedule's games are on disk,
+  scanning forward from the latest date stored. Nine games recovered
+  (70 -> 79), and every team in that postseason now matches ESPN's own season
+  totals exactly - the Lakers went from 15 games to 23.
+
+  That the pass runs *after* the fetch is the whole fix, not a detail: the scan
+  needs a date to work forward from, and on a first pull the only dates that
+  exist are the ones the fetch just wrote. Run during discovery instead, it
+  found 70 ids for 2000 and none of the six Finals games - correct on a tree
+  that already held them, useless on a clean one.
 
   Postseason-only, and it costs a healthy season nothing: measured against
   2024, the scoreboard and the schedules agree on all 82 games. 2001 recovers

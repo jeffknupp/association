@@ -149,9 +149,10 @@ likewise.
   returned the same 70 rows for the 2000 postseason, ending on the same date,
   with `games` matching across all 43,494 rows.
 - **How we handle it:** the daily scoreboard is a second, independent list of
-  what was played, and it HAS the games the schedules drop - so
-  `Pipeline.event_ids_for` scans it forward from each postseason's last known
-  game (`POSTSEASON_SCAN_DAYS`, 28 days). That recovered all nine missing 2000
+  what was played, and it HAS the games the schedules drop - so a postseason
+  pull makes a second discovery pass over it once the schedule's games are on
+  disk, scanning forward from the latest date stored (`POSTSEASON_SCAN_DAYS`,
+  28 days). That recovered all nine missing 2000
   games, including the whole LAL-IND Final. It recovers only ONE of 2001's:
   probed live through the project's own client, 23 days across that
   postseason's conference finals and Final return no events at all, so ESPN

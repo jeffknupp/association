@@ -232,14 +232,9 @@ class Pipeline:
         """Every game id in a season, gathered from each team's schedule and
         deduplicated - each game appears on two schedules.
 
-        A postseason is then extended from the scoreboard, which is a second,
-        independent list of what was played and the only place the 2000 and
-        2001 games missing from every team's schedule appear. See
-        :meth:`_scoreboard_event_ids`.
-
-        .. versionchanged:: 2.2.0
-           A postseason also reads the scoreboard. Regular seasons are
-           unchanged, and so is the return type.
+        Schedules only. A postseason is extended from the scoreboard in a
+        second pass, in :meth:`_run_season_type`, because that scan needs a
+        date to start from and this method runs before any game is fetched.
         """
         ids: set[str] = set()
         for team_id in tqdm(team_ids, desc=f"{season} type={season_type} schedules", leave=False):
@@ -248,17 +243,21 @@ class Pipeline:
                 params={"season": season, "seasontype": season_type},
             )
             ids.update(parse.parse_schedule_event_ids(data))
-        if season_type == POSTSEASON:
-            ids |= self._scoreboard_event_ids(season, ids)
         return sorted(ids, key=lambda x: int(x))
 
     def _scoreboard_event_ids(self, season: int, known: set[str]) -> set[str]:
         """Postseason ids the schedules missed, read off the daily scoreboard.
 
-        Scanned forward from the last game the schedules DO name, because that
-        is exactly where the fault is: ESPN's schedules do not end early in the
-        middle: they stop at a real game and omit everything after it. A
-        season with no games on either source scans nothing.
+        Scanned forward from the last game already on disk, because that is
+        exactly where the fault is: ESPN's schedules do not end early in the
+        middle, they stop at a real game and omit everything after it.
+
+        **Called after the season's schedule games are fetched, never before.**
+        The anchor is a date, and on a clean tree the only dates are the ones
+        the fetch just wrote. Running this from ``event_ids_for`` - which
+        happens first - measured 70 discovered ids for 2000 and **none** of the
+        six Finals games, while the same scan anchored at 2000-06-01 finds all
+        six. A season with nothing on disk yet scans nothing.
 
         Only ids whose own ``season`` block matches this postseason are kept.
         The response's ``leagues[].season`` says ``type: 2`` even on a June
@@ -801,6 +800,22 @@ class Pipeline:
 
         event_ids = self.event_ids_for(season, season_type, team_ids)
         self._map(lambda event_id: self.fetch_game(event_id, season, season_type), event_ids, desc=f"{season} type={season_type} games")
+
+        # A postseason gets a second discovery pass, once those games are on
+        # disk. ESPN's team schedules stop early for 2000 and 2001 - the entire
+        # LAL-IND Final is on no team's schedule - and the daily scoreboard has
+        # what they drop. It has to run HERE rather than inside event_ids_for:
+        # the scan needs a date to work forward from, and on a clean tree the
+        # only dates in existence are the ones the fetch above just wrote.
+        if season_type == POSTSEASON:
+            discovered = sorted(self._scoreboard_event_ids(season, set(event_ids)), key=int)
+            if discovered:
+                self._map(lambda event_id: self.fetch_game(event_id, season, season_type), discovered, desc=f"{season} type={season_type} scoreboard games")
+                # Counted as discovered, so `season_complete` below compares the
+                # files on disk against schedule + scoreboard rather than
+                # against the schedule alone - which would read complete while
+                # the games just found were still missing.
+                event_ids = [*event_ids, *discovered]
 
         season_complete = bool(event_ids) and self._resolved_event_count(season, season_type) >= len(event_ids)
 

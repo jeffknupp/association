@@ -108,60 +108,103 @@ def _write_game(root: Path, season: int, season_type: int, event_id: str, date: 
     pq.write_table(pa.Table.from_pylist([{"event_id": event_id, "season": season, "season_type": season_type, "date": date}]), d / f"event_{event_id}.parquet")
 
 
-def test_a_postseason_reads_games_no_team_schedule_lists(tmp_path: Path) -> None:
-    """The P1 this fixes. ESPN's team schedules end the 2000 postseason on
-    2000-06-01, losing the whole LAL-IND Final; the daily scoreboard has those
-    games. Discovery scans forward from the last game the schedules DO name."""
-    _write_game(tmp_path, 2000, 3, "100", "2000-06-01T04:00Z")
-    responses: dict[str, Any] = {_schedule_url("1"): _schedule_response(["100"])}
+def _dated_summary(event_id: str, date: str) -> dict:
+    """A finished game summary stamped with a real date - the scoreboard scan
+    anchors on the latest date already on disk, so a fixture whose games are
+    all 2024-01-01 cannot exercise it."""
+    summary = _game_summary(event_id)
+    summary["header"]["competitions"][0]["date"] = date
+    return summary
+
+
+def test_a_clean_pull_finds_playoff_games_no_team_schedule_lists(tmp_path: Path) -> None:
+    """The bug this design shipped with, and the test that would have caught it.
+
+    ESPN's team schedules end the 2000 postseason on 2000-06-01 and omit the
+    whole LAL-IND Final; the daily scoreboard has those games. Discovery has to
+    work on a tree with NOTHING on disk, because that is what a first pull is.
+
+    The original version ran the scan inside `event_ids_for`, before any game
+    was fetched - so it had no date to scan forward from, returned 70 ids for
+    2000 and none of the six Finals games, and passed its tests because every
+    one of them seeded a game on disk first.
+    """
+    responses: dict[str, Any] = {TEAMS_URL: _teams_response(1)}
+    responses[_schedule_url("1")] = _schedule_response(["100"])
+    responses[SUMMARY_URL] = lambda params: _dated_summary(params["event"], "2000-06-01T04:00Z" if params["event"] == "100" else "2000-06-07T04:00Z")
     responses[SCOREBOARD_URL] = lambda params: _scoreboard_response([("200607013", 2000, 3)]) if params["dates"] == "20000607" else _scoreboard_response([])
-    client = FakeClient(responses)
-    pipeline = Pipeline(client, tmp_path)
-    assert pipeline.event_ids_for(2000, 3, ["1"]) == ["100", "200607013"]
+    pipeline = Pipeline(FakeClient(responses), tmp_path)
+    pipeline.fetch_teams()
+    pipeline._run_season_type(2000, 3, pipeline.team_ids())
+
+    games = tmp_path / "games" / "season=2000" / "season_type=3"
+    assert (games / "event_100.parquet").exists(), "the schedule's own game"
+    assert (games / "event_200607013.parquet").exists(), "the Finals game no schedule lists"
+
+
+def test_a_clean_pull_counts_the_discovered_games_before_marking_complete(tmp_path: Path) -> None:
+    """`season_complete` compares files on disk against what was discovered. If
+    the scoreboard games are not added to that list, a season reads complete
+    against the schedule's count alone - true by accident here, and false the
+    moment a discovered game fails to fetch."""
+    responses: dict[str, Any] = {TEAMS_URL: _teams_response(1)}
+    responses[_schedule_url("1")] = _schedule_response(["100"])
+    # The discovered game is never returned by the summary endpoint, so it
+    # cannot land on disk: the season must NOT be marked complete.
+    responses[SUMMARY_URL] = lambda params: _dated_summary("100", "2000-06-01T04:00Z") if params["event"] == "100" else None
+    responses[SCOREBOARD_URL] = lambda params: _scoreboard_response([("200607013", 2000, 3)]) if params["dates"] == "20000607" else _scoreboard_response([])
+    pipeline = Pipeline(FakeClient(responses), tmp_path)
+    pipeline.fetch_teams()
+    pipeline._run_season_type(2000, 3, pipeline.team_ids())
+    assert not storage.is_complete(pipeline._complete_marker(2000, 3))
 
 
 def test_a_regular_season_never_touches_the_scoreboard(tmp_path: Path) -> None:
     """The gate. A regular season's schedules are complete, and scanning ~28
     dates per season for nothing is a cost every pull would pay forever.
 
-    The postseason game below is what makes this test discriminate. Without it
-    there is no postseason anchor on disk, so removing the gate ALSO scans
-    nothing - the missing-anchor guard would do the work and this assertion
-    would pass either way, proving nothing about the gate it names.
+    The 2024 POSTSEASON game written below is what makes this test
+    discriminate, and leaving it out has now broken this same assertion twice.
+    The scan anchors on the latest stored postseason date; with no postseason
+    game on disk that anchor is None and the scan exits before it requests
+    anything - so removing the gate changes nothing and this test passes while
+    proving nothing about the gate it names.
     """
-    _write_game(tmp_path, 2024, 2, "100", "2024-04-01T04:00Z")
-    _write_game(tmp_path, 2024, 3, "500", "2024-04-20T04:00Z")
-    responses: dict[str, Any] = {_schedule_url("1"): _schedule_response(["100"])}
+    responses: dict[str, Any] = {TEAMS_URL: _teams_response(1)}
+    responses[_schedule_url("1")] = _schedule_response(["100"])
+    responses[SUMMARY_URL] = lambda params: _dated_summary(params["event"], "2024-04-01T04:00Z")
     responses[SCOREBOARD_URL] = lambda params: _scoreboard_response([("999", 2024, 2)])
     client = FakeClient(responses)
+    _write_game(tmp_path, 2024, 3, "500", "2024-04-20T04:00Z")
     pipeline = Pipeline(client, tmp_path)
-    assert pipeline.event_ids_for(2024, 2, ["1"]) == ["100"]
+    pipeline.fetch_teams()
+    pipeline._run_season_type(2024, 2, pipeline.team_ids())
     assert [url for url, _ in client.calls if url == SCOREBOARD_URL] == []
+    assert not (tmp_path / "games" / "season=2024" / "season_type=2" / "event_999.parquet").exists()
 
 
 def test_discovery_files_a_game_by_its_own_season_not_the_leagues(tmp_path: Path) -> None:
     """The trap, confirmed live: on 2000-06-07 the response's leagues[].season
     reads type 2 while the event reads type 3. Reading the league's would drop
-    every Finals game here as "not this postseason"."""
+    every Finals game as "not this postseason" - and a game from a neighbouring
+    season that happens to fall in the scan window must not be swept in."""
     _write_game(tmp_path, 2000, 3, "100", "2000-06-01T04:00Z")
-    responses: dict[str, Any] = {_schedule_url("1"): _schedule_response(["100"])}
-    # One real playoff game, and one event belonging to a DIFFERENT season that
-    # must not be swept in just because it fell inside the scan window.
-    responses[SCOREBOARD_URL] = lambda params: _scoreboard_response([("200607013", 2000, 3), ("400000001", 2001, 3)])
+    responses: dict[str, Any] = {
+        SCOREBOARD_URL: lambda params: _scoreboard_response([("200607013", 2000, 3), ("400000001", 2001, 3)]),
+    }
     pipeline = Pipeline(FakeClient(responses), tmp_path)
-    found = pipeline.event_ids_for(2000, 3, ["1"])
+    found = pipeline._scoreboard_event_ids(2000, {"100"})
     assert "200607013" in found
     assert "400000001" not in found
 
 
 def test_a_postseason_with_nothing_on_disk_scans_nothing(tmp_path: Path) -> None:
-    """The scan starts from the last stored game, so a season never pulled has
-    no anchor - and must not scan a year of dates looking for one."""
-    responses: dict[str, Any] = {_schedule_url("1"): _schedule_response([])}
-    responses[SCOREBOARD_URL] = lambda params: _scoreboard_response([("999", 2000, 3)])
-    client = FakeClient(responses)
+    """The scan anchors on the latest game already stored, so a scope whose
+    fetch produced nothing has no anchor - and must not scan a year of dates
+    hunting for one. This is why the scan runs AFTER the games are written."""
+    client = FakeClient({SCOREBOARD_URL: lambda params: _scoreboard_response([("999", 2000, 3)])})
     pipeline = Pipeline(client, tmp_path)
-    assert pipeline.event_ids_for(2000, 3, ["1"]) == []
+    assert pipeline._scoreboard_event_ids(2000, set()) == set()
     assert [url for url, _ in client.calls if url == SCOREBOARD_URL] == []
 
 
