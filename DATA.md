@@ -100,6 +100,33 @@ likewise.
 - **Tracked in:** ISSUES.md, "Nearly every Bulls and Pelicans box score from
   2013 to 2018 is zeros" (#1).
 
+### ESPN files one player under two athlete ids in the same box score
+
+- **What ESPN does:** lists the same person twice in one team's box score,
+  under two different `athlete_id`s, sometimes with identical stat lines.
+- **Evidence (2026-09-15):** grouping `player_box_stats` by `(event_id,
+  team_id, display_name)` and counting distinct `athlete_id`:
+  - **Isaiah Canaan** (`2490589`, `4412182`) in 20 Phoenix and Minnesota
+    team-games in 2019, with identical lines in 18 of them.
+  - **Corey Brewer** (`3191`, `4415554`) in 8 of 8 in 2019.
+  - **Daryl Macon** (`4066243`, `4610145`) in 3 of 4 in 2020.
+  - **Ken Johnson** 2003 (`1008`, `1972`, 33 games), with lines that differ.
+  - The team box is not affected: its derived points (2·FGM + 3PM + FTM) equal
+    the final score in every row of 2019, 2021 and 2026. The player sums
+    overshoot in 23 team-games in 2019 — 15 Phoenix, 7 Philadelphia — which is
+    most of the disagreement recorded under "Team box scores disagree slightly
+    with player-box sums".
+  - It crosses tables: `net_points_player` keys off ESPN's `dot_com_id`
+    (`3059316` for Wayne Selden 2022) while the box scores and the name-matched
+    fingerprint use the other id, so 8 `net_points_player_fingerprint` rows have
+    no `net_points_player` row of the same id and season, and a join drops them.
+- **Does a refetch fix it?** Not tested. The ids come back the way ESPN serves
+  them, and both are real athlete records on its side.
+- **How we handle it:** nothing yet. Anything summing player rows to a team
+  total double-counts these games.
+- **Tracked in:** ISSUES.md, "ESPN files one player under two athlete ids in the
+  same box score".
+
 ### Vancouver 1996 is an empty TEAM box, not an empty player box
 
 - **What ESPN does:** serves an all-NULL `team_box_stats` row for every
@@ -121,10 +148,18 @@ likewise.
   - Only **5** of 1,189 games in 1996 have no player box rows at all: 160127072,
     160207100, 160324082, 160329100 and 160405003. That is the "5 in 1996"
     figure this entry was written to overturn, and it was correct.
-- **The same shape occurs twice more**, and had never been recorded: **Chicago
-  2000** (82 all-NULL team rows beside 834 player rows with minutes) and
-  **Chicago 1999** (50 beside 546). Those are the only three team-seasons in
-  the warehouse with an all-NULL team box and a real player box.
+- **The Chicago pair was wrong, and is removed (2026-09-15).** Chicago 2000's
+  82 all-NULL rows and 1999's 50 sit on **zero** `real_games` events: they are
+  the 0-0 `T17:00Z` placeholder rows catalogued below, which `real_games`
+  already drops. Chicago's real games carry normal team rows (80 in 2000, 50 in
+  1999). Those seasons are not this fault.
+- **Vancouver's opponents are hit too**, which had never been recorded: in 41
+  of its 82 games the *opponent's* team row is all-NULL as well, and 37 of those
+  sit beside real player rows, spread over 25 teams at 1-2 games each.
+  League-wide, 115 all-NULL team rows on real 1996 games have real player rows
+  beside them; with one 2000 game (`191102003`, ORL@NO) that makes the 117 the
+  comment at `fetch/team_box_repair.py:88` counts — though that comment names
+  Chicago 2000 as the second case, which is wrong.
 - **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull**, which
   reproduced `team_box_stats` exactly.
 - **How we handle it:** nothing yet, and `_empty_box_scores` does NOT catch
@@ -303,31 +338,53 @@ likewise.
   keep no name" (#22), and "The NetPoints season fingerprint matches players
   mid-pull, so a name can be lost" (#21).
 
-### ESPN's power index keeps only postseason teams
+### ESPN's power index is one snapshot per season, not one team per season
+
+**Corrected 2026-09-15.** This section used to say the archived snapshot holds
+only the play-in and postseason field, and that no pull could recover the past.
+Both were wrong: the missing teams are our paging, not ESPN's archive.
 
 - **What ESPN does:** publishes BPI as a single current snapshot per season
-  rather than a dated series, and by the time a season is archived that
-  snapshot holds only the play-in and postseason field.
-- **Evidence:** `team_power_index` has exactly 25 rows in every season from
-  2017 to 2026. 2017-2021 pair BPI values with final records. ESPN's own rank
-  columns hold values like 26,058 before 2022.
-- **Does a refetch fix it?** **No, and no pull can recover the past** — the
-  earlier snapshots were never archived anywhere reachable.
+  rather than a dated series. That half stands — there is no way to ask for
+  last November's BPI.
+- **What it does NOT do:** drop the non-playoff teams. Probed live,
+  `seasons/2024/powerindex` answers `{'count': 90, 'pageSize': 25,
+  'pageCount': 4}`, and `?limit=1000` returns all 90 items: 30 teams in each of
+  season types 2, 3 and 5. 2019 returns 30.
+- **Evidence of our side of it:** `team_power_index` holds exactly 25 rows a
+  season — the core API's default page size — and those 25 rows are not 25
+  teams. 2024 has **9 distinct teams** (three season types, three rows each);
+  2026 has 13 and no regular-season rows at all. `fetch_power_index`
+  (`fetch/pipeline.py:497`) passes no `limit` and does not page.
+- **Does a refetch fix it?** **Yes**, once the fetch pages — which is the
+  opposite of what this section said. 2017-2026 can all be recovered.
 - **How we handle it:** `team_outlook` names its snapshot, date and size in
   every answer, counts a team's standing within the snapshot rather than
   trusting ESPN's rank columns, and tells a missing team which snapshots exist.
-- **Tracked in:** ISSUES.md, "The power index (BPI) keeps one snapshot per
-  season" (#27).
+- **Tracked in:** ISSUES.md, "The power index reads only the first page, so
+  most teams are missing" (#27).
 
-### No conference, division or birth-date data anywhere
+### No birth dates anywhere, and conference membership is fetched but discarded
 
-- **What ESPN does:** returns `conferenceCompetition` as false on every game it
-  serves here, and publishes no team-to-conference mapping and no birth date
-  through any endpoint the pull reads.
-- **Evidence:** `games.conference_game` is False on all 43,494 rows. No table
-  maps a team to a conference or division. No table holds a birth date.
-- **Does a refetch fix it?** **No** — a different endpoint (or a different
-  source entirely, for birth dates) would be needed.
+**Corrected 2026-09-15.** This section used to say ESPN publishes no
+team-to-conference mapping through any endpoint the pull reads. That is wrong:
+the standings response the pull already fetches is grouped by conference, and
+the parser throws the grouping away. The birth-date half stands.
+
+- **What ESPN does:** returns `conferenceCompetition` as false on every game
+  (so the per-game flag really is useless), **but** serves standings as a tree:
+  `standings?season=2026` has children `Eastern Conference` (15 teams) and
+  `Western Conference` (15); 2004 gives 15 and 14, 1990 gives 13 and 14; and
+  `&level=3` returns the six divisions at 5 teams each. It publishes no birth
+  date through any endpoint the pull reads.
+- **Evidence:** `games.conference_game` is False on all 43,504 rows.
+  `parse_standings` (`fetch/parse.py:346`) walks `children` only to reach the
+  entries and keeps no group name — its own test says the entries "appear at
+  both conference and division level" (`tests/fetch/test_parse.py:397`).
+  `standings` also carries "vs. Conf." and "vs. Div." records, real from 2004.
+  No table holds a birth date.
+- **Does a refetch fix it?** **For conference and division, yes** — a parser
+  change plus a standings re-pull, no new endpoint. For birth dates, no.
 - **How we handle it:** `_conference_refusal` refuses a conference named as the
   subject. Anything by age is refused or falls through.
 - **Tracked in:** ISSUES.md, "No conference or division data" (#25) and

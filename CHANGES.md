@@ -15,6 +15,33 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Splits, streaks and with/without read the rebuilt box line too - they were
+  the half that still called a rebuilt game a game he missed.** Reading the
+  rebuilt lines landed for the per-game templates first; every template that
+  decides *whether a player appeared* kept asking `player_box_stats` for
+  minutes, which a rebuilt row does not have. So the same season answered two
+  ways: `game_log` listed Anthony Davis's 68 games of 2015 while
+  `player_splits` said he "was listed in 82 box scores in the 2015 regular
+  season but did not play in any of them". It now answers 68 games, 34 home
+  and 34 away.
+
+  The teammate half was worse, because it answered fluently and no caveat
+  marked it. `with_without` asked the same question of the *other* player, so
+  every teammate in a rebuilt game read as absent and the game was filed on
+  the "without" side: "Anthony Davis without Eric Gordon, 2015" returned a log
+  padded with games Gordon played. It now returns 20 games, which is the
+  ground truth, and the split reads 68 played to 14 out.
+
+  Three guards carried the fault, not one - the SQL that decides a player
+  appeared, the SQL that decides a game has no box score, and a Python filter
+  picking his games back out of a group - and each is now perturbation-tested
+  separately. A rebuilt row still has no minutes, so minutes are averaged over
+  the games that carry them rather than counting a rebuilt game as zero, and
+  the columns the rebuild gets wrong (`UNGATED_ON_REBUILD`: turnovers, fouls,
+  threes, attempts, rebound splits) are blanked rather than averaged in - a
+  split that reads 9 turnovers off a rebuilt line is the quiet version of this
+  bug, not a fix for it. A warehouse with no `player_box_stats_filled` view
+  falls back to the raw table and answers exactly as it did before.
 - **The 2000 playoffs are complete, recovered from a source the pull never
   read.** Games are discovered from each team's schedule, and ESPN's schedules
   simply stop: the 2000 postseason ended on 2000-06-01, missing the whole

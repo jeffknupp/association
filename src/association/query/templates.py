@@ -30,6 +30,7 @@ from .conditions import (
     _SPLIT_TITLES,
     _TEAM_GAME_TABLES,
     _TEAM_LINE,
+    BoxSource,
     _box_missing,
     _cell,
     _game_scope,
@@ -55,6 +56,7 @@ from .conditions import (
     _win_pct,
     _with_without_games,
     _with_without_group,
+    box_source,
 )
 from .court import HAS_POSITION_SQL, SHOT_DISTANCE_SQL
 from .entities import Ambiguous, Availability, Entity, clarification, find_players, no_match, resolve_player, resolve_team, suggest_players, suggestion, teammate_names
@@ -1676,9 +1678,21 @@ def _rebuilt_readable(con: duckdb.DuckDBPyConnection, needed: list[str]) -> bool
 # too, since the phantom 1993 shares its event ids with 1994.
 _PLAYER_GAMES = "FROM player_game_log pgl JOIN games g ON g.event_id = pgl.event_id AND g.season = pgl.season"
 
-# The teammate played in that game: a row, not flagged did-not-play, with
-# minutes - the same line _RECORDED draws for the player himself.
-_TEAMMATE_PLAYED = "EXISTS (SELECT 1 FROM player_box_stats m WHERE m.athlete_id = ? AND m.event_id = pgl.event_id AND m.season = pgl.season AND NOT m.did_not_play AND m.minutes IS NOT NULL)"
+
+def _teammate_played(box: BoxSource) -> str:
+    """SQL for "this teammate played that game", over the given box source.
+
+    A game rebuilt from play-by-play has no minutes, so against the stored
+    table every teammate in a rebuilt game reads as absent and the game counts
+    as one played "without" him. Measured before this took a source: "Anthony
+    Davis without Eric Gordon, 2015" listed games Gordon played in - he played
+    48 of Davis's 68 that season.
+
+    .. versionadded:: 2.2.0
+    """
+    appeared = "(m.minutes IS NOT NULL OR m.reconstructed)" if box.rebuilt else "m.minutes IS NOT NULL"
+    return f"EXISTS (SELECT 1 FROM {box.table} m WHERE m.athlete_id = ? AND m.event_id = pgl.event_id AND m.season = pgl.season AND NOT m.did_not_play AND {appeared})"
+
 
 # An open end of a stint, as a string that sorts before or after any date.
 _OPEN_START, _OPEN_END = "0000", "9999"
@@ -1775,7 +1789,7 @@ def _narrow_player_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _
         tenure, tenure_params = _tenure_clause(con, mate, span)
         narrowed.without.append(mate)
         narrowed.tenure.append((tenure, tenure_params))
-        narrowed.extra += [tenure, f"NOT {_TEAMMATE_PLAYED}"]
+        narrowed.extra += [tenure, f"NOT {_teammate_played(box_source(con))}"]
         narrowed.extra_params += [*tenure_params, mate.id]
     return narrowed
 
@@ -4279,13 +4293,13 @@ def player_splits(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult
         params: dict[str, Any] = {**scope.params(), "player": player.id}
         if team is not None:
             params["team"] = team.id
-        base = _player_games(scope, extra=" AND pbs.team_id = $team" if team else "")
+        base = _player_games(scope, extra=" AND pbs.team_id = $team" if team else "", box=box_source(con))
         games, first, last = _totals(con, base, params)
         if not games:
             return _no_games(con, player, scope, team)
         subject, alias, line, counted = player.name + (f" for the {team.name}" if team else ""), "p", _PLAYER_LINE, f"{games} games he played"
         data: dict[str, Any] = {"player": player.name, "team": team.name if team else None}
-        caveat = _unseen_note(_unseen(con, scope, base, params))
+        caveat = _unseen_note(_unseen(con, scope, base, params, box_source(con)))
     else:
         if team is None:
             raise TemplateUnsupported("player_splits needs a player or a team")
@@ -4322,7 +4336,7 @@ def player_splits(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult
     what = _SPLIT_TITLES[split] if split else "splits"
     notes = []
     if alias == "p":
-        notes.append("Played means he logged minutes, and W-L is his team's record in those games.")
+        notes.append("Played means he appeared in the game, and W-L is his team's record in those games.")
     if "month" in kinds:
         notes.append("Months go by the US Eastern date of the game.")
     answer = _table(f"{subject}, {what}, {label} ({counted}):", ["G", "W-L", *(h for _, h, _ in line)], rows)
@@ -4357,8 +4371,9 @@ def with_without(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     on a team is read from the box scores as a run of rows for that team, from
     the first to the last - see ``conditions._stints`` for where a run ends -
     and the answer prints those dates, so what was counted is on the page.
-    "Played" means he logged minutes; a DNP and no box-score row at all are
-    both "out", since a missed game appears both ways.
+    "Played" means he appeared in the game - a box-score row with minutes, or
+    one rebuilt from play-by-play, which has none; a DNP and no box-score row at
+    all are both "out", since a missed game appears both ways.
 
     .. versionadded:: 2.1.0
 
@@ -4494,11 +4509,11 @@ def with_without(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     spell_text = "; ".join(f"{team_names[w.team_id]} {w.first} to {w.last}" if len(team_order) > 1 else f"{w.first} to {w.last}" for w in used)
     notes = [f"Counted: games inside {whose} ({spell_text}), which runs from the first box score that lists {'him' if len(mates) == 1 else 'them'} there to the last."]
     if len(mates) == 1:
-        notes.append(f"Played means {all_of} logged minutes; out is a DNP or no box-score row at all.")
+        notes.append(f"Played means {all_of} appeared in the game; out is a DNP or no box-score row at all.")
     elif asked_without:
-        notes.append(f"Out means none of {all_of} logged minutes - a DNP or no box-score row at all; the other row is every game at least one of them played.")
+        notes.append(f"Out means none of {all_of} appeared in the game - a DNP or no box-score row at all; the other row is every game at least one of them played.")
     else:
-        notes.append(f"Played means every one of {all_of} logged minutes; the other row is every game at least one of them missed - a DNP or no box-score row at all.")
+        notes.append(f"Played means every one of {all_of} appeared in the game; the other row is every game at least one of them missed - a DNP or no box-score row at all.")
     if unknown:
         # A game with no box score is not a game he missed - see
         # conditions._box_missing - so it is on neither side, and said so.
@@ -4541,7 +4556,7 @@ def record_when(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     params: dict[str, Any] = {**scope.params(), "player": player.id}
     if team is not None:
         params["team"] = team.id
-    base = _player_games(scope, extra=" AND pbs.team_id = $team" if team else "")
+    base = _player_games(scope, extra=" AND pbs.team_id = $team" if team else "", box=box_source(con))
     found = con.execute(
         f"WITH p AS ({base}) SELECT p.{column} >= $threshold, COUNT(*), COUNT(*) FILTER (WHERE p.won), AVG(p.team_score - p.opponent_score), "
         "MIN(p.season), MAX(p.season), list(DISTINCT p.team_id) FROM p GROUP BY 1",
@@ -4570,7 +4585,7 @@ def record_when(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     title = f"{whose} when {player.name} had {threshold}+ {unit}, {label}:"
     rows = [(f"{threshold}+ {unit}", reached), (f"under {threshold} {unit}", short), ("all his games", every)]
     table = _table(title, ["G", "W-L", "Win%", "Margin"], [(name, [str(g["games"]), f"{g['wins']}-{g['losses']}", _win_pct(g["wins"], g["games"]), _margin(g["avg_margin"])]) for name, g in rows])
-    caveat = _unseen_note(_unseen(con, scope, base, params))
+    caveat = _unseen_note(_unseen(con, scope, base, params, box_source(con)))
     answer = f"{table}\nOver the {every['games']} games he played; a game he missed is in neither row.{scope.floor_note(min(r[4] for r in found))}{caveat}"
     data = {"player": player.name, "teams": teams, "stat": stat, "threshold": threshold, "span": label, "reached": reached, "fell_short": short}
     return TemplateResult(data=data, answer=answer)
@@ -4616,7 +4631,7 @@ def player_matchup(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
     )
     if not meetings:
         for player in (a, b):
-            if _totals(con, _player_games(scope), {**scope.params(), "player": player.id})[0] == 0:
+            if _totals(con, _player_games(scope, box=box_source(con)), {**scope.params(), "player": player.id})[0] == 0:
                 return _no_games(con, player, scope, None)
         teammates = f" - they were teammates in all {together} games they both played" if together else ""
         message = f"{a.name} and {b.name} never played against each other {_where_in(scope)}{teammates}.{caveat}"
@@ -4695,16 +4710,16 @@ def streak(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         params: dict[str, Any] = {**scope.params(), "player": player.id}
         if team is not None:
             params["team"] = team.id
-        base = _player_games(scope, extra=" AND pbs.team_id = $team" if team else "")
+        base = _player_games(scope, extra=" AND pbs.team_id = $team" if team else "", box=box_source(con))
         games, first, last = _totals(con, base, params)
         if not games:
             return _no_games(con, player, scope, team)
-        rows_sql = _player_streak_rows(scope, base, f"p.{column}" if by_stat else "NULL")
+        rows_sql = _player_streak_rows(scope, base, f"p.{column}" if by_stat else "NULL", box_source(con))
         runs = _longest_runs(con, rows_sql, {**params, **condition}, ("athlete_id",), hit, 3, best_per_partition=False)
         label = scope.label(first, last)
         what = f"consecutive games with {threshold}+ {unit}" if by_stat else f"{result} in games he played"
         rule = "Only games he played count: a game he missed neither extends the run nor ends it" + (", and a run carries on from one season into the next." if scope.season is None else ".")
-        rule += _UNSEEN_ENDS_RUN if _unseen(con, scope, base, params) else ""
+        rule += _UNSEEN_ENDS_RUN if _unseen(con, scope, base, params, box_source(con)) else ""
         if not runs:
             never = f"never had a game with {threshold}+ {unit}" if by_stat else f"never {'won' if want_win else 'lost'} a game he played"
             return TemplateResult(data={"player": player.name, "span": label, "streaks": []}, answer=f"{player.name} {never} in the {label}.")
@@ -4743,12 +4758,12 @@ def streak(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         return misfiled
     limit = _clamp_limit(slots.get("limit"), _DEFAULT_STREAK_LIMIT)
     if by_stat:
-        base = _player_streak_rows(scope, _player_games(scope, player=""), f"p.{column}")
+        base = _player_streak_rows(scope, _player_games(scope, player="", box=box_source(con)), f"p.{column}", box_source(con))
         runs = _longest_runs(con, base, {**scope.params(), **condition}, ("athlete_id",), hit, limit, best_per_partition=True)
         names = _names(con, "players", "athlete_id", [r["athlete_id"] for r in runs])
         what, who = f"run of consecutive games with {threshold}+ {unit}", [names[r["athlete_id"]] for r in runs]
         rule = "Each player's longest run, counting only games he played" + (", carried across seasons." if scope.season is None else ".")
-        rule += _UNSEEN_ENDS_RUN if _totals(con, _box_missing(scope), scope.params())[0] else ""
+        rule += _UNSEEN_ENDS_RUN if _totals(con, _box_missing(scope, box_source(con)), scope.params())[0] else ""
     else:
         # Teams the `teams` table does not hold are exhibition opponents that
         # turn up in a few regular-season rows (1992-2000), not franchises.

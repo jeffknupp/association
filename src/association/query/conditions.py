@@ -11,7 +11,10 @@ the dependency runs one way.
 Four rules about the data decide almost everything below. Each was measured
 against the warehouse rather than assumed:
 
-- **Played means a box-score row with minutes.** A game a player missed shows
+- **Played means a box-score row he appeared in.** For a game ESPN served,
+  that is a row with minutes; for one of the 2013-2018 games it served zeroed,
+  it is a row rebuilt from play-by-play, which carries no minutes and is still
+  a game he played (see :data:`BoxSource`). A game a player missed shows
   up three different ways: a row with ``did_not_play`` set (5,530 of them in
   2025-26), no row at all (Jayson Tatum has none for the games his Achilles
   cost him that season), or - through the 2006-2012 box scores - a row with
@@ -91,9 +94,101 @@ def _eastern_day(column: str) -> str:
     return f"CAST(CAST(replace(replace({column}, 'T', ' '), 'Z', '') AS TIMESTAMP) - INTERVAL {_EASTERN_OFFSET_HOURS} HOUR AS DATE)"
 
 
-def _played(alias: str) -> str:
-    """SQL for "this box-score row is a game he actually played" - see the module docstring."""
-    return f"(NOT {alias}.did_not_play AND {alias}.minutes IS NOT NULL)"
+@dataclass(frozen=True)
+class BoxSource:
+    """Which table a player's box lines are read from, and whether it carries
+    rebuilt rows.
+
+    Every Chicago and New Orleans game from 2013 to 2018 is served zeroed by
+    ESPN, and `player_box_stats_filled` substitutes figures rebuilt from
+    play-by-play with a `reconstructed` flag on exactly those rows (see
+    fetch/reconstructed_box.py). A rebuilt row has NULL `minutes` - play-by-play
+    cannot recover them - so the plain "did he play" test reads every one of
+    those games as a game he missed.
+
+    That is not a Chicago and New Orleans matter: the rebuild covers 21,169
+    rows across all 30 teams, so before this existed 268 player-seasons
+    answered "did not play in any of them" and a further 2,590 silently
+    undercounted, hiding 12,219 player-games.
+
+    .. versionadded:: 2.2.0
+    """
+
+    table: str
+    rebuilt: bool
+    columns: frozenset[str] = frozenset()
+
+
+#: Columns `player_box_stats_filled` substitutes that no reader may trust.
+#:
+#: The rebuild fills more columns than it got measured for. `REBUILT_STATS`
+#: (query/templates.py) is the list a rebuilt figure may be READ for - points,
+#: rebounds, assists, steals, blocks, field goals made, free throws made, each
+#: wrong by hundredths of a game - and everything else the view substitutes is
+#: below that bar or was never measured at all: a rebuilt foul is wrong in
+#: about one game in six, and no attempt column was measured.
+#:
+#: Blanked on a rebuilt row rather than read, so an average is taken over the
+#: games that carry the figure and a wholly rebuilt season prints nothing
+#: instead of a wrong number. Kept in step with the two lists it derives from
+#: by test_the_ungated_rebuild_columns_are_the_ones_no_template_may_read.
+#:
+#: .. versionadded:: 2.2.0
+UNGATED_ON_REBUILD: tuple[str, ...] = (
+    "turnovers",
+    "fouls",
+    "threePointFieldGoalsMade",
+    "threePointFieldGoalsAttempted",
+    "fieldGoalsAttempted",
+    "freeThrowsAttempted",
+    "offensiveRebounds",
+    "defensiveRebounds",
+)
+"""Columns a rebuilt row carries that nothing may read. See above.
+
+.. versionadded:: 2.2.0
+"""
+
+#: The pre-rebuild reading: the stored table, minutes required. The default
+#: everywhere, so a caller that does not resolve a source keeps the old
+#: behaviour rather than silently widening what counts as a game played.
+RAW_BOX = BoxSource("player_box_stats", False, frozenset())
+"""The stored box-score table, with no rebuilt rows.
+
+.. versionadded:: 2.2.0
+"""
+
+
+def box_source(con: duckdb.DuckDBPyConnection) -> BoxSource:
+    """The filled view where the warehouse has it, the stored table otherwise.
+
+    Checked rather than assumed, for the reason `AGENTS.md` records under "A
+    warehouse built before a view change is not detected": the view and its
+    flag arrive with a `data load`, and a query written as though they were
+    always there raises a Binder error against an older warehouse - or against
+    a test fixture that builds only `player_box_stats`.
+
+    .. versionadded:: 2.2.0
+    """
+    try:
+        columns = {row[0] for row in con.execute("DESCRIBE player_box_stats_filled").fetchall()}
+    except duckdb.Error:
+        return RAW_BOX
+    # The columns are carried, not assumed: a warehouse built before one of
+    # them existed - or a test fixture holding a thinner table - would
+    # otherwise make the blanking below a Binder error rather than a no-op.
+    return BoxSource("player_box_stats_filled", True, frozenset(columns)) if "reconstructed" in columns else RAW_BOX
+
+
+def _played(alias: str, box: BoxSource = RAW_BOX) -> str:
+    """SQL for "this box-score row is a game he actually played" - see the module docstring.
+
+    Over a source carrying rebuilt rows, a row with no minutes but a
+    `reconstructed` flag counts as played: the game happened and its figures
+    are readable, which is the whole point of the rebuild.
+    """
+    appeared = f"({alias}.minutes IS NOT NULL OR {alias}.reconstructed)" if box.rebuilt else f"{alias}.minutes IS NOT NULL"
+    return f"(NOT {alias}.did_not_play AND {appeared})"
 
 
 @dataclass(frozen=True)
@@ -182,33 +277,65 @@ def _team_games(scope: _Scope, extra: str = "") -> str:
         WHERE {scope.where("tbs")}{extra}"""
 
 
-def _player_games(scope: _Scope, player: str = "player", extra: str = "") -> str:
+def _player_games(scope: _Scope, player: str = "player", extra: str = "", box: BoxSource = RAW_BOX) -> str:
     """One row per game a player played, with his team's result and side.
 
     ``player`` names the bound parameter holding his id, so two of these can
-    sit in one query; an empty one reads every player's games."""
+    sit in one query; an empty one reads every player's games.
+
+    The columns in :data:`UNGATED_ON_REBUILD` are blanked on a rebuilt row
+    rather than read: the view substitutes more than the rebuild was measured
+    for, and reading those here would ungate figures every other reader
+    refuses. Blanked, they behave like `minutes` - the average is taken over
+    the games that carry them, and a wholly rebuilt season prints nothing
+    rather than a wrong number.
+    """
     who = f" AND pbs.athlete_id = ${player}" if player else ""
+    # SELECT * REPLACE keeps every other column, and its position.
+    ungated = [c for c in UNGATED_ON_REBUILD if c in box.columns]
+    replacements = ", ".join(f"CASE WHEN pbs.reconstructed THEN NULL ELSE pbs.{c} END AS {c}" for c in ungated)
+    blanked = f" REPLACE ({replacements})" if box.rebuilt and ungated else ""
     return f"""
-        SELECT pbs.*, g.date AS stamp, {_eastern_day("g.date")} AS day, g.winner_team_id = pbs.team_id AS won, tbs.home_away,
+        SELECT pbs.*{blanked}, g.date AS stamp, {_eastern_day("g.date")} AS day, g.winner_team_id = pbs.team_id AS won, tbs.home_away,
                CASE WHEN tbs.home_away = 'home' THEN g.home_score ELSE g.away_score END AS team_score,
                CASE WHEN tbs.home_away = 'home' THEN g.away_score ELSE g.home_score END AS opponent_score
-        FROM player_box_stats pbs
+        FROM {box.table} pbs
         JOIN real_games g ON g.event_id = pbs.event_id AND g.season = pbs.season
         JOIN team_box_stats tbs ON tbs.event_id = pbs.event_id AND tbs.team_id = pbs.team_id AND tbs.season = pbs.season
-        WHERE {_played("pbs")} AND {scope.where("pbs")}{who}{extra}"""
+        WHERE {_played("pbs", box)} AND {scope.where("pbs")}{who}{extra}"""
 
 
-def _box_missing(scope: _Scope) -> str:
+def _box_missing(scope: _Scope, box: BoxSource = RAW_BOX) -> str:
     """Team-games with a result but no box score: not one player row for that
     team in that game carries minutes. See the module docstring for why these
-    are unknown rather than games everybody missed."""
+    are unknown rather than games everybody missed.
+
+    This has to widen together with :func:`_played`. A game the rebuild
+    answered is no longer unknown, and counting it as unknown produces the
+    contradiction `templates._empty_box_scores` already guards against
+    elsewhere: 68 games reported beside "no box score for 82 of his team's
+    games". Over the filled view the unknown count falls from 3,308 team-games
+    to 1,260, and what is left is the pre-1993 era the rebuild cannot reach.
+    """
     return f"""
         SELECT tbs.team_id, tbs.opponent_team_id, tbs.season, tbs.event_id, g.date AS stamp, {_eastern_day("g.date")} AS day
         FROM team_box_stats tbs JOIN real_games g ON g.event_id = tbs.event_id AND g.season = tbs.season
         WHERE {scope.where("tbs")}
           AND NOT EXISTS (
-              SELECT 1 FROM player_box_stats q WHERE q.event_id = tbs.event_id AND q.team_id = tbs.team_id AND q.season = tbs.season AND q.minutes IS NOT NULL
+              SELECT 1 FROM {box.table} q WHERE q.event_id = tbs.event_id AND q.team_id = tbs.team_id AND q.season = tbs.season AND {_appeared("q", box)}
           )"""
+
+
+def _appeared(alias: str, box: BoxSource = RAW_BOX) -> str:
+    """SQL for "this row is a real appearance", ignoring did-not-play.
+
+    The EXISTS tests that ask whether a team-game has a box score at all want
+    this rather than :func:`_played`: a DNP row still proves the box score
+    exists.
+
+    .. versionadded:: 2.2.0
+    """
+    return f"({alias}.minutes IS NOT NULL OR {alias}.reconstructed)" if box.rebuilt else f"{alias}.minutes IS NOT NULL"
 
 
 def _spans(played: str) -> str:
@@ -216,14 +343,14 @@ def _spans(played: str) -> str:
     return f"SELECT athlete_id, team_id, season, MIN(day) AS first_day, MAX(day) AS last_day FROM ({played}) GROUP BY ALL"
 
 
-def _unseen(con: duckdb.DuckDBPyConnection, scope: _Scope, played: str, params: dict[str, Any]) -> int:
+def _unseen(con: duckdb.DuckDBPyConnection, scope: _Scope, played: str, params: dict[str, Any], box: BoxSource = RAW_BOX) -> int:
     """How many games with no box score fall inside the spells a player was
     playing for a team - games he may well have played, which no count built
     from box scores can include. A lower bound: a missing box before his first
     game of a season, or after his last, is not counted."""
     row = con.execute(
         f"""
-        SELECT COUNT(DISTINCT m.event_id) FROM ({_box_missing(scope)}) m
+        SELECT COUNT(DISTINCT m.event_id) FROM ({_box_missing(scope, box)}) m
         JOIN ({_spans(played)}) s ON s.team_id = m.team_id AND s.season = m.season AND m.day BETWEEN s.first_day AND s.last_day""",
         params,
     ).fetchone()
@@ -236,7 +363,7 @@ def _unseen_note(count: int, whose: str = "his team's") -> str:
     return f" The warehouse has no box score for {count} of {whose} games in that span - ESPN lacks about one game in eight from 2013 to 2018 - so any of them he played are not counted."
 
 
-def _player_streak_rows(scope: _Scope, played: str, value: str) -> str:
+def _player_streak_rows(scope: _Scope, played: str, value: str, box: BoxSource = RAW_BOX) -> str:
     """A player's games in order, for a run to be read over: each one he
     played, with ``value`` and his team's result, and each game with no box
     score inside a spell he was playing in, with both unknown. An unknown row
@@ -246,7 +373,7 @@ def _player_streak_rows(scope: _Scope, played: str, value: str) -> str:
         SELECT p.athlete_id, p.season, p.event_id, p.stamp, p.day, p.won, {value} AS value FROM ({played}) p
         UNION ALL
         SELECT s.athlete_id, m.season, m.event_id, m.stamp, m.day, NULL, NULL
-        FROM ({_box_missing(scope)}) m JOIN ({_spans(played)}) s ON s.team_id = m.team_id AND s.season = m.season AND m.day BETWEEN s.first_day AND s.last_day"""
+        FROM ({_box_missing(scope, box)}) m JOIN ({_spans(played)}) s ON s.team_id = m.team_id AND s.season = m.season AND m.day BETWEEN s.first_day AND s.last_day"""
 
 
 # (data key, column header, aggregate over rows aliased `p` / `t`). Shooting is
@@ -456,7 +583,8 @@ def _with_without_games(con: duckdb.DuckDBPyConnection, scope: _Scope, windows: 
     return one row per teammate who played rather than one row per game.
     """
     teams = sorted({w.team_id for w in windows})
-    played_by = f"LEFT JOIN player_box_stats s ON s.event_id = t.event_id AND s.season = t.season AND s.team_id = t.team_id AND s.athlete_id = $subject AND {_played('s')}"
+    box = box_source(con)
+    played_by = f"LEFT JOIN {box.table} s ON s.event_id = t.event_id AND s.season = t.season AND s.team_id = t.team_id AND s.athlete_id = $subject AND {_played('s', box)}"
     params: dict[str, Any] = {**scope.params(), "teams": teams, "mates": list(mates)}
     if subject is not None:
         params["subject"] = subject
@@ -464,17 +592,18 @@ def _with_without_games(con: duckdb.DuckDBPyConnection, scope: _Scope, windows: 
         f"""
         WITH t AS ({_team_games(scope, " AND list_contains($teams, tbs.team_id)")})
         SELECT t.team_id, t.season, t.day, t.won, t.team_score - t.opponent_score,
-               (SELECT COUNT(*) FROM player_box_stats m
-                 WHERE m.event_id = t.event_id AND m.season = t.season AND m.team_id = t.team_id AND list_contains($mates, m.athlete_id) AND {_played("m")}) AS mates_played,
+               (SELECT COUNT(*) FROM {box.table} m
+                 WHERE m.event_id = t.event_id AND m.season = t.season AND m.team_id = t.team_id AND list_contains($mates, m.athlete_id) AND {_played("m", box)}) AS mates_played,
+               {"s.athlete_id IS NOT NULL" if subject else "FALSE"} AS subject_played,
                {"s.minutes, s.points, s.rebounds, s.assists, s.fieldGoalsMade, s.fieldGoalsAttempted" if subject else "NULL, NULL, NULL, NULL, NULL, NULL"},
                EXISTS (
-                   SELECT 1 FROM player_box_stats q WHERE q.event_id = t.event_id AND q.team_id = t.team_id AND q.season = t.season AND q.minutes IS NOT NULL
+                   SELECT 1 FROM {box.table} q WHERE q.event_id = t.event_id AND q.team_id = t.team_id AND q.season = t.season AND {_appeared("q", box)}
                ) AS box
         FROM t
         {played_by if subject else ""}""",
         params,
     ).fetchall()
-    keys = ("team_id", "season", "day", "won", "margin", "mates_played", "minutes", "points", "rebounds", "assists", "fgm", "fga")
+    keys = ("team_id", "season", "day", "won", "margin", "mates_played", "played", "minutes", "points", "rebounds", "assists", "fgm", "fga")
     inside = [row for row in rows if _within(windows, str(row[0]), row[2])]
     return [dict(zip(keys, row[:-1], strict=True)) for row in inside if row[-1]], sum(1 for row in inside if not row[-1])
 
@@ -482,12 +611,24 @@ def _with_without_games(con: duckdb.DuckDBPyConnection, scope: _Scope, windows: 
 def _with_without_group(games: Sequence[dict[str, Any]]) -> dict[str, Any]:
     """The team's record in a set of games, and the subject's averages over the ones he played."""
     wins = sum(1 for g in games if g["won"])
-    his = [g for g in games if g["minutes"] is not None]
+    # `played`, not `minutes is not None`: a game rebuilt from play-by-play has
+    # no minutes and is still a game he played. Filtering on minutes here was
+    # the Python half of the same fault the SQL guards carried.
+    his = [g for g in games if g["played"]]
     fga = sum(g["fga"] or 0 for g in his)
 
     def average(key: str) -> float | None:
         """His per-game average of ``key`` over the games he played, or None if he played none."""
         return sum(g[key] or 0 for g in his) / len(his) if his else None
+
+    def average_present(key: str) -> float | None:
+        """The same, over the games that carry ``key`` at all.
+
+        Minutes are the case: `or 0` over every game would count a rebuilt
+        game as zero minutes and drag the average down silently, where the
+        honest reading is the mean of the games whose minutes are known."""
+        values = [g[key] for g in his if g[key] is not None]
+        return sum(values) / len(values) if values else None
 
     return {
         "games": len(games),
@@ -495,7 +636,7 @@ def _with_without_group(games: Sequence[dict[str, Any]]) -> dict[str, Any]:
         "losses": len(games) - wins,
         "avg_margin": sum(g["margin"] or 0 for g in games) / len(games) if games else None,
         "player_games": len(his),
-        "minutes": average("minutes"),
+        "minutes": average_present("minutes"),
         "points": average("points"),
         "rebounds": average("rebounds"),
         "assists": average("assists"),
@@ -556,11 +697,12 @@ def _meetings(con: duckdb.DuckDBPyConnection, scope: _Scope, a: str, b: str) -> 
     """Games both players played on opposite teams, most recent first, and how
     many games they both played as teammates - the reason "never met" can be
     true of two players who shared a floor for years."""
+    box = box_source(con)
     params = {**scope.params(), "a": a, "b": b}
     columns = "minutes, points, rebounds, assists, fieldGoalsMade, fieldGoalsAttempted"
     rows = con.execute(
         f"""
-        WITH a AS ({_player_games(scope, "a")}), b AS ({_player_games(scope, "b")})
+        WITH a AS ({_player_games(scope, "a", box=box)}), b AS ({_player_games(scope, "b", box=box)})
         SELECT a.day, a.won, a.team_score, a.opponent_score, a.team_id, b.team_id,
                {", ".join(f"a.{c}" for c in columns.split(", "))}, {", ".join(f"b.{c}" for c in columns.split(", "))}, a.season
         FROM a JOIN b ON b.event_id = a.event_id AND b.season = a.season AND b.team_id <> a.team_id
@@ -568,7 +710,8 @@ def _meetings(con: duckdb.DuckDBPyConnection, scope: _Scope, a: str, b: str) -> 
         params,
     ).fetchall()
     together = con.execute(
-        f"WITH a AS ({_player_games(scope, 'a')}), b AS ({_player_games(scope, 'b')}) SELECT COUNT(*) FROM a JOIN b ON b.event_id = a.event_id AND b.season = a.season AND b.team_id = a.team_id",
+        f"WITH a AS ({_player_games(scope, 'a', box=box)}), b AS ({_player_games(scope, 'b', box=box)}) "
+        "SELECT COUNT(*) FROM a JOIN b ON b.event_id = a.event_id AND b.season = a.season AND b.team_id = a.team_id",
         params,
     ).fetchone()
     stats = [c.strip() for c in columns.split(",")]
@@ -595,11 +738,12 @@ def _unseen_meetings(con: duckdb.DuckDBPyConnection, scope: _Scope, a: str, b: s
     both were playing for those teams: meetings that may have happened and that
     no count can include. Either side's missing box hides a meeting, so the
     two players are matched to the game's two teams both ways round."""
+    box = box_source(con)
     row = con.execute(
         f"""
-        SELECT COUNT(DISTINCT m.event_id) FROM ({_box_missing(scope)}) m
-        JOIN ({_spans(_player_games(scope, "a"))}) sa ON sa.season = m.season AND m.day BETWEEN sa.first_day AND sa.last_day
-        JOIN ({_spans(_player_games(scope, "b"))}) sb ON sb.season = m.season AND m.day BETWEEN sb.first_day AND sb.last_day
+        SELECT COUNT(DISTINCT m.event_id) FROM ({_box_missing(scope, box)}) m
+        JOIN ({_spans(_player_games(scope, "a", box=box))}) sa ON sa.season = m.season AND m.day BETWEEN sa.first_day AND sa.last_day
+        JOIN ({_spans(_player_games(scope, "b", box=box))}) sb ON sb.season = m.season AND m.day BETWEEN sb.first_day AND sb.last_day
         WHERE (sa.team_id = m.team_id AND sb.team_id = m.opponent_team_id) OR (sa.team_id = m.opponent_team_id AND sb.team_id = m.team_id)""",
         {**scope.params(), "a": a, "b": b},
     ).fetchone()
@@ -615,9 +759,16 @@ def _matchup_line(lines: Sequence[dict[str, Any]]) -> dict[str, Any]:
         """The per-game average of ``key`` over the meetings, or None if there were none."""
         return sum(line[key] or 0 for line in lines) / count if count else None
 
+    def average_present(key: str) -> float | None:
+        """The same, over the meetings that carry ``key``. Minutes are unknown
+        on a game rebuilt from play-by-play, and `or 0` would read that as a
+        nought-minute game rather than as an unknown."""
+        values = [line[key] for line in lines if line[key] is not None]
+        return sum(values) / len(values) if values else None
+
     return {
         "games": count,
-        "minutes": average("minutes"),
+        "minutes": average_present("minutes"),
         "points": average("points"),
         "rebounds": average("rebounds"),
         "assists": average("assists"),

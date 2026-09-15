@@ -42,7 +42,95 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 
 ## P1: wrong answer
 
+### A narrowing the router has no slot for is dropped, and the rest is answered
+- **Found:** 2026-09-15, replaying 261 real StatMuse feed queries through the
+  fast path (`/home/jeff/association-research/statmuse-2026-09/`)
+- **Evidence:** `check_scope()` refuses a narrowing a template cannot honour,
+  but it can only see slots the router emits. `ROUTER_SCHEMA` has no slot for a
+  day of the week, a calendar holiday, an age, a period, a minutes condition or
+  "since returning from injury", so those words never reach it and the template
+  answers the un-narrowed question. **14 of the 261 queries (5%) are wrong this
+  way - the largest single cause of a wrong answer in the replay**, which found
+  44 wrong in total (17%).
+  - "lebron james 2 3 pointers all-time vs jazz on tuesdays" -> his career
+    average vs Utah over 48 games. The Tuesday, the 3-pointers and the "2" are
+    all gone.
+  - "anthony davis stats on christmas" -> his whole 2023 season average.
+  - "most triple doubles before turning 27" -> the 2026 triple-double leaders.
+  - "paul reed gamelog with 25 minutes" -> his most recent game.
+  - "Duncan Robison 1q log", "Devin Vassell nba player per game stats 1q" -> a
+    whole-game line. (The `_AGENT_ONLY` regex catches "4th qtr" but not "1q".)
+- **User sees:** a fluent, specific answer to a question they did not ask, with
+  nothing saying a condition was ignored. This is the failure shape `AGENTS.md`
+  opens with, measured on real traffic.
+- **Next step:** two halves, and the first is cheap. (a) Read these narrowings
+  from the question text in `route()` the way `_validate_side` does, into
+  existing `SCOPING_SLOTS` (`situation`, `date`) so `check_scope` refuses them -
+  costs no prompt tokens and cannot move another slot. (b) Widen `_AGENT_ONLY`
+  to the "1q"/"2h" short forms. Then measure again against the saved replay.
+- **Source:** the wrong answers are ours, not ESPN's; no DATA.md entry.
+
 ## P2: misleading or incomplete
+
+### Shooting leaderboards silently drop 2013-2018 qualifiers
+- **Found:** 2026-09-15, issues audit (P2 query auditor)
+- **Evidence:** `player_season_advanced_stats` is built from the raw
+  `player_box_stats`, so every Chicago and New Orleans player-season from
+  2013-2018 has 0 true-shooting attempts there (Anthony Davis 2015: TSA 0.0,
+  `ts_pct` NULL) even though `player_box_stats_filled` now rebuilds those
+  games. 21-33 player-seasons a season (0 in 2012 and 2019) clear 550 TSA in
+  `player_season_stats_deduped` but fall under it in the advanced table.
+  - The 2015 TS% board says "Kyle Korver led ... at 0.69". Tyson Chandler has
+    553.1 TSA and .697 by the season table against 521.6 in the advanced one,
+    so under our own rule he would lead it. Rudy Gobert 2018 (.657) is missing
+    the same way.
+  - `coverage_caveat` returns None for these seasons.
+- **User sees:** a shooting leaderboard that omits qualified players, with no
+  note - and the omissions are not random, they are two franchises.
+- **Next step:** build the advanced view from `player_box_stats_filled`, or
+  caveat 2013-2018 shooting boards. Note the rebuild does not recover minutes,
+  so any per-minute advanced figure stays out.
+- **Source:** DATA.md, "Every Chicago and New Orleans game from 2013 to 2018 has an empty box score"
+
+### The 2001 playoff caveat never reaches two of the templates that need it
+- **Found:** 2026-09-15, issues audit (P2 data auditor)
+- **Evidence:** `coverage.postseason_partial=(2001,)` is declared on `games` and
+  `team_box_stats`, and `caveat()` only fires for a table a template declares in
+  `TEMPLATE_SOURCES`. `single_game_high` and `threshold_count` declare
+  `player_game_log`/`player_box_stats`, which carry no `postseason_partial`, so
+  a 2001 playoff question through either gets no note.
+  - Shaquille O'Neal's 2001 postseason holds 11 of his 16 games in the box
+    table; "had 4 games with 30+ points" comes back with nothing said.
+- **User sees:** a short 2001 playoff count or single-game high, stated as fact,
+  while the same season caveats correctly through `head_to_head` or `game_log`.
+- **Next step:** add a `postseason_partial` entry for `player_box_stats` (and
+  `player_game_log`), or have the caveat follow the season rather than the table.
+- **Source:** DATA.md, "The 2000 and 2001 playoffs stop before the Finals"
+
+### ESPN files one player under two athlete ids in the same box score
+- **Found:** 2026-09-15, issues audit - found independently by two auditors
+- **Evidence:** grouping `player_box_stats` by `(event_id, team_id,
+  display_name)` and counting distinct `athlete_id` finds one person listed
+  twice in one game.
+  - Isaiah Canaan (`2490589` and `4412182`) in 20 Phoenix and Minnesota
+    team-games in 2019, **with identical lines in 18 of them**. Corey Brewer
+    (`3191`, `4415554`) in 8 of 8 in 2019. Daryl Macon (`4066243`, `4610145`)
+    in 3 of 4 in 2020. Ken Johnson 2003 (`1008`, `1972`, 33 games) shows the
+    pattern with non-identical lines.
+  - This explains most of #54's 2019 disagreement: the team box's derived
+    points equal the final score in every row of 2019, 2021 and 2026, while the
+    player sums overshoot in 23 team-games in 2019, almost all Phoenix (15) and
+    Philadelphia (7).
+  - It also crosses tables: `net_points_player` uses ESPN's `dot_com_id` while
+    the box scores and the name-matched fingerprint use the other id, so 8
+    `net_points_player_fingerprint` rows have no matching `net_points_player`
+    row and joins drop them.
+- **User sees:** a team total summed from player rows double-counts that player,
+  and the player's own career is split across two ids.
+- **Next step:** detect the duplicate pairs at load time and map them to one id.
+  Some of #21's "shared display names" are this, not two players, so the
+  ambiguity rule there drops a real player's data.
+- **Source:** DATA.md, "ESPN files one player under two athlete ids" (to be added)
 
 ### The 2001 playoffs are missing about ten games, and ESPN has them nowhere
 - **Found:** 2026-09-11, template work (agent B); 2000 fixed and this rewritten 2026-09-15
@@ -81,6 +169,13 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** nothing actionable here - it is ESPN's gap and it is declared.
   Re-check if ESPN ever backfills its own archive.
 - **Source:** DATA.md, "The 2000 and 2001 playoffs stop before the Finals"
+- **Re-checked 2026-09-15:** holds (PHI -7, LAL -5, MIL -5, NO -2, SA -1
+  against `real_games`), but the caveat text in `coverage.py:168,189` is now
+  stale - it says Philadelphia "reads 15 games" when Finals Game 5 brought it to
+  16, and it names only the Final and MIL-PHI while MIL-CHA (2) and LAL-SA (1)
+  are also short. 2000 is clean: 75 games in `real_games`, matching ESPN. The
+  "70 -> 79" figure elsewhere is the raw `games` count, which includes 4
+  placeholder rows.
 - **GitHub:** #6
 
 ### Nearly every Bulls and Pelicans box score from 2013 to 2018 is zeros
@@ -121,9 +216,18 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
     2014-15 have an empty box score in this warehouse, so the count may be
     low." The real answer is about 59. The caveat fires and is accurate; only
     "may be low" undersells "every one of them".
-  - **Streaks, splits and with/without were never affected**: `conditions`
-    guards every read with `_played()`, which already requires
-    `minutes IS NOT NULL`.
+  - **Streaks, splits and with/without WERE affected, and this entry said they
+    were not.** The claim read "`conditions` guards every read with
+    `_played()`, which already requires `minutes IS NOT NULL`" - true as
+    written, and exactly backwards as a conclusion: a rebuilt line has no
+    minutes, so that guard is what *excluded* every rebuilt game. Audited
+    2026-09-15, it made `player_splits` answer "Anthony Davis was listed in 82
+    box scores in the 2015 regular season but did not play in any of them",
+    and made `with_without` file every game a teammate played as one he
+    missed. **Fixed 2026-09-15**; splits read 68 games and "Davis without Eric
+    Gordon" returns the correct 20. The lesson is worth more than the bug: the
+    guard was read for what it required, not for what it therefore excluded
+    once the data underneath it changed shape.
   - Box-score points remain 86.5-87.3% of season totals across 2013-2018, so
     anything summing the box scores is still short.
 - **A refetch does not fix it.** A full pull of 1988-2026 with current code on
@@ -174,8 +278,20 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   fell by a single game** and the totals rose (20+ point games, 15,978 to
   18,488). Fouls and turnovers are not counted from a rebuilt line, and a count
   of none then names the decision instead of implying missing data.
-- **What remains, and why this is no longer a P1.** Nothing answers falsely now:
-  every per-game template reads the rebuilt line or says why it will not. What
+- **Done 2026-09-15 - the condition templates read it.** `player_splits`,
+  `streak`, `record_when`, `player_matchup` and `with_without` resolve their
+  table through `box_source()` and count a rebuilt game as one he played. This
+  closed the contradiction above, where one season answered 68 games through
+  `game_log` and "did not play in any of them" through `player_splits`.
+  Minutes are averaged over the games that carry them rather than counting a
+  rebuilt game as zero, and `UNGATED_ON_REBUILD` blanks the columns the
+  rebuild gets wrong instead of averaging them in.
+- **What remains, and why this is no longer a P1.** Nothing answers falsely now
+  - though note that this line first appeared on 2026-09-14, when the
+  conditions bug above was live and unfound, so read it as a claim about what
+  has been checked rather than a guarantee. As of 2026-09-15 every per-game
+  and per-condition template reads the rebuilt line or says why it will not.
+  What
   is left is a SHORTFALL, which is P2 by this file's own definitions - season
   aggregates stay on the stored table on purpose, because a rebuilt season
   total is exact only about half the time and its error grows with games played
@@ -204,9 +320,18 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   - Only **5** of 1,189 games in 1996 have no player box rows at all - which is
     exactly the "5 in 1996" figure this entry was created to overturn. The
     original figure was correct.
-  - **The same shape occurs twice more and was never recorded:** Chicago 2000
-    (82 all-NULL team rows beside 834 player rows with minutes) and Chicago
-    1999 (50 beside 546).
+  - **The Chicago half of this bullet was wrong** (re-measured 2026-09-15).
+    Chicago 2000's 82 all-NULL rows and 1999's 50 sit on **zero** `real_games`
+    events: they are the 0-0 `T17:00Z` placeholder rows that `real_games`
+    already drops. Chicago's real games have normal team rows (80 in 2000, 50
+    in 1999), so those two seasons are not this fault at all.
+  - **Vancouver is wider than recorded.** In 41 of its 82 games the *opponent's*
+    team row is all-NULL too, and 37 of those sit beside real player rows,
+    spread over 25 teams at 1-2 games each. League-wide, 115 null team rows on
+    real 1996 games have real player rows beside them; with one 2000 game
+    (`191102003`, ORL@NO) that is the 117 the comment at
+    `fetch/team_box_repair.py:88` counts - but that comment names Chicago 2000
+    as the other case, which is wrong.
 - **Source:** DATA.md, "Vancouver 1996 is an empty TEAM box, not an empty player box"
 - **User sees:** nothing at all for a per-player question - those rows are
   sound. A team-level read of 1996 Vancouver, 2000 Chicago or 1999 Chicago gets
@@ -235,6 +360,13 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   but `_empty_box_scores` counts some, say so instead - "his 68 games in
   2014-15 have an empty box score" - the way `_phrase_single_game_high` now
   does. Watch it fail before believing it.
+- **Re-checked 2026-09-15: the named example is fixed, the shape survives.**
+  `game_log` for Davis 2015 now lists rebuilt games with a note. But naming any
+  stat outside `REBUILT_STATS` (turnovers, fouls, 3PM, plusMinus) sends the log
+  back to fetched lines and it says "No 2015 regular season games found for
+  Anthony Davis" again - and a `player_stat` narrowed by opponent, venue or
+  `without` over those seasons says the same, because `_box_score_player_stat`
+  does not read rebuilt lines.
 - **GitHub:** #72
 ### The SQL agent and the web health line still read raw `games`
 - **Found:** 2026-09-14, building the shared `real_games` list (issue #7)
@@ -356,6 +488,12 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** refetch the listed events through the pipeline. Check that every
   box-derived template treats NULL minutes as "did not play".
 - **Source:** DATA.md, "Real postseason games with no box score"
+- **Re-checked 2026-09-15:** the counts were taken from raw `games`. Against
+  `real_games` the no-box seasons are 1994: 5, 1996: 5, 1997: 6, 1998: 4,
+  2000: 4, 2003: 0 (this entry says 6/5/6/5/5/1); the 1994, 1998 and 2003
+  differences are phantom rows. Pattern the entry misses: each season's gaps are
+  one visiting team's road games (DAL 1994, VAN 1996, VAN/BOS 1997, DEN 1998,
+  LAC 2000), and 23 of 24 are at UTAH, CLE or WSH.
 - **GitHub:** #14
 
 ### The 2026 shot chart holds more shots than the box score
@@ -383,6 +521,13 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   "without" games, or too few.
 - **Next step:** read roster tenure from `player_season_stats` team rows, not
   from box-score presence.
+- **Re-checked 2026-09-15: it now refuses instead of undercounting, and the
+  next step below cannot work.** `with_without` for Klay Thompson 2021 answers
+  that his tenure "falls outside the 2021 regular season"; Durant/Nets 2020 is
+  the same. `player_season_stats` has **no row** for a season a player missed
+  entirely, so it cannot supply tenure. Worse, `game_log` and `player_stat` say
+  "Klay Thompson was not Stephen Curry's teammate in any of his 63 games" - a
+  wrong-cause sentence about a rostered, injured player.
 - **GitHub:** #16
 
 ### Historical teams are shown under today's names
@@ -404,6 +549,10 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   his career.
 - **Next step:** when a player has no rows in the defaulted season, answer their
   last season or career, and say so.
+- **Re-checked 2026-09-15: broader than filed.** The same "has no 2026
+  numbers" shape appears in `player_stat`, `single_game_high`, `game_log` and
+  `player_netpoints`; `shot_chart` says "No shots found ... with the given
+  filters" without naming the season at all. Only `player_history` answers.
 - **GitHub:** #18
 
 ### `player_history` answers "last N seasons on record", not a calendar window
@@ -528,39 +677,51 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   `team_metrics` for the same exposure on `team_season_stats`.
 - **Source:** DATA.md, "The team `totalRebounds` column stops including team rebounds in 2022"
 - **GitHub:** #75
-### A date-only game stamp is dated a day early for half the season
-- **Found:** 2026-09-14, building the shared `real_games` list (issue #7)
-- **Evidence:** ESPN writes a game whose tip time it does not have as midnight
-  US Eastern. That is `T04:00Z` under EDT and `T05:00Z` under EST, and it
-  chooses by the date rather than by the season: of the 21 date-only stamps
-  from 1994 on, **10 are `T04:00Z` on a date in November, December, January,
-  February or March** - midnight EDT written for a date in the EST half of the
-  year. Every query here shifts a UTC stamp back a fixed five hours to get the
-  Eastern date (`conditions._eastern_day`, `real_games`,
-  `fetch/parse._EASTERN_OFFSET`), which is exact for a real tip time and lands
-  such a stamp on the **previous** calendar day.
-  - All 10 of 2026's date-only games are of this kind and all have full box
-    scores, so they are real games: `401810025` (2025-11-05, LAC-OKC),
-    `401810067`, `401810109`, `401809801`, `401810178`, `401810316`,
-    `401810370`, `401810425`, `401810580`, `401810747`. Each shifts to the day
-    before the date in its own stamp.
-  - **Which day is right is not yet proven.** No team ends up with two games on
-    one shifted Eastern date, so the collision test that would settle it comes
-    back empty. The fixed shift is right for every other row in the table (see
-    DATA.md, "A NetPoints date is not an ESPN date"); it is only these stamps,
-    which are not tip times at all, that it cannot read.
-- **User sees:** a game log line, a month split or a back-to-back for those 10
-  games dated one day early, stated as fact. Nothing marks the date as derived
-  from a stamp that carries no time.
-- **Next step:** cross-check one of the ten against the box score's own
-  evidence the way `scripts/check_net_points_games.py` does - the NetPoints
-  daily file for 2025-11-05 either holds that game's players or the 11-04 one
-  does. If the stamp's own date is right, read a date-only stamp as its written
-  date rather than shifting it.
+### The 2000 and 2001 date-only stamps are dated a day early
+- **Found:** 2026-09-14, building the shared `real_games` list (issue #7);
+  **re-measured and reframed 2026-09-15** by the issues audit
+- **This entry used to blame 2026, and that was wrong.** All ten of 2026's
+  `T04:00Z` games are real 11pm-Eastern tips with full box scores: each has a
+  Pacific home team (LAC, SAC, POR, LAL, GS) on a UTC Wednesday, 2026 has 276
+  ordinary late tips at 02:00-03:30Z, and the shift is corroborated by
+  collisions - OKC plays at POR in `401810035` on the Wednesday, so LAC-OKC
+  `401810025` cannot also be that day. The NetPoints daily file agrees. **The
+  five-hour shift is correct for all ten.**
+- **Evidence for the real cases:** date-encoded old-format event ids (YYMMDD +
+  team) make the shift checkable: it is exact for 23,490 of 23,490 real-tip
+  games. All **12** `T04:00Z` games in `real_games` - 2 in April 2000, 9 in the
+  2000 postseason, 1 in the 2001 postseason - match their **written** date and
+  **none** matches the shifted one.
+  - **10 of the 12 arrived with the 2026-09-15 scoreboard recovery** (`72b599c`),
+    which is how a long-standing fault became visible on a marquee series.
+  - The whole 2000 LAL-IND Final is affected: `200607013` is Game 1, played
+    7 June 2000, and every template prints **6 June**. The series reads
+    6/8/10/13/15/18 June against a real 7/9/11/14/16/19.
+- **User sees:** every date shown for those 12 games is one day early, stated as
+  fact - a game log, a single-game high, a month split.
+- **Next step:** read a date-only stamp (`T04:00Z`/`T05:00Z` with no tip time)
+  as its written date instead of shifting it. The 12 rows are identifiable
+  without a list: the stamp's own time is midnight Eastern.
 - **Source:** DATA.md, "`games` carries placeholder, duplicate and phantom rows"
 - **GitHub:** #76
 
 ## P3: refusal or gap
+
+### The router's own team name "Los Angeles Clippers" resolves to nothing
+- **Found:** 2026-09-15, replaying the StatMuse feed
+- **Evidence:** `teams` stores the Clippers as `display_name` "LA Clippers"
+  (`location` "LA", `name` "Clippers"). `entities.find_teams` returns a match
+  for "Clippers", "LA Clippers" and "LAC", and **`[]` for "Los Angeles
+  Clippers"** - which is the form the router writes, since the prompt asks for
+  full team names and every other Los Angeles team has one.
+  - Hit twice in 261 feed queries ("butler free throws vs clippers last 10",
+    "Clippers ats record last 15 games at home"); both were misrouted for other
+    reasons as well, so the resolution gap is not what a user would notice
+    first - but it applies to every Clippers question the model expands.
+- **User sees:** a fall-through to the agent for a team the warehouse holds.
+- **Next step:** add the full-name form to `_TEAM_NICKNAMES`, or match on
+  `location + name` as well as `display_name`. Check the other 29 for the same
+  shape (ESPN's `display_name` is not always the full city name).
 
 ### Four question filters are recognized but no template answers them
 - **Found:** 2026-09-11, template work and final corpus run
@@ -576,6 +737,9 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** first `since` for `leaderboard`/`threshold_count`, reusing the
   career-span code. Then `situation` for `team_record`: back-to-backs need the
   Eastern date (`season.eastern_date`).
+- **Re-checked 2026-09-15:** still four unhonored slots (`below`, `round`,
+  `since`, `situation`), but "by month" has left this entry - it is
+  `split=month` and `player_splits` answers it for a player or a team.
 - **GitHub:** #23
 
 ### A player's stats by quarter or half
@@ -590,18 +754,29 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   reconcile them against the box score, then add a template with a 2003 floor.
 - **GitHub:** #24
 
-### No conference or division data
-- **Found:** 2026-09-11, template work (agent B) and repo audit
-- **Evidence:** `games.conference_game` is False on all 43,494 rows
-  (`fetch/parse.py` reads `conferenceCompetition`). No table maps a team to a
-  conference. `_conference_refusal` refuses a conference named as the
-  subject ("who leads the east"). A phrase like "Western Conference standings"
-  or "record in the eastern conference" matches `router._SITUATION` first, so
-  `check_scope` hands it to the agent, which has no conference data either.
-- **User sees:** a refusal for "who leads the East". For "Western Conference
-  standings", a slow agent answer with nothing to ground it.
-- **Next step:** a static team-to-conference table, per season.
-- **Source:** DATA.md, "No conference, division or birth-date data anywhere"
+### Conference and division are in the standings we fetch, and the parser drops them
+- **Found:** 2026-09-11, template work (agent B); **cause corrected 2026-09-15**
+  by the issues audit
+- **The source does have it.** The standings response the pull already fetches
+  is grouped: `standings?season=2026` returns children named
+  `Eastern Conference` (15 teams) and `Western Conference` (15); 2004 returns
+  15 and 14, 1990 returns 13 and 14; and `&level=3` returns the six divisions
+  at 5 teams each. `standings` also carries "vs. Conf." and "vs. Div." records,
+  populated from 2004.
+- **Evidence:** `parse_standings` (`fetch/parse.py:346`) walks `children`
+  purely to reach the entries and throws the group name away - its own test
+  says so (`tests/fetch/test_parse.py:397`). `games.conference_game` is False
+  on all 43,504 rows. No table maps a team to a conference, so
+  `_conference_refusal` refuses a conference named as the subject ("who leads
+  the east"), while "Western Conference standings" matches `router._SITUATION`
+  first and is handed to an agent with no conference data either.
+- **User sees:** a refusal for "who leads the East", and an ungrounded agent
+  answer for "Western Conference standings".
+- **Next step:** record the conference (and division at `level=3`) from the
+  standings children, then re-pull `standings`. **Not** the static per-season
+  table this entry used to propose.
+- **Source:** DATA.md, "No conference, division or birth-date data anywhere" -
+  that section is wrong for conference and division, and right for birth dates
 - **GitHub:** #25
 
 ### A player's career TS% is refused
@@ -613,18 +788,32 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   give is fixed.
 - **Next step:** add TS% and eFG% to `player_stat` as computed ratios, like
   `SHOOTING_STATS`.
+- **Re-checked 2026-09-15: wider than filed.** `player_stat` refuses
+  `ts_pct`/`efg_pct` for a single season too, not only a career, although
+  `player_season_advanced_stats` holds both per season.
 - **GitHub:** #26
 
-### The power index (BPI) keeps one snapshot per season
-- **Found:** 2026-09-11, template work (agent B) and repo audit
-- **Evidence:** `team_power_index` has 25 rows in each season 2017-2026: only the
-  play-in and postseason teams. `fetch_power_index` (`fetch/pipeline.py`)
-  overwrites one file per season, and 2017-2021 pair BPI values with final
-  records.
-- **User sees:** `team_outlook` has nothing for most teams in past seasons.
-- **Next step:** write dated snapshots going forward. Past seasons cannot be
-  recovered.
-- **Source:** DATA.md, "ESPN's power index keeps only postseason teams"
+### The power index reads only the first page, so most teams are missing
+- **Found:** 2026-09-11, template work (agent B); **cause corrected 2026-09-15**
+  by the issues audit
+- **This is our bug, not ESPN's.** The entry used to say ESPN keeps only the
+  play-in and postseason teams, and that past seasons could not be recovered.
+  Probed live: `seasons/2024/powerindex` answers
+  `{'count': 90, 'pageSize': 25, 'pageCount': 4}`, and with `?limit=1000` it
+  returns all 90 items - 30 teams in each of season types 2, 3 and 5. 2019
+  returns 30. **25 is the core API's default page size.**
+- **Evidence:** `fetch_power_index` (`fetch/pipeline.py:497`) requests no
+  `limit` and does not page; `teams_url` is the only fetch that passes one. So
+  `team_power_index` holds exactly 25 rows per season, and they are not one
+  team each: 2024 has 25 rows over **9 distinct teams** (three season types,
+  three rows apiece), 2026 has 13 teams and no type-2 rows at all.
+- **User sees:** `team_outlook` reports it has nothing for a team ESPN does
+  serve - a refusal that names the wrong cause. Recommend **P2**.
+- **Next step:** pass `limit` (or page) in `endpoints.power_index_url` /
+  `fetch_power_index`, then re-pull 2017-2026 with `--force`. "No dated series"
+  remains true and is the only part of the original entry that survives.
+- **Source:** DATA.md, "ESPN's power index keeps only postseason teams" - that
+  section is wrong and needs the same correction
 - **GitHub:** #27
 
 ### A games minimum cannot be given to the agent's TS%/eFG% leaderboard tool
@@ -655,6 +844,9 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   is decided". The rule for relocated franchises is open.
 - **User sees:** a refusal for "timberwolves career leaders in total points".
 - **Next step:** decide the relocation rule, then map it.
+- **Re-checked 2026-09-15:** the "User sees" is wrong. `_career_leaderboard`
+  raises `TemplateUnsupported`, which is a fall-through to the agent, not a
+  refusal the user reads.
 - **GitHub:** #30
 
 ### Data no template reads
@@ -671,6 +863,11 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   NetPoints and paint or fast-break points go to the agent.
 - **Next step:** re-run the field audit after each template round, and take the
   most-asked shapes first.
+- **Re-checked 2026-09-15: partly out of date.** Points in the paint and
+  fast-break points are now read from `team_season_stats` by `team_metrics`, and
+  `plays` is read indirectly through the rebuilt box view. Still unread by any
+  template: `win_probability`, `net_points_team`, `net_points_team_game`,
+  `stat_glossary`.
 - **GitHub:** #31
 
 ### Shapes deferred for lack of data or logic
@@ -699,6 +896,11 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   was meant.
 - **Next step:** reproduce it. If it recurs, drop punctuated tokens before
   `suggest_players`, or back off to the word the question holds.
+- **Re-checked 2026-09-15:** reproduces, but the suspected cause is only half
+  right. Dropping the parenthesized token would not help: `suggest_players`
+  returns [] for "Davies" alone too, because a single token skips the surname
+  pass and the near-spelling pass finds 23+ "Davis" players against
+  `MAX_CLARIFY_CANDIDATES=5`. Backing off to the question's own word does work.
 - **GitHub:** #33
 
 ### Two players against one team has no template
@@ -791,6 +993,10 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   honest about the difference `coverage.py` already draws - a season can be
   present, partial, unrepresentative for ranking, or a phantom, and "1994" is
   not one number for every table.
+- **Re-checked 2026-09-15: the example is now worse.** `_warehouse_seasons`
+  reads `min(season), max(season), count(*) FROM games`, which today returns
+  1988, 2026 and 43,504 - so the page would claim "43,504 games, 1988-2026"
+  when the regular-season floor is 1994 and 151 of those rows are not games.
 - **GitHub:** #71
 ### ESPN publishes PER, RPM, VORP and WARP per player-season, and we store none of it
 - **Found:** 2026-09-14, fixing the NULL-totals issue (#5)
@@ -825,6 +1031,23 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **GitHub:** #77
 
 ## P4: tooling, docs, low impact
+
+### The "postseason copy" rule is written twice, and both figures are stale
+- **Found:** 2026-09-15, issues audit (P4 data/query auditor)
+- **Evidence:** the rule that drops a postseason line ESPN copied from the
+  regular season exists twice, in different words:
+  `fetch/warehouse.py:182` (the `player_season_stats_deduped` view: more than 28
+  games, or games+points equal to that season's regular-season line on any team)
+  and `query/leaderboard.py:186` `not_a_postseason_copy` (games plus the value
+  columns, on the same team). They agree today - each drops 436 of 7,941 rows -
+  but nothing keeps them in step.
+  - Both comments are stale: the view says "340 of 7,845 postseason rows" and
+    the docstring says "437 of the 7,941". Re-measured: raw 7,941 rows, deduped
+    7,505, so **436 rows** (340 player-seasons).
+- **User sees:** nothing today. It is the same hand-maintained-pair shape as
+  #83, with the added trap that the two spellings could diverge silently.
+- **Next step:** export one helper and call it from both, the way #83 proposes
+  for the traded-player dedup. Fix both figures while there.
 
 ### `MAX_LIMIT` is 100 in one module and 50 in another
 - **Found:** 2026-09-15, in the cross-module constant scan written after #6/#9
@@ -865,6 +1088,10 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   reports the two `_EASTERN_SHIFT` copies and is structurally blind to the
   other three, which wear different names. Finding those needed a human reading
   a grep for `hours=5`.
+- **Re-checked 2026-09-15: six copies, not five.** The sixth is a bare
+  literal in SQL - `query/team_metrics.py:291`, `- INTERVAL 5 HOUR AS DATE`
+  inside `TEAM_GAMES_SQL` - whose own comment cites `parse._EASTERN_OFFSET`
+  without using it. Neither the name scan nor a grep for `hours=5` finds it.
 - **GitHub:** #82
 
 ### One rule, two hand-maintained copies: the traded-player dedup
@@ -897,6 +1124,12 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   `fetch/team_box_repair.py` already does. One predicate, `pointsInPaint = -1`,
   and no season needs naming.
 - **Source:** DATA.md, "`pointsInPaint` is -1 before 2009, and two lead columns exist only in 2026"
+- **Re-checked 2026-09-15: count and two claims are stale.** `pointsInPaint =
+  -1` is now 39,157 rows, not 41,417, because `team_box_repair` NULLs 2018's.
+  **The claim that `team_season_stats` uses 0 for the same era is wrong** - its
+  `pointsInPaint` is -1.0 in every team-season 1994-2008; only
+  `fastBreakPoints` is 0. `query/team_metrics.py:24` and the user-visible
+  refusal `_PAINT_REASON` (`:90`) both repeat the error.
 - **GitHub:** #78
 
 ### "...against the celtics last season" is answered as a game log
@@ -938,6 +1171,9 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   wrong files.
 - **Next step:** default to the main checkout's files, found through
   `git rev-parse --git-common-dir`.
+- **Re-checked 2026-09-15:** three more scripts default the same way and are
+  not in the list above - `check_team_box.py:136`, `backfill_season_totals.py:73`
+  and `backfill_missing_playoffs.py:69` (the last two added this week).
 - **GitHub:** #37
 
 ### A warehouse built before a view change is not detected
@@ -990,6 +1226,10 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   a working one, and the pre-commit docs gate is green either way.
 - **Next step:** pass `-E` in `build_docs.sh`, or rebuild from scratch when
   `docs/conf.py` is newer than the build environment.
+- **Re-checked 2026-09-15: this and #50 are the same defect** (no `-E` in
+  `build_docs.sh`) and should merge. Measured: incremental no-op 2.7s, `-E`
+  11.0s, clean 14.8s. With the shim disabled, an incremental build shows 0 pages
+  with literal `:rtype:` where a fresh output dir shows 23.
 - **GitHub:** #41
 
 ### The `:rtype:` shim in `docs/conf.py` waits on dropping Python 3.10
@@ -1020,6 +1260,14 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** nothing. An agent reads wrong facts.
 - **Next step:** correct all three.
 - **Source:** DATA.md, "ESPN's `possessions` counts every turnover twice before 2013"
+- **Re-checked 2026-09-15:** one fixed, one half fixed, one still wrong.
+  (1) `AGENTS.md`'s "5/240/668" is gone and `DATA.md` is right.
+  (2) `query/team_metrics.py:72` still claims pre-2013 `turnovers` is "player
+  turnovers alone" - re-measured, `team_season_stats.turnovers` equals the box
+  `totalTurnovers` sum for 25-27 of 30 teams and the player-only sum for 0.
+  (3) `fetch/warehouse.py:184` still says "340 of 7,845"; it is 436 rows / 340
+  player-seasons, and `DATA.md:548` wrongly says warehouse.py "previously" said
+  it.
 - **GitHub:** #43
 
 ### Broad `except duckdb.Error` in `_single_game_netpoints`
@@ -1029,6 +1277,10 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   missing-table error.
 - **User sees:** a SQL bug reported as "unavailable", then a slow fall-through.
 - **Next step:** catch `duckdb.CatalogException` only.
+- **Re-checked 2026-09-15:** the pattern occurs twice. The second is
+  `templates.py:4117`, in the comparison's NetPoints section, which catches
+  `duckdb.Error` and returns `{}` - so a SQL bug there makes the NetPoints rows
+  silently disappear from a comparison.
 - **GitHub:** #44
 
 ### Postseason shooting floors are scaled, not calibrated
@@ -1039,6 +1291,10 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   They leave 81-92 qualified players per postseason in 2025 and 2026.
 - **User sees:** a stated but uncalibrated postseason qualifier.
 - **Next step:** none until a published postseason rule is found.
+- **Re-checked 2026-09-15: a published postseason rule now exists.**
+  Basketball-Reference's qualifier page loads (see #46) and gives "Playoffs,
+  Season 50 TSA". Ours is 67. At 50 the postseason pool would be 94 players in
+  2025 and 102 in 2026, against 81 and 90 today.
 - **GitHub:** #45
 
 ### Basketball-Reference's qualifying rule was never read directly
@@ -1049,6 +1305,12 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** nothing.
 - **Next step:** if a modern true-shooting-attempts figure is published there,
   compare it with 550.
+- **Re-checked 2026-09-15: the page is readable, and it disagrees with us.**
+  One request with a browser User-Agent to `/about/rate_stat_req.html` returns
+  200. It publishes TS%: "2021-22 to present NBA 500 TSA", **prorated** in short
+  seasons ("on pace for 500 TSA; stats prorated to 82-game season"), and FG%:
+  300 FG. No eFG% rule. Our TS% floor is 550; at 500 the 2025 pool is 203
+  players against 183. The proration bears directly on #13.
 - **GitHub:** #46
 
 ### Name narrowing counts a row with no minutes as a game played
@@ -1062,6 +1324,11 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   bench that season. It errs toward asking, never toward a wrong player.
 - **Next step:** measure how many asks it widens. If many, narrow the
   box-score tables on minutes, as `conditions._played` does.
+- **Re-checked 2026-09-15: the next step below carries a trap.** 440
+  player-seasons have box rows but no played row, and **158 of them are Bulls
+  and Pelicans players from 2013-2018** who did play - narrowing on `_played`
+  would eliminate them. 131 of the 440 share a surname with a player who did
+  play that season.
 - **GitHub:** #47
 
 ### Clarifications can name twenty players
@@ -1115,6 +1382,11 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** answers from a half-updated warehouse, with nothing saying so.
 - **Next step:** record a build-complete marker, and have `data check` report a
   build that did not finish.
+- **Re-checked 2026-09-15: broader than filed.** Three in-place rewrites now
+  run after the table loads - `team_box_repair`, `season_totals_repair` and
+  `real_games` - each its own `CREATE OR REPLACE TABLE`. A build killed between
+  a load and its repair leaves an unrepaired `team_box_stats` or
+  `player_season_stats` that looks perfectly normal.
 - **GitHub:** #51
 
 ### The agent can return an empty answer
@@ -1144,6 +1416,11 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** nothing today. Any template that starts reading these would.
 - **Next step:** measure each one before a template reads it.
 - **Source:** DATA.md, "`dnp_reason` is set on players who played"
+- **Re-checked 2026-09-15:** figures reproduce, two details changed. Player
+  `plusMinus` **is** read now (the game log's "+/-" column,
+  `templates.py:3076`), and `team_season_stats.plusMinus` is -1 in 828 rows
+  (2009 on) and NULL in 675 before that, not "-1 in every season" as
+  `team_metrics.py:25` says.
 - **GitHub:** #53
 
 ### Team box scores disagree slightly with player-box sums in 2019, 2021 and 2026
@@ -1169,6 +1446,10 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** a subtitle count one or two higher than the number of dots.
 - **Next step:** clamp heaves to the edge of the plot, or note them in the
   subtitle.
+- **Re-checked 2026-09-15: larger than filed.** Positioned shots past the
+  half-court line: 475 in 2024, 581 in 2025, 1,083 in 2026. Rendering Luka
+  Doncic's 2026 season draws 1,479 markers with **22 off the canvas**, not the
+  one or two this entry describes.
 - **GitHub:** #55
 
 ### A slow agent answer cannot be cancelled
@@ -1219,6 +1500,9 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** read `prompt_eval_count` from one router call and correct both
   comments. Then add a test that fails when `ROUTER_PROMPT` plus a long question
   passes a set budget, the way `PreambleTooLarge` guards the agent.
+- **Re-checked 2026-09-15:** `router.py:11,272` still say "~430 tokens".
+  `len(ROUTER_PROMPT)` is 9,989 characters, about 2,497 tokens at 4 chars/token,
+  against `ROUTER_NUM_CTX = 4096`. No test or budget guard exists.
 - **GitHub:** #59
 
 ### The release script does not update the install pins
@@ -1243,6 +1527,11 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   docs.
 - **Next step:** replace them, with a CHANGES line, since the change touches
   `src/`.
+- **Re-checked 2026-09-15: the spellings moved.** "honour" family: 27
+  occurrences on 26 lines (`router.py` 11, `templates.py` 15), including the
+  user-visible trace "cannot honour" (`templates.py:390,556`) and three
+  published docstrings. normalis- and colour are now 0. Not listed in this
+  entry: "behaviour" x3 and "labelled/mislabelling" x6.
 - **GitHub:** #61
 
 ### A coverage caveat is added to a refusal that drew nothing
@@ -1263,6 +1552,13 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   "Next: ...".
 - **User sees:** a docs example shorter than the real output.
 - **Next step:** correct the comment, and paste the example's full answer.
+- **Re-checked 2026-09-15:** "nothing passes `previous_question`" is
+  imprecise - `agent.py:247` passes `self.last_question`, but it is always None
+  in both shipped callers (the CLI builds a new Agent per question; the web
+  resets per request), so the parameter and the router branch at
+  `router.py:811` are dead in practice rather than unreferenced. The stale
+  `usage.rst` example is real regardless, and is now also missing the
+  "(minimum 20 games)" qualifier the answer prints.
 - **GitHub:** #63
 
 ### A player's bio is fetched once and never refreshed
@@ -1305,6 +1601,9 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** nothing. It is disk and a slower cold read.
 - **Next step:** build into a temporary file and swap it in, or run a periodic
   compaction, if the size matters.
+- **Re-checked 2026-09-15:** `PRAGMA database_size` read-only gives 7,101
+  total blocks (1.73 GiB) against 3,781 used (0.92 GiB) - 47% free, matching the
+  entry.
 - **GitHub:** #66
 
 ### Free-throw coordinates stop after 2018

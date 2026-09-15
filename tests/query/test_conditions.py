@@ -24,7 +24,10 @@ import duckdb
 import pytest
 
 from association.fetch import real_games
+from association.fetch.reconstructed_box import _FILLED_COLUMNS as FILLED_COLUMNS
+from association.query.conditions import RAW_BOX, UNGATED_ON_REBUILD, box_source
 from association.query.templates import (
+    REBUILT_STATS,
     SPLIT_KINDS,
     TemplateContext,
     TemplateResult,
@@ -147,6 +150,121 @@ def _slots(**given: Any) -> dict[str, Any]:
 
 def _rows(result: TemplateResult, split: str) -> dict[str, dict[str, Any]]:
     return {row["group"]: row for row in result.data["splits"][split]}
+
+
+# ---------------- games rebuilt from play-by-play ----------------
+
+
+@pytest.fixture
+def rebuilt_league(league: TemplateContext) -> TemplateContext:
+    """The same league, with e5 rebuilt from its play-by-play.
+
+    e5 is already the shape ESPN really serves for every Chicago and New
+    Orleans game from 2013 to 2018: both Celtics rows present, not flagged DNP,
+    with NULL minutes and zeros. `player_box_stats_filled` substitutes figures
+    rebuilt from the plays and flags exactly those rows, and a rebuilt row
+    still has no minutes - play-by-play cannot recover them.
+
+    Tatum and Brown both played e5. Their rebuilt lines carry points, rebounds
+    and assists (which a rebuild gets right) and also turnovers, 3-pointers and
+    field-goal attempts (which it does not, and which nothing may read).
+    """
+    c = league.con
+    rebuilt = "(pbs.event_id = 'e5' AND pbs.team_id = '2')"
+    c.execute(f"""
+        CREATE VIEW player_box_stats_filled AS
+        SELECT pbs.* REPLACE (
+                 CASE WHEN {rebuilt} THEN 26 ELSE pbs.points END AS points,
+                 CASE WHEN {rebuilt} THEN 7 ELSE pbs.rebounds END AS rebounds,
+                 CASE WHEN {rebuilt} THEN 4 ELSE pbs.assists END AS assists,
+                 CASE WHEN {rebuilt} THEN 9 ELSE pbs.turnovers END AS turnovers,
+                 CASE WHEN {rebuilt} THEN 9 ELSE pbs.threePointFieldGoalsMade END AS threePointFieldGoalsMade,
+                 CASE WHEN {rebuilt} THEN 13 ELSE pbs.fieldGoalsMade END AS fieldGoalsMade,
+                 CASE WHEN {rebuilt} THEN 99 ELSE pbs.fieldGoalsAttempted END AS fieldGoalsAttempted),
+               {rebuilt} AS reconstructed
+        FROM player_box_stats pbs""")
+    return league
+
+
+def test_a_rebuilt_game_counts_as_a_game_he_played(rebuilt_league: TemplateContext) -> None:
+    """The P1 this fixes. A rebuilt line has no minutes, so before the source
+    was resolved every such game read as one he missed - and a season with
+    nothing but rebuilt games answered "was listed in N box scores but did not
+    play in any of them". Tatum played e1, e4, e7 and now e5."""
+    result = player_splits(rebuilt_league, _slots(player="Jayson Tatum", split="home_away"))
+    assert result.data["games"] == 4
+    assert "did not play in any of them" not in (result.answer or "")
+
+
+def test_a_rebuilt_game_is_no_longer_an_unknown_game(rebuilt_league: TemplateContext) -> None:
+    """`_box_missing` has to widen with `_played`, or the same answer both
+    counts a game and reports it as one with no box score - the contradiction
+    `_empty_box_scores(covered_by_rebuild=...)` exists to stop elsewhere."""
+    answer = player_splits(rebuilt_league, _slots(player="Jayson Tatum", split="home_away")).answer or ""
+    assert "no box score" not in answer
+
+
+def test_a_figure_the_rebuild_gets_wrong_is_left_out_rather_than_averaged_in(rebuilt_league: TemplateContext) -> None:
+    """The filled view substitutes more columns than the rebuild was measured
+    for. Tatum's two home games are e1 (played: 30 points, 0 turnovers, 1
+    three, 30 minutes) and e5 (rebuilt: 26 points, and a deliberately absurd 9
+    turnovers and 9 threes).
+
+    Points are inside `REBUILT_STATS`, so both games count. Turnovers and
+    threes are not, so the average is taken over the game that carries them -
+    the failure this rules out is the quiet one, where 9 is averaged in rather
+    than a wrong number appearing on its own."""
+    rows = _rows(player_splits(rebuilt_league, _slots(player="Jayson Tatum", split="home_away")), "home_away")
+    home = rows["home"]
+    assert home["games"] == 2
+    assert home["points"] == pytest.approx(28.0), "the rebuilt 26 IS read"
+    assert home["turnovers"] == pytest.approx(0.0), "e1 alone; averaging the rebuilt 9 in would give 4.5"
+    assert home["threes"] == pytest.approx(1.0), "e1 alone; averaging the rebuilt 9 in would give 5.0"
+    assert home["minutes"] == pytest.approx(30.0), "e1 alone; a rebuilt game has no minutes to count as zero"
+
+
+def test_a_teammate_in_a_rebuilt_game_is_not_counted_as_absent(rebuilt_league: TemplateContext) -> None:
+    """The other half of the P1: `_with_without_games` asked for minutes too,
+    so a teammate who played a rebuilt game read as out and the game was
+    counted on the "without" side."""
+    result = with_without(rebuilt_league, _slots(team="Boston Celtics", without="Jayson Tatum"))
+    played = next(row for row in result.data["groups"] if row["teammate_played"])
+    assert played["games"] == 4, "e5 is a game Tatum played, not one he missed"
+
+
+def test_the_subjects_own_average_counts_his_rebuilt_game(rebuilt_league: TemplateContext) -> None:
+    """The Python half of the same fault, and the one no SQL guard covers:
+    `_with_without_group` picks his games out of the group in Python, and did
+    it with `minutes is not None` - so a rebuilt game passed every query-side
+    check and was dropped again on the way to the average.
+
+    Brown played all four of Tatum's games: e1 20, e4 10, e7 12, and e5
+    rebuilt at 26. Reading minutes as the proxy drops e5 and answers 3 games
+    at 14.0 - which is exactly
+    `test_a_player_subject_gets_his_averages_in_each_group` on the un-rebuilt
+    fixture, and the reason this needs a test of its own."""
+    result = with_without(rebuilt_league, _slots(player="Jaylen Brown", without="Jayson Tatum"))
+    groups = {g["teammate_played"]: g for g in result.data["groups"]}
+    assert groups[True]["player_games"] == 4, "e5 is his game too"
+    assert groups[True]["points"] == pytest.approx(17.0), "68/4; dropping the rebuilt 26 gives 14.0"
+    assert groups[True]["minutes"] == pytest.approx(30.0), "the three games that carry minutes, not 22.5 over four"
+
+
+def test_a_warehouse_without_the_filled_view_reads_as_it_always_did(league: TemplateContext) -> None:
+    """The view arrives with a `data load`. An older warehouse has none, and
+    every fixture here builds only `player_box_stats` - a query written as
+    though the view were always there is a Binder error, not a value change.
+    Same escape as `_log_carries_rebuilt`."""
+    assert box_source(league.con) == RAW_BOX
+    assert player_splits(league, _slots(player="Jayson Tatum", split="home_away")).data["games"] == 3
+
+
+def test_the_ungated_rebuild_columns_are_the_ones_no_template_may_read() -> None:
+    """`UNGATED_ON_REBUILD` is a third hand-maintained list beside
+    `REBUILT_STATS` and the view's own substitutions, which is the shape this
+    project keeps getting bitten by. Derive it and compare."""
+    substituted = {warehouse_column for warehouse_column, _ in FILLED_COLUMNS}
+    assert set(UNGATED_ON_REBUILD) == substituted - set(REBUILT_STATS)
 
 
 # ---------------- player_splits ----------------

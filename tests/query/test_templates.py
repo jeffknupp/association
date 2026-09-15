@@ -2522,6 +2522,41 @@ def test_without_counts_a_did_not_play_entry_and_a_missing_row_alike(pg_ctx: Tem
     assert "a did-not-play entry, or no line in the box score at all" in result.answer
 
 
+def test_a_teammate_who_played_a_rebuilt_game_is_not_counted_as_absent(pg_ctx: TemplateContext) -> None:
+    """The `without` half of the P1 the rebuild left behind.
+
+    `_teammate_played` asked the stored table for minutes, and a line rebuilt
+    from play-by-play has none - so every teammate in a rebuilt game read as
+    out, and the game was counted as one played "without" him. Measured on the
+    real warehouse before the fix: "Anthony Davis without Eric Gordon, 2015"
+    listed games Gordon played in; he played 48 of Davis's 68.
+
+    Here Stephen Curry gets the empty line ESPN really serves for e2, and the
+    filled view rebuilds it. e2 is then a game he played, so only e3 - where he
+    is a genuine did-not-play - is still "without" him.
+    """
+    s = current_season()
+    con = pg_ctx.con
+    con.execute("INSERT INTO player_box_stats VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", list(_box("e2", s, "1", "3", "11", minutes=None)))
+    con.execute("""
+        CREATE VIEW player_box_stats_filled AS
+        SELECT pbs.* REPLACE (CASE WHEN pbs.event_id = 'e2' AND pbs.athlete_id = '11' THEN 31 ELSE pbs.points END AS points),
+               (pbs.event_id = 'e2' AND pbs.athlete_id = '11') AS reconstructed
+        FROM player_box_stats pbs""")
+
+    result = game_log(pg_ctx, {"player": "Brandin Podziemski", "without": "Stephen Curry"})
+    assert sorted(g["date"] for g in result.data["games"]) == [f"{s}-01-10"], "e2 is a game Curry played, rebuilt"
+
+
+def test_without_falls_back_when_the_warehouse_has_no_rebuilt_lines(pg_ctx: TemplateContext) -> None:
+    """The same question against a warehouse with no filled view: unchanged.
+    The view arrives with a `data load`, and every older warehouse - and every
+    other fixture here - has only the stored table."""
+    s = current_season()
+    result = game_log(pg_ctx, {"player": "Brandin Podziemski", "without": "Stephen Curry"})
+    assert sorted(g["date"] for g in result.data["games"]) == [f"{s - 1}-12-01", f"{s}-01-10"]
+
+
 def test_without_two_teammates_means_neither_of_them_played(pg_ctx: TemplateContext) -> None:
     """ "Celtics record without Tatum and Brown" read only the first name, so
     the answer covered the games without ONE of them. Podziemski played e1, e2
