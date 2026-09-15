@@ -303,21 +303,35 @@ likewise.
   keep no name" (#22), and "The NetPoints season fingerprint matches players
   mid-pull, so a name can be lost" (#21).
 
-### ESPN's power index keeps only postseason teams
+### ESPN's power index is a paged collection, and holds all 30 teams
 
-- **What ESPN does:** publishes BPI as a single current snapshot per season
-  rather than a dated series, and by the time a season is archived that
-  snapshot holds only the play-in and postseason field.
-- **Evidence:** `team_power_index` has exactly 25 rows in every season from
-  2017 to 2026. 2017-2021 pair BPI values with final records. ESPN's own rank
-  columns hold values like 26,058 before 2022.
-- **Does a refetch fix it?** **No, and no pull can recover the past** — the
-  earlier snapshots were never archived anywhere reachable.
+**This entry said the opposite until 2026-09-15, and the correction is the
+lesson.** It read "ESPN's power index keeps only postseason teams", on evidence
+that `team_power_index` held exactly 25 rows a season. 25 is the page size of
+ESPN's core API. The missing rows were never missing from ESPN.
+
+- **What ESPN does:** answers `seasons/<s>/powerindex` as a *collection* —
+  `{count, pageIndex, pageSize: 25, pageCount, items}` — and publishes one
+  snapshot per season per season type rather than a dated series.
+- **Evidence (probed live, 2026-09-15):** 2024 answers `count: 90,
+  pageSize: 25, pageCount: 4`; with `limit=1000` it returns all 90. Across
+  2017-2026 ESPN holds **630 rows, 30 teams in every snapshot**: preseason and
+  regular season in 2017-18, regular only in 2019-21, regular and postseason in
+  2022, and regular, postseason and play-in from 2023. ESPN's own rank columns
+  still hold values like 26,058 before 2022.
+- **What is still true:** there is no dated series. Each (season, season type)
+  has a single `lastUpdated`, and ESPN overwrites it — 2018's preseason and
+  regular-season snapshots are both stamped 2020-10-12, the day it backfilled
+  them, one minute apart (07:47Z and 07:48Z), and 2017's preseason carries
+  2019-11-22 against its regular season's 2020-10-12. So a snapshot's date says
+  when ESPN last wrote it, not when it described.
+- **Does a refetch fix it?** **Yes** — this was our read, not ESPN's data.
+  `ESPNClient.get_collection` pages it, and
+  `scripts/backfill_power_index.py` re-fetched 2017-2026.
 - **How we handle it:** `team_outlook` names its snapshot, date and size in
   every answer, counts a team's standing within the snapshot rather than
   trusting ESPN's rank columns, and tells a missing team which snapshots exist.
-- **Tracked in:** ISSUES.md, "The power index (BPI) keeps one snapshot per
-  season" (#27).
+- **Tracked in:** ISSUES.md, "The power index has no dated series" (#27).
 
 ### No conference, division or birth-date data anywhere
 

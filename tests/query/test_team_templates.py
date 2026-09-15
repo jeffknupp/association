@@ -445,6 +445,35 @@ def test_a_leaderboard_needs_a_stat(team_ctx: TemplateContext) -> None:
 # ---------------- team_outlook ----------------
 
 
+def test_a_same_dated_preseason_snapshot_never_wins_the_regular_season_question(tmp_path: Path) -> None:
+    """A boundary guard, not a live bug - and the distinction is the point.
+
+    ESPN stamps 2018's preseason and regular-season snapshots on the same day it
+    backfilled them (2020-10-12), one minute apart, so the regular season sorts
+    last in the real table and today's answer is right by 60 seconds. This
+    fixture gives them the identical stamp, which is what ESPN would have to
+    write for ordering-by-date alone to hand a regular-season question the
+    preseason rating. Only reachable at all once the paged fetch stores both
+    snapshots: before it, the table held one 25-row page.
+    """
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR, location VARCHAR, name VARCHAR)")
+    c.execute("INSERT INTO teams VALUES ('18','NY','New York Knicks','New York','Knicks')")
+    c.execute(
+        "CREATE TABLE team_power_index (season BIGINT, season_type BIGINT, team_id VARCHAR, last_updated VARCHAR, bpi DOUBLE, bpioffense DOUBLE, bpidefense DOUBLE, "
+        "numwins DOUBLE, numlosses DOUBLE, projectedw DOUBLE, projectedl DOUBLE, probmakeplayoffs DOUBLE, probmakeconfchamp DOUBLE, probmaketitlegame DOUBLE, "
+        "probwintitle DOUBLE, sosoverall DOUBLE, sosoverallrank DOUBLE)"
+    )
+    for season_type, bpi in ((1, -2.5), (2, 1.5)):
+        c.execute(
+            "INSERT INTO team_power_index VALUES (2018,?,'18','2020-10-12T07:48Z',?,0.5,0.5,31,51,31.2,50.8,0.0,0.0,0.0,0.0,0.49,12)",
+            [season_type, bpi],
+        )
+    answer = team_outlook(TemplateContext(con=c, out_dir=tmp_path), {"team": "Knicks", "season": 2018}).answer or ""
+    assert "regular-season snapshot" in answer
+    assert "BPI +1.5" in answer, "the preseason rating (-2.5) was chosen on a date tie"
+
+
 def test_the_outlook_names_its_snapshot_date_and_size(team_ctx: TemplateContext) -> None:
     answer = team_outlook(team_ctx, {"team": "Knicks"}).answer
     assert f"{S} play-in snapshot (updated {S}-04-18, 3 teams)" in answer

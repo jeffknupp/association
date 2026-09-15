@@ -615,16 +615,29 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   `SHOOTING_STATS`.
 - **GitHub:** #26
 
-### The power index (BPI) keeps one snapshot per season
-- **Found:** 2026-09-11, template work (agent B) and repo audit
-- **Evidence:** `team_power_index` has 25 rows in each season 2017-2026: only the
-  play-in and postseason teams. `fetch_power_index` (`fetch/pipeline.py`)
-  overwrites one file per season, and 2017-2021 pair BPI values with final
-  records.
-- **User sees:** `team_outlook` has nothing for most teams in past seasons.
-- **Next step:** write dated snapshots going forward. Past seasons cannot be
-  recovered.
-- **Source:** DATA.md, "ESPN's power index keeps only postseason teams"
+### The power index has no dated series
+- **Found:** 2026-09-11; the "only 25 rows" half diagnosed and fixed 2026-09-15
+- **Fixed: the missing teams were our paging bug, not ESPN.** `fetch_power_index`
+  read one page of a paged collection, so every season stored ESPN's first 25
+  rows — 2024 kept 25 rows covering **9 of 30 teams**, and `team_outlook`
+  refused for the rest. ESPN answers `count: 90, pageSize: 25, pageCount: 4`
+  and holds 30 teams in every snapshot. `ESPNClient.get_collection` now pages
+  it, `scripts/backfill_power_index.py` re-fetched 2017-2026, and the table went
+  from 250 rows to 630.
+- **What remains.** ESPN publishes one snapshot per (season, season type) and
+  overwrites it, so there is no series to plot a team's BPI over a season.
+  2018's preseason and regular-season snapshots are both stamped 2020-10-12,
+  the day ESPN backfilled them, one minute apart - so the regular season sorts
+  last today, and `team_outlook` now says so explicitly rather than resting on
+  the gap. ESPN's rank columns are
+  still unusable before 2022 (values like 26,058), which is why standing is
+  counted from the ratings.
+- **User sees:** a BPI answer for any team ESPN covers, naming its snapshot and
+  date. What is not answerable is "how did their BPI move over the season".
+- **Next step:** nothing, unless dated snapshots are wanted — that needs
+  capturing them going forward, since the past is a single overwrite.
+- **Source:** DATA.md, "ESPN's power index is a paged collection, and holds all
+  30 teams"
 - **GitHub:** #27
 
 ### A games minimum cannot be given to the agent's TS%/eFG% leaderboard tool

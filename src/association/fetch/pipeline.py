@@ -48,16 +48,20 @@ files at all.
 
 
 class JsonFetcher(Protocol):
-    """What the pipeline needs from an HTTP client: one method.
+    """What the pipeline needs from an HTTP client: two methods.
 
     Declared structurally rather than as :class:`~association.fetch.client.ESPNClient`
     because that is the honest dependency - the pipeline never touches
-    throttling, retries or TLS impersonation, only ``get_json`` - and because a
-    test double should not have to inherit a network client to stand in for one.
+    throttling, retries or TLS impersonation - and because a test double should
+    not have to inherit a network client to stand in for one.
     """
 
     def get_json(self, url: str, params: dict[str, Any] | None = None) -> Any:
         """Fetch and decode one JSON document."""
+        ...
+
+    def get_collection(self, url: str, params: dict[str, Any] | None = None) -> list[Any]:
+        """Every item of a paged collection, not just its first page."""
         ...
 
 
@@ -500,8 +504,12 @@ class Pipeline:
         path = self._p("team_power_index", f"season={season}", "power_index.parquet")
         if storage.exists(path) and not self.force and season < current_season():
             return
-        data = self._live_client.get_json(endpoints.power_index_url(season))
-        rows, glossary = parse.parse_power_index(data)
+        # A collection, not a single resource: ESPN pages it at 25 and holds up
+        # to 90 rows a season (30 teams x preseason/regular/postseason/play-in
+        # snapshots). Reading one page stored 25 and dropped the rest, which
+        # `team_outlook` then reported as ESPN having no snapshot for most teams.
+        items = self._live_client.get_collection(endpoints.power_index_url(season))
+        rows, glossary = parse.parse_power_index(items)
         self._add_glossary(glossary)
         self._write_rows(path, rows)
 
