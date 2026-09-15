@@ -42,6 +42,64 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 
 ## P1: wrong answer
 
+### The 2000 and 2001 playoffs stop before the Finals
+- **Found:** 2026-09-11, template work (agent B); characterized in the issues audit
+- **Evidence:** postseason games are checked against `team_season_stats`
+  `gamesPlayed`. 2002-2026 match for every team.
+  - **2000:** there is nothing after 2000-06-01. Missing are the whole LAL-IND
+    Final (6 games), WCF LAL-POR games 6-7 and ECF IND-NY game 6. The Lakers
+    have 15 of 23 games.
+  - **2001:** there is nothing after 2001-05-28. Missing are the Final (5), ECF
+    MIL-PHI games 5-7, WCF LAL-SA game 4 and 2 games of MIL-CHA. The Lakers
+    have 10 of 16.
+  - **The 2000 standings share these gaps.** For all 29 teams, their W-L equals
+    the W-L counted from `games`, while `team_season_stats` has 82 games for
+    each. The Lakers are 67-13, against a real 67-15.
+  - **Nothing catches it.** `coverage.py` declares no partial season, and
+    `check_coverage.py` passes because it compares against a share of the
+    median season.
+- **User sees:** no 2000 or 2001 Finals, and "LAL-POR 2000" read as a 3-2 series.
+  Playoff records are short for the teams that went deepest. All of it is
+  stated as fact, with no caveat. Only `team_record` notices, through
+  `_game_list_gaps`.
+- **A refetch does not fix it either.** The same 2026-09-11 pull returned the
+  same 70 rows for the 2000 postseason, ending on the same date, 2000-06-01,
+  and `games` matched the existing warehouse exactly across all 43,494 rows.
+  Games are discovered from each team's schedule, and ESPN's schedules do not
+  list them.
+- **Next step:** discover these dates from the scoreboard endpoint instead of
+  from team schedules, since the missing games are the ones no team's schedule
+  returns. Until then, add `partial=` caveats to `COVERAGE` for the two
+  postseasons.
+- **Source:** DATA.md, "The 2000 and 2001 playoffs stop before the Finals"
+- **GitHub:** #6
+
+### Traded players' combined season rows are wrong in 26 cases
+- **Found:** 2026-09-11, template work (agent D); counted in the issues audit
+- **Evidence:** of 2,062 combined rows (`team_id` NULL) in
+  `player_season_stats`, 26 disagree with the sum of that season's stints:
+  - **6 are all NULL:** Moses Malone 1977, James Edwards 1978 and 1983, Bill
+    Laimbeer 1982, Danny Schayes 1983, and Sleepy Floyd 1983.
+  - **12 from 1996 copy a single stint,** losing 3,042 points between them. Eric
+    Murdock's row reads 9 games and 62 points, against stints totalling 73 and
+    647.
+  - **Jevon Carter 2023** drops a 1-game stint.
+  - **7 have NULL points** because a stint's totals are NULL; see the
+    NULL-totals entry above.
+  
+  `player_season_stats_deduped` (`fetch/warehouse.py`) and the leaderboard's
+  `dedup_traded` both prefer the NULL-team row.
+- **User sees:** "Eric Murdock 1995-96 stats" answers 9 games at 6.9 points a
+  game. `player_compare` and `player_history` show the same wrong line.
+- **A refetch does not fix it.** The same pull reproduced every one of these
+  rows; the combined line is what ESPN's career endpoint returns.
+- **Next step:** use the combined row only when it equals its stints' sum, and
+  sum the stints otherwise. Add a warehouse test in the Murdock shape.
+- **Source:** DATA.md, "Traded players' combined season rows disagree with their own stints"
+- **GitHub:** #9
+
+## P2: misleading or incomplete
+
 ### Nearly every Bulls and Pelicans box score from 2013 to 2018 is zeros
 - **Found:** 2026-09-11, template work; characterized in the issues audit
 - **Evidence:** a team-game is empty when every player row has NULL minutes and
@@ -133,73 +191,16 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   fell by a single game** and the totals rose (20+ point games, 15,978 to
   18,488). Fouls and turnovers are not counted from a rebuilt line, and a count
   of none then names the decision instead of implying missing data.
-- **What remains.** Season aggregates stay on the stored table on purpose: a
-  rebuilt season total is exact only about half the time and its error grows
-  with games played (right totals average 31.6 games, wrong ones 55.6). So
-  box-derived season sums over 2013-2018 are still about 87% of ESPN's own
-  totals, and that is the entry's remaining substance.
-- The rest of this entry stands unchanged: box-derived sums over 2013-2018 are
-  still about 87% of ESPN's own season totals, and no refetch changes that.
+- **What remains, and why this is no longer a P1.** Nothing answers falsely now:
+  every per-game template reads the rebuilt line or says why it will not. What
+  is left is a SHORTFALL, which is P2 by this file's own definitions - season
+  aggregates stay on the stored table on purpose, because a rebuilt season
+  total is exact only about half the time and its error grows with games played
+  (right totals average 31.6 games, wrong ones 55.6). So box-derived sums over
+  2013-2018 are still about 87% of ESPN's own season totals, no refetch changes
+  that, and the entry stays open to record it.
 - **Source:** DATA.md, "Every Chicago and New Orleans game from 2013 to 2018 has an empty box score"
 - **GitHub:** #1
-
-### The 2000 and 2001 playoffs stop before the Finals
-- **Found:** 2026-09-11, template work (agent B); characterized in the issues audit
-- **Evidence:** postseason games are checked against `team_season_stats`
-  `gamesPlayed`. 2002-2026 match for every team.
-  - **2000:** there is nothing after 2000-06-01. Missing are the whole LAL-IND
-    Final (6 games), WCF LAL-POR games 6-7 and ECF IND-NY game 6. The Lakers
-    have 15 of 23 games.
-  - **2001:** there is nothing after 2001-05-28. Missing are the Final (5), ECF
-    MIL-PHI games 5-7, WCF LAL-SA game 4 and 2 games of MIL-CHA. The Lakers
-    have 10 of 16.
-  - **The 2000 standings share these gaps.** For all 29 teams, their W-L equals
-    the W-L counted from `games`, while `team_season_stats` has 82 games for
-    each. The Lakers are 67-13, against a real 67-15.
-  - **Nothing catches it.** `coverage.py` declares no partial season, and
-    `check_coverage.py` passes because it compares against a share of the
-    median season.
-- **User sees:** no 2000 or 2001 Finals, and "LAL-POR 2000" read as a 3-2 series.
-  Playoff records are short for the teams that went deepest. All of it is
-  stated as fact, with no caveat. Only `team_record` notices, through
-  `_game_list_gaps`.
-- **A refetch does not fix it either.** The same 2026-09-11 pull returned the
-  same 70 rows for the 2000 postseason, ending on the same date, 2000-06-01,
-  and `games` matched the existing warehouse exactly across all 43,494 rows.
-  Games are discovered from each team's schedule, and ESPN's schedules do not
-  list them.
-- **Next step:** discover these dates from the scoreboard endpoint instead of
-  from team schedules, since the missing games are the ones no team's schedule
-  returns. Until then, add `partial=` caveats to `COVERAGE` for the two
-  postseasons.
-- **Source:** DATA.md, "The 2000 and 2001 playoffs stop before the Finals"
-- **GitHub:** #6
-
-### Traded players' combined season rows are wrong in 26 cases
-- **Found:** 2026-09-11, template work (agent D); counted in the issues audit
-- **Evidence:** of 2,062 combined rows (`team_id` NULL) in
-  `player_season_stats`, 26 disagree with the sum of that season's stints:
-  - **6 are all NULL:** Moses Malone 1977, James Edwards 1978 and 1983, Bill
-    Laimbeer 1982, Danny Schayes 1983, and Sleepy Floyd 1983.
-  - **12 from 1996 copy a single stint,** losing 3,042 points between them. Eric
-    Murdock's row reads 9 games and 62 points, against stints totalling 73 and
-    647.
-  - **Jevon Carter 2023** drops a 1-game stint.
-  - **7 have NULL points** because a stint's totals are NULL; see the
-    NULL-totals entry above.
-  
-  `player_season_stats_deduped` (`fetch/warehouse.py`) and the leaderboard's
-  `dedup_traded` both prefer the NULL-team row.
-- **User sees:** "Eric Murdock 1995-96 stats" answers 9 games at 6.9 points a
-  game. `player_compare` and `player_history` show the same wrong line.
-- **A refetch does not fix it.** The same pull reproduced every one of these
-  rows; the combined line is what ESPN's career endpoint returns.
-- **Next step:** use the combined row only when it equals its stints' sum, and
-  sum the stints otherwise. Add a warehouse test in the Murdock shape.
-- **Source:** DATA.md, "Traded players' combined season rows disagree with their own stints"
-- **GitHub:** #9
-
-## P2: misleading or incomplete
 
 ### Vancouver 1996 has an empty TEAM box, not an empty player box
 - **Found:** 2026-09-11 writing DATA.md; **re-measured and corrected 2026-09-14**,
