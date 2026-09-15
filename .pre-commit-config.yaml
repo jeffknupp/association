@@ -47,6 +47,13 @@ repos:
         language: system
         pass_filenames: false
         files: ^(src/.*\.py|pyproject.toml)$
+      - id: duplicate-names
+        name: one concept, one definition
+        entry: scripts/check_duplicate_names.py
+        language: system
+        pass_filenames: false
+        files: ^src/association/.*\.py$
+
       - id: docstrings
         name: docstring coverage (src)
         entry: scripts/check_docstrings.py

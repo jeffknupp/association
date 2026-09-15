@@ -668,6 +668,31 @@ The habits that caught real bugs here, in rough order of how often they paid:
   slot by removing the hook. Two "passing" perturbations in this session were
   actually a stale `.pyc` and a `SyntaxError` in the harness — both of which
   look exactly like a green run from the outside.
+- **Use `scripts/perturb.py` rather than a hand-rolled harness.** The bullet
+  above is easy to honour in letter while missing what actually breaks: the
+  harness reporting CAUGHT for a reason unrelated to the perturbation. All
+  three of these happened in one session, on top of the `.pyc` and `SyntaxError`
+  already recorded:
+  - **A red baseline.** One unrelated failing test makes *every* perturbation
+    exit non-zero, so nine of them read CAUGHT and none of them meant it.
+  - **A filtered run.** `-k "rebuilt"` does not match a test named
+    `..._rebuild_counted`; three guards sat out a whole sweep that was then
+    reported on. Run the whole file. Never `-k`.
+  - **A retyped anchor.** Hand-escaping apostrophes matched zero times, the
+    edit did nothing, and the green suite read as MISSED - a weak guard - when
+    nothing had been perturbed at all. Slice anchors out of the file, never
+    retype them, and assert the match count before running.
+- **Import success is not execution.** A `NameError` in a new code path fired
+  on every call and no test caught it, because the check run was
+  `python -c "import association.fetch.pipeline"` - which proves the module
+  parses and nothing else. Call the function, with a fake client if need be.
+- **A script run from a worktree resolves the INSTALLED package.**
+  `scripts/check_coverage.py` reported "29/29 floors check out" about a field
+  that did not exist in the code being checked, because it imported
+  `association` from the main checkout. Same shape as the
+  `check_types_complete.sh` note under "Before you commit". Run them with
+  `PYTHONPATH=<worktree>/src`, and treat a green check from a worktree as
+  unproven until you have confirmed which copy it read.
 - **Branches built in parallel collide on private helper names, silently.**
   Four templates were built on separate branches at once, and five times two of
   them had independently written a module-level helper with the same name:
@@ -681,6 +706,38 @@ The habits that caught real bugs here, in rough order of how often they paid:
 - **A DuckDB `SET` is per-connection.** A test asserting one has to observe it
   on the connection the code under test used; a freshly opened connection
   reports the default and the assertion looks like a real failure.
+
+## Saying what you measured
+
+A wrong status report costs more than a wrong patch, because the next decision
+is made on it. Three rules, each of which was broken in the session that
+prompted them:
+
+- **Name the population, not just the number.** "19 of 2,062 combined rows
+  disagree" is checkable; "the combined rows are wrong" is not, and an entry
+  that says 26 when the number is 19 sends the next agent looking for seven
+  rows that are already fixed.
+- **Re-measure before repeating a figure from an entry.** `ISSUES.md` records
+  what was true when it was written. Two of its counts had already been fixed
+  by other work in the same week.
+- **Say which copy of the code and which warehouse you measured**, and never
+  report a template's behaviour from a direct call when the agent path adds
+  something - `agent.py` appends the coverage caveat, so a template called
+  directly looks like it is missing one. Compare against `real_games` rather
+  than `games` for anything counted against `team_season_stats`; two "new
+  findings" in one session were known phantom rows seen through the unfiltered
+  table.
+
+**One concept, one definition.** Ruff's F811 and mypy's `no-redef` catch a name
+defined twice in one module and are blind to the same name in two - so
+`MAX_LIMIT` is 100 in `query/leaderboard.py` and 50 in `query/templates.py`,
+and the NBA's five-hour Eastern offset is declared five times under four names.
+`scripts/check_duplicate_names.py` reports cross-module constant collisions
+against an allowlist of the ones already filed, so it fails only on a new one.
+It is deliberately name-only: comparing values pairs `DEFAULT_LIMIT` with
+`EASTERN_OFFSET_HOURS` and buries the real finding in coincidence. It also
+cannot see a concept duplicated under *different* names, which is four of those
+five Eastern offsets - that still needs somebody reading a grep.
 
 ## Recording findings
 

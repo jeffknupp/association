@@ -822,6 +822,63 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 
 ## P4: tooling, docs, low impact
 
+### `MAX_LIMIT` is 100 in one module and 50 in another
+- **Found:** 2026-09-15, in the cross-module constant scan written after #6/#9
+- **Evidence:** `query/leaderboard.py:38` declares `MAX_LIMIT = 100` (the cap on
+  a model-supplied limit on the agent path); `query/templates.py:118` declares
+  `MAX_LIMIT = 50` (what `_clamp_limit` clamps a template to). Same name, two
+  different facts, neither importing the other.
+- **User sees:** nothing wrong today - each is used only in its own module, and
+  both caps are deliberate. The risk is a reader or an agent who learns one and
+  applies it to the other, or a future refactor that "deduplicates" them into
+  whichever value it happened to see first.
+- **Next step:** rename by what each governs - `AGENT_MAX_LIMIT` and
+  `TEMPLATE_MAX_LIMIT` - rather than unifying them, since the two caps are
+  answering different questions. Then drop the name from `ALLOWED` in
+  `scripts/check_duplicate_names.py`.
+- **Priority note:** P4 because no answer is wrong; it is a trap laid for the
+  next change, not a fault in this one.
+- **GitHub:** #81
+
+### The five-hour Eastern offset is defined five times under four names
+- **Found:** 2026-09-15, in the cross-module constant scan
+- **Evidence:** the same NBA fact - a US Eastern date is UTC minus five hours,
+  and EST/EDT disagree only in an hour no game starts in - is declared at
+  `season.py:25` (`_EASTERN_SHIFT`), `fetch/real_games.py:89`
+  (`EASTERN_OFFSET_HOURS`), `fetch/parse.py:728` (`_EASTERN_OFFSET`),
+  `query/conditions.py:67` (`_EASTERN_OFFSET_HOURS`) and
+  `query/templates.py:707` (`_EASTERN_SHIFT`). Four of the five are private, so
+  no module can import another's.
+- **User sees:** nothing today - all five hold 5. If one is ever changed
+  without the others, dates drift between the fetch path, the game list and the
+  query path, and a game lands on the wrong calendar day in one answer and the
+  right one in the next. That is the fault `DATA.md` ("A NetPoints date is not
+  an ESPN date") already cost this project once.
+- **Next step:** one public declaration in `season.py` - the module that
+  already owns season arithmetic - imported by the other four. `fetch` importing
+  `season` is an edge that already exists (`current_season`).
+- **A name-only scan cannot see this.** `scripts/check_duplicate_names.py`
+  reports the two `_EASTERN_SHIFT` copies and is structurally blind to the
+  other three, which wear different names. Finding those needed a human reading
+  a grep for `hours=5`.
+- **GitHub:** #82
+
+### One rule, two hand-maintained copies: the traded-player dedup
+- **Found:** 2026-09-15, while fixing #9
+- **Evidence:** "prefer the combined row over the per-team stints" is written
+  as SQL in `fetch/warehouse.py:198` (the `player_season_stats_deduped` view)
+  and twice in `query/leaderboard.py` (lines 300 and 324, the `dedup_traded`
+  QUALIFY). Fixing #9 had to touch both, and a fix that touched only one would
+  have left the leaderboard reading the broken row while the deduped view was
+  correct - green tests either way.
+- **User sees:** nothing now that both are repaired at load time. The coupling
+  remains: a third reader of `player_season_stats` would need the same rule
+  written a fourth time.
+- **Next step:** export the QUALIFY fragment from one module the way
+  `not_a_postseason_copy()` already exports its own rule from
+  `query/leaderboard.py`, and have both call it.
+- **GitHub:** #83
+
 ### `pointsInPaint` is -1 for every team-game before 2009
 - **Found:** 2026-09-14, while fixing #8
 - **Evidence:** 41,417 `team_box_stats` rows hold `pointsInPaint = -1` — every

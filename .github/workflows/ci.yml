@@ -48,6 +48,12 @@ jobs:
         # pyright --verifytypes at 100%, the same gate pre-commit runs.
         run: scripts/check_types_complete.sh
 
+      - name: One concept, one definition
+        # Cross-module constant collisions, against an allowlist of the ones
+        # already filed - so this fails only on a NEW one. Ruff's F811 covers
+        # the same shape inside a single module and is blind across two.
+        run: scripts/check_duplicate_names.py
+
       - name: Docstring coverage
         run: scripts/check_docstrings.py
 
