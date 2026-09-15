@@ -186,54 +186,6 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Source:** DATA.md, "The 2000 and 2001 playoffs stop before the Finals"
 - **GitHub:** #6
 
-### `games` holds placeholder, duplicate and phantom rows that templates count
-- **Found:** 2026-09-11, template work (agent B), the repo audit and the issues audit
-- **Evidence:**
-  - **Placeholders:** 134 regular-season rows with no score and no winner
-    (1999: 50, 2000: 82, 2001: 1, 2002: 1), and 133 of them involve Chicago.
-    Most are stamped 16:00Z or 17:00Z beside the real game, e.g. `400216711`,
-    1999-02-05 UTAH v CHI 0-0, next to `190205026`. Two have no real game
-    within a day: `400218915` (2000-04-18 CHI v PHI) and `400218927`
-    (2000-04-19 DET v CHI). They may sit where missing games belong; that is
-    not yet checked against a schedule.
-  - **Duplicates:** by Eastern date, among games with a winner, there are two.
-    One is 2003-01-04 DAL-PHI 102-83, stored as both `230104006` and
-    `400222658`. The other is the 2000 postseason TOR-NY copy below. An
-    earlier count of 20 in 1999 and 13 in 2000 was mostly placeholder pairs.
-  - **Phantoms that carry a winner:** they have date-only `T04:00Z` stamps and
-    no box rows, and often a team id missing from `teams`:
-
-    | Year | Events | Detail |
-    |---|---|---|
-    | 1994 | `131205075` | team 75 vs DAL |
-    | 1995 | `150611014` | MIA-ORL; actually Houston's Finals Game 3, and MIA has no 1995 postseason |
-    | 1997 | `170429031`, `170501031` | team 31 vs SEA |
-    | 1998 | `171209083` | team 83 vs DEN |
-    | 1999 | `190612021` | PHX-POR |
-    | 2000 postseason | `200422100`, `200424100`, `200505100` | team 100 vs SEA |
-    | 2000 postseason | `200501028` | a copy of TOR-NY |
-
-    They make 1994 and 1998 one game long against `team_season_stats`, by
-    exactly 225 and 175 points.
-  - **Who filters what:**
-    - `head_to_head` counts every one of these rows.
-    - `team_metrics.TEAM_GAMES_SQL` drops placeholders and same-day duplicates
-      but keeps phantoms that have a winner.
-    - `conditions` filters only on `winner_team_id IS NOT NULL`.
-    - The team `game_log` has no filter, but joins `team_box_stats`, which the
-      phantoms lack.
-- **User sees:** "how many times did the Mavs play the 76ers in 2003" counts one
-  game twice, and 1999-2000 matchups count 0-0 "meetings" nobody won. Playoff
-  records are inflated for ORL 1995, SEA 1997 and 2000, and PHX and POR 1999.
-- **They are ESPN's rows, not ours.** The 2026-09-11 pull reproduced `games`
-  exactly, placeholders, duplicates and phantoms included, so no fetch or parse
-  change removes them.
-- **Next step:** at load, exclude rows with a team id not in `teams`, a
-  date-only stamp and no box rows. Then build `head_to_head` and `conditions` on
-  one shared filtered game list.
-- **Source:** DATA.md, "`games` carries placeholder, duplicate and phantom rows"
-- **GitHub:** #7
-
 ### 2018 team box scores have values under the wrong column names — fixed in code, not yet backfilled
 - **Found:** 2026-09-11, template work (agent B); characterized in the issues
   audit; **fixed in code 2026-09-14**, and the warehouse still holds the old
@@ -343,6 +295,35 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   2014-15 have an empty box score" - the way `_phrase_single_game_high` now
   does. Watch it fail before believing it.
 - **GitHub:** #72
+### The SQL agent and the web health line still read raw `games`
+- **Found:** 2026-09-14, building the shared `real_games` list (issue #7)
+- **Evidence:** `real_games` (`fetch/real_games.py`) now holds the 43,343 rows
+  of `games` that are actually games, and every template reads it. Two readers
+  do not, both by design rather than oversight:
+  - **The SQL agent.** `KNOWN_TABLES` and `TABLE_SUMMARY` (`query/prompt.py`)
+    name `games` and not `real_games`, so any question that falls through to
+    the agent gets SQL over the unfiltered table - the 134 placeholders, the 23
+    team-slots naming an id no franchise has, the 11 phantoms and the one
+    remaining duplicate. This is exactly the population the templates were
+    just fixed for, reached by the slower path. Adding a line to
+    `TABLE_SUMMARY` is not free: `PREAMBLE_TOKEN_BUDGET` is 6,400 and
+    AGENTS.md forbids buying room by trimming that text.
+  - **The web health line.** `_warehouse_seasons` (`web/app.py:197`) counts
+    `games`, so the page says 43,494 where 43,343 were played.
+- **User sees:** an agent-written answer that counts rows that are not games,
+  with nothing to mark it as different from the template answer to the same
+  question; and a games count on the web page that is 151 too high.
+- **Not affected, measured:** `player_box_stats`, `plays` and `shot_chart` hold
+  0 rows against the 151 dropped events, so the player paths (`_PLAYER_GAMES`,
+  `fingerprint.py`) never counted one. The 302 `team_box_stats` rows that do
+  exist for them are entirely NULL, so no sum over that table was inflated
+  either - they only ever mattered because a join could find them.
+- **Next step:** decide whether the agent should be pointed at `real_games` -
+  renaming the table it sees costs no tokens, but it changes what `describe_table`
+  and hand-written SQL mean, and `games` would then be reachable only by a name
+  the preamble does not mention. Fix the health line either way; it is one
+  identifier.
+- **Source:** DATA.md, "`games` carries placeholder, duplicate and phantom rows"
 
 ### A named playoff round falls through to the agent, which has no better source
 - **Found:** 2026-09-11, repo audit
@@ -603,6 +584,36 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   what ESPN now publishes — or caveat a span that crosses 2021. Check
   `team_metrics` for the same exposure on `team_season_stats`.
 - **Source:** DATA.md, "The team `totalRebounds` column stops including team rebounds in 2022"
+### A date-only game stamp is dated a day early for half the season
+- **Found:** 2026-09-14, building the shared `real_games` list (issue #7)
+- **Evidence:** ESPN writes a game whose tip time it does not have as midnight
+  US Eastern. That is `T04:00Z` under EDT and `T05:00Z` under EST, and it
+  chooses by the date rather than by the season: of the 21 date-only stamps
+  from 1994 on, **10 are `T04:00Z` on a date in November, December, January,
+  February or March** - midnight EDT written for a date in the EST half of the
+  year. Every query here shifts a UTC stamp back a fixed five hours to get the
+  Eastern date (`conditions._eastern_day`, `real_games`,
+  `fetch/parse._EASTERN_OFFSET`), which is exact for a real tip time and lands
+  such a stamp on the **previous** calendar day.
+  - All 10 of 2026's date-only games are of this kind and all have full box
+    scores, so they are real games: `401810025` (2025-11-05, LAC-OKC),
+    `401810067`, `401810109`, `401809801`, `401810178`, `401810316`,
+    `401810370`, `401810425`, `401810580`, `401810747`. Each shifts to the day
+    before the date in its own stamp.
+  - **Which day is right is not yet proven.** No team ends up with two games on
+    one shifted Eastern date, so the collision test that would settle it comes
+    back empty. The fixed shift is right for every other row in the table (see
+    DATA.md, "A NetPoints date is not an ESPN date"); it is only these stamps,
+    which are not tip times at all, that it cannot read.
+- **User sees:** a game log line, a month split or a back-to-back for those 10
+  games dated one day early, stated as fact. Nothing marks the date as derived
+  from a stamp that carries no time.
+- **Next step:** cross-check one of the ten against the box score's own
+  evidence the way `scripts/check_net_points_games.py` does - the NetPoints
+  daily file for 2025-11-05 either holds that game's players or the 11-04 one
+  does. If the stamp's own date is right, read a date-only stamp as its written
+  date rather than shifting it.
+- **Source:** DATA.md, "`games` carries placeholder, duplicate and phantom rows"
 
 ## P3: refusal or gap
 

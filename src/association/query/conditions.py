@@ -32,10 +32,16 @@ against the warehouse rather than assumed:
   hours ``fetch.parse`` uses to match NetPoints files to games, and it is safe
   for the same reason: EST and EDT disagree about a date only between midnight
   and 1am Eastern, when no NBA game starts.
-- **A game with no winner is not a result.** 268 team-games in 1999-2002 are
-  0-0 placeholders with no ``winner_team_id``, and 252 of them fall on the same
-  Eastern date as that team's real game. Counted, each would be a loss, so
-  they are dropped instead.
+- **Not every row of ``games`` is a game.** ESPN serves 0-0 placeholders with
+  no winner (268 team-games in 1999-2002, 252 of them on the same Eastern date
+  as that team's real game), rows naming a team id that is in no franchise, and
+  phantoms that carry a winner but no box score. Counted, a placeholder is a
+  loss and a phantom is a result nobody played. Every query here reads
+  ``real_games`` instead - the one filtered list, built at load time by
+  :mod:`association.fetch.real_games` and shared with ``head_to_head`` and
+  ``team_metrics`` - rather than filtering for itself. This module used to
+  apply ``winner_team_id IS NOT NULL`` and nothing else, which caught the
+  placeholders and no other kind.
 
 Season 1993 is a copy of 1994 (see :mod:`association.coverage`), so a span of
 several seasons leaves it out rather than counting 1993-94 twice.
@@ -172,8 +178,8 @@ def _team_games(scope: _Scope, extra: str = "") -> str:
                CASE WHEN tbs.home_away = 'home' THEN g.home_score ELSE g.away_score END AS team_score,
                CASE WHEN tbs.home_away = 'home' THEN g.away_score ELSE g.home_score END AS opponent_score,
                tbs.totalRebounds, tbs.assists, tbs.threePointFieldGoalsMade, tbs.fieldGoalsMade, tbs.fieldGoalsAttempted
-        FROM team_box_stats tbs JOIN games g ON g.event_id = tbs.event_id AND g.season = tbs.season
-        WHERE g.winner_team_id IS NOT NULL AND {scope.where("tbs")}{extra}"""
+        FROM team_box_stats tbs JOIN real_games g ON g.event_id = tbs.event_id AND g.season = tbs.season
+        WHERE {scope.where("tbs")}{extra}"""
 
 
 def _player_games(scope: _Scope, player: str = "player", extra: str = "") -> str:
@@ -187,9 +193,9 @@ def _player_games(scope: _Scope, player: str = "player", extra: str = "") -> str
                CASE WHEN tbs.home_away = 'home' THEN g.home_score ELSE g.away_score END AS team_score,
                CASE WHEN tbs.home_away = 'home' THEN g.away_score ELSE g.home_score END AS opponent_score
         FROM player_box_stats pbs
-        JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season
+        JOIN real_games g ON g.event_id = pbs.event_id AND g.season = pbs.season
         JOIN team_box_stats tbs ON tbs.event_id = pbs.event_id AND tbs.team_id = pbs.team_id AND tbs.season = pbs.season
-        WHERE g.winner_team_id IS NOT NULL AND {_played("pbs")} AND {scope.where("pbs")}{who}{extra}"""
+        WHERE {_played("pbs")} AND {scope.where("pbs")}{who}{extra}"""
 
 
 def _box_missing(scope: _Scope) -> str:
@@ -198,8 +204,8 @@ def _box_missing(scope: _Scope) -> str:
     are unknown rather than games everybody missed."""
     return f"""
         SELECT tbs.team_id, tbs.opponent_team_id, tbs.season, tbs.event_id, g.date AS stamp, {_eastern_day("g.date")} AS day
-        FROM team_box_stats tbs JOIN games g ON g.event_id = tbs.event_id AND g.season = tbs.season
-        WHERE g.winner_team_id IS NOT NULL AND {scope.where("tbs")}
+        FROM team_box_stats tbs JOIN real_games g ON g.event_id = tbs.event_id AND g.season = tbs.season
+        WHERE {scope.where("tbs")}
           AND NOT EXISTS (
               SELECT 1 FROM player_box_stats q WHERE q.event_id = tbs.event_id AND q.team_id = tbs.team_id AND q.season = tbs.season AND q.minutes IS NOT NULL
           )"""
@@ -405,7 +411,7 @@ def _stints(con: duckdb.DuckDBPyConnection, athlete_id: str, phantoms: tuple[int
         f"""
         WITH r AS (
             SELECT pbs.team_id, pbs.season, pbs.event_id, g.date AS stamp, {_eastern_day("g.date")} AS day
-            FROM player_box_stats pbs JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season
+            FROM player_box_stats pbs JOIN real_games g ON g.event_id = pbs.event_id AND g.season = pbs.season
             WHERE pbs.athlete_id = $player{excluded}
         ), m AS (
             SELECT r.*, CASE WHEN team_id IS DISTINCT FROM LAG(team_id) OVER w OR season - LAG(season) OVER w > 1 THEN 1 ELSE 0 END AS starts

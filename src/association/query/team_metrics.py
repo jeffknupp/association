@@ -247,20 +247,26 @@ def resolve_team_metric(stat: object) -> str | None:
 
 
 # One row per team per game, from that team's side, over every game that was
-# actually played - built from `games` alone, because `games` is the only table
+# actually played - built from `real_games` alone, because it is the only table
 # holding who won and it needs no second table to say which side a team was on.
-# What it removes, each measured:
 #
-# - Rows with no winner. 1999 and 2000 hold 50 and 82 phantom "games" scored
-#   0-0, a few hours before the real game between the same two teams; 2001 and
-#   2002 hold one each.
-# - Duplicates. A team cannot play twice on one Eastern calendar date, so a
-#   second row for the same pairing that day is the same game under a second
-#   event id - 2003 Dallas-Philadelphia on January 4 and the 2000 Toronto-New
-#   York playoff game on April 30. The same partition collapses season 1993,
-#   which is a full copy of 1994 under a second label (see coverage.COVERAGE);
-#   the 1994 label is the one kept.
-# - Nothing else. The NBA Cup final is FLAGGED rather than dropped: it is a
+# `real_games` (fetch/real_games.py) is the shared filtered list, and it is
+# where the 0-0 placeholders, the rows naming a team id no franchise has, and
+# the same-day duplicates now go. This used to do two of those three for
+# itself: it dropped rows with no winner and same-day duplicates, and kept
+# every phantom that carried a winner - which is how the 1995 Finals game filed
+# as MIA-ORL gave Orlando an 11th playoff loss and Miami a postseason it never
+# played. Building it here meant `conditions` and `head_to_head` each had to
+# reach the same conclusion separately, and neither did.
+#
+# What is left here is the ONE thing `real_games` deliberately does not do:
+# collapse season 1993, which is a full copy of 1994 under a second label (see
+# coverage.COVERAGE). That is a phantom SEASON rather than a phantom row, its
+# two copies differ only in the `season` column, and a postseason is selected
+# by the year it was PLAYED, so nothing else would drop the second copy. The
+# 1994 label is the one kept.
+#
+# The NBA Cup final is FLAGGED rather than dropped: it is a
 #   season_type 2 game that counts in no standings and no team season totals
 #   (the 2026 Knicks' 82 games and 9,549 points in both leave out their 124 in
 #   the final), so a regular-season record must skip it, but a record against
@@ -275,7 +281,7 @@ def resolve_team_metric(stat: object) -> str | None:
 TEAM_GAMES_SQL = """
 WITH cup_finals AS (
     SELECT arg_max(event_id, date) AS event_id
-    FROM games
+    FROM real_games
     WHERE season_type = 2 AND neutral_site AND venue_city = 'Las Vegas'
     GROUP BY season
 ),
@@ -284,8 +290,7 @@ listed AS (
            coalesce(g.neutral_site, false) AS neutral,
            CAST(CAST(REPLACE(g.date, 'Z', '') AS TIMESTAMP) - INTERVAL 5 HOUR AS DATE) AS eastern_date,
            g.event_id IN (SELECT event_id FROM cup_finals) AS cup_final
-    FROM games g
-    WHERE g.winner_team_id IS NOT NULL
+    FROM real_games g
 ),
 played AS (
     SELECT * FROM listed

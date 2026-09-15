@@ -23,6 +23,7 @@ from typing import Any
 import duckdb
 import pytest
 
+from association.fetch import real_games
 from association.query.templates import (
     SPLIT_KINDS,
     TemplateContext,
@@ -135,6 +136,8 @@ def league(tmp_path: Path) -> TemplateContext:
     # 8pm Eastern on November 30th. Journeyman has the NULL-minutes shape
     # beside teammates who played: a game he did not play.
     _game(c, "e7", f"{S - 1}-12-01T01:00Z", LAL, BOS, 115, 105, [_played(TATUM, BOS, 31), _played(BROWN, BOS, 12), _played(LEBRON, LAL, 33), _blank(JOURNEYMAN, LAL)])
+    # The shared filtered list every query here reads; e6 is dropped by it.
+    real_games.build_table(c, {"games", "teams", "player_box_stats"})
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
