@@ -465,6 +465,105 @@ def test_parse_player_career_stats_splits_compound_and_groups_by_season_team() -
     assert row["avgFieldGoalsAttempted"] == 10.0
 
 
+# ---------------- season totals repair ----------------
+#
+# Fixtures are in the shape of the real bad rows. Seth Curry's 2025 line is
+# served by ESPN's career endpoint with `avgPoints` 6.5 and no totals category
+# at all; David Wood's 1995-96 is the traded-player case, where the per-season
+# endpoint's 62-game combined figure must not land on any of his three stints.
+
+
+def _core_stat(name: str, value: float, display: str) -> dict[str, Any]:
+    return {"name": name, "displayName": name, "description": f"The {name}.", "value": value, "displayValue": display}
+
+
+def _core_payload(games: int, points: int, **extra: tuple[float, str]) -> dict[str, Any]:
+    """One core per-season statistics response, in ESPN's real nesting."""
+    stats = [_core_stat("gamesPlayed", float(games), str(games)), _core_stat("points", float(points), str(points))]
+    stats.extend(_core_stat(name, value, display) for name, (value, display) in extra.items())
+    # PER is one of the 61 stat names this endpoint carries that the warehouse
+    # has no column for - it must be dropped, not silently widen the table.
+    stats.append(_core_stat("PER", 13.42, "13.4"))
+    return {"splits": {"id": "0", "name": "All Splits", "type": "total", "categories": [{"name": "general", "stats": stats}]}}
+
+
+def test_parse_player_season_totals_handles_a_missing_season() -> None:
+    row, glossary = parse.parse_player_season_totals(None)
+    assert row == {}
+    assert glossary == []
+
+
+def test_parse_player_season_totals_types_a_count_the_way_the_career_endpoint_does() -> None:
+    """Regression: this endpoint reports every stat as a float (`points` is
+    `444.0`), and writing that beside the career endpoint's ints would leave one
+    Parquet file disagreeing with every other about the column's type. Reading
+    displayValue reproduces the career endpoint's own int/float split."""
+    row, glossary = parse.parse_player_season_totals(_core_payload(68, 444, assistTurnoverRatio=(1.8972603, "1.9")))
+    assert row["points"] == 444
+    assert isinstance(row["points"], int)
+    assert row["gamesPlayed"] == 68
+    assert row["assistTurnoverRatio"] == 1.9
+    assert isinstance(row["assistTurnoverRatio"], float)
+    assert "PER" not in row
+    assert {g["stat_key"] for g in glossary} == {"gamesPlayed", "points", "assistTurnoverRatio"}
+
+
+def test_seasons_missing_totals_asks_once_per_season_and_skips_what_cannot_be_repaired() -> None:
+    rows: list[dict[str, Any]] = [
+        {"season": 2022, "team_id": "20", "gamesPlayed": 45, "avgPoints": 15.0},  # stint, no totals
+        {"season": 2022, "team_id": None, "gamesPlayed": 64, "avgPoints": 15.0},  # combined, no totals
+        {"season": 2023, "team_id": "17", "gamesPlayed": 61, "points": 561},  # complete
+        {"season": 1983, "team_id": None, "gamesPlayed": None},  # all-NULL combined row: nothing can fill it
+        {"season": 2018, "team_id": "7", "gamesPlayed": 0},  # played nothing
+    ]
+    assert parse.seasons_missing_totals(rows) == [2022]
+
+
+def test_fill_missing_season_totals_fills_a_line_served_without_totals() -> None:
+    rows = [{"season": 2025, "team_id": "30", "gamesPlayed": 68, "avgPoints": 6.5}]
+    totals, _ = parse.parse_player_season_totals(_core_payload(68, 444))
+    assert parse.fill_missing_season_totals(rows, 2025, totals) == 1
+    assert rows[0]["points"] == 444
+
+
+def test_fill_missing_season_totals_refuses_a_traded_players_stint_rows() -> None:
+    """The load-bearing guard. The per-season endpoint has no team dimension, so
+    David Wood's 1995-96 answers 62 games and 208 points against every one of
+    his three stints. Only the combined row may take it; a stint that took it
+    would read 208 points in 21 games and no error would be raised anywhere."""
+    rows: list[dict[str, Any]] = [
+        {"season": 1996, "team_id": "9", "gamesPlayed": 21, "avgPoints": 1.0},
+        {"season": 1996, "team_id": "21", "gamesPlayed": 4, "avgPoints": 1.0},
+        {"season": 1996, "team_id": "6", "gamesPlayed": 37, "avgPoints": 4.9},
+        {"season": 1996, "team_id": None, "gamesPlayed": 62, "avgPoints": 3.4},
+    ]
+    totals, _ = parse.parse_player_season_totals(_core_payload(62, 208))
+    assert parse.fill_missing_season_totals(rows, 1996, totals) == 1
+    assert rows[3]["points"] == 208
+    assert [row.get("points") for row in rows[:3]] == [None, None, None]
+
+
+def test_fill_missing_season_totals_refuses_when_two_rows_could_take_it() -> None:
+    """A season cannot have two whole-season lines, so a tie on games played
+    means the count is not identifying what it is assumed to identify - the same
+    refusal a date holding two of one team's games gets."""
+    rows: list[dict[str, Any]] = [
+        {"season": 2014, "team_id": "29", "gamesPlayed": 2, "avgPoints": 0.0},
+        {"season": 2014, "team_id": None, "gamesPlayed": 2, "avgPoints": 1.5},
+    ]
+    totals, _ = parse.parse_player_season_totals(_core_payload(2, 3))
+    assert parse.fill_missing_season_totals(rows, 2014, totals) == 0
+    assert [row.get("points") for row in rows] == [None, None]
+
+
+def test_fill_missing_season_totals_never_replaces_a_value_espn_already_served() -> None:
+    rows = [{"season": 2025, "team_id": "30", "gamesPlayed": 68, "assists": 111}]
+    totals, _ = parse.parse_player_season_totals(_core_payload(68, 444, assists=(222.0, "222")))
+    assert parse.fill_missing_season_totals(rows, 2025, totals) == 1
+    assert rows[0]["points"] == 444
+    assert rows[0]["assists"] == 111
+
+
 def test_parse_net_points_player_converts_start_year_to_end_year_season() -> None:
     """NetPoints labels a season by the year it starts (2025 = the 2025-26
     season); this project's convention (used everywhere else) is the year it

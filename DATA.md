@@ -156,23 +156,61 @@ likewise.
 - **Tracked in:** ISSUES.md, "Smaller game and box-score gaps, 1994-2003"
   (#14).
 
-### 246 season lines are served with no totals
+### The career endpoint drops its totals category, unpredictably and in part
 
-- **What ESPN does:** its per-player career endpoint returns the averages
-  category for a season and nothing in the totals category, so the line has
-  `avgPoints` and a NULL `points`.
+- **Re-measured 2026-09-14**, which rewrote this entry. It used to say the
+  career endpoint returns the averages category and nothing else for these
+  lines, permanently, and that a refetch does not fix it. Both halves were
+  wrong; what was right is that 246 season lines carry `avgPoints` beside a
+  NULL `points`.
+- **What ESPN does:** its per-player career endpoint
+  (`WEB_V3/athletes/{id}/stats?seasontype=`) publishes three categories —
+  `averages`, `totals`, `miscellaneous` — and **two different things go wrong
+  with the last two.**
+  - **It sometimes serves the averages category alone.** Not per player and not
+    permanently: **53** of the 107 affected files were stored that way (26
+    columns instead of 51 — no `points` column at all), and re-requested on
+    2026-09-14, **33 of those 53 now come back with all three categories**. The
+    other 20 still do not. No file went the other way.
+  - **Even a complete answer omits some lines from `totals`.** 62 of the NULL
+    rows sit in files that DO have the category. **55 of those 62 scored
+    nothing** (`avgPoints` 0 or NULL — a 1-2 game call-up), and the remaining
+    **7 are traded players' combined rows**. Seth Curry's 2014 shows both: the
+    `averages` category lists team 29, team 5 and the combined row, while
+    `totals` lists team 5 alone, dropping his scoreless 1-game stint and the
+    combined row with it.
 - **Evidence:** 104 regular-season rows across 42 players and 142 postseason
-  rows across 65 players have every counting total NULL. In 98 of the
-  regular-season rows the `avg*` columns are still filled — Seth Curry's 2022
-  reads `avgPoints` 15.0 beside a NULL `points`, and every one of his 18
-  regular-season rows from 2014 on is NULL-totaled. The other 6 are the all-NULL
-  combined rows in the traded-players entry below. Lou Amundson (2007-2016) and
-  David Wood (1989-1997) recur the same way, as do postseason lines for Nazr
-  Mohammed (12 rows), Zach Randolph (9), Theo Ratliff (8) and Gabe Vincent (7).
-- **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull**, which
-  reproduced `player_season_stats` exactly apart from 13 `position` values.
-- **How we handle it:** nothing yet. Totals leaderboards and career sums drop
-  these seasons silently.
+  rows across 65 players have every counting total NULL, over 107
+  (athlete, season_type) files. Seth Curry reads `avgPoints` 15.0 beside a NULL
+  `points` for 2022, and all 18 of his regular-season rows from 2014 on are
+  NULL-totaled. Lou Amundson (2007-2016) and David Wood (1989-1997) recur the
+  same way, as do postseason lines for Nazr Mohammed (12 rows), Zach Randolph
+  (9), Theo Ratliff (8) and Gabe Vincent (7). Six of the 246 are the all-NULL
+  combined rows in the traded-players entry below.
+- **Does a refetch fix it?** **Yes, 123 of the 246 rows** — re-requested live on
+  2026-09-14 and parsed with the real parser. The earlier "no, proven by the
+  2026-09-11 fresh pull" was not evidence about ESPN at all: that pull never
+  re-requested a single one of these files, because a career file is
+  checkpointed per (athlete, season_type) and skipped once it exists. Their
+  Parquet mtimes are all 2026-09-06 to 2026-09-09.
+- **A second endpoint has the rest**, found live 2026-09-14:
+  `CORE_V2/seasons/{season}/types/{season_type}/athletes/{id}/statistics`
+  answers with a real `points` for these lines, back to at least 1989 (David
+  Wood 1991 → 432), and 404s only for the six all-NULL combined rows. It is a
+  much wider source than the career endpoint — 112 stat names against the 51
+  columns stored here, including `PER`, `RPM`, `ORPM`, `DRPM`, `VORP`, `WARP`
+  and a whole `avg48*` family.
+- **But it has no team dimension.** Keyed by (season, season_type, athlete)
+  alone, so a player traded mid-season gets his COMBINED figure back against
+  every one of his stint rows: all three of David Wood's 1995-96 stints (21, 4
+  and 37 games) answer 208 points. It can fill a whole-season line; it cannot
+  split one.
+- **How we handle it:** `Pipeline._repair_season_totals` fetches the second
+  endpoint for any line the career endpoint left totals-less, and
+  `fill_missing_season_totals` matches on games played before using it — one
+  row per season, refusing when two tie. 110 requests fill 226 of the 246 rows.
+  The 20 left are 14 scoreless one-game stints and the 6 all-NULL combined
+  rows.
 - **Tracked in:** ISSUES.md, "246 season lines have NULL totals" (#5).
 
 ### NetPoints publishes a display name, not a player id

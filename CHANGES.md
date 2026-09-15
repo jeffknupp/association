@@ -15,6 +15,45 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A season line served with no totals is repaired from a second endpoint.**
+  246 rows in `player_season_stats` carried `avgPoints` 15.0 beside a NULL
+  `points`, so every career sum and totals leaderboard was silently short and
+  19 players - Seth Curry among them - were dropped from the career scoring
+  list outright, because every one of their season rows was NULL.
+
+  The cause was two faults stacked, and only one is ESPN's. 53 of the 107
+  affected career files were served with **only** an averages category, and the
+  pull wrote that as-is and checkpointed it, so no later pull ever looked at
+  them again - which is also why "a refetch does not fix it" was recorded
+  against this: the 2026-09-11 pull never re-requested a single one of them
+  (their Parquet mtimes are all 2026-09-06 to 09). ESPN's own fault is the
+  smaller half: even a complete payload omits a line from its `totals`
+  category when the player scored nothing (55 of the 62 remaining rows) or when
+  it is a traded player's combined row (the other 7).
+
+  `fetch_player_season_stats` now repairs such a line from
+  `player_season_totals_url`, the core per-season endpoint, before writing the
+  file. Fetched rather than derived, and the difference is measurable:
+  `avg × gamesPlayed` reproduces a known total exactly only 49% of the time
+  (14,464 of 29,534 rows, worst error 4), because the `avg*` columns are
+  rounded to one decimal. Seth Curry's career is the case for reading the real
+  number rather than trusting that spread: derived, it comes to 5,547.4999 -
+  right on the coin-flip, and 5,547 only because `round` went that way.
+
+  The per-season endpoint has **no team dimension**, which is the whole
+  difficulty: it answers a traded player's combined figure against every one of
+  his stints, so David Wood's 21-, 4- and 37-game 1995-96 rows all come back
+  208 points. `fill_missing_season_totals` therefore matches on games played
+  and fills exactly one row per season, refusing outright when two rows tie -
+  a stint that took the combined figure would read 208 points in 21 games with
+  nothing anywhere to say it was wrong.
+
+  Measured against the warehouse: 110 requests repair 226 of the 246 rows
+  (123 from the career endpoint alone, which now serves totals for 87 of the
+  107 files, and 103 from the per-season one). The remaining 20 are 14
+  one-game lines that scored nothing and the 6 all-NULL combined rows from
+  1977-1983, which ESPN answers 404 for. Career-leaderboard drops go from 19
+  players to 0. Backfilled with `scripts/backfill_season_totals.py`.
 - **A single-game high keeps the player the question named.** "most points
   curry scored in a game this season" came back from the router as
   `single_game_high` with no player slot at all, and the answer was the

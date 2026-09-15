@@ -321,14 +321,50 @@ class Pipeline:
         endpoint isn't scoped to a single season), so re-fetching it during an
         in-progress season (force_refresh=True, from _run_season_type below)
         naturally picks up that season's latest numbers along with everything
-        else - no separate per-season key needed."""
+        else - no separate per-season key needed.
+
+        .. versionchanged:: 2.2.0
+           A season line the career endpoint serves with no totals is repaired
+           from the per-season endpoint before the file is written.
+        """
         path = self._p("player_season_stats", f"athlete_{athlete_id}_type_{season_type}.parquet")
         if storage.exists(path) and not self.force and not force_refresh:
             return
         data = self._live_client.get_json(endpoints.player_career_stats_url(athlete_id), params={"seasontype": season_type})
         rows, glossary = parse.parse_player_career_stats(data, athlete_id, season_type)
         self._add_glossary(glossary)
+        self._repair_season_totals(rows, athlete_id, season_type)
         self._write_rows(path, rows)
+
+    def _repair_season_totals(self, rows: list[dict[str, Any]], athlete_id: str, season_type: int) -> None:
+        """Fetch the totals ESPN's career endpoint left off a season line.
+
+        That endpoint sometimes answers with only its ``averages`` category, and
+        even a complete answer omits a line that scored nothing - so a real
+        season arrives with `avgPoints` 15.0 beside a NULL `points`, and every
+        sum over it is silently short. Measured across the warehouse: 246 such
+        lines, 53 whole career files served averages-only, and the remaining 62
+        NULL lines are 55 zero-scoring ones and 7 traded-player combined rows.
+
+        The repair runs BEFORE the file is written, so it costs nothing on a
+        re-run that skips the file, and a pull that fetches nothing fetches
+        nothing here either. It is charged per (season) needing one, not per
+        row: the endpoint has no team dimension, so a traded player's four
+        broken rows are one request. Measured against the whole warehouse, 110
+        requests repair all 246 lines.
+
+        Best effort by design. ESPN answers 404 for a season it has nothing
+        for, which :meth:`ESPNClient.get_json` returns as None, and a line that
+        cannot be matched on games played is left NULL rather than filled with
+        a figure that belongs to a different scope.
+        """
+        for season in parse.seasons_missing_totals(rows):
+            data = self._live_client.get_json(endpoints.player_season_totals_url(season, season_type, athlete_id))
+            totals, glossary = parse.parse_player_season_totals(data)
+            if not totals:
+                continue
+            self._add_glossary(glossary)
+            parse.fill_missing_season_totals(rows, season, totals)
 
     # ---------------- team season stats ----------------
     def fetch_team_season_stats(self, season: int, season_type: int, team_id: str, force_refresh: bool = False) -> None:
