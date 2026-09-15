@@ -15,6 +15,28 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Per-game answers now read the rebuilt box line, and say that they did.**
+  Where ESPN serves an empty box score, `player_game_log` carries the figures
+  rebuilt from play-by-play, and `single_game_high` and `game_log` read them.
+  "What was Anthony Davis's highest-scoring game in 2015?" went from *0*, to a
+  refusal, to **43, on 2014-11-22 vs UTAH** - with the answer saying the figure
+  is rebuilt rather than fetched. His 2015 game log lists 68 games where it
+  used to report none.
+
+  Deliberately narrow, on measured grounds. Only the stats a rebuild gets right
+  are read (`REBUILT_STATS`): per player-game against the 22,646 games of 2015
+  whose real box score survived, free throws are exact to 0.0003, blocks 0.002,
+  rebounds and assists 0.004, field goals made 0.005, steals 0.009 and points
+  0.021 - but turnovers 0.080 and fouls 0.181, so those two are refused. Ask
+  for a player's fouls in an empty season and the answer says the lines exist
+  and were held back, rather than implying the data is missing.
+
+  **Season totals are not read anywhere**, and that is the same measurement
+  seen from further away: a season is exact only when the net error over every
+  game is zero, so it lands right about half the time, and the error scales
+  with games played - a right total averages 31.6 games, a wrong one 55.6.
+  `minutes` is never invented; it prints blank on a rebuilt row, and the log
+  says so beneath the table.
 - **A row narrower than the rows after it no longer truncates the whole file.**
   `storage.write_rows` passed its rows straight to `pa.Table.from_pylist`, which
   takes the Parquet schema from the FIRST row and silently drops every key only

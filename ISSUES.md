@@ -112,16 +112,21 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   did-not-play rows correctly left alone. It never touches a real line, never
   invents `minutes`, and drops the stored `plusMinus` on a substituted row -
   that column is a uniform 0 placeholder across all 21,169, not data.
-- **Next step - the last piece.** No template reads `player_box_stats_filled`
-  yet; `player_game_log` and the box-score templates still read the stored
-  table. Wire them to it and make the answer SAY the figures were rebuilt
-  wherever `reconstructed` is true. The wording matters more than the plumbing:
-  per game the rebuild is strong (points 98.3% exact, free throws 100%,
-  assists 99.6%), but a SEASON total is exact only 51.7% of the time, biased
-  low, with 2016 much the worst (mean -16.8 points, 180 of its scoring plays
-  typed `Not Available`). So it can say roughly what a game looked like and
-  must not be quoted as a record. Deferred while three agents hold
-  `templates.py`, `conditions.py` and `warehouse.py`.
+- **Done 2026-09-14 - the per-game templates read it.** `player_game_log` is
+  built from `player_box_stats_filled`, and `single_game_high` and `game_log`
+  read rebuilt lines for the stats a rebuild gets right (`REBUILT_STATS`:
+  points, rebounds, assists, steals, blocks, field goals made, free throws
+  made). Davis's 2015 high went from a false `0`, to a refusal, to **43 on
+  2014-11-22 vs UTAH**, with the answer saying the figure is rebuilt; his 2015
+  game log lists 68 games where it reported none. Turnovers (0.080 mean error)
+  and fouls (0.181) are refused, and that refusal names the decision rather
+  than implying missing data.
+- **What remains.** `threshold_count` still reads `player_box_stats` directly
+  rather than the log, so "how many 20-point games did Davis have in 2015"
+  still answers 0 with a caveat. It is the same wiring, one table further
+  along. Season aggregates stay on the stored table on purpose: a rebuilt
+  season total is exact only about half the time and its error grows with games
+  played (right totals average 31.6 games, wrong ones 55.6).
 - The rest of this entry stands unchanged: box-derived sums over 2013-2018 are
   still about 87% of ESPN's own season totals, and no refetch changes that.
 - **Source:** DATA.md, "Every Chicago and New Orleans game from 2013 to 2018 has an empty box score"

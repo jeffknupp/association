@@ -618,7 +618,28 @@ def _seasons_on_record(con: duckdb.DuckDBPyConnection, athlete_id: str, season_t
     return (row[0], row[1]) if row else (None, None)
 
 
-def _empty_box_scores(con: duckdb.DuckDBPyConnection, season: int | None, season_type: int, athlete_id: str | None) -> tuple[int, int | None, int | None]:
+def _rebuilt_in_scope(con: duckdb.DuckDBPyConnection, season: int | None, season_type: int, athlete_id: str | None) -> int:
+    """How many games in scope carry a line rebuilt from play-by-play.
+
+    Used to explain a refusal rather than to answer: when the stat asked for is
+    outside :data:`REBUILT_STATS`, "no games with a box score" is true of the
+    fetched lines and hides that rebuilt ones exist and were withheld on
+    purpose. Saying which is the difference between a gap and a decision.
+
+    .. versionadded:: 2.2.0
+    """
+    if not _log_carries_rebuilt(con):
+        return 0
+    scope, params = _box_scope("l", season, season_type)
+    where = f"{scope} AND l.reconstructed"
+    if athlete_id is not None:
+        where += " AND l.athlete_id = ?"
+        params.append(athlete_id)
+    row = con.execute(f"SELECT COUNT(*) FROM player_game_log l WHERE {where}", params).fetchone()
+    return int(row[0]) if row else 0
+
+
+def _empty_box_scores(con: duckdb.DuckDBPyConnection, season: int | None, season_type: int, athlete_id: str | None, *, covered_by_rebuild: bool = False) -> tuple[int, int | None, int | None]:
     """Games in scope whose box score is empty: (count, first season, last season).
 
     Every game from 2012-13 through 2017-18 has a box score, but 161-166 a
@@ -626,7 +647,31 @@ def _empty_box_scores(con: duckdb.DuckDBPyConnection, season: int | None, season
     James's 76 games of 2012-13 are all present and sum to 1,835 points, against
     the season table's 2,036. A zero can hide a real maximum or a real count but
     never invent one, so the answer stands - and says how many games it could
-    not see. For a player, only the empty games he actually played in count."""
+    not see. For a player, only the empty games he actually played in count.
+
+    ``covered_by_rebuild`` excludes the games the answer DID see through
+    ``player_box_stats_filled``. Without it the same answer both reads a game
+    and reports it as unseen - "his highest was 43, rebuilt from play-by-play"
+    beside "68 of his games have an empty box score, so a bigger game may be
+    missing", where those 68 are the very games the 43 came from.
+    """
+    if covered_by_rebuild and _log_carries_rebuilt(con):
+        # What is still unseen: no minutes AND no rebuild to stand in for them.
+        scope, params = _box_scope("l", season, season_type)
+        if athlete_id is None:
+            sql = (
+                f"SELECT COUNT(*), MIN(season), MAX(season) FROM (SELECT l.season FROM player_game_log l WHERE {scope} "
+                "GROUP BY l.event_id, l.season HAVING MAX(l.minutes) IS NULL AND NOT BOOL_OR(COALESCE(l.reconstructed, FALSE)))"
+            )
+        else:
+            sql = (
+                f"SELECT COUNT(*), MIN(l.season), MAX(l.season) FROM player_game_log l WHERE {scope} "
+                "AND l.minutes IS NULL AND NOT COALESCE(l.reconstructed, FALSE) AND NOT COALESCE(l.did_not_play, FALSE) AND l.athlete_id = ?"
+            )
+            params.append(athlete_id)
+        row = con.execute(sql, params).fetchone()
+        return (int(row[0]), row[1], row[2]) if row else (0, None, None)
+
     scope, params = _box_scope("b", season, season_type)
     empty = f"SELECT b.event_id, b.season FROM player_box_stats b WHERE {scope} GROUP BY b.event_id, b.season HAVING MAX(b.minutes) IS NULL"
     if athlete_id is None:
@@ -1474,6 +1519,85 @@ def _span_of(span: Any, season: Any, season_type: int, table: str) -> _Span:
 # many.
 _RECORDED = "pgl.minutes IS NOT NULL"
 
+#: The stats a rebuilt box line may be read for, and the reason the list is
+#: short.
+#:
+#: Where ESPN serves an empty box score, ``player_box_stats_filled`` carries a
+#: line rebuilt from play-by-play (see
+#: :mod:`association.fetch.reconstructed_box`). Measured per player-game against
+#: the 22,646 games of the 2015 regular season whose real box score survived,
+#: the mean absolute error of a rebuilt figure is:
+#:
+#: ===================== ========= ==============
+#: Stat                  Exact     Mean abs error
+#: ===================== ========= ==============
+#: ``freeThrowsMade``    100.0%    0.0003
+#: ``blocks``            99.8%     0.002
+#: ``rebounds``          99.6%     0.004
+#: ``assists``           99.6%     0.004
+#: ``fieldGoalsMade``    99.6%     0.005
+#: ``steals``            99.1%     0.009
+#: ``points``            98.3%     0.021
+#: ``turnovers``         92.5%     0.080
+#: ``fouls``             83.3%     0.181
+#: ===================== ========= ==============
+#:
+#: ``turnovers`` and ``fouls`` are left out: an order of magnitude worse than
+#: the rest, and a foul is wrong in one game in six. The rest are wrong by
+#: hundredths of a point per game, which is why this is a PER-GAME list only.
+#:
+#: **A rebuilt SEASON total is a different matter and is not read anywhere.**
+#: A season is exact only when the net error over every game is zero, so it
+#: lands exactly right about half the time - and the error scales with games
+#: played: over the Chicago and New Orleans player-seasons, a total that is
+#: right averages 31.6 games and one that is wrong averages 55.6. 2016 is worse
+#: still (18.9% exact, mean -16.8 points) because 180 of its scoring plays carry
+#: ``type = 'Not Available'``.
+#:
+#: .. versionadded:: 2.2.0
+REBUILT_STATS: frozenset[str] = frozenset({"points", "rebounds", "assists", "steals", "blocks", "fieldGoalsMade", "freeThrowsMade"})
+
+# A rebuilt line has NULL minutes - play-by-play cannot recover them - so
+# `_RECORDED` hides it from every reader by default. This is the opt-in.
+_RECORDED_OR_REBUILT = "(pgl.minutes IS NOT NULL OR pgl.reconstructed)"
+
+
+def _log_carries_rebuilt(con: duckdb.DuckDBPyConnection) -> bool:
+    """Whether ``player_game_log`` has the ``reconstructed`` flag.
+
+    Checked rather than assumed, for the reason `AGENTS.md` records under "A
+    warehouse built before a view change is not detected": the column arrives
+    with a `data load`, and a query written as though it were always there
+    raises a Binder error against any older warehouse. Fixtures that build a
+    minimal log get the same answer, and keep their old behaviour.
+    """
+    try:
+        return any(row[0] == "reconstructed" for row in con.execute("DESCRIBE player_game_log").fetchall())
+    except duckdb.CatalogException:
+        return False
+
+
+def _rebuilt_readable(con: duckdb.DuckDBPyConnection, needed: list[str]) -> bool:
+    """Whether a log may show rebuilt lines, given the columns it will display.
+
+    Every column shown has to be one a rebuild gets right - see
+    :data:`REBUILT_STATS`. Ask for a player's fouls and the whole log falls back
+    to fetched lines, because a rebuilt foul is wrong in about one game in six
+    and a table gives no room to caveat one column.
+
+    ``minutes`` is exempt rather than a failure: play-by-play cannot recover it,
+    so it prints blank on a rebuilt row, which is the truth and is said in a
+    note beneath the table.
+
+    A function rather than an expression inline in the query, so the rule can be
+    asserted on directly - the inline version could be relaxed with no test
+    noticing.
+
+    .. versionadded:: 2.2.0
+    """
+    return _log_carries_rebuilt(con) and all(_LOG_COLUMNS[h] in REBUILT_STATS for h in needed if _LOG_COLUMNS[h] != "minutes")
+
+
 # One join serves venue and result both: games.home_team_id agrees with
 # team_box_stats.home_away on every row (checked, all 83,424). Keyed on season
 # too, since the phantom 1993 shares its event ids with 1994.
@@ -1507,10 +1631,17 @@ class _Narrowed:
     tenure: list[tuple[str, list[Any]]] = field(default_factory=list)
     date: str | None = None
 
-    def clauses(self, *, narrowed: bool = True, recorded: bool = True) -> tuple[str, list[Any]]:
+    def clauses(self, *, narrowed: bool = True, recorded: bool = True, rebuilt: bool = False) -> tuple[str, list[Any]]:
         """The WHERE body and its parameters - without the narrowing when
-        ``narrowed`` is false, and over the empty lines when ``recorded`` is."""
-        where = [*self.base, _RECORDED if recorded else f"NOT ({_RECORDED})"]
+        ``narrowed`` is false, and over the empty lines when ``recorded`` is.
+
+        ``rebuilt`` widens what counts as a game he played to include a line
+        rebuilt from play-by-play. The NEGATION uses the same widened guard, so
+        "games not counted" stays the complement of "games counted" - otherwise
+        a rebuilt game would be both listed and reported as skipped.
+        """
+        guard = _RECORDED_OR_REBUILT if rebuilt else _RECORDED
+        where = [*self.base, guard if recorded else f"NOT ({guard})"]
         params = list(self.base_params)
         if narrowed:
             where += self.extra
@@ -1707,16 +1838,25 @@ def _no_narrowed_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _Sp
     return f"{player.name} played {_count_games(total)} {during}, none of them{narrowed.filters()}."
 
 
-def _box_score_notes(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: _Narrowed, *, career_note: bool = True) -> list[str]:
+def _box_score_notes(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: _Narrowed, *, career_note: bool = True, rebuilt: bool = False, rebuilt_shown: int = 0) -> list[str]:
     """What a box-score answer has to say about itself: what "without" was
-    taken to mean, the empty lines left out, and - unless ``career_note`` is
-    off, as it is for one dated game - a career older than the box scores."""
+    taken to mean, the empty lines left out, the figures that were rebuilt
+    rather than fetched, and - unless ``career_note`` is off, as it is for one
+    dated game - a career older than the box scores."""
     notes = []
     if narrowed.without:
         names = [mate.name for mate in narrowed.without]
         who = "he did not play" if len(names) == 1 else ("neither of them played" if len(names) == 2 else "none of them played")
         notes.append(f"Without {_joined(names)} means games {who} while on the same team - a did-not-play entry, or no line in the box score at all, which is how most injuries appear.")
-    where, params = narrowed.clauses(recorded=False)
+    if rebuilt_shown:
+        # Said outright, because these numbers did not come from ESPN. Per game
+        # they are close (see REBUILT_STATS) but they are not the box score, and
+        # a reader quoting one should know which kind of number they hold.
+        notes.append(
+            f"{rebuilt_shown} of these game{'s have' if rebuilt_shown != 1 else ' has'} no box score from ESPN: "
+            f"{'their' if rebuilt_shown != 1 else 'its'} figures are rebuilt from play-by-play, and minutes cannot be recovered at all."
+        )
+    where, params = narrowed.clauses(recorded=False, rebuilt=rebuilt)
     row = con.execute(f"SELECT COUNT(*) {_PLAYER_GAMES} WHERE {where}", params).fetchone()
     empty = row[0] if row else 0
     if empty:
@@ -3127,9 +3267,16 @@ def _player_game_log(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span
     # A percentage is never fetched: it is computed from the made/attempted pair
     # behind it, which is fetched whether or not it is shown.
     needed = list(dict.fromkeys([*(h for h in headers if h in _LOG_COLUMNS), *(c for h in headers if h in _LOG_PERCENTAGES for c in _LOG_PERCENTAGES[h][:2])]))
-    where, params = narrowed.clauses()
+    # Rebuilt lines are read only when EVERY column shown is one a rebuild gets
+    # right (REBUILT_STATS). `minutes` is the exception rather than a failure:
+    # play-by-play cannot recover it, so it prints blank, which is the truth.
+    # Ask for a player's fouls and the log goes back to fetched lines only,
+    # because a rebuilt foul is wrong in one game in six.
+    rebuilt = _rebuilt_readable(con, needed)
+    where, params = narrowed.clauses(rebuilt=rebuilt)
     rows = con.execute(
         f"SELECT pgl.game_date, pgl.season, pgl.opponent_abbr, g.home_team_id = pgl.team_id, g.winner_team_id, pgl.team_id, "
+        f"{'pgl.reconstructed' if rebuilt else 'FALSE'}, "
         f"{', '.join(f'pgl.{_LOG_COLUMNS[h]}' for h in needed)} {_PLAYER_GAMES} WHERE {where} ORDER BY pgl.game_date {'ASC' if ascending else 'DESC'} LIMIT ?",
         [*params, limit],
     ).fetchall()
@@ -3147,7 +3294,7 @@ def _player_game_log(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span
 
     games: list[dict[str, Any]] = []
     raws: list[dict[str, Any]] = []
-    for game_date, season, opponent, home, winner, team_id, *values in rows:
+    for game_date, season, opponent, home, winner, team_id, is_rebuilt, *values in rows:
         raw = dict(zip(needed, values, strict=True))
         game: dict[str, Any] = {
             "date": _eastern_date(game_date),
@@ -3155,6 +3302,7 @@ def _player_game_log(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span
             "opponent": opponent,
             "home_away": "home" if home else "away",
             "result": None if winner is None else ("W" if winner == team_id else "L"),
+            "reconstructed": bool(is_rebuilt),
         }
         for h in headers:
             game[_log_key(h)] = _pct(raw[_LOG_PERCENTAGES[h][0]], raw[_LOG_PERCENTAGES[h][1]]) if h in _LOG_PERCENTAGES else raw[h]
@@ -3195,7 +3343,8 @@ def _player_game_log(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span
     if asked and count < asked and not narrowed.date:
         found_in = "in his box scores" if span.career else f"in the {_period(span.season or current_season(), span.season_type)} - ask about his career to reach earlier seasons"
         notes.append(f"Only {count} game{'s' if count != 1 else ''}{narrowed.filters()} {found_in}.")
-    notes += _box_score_notes(con, player, span, narrowed, career_note=not narrowed.date)
+    rebuilt_shown = sum(1 for g in games if g["reconstructed"])
+    notes += _box_score_notes(con, player, span, narrowed, career_note=not narrowed.date, rebuilt=rebuilt, rebuilt_shown=rebuilt_shown)
     return TemplateResult(
         data={**scope, "columns": headers, "games": games, "averages": averages},
         answer="\n".join([header, *_aligned(titles, body, left=3), *notes]),
@@ -3477,7 +3626,12 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     # single game in the 2015 regular season was 0, on 2014-10-28 vs ORL" -
     # fluent, dated, and false. This is the same line _played() draws in
     # `conditions`, which is why streaks and splits were never affected by it.
-    where = [scope, f"l.{column} IS NOT NULL", "l.minutes IS NOT NULL"]
+    # A rebuilt line may answer this, but only for a stat a rebuild gets right
+    # (REBUILT_STATS) - and only where the warehouse actually carries the flag,
+    # since an older one has no such column. Without both, the guard is the
+    # plain one and a rebuilt line stays invisible, exactly as before.
+    from_rebuilt = column in REBUILT_STATS and _log_carries_rebuilt(ctx.con)
+    where = [scope, f"l.{column} IS NOT NULL", "(l.minutes IS NOT NULL OR l.reconstructed)" if from_rebuilt else "l.minutes IS NOT NULL"]
     text = slots.get("player")
     named_player: Entity | None = None
     # The player slot is optional here: unset means "the league".
@@ -3490,13 +3644,14 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
         params.append(resolved.id)
 
     rows = ctx.con.execute(
-        f"SELECT l.player_name, l.{column}, l.game_date, l.opponent_abbr FROM player_game_log l WHERE {' AND '.join(where)} ORDER BY l.{column} DESC, l.game_date LIMIT ?",
+        f"SELECT l.player_name, l.{column}, l.game_date, l.opponent_abbr, {'l.reconstructed' if from_rebuilt else 'FALSE'} "
+        f"FROM player_game_log l WHERE {' AND '.join(where)} ORDER BY l.{column} DESC, l.game_date LIMIT ?",
         [*params, limit],
     ).fetchall()
 
     label = STAT_LABELS.get(stat or "", stat or "")
     span = _game_span(ctx.con, season, season_type, named_player)
-    games = [{"player": r[0], "value": r[1], "date": _eastern_date(r[2]), "opponent": r[3]} for r in rows]
+    games = [{"player": r[0], "value": r[1], "date": _eastern_date(r[2]), "opponent": r[3], "reconstructed": bool(r[4])} for r in rows]
     # `question_shape` names the scope in the same form leaderboard and
     # threshold_count use it: a caption for a caller that renders the rows
     # itself and would otherwise have no way to say what season they are from
@@ -3505,21 +3660,48 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     # Counted BEFORE the sentence is built, because when the guard above has
     # left nothing it is the difference between "he has no games" and "his
     # games have no box score" - which are different facts.
-    empty = _empty_box_scores(ctx.con, season, season_type, named_player.id if named_player else None)
+    # covered_by_rebuild: when the answer read rebuilt lines, the games it could
+    # not see are only those the rebuild could not reach either. Counting the
+    # rest would disclaim the very games the number came from.
+    empty = _empty_box_scores(ctx.con, season, season_type, named_player.id if named_player else None, covered_by_rebuild=from_rebuilt)
     who = named_player.name if named_player else None
-    answer = span.preface + _phrase_single_game_high(games, label, span, who, empty=empty)
+    # Only when the answer is empty AND the stat was deliberately withheld: a
+    # refusal that names a decision beats one that implies missing data.
+    withheld = 0 if games or column in REBUILT_STATS else _rebuilt_in_scope(ctx.con, season, season_type, named_player.id if named_player else None)
+    answer = span.preface + _phrase_single_game_high(games, label, span, who, empty=empty, withheld=withheld)
     if span.league_note:
         answer += f" Box scores begin in {span.since}, so this is not an all-time record: earlier games are not in this warehouse."
-    answer += _empty_note(empty, who, "a bigger game may be missing" if games else "there is no per-game high to read from them")
+    # Suppressed when `withheld` fired: that sentence already gave the count and
+    # the reason, and repeating it as "empty box scores, so there is no per-game
+    # high" contradicts it - the lines are there, they were held back.
+    if not withheld:
+        answer += _empty_note(empty, who, "a bigger game may be missing" if games else "there is no per-game high to read from them")
+    # Said whenever the ANSWER rests on a rebuilt line, not whenever one was
+    # read: a rebuilt game that lost to a fetched one changes nothing a reader
+    # needs to know about the number they were given.
+    if games and games[0]["reconstructed"]:
+        answer += " That game has no box score from ESPN - the figure is rebuilt from its play-by-play, so treat it as close rather than exact."
     return TemplateResult(
         data={"question_shape": shape, "season": season, "span": "career" if career else None, "stat": stat, "games": games, "empty_box_scores": empty[0]},
         answer=answer,
     )
 
 
-def _phrase_single_game_high(games: list[dict[str, Any]], label: str, span: _GameSpan, named_player: str | None, *, empty: tuple[int, int | None, int | None] = (0, None, None)) -> str:
+def _phrase_single_game_high(
+    games: list[dict[str, Any]], label: str, span: _GameSpan, named_player: str | None, *, empty: tuple[int, int | None, int | None] = (0, None, None), withheld: int = 0
+) -> str:
     if not games:
         who = f"{named_player} has" if named_player else "There are"
+        # A stat outside REBUILT_STATS with rebuilt lines in scope is a DECISION,
+        # not a gap, and the refusal has to say which. "No games with a box
+        # score" is true of the fetched lines and hides that the data exists and
+        # was withheld because it is not accurate enough to quote.
+        if withheld:
+            return (
+                f"{who} no {span.games} with a box score in the warehouse. {withheld:,} of them were rebuilt from play-by-play, "
+                f"but a {label} is not read from a rebuilt line: rebuilt fouls are wrong in about one game in six, and turnovers "
+                f"in one in thirteen, against one in sixty for points."
+            )
         # "No games" and "no games WITH A BOX SCORE" are different claims, and
         # the first said of a player who played 68 of them is the wrong-cause
         # refusal this project keeps producing: true-sounding, and it sends the

@@ -16,6 +16,7 @@ from association.query.templates import (
     SCOPING_SLOTS,
     TemplateContext,
     TemplateUnsupported,
+    _rebuilt_readable,
     check_scope,
     fingerprint,
     game_log,
@@ -1173,6 +1174,121 @@ def test_single_game_high_ambiguous_player_asks(sgh_ctx: TemplateContext) -> Non
     sgh_ctx.con.execute("INSERT INTO players VALUES ('3','Nikola Jovic')")
     sgh_ctx.con.execute("INSERT INTO player_game_log VALUES ('3',?,2,'Nikola Jovic','2026-02-01T00:30Z','BOS',4,12,26)", [current_season()])
     assert "did you mean" in (single_game_high(sgh_ctx, {"stat": "assists", "player": "Nikola"}).answer or "")
+
+
+@pytest.fixture
+def rebuilt_ctx(tmp_path: Path) -> TemplateContext:
+    """A season where ESPN served some box scores and left others empty, with
+    the empty ones rebuilt from play-by-play. `reconstructed` marks those, and
+    a rebuilt line has NULL minutes because play-by-play cannot recover them."""
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO players VALUES ('1','Anthony Davis')")
+    # `event_id` and `did_not_play` reach the real view through `pbs.*`, and
+    # _empty_box_scores reads both. A fixture without them passes a thinner
+    # table than any warehouse ever holds, and hides a column dependency.
+    c.execute(
+        "CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER, season_type INTEGER, player_name VARCHAR, "
+        "game_date VARCHAR, opponent_abbr VARCHAR, points INTEGER, fouls INTEGER, minutes INTEGER, reconstructed BOOLEAN, "
+        "event_id VARCHAR, did_not_play BOOLEAN)"
+    )
+    c.execute("CREATE TABLE player_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, athlete_id VARCHAR, minutes INTEGER, did_not_play BOOLEAN)")
+    s = current_season()
+    c.executemany(
+        "INSERT INTO player_game_log VALUES ('1',?,2,'Anthony Davis',?,?,?,?,?,?,?,FALSE)",
+        [
+            # Fetched: real box scores, real minutes.
+            (s, "2026-01-02T00:30Z", "ORL", 24, 3, 31, False, "e1"),
+            (s, "2026-01-05T00:30Z", "DAL", 18, 5, 28, False, "e2"),
+            # Rebuilt: no box score, figures from the plays, no minutes.
+            (s, "2026-01-08T00:30Z", "MIA", 43, 1, None, True, "e3"),
+            (s, "2026-01-11T00:30Z", "PHX", 12, 6, None, True, "e4"),
+        ],
+    )
+    return TemplateContext(con=c, out_dir=tmp_path)
+
+
+def test_a_rebuilt_game_can_win_a_single_game_high(rebuilt_ctx: TemplateContext) -> None:
+    """The whole point of the rebuild: before it, a season ESPN served empty had
+    no per-game answer at all. 43 beats every fetched game here."""
+    answer = single_game_high(rebuilt_ctx, {"stat": "points", "player": "Anthony Davis"}).answer or ""
+    assert "43" in answer
+
+
+def test_a_rebuilt_answer_says_it_was_rebuilt(rebuilt_ctx: TemplateContext) -> None:
+    """A figure that did not come from ESPN has to say so, or it reads as a box
+    score. This is the disclosure the whole opt-in is conditional on."""
+    answer = single_game_high(rebuilt_ctx, {"stat": "points", "player": "Anthony Davis"}).answer or ""
+    assert "rebuilt from its play-by-play" in answer
+
+
+def test_a_fetched_winner_says_nothing_about_rebuilding(rebuilt_ctx: TemplateContext) -> None:
+    """The note is about the number given, not about what was read. Drop the
+    rebuilt games below the fetched ones and the answer is an ordinary one."""
+    rebuilt_ctx.con.execute("UPDATE player_game_log SET points = 5 WHERE reconstructed")
+    answer = single_game_high(rebuilt_ctx, {"stat": "points", "player": "Anthony Davis"}).answer or ""
+    assert "24" in answer
+    assert "rebuilt" not in answer
+
+
+def test_fouls_are_never_read_from_a_rebuilt_line(rebuilt_ctx: TemplateContext) -> None:
+    """A rebuilt foul is wrong in one game in six (83.3% exact against 98.3% for
+    points), so fouls are outside REBUILT_STATS. The rebuilt 6 must lose to the
+    fetched 5 rather than win the answer."""
+    answer = single_game_high(rebuilt_ctx, {"stat": "fouls", "player": "Anthony Davis"}).answer or ""
+    assert "5" in answer
+    assert "rebuilt from its play-by-play" not in answer
+
+
+def test_a_withheld_stat_says_it_was_withheld_not_missing(rebuilt_ctx: TemplateContext) -> None:
+    """When every fetched line is gone and only rebuilt ones remain, asking for
+    a stat outside REBUILT_STATS must name the decision. "No games with a box
+    score" is true of the fetched lines and hides that the data exists and was
+    held back for being too inaccurate to quote."""
+    rebuilt_ctx.con.execute("DELETE FROM player_game_log WHERE NOT reconstructed")
+    answer = single_game_high(rebuilt_ctx, {"stat": "fouls", "player": "Anthony Davis"}).answer or ""
+    assert "were rebuilt from play-by-play" in answer
+    assert "not read from a rebuilt line" in answer
+
+
+def test_the_unseen_count_excludes_games_the_rebuild_answered(rebuilt_ctx: TemplateContext) -> None:
+    """The contradiction this fixes: the answer used to give a rebuilt figure
+    and then report the same games as ones it could not see."""
+    # An empty box row for a game the rebuild DID answer. Counting from
+    # player_box_stats, as the unfixed branch does, makes this one "unseen";
+    # counting from the log, which knows it was rebuilt, makes it nothing.
+    rebuilt_ctx.con.execute("INSERT INTO player_box_stats VALUES ('e3', ?, 2, '1', NULL, FALSE)", [current_season()])
+    answer = single_game_high(rebuilt_ctx, {"stat": "points", "player": "Anthony Davis"}).answer or ""
+    assert "43" in answer
+    assert "rebuilt from its play-by-play" in answer
+    # The discriminating assertion: the unfixed branch appends "1 of Anthony
+    # Davis's games ... has an empty box score ...", disclaiming the very game
+    # the 43 came from. With the fix there is nothing left to disclaim.
+    assert "empty box score" not in answer
+
+
+def test_a_game_log_reads_rebuilt_lines_only_for_stats_a_rebuild_gets_right(rebuilt_ctx: TemplateContext) -> None:
+    """The gate `game_log` applies before showing a rebuilt row. A table has no
+    room to caveat one column, so a single untrustworthy column sends the whole
+    log back to fetched lines. Asserted directly on the rule, because inline in
+    the query it could be relaxed with nothing noticing."""
+    con = rebuilt_ctx.con
+    assert _rebuilt_readable(con, ["MIN", "PTS", "REB", "AST"]) is True
+    assert _rebuilt_readable(con, ["MIN", "PTS", "STL", "BLK"]) is True
+    # 0.181 mean error a game, wrong in one game in six.
+    assert _rebuilt_readable(con, ["MIN", "PTS", "PF"]) is False
+    # 0.080, wrong in one game in thirteen.
+    assert _rebuilt_readable(con, ["MIN", "PTS", "TO"]) is False
+
+
+def test_a_warehouse_without_the_flag_still_answers(rebuilt_ctx: TemplateContext) -> None:
+    """The column arrives with a `data load`. An older warehouse has no such
+    column, and the query must not be written as though it were always there -
+    that is the Binder error AGENTS.md records for view changes."""
+    rebuilt_ctx.con.execute("ALTER TABLE player_game_log DROP COLUMN reconstructed")
+    answer = single_game_high(rebuilt_ctx, {"stat": "points", "player": "Anthony Davis"}).answer or ""
+    assert "24" in answer  # the best line that has minutes
+    assert "rebuilt" not in answer
 
 
 def test_single_game_high_reports_an_empty_season_honestly(sgh_ctx: TemplateContext) -> None:

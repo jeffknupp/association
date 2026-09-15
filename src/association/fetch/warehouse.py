@@ -213,6 +213,14 @@ def _build_views(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
     # list. games.season always equals player_box_stats.season (checked: 0 rows
     # disagree), so the extra key drops nothing.
     advanced_join = "LEFT JOIN player_advanced_stats pas ON pas.event_id = pbs.event_id AND pas.athlete_id = pbs.athlete_id AND pas.season = pbs.season" if has_advanced else ""
+    # Read the FILLED view where it exists: the same rows, with figures rebuilt
+    # from play-by-play substituted into the lines ESPN serves empty, plus a
+    # `reconstructed` flag marking exactly those. A rebuilt row still has NULL
+    # minutes, so it stays invisible to every reader that filters on minutes -
+    # which is all of them except the two that opt in explicitly (see
+    # REBUILT_STATS in query/templates.py). Falls back to the stored table so a
+    # warehouse without `plays`, or one built before 2.2.0, still gets a log.
+    box_source = "player_box_stats_filled" if "player_box_stats_filled" in loaded else "player_box_stats"
     con.execute(
         f"""
         CREATE OR REPLACE VIEW player_game_log AS
@@ -223,7 +231,7 @@ def _build_views(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
             t.abbreviation AS team_abbr,
             o.abbreviation AS opponent_abbr
             {advanced_select}
-        FROM player_box_stats pbs
+        FROM {box_source} pbs
         LEFT JOIN players p ON p.athlete_id = pbs.athlete_id
         LEFT JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season
         LEFT JOIN teams t ON t.team_id = pbs.team_id
