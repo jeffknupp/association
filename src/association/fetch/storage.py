@@ -45,13 +45,54 @@ def _tmp_name(path: Path) -> Path:
     return path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
 
 
+def _aligned(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Every row widened to the union of all the rows' keys, missing ones None.
+
+    ``pa.Table.from_pylist`` takes its schema from the FIRST row and silently
+    drops every key no later row can add. Measured: writing
+    ``[{"season": 2014}, {"season": 2016, "points": 299}]`` produces a file with
+    no ``points`` column at all, while the same two rows in the other order keep
+    it. Nothing raises, and the loss is permanent - the value is gone from disk,
+    not merely unreadable.
+
+    That is not a hypothetical shape here. ESPN's career endpoint omits a season
+    from its ``totals`` category when the player scored nothing, so a career
+    whose EARLIEST line is a scoreless one-game stint parses to a 26-key first
+    row followed by 51-key ones. Five files on disk were written that way
+    (Seth Curry's among them, whose 2014 opens with a single game for Charlotte),
+    costing every one of those players all 25 totals columns - which is why a
+    career points leaderboard dropped them entirely.
+
+    Homogeneous rows are returned untouched, which is the overwhelmingly common
+    case and keeps this free: a full pull writes ~218,000 files and almost none
+    of them is ragged.
+
+    .. versionadded:: 2.2.0
+    """
+    columns: dict[str, None] = {}
+    for row in rows:
+        columns.update(dict.fromkeys(row))
+    if all(len(row) == len(columns) for row in rows):
+        return rows
+    return [{name: row.get(name) for name in columns} for row in rows]
+
+
 def write_rows(path: Path, rows: list[dict[str, Any]]) -> None:
     """Write rows to Parquet atomically. An empty list writes nothing, so a
-    legitimately empty result never creates a file that looks like a checkpoint."""
+    legitimately empty result never creates a file that looks like a checkpoint.
+
+    Rows need not share a key set: they are aligned to the union of their keys
+    first, because Arrow would otherwise infer the schema from the first row
+    alone and drop the rest. See :func:`_aligned`.
+
+    .. versionchanged:: 2.2.0
+       Ragged rows keep every key. Before this, a row narrower than its
+       successors truncated the whole file to its own columns, silently.
+    """
     if not rows:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
-    table = pa.Table.from_pylist(rows)
+    table = pa.Table.from_pylist(_aligned(rows))
     tmp_path = _tmp_name(path)
     try:
         pq.write_table(table, tmp_path)

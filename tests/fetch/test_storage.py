@@ -33,6 +33,49 @@ def test_write_row_single_dict(tmp_path: Path) -> None:
     assert storage.exists(path)
 
 
+def test_a_narrow_first_row_does_not_truncate_the_file(tmp_path: Path) -> None:
+    """The real shape, and the bug it caused. ESPN's career endpoint leaves a
+    scoreless season out of its `totals` category, so a career whose earliest
+    line is a one-game stint parses to a narrow first row followed by full ones.
+    Arrow infers its schema from the first row, so the file lost all 25 totals
+    columns - and five players, Seth Curry among them, vanished from the career
+    points leaderboard because of it. Nothing raised; the data was simply gone."""
+    path = tmp_path / "career.parquet"
+    storage.write_rows(
+        path,
+        [
+            {"season": 2014, "team_id": "29", "gamesPlayed": 1},
+            {"season": 2016, "team_id": "23", "gamesPlayed": 44, "points": 299},
+            {"season": 2017, "team_id": "6", "gamesPlayed": 70, "points": 898},
+        ],
+    )
+    table = pq.read_table(path)
+    assert "points" in table.column_names
+    assert table.column("points").to_pylist() == [None, 299, 898]
+    assert table.column("season").to_pylist() == [2014, 2016, 2017]
+
+
+def test_a_narrow_row_anywhere_keeps_every_column(tmp_path: Path) -> None:
+    """Order must not matter in either direction: a narrow row last is the case
+    that happened to work before, and it has to keep working."""
+    path = tmp_path / "career.parquet"
+    storage.write_rows(path, [{"a": 1, "b": 2}, {"a": 3}, {"a": 4, "c": 5}])
+    table = pq.read_table(path)
+    assert sorted(table.column_names) == ["a", "b", "c"]
+    assert table.column("b").to_pylist() == [2, None, None]
+    assert table.column("c").to_pylist() == [None, None, 5]
+
+
+def test_homogeneous_rows_are_passed_through_unchanged(tmp_path: Path) -> None:
+    """The common path - ~218,000 files a pull, almost none of them ragged -
+    must not pay for the alignment, and must keep its column order."""
+    rows = [{"x": 1, "y": "a"}, {"x": 2, "y": "b"}]
+    assert storage._aligned(rows) is rows
+    path = tmp_path / "flat.parquet"
+    storage.write_rows(path, rows)
+    assert pq.read_table(path).column_names == ["x", "y"]
+
+
 def test_exists_false_for_zero_byte_file(tmp_path: Path) -> None:
     """A killed process could in principle leave a zero-byte file behind (though
     the atomic tmp+rename design should prevent it) - exists() must not treat

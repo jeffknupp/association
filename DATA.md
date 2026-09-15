@@ -257,6 +257,26 @@ likewise.
   rows.
 - **Tracked in:** ISSUES.md, "246 season lines have NULL totals" (#5).
 
+### The career endpoint drops its whole `miscellaneous` category for thin careers
+
+- **What ESPN does:** serves `averages` and `totals` but no `miscellaneous`
+  category for players with very little on record, so the line arrives without
+  the ten fields that category carries.
+- **Evidence:** of 4,937 career files on disk, **152 hold 41 columns** against
+  the usual 51, and the ten they lack are exactly `doubleDouble`,
+  `tripleDouble`, `technicalFouls`, `flagrantFouls`, `disqualifications`,
+  `ejections`, `assistTurnoverRatio`, `stealTurnoverRatio`,
+  `scoringEfficiency` and `shootingEfficiency`. All 152 keep `points`, so this
+  is **not** the write truncation in ISSUES.md ("A row narrower than the rows
+  after it"); it is the source omitting a category. 104 of the 152 are
+  postseason files, and the sample checked is a single 1-game 2021 line.
+- **Does a refetch fix it?** Untested. It correlates with how little the player
+  has on record, which suggests the source rather than the request.
+- **How we handle it:** nothing needed. `union_by_name=true` at load means the
+  missing columns read as NULL beside every other file's, and no template reads
+  the ten.
+- **Tracked in:** no action needed.
+
 ### NetPoints publishes a display name, not a player id
 
 - **What ESPN does:** keys its NetPoints files by `displayName` alone, with no

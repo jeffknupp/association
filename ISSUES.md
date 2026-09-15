@@ -42,6 +42,35 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 
 ## P1: wrong answer
 
+### A row narrower than the rows after it truncated the whole file
+- **Found:** 2026-09-14, tracing why 5 career files resisted the #5 backfill
+- **Evidence:** `storage.write_rows` called `pa.Table.from_pylist(rows)`, which
+  infers its schema from the FIRST row and silently drops every key only later
+  rows carry. Reproduced in isolation: `[{"season": 2014}, {"season": 2016,
+  "points": 299}]` writes a file with **no `points` column at all**, while the
+  same two rows reversed keep it. Nothing raises, and the loss is permanent -
+  the value is not on disk to be re-read.
+- **How it fired here:** ESPN's career endpoint omits a season from its
+  `totals` category when the player scored nothing, so a career whose EARLIEST
+  line is a scoreless one-game stint parses to a 26-key first row followed by
+  51-key ones. Five files on disk were written that way - athletes 2326307
+  (Seth Curry), 2706, 3041, 3218, 3908806 - each losing all 25 totals columns
+  for that player's whole career. Every one of their first rows is a 1-game
+  stint; every unaffected file's first row is a real season.
+- **User sees:** those players missing from any totals or career leaderboard
+  entirely, because every one of their season rows is NULL. Seth Curry was the
+  headline example in #5 and survived two backfill attempts because of this.
+- **Not a regression from #5.** Measured against the 2026-09-11 warehouse: 0
+  rows that had points then are NULL now, and 185 were genuinely repaired. This
+  bug predates that work; the backfill only made it visible by rewriting those
+  files.
+- **Fixed 2026-09-14:** `storage._aligned` widens every row to the union of the
+  rows' keys before writing, and returns homogeneous rows untouched so the
+  common path (~218,000 files a pull) costs nothing.
+- **What remains:** the five files on disk are still truncated - they need
+  re-fetching through the fixed writer before the warehouse holds their totals.
+- **GitHub:** #80
+
 ### Nearly every Bulls and Pelicans box score from 2013 to 2018 is zeros
 - **Found:** 2026-09-11, template work; characterized in the issues audit
 - **Evidence:** a team-game is empty when every player row has NULL minutes and
@@ -1353,17 +1382,16 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   - **2026-09-14:** the same endpoint, the same keys, serves a `totals` category
     for **87 of the 107** affected files. An independent 20-player sample the
     same day split 16 with totals, 4 without.
-  - **Five files resist the repair, and the cause is NOT yet established.** The
-    backfill re-fetched 102 career files at 20:22 - 97 came back with totals, 5
-    came back averages-only (26 columns, no `points` column at all) - and a
-    second run at 20:27 got the same 5 thin again. Yet a direct probe in
-    between, same URL and same `seasontype=2`, parsed Seth Curry to 16 of 18
-    rows with points (2016 → 299, 2017 → 898). **An earlier draft of this entry
-    called that minutes-scale instability; that was a guess and is withdrawn.**
-    What is measured: the pipeline's fetch gets a thin payload for these five
-    twice, a direct probe gets a full one, and `seasontype=2` versus no
-    parameter makes no difference. The difference lies somewhere between the
-    two callers, not established.
+  - **Five files resisted the repair, and the cause turned out to be OURS, not
+    ESPN's.** Traced 2026-09-14: the client received the full three-category
+    payload every time - a recorder wrapped around the pipeline's own client
+    proves it - and `_repair_season_totals` did its job, taking Seth Curry's
+    rows from 16 non-NULL to 17. The data was destroyed at the moment of
+    WRITING, by `storage.write_rows`, which took its Parquet schema from the
+    first row alone. See "A row narrower than the rows after it truncated the
+    whole file" under P1. Two earlier drafts of this entry blamed ESPN flipping
+    within minutes, and then "something between the two callers"; both were
+    guesses made ahead of the trace, and both are withdrawn.
 - **What this is not.** The withdrawn version inferred "the pull never issued a
   request" from Parquet mtimes in the MAIN tree — which can say nothing about a
   pull that wrote into a separate tree by design — and on that basis named four

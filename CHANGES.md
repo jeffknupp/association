@@ -15,6 +15,30 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A row narrower than the rows after it no longer truncates the whole file.**
+  `storage.write_rows` passed its rows straight to `pa.Table.from_pylist`, which
+  takes the Parquet schema from the FIRST row and silently drops every key only
+  later rows carry. Reproduced in isolation: `[{"season": 2014}, {"season":
+  2016, "points": 299}]` writes a file with no `points` column at all, while the
+  same two rows reversed keep it. Nothing raises, and the loss is permanent -
+  the value never reaches disk.
+
+  It fired on real data because ESPN's career endpoint leaves a season out of
+  its `totals` category when the player scored nothing: a career whose
+  *earliest* line is a scoreless one-game stint parses to a 26-key first row
+  followed by 51-key ones. Five files were written that way - Seth Curry's among
+  them, whose 2014 opens with a single game for Charlotte - each losing all 25
+  totals columns for that player's whole career, which is why those players were
+  missing from career and totals leaderboards entirely.
+
+  Rows are now widened to the union of their keys before writing, and
+  homogeneous rows are returned untouched so the common path - about 218,000
+  files a pull, almost none of them ragged - pays nothing.
+
+  This is older than the season-totals work and is not a regression from it:
+  measured against the 2026-09-11 warehouse, no row that had a total then is
+  NULL now, and 185 were repaired. The five files on disk are still truncated
+  until they are fetched again through the fixed writer.
 - **The warehouse answers from the rebuild where the stored line is empty.**
   New view `player_box_stats_filled`: `player_box_stats` with the rebuilt
   figures dropped into the 21,169 empty lines, under the stored table's own
