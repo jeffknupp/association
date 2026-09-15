@@ -31,6 +31,22 @@ def player_career_stats_url(athlete_id: str) -> str:
     return f"{WEB_V3}/athletes/{athlete_id}/stats"
 
 
+def player_season_totals_url(season: int, season_type: int, athlete_id: str) -> str:
+    """One player's aggregate for a single season - the totals the career
+    endpoint above sometimes omits.
+
+    Keyed by (season, season type, athlete) and carrying **no team dimension**,
+    so a player traded mid-season gets his COMBINED figure back against every
+    one of his stint rows: all three of David Wood's 1995-96 stints (21, 4 and
+    37 games) answer 208 points. Anything filled from here therefore has to be
+    matched on games played first - see
+    :func:`~association.fetch.parse.fill_missing_season_totals`.
+
+    .. versionadded:: 2.2.0
+    """
+    return f"{CORE_V2}/seasons/{season}/types/{season_type}/athletes/{athlete_id}/statistics"
+
+
 def team_season_stats_url(season: int, season_type: int, team_id: str) -> str:
     """One team's season aggregate: 100+ advanced team statistics."""
     return f"{CORE_V2}/seasons/{season}/types/{season_type}/teams/{team_id}/statistics"

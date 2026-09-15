@@ -311,6 +311,94 @@ def test_fetch_player_season_stats_force_refresh_bypasses_existing_file(tmp_path
     assert len(client.calls) > calls_before
 
 
+# The career endpoint served this shape for 53 of the warehouse's player files:
+# an averages category and nothing else, so every counting total on the line
+# came out NULL. Seth Curry's 2025 is the real row - `avgPoints` 6.5, 68 games,
+# and 444 points that only the per-season endpoint will say.
+_AVERAGES_ONLY_CAREER_RESPONSE = {
+    "categories": [
+        {
+            "name": "averages",
+            "names": ["gamesPlayed", "avgPoints"],
+            "displayNames": ["GP", "PTS"],
+            "descriptions": ["Games Played", "Points Per Game"],
+            "statistics": [{"season": {"year": 2025}, "teamId": "30", "position": "G", "stats": ["68", "6.5"]}],
+        }
+    ]
+}
+# The same season served the way ESPN serves an unbroken one: a totals category
+# beside the averages, which the parser merges on (season, teamId).
+_PLAYER_CAREER_STATS_RESPONSE_WITH_TOTALS = {
+    "categories": [
+        _AVERAGES_ONLY_CAREER_RESPONSE["categories"][0],
+        {
+            "name": "totals",
+            "names": ["points"],
+            "displayNames": ["PTS"],
+            "descriptions": ["Points"],
+            "statistics": [{"season": {"year": 2025}, "teamId": "30", "stats": ["444"]}],
+        },
+    ]
+}
+SEASON_TOTALS_URL_2025 = "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2025/types/2/athletes/10/statistics"
+_SEASON_TOTALS_RESPONSE = {
+    "splits": {
+        "categories": [
+            {
+                "name": "general",
+                "stats": [
+                    {"name": "gamesPlayed", "displayName": "GP", "value": 68.0, "displayValue": "68"},
+                    {"name": "points", "displayName": "PTS", "value": 444.0, "displayValue": "444"},
+                ],
+            }
+        ]
+    }
+}
+
+
+def _written_season_rows(tmp_path: Path) -> list[dict]:
+    path = tmp_path / "player_season_stats" / "athlete_10_type_2.parquet"
+    return ds.dataset(str(path), format="parquet").to_table().to_pylist()
+
+
+def test_fetch_player_season_stats_repairs_a_line_served_without_totals(tmp_path: Path) -> None:
+    """Regression: ESPN's career endpoint sometimes answers with only its
+    averages category, and the pull wrote that as-is and checkpointed it - so
+    246 real season lines sat in the warehouse with `avgPoints` beside a NULL
+    `points`, and no later pull ever looked at them again."""
+    client = FakeClient({PLAYER_CAREER_STATS_URL_10: _AVERAGES_ONLY_CAREER_RESPONSE, SEASON_TOTALS_URL_2025: _SEASON_TOTALS_RESPONSE})
+    pipeline = Pipeline(client, tmp_path)
+    pipeline.fetch_player_season_stats("10", 2)
+
+    rows = _written_season_rows(tmp_path)
+    assert len(rows) == 1
+    assert rows[0]["points"] == 444
+    assert rows[0]["avgPoints"] == 6.5
+
+
+def test_fetch_player_season_stats_makes_no_repair_request_when_the_totals_are_there(tmp_path: Path) -> None:
+    """The repair is charged only where a line is actually broken: a complete
+    career payload must cost exactly the one request it always did."""
+    client = FakeClient({PLAYER_CAREER_STATS_URL_10: _PLAYER_CAREER_STATS_RESPONSE_WITH_TOTALS})
+    pipeline = Pipeline(client, tmp_path)
+    pipeline.fetch_player_season_stats("10", 2)
+
+    assert [url for url, _ in client.calls] == [PLAYER_CAREER_STATS_URL_10]
+    assert _written_season_rows(tmp_path)[0]["points"] == 444
+
+
+def test_fetch_player_season_stats_leaves_a_line_null_when_the_season_endpoint_has_nothing(tmp_path: Path) -> None:
+    """ESPN answers 404 for a season it holds nothing for (every one of the
+    all-NULL 1977-1983 combined rows), which the client returns as None. The
+    line stays NULL rather than the pull failing or inventing a figure."""
+    client = FakeClient({PLAYER_CAREER_STATS_URL_10: _AVERAGES_ONLY_CAREER_RESPONSE})  # the totals URL returns None
+    pipeline = Pipeline(client, tmp_path)
+    pipeline.fetch_player_season_stats("10", 2)
+
+    assert SEASON_TOTALS_URL_2025 in [url for url, _ in client.calls]
+    assert _written_season_rows(tmp_path)[0].get("points") is None
+
+
 NET_POINTS_PLAYER_URL = "https://nfl-player-metrics.s3.amazonaws.com/net-pts/nba_net_pts_data.json"
 NET_POINTS_PLAYER_100_URL = "https://nfl-player-metrics.s3.amazonaws.com/net-pts/nba_net_pts100_data.json"
 NET_POINTS_TEAM_URL = "https://nfl-player-metrics.s3.amazonaws.com/net-pts/team_nba.json"

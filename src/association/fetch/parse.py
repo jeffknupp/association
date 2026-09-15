@@ -374,6 +374,152 @@ def parse_player_career_stats(data: JSON | None, athlete_id: str, season_type: i
     return list(rows.values()), glossary
 
 
+SEASON_TOTAL_STAT_NAMES: frozenset[str] = frozenset(
+    {
+        "fieldGoalsMade",
+        "fieldGoalsAttempted",
+        "fieldGoalPct",
+        "threePointFieldGoalsMade",
+        "threePointFieldGoalsAttempted",
+        "threePointFieldGoalPct",
+        "freeThrowsMade",
+        "freeThrowsAttempted",
+        "freeThrowPct",
+        "offensiveRebounds",
+        "defensiveRebounds",
+        "totalRebounds",
+        "assists",
+        "blocks",
+        "steals",
+        "fouls",
+        "turnovers",
+        "points",
+        "doubleDouble",
+        "tripleDouble",
+        "disqualifications",
+        "ejections",
+        "technicalFouls",
+        "flagrantFouls",
+        "assistTurnoverRatio",
+        "stealTurnoverRatio",
+        "scoringEfficiency",
+        "shootingEfficiency",
+    }
+)
+"""Every column a season line gets from the career endpoint's ``totals`` and
+``miscellaneous`` categories, after the compound names are split.
+
+Written out rather than derived from a payload because it is the list of
+columns a repair is allowed to touch: the ``averages`` half of a line is
+per-stint and must never be overwritten with a season-combined figure.
+
+.. versionadded:: 2.2.0
+"""
+
+
+def parse_player_season_totals(data: JSON | None) -> tuple[Row, list[Row]]:
+    """One player-season's totals, from the core per-season statistics endpoint.
+
+    Flattens every category into one row, keeping the counting totals in
+    :data:`SEASON_TOTAL_STAT_NAMES` plus ``gamesPlayed``, which is what a caller
+    matches on before trusting any of it. The endpoint also publishes PER, RPM,
+    VORP, WARP and a whole per-48-minute family - 112 stat names against the 51
+    columns stored here - and those are deliberately dropped rather than
+    silently widening the table.
+
+    Reads ``displayValue`` in preference to ``value``, which is the opposite of
+    every other parser here and is load-bearing: ``value`` is a float for every
+    stat (``942.0``), and writing that into a ``points`` column the career
+    endpoint fills with ints would leave one Parquet file disagreeing with
+    every other about the column's type. ``displayValue`` is the same string
+    shape the career endpoint serves (``"942"``, ``"1.9"``), so ``_num`` types
+    it identically. Confirmed live: no ``displayValue`` here carries a thousands
+    separator, which is the one thing that would make it unparseable.
+
+    Returns:
+        The flattened row (empty when ESPN has no such season), and glossary
+        rows for the names kept.
+
+    .. versionadded:: 2.2.0
+    """
+    row: Row = {}
+    glossary: list[Row] = []
+    if not data:
+        return row, glossary
+    wanted = SEASON_TOTAL_STAT_NAMES | {"gamesPlayed"}
+    names, labels, descs = [], [], []
+    for cat in ((data.get("splits") or {}).get("categories")) or []:
+        for stat in cat.get("stats") or []:
+            name = stat.get("name")
+            if not name or name not in wanted:
+                continue
+            row[name] = _num(stat.get("displayValue", stat.get("value")))
+            names.append(name)
+            labels.append(stat.get("displayName"))
+            descs.append(stat.get("description"))
+    if names:
+        glossary.extend(_glossary_rows(names, labels, descs, "player_season_stats"))
+    return row, glossary
+
+
+def seasons_missing_totals(rows: list[Row]) -> list[int]:
+    """Which seasons in a parsed career need their totals fetched separately.
+
+    ``points`` is the sentinel for the whole totals half of a line: ESPN's
+    career endpoint either carries a season in its ``totals`` category or it
+    does not, so one NULL counting stat means all of them are.
+
+    A line with no games played is skipped, not because it is complete but
+    because nothing can repair it: it cannot be matched on games, and the core
+    endpoint answers 404 for every one of them (measured - the six all-NULL
+    combined rows from 1977-1983).
+
+    .. versionadded:: 2.2.0
+    """
+    seasons = set()
+    for row in rows:
+        season, games = row.get("season"), row.get("gamesPlayed")
+        if row.get("points") is None and isinstance(season, int) and isinstance(games, (int, float)) and games > 0:
+            seasons.add(season)
+    return sorted(seasons)
+
+
+def fill_missing_season_totals(rows: list[Row], season: int, totals: Row) -> int:
+    """Fill one season's missing totals from a core-endpoint row, or refuse.
+
+    The core endpoint has no team dimension, so ``totals`` is the player's
+    COMBINED season however many teams he played for. Exactly one row of that
+    season may take it, and only when its ``gamesPlayed`` equals the endpoint's:
+    that is what separates a whole-season line from one stint of it. David
+    Wood's 1995-96 comes back as 62 games and 208 points, which fills his
+    combined row and leaves his 21-, 4- and 37-game stints alone.
+
+    Two rows matching is a refusal rather than a choice, for the same reason a
+    date holding two of one team's games resolves to neither: a season cannot
+    have two whole-season lines, so a tie means the games counts are not
+    identifying what they are assumed to identify.
+
+    Only the columns in :data:`SEASON_TOTAL_STAT_NAMES` are written, and only
+    over a NULL - a value ESPN already served is never replaced.
+
+    Returns:
+        How many rows were filled: 1, or 0 for a refusal or nothing to do.
+
+    .. versionadded:: 2.2.0
+    """
+    games = totals.get("gamesPlayed")
+    if games is None:
+        return 0
+    matches = [row for row in rows if row.get("season") == season and row.get("points") is None and row.get("gamesPlayed") == games]
+    if len(matches) != 1:
+        return 0
+    row = matches[0]
+    for name in SEASON_TOTAL_STAT_NAMES:
+        if row.get(name) is None and totals.get(name) is not None:
+            row[name] = totals[name]
+    return 1
+
+
 def parse_team_season_stats(data: JSON | None, season: int, season_type: int, team_id: str) -> tuple[dict[str, Any] | None, list[Row]]:
     """A team's season aggregate, flattened from ESPN's nested category/stat
     structure into a single wide row."""

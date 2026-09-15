@@ -127,31 +127,48 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Source:** DATA.md, "Every Chicago and New Orleans game from 2013 to 2018 has an empty box score"
 - **GitHub:** #1
 
-### 246 season lines have NULL totals
-- **Found:** 2026-09-11, issues audit
+### 246 season lines have NULL totals — fixed in code, NOT yet backfilled
+- **Found:** 2026-09-11, issues audit. **Cause re-measured and fix landed
+  2026-09-14**, which rewrote this entry: the previous diagnosis ("ESPN still
+  serves these lines with the totals category missing", fix by deriving
+  `avg × gamesPlayed`) was wrong on both halves.
 - **Evidence:** in `player_season_stats`, 104 regular-season rows (42 players)
-  and 142 postseason rows (65 players) have every counting total NULL. In 98
-  of the regular-season rows (37 players), every `avg*` column is still filled.
-  The other 6 are the all-NULL combined rows listed in the traded-players entry.
-  Example: Seth Curry 2022, `avgPoints` 15.0 and `points` NULL. The same
-  players recur:
-  - Seth Curry: 2014-2017 and 2019-2026, 18 rows, and no 2018 row at all.
-  - Lou Amundson: 2007-2016.
-  - David Wood: 1989-1997.
-  - Postseason lines for Nazr Mohammed (12 rows), Zach Randolph (9), Theo
-    Ratliff (8) and Gabe Vincent (7).
+  and 142 postseason rows (65 players) have every counting total NULL, over 107
+  (athlete, season_type) career files. Example: Seth Curry 2022, `avgPoints`
+  15.0 and `points` NULL; all 18 of his regular-season rows from 2014 on are
+  NULL-totaled, as are Lou Amundson's (2007-2016), David Wood's (1989-1997) and
+  postseason lines for Nazr Mohammed (12), Zach Randolph (9), Theo Ratliff (8)
+  and Gabe Vincent (7). Six are the all-NULL combined rows in the
+  traded-players entry.
+- **User sees:** career sums and totals leaderboards silently short. **19
+  players were dropped from the career scoring board outright** — `SUM` ignores
+  NULLs, so a career is only dropped when EVERY season row is NULL, which is
+  exactly these players. Seth Curry is not on a 100-deep career points board;
+  with the totals he ranks 599th at 5,547.
+- **Fixed in code (2026-09-14).** `Pipeline._repair_season_totals` fetches the
+  core per-season endpoint for any line the career endpoint left totals-less,
+  and `parse.fill_missing_season_totals` matches on games played before using
+  it (that endpoint has no team dimension, so it answers a traded player's
+  combined figure against each of his stints). Measured: 110 requests fill 226
+  of the 246 rows; career-leaderboard drops go 19 → 0.
+- **NOT yet backfilled — this is what remains.** The Parquet on disk was
+  written by the old code, so `data load` alone changes nothing. Run from the
+  main checkout:
 
-  The parser merges ESPN's averages and totals
-  categories on (season, teamId), and for these keys the totals category
-  contributed nothing (`fetch/parse.py`).
-- **User sees:** totals leaderboards and career sums silently drop these
-  seasons. Seth Curry's career points lose every season from 2014 on.
-- **A refetch does not fix it.** The 2026-09-11 pull reproduced
-  `player_season_stats` exactly apart from 13 `position` values, so ESPN still
-  serves these lines with the totals category missing.
-- **Next step:** fill the totals from `avg × gamesPlayed` at load, and say so in
-  the answer.
-- **Source:** DATA.md, "246 season lines are served with no totals"
+      uv run python scripts/backfill_season_totals.py \
+        --data-dir ./data/parquet --db-path ./nba.duckdb
+
+  102 career files, ~210 requests, a few minutes. It re-fetches through
+  `Pipeline.fetch_player_season_stats` and reloads `player_season_stats`, then
+  prints the before/after NULL count. Re-run `--dry-run` first. Delete this
+  entry once the count reaches 20.
+- **The 20 that will remain** are 14 scoreless one-game stint lines (a stint
+  cannot be matched on games against a combined figure, and `avg × gamesPlayed`
+  says 0 for all of them, which is almost certainly right) and the 6 all-NULL
+  combined rows from 1977-1983, which the second endpoint 404s for — those
+  belong to the traded-players entry below, not here.
+- **Source:** DATA.md, "The career endpoint drops its totals category,
+  unpredictably and in part"
 - **GitHub:** #5
 
 ### The 2000 and 2001 playoffs stop before the Finals
@@ -847,6 +864,36 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   present, partial, unrepresentative for ranking, or a phantom, and "1994" is
   not one number for every table.
 - **GitHub:** #71
+### ESPN publishes PER, RPM, VORP and WARP per player-season, and we store none of it
+- **Found:** 2026-09-14, fixing the NULL-totals issue (#5)
+- **Evidence:** the core per-season endpoint now read by
+  `endpoints.player_season_totals_url`
+  (`CORE_V2/seasons/{season}/types/{season_type}/athletes/{id}/statistics`)
+  carries **112 stat names** against the 51 columns `player_season_stats`
+  holds. Among the 61 not stored: `PER`, `RPM`, `ORPM`, `DRPM`, `VORP`,
+  `WARP`, `NBARating`, `plusMinus`, `usageRate`, `trueShootingPct`,
+  `effectiveFGPct`, `estimatedPossessions`, `pointsInPaint`, `offReboundRate`,
+  `defReboundRate`, `assistRatio`, `turnoverRatio`, `brickIndex` and the whole
+  `avg48*` family. Confirmed live for Seth Curry 2024 (`PER` 13.4). The parser
+  deliberately drops them (`parse.SEASON_TOTAL_STAT_NAMES`) rather than widen
+  the table as a side effect of a bug fix.
+- **User sees:** a refusal or a fall-through for any question naming one —
+  "who led the league in PER", "what is Jokic's VORP". `player_season_advanced_stats`
+  computes its own `ts_pct`/`efg_pct`/`usage_pct` from box scores, so those
+  three have an answer already; the rest have none. ESPN's own `plusMinus` and
+  `usageRate` would also be a cross-check on the computed ones.
+- **The cost is not the request.** These values ride on the response the repair
+  already fetches — but only for the ~110 broken lines. Storing them for every
+  player-season is one request per (athlete, season, season_type), which the
+  career endpoint currently covers in one request per (athlete, season_type):
+  roughly 30x the requests for the whole warehouse. A separate decision, and a
+  separate table is probably the right shape.
+- **Next step:** decide whether the advanced columns justify a per-season fetch
+  at all. If they do, a new `player_season_advanced_espn` table keyed
+  (athlete_id, season, season_type) — not extra columns on `player_season_stats`,
+  whose rows are per-team and which this endpoint cannot split.
+- **Source:** DATA.md, "The career endpoint drops its totals category,
+  unpredictably and in part"
 
 ## P4: tooling, docs, low impact
 
@@ -1284,3 +1331,35 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** none until something reads them. Recorded so the next reader
   does not mistake the gap for a parser fault.
 - **GitHub:** #68
+
+### ESPN's career endpoint answered differently on two days three days apart
+- **Found:** 2026-09-14, fixing the NULL-totals issue (#5). **The first version
+  of this entry blamed a pull that never refetched. That was wrong, and it was
+  withdrawn before it spread.**
+- **Evidence: both measurements are sound, and they disagree because the source
+  changed.**
+  - **2026-09-11:** a full pull into a separate warehouse returned these lines
+    with no totals. Re-checked on 2026-09-14 against the warehouse that pull
+    actually produced (`/home/jeff/association-fresh/nba.duckdb`):
+    `player_season_stats` holds 29,780 rows carrying **the same 246 NULLs**, and
+    22 of its 23 objects match the live warehouse row for row. That pull did
+    request these files, and did get NULLs back.
+  - **2026-09-14:** the same endpoint, the same keys, serves a `totals` category
+    for **87 of the 107** affected files. An independent 20-player sample the
+    same day split 16 with totals, 4 without.
+- **What this is not.** The withdrawn version inferred "the pull never issued a
+  request" from Parquet mtimes in the MAIN tree — which can say nothing about a
+  pull that wrote into a separate tree by design — and on that basis named four
+  other entries (the per-game NetPoints tables, the 2000/2001 playoff gaps, the
+  empty 2013-2018 box scores, the traded-player combined rows) as possibly
+  resting on the same void. They are not: the fresh warehouse holds all 23
+  objects with matching row counts.
+- **User sees:** nothing directly. The cost falls on us. A "does a refetch fix
+  it" finding about this endpoint has a shelf life, and this one expired in
+  three days — acting on the stale one aimed the fix at deriving totals from
+  `avg × gamesPlayed`, exact only 49% of the time, when the real numbers were
+  one request away.
+- **Next step:** keep dating these claims (every one in `DATA.md` already says
+  2026-09-11) and treat one older than a release as unverified rather than
+  false. The cheap re-verification is a forced fetch of a single affected key,
+  not a whole pull.
