@@ -117,6 +117,33 @@ def parse_schedule_event_ids(data: JSON | None) -> list[str]:
     return [e.get("id") for e in data.get("events") or [] if e.get("id")]
 
 
+def parse_scoreboard_events(data: JSON | None) -> list[tuple[str, int, int]]:
+    """``(event_id, season, season_type)`` for every game on one scoreboard date.
+
+    The season and season type come from **each event's own** ``season`` block,
+    never from the response's ``leagues[].season``. That distinction is not
+    cosmetic: probed live, 2000-06-07 - Game 1 of the LAL-IND Final - returns a
+    league block reading ``type: 2`` beside an event block reading ``type: 3``,
+    so reading the league's would file six Finals games as regular-season ones.
+
+    An event missing an id, a year or a type is skipped rather than guessed at:
+    this feeds :meth:`association.fetch.pipeline.Pipeline.fetch_game`, which
+    writes the season it is handed into every row of every table the game
+    yields.
+
+    .. versionadded:: 2.2.0
+    """
+    if not data:
+        return []
+    events: list[tuple[str, int, int]] = []
+    for event in data.get("events") or []:
+        season = event.get("season") or {}
+        event_id, year, season_type = event.get("id"), season.get("year"), season.get("type")
+        if event_id and isinstance(year, int) and isinstance(season_type, int):
+            events.append((str(event_id), year, season_type))
+    return events
+
+
 def parse_game_summary(data: JSON | None, season: int, season_type: int) -> dict[str, Any]:
     """Returns dict with: game (dict|None), player_box, team_box, plays,
     shot_chart, win_probability (lists of Row), players_seen (athlete_id -> bio Row),

@@ -84,6 +84,12 @@ class Coverage:
       is the league.
     - ``partial`` and ``partial_note`` - a season that exists but covers part of
       the year is answerable, and has to say so.
+    - ``postseason_partial`` and ``postseason_partial_note`` - the same, for a
+      postseason alone. Separate from ``partial`` because they are different
+      claims about different halves of one year: ESPN's 2001 playoffs stop
+      before the Finals while its 2001 REGULAR season is complete, so a single
+      shared tuple would both caveat every 2001 regular-season answer and
+      exempt that season from its own floor check.
     - ``phantom`` - a season whose rows are a full, healthy copy of a DIFFERENT
       season. ESPN answers ``season=1993`` and ``season=1994`` with the
       identical 1,185 events, so 1993 looks complete by every row count and is
@@ -104,6 +110,8 @@ class Coverage:
     ranking_reason: str = ""
     partial: tuple[int, ...] = ()
     partial_note: str = ""
+    postseason_partial: tuple[int, ...] = ()
+    postseason_partial_note: str = ""
     phantom: tuple[int, ...] = ()
 
     def floor(self, season_type: int = REGULAR_SEASON, *, ranking: bool = False) -> Floor:
@@ -150,6 +158,16 @@ COVERAGE: dict[str, Coverage] = {
         # first stored label is 1988.
         postseason_first_season=1989,
         postseason_subject="Playoff games",
+        # 2000's gap was recoverable and has been recovered: its nine missing
+        # games are on the scoreboard endpoint even though no team's schedule
+        # lists them. 2001's is not - the scoreboard has exactly one of its
+        # missing games, and 23 days across the conference finals and the Final
+        # return nothing at all - so that season says what it is missing.
+        postseason_partial=(2001,),
+        postseason_partial_note=(
+            "ESPN is missing about ten games of the 2001 playoffs - Games 1-4 of the LAL-PHI Final and the end of the MIL-PHI conference final - so Philadelphia's run reads 15 games "
+            "against the 23 ESPN's own season totals give it, and a series can look shorter than it was"
+        ),
         postseason_reason=(
             "ESPN files every season before 1993-94 under the year it STARTED, so the postseason it labels 1988 is the 1989 playoffs, and the 1987-88 playoffs are not in its archive at all"
         ),
@@ -161,6 +179,16 @@ COVERAGE: dict[str, Coverage] = {
         reason="they come from the same game summaries as `games`, which hold one team's schedule per season before 1994 and nothing for 1989-90",
         postseason_first_season=1989,
         postseason_subject="Playoff team box scores",
+        # 2000's gap was recoverable and has been recovered: its nine missing
+        # games are on the scoreboard endpoint even though no team's schedule
+        # lists them. 2001's is not - the scoreboard has exactly one of its
+        # missing games, and 23 days across the conference finals and the Final
+        # return nothing at all - so that season says what it is missing.
+        postseason_partial=(2001,),
+        postseason_partial_note=(
+            "ESPN is missing about ten games of the 2001 playoffs - Games 1-4 of the LAL-PHI Final and the end of the MIL-PHI conference final - so Philadelphia's run reads 15 games "
+            "against the 23 ESPN's own season totals give it, and a series can look shorter than it was"
+        ),
         postseason_reason=(
             "ESPN files every season before 1993-94 under the year it STARTED, so the postseason it labels 1988 is the 1989 playoffs, and the 1987-88 playoffs are not in its archive at all"
         ),
@@ -307,13 +335,32 @@ def unavailable(tables: tuple[str, ...], season: int, season_type: int = REGULAR
     return None if season >= narrowest.season else narrowest.refusal(season)
 
 
-def caveat(tables: tuple[str, ...], season: int) -> str | None:
+def caveat(tables: tuple[str, ...], season: int, season_type: int = REGULAR_SEASON) -> str | None:
     """A note for a season that is covered but only partly, or None.
 
     Not a refusal: half a season is a real answer, and saying which half it is
     beats both silence and a refusal.
 
+    ``season_type`` picks between the two claims a table can make about one
+    year. A postseason that stops early is caveated on postseason questions
+    only: ESPN's 2001 playoffs are missing the Finals while its 2001 regular
+    season is complete, and a note about the wrong half of the year is the
+    false-cause answer this module exists to stop.
+
     .. versionadded:: 2.1.0
+
+    .. versionchanged:: 2.2.0
+       Takes ``season_type`` and reads ``postseason_partial`` for a postseason
+       question. A caller that omits it gets the regular season, as before.
     """
-    notes = [COVERAGE[t].partial_note for t in tables if t in COVERAGE and season in COVERAGE[t].partial]
+    notes = []
+    for table in tables:
+        coverage = COVERAGE.get(table)
+        if coverage is None:
+            continue
+        if season_type == POSTSEASON:
+            if season in coverage.postseason_partial:
+                notes.append(coverage.postseason_partial_note)
+        elif season in coverage.partial:
+            notes.append(coverage.partial_note)
     return f"Note: {notes[0]}." if notes else None

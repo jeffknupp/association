@@ -42,63 +42,42 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 
 ## P1: wrong answer
 
-### The 2000 and 2001 playoffs stop before the Finals
-- **Found:** 2026-09-11, template work (agent B); characterized in the issues audit
-- **Evidence:** postseason games are checked against `team_season_stats`
-  `gamesPlayed`. 2002-2026 match for every team.
-  - **2000:** there is nothing after 2000-06-01. Missing are the whole LAL-IND
-    Final (6 games), WCF LAL-POR games 6-7 and ECF IND-NY game 6. The Lakers
-    have 15 of 23 games.
-  - **2001:** there is nothing after 2001-05-28. Missing are the Final (5), ECF
-    MIL-PHI games 5-7, WCF LAL-SA game 4 and 2 games of MIL-CHA. The Lakers
-    have 10 of 16.
-  - **The 2000 standings share these gaps.** For all 29 teams, their W-L equals
-    the W-L counted from `games`, while `team_season_stats` has 82 games for
-    each. The Lakers are 67-13, against a real 67-15.
-  - **Nothing catches it.** `coverage.py` declares no partial season, and
-    `check_coverage.py` passes because it compares against a share of the
-    median season.
-- **User sees:** no 2000 or 2001 Finals, and "LAL-POR 2000" read as a 3-2 series.
-  Playoff records are short for the teams that went deepest. All of it is
-  stated as fact, with no caveat. Only `team_record` notices, through
-  `_game_list_gaps`.
-- **A refetch does not fix it either.** The same 2026-09-11 pull returned the
-  same 70 rows for the 2000 postseason, ending on the same date, 2000-06-01,
-  and `games` matched the existing warehouse exactly across all 43,494 rows.
-  Games are discovered from each team's schedule, and ESPN's schedules do not
-  list them.
-- **Next step:** discover these dates from the scoreboard endpoint instead of
-  from team schedules, since the missing games are the ones no team's schedule
-  returns. Until then, add `partial=` caveats to `COVERAGE` for the two
-  postseasons.
+## P2: misleading or incomplete
+
+### The 2001 playoffs are missing about ten games, and ESPN has them nowhere
+- **Found:** 2026-09-11, template work (agent B); 2000 fixed and this rewritten 2026-09-15
+- **Fixed for 2000.** The games ESPN's team schedules drop ARE on its daily
+  scoreboard, which is a second, independent list of what was played.
+  `Pipeline.event_ids_for` now scans it forward from each postseason's last
+  known game (`POSTSEASON_SCAN_DAYS`, 28 days), and
+  `scripts/backfill_missing_playoffs.py` ran it over the two affected seasons.
+  Nine games recovered, including the whole LAL-IND Final: the 2000 postseason
+  went 70 -> 79 games, and **every team in it now matches ESPN's own
+  `team_season_stats` exactly** (LAL 15 -> 23, IND 16 -> 23, POR 14 -> 16; zero
+  discrepancies league-wide, counted from `real_games`).
+- **What remains, and why it is not a P1.** 2001 recovered only its Finals Game
+  5 (60 -> 61 games). Probed live through the project's own client, 23 days
+  across that postseason's conference finals and Final return **no events at
+  all** - so Games 1-4 of LAL-PHI and the end of MIL-PHI are not in ESPN's
+  archive anywhere, and no pull will add them. Five teams are still short in
+  `real_games`: PHI -7, LAL -5, MIL -5, NO -2, SA -1.
+- **The answer now says so**, which is the difference from the original P1. The
+  2001 postseason is declared `postseason_partial` on both `games` and
+  `team_box_stats`, so a 2001 playoff question carries a note naming what is
+  missing instead of stating a short series as fact. A 2001 REGULAR-season
+  question carries nothing: that season is complete, and `postseason_partial`
+  is a separate field from `partial` precisely so one does not caveat the
+  other.
+- **The 2000 standings still share the old gap.** `standings` agrees with the
+  short game list rather than with reality - the Lakers are 67-13 there against
+  a real 67-15 - and that is a regular-season fault tracked separately under
+  "Smaller game and box-score gaps, 1994-2003" (#14).
+- **User sees:** a 2001 playoff answer that is short by up to seven games for
+  one team, with a caveat saying so. No wrong answer is stated as fact.
+- **Next step:** nothing actionable here - it is ESPN's gap and it is declared.
+  Re-check if ESPN ever backfills its own archive.
 - **Source:** DATA.md, "The 2000 and 2001 playoffs stop before the Finals"
 - **GitHub:** #6
-
-### Traded players' combined season rows are wrong in 26 cases
-- **Found:** 2026-09-11, template work (agent D); counted in the issues audit
-- **Evidence:** of 2,062 combined rows (`team_id` NULL) in
-  `player_season_stats`, 26 disagree with the sum of that season's stints:
-  - **6 are all NULL:** Moses Malone 1977, James Edwards 1978 and 1983, Bill
-    Laimbeer 1982, Danny Schayes 1983, and Sleepy Floyd 1983.
-  - **12 from 1996 copy a single stint,** losing 3,042 points between them. Eric
-    Murdock's row reads 9 games and 62 points, against stints totalling 73 and
-    647.
-  - **Jevon Carter 2023** drops a 1-game stint.
-  - **7 have NULL points** because a stint's totals are NULL; see the
-    NULL-totals entry above.
-  
-  `player_season_stats_deduped` (`fetch/warehouse.py`) and the leaderboard's
-  `dedup_traded` both prefer the NULL-team row.
-- **User sees:** "Eric Murdock 1995-96 stats" answers 9 games at 6.9 points a
-  game. `player_compare` and `player_history` show the same wrong line.
-- **A refetch does not fix it.** The same pull reproduced every one of these
-  rows; the combined line is what ESPN's career endpoint returns.
-- **Next step:** use the combined row only when it equals its stints' sum, and
-  sum the stints otherwise. Add a warehouse test in the Murdock shape.
-- **Source:** DATA.md, "Traded players' combined season rows disagree with their own stints"
-- **GitHub:** #9
-
-## P2: misleading or incomplete
 
 ### Nearly every Bulls and Pelicans box score from 2013 to 2018 is zeros
 - **Found:** 2026-09-11, template work; characterized in the issues audit

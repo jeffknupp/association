@@ -136,6 +136,40 @@ def test_parse_schedule_event_ids_handles_missing_data() -> None:
     assert parse.parse_schedule_event_ids({}) == []
 
 
+# ---------------- parse_scoreboard_events ----------------
+
+
+def _scoreboard(event_type: int = 3, league_type: int = 2) -> dict:
+    """One scoreboard date, in ESPN's real nesting. The default is 2000-06-07 -
+    Game 1 of the LAL-IND Final - whose league block really does disagree with
+    its event block about the season type."""
+    return {
+        "leagues": [{"season": {"year": 2000, "type": {"id": "2", "type": league_type, "name": "Regular Season"}}}],
+        "events": [{"id": "200607013", "date": "2000-06-07T04:00Z", "name": "Indiana Pacers at Los Angeles Lakers", "season": {"year": 2000, "type": event_type, "slug": "post-season"}}],
+    }
+
+
+def test_parse_scoreboard_events_reads_the_season_off_the_event_not_the_league() -> None:
+    """The trap, confirmed live: on 2000-06-07 the response's leagues[].season
+    reads type 2 while the event itself reads type 3. Reading the league's
+    would file the whole 2000 Final as regular-season games."""
+    assert parse.parse_scoreboard_events(_scoreboard()) == [("200607013", 2000, 3)]
+
+
+def test_parse_scoreboard_events_handles_missing_data() -> None:
+    assert parse.parse_scoreboard_events(None) == []
+    assert parse.parse_scoreboard_events({}) == []
+    assert parse.parse_scoreboard_events({"events": [{}]}) == []
+
+
+def test_parse_scoreboard_events_skips_an_event_with_no_season_rather_than_guessing() -> None:
+    """It feeds fetch_game, which writes the season it is handed into every row
+    of every table the game yields - so a guess would be stamped on box scores,
+    plays and shots alike."""
+    data = {"events": [{"id": "1", "season": {"year": 2000}}, {"id": "2", "season": {"type": 3}}, {"id": "3", "season": {"year": 2000, "type": 3}}]}
+    assert parse.parse_scoreboard_events(data) == [("3", 2000, 3)]
+
+
 # ---------------- parse_game_summary ----------------
 
 

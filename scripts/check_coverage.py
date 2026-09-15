@@ -61,6 +61,16 @@ def _counts(con: duckdb.DuckDBPyConnection, table: str, season_type: int | None)
     return {int(s): n for s, n in con.execute(f"SELECT season, count(*) FROM {table}{where} GROUP BY 1").fetchall()}
 
 
+def _partial_for(label: str, coverage: Coverage) -> tuple[int, ...]:
+    """The seasons declared partial for the half of the year being checked.
+
+    A postseason that stops early is declared in ``postseason_partial``, and
+    reading ``partial`` for it would both miss that declaration and apply the
+    regular season's to a postseason count. See coverage.Coverage.
+    """
+    return coverage.postseason_partial if label == "postseason" else coverage.partial
+
+
 def _check_floor(table: str, label: str, floor: int, counts: dict[int, int], coverage: Coverage) -> list[str]:
     if not counts:
         return [f"{table} ({label}): no rows at all, but a floor of {floor} is declared"]
@@ -69,8 +79,9 @@ def _check_floor(table: str, label: str, floor: int, counts: dict[int, int], cov
     threshold = median * USABLE_SHARE
     problems = []
 
+    partial = _partial_for(label, coverage)
     at_floor = counts.get(floor, 0)
-    if floor in coverage.partial:
+    if floor in partial:
         if at_floor >= threshold:
             problems.append(f"{table} ({label}): {floor} is declared partial but holds {at_floor:,} rows, {at_floor / median:.0%} of the median season")
     elif coverage.first_ranking_season is not None:
@@ -87,7 +98,7 @@ def _check_floor(table: str, label: str, floor: int, counts: dict[int, int], cov
     # for no reason. Seasons already declared partial or phantom are exempt -
     # the first is admitted with a caveat, and the second is excluded because
     # of WHICH season it is rather than how much of it there is.
-    exempt = set(coverage.partial) | set(coverage.phantom)
+    exempt = set(partial) | set(coverage.phantom)
     below = sorted(s for s, n in counts.items() if s < floor and n >= threshold and s not in exempt and (coverage.first_ranking_season is None or s >= coverage.first_season))
     if below:
         problems.append(f"{table} ({label}): floor is {floor}, but {below} are already usable ({', '.join(f'{s}={counts[s]:,}' for s in below)})")

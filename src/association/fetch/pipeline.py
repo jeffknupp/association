@@ -27,6 +27,12 @@ from . import endpoints, parse, storage
 from .netpoints_client import NetPointsDailyClient
 
 log: logging.Logger = logging.getLogger("association.fetch.pipeline")
+# ESPN's season-type code for the playoffs. Defined here rather than imported
+# from association.coverage, which also holds it: `fetch` depends on nothing in
+# the query layer today (only `season` and `net_points_categories`), and this
+# is the source's own wire code - the same 3 the CLI passes in --season-types
+# and _run_season_type takes as a parameter - not a coverage policy.
+POSTSEASON = 3
 
 T = TypeVar("T")
 
@@ -209,9 +215,32 @@ class Pipeline:
         return {str(abbr): str(team_id) for team_id, abbr in zip(table.column("team_id").to_pylist(), table.column("abbreviation").to_pylist(), strict=True)}
 
     # ---------------- schedule -> event ids ----------------
+    #: How far past a postseason's last known game the scoreboard is scanned.
+    #:
+    #: ESPN's team schedules stop early for two seasons, and the games they
+    #: drop are the ones that decide the title: the 2000 postseason ends on
+    #: 2000-06-01, losing the whole LAL-IND Final, and 2001's ends on
+    #: 2001-05-28. Both needed 18 more days. Every healthy postseason on record
+    #: ends between day-of-year 160 and 177 (the 2020 and 2021 bubbles run
+    #: later, never earlier), so four weeks clears the longest real gap with
+    #: margin and still terminates.
+    #:
+    #: .. versionadded:: 2.2.0
+    POSTSEASON_SCAN_DAYS = 28
+
     def event_ids_for(self, season: int, season_type: int, team_ids: list[str]) -> list[str]:
         """Every game id in a season, gathered from each team's schedule and
-        deduplicated - each game appears on two schedules."""
+        deduplicated - each game appears on two schedules.
+
+        A postseason is then extended from the scoreboard, which is a second,
+        independent list of what was played and the only place the 2000 and
+        2001 games missing from every team's schedule appear. See
+        :meth:`_scoreboard_event_ids`.
+
+        .. versionchanged:: 2.2.0
+           A postseason also reads the scoreboard. Regular seasons are
+           unchanged, and so is the return type.
+        """
         ids: set[str] = set()
         for team_id in tqdm(team_ids, desc=f"{season} type={season_type} schedules", leave=False):
             data = self._live_client.get_json(
@@ -219,7 +248,68 @@ class Pipeline:
                 params={"season": season, "seasontype": season_type},
             )
             ids.update(parse.parse_schedule_event_ids(data))
+        if season_type == POSTSEASON:
+            ids |= self._scoreboard_event_ids(season, ids)
         return sorted(ids, key=lambda x: int(x))
+
+    def _scoreboard_event_ids(self, season: int, known: set[str]) -> set[str]:
+        """Postseason ids the schedules missed, read off the daily scoreboard.
+
+        Scanned forward from the last game the schedules DO name, because that
+        is exactly where the fault is: ESPN's schedules do not end early in the
+        middle: they stop at a real game and omit everything after it. A
+        season with no games on either source scans nothing.
+
+        Only ids whose own ``season`` block matches this postseason are kept.
+        The response's ``leagues[].season`` says ``type: 2`` even on a June
+        playoff date, so filing by the league's would store a Finals game as a
+        regular-season one (see
+        :func:`association.fetch.parse.parse_scoreboard_events`).
+
+        Costs one request per date, and finds nothing on a healthy season -
+        measured against 2024, where the scoreboard and the schedules agree on
+        all 82 games. That is the price of a fresh pull of 2000 producing the
+        Final by itself rather than needing a one-off script.
+
+        .. versionadded:: 2.2.0
+        """
+        last = self._last_game_date(season, POSTSEASON)
+        if last is None:
+            return set()
+        found: set[str] = set()
+        dates = [last + _timedelta(days=offset) for offset in range(1, self.POSTSEASON_SCAN_DAYS + 1)]
+        for day in tqdm(dates, desc=f"{season} postseason scoreboard", leave=False):
+            data = self._live_client.get_json(endpoints.scoreboard_url(), params={"dates": day.strftime("%Y%m%d")})
+            for event_id, year, event_season_type in parse.parse_scoreboard_events(data):
+                if year == season and event_season_type == POSTSEASON and event_id not in known:
+                    found.add(event_id)
+        if found:
+            log.info("scoreboard found %d %s postseason game(s) no schedule lists", len(found), season)
+        return found
+
+    def _last_game_date(self, season: int, season_type: int) -> _date | None:
+        """The latest stored game date for a scope, or None when it has none.
+
+        Read from the Parquet already on disk rather than from the schedules
+        just fetched: a re-run that skipped every download still has to know
+        where to start scanning.
+        """
+        games_dir = self._p("games", f"season={season}", f"season_type={season_type}")
+        if not games_dir.exists():
+            return None
+        latest: _date | None = None
+        for path in games_dir.glob("*.parquet"):
+            table = pq_read(path, columns=["date"])
+            for value in table.column("date").to_pylist():
+                if not value:
+                    continue
+                try:
+                    day = _date.fromisoformat(str(value)[:10])
+                except ValueError:
+                    continue
+                if latest is None or day > latest:
+                    latest = day
+        return latest
 
     # ---------------- games / box scores ----------------
     def fetch_game(self, event_id: str, season: int, season_type: int) -> None:

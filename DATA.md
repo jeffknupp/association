@@ -148,9 +148,16 @@ likewise.
 - **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull**, which
   returned the same 70 rows for the 2000 postseason, ending on the same date,
   with `games` matching across all 43,494 rows.
-- **How we handle it:** only `team_record` notices, through `_game_list_gaps`.
-  `coverage.py` declares no partial season for either, so nothing else caveats
-  them.
+- **How we handle it:** the daily scoreboard is a second, independent list of
+  what was played, and it HAS the games the schedules drop - so
+  `Pipeline.event_ids_for` scans it forward from each postseason's last known
+  game (`POSTSEASON_SCAN_DAYS`, 28 days). That recovered all nine missing 2000
+  games, including the whole LAL-IND Final. It recovers only ONE of 2001's:
+  probed live through the project's own client, 23 days across that
+  postseason's conference finals and Final return no events at all, so ESPN
+  does not have them anywhere. `coverage.postseason_partial` declares the 2001
+  postseason partial on both `games` and `team_box_stats` so answers say what
+  is missing rather than stating a short series as fact.
 - **Tracked in:** ISSUES.md, "The 2000 and 2001 playoffs stop before the
   Finals" (#6).
 
@@ -568,8 +575,11 @@ likewise.
 - **How we handle it:** `player_season_stats_deduped` and the leaderboard's
   `dedup_traded` both *prefer* the combined row, so the wrong line is the one
   that shows.
-- **Tracked in:** ISSUES.md, "Traded players' combined season rows are wrong in
-  26 cases" (#9).
+- **How we handle it:** `fetch/season_totals_repair.py` rebuilds a combined
+  row from its own stints at load time wherever the two disagree, so every
+  reader sees the summed line rather than ESPN's. 19 rows as of 2026-09-15.
+  `avgMinutes` is NULLed on a rebuilt row: it has no season total behind it
+  and both approximations were fitted and rejected (81% and 61% exact).
 
 ### `games` carries placeholder, duplicate and phantom rows
 

@@ -21,6 +21,28 @@ def summary_url() -> str:
     return f"{SITE_V2}/summary"
 
 
+def scoreboard_url() -> str:
+    """Every game ESPN lists on one date, as ``?dates=YYYYMMDD``.
+
+    A second source of event ids, and the only one that has the 2000 and 2001
+    playoff games missing from every team's schedule. ``event_ids_for`` gathers
+    ids from :func:`team_schedule_url`, and ESPN's schedules simply stop: the
+    2000 postseason ends on 2000-06-01, losing the whole LAL-IND Final, and
+    2001's ends on 2001-05-28. Probed live, the scoreboard answers those dates
+    with the real games - ``200607013`` is Finals Game 1 - and their summaries
+    carry full box scores.
+
+    Each event names its own season and season type (``{"season": {"year":
+    2000, "type": 3}}``), which is what a caller must file it under. The
+    response's ``leagues[].season`` block does NOT: it reads type 2 even for a
+    June playoff date, so reading the league's season instead of the event's
+    files a Finals game as a regular-season one.
+
+    .. versionadded:: 2.2.0
+    """
+    return f"{SITE_V2}/scoreboard"
+
+
 def standings_url() -> str:
     """League standings: wins, losses, streak, seed."""
     return f"{SITE_LEAGUE_V2}/standings"

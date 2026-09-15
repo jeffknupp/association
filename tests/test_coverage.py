@@ -142,3 +142,37 @@ def test_the_first_playoffs_on_record_is_1989_and_the_refusal_says_why() -> None
 def test_2003_shots_carry_a_partial_season_caveat() -> None:
     assert coverage_caveat("shot_chart", {"season": 2003}) is not None
     assert coverage_caveat("shot_chart", {"season": 2004}) is None
+
+
+def test_a_postseason_that_stops_early_is_caveated_on_postseason_questions() -> None:
+    """ESPN's 2001 playoffs are missing about ten games - Games 1-4 of the
+    Final and the end of the MIL-PHI conference final - and no pull adds them:
+    the scoreboard endpoint, which had the whole 2000 Final, answers 23 of
+    those days with nothing at all."""
+    note = coverage_caveat("head_to_head", {"season": 2001, "season_type": POSTSEASON})
+    assert note is not None and "2001 playoffs" in note
+
+
+def test_the_same_season_carries_no_caveat_for_its_regular_season() -> None:
+    """The whole reason postseason_partial is a separate field. 2001's REGULAR
+    season is complete (1,190 games), so a note about missing playoff games
+    would be a claim about the wrong half of the year - and one shared tuple
+    would also exempt that complete season from its own floor check."""
+    assert coverage_caveat("head_to_head", {"season": 2001, "season_type": REGULAR_SEASON}) is None
+    assert coverage_caveat("head_to_head", {"season": 2001}) is None
+
+
+def test_the_recovered_2000_postseason_carries_no_caveat() -> None:
+    """2000's gap WAS recoverable: its nine missing games are on the scoreboard
+    endpoint even though no team's schedule lists them, so they were fetched
+    rather than caveated. Declaring it partial would be an apology for data
+    that is now there."""
+    assert coverage_caveat("head_to_head", {"season": 2000, "season_type": POSTSEASON}) is None
+
+
+def test_a_postseason_caveat_covers_the_team_box_as_well_as_the_game_list() -> None:
+    """The missing games are absent from team_box_stats too, so a question
+    built from it must say so rather than rely on `games` happening to be
+    listed first in TEMPLATE_SOURCES."""
+    assert caveat(("team_box_stats",), 2001, POSTSEASON) is not None
+    assert caveat(("team_box_stats",), 2001, REGULAR_SEASON) is None

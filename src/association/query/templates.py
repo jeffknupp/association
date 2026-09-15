@@ -18,7 +18,7 @@ from typing import Any
 
 import duckdb
 
-from association.coverage import COVERAGE, POSTSEASON, caveat, unavailable
+from association.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON, caveat, unavailable
 from association.net_points_categories import FINGERPRINT_CATEGORIES
 from association.season import current_season
 from association.season import eastern_date as _eastern_date
@@ -377,7 +377,8 @@ def coverage_caveat(intent: str, slots: dict[str, Any]) -> str | None:
     .. versionadded:: 2.1.0
     """
     season = slots.get("season")
-    return caveat(_sources_for(intent, slots), season) if isinstance(season, int) else None
+    season_type = slots.get("season_type") or REGULAR_SEASON
+    return caveat(_sources_for(intent, slots), season, season_type) if isinstance(season, int) else None
 
 
 def check_scope(intent: str, slots: dict[str, Any]) -> None:

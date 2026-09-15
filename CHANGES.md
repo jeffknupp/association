@@ -15,6 +15,40 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **The 2000 playoffs are complete, recovered from a source the pull never
+  read.** Games are discovered from each team's schedule, and ESPN's schedules
+  simply stop: the 2000 postseason ended on 2000-06-01, missing the whole
+  LAL-IND Final, WCF Games 6-7 and ECF Game 6. Its daily scoreboard is a
+  second, independent list and **has** those games, so `event_ids_for` now
+  scans it forward from each postseason's last known game. Nine games
+  recovered (70 -> 79), and every team in that postseason now matches ESPN's
+  own season totals exactly - the Lakers went from 15 games to 23.
+
+  Postseason-only, and it costs a healthy season nothing: measured against
+  2024, the scoreboard and the schedules agree on all 82 games. 2001 recovers
+  only its Finals Game 5, because 23 days across that postseason's conference
+  finals and Final return no events at all - so that season is declared
+  `postseason_partial` and its answers now say what is missing rather than
+  stating a short series as fact. A 2001 regular-season question is unaffected;
+  that is a separate field for exactly that reason.
+- **A traded player's combined season row is rebuilt from his own stints when
+  ESPN's disagrees with them.** ESPN's career endpoint returns one row per team
+  stint plus a combined row, and 19 of its 2,062 combined rows contradict the
+  stints they claim to combine - 13 are a byte-copy of a single stint, and 6
+  (1977-1983) are entirely NULL. Everything downstream *preferred* that row, so
+  it was the line every answer used: "Eric Murdock 1995-96 stats" read **9
+  games at 6.9 a game** for a season he played **73** games of, and now reads
+  73 games and 647 points.
+
+  `player_season_stats` is rewritten at load time, like the team-box repair, so
+  the deduped view and the leaderboard's own dedup both see it rather than one
+  being fixed and the other left reading the broken row. Every formula was
+  fitted against the whole warehouse before use - zero of 15,573 rows disagree
+  with any of them - and the two that could not be identified are refused
+  rather than approximated: `avgMinutes` is NULLed on a rebuilt row (it is the
+  one average with no season total behind it; a games-weighted mean is right
+  81% of the time and box-score minutes 61%), and a ratio over zero turnovers
+  is NULL rather than the `inf` DuckDB produces.
 - **Per-game answers now read the rebuilt box line, and say that they did.**
   Where ESPN serves an empty box score, `player_game_log` carries the figures
   rebuilt from play-by-play, and `single_game_high`, `game_log` and
