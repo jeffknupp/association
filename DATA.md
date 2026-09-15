@@ -321,23 +321,50 @@ likewise.
   | `steals` | turnovers | 2,132 / 2,134 |
   | `blocks` | fouls | 2,134 / 2,134 |
   | `flagrantFouls` | steals | 2,134 / 2,134 |
-  | `fieldGoalPct` | FT% | — |
-  | `freeThrowPct` | about 3P% | — |
+  | `fieldGoalPct` | FT% | 2,134 / 2,134 |
+  | `freeThrowPct` | 3P% | 2,134 / 2,134 |
+  | `fouls` | flagrant fouls | — |
+  | `technicalFouls` | flagrant fouls | — |
+  | `pointsInPaint` | nothing: **-1** | 2,134 / 2,134 |
 
   `assists` equals the real assist sum in 1 row of 2,134. No turnover or foul
   column is right either: `turnovers` averages 0.585 a game, `totalTurnovers`
   1.181 (and equals the player-box figure in 1 row of 2,134), `fouls` 0.043
-  against a real 19.99. FGM, FGA, 3PM, FTM and rebounds are correct. The
-  control seasons prove it is ESPN and not a parser column order: in 2017,
-  `assists` is the real assist sum in 2,134 of 2,134 rows, and in 2019 in 2,436
-  of 2,460 — the same code, the same column order, the right values.
+  against a real 19.99. FGM, FGA, 3PM, FTM and rebounds are correct, and so is
+  `threePointFieldGoalPct` — which is why 3P% appears twice in the row and FG%
+  not at all. The control seasons prove it is ESPN and not a parser column
+  order: in 2017, `assists` is the real assist sum in 2,134 of 2,134 rows, and
+  in 2019 in 2,436 of 2,460 — the same code, the same column order, the right
+  values.
+
+  **Re-measured 2026-09-14, and the block is wider than first recorded.** The
+  league means put each displacement beside its neighbours (2017 → 2018 → 2019):
+  `technicalFouls` and `totalTechnicalFouls` 0.646 → **0.037** → 0.639, which is
+  a flagrant-foul magnitude rather than a technical one; `pointsInPaint` 43.455
+  → **-1.000** → 48.600, a sentinel in every row rather than a displaced value.
+  The postseason moves identically (144 of 146 rows): `assists` 22.074 → 5.000 →
+  23.012, `blocks` 4.716 → 20.740 → 4.872.
+
+  **Two columns in the block that nothing proves wrong.** `teamTurnovers` means
+  0.596 against 0.586 in 2017 and 0.548 in 2019, and the value standing in
+  `turnovers` (0.585) matches *it* rather than any other statistic — the
+  simplest reading is that the team-turnover value was written to both names.
+  `fastBreakPoints` means 11.933 against 13.045 and 13.797, low but inside
+  normal drift. Neither can be checked against the player box, which has
+  neither statistic. `totalTurnovers` is not in this group: ESPN keeps it equal
+  to `turnovers + teamTurnovers` in all 2,134 rows (and in every other season),
+  so it inherits the wrong half and means 1.181 against a real ~14.
 - **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull**, which
   reproduced `team_box_stats` exactly.
-- **How we handle it:** nothing yet. `conditions._TEAM_LINE` reads
-  `AVG(t.assists)`, so 2017-18 team split tables report blocks (about 4.8 a
-  game) as assists.
+- **How we handle it:** corrected at load by
+  :mod:`association.fetch.team_box_repair` — the five summable columns are
+  re-derived from the game's own player rows (a team's assists ARE the sum of
+  its players'; ESPN's own column equals that sum in 2,134 of 2,134 rows in
+  2017), the two percentages are recomputed from the made/attempted columns
+  beside them, and the columns with no source become NULL rather than keep
+  another statistic's number. An empty team-game is left exactly as stored.
 - **Tracked in:** ISSUES.md, "2018 team box scores have values under the wrong
-  column names" (#8).
+  column names" (#8) — fixed in code, awaiting a backfill load.
 
 ### The team box `turnovers` column is zero before 2013
 
@@ -349,13 +376,26 @@ likewise.
   of 1,980 in 2012 — and in **0** of 2,126 rows in 2013 and 0 of 2,134 in 2014.
   The changeover is exactly at 2013. `teamTurnovers = totalTurnovers` in the
   same rows, season for season.
+
+  **`totalTurnovers` itself is right in that era**, measured 2026-09-14: it
+  runs 0.549 a game above the player-box turnover sum in 1994 and 0.585 in
+  2000, which is what the team turnovers it includes are worth in a season
+  where the columns work (0.590 in 2013, 0.585 in 2017, 0.702 in 2026). So only
+  two of the three turnover columns are wrong here — unlike
+  `team_season_stats`, where the same shape does inflate the season total (see
+  "ESPN's `possessions` counts every turnover twice before 2013"). The two
+  tables need opposite rules, which is why each states its own.
 - **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull.**
-- **How we handle it:** `team_metrics` recomputes possessions as
-  FGA - OREB + TOV + 0.44 x FTA using the turnover column that is right in each
-  era, rather than trusting ESPN's own `possessions`.
+- **How we handle it:** two places, for two tables. In `team_box_stats`,
+  :mod:`association.fetch.team_box_repair` sums `turnovers` from the player
+  rows at load (13.59 a game in 2011, against a stored 0.002) and clears
+  `teamTurnovers`, leaving `totalTurnovers` alone. In `team_season_stats`,
+  `team_metrics` recomputes possessions as FGA - OREB + TOV + 0.44 x FTA using
+  the turnover column that is right in each era, rather than trusting ESPN's
+  own `possessions`.
 - **Tracked in:** ISSUES.md, "2018 team box scores have values under the wrong
   column names" (#8), which covers the pre-2013 turnovers under its second
-  bullet.
+  bullet — fixed in code, awaiting a backfill load.
 
 ### ESPN's `possessions` counts every turnover twice before 2013
 
@@ -368,6 +408,75 @@ likewise.
 - **How we handle it:** possessions are recomputed rather than read
   (`query/team_metrics.py`); neither input is taken as stored.
 - **Tracked in:** no action needed — handled where the data is read.
+
+### 2008's team rebound columns hold something other than rebounds
+
+- **What ESPN does:** serves the 2008 team box line with `offensiveRebounds`,
+  `defensiveRebounds` and `totalRebounds` all wrong, while every other column in
+  the row is right. A different fault from 2018's, in a different season, and
+  rebounds only.
+- **Evidence:** measured 2026-09-14 over non-empty regular-season rows.
+  `offensiveRebounds` equals the player-box sum in **188 of 2,460** rows,
+  against 2,458 of 2,460 in 2007 and 2,454 of 2,460 in 2009;
+  `defensiveRebounds` in **1 of 2,460**, against 2,453 and 2,458. The means say
+  the same (2007 → 2008 → 2009): OREB 11.122 → **8.364** → 11.039, DREB 29.933
+  → **11.200** → 30.256, totalRebounds 49.638 → **61.543** → 49.470. The player
+  rows are fine — the player rebound sum is 41.98 a game, between 2007's 41.05
+  and 2009's 41.29 — and 2008's `assists`, `steals`, `blocks` and `fouls` each
+  match their player sums in 2,443 to 2,460 of 2,460 rows, so nothing else in
+  the row moved. The team total sits **19.57** a game above the player sum,
+  against about 8.2 in every neighbouring season — and the arithmetic is exact:
+  `totalRebounds` equals the player rebound sum plus the row's own stored OREB
+  and DREB in **2,452 of 2,460** rows, so whatever those two columns hold is
+  being added to the total on top of the players' rebounds. The **postseason is
+  clean** (172 rows: 49.55 total, 11.08 offensive, 29.58 defensive), so the
+  fault is the 2008 regular season alone.
+- **Does a refetch fix it?** Not tested. The 2026-09-11 pull reproduced
+  `team_box_stats` exactly for 2018, so probably not.
+- **How we handle it:** nothing yet. `conditions._TEAM_LINE` reads
+  `AVG(t.totalRebounds)`.
+- **Tracked in:** ISSUES.md, "2008's team rebound columns are wrong".
+
+### The team `totalRebounds` column stops including team rebounds in 2022
+
+- **What ESPN does:** through 2020 the team box `totalRebounds` is the players'
+  rebounds plus the team's own — the ones credited to no player; from 2022 it is
+  exactly `offensiveRebounds + defensiveRebounds`, with the team rebounds gone.
+  2021 is half and half. The column name does not change, so nothing marks the
+  season the definition moved.
+- **Evidence:** measured 2026-09-14. `totalRebounds` equals the player rebound
+  sum in 0 to 3 of about 2,200 non-empty regular-season rows in every season
+  from 1993 to 2018, then in 333 of 2,460 (2019), 314 of 2,118 (2020), 1,120 of
+  2,160 (2021), and **2,460 of 2,460** in 2022, 2023 and 2024. The gap between
+  the team figure and the player sum closes accordingly: +8.07 a game in 2018,
+  +7.28 in 2019, +7.10 in 2020, +3.66 in 2021, **+0.00** from 2022.
+  `team_season_stats` moves the same way — 53.17 rebounds a game in 2020, 49.00
+  in 2021, 44.45 in 2022 — so this is ESPN's convention changing, not the box
+  scores alone.
+- **Does a refetch fix it?** **No** — a change of definition, not a bad value.
+- **How we handle it:** nothing yet.
+- **Tracked in:** ISSUES.md, "A team's rebounds are not comparable across 2021
+  and 2022".
+
+### `pointsInPaint` is -1 before 2009, and two lead columns exist only in 2026
+
+- **What ESPN does:** fills the team box `pointsInPaint` with **-1** rather than
+  leaving it empty, for every season through 2008 and again for all of 2018.
+  `leadChanges` and `leadPercentage` are columns it has only just started
+  publishing.
+- **Evidence:** 41,417 team rows hold `pointsInPaint = -1` — every non-empty row
+  from 1993 to 2008 (2,358 in 1994, 2,632 in 2008) and every one of 2018's
+  2,280. `fastBreakPoints` and `turnoverPoints` never carry the sentinel.
+  `leadChanges` and `leadPercentage` are non-null in 2,018 of 86,988 rows: 2 in
+  2020 and 2,016 in 2026. Note the two tables use different sentinels for the
+  same gap — `team_season_stats` uses 0 for the same era (see the docstring of
+  :mod:`association.query.team_metrics`), `team_box_stats` uses -1.
+- **Does a refetch fix it?** Not tested.
+- **How we handle it:** 2018's are set to NULL by
+  :mod:`association.fetch.team_box_repair`, because that season's whole block is
+  displaced. Nothing handles the pre-2009 ones.
+- **Tracked in:** ISSUES.md, "`pointsInPaint` is -1 for every team-game before
+  2009".
 
 ### ESPN's career endpoint copies regular seasons into the postseason
 

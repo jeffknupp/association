@@ -234,43 +234,35 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Source:** DATA.md, "`games` carries placeholder, duplicate and phantom rows"
 - **GitHub:** #7
 
-### 2018 team box scores have values under the wrong column names
-- **Found:** 2026-09-11, template work (agent B); characterized in the issues audit
-- **Evidence:**
-  - **2018 misalignment:** every non-empty 2018 regular-season
-    `team_box_stats` row (2,134) matches player-box sums like this. So do 144
-    of the 146 postseason rows:
+### 2018 team box scores have values under the wrong column names — fixed in code, not yet backfilled
+- **Found:** 2026-09-11, template work (agent B); characterized in the issues
+  audit; **fixed in code 2026-09-14**, and the warehouse still holds the old
+  values until someone runs the load below
+- **Fixed by:** `fetch/team_box_repair.py`, called from `warehouse.build`. At
+  load, 2018's `assists`, `steals`, `blocks`, `fouls` and `turnovers` are summed
+  from the game's own player rows, `fieldGoalPct` and `freeThrowPct` are
+  recomputed from the made/attempted columns beside them, and the five columns
+  with no source (`flagrantFouls`, `technicalFouls`, `totalTechnicalFouls`,
+  `totalTurnovers`, `pointsInPaint`) are set to NULL. Before 2013, `turnovers`
+  is summed the same way and `teamTurnovers` is cleared. A row is repaired only
+  if it is non-empty AND its player rows carry minutes, so the 1,025 empty
+  Chicago and New Orleans team-games stay empty rather than gaining a
+  fabricated zero. Verified by dry run against a copy of the real warehouse:
+  2018 league assists 4.83 → 22.98, and 0 of 3,727 all-NULL team rows gained a
+  value.
+- **What remains — the backfill.** These are load-time corrections over Parquet
+  that is already on disk, so no refetch is needed, but nothing changes until:
 
-    | Column | Actually holds |
-    |---|---|
-    | `assists` | blocks |
-    | `steals` | turnovers |
-    | `blocks` | fouls |
-    | `flagrantFouls` | steals |
-    | `fieldGoalPct` | FT% |
-    | `freeThrowPct` | about 3P% |
+      association data load --data-dir /home/jeff/code/association/data/parquet \
+                            --db-path /home/jeff/code/association/nba.duckdb \
+                            --tables team_box_stats,player_box_stats
 
-    Real team assists appear nowhere in the row, and no turnover or foul
-    column is right either:
-    - `turnovers` averages 0.58 a game.
-    - `totalTurnovers` averages 1.18, and equals the player-box turnovers in 1
-      row of 2,134.
-    - `fouls` averages 0.04, against a real 19.99.
-
-    FGM, FGA, 3PM, FTM and rebounds are right. 2017 and 2019 come from the same
-    code with the same column order, so ESPN is the cause. Confirmed on
-    2026-09-11: a clean pull with current code reproduced `team_box_stats`
-    exactly, so the misaligned values come from the source, not the parser.
-  - **1994-2012 turnovers:** `turnovers` is 0 in nearly every row (2,322-2,459
-    rows a season in 2000-2011), and `teamTurnovers` copies `totalTurnovers`.
-    Only `totalTurnovers` is usable.
-  - **Season stats are fine:** `team_season_stats` is correct in both eras.
-- **User sees:** team with/without and split tables for 2017-18 report blocks
-  (about 4.8 a game) as assists, because `conditions._TEAM_LINE` reads
-  `AVG(t.assists)`. Agent SQL over `team_box_stats` is wrong for 2018 stats and
-  for turnovers before 2013.
-- **Next step:** at load, rebuild the 2018 columns and the pre-2013 turnover
-  columns from player-box sums. Refetch one 2018 event to confirm the cause.
+  Then re-measure with `python scripts/check_team_box.py --db-path
+  /home/jeff/code/association/nba.duckdb`, and delete this entry when it passes.
+- **User sees (until the load runs):** team with/without and split tables for
+  2017-18 report blocks (about 4.8 a game) as assists, because
+  `conditions._TEAM_LINE` reads `AVG(t.assists)`. Agent SQL over
+  `team_box_stats` is wrong for 2018 stats and for turnovers before 2013.
 - **Source:** DATA.md, "2018 team box scores hold values under the wrong column names"
 - **GitHub:** #8
 
@@ -567,6 +559,51 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Source:** DATA.md, "NetPoints publishes a display name, not a player id"
 - **GitHub:** #22
 
+### 2008's team rebound columns are wrong
+- **Found:** 2026-09-14, while fixing the 2018 team-box shift (#8) — the 2008
+  rebound means stood out beside the seasons either side of it
+- **Evidence:** over non-empty 2008 regular-season rows, `offensiveRebounds`
+  equals the player-box sum in 188 of 2,460 rows (2007: 2,458; 2009: 2,454) and
+  `defensiveRebounds` in 1 of 2,460 (2,453; 2,458). Means, 2007 → 2008 → 2009:
+  OREB 11.12 → 8.36 → 11.04, DREB 29.93 → 11.20 → 30.26, totalRebounds 49.64 →
+  **61.54** → 49.47. The player rows are sound (their rebound sum is 41.98 a
+  game, between 2007's 41.05 and 2009's 41.29), and 2008's assists, steals,
+  blocks and fouls each match their player sums in 2,443-2,460 of 2,460 rows,
+  so this is rebounds only and not the 2018 shift reaching back. `totalRebounds`
+  equals the player rebound sum plus the row's own OREB and DREB in 2,452 of
+  2,460 rows, which is the lead on what it is actually counting. The 2008
+  **postseason is clean** (172 rows: 49.55 / 11.08 / 29.58), so the fault is the
+  regular season alone.
+- **User sees:** a 2008 team split or with/without table reports **61.5**
+  rebounds a game against a real ~49.6, because `conditions._TEAM_LINE` reads
+  `AVG(t.totalRebounds)`. Agent SQL over 2008's rebound columns is wrong the
+  same way.
+- **Next step:** rebuild `offensiveRebounds` and `defensiveRebounds` from the
+  player sums the way `fetch/team_box_repair.py` already rebuilds 2018's
+  assists — the module is shaped to take another season. `totalRebounds`
+  includes team rebounds and so is not a player sum, so it likely has to be
+  NULL. Refetch one 2008 event first, to confirm ESPN is the cause.
+- **Source:** DATA.md, "2008's team rebound columns hold something other than rebounds"
+
+### A team's rebounds are not comparable across 2021 and 2022
+- **Found:** 2026-09-14, while fixing #8
+- **Evidence:** the team box `totalRebounds` is the players' rebounds plus the
+  team's own through 2020, and exactly `offensiveRebounds + defensiveRebounds`
+  from 2022. It equals the player rebound sum in 0-3 of ~2,200 rows a season
+  from 1993 to 2018, 333 of 2,460 in 2019, 1,120 of 2,160 in 2021, and 2,460 of
+  2,460 in 2022-2024. The gap closes +8.07 (2018), +7.28 (2019), +7.10 (2020),
+  +3.66 (2021), +0.00 (2022 on). `team_season_stats` shows the same drop: 53.17
+  rebounds a game in 2020, 49.00 in 2021, 44.45 in 2022.
+- **User sees:** a team rebound figure that falls about 8 a game at 2021-22 for
+  reasons that are ESPN's bookkeeping, with no caveat. `_TEAM_LINE`'s REB column
+  and `_team_games`' `tbs.totalRebounds` are the reads; a span crossing the
+  change, or any comparison of an old season with a recent one, is affected.
+- **Next step:** decide what REB should mean and make it one thing —
+  `offensiveRebounds + defensiveRebounds` is comparable in every season and is
+  what ESPN now publishes — or caveat a span that crosses 2021. Check
+  `team_metrics` for the same exposure on `team_season_stats`.
+- **Source:** DATA.md, "The team `totalRebounds` column stops including team rebounds in 2022"
+
 ## P3: refusal or gap
 
 ### Four question filters are recognized but no template answers them
@@ -801,6 +838,21 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **GitHub:** #71
 
 ## P4: tooling, docs, low impact
+
+### `pointsInPaint` is -1 for every team-game before 2009
+- **Found:** 2026-09-14, while fixing #8
+- **Evidence:** 41,417 `team_box_stats` rows hold `pointsInPaint = -1` — every
+  non-empty row from 1993 to 2008 (2,358 in 1994, 2,632 in 2008) plus all 2,280
+  of 2018's. `fastBreakPoints` and `turnoverPoints` never carry the sentinel,
+  and `team_season_stats` uses 0 rather than -1 for the same era, so the two
+  tables mark the same gap differently.
+- **User sees:** nothing today — no template reads the column. Agent SQL asking
+  for points in the paint in an old season gets -1 a game, which reads as a
+  number rather than as a gap.
+- **Next step:** NULL the sentinel at load, beside the 2018 clearing
+  `fetch/team_box_repair.py` already does. One predicate, `pointsInPaint = -1`,
+  and no season needs naming.
+- **Source:** DATA.md, "`pointsInPaint` is -1 before 2009, and two lead columns exist only in 2026"
 
 ### "...against the celtics last season" is answered as a game log
 - **Found:** 2026-09-11, while making `opponent` refuse or narrow

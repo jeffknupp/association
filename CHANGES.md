@@ -34,6 +34,49 @@ had no published version to be compatible with.
   Neither view is in `KNOWN_TABLES`, so the SQL agent reaches neither. A
   substituted figure carries an obligation to say it was rebuilt, and an agent
   writing its own SQL has nowhere to put that.
+- **2018's team box scores held their values under the wrong column names, and
+  now hold their own.** Every non-empty 2018 row - both season types - was
+  shifted: `assists` held the game's blocks, `steals` its turnovers, `blocks`
+  its fouls, `fouls` its flagrant fouls, `fieldGoalPct` its FT% and
+  `freeThrowPct` its 3P%. Per row, not on average: `assists` equalled the
+  player-box block sum in 2,134 of 2,134 regular-season rows and the real
+  assist sum in 1. Separately, the team `turnovers` column is 0 in every row up
+  to 2012 and `teamTurnovers` holds a copy of `totalTurnovers` there rather
+  than the handful of turnovers charged to a team.
+
+  Both are ESPN's, and neither is fixed by refetching - a clean pull reproduced
+  `team_box_stats` exactly, and the seasons either side of 2018 come from the
+  same code and the same column order with the right values. So the correction
+  is made at load time, in the new `fetch/team_box_repair.py`, from the game's
+  own player rows: a team's assists ARE the sum of its players' assists, and
+  ESPN agrees, its own team column equalling the player sum in 2,134 of 2,134
+  rows in 2017. The two percentages are recomputed from the made and attempted
+  columns beside them, which are right, rounded the way ESPN publishes them.
+
+  What a user sees: `conditions._TEAM_LINE` reads `AVG(t.assists)`, so every
+  2017-18 team split and with/without table reported the team's blocks as its
+  assists. Boston's home assists go from 5.2 a game to 23.7, the Lakers' from
+  4.8 to 24.4, Golden State's from 7.9 to 30.1; across the league, 4.8 to 23.0.
+
+  Columns with no source are NULL rather than left holding another statistic:
+  the player box has no flagrant fouls, technicals, points in the paint or team
+  turnovers, so 2018's `flagrantFouls`, `technicalFouls`,
+  `totalTechnicalFouls`, `totalTurnovers` and `pointsInPaint` (which is -1 in
+  every row) are cleared, as is `teamTurnovers` before 2013. A wrong value that
+  reads as a real one is the failure this project keeps producing, and nothing
+  in `src` reads any of them.
+
+  An empty team-game stays empty. Every Chicago and New Orleans game from 2013
+  to 2018 has an all-NULL team row beside player rows listing everyone as
+  having played with no minutes and every stat zero, and summing those would
+  turn "ESPN has no box score" into "this team recorded no assists". A row is
+  repaired only if it is non-empty AND its player rows carry minutes - fully
+  corrected or fully untouched, never half of each - which also leaves alone
+  the 117 all-NULL team rows whose player rows are real (Vancouver 1996,
+  Chicago 2000), a different fault with a different fix.
+
+  `scripts/check_team_box.py` verifies all of this against a built warehouse,
+  the way `check_coverage.py` does for the coverage floors.
 - **A box line rebuilt from play-by-play, for the games ESPN serves empty.**
   New view `player_box_stats_reconstructed`, built at load time over the 1,024
   events (of 1,025, all in 2013-2018) that have an empty box score and surviving
