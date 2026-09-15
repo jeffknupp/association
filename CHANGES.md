@@ -17,11 +17,19 @@ had no published version to be compatible with.
 ## Unreleased
 - **Per-game answers now read the rebuilt box line, and say that they did.**
   Where ESPN serves an empty box score, `player_game_log` carries the figures
-  rebuilt from play-by-play, and `single_game_high` and `game_log` read them.
-  "What was Anthony Davis's highest-scoring game in 2015?" went from *0*, to a
-  refusal, to **43, on 2014-11-22 vs UTAH** - with the answer saying the figure
-  is rebuilt rather than fetched. His 2015 game log lists 68 games where it
-  used to report none.
+  rebuilt from play-by-play, and `single_game_high`, `game_log` and
+  `threshold_count` read them. "What was Anthony Davis's highest-scoring game
+  in 2015?" went from *0*, to a refusal, to **43, on 2014-11-22 vs UTAH** -
+  with the answer saying the figure is rebuilt rather than fetched. His 2015
+  game log lists 68 games where it used to report none, and "how many 20-point
+  games did he have that season" went from **none, with a caveat** to a real
+  count that says how many of those games were rebuilt.
+
+  Counting is additive by construction and was checked rather than argued: an
+  empty line carries 0, so it can never clear a threshold of 1 or more. Over
+  2013-2018, across all seven readable stats, no athlete's count fell by a
+  single game and the league-wide totals rose (20+ point games, 15,978 to
+  18,488).
 
   Deliberately narrow, on measured grounds. Only the stats a rebuild gets right
   are read (`REBUILT_STATS`): per player-game against the 22,646 games of 2015

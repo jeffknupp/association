@@ -204,7 +204,10 @@ TEMPLATE_SOURCES: dict[str, tuple[str, ...]] = {
     # player_season_stats is read to tell whether a named player's career began
     # before the box scores do. Listed after the box-score table so a season
     # under both floors is refused in the box scores' words, not as a ranking.
-    "threshold_count": ("player_box_stats", "player_season_stats"),
+    # player_game_log is read for the stats a rebuild gets right, and the
+    # stored table for the rest; both floors are 1994 with the same phantom
+    # 1993, so declaring the log refuses no question the box scores answer.
+    "threshold_count": ("player_game_log", "player_box_stats", "player_season_stats"),
     "single_game_high": ("player_game_log", "player_box_stats", "player_season_stats"),
     # The season line by default and box scores once the question narrows the
     # games, so _sources_for picks per question: a 1990 season line is
@@ -716,6 +719,14 @@ def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResu
        person; every player whose name contained the words used to be counted,
        and the top one reported. An ambiguous name is narrowed to the players
        with a box score in the season asked about before it is asked about.
+
+    .. versionchanged:: 2.2.0
+       Counts the games whose box score ESPN served empty from the line rebuilt
+       out of play-by-play, for the stats a rebuild gets right
+       (:data:`REBUILT_STATS`), and says how many of the counted games those
+       are. A stat outside that set is still counted from the stored box scores
+       alone, and a count of none then says the rebuilt lines were held back
+       rather than implying there is nothing to read.
     """
     con = ctx.con
     stat = slots.get("stat")
@@ -747,29 +758,89 @@ def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResu
             return resolved
         player = resolved
 
-    scope, params = _box_scope("pbs", season, season_type)
-    where = [scope, f"pbs.{column} >= ?"]
-    params.append(threshold)
-    if player is not None:
-        where.append("pbs.athlete_id = ?")
-        params.append(player.id)
-    params.append(limit)
-    # Grouped by athlete_id, not by name: two players can share one.
-    rows = con.execute(
-        f"SELECT p.display_name, COUNT(*) AS games FROM player_box_stats pbs JOIN players p ON p.athlete_id = pbs.athlete_id "
-        f"WHERE {' AND '.join(where)} GROUP BY pbs.athlete_id, p.display_name ORDER BY 2 DESC, 1 LIMIT ?",
-        params,
-    ).fetchall()
+    # A rebuilt line may be COUNTED, but only for a stat a rebuild gets right
+    # (REBUILT_STATS), and only where the warehouse actually carries the flag -
+    # an older one has no such column, and a fixture may have no log at all.
+    # Without both, the read is the stored table and no count moves.
+    from_rebuilt = column in REBUILT_STATS and _log_carries_rebuilt(con)
+    if from_rebuilt:
+        scope, params = _box_scope("l", season, season_type)
+        # The same opt-in guard single_game_high uses. An empty line carries 0
+        # rather than NULL, so it could never clear a threshold of 1 or more
+        # and this branch can only ADD qualifying games, never drop one -
+        # checked against the warehouse, not only argued. Stating the guard
+        # anyway keeps the intent readable instead of resting the count's
+        # correctness on that coincidence.
+        # player_name IS NOT NULL keeps the stored branch's INNER JOIN
+        # semantics: the log LEFT JOINs `players`, so a box score for an
+        # athlete missing from that table would otherwise be counted under a
+        # NULL name and reported as a nameless leader.
+        where = [scope, f"l.{column} >= ?", "(l.minutes IS NOT NULL OR l.reconstructed)", "l.player_name IS NOT NULL"]
+        params.append(threshold)
+        if player is not None:
+            where.append("l.athlete_id = ?")
+            params.append(player.id)
+        params.append(limit)
+        rows = con.execute(
+            f"SELECT l.player_name, COUNT(*) AS n, COUNT(*) FILTER (WHERE l.reconstructed) AS rebuilt FROM player_game_log l "
+            f"WHERE {' AND '.join(where)} GROUP BY l.athlete_id, l.player_name ORDER BY 2 DESC, 1 LIMIT ?",
+            params,
+        ).fetchall()
+    else:
+        scope, params = _box_scope("pbs", season, season_type)
+        where = [scope, f"pbs.{column} >= ?"]
+        params.append(threshold)
+        if player is not None:
+            where.append("pbs.athlete_id = ?")
+            params.append(player.id)
+        params.append(limit)
+        # Grouped by athlete_id, not by name: two players can share one.
+        rows = con.execute(
+            f"SELECT p.display_name, COUNT(*) AS games, 0 AS rebuilt FROM player_box_stats pbs JOIN players p ON p.athlete_id = pbs.athlete_id "
+            f"WHERE {' AND '.join(where)} GROUP BY pbs.athlete_id, p.display_name ORDER BY 2 DESC, 1 LIMIT ?",
+            params,
+        ).fetchall()
 
     label = STAT_LABELS.get(stat or "", stat or "")
     scope_text = f"{threshold}+ {label}s"
     span = _game_span(con, season, season_type, player)
-    empty = _empty_box_scores(con, season, season_type, player.id if player else None)
+    # covered_by_rebuild: the games this answer could not see are only the ones
+    # the rebuild could not reach either. Counting the rest would disclaim the
+    # very games the count was built from.
+    empty = _empty_box_scores(con, season, season_type, player.id if player else None, covered_by_rebuild=from_rebuilt)
     answer = span.preface + _phrase_threshold_count(rows, scope_text, span.when, player.name if player else None)
     if span.league_note:
         answer += f" Box scores begin in {span.since}, so these are not all-time counts: a career that began earlier is counted only from {span.since}."
-    answer += _empty_note(empty, player.name if player else None, "the count may be low" if player else "these counts may be low")
-    leaders = [{"player": name, "games": games} for name, games in rows]
+    # Only when nothing was counted AND the stat was deliberately withheld: a
+    # count of none that names a decision beats one that implies missing data.
+    withheld = 0 if (rows and rows[0][1]) or column in REBUILT_STATS else _rebuilt_in_scope(con, season, season_type, player.id if player else None)
+    if withheld:
+        answer += (
+            f" {withheld:,} of the games in that span were rebuilt from play-by-play, but a {label} is not counted from a rebuilt line: "
+            f"rebuilt fouls are wrong in about one game in six, and turnovers in one in thirteen, against one in sixty for points."
+        )
+    else:
+        answer += _empty_note(empty, player.name if player else None, "the count may be low" if player else "these counts may be low")
+    # Said whenever the COUNT rests on rebuilt games, not whenever one was read:
+    # a rebuilt game that cleared no threshold changes nothing about the number
+    # the reader was given.
+    if rows and rows[0][2]:
+        rebuilt_shown, counted = rows[0][2], rows[0][1]
+        whose = "those" if player is not None else f"{rows[0][0]}'s"
+        plural = rebuilt_shown != 1
+        # "52 of those 52 games" is true and reads as a bug, which costs the
+        # sentence the trust it exists to calibrate. Where EVERY counted game
+        # was rebuilt - Anthony Davis's whole 2015, and every Chicago and New
+        # Orleans season from 2013 to 2018 - say so outright. Two sentences
+        # rather than one template with a swapped subject: the shared form gave
+        # "every one of those 52 games HAVE", agreeing with the count instead
+        # of with its own subject.
+        if rebuilt_shown == counted:
+            lead = f"None of {whose} {counted} games has a box score from ESPN" if plural else f"{'That' if player is not None else whose + ' only'} game has no box score from ESPN"
+        else:
+            lead = f"{rebuilt_shown} of {whose} {counted} games {'have' if plural else 'has'} no box score from ESPN"
+        answer += f" {lead} - {'those figures are' if plural else 'that figure is'} rebuilt from play-by-play, so treat the count as close rather than exact."
+    leaders = [{"player": name, "games": games} for name, games, _ in rows]
     return TemplateResult(
         data={
             "question_shape": f"games with {scope_text}, {span.caption}",
@@ -777,6 +848,7 @@ def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResu
             "span": "career" if career else None,
             "leaders": leaders,
             "empty_box_scores": empty[0],
+            "rebuilt_games": rows[0][2] if rows else 0,
         },
         answer=answer,
     )
@@ -799,13 +871,13 @@ def _phrase_threshold_count(rows: list[tuple[Any, ...]], scope: str, when: str, 
         return f"No player had a game with {scope} {when}."
 
     top = rows[0][1]
-    tied = [name for name, games in rows if games == top]
+    tied = [name for name, games, _ in rows if games == top]
     if len(tied) > 1:
         leaders = ", ".join(tied[:-1]) + f" and {tied[-1]}"
         sentence = f"{leaders} tied for the most {label} {when}, with {top} each."
     else:
         sentence = f"{rows[0][0]} had the most {label} {when}, with {top}."
-    rest = [f"{name} ({games})" for name, games in rows if games != top]
+    rest = [f"{name} ({games})" for name, games, _ in rows if games != top]
     return sentence + (f" Next: {', '.join(rest)}." if rest else "")
 
 

@@ -185,6 +185,130 @@ def test_answer_reports_a_tie_as_a_tie(con: TemplateContext) -> None:
     assert "tied for the most" in (result.answer or "")
 
 
+@pytest.fixture
+def rebuilt_counts(tmp_path: Path) -> TemplateContext:
+    """The warehouse's real shape for an empty-box season: EVERY game keeps its
+    `player_box_stats` row - ESPN serves the line, just zeroed - while the log
+    carries the rebuilt figures with `reconstructed` marking exactly those.
+    A fixture that left the stored rows out would resolve no player at all,
+    since threshold_count narrows a name by who has a box score."""
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO players VALUES ('1','Anthony Davis')")
+    c.execute("CREATE TABLE player_box_stats (event_id VARCHAR, athlete_id VARCHAR, season INTEGER, season_type INTEGER, points INTEGER, fouls INTEGER, minutes INTEGER, did_not_play BOOLEAN)")
+    c.execute(
+        "CREATE TABLE player_game_log (event_id VARCHAR, athlete_id VARCHAR, season INTEGER, season_type INTEGER, "
+        "player_name VARCHAR, game_date VARCHAR, opponent_abbr VARCHAR, points INTEGER, fouls INTEGER, minutes INTEGER, "
+        "reconstructed BOOLEAN, did_not_play BOOLEAN)"
+    )
+    s = current_season()
+    # Two games ESPN served and two it served empty. The empty pair is zeros in
+    # the stored table and real figures in the log: 25 and 31 both clear 20, so
+    # reading the stored table alone counts 1 where the truth is 3.
+    c.executemany(
+        "INSERT INTO player_box_stats VALUES (?,'1',?,2,?,?,?,FALSE)",
+        [("e1", s, 24, 3, 31), ("e2", s, 18, 5, 28), ("e3", s, 0, 0, None), ("e4", s, 0, 0, None)],
+    )
+    c.executemany(
+        "INSERT INTO player_game_log VALUES (?,'1',?,2,'Anthony Davis',?,?,?,?,?,?,FALSE)",
+        [
+            ("e1", s, "2026-01-02T00:30Z", "ORL", 24, 3, 31, False),
+            ("e2", s, "2026-01-05T00:30Z", "DAL", 18, 5, 28, False),
+            ("e3", s, "2026-01-08T00:30Z", "MIA", 25, 1, None, True),
+            ("e4", s, "2026-01-11T00:30Z", "PHX", 31, 6, None, True),
+        ],
+    )
+    # An athlete with no `players` row: the log LEFT JOINs that table, so his
+    # name comes back NULL. The stored branch INNER JOINs and drops him; the
+    # log branch has to drop him too, or he is counted and reported as a
+    # nameless leader ahead of everyone.
+    c.executemany(
+        "INSERT INTO player_game_log VALUES (?,'99',?,2,NULL,?,?,?,?,?,?,FALSE)",
+        [("e5", s, "2026-01-14T00:30Z", "SAC", 60, 2, 33, False), ("e6", s, "2026-01-16T00:30Z", "UTA", 55, 2, 30, False)],
+    )
+    return TemplateContext(con=c, out_dir=tmp_path)
+
+
+def test_a_nameless_athlete_is_never_counted_as_a_leader(rebuilt_counts: TemplateContext) -> None:
+    """The log LEFT JOINs `players`, so an athlete missing from it reads back
+    with a NULL name. The stored table's INNER JOIN drops him; the log branch
+    must too, or the league board's top line is a blank name with 2 games."""
+    result = threshold_count(rebuilt_counts, {"stat": "points", "threshold": 20})
+    assert [leader["player"] for leader in result.data["leaders"]] == ["Anthony Davis"]
+    assert None not in [leader["player"] for leader in result.data["leaders"]]
+
+
+def test_a_threshold_count_counts_rebuilt_games(rebuilt_counts: TemplateContext) -> None:
+    """The P1 remainder this closes. Reading `player_box_stats`, the two empty
+    games are zeros and the count is 1; reading the log, the rebuilt 25 and 31
+    both clear 20 and the count is 3. This is the whole behaviour change."""
+    result = threshold_count(rebuilt_counts, {"stat": "points", "threshold": 20, "player": "Anthony Davis"})
+    assert result.data["leaders"] == [{"player": "Anthony Davis", "games": 3}]
+    assert result.data["rebuilt_games"] == 2
+
+
+def test_a_rebuilt_count_says_how_many_it_rebuilt(rebuilt_counts: TemplateContext) -> None:
+    """A count resting on figures ESPN never served has to say so, or it reads
+    as a count of box scores. The disclosure the opt-in is conditional on."""
+    answer = threshold_count(rebuilt_counts, {"stat": "points", "threshold": 20, "player": "Anthony Davis"}).answer or ""
+    assert "2 of those 3 games have no box score from ESPN" in answer
+    assert "rebuilt from play-by-play" in answer
+
+
+def test_a_count_of_only_fetched_games_says_nothing_about_rebuilding(rebuilt_counts: TemplateContext) -> None:
+    """The note is about the number given, not about what was read. Drop the
+    rebuilt games under the threshold and the count is an ordinary one, with
+    nothing to disclose - even though the rebuilt lines were still read."""
+    rebuilt_counts.con.execute("UPDATE player_game_log SET points = 5 WHERE reconstructed")
+    result = threshold_count(rebuilt_counts, {"stat": "points", "threshold": 20, "player": "Anthony Davis"})
+    assert result.data["leaders"] == [{"player": "Anthony Davis", "games": 1}]
+    assert result.data["rebuilt_games"] == 0
+    assert "rebuilt" not in (result.answer or "")
+
+
+def test_fouls_are_never_counted_from_a_rebuilt_line(rebuilt_counts: TemplateContext) -> None:
+    """A rebuilt foul is wrong in one game in six, so fouls sit outside
+    REBUILT_STATS. The rebuilt 6 must not be counted - and the count of none
+    must name the DECISION rather than implying the games are missing."""
+    answer = threshold_count(rebuilt_counts, {"stat": "fouls", "threshold": 6, "player": "Anthony Davis"}).answer or ""
+    assert "had no games with 6+ fouls" in answer
+    assert "were rebuilt from play-by-play" in answer
+    assert "not counted from a rebuilt line" in answer
+
+
+def test_the_low_count_caveat_drops_the_games_the_rebuild_counted(rebuilt_counts: TemplateContext) -> None:
+    """The self-contradiction this avoids: counting a game from its rebuilt
+    line and then reporting that same game as one the count could not see.
+    Counted from player_box_stats, e3 and e4 are "empty"; counted from the log,
+    which knows they were rebuilt, there is nothing left to disclaim."""
+    answer = threshold_count(rebuilt_counts, {"stat": "points", "threshold": 20, "player": "Anthony Davis"}).answer or ""
+    assert "empty box score" not in answer
+    assert "the count may be low" not in answer
+
+
+def test_a_warehouse_without_the_flag_counts_only_fetched_games(rebuilt_counts: TemplateContext) -> None:
+    """The column arrives with a `data load`; an older warehouse has none, and
+    the query must not be written as though it were always there - the Binder
+    error AGENTS.md records for view changes. The count falls back to 1."""
+    rebuilt_counts.con.execute("ALTER TABLE player_game_log DROP COLUMN reconstructed")
+    result = threshold_count(rebuilt_counts, {"stat": "points", "threshold": 20, "player": "Anthony Davis"})
+    assert result.data["leaders"] == [{"player": "Anthony Davis", "games": 1}]
+    assert "rebuilt" not in (result.answer or "")
+
+
+def test_a_count_made_entirely_of_rebuilt_games_says_so_outright(rebuilt_counts: TemplateContext) -> None:
+    """Anthony Davis's real 2015: every single qualifying game is rebuilt, and
+    the live answer read "52 of those 52 games have no box score from ESPN" -
+    true, and it reads as a bug, which costs the sentence the trust it exists
+    to calibrate. A threshold of 25 leaves only the two rebuilt games here."""
+    answer = threshold_count(rebuilt_counts, {"stat": "points", "threshold": 25, "player": "Anthony Davis"}).answer or ""
+    assert "had 2 games with 25+ points" in answer
+    assert "None of those 2 games has a box score from ESPN" in answer
+    # The shape being ruled out, in both its forms.
+    assert "2 of those 2 games" not in answer
+    assert "games have a box score" not in answer
+
+
 # ---------------- leaderboard ----------------
 
 

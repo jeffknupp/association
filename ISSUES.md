@@ -121,12 +121,23 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   game log lists 68 games where it reported none. Turnovers (0.080 mean error)
   and fouls (0.181) are refused, and that refusal names the decision rather
   than implying missing data.
-- **What remains.** `threshold_count` still reads `player_box_stats` directly
-  rather than the log, so "how many 20-point games did Davis have in 2015"
-  still answers 0 with a caveat. It is the same wiring, one table further
-  along. Season aggregates stay on the stored table on purpose: a rebuilt
-  season total is exact only about half the time and its error grows with games
-  played (right totals average 31.6 games, wrong ones 55.6).
+- **Done 2026-09-15 - `threshold_count` counts them too.** "How many 20-point
+  games did Davis have in 2015" went from "no games ... the count may be low"
+  to **52**, with the answer saying all 52 were rebuilt. The league-wide board
+  moved with it: 2015's 30-point games read Harden 35 (was 34), Westbrook 29
+  (was 25), and Anthony Davis now appears at 17, where the old answer listed
+  none of the Chicago or New Orleans games and disclaimed "162 games ... may be
+  low". Counting is additive by construction - an empty line carries 0, so it
+  can never clear a threshold of 1 or more - and that was measured rather than
+  argued: over 2013-2018, across all seven readable stats, **no athlete's count
+  fell by a single game** and the totals rose (20+ point games, 15,978 to
+  18,488). Fouls and turnovers are not counted from a rebuilt line, and a count
+  of none then names the decision instead of implying missing data.
+- **What remains.** Season aggregates stay on the stored table on purpose: a
+  rebuilt season total is exact only about half the time and its error grows
+  with games played (right totals average 31.6 games, wrong ones 55.6). So
+  box-derived season sums over 2013-2018 are still about 87% of ESPN's own
+  totals, and that is the entry's remaining substance.
 - The rest of this entry stands unchanged: box-derived sums over 2013-2018 are
   still about 87% of ESPN's own season totals, and no refetch changes that.
 - **Source:** DATA.md, "Every Chicago and New Orleans game from 2013 to 2018 has an empty box score"
