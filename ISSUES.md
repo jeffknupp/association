@@ -42,64 +42,13 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 
 ## P1: wrong answer
 
-### A narrowing the router has no slot for is dropped, and the rest is answered
-- **Found:** 2026-09-15, replaying 261 real StatMuse feed queries through the
-  fast path (`/home/jeff/association-research/statmuse-2026-09/`)
-- **Evidence:** `check_scope()` refuses a narrowing a template cannot honour,
-  but it can only see slots the router emits. `ROUTER_SCHEMA` has no slot for a
-  day of the week, a calendar holiday, an age, a period, a minutes condition or
-  "since returning from injury", so those words never reach it and the template
-  answers the un-narrowed question. **The largest single cause of a wrong
-  answer in the replay**, which found 44 wrong in total (17%). (This first read
-  "14 of the 261 queries"; the re-measurement below puts it at 11 wrong answers
-  these patterns reach plus 4 they do not, so the hand count was close and the
-  measured split is what to work from.)
-  - "lebron james 2 3 pointers all-time vs jazz on tuesdays" -> his career
-    average vs Utah over 48 games. The Tuesday, the 3-pointers and the "2" are
-    all gone.
-  - "anthony davis stats on christmas" -> his whole 2023 season average.
-  - "most triple doubles before turning 27" -> the 2026 triple-double leaders.
-  - "paul reed gamelog with 25 minutes" -> his most recent game.
-  - "Duncan Robison 1q log", "Devin Vassell nba player per game stats 1q" -> a
-    whole-game line. (The `_AGENT_ONLY` regex catches "4th qtr" but not "1q".)
-- **User sees:** a fluent, specific answer to a question they did not ask, with
-  nothing saying a condition was ignored. This is the failure shape `AGENTS.md`
-  opens with, measured on real traffic.
-- **Partly fixed 2026-09-15 (`61c1bef`), and re-measured.** A weekday, holiday,
-  age, minutes condition or "since returning from injury" is now read from the
-  question text into `situation` - no template lists it in `HONORED_SCOPING`,
-  so `check_scope` refuses and the question falls through to the agent - and
-  `_AGENT_ONLY` gained the `[1-4]q` mirror of `q[1-4]`. Each of the six
-  alternatives was perturbed individually and watched to fail.
-- **Measured, not predicted:** replaying all 261 feed queries against the fixed
-  code (`fastpath_after_84.jsonl`), **exactly 11 rows changed outcome, all
-  `answered` -> `fell_through`, and every one of the 11 was graded `wrong`
-  before.** Fluently wrong: 44 (17%) -> **33 (13%)**. Correct is unchanged at
-  67 (26%), so no right answer was traded for a refusal. Six more queries match
-  the new patterns and did not move, having already fallen through or been
-  refused.
-- **Why this stays P1 rather than dropping to P2.** The re-measurement found
-  **4 wrong answers that still drop a condition**, each a shape these patterns
-  do not cover:
-  - "Desmond bane march 17" - a calendar date.
-  - "Ayton stats in game 4 playoff games" - a game number within a series.
-  - "luka td3s home" - a home/road split on a count.
-  - "how many 40+ points games does lebron james have in his 18th season?" - a
-    season named by ordinal rather than year.
-
-  So the shape is patched where it was sampled, not in general: `check_scope`
-  still cannot refuse what `ROUTER_SCHEMA` never emits, and each new narrowing
-  needs its own regex. A user still gets a fluent wrong answer to those four,
-  which is the P1 definition.
-- **Next step:** either add these four shapes the same way (cheap, and the
-  first two look mechanical), or design the general fix - a catch-all slot, or
-  a check that every meaningful word in the question reached some slot. Neither
-  is designed. Re-measure with
-  `/home/jeff/association-research/statmuse-2026-09/` ("Redoing the
-  measurement"), diffing against `fastpath_after_84.jsonl`, which is now the
-  baseline.
-- **Source:** the wrong answers are ours, not ESPN's; no DATA.md entry.
-- **GitHub:** #84
+*None open.* Emptied 2026-09-16, when the last entry here - a narrowing the
+router has no slot for being dropped and the rest answered - was fixed for
+every case the 261-query replay measures and re-ranked to P3, where what
+remains of it is recorded. An empty section is a statement about what has been
+*measured*, not a claim that nothing answers falsely: the replay is one
+261-query sample of one feed, it still grades 29 answers (11%) as fluently
+wrong for other reasons, and each of those is an entry below.
 
 ## P2: misleading or incomplete
 
@@ -740,6 +689,47 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **GitHub:** #76
 
 ## P3: refusal or gap
+
+### Each narrowing the router has no slot for needs its own regex
+- **Found:** 2026-09-15 replaying 261 real StatMuse feed queries through the
+  fast path; **fixed for every measured case and re-ranked P1 -> P3 on
+  2026-09-16**, after the second pass measured zero left.
+- **What it was.** `check_scope()` refuses a narrowing a template cannot
+  honour, but it can only see slots the router emits, and `ROUTER_SCHEMA` has
+  no slot for a weekday, a holiday, an age, a minutes condition, "since
+  returning from injury", a calendar date, a game of a playoff series or a
+  season named by ordinal. Those words never reached it, so the template
+  answered the *un-narrowed* question - the largest single cause of a wrong
+  answer in the replay.
+- **Fixed in `61c1bef` and the second pass**, by reading each shape from the
+  question text into `situation`, which no template lists in `HONORED_SCOPING`,
+  so `check_scope` refuses and the question falls through to the agent. Every
+  alternative was perturbed individually and watched to fail.
+- **Measured across two replays:** fluently wrong 44 (17%) -> 33 (13%) -> **29
+  (11%)**, and **correct is 67 (26%) in all three runs** - 15 wrong answers
+  removed without losing one right answer. **No wrong answer in the sample
+  drops a condition any more**; what is left is wrong entity (11), named player
+  dropped (8), wrong metric (6) and wrong scope (4), all different entries.
+- **Why it is still open, at P3.** The fix is a list of regexes, one per shape
+  somebody happened to ask in a 261-query sample. The structural fault is
+  untouched: **`check_scope` still cannot refuse what `ROUTER_SCHEMA` never
+  emits**, so the next narrowing nobody has thought of is dropped silently and
+  answered fluently, exactly as these eight were. It is P3 rather than P1
+  because no measured question is wrong today - but the mechanism that produced
+  11 of them is still there, and the only thing standing in front of it is a
+  regex somebody has to remember to extend.
+- **It also costs a clarification.** "Bam adebeyo jan 19" went from `clarified`
+  to `fell_through`: `check_scope` runs before name resolution, so refusing the
+  date pre-empts "did you mean Bam Adebayo?". Right on its own terms - the date
+  was being dropped too - but worth knowing the refusal is not free.
+- **User sees:** nothing wrong today. The risk is the next unhandled narrowing.
+- **Next step:** design the general check rather than adding a ninth regex - a
+  catch-all slot, or a test that every meaningful word in the question reached
+  some slot, so an unrecognized narrowing refuses by default instead of being
+  ignored by default. Re-measure against `fastpath_after_84b.jsonl`, which is
+  the current baseline.
+- **Source:** the wrong answers are ours, not ESPN's; no DATA.md entry.
+- **GitHub:** #84
 
 ### A regular-season BPI question answers from the play-in snapshot in 2023, 2025 and 2026
 - **Found:** 2026-09-15, reviewing `4ef119f` before merging it

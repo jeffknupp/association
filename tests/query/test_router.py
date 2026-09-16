@@ -742,6 +742,40 @@ def test_a_narrowing_the_schema_has_no_slot_for_still_reaches_check_scope(questi
     assert "situation" in _ask(question, '{"intent":"player_stat","player":"LeBron James"}').slots
 
 
+@pytest.mark.parametrize(
+    "question",
+    [
+        # The four shapes the first pass at #84 measured and did NOT reach,
+        # each verbatim from the feed and each answered with the narrowing gone.
+        "Desmond bane march 17",  # -> his most recent game, dated 2026-04-12
+        "celtics record vs sixers on november 11",
+        "Ayton stats in game 4 playoff games",  # -> his whole 10-game postseason
+        "how many 40+ points games does lebron james have in his 18th season?",
+        "Most points in 15th season played",
+    ],
+)
+def test_the_narrowings_the_first_pass_missed_also_reach_check_scope(question: str) -> None:
+    """A calendar date, one game of a series, and a season named by ordinal.
+
+    The date is the interesting one. There IS a `date` slot, and filling it
+    here would be *worse* than leaving it empty: `game_log` honours `date`, so
+    `check_scope` would not refuse, and `game_log` keeps a date only when it
+    matches `_ISO_DATE` - so "march 17" would be dropped silently and the
+    un-narrowed question answered, which is the bug itself. Making it an ISO
+    date means choosing a year the question never gives. Refused instead.
+    """
+    assert "situation" in _ask(question, '{"intent":"game_log","player":"Desmond Bane"}').slots
+
+
+def test_a_triple_double_abbreviation_is_not_read_as_three_pointers() -> None:
+    """Not a narrowing, though the replay filed it as one: "luka td3s home" had
+    its venue read and honoured correctly, and answered his POINTS per game at
+    home, because `td3s` became shot_value 3. Nothing counts triple-doubles for
+    one player, and the season table they live on has no venue dimension, so
+    this is the agent's. Spelled out, "triple double" already routes right."""
+    assert _ask("luka td3s home", '{"intent":"player_stat","player":"Luka Doncic","shot_value":3}').intent == "other"
+
+
 @pytest.mark.parametrize("question", ["Duncan Robison 1q log", "Devin Vassell nba player per game stats 1q", "each center 1q pts log vs nugget"])
 def test_the_short_form_of_a_quarter_is_forced_to_the_agent(question: str) -> None:
     """`_AGENT_ONLY` knew `q1` and not `1q`, so these three were answered with a

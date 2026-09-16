@@ -27,6 +27,19 @@ had no published version to be compatible with.
   christmas" returned a whole season average; "most triple doubles before
   turning 27" returned this season's leaders.
 
+  A second pass covers the shapes the first measurement showed it had missed:
+  a calendar date ("Desmond bane march 17" returned his most recent game,
+  dated 2026-04-12), one game of a playoff series ("Ayton stats in game 4
+  playoff games" returned his whole 10-game postseason), and a season named by
+  ordinal ("his 18th season", which the model read as the year 2018 and
+  answered with that season's league leaderboard). The date is the one worth
+  knowing about: there IS a `date` slot, and filling it would have been *worse*
+  than leaving it empty, because `game_log` honours `date` - so nothing would
+  refuse - and then keeps it only if it matches `_ISO_DATE`, dropping
+  "march 17" and answering the un-narrowed question. Turning it into an ISO
+  date means choosing a year the question never gives, so it is refused rather
+  than guessed.
+
   They are read from the question text into the existing `situation` slot,
   never asked of the model - the same move `_validate_side` makes for the side
   of the ball, and for the same reason: a new slot in `ROUTER_SCHEMA` moves
@@ -40,6 +53,15 @@ had no published version to be compatible with.
   that routes correctly today starts refusing. Separately, `_AGENT_ONLY` knew
   `q1` but not `1q`, so "Duncan Robison 1q log" was answered with a whole-game
   line; three more feed queries fixed by the mirror pattern.
+- **A triple-double abbreviation is no longer read as three-pointers.** "luka
+  td3s home" answered with his *points* per game at home, because `td3s` became
+  `shot_value: 3`. The replay filed it under "condition dropped", which was the
+  wrong diagnosis - the venue was read and honoured correctly, and the fault is
+  the metric. Triple-doubles exist as a leaderboard metric, but nothing counts
+  them for one player and the season table they live on has no venue dimension,
+  so the question goes to the agent, which can derive them from box scores.
+  Spelled out, "triple double" already routed correctly; only the abbreviation
+  was unreadable.
 - **Splits, streaks and with/without read the rebuilt box line too - they were
   the half that still called a rebuilt game a game he missed.** Reading the
   rebuilt lines landed for the per-game templates first; every template that

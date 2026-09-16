@@ -299,7 +299,17 @@ FOUL_OUT_THRESHOLD = 6
 # and "Devin Vassell nba player per game stats 1q" were both answered with a
 # whole-game line in the 2026-09-15 feed replay. Same shape as the "4th qtr"
 # gap that made these patterns grow abbreviations in the first place.
-_AGENT_ONLY = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+(?:quarter|qtr|q)\b|\bq[1-4]\b|\b[1-4]q\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b")
+# `td3s` is here rather than in _SITUATION because it is not a narrowing at
+# all, which is worth keeping straight: the feed replay filed "luka td3s home"
+# under "condition dropped", but the venue was read correctly and honoured -
+# the fault is that `td3s` became shot_value 3, so the answer was his points
+# per game at home instead of a count of triple-doubles. Triple-doubles exist
+# as a leaderboard metric (metrics.triple_doubles, off player_season_stats),
+# but nothing counts them for ONE player, and nothing can split them by venue,
+# since that season table has no venue dimension - deriving them per game from
+# box scores is exactly the agent's job. Spelled out, "triple double" already
+# routes correctly; only the abbreviation is unreadable.
+_AGENT_ONLY = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+(?:quarter|qtr|q)\b|\bq[1-4]\b|\b[1-4]q\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b|\btd3s?\b")
 
 # A half is never a quarter, so no template answers one - not even for a TEAM,
 # where team_quarter_points reads a period number and the model maps "first half"
@@ -651,7 +661,24 @@ _SITUATION = re.compile(
     # minutes" returned his most recent game.
     r"\bwith\s+\d+\+?\s*(?:minutes|mins?)\b|\b\d+\+?\s*(?:minutes|mins?)\s+(?:or\s+more|or\s+less|played)\b|"
     # A window defined by an event rather than a date.
-    r"\bsince\s+(?:returning|coming\s+back|his\s+return|the\s+all[- ]star\s+break)\b|\bsince\s+(?:his\s+)?injury\b|\bafter\s+returning\b",
+    r"\bsince\s+(?:returning|coming\s+back|his\s+return|the\s+all[- ]star\s+break)\b|\bsince\s+(?:his\s+)?injury\b|\bafter\s+returning\b|"
+    # A calendar date. There IS a `date` slot, and setting it here would be
+    # worse than doing nothing: game_log HONORS `date`, so check_scope would
+    # not refuse, and game_log keeps a date only when it matches _ISO_DATE -
+    # "march 17" is dropped on the floor and the un-narrowed question answered,
+    # which is the bug. Turning it into an ISO date means picking the year,
+    # which the question does not give. So it is refused rather than guessed:
+    # "Desmond bane march 17" returned his most recent game, dated 2026-04-12.
+    r"\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?\b|"
+    # One game of a playoff series. `round` already carries "game 7", which is
+    # a round in everything but name; 1-6 are not. "Ayton stats in game 4
+    # playoff games" answered with his whole postseason, all 10 games.
+    r"\bgame\s+[1-6]\b|"
+    # A season named by ordinal. Resolving it needs a debut year, and the model
+    # does not resolve it - it reads the ordinal as a year: "his 18th season"
+    # came back as season 2018, with LeBron dropped entirely, and the answer was
+    # the 2018 league leaderboard.
+    r"\b\d+(?:st|nd|rd|th)\s+season\b",
     re.IGNORECASE,
 )
 
