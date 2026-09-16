@@ -14,7 +14,7 @@ import duckdb
 
 from association.franchises import season_name_sql
 
-from . import advanced_stats, real_games, reconstructed_box, season_totals_repair, team_box_repair
+from . import advanced_stats, game_repair, real_games, reconstructed_box, season_totals_repair, team_box_repair
 
 log: logging.Logger = logging.getLogger("association.fetch.warehouse")
 
@@ -152,7 +152,11 @@ def _load_tables(con: duckdb.DuckDBPyConnection, data_dir: Path, target_tables: 
 def _repair_and_build_views(con: duckdb.DuckDBPyConnection) -> None:
     """The in-place repairs and views every load - full or partial - runs after its tables, in the order each depends on the last."""
     existing = _existing_tables(con)
-    # Rewrites team_box_stats in place, correcting two faults in what ESPN
+    # Puts the teams of a game ESPN serves on the wrong sides back where they
+    # played (see fetch/game_repair.py). Ahead of real_games, which copies
+    # games, and of every view that reads a winner or a side.
+    game_repair.repair(con, existing)
+    # Rewrites team_box_stats in place, correcting three faults in what ESPN
     # serves (see fetch/team_box_repair.py). Ahead of every view, so nothing
     # built below can read the uncorrected columns.
     team_box_repair.repair(con, existing)

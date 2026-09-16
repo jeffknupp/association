@@ -44,6 +44,7 @@ from typing import Any
 import duckdb
 
 from association.franchises import season_name_sql
+from association.season import eastern_date_sql
 
 
 @dataclass(frozen=True)
@@ -282,10 +283,9 @@ def resolve_team_metric(stat: object) -> str | None:
 #   picks out exactly the two teams per season (2024-2026) that `games` holds
 #   83 regular-season games for and standings 82.
 #
-# A game's date is its US Eastern date - games.date is a UTC timestamp, and a
-# fixed five-hour shift is enough for the reason given at fetch/parse.py's
-# _EASTERN_OFFSET: no NBA game tips in the hour where EST and EDT disagree.
-TEAM_GAMES_SQL = """
+# A game's date is its US Eastern date - games.date is a UTC timestamp, read
+# through season.eastern_date_sql, which follows daylight time.
+TEAM_GAMES_SQL = f"""
 WITH cup_finals AS (
     SELECT arg_max(event_id, date) AS event_id
     FROM real_games
@@ -295,7 +295,7 @@ WITH cup_finals AS (
 listed AS (
     SELECT g.event_id, g.season, g.season_type, g.home_team_id, g.away_team_id, g.home_score, g.away_score, g.winner_team_id,
            coalesce(g.neutral_site, false) AS neutral,
-           CAST(CAST(REPLACE(g.date, 'Z', '') AS TIMESTAMP) - INTERVAL 5 HOUR AS DATE) AS eastern_date,
+           {eastern_date_sql("g.date")} AS eastern_date,
            g.event_id IN (SELECT event_id FROM cup_finals) AS cup_final
     FROM real_games g
 ),

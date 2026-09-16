@@ -63,6 +63,9 @@ _PLAYER_DEFAULTS: dict[str, Any] = {
     "blocks": 0,
     "turnovers": 0,
     "fouls": 0,
+    "rebounds": 0,
+    "offensiveRebounds": 0,
+    "defensiveRebounds": 0,
 }
 
 
@@ -143,8 +146,22 @@ _PLAYERS_2018_ZEROED = [
     _player(event_id="g18z", season=2018, team_id="5", athlete_id="h", minutes=None),
 ]
 
-_TEAM_ROWS = [_SHIFTED_2018, _EMPTY_2018, _ZEROED_PLAYERS_2018, _CONTROL_2017, _TURNOVERLESS_2000, _EMPTY_TEAM_REAL_PLAYERS_1996]
-_PLAYER_ROWS = [*_PLAYERS_2018, *_PLAYERS_2018_EMPTY, *_PLAYERS_2018_ZEROED, *_PLAYERS_2017, *_PLAYERS_2000, *_PLAYERS_1996]
+# --- 2008: event 271107026's Cleveland line as ESPN serves it, refetched on
+# 2026-09-16. offensiveRebounds 8 is the team rebounds, defensiveRebounds 15 is
+# the real offensive boards, and totalRebounds 70 is 47 + 8 + 15. The player
+# rows are that game's real sums: 15 offensive, 32 defensive, 47 in all.
+_SWAPPED_REBOUNDS_2008 = _team(event_id="g08", season=2008, team_id="5", offensiveRebounds=8, defensiveRebounds=15, totalRebounds=70)
+_PLAYERS_2008 = [
+    _player(event_id="g08", season=2008, team_id="5", athlete_id="lbj", minutes=41, rebounds=15, offensiveRebounds=2, defensiveRebounds=13),
+    _player(event_id="g08", season=2008, team_id="5", athlete_id="zi", minutes=31, rebounds=14, offensiveRebounds=7, defensiveRebounds=7),
+    _player(event_id="g08", season=2008, team_id="5", athlete_id="rest", minutes=39, rebounds=18, offensiveRebounds=6, defensiveRebounds=12),
+]
+# The 2008 postseason is clean; the same stored shape there must be left alone.
+_PLAYOFF_2008 = _team(event_id="g08p", season=2008, season_type=3, team_id="5", offensiveRebounds=8, defensiveRebounds=15, totalRebounds=70)
+_PLAYERS_2008_PLAYOFF = [_player(event_id="g08p", season=2008, season_type=3, team_id="5", athlete_id="lbj", rebounds=47, offensiveRebounds=15, defensiveRebounds=32)]
+
+_TEAM_ROWS = [_SHIFTED_2018, _EMPTY_2018, _ZEROED_PLAYERS_2018, _CONTROL_2017, _TURNOVERLESS_2000, _EMPTY_TEAM_REAL_PLAYERS_1996, _SWAPPED_REBOUNDS_2008, _PLAYOFF_2008]
+_PLAYER_ROWS = [*_PLAYERS_2018, *_PLAYERS_2018_EMPTY, *_PLAYERS_2018_ZEROED, *_PLAYERS_2017, *_PLAYERS_2000, *_PLAYERS_1996, *_PLAYERS_2008, *_PLAYERS_2008_PLAYOFF]
 
 
 def _build(tmp_path: Path, *, with_players: bool = True, builds: int = 1) -> duckdb.DuckDBPyConnection:
@@ -280,13 +297,33 @@ def test_the_pre_2013_turnover_columns_are_rebuilt(tmp_path: Path) -> None:
     assert row["assists"] == 20
 
 
+def test_the_2008_rebound_columns_are_rebuilt(tmp_path: Path) -> None:
+    """The splits come from the player rows; the total is the players'
+    rebounds plus the team rebounds ESPN filed under offensiveRebounds, the
+    definition every season around 2008 follows."""
+    con = _build(tmp_path)
+    row = _row(con, "g08")
+    con.close()
+    assert (row["offensiveRebounds"], row["defensiveRebounds"], row["totalRebounds"]) == (15, 32, 55)
+    # Rebounds only: nothing else in a 2008 row moved.
+    assert (row["assists"], row["steals"], row["fieldGoalPct"]) == (24, 11, 41)
+
+
+def test_the_2008_postseason_rebounds_are_untouched(tmp_path: Path) -> None:
+    con = _build(tmp_path)
+    row = _row(con, "g08p")
+    con.close()
+    assert (row["offensiveRebounds"], row["defensiveRebounds"], row["totalRebounds"]) == (8, 15, 70)
+
+
 def test_the_repair_is_idempotent(tmp_path: Path) -> None:
     """Keyed on the season and on whether a row is empty, never on whether a
     value looks wrong - so a second build, or a partial `data load`, writes the
     same numbers instead of summing the sums."""
     con = _build(tmp_path, builds=2)
-    shifted, control, old = _row(con, "g18"), _row(con, "g17"), _row(con, "g00")
+    shifted, control, old, rebounds = _row(con, "g18"), _row(con, "g17"), _row(con, "g00"), _row(con, "g08")
     con.close()
+    assert (rebounds["offensiveRebounds"], rebounds["defensiveRebounds"], rebounds["totalRebounds"]) == (15, 32, 55)
     assert (shifted["assists"], shifted["steals"], shifted["blocks"], shifted["fouls"]) == (24, 11, 4, 24)
     assert shifted["fieldGoalPct"] == 41
     assert control["assists"] == 24

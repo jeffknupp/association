@@ -17,6 +17,7 @@ from datetime import timedelta as _timedelta
 from typing import Any
 
 from association.net_points_categories import FINGERPRINT_CATEGORIES
+from association.season import eastern_date
 
 TEAM_REF_RE = re.compile(r"/teams/(\d+)")
 
@@ -728,24 +729,16 @@ def parse_net_points_team(data: JSON | None, team_abbr_to_id: dict[str, str]) ->
 
 # NetPoints names a daily file for the date the games were PLAYED on, which
 # the NBA reckons in US Eastern time; ESPN stores a UTC timestamp, a day ahead
-# for any tip after 7pm Eastern. Shifted by a fixed five hours rather than
-# through a real time zone: EST and EDT disagree about a tip's calendar date
-# only in the midnight-to-1am Eastern hour, and no NBA game starts there
-# (checked against every timestamp in the warehouse - the only 04:00Z games in
-# the NetPoints era fall in EST months, where the two agree, and the EDT ones
-# are pre-2002 playoff placeholders). A fixed offset also needs no tz database,
-# so this stays right on a machine that has none.
-_EASTERN_OFFSET = _timedelta(hours=5)
-
-
+# for any tip after 7pm Eastern. season.eastern_date is the one rule for that
+# date, daylight time included, and needs no tz database.
 def _eastern_date(timestamp: str) -> str | None:
     """The US Eastern calendar date of an ESPN ``games.date``, or None if it is
     not the ``YYYY-MM-DDTHH:MMZ`` shape everything in that column has."""
     try:
-        moment = _datetime.strptime(timestamp, "%Y-%m-%dT%H:%MZ")
+        _datetime.strptime(timestamp, "%Y-%m-%dT%H:%MZ")
     except ValueError:
         return None
-    return (moment - _EASTERN_OFFSET).date().isoformat()
+    return eastern_date(timestamp)
 
 
 class NetPointsGameIndex:

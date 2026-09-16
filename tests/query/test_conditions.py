@@ -565,11 +565,15 @@ def test_the_split_kinds_are_the_ones_the_router_reads() -> None:
     assert SPLIT_KINDS == tuple(SPLIT_WORDS)
 
 
-def test_the_eastern_shift_matches_the_fetch_path() -> None:
-    from association.fetch.parse import _EASTERN_OFFSET
-    from association.query.conditions import _EASTERN_OFFSET_HOURS
+def test_every_query_eastern_date_is_the_shared_rule() -> None:
+    """Six copies of a five-hour shift lived here once; a daylight-time rule
+    copied six times is six places for it to drift."""
+    from association.query.conditions import _eastern_day
+    from association.query.team_metrics import TEAM_GAMES_SQL
+    from association.season import eastern_date_sql
 
-    assert _EASTERN_OFFSET.total_seconds() == _EASTERN_OFFSET_HOURS * 3600
+    assert _eastern_day("g.date") == eastern_date_sql("g.date")
+    assert eastern_date_sql("g.date") in TEAM_GAMES_SQL
 
 
 def test_a_teams_streak_or_split_is_floored_by_the_team_tables_alone() -> None:

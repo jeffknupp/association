@@ -62,12 +62,7 @@ from typing import Any
 import duckdb
 
 from association.coverage import COVERAGE
-
-# The same fixed shift as fetch.parse._EASTERN_OFFSET, and kept equal to it by
-# test_the_eastern_shift_matches_the_fetch_path. Not imported: that module
-# belongs to the fetch path, and a query has no business loading it for one
-# number.
-_EASTERN_OFFSET_HOURS = 5
+from association.season import eastern_date_sql
 
 _SEASON_TYPE_WORDS = {2: "regular season", 3: "postseason"}
 
@@ -87,11 +82,8 @@ _GAME_ORDER = "day, stamp, event_id"
 
 
 def _eastern_day(column: str) -> str:
-    """SQL for the US Eastern calendar date of a ``games.date`` value.
-
-    The column holds '2026-01-01T00:30Z', which DuckDB will not cast to a
-    timestamp as it stands - hence the two replaces."""
-    return f"CAST(CAST(replace(replace({column}, 'T', ' '), 'Z', '') AS TIMESTAMP) - INTERVAL {_EASTERN_OFFSET_HOURS} HOUR AS DATE)"
+    """SQL for the US Eastern calendar date of a ``games.date`` value."""
+    return eastern_date_sql(column)
 
 
 @dataclass(frozen=True)

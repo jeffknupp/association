@@ -1,8 +1,9 @@
 """Team box columns ESPN serves under the wrong name, put back at load time.
 
-Two faults, both ESPN's and both proven to survive a refetch (see ``DATA.md``,
-"2018 team box scores hold values under the wrong column names" and "The team
-box ``turnovers`` column is zero before 2013"). Neither is a parser bug: the
+Three faults, all ESPN's and all proven to survive a refetch (see ``DATA.md``,
+"2018 team box scores hold values under the wrong column names", "The team
+box ``turnovers`` column is zero before 2013" and "2008's team rebound columns
+hold something other than rebounds"). Neither is a parser bug: the
 parser assigns each value to the column ESPN's own ``name`` field gives it
 (:func:`association.fetch.parse._assign_stat`), and a clean pull with current
 code reproduced ``team_box_stats`` byte for byte.
@@ -34,6 +35,25 @@ to a team rather than a player. ``totalTurnovers`` itself is right in that era:
 it runs 0.55 a game above the player-box sum in 1994, which is what the team
 turnovers it includes are worth in a season where the column works (0.59 in
 2013, 0.59 in 2017). So only two columns are wrong before 2013.
+
+**2008's rebounds are shuffled.** Every non-empty 2008 REGULAR-season row
+holds its offensive rebounds under ``defensiveRebounds`` (2,458 of 2,460 rows
+equal the player-box offensive sum) and, under ``offensiveRebounds``, the
+rebounds credited to the team rather than a player - it means 8.36 a game,
+against a ``totalRebounds``-minus-players gap of 8.59 in 2007 and 8.18 in 2009.
+``totalRebounds`` then counts the offensive boards twice: it equals the player
+rebound sum plus both stored columns in 2,452 of 2,460 rows, which is why it
+means 61.54 against 49.64 and 49.47 either side. A refetch of ``271107026`` on
+2026-09-16 served the same 8/15/70 for Cleveland, whose players' own rows say
+15 offensive and 32 defensive of 47. The 2008 postseason is clean (172 of 172
+rows match), so only season type 2 is touched.
+
+All three columns are recoverable. The two splits are player sums, like
+assists. ``totalRebounds`` is the player rebound sum plus that stored team
+figure - the definition ESPN's total follows in every season around it (see
+"The team ``totalRebounds`` column stops including team rebounds in 2022") -
+so 2008 stays comparable with 2007 and 2009 instead of dropping its team
+rebounds or keeping a double count.
 
 Why a player-box sum is a re-derivation and not an estimate
 -----------------------------------------------------------
@@ -114,6 +134,12 @@ values, which is what makes this ESPN's fault rather than the parser's.
 .. versionadded:: 2.2.0
 """
 
+SWAPPED_REBOUNDS_SEASON: int = 2008
+"""The one season whose regular-season team rebound columns are shuffled.
+
+.. versionadded:: 2.2.0
+"""
+
 LAST_MISSING_TURNOVER_SEASON: int = 2012
 """The last season whose team box ``turnovers`` column is 0 in every row.
 
@@ -157,6 +183,9 @@ _PLAYER_TOTALS = """
                CAST(SUM(blocks) AS BIGINT) AS p_blocks,
                CAST(SUM(fouls) AS BIGINT) AS p_fouls,
                CAST(SUM(turnovers) AS BIGINT) AS p_turnovers,
+               CAST(SUM(rebounds) AS BIGINT) AS p_rebounds,
+               CAST(SUM(offensiveRebounds) AS BIGINT) AS p_offensive_rebounds,
+               CAST(SUM(defensiveRebounds) AS BIGINT) AS p_defensive_rebounds,
                MAX(minutes) AS p_max_minutes
         FROM player_box_stats
         -- season and season_type as well as event_id: the phantom 1993 season
@@ -171,12 +200,28 @@ _PLAYER_TOTALS = """
 _REPAIRABLE = "(t.fieldGoalsAttempted IS NOT NULL AND p.p_max_minutes IS NOT NULL)"
 _SHIFTED = f"({_REPAIRABLE} AND t.season = {SHIFTED_SEASON})"
 _NO_TURNOVERS = f"({_REPAIRABLE} AND t.season <= {LAST_MISSING_TURNOVER_SEASON})"
+# Regular season only: the 2008 postseason matches its player sums in 172 of 172 rows.
+_REBOUNDS_SWAPPED = f"({_REPAIRABLE} AND t.season = {SWAPPED_REBOUNDS_SEASON} AND t.season_type = 2)"
 
 # Columns the rebuild reads. A partial `data load --tables` subset, or a
 # genuinely thin ESPN response, skips the repair with a logged reason rather
 # than failing the whole warehouse build - the same contract
 # advanced_stats.build_views keeps.
-_REQUIRED_PLAYER_COLUMNS = {"event_id", "season", "season_type", "team_id", "minutes", "assists", "steals", "blocks", "fouls", "turnovers"}
+_REQUIRED_PLAYER_COLUMNS = {
+    "event_id",
+    "season",
+    "season_type",
+    "team_id",
+    "minutes",
+    "assists",
+    "steals",
+    "blocks",
+    "fouls",
+    "turnovers",
+    "rebounds",
+    "offensiveRebounds",
+    "defensiveRebounds",
+}
 _REQUIRED_TEAM_COLUMNS = {"event_id", "season", "season_type", "team_id", "fieldGoalsAttempted"}
 
 
@@ -194,6 +239,12 @@ def _corrections() -> list[tuple[str, str]]:
         ("turnovers", f"CASE WHEN {_SHIFTED} OR {_NO_TURNOVERS} THEN p.p_turnovers ELSE t.turnovers END"),
         ("fieldGoalPct", f"CASE WHEN {_SHIFTED} THEN {_PCT.format(made='t.fieldGoalsMade', attempted='t.fieldGoalsAttempted')} ELSE t.fieldGoalPct END"),
         ("freeThrowPct", f"CASE WHEN {_SHIFTED} THEN {_PCT.format(made='t.freeThrowsMade', attempted='t.freeThrowsAttempted')} ELSE t.freeThrowPct END"),
+        # 2008: the stored offensiveRebounds is the team-rebound figure, so the
+        # real total is the players' rebounds plus it. Every REPLACE expression
+        # reads the stored row, so the order of these three does not matter.
+        ("offensiveRebounds", f"CASE WHEN {_REBOUNDS_SWAPPED} THEN p.p_offensive_rebounds ELSE t.offensiveRebounds END"),
+        ("defensiveRebounds", f"CASE WHEN {_REBOUNDS_SWAPPED} THEN p.p_defensive_rebounds ELSE t.defensiveRebounds END"),
+        ("totalRebounds", f"CASE WHEN {_REBOUNDS_SWAPPED} THEN p.p_rebounds + t.offensiveRebounds ELSE t.totalRebounds END"),
         # Before 2013 this holds a copy of totalTurnovers (2,204 of 2,204 rows
         # in 1994), not the ~0.6 team turnovers a game it names. Nothing in the
         # player box can rebuild it, so it says so.
@@ -204,7 +255,7 @@ def _corrections() -> list[tuple[str, str]]:
 
 
 def repair(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
-    """Rewrite ``team_box_stats`` with the two ESPN faults corrected.
+    """Rewrite ``team_box_stats`` with the three ESPN faults corrected.
 
     Reads ``player_box_stats`` for the sums, so it is skipped with a logged
     reason when either table is absent or missing a column the rebuild needs,
@@ -242,4 +293,4 @@ def repair(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
         LEFT JOIN tbr_player_totals p
           ON p.event_id = t.event_id AND p.season = t.season AND p.season_type = t.season_type AND p.team_id = t.team_id
     """)
-    log.info("team box repair applied: %d columns (%s shifted, turnovers through %s)", len(fixes), SHIFTED_SEASON, LAST_MISSING_TURNOVER_SEASON)
+    log.info("team box repair applied: %d columns (%s shifted, %s rebounds, turnovers through %s)", len(fixes), SHIFTED_SEASON, SWAPPED_REBOUNDS_SEASON, LAST_MISSING_TURNOVER_SEASON)

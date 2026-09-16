@@ -185,10 +185,10 @@ def test_the_table_is_skipped_when_games_lacks_a_column() -> None:
     assert c.execute("SELECT count(*) FROM information_schema.tables WHERE table_name = 'real_games'").fetchone() == (0,)
 
 
-def test_the_real_games_shift_matches_the_fetch_path() -> None:
+def test_the_real_games_eastern_day_is_the_shared_rule() -> None:
     """The Eastern date a duplicate is judged on has to be the same one the
-    NetPoints matcher uses, or two parts of the warehouse disagree about which
-    day a game happened."""
-    from association.fetch.parse import _EASTERN_OFFSET
+    NetPoints matcher and every answer use, or two parts of the warehouse
+    disagree about which day a game happened."""
+    from association.season import eastern_date_sql
 
-    assert _EASTERN_OFFSET.total_seconds() == real_games.EASTERN_OFFSET_HOURS * 3600
+    assert eastern_date_sql("g.date") in real_games.real_games_sql(box_scores=True)

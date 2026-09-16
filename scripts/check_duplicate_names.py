@@ -13,7 +13,7 @@ This is the constants half of a shape `AGENTS.md` already records for
 functions ("Branches built in parallel collide on private helper names,
 silently"). Ruff's F811 and mypy's ``no-redef`` catch a collision **inside** one
 module; nothing catches the same name in two. Five separate definitions of the
-NBA's five-hour Eastern offset pass every gate this project has.
+NBA's five-hour Eastern offset passed every gate this project had.
 
 Not a copy-paste detector. Duplicated blocks are pylint's ``--duplicate-code``
 and jscpd's job, and both would be a new dependency answering a different
@@ -47,8 +47,6 @@ SRC = pathlib.Path(__file__).resolve().parent.parent / "src" / "association"
 ALLOWED: dict[str, str] = {
     # 100 in leaderboard.py, 50 in templates.py - one name, two limits.
     "MAX_LIMIT": "#81",
-    # The NBA's five-hour Eastern offset, defined five times under four names.
-    "_EASTERN_SHIFT": "#82",
     # "total", twice. No entry of its own: it is one literal in two modules
     # that never import each other, and #83 covers the pattern.
     "FINGERPRINT_SUMMARY_CATEGORY": "",

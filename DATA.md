@@ -563,11 +563,50 @@ the parser throws the grouping away. The birth-date half stands.
   being added to the total on top of the players' rebounds. The **postseason is
   clean** (172 rows: 49.55 total, 11.08 offensive, 29.58 defensive), so the
   fault is the 2008 regular season alone.
-- **Does a refetch fix it?** Not tested. The 2026-09-11 pull reproduced
-  `team_box_stats` exactly for 2018, so probably not.
-- **How we handle it:** nothing yet. `conditions._TEAM_LINE` reads
-  `AVG(t.totalRebounds)`.
-- **Tracked in:** ISSUES.md, "2008's team rebound columns are wrong".
+- **What the stored columns hold.** `defensiveRebounds` is the team's real
+  OFFENSIVE rebounds - it equals the player-box offensive sum in **2,458 of
+  2,460** rows. `offensiveRebounds` is the rebounds credited to the team rather
+  than a player: it means **8.36** a game, against a total-minus-players gap of
+  8.59 in 2007 and 8.18 in 2009, and it matches a play-by-play count of
+  player-less rebounds in 461 of 2,454 rows, the same weak rate the gap itself
+  manages in 2007 (418) and 2009 (507). So the total is the players' rebounds
+  plus the team's, plus the offensive boards a second time.
+- **Does a refetch fix it?** **No.** `271107026` refetched on 2026-09-16 still
+  serves Cleveland `totalRebounds` 70, `offensiveRebounds` 8,
+  `defensiveRebounds` 15 - and even the box score's own totals line reads
+  REB 23 / OREB 8 / DREB 15, beside player rows summing to 47 / 15 / 32.
+- **How we handle it:** `fetch/team_box_repair.py` rebuilds the three columns
+  at load time for the 2008 regular season: the splits from the player sums,
+  and `totalRebounds` as the player rebound sum plus the stored
+  `offensiveRebounds` (the team figure), so 2008 follows the same definition
+  as the seasons either side. Rebuilt means: OREB 11.20, DREB 30.78, total 50.34.
+- **Tracked in:** no action needed - repaired at load time.
+
+### 1990 Finals Game 5 is served with the wrong home team and winner
+
+- **What ESPN does:** serves `100614008`, Detroit's 92-90 title-clinching win
+  at Portland on 14 June 1990, as Detroit at HOME scoring 90 and Portland the
+  winner with 92.
+- **Evidence:** summary refetched 2026-09-16: `home DET 90 winner False`,
+  `away POR 92 winner True`, no linescores, no venue. The stored `games` row
+  matches it field for field, so it is not the parser. The 1990 Finals reads
+  3-2 from the stored winners against a real 4-1; no other Finals from 1989 to
+  1996 is miscounted. 1988-1992 has no box scores or plays to cross-check
+  against. The home/away flags, scores and winner flag agree with each other
+  (a 90-92 away win); only the two team ids sit on the wrong competitors, and
+  the event id encodes Detroit as home the same wrong way.
+- **Is it the only one?** Every postseason pairing in `real_games` (570 series)
+  was checked on 2026-09-16 for a series that ends when one team reaches the
+  wins it needs and for home games in that era's format (2-2-1 first rounds
+  through 2002, 2-2-1-1-1, 2-3-2 Finals 1985-2013). This game is the only
+  failure outside 2001, whose failures are all games ESPN is missing. The
+  1988-1992 regular seasons cannot be checked the same way: `real_games` holds
+  only 28 of their games.
+- **Does a refetch fix it?** **No** (above).
+- **How we handle it:** `fetch/game_repair.py` swaps the two team ids at load
+  time (and `team_box_stats.home_away`), keyed on the event id and only while
+  the row still holds what ESPN serves.
+- **Tracked in:** no action needed - repaired at load time.
 
 ### The team `totalRebounds` column stops including team rebounds in 2022
 
@@ -683,12 +722,13 @@ the parser throws the grouping away. The birth-date half stands.
     midnight Eastern, and for these the written date genuinely IS the game
     date - re-measured 2026-09-16, `real_games` holds **379** `T04:00Z` rows in
     1988-1992 alone (1988 RS 11 / PO 62, 1989 PO 72, 1990 PO 68, 1991 RS 8 / PO
-    73, 1992 RS 9 / PO 76). Every date this project prints applies a fixed
-    five-hour shift meant for a real tip time, which moves a genuine
-    midnight-Eastern stamp to the day BEFORE - so these 379 games print one day
-    early, including the whole 1989-1992 postseason. See ISSUES.md, "Date-only
-    stamps print a day early: 391 games, the whole 1989-92 postseason among
-    them" (#76).
+    73, 1992 RS 9 / PO 76). A fixed five-hour shift meant for a real tip time
+    moved every summer (`T04:00Z`, EDT) one to the day BEFORE, and did so until
+    2026-09-16: `season.py` now reads the real Eastern clock, which puts all
+    391 (these 379 plus 2000-2001's 12) on their written date - 318 of 318
+    whose old-format event id encodes the date agree with it. The same stamp
+    in 2026 is not date-only: its ten `T04:00Z` rows all fall in November-March,
+    where that is a real 11pm EST tip, and the clock dates them the day before.
   - **Every `games` row has `team_box_stats` rows**, phantoms and placeholders
     included — measured 2026-09-14, 43,494 of 43,494. Only the PLAYER box is
     absent. This entry used to say the team `game_log` was safe "because it
@@ -782,9 +822,9 @@ the parser throws the grouping away. The birth-date half stands.
 - **Does a refetch fix it?** **Not applicable** — this is a convention
   mismatch between two of ESPN's own products, not a bad value.
 - **How we handle it:** `NetPointsGameIndex` (`fetch/parse.py`) reads the
-  game's own Eastern date off the timestamp with a **fixed five-hour shift**
-  (EST and EDT disagree about a tip's date only in the midnight-to-1am Eastern
-  hour, which no NBA game starts in), does **one exact lookup** since a team
+  game's own Eastern date off the timestamp (`season.eastern_date`, the real
+  Eastern clock - it was a fixed five-hour shift, which is identical for every
+  real tip and wrong only for date-only stamps), does **one exact lookup** since a team
   plays at most one game per Eastern date, resolves a date holding two of one
   team's games to **neither**, and keeps the UTC window as a fallback in the
   old order for the February 2020 games. The daily file's `pts` column is

@@ -416,10 +416,17 @@ timestamp — `NetPointsGameIndex` in `fetch/parse.py`, one exact lookup, since
 a team plays at most one game per Eastern date. Three things about it are
 load-bearing:
 
-- **A fixed five-hour shift, not a real time zone.** EST and EDT disagree
-  about a tip's calendar date only in the midnight-to-1am Eastern hour, which
-  no NBA game starts in (checked against every timestamp in the warehouse),
-  and a fixed offset needs no tz database on the machine running the pull.
+- **The real Eastern clock, written out rather than read from a tz database.**
+  This was a fixed five-hour shift, on the reasoning that EST and EDT disagree
+  about a date only in the midnight-to-1am hour and no game tips then. True of
+  tips - and false of the stamps that are not tips. ESPN stores a game with no
+  tip time as *midnight* Eastern (`04:00Z` in summer), exactly the hour the
+  shift gets wrong, and 391 games, the whole 1989-1992 postseason among them,
+  printed a day early. `season.py` holds the US daylight-time rules by hand
+  (so a machine with no tz database still dates games), a test checks them
+  against zoneinfo for every day 1976-2039, and **every** stamp-to-date
+  conversion goes through `eastern_date`, `eastern_date_sql` or
+  `eastern_day_utc_range`. Do not write another `- INTERVAL 5 HOUR`.
 - **A date holding two of one team's games resolves to neither.** A team
   cannot play twice in a day, so a duplicate key is ESPN's clock being wrong,
   not a choice — and the dict this replaced silently kept whichever row it
@@ -747,13 +754,14 @@ prompted them:
 **One concept, one definition.** Ruff's F811 and mypy's `no-redef` catch a name
 defined twice in one module and are blind to the same name in two - so
 `MAX_LIMIT` is 100 in `query/leaderboard.py` and 50 in `query/templates.py`,
-and the NBA's five-hour Eastern offset is declared five times under four names.
+and the NBA's five-hour Eastern offset was once declared six times under five
+names.
 `scripts/check_duplicate_names.py` reports cross-module constant collisions
 against an allowlist of the ones already filed, so it fails only on a new one.
 It is deliberately name-only: comparing values pairs `DEFAULT_LIMIT` with
 `EASTERN_OFFSET_HOURS` and buries the real finding in coincidence. It also
-cannot see a concept duplicated under *different* names, which is four of those
-five Eastern offsets - that still needs somebody reading a grep.
+cannot see a concept duplicated under *different* names, which is most of those
+six Eastern offsets - that still needs somebody reading a grep.
 
 ## Recording findings
 

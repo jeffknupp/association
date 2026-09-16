@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +21,7 @@ import duckdb
 from association.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON, caveat, unavailable
 from association.franchises import season_name, season_name_sql
 from association.net_points_categories import FINGERPRINT_CATEGORIES
-from association.season import current_season
+from association.season import current_season, eastern_day_utc_range
 from association.season import eastern_date as _eastern_date
 
 from .answer import Artifact
@@ -724,14 +724,6 @@ def _empty_note(found: tuple[int, int | None, int | None], name: str | None, con
     whose = f"{count:,} of {name}'s games" if name else f"{count:,} {'game' if count == 1 else 'games'}"
     between = f"in {_season_label(first)}" if first == last else f"between {_season_label(first)} and {_season_label(last)}"
     return f" {whose} {between} {'has' if count == 1 else 'have'} an empty box score in this warehouse, so {consequence}."
-
-
-# games.date is UTC, and a 7pm Eastern tip is already the next day there:
-# LeBron James's 61 against Charlotte, on 3 March 2014, is stored as
-# 2014-03-04T00:30Z. A fixed five-hour shift, as fetch/parse.py's
-# NetPointsGameIndex uses and for its reason - EST and EDT disagree about a
-# tip's date only between midnight and 1am Eastern, when no game starts.
-_EASTERN_SHIFT = timedelta(hours=5)
 
 
 def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
@@ -1508,10 +1500,6 @@ def _wanted_stats(slots: dict[str, Any], default: tuple[str, ...] = STAT_LINE) -
 # pistons" listed the Celtics' last eight games, and "Podziemski game log
 # without curry" listed every game he played.
 
-# ESPN's one timestamp shape. The Eastern date of one is _eastern_date, defined
-# once above - both branches of this module added their own copy.
-_ESPN_TIMESTAMP = "%Y-%m-%dT%H:%MZ"
-
 
 def _eastern_day(day: str) -> tuple[str, str]:
     """The half-open range of ``games.date`` values that tip on the Eastern
@@ -1519,9 +1507,11 @@ def _eastern_day(day: str) -> tuple[str, str]:
 
     ``LIKE 'YYYY-MM-DD%'`` matched the UTC date instead, so asking for a game on
     the 15th found the one played the evening of the 14th, and missed its own
-    whenever it tipped after 7pm."""
-    start = datetime.strptime(day, "%Y-%m-%d") + _EASTERN_SHIFT
-    return start.strftime(_ESPN_TIMESTAMP), (start + timedelta(days=1)).strftime(_ESPN_TIMESTAMP)
+    whenever it tipped after 7pm. The range follows daylight time
+    (:func:`association.season.eastern_day_utc_range`), so a summer date-only
+    stamp - midnight Eastern, 04:00Z - is found on the day it names."""
+    datetime.strptime(day, "%Y-%m-%d")  # the same ValueError on a malformed day as before
+    return eastern_day_utc_range(day)
 
 
 def _season_name(season: int) -> str:

@@ -80,17 +80,9 @@ import logging
 
 import duckdb
 
+from association.season import eastern_date_sql
+
 log: logging.Logger = logging.getLogger("association.fetch.real_games")
-
-# The same fixed five-hour shift as parse._EASTERN_OFFSET, kept equal to it by
-# test_the_real_games_shift_matches_the_fetch_path. EST and EDT disagree about
-# a tip's calendar date only between midnight and 1am Eastern, and no NBA game
-# starts there.
-EASTERN_OFFSET_HOURS = 5
-"""Hours to subtract from a UTC ``games.date`` to get its US Eastern date.
-
-.. versionadded:: 2.2.0
-"""
 
 # Midnight US Eastern under EDT and under EST. ESPN writes one of these when it
 # has the date of a game but not its tip time.
@@ -132,7 +124,7 @@ def real_games_sql(*, box_scores: bool) -> str:
         CREATE OR REPLACE TABLE real_games AS
         WITH listed AS (
             SELECT g.*,
-                   CAST(CAST(replace(replace(g.date, 'T', ' '), 'Z', '') AS TIMESTAMP) - INTERVAL {EASTERN_OFFSET_HOURS} HOUR AS DATE) AS eastern_day,
+                   {eastern_date_sql("g.date")} AS eastern_day,
                    {game_has_box} AS has_box
             FROM games g
             WHERE g.winner_team_id IS NOT NULL

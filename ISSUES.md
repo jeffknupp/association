@@ -46,64 +46,10 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
-Emptied on 2026-09-16 and refilled the same day, when the issues audit
-re-ranked two P2 entries whose own evidence met the P1 definition. The lesson
-is in the order of events: the section was declared empty on the strength of
-the entries it held, and nobody had re-read the P2s against the definition.
-
-### Date-only stamps print a day early: 391 games, the whole 1989-92 postseason among them
-- **Found:** 2026-09-14 building `real_games`; reframed 2026-09-15; **widened
-  from 12 games to 391 and re-ranked P2 -> P1 on 2026-09-16** by the issues
-  audit, re-measured by the lead
-- **Evidence:** ESPN stores some games with no tip time, as midnight Eastern
-  (`T04:00Z` in summer, `T05:00Z` in winter). Every date this project prints
-  goes through a fixed five-hour shift (`season.eastern_date`,
-  `team_metrics.TEAM_GAMES_SQL`, `conditions._eastern_day`), which is right for
-  a real tip time and moves a midnight stamp to the day BEFORE. `real_games`
-  holds 401 `T04:00Z` rows: 10 in 2026 (real 11pm Eastern tips, correctly
-  shifted), 12 in 2000-2001, and **379 in 1988-1992** - 1988 RS 11 / PO 62,
-  1989 PO 72, 1990 PO 68, 1991 RS 8 / PO 73, 1992 RS 9 / PO 76. Old-format ids
-  encode the month and day: re-measured by the lead, **0 of those 379 match the
-  shifted date**, against 10,672 of 10,672 real-tip 1994-2002 games that do.
-  (The auditor matched the written date 379/379; the lead's id slice matched
-  306, most likely an id layout it did not handle - the direction is not in
-  doubt.) `T05:00Z` winter stamps shift to the same day, so they are unaffected.
-- **User sees:** a date one day early, stated as fact, in every game log,
-  single-game high and month split for those games - and `coverage.py`
-  declares the 1989-1992 postseason answerable. `100614008`, the Pistons' 1990
-  title clincher on 14 June, prints as 13 June; the 2000 LAL-IND Final reads
-  6/8/10/13/15/18 June against a real 7/9/11/14/16/19.
-- **Next step:** read a `T04:00Z` stamp outside the seasons where it is a real
-  tip (2026) as its written date instead of shifting it. The stamp is
-  identifiable from its own time - but 2026's ten are real 11pm tips with the
-  same stamp, so the rule has to be by era, not by string.
-- **Source:** DATA.md, "`games` carries placeholder, duplicate and phantom rows"
-  - which describes these stamps only as a phantom marker and needs the
-  date-only half added
-- **GitHub:** #76
-
-### 2008's team rebound columns print as real
-- **Found:** 2026-09-14, fixing the 2018 team-box shift (#8); **re-ranked P2 ->
-  P1 on 2026-09-16** - it is silently wrong data that a template reads
-- **Evidence:** over non-empty 2008 regular-season rows, `offensiveRebounds`
-  equals the player-box sum in 188 of 2,460 rows (2007: 2,458; 2009: 2,454) and
-  `defensiveRebounds` in 1 of 2,460. Means, 2007 -> 2008 -> 2009: OREB 11.12 ->
-  8.36 -> 11.04, DREB 29.93 -> 11.20 -> 30.26, totalRebounds 49.64 -> **61.54**
-  -> 49.47. The player rows are sound (41.98 a game, between 2007's 41.05 and
-  2009's 41.29), 2008's other counting columns match their player sums in
-  2,443-2,460 of 2,460 rows, and the 2008 postseason is clean (49.55 / 11.08 /
-  29.58). `totalRebounds` equals the player rebound sum plus the row's own OREB
-  and DREB in 2,452 of 2,460 rows, which is the lead on what it counts.
-- **User sees, re-measured live 2026-09-16:** "Celtics home and away splits
-  2008" prints **REB 60.8 at home and 60.4 away**, with no caveat, against a
-  real ~49.6 - `conditions._TEAM_LINE` reads `AVG(t.totalRebounds)`. Agent SQL
-  over 2008's rebound columns is wrong the same way.
-- **Next step:** rebuild `offensiveRebounds` and `defensiveRebounds` from the
-  player sums the way `fetch/team_box_repair.py` rebuilds 2018's assists. Team
-  rebounds are not a player sum, so `totalRebounds` probably has to be NULL for
-  2008. Refetch one 2008 event first to confirm ESPN is the cause.
-- **Source:** DATA.md, "2008's team rebound columns hold something other than rebounds"
-- **GitHub:** #74
+Empty. The 391 date-only games printed a day early (#76), 2008's team rebound
+columns (#74) and the swapped 1990 Finals Game 5 were fixed on 2026-09-16. Before declaring this section empty,
+re-read the P2s against the P1 definition: that is how both of those were
+found.
 
 ## P2: misleading or incomplete
 
@@ -1368,36 +1314,6 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **Priority note:** P4 because no answer is wrong; it is a trap laid for the
   next change, not a fault in this one.
 - **GitHub:** #81
-
-### The five-hour Eastern offset is defined five times under four names
-- **Found:** 2026-09-15, in the cross-module constant scan
-- **Evidence:** the same NBA fact - a US Eastern date is UTC minus five hours,
-  and EST/EDT disagree only in an hour no game starts in - is declared at
-  `season.py:25` (`_EASTERN_SHIFT`), `fetch/real_games.py:89`
-  (`EASTERN_OFFSET_HOURS`), `fetch/parse.py:738` (`_EASTERN_OFFSET`),
-  `query/conditions.py:70` (`_EASTERN_OFFSET_HOURS`) and
-  `query/templates.py:734` (`_EASTERN_SHIFT`). Four of the five are private, so
-  no module can import another's.
-- **User sees:** nothing today - all five hold 5. If one is ever changed
-  without the others, dates drift between the fetch path, the game list and the
-  query path, and a game lands on the wrong calendar day in one answer and the
-  right one in the next. That is the fault `DATA.md` ("A NetPoints date is not
-  an ESPN date") already cost this project once.
-- **Next step:** one public declaration in `season.py` - the module that
-  already owns season arithmetic - imported by the other four. `fetch` importing
-  `season` is an edge that already exists (`current_season`).
-- **A name-only scan cannot see this.** `scripts/check_duplicate_names.py`
-  reports the two `_EASTERN_SHIFT` copies and is structurally blind to the
-  other three, which wear different names. Finding those needed a human reading
-  a grep for `hours=5`.
-- **Re-checked 2026-09-15: six copies, not five.** The sixth is a bare
-  literal in SQL - `query/team_metrics.py:293`, `- INTERVAL 5 HOUR AS DATE`
-  inside `TEAM_GAMES_SQL` - whose own comment cites `parse._EASTERN_OFFSET`
-  without using it. Neither the name scan nor a grep for `hours=5` finds it.
-- **Re-checked 2026-09-16: `scripts/check_duplicate_names.py:50` is also
-  stale.** Its comment still reads "The NBA's five-hour Eastern offset, defined
-  five times under four names" - unchanged since the sixth copy was found.
-- **GitHub:** #82
 
 ### One rule, two hand-maintained copies: the traded-player dedup
 - **Found:** 2026-09-15, while fixing #9

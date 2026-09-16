@@ -15,6 +15,44 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **The Pistons' 1990 title clincher is a Detroit win again.** ESPN serves
+  Game 5 of the 1990 Finals (`100614008`, 14 June at Portland, Detroit 92-90)
+  with the two teams on each other's sides - Detroit at home, losing 90-92 -
+  so game logs printed the clincher as a home loss and the series read 3-2.
+  A new load-time repair, `fetch/game_repair.py`, puts the team ids back
+  (and `team_box_stats.home_away`), keyed on the event id and guarded on the
+  stored row, so it is idempotent and stops by itself if ESPN corrects the
+  game. Checked across all 570 postseason series for impossible win counts and
+  out-of-format home games, it is the only such game outside 2001's missing
+  ones.
+- **Games stored with no tip time are dated the day they were played, not the
+  day before.** ESPN stores such a game as midnight US Eastern - `04:00Z` in
+  summer - and every date this project printed or filtered on went through a
+  fixed five-hour shift, which is right for a real tip and moves a summer
+  midnight to the previous day. 391 games printed a day early in every game
+  log, single-game high and month split: 379 in 1988-1992, the whole
+  1989-1992 postseason among them (the Pistons' 1990 title clincher on 14 June
+  read 13 June), and 12 in the 2000-2001 postseason. A date question missed
+  them for the same reason. The fix is the real Eastern clock rather than an
+  era cutoff, because 2026 carries ten `04:00Z` stamps that are genuine 11pm
+  EST tips: `association.season` gains `eastern_utc_offset_hours`,
+  `eastern_date_sql` and `eastern_day_utc_range`, with the US daylight-time
+  rules written out so no tz database is needed, and `eastern_date` follows
+  them. All six places that turned a stamp into a date - `season`, the
+  NetPoints matcher, `real_games`, `conditions`, `team_metrics` and the
+  templates' date filter - now use them, which also retires five duplicate
+  declarations of the offset (#82). Measured against the warehouse: exactly
+  those 391 games move, 318 of 318 whose event id encodes the date now match
+  it (0 did before), and `real_games` is unchanged at 43,353 rows. (#76)
+- **2008's team rebound columns are rebuilt at load time.** ESPN serves the
+  2008 regular season with the real offensive rebounds under
+  `defensiveRebounds`, the team rebounds under `offensiveRebounds`, and a
+  `totalRebounds` that counts the offensive boards twice - so "Celtics home and
+  away splits 2008" printed 60.8 rebounds a game. A refetch serves the same
+  values. `fetch/team_box_repair.py` now rebuilds the splits from the player
+  box and the total as the players' rebounds plus the team figure, the
+  definition of the seasons either side; the 2008 postseason is clean and
+  untouched. (#74)
 - **A full warehouse rebuild now builds into a temporary file and swaps it
   in, rather than replacing tables one statement at a time in `db_path`
   itself.** `association data pull`/`load`'s full-rebuild path is exactly the
