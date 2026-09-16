@@ -69,6 +69,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   costs no prompt tokens and cannot move another slot. (b) Widen `_AGENT_ONLY`
   to the "1q"/"2h" short forms. Then measure again against the saved replay.
 - **Source:** the wrong answers are ours, not ESPN's; no DATA.md entry.
+- **GitHub:** #84
 
 ## P2: misleading or incomplete
 
@@ -91,6 +92,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   caveat 2013-2018 shooting boards. Note the rebuild does not recover minutes,
   so any per-minute advanced figure stays out.
 - **Source:** DATA.md, "Every Chicago and New Orleans game from 2013 to 2018 has an empty box score"
+- **GitHub:** #85
 
 ### The 2001 playoff caveat never reaches two of the templates that need it
 - **Found:** 2026-09-15, issues audit (P2 data auditor)
@@ -106,6 +108,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** add a `postseason_partial` entry for `player_box_stats` (and
   `player_game_log`), or have the caveat follow the season rather than the table.
 - **Source:** DATA.md, "The 2000 and 2001 playoffs stop before the Finals"
+- **GitHub:** #86
 
 ### ESPN files one player under two athlete ids in the same box score
 - **Found:** 2026-09-15, issues audit - found independently by two auditors
@@ -131,6 +134,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   Some of #21's "shared display names" are this, not two players, so the
   ambiguity rule there drops a real player's data.
 - **Source:** DATA.md, "ESPN files one player under two athlete ids" (to be added)
+- **GitHub:** #87
 
 ### The 2001 playoffs are missing about ten games, and ESPN has them nowhere
 - **Found:** 2026-09-11, template work (agent B); 2000 fixed and this rewritten 2026-09-15
@@ -726,6 +730,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   nothing records that it was made.
 - **Source:** DATA.md, "ESPN's power index is a paged collection, and holds all
   30 teams"
+- **GitHub:** #88
 
 ### Season 2021's regular-season BPI snapshot is a day-one projection
 - **Found:** 2026-09-15, reviewing `4ef119f`
@@ -743,6 +748,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   it describes, or say "preseason projection" when `numwins + numlosses = 0`.
 - **Source:** DATA.md, "ESPN's power index is a paged collection, and holds all
   30 teams"
+- **GitHub:** #89
 
 ### `get_collection` goes quiet on the exact failure it exists to make loud
 - **Found:** 2026-09-15, reviewing `4ef119f`
@@ -760,6 +766,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   how the 25-row power index survived for months.
 - **Next step:** log at WARNING when a collection read ends on a non-dict first
   page, and add a test with a session that answers 400.
+- **GitHub:** #90
 
 ### The router's own team name "Los Angeles Clippers" resolves to nothing
 - **Found:** 2026-09-15, replaying the StatMuse feed
@@ -776,6 +783,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** add the full-name form to `_TEAM_NICKNAMES`, or match on
   `location + name` as well as `display_name`. Check the other 29 for the same
   shape (ESPN's `display_name` is not always the full city name).
+- **GitHub:** #91
 
 ### Four question filters are recognized but no template answers them
 - **Found:** 2026-09-11, template work and final corpus run
@@ -1084,6 +1092,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **Next step:** either accept it as untestable-by-construction (the docstring
   is then the record), or make the ordering explicit in Python where a test can
   reach it, rather than leaving the decision inside an `ORDER BY`.
+- **GitHub:** #92
 
 ### The "postseason copy" rule is written twice, and both figures are stale
 - **Found:** 2026-09-15, issues audit (P4 data/query auditor)
@@ -1101,6 +1110,7 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   #83, with the added trap that the two spellings could diverge silently.
 - **Next step:** export one helper and call it from both, the way #83 proposes
   for the traded-player dedup. Fix both figures while there.
+- **GitHub:** #93
 
 ### `MAX_LIMIT` is 100 in one module and 50 in another
 - **Found:** 2026-09-15, in the cross-module constant scan written after #6/#9
