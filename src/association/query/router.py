@@ -302,7 +302,7 @@ FOUL_OUT_THRESHOLD = 6
 # gap that made these patterns grow abbreviations in the first place.
 # `td3s` is here rather than in _SITUATION because it is not a narrowing at
 # all, which is worth keeping straight: the feed replay filed "luka td3s home"
-# under "condition dropped", but the venue was read correctly and honoured -
+# under "condition dropped", but the venue was read correctly and honored -
 # the fault is that `td3s` became shot_value 3, so the answer was his points
 # per game at home instead of a count of triple-doubles. Triple-doubles exist
 # as a leaderboard metric (metrics.triple_doubles, off player_season_stats),
@@ -479,7 +479,7 @@ _ROUND_WORDS = re.compile(r"\bfinals\b|\b(?:first|second)\s+round\b|\bsemi-?fina
 
 # A range of seasons rather than one. "since 2020" is every season from the one
 # ending in 2020; a decade ("the 2010s") is the seasons ending in it. Stated this
-# way, not guessed at, so a template that honours it can print the exact range.
+# way, not guessed at, so a template that honors it can print the exact range.
 _SINCE = re.compile(r"\bsince\s+(?:the\s+)?((?:19|20)\d\d)\b", re.IGNORECASE)
 _DECADE = re.compile(r"\b(?:the\s+)?((?:19|20)\d)0'?s\b", re.IGNORECASE)
 
@@ -516,7 +516,7 @@ _MONTHS = {
 # A calendar day written the way people write it: "march 17", "Jan 19",
 # "november 11 2019". The leading group is what makes a date a RANGE rather
 # than a day - "since January 31st" starts a window and names no single game -
-# and those are left for _SITUATION to refuse, since no template honours a
+# and those are left for _SITUATION to refuse, since no template honors a
 # range of dates.
 _CALENDAR_DATE = re.compile(
     r"(?P<range>\b(?:since|after|before|from|through|until)\s+(?:the\s+)?)?"
@@ -548,7 +548,7 @@ def _validate_date(question: str, season: int | None) -> str | None:
     - **A year the question states wins.** "november 11 2019" is the calendar
       day, not November of whatever season 2019 resolves to.
     - **A date that opens a window is not a day.** "since January 31st" names a
-      range no template honours; it is left to `_SITUATION` to refuse.
+      range no template honors; it is left to `_SITUATION` to refuse.
     - **No season, no date.** A career question has no season to fix the year
       on ("lebron on march 17 all time" spans 20 of them), so it refuses
       instead.
@@ -682,7 +682,7 @@ def _names_after(pattern: re.Pattern[str], question: str) -> list[str]:
     This reads ALL of them, and that is the whole point. Reading only the first
     answered "Celtics record without Tatum and Brown" with the games Tatum
     missed: a different question, answered fluently, with nothing in the answer
-    saying the second player had been dropped. The templates that honour
+    saying the second player had been dropped. The templates that honor
     ``without`` require every name (see ``templates.with_without``), so the
     parser must hand them every name or the requirement has nothing to work
     with.
@@ -741,7 +741,7 @@ RANK_WORDS: tuple[tuple[str, re.Pattern[str]], ...] = (
 
 # A comparison BELOW a number. No slot says "under", so without this "games
 # with under 14 FTA" reached threshold_count as 14 and was answered as 14 or
-# MORE - the inverse question. A scoping slot no template honours.
+# MORE - the inverse question. A scoping slot no template honors.
 _BELOW = re.compile(r"\b(?:under|fewer\s+than|less\s+than|below|at\s+most|no\s+more\s+than)\s+\d+", re.IGNORECASE)
 
 # Situations a game can be in that no template filters on: the second night of a
@@ -976,15 +976,15 @@ ORDER_WORDS: dict[str, re.Pattern[str]] = {
 }
 
 ORDER_INTENTS: frozenset[str] = frozenset({"fingerprint", "game_log", "player_netpoints", "shot_chart", "shot_distance"})
-"""Intents whose template honours ``order``, so filling it from the question can
+"""Intents whose template honors ``order``, so filling it from the question can
 only make the answer match what was asked.
 
 The same list as the ``order`` entries in
 :data:`association.query.templates.HONORED_SCOPING`, kept separately because a
 router that imported the templates would invert the dependency, and guarded by
-``test_the_order_intents_are_the_ones_that_honour_order``. Adding ``order``
+``test_the_order_intents_are_the_ones_that_honor_order``. Adding ``order``
 anywhere else would be worse than leaving it off: ``check_scope`` refuses a
-scoping slot the template cannot honour, so a question that answers today would
+scoping slot the template cannot honor, so a question that answers today would
 start falling through to the agent instead.
 
 .. versionadded:: 2.1.0
@@ -1004,7 +1004,7 @@ def _validate_order(slots: dict[str, Any], question: str) -> str | None:
     wording, came back with it 3/3. The prompt is where the model learned the
     phrase, not the concept.
 
-    That mattered because ``fingerprint`` honours ``order`` by refusing: with
+    That mattered because ``fingerprint`` honors ``order`` by refusing: with
     the slot missing there was nothing to refuse, so a question about one game
     was answered with the whole season's radar, titled with the season and
     saying nothing about the difference.
@@ -1085,7 +1085,7 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
         # sends it there instead of to the agent - but only when the question
         # names one and the period is legible, since `period_split` answers
         # about a player and nothing else. Everything else keeps the old
-        # behaviour: slots are kept, because the agent sees the conversation
+        # behavior: slots are kept, because the agent sees the conversation
         # rather than the Route, and the log line shows what the model thought.
         asked = _period_asked(question)
         # No second `_is_team_quarter_points` check: it means "this intent, and
@@ -1140,7 +1140,7 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
         # `opponent` instead - "keon ellis stats vs trailblazers", "Kd games vs
         # wizards", "De'angelo russell vs pistons". player_matchup needs two
         # players and had one, so eight feed queries fell through to the agent
-        # where player_stat and game_log answer them exactly, both honouring
+        # where player_stat and game_log answer them exactly, both honoring
         # `opponent`.
         #
         # An opponent that is NOT a team is left alone: "jay huff game log vs
@@ -1191,7 +1191,7 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
         raw["intent"] = "leaderboard"
     # The scoping slots below are read from the question and never asked of the
     # model: none is in ROUTER_SCHEMA, so adding them changed no grammar and can
-    # have moved no other question's routing. A template that cannot honour one
+    # have moved no other question's routing. A template that cannot honor one
     # refuses it (templates.check_scope) rather than answering a broader question.
     span = _validate_span(question)
     if span is not None:
@@ -1239,7 +1239,7 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
             slots["until"] = seasons[1]
         slots.pop("season", None)
     # A split is read for every intent, not only player_splits: it is a scoping
-    # slot, so the template that answers one honours it and every other refuses.
+    # slot, so the template that answers one honors it and every other refuses.
     # Measured: "Joe Ingles stats when starting vs coming off the bench" was
     # answered with his season minutes, "Giannis stats by month" with his points
     # by season.
@@ -1315,7 +1315,7 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
             slots.pop("side", None)
         else:
             slots["side"] = side
-    # Only for the templates that honour it - see ORDER_INTENTS for why adding
+    # Only for the templates that honor it - see ORDER_INTENTS for why adding
     # it anywhere else would cost an answer rather than sharpen one.
     if raw["intent"] in ORDER_INTENTS:
         order = _validate_order(slots, question)
@@ -1327,7 +1327,7 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
         else:
             slots["order"] = order
     elif slots.get("order") and not any(pattern.search(question) for pattern in ORDER_WORDS.values()):
-        # An `order` the model added to an intent that cannot honour one, on a
+        # An `order` the model added to an intent that cannot honor one, on a
         # question naming no game at either end. Measured: "evan mobley avg
         # against bucks" and "Celtics record without Tatum" both arrived with
         # order='recent' and limit=1, and check_scope refused them. A limit of

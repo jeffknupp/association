@@ -173,7 +173,7 @@ def build_table(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
     Skipped, with a log line, when a required table or column is absent. That
     leaves the table missing rather than built from a filter that could not
     run, so a query for it fails where it is read - which is the loud half of
-    the choice. A silently unfiltered list would restore exactly the behaviour
+    the choice. A silently unfiltered list would restore exactly the behavior
     this module removes.
 
     Args:

@@ -189,7 +189,7 @@ def render_fingerprint_html(
     for fraction, label in rings:
         dash = ' stroke-dasharray="5,4"' if label else ""
         ring_shapes.append(f'<polygon points="{_ring(fraction, count)}" fill="none" stroke="var(--ring)" stroke-width="1"{dash}/>')
-        # A labelled ring is named in the legend, not on the plot. Drawn on the
+        # A labeled ring is named in the legend, not on the plot. Drawn on the
         # plot it lands under a skill label wherever it is put: every direction
         # out of the center ends at one.
 

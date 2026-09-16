@@ -1640,23 +1640,6 @@ the entries it held, and nobody had re-read the P2s against the definition.
   files, and refuse if a pin names neither version.
 - **GitHub:** #60
 
-### British spellings in `src/`
-- **Found:** 2026-09-11, docs survey for 2.1.0
-- **Evidence:** there are 24 hits for honour, normalis- and colour in `src/`.
-  Some are user-visible: the `check_scope` trace message ("cannot honour") and
-  docstrings in `query/router.py` that are published. `AGENTS.md` requires
-  American spelling, and the 2.1.0 changelog was corrected.
-- **User sees:** "honour" in a `--verbose` trace, and mixed spelling in the API
-  docs.
-- **Next step:** replace them, with a CHANGES line, since the change touches
-  `src/`.
-- **Re-checked 2026-09-15: the spellings moved.** "honour" family: 27
-  occurrences on 26 lines (`router.py` 11, `templates.py` 15), including the
-  user-visible trace "cannot honour" (`templates.py:390,556`) and three
-  published docstrings. normalis- and colour are now 0. Not listed in this
-  entry: "behaviour" x3 and "labelled/mislabelling" x6.
-- **GitHub:** #61
-
 ### A coverage caveat is added to a refusal that drew nothing
 - **Found:** 2026-09-11, docs edits for 2.1.0
 - **Evidence:** "plot Kobe Bryant's threes in 2002" is refused, and the answer

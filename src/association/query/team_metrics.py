@@ -338,7 +338,7 @@ def games_scope(season_type: int, season: int | None) -> tuple[str, list[Any]]:
     :data:`FIRST_FULL_REGULAR_SEASON`, and never includes the NBA Cup final. A
     postseason is selected by the CALENDAR YEAR it was played in, not by its
     label, because ``games`` labels every postseason before 1994 by the year
-    its season STARTED: the games labelled 1990 end on 1991-06-12, which is the
+    its season STARTED: the games labeled 1990 end on 1991-06-12, which is the
     1991 Finals. Every postseason is played inside the calendar year its season
     is named for (the 2020 bubble ended in October 2020), so the year is exact
     for all of them, and from 1994 on it agrees with the label for every game.

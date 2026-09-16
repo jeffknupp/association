@@ -72,7 +72,7 @@ def test_defaults_to_the_current_season(con: TemplateContext) -> None:
     assert result.data["season"] == current_season()
 
 
-def test_explicit_season_is_honoured(con: TemplateContext) -> None:
+def test_explicit_season_is_honored(con: TemplateContext) -> None:
     result = threshold_count(con, {"stat": "points", "threshold": 40, "season": current_season() - 1})
     assert result.data["leaders"] == [{"player": "Shai Gilgeous-Alexander", "games": 7}]
 
@@ -242,7 +242,7 @@ def test_a_nameless_athlete_is_never_counted_as_a_leader(rebuilt_counts: Templat
 def test_a_threshold_count_counts_rebuilt_games(rebuilt_counts: TemplateContext) -> None:
     """The P1 remainder this closes. Reading `player_box_stats`, the two empty
     games are zeros and the count is 1; reading the log, the rebuilt 25 and 31
-    both clear 20 and the count is 3. This is the whole behaviour change."""
+    both clear 20 and the count is 3. This is the whole behavior change."""
     result = threshold_count(rebuilt_counts, {"stat": "points", "threshold": 20, "player": "Anthony Davis"})
     assert result.data["leaders"] == [{"player": "Anthony Davis", "games": 3}]
     assert result.data["rebuilt_games"] == 2
@@ -341,7 +341,7 @@ def test_leaderboard_names_the_team_when_filtered(lb_con: TemplateContext) -> No
     assert "led the Golden State Warriors" in (result.answer or "")
 
 
-def test_leaderboard_honours_playoffs(lb_con: TemplateContext) -> None:
+def test_leaderboard_honors_playoffs(lb_con: TemplateContext) -> None:
     result = leaderboard(lb_con, {"stat": "points", "season_type": 3})
     assert "postseason" in (result.answer or "") and result.data["leaders"][0]["value"] == 31.0
 
@@ -364,7 +364,7 @@ def test_leaderboard_unknown_team_falls_through(lb_con: TemplateContext) -> None
         leaderboard(lb_con, {"stat": "points", "team": "Not A Team"})
 
 
-def test_threshold_count_honours_playoffs(con: TemplateContext) -> None:
+def test_threshold_count_honors_playoffs(con: TemplateContext) -> None:
     result = threshold_count(con, {"stat": "points", "threshold": 40, "season_type": 3})
     assert "postseason" in (result.answer or "")
     assert result.data["leaders"] == [{"player": "Bench Guy", "games": 9}]
@@ -2298,7 +2298,7 @@ def test_scope_guard_lets_through_what_the_player_templates_now_honor() -> None:
     check_scope("player_history", {"player": "Nikola Jokic", "span": "career"})
 
 
-def test_team_quarter_points_still_honours_the_opponent_it_always_read() -> None:
+def test_team_quarter_points_still_honors_the_opponent_it_always_read() -> None:
     check_scope("team_quarter_points", {"team": "Philadelphia 76ers", "period": 4, "opponent": "Boston Celtics"})
 
 
@@ -2316,7 +2316,7 @@ def test_a_zero_threshold_is_refused_rather_than_counting_every_game(con: Templa
 
 
 @pytest.mark.parametrize(("intent", "slots"), [("player_stat", {"player": "Joe Ingles", "split": "starter_bench"}), ("leaderboard", {"stat": "points", "since": 2020})])
-def test_a_split_or_a_range_is_refused_where_nothing_honours_it(intent: str, slots: dict[str, Any]) -> None:
+def test_a_split_or_a_range_is_refused_where_nothing_honors_it(intent: str, slots: dict[str, Any]) -> None:
     with pytest.raises(TemplateUnsupported, match="different span"):
         check_scope(intent, slots)
 
@@ -2768,7 +2768,7 @@ def test_team_game_log_does_not_call_a_missing_result_a_loss(gl_con: TemplateCon
 
 @pytest.fixture
 def playoff_ctx(tmp_path: Path) -> TemplateContext:
-    """ESPN's labels before 1993-94: the postseason games labelled 1990 are the
+    """ESPN's labels before 1993-94: the postseason games labeled 1990 are the
     1991 Finals, and the phantom 1993 is a copy of 1994's games."""
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE teams (team_id VARCHAR, display_name VARCHAR, abbreviation VARCHAR)")

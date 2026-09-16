@@ -46,6 +46,12 @@ had no published version to be compatible with.
   name and watched to fail; four of the first five came back MISSED until each
   had a test of its own, and the view's test had to move from 2005 to 1997 to
   catch anything, because the Grizzlies were already in Memphis by 2005.
+- **American spelling throughout `src/`.** 43 British spellings ("honour",
+  "behaviour", "labelled" and their forms) replaced there, and 24 more in the
+  tests, including the user-visible
+  `check_scope` trace "cannot honour" and three published docstrings. The
+  router prompt and schema hash identically before and after, so no routing
+  moved.
 - **Two wrong comments corrected, no behavior change.** The comment above
   `team_metrics.TURNOVERS` said pre-2013 `team_season_stats.turnovers` was "the
   player turnovers alone"; re-measured, it is the full count with team

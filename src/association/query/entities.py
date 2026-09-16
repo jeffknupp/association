@@ -2,7 +2,7 @@
 
 Callers want different things from an ambiguous name - a chart of the wrong
 Curry is a visible mistake, a NUMBER attributed to the wrong Curry is not - so
-both behaviours stay available rather than one being picked for everyone:
+both behaviors stay available rather than one being picked for everyone:
 
     find_*    - every candidate, best first. The caller decides.
     resolve_* - one entity, or Ambiguous/NotFound. Never a guess.
