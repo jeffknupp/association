@@ -39,6 +39,10 @@ read-only against `/home/jeff/code/association/nba.duckdb` on 2026-09-11.
 They were measured again after that day's 15:24 `association data load` at
 `3d3c8c6`, and none of them had changed, because the load re-read the same
 Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
+**That no-change claim does not extend past `72b599c` (the 2000 playoff
+discovery-pass fix, 2026-09-15)**, which moved `games` and `real_games` each
++10, `player_box_stats` +240 and `team_box_stats` +20; any figure measured
+before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
@@ -170,8 +174,10 @@ the entries it held, and nobody had re-read the P2s against the definition.
     pattern with non-identical lines.
   - This explains most of #54's 2019 disagreement: the team box's derived
     points equal the final score in every row of 2019, 2021 and 2026, while the
-    player sums overshoot in 23 team-games in 2019, almost all Phoenix (15) and
-    Philadelphia (7).
+    player sums overshoot in 23 team-games in 2019 - **re-measured 2026-09-16:
+    Phoenix 14, Philadelphia 7, Sacramento 1, Minnesota 1** (this read "almost
+    all Phoenix (15) and Philadelphia (7)" until then, which is 22 of the 23
+    and misses the two one-game teams).
   - It also crosses tables: `net_points_player` uses ESPN's `dot_com_id` while
     the box scores and the name-matched fingerprint use the other id, so 8
     `net_points_player_fingerprint` rows have no matching `net_points_player`
@@ -181,7 +187,7 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **Next step:** detect the duplicate pairs at load time and map them to one id.
   Some of #21's "shared display names" are this, not two players, so the
   ambiguity rule there drops a real player's data.
-- **Source:** DATA.md, "ESPN files one player under two athlete ids" (to be added)
+- **Source:** DATA.md, "ESPN files one player under two athlete ids" (`DATA.md:103`)
 - **GitHub:** #87
 
 ### The 2001 playoffs are missing about ten games, and ESPN has them nowhere
@@ -204,7 +210,7 @@ the entries it held, and nobody had re-read the P2s against the definition.
   across that postseason's conference finals and Final return **no events at
   all** - so Games 1-4 of LAL-PHI and the end of MIL-PHI are not in ESPN's
   archive anywhere, and no pull will add them. Five teams are still short in
-  `real_games`: PHI -7, LAL -5, MIL -5, NO -2, SA -1.
+  `real_games`: PHI -7, LAL -5, MIL -5, CHA (id 3) -2, SA -1.
 - **The answer now says so**, which is the difference from the original P1. The
   2001 postseason is declared `postseason_partial` on both `games` and
   `team_box_stats`, so a 2001 playoff question carries a note naming what is
@@ -221,13 +227,21 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **Next step:** nothing actionable here - it is ESPN's gap and it is declared.
   Re-check if ESPN ever backfills its own archive.
 - **Source:** DATA.md, "The 2000 and 2001 playoffs stop before the Finals"
-- **Re-checked 2026-09-15:** holds (PHI -7, LAL -5, MIL -5, NO -2, SA -1
+- **Re-checked 2026-09-15:** holds (PHI -7, LAL -5, MIL -5, CHA (id 3) -2, SA -1
   against `real_games`), but the caveat text in `coverage.py:168,189` is now
   stale - it says Philadelphia "reads 15 games" when Finals Game 5 brought it to
   16, and it names only the Final and MIL-PHI while MIL-CHA (2) and LAL-SA (1)
   are also short. 2000 is clean: 75 games in `real_games`, matching ESPN. The
   "70 -> 79" figure elsewhere is the raw `games` count, which includes 4
   placeholder rows.
+- **Re-checked 2026-09-16, by the issues audit.** Per-team game counts in
+  `real_games` (against ESPN's own totals): PHI 16/23, LAL 11/16, MIL 13/18,
+  CHA (id 3) 8/10, SA 12/13 - the id-3 franchise was the Charlotte Hornets in
+  2001, not New Orleans (`association/franchises.py`, `FRANCHISE_ERAS`), so "NO
+  -2" above named the wrong team. `coverage.py:167-170` and `:188-191`
+  (not :168,189) still say Philadelphia's run "reads 15 games" - it reads 16 -
+  and still name only the Final and MIL-PHI, leaving MIL-CHA and LAL-SA
+  unmentioned; that text has not been updated.
 - **GitHub:** #6
 
 ### Nearly every Bulls and Pelicans box score from 2013 to 2018 is zeros
@@ -284,8 +298,8 @@ the entries it held, and nobody had re-read the P2s against the definition.
     anything summing the box scores is still short.
 - **A refetch does not fix it.** A full pull of 1988-2026 with current code on
   2026-09-11, into a separate warehouse, reproduced `player_box_stats` and
-  `team_box_stats` exactly: 1,100,170 and 86,988 rows, zero differences. ESPN
-  still serves the zeroed lines today.
+  `team_box_stats` exactly: 1,100,170 and 86,988 rows, zero differences, **as
+  measured that day.** ESPN still serves the zeroed lines today.
 - **No other ESPN source has the data** (probed live 2026-09-14; see DATA.md
   for the detail). The CDN box score on a different host serves the same zeros,
   the core API exposes no per-athlete per-game statistics at any path, and the
@@ -303,12 +317,24 @@ the entries it held, and nobody had re-read the P2s against the definition.
   appearing in no play is absent rather than zero.
 - **Done 2026-09-14 - the warehouse now uses it.** `player_box_stats_filled`
   (same module) is `player_box_stats` with those figures substituted into the
-  empty lines and a `reconstructed` flag on exactly those rows. Measured: 21,169
-  of 1,100,170 rows substituted, row count conserved, and Anthony Davis's 2015
-  reads 68 games / 1,656 points against ESPN's own 68 / 1,656, with his 14
-  did-not-play rows correctly left alone. It never touches a real line, never
-  invents `minutes`, and drops the stored `plusMinus` on a substituted row -
-  that column is a uniform 0 placeholder across all 21,169, not data.
+  empty lines and a `reconstructed` flag on exactly those rows. Measured
+  2026-09-14: 21,169 of 1,100,170 rows substituted, row count conserved, and
+  Anthony Davis's 2015 reads 68 games / 1,656 points against ESPN's own 68 /
+  1,656, with his 14 did-not-play rows correctly left alone. It never touches a
+  real line, never invents `minutes`, and drops the stored `plusMinus` on a
+  substituted row - that column is a uniform 0 placeholder across all 21,169,
+  not data. **Re-measured 2026-09-16, against the current warehouse (after
+  `72b599c`'s 2000 playoff discovery pass): still 21,169 rows substituted, now
+  out of 1,100,410** - the playoff recovery added real, non-empty rows, so the
+  substituted count is unchanged and only the denominator moved.
+  `team_box_stats` is 87,008 rows today, not 86,988. Through
+  `player_box_stats_filled`, the rebuilt box's season total for the two
+  franchises' 2013-2018 team-seasons runs roughly 96-100% of
+  `player_season_stats` (99%+ outside 2016, which the module's own docstring
+  already flags as the weak season) - so "still about 87%" below is true only
+  of a reader on the raw `player_box_stats` table, or on
+  `player_season_advanced_stats`, which is built from it (see #85), or of
+  agent-written SQL that reads the raw table directly.
 - **Done 2026-09-14 - the per-game templates read it.** `player_game_log` is
   built from `player_box_stats_filled`, and `single_game_high` and `game_log`
   read rebuilt lines for the stats a rebuild gets right (`REBUILT_STATS`:
@@ -384,11 +410,22 @@ the entries it held, and nobody had re-read the P2s against the definition.
     (`191102003`, ORL@NO) that is the 117 the comment at
     `fetch/team_box_repair.py:88` counts - but that comment names Chicago 2000
     as the other case, which is wrong.
+- **Re-checked 2026-09-16, by the issues audit: the code comment is still
+  wrong.** `fetch/team_box_repair.py:88-89` still reads "Vancouver 1996 and
+  Chicago 2000" - unchanged since the Chicago half was found to be a different
+  fault (2026-09-15, above).
 - **Source:** DATA.md, "Vancouver 1996 is an empty TEAM box, not an empty player box"
 - **User sees:** nothing at all for a per-player question - those rows are
-  sound. A team-level read of 1996 Vancouver, 2000 Chicago or 1999 Chicago gets
-  NULLs, and `_empty_box_scores` does not count these (it tests player minutes),
-  so such an answer carries no caveat.
+  sound. A team-level read of 1996 Vancouver gets NULLs, and
+  `_empty_box_scores` does not count these (it tests player minutes), so such
+  an answer carries no caveat. **This is half wrong.** The team branch of
+  `player_splits` (`templates.py:4575-4577`) does caveat: it counts rows with
+  `fieldGoalsAttempted IS NULL` and says "Rebounds, assists, 3-pointers and FG%
+  are missing from N of those games' box scores and are averaged over the
+  rest." But `_team_games` (`conditions.py:264-278`), which backs team
+  `streak` and `record_when`, reads `tbs.totalRebounds`/`tbs.assists` directly
+  with no NULL count or caveat at all - so a 1996 Grizzlies rebound streak or
+  threshold question silently excludes all 82 games, with nothing said.
 - **Next step:** rebuild the team line by summing the player rows at load time.
   That works here precisely because the player rows survived, which is what
   makes this fault different from 2013-2018 and cheaper to fix.
@@ -419,12 +456,27 @@ the entries it held, and nobody had re-read the P2s against the definition.
   Anthony Davis" again - and a `player_stat` narrowed by opponent, venue or
   `without` over those seasons says the same, because `_box_score_player_stat`
   does not read rebuilt lines.
+- **Confirmed live 2026-09-16, and wider than the line above says.**
+  `game_log {"player": "Anthony Davis", "season": 2015, "stat": "turnovers"}`
+  and the same with `"stat": "fouls"` both answer "No 2015 regular season games
+  found for Anthony Davis." `_box_score_player_stat`
+  (`templates.py:2142`) calls `narrowed.clauses()` at its default
+  (`rebuilt: bool = False`, `templates.py:1746`), so **any** `player_stat`
+  narrowed by opponent, venue or `without` over those seasons gives the same
+  wrong-cause sentence - **even for points**, the one stat the rebuild gets
+  right: "Anthony Davis points vs the Lakers in 2015" answers the same refusal
+  rather than reading `player_box_stats_filled`.
 - **GitHub:** #72
 ### The SQL agent and the web health line still read raw `games`
 - **Found:** 2026-09-14, building the shared `real_games` list (issue #7)
-- **Evidence:** `real_games` (`fetch/real_games.py`) now holds the 43,343 rows
-  of `games` that are actually games, and every template reads it. Two readers
-  do not, both by design rather than oversight:
+- **Evidence:** `real_games` (`fetch/real_games.py`) now holds the 43,353 rows
+  of `games`'s 43,504 that are actually games (both counts moved +10 with
+  `72b599c`'s 2000 playoff recovery; the gap is still 151), and every TEAM
+  template reads it. `_PLAYER_GAMES` (`templates.py:1704`) still joins raw
+  `games` rather than `real_games` - harmlessly today, since no player row
+  falls on one of the 151 dropped events (see "Not affected, measured" below).
+  Two readers do not read `real_games` at all, both by design rather than
+  oversight:
   - **The SQL agent.** `KNOWN_TABLES` and `TABLE_SUMMARY` (`query/prompt.py`)
     name `games` and not `real_games`, so any question that falls through to
     the agent gets SQL over the unfiltered table - the 134 placeholders, the 23
@@ -434,7 +486,7 @@ the entries it held, and nobody had re-read the P2s against the definition.
     `TABLE_SUMMARY` is not free: `PREAMBLE_TOKEN_BUDGET` is 6,400 and
     AGENTS.md forbids buying room by trimming that text.
   - **The web health line.** `_warehouse_seasons` (`web/app.py:197`) counts
-    `games`, so the page says 43,494 where 43,343 were played.
+    `games`, so the page says 43,504 where 43,353 were played.
 - **User sees:** an agent-written answer that counts rows that are not games,
   with nothing to mark it as different from the template answer to the same
   question; and a games count on the web page that is 151 too high.
@@ -486,9 +538,18 @@ the entries it held, and nobody had re-read the P2s against the definition.
   numbers.
 - **Next step:** compute a `cup_final` flag once at load, and apply it in
   `conditions`, `head_to_head` and the box-derived regular-season aggregates.
-  Take the flag from NetPoints, which labels the game `IST Championship` (69
-  rows in `net_points_player_game`), rather than inferring it from "the last
-  neutral-site game in Las Vegas", which breaks when the venue moves.
+  **Corrected 2026-09-16: the table named above is wrong.** The 69
+  `IST Championship` rows are in `net_points_player` - per-season (26 in 2024,
+  25 in 2025, 18 in 2026), keyed by the string `net_points_season_type`, with
+  **no `event_id`** - not in any per-game table. The per-game tables file all
+  three finals as an ordinary `season_type = 2` row, indistinguishable from a
+  regular-season game by that column. A load-time flag has to come from the
+  venue instead, or from intersecting the IST player set with the Las Vegas
+  games - there is no per-game NetPoints label to read directly. A `cup_final`
+  flag already exists, but only inside `TEAM_GAMES_SQL`
+  (`team_metrics.py:282-292`): it takes `arg_max(event_id, date)` per season
+  over neutral-site Las Vegas games, and "last" is load-bearing rather than
+  incidental - 2025 and 2026 each hold **three** Las Vegas games, not one.
 - **Source:** DATA.md, "The NBA Cup final is stored as a regular-season game"
 - **GitHub:** #11
 
@@ -510,12 +571,21 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **Found:** 2026-09-11, while qualifying true shooting and eFG% (`f66e1f1`)
 - **Evidence:** the 550/480 floors assume an 82-game schedule. At 550
   true-shooting attempts, 2020 qualifies 157 players and 2021 qualifies 155,
-  against 174-184 in 2019 and in 2022-2026. The 2012 lockout season (66 games)
-  was not measured. Published rules scale per team game.
+  against 174-184 in 2019 and in 2022-2026. **The 2012 lockout season (66
+  games) now measured: 127 qualify at 550 TSA** (`player_season_stats_deduped`),
+  the lowest of any season checked - consistent with a shortened schedule.
+  **2013-2018 read 143-157 in `player_season_advanced_stats`, but that is not
+  the schedule** - those six seasons are full 82-game ones, and the low count
+  is the empty-box-score fault (#85): `player_season_advanced_stats` is built
+  from raw `player_box_stats`, whose Chicago and New Orleans rows are zeroed
+  those years, so real qualifiers are undercounted there specifically, not
+  flattened by a short season. Published rules scale per team game.
 - **User sees:** fewer qualified players in short seasons. The qualifier is
   stated, but it is harsher than the published one.
 - **Next step:** scale the floor per team game, and keep `min_sample_applied`
-  honest about the scaled number.
+  honest about the scaled number. The floors to change live in
+  `query/metrics.py` (`default_min_sample=550` at `:220`, `=480` at `:230`,
+  the `fg_pct` 400-attempt floor at `:398`), not in `leaderboard.py`.
 - **GitHub:** #13
 
 ### Smaller game and box-score gaps, 1994-2003
@@ -523,12 +593,17 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **Evidence:**
   - **2000 regular season:** `games` holds 1,166 of 1,189 real games. 18 teams
     have 80 of their 82, 10 have 81, and LAC has all 82.
-  - **Real regular-season games with no box score:** 6 in 1994, **5** in 1996,
-    6 in 1997, 5 in 1998, 5 in 2000 and 1 in 2003. Most are road games at UTAH,
-    CLE or WSH. (This read "83 in 1996" until 2026-09-14. That number counted
-    empty *team box* rows, not games missing a player box score; Vancouver's
-    1996 player rows are real. See "Vancouver 1996 has an empty TEAM box" under
-    P2.)
+  - **Real regular-season games with no box score, counted against
+    `real_games`:** 5 in 1994, 5 in 1996, 6 in 1997, 4 in 1998, 4 in 2000 and 0
+    in 2003 - 24 games total. (This read "83 in 1996" until 2026-09-14. That
+    number counted empty *team box* rows, not games missing a player box
+    score; Vancouver's 1996 player rows are real. See "Vancouver 1996 has an
+    empty TEAM box" under P2. An earlier re-check read "6/5/6/5/5/1" against
+    raw `games`, whose 1994, 1998 and 2003 counts included phantom rows; the
+    figures here are against `real_games` instead.) Each season's gaps are one
+    visiting team's road games - DAL 1994, VAN 1996, VAN/BOS 1997, DEN 1998,
+    LAC 2000 - and **23 of the 24 are at UTAH, CLE or WSH**; the exception is
+    `160405003`.
   - **Real postseason games with no box score:** the entire 1997 ECF CHI-MIA
     (`170520014`, `170522014`, `170524004`, `170526004`, `170528014`),
     `150614019` (1995 Finals), `160502025` (1996 SAC-SEA) and `230503026` (1998
@@ -540,12 +615,6 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **Next step:** refetch the listed events through the pipeline. Check that every
   box-derived template treats NULL minutes as "did not play".
 - **Source:** DATA.md, "Real postseason games with no box score"
-- **Re-checked 2026-09-15:** the counts were taken from raw `games`. Against
-  `real_games` the no-box seasons are 1994: 5, 1996: 5, 1997: 6, 1998: 4,
-  2000: 4, 2003: 0 (this entry says 6/5/6/5/5/1); the 1994, 1998 and 2003
-  differences are phantom rows. Pattern the entry misses: each season's gaps are
-  one visiting team's road games (DAL 1994, VAN 1996, VAN/BOS 1997, DEN 1998,
-  LAC 2000), and 23 of 24 are at UTAH, CLE or WSH.
 - **GitHub:** #14
 
 ### The 2026 shot chart holds more shots than the box score
@@ -554,8 +623,14 @@ the entries it held, and nobody had re-read the P2s against the definition.
   have more shots in `shot_chart` than in the box score, 1,207 extra in all.
   Curry has 488 threes against 484 3PA. Neither `plays` nor `shot_chart` holds
   a duplicate `play_id`. The extras look like end-of-period heaves: 1,141 of
-  those player-games have extra 3PA, and they hold 1,084 shots taken with
-  under a second on the clock. That is a correlation, not proven.
+  those player-games have extra 3PA. **The "1,084 shots under a second" figure
+  did not reproduce on re-check (2026-09-16) and was measured wrong**: `clock`
+  is stored as `MM:SS` for most of a period and as bare seconds-with-tenths
+  (e.g. `"57.3"`) inside the last minute, and reading only the second format
+  as a number silently dropped every shot still in `MM:SS`. Parsing both forms
+  and filtering total seconds remaining `< 1.0` gives **1,131** shots in the
+  1,141 player-games with extra 3PA, and **1,135** across all 1,165. That is
+  still a correlation, not proof.
 - **User sees:** shot charts and shot-distance answers count shots that are not
   in the box score.
 - **Next step:** check whether box scores leave out buzzer heaves (a shot after
@@ -564,7 +639,7 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **Source:** DATA.md, "The 2026 shot chart holds more shots than the box score"
 - **GitHub:** #15
 
-### `with_without` undercounts a season-long absence
+### `with_without` refuses a season-long absence, and `game_log` says he was never a teammate
 - **Found:** 2026-09-11, template work (agent C)
 - **Evidence:** a teammate's stint is read from box-score rows, so a whole season
   without rows breaks it. Klay Thompson's 2020-21 and Kevin Durant's 2019-20
@@ -575,11 +650,14 @@ the entries it held, and nobody had re-read the P2s against the definition.
   from box-score presence.
 - **Re-checked 2026-09-15: it now refuses instead of undercounting, and the
   next step below cannot work.** `with_without` for Klay Thompson 2021 answers
-  that his tenure "falls outside the 2021 regular season"; Durant/Nets 2020 is
-  the same. `player_season_stats` has **no row** for a season a player missed
-  entirely, so it cannot supply tenure. Worse, `game_log` and `player_stat` say
-  "Klay Thompson was not Stephen Curry's teammate in any of his 63 games" - a
-  wrong-cause sentence about a rostered, injured player.
+  that his tenure "falls outside the 2021 regular season" - the refusal built
+  in the `if not games:` branch of `with_without` (`templates.py:4716`).
+  Durant/Nets 2020 is the same. `player_season_stats` has **no row** for a
+  season a player missed entirely, so it cannot supply tenure. Worse,
+  `game_log` and `player_stat` say "Klay Thompson was not Stephen Curry's
+  teammate in any of his 63 games" - the wrong-cause sentence built in
+  `_no_narrowed_games` (`templates.py:1949`) - about a rostered, injured
+  player.
 - **GitHub:** #16
 
 ### A retired player's question defaults to the current season
@@ -594,6 +672,13 @@ the entries it held, and nobody had re-read the P2s against the definition.
   numbers" shape appears in `player_stat`, `single_game_high`, `game_log` and
   `player_netpoints`; `shot_chart` says "No shots found ... with the given
   filters" without naming the season at all. Only `player_history` answers.
+- **Reproduced live 2026-09-16, direct template calls, no router involved.**
+  `game_log` with `{"player": "Tim Hardaway", "opponent": "New York Knicks"}`
+  answers "No 2026 regular season games found for Tim Hardaway."; `player_stat`
+  with `{"player": "Allen Iverson", "stat": "points"}` answers "Allen Iverson
+  has no 2026 regular season numbers in the warehouse." Both resolved the
+  retired player himself, with no clarification offered, even though "Tim
+  Hardaway Jr." exists in the warehouse and could have been asked about.
 - **GitHub:** #18
 
 ### `player_history` answers "last N seasons on record", not a calendar window
@@ -734,15 +819,21 @@ the entries it held, and nobody had re-read the P2s against the definition.
 ### A quarter or half is answered for a player, and for nobody else
 - **Found:** 2026-09-16 auditing the feed; **the player half shipped the same
   day** as `period_split`
-- **Fixed.** 21 of the 261 feed queries ask for a quarter or a half and every
-  one fell through, because nothing answered the shape. A named player's single
-  period now has a template: `shot_chart` carries `athlete_id`, `period`,
-  `made` and the shot's value, so it is a filtered sum, and the value is read
-  through `SHOT_VALUE_SQL` - 99.95% against ESPN's linescores, where guessing
-  it from the play's prose is 76.8%. Summed over all periods including
-  overtime, a player's season total matches his box score exactly for 550 of
-  578 player-seasons.
-- **What is still not answered**, and it is most of the rest of that 21:
+- **Fixed.** **Re-counted 2026-09-16 with a quarter/half regex over the whole
+  feed: 25 of the 261 feed queries ask for a quarter or a half, not 21, and 24
+  of the 25 fell through before the fix** - one was a `team_quarter_points`
+  partial rather than a full fall-through. A named player's single period now
+  has a template: `shot_chart` carries `athlete_id`, `period`, `made` and the
+  shot's value, so it is a filtered sum, and the value is read through
+  `SHOT_VALUE_SQL` - 99.95% against ESPN's linescores, where guessing it from
+  the play's prose is 76.8%. Summed over all periods including overtime, a
+  player's season total matches his box score exactly for 550 of 578
+  player-seasons. **After the fix the 25 grade correct 6, partial 5, clarified
+  2, unclear 1, fell through 11.**
+- **What is still not answered**, and it is most of the rest of that 25:
+  - **A non-points stat, or a `split`/`without`/`order` narrowing, on a
+    player's period.** `period_split` refuses these (4 of the 25, e.g.
+    "scottie barnes stats 2nd half log without rj").
   - **A TEAM's half.** `team_quarter_points` reads one period out of the
     linescore and has no notion of a half, so "Detroit Pistons most points in a
     first half this season" and "least points scored by the wizards in the
@@ -765,9 +856,11 @@ the entries it held, and nobody had re-read the P2s against the definition.
 ### Whether ESPN publishes coaches is unverified
 - **Found:** 2026-09-16, query-set audit
 - **Evidence:** "nick nurse coaching record all-time nba in december on the
-  road" has nothing to read: none of the warehouse's 25 tables holds a coach.
-  Whether any endpoint the pull already reaches serves them was **not checked**,
-  and is deliberately not asserted here either way.
+  road" has nothing to read: none of the warehouse's tables holds a coach - **20
+  base tables plus 6 views, re-counted 2026-09-16 (this entry said "25 tables"),
+  and zero columns anywhere named `%coach%`.** Whether any endpoint the pull
+  already reaches serves them was **not checked**, and is deliberately not
+  asserted here either way.
 - **User sees:** a fall-through on any coach question.
 - **Next step:** probe the endpoints for a coach field before filing anything
   further. If ESPN does serve them and the pull discards them, that half is a
@@ -817,12 +910,20 @@ the entries it held, and nobody had re-read the P2s against the definition.
   to `fell_through`: `check_scope` runs before name resolution, so refusing the
   date pre-empts "did you mean Bam Adebayo?". Right on its own terms - the date
   was being dropped too - but worth knowing the refusal is not free.
+- **Re-checked 2026-09-16, and the mechanism moved.** "Bam adebeyo jan 19" now
+  arrives with `date="2023-01-19"` already resolved and routed to
+  `player_stat`, which does not honour `date` - so it still refuses before
+  name resolution and still pre-empts "did you mean Bam Adebayo?", but the
+  cause is no longer `check_scope` dropping the date; it is `player_stat` not
+  redirecting a resolved `date` to `game_log`. That gap is now tracked
+  separately under #94.
 - **User sees:** nothing wrong today. The risk is the next unhandled narrowing.
 - **Next step:** design the general check rather than adding a ninth regex - a
   catch-all slot, or a test that every meaningful word in the question reached
   some slot, so an unrecognized narrowing refuses by default instead of being
-  ignored by default. Re-measure against `fastpath_after_84b.jsonl`, which is
-  the current baseline.
+  ignored by default. Re-measure against `fastpath_after_rows_graded.jsonl`,
+  which is the current baseline (261 rows: correct 87, wrong 29, fell_through
+  94, clarified 25, refused 12, partial 12).
 - **Source:** the wrong answers are ours, not ESPN's; no DATA.md entry.
 - **GitHub:** #84
 
@@ -843,7 +944,36 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **Re-checked 2026-09-15:** still four unhonored slots (`below`, `round`,
   `since`, `situation`), but "by month" has left this entry - it is
   `split=month` and `player_splits` answers it for a player or a team.
+- **Re-checked 2026-09-16, and a fifth slot is missing from the same list.**
+  `until` is set at `router.py:1239` alongside `since`, but is in neither
+  `HONORED_SCOPING` nor `SCOPING_SLOTS` (`templates.py:146`) - so `check_scope`
+  does not merely fail to honour it, it cannot even see it to refuse it, and a
+  question narrowed by an end year silently answers unbounded. The stale
+  refusal counts against `fastpath_r3.jsonl` are replaced by the current
+  fall-through counts by slot: `situation` 20, `since` 4, `below` 2, `round` 1.
 - **GitHub:** #23
+
+### Two players against one team has no template
+- **Found:** 2026-09-11, while making `opponent` refuse or narrow; **moved up
+  within P3 on 2026-09-16** - the latest replay shows this touches more
+  questions than its original position reflected
+- **Evidence:** `player_compare` and `player_matchup` read season lines and
+  honor no `opponent` (`HONORED_SCOPING`, `query/templates.py`), so "compare
+  curry and lebron vs the celtics" refuses on the template path and falls
+  through. Before the fix that moved the Celtics out of `team`, it compared
+  the two players' whole 2026 seasons. `_narrow_player_games` already builds
+  one player's box-score line against one opponent for `player_stat`.
+- **Re-checked 2026-09-16: no longer a one-off construction - six feed
+  questions fall through on it in the latest replay**, all on
+  `player_matchup`/`player_compare cannot honour ['opponent']`: "sam hauser v
+  mil", "Curry vs dallas last q0 games", "julius randle stats vs blazers with
+  minnestota", "oubre vs warriors without embiid", "de'aaron fox vs magic
+  ...", "stating centers vs suns". Commit `d7a8db1` does not touch this shape.
+- **User sees:** a fall-through to the agent, for six real questions and not
+  only the constructed one this entry started from.
+- **Next step:** let `player_compare` honor `opponent` by building each
+  player's line through `_narrow_player_games`.
+- **GitHub:** #34
 
 ### Conference and division are in the standings we fetch, and the parser drops them
 - **Found:** 2026-09-11, template work (agent B); **cause corrected 2026-09-15**
@@ -854,10 +984,10 @@ the entries it held, and nobody had re-read the P2s against the definition.
   15 and 14, 1990 returns 13 and 14; and `&level=3` returns the six divisions
   at 5 teams each. `standings` also carries "vs. Conf." and "vs. Div." records,
   populated from 2004.
-- **Evidence:** `parse_standings` (`fetch/parse.py:346`) walks `children`
+- **Evidence:** `parse_standings` (`fetch/parse.py:341`) walks `children`
   purely to reach the entries and throws the group name away - its own test
-  says so (`tests/fetch/test_parse.py:397`). `games.conference_game` is False
-  on all 43,504 rows. No table maps a team to a conference, so
+  says so (`tests/fetch/test_parse.py:413-414`). `games.conference_game` is
+  False on all 43,504 rows. No table maps a team to a conference, so
   `_conference_refusal` refuses a conference named as the subject ("who leads
   the east"), while "Western Conference standings" matches `router._SITUATION`
   first and is handed to an agent with no conference data either.
@@ -866,8 +996,8 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **Next step:** record the conference (and division at `level=3`) from the
   standings children, then re-pull `standings`. **Not** the static per-season
   table this entry used to propose.
-- **Source:** DATA.md, "No conference, division or birth-date data anywhere" -
-  that section is wrong for conference and division, and right for birth dates
+- **Source:** DATA.md, "No conference, division or birth-date data anywhere"
+  (`DATA.md:376`, corrected 2026-09-15)
 - **GitHub:** #25
 
 ### A player's career TS% is refused
@@ -889,8 +1019,13 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **Evidence:** `get_leaderboard(metric="ts_pct", min_sample=50)` now means 50
   attempts, not 50 games. The result carries `min_sample_column`, but a
   games-based minimum can no longer be expressed through the tool for these two
-  metrics. `TABLE_SUMMARY` does not list the two new view columns (left out for
-  the preamble budget), so the agent has to `describe_table` to find them.
+  metrics.
+- **Re-checked 2026-09-16: the "does not list" half is stale.** `TABLE_SUMMARY`
+  (`query/prompt.py:55,59,60`) has listed `ts_pct`/`efg_pct`/`usage_pct` since
+  `f971cfe`, so the agent does not need `describe_table` to find the columns
+  themselves. What is still missing is the tool parameter: `get_leaderboard`
+  (`query/prompt.py:509`, schema at `:626`; dispatched in
+  `query/toolbox.py:229-255`) takes `min_sample` only, with no `min_games`.
 - **User sees:** "best true shooting among players with 50 games" makes the agent
   write SQL, more slowly.
 - **Next step:** accept a `min_games` alongside `min_sample` in the tool, if the
@@ -915,6 +1050,18 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **Re-checked 2026-09-15:** the "User sees" is wrong. `_career_leaderboard`
   raises `TemplateUnsupported`, which is a fall-through to the agent, not a
   refusal the user reads.
+- **Re-checked 2026-09-16: the relocation rule is no longer open.** The refusal
+  is still at `templates.py:1006` (`_career_leaderboard`, raising
+  `TemplateUnsupported("franchise career leaderboards are not supported")`),
+  but "the rule for relocated franchises is open" is now decided elsewhere:
+  `association/franchises.py` established that an ESPN `team_id` belongs to
+  the franchise, not the name, so a per-`team_id` sum already follows a
+  relocation correctly. What remains is mechanical, not a decision: lift the
+  refusal, title the resulting list by the franchise's era (using
+  `franchises.season_name`, the way every other answer already names a team
+  for its season), and handle the one franchise with two ids in its history -
+  the Charlotte Hornets, id 3 (1989-2002, then New Orleans) and id 30
+  (Charlotte again, 2015 on) - as two lists rather than one merged one.
 - **GitHub:** #30
 
 ### Data no template reads
@@ -936,6 +1083,10 @@ the entries it held, and nobody had re-read the P2s against the definition.
   `plays` is read indirectly through the rebuilt box view. Still unread by any
   template: `win_probability`, `net_points_team`, `net_points_team_game`,
   `stat_glossary`.
+- **Re-checked 2026-09-16: the "columns unused by name resolution" bullet is
+  wrong.** `entities.py` now queries `teams.name` (`ILIKE` against a nickname,
+  `:682`) and `teams.location` (`ILIKE` against a city, `:688`). Only
+  `teams.nickname` is unused anywhere.
 - **GitHub:** #31
 
 ### Shapes deferred for lack of data or logic
@@ -949,6 +1100,8 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **User sees:** a fall-through to the agent.
 - **Next step:** take them in that order.
 - **Source:** DATA.md, "No conference, division or birth-date data anywhere"
+  (`DATA.md:376`, corrected 2026-09-15) - the birth-date half only; conference
+  and division are now #25's finding, not this one's.
 - **GitHub:** #32
 
 ### A router-invented name one edit from a real one falls through instead of asking
@@ -969,34 +1122,28 @@ the entries it held, and nobody had re-read the P2s against the definition.
   returns [] for "Davies" alone too, because a single token skips the surname
   pass and the near-spelling pass finds 23+ "Davis" players against
   `MAX_CLARIFY_CANDIDATES=5`. Backing off to the question's own word does work.
+- **Re-checked 2026-09-16: "23+" was not a measurement, and the count depends
+  on what is being counted.** Against the current `players` table: **20**
+  `display_name`s carry "Davis" as a whole word (a space-delimited token, so
+  "Davis" the name and "Davis Bertans" count, "Hayes-Davis" does not), **21**
+  have "davis" as a substring of the SURNAME specifically (adds "JD Davison",
+  drops "Davis Bertans" since its surname is "Bertans"), and **41** are within
+  one edit (Levenshtein distance) of "davis" on some name token. Any of the
+  three clears `MAX_CLARIFY_CANDIDATES=5` many times over, so the conclusion is
+  unaffected - but "23+" should be replaced with one of these, named.
 - **GitHub:** #33
-
-### Two players against one team has no template
-- **Found:** 2026-09-11, while making `opponent` refuse or narrow
-- **Evidence:** `player_compare` and `player_matchup` read season lines and
-  honor no `opponent` (`HONORED_SCOPING`, `query/templates.py`), so "compare
-  curry and lebron vs the celtics" refuses on the template path and falls
-  through (1 run through the fast path). Before the fix that moved the
-  Celtics out of `team`, it compared the two players' whole 2026 seasons.
-  `_narrow_player_games` already builds one player's box-score line against
-  one opponent for `player_stat`. The question was constructed while testing,
-  not seen in the StatMuse feed.
-- **User sees:** a fall-through to the agent. What the agent answers was not
-  measured (it needs the agent model).
-- **Next step:** let `player_compare` honor `opponent` by building each
-  player's line through `_narrow_player_games`.
-- **GitHub:** #34
 
 ### The web page keeps no history, so closing the tab loses every answer
 - **Found:** 2026-09-14, requested
 - **Evidence:** each turn is built straight into the DOM
   (`ask()` in `web/static/index.html`) and nothing else holds it: there is no
-  `localStorage`, no `sessionStorage` and no server-side store, and
-  `AgentRunner` (`web/runner.py`) keeps only the lock and the current question.
-  A reload, a crash or a server restart loses the thread. The artifacts a
-  question produced do survive, as files in the output directory, but nothing
-  records which question drew them, so an orphaned chart cannot be traced back
-  to what was asked.
+  `localStorage`, no `sessionStorage` and no server-side store. **Corrected
+  2026-09-16:** `AgentRunner` (`web/runner.py:71-72`) keeps only `self.agent`
+  and `self._lock` - there is no "current question" attribute to lose; a reload,
+  a crash or a server restart loses the thread precisely because nothing is
+  kept at all. The artifacts a question produced do survive, as files in the
+  output directory, but nothing records which question drew them, so an
+  orphaned chart cannot be traced back to what was asked.
 - **User sees:** no way to reread yesterday's answer, compare two runs of the
   same question, or send somebody a link to one.
 - **Next step:** persist each turn - question, the `answer` payload, the trace
@@ -1013,7 +1160,10 @@ the entries it held, and nobody had re-read the P2s against the definition.
 ### The connection indicator is written once at load and never updated
 - **Found:** 2026-09-14, requested
 - **Evidence:** `web/static/index.html` calls `/api/health` exactly once, on
-  load, and writes a status line from it ("3,043 games, 1994-2026", plus
+  load, and writes a status line from it (the example status here was
+  "3,043 games, 1994-2026" when this was written; re-checked 2026-09-16, the
+  same call would today read "43,504 games, 1988-2026" - see #71's re-check
+  for that number - so read the figure as illustrative, not current), plus
   "ollama unreachable" when `ollama_ready` is false; "server unreachable" if
   the fetch itself fails). Nothing polls afterwards. If ollama stops, the
   server restarts, or the warehouse is replaced mid-session, the page goes on
@@ -1163,7 +1313,7 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **Evidence:** `scripts/perturb.py` against
   `tests/query/test_team_templates.py`: **removing** the
   `CASE season_type WHEN {BPI_PRESEASON} THEN 0 ELSE 1 END` from
-  `query/templates.py:2983` is MISSED (62 passed, exit 0), while **reversing**
+  `query/templates.py:3024` is MISSED (62 passed, exit 0), while **reversing**
   it to `THEN 1 ELSE 0` is CAUGHT by
   `test_a_same_dated_preseason_snapshot_never_wins_the_regular_season_question`.
   The reason it cannot be tested is the useful part: the `CASE` maps preseason
@@ -1184,12 +1334,13 @@ the entries it held, and nobody had re-read the P2s against the definition.
 ### The "postseason copy" rule is written twice, and both figures are stale
 - **Found:** 2026-09-15, issues audit (P4 data/query auditor)
 - **Evidence:** the rule that drops a postseason line ESPN copied from the
-  regular season exists twice, in different words:
-  `fetch/warehouse.py:182` (the `player_season_stats_deduped` view: more than 28
-  games, or games+points equal to that season's regular-season line on any team)
-  and `query/leaderboard.py:186` `not_a_postseason_copy` (games plus the value
-  columns, on the same team). They agree today - each drops 436 of 7,941 rows -
-  but nothing keeps them in step.
+  regular season exists twice, in different words: the `player_season_stats_deduped`
+  view (`fetch/warehouse.py:179`, stale comment at `:186`; more than 28 games,
+  or games+points equal to that season's regular-season line on any team) and
+  `query/leaderboard.py`'s `not_a_postseason_copy` (`:186` def, `:190` the
+  stale docstring figure, `:198`; games plus the value columns, on the same
+  team). They agree today - each drops 436 of 7,941 rows - but nothing keeps
+  them in step.
   - Both comments are stale: the view says "340 of 7,845 postseason rows" and
     the docstring says "437 of the 7,941". Re-measured: raw 7,941 rows, deduped
     7,505, so **436 rows** (340 player-seasons).
@@ -1202,7 +1353,7 @@ the entries it held, and nobody had re-read the P2s against the definition.
 ### `MAX_LIMIT` is 100 in one module and 50 in another
 - **Found:** 2026-09-15, in the cross-module constant scan written after #6/#9
 - **Evidence:** `query/leaderboard.py:38` declares `MAX_LIMIT = 100` (the cap on
-  a model-supplied limit on the agent path); `query/templates.py:118` declares
+  a model-supplied limit on the agent path); `query/templates.py:121` declares
   `MAX_LIMIT = 50` (what `_clamp_limit` clamps a template to). Same name, two
   different facts, neither importing the other.
 - **User sees:** nothing wrong today - each is used only in its own module, and
@@ -1222,9 +1373,9 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **Evidence:** the same NBA fact - a US Eastern date is UTC minus five hours,
   and EST/EDT disagree only in an hour no game starts in - is declared at
   `season.py:25` (`_EASTERN_SHIFT`), `fetch/real_games.py:89`
-  (`EASTERN_OFFSET_HOURS`), `fetch/parse.py:728` (`_EASTERN_OFFSET`),
-  `query/conditions.py:67` (`_EASTERN_OFFSET_HOURS`) and
-  `query/templates.py:707` (`_EASTERN_SHIFT`). Four of the five are private, so
+  (`EASTERN_OFFSET_HOURS`), `fetch/parse.py:738` (`_EASTERN_OFFSET`),
+  `query/conditions.py:70` (`_EASTERN_OFFSET_HOURS`) and
+  `query/templates.py:734` (`_EASTERN_SHIFT`). Four of the five are private, so
   no module can import another's.
 - **User sees:** nothing today - all five hold 5. If one is ever changed
   without the others, dates drift between the fetch path, the game list and the
@@ -1239,15 +1390,18 @@ the entries it held, and nobody had re-read the P2s against the definition.
   other three, which wear different names. Finding those needed a human reading
   a grep for `hours=5`.
 - **Re-checked 2026-09-15: six copies, not five.** The sixth is a bare
-  literal in SQL - `query/team_metrics.py:291`, `- INTERVAL 5 HOUR AS DATE`
+  literal in SQL - `query/team_metrics.py:293`, `- INTERVAL 5 HOUR AS DATE`
   inside `TEAM_GAMES_SQL` - whose own comment cites `parse._EASTERN_OFFSET`
   without using it. Neither the name scan nor a grep for `hours=5` finds it.
+- **Re-checked 2026-09-16: `scripts/check_duplicate_names.py:50` is also
+  stale.** Its comment still reads "The NBA's five-hour Eastern offset, defined
+  five times under four names" - unchanged since the sixth copy was found.
 - **GitHub:** #82
 
 ### One rule, two hand-maintained copies: the traded-player dedup
 - **Found:** 2026-09-15, while fixing #9
 - **Evidence:** "prefer the combined row over the per-team stints" is written
-  as SQL in `fetch/warehouse.py:198` (the `player_season_stats_deduped` view)
+  as SQL in `fetch/warehouse.py:199` (the `player_season_stats_deduped` view)
   and twice in `query/leaderboard.py` (lines 300 and 324, the `dedup_traded`
   QUALIFY). Fixing #9 had to touch both, and a fix that touched only one would
   have left the leaderboard reading the broken row while the deduped view was
@@ -1262,11 +1416,16 @@ the entries it held, and nobody had re-read the P2s against the definition.
 
 ### `pointsInPaint` is -1 for every team-game before 2009
 - **Found:** 2026-09-14, while fixing #8
-- **Evidence:** 41,417 `team_box_stats` rows hold `pointsInPaint = -1` — every
-  non-empty row from 1993 to 2008 (2,358 in 1994, 2,632 in 2008) plus all 2,280
-  of 2018's. `fastBreakPoints` and `turnoverPoints` never carry the sentinel,
-  and `team_season_stats` uses 0 rather than -1 for the same era, so the two
-  tables mark the same gap differently.
+- **Evidence:** **39,157** `team_box_stats` rows hold `pointsInPaint = -1` -
+  every non-empty row from 1993 to 2008 (2,358 in 1994, 2,632 in 2008); 2018's
+  are no longer among them, since `team_box_repair` now NULLs those (this entry
+  originally counted 41,417, including 2018's 2,280). `fastBreakPoints` and
+  `turnoverPoints` never carry the sentinel. **`team_season_stats.pointsInPaint`
+  is also -1.0 in every team-season from 1994 to 2008** - re-measured, this is
+  not the same gap marked differently: the entry originally said
+  `team_season_stats` uses 0 for the same era, which is wrong (only its
+  `fastBreakPoints` is 0). `query/team_metrics.py:24` and the user-visible
+  refusal `_PAINT_REASON` (`:92`) both still repeat that error.
 - **User sees:** nothing today — no template reads the column. Agent SQL asking
   for points in the paint in an old season gets -1 a game, which reads as a
   number rather than as a gap.
@@ -1274,12 +1433,6 @@ the entries it held, and nobody had re-read the P2s against the definition.
   `fetch/team_box_repair.py` already does. One predicate, `pointsInPaint = -1`,
   and no season needs naming.
 - **Source:** DATA.md, "`pointsInPaint` is -1 before 2009, and two lead columns exist only in 2026"
-- **Re-checked 2026-09-15: count and two claims are stale.** `pointsInPaint =
-  -1` is now 39,157 rows, not 41,417, because `team_box_repair` NULLs 2018's.
-  **The claim that `team_season_stats` uses 0 for the same era is wrong** - its
-  `pointsInPaint` is -1.0 in every team-season 1994-2008; only
-  `fastBreakPoints` is 0. `query/team_metrics.py:24` and the user-visible
-  refusal `_PAINT_REASON` (`:90`) both repeat the error.
 - **GitHub:** #78
 
 ### "...against the celtics last season" is answered as a game log
@@ -1422,23 +1575,24 @@ the entries it held, and nobody had re-read the P2s against the definition.
 
 ### Broad `except duckdb.Error` in `_single_game_netpoints`
 - **Found:** 2026-09-11, repo audit
-- **Evidence:** `_single_game_netpoints` in `query/templates.py` catches every
-  DuckDB error. `fingerprint.py` already narrowed the same pattern to the
+- **Evidence:** `_single_game_netpoints` (`query/templates.py:1288`) catches
+  every DuckDB error. `fingerprint.py` already narrowed the same pattern to the
   missing-table error.
 - **User sees:** a SQL bug reported as "unavailable", then a slow fall-through.
 - **Next step:** catch `duckdb.CatalogException` only.
 - **Re-checked 2026-09-15:** the pattern occurs twice. The second is
-  `templates.py:4117`, in the comparison's NetPoints section, which catches
-  `duckdb.Error` and returns `{}` - so a SQL bug there makes the NetPoints rows
-  silently disappear from a comparison.
+  `templates.py:4382`, in `_compare_netpoints`, which catches `duckdb.Error`
+  and returns `{}` - so a SQL bug there makes the NetPoints rows silently
+  disappear from a comparison.
 - **GitHub:** #44
 
 ### Postseason shooting floors are scaled, not calibrated
 - **Found:** 2026-09-11, while qualifying true shooting and eFG% (`f66e1f1`)
-- **Evidence:** `ts_pct` 67 and `efg_pct` 59 are the season floors times 10/82.
-  No published postseason list applies a qualifier (StatMuse's 2025 playoff
-  leader shot 150% on two attempts), so there was nothing to check them against.
-  They leave 81-92 qualified players per postseason in 2025 and 2026.
+- **Evidence:** `ts_pct` 67 and `efg_pct` 59 (`query/metrics.py:221` and `:231`,
+  `postseason_min_sample=`) are the season floors times 10/82. No published
+  postseason list applies a qualifier (StatMuse's 2025 playoff leader shot
+  150% on two attempts), so there was nothing to check them against. They
+  leave 81-92 qualified players per postseason in 2025 and 2026.
 - **User sees:** a stated but uncalibrated postseason qualifier.
 - **Next step:** none until a published postseason rule is found.
 - **Re-checked 2026-09-15: a published postseason rule now exists.**
@@ -1478,15 +1632,21 @@ the entries it held, and nobody had re-read the P2s against the definition.
   player-seasons have box rows but no played row, and **158 of them are Bulls
   and Pelicans players from 2013-2018** who did play - narrowing on `_played`
   would eliminate them. 131 of the 440 share a surname with a player who did
-  play that season.
+  play that season. (`narrow_to_available` is `entities.py:1101`.) **Re-checked
+  again 2026-09-16: the count moves with the definition** - collapsing
+  `season_type` (as above) gives 440; counting `player_box_stats` rows per
+  `(athlete, season, season_type)` instead gives 449; the exact figure depends
+  on which is meant, so read "440" as one measurement rather than the only
+  correct one.
 - **GitHub:** #47
 
 ### Clarifications can name twenty players
 - **Found:** 2026-09-11, season-narrowing branch
-- **Evidence:** `Ambiguous.active` makes a clarification name every candidate
-  from the season asked about (`entities.clarification`). The surname with the
-  most players in one season is Williams: 15 in 1998 and 1999, 14 in 2026.
-  "Will" names 18 players in 2026 and 20 in 1998.
+- **Evidence:** `Ambiguous.active` (`entities.py:935`) makes a clarification
+  name every candidate from the season asked about (`entities.clarification`,
+  `entities.py:957`). The surname with the most players in one season is
+  Williams: 15 in 1998 and 1999, 14 in 2026. "Will" names 18 players in 2026
+  and 20 in 1998.
 - **User sees:** a long "did you mean" sentence. Whether it reads acceptably in
   the CLI and on the web page was not checked.
 - **Next step:** look at a 20-name clarification on the web page.
@@ -1560,16 +1720,17 @@ the entries it held, and nobody had re-read the P2s against the definition.
     minutes, not the same set. 83,224 rows have no minutes but a real
     plus-minus.
   - `team_season_stats.plusMinus` is a -1.0 placeholder.
-  - `largestLead` is filled on 47,480 of 83,261 non-empty team box rows, and
-    `leadChanges` on 2,018.
+  - `largestLead` is filled on 47,480 of 83,281 non-empty team box rows
+    (`fieldGoalsAttempted IS NOT NULL`; this read "83,261" until 2026-09-16),
+    and `leadChanges` on 2,018.
   - `net_points_team` holds 2026 only, which is inherent to the source.
 - **User sees:** nothing today. Any template that starts reading these would.
 - **Next step:** measure each one before a template reads it.
 - **Source:** DATA.md, "`dnp_reason` is set on players who played"
 - **Re-checked 2026-09-15:** figures reproduce, two details changed. Player
-  `plusMinus` **is** read now (the game log's "+/-" column,
-  `templates.py:3076`), and `team_season_stats.plusMinus` is -1 in 828 rows
-  (2009 on) and NULL in 675 before that, not "-1 in every season" as
+  `plusMinus` **is** read now (the game log's "+/-" column - three sites,
+  `templates.py:3139,3166,3382`), and `team_season_stats.plusMinus` is -1 in
+  828 rows (2009 on) and NULL in 675 before that, not "-1 in every season" as
   `team_metrics.py:25` says.
 - **GitHub:** #53
 
@@ -1592,14 +1753,14 @@ the entries it held, and nobody had re-read the P2s against the definition.
 ### Shots past half court are counted but drawn off the canvas
 - **Found:** 2026-09-11, shot-frame fix
 - **Evidence:** the shot chart's subtitle counts heaves that the half-court plot
-  does not show.
-- **User sees:** a subtitle count one or two higher than the number of dots.
+  does not show. Positioned shots past the half-court line: 475 in 2024, 581 in
+  2025, 1,083 in 2026.
+- **User sees:** rendering Luka Doncic's 2026 season draws 1,479 markers with
+  **22 off the canvas** - not "one or two higher", which is what this entry
+  originally estimated before it was measured. `court.py:135-137` (the
+  `sx`/`sy` coordinate mapping) has no clamp of any kind.
 - **Next step:** clamp heaves to the edge of the plot, or note them in the
   subtitle.
-- **Re-checked 2026-09-15: larger than filed.** Positioned shots past the
-  half-court line: 475 in 2024, 581 in 2025, 1,083 in 2026. Rendering Luka
-  Doncic's 2026 season draws 1,479 markers with **22 off the canvas**, not the
-  one or two this entry describes.
 - **GitHub:** #55
 
 ### A slow agent answer cannot be cancelled
@@ -1789,10 +1950,11 @@ the entries it held, and nobody had re-read the P2s against the definition.
     proves it - and `_repair_season_totals` did its job, taking Seth Curry's
     rows from 16 non-NULL to 17. The data was destroyed at the moment of
     WRITING, by `storage.write_rows`, which took its Parquet schema from the
-    first row alone. See "A row narrower than the rows after it truncated the
-    whole file" under P1. Two earlier drafts of this entry blamed ESPN flipping
-    within minutes, and then "something between the two callers"; both were
-    guesses made ahead of the trace, and both are withdrawn.
+    first row alone. See `CHANGES.md` ("A row narrower than the rows after it
+    no longer truncates the whole file"), fixed in `dc3e03a`, GitHub #80
+    (closed). Two earlier drafts of this entry blamed ESPN flipping within
+    minutes, and then "something between the two callers"; both were guesses
+    made ahead of the trace, and both are withdrawn.
 - **What this is not.** The withdrawn version inferred "the pull never issued a
   request" from Parquet mtimes in the MAIN tree — which can say nothing about a
   pull that wrote into a separate tree by design — and on that basis named four

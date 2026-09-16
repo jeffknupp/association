@@ -653,6 +653,13 @@ had no published version to be compatible with.
   `data["without"]` as a list, and `with_without` gained `data["teammates"]`.
   `scripts/check_routing.py` gained the two-name case, and the `ISSUES.md` P1
   entry it came from is closed.
+- **Docs: three stale comments describing a gap `period_split` already
+  closed.** `router.py` (the `_HALF_WORDS` comment and the one above
+  `_is_team_quarter_points`) and the `team_quarter_points` docstring in
+  `templates.py` still said a player's quarter or half had no template and
+  would need a fragile plays-table `LAG()` derivation - true when written, and
+  false since `31fe043` added `period_split`, which reads `shot_chart`
+  instead. Comments and docstrings only; no behavior changed.
 
 ## 2.1.0 - 2026-09-11
 The largest release so far on the query side. It adds eight new kinds of

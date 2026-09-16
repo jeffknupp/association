@@ -4016,10 +4016,12 @@ def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> Template
     """A team's total points in ONE quarter/period, optionally narrowed to one
     named opponent.
 
-    A PLAYER's quarter score has no template - it needs the plays-table LAG()
-    derivation - and router.py's _AGENT_ONLY forces those to the agent. A TEAM's
-    does not: home_linescores/away_linescores already store the official
-    per-period score, so this is a lookup rather than a derivation.
+    A PLAYER's quarter or half is answered by :func:`period_split`, not here -
+    see its docstring for why the derivation this one used to say a player's
+    score would need (a plays-table ``LAG()``) turned out to be unnecessary.
+    This template stays TEAM-only: home_linescores/away_linescores already
+    store the official per-period score, so this is a lookup rather than a
+    derivation, and a named player still raises below.
 
     Worth a template because the agent spent ~150s over 3 calls getting it
     wrong: a games.period column that doesn't exist, then home_team_id compared
@@ -4035,7 +4037,8 @@ def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> Template
     if not isinstance(period, int) or not 1 <= period <= 10:
         raise TemplateUnsupported(f"team_quarter_points needs an integer period 1-10, got {period!r}")
     if isinstance(slots.get("player"), str) and slots["player"].strip():
-        # No template computes a PLAYER's quarter score - see the docstring.
+        # A named player's quarter or half is period_split's job, not this
+        # template's - see the docstring.
         raise TemplateUnsupported("team_quarter_points cannot answer for a named player")
 
     team = _resolved_team(con, slots.get("team"), season=_slot_season(slots))

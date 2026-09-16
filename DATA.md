@@ -173,13 +173,17 @@ likewise.
 - **What ESPN does:** its team schedules simply do not list the last rounds of
   those two postseasons, so the games are undiscoverable from the endpoint the
   pull walks. The rows are not wrong; they are absent.
-- **Evidence:** the 2000 postseason holds 70 games and ends on 2000-06-01; the
-  2001 postseason holds 60 and ends on 2001-05-28. Missing from 2000: the whole
+- **Evidence, as first found (2026-09-11), before the recovery below fixed
+  2000:** the 2000 postseason held 70 games and ended on 2000-06-01; the 2001
+  postseason held 60 and ended on 2001-05-28. Missing from 2000: the whole
   LAL-IND Final (6 games), WCF LAL-POR games 6-7, ECF IND-NY game 6. Missing
   from 2001: the Final (5), ECF MIL-PHI games 5-7, WCF LAL-SA game 4, and 2
-  games of MIL-CHA. The Lakers have 15 postseason games in 2000 and 10 in 2001,
+  games of MIL-CHA. The Lakers had 15 postseason games in 2000 and 10 in 2001,
   against 23 and 16 really played. Neighboring seasons are intact (1999 ends
-  1999-06-26, 2002 ends 2002-06-13, 2003 ends 2003-06-15).
+  1999-06-26, 2002 ends 2002-06-13, 2003 ends 2003-06-15). **Re-measured
+  2026-09-16, after the discovery-pass recovery: `real_games` now holds 75 for
+  2000 and 61 for 2001, and the Lakers hold 23 postseason games in 2000 (all of
+  them) and 11 in 2001 (still 5 short of 16).**
 - **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull**, which
   returned the same 70 rows for the 2000 postseason, ending on the same date,
   with `games` matching across all 43,494 rows.
@@ -310,9 +314,10 @@ likewise.
   `tripleDouble`, `technicalFouls`, `flagrantFouls`, `disqualifications`,
   `ejections`, `assistTurnoverRatio`, `stealTurnoverRatio`,
   `scoringEfficiency` and `shootingEfficiency`. All 152 keep `points`, so this
-  is **not** the write truncation in ISSUES.md ("A row narrower than the rows
-  after it"); it is the source omitting a category. 104 of the 152 are
-  postseason files, and the sample checked is a single 1-game 2021 line.
+  is **not** the write truncation described in `CHANGES.md` ("A row narrower
+  than the rows after it no longer truncates the whole file", fixed in
+  `dc3e03a`, GitHub #80); it is the source omitting a category. 104 of the 152
+  are postseason files, and the sample checked is a single 1-game 2021 line.
 - **Does a refetch fix it?** Untested. It correlates with how little the player
   has on record, which suggests the source rather than the request.
 - **How we handle it:** nothing needed. `union_by_name=true` at load means the
@@ -387,17 +392,18 @@ the parser throws the grouping away. The birth-date half stands.
   `&level=3` returns the six divisions at 5 teams each. It publishes no birth
   date through any endpoint the pull reads.
 - **Evidence:** `games.conference_game` is False on all 43,504 rows.
-  `parse_standings` (`fetch/parse.py:346`) walks `children` only to reach the
+  `parse_standings` (`fetch/parse.py:341`) walks `children` only to reach the
   entries and keeps no group name — its own test says the entries "appear at
-  both conference and division level" (`tests/fetch/test_parse.py:397`).
+  both conference and division level" (`tests/fetch/test_parse.py:413-414`).
   `standings` also carries "vs. Conf." and "vs. Div." records, real from 2004.
   No table holds a birth date.
 - **Does a refetch fix it?** **For conference and division, yes** — a parser
   change plus a standings re-pull, no new endpoint. For birth dates, no.
 - **How we handle it:** `_conference_refusal` refuses a conference named as the
   subject. Anything by age is refused or falls through.
-- **Tracked in:** ISSUES.md, "No conference or division data" (#25) and
-  "Shapes deferred for lack of data or logic" (#32).
+- **Tracked in:** ISSUES.md, "Conference and division are in the standings we
+  fetch, and the parser drops them" (#25) and "Shapes deferred for lack of data
+  or logic" (#32).
 
 ### The athlete gamelog is a second source for per-game lines, and it counts All-Star games
 
@@ -673,6 +679,17 @@ the parser throws the grouping away. The birth-date half stands.
     EDT and under EST. This entry read "`T04:00Z`" until 2026-09-14, which is
     four of the eleven phantoms short: `131205075`, `171209083` and the two
     1992 team-75 rows are winter games and carry `T05:00Z`.
+  - **The date-only stamp is not only a phantom marker.** ESPN stores every
+    1988-1992 game (and 12 more in 2000-2001) with no real tip time, at
+    midnight Eastern, and for these the written date genuinely IS the game
+    date - re-measured 2026-09-16, `real_games` holds **379** `T04:00Z` rows in
+    1988-1992 alone (1988 RS 11 / PO 62, 1989 PO 72, 1990 PO 68, 1991 RS 8 / PO
+    73, 1992 RS 9 / PO 76). Every date this project prints applies a fixed
+    five-hour shift meant for a real tip time, which moves a genuine
+    midnight-Eastern stamp to the day BEFORE - so these 379 games print one day
+    early, including the whole 1989-1992 postseason. See ISSUES.md, "Date-only
+    stamps print a day early: 391 games, the whole 1989-92 postseason among
+    them" (#76).
   - **Every `games` row has `team_box_stats` rows**, phantoms and placeholders
     included — measured 2026-09-14, 43,494 of 43,494. Only the PLAYER box is
     absent. This entry used to say the team `game_log` was safe "because it

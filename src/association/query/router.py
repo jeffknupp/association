@@ -312,19 +312,22 @@ FOUL_OUT_THRESHOLD = 6
 # routes correctly; only the abbreviation is unreadable.
 _AGENT_ONLY = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+(?:quarter|qtr|q)\b|\bq[1-4]\b|\b[1-4]q\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b|\btd3s?\b")
 
-# A half is never a quarter, so no template answers one - not even for a TEAM,
-# where team_quarter_points reads a period number and the model maps "first half"
-# onto period 1. Kept apart from _AGENT_ONLY for that reason: the team exemption
-# below applies to quarters only. "rj barrett 4th qtr log" is why both patterns
-# grew abbreviations - it slipped past "quarter" and game_log answered with his
-# whole last game.
+# A half is never a quarter. team_quarter_points reads a period number and the
+# model maps "first half" onto period 1, which is wrong for a TEAM the same way
+# it would be for a player - so half words are kept apart from _AGENT_ONLY,
+# whose team exemption applies to quarters only, and instead always route
+# through the period_split override below (a named player's half now has a
+# template; a team's half still does not - see ISSUES.md #96). "rj barrett 4th
+# qtr log" is why both patterns grew abbreviations - it slipped past "quarter"
+# and game_log answered with his whole last game.
 _HALF_WORDS = re.compile(r"\b(?:first|second|1st|2nd)\s+half\b|\b[12]h\b|\bhalftime\b", re.IGNORECASE)
 
 
 # A TEAM's quarter score (no player named) is exempted below: linescores answer
-# it exactly, via templates.team_quarter_points. A PLAYER's still has no
-# template - it needs the fragile plays-table derivation - and stays forced to
-# the agent.
+# it exactly, via templates.team_quarter_points. A PLAYER's quarter or half is
+# templates.period_split's job now - it reads shot_chart rather than the
+# fragile plays-table derivation this comment used to warn was needed - and the
+# override below sends it there instead of forcing it to the agent.
 def _is_team_quarter_points(raw: dict[str, Any]) -> bool:
     return raw.get("intent") == "team_quarter_points" and not (isinstance(raw.get("player"), str) and raw["player"].strip())
 
