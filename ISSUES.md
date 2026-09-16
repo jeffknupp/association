@@ -1649,24 +1649,6 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **Next step:** skip `coverage_caveat` when the template's result is a refusal.
 - **GitHub:** #62
 
-### Stale leftovers from the 2.0 REPL and an example that stopped early
-- **Found:** 2026-09-11, docs edits for 2.1.0
-- **Evidence:** a comment in `router.route()` says "The `ai` REPL gets real
-  follow-ups", but the REPL was removed in 2.0.0 and nothing passes
-  `previous_question` now. In `docs/usage.rst`, the example "who leads the
-  league in assists?" shows only the first sentence of an answer that continues
-  "Next: ...".
-- **User sees:** a docs example shorter than the real output.
-- **Next step:** correct the comment, and paste the example's full answer.
-- **Re-checked 2026-09-15:** "nothing passes `previous_question`" is
-  imprecise - `agent.py:247` passes `self.last_question`, but it is always None
-  in both shipped callers (the CLI builds a new Agent per question; the web
-  resets per request), so the parameter and the router branch at
-  `router.py:811` are dead in practice rather than unreferenced. The stale
-  `usage.rst` example is real regardless, and is now also missing the
-  "(minimum 20 games)" qualifier the answer prints.
-- **GitHub:** #63
-
 ### A player's bio is fetched once and never refreshed
 - **Found:** 2026-09-11, comparing a fresh full pull against the existing warehouse
 - **Evidence:** `Pipeline._cache_player_bio` returns early when the file exists,

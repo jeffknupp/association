@@ -1057,10 +1057,15 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     agent, so a router failure costs a round trip, never an answer."""
     user = f"Q: {question}"
     if previous_question:
-        # The `ai` REPL gets real follow-ups ("what about 2025?") that are not
-        # self-contained. One line of prior context is enough to resolve them
-        # and costs ~15 tokens; the full conversation is not replayed here,
-        # since that would defeat the fixed, cache-friendly prefix.
+        # A follow-up ("what about 2025?") is not self-contained. One line of
+        # prior context is enough to resolve it and costs ~15 tokens; the full
+        # conversation is not replayed here, since that would defeat the
+        # fixed, cache-friendly prefix. What arrives here is
+        # `Agent.last_question`, and both shipped callers keep it None - the
+        # CLI builds a new Agent per question, and the web server resets it
+        # per request (`Agent.reset_conversation`) - so this branch runs only
+        # for a caller that keeps one Agent across questions, as the `ai` REPL
+        # removed in 2.0.0 did.
         user = f"(previous question, for context only: {previous_question})\n{user}"
     try:
         response = ollama.chat(

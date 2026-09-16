@@ -46,6 +46,15 @@ had no published version to be compatible with.
   name and watched to fail; four of the first five came back MISSED until each
   had a test of its own, and the view's test had to move from 2005 to 1997 to
   catch anything, because the Grizzlies were already in Memphis by 2005.
+- **A stale comment in `router.route()` no longer credits the 2.0 REPL** with
+  the `previous_question` follow-ups; it now says what arrives there
+  (`Agent.last_question`, None in both shipped callers) and who the branch is
+  for. No behavior change. The `docs/usage.rst` assists example now carries the
+  "(minimum 20 games)" qualifier the answer prints. The entry that filed it
+  said the answer also continued "Next: ..."; it does not, because the router
+  emits `limit` 1 for "who leads" (the web renderer's own note on why a
+  one-row ranking stays a sentence), and the template prints the list only
+  past one row.
 - **American spelling throughout `src/`.** 43 British spellings ("honour",
   "behaviour", "labelled" and their forms) replaced there, and 24 more in the
   tests, including the user-visible
