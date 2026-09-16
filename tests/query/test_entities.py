@@ -12,6 +12,7 @@ from association.query.entities import (
     NotFound,
     compared_but_unmatched,
     find_players,
+    find_teams,
     misread_players,
     nicknames_in,
     no_match,
@@ -51,6 +52,55 @@ def con() -> duckdb.DuckDBPyConnection:
     )
     c.execute("INSERT INTO teams VALUES ('13','LAL','Los Angeles Lakers'),('12','LAC','LA Clippers'),('9','GS','Golden State Warriors')")
     return c
+
+
+@pytest.fixture
+def league_teams() -> duckdb.DuckDBPyConnection:
+    """The four teams whose real ESPN abbreviation is not the one people use,
+    plus New Orleans, which collides with Orlando's abbreviation as a
+    substring."""
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    c.execute(
+        "INSERT INTO teams VALUES ('9','GS','Golden State Warriors'),('3','NO','New Orleans Pelicans'),"
+        "('18','NY','New York Knicks'),('24','SA','San Antonio Spurs'),('19','ORL','Orlando Magic'),"
+        "('12','LAC','LA Clippers'),('13','LAL','Los Angeles Lakers')"
+    )
+    return c
+
+
+@pytest.mark.parametrize(
+    ("text", "want"),
+    [
+        # ESPN abbreviates these "GS", "NO", "NY" and "SA"; nobody writes that.
+        ("GSW", "Golden State Warriors"),
+        ("NOP", "New Orleans Pelicans"),
+        ("NYK", "New York Knicks"),
+        ("SAS", "San Antonio Spurs"),
+        # The router is asked for full team names and writes this one; ESPN
+        # stores "LA Clippers", so it matched nothing at all.
+        ("Los Angeles Clippers", "LA Clippers"),
+    ],
+)
+def test_the_abbreviations_people_use_resolve(league_teams: duckdb.DuckDBPyConnection, text: str, want: str) -> None:
+    """Measured live before this existed: every one of these returned NOTHING,
+    so "Lauri Markkan vs GSW last 5 games" lost the team entirely."""
+    assert [e.name for e in find_teams(league_teams, text)] == [want]
+
+
+def test_an_abbreviation_outranks_a_team_whose_name_merely_contains_it(league_teams: duckdb.DuckDBPyConnection) -> None:
+    """ "ORL" is Orlando's abbreviation and also a substring of "New Orleans",
+    and both used to come back - an ambiguity offered to the user over a
+    question that names exactly one team, and a chance to answer about the
+    other one."""
+    assert [e.name for e in find_teams(league_teams, "ORL")] == ["Orlando Magic"]
+
+
+def test_two_teams_in_one_city_stay_ambiguous(league_teams: duckdb.DuckDBPyConnection) -> None:
+    """The ranking settles an abbreviation against a name, and must not settle
+    a real ambiguity: no team is abbreviated "LA", so both Los Angeles teams
+    sit in the same tier and the caller still has to ask."""
+    assert [e.name for e in find_teams(league_teams, "LA")] == ["LA Clippers", "Los Angeles Lakers"]
 
 
 def test_resolve_player_refuses_to_guess_between_two_real_players(con: duckdb.DuckDBPyConnection) -> None:

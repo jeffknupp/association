@@ -803,13 +803,77 @@ _TEAM_WORD = re.compile(
 )
 
 
+# A team named by its city or its abbreviation, which is how a question names
+# one when it does not use the nickname: "mathurin v det", "sam hauser v mil",
+# "pascal vs orlando". These are matched against the WHOLE name and never as a
+# last word, and the distinction is load-bearing rather than fussy: three real
+# players are surnamed Cleveland, Houston and Washington, so a last-word rule
+# over cities turns PJ Washington and Allan Houston into teams. Measured
+# against the warehouse, no player name equals a city or an abbreviation, and
+# exactly one player name is a single word at all ("Nene"), which matches none
+# of these.
+#
+# Two-letter forms are left out on purpose. ESPN's own table abbreviates four
+# teams "no", "ny", "sa" and "gs", and "no" is an English word; questions use
+# the three-letter forms, so those are what is listed.
+_TEAM_CITY = frozenset(
+    {
+        "atlanta", "boston", "brooklyn", "charlotte", "chicago", "cleveland", "dallas", "denver", "detroit",
+        "golden state", "houston", "indiana", "los angeles", "memphis", "miami", "milwaukee", "minnesota",
+        "new orleans", "new york", "oklahoma city", "orlando", "philadelphia", "phoenix", "portland",
+        "sacramento", "san antonio", "toronto", "utah", "washington",
+    }
+)  # fmt: skip
+_TEAM_ABBREVIATION = frozenset(
+    {
+        "atl", "bkn", "bos", "cha", "chi", "cle", "dal", "den", "det", "gsw", "hou", "ind", "lac", "lal",
+        "mem", "mia", "mil", "min", "nop", "nyk", "okc", "orl", "phi", "phx", "por", "sac", "sas", "tor",
+        "uta", "wsh", "was",
+    }
+)  # fmt: skip
+
+# A near spelling is NOT matched here, and that was measured rather than
+# assumed. The feed misspells three teams inside a `players` slot - "taptors",
+# "warriners", "blakers" - and `difflib` at cutoff 0.8 reaches the right team
+# for all three. It also reaches a team for **16 real player surnames**:
+# Burks -> Bucks, Hawkins -> Hawks, Thornton -> Toronto, Gooden -> Golden,
+# Wheat -> Heat, Houstan -> Houston, and ten more. The model puts bare
+# surnames in that slot routinely (["Mathurin", "Detroit"], ["Pascal",
+# "Orlando"]), so those collisions are live, and turning a player into a team
+# is the same fluent wrong answer in the other direction. Three queries is not
+# worth sixteen, and the cutoff cannot separate them - "houstan"/"houston" and
+# "taptors"/"raptors" are both one edit in seven characters, ratio 0.857. Same
+# conclusion `find_players` reached for player names, for the same reason.
+
+
 def _is_team_name(name: str) -> bool:
-    """Whether a name the model put in ``players`` is a team's: its LAST word is
-    a nickname. Checked against the warehouse: all 30 team names end in one and
-    none of 3,080 player names does, while "Magic Johnson" holds one as his
-    first name - and a match anywhere in the name took him for a team."""
-    words = name.split()
-    return bool(words) and _TEAM_WORD.fullmatch(words[-1]) is not None
+    """Whether a name the model put in ``players`` is a team's.
+
+    Three tests, narrowing as they get looser:
+
+    - **Its LAST word is a nickname.** Checked against the warehouse: all 30
+      team names end in one and none of 3,101 player names does, while "Magic
+      Johnson" holds one as his first name - and a match anywhere in the name
+      took him for a team.
+    - **The WHOLE name is a city or an abbreviation** ("det", "Orlando"). Never
+      the last word, because three players are surnamed Cleveland, Houston and
+      Washington.
+    A misspelled team is deliberately NOT matched - see the note above
+    ``_TEAM_CITY``, where fuzzy matching was measured and rejected because it
+    turns 16 real player surnames into teams.
+
+    .. versionchanged:: 2.3.0
+       Recognizes a city and an abbreviation. Before this, a team the question
+       named any way but by nickname read as a player, and "mathurin v det"
+       was routed as a matchup between two players.
+    """
+    words = name.lower().split()
+    if not words:
+        return False
+    if _TEAM_WORD.fullmatch(words[-1]) is not None:
+        return True
+    whole = " ".join(words)
+    return whole in _TEAM_CITY or whole in _TEAM_ABBREVIATION
 
 
 # "best record" and "worst record" rank the league; with no team named they are
@@ -988,6 +1052,21 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
         # One of the "two players" is a team: this is a player's games against
         # it. entities.scope_from_question moves the team to `opponent`.
         raw["intent"] = "game_log" if _LOG_WORDS.search(question) or _GAMES_WORDS.search(question) else "player_stat"
+    if raw["intent"] == "player_matchup" and len(listed) < 2 and isinstance(raw.get("player"), str):
+        # The same question, arriving in the other shape. The rule above reads
+        # `players`, and the model routinely fills the SINGULAR `player` and an
+        # `opponent` instead - "keon ellis stats vs trailblazers", "Kd games vs
+        # wizards", "De'angelo russell vs pistons". player_matchup needs two
+        # players and had one, so eight feed queries fell through to the agent
+        # where player_stat and game_log answer them exactly, both honouring
+        # `opponent`.
+        #
+        # An opponent that is NOT a team is left alone: "jay huff game log vs
+        # Embiid" really is a matchup between two players, and the model put
+        # the second one in `opponent`.
+        against = raw.get("opponent") or next(iter(raw.get("teams") or []), None)
+        if isinstance(against, str) and _is_team_name(against):
+            raw["intent"] = "game_log" if _LOG_WORDS.search(question) or _GAMES_WORDS.search(question) else "player_stat"
     rerouted_to_line = False
     if raw["intent"] == "player_history" and (not _named_a_stat(question) or (_VERSUS_WORDS.search(question) and _TEAM_WORD.search(question))):
         # A season-by-season history of one stat is neither "career averages"

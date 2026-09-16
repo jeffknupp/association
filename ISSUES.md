@@ -690,6 +690,49 @@ wrong for other reasons, and each of those is an entry below.
 
 ## P3: refusal or gap
 
+### No template reads `plays.period`, and a fifth of real questions want one
+- **Found:** 2026-09-16, auditing the 261-query feed for question quality
+- **Evidence:** **21 of the 261 feed queries** ask for a quarter or a half, for
+  a player or a team, and every one lands on `intent=other` and falls through -
+  `_AGENT_ONLY` forces them there on purpose, because no template answers the
+  shape. The data is not the problem: `plays` holds 14.2M rows with a `period`
+  column covering 2002-2026. **This is the largest single content gap in the
+  sample**, larger than any remaining routing fault.
+- **User sees:** a slow agent answer, or a whole-game line where one quarter
+  was asked for. Measured earlier at 84% agent for this shape.
+- **Next step:** one `period_split` template over `plays`, a 2002 floor in
+  `COVERAGE` (2002 play-by-play is about half a year - it is already declared
+  partial), and an entry in `TEMPLATE_SOURCES`. Then narrow `_AGENT_ONLY` to
+  the cases the new template still cannot take.
+
+### `games.date` is a VARCHAR that DuckDB will not cast
+- **Found:** 2026-09-16, during the query-set audit (six ad-hoc date queries,
+  every one of which failed on the obvious form first)
+- **Evidence:** the column holds `2021-10-23T22:00Z`.
+  `CAST(g.date AS TIMESTAMP)` fails with `invalid timestamp field format`, and
+  `g.date >= DATE '2020-01-26'` fails with `Cannot compare VARCHAR and DATE`.
+  Only `strptime(g.date, '%Y-%m-%dT%H:%MZ')` works.
+- **User sees:** not a wrong answer - an error the SQL-writing agent then has
+  to recover from, spending a tool round trip on every date-filtered question
+  against a 16k context that has no room for it.
+- **Next step:** either derive a real `TIMESTAMP` (or an Eastern `game_date`
+  DATE, which `season.eastern_date` already defines) at load time in
+  `fetch/warehouse.py`, or state the exact `strptime` form in the agent
+  preamble beside the existing date rules. Note the second option spends
+  preamble budget, which is measured and tight - prefer the first.
+
+### Whether ESPN publishes coaches is unverified
+- **Found:** 2026-09-16, query-set audit
+- **Evidence:** "nick nurse coaching record all-time nba in december on the
+  road" has nothing to read: none of the warehouse's 25 tables holds a coach.
+  Whether any endpoint the pull already reaches serves them was **not checked**,
+  and is deliberately not asserted here either way.
+- **User sees:** a fall-through on any coach question.
+- **Next step:** probe the endpoints for a coach field before filing anything
+  further. If ESPN does serve them and the pull discards them, that half is a
+  `DATA.md` entry - the same shape as the conference-membership correction -
+  and this entry links to it.
+
 ### Each narrowing the router has no slot for needs its own regex
 - **Found:** 2026-09-15 replaying 261 real StatMuse feed queries through the
   fast path; **fixed for every measured case and re-ranked P1 -> P3 on
@@ -797,23 +840,6 @@ wrong for other reasons, and each of those is an entry below.
 - **Next step:** log at WARNING when a collection read ends on a non-dict first
   page, and add a test with a session that answers 400.
 - **GitHub:** #90
-
-### The router's own team name "Los Angeles Clippers" resolves to nothing
-- **Found:** 2026-09-15, replaying the StatMuse feed
-- **Evidence:** `teams` stores the Clippers as `display_name` "LA Clippers"
-  (`location` "LA", `name` "Clippers"). `entities.find_teams` returns a match
-  for "Clippers", "LA Clippers" and "LAC", and **`[]` for "Los Angeles
-  Clippers"** - which is the form the router writes, since the prompt asks for
-  full team names and every other Los Angeles team has one.
-  - Hit twice in 261 feed queries ("butler free throws vs clippers last 10",
-    "Clippers ats record last 15 games at home"); both were misrouted for other
-    reasons as well, so the resolution gap is not what a user would notice
-    first - but it applies to every Clippers question the model expands.
-- **User sees:** a fall-through to the agent for a team the warehouse holds.
-- **Next step:** add the full-name form to `_TEAM_NICKNAMES`, or match on
-  `location + name` as well as `display_name`. Check the other 29 for the same
-  shape (ESPN's `display_name` is not always the full city name).
-- **GitHub:** #91
 
 ### Four question filters are recognized but no template answers them
 - **Found:** 2026-09-11, template work and final corpus run

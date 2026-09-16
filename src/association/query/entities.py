@@ -533,6 +533,19 @@ _TEAM_NICKNAMES: dict[str, str] = {
     "nugs": "Denver Nuggets",
     "grizz": "Memphis Grizzlies",
     "wiz": "Washington Wizards",
+    # The abbreviations everyone uses and ESPN does not. Its `teams` table
+    # abbreviates these four "GS", "NO", "NY" and "SA", so the three-letter
+    # forms a question actually contains resolved to NOTHING - measured live,
+    # "sam hauser v mil" works and "Lauri Markkan vs GSW last 5 games" loses
+    # the team entirely.
+    "gsw": "Golden State Warriors",
+    "nop": "New Orleans Pelicans",
+    "nyk": "New York Knicks",
+    "sas": "San Antonio Spurs",
+    # ESPN stores the Clippers as "LA Clippers", so the full form the router
+    # writes - the prompt asks for full team names, and every other Los Angeles
+    # team has one - matched nothing at all.
+    "los angeles clippers": "LA Clippers",
 }
 
 # "vs", "versus", "against" or "v" and whatever follows. Whether what follows is
@@ -1029,18 +1042,26 @@ def find_teams(con: duckdb.DuckDBPyConnection, text: str) -> list[Entity]:
     text = _TEAM_NICKNAMES.get(text.strip().casefold(), text)
     rows = con.execute(
         "SELECT team_id, display_name, "
-        "  (team_id = ? OR abbreviation ILIKE ? OR display_name ILIKE ? OR display_name ILIKE ?) AS strong "
+        "  CASE WHEN team_id = ? OR abbreviation ILIKE ? THEN 2 "
+        "       WHEN display_name ILIKE ? OR display_name ILIKE ? THEN 1 ELSE 0 END AS rank "
         "FROM teams WHERE team_id = ? OR abbreviation ILIKE ? OR display_name ILIKE ? "
-        f"ORDER BY strong DESC, display_name LIMIT {MAX_CANDIDATES}",
-        # strong = an id/abbreviation hit, or a name match that starts a word:
-        # 'LA%' catches "LA Clippers", '% LA%' catches "Los Angeles Lakers".
+        f"ORDER BY rank DESC, display_name LIMIT {MAX_CANDIDATES}",
+        # rank 2 is the team's own id or abbreviation; rank 1 a name match that
+        # starts a word ('LA%' catches "LA Clippers", '% LA%' catches "Los
+        # Angeles Lakers"); rank 0 an incidental substring.
         [text, text, f"{text}%", f"% {text}%", text, text, f"%{text}%"],
     ).fetchall()
-    strong = [Entity(id=str(r[0]), name=r[1]) for r in rows if r[2]]
-    # Incidental substring hits ("LA" inside "Atlanta") are dropped whenever a
-    # word-boundary match exists, so a clarification offers plausible teams
-    # rather than everything the LIKE happened to touch.
-    return strong or [Entity(id=str(r[0]), name=r[1]) for r in rows]
+    # Only the best tier survives, and the two steps do different jobs. Dropping
+    # rank 0 keeps "LA" inside "Atlanta" out of a clarification, so it offers
+    # plausible teams rather than everything the LIKE touched. Ranking an
+    # ABBREVIATION above a name match settles a collision that used to be
+    # offered as a real ambiguity: "ORL" is Orlando's abbreviation and also a
+    # substring of "New Orleans", so it returned both, and a question naming
+    # one team could be answered about another. "LA" is still honestly
+    # ambiguous - no team is abbreviated that - and both Los Angeles teams sit
+    # at rank 1 together.
+    best = max((r[2] for r in rows), default=0)
+    return [Entity(id=str(r[0]), name=r[1]) for r in rows if r[2] == best]
 
 
 def _resolve(candidates: list[Entity], text: str, exact_keys: tuple[str, ...]) -> Resolution:

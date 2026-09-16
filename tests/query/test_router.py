@@ -817,6 +817,66 @@ def test_an_impossible_calendar_day_is_not_a_date() -> None:
     assert "date" not in got.slots and "situation" in got.slots
 
 
+@pytest.mark.parametrize(
+    ("question", "payload", "want"),
+    [
+        # The model fills the SINGULAR `player` plus an `opponent`, which the
+        # existing `players`-list rule never sees. All verbatim from the feed.
+        ("keon ellis stats vs trailblazers", '{"intent":"player_matchup","player":"Keon Ellis","opponent":"Portland Trail Blazers"}', "player_stat"),
+        ("De'angelo russell vs pistons", '{"intent":"player_matchup","player":"De\'Angelo Russell","opponent":"Detroit Pistons"}', "player_stat"),
+        ("Kd games vs wizards", '{"intent":"player_matchup","player":"Kevin Durant","opponent":"Washington Wizards"}', "game_log"),
+        ("embid vs bucks gamelog", '{"intent":"player_matchup","player":"Joel Embiid","opponent":"Bucks"}', "game_log"),
+        ("kon kneuppel log vs okc", '{"intent":"player_matchup","player":"Kon Knueppel","opponent":"Oklahoma City"}', "game_log"),
+    ],
+)
+def test_a_player_against_a_team_is_not_a_player_matchup(question: str, payload: str, want: str) -> None:
+    """`player_matchup` needs two players. Given one and a team it had nothing
+    to answer with, and eight feed queries fell through to the agent where
+    `player_stat` and `game_log` answer them exactly - both honour `opponent`.
+
+    The rule for this already existed and only read the `players` LIST; the
+    model routinely uses the singular `player` slot with an `opponent`
+    instead, which is the same question in a different shape.
+    """
+    assert _ask(question, payload).intent == want
+
+
+def test_a_matchup_against_another_player_stays_a_matchup() -> None:
+    """The reroute is gated on the opponent being a TEAM. "jay huff game log vs
+    Embiid" is a real player-versus-player question with the second player in
+    the `opponent` slot, and rerouting it would answer a different one."""
+    assert _ask("jay huff game log vs Embiid", '{"intent":"player_matchup","player":"Jay Huff","opponent":"Embiid"}').intent == "player_matchup"
+
+
+@pytest.mark.parametrize(
+    ("question", "payload"),
+    [
+        ("mathurin v det", '{"intent":"player_matchup","players":["Mathurin","Detroit"]}'),
+        ("sam hauser v mil", '{"intent":"player_matchup","players":["Sam Hauser","Mil"]}'),
+        ("pascal vs orlando", '{"intent":"player_matchup","players":["Pascal Siakam","Orlando"]}'),
+        ("Amén Thomson vs toronto", '{"intent":"player_matchup","players":["Amen Thompson","Toronto"]}'),
+        ("lauri markkan vs gsw last 5 games", '{"intent":"player_matchup","players":["Lauri Markkanen","gsw"]}'),
+    ],
+)
+def test_a_team_named_by_city_or_abbreviation_is_recognized(question: str, payload: str) -> None:
+    """`_is_team_name` required the LAST word to be a nickname, so a team named
+    any other way read as a player and the question became a matchup between
+    two people. Every case here is verbatim from the feed."""
+    assert _ask(question, payload).intent in ("player_stat", "game_log")
+
+
+@pytest.mark.parametrize("name", ["PJ Washington", "Allan Houston", "Magic Johnson", "Houstan", "Burks", "Hawkins", "Thornton", "Wheat"])
+def test_a_player_whose_name_looks_like_a_team_is_still_a_player(name: str) -> None:
+    """The reason a city is matched against the WHOLE name and never the last
+    word: three players are surnamed Cleveland, Houston and Washington. The
+    rest are why a near spelling is not matched at all - Burks/Bucks,
+    Hawkins/Hawks, Thornton/Toronto and Wheat/Heat are all within one
+    `difflib` step, and the model puts bare surnames in that slot."""
+    from association.query.router import _is_team_name
+
+    assert not _is_team_name(name)
+
+
 def test_a_triple_double_abbreviation_is_not_read_as_three_pointers() -> None:
     """Not a narrowing, though the replay filed it as one: "luka td3s home" had
     its venue read and honoured correctly, and answered his POINTS per game at

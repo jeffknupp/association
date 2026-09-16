@@ -15,6 +15,47 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A player against a team is answered instead of falling through.** The
+  single biggest theme in the feed replay: 60 of the 186 questions that are not
+  answered correctly pit a player against a team, and three separate mechanisms
+  each half-handled it.
+
+  `player_matchup` needs two players. Given one and a team it had nothing to
+  answer with, and the rule that redirects those only ever read the `players`
+  LIST - the model routinely fills the singular `player` slot with an
+  `opponent` instead ("keon ellis stats vs trailblazers", "Kd games vs
+  wizards", "De'angelo russell vs pistons"). Eight feed queries fell through to
+  the agent where `player_stat` and `game_log` answer them exactly, both
+  honouring `opponent`. The redirect is gated on the opponent being a team:
+  "jay huff game log vs Embiid" really is a matchup between two players, with
+  the second one in the `opponent` slot.
+
+  `_is_team_name` required a name's LAST word to be one of thirty nicknames, so
+  a team named any other way read as a *player* - "mathurin v det", "sam hauser
+  v mil", "pascal vs orlando". It now also accepts a city or an abbreviation,
+  matched against the WHOLE name and never the last word, because three real
+  players are surnamed Cleveland, Houston and Washington and a last-word rule
+  turns PJ Washington into a team.
+
+  **A misspelled team is deliberately still not matched**, and that was
+  measured rather than assumed. `difflib` at 0.8 reaches the right team for the
+  feed's three typos ("taptors", "warriners", "blakers") - and also for 16 real
+  player surnames: Burks to Bucks, Hawkins to Hawks, Thornton to Toronto, Wheat
+  to Heat. The model puts bare surnames in that slot routinely, so those
+  collisions are live, and no cutoff separates them: "houstan"/"houston" and
+  "taptors"/"raptors" are both one edit in seven characters. Three queries is
+  not worth sixteen.
+- **The team abbreviations people actually write now resolve.** ESPN's `teams`
+  table abbreviates four teams "GS", "NO", "NY" and "SA", so `GSW`, `NOP`,
+  `NYK` and `SAS` resolved to **nothing** and the team was lost from the
+  question entirely. The full "Los Angeles Clippers" did too - the router is
+  asked for full team names, and ESPN stores that one as "LA Clippers".
+
+  An exact abbreviation also outranks a team whose name merely contains it.
+  `ORL` is Orlando's abbreviation and a substring of "New Orleans", and both
+  came back: an ambiguity offered over a question naming exactly one team, and
+  a chance to answer about the other. Two teams in one city stay ambiguous, as
+  they should - no team is abbreviated "LA".
 - **A narrowing the router has no slot for is refused instead of dropped.**
   `check_scope` can only refuse a slot the router emits, and `ROUTER_SCHEMA`
   has no slot for a day of the week, a calendar holiday, an age, a minutes
