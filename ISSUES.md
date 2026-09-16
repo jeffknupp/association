@@ -947,8 +947,11 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **Re-checked 2026-09-16, and a fifth slot is missing from the same list.**
   `until` is set at `router.py:1269` alongside `since`, but is in neither
   `HONORED_SCOPING` nor `SCOPING_SLOTS` (`templates.py:146`) - so `check_scope`
-  does not merely fail to honour it, it cannot even see it to refuse it, and a
-  question narrowed by an end year silently answers unbounded. The stale
+  cannot see it to refuse it. Harmless today, because `until` is only ever set
+  together with `since` and no template honors `since`, so the question is
+  refused over `since` first. It becomes a silent wrong answer the day a
+  template honors `since` without reading `until`: add `until` to
+  `SCOPING_SLOTS` before, or with, the first `since`. The stale
   refusal counts against `fastpath_r3.jsonl` are replaced by the current
   fall-through counts by slot: `situation` 20, `since` 4, `below` 2, `round` 1.
 - **GitHub:** #23
