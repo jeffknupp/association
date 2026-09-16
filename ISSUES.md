@@ -690,6 +690,23 @@ wrong for other reasons, and each of those is an entry below.
 
 ## P3: refusal or gap
 
+### A franchise's former name resolves to nothing
+- **Found:** 2026-09-16, replaying the feed after the `period_split` fixes
+- **Evidence:** "duren v nets 1h gameloh" routed correctly to `period_split`
+  and arrived with `opponent="New Jersey Nets"` - the model's expansion of
+  "nets", and the franchise's name until 2012. `entities.find_teams("New Jersey
+  Nets")` returns `[]`, so the question falls through. `_TEAM_NICKNAMES`
+  already maps shorthand ("sixers", "cavs") and the four abbreviations ESPN
+  does not use; it has no former names. The same shape is likely for "Seattle
+  SuperSonics", "New Orleans Hornets", "Charlotte Bobcats" and "Vancouver
+  Grizzlies", none of them measured.
+- **User sees:** a fall-through to the agent for a team the warehouse holds.
+- **Next step:** check which former names the router emits and which resolve,
+  then decide per name. Mapping "New Jersey Nets" to Brooklyn is safe - one
+  franchise, one team id. "Charlotte Hornets" is not a former name at all, and
+  "New Orleans Hornets" is the Pelicans, so this cannot be a blanket rule. See
+  also #17, which is the same history seen from the answer's side.
+
 ### A quarter or half is answered for a player, and for nobody else
 - **Found:** 2026-09-16 auditing the feed; **the player half shipped the same
   day** as `period_split`
