@@ -187,7 +187,7 @@ def not_a_postseason_copy(columns: tuple[str, ...], alias: str = "t") -> str:
     """SQL that is true unless ``alias``'s postseason row copies the same
     player's regular season.
 
-    437 of the 7,941 postseason rows in ``player_season_stats`` are exactly that.
+    436 of the 7,941 postseason rows in ``player_season_stats`` are exactly that.
     Eddy Curry never played a playoff game, and has 527 "playoff games" and
     6,820 playoff points, because each of his regular seasons is stored a second
     time as a postseason - enough to put him second on a career playoff scoring
@@ -195,7 +195,7 @@ def not_a_postseason_copy(columns: tuple[str, ...], alias: str = "t") -> str:
     postseason box score behind them (checked: every such row is one, and they
     are the only such rows), which is what makes matching on the stat line
     identification rather than a guess. Matching on games plus ``columns`` finds
-    the same 437 rows that matching the whole line does.
+    the same 436 rows that matching the whole line does.
 
     .. versionadded:: 2.1.0
     """

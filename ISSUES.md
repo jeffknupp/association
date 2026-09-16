@@ -1189,14 +1189,13 @@ the entries it held, and nobody had re-read the P2s against the definition.
   games, or games+points equal to that season's regular-season line on any team)
   and `query/leaderboard.py:186` `not_a_postseason_copy` (games plus the value
   columns, on the same team). They agree today - each drops 436 of 7,941 rows -
-  but nothing keeps them in step.
-  - Both comments are stale: the view says "340 of 7,845 postseason rows" and
-    the docstring says "437 of the 7,941". Re-measured: raw 7,941 rows, deduped
-    7,505, so **436 rows** (340 player-seasons).
+  but nothing keeps them in step. (Both comments now give the re-measured
+  figure, 436 of 7,941 rows / 340 player-seasons, fixed 2026-09-16 with #43;
+  only the duplication remains.)
 - **User sees:** nothing today. It is the same hand-maintained-pair shape as
   #83, with the added trap that the two spellings could diverge silently.
 - **Next step:** export one helper and call it from both, the way #83 proposes
-  for the traded-player dedup. Fix both figures while there.
+  for the traded-player dedup.
 - **GitHub:** #93
 
 ### `MAX_LIMIT` is 100 in one module and 50 in another
@@ -1393,32 +1392,6 @@ the entries it held, and nobody had re-read the P2s against the definition.
   `_rtype_insert_index` in the same commit. Check the rendered pages after the
   move from Sphinx 8.1.3 to 8.2; nobody has.
 - **GitHub:** #42
-
-### Three wrong statements in the docs
-- **Found:** 2026-09-11, repo audit and issues audit
-- **Evidence:**
-  - `AGENTS.md` ("Data gotchas") gives `player_season_stats` "5 players in 1977,
-    240 in 1988, 668 in 1994". Those are row counts across season types; the
-    distinct regular-season players are 2, 141 and 403, as in `coverage.py`.
-  - The comment above `TURNOVERS` in `query/team_metrics.py` says pre-2013
-    `team_season_stats.turnovers` is "the player turnovers alone". It already
-    includes team turnovers: it equals the box `totalTurnovers` for 26-29 of 30
-    teams. The expression is right; only the comment is wrong.
-  - `AGENTS.md` and `fetch/warehouse.py` say the deduplicated view drops "340 of
-    7,845" postseason rows. Those are player-seasons. Counted in rows, it is 436
-    of 7,941.
-- **User sees:** nothing. An agent reads wrong facts.
-- **Next step:** correct all three.
-- **Source:** DATA.md, "ESPN's `possessions` counts every turnover twice before 2013"
-- **Re-checked 2026-09-15:** one fixed, one half fixed, one still wrong.
-  (1) `AGENTS.md`'s "5/240/668" is gone and `DATA.md` is right.
-  (2) `query/team_metrics.py:72` still claims pre-2013 `turnovers` is "player
-  turnovers alone" - re-measured, `team_season_stats.turnovers` equals the box
-  `totalTurnovers` sum for 25-27 of 30 teams and the player-only sum for 0.
-  (3) `fetch/warehouse.py:184` still says "340 of 7,845"; it is 436 rows / 340
-  player-seasons, and `DATA.md:548` wrongly says warehouse.py "previously" said
-  it.
-- **GitHub:** #43
 
 ### Broad `except duckdb.Error` in `_single_game_netpoints`
 - **Found:** 2026-09-11, repo audit

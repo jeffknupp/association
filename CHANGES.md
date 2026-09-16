@@ -46,6 +46,14 @@ had no published version to be compatible with.
   name and watched to fail; four of the first five came back MISSED until each
   had a test of its own, and the view's test had to move from 2005 to 1997 to
   catch anything, because the Grizzlies were already in Memphis by 2005.
+- **Two wrong comments corrected, no behavior change.** The comment above
+  `team_metrics.TURNOVERS` said pre-2013 `team_season_stats.turnovers` was "the
+  player turnovers alone"; re-measured, it is the full count with team
+  turnovers in (equal to the box `totalTurnovers` season sum for 24-27 of 30
+  teams, and to the player-only sum for none). The expression was right. The
+  `player_season_stats_deduped` view and `leaderboard.not_a_postseason_copy`
+  now both give the dropped-row figure as 436 of 7,941 rows (340 of 7,845
+  player-seasons); one said 340 rows and the other 437.
 - **A team name is read for its season, and the question's own team beats one
   the router could not ground.** Found through "duren v nets 1h gameloh", which
   fell through because the router wrote the opponent as "New Jersey Nets". That
