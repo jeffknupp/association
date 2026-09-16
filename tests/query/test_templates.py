@@ -2835,8 +2835,14 @@ SEASON = current_season()
 
 @pytest.fixture
 def period_ctx(tmp_path: Path) -> TemplateContext:
-    """One player, four games, and shots whose value has to be DERIVED rather
+    """One player, six games, and shots whose value has to be DERIVED rather
     than read off a label - which is the whole point of the template.
+
+    Two of the games exist to hold the denominator honest. In e5 he played and
+    scored only in the second quarter, so it is a first-quarter game worth
+    ZERO - the case the first version dropped, inflating every average. In e6
+    he did not play at all, so it is no game of his in any period, even though
+    a teammate's shots mean the shot table covers it.
 
     Every made shot here is 26 feet from the rim at (25, 0), a real three's
     position, and carries `points_attempted = 0`, which is ESPN's "unlabeled"
@@ -2852,15 +2858,26 @@ def period_ctx(tmp_path: Path) -> TemplateContext:
         "CREATE TABLE games (event_id VARCHAR, season BIGINT, season_type BIGINT, date VARCHAR, home_team_id VARCHAR, away_team_id VARCHAR, "
         "home_score BIGINT, away_score BIGINT, winner_team_id VARCHAR)"
     )
+    c.execute("CREATE TABLE player_box_stats (event_id VARCHAR, season BIGINT, season_type BIGINT, team_id VARCHAR, athlete_id VARCHAR, did_not_play BOOLEAN, minutes BIGINT)")
     c.execute(
         "CREATE TABLE shot_chart (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, team_id VARCHAR, "
         "period INTEGER, clock VARCHAR, made BOOLEAN, shot_type VARCHAR, coordinate_x INTEGER, coordinate_y INTEGER, points_attempted INTEGER, description VARCHAR)"
     )
     c.execute("INSERT INTO players VALUES ('1','Stephen Curry')")
     c.execute("INSERT INTO teams VALUES ('9','GS','Golden State Warriors'),('13','LAL','Los Angeles Lakers'),('2','BOS','Boston Celtics')")
-    # e1 and e3 at home against the Lakers, e2 away at Boston, e4 at home vs Boston.
-    for event, home, away in (("e1", "9", "13"), ("e2", "2", "9"), ("e3", "9", "13"), ("e4", "9", "2")):
+    # e1 and e3 at home against the Lakers, e2 away at Boston, e4 and e5 at home
+    # vs Boston, e6 at home vs the Lakers.
+    for event, home, away in (("e1", "9", "13"), ("e2", "2", "9"), ("e3", "9", "13"), ("e4", "9", "2"), ("e5", "9", "2"), ("e6", "9", "13")):
         c.execute("INSERT INTO games VALUES (?,?,2,?,?,?,110,100,?)", [event, SEASON, f"{SEASON - 1}-11-0{event[-1]}T00:30Z", home, away, home])
+    for event, dnp in (("e1", False), ("e2", False), ("e3", False), ("e4", False), ("e5", False), ("e6", True)):
+        c.execute("INSERT INTO player_box_stats VALUES (?,?,2,'9','1',?,?)", [event, SEASON, dnp, None if dnp else 30])
+    # e7 he played, and the shot table holds nothing for the game at all -
+    # 2003's shots cover 986 of its games. It is no game here rather than a
+    # confident zero, which would drag the average down for a gap in the data.
+    c.execute("INSERT INTO games VALUES ('e7',?,2,?,'9','13',110,100,'9')", [SEASON, f"{SEASON - 1}-11-07T00:30Z"])
+    c.execute("INSERT INTO player_box_stats VALUES ('e7',?,2,'9','1',FALSE,30)", [SEASON])
+    # A teammate's make in e6, so the shot table covers the game he sat out.
+    c.execute("INSERT INTO shot_chart VALUES ('7',?,2,'e6','9',1,'10:00',TRUE,'Jump Shot',25,26,0,'26-foot jumper')", [SEASON])
     # (event, period, made, n) - an unlabeled 26-foot three each time.
     for event, period, made, n in (
         ("e1", 1, True, 2),
@@ -2872,6 +2889,7 @@ def period_ctx(tmp_path: Path) -> TemplateContext:
         ("e3", 3, True, 1),
         ("e4", 1, True, 1),
         ("e4", 5, True, 1),
+        ("e5", 2, True, 1),
     ):
         for _ in range(n):
             c.execute(
@@ -2882,22 +2900,30 @@ def period_ctx(tmp_path: Path) -> TemplateContext:
     # 2004 is labeled, unlike the rows above, because before
     # TEXT_NAMES_EVERY_THREE_UNTIL the description is what establishes a three.
     c.execute("INSERT INTO games VALUES ('e04',2004,2,'2003-11-05T00:30Z','9','13',110,100,'9')")
+    c.execute("INSERT INTO player_box_stats VALUES ('e04',2004,2,'9','1',FALSE,30)")
     c.execute("INSERT INTO shot_chart VALUES ('1',2004,2,'e04','9',1,'10:00',TRUE,'Jump Shot',25,26,3,'26-foot three point jumper')")
     return TemplateContext(con=c, out_dir=tmp_path / "out")
 
 
 def test_a_quarter_is_summed_from_the_shots_position_not_its_label(period_ctx: TemplateContext) -> None:
-    """Curry's first quarters: 2 threes in e1, 1 in e2, 1 in e4 - 12 points over
-    three games. Every one carries `points_attempted = 0`, so a template that
-    trusted ESPN's label would answer 0, and one that looked for the words
-    "three point" in the description would answer 8. Only the position gives 12.
-    Misses do not count, and e3 has no first-quarter make, so it is not a game.
+    """Curry's first quarters: 2 threes in e1, 1 in e2, 1 in e4 - 12 points.
+    Every one carries `points_attempted = 0`, so a template that trusted ESPN's
+    label would answer 0, and one that looked for the words "three point" in
+    the description would answer 8. Only the position gives 12. Misses do not
+    count.
+
+    **Five games, not three.** e3 and e5 are games he played without a
+    first-quarter make, and they are zeros in the average rather than absent
+    from it; e6 he sat out. Counting only the games with a make answered 4.0
+    here - and "RJ Barrett ... over 46 games, averaging 5.4" for a player who
+    played 57 and averaged 4.4, which is a fluent wrong number whose sum was
+    right.
     """
     result = period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2})
     assert result.data["total"] == 12
-    assert result.data["scoring_games"] == 3
-    assert result.data["average"] == pytest.approx(4.0)
-    assert "12 points in the 1st quarter over 3 games" in (result.answer or "")
+    assert result.data["games_played"] == 5, "e1-e5; e6 is a DNP and e7 has no shot data at all"
+    assert result.data["average"] == pytest.approx(2.4), "12 over 5 played games, not 4.0 over the 3 with a make"
+    assert "12 points in the 1st quarter over 5 games" in (result.answer or "")
 
 
 def test_a_half_is_the_two_quarters_it_holds_and_never_overtime(period_ctx: TemplateContext) -> None:
@@ -2907,17 +2933,17 @@ def test_a_half_is_the_two_quarters_it_holds_and_never_overtime(period_ctx: Temp
     exactly the games people ask about most."""
     first = period_split(period_ctx, {"player": "Stephen Curry", "half": 1, "season": SEASON, "season_type": 2})
     second = period_split(period_ctx, {"player": "Stephen Curry", "half": 2, "season": SEASON, "season_type": 2})
-    assert first.data["total"] == 15, "e1 2, e2 1, e3 1 (Q2), e4 1"
+    assert first.data["total"] == 18, "e1 2, e2 1, e3 1 (Q2), e4 1, e5 1 (Q2) - threes all"
     assert second.data["total"] == 12, "e1 Q3, e2 two in Q4, e3 Q3 - and NOT e4's overtime"
 
 
 def test_an_opponent_and_a_venue_narrow_which_games_count(period_ctx: TemplateContext) -> None:
     """Both are in HONORED_SCOPING for this template, so both filter rather
-    than refuse. Against the Lakers: e1 and e3. At home: e1, e3, e4."""
+    than refuse. Against the Lakers: e1 and e3. At home: e1, e3, e4 and e5."""
     vs_lakers = period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "opponent": "Lakers"})
-    assert vs_lakers.data["total"] == 6 and vs_lakers.data["scoring_games"] == 1
+    assert vs_lakers.data["total"] == 6 and vs_lakers.data["games_played"] == 2, "e1 and e3; e3 is a scoreless first quarter, not a missing game"
     at_home = period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "venue": "home"})
-    assert at_home.data["total"] == 9, "e1's two and e4's one; e2 is away"
+    assert at_home.data["total"] == 9 and at_home.data["games_played"] == 4, "e1, e3, e4, e5 at home; e2 away; e6 a DNP"
 
 
 def test_a_season_whose_shots_cannot_be_valued_is_refused(period_ctx: TemplateContext) -> None:
@@ -2967,3 +2993,14 @@ def test_the_scoping_slots_this_template_filters_on_are_declared_honored() -> No
         check_scope("period_split", {"player": "Stephen Curry", "period": 1, slot: "home"})
     with pytest.raises(TemplateUnsupported):
         check_scope("period_split", {"player": "Stephen Curry", "period": 1, "without": "Draymond Green"})
+
+
+def test_a_log_lists_the_games_and_keeps_the_season_in_the_header(period_ctx: TemplateContext) -> None:
+    """ "rj barrett 4th qtr log" got a total and an average, and 7 of the 11
+    questions this template answered in its first replay asked for a log. The
+    rows list every played game, zeros included, and the header still answers
+    the season rather than the rows shown."""
+    answer = period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "per_game": True}).answer or ""
+    assert "over 5 games" in answer
+    assert "1st quarter points, every game:" in answer
+    assert len([line for line in answer.splitlines() if line.strip()[:4].isdigit()]) == 5

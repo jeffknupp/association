@@ -1095,6 +1095,19 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
         if asked is not None and named_player:
             raw["intent"] = "period_split"
             raw |= asked
+            # `stat` is the one REQUIRED slot, so the model fills it whether or
+            # not the question named one - measured, "duren v nets 1h gameloh"
+            # arrived with stat="none" and "scottie barnes stats 2nd half log"
+            # with stat="minutes", and the template refused both as asking for
+            # a stat it cannot give. Only a stat the question names is kept,
+            # the same rule player_compare follows (see _named_a_stat).
+            if not _named_a_stat(question):
+                raw.pop("stat", None)
+            # A log was asked for, not a season average. Measured, 7 of the 11
+            # questions this template answered in its first replay said "log",
+            # "by game" or "each game" and got a total and an average.
+            if _LOG_WORDS.search(question):
+                raw["per_game"] = True
         else:
             raw["intent"] = "other"
     if raw["intent"] in _PLAYER_RANKING_INTENTS and _TEAM_SUBJECT.search(question):

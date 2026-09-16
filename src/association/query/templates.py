@@ -4192,35 +4192,50 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
             return resolved
         opponent = resolved
 
+    # The games are the ones he PLAYED, with zero where he did not score in the
+    # period - not the games that have a made shot. The first version counted
+    # only the latter, so every scoreless quarter left the denominator: "RJ
+    # Barrett ... over 46 games, averaging 5.4" was a player with 57 games and
+    # a true 4.4. The sum was right, which is exactly why it read as correct.
+    #
+    # A played game counts only where the shot table covers that game at all.
+    # 2003's shots cover 986 of its games, and a game with no located shots
+    # would otherwise contribute a confident zero.
+    #
     # SHOT_VALUE_SQL names `shot_chart`'s columns bare, and `season` is a column
     # of `games` too - so the value is summed in a CTE over `shot_chart` alone,
-    # where those names can only mean one thing, and the game is joined after.
+    # where those names can only mean one thing.
+    box = box_source(con)
+    appeared = "(b.minutes IS NOT NULL OR b.reconstructed)" if box.rebuilt else "b.minutes IS NOT NULL"
     marks = ", ".join("?" for _ in periods)
-    params: list[Any] = [player.id, season, season_type, *periods, season, season_type]
-    where = ["g.season = ?", "g.season_type = ?"]
+    params: list[Any] = [player.id, season, season_type, *periods, player.id, season, season_type]
+    where: list[str] = []
     venue = slots.get("venue") if slots.get("venue") in ("home", "away") else None
     if venue is not None:
-        where.append("(CASE WHEN g.home_team_id = s.team_id THEN 'home' ELSE 'away' END) = ?")
+        where.append("(CASE WHEN g.home_team_id = b.team_id THEN 'home' ELSE 'away' END) = ?")
         params.append(venue)
     if opponent is not None:
-        where.append("(CASE WHEN g.home_team_id = s.team_id THEN g.away_team_id ELSE g.home_team_id END) = ?")
+        where.append("(CASE WHEN g.home_team_id = b.team_id THEN g.away_team_id ELSE g.home_team_id END) = ?")
         params.append(opponent.id)
     rows = con.execute(
         f"""
         WITH scored AS (
-            SELECT event_id, team_id, SUM({SHOT_VALUE_SQL}) AS points
+            SELECT event_id, SUM({SHOT_VALUE_SQL}) AS points
             FROM shot_chart
             WHERE athlete_id = ? AND made AND season = ? AND season_type = ? AND period IN ({marks})
-            GROUP BY 1, 2
+            GROUP BY 1
         )
         SELECT g.date,
-               CASE WHEN g.home_team_id = s.team_id THEN 'home' ELSE 'away' END AS side,
+               CASE WHEN g.home_team_id = b.team_id THEN 'home' ELSE 'away' END AS side,
                t.display_name,
-               s.points
-        FROM scored s
-        JOIN games g USING (event_id)
-        LEFT JOIN teams t ON t.team_id = CASE WHEN g.home_team_id = s.team_id THEN g.away_team_id ELSE g.home_team_id END
-        WHERE {" AND ".join(where)}
+               COALESCE(s.points, 0)
+        FROM {box.table} b
+        JOIN games g ON g.event_id = b.event_id AND g.season = b.season
+        LEFT JOIN scored s ON s.event_id = b.event_id
+        LEFT JOIN teams t ON t.team_id = CASE WHEN g.home_team_id = b.team_id THEN g.away_team_id ELSE g.home_team_id END
+        WHERE b.athlete_id = ? AND b.season = ? AND b.season_type = ? AND NOT b.did_not_play AND {appeared}
+          AND EXISTS (SELECT 1 FROM shot_chart x WHERE x.event_id = b.event_id)
+          {"".join(" AND " + w for w in where)}
         ORDER BY g.date
         """,
         params,
@@ -4237,13 +4252,10 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         "opponent": opponent.name if opponent else None,
         "venue": venue,
         "games": games,
-        "scoring_games": len(games),
+        "games_played": len(games),
     }
     if not games:
-        # "Scored in" rather than "played in": a game he played and did not
-        # score in that period has no made shot, so it is absent here. Saying
-        # he has no GAMES would be the refusal-naming-the-wrong-cause shape.
-        message = f"No {scope} games found where {player.name} scored in the {period_label}{vs}{at}."
+        message = f"No {scope} games found for {player.name}{vs}{at}."
         return TemplateResult(data={**data, "message": message}, answer=message)
 
     total = sum(g["points"] for g in games)
@@ -4261,6 +4273,16 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         g = games[0]
         against = f"the {g['opponent']}" if g["opponent"] else "their opponent"
         header = f"{player.name} scored {total} points in the {period_label} {'vs' if g['home_away'] == 'home' else 'at'} {against} on {g['date']} ({scope})."
+    elif slots.get("per_game"):
+        # The router sets this when the question said "log", "by game" or "each
+        # game". The total and average stay over EVERY game, so the header
+        # answers the season; the rows are the most recent games, capped like
+        # game_log's, and the line says so rather than letting a ten-row table
+        # read as the whole season.
+        shown = games[-_clamp_limit(slots.get("limit"), default=DEFAULT_GAME_LOG_LIMIT) :]
+        rows_out = [f"  {g['date']}  {'vs' if g['home_away'] == 'home' else '@ '} {g['opponent'] or '?':<24} {g['points']:>3}" for g in reversed(shown)]
+        label = "every game" if len(shown) == len(games) else f"the {len(shown)} most recent"
+        header += f"\n  {period_label} points, {label}:\n" + "\n".join(rows_out)
     return TemplateResult(data=data, answer=header + caveat)
 
 

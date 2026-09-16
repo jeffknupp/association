@@ -1115,3 +1115,34 @@ def test_a_quarter_question_naming_no_player_is_not_period_split() -> None:
     question with no player - "knicks 1st quarter scoring leaders" - has no
     subject it can take, so it keeps falling through."""
     assert _ask("knicks 1st quarter scoring leaders playoffs", '{"intent":"leaderboard","team":"New York Knicks"}').intent == "other"
+
+
+@pytest.mark.parametrize(
+    ("question", "payload"),
+    [
+        ("duren v nets 1h gameloh", '{"intent":"game_log","stat":"none","player":"Jalen Duren"}'),
+        ("scottie barnes stats 2nd half log", '{"intent":"game_log","stat":"minutes","player":"Scottie Barnes"}'),
+    ],
+)
+def test_a_stat_the_question_never_named_does_not_reach_period_split(question: str, payload: str) -> None:
+    """`stat` is REQUIRED in ROUTER_SCHEMA, so the model fills it on a question
+    that names none - "none" and "minutes" here, both measured - and
+    period_split refused both as asking for a stat it cannot give."""
+    got = _ask(question, payload)
+    assert got.intent == "period_split" and "stat" not in got.slots
+
+
+def test_a_stat_the_question_does_name_is_kept_so_it_can_be_refused() -> None:
+    """The other direction. "kd rebounds 4th quarter" really asks for
+    rebounds, which no shot table holds; dropping the slot would answer his
+    POINTS instead, which is the substitution this project refuses."""
+    got = _ask("kd rebounds 4th quarter", '{"intent":"player_stat","stat":"rebounds","player":"Kevin Durant"}')
+    assert got.intent == "period_split" and got.slots.get("stat") == "rebounds"
+
+
+@pytest.mark.parametrize(("question", "per_game"), [("rj barrett 4th qtr log", True), ("vj edgecombe 1st quarter scoring by game", True), ("Devin Vassell nba player per game stats 1q", False)])
+def test_a_log_is_asked_for_by_the_question_not_assumed(question: str, per_game: bool) -> None:
+    """ "per game stats" is an average, and "by game" is a log - the difference
+    between one line and a table."""
+    got = _ask(question, '{"intent":"game_log","player":"RJ Barrett"}')
+    assert bool(got.slots.get("per_game")) is per_game

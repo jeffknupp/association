@@ -15,6 +15,26 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **`period_split`'s average was inflated, and now counts the games he
+  played.** As first shipped, a game only counted if he made a shot in that
+  period, so every scoreless quarter left the denominator: "RJ Barrett scored
+  250 points in the 4th quarter over 46 games, averaging 5.4" for a player who
+  played 57 and averaged **4.4**. The total was right, which is why it read as
+  correct - it was graded correct in the replay that followed, and caught only
+  when the new per-game log printed his games and the count looked short. A
+  game with no shot data at all (2003's shots cover 986 of its games) is
+  excluded rather than counted as a confident zero, and a game he sat out is
+  no game.
+
+  Two things the same replay found are fixed alongside it. A question asking
+  for a log - "rj barrett 4th qtr log", "vj edgecombe 1st quarter scoring by
+  game", 7 of the 11 the template answered - got a total and an average, and
+  now lists the games under a header that still answers the season. And `stat`
+  is the router's one required slot, so it arrives filled on questions that name
+  no stat; "duren v nets 1h gameloh" came in with `stat="none"` and was refused
+  as asking for something other than points. Only a stat the question names is
+  kept, so "kd rebounds 4th quarter" is still refused rather than answered with
+  his points.
 - **A named player's quarter or half is answered, by a new `period_split`
   template.** This was the largest content gap in the 261-query feed replay -
   21 questions, every one forced to the agent because nothing answered the
