@@ -2934,6 +2934,15 @@ def team_leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
 # ESPN's season types, as the power index uses them. 5 is not in the rest of
 # the warehouse: its snapshots are dated between the regular season's end and
 # the first playoff game (2026-04-18, 2025-04-19), i.e. the play-in.
+#: ESPN's season-type code for a preseason power-index snapshot.
+#:
+#: Named because it is a tiebreak, not a filter: a preseason rating is a real
+#: answer where it is the only snapshot holding a team, and merely the worst
+#: one to pick when a same-dated regular-season snapshot exists.
+#:
+#: .. versionadded:: 2.2.0
+BPI_PRESEASON = 1
+
 BPI_SNAPSHOT_NAMES = {1: "preseason", 2: "regular-season", 3: "postseason", 5: "play-in"}
 
 # (label, column) for the chances a snapshot carries. `probmakeconfchamp` is
@@ -2946,14 +2955,19 @@ def team_outlook(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """A team's ESPN Basketball Power Index: its rating and where it sits,
     projected record, playoff and title chances, and strength of schedule.
 
-    The power index is sparse, and the answer says so every time. A season
-    holds at most a few snapshots, each covering part of the league - 2026 has
-    a play-in snapshot of 13 teams and a postseason one of 12, and no regular-
-    season snapshot at all - so every answer names the snapshot, its date and
-    how many teams it holds, and a team missing from it is told which snapshots
-    exist rather than that there is "no data". A regular-season question reads
-    the latest pre-playoff snapshot holding the team; a postseason one reads
-    the postseason snapshot.
+    A season holds one snapshot per season type - regular season, postseason and
+    play-in from 2023, preseason as well in 2017-18 - each covering all 30 teams,
+    and ESPN overwrites rather than keeping a dated series. Every answer names
+    the snapshot, its date and how many teams it holds, and a team missing from
+    one is told which snapshots exist rather than that there is "no data". A
+    regular-season question reads the latest pre-playoff snapshot holding the
+    team; a postseason one reads the postseason snapshot.
+
+    The sizes this docstring used to quote ("2026 has a play-in snapshot of 13
+    teams and a postseason one of 12, and no regular-season snapshot at all")
+    were an artifact of reading one 25-row page of a paged collection, not of
+    ESPN's coverage. See ``DATA.md``, "ESPN's power index is a paged collection,
+    and holds all 30 teams".
 
     Where a team stands is counted among the teams in the snapshot, from their
     ratings. ESPN's own rank columns are ranks only from 2022: before it they
@@ -2971,8 +2985,16 @@ def team_outlook(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     season = slots.get("season") or current_season()
     postseason = (slots.get("season_type") or 2) == 3
 
+    # Ordered by date, then with a PRESEASON snapshot pushed behind any other of
+    # the same date, because `candidates[-1]` below takes the last row. Measured
+    # on the backfilled table, nothing needs this yet: 2018's two snapshots are
+    # stamped one minute apart (preseason 07:47Z, regular season 07:48Z on
+    # 2020-10-12, the day ESPN backfilled both), so the regular season already
+    # sorts last. That one minute is the whole margin, and it is ESPN's to
+    # change - the tiebreak makes the choice explicit rather than resting on it.
     snapshots = con.execute(
-        "SELECT season_type, max(last_updated), count(DISTINCT team_id), bool_or(team_id = ?) FROM team_power_index WHERE season = ? GROUP BY 1 ORDER BY 2",
+        "SELECT season_type, max(last_updated), count(DISTINCT team_id), bool_or(team_id = ?) FROM team_power_index WHERE season = ? "
+        f"GROUP BY 1 ORDER BY 2, CASE season_type WHEN {BPI_PRESEASON} THEN 0 ELSE 1 END",
         [team.id, season],
     ).fetchall()
 

@@ -338,31 +338,40 @@ likewise.
   keep no name" (#22), and "The NetPoints season fingerprint matches players
   mid-pull, so a name can be lost" (#21).
 
-### ESPN's power index is one snapshot per season, not one team per season
+### ESPN's power index is a paged collection, and holds all 30 teams
 
-**Corrected 2026-09-15.** This section used to say the archived snapshot holds
-only the play-in and postseason field, and that no pull could recover the past.
-Both were wrong: the missing teams are our paging, not ESPN's archive.
+**This entry said the opposite until 2026-09-15, and the correction is the
+lesson.** It read "ESPN's power index keeps only postseason teams", on evidence
+that `team_power_index` held exactly 25 rows a season. 25 is the page size of
+ESPN's core API. The missing rows were never missing from ESPN.
 
-- **What ESPN does:** publishes BPI as a single current snapshot per season
-  rather than a dated series. That half stands — there is no way to ask for
-  last November's BPI.
-- **What it does NOT do:** drop the non-playoff teams. Probed live,
-  `seasons/2024/powerindex` answers `{'count': 90, 'pageSize': 25,
-  'pageCount': 4}`, and `?limit=1000` returns all 90 items: 30 teams in each of
-  season types 2, 3 and 5. 2019 returns 30.
-- **Evidence of our side of it:** `team_power_index` holds exactly 25 rows a
-  season — the core API's default page size — and those 25 rows are not 25
-  teams. 2024 has **9 distinct teams** (three season types, three rows each);
-  2026 has 13 and no regular-season rows at all. `fetch_power_index`
-  (`fetch/pipeline.py:497`) passes no `limit` and does not page.
-- **Does a refetch fix it?** **Yes**, once the fetch pages — which is the
-  opposite of what this section said. 2017-2026 can all be recovered.
+- **What ESPN does:** answers `seasons/<s>/powerindex` as a *collection* —
+  `{count, pageIndex, pageSize: 25, pageCount, items}` — and publishes one
+  snapshot per season per season type rather than a dated series.
+- **Evidence (probed live, 2026-09-15):** 2024 answers `count: 90,
+  pageSize: 25, pageCount: 4`; with `limit=1000` it returns all 90. Across
+  2017-2026 ESPN holds **630 rows, 30 teams in every snapshot**: preseason and
+  regular season in 2017-18, regular only in 2019-21, regular and postseason in
+  2022, and regular, postseason and play-in from 2023. ESPN's own rank columns
+  still hold values like 26,058 before 2022.
+- **What is still true:** there is no dated series. Each (season, season type)
+  is written within a single calendar **day** and ESPN overwrites it. Not a
+  single stamp, though — measured 2026-09-15, 7 of the 21 groups carry between
+  2 and 9 distinct `lastUpdated` values, minutes apart, and the ranges of two
+  snapshots on one day **interleave**: 2018's preseason runs 07:41Z-07:47Z and
+  its regular season 07:39Z-07:48Z, both on 2020-10-12, the day ESPN
+  backfilled them. So `max(last_updated)` is the only ordering that means
+  anything, which is what the query uses, and the one-minute gap between the
+  two maxima is what separates them. 2017's preseason carries 2019-11-22
+  against its regular season's 2020-10-12. A snapshot's date says when ESPN
+  last wrote it, not when it described.
+- **Does a refetch fix it?** **Yes** — this was our read, not ESPN's data.
+  `ESPNClient.get_collection` pages it, and
+  `scripts/backfill_power_index.py` re-fetched 2017-2026.
 - **How we handle it:** `team_outlook` names its snapshot, date and size in
   every answer, counts a team's standing within the snapshot rather than
   trusting ESPN's rank columns, and tells a missing team which snapshots exist.
-- **Tracked in:** ISSUES.md, "The power index reads only the first page, so
-  most teams are missing" (#27).
+- **Tracked in:** ISSUES.md, "The power index has no dated series" (#27).
 
 ### No birth dates anywhere, and conference membership is fetched but discarded
 

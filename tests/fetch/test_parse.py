@@ -136,6 +136,23 @@ def test_parse_schedule_event_ids_handles_missing_data() -> None:
     assert parse.parse_schedule_event_ids({}) == []
 
 
+def test_parse_power_index_reads_a_bare_item_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`ESPNClient.get_collection` hands back items, not the envelope, because the
+    envelope is one page. Both shapes have to parse or the paged fetch silently
+    produces no rows at all."""
+    item = {
+        "season": 2024,
+        "seasonType": 2,
+        "team": {"$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2024/teams/13?lang=en"},
+        "lastUpdated": "2024-04-14T00:00Z",
+        "stats": [{"name": "bpi", "value": 3.0, "displayName": "BPI", "description": "Basketball Power Index"}],
+    }
+    from_list, _ = parse.parse_power_index([item])
+    from_envelope, _ = parse.parse_power_index({"items": [item], "count": 1, "pageCount": 1})
+    assert from_list == from_envelope
+    assert from_list[0]["team_id"] == "13" and from_list[0]["bpi"] == 3.0
+
+
 # ---------------- parse_scoreboard_events ----------------
 
 

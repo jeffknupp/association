@@ -39,6 +39,29 @@ class FakeClient:
             return resp(params)
         return resp
 
+    def get_collection(self, url: str, params: dict | None = None) -> list:
+        """Every item of a canned collection, paging the way the real client does.
+
+        It really pages rather than returning `items` from one response, so a
+        multi-page fixture can tell `get_collection` apart from `get_json` - the
+        whole point of the method, and untestable with a double that collapses
+        the two.
+        """
+        items: list = []
+        page = 1
+        while True:
+            data = self.get_json(url, {**(params or {}), "limit": 1000, "page": page})
+            if not isinstance(data, dict):
+                return data if isinstance(data, list) else items
+            batch = data.get("items")
+            if not isinstance(batch, list):
+                return items
+            items.extend(batch)
+            pages = data.get("pageCount")
+            if not batch or not isinstance(pages, int) or page >= pages:
+                return items
+            page += 1
+
 
 def _teams_response(n: int) -> dict:
     return {"sports": [{"leagues": [{"teams": [{"team": {"id": str(i), "abbreviation": f"T{i}"}} for i in range(1, n + 1)]}]}]}
@@ -937,6 +960,52 @@ def test_fetch_standings_refetches_current_season_but_not_a_past_one(tmp_path: P
     pipeline.fetch_standings(2023)
     pipeline.fetch_standings(2024)
     assert len(client.calls) == calls_before + 1  # only the current season re-fetched
+
+
+def _paged_power_index(season: int, teams: int = 30, season_types: tuple[int, ...] = (2, 3, 5)) -> Any:
+    """ESPN's real shape for this endpoint: one row per team per snapshot,
+    served 25 at a time behind a `count`/`pageCount` envelope."""
+    items = [
+        {
+            "season": season,
+            "seasonType": stype,
+            "team": {"$ref": f"http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/{season}/teams/{team}?lang=en"},
+            "lastUpdated": f"{season}-04-14T00:00Z",
+            "stats": [{"name": "bpi", "value": 1.0, "displayName": "BPI", "description": "Basketball Power Index"}],
+        }
+        for stype in season_types
+        for team in range(1, teams + 1)
+    ]
+
+    def serve(params: dict | None) -> dict:
+        params = params or {}
+        size = int(params.get("limit") or 25)
+        size = min(size, 25)  # ESPN's page size, whatever we ask for
+        page = int(params.get("page") or 1)
+        start = (page - 1) * size
+        return {
+            "count": len(items),
+            "pageIndex": page,
+            "pageSize": size,
+            "pageCount": max(1, -(-len(items) // size)),
+            "items": items[start : start + size],
+        }
+
+    return serve
+
+
+def test_fetch_power_index_stores_every_snapshot_not_the_first_page(tmp_path: Path) -> None:
+    """The bug this fixes. ESPN answers `count: 90` in pages of 25, so reading
+    one page stored 25 of 90 rows a season - 9 distinct teams in 2024 - and
+    `team_outlook` reported that as ESPN having no snapshot for most teams."""
+    client = FakeClient({POWER_INDEX_URL_2024: _paged_power_index(2024)})
+    pipeline = Pipeline(client, tmp_path)
+    pipeline.fetch_power_index(2024)
+
+    table = ds.dataset(tmp_path / "team_power_index", format="parquet").to_table()
+    assert table.num_rows == 90, "only the first page was stored"
+    assert len(set(table.column("team_id").to_pylist())) == 30
+    assert sorted(set(table.column("season_type").to_pylist())) == [2, 3, 5]
 
 
 def test_fetch_power_index_refetches_current_season_but_not_a_past_one(tmp_path: Path, monkeypatch: Any) -> None:

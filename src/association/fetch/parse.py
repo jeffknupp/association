@@ -570,13 +570,23 @@ def parse_team_season_stats(data: JSON | None, season: int, season_type: int, te
     return row, glossary
 
 
-def parse_power_index(data: JSON | None) -> tuple[list[Row], list[Row]]:
-    """ESPN's Basketball Power Index for one season, one row per team."""
+def parse_power_index(data: JSON | list[Any] | None) -> tuple[list[Row], list[Row]]:
+    """ESPN's Basketball Power Index for one season, one row per team+snapshot.
+
+    Takes either the raw response or the item list
+    :meth:`association.fetch.client.ESPNClient.get_collection` returns, because
+    this endpoint is a paged collection and reading only the response's own
+    ``items`` is what limited the table to ESPN's first 25 rows a season.
+
+    .. versionchanged:: 2.2.0
+       Accepts a list of items as well as a whole response.
+    """
     rows: list[Row] = []
     glossary: list[Row] = []
     if not data:
         return rows, glossary
-    for item in data.get("items") or []:
+    items = data if isinstance(data, list) else (data.get("items") or [])
+    for item in items:
         team_ref = (item.get("team") or {}).get("$ref", "")
         m = TEAM_REF_RE.search(team_ref)
         team_id = m.group(1) if m else None

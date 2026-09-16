@@ -21,6 +21,33 @@ from curl_cffi import requests as cf_requests
 
 log: logging.Logger = logging.getLogger("association.fetch.client")
 
+#: Page size asked for when reading a paged core-API collection.
+#:
+#: ESPN's default is 25. Every collection this project reads is far smaller
+#: than this (the power index tops out at 90 rows a season), so one request
+#: normally suffices and the paging loop in
+#: :meth:`ESPNClient.get_collection` is the belt to that braces.
+#:
+#: .. versionadded:: 2.2.0
+COLLECTION_PAGE_SIZE = 1000
+
+
+def _warn_if_truncated(url: str, data: Any) -> None:
+    """Log when `data` is one page of a collection with more pages behind it."""
+    if not isinstance(data, dict):
+        return
+    pages = data.get("pageCount")
+    if isinstance(pages, int) and pages > 1 and isinstance(data.get("items"), list):
+        log.warning(
+            "%s returned page %s of %s (%s of %s items) - this is a collection, read it with get_collection()",
+            url,
+            data.get("pageIndex"),
+            pages,
+            len(data["items"]),
+            data.get("count"),
+        )
+
+
 IMPERSONATE = "chrome124"
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 NOT_FOUND_STATUS = {400, 404}
@@ -76,7 +103,65 @@ class ESPNClient:
     def get_json(self, url: str, params: dict[str, Any] | None = None) -> Any | None:
         """GET url, return parsed JSON (a dict for every espn.com endpoint, but a
         bare list for e.g. NetPoints' player file), None on 400/404 (missing/invalid
-        resource)."""
+        resource).
+
+        Warns when the response is one page of a longer collection. ESPN's core
+        API answers a collection with ``{count, pageIndex, pageSize, pageCount,
+        items}`` and a default ``pageSize`` of 25, and a short page looks exactly
+        like a short dataset: reading page 1 of the power index stored 25 of
+        ESPN's 90 rows a season for months, with no error and a valid shape, and
+        ``DATA.md`` recorded the missing 65 as ESPN "keeping only postseason
+        teams". Anything reading a collection wants :meth:`get_collection`.
+
+        .. versionchanged:: 2.2.0
+           Logs a warning when it returns an unexhausted page of a collection.
+        """
+        data = self._request_json(url, params)
+        _warn_if_truncated(url, data)
+        return data
+
+    def get_collection(self, url: str, params: dict[str, Any] | None = None) -> list[Any]:
+        """Every item of a paged core-API collection, not just the first page.
+
+        ESPN's ``sports.core.api.espn.com`` endpoints that return a *collection*
+        (rather than one athlete's or one team's statistics) page at 25 by
+        default. This asks for a large page and then keeps requesting pages
+        until it holds the ``count`` the response itself declares, so a page
+        size that changes under us cannot silently shorten the answer.
+
+        Returns an empty list where :meth:`get_json` would return None, since a
+        missing collection and an empty one are the same thing to every caller
+        here.
+
+        .. versionadded:: 2.2.0
+        """
+        items: list[Any] = []
+        page = 1
+        expected: int | None = None
+        while True:
+            merged = {**(params or {}), "limit": COLLECTION_PAGE_SIZE, "page": page}
+            data = self._request_json(url, merged)
+            if not isinstance(data, dict):
+                break
+            batch = data.get("items")
+            if not isinstance(batch, list):
+                break
+            items.extend(batch)
+            if expected is None and isinstance(data.get("count"), int):
+                expected = data["count"]
+            pages = data.get("pageCount")
+            if not batch or not isinstance(pages, int) or page >= pages:
+                break
+            page += 1
+        # A mismatch is a finding, not a crash: the rows fetched are still real,
+        # and a loud log beside a short write is what this method exists to
+        # produce. Raising would abort a whole pull over one endpoint.
+        if expected is not None and len(items) != expected:
+            log.warning("collection %s declared %d items, fetched %d", url, expected, len(items))
+        return items
+
+    def _request_json(self, url: str, params: dict[str, Any] | None = None) -> Any | None:
+        """One GET with throttling and retries, and no collection check."""
         last_exc = None
         for attempt in range(self.max_retries + 1):
             self._throttle()

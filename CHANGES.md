@@ -42,6 +42,34 @@ had no published version to be compatible with.
   split that reads 9 turnovers off a rebuilt line is the quiet version of this
   bug, not a fix for it. A warehouse with no `player_box_stats_filled` view
   falls back to the raw table and answers exactly as it did before.
+- **The power index stored 25 of ESPN's 90 rows a season, and nothing said so.**
+  `seasons/<s>/powerindex` is a *collection* on ESPN's core API, which answers
+  `{count: 90, pageIndex: 1, pageSize: 25, pageCount: 4, items: [...]}`.
+  `fetch_power_index` read `items` from one response, so every season kept
+  ESPN's first page - 2024 held 25 rows covering **9 of 30 teams** - and
+  `team_outlook` reported that as ESPN having no snapshot for most teams. A
+  short page and a short dataset are indistinguishable, which is how this
+  survived long enough for `DATA.md` to record the missing rows as ESPN
+  "keeping only postseason teams". It holds all 30, in every snapshot.
+
+  `ESPNClient.get_collection` reads a collection to its end, asking for a large
+  page and then paging until it holds the `count` the response declares, and
+  warning if it never does. `scripts/backfill_power_index.py` re-fetched
+  2017-2026: **250 rows to 630**.
+
+  **`get_json` now warns when it hands back an unexhausted page**, naming the
+  URL and the page count. That is the part that generalizes: of the ten
+  endpoints this project reads, only this one is a paged collection - the other
+  two core-API calls are single resources, and the site and web APIs return
+  nested documents - so the guard exists for the eleventh, which will otherwise
+  look exactly as correct as this one did.
+
+  `team_outlook` also breaks a snapshot tie explicitly now. 2018's preseason and
+  regular-season snapshots are both stamped 2020-10-12, the day ESPN backfilled
+  them, one minute apart (07:47Z and 07:48Z) - so the regular season sorts last
+  today and no answer is wrong. Ordering by date alone rests the choice on that
+  minute; the tiebreak states it, and covers the case where the two stamps match
+  exactly.
 - **The 2000 playoffs are complete, recovered from a source the pull never
   read.** Games are discovered from each team's schedule, and ESPN's schedules
   simply stop: the 2000 postseason ended on 2000-06-01, missing the whole

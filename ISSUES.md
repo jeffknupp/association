@@ -707,6 +707,60 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 
 ## P3: refusal or gap
 
+### A regular-season BPI question answers from the play-in snapshot in 2023, 2025 and 2026
+- **Found:** 2026-09-15, reviewing `4ef119f` before merging it
+- **Evidence:** now that the paging fix gives every snapshot 30 teams, the
+  play-in snapshot holds the team too, so `team_outlook`'s `pre` list (season
+  types 1, 2 and 5) is ordered by date and `candidates[-1]` takes the latest.
+  Measured read-only: the play-in stamp postdates the regular-season one in
+  2023 (04-15 vs 04-10), 2025 (04-19 vs 04-14) and 2026 (04-18 vs 04-13), but
+  not in 2024, whose regular-season snapshot is stamped 2024-06-28. Before the
+  paging fix the 13-team play-in snapshot simply did not hold most teams and
+  lost by default.
+- **User sees:** a correct, clearly labeled answer - but the same question
+  names a different snapshot depending on the season, and "how good were the
+  Knicks in the 2026 regular season" is answered from the play-in view.
+- **Next step:** decide whether `season_type=2` should prefer the
+  regular-season snapshot outright rather than the latest pre-playoff one, and
+  pin whichever it is with a test. It is a deliberate choice either way; today
+  nothing records that it was made.
+- **Source:** DATA.md, "ESPN's power index is a paged collection, and holds all
+  30 teams"
+
+### Season 2021's regular-season BPI snapshot is a day-one projection
+- **Found:** 2026-09-15, reviewing `4ef119f`
+- **Evidence:** all 30 of season 2021's rows are stamped 2020-12-22 - opening
+  day of 2020-21 - with `numwins` and `numlosses` both 0. `team_outlook`
+  answers "2021 regular-season snapshot (updated 2020-12-22, 30 teams) ... BPI
+  -5.9 ... no games played yet, projected 16-56" for the Knicks, who finished
+  41-31. The caveat at `templates.py:3050` cannot fire, because it tests
+  `str(updated)[:4] > str(season)` and `"2020" > "2021"` is False - it was
+  written for the 2017-2020 snapshots, which are stamped *after* their season.
+  Pre-existing; the backfill now shows it for 30 teams rather than 9.
+- **User sees:** a preseason projection presented as a season's power index,
+  with only "no games played yet" hinting at it.
+- **Next step:** widen the caveat to cover a snapshot dated *before* the season
+  it describes, or say "preseason projection" when `numwins + numlosses = 0`.
+- **Source:** DATA.md, "ESPN's power index is a paged collection, and holds all
+  30 teams"
+
+### `get_collection` goes quiet on the exact failure it exists to make loud
+- **Found:** 2026-09-15, reviewing `4ef119f`
+- **Evidence:** `_request_json` returns `None` for any status in
+  `NOT_FOUND_STATUS = {400, 404}` (`fetch/client.py:53`). In `get_collection`
+  that hits `if not isinstance(data, dict): break` with `expected` still
+  `None`, so the "collection %s declared %d items, fetched %d" warning cannot
+  fire. The method returns `[]`, `parse_power_index([])` yields no rows, and
+  `Pipeline._write_rows` no-ops on an empty list - leaving the season's old,
+  possibly short Parquet in place with nothing in the log. An endpoint that
+  rejects `limit=1000` with a 400 reproduces the original 25-row bug silently.
+  No test covers the `None` path, and the docstring's "Returns an empty list
+  where `get_json` would return None" is unasserted.
+- **User sees:** nothing - a table quietly one pull behind, which is exactly
+  how the 25-row power index survived for months.
+- **Next step:** log at WARNING when a collection read ends on a non-dict first
+  page, and add a test with a session that answers 400.
+
 ### The router's own team name "Los Angeles Clippers" resolves to nothing
 - **Found:** 2026-09-15, replaying the StatMuse feed
 - **Evidence:** `teams` stores the Clippers as `display_name` "LA Clippers"
@@ -792,29 +846,6 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
   `ts_pct`/`efg_pct` for a single season too, not only a career, although
   `player_season_advanced_stats` holds both per season.
 - **GitHub:** #26
-
-### The power index reads only the first page, so most teams are missing
-- **Found:** 2026-09-11, template work (agent B); **cause corrected 2026-09-15**
-  by the issues audit
-- **This is our bug, not ESPN's.** The entry used to say ESPN keeps only the
-  play-in and postseason teams, and that past seasons could not be recovered.
-  Probed live: `seasons/2024/powerindex` answers
-  `{'count': 90, 'pageSize': 25, 'pageCount': 4}`, and with `?limit=1000` it
-  returns all 90 items - 30 teams in each of season types 2, 3 and 5. 2019
-  returns 30. **25 is the core API's default page size.**
-- **Evidence:** `fetch_power_index` (`fetch/pipeline.py:497`) requests no
-  `limit` and does not page; `teams_url` is the only fetch that passes one. So
-  `team_power_index` holds exactly 25 rows per season, and they are not one
-  team each: 2024 has 25 rows over **9 distinct teams** (three season types,
-  three rows apiece), 2026 has 13 teams and no type-2 rows at all.
-- **User sees:** `team_outlook` reports it has nothing for a team ESPN does
-  serve - a refusal that names the wrong cause. Recommend **P2**.
-- **Next step:** pass `limit` (or page) in `endpoints.power_index_url` /
-  `fetch_power_index`, then re-pull 2017-2026 with `--force`. "No dated series"
-  remains true and is the only part of the original entry that survives.
-- **Source:** DATA.md, "ESPN's power index keeps only postseason teams" - that
-  section is wrong and needs the same correction
-- **GitHub:** #27
 
 ### A games minimum cannot be given to the agent's TS%/eFG% leaderboard tool
 - **Found:** 2026-09-11, while qualifying true shooting and eFG% (`f66e1f1`)
@@ -1031,6 +1062,28 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **GitHub:** #77
 
 ## P4: tooling, docs, low impact
+
+### The BPI preseason tiebreak cannot be perturbation-tested through the template
+- **Found:** 2026-09-15, reviewing `4ef119f` before merging it
+- **Evidence:** `scripts/perturb.py` against
+  `tests/query/test_team_templates.py`: **removing** the
+  `CASE season_type WHEN {BPI_PRESEASON} THEN 0 ELSE 1 END` from
+  `query/templates.py:2983` is MISSED (62 passed, exit 0), while **reversing**
+  it to `THEN 1 ELSE 0` is CAUGHT by
+  `test_a_same_dated_preseason_snapshot_never_wins_the_regular_season_question`.
+  The reason it cannot be tested is the useful part: the `CASE` maps preseason
+  to 0 and every other type to 1, and DuckDB already emits the groups in
+  ascending `season_type`, so the guard agrees with the engine's incidental
+  order for *every* possible pair. Reordering the fixture's inserts was tried
+  and changes nothing.
+- **User sees:** nothing. The guard is correct and worth keeping - it defends
+  against an ordering DuckDB does not promise - but it is unprotected, so a
+  later refactor can drop it silently. `4ef119f`'s message says "Five
+  perturbations, each watched to fail", which is not true of this one; the
+  test's docstring now records that.
+- **Next step:** either accept it as untestable-by-construction (the docstring
+  is then the record), or make the ordering explicit in Python where a test can
+  reach it, rather than leaving the decision inside an `ORDER BY`.
 
 ### The "postseason copy" rule is written twice, and both figures are stale
 - **Found:** 2026-09-15, issues audit (P4 data/query auditor)

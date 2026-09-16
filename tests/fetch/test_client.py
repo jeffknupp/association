@@ -1,5 +1,7 @@
 """Regression + sanity tests for the ESPN HTTP client."""
 
+from typing import Any
+
 import pytest
 from curl_cffi import requests as cf_requests
 
@@ -162,3 +164,119 @@ def test_no_throttling_at_all_when_the_rate_limit_is_zero() -> None:
     client = ESPNClient(rate_limit=0)
     client._throttle()  # must not raise, must not block
     assert client._min_interval == 0.0
+
+
+# ---------------- paged collections ----------------
+
+
+class _PagedSession:
+    """A session that answers like ESPN's core API: `count` items in pages of
+    `page_size`, wrapped in the envelope that endpoint really returns."""
+
+    def __init__(self, count: int, page_size: int = 25) -> None:
+        self.count, self.page_size = count, page_size
+        self.requests: list[tuple[int, int]] = []
+
+    def get(self, url: str, params: dict | None = None, timeout: float | None = None) -> Any:
+        params = params or {}
+        size = int(params.get("limit") or self.page_size)
+        page = int(params.get("page") or 1)
+        self.requests.append((page, size))
+        start = (page - 1) * size
+        items = [{"i": n} for n in range(start, min(start + size, self.count))]
+        body = {
+            "count": self.count,
+            "pageIndex": page,
+            "pageSize": size,
+            "pageCount": max(1, -(-self.count // size)),
+            "items": items,
+        }
+
+        class Resp:
+            status_code = 200
+            content = b"{}"
+
+            def json(self) -> dict:
+                return body
+
+            def raise_for_status(self) -> None:
+                pass
+
+        return Resp()
+
+
+def test_get_collection_returns_every_item_not_the_first_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The bug this exists for. ESPN's power index answers `count: 90` in pages
+    of 25, and reading page 1 stored 25 rows a season for months - no error, a
+    valid shape, and `DATA.md` recorded the missing 65 as ESPN "keeping only
+    postseason teams"."""
+    client = ESPNClient()
+    session = _PagedSession(count=90)
+    monkeypatch.setattr(ESPNClient, "session", property(lambda self: session))
+    items = client.get_collection("http://example.com/powerindex")
+    assert len(items) == 90
+    assert items[0] == {"i": 0} and items[-1] == {"i": 89}
+
+
+def test_get_collection_pages_when_the_server_caps_the_page_size(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Asking for a big page is the fast path, not the guarantee: a server that
+    caps `limit` must still be read to the end, or this method would truncate
+    exactly like the call it replaces."""
+    client = ESPNClient()
+    session = _PagedSession(count=90, page_size=25)
+
+    def capped(url: str, params: dict | None = None, timeout: float | None = None) -> Any:
+        params = dict(params or {})
+        params["limit"] = 25  # the server ignores what we asked for
+        return _PagedSession.get(session, url, params, timeout)
+
+    monkeypatch.setattr(ESPNClient, "session", property(lambda self: session))
+    monkeypatch.setattr(session, "get", capped)
+    items = client.get_collection("http://example.com/powerindex")
+    assert len(items) == 90
+    assert [page for page, _ in session.requests] == [1, 2, 3, 4]
+
+
+def test_get_collection_warns_when_it_holds_fewer_than_the_declared_count(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    """A short read is a finding, not a crash: the rows fetched are real, and
+    aborting a whole pull over one endpoint would be worse than saying so."""
+    client = ESPNClient()
+
+    class Lying(_PagedSession):
+        def get(self, url: str, params: dict | None = None, timeout: float | None = None) -> Any:
+            resp = super().get(url, params, timeout)
+            body = resp.json()
+            body["count"] = 90  # claims 90, serves one page and says so
+            body["pageCount"] = 1
+            return resp
+
+    session = Lying(count=25)
+    monkeypatch.setattr(ESPNClient, "session", property(lambda self: session))
+    with caplog.at_level("WARNING"):
+        items = client.get_collection("http://example.com/powerindex")
+    assert len(items) == 25
+    assert "declared 90 items, fetched 25" in caplog.text
+
+
+def test_get_json_warns_when_it_returns_one_page_of_a_collection(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    """The guard that makes this class of bug loud for any endpoint added later.
+    A short page and a short dataset are indistinguishable without it."""
+    client = ESPNClient()
+    session = _PagedSession(count=90)
+    monkeypatch.setattr(ESPNClient, "session", property(lambda self: session))
+    with caplog.at_level("WARNING"):
+        data = client.get_json("http://example.com/powerindex")
+    assert isinstance(data, dict)
+    assert len(data["items"]) == 25
+    assert "page 1 of 4" in caplog.text and "get_collection" in caplog.text
+
+
+def test_get_json_stays_quiet_for_a_single_page_response(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    """Every other endpoint this project reads is a single resource or a nested
+    document, and must not start logging warnings."""
+    client = ESPNClient()
+    session = _PagedSession(count=10)
+    monkeypatch.setattr(ESPNClient, "session", property(lambda self: session))
+    with caplog.at_level("WARNING"):
+        client.get_json("http://example.com/onepage")
+    assert caplog.text == ""
