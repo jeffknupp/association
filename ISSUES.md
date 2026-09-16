@@ -1358,6 +1358,12 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **Next step:** when 3.10 is dropped, upgrade and delete
   `_rtype_insert_index` in the same commit. Check the rendered pages after the
   move from Sphinx 8.1.3 to 8.2; nobody has.
+- **Re-checked 2026-09-16:** unchanged - `uv.lock` holds
+  sphinx-autodoc-typehints 3.0.1 and Sphinx 8.1.3, `requires-python` is still
+  `>=3.10`. Dropping 3.10 is the owner's call, so nothing to do here yet. The
+  docs gate now checks the rendered pages for the literal markup
+  (`scripts/check_docs_markup.py`), so the upgrade, when it comes, is verified
+  by the gate rather than by somebody remembering to look.
 - **GitHub:** #42
 
 ### Broad `except duckdb.Error` in `_single_game_netpoints`
