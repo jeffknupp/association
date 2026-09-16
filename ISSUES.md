@@ -701,6 +701,16 @@ wrong for other reasons, and each of those is an entry below.
   season named by ordinal. Those words never reached it, so the template
   answered the *un-narrowed* question - the largest single cause of a wrong
   answer in the replay.
+- **A calendar day is now ANSWERED, not refused.** The first cut refused it
+  with the rest, reasoning that picking a year the question does not state is a
+  guess. It is not - the season states it, since season Y runs October of Y-1
+  through June of Y - and refusing threw away an answer the warehouse holds.
+  `_validate_date` resolves it and `game_log` answers the game: "Desmond bane
+  march 17" went from his most recent game (a month off) to **2026-03-17, 16
+  PTS vs OKC**, measured as the only row that moved in that replay and the
+  first question in this work to go from wrong to *correct* rather than to a
+  refusal. What still refuses is what genuinely fixes no day: a window ("since
+  January 31"), a career question (twenty Octobers), and February 31.
 - **Fixed in `61c1bef` and the second pass**, by reading each shape from the
   question text into `situation`, which no template lists in `HONORED_SCOPING`,
   so `check_scope` refuses and the question falls through to the agent. Every

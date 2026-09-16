@@ -28,17 +28,27 @@ had no published version to be compatible with.
   turning 27" returned this season's leaders.
 
   A second pass covers the shapes the first measurement showed it had missed:
-  a calendar date ("Desmond bane march 17" returned his most recent game,
-  dated 2026-04-12), one game of a playoff series ("Ayton stats in game 4
-  playoff games" returned his whole 10-game postseason), and a season named by
-  ordinal ("his 18th season", which the model read as the year 2018 and
-  answered with that season's league leaderboard). The date is the one worth
-  knowing about: there IS a `date` slot, and filling it would have been *worse*
-  than leaving it empty, because `game_log` honours `date` - so nothing would
-  refuse - and then keeps it only if it matches `_ISO_DATE`, dropping
-  "march 17" and answering the un-narrowed question. Turning it into an ISO
-  date means choosing a year the question never gives, so it is refused rather
-  than guessed.
+  one game of a playoff series ("Ayton stats in game 4 playoff games" returned
+  his whole 10-game postseason) and a season named by ordinal ("his 18th
+  season", which the model read as the year 2018 and answered with that
+  season's league leaderboard). Both refuse.
+- **A calendar day without a year is now answered, not refused.** "Desmond bane
+  march 17" returned his most recent game, dated 2026-04-12 - a month off, and
+  a different question. The year is not in the question and does not need to
+  be: **a season fixes it.** Season Y runs from October of Y-1 through June of
+  Y, so October to December belong to `season - 1` and January onward to
+  `season` - this project's own numbering (`current_season`) applied to a
+  month. "Desmond bane march 17" resolves to 2026-03-17, and `game_log`, which
+  honours `date`, answers **"game on 2026-03-17, 16 PTS vs OKC"**.
+
+  The first cut of this refused instead, on the reasoning that picking a year
+  the question never states is a guess. It is not: the season states it, and
+  refusing threw away an answer the warehouse holds. What genuinely cannot be
+  resolved still refuses, and the three cases are worth naming - a year the
+  question *does* state wins over the season's ("november 11 2019"); a date
+  that opens a window is a range, not a day, so "since January 31" is refused
+  rather than answered with one game; and a career question spans twenty
+  Octobers and fixes no year at all. February 31 is not a date either.
 
   They are read from the question text into the existing `situation` slot,
   never asked of the model - the same move `_validate_side` makes for the side

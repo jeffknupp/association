@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any
 
 import ollama
@@ -451,6 +452,71 @@ def _validate_season_type(question: str) -> int:
     return SEASON_TYPES["playoffs"] if _PLAYOFF_WORDS.search(question) else SEASON_TYPES["regular"]
 
 
+_MONTHS = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}  # fmt: skip
+
+# A calendar day written the way people write it: "march 17", "Jan 19",
+# "november 11 2019". The leading group is what makes a date a RANGE rather
+# than a day - "since January 31st" starts a window and names no single game -
+# and those are left for _SITUATION to refuse, since no template honours a
+# range of dates.
+_CALENDAR_DATE = re.compile(
+    r"(?P<range>\b(?:since|after|before|from|through|until)\s+(?:the\s+)?)?"
+    r"\b(?P<month>jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+"
+    r"(?P<day>\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(?P<year>(?:19|20)\d\d))?\b",
+    re.IGNORECASE,
+)
+
+
+def _validate_date(question: str, season: int | None) -> str | None:
+    """A calendar day as ``YYYY-MM-DD``, or None if the question names none.
+
+    The year is not in the question and does not need to be, because a season
+    fixes it: season Y runs from October of Y-1 through June of Y, so October
+    to December belong to ``season - 1`` and January onward to ``season``. That
+    is this project's own numbering (:func:`~association.season.current_season`)
+    applied to a month, not a guess - "Desmond bane march 17" against season
+    2026 is 2026-03-17, and `game_log` answers it with that game.
+
+    Read from the text for the same reason the year and the side of the ball
+    are: the model is told to emit `date` only for an exact calendar day and
+    routinely does not. Measured, "Desmond bane march 17" arrived with no
+    `date` at all and `order="recent"`, and was answered with his most recent
+    game - a month later, and the wrong question.
+
+    Three things it will not do, each because the answer would be a guess
+    rather than a reading:
+
+    - **A year the question states wins.** "november 11 2019" is the calendar
+      day, not November of whatever season 2019 resolves to.
+    - **A date that opens a window is not a day.** "since January 31st" names a
+      range no template honours; it is left to `_SITUATION` to refuse.
+    - **No season, no date.** A career question has no season to fix the year
+      on ("lebron on march 17 all time" spans 20 of them), so it refuses
+      instead.
+
+    .. versionadded:: 2.3.0
+    """
+    match = _CALENDAR_DATE.search(question)
+    if match is None or match.group("range"):
+        return None
+    month = _MONTHS[match.group("month")[:3].lower()]
+    day = int(match.group("day"))
+    stated = match.group("year")
+    if stated is not None:
+        year = int(stated)
+    elif season is not None:
+        year = season - 1 if month >= 10 else season
+    else:
+        return None
+    try:
+        return date(year, month, day).isoformat()
+    except ValueError:
+        return None  # "february 31"
+
+
 # Where a game was played. "Far away" and "fade away" are shot descriptions,
 # not venues - "How far away does Wembanyama shoot from?" is a routing case.
 _HOME = re.compile(r"\bhome\b(?!\s+runs?)", re.IGNORECASE)
@@ -662,14 +728,12 @@ _SITUATION = re.compile(
     r"\bwith\s+\d+\+?\s*(?:minutes|mins?)\b|\b\d+\+?\s*(?:minutes|mins?)\s+(?:or\s+more|or\s+less|played)\b|"
     # A window defined by an event rather than a date.
     r"\bsince\s+(?:returning|coming\s+back|his\s+return|the\s+all[- ]star\s+break)\b|\bsince\s+(?:his\s+)?injury\b|\bafter\s+returning\b|"
-    # A calendar date. There IS a `date` slot, and setting it here would be
-    # worse than doing nothing: game_log HONORS `date`, so check_scope would
-    # not refuse, and game_log keeps a date only when it matches _ISO_DATE -
-    # "march 17" is dropped on the floor and the un-narrowed question answered,
-    # which is the bug. Turning it into an ISO date means picking the year,
-    # which the question does not give. So it is refused rather than guessed:
-    # "Desmond bane march 17" returned his most recent game, dated 2026-04-12.
-    r"\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?\b|"
+    # A calendar day is NOT here: `_validate_date` resolves it to a real date
+    # and `game_log` then answers the game that was asked about. What is left
+    # here is the date this project cannot turn into one day - a window opened
+    # by "since March 1", and a date in a career question, which spans twenty
+    # Octobers and so fixes no year. Both refuse.
+    r"\b(?:since|after|before|from|through|until)\s+(?:the\s+)?(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}(?:st|nd|rd|th)?\b|"
     # One game of a playoff series. `round` already carries "game 7", which is
     # a round in everything but name; 1-6 are not. "Ayton stats in game 4
     # playoff games" answered with his whole postseason, all 10 games.
@@ -987,6 +1051,21 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     situation = _SITUATION.search(question)
     if situation is not None:
         slots["situation"] = situation.group(0).casefold()
+    # After `span`, which pops the season on a career question. The season that
+    # fixes the year is the one a template would use - `slots.get("season") or
+    # current_season()`, the same default they all apply - EXCEPT on a career
+    # question, which spans twenty Octobers and fixes nothing, so that refuses.
+    # Reading the model's absent season as "current" rather than "unknown"
+    # matters: it omits `season_ref` often, and "Desmond bane march 17" arrives
+    # with no season at all.
+    asked_season = slots.get("season") if isinstance(slots.get("season"), int) else None
+    fixing_season = None if span == "career" else (asked_season or current_season())
+    calendar_day = _validate_date(question, fixing_season)
+    if calendar_day is not None:
+        slots["date"] = calendar_day
+    elif _CALENDAR_DATE.search(question) and "situation" not in slots:
+        # A date that named itself but could not be pinned to one day.
+        slots["situation"] = _CALENDAR_DATE.search(question).group(0).casefold()  # type: ignore[union-attr]
     playoff_round = _ROUND_WORDS.search(question)
     if playoff_round is not None:
         slots["round"] = playoff_round.group(0).casefold()

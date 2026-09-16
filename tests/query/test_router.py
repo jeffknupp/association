@@ -745,26 +745,76 @@ def test_a_narrowing_the_schema_has_no_slot_for_still_reaches_check_scope(questi
 @pytest.mark.parametrize(
     "question",
     [
-        # The four shapes the first pass at #84 measured and did NOT reach,
-        # each verbatim from the feed and each answered with the narrowing gone.
-        "Desmond bane march 17",  # -> his most recent game, dated 2026-04-12
-        "celtics record vs sixers on november 11",
         "Ayton stats in game 4 playoff games",  # -> his whole 10-game postseason
         "how many 40+ points games does lebron james have in his 18th season?",
         "Most points in 15th season played",
     ],
 )
 def test_the_narrowings_the_first_pass_missed_also_reach_check_scope(question: str) -> None:
-    """A calendar date, one game of a series, and a season named by ordinal.
+    """One game of a playoff series, and a season named by ordinal. Neither can
+    be resolved - `round` carries "game 7" and nothing carries games 1-6, and
+    an ordinal season needs a debut year the model does not supply (it read
+    "his 18th season" as the year 2018) - so both refuse."""
+    assert "situation" in _ask(question, '{"intent":"player_stat","player":"Deandre Ayton"}').slots
 
-    The date is the interesting one. There IS a `date` slot, and filling it
-    here would be *worse* than leaving it empty: `game_log` honours `date`, so
-    `check_scope` would not refuse, and `game_log` keeps a date only when it
-    matches `_ISO_DATE` - so "march 17" would be dropped silently and the
-    un-narrowed question answered, which is the bug itself. Making it an ISO
-    date means choosing a year the question never gives. Refused instead.
+
+@pytest.mark.parametrize(
+    ("question", "want"),
+    [
+        # A season fixes the year: season 2026 runs Oct 2025 - Jun 2026, so
+        # January onward is 2026 and October back is 2025.
+        ("Desmond bane march 17", "2026-03-17"),
+        ("Bam adebeyo jan 19", "2026-01-19"),
+        ("celtics record vs sixers on november 11", "2025-11-11"),
+        ("Curry on Dec. 25th", "2025-12-25"),
+        # A year the question states wins over the one the season implies.
+        ("celtics vs sixers on november 11 2019", "2019-11-11"),
+    ],
+)
+def test_a_calendar_day_is_resolved_rather_than_refused(question: str, want: str) -> None:
+    """The year is not in the question and does not need to be: season Y runs
+    October of Y-1 through June of Y, so the month fixes it. This project's own
+    numbering applied to a month, not a guess.
+
+    Worth stating why this is resolved where the other narrowings refuse: it
+    produces the RIGHT answer rather than a refusal. `game_log` honours `date`,
+    and given 2026-03-17 it answers "Desmond Bane, game on 2026-03-17, 16 PTS
+    vs OKC" - which is the question. Before this, the date never reached a slot
+    and the model's `order="recent"` answered with his most recent game, a
+    month later.
     """
-    assert "situation" in _ask(question, '{"intent":"game_log","player":"Desmond Bane"}').slots
+    assert _ask(question, '{"intent":"game_log","player":"Desmond Bane"}').slots.get("date") == want
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        # A window, not a day - no template honours a range of dates.
+        "Best NBA record since January 31st",
+        "lebron points after march 1",
+    ],
+)
+def test_a_date_that_opens_a_window_is_refused_rather_than_read_as_one_day(question: str) -> None:
+    """ "since January 31" names a range. Read as a single day it would answer
+    one game for a question about a span, which is the same substitution this
+    whole module exists to stop."""
+    got = _ask(question, '{"intent":"game_log","player":"LeBron James"}')
+    assert "date" not in got.slots and "situation" in got.slots
+
+
+def test_a_calendar_day_with_no_season_behind_it_refuses() -> None:
+    """A career question spans twenty Octobers, so nothing fixes the year.
+    `span` pops the season, and the date has to refuse rather than pick one."""
+    got = _ask("lebron james march 17 all time", '{"intent":"game_log","player":"LeBron James"}')
+    assert "date" not in got.slots and "situation" in got.slots
+
+
+def test_an_impossible_calendar_day_is_not_a_date() -> None:
+    """February 31 is not a day. `date(...)` raises rather than rolling over,
+    and a slot that cannot be built is one the question keeps asking about -
+    so it refuses instead of silently dropping."""
+    got = _ask("curry stats on february 31", '{"intent":"game_log","player":"Stephen Curry"}')
+    assert "date" not in got.slots and "situation" in got.slots
 
 
 def test_a_triple_double_abbreviation_is_not_read_as_three_pointers() -> None:
