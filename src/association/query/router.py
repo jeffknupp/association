@@ -8,8 +8,9 @@ that misses the KV prefix cache every iteration because the truncation offset
 slides. Measured: ~70s per call, with the schema among the discarded tokens.
 
 This module does only the first job. Its prompt carries no schema, no SQL and
-no gotchas - an intent list and a few examples, ~430 tokens - so it fits, stays
-cached, and answers in ~1-2s warm. Recognized intents go to a template in
+no gotchas - an intent list, its slots and worked examples, ~2,500 tokens
+against a 4,096-token window (see :data:`ROUTER_PROMPT_TOKEN_BUDGET`) - so it
+fits, stays cached, and answers in ~1-2s warm. Recognized intents go to a template in
 templates.py; everything else falls through to the agent unchanged.
 
 Slot values are advisory: every one of them is re-validated in templates.py
@@ -270,11 +271,32 @@ ROUTER_SCHEMA: dict[str, Any] = {
     "required": ["intent", "stat"],
 }
 
-ROUTER_NUM_CTX = 4096  # the router prompt is ~430 tokens; this leaves ample headroom and still fits
+ROUTER_NUM_CTX = 4096
 """The router's context window.
+
+The prompt is ~2,500 tokens of it (9,989 characters at the ~4 characters a
+token measured for the agent's prompt; a comment here said "~430" for a long
+time after the intent list outgrew it). The rest holds the question, the
+chat template and a reply of under 100 tokens of JSON. ollama truncates an
+over-length prompt head-first and silently, which for this prompt means the
+instructions go first and the examples stay, so
+:data:`ROUTER_PROMPT_TOKEN_BUDGET` keeps the prompt clear of the window.
 
 .. versionchanged:: 1.2.0
    Renamed from ``NUM_CTX``, which collided with the agent's own window.
+"""
+
+# Three quarters of the window for the system prompt plus the user line, the
+# same shape as prompt.PREAMBLE_TOKEN_BUDGET for the agent: a prompt past this
+# is a bug, not a knob. The agent enforces its budget per question because its
+# prompt is assembled per question; this one is a constant, so a test
+# (test_the_router_prompt_leaves_room_for_the_question_and_the_reply) is the
+# guard, and it fails the moment an added intent line pushes the prompt over.
+# Then shorten the prompt, or raise ROUTER_NUM_CTX and this together.
+ROUTER_PROMPT_TOKEN_BUDGET = ROUTER_NUM_CTX * 3 // 4
+"""What the router's prompt and a long question may cost together, in tokens.
+
+.. versionadded:: 2.3.0
 """
 
 # The model picks a word; the numeric season_type every table uses is looked up

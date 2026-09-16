@@ -46,6 +46,15 @@ had no published version to be compatible with.
   name and watched to fail; four of the first five came back MISSED until each
   had a test of its own, and the view's test had to move from 2005 to 1997 to
   catch anything, because the Grizzlies were already in Memphis by 2005.
+- **The router prompt's size is documented correctly, and budgeted.**
+  `query/router.py` said the prompt was "~430 tokens" in its published
+  docstring and beside `ROUTER_NUM_CTX`; it is 9,989 characters, about 2,500
+  tokens at the four characters a token the agent's budget is measured at,
+  against a 4,096-token window. New `ROUTER_PROMPT_TOKEN_BUDGET` (three
+  quarters of the window) and a test that fails when the prompt plus a long
+  question passes it - the router's counterpart to `PreambleTooLarge`, as a
+  test rather than a runtime check because the prompt is a constant. Not
+  measured with the model's tokenizer; the figure is an estimate.
 - **A stale comment in `router.route()` no longer credits the 2.0 REPL** with
   the `previous_question` follow-ups; it now says what arrives there
   (`Agent.last_question`, None in both shipped callers) and who the branch is

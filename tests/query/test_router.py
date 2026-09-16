@@ -9,7 +9,8 @@ import ollama
 import pytest
 from ollama import ChatResponse, Message
 
-from association.query.router import CODE_ASSIGNED_INTENTS, ORDER_INTENTS, ORDER_WORDS, ROUTER_PROMPT, ROUTER_SCHEMA, SIDE_VALUES, Route, route
+from association.query.prompt import estimate_tokens
+from association.query.router import CODE_ASSIGNED_INTENTS, ORDER_INTENTS, ORDER_WORDS, ROUTER_NUM_CTX, ROUTER_PROMPT, ROUTER_PROMPT_TOKEN_BUDGET, ROUTER_SCHEMA, SIDE_VALUES, Route, route
 from association.season import current_season
 
 
@@ -1146,3 +1147,21 @@ def test_a_log_is_asked_for_by_the_question_not_assumed(question: str, per_game:
     between one line and a table."""
     got = _ask(question, '{"intent":"game_log","player":"RJ Barrett"}')
     assert bool(got.slots.get("per_game")) is per_game
+
+
+def test_the_router_prompt_leaves_room_for_the_question_and_the_reply() -> None:
+    """ollama truncates an over-length prompt head-first and silently, and the
+    router's prompt has no per-question assembly step to raise at, the way
+    `PreambleTooLarge` does for the agent. The prompt is a constant, so this
+    is the guard: it fails when `ROUTER_PROMPT` plus the longest user line the
+    code builds (a previous question and a long question) costs more than
+    three quarters of `ROUTER_NUM_CTX`. The prompt was documented as "~430
+    tokens" for months after it passed 2,400; what this asserts is measured
+    at the same ~4 characters a token as the agent's budget, not with the
+    model's tokenizer."""
+    long_question = "what was the record of the los angeles lakers against the boston celtics at home in the 2024 regular season, and how many games did they win by ten or more points? " * 2
+    user_line = f"(previous question, for context only: {long_question})\nQ: {long_question}"
+    cost = estimate_tokens(ROUTER_PROMPT) + estimate_tokens(user_line)
+    assert cost <= ROUTER_PROMPT_TOKEN_BUDGET, f"router prompt plus a long question is ~{cost} tokens, over the {ROUTER_PROMPT_TOKEN_BUDGET} budget: shorten ROUTER_PROMPT or raise ROUTER_NUM_CTX"
+    # The quarter left over is the chat template and a reply of under 100 tokens of JSON.
+    assert ROUTER_NUM_CTX - ROUTER_PROMPT_TOKEN_BUDGET >= 1024

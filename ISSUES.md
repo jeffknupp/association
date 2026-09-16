@@ -1608,26 +1608,6 @@ the entries it held, and nobody had re-read the P2s against the definition.
   each tagged version.
 - **GitHub:** #58
 
-### The router prompt's documented size is five times too small
-- **Found:** 2026-09-11, docs survey for 2.1.0
-- **Evidence:** `query/router.py` says the prompt is "~430 tokens", in both its
-  published module docstring and the comment on `ROUTER_NUM_CTX`.
-  `ROUTER_PROMPT` is now 9,989 characters, about 2,500 tokens at four
-  characters a token. That is an estimate, not measured with the tokenizer.
-  The context is `ROUTER_NUM_CTX = 4096`, and there is no budget guard like
-  `PREAMBLE_TOKEN_BUDGET`. ollama truncates an over-length prompt
-  head-first, silently.
-- **User sees:** nothing yet, with about 1,500 tokens of headroom. A few more
-  intent lines and the head of the prompt starts to disappear. Every question
-  then routes worse, and there is no error.
-- **Next step:** read `prompt_eval_count` from one router call and correct both
-  comments. Then add a test that fails when `ROUTER_PROMPT` plus a long question
-  passes a set budget, the way `PreambleTooLarge` guards the agent.
-- **Re-checked 2026-09-15:** `router.py:11,272` still say "~430 tokens".
-  `len(ROUTER_PROMPT)` is 9,989 characters, about 2,497 tokens at 4 chars/token,
-  against `ROUTER_NUM_CTX = 4096`. No test or budget guard exists.
-- **GitHub:** #59
-
 ### The release script does not update the install pins
 - **Found:** 2026-09-11, docs survey for 2.1.0
 - **Evidence:** because PyPI is unreachable, `README.md` and
