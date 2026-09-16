@@ -295,7 +295,11 @@ SEASON_TYPES = {"regular": 2, "playoffs": 3}
 _FOULED_OUT = re.compile(r"\bfoul(?:ed|s|ing)?\s+out\b")
 FOUL_OUT_THRESHOLD = 6
 
-_AGENT_ONLY = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+(?:quarter|qtr|q)\b|\bq[1-4]\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b")
+# `[1-4]q` is the mirror of `q[1-4]` and was missing: "Duncan Robison 1q log"
+# and "Devin Vassell nba player per game stats 1q" were both answered with a
+# whole-game line in the 2026-09-15 feed replay. Same shape as the "4th qtr"
+# gap that made these patterns grow abbreviations in the first place.
+_AGENT_ONLY = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+(?:quarter|qtr|q)\b|\bq[1-4]\b|\b[1-4]q\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b")
 
 # A half is never a quarter, so no template answers one - not even for a TEAM,
 # where team_quarter_points reads a period number and the model maps "first half"
@@ -611,10 +615,43 @@ _BELOW = re.compile(r"\b(?:under|fewer\s+than|less\s+than|below|at\s+most|no\s+m
 # Situations a game can be in that no template filters on: the second night of a
 # back-to-back, overtime, a calendar month, a conference or division, the
 # All-Star break. team_record answered each with the whole season's record.
+#
+# The second group below was added 2026-09-15 from the 261-query StatMuse feed
+# replay, where a narrowing ROUTER_SCHEMA has no slot for was the single largest
+# cause of a wrong answer - 14 of 261, more than any other. The words never
+# reached `check_scope`, because it can only refuse a slot the router emits, so
+# the template answered the un-narrowed question: "lebron james 2 3 pointers
+# all-time vs jazz on tuesdays" returned his career average against Utah over 48
+# games, with the Tuesday, the threes and the "2" all silently gone.
+#
+# Read from the question text rather than added to ROUTER_SCHEMA, which is the
+# cheap half of this fix and the safe one: a new slot in the schema moves slots
+# on unrelated questions (see _validate_side), while a regex here costs no
+# prompt tokens and cannot. Setting `situation` is enough on its own - no
+# template lists it in HONORED_SCOPING, so `check_scope` refuses and the
+# question falls through to the agent, which is the ranking AGENTS.md sets: a
+# refusal beats a fluent wrong answer.
+#
+# Measured against 343 real questions (the 261-query feed plus the 83 routing
+# corpus cases): 14 feed queries match and **no corpus case does**, so no
+# question that routes correctly today starts refusing.
 _SITUATION = re.compile(
     r"\bback[- ]to[- ]backs?\b|\bb2bs?\b|\bsecond\s+night\b|\bovertime\b|"
     r"\bin\s+(?:october|november|december|january|february|march|april|may|june)\b|"
-    r"\b(?:east(?:ern)?|west(?:ern)?)\s+conference\b|\bvs\.?\s+the\s+(?:east|west)\b|\bdivision\b|\ball[- ]star\s+break\b",
+    r"\b(?:east(?:ern)?|west(?:ern)?)\s+conference\b|\bvs\.?\s+the\s+(?:east|west)\b|\bdivision\b|\ball[- ]star\s+break\b|"
+    # A day of the week: 8 of the 14, and the most common shape in the feed.
+    r"\b(?:mon|tues|wednes|thurs|fri|satur|sun)days?\b|"
+    # A calendar holiday. "on christmas" answered with a whole season average.
+    r"\b(?:christmas|xmas|thanksgiving|halloween|easter|mlk\s+day|martin\s+luther\s+king|new\s+year'?s)\b|"
+    # An age. "most triple doubles before turning 27" answered with this
+    # season's triple-double leaders - `players` holds no birth date at all
+    # (DATA.md), so this one cannot be answered even in principle.
+    r"\b(?:before|after|by)\s+(?:turning|age)\s+\d+\b|\bat\s+age\s+\d+\b|\b\d+\s+years?\s+old\b|"
+    # A minutes condition on which games count: "paul reed gamelog with 25
+    # minutes" returned his most recent game.
+    r"\bwith\s+\d+\+?\s*(?:minutes|mins?)\b|\b\d+\+?\s*(?:minutes|mins?)\s+(?:or\s+more|or\s+less|played)\b|"
+    # A window defined by an event rather than a date.
+    r"\bsince\s+(?:returning|coming\s+back|his\s+return|the\s+all[- ]star\s+break)\b|\bsince\s+(?:his\s+)?injury\b|\bafter\s+returning\b",
     re.IGNORECASE,
 )
 

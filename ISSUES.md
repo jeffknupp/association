@@ -63,11 +63,27 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 - **User sees:** a fluent, specific answer to a question they did not ask, with
   nothing saying a condition was ignored. This is the failure shape `AGENTS.md`
   opens with, measured on real traffic.
-- **Next step:** two halves, and the first is cheap. (a) Read these narrowings
-  from the question text in `route()` the way `_validate_side` does, into
-  existing `SCOPING_SLOTS` (`situation`, `date`) so `check_scope` refuses them -
-  costs no prompt tokens and cannot move another slot. (b) Widen `_AGENT_ONLY`
-  to the "1q"/"2h" short forms. Then measure again against the saved replay.
+- **Fixed in code 2026-09-15, NOT yet re-measured against the replay.** Both
+  halves of the next step are done: the five narrowings above are read from the
+  question text into `situation` (no template lists it in `HONORED_SCOPING`, so
+  `check_scope` refuses and the question falls through to the agent), and
+  `_AGENT_ONLY` gained the `[1-4]q` mirror of `q[1-4]`. Each of the six
+  alternatives was perturbed individually and watched to fail. Checked offline
+  against all 343 real questions: the 14 feed queries match and **no routing
+  corpus case does**, so nothing that routes correctly today starts refusing.
+- **What remains, and why this entry stays open.** Two things.
+  - **The re-measurement has not been run.** It needs ollama and the saved
+    replay (`/home/jeff/association-research/statmuse-2026-09/`, `redoing the
+    measurement` in its README). Until it is, "14 fewer wrong answers" is a
+    prediction from offline regex matching, not a measured result - the router
+    may route some of these differently once the words are present.
+  - **The shape is only patched where it was measured.** This is a regex over
+    narrowings seen in one 261-query sample, not a general fix: a narrowing
+    outside those patterns is still dropped silently, because `check_scope`
+    still cannot refuse what `ROUTER_SCHEMA` never emits. The general fix is a
+    catch-all slot or a "did every meaningful word reach a slot?" check, and
+    neither is designed. Re-rank to **P2** once the replay confirms the 14,
+    since what is left is a gap rather than a known wrong answer.
 - **Source:** the wrong answers are ours, not ESPN's; no DATA.md entry.
 - **GitHub:** #84
 

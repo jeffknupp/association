@@ -15,6 +15,31 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A narrowing the router has no slot for is refused instead of dropped.**
+  `check_scope` can only refuse a slot the router emits, and `ROUTER_SCHEMA`
+  has no slot for a day of the week, a calendar holiday, an age, a minutes
+  condition or "since returning from injury" - so those words never reached it
+  and the template answered the *un-narrowed* question. Measured over 261 real
+  StatMuse feed queries, this was the single largest cause of a wrong answer:
+  14 of them, more than any other. "lebron james 2 3 pointers all-time vs jazz
+  on tuesdays" returned his career average against Utah over 48 games, with the
+  Tuesday, the threes and the "2" all silently gone; "anthony davis stats on
+  christmas" returned a whole season average; "most triple doubles before
+  turning 27" returned this season's leaders.
+
+  They are read from the question text into the existing `situation` slot,
+  never asked of the model - the same move `_validate_side` makes for the side
+  of the ball, and for the same reason: a new slot in `ROUTER_SCHEMA` moves
+  slots on unrelated questions, while a regex in `route()` costs no prompt
+  tokens and cannot. No template lists `situation` in `HONORED_SCOPING`, so
+  each of these now refuses and falls through to the agent, which is the
+  ranking this project uses - a refusal beats a fluent wrong answer.
+
+  Checked against 343 real questions (the 261-query feed plus the 83 routing
+  corpus cases): 14 feed queries match and **no corpus case does**, so nothing
+  that routes correctly today starts refusing. Separately, `_AGENT_ONLY` knew
+  `q1` but not `1q`, so "Duncan Robison 1q log" was answered with a whole-game
+  line; three more feed queries fixed by the mirror pattern.
 - **Splits, streaks and with/without read the rebuilt box line too - they were
   the half that still called a rebuilt game a game he missed.** Reading the
   rebuilt lines landed for the per-game templates first; every template that

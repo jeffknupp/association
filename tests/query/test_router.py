@@ -710,6 +710,46 @@ def test_a_situation_no_template_filters_on_is_a_scoping_slot(question: str) -> 
     assert "situation" in _ask(question, '{"intent":"team_record","team":"X"}').slots
 
 
+@pytest.mark.parametrize(
+    "question",
+    [
+        # Every one of these is verbatim from the 261-query StatMuse feed
+        # replay, and every one was answered with the narrowing silently
+        # dropped. A day of the week is 8 of the 14.
+        "lebron james 2 3 pointers all-time vs jazz on tuesdays",
+        "garland on mondays game log",
+        "jamal murray career games on Tuesdays",
+        "2024 nba stephen curry double double per game scored on fridays",
+        "anthony davis stats on christmas",
+        "most triple doubles before turning 27",
+        "lebron ppg as an 18 year old",
+        "paul reed gamelog with 25 minutes",
+        "forwards with 20+ mins vs gsw log",
+        "paolo banchero since returning from injury",
+    ],
+)
+def test_a_narrowing_the_schema_has_no_slot_for_still_reaches_check_scope(question: str) -> None:
+    """The P1 from the feed replay: `check_scope` can only refuse a slot the
+    router emits, and ROUTER_SCHEMA has no slot for a weekday, a holiday, an
+    age, a minutes condition or "since returning from injury" - so the words
+    never reached it and the template answered the un-narrowed question.
+
+    "lebron james 2 3 pointers all-time vs jazz on tuesdays" returned his
+    career average against Utah over 48 games. Read into `situation`, which no
+    template lists in HONORED_SCOPING, so every one of these now refuses and
+    falls through to the agent.
+    """
+    assert "situation" in _ask(question, '{"intent":"player_stat","player":"LeBron James"}').slots
+
+
+@pytest.mark.parametrize("question", ["Duncan Robison 1q log", "Devin Vassell nba player per game stats 1q", "each center 1q pts log vs nugget"])
+def test_the_short_form_of_a_quarter_is_forced_to_the_agent(question: str) -> None:
+    """`_AGENT_ONLY` knew `q1` and not `1q`, so these three were answered with a
+    whole-game line. The mirror of the "4th qtr" gap that made the pattern grow
+    abbreviations in the first place."""
+    assert _ask(question, '{"intent":"game_log","player":"Devin Vassell"}').intent == "other"
+
+
 def test_a_team_line_with_no_stat_named_keeps_the_whole_line() -> None:
     """ "Knicks stats" arrived as stat='points'."""
     assert "stat" not in _ask("Knicks stats this season", '{"intent":"team_stat","team":"New York Knicks","stat":"points"}').slots
