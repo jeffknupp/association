@@ -45,8 +45,18 @@ mode is always the same: green locally, red on the PR.
   passed locally and failed in CI on the same commit. Test a change to one with
   plain `bash scripts/x.sh`.
 
-Two things about the gates surprise people:
+Three things about the gates surprise people:
 
+- **The docs gate rebuilds from scratch (`-E`) and then reads the HTML.**
+  An incremental Sphinx build re-reads a page only when a source it knows
+  about changed, and a function patched in `docs/conf.py` is not one: the
+  `:rtype:` shim there was invisible to an incremental build (18 of 40 pages
+  kept the literal line, 0 in a fresh build), and a page not re-read also
+  re-emits none of its warnings, so `-W` passed locally where CI's clean build
+  would not. `-E` costs 11s against 2.7s, and buys a gate that says the same
+  thing here as in CI. `scripts/check_docs_markup.py` then fails the build on
+  a docstring field marker printed as text (`:rtype:` after a line of prose),
+  which is valid reStructuredText and so nothing `-W` can see.
 - **mypy runs twice**, over `src` and `tests` separately, never as one
   invocation. Combined, mypy resolves the `association` package two different
   ways (source-rooted `src/` vs. the editable install `tests/` imports) and
