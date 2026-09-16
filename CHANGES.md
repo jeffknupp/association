@@ -15,6 +15,51 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A named player's quarter or half is answered, by a new `period_split`
+  template.** This was the largest content gap in the 261-query feed replay -
+  21 questions, every one forced to the agent because nothing answered the
+  shape. "rj barrett 4th qtr log", "victor wembanyama vs sacramento first half
+  log", "Devin Vassell nba player per game stats 1q". A TEAM's quarter has had
+  a template for a while (`team_quarter_points`, read from the official
+  linescore); a player's had none.
+
+  **Nothing was blocking it but a stale comment.** `team_quarter_points` said a
+  player's quarter score "needs the plays-table LAG() derivation", and that is
+  not true: `shot_chart` already carries `athlete_id`, `period`, `made` and the
+  shot's value, so the answer is a filtered sum.
+
+  **The value is read through `SHOT_VALUE_SQL`, never guessed from the play's
+  prose**, and that is the whole accuracy of the thing. Scored by looking for
+  "three point" in the description, per-period points match ESPN's own
+  linescores 76.8% of the time and the error is systematically -1: "makes
+  24-foot running jump shot" is a three that scores as two. Read off the shot's
+  own label and position it is **99.95%**. Over a whole game that gap hides
+  inside a 98% figure; a quarter holds about ten field goals, so it does not.
+
+  Validated a second way, which also settles a question the earlier entry had
+  to leave open. Summed over all periods INCLUDING overtime, a player's season
+  total matches his box score exactly for **550 of 578 player-seasons** in
+  2026, mean error 0.138 points across a whole season - so the per-PLAYER
+  attribution inside a period is sound, not just the team-level total.
+
+  Accuracy is a property of the season, and the template says so instead of
+  averaging it away. 2002 is refused, because `SHOT_VALUE_SQL` is NULL for
+  20,534 of its made shots and a sum over them means nothing (4.9%). 2016 is
+  refused too, at 76.5% - one quarter in four, the same season
+  `reconstructed_box` singles out. 2003-2006 and 2013 answer with the measured
+  figure attached. The other nineteen seasons run 99.2-100.0%.
+
+  Points only. Rebounds and assists are not in `shot_chart` at all, and
+  deriving them per period from `plays` carries its own fidelity per stat -
+  fouls reconstruct at 83% - so a question asking for them is refused with that
+  named as the reason rather than answered from a weaker source. A half is the
+  two quarters it holds and never overtime.
+
+  The intent is assigned in `route()` from the question's own words rather than
+  added to `ROUTER_PROMPT` or `ROUTER_SCHEMA`, because both are load-bearing on
+  every other question and a period is perfectly legible without the model's
+  help. `CODE_ASSIGNED_INTENTS` records that, so the reachability gate can tell
+  a deliberately unemittable intent from a dead one.
 - **A player against a team is answered instead of falling through.** The
   single biggest theme in the feed replay: 60 of the 186 questions that are not
   answered correctly pit a player against a team, and three separate mechanisms

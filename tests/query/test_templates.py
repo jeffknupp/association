@@ -22,6 +22,7 @@ from association.query.templates import (
     game_log,
     head_to_head,
     leaderboard,
+    period_split,
     player_compare,
     player_history,
     player_netpoints,
@@ -2825,3 +2826,144 @@ def test_head_to_head_reads_past_a_team_named_twice(playoff_ctx: TemplateContext
     """The first two names are one team; the opponent after them is the second."""
     slots = {"team": "Chicago Bulls", "teams": ["Bulls"], "opponent": "Los Angeles Lakers", "season": 1991, "season_type": 3}
     assert head_to_head(playoff_ctx, slots).data["games"] == 2
+
+
+# ---------------- period_split ----------------
+
+SEASON = current_season()
+
+
+@pytest.fixture
+def period_ctx(tmp_path: Path) -> TemplateContext:
+    """One player, four games, and shots whose value has to be DERIVED rather
+    than read off a label - which is the whole point of the template.
+
+    Every made shot here is 26 feet from the rim at (25, 0), a real three's
+    position, and carries `points_attempted = 0`, which is ESPN's "unlabeled"
+    and not "zero points". Scored by the label alone each of these is worth
+    nothing; scored by its position each is worth 3. The fixture is built that
+    way on purpose: it is the shape that made per-quarter points read 76.8%
+    against ESPN's own linescores before `SHOT_VALUE_SQL` was used.
+    """
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    c.execute(
+        "CREATE TABLE games (event_id VARCHAR, season BIGINT, season_type BIGINT, date VARCHAR, home_team_id VARCHAR, away_team_id VARCHAR, "
+        "home_score BIGINT, away_score BIGINT, winner_team_id VARCHAR)"
+    )
+    c.execute(
+        "CREATE TABLE shot_chart (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, team_id VARCHAR, "
+        "period INTEGER, clock VARCHAR, made BOOLEAN, shot_type VARCHAR, coordinate_x INTEGER, coordinate_y INTEGER, points_attempted INTEGER, description VARCHAR)"
+    )
+    c.execute("INSERT INTO players VALUES ('1','Stephen Curry')")
+    c.execute("INSERT INTO teams VALUES ('9','GS','Golden State Warriors'),('13','LAL','Los Angeles Lakers'),('2','BOS','Boston Celtics')")
+    # e1 and e3 at home against the Lakers, e2 away at Boston, e4 at home vs Boston.
+    for event, home, away in (("e1", "9", "13"), ("e2", "2", "9"), ("e3", "9", "13"), ("e4", "9", "2")):
+        c.execute("INSERT INTO games VALUES (?,?,2,?,?,?,110,100,?)", [event, SEASON, f"{SEASON - 1}-11-0{event[-1]}T00:30Z", home, away, home])
+    # (event, period, made, n) - an unlabeled 26-foot three each time.
+    for event, period, made, n in (
+        ("e1", 1, True, 2),
+        ("e1", 1, False, 3),
+        ("e1", 3, True, 1),
+        ("e2", 1, True, 1),
+        ("e2", 4, True, 2),
+        ("e3", 2, True, 1),
+        ("e3", 3, True, 1),
+        ("e4", 1, True, 1),
+        ("e4", 5, True, 1),
+    ):
+        for _ in range(n):
+            c.execute(
+                "INSERT INTO shot_chart VALUES ('1',?,2,?,'9',?,'10:00',?,'Jump Shot',25,26,0,'26-foot jumper')",
+                [SEASON, event, period, made],
+            )
+    # One 2004 game, so the season-accuracy caveat has something to attach to.
+    # 2004 is labeled, unlike the rows above, because before
+    # TEXT_NAMES_EVERY_THREE_UNTIL the description is what establishes a three.
+    c.execute("INSERT INTO games VALUES ('e04',2004,2,'2003-11-05T00:30Z','9','13',110,100,'9')")
+    c.execute("INSERT INTO shot_chart VALUES ('1',2004,2,'e04','9',1,'10:00',TRUE,'Jump Shot',25,26,3,'26-foot three point jumper')")
+    return TemplateContext(con=c, out_dir=tmp_path / "out")
+
+
+def test_a_quarter_is_summed_from_the_shots_position_not_its_label(period_ctx: TemplateContext) -> None:
+    """Curry's first quarters: 2 threes in e1, 1 in e2, 1 in e4 - 12 points over
+    three games. Every one carries `points_attempted = 0`, so a template that
+    trusted ESPN's label would answer 0, and one that looked for the words
+    "three point" in the description would answer 8. Only the position gives 12.
+    Misses do not count, and e3 has no first-quarter make, so it is not a game.
+    """
+    result = period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2})
+    assert result.data["total"] == 12
+    assert result.data["scoring_games"] == 3
+    assert result.data["average"] == pytest.approx(4.0)
+    assert "12 points in the 1st quarter over 3 games" in (result.answer or "")
+
+
+def test_a_half_is_the_two_quarters_it_holds_and_never_overtime(period_ctx: TemplateContext) -> None:
+    """First half is periods 1 and 2; second half is 3 and 4. e4's overtime
+    three belongs to neither - a game that went to overtime still had a second
+    half, and folding OT in would quietly answer a different question for
+    exactly the games people ask about most."""
+    first = period_split(period_ctx, {"player": "Stephen Curry", "half": 1, "season": SEASON, "season_type": 2})
+    second = period_split(period_ctx, {"player": "Stephen Curry", "half": 2, "season": SEASON, "season_type": 2})
+    assert first.data["total"] == 15, "e1 2, e2 1, e3 1 (Q2), e4 1"
+    assert second.data["total"] == 12, "e1 Q3, e2 two in Q4, e3 Q3 - and NOT e4's overtime"
+
+
+def test_an_opponent_and_a_venue_narrow_which_games_count(period_ctx: TemplateContext) -> None:
+    """Both are in HONORED_SCOPING for this template, so both filter rather
+    than refuse. Against the Lakers: e1 and e3. At home: e1, e3, e4."""
+    vs_lakers = period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "opponent": "Lakers"})
+    assert vs_lakers.data["total"] == 6 and vs_lakers.data["scoring_games"] == 1
+    at_home = period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "venue": "home"})
+    assert at_home.data["total"] == 9, "e1's two and e4's one; e2 is away"
+
+
+def test_a_season_whose_shots_cannot_be_valued_is_refused(period_ctx: TemplateContext) -> None:
+    """2002 is `UNSEPARABLE_SHOT_VALUES`: `SHOT_VALUE_SQL` is NULL for 20,534 of
+    its made shots, so a sum over them means nothing. Measured against ESPN's
+    linescores it reconciles 4.9% of the time. The refusal names that, rather
+    than reporting a number nobody should read."""
+    answer = period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "season": 2002, "season_type": 2}).answer or ""
+    assert "cannot be answered for 2002" in answer
+
+
+def test_the_worst_reconcilable_season_is_refused_and_the_merely_poor_ones_are_caveated(period_ctx: TemplateContext) -> None:
+    """2016 reconciles at 76.5% - one quarter in four - and is refused. 2004 is
+    95.7%, which is worth answering with the figure attached rather than
+    withholding. `PERIOD_REFUSE_BELOW` sits between them on purpose."""
+    assert "cannot be answered for 2016" in (period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "season": 2016, "season_type": 2}).answer or "")
+    caveated = period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "season": 2004, "season_type": 2}).answer or ""
+    assert "96% of the time" in caveated, "a poor season answers, and says how poor"
+
+
+def test_a_stat_that_is_not_points_is_refused_rather_than_approximated(period_ctx: TemplateContext) -> None:
+    """`shot_chart` holds shots. Rebounds and assists are not in it at all, and
+    deriving them per period from `plays` carries its own fidelity per stat -
+    fouls rebuild at 83%. Refusing names that instead of answering from a
+    weaker source."""
+    with pytest.raises(TemplateUnsupported, match="points only"):
+        period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "stat": "rebounds"})
+
+
+def test_a_question_with_no_period_is_not_this_template(period_ctx: TemplateContext) -> None:
+    """ "by quarter" is a breakdown across all four, which is a different shape."""
+    with pytest.raises(TemplateUnsupported, match="needs a period"):
+        period_split(period_ctx, {"player": "Stephen Curry", "season": SEASON, "season_type": 2})
+
+
+def test_the_scoping_slots_this_template_filters_on_are_declared_honored() -> None:
+    """`HONORED_SCOPING` is what `check_scope` reads, and the template's own SQL
+    is what actually filters - two hand-maintained facts about the same thing.
+    Testing the template directly cannot catch them disagreeing, because the
+    SQL filters whether or not the slot is declared; the failure is a REFUSAL
+    of a question this answers perfectly well.
+
+    The other direction matters too: a slot listed here that the SQL ignores
+    would silently answer a broader question, which is the shape this whole
+    module exists to prevent."""
+    for slot in ("opponent", "venue"):
+        check_scope("period_split", {"player": "Stephen Curry", "period": 1, slot: "home"})
+    with pytest.raises(TemplateUnsupported):
+        check_scope("period_split", {"player": "Stephen Curry", "period": 1, "without": "Draymond Green"})

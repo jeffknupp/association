@@ -9,7 +9,7 @@ import ollama
 import pytest
 from ollama import ChatResponse, Message
 
-from association.query.router import ORDER_INTENTS, ORDER_WORDS, ROUTER_PROMPT, ROUTER_SCHEMA, SIDE_VALUES, Route, route
+from association.query.router import CODE_ASSIGNED_INTENTS, ORDER_INTENTS, ORDER_WORDS, ROUTER_PROMPT, ROUTER_SCHEMA, SIDE_VALUES, Route, route
 from association.season import current_season
 
 
@@ -144,9 +144,21 @@ def test_every_intent_the_prompt_describes_is_emittable() -> None:
 
 
 def test_every_ported_template_has_an_intent_in_the_schema() -> None:
+    """Every template must be REACHABLE, by one of exactly two routes: the model
+    emits its intent, or `route()` assigns it from the question text. A template
+    in neither list is dead code that no question can ever reach."""
     from association.query.templates import TEMPLATES
 
-    assert set(TEMPLATES) <= set(ROUTER_SCHEMA["properties"]["intent"]["enum"])
+    assert set(TEMPLATES) <= set(ROUTER_SCHEMA["properties"]["intent"]["enum"]) | CODE_ASSIGNED_INTENTS
+
+
+def test_a_code_assigned_intent_is_kept_out_of_the_models_grammar() -> None:
+    """The exemption above must not become a place to park intents the model
+    should be emitting. These are the ones read from the question's own words,
+    and adding them to the schema or the prompt would move slots on unrelated
+    questions for no gain."""
+    assert CODE_ASSIGNED_INTENTS.isdisjoint(ROUTER_SCHEMA["properties"]["intent"]["enum"])
+    assert not any(intent in ROUTER_PROMPT for intent in CODE_ASSIGNED_INTENTS)
 
 
 def test_array_slots_are_bounded() -> None:
@@ -258,20 +270,26 @@ def test_the_side_values_match_the_router_schema() -> None:
     assert set(SIDE_VALUES) == set(ROUTER_SCHEMA["properties"]["side"]["enum"])
 
 
-@pytest.mark.parametrize(
-    "question",
-    [
-        "How many points did Jokic score in the 3rd quarter?",
-        "points per quarter for Luka",
-    ],
-)
+@pytest.mark.parametrize("question", ["points per quarter for Luka", "Jokic points by quarter"])
 def test_questions_no_template_computes_are_forced_to_the_agent(question: str) -> None:
     """These read like a supported shape while asking for something no template
-    computes. Shot distance was here too until it earned its own template,
-    which is the intended lifecycle for this list."""
+    computes. Shot distance was here too until it earned its own template, and
+    so was a named player's single quarter until `period_split` earned one -
+    which is the intended lifecycle for this list. What is left here is the
+    breakdown across ALL four quarters, which is a different shape."""
     with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"player_stat","player":"Stephen Curry"}')):
         got = route("m", question)
     assert got is not None and got.intent == "other"
+
+
+def test_a_named_players_single_quarter_earned_its_own_template() -> None:
+    """The case that used to sit in the list above. "How many points did Jokic
+    score in the 3rd quarter?" was forced to the agent because nothing answered
+    it; `period_split` does, by summing the value of his made shots in that
+    period out of `shot_chart`."""
+    with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"player_stat","player":"Nikola Jokic"}')):
+        got = route("m", "How many points did Jokic score in the 3rd quarter?")
+    assert got is not None and got.intent == "period_split" and got.slots["period"] == 3
 
 
 def test_a_team_quarter_question_is_exempted_from_the_agent_only_override() -> None:
@@ -291,14 +309,16 @@ def test_a_team_quarter_question_is_exempted_from_the_agent_only_override() -> N
     assert got.slots["team"] == "Philadelphia 76ers" and got.slots["opponent"] == "Boston Celtics"
 
 
-def test_a_player_quarter_question_still_forces_the_agent_even_if_misrouted() -> None:
-    """Defensive: if the router ever emits team_quarter_points alongside a
-    named player (it shouldn't - the prompt says this intent is never for a
-    player), the override must still win rather than trust that slot combo."""
+def test_a_player_quarter_question_never_answers_from_the_teams_linescore() -> None:
+    """Defensive: if the router emits team_quarter_points alongside a named
+    player (it shouldn't - the prompt says that intent is never for a player),
+    the override must still win rather than trust that slot combo. It now lands
+    on `period_split`, which answers about the player, rather than on the
+    team's linescore, which would answer about the 76ers."""
     payload = '{"intent":"team_quarter_points","team":"Philadelphia 76ers","period":4,"player":"Joel Embiid"}'
     with patch("association.query.router.ollama.chat", return_value=_reply(payload)):
         got = route("m", "How many points did Embiid score in the 4th quarter against Boston?")
-    assert got is not None and got.intent == "other"
+    assert got is not None and got.intent == "period_split"
 
 
 def test_team_quarter_points_is_in_the_schema_enum() -> None:
@@ -602,14 +622,29 @@ def test_a_team_ranking_asked_as_a_player_ranking_is_rerouted() -> None:
     assert _ask("Top 5 scorers on the Lakers?", '{"intent":"leaderboard","stat":"points"}').intent == "leaderboard"
 
 
-@pytest.mark.parametrize("question", ["rj barrett 4th qtr log", "kd q4 points last game", "tatum first half stats", "harrison barnes 1st q stats"])
-def test_abbreviated_quarters_and_halves_go_to_the_agent(question: str) -> None:
-    """ "rj barrett 4th qtr log" slipped past a pattern that only knew "quarter",
-    and game_log answered with his whole last game."""
-    assert _ask(question, '{"intent":"game_log","player":"X"}').intent == "other"
+@pytest.mark.parametrize(
+    ("question", "want"),
+    [
+        ("rj barrett 4th qtr log", {"period": 4}),
+        ("kd q4 points last game", {"period": 4}),
+        ("tatum first half stats", {"half": 1}),
+        ("harrison barnes 1st q stats", {"period": 1}),
+    ],
+)
+def test_abbreviated_quarters_and_halves_are_recognized(question: str, want: dict[str, int]) -> None:
+    """ "rj barrett 4th qtr log" slipped past a pattern that only knew
+    "quarter", and game_log answered with his whole last game. It used to be
+    forced to the agent for want of a template; the abbreviations still have to
+    be recognized, and now they route to one."""
+    got = _ask(question, '{"intent":"game_log","player":"X"}')
+    assert got.intent == "period_split"
+    assert all(got.slots.get(k) == v for k, v in want.items()), got.slots
 
 
 def test_a_team_half_is_not_a_quarter_either() -> None:
+    """A team's half has no template: `team_quarter_points` reads one period of
+    the linescore and `period_split` answers about a player. Naming no player,
+    this keeps falling through rather than being answered for either."""
     assert _ask("Celtics 2nd half scoring this season", '{"intent":"team_quarter_points","team":"Boston Celtics","period":2}').intent == "other"
     assert _ask("76ers 4th qtr points vs boston", '{"intent":"team_quarter_points","team":"Philadelphia 76ers","period":4}').intent == "team_quarter_points"
 
@@ -886,12 +921,21 @@ def test_a_triple_double_abbreviation_is_not_read_as_three_pointers() -> None:
     assert _ask("luka td3s home", '{"intent":"player_stat","player":"Luka Doncic","shot_value":3}').intent == "other"
 
 
-@pytest.mark.parametrize("question", ["Duncan Robison 1q log", "Devin Vassell nba player per game stats 1q", "each center 1q pts log vs nugget"])
-def test_the_short_form_of_a_quarter_is_forced_to_the_agent(question: str) -> None:
-    """`_AGENT_ONLY` knew `q1` and not `1q`, so these three were answered with a
-    whole-game line. The mirror of the "4th qtr" gap that made the pattern grow
-    abbreviations in the first place."""
-    assert _ask(question, '{"intent":"game_log","player":"Devin Vassell"}').intent == "other"
+@pytest.mark.parametrize("question", ["Duncan Robison 1q log", "Devin Vassell nba player per game stats 1q"])
+def test_the_short_form_of_a_quarter_is_recognized(question: str) -> None:
+    """`_AGENT_ONLY` knew `q1` and not `1q`, so these were answered with a
+    whole-game line - the mirror of the "4th qtr" gap that made the pattern
+    grow abbreviations. Recognizing them first sent them to the agent; now that
+    `period_split` exists they route to it."""
+    got = _ask(question, '{"intent":"game_log","player":"Devin Vassell"}')
+    assert got.intent == "period_split" and got.slots["period"] == 1
+
+
+def test_a_quarter_question_about_a_group_of_players_still_falls_through() -> None:
+    """ "each center 1q pts log vs nugget" names a position, not a player.
+    `period_split` answers about one named player, so with the slot empty this
+    keeps the old behaviour rather than inventing a subject."""
+    assert _ask("each center 1q pts log vs nugget", '{"intent":"game_log"}').intent == "other"
 
 
 def test_a_team_line_with_no_stat_named_keeps_the_whole_line() -> None:
@@ -1024,3 +1068,50 @@ def test_a_league_wide_single_game_high_stays_league_wide() -> None:
 def test_the_model_s_own_player_is_not_overwritten() -> None:
     got = _ask("most points Stephen Curry scored in a game this season", '{"intent":"single_game_high","stat":"points","player":"Stephen Curry"}')
     assert got.slots["player"] == "Stephen Curry"
+
+
+@pytest.mark.parametrize(
+    ("question", "want"),
+    [
+        # Verbatim from the feed. All three quarter spellings and both halves.
+        ("Duncan Robison 1q log", {"period": 1}),
+        ("rj barrett 4th qtr log", {"period": 4}),
+        ("harrison barnes 1st quarter stats each game vs magic", {"period": 1}),
+        ("victor wembanyama vs sacramento first half log", {"half": 1}),
+        ("Kd vs clippers 2h at home gamelog", {"half": 2}),
+        ("scottie barnes stats 2nd half log without rj", {"half": 2}),
+    ],
+)
+def test_a_named_players_quarter_now_routes_to_a_template(question: str, want: dict[str, int]) -> None:
+    """These were forced to the agent because no template answered them - 21 of
+    261 feed queries, the largest content gap in the sample. `period_split`
+    answers them now, and the period is read from the question text: `period`
+    is in ROUTER_SCHEMA but only ever taught for a TEAM's quarter score, so on
+    a player's question the model leaves it empty."""
+    got = _ask(question, '{"intent":"game_log","player":"Duncan Robinson"}')
+    assert got.intent == "period_split"
+    assert all(got.slots.get(k) == v for k, v in want.items()), got.slots
+
+
+@pytest.mark.parametrize("question", ["nba playerspoints by quarter average", "points per quarter for Luka", "Jokic qtrs"])
+def test_a_breakdown_across_every_quarter_still_goes_to_the_agent(question: str) -> None:
+    """ "by quarter" asks for all four at once, which is a different shape from
+    "the third quarter". `period_split` answers one period, so a question that
+    names none keeps the old behaviour rather than being answered for a period
+    nobody asked about."""
+    assert _ask(question, '{"intent":"player_stat","player":"Nikola Jokic"}').intent == "other"
+
+
+def test_a_teams_quarter_is_still_the_teams_template() -> None:
+    """team_quarter_points reads the official linescore, which is exact.
+    period_split sums shot values, which is not - so a TEAM question must not
+    drift onto the derived path."""
+    payload = '{"intent":"team_quarter_points","team":"Philadelphia 76ers","period":4,"opponent":"Boston Celtics"}'
+    assert _ask("How many points did the 76ers score in the 4th quarter against Boston this season?", payload).intent == "team_quarter_points"
+
+
+def test_a_quarter_question_naming_no_player_is_not_period_split() -> None:
+    """`period_split` answers about a player and nothing else. A quarter
+    question with no player - "knicks 1st quarter scoring leaders" - has no
+    subject it can take, so it keeps falling through."""
+    assert _ask("knicks 1st quarter scoring leaders playoffs", '{"intent":"leaderboard","team":"New York Knicks"}').intent == "other"

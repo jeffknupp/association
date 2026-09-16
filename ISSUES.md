@@ -690,67 +690,35 @@ wrong for other reasons, and each of those is an entry below.
 
 ## P3: refusal or gap
 
-### No template reads `plays.period`, and a fifth of real questions want one
-- **Found:** 2026-09-16, auditing the 261-query feed for question quality
-- **Evidence:** **21 of the 261 feed queries** ask for a quarter or a half, for
-  a player or a team, and every one lands on `intent=other` and falls through -
-  `_AGENT_ONLY` forces them there on purpose, because no template answers the
-  shape. The data is not the problem: `plays` holds 14.2M rows with a `period`
-  column covering 2002-2026. **This is the largest single content gap in the
-  sample**, larger than any remaining routing fault.
-- **User sees:** a slow agent answer, or a whole-game line where one quarter
-  was asked for. Measured earlier at 84% agent for this shape.
-- **Nothing structural is in the way, measured 2026-09-16.** The pieces all
-  exist: `plays` carries `period`, `athlete_id`, `type`, `text` and
-  `scoring_play`, and `fetch/reconstructed_box.py` already derives points from
-  exactly those columns at 98.3% per player-game. The TEAM half is answered
-  today by `team_quarter_points`, which reads the official linescores; it is
-  the PLAYER half that has no template.
-- **The one real obstacle is the shot-value rule, and it is fixable.** Scored
-  naively, per-period points reconcile against the official linescores only
-  **76.8%** exactly (2026, 9,848 team-quarters), and the error is systematically
-  **-1**: `reconstructed_box._THREE` reads a shot's value from the phrase
-  "three point" in the play text, and ESPN often writes none - "Nickeil
-  Alexander-Walker makes 24-foot running jump shot" is a three that scores as
-  two. Over a whole game the error hides inside a 98% figure; per quarter it
-  does not.
-- **Do not guess the value from the text at all - join `shot_chart` and read
-  it.** Measured three ways over 2026's 9,848 team-quarters: text keyword only
-  **76.8%**, text plus a `>= 23 foot` distance parsed out of the prose
-  **97.5%**, and the `shot_chart` row for that same play **99.95%**. The join
-  is `USING (event_id, play_id)` and it is not approximate - 148,566 of 2026's
-  148,567 scoring plays match, and the scan over a whole season costs
-  **0.16s**, so cost is not a reason to prefer the guess. `shot_chart` carries
-  `points_attempted` and `coordinate_x`/`coordinate_y`, so the arc is
-  arithmetic rather than a threshold.
-- **Use `shotchart.SHOT_VALUE_SQL`, not a hand-rolled rule**, and the reason is
-  measured: a naive geometry rule scores **66.2%** in 2002 and 92.8% in 2003 -
-  *worse than the text* - because those seasons carry no usable label and their
-  prose names every three. That ladder already encodes it
-  (`UNSEPARABLE_SHOT_VALUES`, `TEXT_NAMES_EVERY_THREE_UNTIL`, then
-  `BEYOND_THE_ARC_SQL`). From 2008 on, the join scores 99.5-99.95% a season.
-- **Shot value is not the whole story, and the rest is worth knowing before
-  trusting a quarter.** It explains 236 of 2026's 241 bad team-quarters. The
-  other **5 survive every method identically** and are not a value problem:
-  event `401810469` derives 129-107 against an official 138-110, so its
-  play-by-play is simply incomplete at GAME level, and both teams in event
-  `401810087` read +4 in Q3, which is a period boundary rather than a score.
-  Two games out of ~1,230. So a per-quarter answer should carry the same kind
-  of caveat the rebuilt box does, not be quoted as a record.
-- **Not yet checked:** every reconciliation above is at TEAM-quarter level,
-  because the linescores are the only independent per-period source. Per-PLAYER
-  attribution within a quarter has no such check; the rebuilt box's per-player
-  figures are the closest evidence, and they are per GAME.
-- **Next step:** one `period_split` template over `plays`, a 2002 floor in
-  `COVERAGE` (2002 play-by-play is about half a year - it is already declared
-  partial), and an entry in `TEMPLATE_SOURCES`. Read the value through
-  `SHOT_VALUE_SQL` off the joined `shot_chart` row from the start - guessing it
-  from the prose ships a wrong number in one quarter out of four. Then narrow
-  `_AGENT_ONLY` to the cases the new template still cannot take, and correct
-  `team_quarter_points`'s docstring, which says a player's quarter score "needs
-  the plays-table LAG() derivation" - it does not; `_POINTS` reads type and
-  text, not score differences, and that stale claim is plausibly part of why
-  nobody has built this.
+### A quarter or half is answered for a player, and for nobody else
+- **Found:** 2026-09-16 auditing the feed; **the player half shipped the same
+  day** as `period_split`
+- **Fixed.** 21 of the 261 feed queries ask for a quarter or a half and every
+  one fell through, because nothing answered the shape. A named player's single
+  period now has a template: `shot_chart` carries `athlete_id`, `period`,
+  `made` and the shot's value, so it is a filtered sum, and the value is read
+  through `SHOT_VALUE_SQL` - 99.95% against ESPN's linescores, where guessing
+  it from the play's prose is 76.8%. Summed over all periods including
+  overtime, a player's season total matches his box score exactly for 550 of
+  578 player-seasons.
+- **What is still not answered**, and it is most of the rest of that 21:
+  - **A TEAM's half.** `team_quarter_points` reads one period out of the
+    linescore and has no notion of a half, so "Detroit Pistons most points in a
+    first half this season" and "least points scored by the wizards in the
+    first half" still fall through. This is the cheapest of the four: the
+    linescore is exact and a half is two of its entries added together.
+  - **A breakdown across all four quarters.** "nba playerspoints by quarter
+    average", "points per quarter for Luka". `period_split` answers ONE period
+    by design; this is a different shape and is deliberately left alone rather
+    than answered for a period nobody named.
+  - **A position group as the subject.** "each center 1q pts log vs nugget" -
+    the same gap position groups have everywhere, not a period problem.
+  - **A ranking within a period.** "knicks 1st quarter scoring leaders" wants a
+    leaderboard restricted to a quarter.
+- **User sees:** for the shapes above, a slow agent answer or a whole-game line
+  where one quarter was asked for.
+- **Next step:** the team half, which is two linescore entries added.
+
 
 ### `games.date` is a VARCHAR that DuckDB will not cast
 - **Found:** 2026-09-16, during the query-set audit (six ad-hoc date queries,

@@ -156,6 +156,9 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     "player_history": frozenset({"span"}),
     # It always read `opponent`; listed now that `opponent` is a scoping slot.
     "team_quarter_points": frozenset({"opponent"}),
+    # A period is not a scoping slot - it IS the question - so only the two
+    # filters on WHICH games count are listed.
+    "period_split": frozenset({"opponent", "venue"}),
     # The opponent IS the second team of a head-to-head.
     "head_to_head": frozenset({"opponent"}),
     "shot_chart": frozenset({"order"}),
@@ -225,6 +228,11 @@ TEMPLATE_SOURCES: dict[str, tuple[str, ...]] = {
     # COVERAGE entry to drift out of step with the first.
     "head_to_head": ("games",),
     "team_quarter_points": ("team_box_stats", "games"),
+    # Points per period are summed out of the shot table, so the shot floor is
+    # the one that applies - not the play-by-play floor, even though the two
+    # start in the same year, because a season whose plays are complete can
+    # still be missing the located shots this reads.
+    "period_split": ("shot_chart", "games"),
     # A player's log and a team's come from different tables, and _sources_for
     # picks between them - a team question refused with "Player game logs only
     # go back to..." names the wrong thing.
@@ -263,6 +271,7 @@ PLAYER_INTENTS: frozenset[str] = frozenset(
         "player_matchup",
         "player_netpoints",
         "player_splits",
+        "period_split",
         "player_stat",
         "record_when",
         "shot_chart",
@@ -280,7 +289,7 @@ PLAYER_INTENTS: frozenset[str] = frozenset(
 """
 
 
-PLAYER_REQUIRED_INTENTS: frozenset[str] = frozenset({"record_when"})
+PLAYER_REQUIRED_INTENTS: frozenset[str] = frozenset({"record_when", "period_split"})
 """Intents whose template cannot answer at all without a player, so a player the
 router left out is worth restoring from the question.
 
@@ -4075,6 +4084,186 @@ def _phrase_team_quarter_points(team: str, opponent: str | None, period_label: s
     return "\n".join([header, *lines])
 
 
+# Per-period points are summed from `shot_chart`, and how closely that sums to
+# ESPN's own linescore is a property of the SEASON, not of the method. Measured
+# 2026-09-16 over every regular season, one row per team-quarter, against
+# `games.home_linescores`/`away_linescores`: the percentage of team-quarters
+# where the sum is EXACTLY the official figure. Only the seasons below 99% are
+# listed; the other nineteen run 99.2-100.0%.
+#
+# The two bad ones have known causes rather than being noise. 2002 cannot be
+# answered at all - it is `UNSEPARABLE_SHOT_VALUES`, so `SHOT_VALUE_SQL` is
+# NULL for 20,534 of its made shots and a sum over them is meaningless (4.9%).
+# 2016 is the season `fetch/reconstructed_box` also singles out: its scoring
+# plays carry types no rule can classify, and it reconciles at 76.5%, which is
+# one quarter in four.
+PERIOD_RECONCILIATION: dict[int, float] = {2003: 93.5, 2004: 95.7, 2005: 95.9, 2006: 95.8, 2013: 93.7, 2016: 76.5}
+"""Per-season agreement between summed shot values and ESPN's linescores, for
+the seasons under 99%. Read by :func:`period_split` to caveat or refuse.
+
+.. versionadded:: 2.3.0
+"""
+
+PERIOD_REFUSE_BELOW = 90.0
+"""Below this agreement a period answer is refused rather than caveated.
+
+Set between 2016's 76.5% and 2003's 93.5% deliberately: a season that is right
+19 times in 20 is worth answering with a caveat, and one that is wrong in a
+quarter of its quarters is not an answer at all.
+
+.. versionadded:: 2.3.0
+"""
+
+_HALF_PERIODS: dict[int, tuple[int, ...]] = {1: (1, 2), 2: (3, 4)}
+# Overtime belongs to neither half. "The second half" means the third and
+# fourth quarters in every basketball context; a game that went to overtime
+# still had a second half, and folding OT into it would silently answer a
+# different question for exactly the games people most often ask about.
+
+
+def _period_scope(slots: dict[str, Any]) -> tuple[tuple[int, ...], str]:
+    """The periods a question asks for, and how to name them in an answer."""
+    half = slots.get("half")
+    if isinstance(half, int) and half in _HALF_PERIODS:
+        return _HALF_PERIODS[half], f"{_ordinal(half)} half"
+    period = slots.get("period")
+    if isinstance(period, int) and 1 <= period <= 10:
+        return (period,), _period_label(period)
+    raise TemplateUnsupported(f"period_split needs a period 1-10 or a half 1-2, got period={slots.get('period')!r} half={half!r}")
+
+
+def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+    """A named player's points in ONE quarter or half, per game and averaged.
+
+    The counterpart to :func:`team_quarter_points`, which answers a TEAM's
+    quarter from the official linescore. A player has no such source, so this
+    sums the value of his made shots in that period out of ``shot_chart``.
+
+    **It does not need the plays table, and it does not need `LAG`.**
+    ``team_quarter_points`` said for a long time that a player's quarter score
+    "needs the plays-table LAG() derivation", and that claim is plausibly why
+    this went unwritten: ``shot_chart`` already carries ``athlete_id``,
+    ``period``, ``made`` and the shot's value, so the answer is a filtered sum.
+
+    **The value is read through :data:`SHOT_VALUE_SQL`, never guessed from the
+    play's prose**, and the difference is the whole accuracy of this template.
+    Scored by looking for "three point" in the description, per-period points
+    match ESPN's linescores 76.8% of the time, and the error is systematically
+    -1: "makes 24-foot running jump shot" is a three that scores as two. Read
+    off the shot's own label and position, it is 99.95%. Over a whole game that
+    gap hides inside a 98% figure; a quarter holds about ten field goals, so it
+    does not.
+
+    Accuracy is a property of the season, and this says so rather than
+    averaging it away - see :data:`PERIOD_RECONCILIATION`. 2002 and 2016 are
+    refused outright (4.9% and 76.5%); 2003-2006 and 2013 are answered with
+    the measured figure attached.
+
+    Only POINTS. Rebounds, assists and the rest are not in ``shot_chart`` at
+    all, and deriving them per period from ``plays`` carries its own per-stat
+    fidelity (fouls reconstruct at 83%), so a question asking for them is
+    refused with that named as the reason rather than answered from a weaker
+    source.
+
+    .. versionadded:: 2.3.0
+    """
+    con = ctx.con
+    periods, period_label = _period_scope(slots)
+    stat = slots.get("stat")
+    if isinstance(stat, str) and stat.strip() and stat not in ("points", "all"):
+        raise TemplateUnsupported(f"period_split answers points only, not {stat!r} - no other stat is recorded per period")
+
+    season = slots.get("season") or current_season()
+    season_type = slots.get("season_type") or 2
+    agreement = PERIOD_RECONCILIATION.get(season)
+    if season in UNSEPARABLE_SHOT_VALUES or (agreement is not None and agreement < PERIOD_REFUSE_BELOW):
+        why = UNSEPARABLE_SHOT_VALUES.get(season) or f"its per-period points agree with ESPN's own quarter scores only {agreement:.0f}% of the time"
+        message = f"Per-quarter scoring cannot be answered for {season}: {why}."
+        return TemplateResult(data={"season": season, "message": message}, answer=message)
+
+    player = _resolved_player(con, slots.get("player"), available=SHOT_AVAILABILITY, season=season)
+    if isinstance(player, TemplateResult):
+        return player
+
+    opponent: Entity | None = None
+    if isinstance(slots.get("opponent"), str) and slots["opponent"].strip():
+        resolved = _resolved_team(con, slots["opponent"])
+        if isinstance(resolved, TemplateResult):
+            return resolved
+        opponent = resolved
+
+    # SHOT_VALUE_SQL names `shot_chart`'s columns bare, and `season` is a column
+    # of `games` too - so the value is summed in a CTE over `shot_chart` alone,
+    # where those names can only mean one thing, and the game is joined after.
+    marks = ", ".join("?" for _ in periods)
+    params: list[Any] = [player.id, season, season_type, *periods, season, season_type]
+    where = ["g.season = ?", "g.season_type = ?"]
+    venue = slots.get("venue") if slots.get("venue") in ("home", "away") else None
+    if venue is not None:
+        where.append("(CASE WHEN g.home_team_id = s.team_id THEN 'home' ELSE 'away' END) = ?")
+        params.append(venue)
+    if opponent is not None:
+        where.append("(CASE WHEN g.home_team_id = s.team_id THEN g.away_team_id ELSE g.home_team_id END) = ?")
+        params.append(opponent.id)
+    rows = con.execute(
+        f"""
+        WITH scored AS (
+            SELECT event_id, team_id, SUM({SHOT_VALUE_SQL}) AS points
+            FROM shot_chart
+            WHERE athlete_id = ? AND made AND season = ? AND season_type = ? AND period IN ({marks})
+            GROUP BY 1, 2
+        )
+        SELECT g.date,
+               CASE WHEN g.home_team_id = s.team_id THEN 'home' ELSE 'away' END AS side,
+               t.display_name,
+               s.points
+        FROM scored s
+        JOIN games g USING (event_id)
+        LEFT JOIN teams t ON t.team_id = CASE WHEN g.home_team_id = s.team_id THEN g.away_team_id ELSE g.home_team_id END
+        WHERE {" AND ".join(where)}
+        ORDER BY g.date
+        """,
+        params,
+    ).fetchall()
+
+    scope = _period(season, season_type)
+    vs = f" against the {opponent.name}" if opponent else ""
+    at = f" at {'home' if venue == 'home' else 'away'}" if venue else ""
+    games = [{"date": _eastern_date(d), "opponent": name, "home_away": side, "points": int(pts or 0)} for d, side, name, pts in rows]
+    data: dict[str, Any] = {
+        "player": player.name,
+        "period": period_label,
+        "season": season,
+        "opponent": opponent.name if opponent else None,
+        "venue": venue,
+        "games": games,
+        "scoring_games": len(games),
+    }
+    if not games:
+        # "Scored in" rather than "played in": a game he played and did not
+        # score in that period has no made shot, so it is absent here. Saying
+        # he has no GAMES would be the refusal-naming-the-wrong-cause shape.
+        message = f"No {scope} games found where {player.name} scored in the {period_label}{vs}{at}."
+        return TemplateResult(data={**data, "message": message}, answer=message)
+
+    total = sum(g["points"] for g in games)
+    average = total / len(games)
+    data |= {"total": total, "average": average}
+    caveat = ""
+    if agreement is not None:
+        caveat = (
+            f"\n  (Summed from shot data rather than an official per-quarter box score. In {season} that sum matches ESPN's own "
+            f"quarter scores {agreement:.0f}% of the time, so treat a single game as approximate.)"
+        )
+    plural = "game" if len(games) == 1 else "games"
+    header = f"{player.name} scored {total} points in the {period_label} over {len(games)} {plural} of the {scope}{vs}{at}, averaging {average:.1f}."
+    if len(games) == 1:
+        g = games[0]
+        against = f"the {g['opponent']}" if g["opponent"] else "their opponent"
+        header = f"{player.name} scored {total} points in the {period_label} {'vs' if g['home_away'] == 'home' else 'at'} {against} on {g['date']} ({scope})."
+    return TemplateResult(data=data, answer=header + caveat)
+
+
 MAX_COMPARED_PLAYERS = 4
 
 
@@ -4844,6 +5033,7 @@ TEMPLATES: dict[str, Callable[[TemplateContext, dict[str, Any]], TemplateResult]
     "single_game_high": single_game_high,
     "head_to_head": head_to_head,
     "team_quarter_points": team_quarter_points,
+    "period_split": period_split,
     "shot_distance": shot_distance,
     "player_history": player_history,
     "player_netpoints": player_netpoints,

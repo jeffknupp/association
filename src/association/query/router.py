@@ -329,6 +329,62 @@ def _is_team_quarter_points(raw: dict[str, Any]) -> bool:
     return raw.get("intent") == "team_quarter_points" and not (isinstance(raw.get("player"), str) and raw["player"].strip())
 
 
+CODE_ASSIGNED_INTENTS: frozenset[str] = frozenset({"period_split"})
+"""Intents no model can emit, because :func:`route` assigns them from the
+question's own text.
+
+Kept out of ``ROUTER_SCHEMA``'s enum and out of ``ROUTER_PROMPT`` on purpose.
+Both are load-bearing on every other question: a new enum value changes the
+decoding grammar and a new prompt line changes slots on unrelated questions -
+adding one reproducibly flipped "What was the Lakers record last season?" from
+``team`` "Lakers" to "Los Angeles Lakers". A period is legible from the
+question ("1q", "4th qtr", "first half") with no help from the model, so it
+costs nothing to read it here and nothing to route on it.
+
+``test_every_ported_template_has_an_intent_in_the_schema`` exempts these, and
+the exemption is why this is a named constant rather than a literal in a test:
+a template that is unreachable by BOTH routes is dead, and the two lists have
+to disagree deliberately rather than by drift.
+
+.. versionadded:: 2.3.0
+"""
+
+_ORDINAL_PERIODS = {"first": 1, "1st": 1, "second": 2, "2nd": 2, "third": 3, "3rd": 3, "fourth": 4, "4th": 4}
+
+# Which quarter or half, in the forms questions actually use. All three shapes
+# come from the feed: "1st quarter", "q1"/"1q", and "first half"/"2h".
+_WHICH_QUARTER = re.compile(
+    r"\b(?P<ordinal>first|second|third|fourth|1st|2nd|3rd|4th)\s+(?:quarter|qtr|q)\b|\bq(?P<qn>[1-4])\b|\b(?P<nq>[1-4])q\b",
+    re.IGNORECASE,
+)
+_WHICH_HALF = re.compile(r"\b(?P<ordinal>first|second|1st|2nd)\s+half\b|\b(?P<hn>[12])h\b", re.IGNORECASE)
+
+
+def _period_asked(question: str) -> dict[str, int] | None:
+    """The period a question names, as ``{"period": n}`` or ``{"half": n}``.
+
+    Read from the text rather than asked of the model, for the reason
+    `_validate_side` records: `period` is in ROUTER_SCHEMA but only ever taught
+    for a TEAM's quarter score, so on a player's question the model leaves it
+    empty. None when the question says "by quarter" or "qtrs" without naming
+    one - a breakdown across all four is a different shape, and this template
+    answers one period.
+
+    .. versionadded:: 2.3.0
+    """
+    half = _WHICH_HALF.search(question)
+    if half is not None:
+        named = half.group("ordinal")
+        return {"half": _ORDINAL_PERIODS[named.lower()] if named else int(half.group("hn"))}
+    quarter = _WHICH_QUARTER.search(question)
+    if quarter is None:
+        return None
+    named = quarter.group("ordinal")
+    if named is not None:
+        return {"period": _ORDINAL_PERIODS[named.lower()]}
+    return {"period": int(quarter.group("qn") or quarter.group("nq"))}
+
+
 @dataclass
 class Route:
     """`slots` holds only values that survived validation - a dropped slot is
@@ -1025,9 +1081,22 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
         raw["stat"] = "fouls"
         raw["threshold"] = FOUL_OUT_THRESHOLD
     if (_AGENT_ONLY.search(low) and not _is_team_quarter_points(raw)) or _HALF_WORDS.search(low):
-        # Slots are kept: the agent sees the conversation, not the Route, but
-        # the log line shows what the model thought before the override.
-        raw["intent"] = "other"
+        # A named player's quarter or half now HAS a template, so the override
+        # sends it there instead of to the agent - but only when the question
+        # names one and the period is legible, since `period_split` answers
+        # about a player and nothing else. Everything else keeps the old
+        # behaviour: slots are kept, because the agent sees the conversation
+        # rather than the Route, and the log line shows what the model thought.
+        asked = _period_asked(question)
+        # No second `_is_team_quarter_points` check: it means "this intent, and
+        # NO player", so it can never be true here where a player is named. The
+        # team's own quarter is already exempted by the outer condition.
+        named_player = isinstance(raw.get("player"), str) and raw["player"].strip()
+        if asked is not None and named_player:
+            raw["intent"] = "period_split"
+            raw |= asked
+        else:
+            raw["intent"] = "other"
     if raw["intent"] in _PLAYER_RANKING_INTENTS and _TEAM_SUBJECT.search(question):
         # A team ranking has a template; a team's single-game record and a
         # count of team games do not, and answering either with players is the
