@@ -20,7 +20,7 @@ we do about it. Read `DATA.md` before trusting a column.
 ## Before you commit
 
 ```bash
-uv run pre-commit run --all-files   # all eight gates
+uv run pre-commit run --all-files   # all nine gates
 uv run pytest -q                    # fully offline: no network, no ollama
 ```
 
