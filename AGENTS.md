@@ -24,6 +24,12 @@ uv run pre-commit run --all-files   # all nine gates
 uv run pytest -q                    # fully offline: no network, no ollama
 ```
 
+**A fresh worktree needs syncing before either command works at all.**
+`uv run` creates the venv on first use but does not install the `dev`, `docs`
+or `web` extras, so `uv run pytest -q` fails with `Failed to spawn: pytest`
+and the gates never run. Run CI's own line first:
+`uv sync --frozen --extra dev --extra docs --extra web`.
+
 Both must be clean. Everything in `pre-commit` also runs in CI
 (`.github/workflows/ci.yml`), so a green local run means a green PR.
 

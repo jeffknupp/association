@@ -29,6 +29,7 @@ import sys
 import duckdb
 
 from association.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON, Coverage
+from association.repo_paths import default_db_path
 
 # A season holding less than this share of the table's median season is a
 # fragment, not a season. Generous on purpose: a real lockout season (1999's 50
@@ -125,7 +126,7 @@ def _check_phantom(table: str, coverage: Coverage, counts: dict[int, int]) -> li
 def main() -> int:
     """Check every declared floor against a built warehouse."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--db-path", default="./nba.duckdb")
+    parser.add_argument("--db-path", default=default_db_path())
     args = parser.parse_args()
 
     con = duckdb.connect(args.db_path, read_only=True)

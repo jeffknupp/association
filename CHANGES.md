@@ -15,6 +15,30 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A worktree can now run `association data pull`/`load` and the audit
+  scripts with no `--data-dir`/`--db-path` at all.** All nine call sites
+  (`cli.py`, and `check_routing`, `check_coverage`, `check_nicknames`,
+  `check_net_points_games`, `check_team_box`, `backfill_season_totals`,
+  `backfill_missing_playoffs` and `backfill_power_index` under `scripts/`)
+  defaulted to the literal `./nba.duckdb` and `./data/parquet`, which a
+  worktree does not have - both are gitignored build artifacts that live
+  beside the main checkout. New module `association.repo_paths` resolves
+  each default to the current directory's copy where one exists, else the
+  main checkout's, found through `git rev-parse --git-common-dir`, else the
+  original literal default unchanged. Verified read-only from a worktree with
+  zero arguments: `check_coverage.py`, `check_nicknames.py` and
+  `check_team_box.py` each ran and reported against the main checkout's
+  warehouse rather than failing with "database does not exist".
+- **A fresh worktree's venv is documented as needing a sync before the
+  gates run**, and the `CHANGES.md` gate now says so when it checks nothing.
+  `AGENTS.md` ("Before you commit") gets the line CI runs -
+  `uv sync --frozen --extra dev --extra docs --extra web` - since `uv run`
+  alone creates a venv with none of the `dev`/`docs`/`web` extras and
+  `uv run pytest -q` fails before the suite starts. Separately,
+  `scripts/check_changes_md.sh` read only `git diff --cached`, so it printed
+  "Passed" with `src/` edited but nothing staged - the same check that would
+  correctly fail once the edit was staged. It now says "nothing staged, so
+  nothing to check" and still exits 0, rather than reading as a real pass.
 - **Every team name an answer prints is the name it had that season.** A 2005
   Knicks log listed a game "vs Brooklyn Nets", eight years before the Nets moved;
   the 2008 standings put the Charlotte Hornets 23rd, a team that did not exist

@@ -34,6 +34,7 @@ import duckdb
 from association.fetch import warehouse
 from association.fetch.client import ESPNClient
 from association.fetch.pipeline import Pipeline
+from association.repo_paths import default_data_dir, default_db_path
 
 log = logging.getLogger("backfill_power_index")
 
@@ -53,8 +54,8 @@ def snapshot_counts(db_path: Path) -> list[tuple[int, int, int]]:
 def main() -> int:
     """Re-fetch the affected seasons and reload the table."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--data-dir", default="./data/parquet", help="Parquet flat-file root")
-    parser.add_argument("--db-path", default="./nba.duckdb", help="DuckDB warehouse file")
+    parser.add_argument("--data-dir", default=default_data_dir(), help="Parquet flat-file root")
+    parser.add_argument("--db-path", default=default_db_path(), help="DuckDB warehouse file")
     parser.add_argument("--first-season", type=int, default=FIRST_SEASON)
     parser.add_argument("--last-season", type=int, default=None, help="Defaults to the newest season on disk")
     parser.add_argument("--rate-limit", type=float, default=5.0)

@@ -1309,22 +1309,6 @@ the entries it held, and nobody had re-read the P2s against the definition.
   `test_answer_for_a_single_named_player`.
 - **GitHub:** #36
 
-### Data commands and check scripts default to paths a worktree does not have
-- **Found:** 2026-09-11, routing check, then repo audit
-- **Evidence:** `--db-path` defaults to `./nba.duckdb`, and `--data-dir` to
-  `./data/parquet`. The affected commands are `association data pull`/`load`
-  (`cli.py`) and the scripts `check_routing.py`, `check_coverage.py`,
-  `check_nicknames.py` and `check_net_points_games.py`. In a worktree, the
-  check scripts fail with "database does not exist".
-- **User sees:** nothing. An agent loses a run, or runs a backfill against the
-  wrong files.
-- **Next step:** default to the main checkout's files, found through
-  `git rev-parse --git-common-dir`.
-- **Re-checked 2026-09-15:** three more scripts default the same way and are
-  not in the list above - `check_team_box.py:136`, `backfill_season_totals.py:73`
-  and `backfill_missing_playoffs.py:69` (the last two added this week).
-- **GitHub:** #37
-
 ### A warehouse built before a view change is not detected
 - **Found:** 2026-09-11, while qualifying true shooting and eFG% (`f66e1f1`)
 - **Evidence:** a view's SQL is stored in the warehouse file. Code that reads a
@@ -1338,15 +1322,6 @@ the entries it held, and nobody had re-read the P2s against the definition.
   against what the code reads. The backfill rule in `AGENTS.md` ("Working on the
   fetch path") is the process half of this.
 - **GitHub:** #38
-
-### A fresh worktree cannot run the gates with `uv run` alone
-- **Found:** 2026-09-11, while qualifying true shooting and eFG% (`f66e1f1`)
-- **Evidence:** `uv run` creates the worktree's venv without the `dev` extra, so
-  `uv run pytest -q` fails with `Failed to spawn: pytest` until
-  `uv sync --frozen --extra dev --extra docs --extra web` (CI's line) has run.
-- **User sees:** nothing. An agent loses time.
-- **Next step:** add the sync line to "Before you commit" in `AGENTS.md`.
-- **GitHub:** #39
 
 ### The `:rtype:` shim in `docs/conf.py` waits on dropping Python 3.10
 - **Found:** 2026-09-11, fixing the literal `:rtype:` lines
@@ -1437,16 +1412,6 @@ the entries it held, and nobody had re-read the P2s against the definition.
   the CLI and on the web page was not checked.
 - **Next step:** look at a 20-name clarification on the web page.
 - **GitHub:** #48
-
-### The CHANGES.md hook passes on an unstaged tree
-- **Found:** 2026-09-11, season-narrowing branch
-- **Evidence:** `scripts/check_changes_md.sh` reads only `git diff --cached`. So
-  `pre-commit run --all-files` with `src/` edited and nothing staged reports
-  "CHANGES.md updated....Passed". With `src/` staged alone, it fails as
-  intended.
-- **User sees:** nothing. An agent can read the pass as a real check.
-- **Next step:** have the hook say it checked nothing when the index is empty.
-- **GitHub:** #49
 
 ### A failed warehouse build leaves no marker
 - **Found:** 2026-09-08 (reported)
