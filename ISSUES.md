@@ -1805,6 +1805,11 @@ the entries it held, and nobody had re-read the P2s against the definition.
   today; whether that residual growth from partial loads alone is worth a
   periodic compaction command is the "if the size matters" the original next
   step already flagged as optional.
+- **Measured 2026-09-16:** the first full `association data load` through the
+  new path took the main warehouse from 1.73 GiB to 987 MiB, with every table's
+  row count unchanged and `check_coverage`/`check_nicknames`/`check_team_box`
+  passing. Space left by partial `--tables` reloads still accumulates until the
+  next full load.
 - **GitHub:** #66
 
 ### Free-throw coordinates stop after 2018
