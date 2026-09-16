@@ -709,6 +709,7 @@ the entries it held, and nobody had re-read the P2s against the definition.
   `game_log` with a limit of 1, the same way `CODE_ASSIGNED_INTENTS` handles a
   period; decide separately whether `head_to_head` should honour `date`.
 - **Source:** ours, not ESPN's.
+- **GitHub:** #94
 
 ### The router invents a `date` or a `season` the question never states
 - **Found:** 2026-09-16, issues audit and the "Bam adebeyo jan 19" investigation
@@ -728,6 +729,7 @@ the entries it held, and nobody had re-read the P2s against the definition.
   only when the question names a year or a relative season - the rule
   `override_invented_players` applies to names.
 - **Source:** ours, not ESPN's.
+- **GitHub:** #95
 
 ### A quarter or half is answered for a player, and for nobody else
 - **Found:** 2026-09-16 auditing the feed; **the player half shipped the same
@@ -757,6 +759,7 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **User sees:** for the shapes above, a slow agent answer or a whole-game line
   where one quarter was asked for.
 - **Next step:** the team half, which is two linescore entries added.
+- **GitHub:** #96
 
 
 ### Whether ESPN publishes coaches is unverified
@@ -770,6 +773,7 @@ the entries it held, and nobody had re-read the P2s against the definition.
   further. If ESPN does serve them and the pull discards them, that half is a
   `DATA.md` entry - the same shape as the conference-membership correction -
   and this entry links to it.
+- **GitHub:** #97
 
 ### Each narrowing the router has no slot for needs its own regex
 - **Found:** 2026-09-15 replaying 261 real StatMuse feed queries through the
@@ -1113,6 +1117,7 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **Next step:** add the range form to that knowledge entry, which is cheaper
   than a load-time column. Every date the project PRINTS goes through
   `season.eastern_date`, so this is about agent SQL only.
+- **GitHub:** #98
 
 ### `get_collection` goes quiet on the exact failure it exists to make loud
 - **Found:** 2026-09-15, reviewing `4ef119f`; **re-ranked P3 -> P4 on 2026-09-16** - nothing a user sees, which is P4's definition
