@@ -29,6 +29,8 @@ from typing import Any
 
 import duckdb
 
+from association.season import current_season
+
 MAX_CANDIDATES = 10
 
 # Curated shorthand -> the player it unambiguously means. NOT the prominence
@@ -548,18 +550,239 @@ _TEAM_NICKNAMES: dict[str, str] = {
     "los angeles clippers": "LA Clippers",
 }
 
+
+@dataclass(frozen=True)
+class FranchiseEra:
+    """One name a franchise played under, and the seasons it held it.
+
+    ESPN's ``team_id`` belongs to the FRANCHISE, not the name: id 17 is the Nets
+    in every season, New Jersey or Brooklyn, and id 3 is the Charlotte Hornets
+    of 1994, the New Orleans Hornets of 2008 and the New Orleans Pelicans of
+    2026. The ``teams`` table only holds today's names, so without this a name
+    a team used to carry resolves to nothing, and a name that has MOVED between
+    franchises resolves to the wrong one.
+
+    ``last_season`` is None for the name a franchise holds today.
+
+    .. versionadded:: 2.3.0
+    """
+
+    team_id: str
+    name: str
+    first_season: int
+    last_season: int | None = None
+
+    def covers(self, season: int) -> bool:
+        """Whether the franchise went by this name in ``season``."""
+        return self.first_season <= season and (self.last_season is None or season <= self.last_season)
+
+
+FRANCHISE_ERAS: tuple[FranchiseEra, ...] = (
+    FranchiseEra("17", "New Jersey Nets", 1978, 2012),
+    FranchiseEra("17", "Brooklyn Nets", 2013),
+    FranchiseEra("3", "Charlotte Hornets", 1989, 2002),
+    FranchiseEra("3", "New Orleans Hornets", 2003, 2013),
+    FranchiseEra("3", "New Orleans Pelicans", 2014),
+    FranchiseEra("30", "Charlotte Bobcats", 2005, 2014),
+    FranchiseEra("30", "Charlotte Hornets", 2015),
+    FranchiseEra("25", "Seattle SuperSonics", 1968, 2008),
+    FranchiseEra("25", "Oklahoma City Thunder", 2009),
+    FranchiseEra("29", "Vancouver Grizzlies", 1996, 2001),
+    FranchiseEra("29", "Memphis Grizzlies", 2002),
+    FranchiseEra("27", "Washington Bullets", 1975, 1997),
+    FranchiseEra("27", "Washington Wizards", 1998),
+)
+"""Every name the franchises that were renamed or relocated have played under.
+
+Only the franchises whose name CHANGED inside the warehouse's range are listed;
+every other team is fully described by ``teams``. Seasons are named by the year
+they end, like everywhere else here.
+
+**Checked against the warehouse where it can be.** The relocations show in the
+city each franchise's home games were played in: id 17 in East Rutherford and
+Newark, then Brooklyn from 2013; id 25 in Seattle, then Oklahoma City from
+2009; id 3 in Charlotte, New Orleans from 2003 (Oklahoma City in 2006 and
+2007) and New Orleans again; id 30 first appears in 2005 and id 29 in 1996, the
+expansion years. The three pure renames - Bullets to Wizards, Hornets to
+Pelicans, Bobcats to Hornets - moved no arena, so no column records them; those
+boundaries are league history.
+
+Charlotte's "Hornets" is the case that makes this a correctness fix and not a
+convenience. The name belongs to id 3 through 2002 and to id 30 from 2015, so
+matching today's names alone answered "Hornets record 2008" with the 2008
+Charlotte BOBCATS' 32-50 - fluent, and about the wrong team; the 2008 Hornets
+were New Orleans and won 56.
+
+.. versionadded:: 2.3.0
+"""
+
+# Shorthand a question or the router uses for a former name.
+_ERA_ALIASES: dict[str, str] = {
+    "sonics": "Seattle SuperSonics",
+    "seattle sonics": "Seattle SuperSonics",
+    "new orleans/oklahoma city hornets": "New Orleans Hornets",
+    "nj nets": "New Jersey Nets",
+}
+
+
+def _team_key(text: str) -> str:
+    """A team name normalized for lookup: case, spacing and a leading "the"."""
+    key = " ".join(text.casefold().split())
+    return key[4:] if key.startswith("the ") else key
+
+
+def _era_index() -> dict[str, list[FranchiseEra]]:
+    index: dict[str, list[FranchiseEra]] = {}
+    for era in FRANCHISE_ERAS:
+        words = era.name.casefold().split()
+        # The full name, its nickname, and its city. Only the last word is a
+        # nickname for every name listed here ("SuperSonics", "Grizzlies").
+        for key in {" ".join(words), words[-1], " ".join(words[:-1])}:
+            index.setdefault(key, []).append(era)
+    for alias, name in _ERA_ALIASES.items():
+        index.setdefault(alias, []).extend(era for era in FRANCHISE_ERAS if era.name == name)
+    # Oklahoma City was the Hornets' home for two seasons before it had a team
+    # of its own - the one city key no name above produces.
+    index.setdefault("oklahoma city", []).extend(era for era in FRANCHISE_ERAS if era.name == "New Orleans Hornets")
+    return index
+
+
+_ERAS_BY_KEY = _era_index()
+
+
+def _era_name(team_id: str, season: int) -> str | None:
+    """What franchise ``team_id`` was called in ``season``, if it was renamed."""
+    eras = [era for era in FRANCHISE_ERAS if era.team_id == team_id]
+    held = [era for era in eras if era.covers(season)]
+    return held[0].name if held else None
+
+
+def _named_for_season(team_id: str, current_name: str, season: int | None) -> str:
+    """A ``teams`` row's name as it was in ``season``.
+
+    Renamed only when the row IS the franchise :data:`FRANCHISE_ERAS` describes
+    - its current name must be that franchise's current era name. Keying on the
+    id alone renamed whatever team a table happened to file under "3": a test
+    warehouse's Detroit Pistons came back as the New Orleans Pelicans.
+    """
+    today = [era for era in FRANCHISE_ERAS if era.team_id == team_id and era.last_season is None]
+    if not today or today[0].name != current_name:
+        return current_name
+    return _era_name(team_id, season if season is not None else current_season()) or current_name
+
+
+def franchise_by_name(text: str, season: int | None = None) -> list[Entity] | None:
+    """The franchises a renamed or relocated team's name meant in ``season``.
+
+    None when ``text`` is no name :data:`FRANCHISE_ERAS` knows, so the caller
+    carries on with the ``teams`` table. A list otherwise, and the rule for
+    choosing is what the name MEANT that season:
+
+    - A name some franchise held in ``season`` means that franchise: "Hornets"
+      in 2008 is id 3, the New Orleans Hornets, and in 2026 is id 30.
+    - A name nobody held that season means the franchise that ever held it:
+      "Pelicans" in 2008 is still id 3, answered under its 2008 name.
+    - A name two franchises held, neither of them that season, is both, and the
+      caller asks: "Hornets" in 2014 was nobody, between id 3's last Hornets
+      season and id 30's first.
+
+    ``season`` None means the current season, because every template defaults
+    to it and a question naming no year means now.
+
+    .. versionadded:: 2.3.0
+    """
+    eras = _ERAS_BY_KEY.get(_team_key(text))
+    if not eras:
+        return None
+    season = season if season is not None else current_season()
+    held = [era for era in eras if era.covers(season)]
+    ids = sorted({era.team_id for era in (held or eras)}, key=int)
+    return [Entity(id=team_id, name=_era_name(team_id, season) or next(era.name for era in eras if era.team_id == team_id)) for team_id in ids]
+
+
+def _franchise_in(con: duckdb.DuckDBPyConnection, text: str, season: int | None) -> list[Entity] | None:
+    """:func:`franchise_by_name`, kept only where the warehouse agrees.
+
+    The era table names ESPN's ids, and a franchise is only trusted to be what
+    that id holds if ``teams`` files today's name under it - the same guard
+    :func:`_named_for_season` applies in the other direction. None when the
+    name is not a former one, or no id checks out, so the caller falls back to
+    the ``teams`` table.
+    """
+    found = franchise_by_name(text, season)
+    if found is None:
+        return None
+    try:
+        rows = dict(con.execute("SELECT CAST(team_id AS VARCHAR), display_name FROM teams").fetchall())
+    except duckdb.Error:
+        return None
+    today = {era.team_id: era.name for era in FRANCHISE_ERAS if era.last_season is None}
+    kept = [team for team in found if rows.get(team.id) == today.get(team.id)]
+    return kept or None
+
+
+def _by_nickname(con: duckdb.DuckDBPyConnection, text: str, season: int | None) -> Entity | None:
+    """The one team a name's NICKNAME points to, when its city is garbled.
+
+    The router expands a question's nickname into a full name, and the city it
+    supplies is sometimes invented: "blazers" came back as "Portland Blazers"
+    (ESPN writes Portland TRAIL Blazers) and "kings" as "Los Angeles Kings".
+    Literal matching finds nothing for either.
+
+    The nickname decides, and the city may only confirm it or be unknown - it
+    may never contradict it. "Portland Blazers" resolves, since Portland is the
+    Blazers' city. "Los Angeles Kings" does not, because Los Angeles is two
+    OTHER teams' city and choosing between an invented city and a real nickname
+    is a guess; the question's own words settle that one instead, in
+    :func:`scope_from_question`.
+    """
+    try:
+        return _nickname_match(con, text, season)
+    except duckdb.Error:
+        # `name` and `location` are columns of the real `teams` table and not
+        # of every partial one. Finding nothing is the pre-existing answer.
+        return None
+
+
+def _nickname_match(con: duckdb.DuckDBPyConnection, text: str, season: int | None) -> Entity | None:
+    words = _team_key(text).split()
+    for size in (2, 1):
+        if len(words) <= size:
+            continue
+        nickname, city = " ".join(words[-size:]), " ".join(words[:-size])
+        named = _franchise_in(con, nickname, season)
+        if named is None:
+            rows = con.execute("SELECT team_id, display_name FROM teams WHERE name ILIKE ? OR name ILIKE ?", [nickname, f"% {nickname}"]).fetchall()
+            named = [Entity(id=str(r[0]), name=r[1]) for r in rows]
+        if len(named) != 1:
+            continue
+        in_city = _franchise_in(con, city, season)
+        if in_city is None:
+            rows = con.execute("SELECT team_id FROM teams WHERE location ILIKE ?", [city]).fetchall()
+            in_city = [Entity(id=str(r[0]), name="") for r in rows]
+        if not in_city or named[0].id in {team.id for team in in_city}:
+            return named[0]
+    return None
+
+
 # "vs", "versus", "against" or "v" and whatever follows. Whether what follows is
 # a team is decided against the teams table, not here: "lebron vs kawhi" is two
 # players and must stay a comparison.
 _AGAINST = re.compile(r"\b(?:vs\.?|versus|against|v\.?)\s+(?:the\s+)?(.+)", re.IGNORECASE)
 
 
-def _team_named(con: duckdb.DuckDBPyConnection, text: Any) -> Entity | None:
+def _team_named(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = None) -> Entity | None:
     """The one team ``text`` names outright - an id, an abbreviation, a nickname,
     or a name match starting a word - or None. Never a substring guess: "LA"
-    is two teams and stays None, which is the point."""
+    is two teams and stays None, which is the point.
+
+    A name a franchise used to carry is read for ``season``; see
+    :func:`franchise_by_name`."""
     if not isinstance(text, str) or not text.strip():
         return None
+    historic = _franchise_in(con, text, season)
+    if historic is not None:
+        return historic[0] if len(historic) == 1 else None
     text = _TEAM_NICKNAMES.get(text.strip().casefold(), text.strip())
     try:
         rows = con.execute(
@@ -571,10 +794,12 @@ def _team_named(con: duckdb.DuckDBPyConnection, text: Any) -> Entity | None:
         # Everything here is best-effort: finding none leaves the slots exactly
         # as the router gave them, which is never worse than before this ran.
         return None
-    return Entity(id=str(rows[0][0]), name=rows[0][1]) if len(rows) == 1 else None
+    if len(rows) == 1:
+        return Entity(id=str(rows[0][0]), name=rows[0][1])
+    return _by_nickname(con, text, season) if not rows else None
 
 
-def _team_after_versus(con: duckdb.DuckDBPyConnection, question: str) -> Entity | None:
+def _team_after_versus(con: duckdb.DuckDBPyConnection, question: str, season: int | None = None) -> Entity | None:
     """The team a question sets a subject AGAINST ("jaylen brown last 8 games vs
     pistons"), or None. Spans of three words down to one are tried, so "vs new
     york" is the Knicks rather than an ambiguous "new"."""
@@ -582,7 +807,7 @@ def _team_after_versus(con: duckdb.DuckDBPyConnection, question: str) -> Entity 
         words = _words(match.group(1))[:3]
         for size in (3, 2, 1):
             if size <= len(words) and len(" ".join(words[:size])) >= 2:
-                team = _team_named(con, " ".join(words[:size]))
+                team = _team_named(con, " ".join(words[:size]), season)
                 if team is not None:
                     return team
     return None
@@ -636,9 +861,10 @@ def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: di
     .. versionadded:: 2.1.0
     """
     notes: list[str] = []
-    versus = _team_after_versus(con, question)
+    season = slots.get("season") if isinstance(slots.get("season"), int) else None
+    versus = _team_after_versus(con, question, season)
     has_player = bool(slots.get("player")) or bool(slots.get("players"))
-    team = _team_named(con, slots.get("team"))
+    team = _team_named(con, slots.get("team"), season)
 
     def only_player() -> str | None:
         """The one player the question names, or None if it names none or several."""
@@ -673,7 +899,7 @@ def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: di
 
     listed = slots.get("players")
     if versus is not None and isinstance(listed, list):
-        kept = [name for name in listed if not ((found := _team_named(con, name)) is not None and found.id == versus.id)]
+        kept = [name for name in listed if not ((found := _team_named(con, name, season)) is not None and found.id == versus.id)]
         if len(kept) != len(listed):
             notes.append(f"{versus.name!r} is a team, not a player to compare")
             if len(kept) == 1:
@@ -698,9 +924,39 @@ def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: di
         slots.pop("team", None)
         notes.append(f"{team.name!r} is the team the question plays against, not the subject's")
 
-    if versus is not None and not slots.get("opponent"):
+    held = slots.get("opponent")
+    held_team = _team_named(con, held, season) if held else None
+    if versus is not None and held and (held_team is None or (held_team.id != versus.id and not _team_grounded(con, question, held_team))):
+        # The router filled `opponent`, and what it wrote is either no team at
+        # all or a team the question never mentions - while the question names
+        # one outright. The question wins. This used to fill the slot only when
+        # it was EMPTY, so an unresolvable string beat a team the question
+        # named: "duren v nets 1h gameloh" arrived as opponent="New Jersey
+        # Nets", this read "nets" as the Brooklyn Nets correctly, and threw it
+        # away. Same rule as override_invented_players, for the other entity.
+        slots["opponent"] = versus.name
+        notes.append(f"opponent {held!r} -> {versus.name!r} (the question names it; the router's {'resolves to no team' if held_team is None else 'is not in the question'})")
+    elif versus is not None and not held:
+        listed_teams = [name for name in slots.get("teams") or [] if isinstance(name, str)]
+        if reads_player and has_player and any((found := _team_named(con, name, season)) is not None and found.id == versus.id for name in listed_teams):
+            # A player is the subject, so the team after "vs" is his opponent even
+            # when the router filed it in `teams`. The "already carried" rule
+            # below exists for head_to_head, which reads `teams` as its two sides;
+            # player_stat and game_log never read that slot, so leaving it there
+            # answers every opponent. "Keyonte George against blazers" arrived as
+            # teams=["Portland Blazers"] and was answered correctly only while
+            # that name failed to resolve - resolving it answered his whole
+            # 54-game season instead of his 2 games against Portland.
+            kept = [name for name in listed_teams if not ((found := _team_named(con, name, season)) is not None and found.id == versus.id)]
+            if kept:
+                slots["teams"] = kept
+            else:
+                slots.pop("teams", None)
+            slots["opponent"] = versus.name
+            notes.append(f"opponent {versus.name!r} (the question plays against it; the router filed it as a team)")
+            return notes
         carried = [slots.get("team"), *(slots.get("teams") or [])]
-        if not any((found := _team_named(con, name)) is not None and found.id == versus.id for name in carried):
+        if not any((found := _team_named(con, name, season)) is not None and found.id == versus.id for name in carried):
             slots["opponent"] = versus.name
             notes.append(f"opponent {versus.name!r} (from the question)")
     return notes
@@ -1032,11 +1288,25 @@ def find_players(con: duckdb.DuckDBPyConnection, text: str, limit: int | None = 
     return [Entity(id=str(r[0]), name=r[1]) for r in matched]
 
 
-def find_teams(con: duckdb.DuckDBPyConnection, text: str) -> list[Entity]:
+def find_teams(con: duckdb.DuckDBPyConnection, text: str, season: int | None = None) -> list[Entity]:
     """Substring matching is kept (so "LA" stays honestly ambiguous rather than
     silently resolving to whichever team is literally named "LA"), but matches
     that start a word are ranked first - otherwise "LA" offers "Atlanta Hawks"
-    as a candidate, which makes a clarification look broken."""
+    as a candidate, which makes a clarification look broken.
+
+    Two readings come before and after that. First, a name a renamed or
+    relocated franchise carried is read for ``season`` - "Hornets" in 2008 is
+    New Orleans, not today's Charlotte team (:func:`franchise_by_name`). Last,
+    when nothing matches literally, a name whose city the router garbled is
+    read by its nickname (:func:`_by_nickname`).
+
+    .. versionchanged:: 2.3.0
+       Reads ``season``, resolves former franchise names, and falls back to the
+       nickname when the city is wrong.
+    """
+    historic = _franchise_in(con, text, season)
+    if historic is not None:
+        return historic
     # "Sixers" and "Cavs" are no word of any ESPN team name; the router emits
     # them verbatim often enough that they fell through to the agent.
     text = _TEAM_NICKNAMES.get(text.strip().casefold(), text)
@@ -1060,8 +1330,11 @@ def find_teams(con: duckdb.DuckDBPyConnection, text: str) -> list[Entity]:
     # one team could be answered about another. "LA" is still honestly
     # ambiguous - no team is abbreviated that - and both Los Angeles teams sit
     # at rank 1 together.
+    if not rows:
+        nicknamed = _by_nickname(con, text, season)
+        return [nicknamed] if nicknamed is not None else []
     best = max((r[2] for r in rows), default=0)
-    return [Entity(id=str(r[0]), name=r[1]) for r in rows if r[2] == best]
+    return [Entity(id=str(r[0]), name=_named_for_season(str(r[0]), r[1], season)) for r in rows if r[2] == best]
 
 
 def _resolve(candidates: list[Entity], text: str, exact_keys: tuple[str, ...]) -> Resolution:
@@ -1143,7 +1416,11 @@ def resolve_player(
     return Ambiguous(query=text, candidates=[c.name for c in ordered], active=len(current))
 
 
-def resolve_team(con: duckdb.DuckDBPyConnection, text: str) -> Resolution:
+def resolve_team(con: duckdb.DuckDBPyConnection, text: str, season: int | None = None) -> Resolution:
     """One team, or a refusal. See :func:`resolve_player` for why ambiguity is
-    returned rather than resolved."""
-    return _resolve(find_teams(con, text), text, ("name", "id"))
+    returned rather than resolved.
+
+    .. versionchanged:: 2.3.0
+       Takes the ``season`` a team name is read for.
+    """
+    return _resolve(find_teams(con, text, season), text, ("name", "id"))

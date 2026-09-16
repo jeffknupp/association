@@ -536,16 +536,26 @@ def _resolved_player(
             raise TemplateUnsupported(f"no player matching {text!r}")
 
 
-def _resolved_team(con: duckdb.DuckDBPyConnection, text: Any) -> Entity | TemplateResult:
+def _resolved_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = None) -> Entity | TemplateResult:
+    """One team, a clarifying question, or a refusal - read for ``season``,
+    because a franchise's name is a fact about a season. "Hornets" is New
+    Orleans in 2008 and Charlotte in 2026; see entities.franchise_by_name."""
     if not isinstance(text, str) or not text.strip():
         raise TemplateUnsupported("no team named")
-    match resolve_team(con, text):
+    match resolve_team(con, text, season):
         case Entity() as team:
             return team
         case Ambiguous(candidates=candidates):
             return _clarify(text, candidates, kind="team")
         case _:
             raise TemplateUnsupported(f"no team matching {text!r}")
+
+
+def _slot_season(slots: dict[str, Any]) -> int | None:
+    """The season a question's team names are read for: the one it named, or
+    None for "now" - the same default every template applies."""
+    season = slots.get("season")
+    return season if isinstance(season, int) else None
 
 
 # ---- one season of box scores, or a career of them ----
@@ -1775,7 +1785,7 @@ def _narrow_player_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _
         base_params=[player.id, span.season_type, *season_params],
     )
     if opponent:
-        team = _resolved_team(con, opponent)
+        team = _resolved_team(con, opponent, season=span.season)
         if isinstance(team, TemplateResult):
             return team
         narrowed.opponent = team
@@ -2338,14 +2348,14 @@ def team_record(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         # "celtics vs bulls record" can land both teams in `teams`, which
         # scope_from_question leaves alone; the first is the subject.
         team_text, listed = listed[0], listed[1:]
-    team = _resolved_team(con, team_text)
+    team = _resolved_team(con, team_text, season=_slot_season(slots))
     if isinstance(team, TemplateResult):
         return team
 
     opponent: Entity | None = None
     opponent_text = slots.get("opponent")
     if isinstance(opponent_text, str) and opponent_text.strip():
-        found = _resolved_team(con, opponent_text)
+        found = _resolved_team(con, opponent_text, season=_slot_season(slots))
         if isinstance(found, TemplateResult):
             return found
         if found.id == team.id:
@@ -2353,7 +2363,7 @@ def team_record(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         opponent = found
     else:
         for text in listed:
-            found = _resolved_team(con, text)
+            found = _resolved_team(con, text, season=_slot_season(slots))
             if isinstance(found, TemplateResult):
                 return found
             if found.id != team.id:
@@ -2741,7 +2751,7 @@ def team_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     refused = _conference_refusal(slots)
     if refused is not None:
         return refused
-    team = _resolved_team(con, slots.get("team"))
+    team = _resolved_team(con, slots.get("team"), season=_slot_season(slots))
     if isinstance(team, TemplateResult):
         return team
     stat = slots.get("stat")
@@ -2884,7 +2894,7 @@ def team_leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
 
     named: Entity | None = None
     if isinstance(slots.get("team"), str) and slots["team"].strip():
-        found = _resolved_team(con, slots["team"])
+        found = _resolved_team(con, slots["team"], season=_slot_season(slots))
         if isinstance(found, TemplateResult):
             return found
         named = found
@@ -2988,7 +2998,7 @@ def team_outlook(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     refused = _conference_refusal(slots)
     if refused is not None:
         return refused
-    team = _resolved_team(con, slots.get("team"))
+    team = _resolved_team(con, slots.get("team"), season=_slot_season(slots))
     if isinstance(team, TemplateResult):
         return team
     season = slots.get("season") or current_season()
@@ -3226,7 +3236,7 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     span = "career" if date else span
 
     if slots.get("team"):
-        team = _resolved_team(con, slots.get("team"))
+        team = _resolved_team(con, slots.get("team"), season=_slot_season(slots))
         if isinstance(team, TemplateResult):
             return team
         if without:
@@ -3292,7 +3302,7 @@ def _team_game_log(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, *,
     extra_params: list[Any] = []
     filters: list[str] = []
     if opponent:
-        rival = _resolved_team(con, opponent)
+        rival = _resolved_team(con, opponent, season=span.season)
         if isinstance(rival, TemplateResult):
             return rival
         if rival.id == team.id:
@@ -3897,7 +3907,7 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     # after them is the second.
     resolved: list[Entity] = []
     for name in names:
-        team = _resolved_team(con, name)
+        team = _resolved_team(con, name, season=_slot_season(slots))
         if isinstance(team, TemplateResult):
             return team
         if team.id not in {t.id for t in resolved}:
@@ -4020,14 +4030,14 @@ def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> Template
         # No template computes a PLAYER's quarter score - see the docstring.
         raise TemplateUnsupported("team_quarter_points cannot answer for a named player")
 
-    team = _resolved_team(con, slots.get("team"))
+    team = _resolved_team(con, slots.get("team"), season=_slot_season(slots))
     if isinstance(team, TemplateResult):
         return team
 
     opponent: Entity | None = None
     opponent_text = slots.get("opponent")
     if isinstance(opponent_text, str) and opponent_text.strip():
-        resolved_opponent = _resolved_team(con, opponent_text)
+        resolved_opponent = _resolved_team(con, opponent_text, season=_slot_season(slots))
         if isinstance(resolved_opponent, TemplateResult):
             return resolved_opponent
         opponent = resolved_opponent
@@ -4187,7 +4197,7 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
 
     opponent: Entity | None = None
     if isinstance(slots.get("opponent"), str) and slots["opponent"].strip():
-        resolved = _resolved_team(con, slots["opponent"])
+        resolved = _resolved_team(con, slots["opponent"], season=_slot_season(slots))
         if isinstance(resolved, TemplateResult):
             return resolved
         opponent = resolved
@@ -4462,10 +4472,10 @@ def _misfiled_postseason(scope: _Scope) -> TemplateResult | None:
     return TemplateResult(data={"message": message, "season": scope.season}, answer=message)
 
 
-def _optional_team(con: duckdb.DuckDBPyConnection, text: Any) -> Entity | TemplateResult | None:
+def _optional_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = None) -> Entity | TemplateResult | None:
     if not isinstance(text, str) or not text.strip():
         return None
-    return _resolved_team(con, text)
+    return _resolved_team(con, text, season=season)
 
 
 def _no_games(con: duckdb.DuckDBPyConnection, player: Entity, scope: _Scope, team: Entity | None) -> TemplateResult:
@@ -4513,7 +4523,7 @@ def player_splits(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult
     split = slots.get("split")
     if split is not None and split not in SPLIT_KINDS:
         raise TemplateUnsupported(f"no split named {split!r}")
-    team = _optional_team(con, slots.get("team"))
+    team = _optional_team(con, slots.get("team"), season=_slot_season(slots))
     if isinstance(team, TemplateResult):
         return team
 
@@ -4622,7 +4632,7 @@ def with_without(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     players = slots.get("players")
     listed: list[Any] = players if isinstance(players, list) else []
     texts = list(dict.fromkeys(n.strip() for n in [slots.get("player"), *listed] if isinstance(n, str) and n.strip()))
-    team = _optional_team(con, slots.get("team"))
+    team = _optional_team(con, slots.get("team"), season=_slot_season(slots))
     if isinstance(team, TemplateResult):
         return team
     if not mate_texts:
@@ -4782,7 +4792,7 @@ def record_when(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     player = _resolved_player(con, slots.get("player"), "record_when needs a player", available=_BOX_SCORES, season=scope.season, through=_career_end(scope.season))
     if isinstance(player, TemplateResult):
         return player
-    team = _optional_team(con, slots.get("team"))
+    team = _optional_team(con, slots.get("team"), season=_slot_season(slots))
     if isinstance(team, TemplateResult):
         return team
 
@@ -4930,7 +4940,7 @@ def streak(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     hit = "x.value >= $threshold" if by_stat else "x.won = $want"
     condition: dict[str, Any] = {"threshold": threshold} if by_stat else {"want": want_win}
     span = slots.get("span")
-    team = _optional_team(con, slots.get("team"))
+    team = _optional_team(con, slots.get("team"), season=_slot_season(slots))
     if isinstance(team, TemplateResult):
         return team
 

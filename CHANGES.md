@@ -15,6 +15,54 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A team name is read for its season, and the question's own team beats one
+  the router could not ground.** Found through "duren v nets 1h gameloh", which
+  fell through because the router wrote the opponent as "New Jersey Nets". That
+  was not new - the router wrote it identically in all seven replays since the
+  first - it was hidden, because the question used to be forced to the agent and
+  nothing read the slot until `period_split` did.
+
+  Two faults, and the second is the one that answered wrongly. **`teams` holds
+  only today's 30 names**, so every former name resolved to nothing - New Jersey
+  Nets, Seattle SuperSonics, Charlotte Bobcats, Vancouver Grizzlies, Washington
+  Bullets. And **"Hornets" has belonged to two franchises**, so matching today's
+  names answered "Hornets record 2008" with the 2008 Charlotte BOBCATS' 32-50;
+  the Hornets that season were New Orleans, and went 56-26. ESPN's ids belong to
+  the franchise, not the name - measured from where each team's home games were
+  played, id 17 is the Nets in New Jersey and Brooklyn alike - so the fix is a
+  list of the names the renamed and relocated franchises have carried and the
+  seasons they carried them (`entities.FRANCHISE_ERAS`), read for the season a
+  question is about. A name nobody held that season asks: "Hornets" in 2014 was
+  neither franchise. An id is only trusted where the warehouse files today's name
+  under it, because the first version renamed a test warehouse's Detroit Pistons,
+  filed under id 3, to the New Orleans Pelicans.
+
+  A name whose city the router invented is read by its nickname, unless the city
+  contradicts it: "Portland Blazers" (ESPN writes Portland TRAIL Blazers)
+  resolves, "Los Angeles Kings" does not, because Los Angeles is two other teams.
+
+  **The precedence bug.** `scope_from_question` read "nets" after "v" correctly
+  as the Brooklyn Nets, and then used it only if `opponent` was EMPTY - so a
+  router string resolving to nothing beat a team the question names outright.
+  The question now wins when the router's opponent is no team, or a team the
+  question never mentions. It also fixed a second shape nobody had diagnosed:
+  "andrew wiggins last 15 games vs warriors" arrived with the player and the team
+  SWAPPED between slots, and kept his name as the opponent.
+
+  Fixing resolution exposed a third fault, caught by replaying before shipping.
+  "Keyonte George against blazers" arrived as `teams=["Portland Blazers"]`, and
+  was answered correctly only BECAUSE that name failed to resolve. Resolving it
+  let the "slots already carry this team" rule - written for `head_to_head`,
+  which reads `teams` as its two sides - leave it there, and `player_stat`
+  answered his whole 54-game season instead of his 2 games against Portland.
+  With a player as the subject, a team after "vs" is his opponent wherever the
+  router filed it.
+
+  Measured by replaying the last run's recorded router output through the fixed
+  entity stage and templates - exact for a change that lives entirely after the
+  router, and checked by reproducing all 261 rows of the recorded run on the
+  unchanged code first: 3 questions answer that fell through (Duren, Wiggins,
+  Duncan Robinson), and nothing else moves.
 - **`period_split`'s average was inflated, and now counts the games he
   played.** As first shipped, a game only counted if he made a shot in that
   period, so every scoreless quarter left the denominator: "RJ Barrett scored

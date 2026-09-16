@@ -1031,9 +1031,26 @@ consistently, which is exactly what makes it dangerous: the data looks healthy.
   labeled "New Orleans Pelicans", and 1996 Vancouver appears as Memphis.
   Separately, seven team ids appearing in `games` are absent from `teams`
   entirely (see the placeholder/phantom entry).
+- **But the ids are stable, because they belong to the FRANCHISE.** Measured
+  2026-09-16 from the city each team's home games were played in: id 17 plays
+  in East Rutherford and Newark, then Brooklyn from 2013 - one id, New Jersey
+  and Brooklyn Nets alike. Id 25 moves from Seattle to Oklahoma City in 2009.
+  Id 3 is in Charlotte through 2002, New Orleans from 2003 (Oklahoma City for
+  2006 and 2007) - the Charlotte Hornets, New Orleans Hornets and Pelicans are
+  one id. Id 30 first appears in 2005 and id 29 in 1996, their expansion years.
+  So every game is filed under the right franchise; only the NAME is missing.
+  The three pure renames (Bullets to Wizards, Hornets to Pelicans, Bobcats to
+  Hornets) moved no arena, so nothing in the warehouse records their years.
 - **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull**
   (`teams` reproduced exactly, 30 rows).
-- **How we handle it:** nothing. Historical games print under today's names.
+- **How we handle it:** `entities.FRANCHISE_ERAS` lists every name the renamed
+  and relocated franchises have carried, with the seasons they carried it, and
+  team names are resolved for the season asked about. That matters more than
+  it sounds: "Hornets" moved BETWEEN franchises, so matching today's names
+  answered "Hornets record 2008" with the 2008 Charlotte Bobcats (id 30),
+  where the Hornets that season were New Orleans (id 3). The named team in an
+  answer is printed under its name for that season. Names inside rows - a game
+  log's opponents - still print under today's names.
 - **Tracked in:** ISSUES.md, "Historical teams are shown under today's names"
   (#17).
 

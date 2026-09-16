@@ -513,14 +513,21 @@ wrong for other reasons, and each of those is an entry below.
   wrong-cause sentence about a rostered, injured player.
 - **GitHub:** #16
 
-### Historical teams are shown under today's names
-- **Found:** 2026-09-11, template work (agent A)
-- **Evidence:** `teams` holds only the 30 current teams, so the 1993 Charlotte
-  Hornets are labelled "New Orleans Pelicans".
-- **User sees:** a 1990s game log or matchup naming a franchise by its current
-  name.
-- **Next step:** build a per-season team-name table from each game's own team
-  names, and use it wherever a historical game is printed.
+### Historical teams are shown under today's names, inside rows
+- **Found:** 2026-09-11, template work (agent A); **narrowed 2026-09-16**
+- **The part that was a wrong answer is fixed.** A team NAMED in a question is
+  resolved for its season from `entities.FRANCHISE_ERAS`, and printed under
+  that season's name - "Hornets record 2008" is the New Orleans Hornets' 56-26,
+  where it used to be the Charlotte Bobcats' 32-50.
+- **What remains is cosmetic but visible:** every team name printed from a
+  join against `teams` - a game log's opponent column, a leaderboard's team, a
+  matchup's opponents - is still today's name, so a 2005 log lists games "vs
+  NO" for the New Orleans Hornets and a 1996 row reads Memphis for Vancouver.
+- **User sees:** a historical row naming a franchise by its current name.
+- **Next step:** one SQL-side lookup built from `FRANCHISE_ERAS` (a small
+  VALUES table joined on team id and season) so those joins pick up the era
+  name - the per-season table the original entry asked for, without having to
+  fetch one, because the ids already belong to franchises.
 - **Source:** DATA.md, "`teams` holds only the 30 current franchises"
 - **GitHub:** #17
 
@@ -689,23 +696,6 @@ wrong for other reasons, and each of those is an entry below.
 - **GitHub:** #76
 
 ## P3: refusal or gap
-
-### A franchise's former name resolves to nothing
-- **Found:** 2026-09-16, replaying the feed after the `period_split` fixes
-- **Evidence:** "duren v nets 1h gameloh" routed correctly to `period_split`
-  and arrived with `opponent="New Jersey Nets"` - the model's expansion of
-  "nets", and the franchise's name until 2012. `entities.find_teams("New Jersey
-  Nets")` returns `[]`, so the question falls through. `_TEAM_NICKNAMES`
-  already maps shorthand ("sixers", "cavs") and the four abbreviations ESPN
-  does not use; it has no former names. The same shape is likely for "Seattle
-  SuperSonics", "New Orleans Hornets", "Charlotte Bobcats" and "Vancouver
-  Grizzlies", none of them measured.
-- **User sees:** a fall-through to the agent for a team the warehouse holds.
-- **Next step:** check which former names the router emits and which resolve,
-  then decide per name. Mapping "New Jersey Nets" to Brooklyn is safe - one
-  franchise, one team id. "Charlotte Hornets" is not a former name at all, and
-  "New Orleans Hornets" is the Pelicans, so this cannot be a blanket rule. See
-  also #17, which is the same history seen from the answer's side.
 
 ### A quarter or half is answered for a player, and for nobody else
 - **Found:** 2026-09-16 auditing the feed; **the player half shipped the same

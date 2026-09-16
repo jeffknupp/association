@@ -718,3 +718,146 @@ def test_a_player_in_the_team_slot_becomes_the_subject(scope_con: duckdb.DuckDBP
     slots: dict[str, Any] = {"player": "Curry", "team": "Podziemski", "without": ["curry"]}
     scope_from_question(scope_con, "Podziemski game log without curry", slots, reads_player=True)
     assert slots["player"] == "Brandin Podziemski" and "team" not in slots and slots["without"] == ["curry"]
+
+
+# ---------------- team names across a franchise's history ----------------
+
+
+@pytest.fixture
+def franchises() -> duckdb.DuckDBPyConnection:
+    """ESPN's real ids and today's names, with the columns the real `teams` has.
+
+    The ids are the point: ESPN keys a team by FRANCHISE, so id 17 is the Nets
+    whether they played in New Jersey or Brooklyn, id 3 was the Charlotte
+    Hornets, the New Orleans Hornets and is now the Pelicans, and id 30 was the
+    Bobcats before it was today's Hornets. Lakers and Clippers are here for
+    Los Angeles; Kings and Blazers for the two garbled cities the router wrote.
+    """
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR, location VARCHAR, name VARCHAR)")
+    c.execute(
+        "INSERT INTO teams VALUES "
+        "('17','BKN','Brooklyn Nets','Brooklyn','Nets'),('3','NO','New Orleans Pelicans','New Orleans','Pelicans'),"
+        "('30','CHA','Charlotte Hornets','Charlotte','Hornets'),('25','OKC','Oklahoma City Thunder','Oklahoma City','Thunder'),"
+        "('22','POR','Portland Trail Blazers','Portland','Trail Blazers'),('23','SAC','Sacramento Kings','Sacramento','Kings'),"
+        "('13','LAL','Los Angeles Lakers','Los Angeles','Lakers'),('12','LAC','LA Clippers','LA','Clippers'),('8','DET','Detroit Pistons','Detroit','Pistons')"
+    )
+    return c
+
+
+def _teams(con: duckdb.DuckDBPyConnection, text: str, season: int | None = None) -> list[tuple[str, str]]:
+    return [(team.id, team.name) for team in find_teams(con, text, season)]
+
+
+def test_a_former_name_resolves_to_the_franchise(franchises: duckdb.DuckDBPyConnection) -> None:
+    """ "duren v nets 1h gameloh" arrived as opponent="New Jersey Nets" in every
+    replay since the first, and it resolved to nothing - hidden until a template
+    finally read the slot. The Nets are one franchise in every season."""
+    assert [team_id for team_id, _ in _teams(franchises, "New Jersey Nets")] == ["17"]
+    assert _teams(franchises, "Nets", 2005) == [("17", "New Jersey Nets")]
+    assert _teams(franchises, "Sonics", 2005) == [("25", "Seattle SuperSonics")]
+
+
+def test_a_name_that_moved_between_franchises_is_read_for_its_season(franchises: duckdb.DuckDBPyConnection) -> None:
+    """The one that answered wrongly rather than not at all. "Hornets record
+    2008" came back with the 2008 Charlotte BOBCATS' 32-50, because only
+    today's names were matched. In 2008 the Hornets were New Orleans, id 3,
+    and went 56-26."""
+    assert _teams(franchises, "Hornets", 2008) == [("3", "New Orleans Hornets")]
+    assert _teams(franchises, "Hornets", 2000) == [("3", "Charlotte Hornets")]
+    assert _teams(franchises, "Hornets", 2026) == [("30", "Charlotte Hornets")]
+    assert _teams(franchises, "Charlotte", 2010) == [("30", "Charlotte Bobcats")]
+
+
+def test_a_name_nobody_held_that_season_asks_rather_than_guesses(franchises: duckdb.DuckDBPyConnection) -> None:
+    """No team was called the Hornets in 2014 - id 3 had just become the
+    Pelicans and id 30 was still the Bobcats. Both are offered, under the names
+    they carried that year, and resolve_team turns that into a question."""
+    assert _teams(franchises, "Hornets", 2014) == [("3", "New Orleans Pelicans"), ("30", "Charlotte Bobcats")]
+    assert isinstance(resolve_team(franchises, "Hornets", 2014), Ambiguous)
+
+
+def test_a_current_name_asked_about_before_it_existed_still_means_the_franchise(franchises: duckdb.DuckDBPyConnection) -> None:
+    """ "Pelicans in 2008" names nobody that year, but only one franchise has
+    ever held it, so it is that franchise under the name it had then."""
+    assert _teams(franchises, "Pelicans", 2008) == [("3", "New Orleans Hornets")]
+
+
+def test_a_garbled_city_is_read_by_its_nickname_unless_the_city_contradicts_it(franchises: duckdb.DuckDBPyConnection) -> None:
+    """The router expands a nickname into a full name and sometimes invents the
+    city. "Portland Blazers" is right about the city and short a word - ESPN
+    writes Portland Trail Blazers - and resolves. "Los Angeles Kings" names a
+    city that belongs to two OTHER teams; picking the nickname over it would be
+    a guess, so it resolves to nothing here and the question's own words settle
+    it in scope_from_question."""
+    assert _teams(franchises, "Portland Blazers") == [("22", "Portland Trail Blazers")]
+    assert _teams(franchises, "Los Angeles Kings") == []
+    assert _teams(franchises, "LA") == [("12", "LA Clippers"), ("13", "Los Angeles Lakers")], "a real ambiguity stays one"
+
+
+def test_a_franchise_id_is_trusted_only_where_the_warehouse_agrees() -> None:
+    """The era table names ESPN's ids. A warehouse that files a different team
+    under one of them must not be renamed or resolved through it - the first
+    version of this renamed a Detroit Pistons filed under "3" to the New
+    Orleans Pelicans."""
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR, location VARCHAR, name VARCHAR)")
+    c.execute("INSERT INTO teams VALUES ('3','DET','Detroit Pistons','Detroit','Pistons')")
+    assert _teams(c, "Detroit Pistons", 2008) == [("3", "Detroit Pistons")]
+    assert _teams(c, "Hornets", 2008) == []
+
+
+@pytest.mark.parametrize(
+    ("question", "held", "want"),
+    [
+        # The router's string resolves to no team; the question names one.
+        ("steve adam's vs kings last 10 games", "Los Angeles Kings", "Sacramento Kings"),
+        # The router's is a real team the question never mentions.
+        ("tatum vs lakers", "Portland Trail Blazers", "Los Angeles Lakers"),
+        # The router got it right, in a form the question does not use.
+        ("tatum vs lakers", "Los Angeles Lakers", "Los Angeles Lakers"),
+        # Nothing after "vs" is a team, so there is nothing to correct it with.
+        ("curry vs lebron", "Lakers", "Lakers"),
+    ],
+)
+def test_the_questions_own_opponent_beats_one_the_router_could_not_ground(franchises: duckdb.DuckDBPyConnection, question: str, held: str, want: str) -> None:
+    """scope_from_question already read the team after "vs" correctly - for
+    "duren v nets" it found the Brooklyn Nets - and then only used it when the
+    `opponent` slot was EMPTY. A router string that resolves to nothing, or to a
+    team the question never names, counted as filled, so it won. Same rule as
+    override_invented_players: the question is the source."""
+    slots: dict[str, Any] = {"player": "X", "opponent": held}
+    scope_from_question(franchises, question, slots, reads_player=True)
+    assert slots["opponent"] == want
+
+
+def test_a_team_after_vs_filed_in_teams_is_a_players_opponent(franchises: duckdb.DuckDBPyConnection) -> None:
+    """ "Keyonte George against blazers" arrived as teams=["Portland Blazers"].
+    It was answered correctly only while that name failed to resolve: once it
+    did, the "slots already carry this team" rule - written for head_to_head,
+    which reads `teams` as its two sides - left it there, and player_stat, which
+    never reads `teams`, answered his whole season instead of his games against
+    Portland. With a player as the subject it is his opponent."""
+    slots: dict[str, Any] = {"player": "Keyonte George", "teams": ["Portland Blazers"]}
+    scope_from_question(franchises, "Keyonte George against blazers", slots, reads_player=True)
+    assert slots.get("opponent") == "Portland Trail Blazers" and "teams" not in slots
+
+
+def test_two_teams_with_no_player_stay_a_head_to_head(franchises: duckdb.DuckDBPyConnection) -> None:
+    """The case the carried-team rule exists for, and must keep: no player, so
+    `teams` are the two sides and nothing is an opponent."""
+    slots: dict[str, Any] = {"teams": ["Sacramento Kings", "Portland Trail Blazers"]}
+    scope_from_question(franchises, "kings vs blazers", slots, reads_player=False)
+    assert slots == {"teams": ["Sacramento Kings", "Portland Trail Blazers"]}
+
+
+def test_a_player_swapped_into_the_opponent_slot_is_replaced_by_the_questions_team(franchises: duckdb.DuckDBPyConnection) -> None:
+    """ "andrew wiggins last 15 games vs warriors" arrived with the two slots
+    swapped - team="Golden State Warriors", opponent="Andrew Wiggins". The player
+    was already moved into `player`, but the opponent kept his name, which
+    resolves to no team, and the question fell through. The team after "vs" is
+    the opponent."""
+    franchises.execute("INSERT INTO teams VALUES ('9','GS','Golden State Warriors','Golden State','Warriors')")
+    slots: dict[str, Any] = {"player": "Andrew Wiggins", "opponent": "Andrew Wiggins"}
+    scope_from_question(franchises, "andrew wiggins last 15 games vs warriors", slots, reads_player=True)
+    assert slots["opponent"] == "Golden State Warriors"
