@@ -29,6 +29,7 @@ from typing import Any
 
 import duckdb
 
+from association.franchises import FRANCHISE_ERAS, FranchiseEra, season_name
 from association.season import current_season
 
 MAX_CANDIDATES = 10
@@ -551,71 +552,6 @@ _TEAM_NICKNAMES: dict[str, str] = {
 }
 
 
-@dataclass(frozen=True)
-class FranchiseEra:
-    """One name a franchise played under, and the seasons it held it.
-
-    ESPN's ``team_id`` belongs to the FRANCHISE, not the name: id 17 is the Nets
-    in every season, New Jersey or Brooklyn, and id 3 is the Charlotte Hornets
-    of 1994, the New Orleans Hornets of 2008 and the New Orleans Pelicans of
-    2026. The ``teams`` table only holds today's names, so without this a name
-    a team used to carry resolves to nothing, and a name that has MOVED between
-    franchises resolves to the wrong one.
-
-    ``last_season`` is None for the name a franchise holds today.
-
-    .. versionadded:: 2.3.0
-    """
-
-    team_id: str
-    name: str
-    first_season: int
-    last_season: int | None = None
-
-    def covers(self, season: int) -> bool:
-        """Whether the franchise went by this name in ``season``."""
-        return self.first_season <= season and (self.last_season is None or season <= self.last_season)
-
-
-FRANCHISE_ERAS: tuple[FranchiseEra, ...] = (
-    FranchiseEra("17", "New Jersey Nets", 1978, 2012),
-    FranchiseEra("17", "Brooklyn Nets", 2013),
-    FranchiseEra("3", "Charlotte Hornets", 1989, 2002),
-    FranchiseEra("3", "New Orleans Hornets", 2003, 2013),
-    FranchiseEra("3", "New Orleans Pelicans", 2014),
-    FranchiseEra("30", "Charlotte Bobcats", 2005, 2014),
-    FranchiseEra("30", "Charlotte Hornets", 2015),
-    FranchiseEra("25", "Seattle SuperSonics", 1968, 2008),
-    FranchiseEra("25", "Oklahoma City Thunder", 2009),
-    FranchiseEra("29", "Vancouver Grizzlies", 1996, 2001),
-    FranchiseEra("29", "Memphis Grizzlies", 2002),
-    FranchiseEra("27", "Washington Bullets", 1975, 1997),
-    FranchiseEra("27", "Washington Wizards", 1998),
-)
-"""Every name the franchises that were renamed or relocated have played under.
-
-Only the franchises whose name CHANGED inside the warehouse's range are listed;
-every other team is fully described by ``teams``. Seasons are named by the year
-they end, like everywhere else here.
-
-**Checked against the warehouse where it can be.** The relocations show in the
-city each franchise's home games were played in: id 17 in East Rutherford and
-Newark, then Brooklyn from 2013; id 25 in Seattle, then Oklahoma City from
-2009; id 3 in Charlotte, New Orleans from 2003 (Oklahoma City in 2006 and
-2007) and New Orleans again; id 30 first appears in 2005 and id 29 in 1996, the
-expansion years. The three pure renames - Bullets to Wizards, Hornets to
-Pelicans, Bobcats to Hornets - moved no arena, so no column records them; those
-boundaries are league history.
-
-Charlotte's "Hornets" is the case that makes this a correctness fix and not a
-convenience. The name belongs to id 3 through 2002 and to id 30 from 2015, so
-matching today's names alone answered "Hornets record 2008" with the 2008
-Charlotte BOBCATS' 32-50 - fluent, and about the wrong team; the 2008 Hornets
-were New Orleans and won 56.
-
-.. versionadded:: 2.3.0
-"""
-
 # Shorthand a question or the router uses for a former name.
 _ERA_ALIASES: dict[str, str] = {
     "sonics": "Seattle SuperSonics",
@@ -658,17 +594,8 @@ def _era_name(team_id: str, season: int) -> str | None:
 
 
 def _named_for_season(team_id: str, current_name: str, season: int | None) -> str:
-    """A ``teams`` row's name as it was in ``season``.
-
-    Renamed only when the row IS the franchise :data:`FRANCHISE_ERAS` describes
-    - its current name must be that franchise's current era name. Keying on the
-    id alone renamed whatever team a table happened to file under "3": a test
-    warehouse's Detroit Pistons came back as the New Orleans Pelicans.
-    """
-    today = [era for era in FRANCHISE_ERAS if era.team_id == team_id and era.last_season is None]
-    if not today or today[0].name != current_name:
-        return current_name
-    return _era_name(team_id, season if season is not None else current_season()) or current_name
+    """A ``teams`` row's name as it was in ``season``; see franchises.season_name."""
+    return season_name(team_id, season if season is not None else current_season(), current_name)
 
 
 def franchise_by_name(text: str, season: int | None = None) -> list[Entity] | None:

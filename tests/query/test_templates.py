@@ -3004,3 +3004,16 @@ def test_a_log_lists_the_games_and_keeps_the_season_in_the_header(period_ctx: Te
     assert "over 5 games" in answer
     assert "1st quarter points, every game:" in answer
     assert len([line for line in answer.splitlines() if line.strip()[:4].isdigit()]) == 5
+
+
+def test_a_team_log_names_each_opponent_as_it_was_that_season(gl_con: TemplateContext) -> None:
+    """ESPN files the Nets under one id in New Jersey and Brooklyn, and `teams`
+    holds only today's name, so a 2005 Knicks log listed a game "vs Brooklyn
+    Nets" eight years before the team moved."""
+    c = gl_con.con
+    c.execute("INSERT INTO teams VALUES ('17','BKN','Brooklyn Nets')")
+    c.execute("INSERT INTO games VALUES ('n05',2005,2,'2005-01-10T00:30Z','18','17',100,90,'18')")
+    c.execute("INSERT INTO team_box_stats VALUES ('n05',2005,2,'18','17','home')")
+    real_games.build_table(c, {"games", "teams"})
+    games = game_log(gl_con, {"team": "Knicks", "season": 2005}).data["games"]
+    assert [g["opponent"] for g in games] == ["New Jersey Nets"]

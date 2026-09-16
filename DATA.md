@@ -1048,11 +1048,14 @@ consistently, which is exactly what makes it dangerous: the data looks healthy.
   team names are resolved for the season asked about. That matters more than
   it sounds: "Hornets" moved BETWEEN franchises, so matching today's names
   answered "Hornets record 2008" with the 2008 Charlotte Bobcats (id 30),
-  where the Hornets that season were New Orleans (id 3). The named team in an
-  answer is printed under its name for that season. Names inside rows - a game
-  log's opponents - still print under today's names.
-- **Tracked in:** ISSUES.md, "Historical teams are shown under today's names"
-  (#17).
+  where the Hornets that season were New Orleans (id 3). Every team name an
+  answer prints is its name for the season of that row - the named team, a game
+  log's opponents, standings, streaks, a matchup log's abbreviations, and the
+  `player_game_log` view's `team_abbr`/`opponent_abbr` - through
+  `franchises.season_name` and `season_name_sql`. The one exception is the SQL
+  agent's own example queries in `query/prompt.py`, which print whatever
+  `teams` holds, because changing them spends the preamble's token budget.
+- **Tracked in:** nothing open; #17 was closed by the fix.
 
 ### A player's bio is point-in-time, stored as if it were static
 

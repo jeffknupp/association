@@ -19,6 +19,7 @@ from typing import Any
 import duckdb
 
 from association.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON, caveat, unavailable
+from association.franchises import season_name, season_name_sql
 from association.net_points_categories import FINGERPRINT_CATEGORIES
 from association.season import current_season
 from association.season import eastern_date as _eastern_date
@@ -556,6 +557,11 @@ def _slot_season(slots: dict[str, Any]) -> int | None:
     None for "now" - the same default every template applies."""
     season = slots.get("season")
     return season if isinstance(season, int) else None
+
+
+def _season_of_day(day: Any) -> int:
+    """The season a calendar day falls in: season Y runs from October of Y-1."""
+    return day.year + 1 if day.month >= 10 else day.year
 
 
 # ---- one season of box scores, or a career of them ----
@@ -2236,10 +2242,10 @@ _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # team_box_stats row, phantoms and 0-0 placeholders included - so a 1999 or
 # 2000 Bulls log listed placeholder games. The winner is still returned raw
 # rather than compared, since a NULL there and a loss are different facts.
-_TEAM_GAMES_SQL = """
+_TEAM_GAMES_SQL = f"""
 SELECT g.date,
        tbs.home_away,
-       opp.display_name AS opponent,
+       {season_name_sql("opp.team_id", "tbs.season", "opp.display_name")} AS opponent,
        CASE WHEN tbs.home_away = 'home' THEN g.home_score ELSE g.away_score END AS team_score,
        CASE WHEN tbs.home_away = 'home' THEN g.away_score ELSE g.home_score END AS opponent_score,
        g.winner_team_id,
@@ -2624,7 +2630,7 @@ def _games_record(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity
         where.append("tg.opponent_id = ?")
         params.append(opponent.id)
     rows = con.execute(
-        f"{TEAM_GAMES_SQL} SELECT tg.eastern_date, tg.side, tg.neutral, tg.team_score, tg.opponent_score, tg.won, o.display_name "
+        f"{TEAM_GAMES_SQL} SELECT tg.eastern_date, tg.side, tg.neutral, tg.team_score, tg.opponent_score, tg.won, {season_name_sql('o.team_id', 'tg.season', 'o.display_name')} "
         f"FROM team_games tg JOIN teams o ON o.team_id = tg.opponent_id WHERE {' AND '.join(where)} ORDER BY tg.eastern_date",
         params,
     ).fetchall()
@@ -2844,7 +2850,9 @@ def _venue_records(con: duckdb.DuckDBPyConnection, season: int, season_type: int
     is none."""
     if season_type == 2:
         column = '"Home"' if venue == "home" else '"Road"'
-        rows = con.execute(f"SELECT t.display_name, s.{column} FROM standings s JOIN teams t ON t.team_id = s.team_id WHERE s.season = ? ORDER BY 1", [season]).fetchall()
+        rows = con.execute(
+            f"SELECT {season_name_sql('t.team_id', 's.season', 't.display_name')}, s.{column} FROM standings s JOIN teams t ON t.team_id = s.team_id WHERE s.season = ? ORDER BY 1", [season]
+        ).fetchall()
         parsed = [(name, _parse_record(text)) for name, text in rows]
         records = [TeamRecord(team=name, wins=r[0], losses=r[1]) for name, r in parsed if r and sum(r) > 0]
         if rows and not records:
@@ -2852,7 +2860,7 @@ def _venue_records(con: duckdb.DuckDBPyConnection, season: int, season_type: int
         return records
     scope, params = games_scope(season_type, season)
     rows = con.execute(
-        f"{TEAM_GAMES_SQL} SELECT t.display_name, sum(won::INT), sum((NOT won)::INT) FROM team_games tg JOIN teams t ON t.team_id = tg.team_id "
+        f"{TEAM_GAMES_SQL} SELECT {season_name_sql('t.team_id', 'tg.season', 't.display_name')}, sum(won::INT), sum((NOT won)::INT) FROM team_games tg JOIN teams t ON t.team_id = tg.team_id "
         f"WHERE {scope} AND tg.side = ? AND NOT tg.neutral GROUP BY 1 ORDER BY 1",
         [*params, venue],
     ).fetchall()
@@ -3964,10 +3972,10 @@ def _phrase_head_to_head(a: str, b: str, games: int, a_wins: int, b_wins: int, p
 # home_linescores/away_linescores hold the official per-period score for that
 # side (index 0 = Q1 ... 4+ = OT1/OT2/...) - no plays table, no LAG(), no
 # --include-pbp, unlike the per-PLAYER version of this question.
-_TEAM_QUARTER_SQL = """
+_TEAM_QUARTER_SQL = f"""
 SELECT g.date,
        CASE WHEN tbs.home_away = 'home' THEN g.home_linescores ELSE g.away_linescores END AS own_linescores,
-       opp.display_name AS opponent
+       {season_name_sql("opp.team_id", "tbs.season", "opp.display_name")} AS opponent
 FROM team_box_stats tbs
 JOIN real_games g ON g.event_id = tbs.event_id AND g.season = tbs.season
 JOIN teams opp ON opp.team_id = tbs.opponent_team_id
@@ -4237,7 +4245,7 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         )
         SELECT g.date,
                CASE WHEN g.home_team_id = b.team_id THEN 'home' ELSE 'away' END AS side,
-               t.display_name,
+               {season_name_sql("t.team_id", "g.season", "t.display_name")},
                COALESCE(s.points, 0)
         FROM {box.table} b
         JOIN games g ON g.event_id = b.event_id AND g.season = b.season
@@ -4695,7 +4703,14 @@ def with_without(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
 
     games, unknown = _with_without_games(con, scope, windows, [m.id for m in mates], subject.id if subject else None)
     team_names = _names(con, "teams", "team_id", {w.team_id for w in windows})
-    spell_text = "; ".join(f"{team_names[w.team_id]} {w.first} to {w.last}" for w in windows)
+
+    def stint_team(w: Any) -> str:
+        """The team a stint was spent on, named as it was then. A stint across a
+        rename names both - the Nets' 2012 and 2013 are one stint on one id."""
+        start, end = (season_name(w.team_id, _season_of_day(day), team_names[w.team_id]) for day in (w.first, w.last))
+        return start if start == end else f"{start} / {end}"
+
+    spell_text = "; ".join(f"{stint_team(w)} {w.first} to {w.last}" for w in windows)
     if not games:
         whose = f"{all_of}'s time" if subject is None else f"The time {_joined([subject.name, *named])} spent together"
         message = f"{whose} on the team, as the box scores show it ({spell_text}), falls outside the {scope.label() if scope.season else 'seasons on record'}."
@@ -4810,7 +4825,9 @@ def record_when(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
 
     by_hit = {bool(row[0]): row for row in found}
     team_ids = {str(t) for row in found for t in row[6]}
-    names = _names(con, "teams", "team_id", team_ids)
+    # One season names each team as it was then. A career groups every season
+    # of an id together, so it keeps today's name rather than picking one era.
+    names = {team_id: season_name(team_id, scope.season, name) for team_id, name in _names(con, "teams", "team_id", team_ids).items()}
     unit = f"{STAT_LABELS.get(stat or '', stat or '')}s"
 
     def group(hit: bool | None) -> dict[str, Any]:
@@ -4895,7 +4912,14 @@ def player_matchup(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
         """One player's points/rebounds/assists in one meeting, for the log."""
         return f"{stats['points']}/{stats['rebounds']}/{stats['assists']}"
 
-    log = [(str(m["day"]), [f"{abbr[m['team_id']]} {m['team_score']}-{m['opponent_score']} {abbr[m['opponent_team_id']]}", line(m["a"]), line(m["b"])]) for m in shown]
+    def abbreviated(team_id: str, season: int) -> str:
+        """A meeting's team as it was abbreviated THAT season - a 2005 Nets game reads NJ, not BKN."""
+        return season_name(team_id, season, abbr[team_id], column="abbreviation")
+
+    log = [
+        (str(m["day"]), [f"{abbreviated(m['team_id'], m['season'])} {m['team_score']}-{m['opponent_score']} {abbreviated(m['opponent_team_id'], m['season'])}", line(m["a"]), line(m["b"])])
+        for m in shown
+    ]
     answer = _table(title, [a.name, b.name], summary)
     answer += "\n\n" + _table(f"Most recent {len(shown)} of {count} (points/rebounds/assists):", ["score", a.name, b.name], log)
     answer += f"\n{caveat.strip()}" if caveat else ""
@@ -5014,8 +5038,11 @@ def streak(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         runs = _longest_runs(con, base, {**scope.params(), **condition}, ("team_id", "season"), hit, limit, best_per_partition=True)
         names = _names(con, "teams", "team_id", [r["team_id"] for r in runs])
         what = result
-        who = [names[r["team_id"]] + (f" ({r['season']})" if scope.season is None else "") for r in runs]
-        rule = "Each team's longest in a season, counted within that season" + ("; franchises are named as they are today." if scope.season is None else ".")
+        # Every run lies inside one season, so each is named as its team was
+        # that season. This used to add "franchises are named as they are
+        # today" to every all-seasons answer, which is what it was.
+        who = [season_name(r["team_id"], int(r["season"]), names[r["team_id"]]) + (f" ({r['season']})" if scope.season is None else "") for r in runs]
+        rule = "Each team's longest in a season, counted within that season."
     # The span searched, not the seasons the leaders' runs happen to fall in:
     # "1997-2023" under a question about every season reads as a narrower search.
     _, first, last = _totals(con, base, scope.params())

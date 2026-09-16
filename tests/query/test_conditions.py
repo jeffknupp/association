@@ -606,3 +606,34 @@ def test_a_playoff_season_filed_under_its_first_year_is_refused(league: Template
 def test_a_player_listed_once_is_told_so_in_the_singular(league: TemplateContext) -> None:
     league.con.execute("DELETE FROM player_box_stats WHERE athlete_id = ? AND season = ? AND event_id <> 'e2'", [TATUM, S])
     assert player_splits(league, _slots(player="Jayson Tatum")).answer.endswith("box score in the 2026 regular season but did not play in it.".replace("2026", str(S)))
+
+
+@pytest.fixture
+def old_franchises(league: TemplateContext) -> TemplateContext:
+    """The league, plus six 2001 meetings of two franchises that have since been
+    renamed or moved: the New Jersey Nets (id 17, today's Brooklyn) beating the
+    Vancouver Grizzlies (id 29, today's Memphis). `teams` holds only today's
+    names, which is ESPN's."""
+    c = league.con
+    c.execute("INSERT INTO teams VALUES ('17','BKN','Brooklyn Nets'),('29','MEM','Memphis Grizzlies')")
+    c.execute("INSERT INTO players VALUES ('70','Kenyon Martin'),('71','Pau Gasol')")
+    for i in range(6):
+        _game(c, f"v{i}", f"2001-01-1{i}T00:30Z", "17", "29", 100, 90, [_played("70", "17", 20), _played("71", "29", 15)], season=2001)
+    real_games.build_table(c, {"games", "teams", "player_box_stats"})
+    return league
+
+
+def test_a_streak_across_seasons_names_each_team_as_it_was_then(old_franchises: TemplateContext) -> None:
+    """Every all-seasons team streak used to end "franchises are named as they
+    are today", because that is what it did: a 2001 Nets run read Brooklyn
+    Nets. Each run lies inside one season, so it is named for it."""
+    answer = streak(old_franchises, _slots(kind="win", span="career")).answer or ""
+    assert "New Jersey Nets (2001)" in answer and "Brooklyn" not in answer
+    assert "named as they are today" not in answer
+
+
+def test_a_matchup_log_abbreviates_each_team_for_the_season_of_the_meeting(old_franchises: TemplateContext) -> None:
+    """The meeting log read "BKN 100-90 MEM" for a 2001 game in New Jersey
+    against Vancouver."""
+    answer = player_matchup(old_franchises, _slots(players=["Kenyon Martin", "Pau Gasol"], season=2001)).answer or ""
+    assert "NJ 100-90 VAN" in answer and "BKN" not in answer

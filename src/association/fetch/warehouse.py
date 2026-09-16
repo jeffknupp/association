@@ -12,6 +12,8 @@ from pathlib import Path
 
 import duckdb
 
+from association.franchises import season_name_sql
+
 from . import advanced_stats, real_games, reconstructed_box, season_totals_repair, team_box_repair
 
 log: logging.Logger = logging.getLogger("association.fetch.warehouse")
@@ -233,8 +235,8 @@ def _build_views(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
             pbs.*,
             p.display_name AS player_name,
             g.date AS game_date,
-            t.abbreviation AS team_abbr,
-            o.abbreviation AS opponent_abbr
+            {season_name_sql("pbs.team_id", "pbs.season", "t.abbreviation", column="abbreviation")} AS team_abbr,
+            {season_name_sql("pbs.opponent_team_id", "pbs.season", "o.abbreviation", column="abbreviation")} AS opponent_abbr
             {advanced_select}
         FROM {box_source} pbs
         LEFT JOIN players p ON p.athlete_id = pbs.athlete_id

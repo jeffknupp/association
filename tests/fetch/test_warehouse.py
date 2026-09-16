@@ -474,3 +474,33 @@ def test_a_postseason_copied_from_the_regular_season_is_dropped(tmp_path: Path) 
     kept = con.execute("SELECT athlete_id, season_type FROM player_season_stats_deduped ORDER BY 1, 2").fetchall()
     con.close()
     assert kept == [("1", 2), ("2", 2), ("2", 3)]
+
+
+def test_player_game_log_abbreviates_each_team_as_it_was_that_season(tmp_path: Path) -> None:
+    """ESPN keys a team by franchise and `teams` holds only today's names, so
+    the view printed a 1997 Nets game as BKN against MEM, when it was NJ against
+    Vancouver. Each row is named for its OWN season, which is what a career log
+    crossing a relocation needs - the same ids read NJ/VAN in 1997 and BKN/MEM
+    in 2020."""
+    data_dir = tmp_path / "parquet"
+    for table, rows in {
+        "teams": [{"team_id": "17", "abbreviation": "BKN"}, {"team_id": "29", "abbreviation": "MEM"}],
+        "players": [{"athlete_id": "10", "display_name": "Test Player"}],
+        "games": [{"event_id": "e97", "season": 1997, "date": "1997-01-01"}, {"event_id": "e20", "season": 2020, "date": "2020-01-01"}],
+        "player_box_stats": [
+            {"event_id": "e97", "season": 1997, "athlete_id": "10", "team_id": "17", "opponent_team_id": "29", "points": 20},
+            {"event_id": "e20", "season": 2020, "athlete_id": "10", "team_id": "17", "opponent_team_id": "29", "points": 30},
+        ],
+    }.items():
+        d = data_dir / table
+        d.mkdir(parents=True)
+        pq.write_table(pa.Table.from_pylist(rows), d / "f.parquet")
+    db_path = tmp_path / "test.duckdb"
+    warehouse.build(data_dir, db_path)
+    con = duckdb.connect(str(db_path))
+    rows = con.execute("SELECT season, team_abbr, opponent_abbr FROM player_game_log ORDER BY season").fetchall()
+    con.close()
+    # 1997, not 2005: the Grizzlies were already in Memphis by 2005, so a 2005
+    # row reads MEM with or without the rename, and reverting the opponent
+    # column went unnoticed until the fixture moved to a Vancouver season.
+    assert rows == [(1997, "NJ", "VAN"), (2020, "BKN", "MEM")]

@@ -43,6 +43,8 @@ from typing import Any
 
 import duckdb
 
+from association.franchises import season_name_sql
+
 
 @dataclass(frozen=True)
 class TeamMetric:
@@ -382,7 +384,7 @@ opp AS (
     SELECT team_id, count(*) AS games, sum(opponent_score) AS opp_points FROM team_games WHERE {scope} GROUP BY team_id
 ),
 base AS (
-    SELECT t.display_name AS team, ts.gamesPlayed, o.games AS listed_games,
+    SELECT {season_name_sql("t.team_id", "ts.season", "t.display_name")} AS team, ts.gamesPlayed, o.games AS listed_games,
            CASE WHEN o.games = ts.gamesPlayed THEN o.opp_points END AS opp_points,
            ts.points, {POSSESSIONS} AS possessions, {TURNOVERS} AS turnovers_all,
            ts.avgPoints, ts.fieldGoalPct, ts.threePointFieldGoalPct, ts.freeThrowPct, ts.trueShootingPct, ts.effectiveFGPct,
@@ -435,13 +437,15 @@ def record_table(con: duckdb.DuckDBPyConnection, season: int, season_type: int) 
     """
     if season_type == 2:
         rows = con.execute(
-            "SELECT t.display_name, s.wins, s.losses FROM standings s JOIN teams t ON t.team_id = s.team_id WHERE s.season = ? AND s.wins + s.losses > 0 ORDER BY 1",
+            f"SELECT {season_name_sql('t.team_id', 's.season', 't.display_name')}, s.wins, s.losses "
+            "FROM standings s JOIN teams t ON t.team_id = s.team_id WHERE s.season = ? AND s.wins + s.losses > 0 ORDER BY 1",
             [season],
         ).fetchall()
     else:
         scope, params = games_scope(season_type, season)
         rows = con.execute(
-            f"{TEAM_GAMES_SQL} SELECT t.display_name, sum(won::INT), sum((NOT won)::INT) FROM team_games tg JOIN teams t ON t.team_id = tg.team_id WHERE {scope} GROUP BY 1 ORDER BY 1",
+            f"{TEAM_GAMES_SQL} SELECT {season_name_sql('t.team_id', 'tg.season', 't.display_name')}, sum(won::INT), sum((NOT won)::INT) "
+            f"FROM team_games tg JOIN teams t ON t.team_id = tg.team_id WHERE {scope} GROUP BY 1 ORDER BY 1",
             params,
         ).fetchall()
     return [TeamRecord(team=name, wins=int(wins), losses=int(losses)) for name, wins, losses in rows]

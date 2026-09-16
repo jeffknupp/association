@@ -15,6 +15,37 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Every team name an answer prints is the name it had that season.** A 2005
+  Knicks log listed a game "vs Brooklyn Nets", eight years before the Nets moved;
+  the 2008 standings put the Charlotte Hornets 23rd, a team that did not exist
+  that year; every all-seasons streak answer ended "franchises are named as they
+  are today", which was an honest description of a bug. ESPN keys a team by
+  franchise and `teams` holds only today's names, so every row joined to it
+  read today's.
+
+  The franchise table moved to a neutral module, `association.franchises`,
+  because both packages need it - `fetch/warehouse.py` builds the
+  `player_game_log` view's abbreviations, and the query templates name teams
+  everywhere else - and CLAUDE.md keeps those two from depending on each other.
+  It gained each era's abbreviation (NJ, SEA, VAN), and two renderings of one
+  lookup: `season_name` for Python and `season_name_sql`, a SQL expression that
+  names each row for its OWN season, which a career log crossing a relocation
+  needs. A test checks the two against each other at every season either side
+  of every boundary. Both rename only when `teams` files today's name under
+  that id.
+
+  Applied at every place a team name is printed: team game logs and quarter
+  scores, home/road standings, team metrics, record tables, all-seasons streaks,
+  player-matchup meeting logs, with/without stints (a stint across a rename names
+  both, "New Jersey Nets / Brooklyn Nets"), `period_split` rows, and the
+  `player_game_log` view. The SQL agent's example queries in `prompt.py` are left
+  alone, because changing them spends preamble budget.
+
+  **The view needs a warehouse reload to show it** - it is built at load time -
+  and was reloaded with this change. Every site was perturbed back to today's
+  name and watched to fail; four of the first five came back MISSED until each
+  had a test of its own, and the view's test had to move from 2005 to 1997 to
+  catch anything, because the Grizzlies were already in Memphis by 2005.
 - **A team name is read for its season, and the question's own team beats one
   the router could not ground.** Found through "duren v nets 1h gameloh", which
   fell through because the router wrote the opponent as "New Jersey Nets". That
