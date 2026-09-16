@@ -42,15 +42,84 @@ Parquet files. Its only effect was to make the view fixes from `e1cc1c8` live.
 
 ## P1: wrong answer
 
-*None open.* Emptied 2026-09-16, when the last entry here - a narrowing the
-router has no slot for being dropped and the rest answered - was fixed for
-every case the 261-query replay measures and re-ranked to P3, where what
-remains of it is recorded. An empty section is a statement about what has been
-*measured*, not a claim that nothing answers falsely: the replay is one
-261-query sample of one feed, it still grades 29 answers (11%) as fluently
-wrong for other reasons, and each of those is an entry below.
+Emptied on 2026-09-16 and refilled the same day, when the issues audit
+re-ranked two P2 entries whose own evidence met the P1 definition. The lesson
+is in the order of events: the section was declared empty on the strength of
+the entries it held, and nobody had re-read the P2s against the definition.
+
+### Date-only stamps print a day early: 391 games, the whole 1989-92 postseason among them
+- **Found:** 2026-09-14 building `real_games`; reframed 2026-09-15; **widened
+  from 12 games to 391 and re-ranked P2 -> P1 on 2026-09-16** by the issues
+  audit, re-measured by the lead
+- **Evidence:** ESPN stores some games with no tip time, as midnight Eastern
+  (`T04:00Z` in summer, `T05:00Z` in winter). Every date this project prints
+  goes through a fixed five-hour shift (`season.eastern_date`,
+  `team_metrics.TEAM_GAMES_SQL`, `conditions._eastern_day`), which is right for
+  a real tip time and moves a midnight stamp to the day BEFORE. `real_games`
+  holds 401 `T04:00Z` rows: 10 in 2026 (real 11pm Eastern tips, correctly
+  shifted), 12 in 2000-2001, and **379 in 1988-1992** - 1988 RS 11 / PO 62,
+  1989 PO 72, 1990 PO 68, 1991 RS 8 / PO 73, 1992 RS 9 / PO 76. Old-format ids
+  encode the month and day: re-measured by the lead, **0 of those 379 match the
+  shifted date**, against 10,672 of 10,672 real-tip 1994-2002 games that do.
+  (The auditor matched the written date 379/379; the lead's id slice matched
+  306, most likely an id layout it did not handle - the direction is not in
+  doubt.) `T05:00Z` winter stamps shift to the same day, so they are unaffected.
+- **User sees:** a date one day early, stated as fact, in every game log,
+  single-game high and month split for those games - and `coverage.py`
+  declares the 1989-1992 postseason answerable. `100614008`, the Pistons' 1990
+  title clincher on 14 June, prints as 13 June; the 2000 LAL-IND Final reads
+  6/8/10/13/15/18 June against a real 7/9/11/14/16/19.
+- **Next step:** read a `T04:00Z` stamp outside the seasons where it is a real
+  tip (2026) as its written date instead of shifting it. The stamp is
+  identifiable from its own time - but 2026's ten are real 11pm tips with the
+  same stamp, so the rule has to be by era, not by string.
+- **Source:** DATA.md, "`games` carries placeholder, duplicate and phantom rows"
+  - which describes these stamps only as a phantom marker and needs the
+  date-only half added
+- **GitHub:** #76
+
+### 2008's team rebound columns print as real
+- **Found:** 2026-09-14, fixing the 2018 team-box shift (#8); **re-ranked P2 ->
+  P1 on 2026-09-16** - it is silently wrong data that a template reads
+- **Evidence:** over non-empty 2008 regular-season rows, `offensiveRebounds`
+  equals the player-box sum in 188 of 2,460 rows (2007: 2,458; 2009: 2,454) and
+  `defensiveRebounds` in 1 of 2,460. Means, 2007 -> 2008 -> 2009: OREB 11.12 ->
+  8.36 -> 11.04, DREB 29.93 -> 11.20 -> 30.26, totalRebounds 49.64 -> **61.54**
+  -> 49.47. The player rows are sound (41.98 a game, between 2007's 41.05 and
+  2009's 41.29), 2008's other counting columns match their player sums in
+  2,443-2,460 of 2,460 rows, and the 2008 postseason is clean (49.55 / 11.08 /
+  29.58). `totalRebounds` equals the player rebound sum plus the row's own OREB
+  and DREB in 2,452 of 2,460 rows, which is the lead on what it counts.
+- **User sees, re-measured live 2026-09-16:** "Celtics home and away splits
+  2008" prints **REB 60.8 at home and 60.4 away**, with no caveat, against a
+  real ~49.6 - `conditions._TEAM_LINE` reads `AVG(t.totalRebounds)`. Agent SQL
+  over 2008's rebound columns is wrong the same way.
+- **Next step:** rebuild `offensiveRebounds` and `defensiveRebounds` from the
+  player sums the way `fetch/team_box_repair.py` rebuilds 2018's assists. Team
+  rebounds are not a player sum, so `totalRebounds` probably has to be NULL for
+  2008. Refetch one 2008 event first to confirm ESPN is the cause.
+- **Source:** DATA.md, "2008's team rebound columns hold something other than rebounds"
+- **GitHub:** #74
 
 ## P2: misleading or incomplete
+
+### Season 2021's regular-season BPI snapshot is a day-one projection
+- **Found:** 2026-09-15, reviewing `4ef119f`; **re-ranked P3 -> P2 on 2026-09-16** - a preseason projection presented as a season's index, with no caveat
+- **Evidence:** all 30 of season 2021's rows are stamped 2020-12-22 - opening
+  day of 2020-21 - with `numwins` and `numlosses` both 0. `team_outlook`
+  answers "2021 regular-season snapshot (updated 2020-12-22, 30 teams) ... BPI
+  -5.9 ... no games played yet, projected 16-56" for the Knicks, who finished
+  41-31. The caveat at `templates.py:3073` cannot fire, because it tests
+  `str(updated)[:4] > str(season)` and `"2020" > "2021"` is False - it was
+  written for the 2017-2020 snapshots, which are stamped *after* their season.
+  Pre-existing; the backfill now shows it for 30 teams rather than 9.
+- **User sees:** a preseason projection presented as a season's power index,
+  with only "no games played yet" hinting at it.
+- **Next step:** widen the caveat to cover a snapshot dated *before* the season
+  it describes, or say "preseason projection" when `numwins + numlosses = 0`.
+- **Source:** DATA.md, "ESPN's power index is a paged collection, and holds all
+  30 teams"
+- **GitHub:** #89
 
 ### Shooting leaderboards silently drop 2013-2018 qualifiers
 - **Found:** 2026-09-15, issues audit (P2 query auditor)
@@ -603,33 +672,6 @@ wrong for other reasons, and each of those is an entry below.
 - **Source:** DATA.md, "NetPoints publishes a display name, not a player id"
 - **GitHub:** #22
 
-### 2008's team rebound columns are wrong
-- **Found:** 2026-09-14, while fixing the 2018 team-box shift (#8) — the 2008
-  rebound means stood out beside the seasons either side of it
-- **Evidence:** over non-empty 2008 regular-season rows, `offensiveRebounds`
-  equals the player-box sum in 188 of 2,460 rows (2007: 2,458; 2009: 2,454) and
-  `defensiveRebounds` in 1 of 2,460 (2,453; 2,458). Means, 2007 → 2008 → 2009:
-  OREB 11.12 → 8.36 → 11.04, DREB 29.93 → 11.20 → 30.26, totalRebounds 49.64 →
-  **61.54** → 49.47. The player rows are sound (their rebound sum is 41.98 a
-  game, between 2007's 41.05 and 2009's 41.29), and 2008's assists, steals,
-  blocks and fouls each match their player sums in 2,443-2,460 of 2,460 rows,
-  so this is rebounds only and not the 2018 shift reaching back. `totalRebounds`
-  equals the player rebound sum plus the row's own OREB and DREB in 2,452 of
-  2,460 rows, which is the lead on what it is actually counting. The 2008
-  **postseason is clean** (172 rows: 49.55 / 11.08 / 29.58), so the fault is the
-  regular season alone.
-- **User sees:** a 2008 team split or with/without table reports **61.5**
-  rebounds a game against a real ~49.6, because `conditions._TEAM_LINE` reads
-  `AVG(t.totalRebounds)`. Agent SQL over 2008's rebound columns is wrong the
-  same way.
-- **Next step:** rebuild `offensiveRebounds` and `defensiveRebounds` from the
-  player sums the way `fetch/team_box_repair.py` already rebuilds 2018's
-  assists — the module is shaped to take another season. `totalRebounds`
-  includes team rebounds and so is not a player sum, so it likely has to be
-  NULL. Refetch one 2008 event first, to confirm ESPN is the cause.
-- **Source:** DATA.md, "2008's team rebound columns hold something other than rebounds"
-- **GitHub:** #74
-
 ### A team's rebounds are not comparable across 2021 and 2022
 - **Found:** 2026-09-14, while fixing #8
 - **Evidence:** the team box `totalRebounds` is the players' rebounds plus the
@@ -649,35 +691,43 @@ wrong for other reasons, and each of those is an entry below.
   `team_metrics` for the same exposure on `team_season_stats`.
 - **Source:** DATA.md, "The team `totalRebounds` column stops including team rebounds in 2022"
 - **GitHub:** #75
-### The 2000 and 2001 date-only stamps are dated a day early
-- **Found:** 2026-09-14, building the shared `real_games` list (issue #7);
-  **re-measured and reframed 2026-09-15** by the issues audit
-- **This entry used to blame 2026, and that was wrong.** All ten of 2026's
-  `T04:00Z` games are real 11pm-Eastern tips with full box scores: each has a
-  Pacific home team (LAC, SAC, POR, LAL, GS) on a UTC Wednesday, 2026 has 276
-  ordinary late tips at 02:00-03:30Z, and the shift is corroborated by
-  collisions - OKC plays at POR in `401810035` on the Wednesday, so LAC-OKC
-  `401810025` cannot also be that day. The NetPoints daily file agrees. **The
-  five-hour shift is correct for all ten.**
-- **Evidence for the real cases:** date-encoded old-format event ids (YYMMDD +
-  team) make the shift checkable: it is exact for 23,490 of 23,490 real-tip
-  games. All **12** `T04:00Z` games in `real_games` - 2 in April 2000, 9 in the
-  2000 postseason, 1 in the 2001 postseason - match their **written** date and
-  **none** matches the shifted one.
-  - **10 of the 12 arrived with the 2026-09-15 scoreboard recovery** (`72b599c`),
-    which is how a long-standing fault became visible on a marquee series.
-  - The whole 2000 LAL-IND Final is affected: `200607013` is Game 1, played
-    7 June 2000, and every template prints **6 June**. The series reads
-    6/8/10/13/15/18 June against a real 7/9/11/14/16/19.
-- **User sees:** every date shown for those 12 games is one day early, stated as
-  fact - a game log, a single-game high, a month split.
-- **Next step:** read a date-only stamp (`T04:00Z`/`T05:00Z` with no tip time)
-  as its written date instead of shifting it. The 12 rows are identifiable
-  without a list: the stamp's own time is midnight Eastern.
-- **Source:** DATA.md, "`games` carries placeholder, duplicate and phantom rows"
-- **GitHub:** #76
-
 ## P3: refusal or gap
+
+### A calendar date on `player_stat` or `head_to_head` falls through instead of answering the game
+- **Found:** 2026-09-16, issues audit, from the latest replay
+- **Evidence:** "Bam adebeyo jan 19" routes to `player_stat` with
+  `date="2023-01-19"` resolved, and falls through on `player_stat cannot
+  honour ['date']`; "celtics record vs sixers on november 11" does the same on
+  `head_to_head`. `game_log` honours `date` (`templates.py:152`), and
+  `player_stat` already redirects a `limit` to `game_log` (`templates.py:2057`)
+  but not a `date`. (The 2023 in the first example is itself the model's
+  invention - see the next entry.)
+- **User sees:** a slow agent answer for a question a template answers
+  exactly, and no "did you mean Bam Adebayo?", since `check_scope` refuses
+  before the name is resolved.
+- **Next step:** in `route()`, send a `player_stat` with a resolved `date` to
+  `game_log` with a limit of 1, the same way `CODE_ASSIGNED_INTENTS` handles a
+  period; decide separately whether `head_to_head` should honour `date`.
+- **Source:** ours, not ESPN's.
+
+### The router invents a `date` or a `season` the question never states
+- **Found:** 2026-09-16, issues audit and the "Bam adebeyo jan 19" investigation
+- **Evidence:** "2024 nba stephen curry double double per game scored on
+  fridays" arrived with `date="2024-12-15"`, and "Best NBA record since January
+  31st" with `date="2023-01-31"`. Separately, 12 of the 261 feed queries name
+  no year and arrive with a non-current `season` from the model (2025 four
+  times, 2023 three times); `_validate_season` accepts any year in range when
+  the question names none, which is how "jan 19" became 2023-01-19. None of the
+  12 is graded correct - they fall through, are wrong, or are unclear.
+- **User sees:** nothing wrong today on `date`, because both examples are
+  refused. But a model-invented `date` on `game_log` or `fingerprint` answers a
+  game nobody asked about, and an invented `season` narrows any question to a
+  year nobody named.
+- **Next step:** in `route()`, keep a model-supplied `date` only when
+  `_CALENDAR_DATE` finds one in the question, and a model-supplied `season`
+  only when the question names a year or a relative season - the rule
+  `override_invented_players` applies to names.
+- **Source:** ours, not ESPN's.
 
 ### A quarter or half is answered for a player, and for nobody else
 - **Found:** 2026-09-16 auditing the feed; **the player half shipped the same
@@ -708,22 +758,6 @@ wrong for other reasons, and each of those is an entry below.
   where one quarter was asked for.
 - **Next step:** the team half, which is two linescore entries added.
 
-
-### `games.date` is a VARCHAR that DuckDB will not cast
-- **Found:** 2026-09-16, during the query-set audit (six ad-hoc date queries,
-  every one of which failed on the obvious form first)
-- **Evidence:** the column holds `2021-10-23T22:00Z`.
-  `CAST(g.date AS TIMESTAMP)` fails with `invalid timestamp field format`, and
-  `g.date >= DATE '2020-01-26'` fails with `Cannot compare VARCHAR and DATE`.
-  Only `strptime(g.date, '%Y-%m-%dT%H:%MZ')` works.
-- **User sees:** not a wrong answer - an error the SQL-writing agent then has
-  to recover from, spending a tool round trip on every date-filtered question
-  against a 16k context that has no room for it.
-- **Next step:** either derive a real `TIMESTAMP` (or an Eastern `game_date`
-  DATE, which `season.eastern_date` already defines) at load time in
-  `fetch/warehouse.py`, or state the exact `strptime` form in the agent
-  preamble beside the existing date rules. Note the second option spends
-  preamble budget, which is measured and tight - prefer the first.
 
 ### Whether ESPN publishes coaches is unverified
 - **Found:** 2026-09-16, query-set audit
@@ -788,63 +822,6 @@ wrong for other reasons, and each of those is an entry below.
 - **Source:** the wrong answers are ours, not ESPN's; no DATA.md entry.
 - **GitHub:** #84
 
-### A regular-season BPI question answers from the play-in snapshot in 2023, 2025 and 2026
-- **Found:** 2026-09-15, reviewing `4ef119f` before merging it
-- **Evidence:** now that the paging fix gives every snapshot 30 teams, the
-  play-in snapshot holds the team too, so `team_outlook`'s `pre` list (season
-  types 1, 2 and 5) is ordered by date and `candidates[-1]` takes the latest.
-  Measured read-only: the play-in stamp postdates the regular-season one in
-  2023 (04-15 vs 04-10), 2025 (04-19 vs 04-14) and 2026 (04-18 vs 04-13), but
-  not in 2024, whose regular-season snapshot is stamped 2024-06-28. Before the
-  paging fix the 13-team play-in snapshot simply did not hold most teams and
-  lost by default.
-- **User sees:** a correct, clearly labeled answer - but the same question
-  names a different snapshot depending on the season, and "how good were the
-  Knicks in the 2026 regular season" is answered from the play-in view.
-- **Next step:** decide whether `season_type=2` should prefer the
-  regular-season snapshot outright rather than the latest pre-playoff one, and
-  pin whichever it is with a test. It is a deliberate choice either way; today
-  nothing records that it was made.
-- **Source:** DATA.md, "ESPN's power index is a paged collection, and holds all
-  30 teams"
-- **GitHub:** #88
-
-### Season 2021's regular-season BPI snapshot is a day-one projection
-- **Found:** 2026-09-15, reviewing `4ef119f`
-- **Evidence:** all 30 of season 2021's rows are stamped 2020-12-22 - opening
-  day of 2020-21 - with `numwins` and `numlosses` both 0. `team_outlook`
-  answers "2021 regular-season snapshot (updated 2020-12-22, 30 teams) ... BPI
-  -5.9 ... no games played yet, projected 16-56" for the Knicks, who finished
-  41-31. The caveat at `templates.py:3050` cannot fire, because it tests
-  `str(updated)[:4] > str(season)` and `"2020" > "2021"` is False - it was
-  written for the 2017-2020 snapshots, which are stamped *after* their season.
-  Pre-existing; the backfill now shows it for 30 teams rather than 9.
-- **User sees:** a preseason projection presented as a season's power index,
-  with only "no games played yet" hinting at it.
-- **Next step:** widen the caveat to cover a snapshot dated *before* the season
-  it describes, or say "preseason projection" when `numwins + numlosses = 0`.
-- **Source:** DATA.md, "ESPN's power index is a paged collection, and holds all
-  30 teams"
-- **GitHub:** #89
-
-### `get_collection` goes quiet on the exact failure it exists to make loud
-- **Found:** 2026-09-15, reviewing `4ef119f`
-- **Evidence:** `_request_json` returns `None` for any status in
-  `NOT_FOUND_STATUS = {400, 404}` (`fetch/client.py:53`). In `get_collection`
-  that hits `if not isinstance(data, dict): break` with `expected` still
-  `None`, so the "collection %s declared %d items, fetched %d" warning cannot
-  fire. The method returns `[]`, `parse_power_index([])` yields no rows, and
-  `Pipeline._write_rows` no-ops on an empty list - leaving the season's old,
-  possibly short Parquet in place with nothing in the log. An endpoint that
-  rejects `limit=1000` with a 400 reproduces the original 25-row bug silently.
-  No test covers the `None` path, and the docstring's "Returns an empty list
-  where `get_json` would return None" is unasserted.
-- **User sees:** nothing - a table quietly one pull behind, which is exactly
-  how the 25-row power index survived for months.
-- **Next step:** log at WARNING when a collection read ends on a non-dict first
-  page, and add a test with a session that answers 400.
-- **GitHub:** #90
-
 ### Four question filters are recognized but no template answers them
 - **Found:** 2026-09-11, template work and final corpus run
 - **Evidence:** `SCOPING_SLOTS` against `HONORED_SCOPING` (`query/templates.py`):
@@ -863,18 +840,6 @@ wrong for other reasons, and each of those is an entry below.
   `since`, `situation`), but "by month" has left this entry - it is
   `split=month` and `player_splits` answers it for a player or a team.
 - **GitHub:** #23
-
-### A player's stats by quarter or half
-- **Found:** 2026-09-11, query-shape research (10% of the StatMuse feed)
-- **Evidence:** `_AGENT_ONLY` (`query/router.py`) forces these to `other` by
-  design. Points rebuilt from `plays` match the box score for 99.9% of
-  player-games in 2010, but only 96.5% in 2026. One 2026 game gave a player 24
-  points against a box score of 16, so play ordering (`play_id` as a bigint, and
-  `LAG()`) needs care.
-- **User sees:** "rj barrett 4th qtr log" always goes to the agent.
-- **Next step:** materialize per-player, per-period points at warehouse build,
-  reconcile them against the box score, then add a template with a 2003 floor.
-- **GitHub:** #24
 
 ### Conference and division are in the standings we fetch, and the parser drops them
 - **Found:** 2026-09-11, template work (agent B); **cause corrected 2026-09-15**
@@ -1130,6 +1095,63 @@ wrong for other reasons, and each of those is an entry below.
 - **GitHub:** #77
 
 ## P4: tooling, docs, low impact
+
+### `games.date` is a VARCHAR, and the agent is taught only part of how to filter it
+- **Found:** 2026-09-16 during the query-set audit; **corrected and re-ranked
+  P3 -> P4 the same day** by the issues audit
+- **Evidence:** the column holds `2021-10-23T22:00Z`. The first version of this
+  entry said only `strptime` works, and that was wrong: `CAST(date AS
+  TIMESTAMP)` fails with `invalid timestamp field format`, but `CAST(date AS
+  DATE)` works (`= DATE '2026-04-12'` -> 7 rows; `>= DATE '2020-01-26'` -> 8,202,
+  the same as `strptime`), and so does a plain string comparison (`date >
+  '2020-01-26'` -> 8,202). `KNOWLEDGE_BASE`'s "Filtering by an exact calendar
+  date" (`query/prompt.py:330-339`) already teaches `LIKE 'YYYY-MM-DD%'` and
+  `CAST(date AS DATE)`, but is selected only on date and month keywords and
+  never shows the range form.
+- **User sees:** nothing directly - at worst a recoverable agent error on its
+  first try at a date range.
+- **Next step:** add the range form to that knowledge entry, which is cheaper
+  than a load-time column. Every date the project PRINTS goes through
+  `season.eastern_date`, so this is about agent SQL only.
+
+### `get_collection` goes quiet on the exact failure it exists to make loud
+- **Found:** 2026-09-15, reviewing `4ef119f`; **re-ranked P3 -> P4 on 2026-09-16** - nothing a user sees, which is P4's definition
+- **Evidence:** `_request_json` returns `None` for any status in
+  `NOT_FOUND_STATUS = {400, 404}` (`fetch/client.py:53`). In `get_collection`
+  that hits `if not isinstance(data, dict): break` with `expected` still
+  `None`, so the "collection %s declared %d items, fetched %d" warning cannot
+  fire. The method returns `[]`, `parse_power_index([])` yields no rows, and
+  `Pipeline._write_rows` no-ops on an empty list - leaving the season's old,
+  possibly short Parquet in place with nothing in the log. An endpoint that
+  rejects `limit=1000` with a 400 reproduces the original 25-row bug silently.
+  No test covers the `None` path, and the docstring's "Returns an empty list
+  where `get_json` would return None" is unasserted.
+- **User sees:** nothing - a table quietly one pull behind, which is exactly
+  how the 25-row power index survived for months.
+- **Next step:** log at WARNING when a collection read ends on a non-dict first
+  page, and add a test with a session that answers 400.
+- **GitHub:** #90
+
+### A regular-season BPI question answers from the play-in snapshot in 2023, 2025 and 2026
+- **Found:** 2026-09-15, reviewing `4ef119f` before merging it; **re-ranked P3 -> P4 on 2026-09-16** - the answer is correct and says which snapshot it read
+- **Evidence:** now that the paging fix gives every snapshot 30 teams, the
+  play-in snapshot holds the team too, so `team_outlook`'s `pre` list (season
+  types 1, 2 and 5) is ordered by date and `candidates[-1]` takes the latest.
+  Measured read-only: the play-in stamp postdates the regular-season one in
+  2023 (04-15 vs 04-10), 2025 (04-19 vs 04-14) and 2026 (04-18 vs 04-13), but
+  not in 2024, whose regular-season snapshot is stamped 2024-06-28. Before the
+  paging fix the 13-team play-in snapshot simply did not hold most teams and
+  lost by default.
+- **User sees:** a correct, clearly labeled answer - but the same question
+  names a different snapshot depending on the season, and "how good were the
+  Knicks in the 2026 regular season" is answered from the play-in view.
+- **Next step:** decide whether `season_type=2` should prefer the
+  regular-season snapshot outright rather than the latest pre-playoff one, and
+  pin whichever it is with a test. It is a deliberate choice either way; today
+  nothing records that it was made.
+- **Source:** DATA.md, "ESPN's power index is a paged collection, and holds all
+  30 teams"
+- **GitHub:** #88
 
 ### The BPI preseason tiebreak cannot be perturbation-tested through the template
 - **Found:** 2026-09-15, reviewing `4ef119f` before merging it
