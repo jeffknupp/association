@@ -1321,6 +1321,24 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **Next step:** in `data check` or at startup, compare the stored views' columns
   against what the code reads. The backfill rule in `AGENTS.md` ("Working on the
   fetch path") is the process half of this.
+- **Re-checked 2026-09-16, unchanged - reassessed as bigger than a P4, needs
+  an owner decision on approach.** Confirmed against the main warehouse
+  read-only that it is current (`player_game_log` already has `team_abbr`/
+  `opponent_abbr` from the same-day franchise-naming change), so there is
+  nothing to reproduce right now, but the underlying gap is real. Two ways to
+  build "the stored view against what the code reads", and both cost more
+  than this priority: (1) compare each view's *stored* SQL text
+  (`duckdb_views()`) against what today's code would emit - correct and
+  self-maintaining, but the three builders (`_build_views`,
+  `advanced_stats.build_views`, `reconstructed_box.build_views`) currently
+  only ever *execute* their `CREATE OR REPLACE VIEW` text, so this needs
+  refactoring each to also hand back the SQL string unexecuted, which touches
+  the core build path #51/#66 just changed; (2) hand-maintain an expected
+  column list per view (the `COVERAGE`-table pattern) - smaller, but a second
+  place the columns are declared, which is exactly the "one concept, one
+  definition" shape this project already tries to avoid (`AGENTS.md`,
+  "Saying what you measured"). Neither is a small mechanical fix; left open
+  for the owner to pick a direction.
 - **GitHub:** #38
 
 ### The `:rtype:` shim in `docs/conf.py` waits on dropping Python 3.10
@@ -1426,6 +1444,26 @@ the entries it held, and nobody had re-read the P2s against the definition.
   `real_games` - each its own `CREATE OR REPLACE TABLE`. A build killed between
   a load and its repair leaves an unrepaired `team_box_stats` or
   `player_season_stats` that looks perfectly normal.
+- **Fixed 2026-09-16 for a full rebuild only.** `fetch/warehouse._build_full`
+  now loads every table plus all three repairs and every view into
+  `<db_path>.building`, and only replaces `db_path` once all of it succeeds -
+  covering the load AND the repairs the note above found missing, since both
+  happen before the swap. An interrupted full build leaves the existing
+  warehouse completely untouched, and the leftover `.building` file is the
+  marker: the next full build logs it and replaces it. Watched fail by
+  monkeypatching a mid-build raise and asserting the warehouse file's bytes
+  are unchanged (`tests/fetch/test_warehouse.py`).
+- **Still open: a partial `--tables` reload writes in place, unprotected.**
+  `data pull`'s incremental path (after the first pull) and all three
+  `scripts/backfill_*.py` always call `warehouse.build` with an explicit
+  `tables=` subset, which depends on tables already in `db_path` that it is
+  not reloading and so cannot go through the temp-file swap without copying
+  the whole file first. A kill between a partial load and its repair still
+  leaves an unrepaired table looking normal. `data check` still does not read
+  the warehouse at all (only the Parquet tree), so "have `data check` report
+  a build that did not finish" is also still open for both paths - that half
+  needs an owner decision: whether `data check` should gain a warehouse
+  dependency it deliberately does not have today.
 - **GitHub:** #51
 
 ### The agent can return an empty answer
@@ -1588,6 +1626,22 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **Re-checked 2026-09-15:** `PRAGMA database_size` read-only gives 7,101
   total blocks (1.73 GiB) against 3,781 used (0.92 GiB) - 47% free, matching the
   entry.
+- **Fixed 2026-09-16 for a full rebuild.** `fetch/warehouse._build_full` now
+  builds every table into a brand new `<db_path>.building` file rather than
+  replacing tables in the existing one, so a full `data load` (or the first
+  `data pull`) never carries a prior partial load's free space forward - the
+  chosen fix was the first option in the entry's own next step, done as one
+  change with #51's marker (the same temp-file-and-swap covers both). Not yet
+  backfilled against the main warehouse - the next full `data load` will pick
+  it up; running one is a real rebuild and outside a read-only session's
+  constraints here.
+- **Still open: a partial `--tables` reload writes in the existing file and
+  can still accumulate free space**, since it cannot go through the same
+  swap without first copying the whole file (see #51's still-open note - the
+  two are the same underlying constraint). The main warehouse is 1.73 GiB
+  today; whether that residual growth from partial loads alone is worth a
+  periodic compaction command is the "if the size matters" the original next
+  step already flagged as optional.
 - **GitHub:** #66
 
 ### Free-throw coordinates stop after 2018

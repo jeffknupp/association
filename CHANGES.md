@@ -15,6 +15,26 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A full warehouse rebuild now builds into a temporary file and swaps it
+  in, rather than replacing tables one statement at a time in `db_path`
+  itself.** `association data pull`/`load`'s full-rebuild path is exactly the
+  memory-hungry case `AGENTS.md` ("Working on the fetch path") describes -
+  `plays` alone from 17,500 files, on the same connection loading 17 other
+  tables - and building in place meant an interruption (an OOM kill or
+  anything else) left the tables already replaced at their new contents and
+  the rest at their old ones, with nothing recording that the build never
+  finished. `fetch/warehouse._build_full` now writes into
+  `<db_path>.building` and only replaces `db_path` once every load, repair
+  and view succeeds; an interrupted build leaves the existing warehouse
+  completely untouched, and the leftover `.building` file is itself the
+  marker the next full build logs and replaces. It also stops a full rebuild
+  from ever carrying forward a prior partial load's free space - the same 19
+  tables and views measured 1.73 GiB in a repeatedly partial-loaded file
+  against 0.92 GiB freshly built - since a full rebuild now always starts
+  from an empty file. A partial `--tables` reload (used by `data pull`'s
+  incremental path, and by the backfill scripts) is unaffected: it still
+  writes `db_path` in place, because it depends on tables already there that
+  it is not reloading.
 - **A worktree can now run `association data pull`/`load` and the audit
   scripts with no `--data-dir`/`--db-path` at all.** All nine call sites
   (`cli.py`, and `check_routing`, `check_coverage`, `check_nicknames`,
