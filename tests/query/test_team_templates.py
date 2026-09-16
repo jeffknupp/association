@@ -4,7 +4,7 @@ The fixture is small but built out of the warehouse's real faults, each one
 measured before it was written down here: a 0-0 phantom game with no winner, a
 second event id for a game already listed, the NBA Cup final (a regular-season
 game no standings count), a neutral-site game, a season listed under two labels
-(1993 and 1994), a postseason labelled by the year its season started, and a
+(1993 and 1994), a postseason labeled by the year its season started, and a
 postseason whose game list is one game short of the team's own totals.
 """
 
@@ -112,7 +112,7 @@ def team_ctx(tmp_path: Path) -> TemplateContext:
         ("p2", S, 3, f"{S}-04-22T23:00Z", "18", "2", 99, 101, "2", False, "New York"),
         ("p3", S, 3, f"{S}-04-25T23:00Z", "2", "18", 95, 105, "18", False, "Boston"),
         ("p4", S, 3, f"{S}-04-27T23:00Z", "2", "18", 110, 120, "18", False, "Boston"),
-        # Labelled 1990, played in 1991: the 1991 postseason.
+        # Labeled 1990, played in 1991: the 1991 postseason.
         ("old1", 1990, 3, "1991-05-01T23:00Z", "2", "18", 100, 90, "2", False, "Boston"),
         # One game under two season labels, exactly as ESPN answers 1993 and 1994.
         ("ph", 1993, 2, "1994-01-10T00:30Z", "18", "2", 100, 90, "18", False, "New York"),
@@ -321,7 +321,7 @@ def test_the_team_as_its_own_opponent_falls_through(team_ctx: TemplateContext) -
         team_record(team_ctx, {"team": "Knicks", "opponent": "New York Knicks"})
 
 
-def test_team_record_honours_venue_opponent_and_span_but_not_order() -> None:
+def test_team_record_honors_venue_opponent_and_span_but_not_order() -> None:
     check_scope("team_record", {"venue": "home", "opponent": "Boston Celtics", "span": "career"})
     with pytest.raises(TemplateUnsupported, match="different span"):
         check_scope("team_record", {"order": "recent"})

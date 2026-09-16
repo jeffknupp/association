@@ -15,6 +15,50 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A full warehouse rebuild now builds into a temporary file and swaps it
+  in, rather than replacing tables one statement at a time in `db_path`
+  itself.** `association data pull`/`load`'s full-rebuild path is exactly the
+  memory-hungry case `AGENTS.md` ("Working on the fetch path") describes -
+  `plays` alone from 17,500 files, on the same connection loading 17 other
+  tables - and building in place meant an interruption (an OOM kill or
+  anything else) left the tables already replaced at their new contents and
+  the rest at their old ones, with nothing recording that the build never
+  finished. `fetch/warehouse._build_full` now writes into
+  `<db_path>.building` and only replaces `db_path` once every load, repair
+  and view succeeds; an interrupted build leaves the existing warehouse
+  completely untouched, and the leftover `.building` file is itself the
+  marker the next full build logs and replaces. It also stops a full rebuild
+  from ever carrying forward a prior partial load's free space - the same 19
+  tables and views measured 1.73 GiB in a repeatedly partial-loaded file
+  against 0.92 GiB freshly built - since a full rebuild now always starts
+  from an empty file. A partial `--tables` reload (used by `data pull`'s
+  incremental path, and by the backfill scripts) is unaffected: it still
+  writes `db_path` in place, because it depends on tables already there that
+  it is not reloading.
+- **A worktree can now run `association data pull`/`load` and the audit
+  scripts with no `--data-dir`/`--db-path` at all.** All nine call sites
+  (`cli.py`, and `check_routing`, `check_coverage`, `check_nicknames`,
+  `check_net_points_games`, `check_team_box`, `backfill_season_totals`,
+  `backfill_missing_playoffs` and `backfill_power_index` under `scripts/`)
+  defaulted to the literal `./nba.duckdb` and `./data/parquet`, which a
+  worktree does not have - both are gitignored build artifacts that live
+  beside the main checkout. New module `association.repo_paths` resolves
+  each default to the current directory's copy where one exists, else the
+  main checkout's, found through `git rev-parse --git-common-dir`, else the
+  original literal default unchanged. Verified read-only from a worktree with
+  zero arguments: `check_coverage.py`, `check_nicknames.py` and
+  `check_team_box.py` each ran and reported against the main checkout's
+  warehouse rather than failing with "database does not exist".
+- **A fresh worktree's venv is documented as needing a sync before the
+  gates run**, and the `CHANGES.md` gate now says so when it checks nothing.
+  `AGENTS.md` ("Before you commit") gets the line CI runs -
+  `uv sync --frozen --extra dev --extra docs --extra web` - since `uv run`
+  alone creates a venv with none of the `dev`/`docs`/`web` extras and
+  `uv run pytest -q` fails before the suite starts. Separately,
+  `scripts/check_changes_md.sh` read only `git diff --cached`, so it printed
+  "Passed" with `src/` edited but nothing staged - the same check that would
+  correctly fail once the edit was staged. It now says "nothing staged, so
+  nothing to check" and still exits 0, rather than reading as a real pass.
 - **Every team name an answer prints is the name it had that season.** A 2005
   Knicks log listed a game "vs Brooklyn Nets", eight years before the Nets moved;
   the 2008 standings put the Charlotte Hornets 23rd, a team that did not exist
@@ -46,6 +90,38 @@ had no published version to be compatible with.
   name and watched to fail; four of the first five came back MISSED until each
   had a test of its own, and the view's test had to move from 2005 to 1997 to
   catch anything, because the Grizzlies were already in Memphis by 2005.
+- **The router prompt's size is documented correctly, and budgeted.**
+  `query/router.py` said the prompt was "~430 tokens" in its published
+  docstring and beside `ROUTER_NUM_CTX`; it is 9,989 characters, about 2,500
+  tokens at the four characters a token the agent's budget is measured at,
+  against a 4,096-token window. New `ROUTER_PROMPT_TOKEN_BUDGET` (three
+  quarters of the window) and a test that fails when the prompt plus a long
+  question passes it - the router's counterpart to `PreambleTooLarge`, as a
+  test rather than a runtime check because the prompt is a constant. Not
+  measured with the model's tokenizer; the figure is an estimate.
+- **A stale comment in `router.route()` no longer credits the 2.0 REPL** with
+  the `previous_question` follow-ups; it now says what arrives there
+  (`Agent.last_question`, None in both shipped callers) and who the branch is
+  for. No behavior change. The `docs/usage.rst` assists example now carries the
+  "(minimum 20 games)" qualifier the answer prints. The entry that filed it
+  said the answer also continued "Next: ..."; it does not, because the router
+  emits `limit` 1 for "who leads" (the web renderer's own note on why a
+  one-row ranking stays a sentence), and the template prints the list only
+  past one row.
+- **American spelling throughout `src/`.** 43 British spellings ("honour",
+  "behaviour", "labelled" and their forms) replaced there, and 24 more in the
+  tests, including the user-visible
+  `check_scope` trace "cannot honour" and three published docstrings. The
+  router prompt and schema hash identically before and after, so no routing
+  moved.
+- **Two wrong comments corrected, no behavior change.** The comment above
+  `team_metrics.TURNOVERS` said pre-2013 `team_season_stats.turnovers` was "the
+  player turnovers alone"; re-measured, it is the full count with team
+  turnovers in (equal to the box `totalTurnovers` season sum for 24-27 of 30
+  teams, and to the player-only sum for none). The expression was right. The
+  `player_season_stats_deduped` view and `leaderboard.not_a_postseason_copy`
+  now both give the dropped-row figure as 436 of 7,941 rows (340 of 7,845
+  player-seasons); one said 340 rows and the other 437.
 - **A team name is read for its season, and the question's own team beats one
   the router could not ground.** Found through "duren v nets 1h gameloh", which
   fell through because the router wrote the opponent as "New Jersey Nets". That

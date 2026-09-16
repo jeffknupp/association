@@ -41,6 +41,7 @@ import duckdb
 
 from association.fetch.netpoints_client import NetPointsDailyClient
 from association.fetch.parse import NET_POINTS_ABBREV_TO_ESPN, NetPointsGameIndex
+from association.repo_paths import default_db_path
 
 # Enough dates to cover a season's shapes (back-to-backs, afternoon tips, the
 # turn of a month) without spending an hour on S3. Sampled deterministically.
@@ -138,7 +139,7 @@ def _against_source(con: duckdb.DuckDBPyConnection, season: int, dates: int) -> 
 def main() -> int:
     """Check the per-game NetPoints date rule and report what disagrees."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--db-path", default="./nba.duckdb")
+    parser.add_argument("--db-path", default=default_db_path())
     parser.add_argument("--season", type=int, default=2026, help="Season-ending year to check (default: 2026).")
     parser.add_argument("--against-source", action="store_true", help="Also fetch live daily files and check the points agree. Needs network.")
     parser.add_argument("--dates", type=int, default=DEFAULT_DATES, help=f"How many dates to sample with --against-source (default: {DEFAULT_DATES}).")

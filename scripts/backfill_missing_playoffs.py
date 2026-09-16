@@ -41,6 +41,7 @@ from association.coverage import POSTSEASON
 from association.fetch import warehouse
 from association.fetch.client import ESPNClient
 from association.fetch.pipeline import Pipeline
+from association.repo_paths import default_data_dir, default_db_path
 
 log = logging.getLogger("backfill_missing_playoffs")
 
@@ -66,8 +67,8 @@ def postseason_counts(db_path: Path, seasons: tuple[int, ...]) -> dict[int, int]
 def main() -> int:
     """Discover and fetch the missing playoff games, then reload the tables."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--data-dir", default="./data/parquet", help="Parquet flat-file root")
-    parser.add_argument("--db-path", default="./nba.duckdb", help="DuckDB warehouse file")
+    parser.add_argument("--data-dir", default=default_data_dir(), help="Parquet flat-file root")
+    parser.add_argument("--db-path", default=default_db_path(), help="DuckDB warehouse file")
     parser.add_argument("--seasons", default=",".join(str(s) for s in AFFECTED_SEASONS), help="Comma-separated seasons to scan")
     parser.add_argument("--rate-limit", type=float, default=5.0, help="Max requests/second against ESPN")
     parser.add_argument("--workers", type=int, default=4, help="How many requests to keep in flight")

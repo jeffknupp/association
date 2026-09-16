@@ -9,7 +9,8 @@ import ollama
 import pytest
 from ollama import ChatResponse, Message
 
-from association.query.router import CODE_ASSIGNED_INTENTS, ORDER_INTENTS, ORDER_WORDS, ROUTER_PROMPT, ROUTER_SCHEMA, SIDE_VALUES, Route, route
+from association.query.prompt import estimate_tokens
+from association.query.router import CODE_ASSIGNED_INTENTS, ORDER_INTENTS, ORDER_WORDS, ROUTER_NUM_CTX, ROUTER_PROMPT, ROUTER_PROMPT_TOKEN_BUDGET, ROUTER_SCHEMA, SIDE_VALUES, Route, route
 from association.season import current_season
 
 
@@ -455,8 +456,8 @@ def test_a_bogus_model_order_is_not_trusted_as_a_phrasing_this_missed() -> None:
     assert got.slots.get("order") != "sideways"
 
 
-def test_the_order_is_only_added_where_a_template_honours_it() -> None:
-    """check_scope REFUSES a scoping slot the template cannot honour, so adding
+def test_the_order_is_only_added_where_a_template_honors_it() -> None:
+    """check_scope REFUSES a scoping slot the template cannot honor, so adding
     `order` to a player_stat question would not sharpen the answer - it would
     cost one, by sending a question that works today to the agent instead."""
     got = _asking('{"intent":"player_stat","stat":"points","player":"Stephen Curry"}', "how many points did curry score in his last game")
@@ -469,10 +470,10 @@ def test_the_order_values_match_the_router_schema() -> None:
     assert set(ORDER_WORDS) == set(ROUTER_SCHEMA["properties"]["order"]["enum"])
 
 
-def test_the_order_intents_are_the_ones_that_honour_order() -> None:
+def test_the_order_intents_are_the_ones_that_honor_order() -> None:
     """Two hand-maintained lists of the same intents, kept apart so the router
-    does not import the templates. An intent honouring `order` and missing here
-    keeps the bug this fixed; one listed here that does not honour it turns
+    does not import the templates. An intent honoring `order` and missing here
+    keeps the bug this fixed; one listed here that does not honor it turns
     into a fall-through."""
     from association.query.templates import HONORED_SCOPING
 
@@ -812,7 +813,7 @@ def test_a_calendar_day_is_resolved_rather_than_refused(question: str, want: str
     numbering applied to a month, not a guess.
 
     Worth stating why this is resolved where the other narrowings refuse: it
-    produces the RIGHT answer rather than a refusal. `game_log` honours `date`,
+    produces the RIGHT answer rather than a refusal. `game_log` honors `date`,
     and given 2026-03-17 it answers "Desmond Bane, game on 2026-03-17, 16 PTS
     vs OKC" - which is the question. Before this, the date never reached a slot
     and the model's `order="recent"` answered with his most recent game, a
@@ -824,7 +825,7 @@ def test_a_calendar_day_is_resolved_rather_than_refused(question: str, want: str
 @pytest.mark.parametrize(
     "question",
     [
-        # A window, not a day - no template honours a range of dates.
+        # A window, not a day - no template honors a range of dates.
         "Best NBA record since January 31st",
         "lebron points after march 1",
     ],
@@ -867,7 +868,7 @@ def test_an_impossible_calendar_day_is_not_a_date() -> None:
 def test_a_player_against_a_team_is_not_a_player_matchup(question: str, payload: str, want: str) -> None:
     """`player_matchup` needs two players. Given one and a team it had nothing
     to answer with, and eight feed queries fell through to the agent where
-    `player_stat` and `game_log` answer them exactly - both honour `opponent`.
+    `player_stat` and `game_log` answer them exactly - both honor `opponent`.
 
     The rule for this already existed and only read the `players` LIST; the
     model routinely uses the singular `player` slot with an `opponent`
@@ -914,7 +915,7 @@ def test_a_player_whose_name_looks_like_a_team_is_still_a_player(name: str) -> N
 
 def test_a_triple_double_abbreviation_is_not_read_as_three_pointers() -> None:
     """Not a narrowing, though the replay filed it as one: "luka td3s home" had
-    its venue read and honoured correctly, and answered his POINTS per game at
+    its venue read and honored correctly, and answered his POINTS per game at
     home, because `td3s` became shot_value 3. Nothing counts triple-doubles for
     one player, and the season table they live on has no venue dimension, so
     this is the agent's. Spelled out, "triple double" already routes right."""
@@ -934,7 +935,7 @@ def test_the_short_form_of_a_quarter_is_recognized(question: str) -> None:
 def test_a_quarter_question_about_a_group_of_players_still_falls_through() -> None:
     """ "each center 1q pts log vs nugget" names a position, not a player.
     `period_split` answers about one named player, so with the slot empty this
-    keeps the old behaviour rather than inventing a subject."""
+    keeps the old behavior rather than inventing a subject."""
     assert _ask("each center 1q pts log vs nugget", '{"intent":"game_log"}').intent == "other"
 
 
@@ -1097,7 +1098,7 @@ def test_a_named_players_quarter_now_routes_to_a_template(question: str, want: d
 def test_a_breakdown_across_every_quarter_still_goes_to_the_agent(question: str) -> None:
     """ "by quarter" asks for all four at once, which is a different shape from
     "the third quarter". `period_split` answers one period, so a question that
-    names none keeps the old behaviour rather than being answered for a period
+    names none keeps the old behavior rather than being answered for a period
     nobody asked about."""
     assert _ask(question, '{"intent":"player_stat","player":"Nikola Jokic"}').intent == "other"
 
@@ -1146,3 +1147,21 @@ def test_a_log_is_asked_for_by_the_question_not_assumed(question: str, per_game:
     between one line and a table."""
     got = _ask(question, '{"intent":"game_log","player":"RJ Barrett"}')
     assert bool(got.slots.get("per_game")) is per_game
+
+
+def test_the_router_prompt_leaves_room_for_the_question_and_the_reply() -> None:
+    """ollama truncates an over-length prompt head-first and silently, and the
+    router's prompt has no per-question assembly step to raise at, the way
+    `PreambleTooLarge` does for the agent. The prompt is a constant, so this
+    is the guard: it fails when `ROUTER_PROMPT` plus the longest user line the
+    code builds (a previous question and a long question) costs more than
+    three quarters of `ROUTER_NUM_CTX`. The prompt was documented as "~430
+    tokens" for months after it passed 2,400; what this asserts is measured
+    at the same ~4 characters a token as the agent's budget, not with the
+    model's tokenizer."""
+    long_question = "what was the record of the los angeles lakers against the boston celtics at home in the 2024 regular season, and how many games did they win by ten or more points? " * 2
+    user_line = f"(previous question, for context only: {long_question})\nQ: {long_question}"
+    cost = estimate_tokens(ROUTER_PROMPT) + estimate_tokens(user_line)
+    assert cost <= ROUTER_PROMPT_TOKEN_BUDGET, f"router prompt plus a long question is ~{cost} tokens, over the {ROUTER_PROMPT_TOKEN_BUDGET} budget: shorten ROUTER_PROMPT or raise ROUTER_NUM_CTX"
+    # The quarter left over is the chat template and a reply of under 100 tokens of JSON.
+    assert ROUTER_NUM_CTX - ROUTER_PROMPT_TOKEN_BUDGET >= 1024

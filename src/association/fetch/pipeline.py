@@ -674,7 +674,7 @@ class Pipeline:
         NetPoints label is usually its ESPN date minus one (the UTC-vs-local
         offset - see NetPointsGameIndex), and a label date with no OTHER
         local game of its own would otherwise never be fetched. That missed a
-        Lakers game entirely, rather than merely mislabelling it. The label's
+        Lakers game entirely, rather than merely mislabeling it. The label's
         season is reused from its parent date unless independently known (a
         season boundary); reusing it costs at worst one empty S3 key."""
         path = self._p("games")

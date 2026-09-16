@@ -73,9 +73,14 @@ class TeamMetric:
 
 
 # Turnovers in each era: see the module docstring for why totalTurnovers is
-# only usable from 2013. Before it, `turnovers` is the player turnovers alone,
-# which leaves out team turnovers (about 0.6 a game) - a small, uniform
-# undercount, where the stored total is a large and uniform overcount.
+# only usable from 2013. Before it, `turnovers` is already the full count, team
+# turnovers included: summed over a season's box scores, it equals the box
+# `totalTurnovers` for 24-27 of 30 teams and the player-only sum for none
+# (measured for 1998, 2005, 2010 and 2012; the gap over the player sum is
+# ~0.65 a game, which is the team turnovers). An earlier version of this
+# comment called it "the player turnovers alone", which is wrong. From 2013
+# the two columns swap roles: `totalTurnovers` is the box total, and
+# `turnovers` is the player-only figure (2020: the box total for 0 teams).
 TURNOVERS = "CASE WHEN ts.season >= 2013 THEN ts.totalTurnovers ELSE ts.turnovers END"
 """SQL for a team season's total turnovers, over ``team_season_stats`` aliased ``ts``.
 
@@ -333,7 +338,7 @@ def games_scope(season_type: int, season: int | None) -> tuple[str, list[Any]]:
     :data:`FIRST_FULL_REGULAR_SEASON`, and never includes the NBA Cup final. A
     postseason is selected by the CALENDAR YEAR it was played in, not by its
     label, because ``games`` labels every postseason before 1994 by the year
-    its season STARTED: the games labelled 1990 end on 1991-06-12, which is the
+    its season STARTED: the games labeled 1990 end on 1991-06-12, which is the
     1991 Finals. Every postseason is played inside the calendar year its season
     is named for (the 2020 bubble ended in October 2020), so the year is exact
     for all of them, and from 1994 on it agrees with the label for every game.

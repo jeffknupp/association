@@ -34,6 +34,7 @@ from association.query.entities import override_invented_players, override_nickn
 from association.query.models import DEFAULT_ROUTER_MODEL
 from association.query.router import route
 from association.query.templates import PLAYER_INTENTS, PLAYER_REQUIRED_INTENTS, TEMPLATES
+from association.repo_paths import default_db_path
 from association.season import current_season
 
 # (question, expected intent, expected slots). A list-valued expectation is a
@@ -253,7 +254,7 @@ def main() -> int:
     parser.add_argument("--model", default=DEFAULT_ROUTER_MODEL)
     # A warehouse, because the second override checks the router's names
     # against the roster - see entities.override_invented_players.
-    parser.add_argument("--db-path", default="./nba.duckdb")
+    parser.add_argument("--db-path", default=default_db_path())
     args = parser.parse_args()
 
     con = duckdb.connect(args.db_path, read_only=True)

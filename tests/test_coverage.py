@@ -20,7 +20,7 @@ from association.query.templates import RANKING_INTENTS, TEMPLATE_SOURCES, TEMPL
 
 def test_every_covered_table_is_a_real_table() -> None:
     """The keys are table names, and a typo would be a floor that never fires -
-    silently restoring exactly the behaviour this module removes."""
+    silently restoring exactly the behavior this module removes."""
     assert set(COVERAGE) <= KNOWN_TABLES
 
 

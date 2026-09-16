@@ -617,10 +617,9 @@ the parser throws the grouping away. The birth-date half stands.
 - **Evidence:** Eddy Curry has 527 "playoff games" across 11 postseason rows in
   `player_season_stats` — seven regular seasons each filed twice. Across the
   table, the deduplicating view drops **436 of 7,941 postseason rows**, which
-  is **340 of 7,845 player-seasons**. Both `AGENTS.md` and
-  `fetch/warehouse.py` previously gave "340 of 7,845 rows", conflating the two
-  units; re-measured 2026-09-11, 436/7,941 is the row figure and 340/7,845 the
-  player-season figure.
+  is **340 of 7,845 player-seasons**. The two units are easy to conflate, and
+  were: re-measured 2026-09-11 and again 2026-09-16, 436/7,941 is the row
+  figure and 340/7,845 the player-season figure.
 - **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull**, which
   reproduced `player_season_stats` exactly apart from 13 `position` values.
 - **How we handle it:** `player_season_stats_deduped` drops a postseason line

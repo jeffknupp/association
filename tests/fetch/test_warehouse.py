@@ -1,5 +1,6 @@
 """Regression + sanity tests for the DuckDB warehouse builder."""
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -504,3 +505,81 @@ def test_player_game_log_abbreviates_each_team_as_it_was_that_season(tmp_path: P
     # row reads MEM with or without the rename, and reverting the opponent
     # column went unnoticed until the fixture moved to a Vancouver season.
     assert rows == [(1997, "NJ", "VAN"), (2020, "BKN", "MEM")]
+
+
+def test_a_full_rebuild_that_raises_leaves_the_existing_warehouse_untouched(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A full rebuild interrupted partway - an OOM kill, or any other error -
+    must not leave the warehouse half-replaced. See AGENTS.md, "A full
+    warehouse.build() is memory-hungry": each table used to be its own
+    statement against `db_path` directly, so a kill mid-build left earlier
+    tables at their new contents and the rest at their old ones."""
+    data_dir = tmp_path / "parquet"
+    _write_table_fixture(data_dir, "teams", {"team_id": "1", "abbreviation": "BOS"})
+    db_path = tmp_path / "test.duckdb"
+
+    warehouse.build(data_dir, db_path)  # a real, complete warehouse first
+    before = db_path.read_bytes()
+
+    # Change the source data, so a second build - if it wrongly landed - would show.
+    (data_dir / "teams" / "f.parquet").unlink()
+    _write_table_fixture(data_dir, "teams", {"team_id": "1", "abbreviation": "LAL"})
+
+    def boom(con: duckdb.DuckDBPyConnection) -> None:
+        raise RuntimeError("simulated failure partway through a full rebuild")
+
+    monkeypatch.setattr(warehouse, "_repair_and_build_views", boom)
+    with pytest.raises(RuntimeError, match="simulated failure"):
+        warehouse.build(data_dir, db_path)
+
+    assert db_path.read_bytes() == before, "an interrupted full rebuild must not touch the existing warehouse file at all"
+    building_path = db_path.with_name(db_path.name + ".building")
+    assert building_path.exists(), "the half-built file is left behind as the marker of an interrupted build"
+
+
+def test_a_leftover_building_file_is_replaced_and_logged(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """The marker an interrupted build leaves behind does not wedge the next
+    one - it is logged and overwritten, not left to accumulate beside the real file."""
+    data_dir = tmp_path / "parquet"
+    _write_table_fixture(data_dir, "teams", {"team_id": "1", "abbreviation": "BOS"})
+    db_path = tmp_path / "test.duckdb"
+    building_path = db_path.with_name(db_path.name + ".building")
+    building_path.write_bytes(b"leftover from a killed build")
+
+    with caplog.at_level(logging.WARNING):
+        warehouse.build(data_dir, db_path)
+
+    assert "did not finish" in caplog.text
+    assert db_path.exists()
+    assert not building_path.exists()
+    con = duckdb.connect(str(db_path))
+    tables = {r[0] for r in con.execute("SHOW TABLES").fetchall()}
+    con.close()
+    assert "teams" in tables
+
+
+def test_a_successful_full_rebuild_leaves_no_building_file_behind(tmp_path: Path) -> None:
+    """The temporary file is a marker of an INTERRUPTED build only - a clean run doesn't leave one sitting beside the warehouse."""
+    data_dir = tmp_path / "parquet"
+    _write_table_fixture(data_dir, "teams", {"team_id": "1", "abbreviation": "BOS"})
+    db_path = tmp_path / "test.duckdb"
+
+    warehouse.build(data_dir, db_path)
+
+    assert not db_path.with_name(db_path.name + ".building").exists()
+
+
+def test_a_partial_reload_still_writes_in_place(tmp_path: Path) -> None:
+    """Only a full rebuild goes through the temp-file swap - a partial one
+    depends on tables already in `db_path` that it is not reloading, so it
+    has to write there directly, and never leaves a `.building` file."""
+    data_dir = tmp_path / "parquet"
+    _write_table_fixture(data_dir, "teams", {"team_id": "1", "abbreviation": "BOS"})
+    _write_table_fixture(data_dir, "games", {"event_id": "100", "season": 2024, "date": "2024-01-01"})
+    db_path = tmp_path / "test.duckdb"
+    warehouse.build(data_dir, db_path)
+
+    inode_before = db_path.stat().st_ino
+    warehouse.build(data_dir, db_path, tables=["teams"])
+
+    assert db_path.stat().st_ino == inode_before, "a partial reload must modify db_path in place, not replace it"
+    assert not db_path.with_name(db_path.name + ".building").exists()

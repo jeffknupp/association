@@ -15,11 +15,14 @@ from association import __version__
 # query.models holds no heavy imports, so this does not pull ollama or duckdb
 # into CLI startup - unlike the Agent import, which stays lazy below.
 from association.query.models import DEFAULT_MODEL, DEFAULT_ROUTER_MODEL
+from association.repo_paths import default_data_dir, default_db_path
 
 log: logging.Logger = logging.getLogger("association.cli")
 
-DEFAULT_DATA_DIR = "./data/parquet"
-DEFAULT_DB_PATH = "./nba.duckdb"
+# Resolved once at import, against the process's cwd - a worktree with no
+# warehouse of its own gets the main checkout's, per repo_paths.
+DEFAULT_DATA_DIR = default_data_dir()
+DEFAULT_DB_PATH = default_db_path()
 DEFAULT_OUT_DIR = "./query_output"
 
 LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR"]

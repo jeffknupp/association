@@ -151,7 +151,7 @@ UNGATED_ON_REBUILD: tuple[str, ...] = (
 
 #: The pre-rebuild reading: the stored table, minutes required. The default
 #: everywhere, so a caller that does not resolve a source keeps the old
-#: behaviour rather than silently widening what counts as a game played.
+#: behavior rather than silently widening what counts as a game played.
 RAW_BOX = BoxSource("player_box_stats", False, frozenset())
 """The stored box-score table, with no rebuilt rows.
 

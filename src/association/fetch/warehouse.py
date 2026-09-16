@@ -66,7 +66,12 @@ def build(data_dir: Path, db_path: Path, tables: list[str] | None = None) -> Non
     is present - they're pure closed-form formulas over already-fetched
     columns (see fetch/advanced_stats.py), no extra fetch or meaningful
     storage cost, so there's no real reason to make that a decision the
-    caller has to opt into every time."""
+    caller has to opt into every time.
+
+    A full rebuild (``tables=None``) goes through a temporary file and an
+    atomic rename (see ``_build_full``); a partial one writes ``db_path`` in
+    place, because it depends on tables already there that it is not
+    reloading."""
     if tables is not None:
         unknown = sorted(set(tables) - set(TABLES))
         if unknown:
@@ -74,47 +79,98 @@ def build(data_dir: Path, db_path: Path, tables: list[str] | None = None) -> Non
     target_tables = TABLES if tables is None else [t for t in TABLES if t in tables]
 
     data_dir = Path(data_dir)
-    con = duckdb.connect(str(db_path))
+    db_path = Path(db_path)
+    if tables is None:
+        _build_full(data_dir, db_path, target_tables)
+    else:
+        con = duckdb.connect(str(db_path))
+        try:
+            _tune(con)
+            _build_macros(con)
+            _load_tables(con, data_dir, target_tables)
+            _repair_and_build_views(con)
+        finally:
+            con.close()
+
+
+def _build_full(data_dir: Path, db_path: Path, target_tables: list[str]) -> None:
+    """Build every table into a fresh file beside ``db_path``, then replace
+    ``db_path`` with it - only once every load, repair and view finishes
+    without raising.
+
+    A full rebuild is exactly the case ``AGENTS.md`` ("Working on the fetch
+    path") describes losing memory to: `plays` alone from 17,500 files, on a
+    connection that is also loading the other 17 tables one statement at a
+    time. Building in place, an OOM kill (or any other interruption) left the
+    tables already replaced at their new contents and the rest at their old
+    ones - a warehouse that looks intact and is not, with nothing recording
+    that the build never finished. Writing into ``db_path.name + ".building"``
+    and renaming it over ``db_path`` only after everything succeeds means an
+    interrupted build leaves the previous warehouse completely untouched, and
+    a leftover ``.building`` file is itself the marker of one: the next full
+    build logs it and replaces it before starting.
+
+    It also stops the warehouse file from ever holding the free space of a
+    prior partial load - DuckDB reuses that space only for later writes, so
+    the same 19 tables and views measured 1.73 GiB in a repeatedly
+    partial-loaded file against 0.92 GiB freshly built. Building into a new
+    file every time this path runs means a full rebuild is always that
+    smaller size, with nothing to compact."""
+    building_path = db_path.with_name(db_path.name + ".building")
+    if building_path.exists():
+        log.warning("found a leftover %s from a build that did not finish (or is still running) - replacing it", building_path)
+        building_path.unlink()
+    con = duckdb.connect(str(building_path))
     try:
         _tune(con)
         _build_macros(con)
-        for table in target_tables:
-            table_dir = data_dir / table
-            if not _has_parquet(table_dir):
-                log.info("skip %s (no parquet files yet)", table)
-                continue
-            glob = str(table_dir / "**" / "*.parquet")
-            con.execute(
-                f"CREATE OR REPLACE TABLE {table} AS SELECT * FROM read_parquet(?, hive_partitioning=false, union_by_name=true)",
-                [glob],
-            )
-            count_row = con.execute(f"SELECT count(*) FROM {table}").fetchone()
-            assert count_row is not None  # COUNT(*) always returns exactly one row
-            count = count_row[0]
-            log.info("%s: %d rows", table, count)
-
-        existing = _existing_tables(con)
-        # Rewrites team_box_stats in place, correcting two faults in what ESPN
-        # serves (see fetch/team_box_repair.py). Ahead of every view, so nothing
-        # built below can read the uncorrected columns.
-        team_box_repair.repair(con, existing)
-        # Rewrites player_season_stats in place, rebuilding the combined rows
-        # ESPN's career endpoint disagrees with itself about (see
-        # fetch/season_totals_repair.py). Ahead of every view, so nothing built
-        # below - player_season_stats_deduped especially - reads the broken row.
-        season_totals_repair.repair(con, existing)
-        advanced_stats.build_views(con, existing)
-        # Needs `plays` as well as `player_box_stats`, and is built from the
-        # tables already loaded, so it sits beside the advanced-stat views
-        # rather than in _build_views, which only knows about box scores.
-        reconstructed_box.build_views(con, existing)
-        # Rebuilt on every call, including a partial `data load --tables games`,
-        # so the filtered list can never be a pull behind the table it filters.
-        real_games.build_table(con, existing)
-        existing = _existing_tables(con)  # refresh so player_game_log can join the views just created
-        _build_views(con, existing)
+        _load_tables(con, data_dir, target_tables)
+        _repair_and_build_views(con)
     finally:
         con.close()
+    building_path.replace(db_path)
+
+
+def _load_tables(con: duckdb.DuckDBPyConnection, data_dir: Path, target_tables: list[str]) -> None:
+    """``CREATE OR REPLACE`` each of ``target_tables`` from its slice of the Parquet tree, skipping any not yet fetched."""
+    for table in target_tables:
+        table_dir = data_dir / table
+        if not _has_parquet(table_dir):
+            log.info("skip %s (no parquet files yet)", table)
+            continue
+        glob = str(table_dir / "**" / "*.parquet")
+        con.execute(
+            f"CREATE OR REPLACE TABLE {table} AS SELECT * FROM read_parquet(?, hive_partitioning=false, union_by_name=true)",
+            [glob],
+        )
+        count_row = con.execute(f"SELECT count(*) FROM {table}").fetchone()
+        assert count_row is not None  # COUNT(*) always returns exactly one row
+        count = count_row[0]
+        log.info("%s: %d rows", table, count)
+
+
+def _repair_and_build_views(con: duckdb.DuckDBPyConnection) -> None:
+    """The in-place repairs and views every load - full or partial - runs after its tables, in the order each depends on the last."""
+    existing = _existing_tables(con)
+    # Rewrites team_box_stats in place, correcting two faults in what ESPN
+    # serves (see fetch/team_box_repair.py). Ahead of every view, so nothing
+    # built below can read the uncorrected columns.
+    team_box_repair.repair(con, existing)
+    # Rewrites player_season_stats in place, rebuilding the combined rows
+    # ESPN's career endpoint disagrees with itself about (see
+    # fetch/season_totals_repair.py). Ahead of every view, so nothing built
+    # below - player_season_stats_deduped especially - reads the broken row.
+    season_totals_repair.repair(con, existing)
+    advanced_stats.build_views(con, existing)
+    # Needs `plays` as well as `player_box_stats`, and is built from the
+    # tables already loaded, so it sits beside the advanced-stat views
+    # rather than in _build_views, which only knows about box scores.
+    reconstructed_box.build_views(con, existing)
+    # Rebuilt on every call, including a partial `data load --tables games`,
+    # so the filtered list can never be a pull behind the table it filters.
+    real_games.build_table(con, existing)
+    existing = _existing_tables(con)  # refresh so player_game_log can join the views just created
+    _build_views(con, existing)
 
 
 def _tune(con: duckdb.DuckDBPyConnection) -> None:
@@ -183,8 +239,8 @@ def _build_views(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
             -- 2002-2008, a season at a time. A postseason line is dropped when it
             -- claims more than 28 games (four best-of-seven rounds is the most any
             -- run can hold) or repeats the same season's regular-season games and
-            -- points exactly. Measured: 340 of 7,845 postseason rows, and every
-            -- real run checked survives (LeBron 2016 and 2020, Kawhi 2019, Curry
+            -- points exactly. Measured: 436 of 7,941 postseason rows (340 of
+            -- 7,845 player-seasons), and every real run checked survives (LeBron 2016 and 2020, Kawhi 2019, Curry
             -- 2022). A dropped row leaves "no postseason numbers", which is true.
             WHERE NOT (
                 pss.season_type = 3 AND (

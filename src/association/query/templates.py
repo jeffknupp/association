@@ -137,7 +137,7 @@ SEASON_TYPE_NAMES = {1: "preseason", 2: "regular season", 3: "postseason"}
 # home record" with their overall record, "career points leaders" with this
 # season's, and "Podziemski game log without curry" with his whole log. Each
 # was fast, fluent and about something else. `round` ("finals", "game 7") is
-# honoured by no template at all: nothing in the warehouse records one. `split`
+# honored by no template at all: nothing in the warehouse records one. `split`
 # and `since` (a range of seasons) are read for every intent for the same reason:
 # a template that is not about splits or ranges answered them with one season.
 # `below` ("under 14 FTA") and `situation` (back-to-backs, overtime, a month, a
@@ -145,7 +145,7 @@ SEASON_TYPE_NAMES = {1: "preseason", 2: "regular season", 3: "postseason"}
 # answering without them answered the inverse or the whole season.
 SCOPING_SLOTS = frozenset({"order", "date", "opponent", "venue", "span", "without", "round", "split", "since", "below", "situation"})
 
-# What each template actually honours. Anything not listed here honours none.
+# What each template actually honors. Anything not listed here honors none.
 HONORED_SCOPING: dict[str, frozenset[str]] = {
     # Every one of them, for a player: opponent, venue and a teammate's absence
     # are filters on the box-score rows, and a career is every season of them.
@@ -165,15 +165,15 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     "shot_chart": frozenset({"order"}),
     "shot_distance": frozenset({"order"}),
     "player_netpoints": frozenset({"order"}),
-    # `order` is honoured by DRAWING that game, from the long per-game table.
-    # `date` is still honoured by refusing: the router gives a calendar date
+    # `order` is honored by DRAWING that game, from the long per-game table.
+    # `date` is still honored by refusing: the router gives a calendar date
     # and the loader picks a player's first or last game of a season, which are
     # different questions - answering one with the other is the substitution
     # this whole module exists to prevent. Both stay listed either way, since
     # leaving one unlisted falls through to an agent with no better source,
     # which is slower and free to answer the season instead.
     "fingerprint": frozenset({"order", "date"}),
-    # `span` "career" is honoured by summing every season: a career leaderboard
+    # `span` "career" is honored by summing every season: a career leaderboard
     # from the per-team season rows, and a career count or high from every box
     # score since 1993-94. Each answer names the pool, since neither is all-time.
     "leaderboard": frozenset({"span"}),
@@ -190,7 +190,7 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # The home/road split, the record against one team, and every season at
     # once - "Knicks home record" was answered with their overall 53-29.
     "team_record": frozenset({"venue", "opponent", "span"}),
-    # Honoured for the record metrics, from the standings' own home/road
+    # Honored for the record metrics, from the standings' own home/road
     # strings; any other metric refuses it, since team season stats carry no
     # venue split at all.
     "team_leaderboard": frozenset({"venue"}),
@@ -395,11 +395,11 @@ def coverage_caveat(intent: str, slots: dict[str, Any]) -> str | None:
 
 def check_scope(intent: str, slots: dict[str, Any]) -> None:
     """Raise if the question scoped to particular games and this template
-    cannot honour that. Falling through is slow; answering a different question
+    cannot honor that. Falling through is slow; answering a different question
     quickly is worse."""
     ignored = sorted(s for s in SCOPING_SLOTS if slots.get(s) and s not in HONORED_SCOPING.get(intent, frozenset()))
     if ignored:
-        raise TemplateUnsupported(f"{intent} cannot honour {ignored} - it would answer for a different span than was asked")
+        raise TemplateUnsupported(f"{intent} cannot honor {ignored} - it would answer for a different span than was asked")
 
 
 class TemplateUnsupported(Exception):
@@ -569,7 +569,7 @@ def _season_of_day(day: Any) -> int:
 
 def _career_span(intent: str, span: Any, season: Any) -> bool:
     """True for a career question, False for a one-season one; raises for a
-    span this template cannot honour.
+    span this template cannot honor.
 
     A career with a year named is refused rather than read. The router keeps a
     year the question named alongside "career", so "most points ever in a game
@@ -580,7 +580,7 @@ def _career_span(intent: str, span: Any, season: Any) -> bool:
     if not span:
         return False
     if span != "career":
-        raise TemplateUnsupported(f"{intent} cannot honour span {span!r}")
+        raise TemplateUnsupported(f"{intent} cannot honor span {span!r}")
     if isinstance(season, int):
         raise TemplateUnsupported(f"{intent} cannot tell whether a career span with {season} named means that season, since it, or through it")
     return True
@@ -742,7 +742,7 @@ def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResu
     leaderboard instead. In code it cannot be truncated or substituted.
 
     .. versionchanged:: 2.1.0
-       Honours ``span`` "career": every box score since 1993-94, for the league
+       Honors ``span`` "career": every box score since 1993-94, for the league
        or for one player, saying which. A named player is resolved to one
        person; every player whose name contained the words used to be counted,
        and the top one reported. An ambiguous name is narrowed to the players
@@ -937,7 +937,7 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     the same function. This adds slot mapping and phrasing.
 
     .. versionchanged:: 2.1.0
-       Honours ``span`` "career", ranking whole careers (see
+       Honors ``span`` "career", ranking whole careers (see
        :func:`~association.query.leaderboard.run_career_leaderboard`) and
        saying whose. ``rate`` "total" ranks a season total rather than a
        per-game average. Every stat name the router is taught now maps to a
@@ -1669,7 +1669,7 @@ def _log_carries_rebuilt(con: duckdb.DuckDBPyConnection) -> bool:
     warehouse built before a view change is not detected": the column arrives
     with a `data load`, and a query written as though it were always there
     raises a Binder error against any older warehouse. Fixtures that build a
-    minimal log get the same answer, and keep their old behaviour.
+    minimal log get the same answer, and keep their old behavior.
     """
     try:
         return any(row[0] == "reconstructed" for row in con.execute("DESCRIBE player_game_log").fetchall())
@@ -2333,7 +2333,7 @@ def team_record(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     regular-season game only from 1993-94.
 
     .. versionchanged:: 2.1.0
-       Honours ``venue``, ``opponent`` and ``span``, answers a postseason
+       Honors ``venue``, ``opponent`` and ``span``, answers a postseason
        record from ``games`` instead of refusing it, and adds points for and
        against, games behind and the last ten games to a season's record.
     """
@@ -3291,7 +3291,7 @@ def _postseason_scope(span: _Span) -> tuple[str, list[Any]]:
     """_Span.clause for a postseason over ``games`` (aliased ``g``): one
     playoffs by the calendar year it was played in, or every playoffs from
     ``span.first`` on - never by label, for the reason _season_games gives.
-    Labelled, a career of playoff games dropped the 1989 playoffs (stored as
+    Labeled, a career of playoff games dropped the 1989 playoffs (stored as
     1988) and printed the 1991 run as "1990"."""
     if span.season is not None:
         return _season_games(span.season, 3, "g")
@@ -3586,7 +3586,7 @@ def fingerprint(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     # A question about one game draws that game, from the long per-game table
     # rather than the season file - see fingerprint.load_game_fingerprints for
     # why its numbers are the game's own net points and not a per-100 rate. A
-    # `date` is not honoured the same way: the router gives a calendar date and
+    # `date` is not honored the same way: the router gives a calendar date and
     # the loader picks a player's first or last game, which are different
     # questions, so a dated request still says it cannot answer.
     order = slots.get("order") if slots.get("order") in ("recent", "first") else None
@@ -3738,7 +3738,7 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     wording.
 
     .. versionchanged:: 2.1.0
-       Honours ``span`` "career": a named player's career high, or the league's
+       Honors ``span`` "career": a named player's career high, or the league's
        best since 1993-94, each saying what it covers. A game's date is the
        Eastern calendar day it was played; it used to be the UTC day it is
        stored under, a day late for every game tipping after 7pm Eastern.
@@ -3867,7 +3867,7 @@ def _season_games(season: int, season_type: int, alias: str) -> tuple[str, list[
 
     A postseason is selected by the CALENDAR YEAR it was played in, never by
     its label. ESPN labels every season before 1993-94 by the year it STARTED:
-    the postseason games labelled 1990 end on 1991-06-12, the 1991 Finals, so a
+    the postseason games labeled 1990 end on 1991-06-12, the 1991 Finals, so a
     label match answered "the 1991 playoffs" with 1992's. Every postseason is
     played inside the year its season is named for (the 2020 bubble ended in
     October 2020), so the year is exact for all of them - the same choice
@@ -3875,7 +3875,7 @@ def _season_games(season: int, season_type: int, alias: str) -> tuple[str, list[
     its games are 1994's and would be counted twice.
 
     A regular season keeps its label: every regular season a template can reach
-    (1994 on) is labelled by the year it ends.
+    (1994 on) is labeled by the year it ends.
     """
     if season_type == 3:
         phantom = COVERAGE["games"].phantom

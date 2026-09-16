@@ -201,7 +201,7 @@ def test_a_career_leaderboard_refuses_what_it_cannot_answer(career_ctx: Template
 
 
 @pytest.mark.parametrize("intent", ["leaderboard", "threshold_count", "single_game_high"])
-def test_a_career_span_is_honoured_by_the_ranking_templates(intent: str) -> None:
+def test_a_career_span_is_honored_by_the_ranking_templates(intent: str) -> None:
     check_scope(intent, {"span": "career"})
 
 
@@ -219,7 +219,7 @@ def box_ctx(tmp_path: Path) -> TemplateContext:
         [
             ("m1", 1995, "1995-03-29T00:30Z"),
             ("h1", 1994, "1994-03-01T01:00Z"),
-            ("h1", 1993, "1994-03-01T01:00Z"),  # the phantom: 1993-94's games again, labelled 1993
+            ("h1", 1993, "1994-03-01T01:00Z"),  # the phantom: 1993-94's games again, labeled 1993
             ("l1", 2014, "2014-03-04T00:30Z"),  # 7:30pm Eastern on 3 March
             ("l2", 2015, "2015-01-10T01:00Z"),
             ("x1", 2014, "2014-02-01T01:00Z"),

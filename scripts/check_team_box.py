@@ -24,6 +24,7 @@ import sys
 import duckdb
 
 from association.fetch.team_box_repair import CLEARED_COLUMNS, LAST_MISSING_TURNOVER_SEASON, SHIFTED_SEASON
+from association.repo_paths import default_db_path
 
 # Team columns that are the sum of the game's player rows, and the player
 # column each sums. ESPN's own team column equals the sum in 2,134 of 2,134
@@ -133,7 +134,7 @@ def _check_empties(con: duckdb.DuckDBPyConnection) -> list[str]:
 def main() -> int:
     """Check the repair against a built warehouse."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--db-path", default="./nba.duckdb")
+    parser.add_argument("--db-path", default=default_db_path())
     args = parser.parse_args()
 
     con = duckdb.connect(args.db_path, read_only=True)

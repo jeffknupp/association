@@ -945,7 +945,7 @@ the entries it held, and nobody had re-read the P2s against the definition.
   `since`, `situation`), but "by month" has left this entry - it is
   `split=month` and `player_splits` answers it for a player or a team.
 - **Re-checked 2026-09-16, and a fifth slot is missing from the same list.**
-  `until` is set at `router.py:1239` alongside `since`, but is in neither
+  `until` is set at `router.py:1269` alongside `since`, but is in neither
   `HONORED_SCOPING` nor `SCOPING_SLOTS` (`templates.py:146`) - so `check_scope`
   does not merely fail to honour it, it cannot even see it to refuse it, and a
   question narrowed by an end year silently answers unbounded. The stale
@@ -1331,23 +1331,21 @@ the entries it held, and nobody had re-read the P2s against the definition.
   reach it, rather than leaving the decision inside an `ORDER BY`.
 - **GitHub:** #92
 
-### The "postseason copy" rule is written twice, and both figures are stale
+### The "postseason copy" rule is written twice
 - **Found:** 2026-09-15, issues audit (P4 data/query auditor)
 - **Evidence:** the rule that drops a postseason line ESPN copied from the
-  regular season exists twice, in different words: the `player_season_stats_deduped`
-  view (`fetch/warehouse.py:179`, stale comment at `:186`; more than 28 games,
-  or games+points equal to that season's regular-season line on any team) and
-  `query/leaderboard.py`'s `not_a_postseason_copy` (`:186` def, `:190` the
-  stale docstring figure, `:198`; games plus the value columns, on the same
-  team). They agree today - each drops 436 of 7,941 rows - but nothing keeps
-  them in step.
-  - Both comments are stale: the view says "340 of 7,845 postseason rows" and
-    the docstring says "437 of the 7,941". Re-measured: raw 7,941 rows, deduped
-    7,505, so **436 rows** (340 player-seasons).
+  regular season exists twice, in different words:
+  `fetch/warehouse.py:235` (the `player_season_stats_deduped` view: more than 28
+  games, or games+points equal to that season's regular-season line on any team)
+  and `query/leaderboard.py:186` `not_a_postseason_copy` (games plus the value
+  columns, on the same team). They agree today - each drops 436 of 7,941 rows -
+  but nothing keeps them in step. (Both comments now give the re-measured
+  figure, 436 of 7,941 rows / 340 player-seasons, fixed 2026-09-16 with #43;
+  only the duplication remains.)
 - **User sees:** nothing today. It is the same hand-maintained-pair shape as
   #83, with the added trap that the two spellings could diverge silently.
 - **Next step:** export one helper and call it from both, the way #83 proposes
-  for the traded-player dedup. Fix both figures while there.
+  for the traded-player dedup.
 - **GitHub:** #93
 
 ### `MAX_LIMIT` is 100 in one module and 50 in another
@@ -1401,7 +1399,7 @@ the entries it held, and nobody had re-read the P2s against the definition.
 ### One rule, two hand-maintained copies: the traded-player dedup
 - **Found:** 2026-09-15, while fixing #9
 - **Evidence:** "prefer the combined row over the per-team stints" is written
-  as SQL in `fetch/warehouse.py:199` (the `player_season_stats_deduped` view)
+  as SQL in `fetch/warehouse.py:255` (the `player_season_stats_deduped` view)
   and twice in `query/leaderboard.py` (lines 300 and 324, the `dedup_traded`
   QUALIFY). Fixing #9 had to touch both, and a fix that touched only one would
   have left the leaderboard reading the broken row while the deduped view was
@@ -1463,22 +1461,6 @@ the entries it held, and nobody had re-read the P2s against the definition.
   `test_answer_for_a_single_named_player`.
 - **GitHub:** #36
 
-### Data commands and check scripts default to paths a worktree does not have
-- **Found:** 2026-09-11, routing check, then repo audit
-- **Evidence:** `--db-path` defaults to `./nba.duckdb`, and `--data-dir` to
-  `./data/parquet`. The affected commands are `association data pull`/`load`
-  (`cli.py`) and the scripts `check_routing.py`, `check_coverage.py`,
-  `check_nicknames.py` and `check_net_points_games.py`. In a worktree, the
-  check scripts fail with "database does not exist".
-- **User sees:** nothing. An agent loses a run, or runs a backfill against the
-  wrong files.
-- **Next step:** default to the main checkout's files, found through
-  `git rev-parse --git-common-dir`.
-- **Re-checked 2026-09-15:** three more scripts default the same way and are
-  not in the list above - `check_team_box.py:136`, `backfill_season_totals.py:73`
-  and `backfill_missing_playoffs.py:69` (the last two added this week).
-- **GitHub:** #37
-
 ### A warehouse built before a view change is not detected
 - **Found:** 2026-09-11, while qualifying true shooting and eFG% (`f66e1f1`)
 - **Evidence:** a view's SQL is stored in the warehouse file. Code that reads a
@@ -1491,49 +1473,25 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **Next step:** in `data check` or at startup, compare the stored views' columns
   against what the code reads. The backfill rule in `AGENTS.md` ("Working on the
   fetch path") is the process half of this.
+- **Re-checked 2026-09-16, unchanged - reassessed as bigger than a P4, needs
+  an owner decision on approach.** Confirmed against the main warehouse
+  read-only that it is current (`player_game_log` already has `team_abbr`/
+  `opponent_abbr` from the same-day franchise-naming change), so there is
+  nothing to reproduce right now, but the underlying gap is real. Two ways to
+  build "the stored view against what the code reads", and both cost more
+  than this priority: (1) compare each view's *stored* SQL text
+  (`duckdb_views()`) against what today's code would emit - correct and
+  self-maintaining, but the three builders (`_build_views`,
+  `advanced_stats.build_views`, `reconstructed_box.build_views`) currently
+  only ever *execute* their `CREATE OR REPLACE VIEW` text, so this needs
+  refactoring each to also hand back the SQL string unexecuted, which touches
+  the core build path #51/#66 just changed; (2) hand-maintain an expected
+  column list per view (the `COVERAGE`-table pattern) - smaller, but a second
+  place the columns are declared, which is exactly the "one concept, one
+  definition" shape this project already tries to avoid (`AGENTS.md`,
+  "Saying what you measured"). Neither is a small mechanical fix; left open
+  for the owner to pick a direction.
 - **GitHub:** #38
-
-### A fresh worktree cannot run the gates with `uv run` alone
-- **Found:** 2026-09-11, while qualifying true shooting and eFG% (`f66e1f1`)
-- **Evidence:** `uv run` creates the worktree's venv without the `dev` extra, so
-  `uv run pytest -q` fails with `Failed to spawn: pytest` until
-  `uv sync --frozen --extra dev --extra docs --extra web` (CI's line) has run.
-- **User sees:** nothing. An agent loses time.
-- **Next step:** add the sync line to "Before you commit" in `AGENTS.md`.
-- **GitHub:** #39
-
-### The docs gate passes with field markup printed as text
-- **Found:** 2026-09-11, fixing the literal `:rtype:` lines
-- **Evidence:** `scripts/build_docs.sh` passed `-W` while 68 functions on 18 of
-  40 API pages printed a literal `:rtype: ...` line. A field marker inside a
-  paragraph is valid reStructuredText, so docutils had nothing to warn about.
-  Sphinx's fallback also added a real Return type field, so each of those
-  functions showed its return type twice. It was found only by grepping the
-  built HTML.
-- **User sees:** stray markup in the published API docs, and nothing fails.
-- **Next step:** make `build_docs.sh` fail when the text of
-  `api/generated/*.html` contains `:rtype:`, `:param ` or `:type `. Watch it
-  fail by removing the shim in `docs/conf.py`.
-- **GitHub:** #40
-
-### An incremental docs build ignores a behavior change in `docs/conf.py`
-- **Found:** 2026-09-11, fixing the literal `:rtype:` lines
-- **Evidence:** after the `:rtype:` shim went into `docs/conf.py`,
-  `build_docs.sh` over an existing `docs/_build` still produced all 68
-  literals. Sphinx re-reads sources only when a registered config value
-  changes, and a patched function is not one, so it reused the pickled
-  doctrees. Only `rm -rf docs/_build` showed the fix. CI builds from a clean
-  checkout. A clean build took 11 seconds here. What `-E` would cost on every
-  commit was not measured.
-- **User sees:** nothing. An agent can read a stale build as a failed fix or as
-  a working one, and the pre-commit docs gate is green either way.
-- **Next step:** pass `-E` in `build_docs.sh`, or rebuild from scratch when
-  `docs/conf.py` is newer than the build environment.
-- **Re-checked 2026-09-15: this and #50 are the same defect** (no `-E` in
-  `build_docs.sh`) and should merge. Measured: incremental no-op 2.7s, `-E`
-  11.0s, clean 14.8s. With the shim disabled, an incremental build shows 0 pages
-  with literal `:rtype:` where a fresh output dir shows 23.
-- **GitHub:** #41
 
 ### The `:rtype:` shim in `docs/conf.py` waits on dropping Python 3.10
 - **Found:** 2026-09-11, fixing the literal `:rtype:` lines
@@ -1545,33 +1503,13 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **Next step:** when 3.10 is dropped, upgrade and delete
   `_rtype_insert_index` in the same commit. Check the rendered pages after the
   move from Sphinx 8.1.3 to 8.2; nobody has.
+- **Re-checked 2026-09-16:** unchanged - `uv.lock` holds
+  sphinx-autodoc-typehints 3.0.1 and Sphinx 8.1.3, `requires-python` is still
+  `>=3.10`. Dropping 3.10 is the owner's call, so nothing to do here yet. The
+  docs gate now checks the rendered pages for the literal markup
+  (`scripts/check_docs_markup.py`), so the upgrade, when it comes, is verified
+  by the gate rather than by somebody remembering to look.
 - **GitHub:** #42
-
-### Three wrong statements in the docs
-- **Found:** 2026-09-11, repo audit and issues audit
-- **Evidence:**
-  - `AGENTS.md` ("Data gotchas") gives `player_season_stats` "5 players in 1977,
-    240 in 1988, 668 in 1994". Those are row counts across season types; the
-    distinct regular-season players are 2, 141 and 403, as in `coverage.py`.
-  - The comment above `TURNOVERS` in `query/team_metrics.py` says pre-2013
-    `team_season_stats.turnovers` is "the player turnovers alone". It already
-    includes team turnovers: it equals the box `totalTurnovers` for 26-29 of 30
-    teams. The expression is right; only the comment is wrong.
-  - `AGENTS.md` and `fetch/warehouse.py` say the deduplicated view drops "340 of
-    7,845" postseason rows. Those are player-seasons. Counted in rows, it is 436
-    of 7,941.
-- **User sees:** nothing. An agent reads wrong facts.
-- **Next step:** correct all three.
-- **Source:** DATA.md, "ESPN's `possessions` counts every turnover twice before 2013"
-- **Re-checked 2026-09-15:** one fixed, one half fixed, one still wrong.
-  (1) `AGENTS.md`'s "5/240/668" is gone and `DATA.md` is right.
-  (2) `query/team_metrics.py:72` still claims pre-2013 `turnovers` is "player
-  turnovers alone" - re-measured, `team_season_stats.turnovers` equals the box
-  `totalTurnovers` sum for 25-27 of 30 teams and the player-only sum for 0.
-  (3) `fetch/warehouse.py:184` still says "340 of 7,845"; it is 436 rows / 340
-  player-seasons, and `DATA.md:548` wrongly says warehouse.py "previously" said
-  it.
-- **GitHub:** #43
 
 ### Broad `except duckdb.Error` in `_single_game_netpoints`
 - **Found:** 2026-09-11, repo audit
@@ -1652,38 +1590,6 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **Next step:** look at a 20-name clarification on the web page.
 - **GitHub:** #48
 
-### The CHANGES.md hook passes on an unstaged tree
-- **Found:** 2026-09-11, season-narrowing branch
-- **Evidence:** `scripts/check_changes_md.sh` reads only `git diff --cached`. So
-  `pre-commit run --all-files` with `src/` edited and nothing staged reports
-  "CHANGES.md updated....Passed". With `src/` staged alone, it fails as
-  intended.
-- **User sees:** nothing. An agent can read the pass as a real check.
-- **Next step:** have the hook say it checked nothing when the index is empty.
-- **GitHub:** #49
-
-### The docs gate keeps stale pages after a change to `docs/conf.py` code
-- **Found:** 2026-09-11, merging `92cf1e5` into the season-narrowing branch
-- **Evidence:** `scripts/build_docs.sh` builds incrementally into
-  `docs/_build/html`, with no `-E` and no clean output directory. `92cf1e5`
-  fixed the literal `:rtype:` lines with a function in `docs/conf.py`, not a
-  config value, so Sphinx did not treat the change as one that invalidates its
-  cached environment. After the merge, the pre-commit docs hook passed and
-  `docs/_build/html` still had the literal line on 18 of 40 pages. A fresh
-  build of the same tree into an empty directory had it on 0 of 40, with 18
-  "Return type" fields on the `association.query.entities` page. A page Sphinx
-  does not re-read also re-emits none of its warnings, so the local `-W` gate
-  can pass where a fresh build fails. That is the "local run weaker than CI"
-  shape `AGENTS.md` records for the other gates. CI's own docs build was not
-  checked. A change to `cli.py` alone does the same to `commands.html`: after
-  the 2.1.0 help-text change, the page kept its 2026-09-10 build until a clean
-  build replaced it.
-- **User sees:** nothing directly. An agent reading the built HTML sees stale
-  pages, and a docs warning can go unnoticed until CI.
-- **Next step:** pass `-E` (or clear the output directory) in `build_docs.sh`,
-  and time it against the incremental build.
-- **GitHub:** #50
-
 ### A failed warehouse build leaves no marker
 - **Found:** 2026-09-08 (reported)
 - **Evidence:** each table load is its own statement, so an out-of-memory kill
@@ -1697,6 +1603,26 @@ the entries it held, and nobody had re-read the P2s against the definition.
   `real_games` - each its own `CREATE OR REPLACE TABLE`. A build killed between
   a load and its repair leaves an unrepaired `team_box_stats` or
   `player_season_stats` that looks perfectly normal.
+- **Fixed 2026-09-16 for a full rebuild only.** `fetch/warehouse._build_full`
+  now loads every table plus all three repairs and every view into
+  `<db_path>.building`, and only replaces `db_path` once all of it succeeds -
+  covering the load AND the repairs the note above found missing, since both
+  happen before the swap. An interrupted full build leaves the existing
+  warehouse completely untouched, and the leftover `.building` file is the
+  marker: the next full build logs it and replaces it. Watched fail by
+  monkeypatching a mid-build raise and asserting the warehouse file's bytes
+  are unchanged (`tests/fetch/test_warehouse.py`).
+- **Still open: a partial `--tables` reload writes in place, unprotected.**
+  `data pull`'s incremental path (after the first pull) and all three
+  `scripts/backfill_*.py` always call `warehouse.build` with an explicit
+  `tables=` subset, which depends on tables already in `db_path` that it is
+  not reloading and so cannot go through the temp-file swap without copying
+  the whole file first. A kill between a partial load and its repair still
+  leaves an unrepaired table looking normal. `data check` still does not read
+  the warehouse at all (only the Parquet tree), so "have `data check` report
+  a build that did not finish" is also still open for both paths - that half
+  needs an owner decision: whether `data check` should gain a warehouse
+  dependency it deliberately does not have today.
 - **GitHub:** #51
 
 ### The agent can return an empty answer
@@ -1796,26 +1722,6 @@ the entries it held, and nobody had re-read the P2s against the definition.
   each tagged version.
 - **GitHub:** #58
 
-### The router prompt's documented size is five times too small
-- **Found:** 2026-09-11, docs survey for 2.1.0
-- **Evidence:** `query/router.py` says the prompt is "~430 tokens", in both its
-  published module docstring and the comment on `ROUTER_NUM_CTX`.
-  `ROUTER_PROMPT` is now 9,989 characters, about 2,500 tokens at four
-  characters a token. That is an estimate, not measured with the tokenizer.
-  The context is `ROUTER_NUM_CTX = 4096`, and there is no budget guard like
-  `PREAMBLE_TOKEN_BUDGET`. ollama truncates an over-length prompt
-  head-first, silently.
-- **User sees:** nothing yet, with about 1,500 tokens of headroom. A few more
-  intent lines and the head of the prompt starts to disappear. Every question
-  then routes worse, and there is no error.
-- **Next step:** read `prompt_eval_count` from one router call and correct both
-  comments. Then add a test that fails when `ROUTER_PROMPT` plus a long question
-  passes a set budget, the way `PreambleTooLarge` guards the agent.
-- **Re-checked 2026-09-15:** `router.py:11,272` still say "~430 tokens".
-  `len(ROUTER_PROMPT)` is 9,989 characters, about 2,497 tokens at 4 chars/token,
-  against `ROUTER_NUM_CTX = 4096`. No test or budget guard exists.
-- **GitHub:** #59
-
 ### The release script does not update the install pins
 - **Found:** 2026-09-11, docs survey for 2.1.0
 - **Evidence:** because PyPI is unreachable, `README.md` and
@@ -1828,23 +1734,6 @@ the entries it held, and nobody had re-read the P2s against the definition.
   files, and refuse if a pin names neither version.
 - **GitHub:** #60
 
-### British spellings in `src/`
-- **Found:** 2026-09-11, docs survey for 2.1.0
-- **Evidence:** there are 24 hits for honour, normalis- and colour in `src/`.
-  Some are user-visible: the `check_scope` trace message ("cannot honour") and
-  docstrings in `query/router.py` that are published. `AGENTS.md` requires
-  American spelling, and the 2.1.0 changelog was corrected.
-- **User sees:** "honour" in a `--verbose` trace, and mixed spelling in the API
-  docs.
-- **Next step:** replace them, with a CHANGES line, since the change touches
-  `src/`.
-- **Re-checked 2026-09-15: the spellings moved.** "honour" family: 27
-  occurrences on 26 lines (`router.py` 11, `templates.py` 15), including the
-  user-visible trace "cannot honour" (`templates.py:390,556`) and three
-  published docstrings. normalis- and colour are now 0. Not listed in this
-  entry: "behaviour" x3 and "labelled/mislabelling" x6.
-- **GitHub:** #61
-
 ### A coverage caveat is added to a refusal that drew nothing
 - **Found:** 2026-09-11, docs edits for 2.1.0
 - **Evidence:** "plot Kobe Bryant's threes in 2002" is refused, and the answer
@@ -1853,24 +1742,6 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **User sees:** a refusal that also claims to cover part of a season.
 - **Next step:** skip `coverage_caveat` when the template's result is a refusal.
 - **GitHub:** #62
-
-### Stale leftovers from the 2.0 REPL and an example that stopped early
-- **Found:** 2026-09-11, docs edits for 2.1.0
-- **Evidence:** a comment in `router.route()` says "The `ai` REPL gets real
-  follow-ups", but the REPL was removed in 2.0.0 and nothing passes
-  `previous_question` now. In `docs/usage.rst`, the example "who leads the
-  league in assists?" shows only the first sentence of an answer that continues
-  "Next: ...".
-- **User sees:** a docs example shorter than the real output.
-- **Next step:** correct the comment, and paste the example's full answer.
-- **Re-checked 2026-09-15:** "nothing passes `previous_question`" is
-  imprecise - `agent.py:247` passes `self.last_question`, but it is always None
-  in both shipped callers (the CLI builds a new Agent per question; the web
-  resets per request), so the parameter and the router branch at
-  `router.py:811` are dead in practice rather than unreferenced. The stale
-  `usage.rst` example is real regardless, and is now also missing the
-  "(minimum 20 games)" qualifier the answer prints.
-- **GitHub:** #63
 
 ### A player's bio is fetched once and never refreshed
 - **Found:** 2026-09-11, comparing a fresh full pull against the existing warehouse
@@ -1915,6 +1786,22 @@ the entries it held, and nobody had re-read the P2s against the definition.
 - **Re-checked 2026-09-15:** `PRAGMA database_size` read-only gives 7,101
   total blocks (1.73 GiB) against 3,781 used (0.92 GiB) - 47% free, matching the
   entry.
+- **Fixed 2026-09-16 for a full rebuild.** `fetch/warehouse._build_full` now
+  builds every table into a brand new `<db_path>.building` file rather than
+  replacing tables in the existing one, so a full `data load` (or the first
+  `data pull`) never carries a prior partial load's free space forward - the
+  chosen fix was the first option in the entry's own next step, done as one
+  change with #51's marker (the same temp-file-and-swap covers both). Not yet
+  backfilled against the main warehouse - the next full `data load` will pick
+  it up; running one is a real rebuild and outside a read-only session's
+  constraints here.
+- **Still open: a partial `--tables` reload writes in the existing file and
+  can still accumulate free space**, since it cannot go through the same
+  swap without first copying the whole file (see #51's still-open note - the
+  two are the same underlying constraint). The main warehouse is 1.73 GiB
+  today; whether that residual growth from partial loads alone is worth a
+  periodic compaction command is the "if the size matters" the original next
+  step already flagged as optional.
 - **GitHub:** #66
 
 ### Free-throw coordinates stop after 2018

@@ -150,7 +150,8 @@ One-shot:
 .. code-block:: console
 
    $ association query "who leads the league in assists?"
-   Nikola Jokic led the league in assists per game in the 2026 regular season, at 10.7.
+   Nikola Jokic led the league in assists per game in the 2026 regular season
+   (minimum 20 games), at 10.7.
 
 .. code-block:: console
 
