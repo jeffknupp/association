@@ -72,7 +72,6 @@ class TeamMetric:
     percent: bool = False
     first_season: int = 1994
     first_season_reason: str = ""
-    needs_opponent: bool = False
 
 
 # Turnovers in each era: see the module docstring for why totalTurnovers is
@@ -103,12 +102,12 @@ TEAM_METRICS: dict[str, TeamMetric] = {
     "record": TeamMetric("record", None, False),
     "losses": TeamMetric("losses", None, True),
     "points": TeamMetric("points per game", "avgPoints", False),
-    "opponent_points": TeamMetric("opponent points per game", "opp_points / gamesPlayed", True, needs_opponent=True),
-    "point_differential": TeamMetric("point differential per game", "(points - opp_points) / gamesPlayed", False, needs_opponent=True),
+    "opponent_points": TeamMetric("opponent points per game", "opp_points / gamesPlayed", True),
+    "point_differential": TeamMetric("point differential per game", "(points - opp_points) / gamesPlayed", False),
     "pace": TeamMetric("pace (possessions per game)", "possessions / gamesPlayed", None),
     "offensive_rating": TeamMetric("offensive rating (points per 100 possessions)", "100 * points / possessions", False),
-    "defensive_rating": TeamMetric("defensive rating (points allowed per 100 possessions)", "100 * opp_points / possessions", True, needs_opponent=True),
-    "net_rating": TeamMetric("net rating (per 100 possessions)", "100 * (points - opp_points) / possessions", False, needs_opponent=True),
+    "defensive_rating": TeamMetric("defensive rating (points allowed per 100 possessions)", "100 * opp_points / possessions", True),
+    "net_rating": TeamMetric("net rating (per 100 possessions)", "100 * (points - opp_points) / possessions", False),
     "field_goal_pct": TeamMetric("field goal percentage", "fieldGoalPct", False, percent=True),
     "three_point_pct": TeamMetric("3-point percentage", "threePointFieldGoalPct", False, percent=True),
     "free_throw_pct": TeamMetric("free throw percentage", "freeThrowPct", False, percent=True),

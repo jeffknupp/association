@@ -48,6 +48,11 @@ jobs:
         # pyright --verifytypes at 100%, the same gate pre-commit runs.
         run: scripts/check_types_complete.sh
 
+      - name: Dead code (vulture)
+        # Paths and confidence come from [tool.vulture]; framework-called names
+        # are in vulture_whitelist.py, each with its caller.
+        run: uv run vulture
+
       - name: One concept, one definition
         # Cross-module constant collisions, against an allowlist of the ones
         # already filed - so this fails only on a NEW one. Ruff's F811 covers

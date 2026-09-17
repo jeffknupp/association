@@ -47,6 +47,14 @@ repos:
         language: system
         pass_filenames: false
         files: ^(src/.*\.py|pyproject.toml)$
+      # Dead code. Settings and the reasoning live in [tool.vulture]; names a
+      # framework calls are listed, with their caller, in vulture_whitelist.py.
+      - id: vulture
+        name: dead code (vulture)
+        entry: .venv/bin/vulture
+        language: system
+        pass_filenames: false
+        types: [python]
       - id: duplicate-names
         name: one concept, one definition
         entry: scripts/check_duplicate_names.py

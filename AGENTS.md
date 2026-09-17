@@ -20,7 +20,7 @@ we do about it. Read `DATA.md` before trusting a column.
 ## Before you commit
 
 ```bash
-uv run pre-commit run --all-files   # all nine gates
+uv run pre-commit run --all-files   # all ten gates
 uv run pytest -q                    # fully offline: no network, no ollama
 ```
 
@@ -95,6 +95,11 @@ Add to the `## Unreleased` section.
   `except` at a boundary that must not die, the machine's local date in
   `current_season` - say why on the same line: `# noqa: BLE001 - ...`. A bare
   `noqa` gives the next reader nothing to judge it by.
+- **Dead code is a gate (vulture).** Something only a framework calls - a
+  Click command, a FastAPI route, a pydantic field - or public API nothing here
+  calls goes in `vulture_whitelist.py` with a comment naming its real caller.
+  Tests count as callers, so a function kept alive only by its own test passes
+  the gate; delete it rather than relying on that.
 - **American spelling.** "defense", "offense", "serialize". British spellings
   have drifted in before and were removed wholesale in `c09d6f7`.
 - **Every public module, class and function needs a docstring** — a separate

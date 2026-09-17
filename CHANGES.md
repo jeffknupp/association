@@ -15,6 +15,11 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Dead code is now a gate.** vulture runs in pre-commit and CI at its lowest
+  confidence, with the names only a framework calls listed, each with its
+  caller, in `vulture_whitelist.py`. Its one real finding is removed:
+  `TeamMetric.needs_opponent`, set on four team metrics and never read since
+  the field was added.
 - **Stricter lint, a dependency audit, and three pieces of dead code gone.**
   Ruff now also enforces `DTZ`, `BLE`, `RUF`, `PERF`, `C4`, `SIM`, `RET`, `PLW`
   and `PLE`; the 66 findings were fixed, and the handful that are deliberate (a

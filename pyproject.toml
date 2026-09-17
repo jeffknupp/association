@@ -59,6 +59,7 @@ dev = [
     "pyright>=1.1.390",
     "pytest>=8.0",
     "ruff>=0.16.5",
+    "vulture>=2.14",
 ]
 docs = [
     "furo>=2024.8.6",
@@ -109,6 +110,14 @@ ignore = [
     # as a hundred quoted literals.
     "SIM905",
 ]
+
+[tool.vulture]
+# Tests and scripts count as callers, so a helper whose only caller is its own
+# test is NOT reported - that shape needs a reader. 60 is vulture's lowest
+# confidence: anything it merely suspects is reported, and the false positives
+# (framework-registered callbacks, public API) are named in the whitelist.
+paths = ["src", "tests", "scripts", "vulture_whitelist.py"]
+min_confidence = 60
 
 [tool.mypy]
 python_version = "3.10"
