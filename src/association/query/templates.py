@@ -3566,12 +3566,11 @@ def _postseason_scope(span: _Span) -> tuple[str, list[Any]]:
     return f"CAST(substr(g.date, 1, 4) AS INTEGER) >= ?{excluded}", [span.first, *phantom]
 
 
-def _team_game_log(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, *, opponent: Any, venue: Any, date: str | None, limit: int, ascending: bool) -> TemplateResult:
-    """A team's games in ``span``, narrowed to an opponent, a venue and a date
-    where the question named them."""
-    # A postseason by the calendar year it was played in - see _season_games.
-    clause, params = _postseason_scope(span) if span.season_type == 3 else span.clause("tbs.season")
-    base, base_params = ["tbs.team_id = ?", "tbs.season_type = ?", clause], [team.id, span.season_type, *params]
+def _team_game_log_filters(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, *, opponent: Any, venue: Any, date: str | None) -> tuple[list[str], list[Any], str] | TemplateResult:
+    """The extra WHERE clauses for an opponent, a venue and a date where the
+    question named them, plus the narrowing phrase for the header and the
+    empty-result sentence. Returns a `TemplateResult` early if a named
+    opponent cannot be resolved, or is the team itself."""
     extra: list[str] = []
     extra_params: list[Any] = []
     filters: list[str] = []
@@ -3593,31 +3592,32 @@ def _team_game_log(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, *,
         start, end = _eastern_day(date)
         extra.append("g.date >= ? AND g.date < ?")
         extra_params += [start, end]
-    narrowed = "".join(f" {f}" for f in filters)
-    rows = con.execute(
-        f"{_TEAM_GAMES_SQL} WHERE {' AND '.join(base + extra)} ORDER BY g.date {'ASC' if ascending else 'DESC'} LIMIT ?",
-        [*base_params, *extra_params, limit],
-    ).fetchall()
-    if not rows:
-        # Which fact is missing: the team's games in that span, or the match.
-        found = con.execute(
-            f"SELECT COUNT(*), MIN({_TEAM_SEASON}), MAX({_TEAM_SEASON}) FROM team_box_stats tbs JOIN real_games g ON g.event_id = tbs.event_id AND g.season = tbs.season WHERE {' AND '.join(base)}",
-            base_params,
-        ).fetchone()
-        total, first, last = found if found else (0, None, None)
-        if not total:
-            where = _period(span.season, span.season_type) if span.season is not None else f"{span.kind}s on record"
-            return TemplateResult(data={"team": team.name, "games": []}, answer=f"No {where} games found for the {team.name}.")
-        on_date = f" on {date}" if date else ""
-        answer = f"The {team.name} played {total:,} games {span.during(first, last, whose='all seasons on record')}, none of them{narrowed}{on_date}."
-        return TemplateResult(data={"team": team.name, "games": []}, answer=answer)
+    return extra, extra_params, "".join(f" {f}" for f in filters)
 
+
+def _team_game_log_none(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, base: list[str], base_params: list[Any], *, narrowed: str, date: str | None) -> TemplateResult:
+    """Which fact is missing when no row matched: the team's games in that
+    span, or the match - so the sentence names the right one."""
+    found = con.execute(
+        f"SELECT COUNT(*), MIN({_TEAM_SEASON}), MAX({_TEAM_SEASON}) FROM team_box_stats tbs JOIN real_games g ON g.event_id = tbs.event_id AND g.season = tbs.season WHERE {' AND '.join(base)}",
+        base_params,
+    ).fetchone()
+    total, first, last = found if found else (0, None, None)
+    if not total:
+        where = _period(span.season, span.season_type) if span.season is not None else f"{span.kind}s on record"
+        return TemplateResult(data={"team": team.name, "games": []}, answer=f"No {where} games found for the {team.name}.")
+    on_date = f" on {date}" if date else ""
+    answer = f"The {team.name} played {total:,} games {span.during(first, last, whose='all seasons on record')}, none of them{narrowed}{on_date}."
+    return TemplateResult(data={"team": team.name, "games": []}, answer=answer)
+
+
+def _team_game_log_rows(team: Entity, span: _Span, rows: list[tuple[Any, ...]], *, narrowed: str, date: str | None, ascending: bool) -> TemplateResult:
+    """The games listing, and the wins/losses record tallied over exactly the
+    rows being shown rather than recounted from it later - that recount is
+    where a wins/losses total gets inverted."""
     games = [
         {"date": _eastern_date(r[0]), "home_away": r[1], "opponent": r[2], "team_score": r[3], "opponent_score": r[4], "won": None if r[5] is None else r[5] == r[6], "season": r[7]} for r in rows
     ]
-    # Tallied here, over exactly the rows being shown, rather than left to be
-    # counted back out of the listing - that recount is where a wins/losses
-    # total gets inverted.
     wins = sum(1 for g in games if g["won"] is True)
     losses = sum(1 for g in games if g["won"] is False)
     unknown = len(games) - wins - losses
@@ -3632,6 +3632,26 @@ def _team_game_log(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, *,
     mark = {True: "W", False: "L", None: "?"}
     lines = [f"  {g['date']}  {mark[g['won']]} {g['team_score']}-{g['opponent_score']}  {'vs' if g['home_away'] == 'home' else 'at'} {g['opponent']}" for g in games]
     return TemplateResult(data={"team": team.name, "wins": wins, "losses": losses, "games": games}, answer="\n".join([header, *lines]))
+
+
+def _team_game_log(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, *, opponent: Any, venue: Any, date: str | None, limit: int, ascending: bool) -> TemplateResult:
+    """A team's games in ``span``, narrowed to an opponent, a venue and a date
+    where the question named them."""
+    # A postseason by the calendar year it was played in - see _season_games.
+    clause, params = _postseason_scope(span) if span.season_type == 3 else span.clause("tbs.season")
+    base, base_params = ["tbs.team_id = ?", "tbs.season_type = ?", clause], [team.id, span.season_type, *params]
+    filtered = _team_game_log_filters(con, team, span, opponent=opponent, venue=venue, date=date)
+    if isinstance(filtered, TemplateResult):
+        return filtered
+    extra, extra_params, narrowed = filtered
+    rows = con.execute(
+        f"{_TEAM_GAMES_SQL} WHERE {' AND '.join(base + extra)} ORDER BY g.date {'ASC' if ascending else 'DESC'} LIMIT ?",
+        [*base_params, *extra_params, limit],
+    ).fetchall()
+    if not rows:
+        # Which fact is missing: the team's games in that span, or the match.
+        return _team_game_log_none(con, team, span, base, base_params, narrowed=narrowed, date=date)
+    return _team_game_log_rows(team, span, rows, narrowed=narrowed, date=date, ascending=ascending)
 
 
 def _pct(made: Any, attempted: Any) -> float | None:
@@ -3663,8 +3683,9 @@ def _aligned(titles: list[str], rows: list[list[str]], left: int) -> list[str]:
     return [_line(titles), *(_line(row) for row in rows)]
 
 
-def _player_game_log(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: _Narrowed, extras: tuple[str, ...], *, limit: int, asked: int | None, ascending: bool) -> TemplateResult:
-    """The listing, and the per-game averages over exactly the rows in it."""
+def _player_game_log_columns(con: duckdb.DuckDBPyConnection, extras: tuple[str, ...]) -> tuple[list[str], list[str], bool]:
+    """The columns to show, the raw columns fetched behind them, and whether a
+    rebuilt (play-by-play) line can stand in for a missing box score line."""
     headers = list(dict.fromkeys([*_LOG_BASE, *extras]))
     # A percentage is never fetched: it is computed from the made/attempted pair
     # behind it, which is fetched whether or not it is shown.
@@ -3675,6 +3696,91 @@ def _player_game_log(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span
     # Ask for a player's fouls and the log goes back to fetched lines only,
     # because a rebuilt foul is wrong in one game in six.
     rebuilt = _rebuilt_readable(con, needed)
+    return headers, needed, rebuilt
+
+
+def _player_game_log_rows(rows: list[tuple[Any, ...]], needed: list[str], headers: list[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Each fetched row turned into a display game (with its percentages
+    derived) and the raw made/attempted values behind it, kept for the
+    averages below."""
+    games: list[dict[str, Any]] = []
+    raws: list[dict[str, Any]] = []
+    for game_date, season, opponent, home, winner, team_id, is_rebuilt, *values in rows:
+        raw = dict(zip(needed, values, strict=True))
+        game: dict[str, Any] = {
+            "date": _eastern_date(game_date),
+            "season": season,
+            "opponent": opponent,
+            "home_away": "home" if home else "away",
+            "result": None if winner is None else ("W" if winner == team_id else "L"),
+            "reconstructed": bool(is_rebuilt),
+        }
+        for h in headers:
+            game[_log_key(h)] = _pct(raw[_LOG_PERCENTAGES[h][0]], raw[_LOG_PERCENTAGES[h][1]]) if h in _LOG_PERCENTAGES else raw[h]
+        games.append(game)
+        raws.append(raw)
+    return games, raws
+
+
+def _player_game_log_averages(headers: list[str], raws: list[dict[str, Any]]) -> dict[str, float | None]:
+    """Per-game averages over exactly the rows being shown, made/attempted
+    summed rather than a mean of the per-game percentages."""
+    averages: dict[str, float | None] = {}
+    for h in headers:
+        if h in _LOG_PERCENTAGES:
+            made_h, attempted_h, key = _LOG_PERCENTAGES[h]
+            averages[key] = _pct(sum(r[made_h] or 0 for r in raws), sum(r[attempted_h] or 0 for r in raws))
+        else:
+            present = [r[h] for r in raws if r[h] is not None]
+            averages[_LOG_COLUMNS[h]] = sum(present) / len(present) if present else None
+    return averages
+
+
+def _player_game_log_header(player: Entity, span: _Span, narrowed: _Narrowed, games: list[dict[str, Any]], *, ascending: bool) -> str:
+    """The listing's headline: how many games, over what span, filtered how."""
+    count = len(games)
+    if narrowed.date:
+        listed = "game" if count == 1 else "games"
+        scope_text = f"{listed} on {narrowed.date}"
+    elif count == 1:
+        scope_text = "first game" if ascending else "most recent game"
+    else:
+        scope_text = f"first {count} games" if ascending else f"last {count} games"
+    seasons = [g["season"] for g in games]
+    if span.season is not None:
+        where_text = f" of the {_period(span.season, span.season_type)}"
+    elif narrowed.date:
+        where_text = f" ({span.years(min(seasons), max(seasons))})"
+    else:
+        where_text = f" of his career ({span.years(min(seasons), max(seasons))})"
+    return f"{player.name}{narrowed.filters(dated=False)}, {scope_text}{where_text}:"
+
+
+def _player_game_log_table(headers: list[str], games: list[dict[str, Any]], averages: dict[str, float | None]) -> list[str]:
+    """The aligned date/opponent/result/stat table, its last row the per-game
+    averages."""
+    titles = ["date", "opp", "W/L", *headers]
+    body = [[g["date"], f"{'vs' if g['home_away'] == 'home' else '@'} {g['opponent']}", g["result"] or "-", *(_log_cell(h, g[_log_key(h)]) for h in headers)] for g in games]
+    body.append(["per game", "", "", *(_log_cell(h, averages[_log_key(h)], average=True) for h in headers)])
+    return _aligned(titles, body, left=3)
+
+
+def _player_game_log_notes(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: _Narrowed, games: list[dict[str, Any]], *, asked: int | None, rebuilt: bool) -> list[str]:
+    """The truncation note (fewer games than asked) followed by the box-score
+    coverage notes."""
+    count = len(games)
+    notes: list[str] = []
+    if asked and count < asked and not narrowed.date:
+        found_in = "in his box scores" if span.career else f"in the {_period(span.season or current_season(), span.season_type)} - ask about his career to reach earlier seasons"
+        notes.append(f"Only {count} game{'s' if count != 1 else ''}{narrowed.filters()} {found_in}.")
+    rebuilt_shown = sum(1 for g in games if g["reconstructed"])
+    notes += _box_score_notes(con, player, span, narrowed, career_note=not narrowed.date, rebuilt=rebuilt, rebuilt_shown=rebuilt_shown)
+    return notes
+
+
+def _player_game_log(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: _Narrowed, extras: tuple[str, ...], *, limit: int, asked: int | None, ascending: bool) -> TemplateResult:
+    """The listing, and the per-game averages over exactly the rows in it."""
+    headers, needed, rebuilt = _player_game_log_columns(con, extras)
     where, params = narrowed.clauses(rebuilt=rebuilt)
     rows = con.execute(
         f"SELECT pgl.game_date, pgl.season, pgl.opponent_abbr, g.home_team_id = pgl.team_id, g.winner_team_id, pgl.team_id, "
@@ -3694,62 +3800,14 @@ def _player_game_log(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span
         message = _no_narrowed_games(con, player, span, narrowed)
         return TemplateResult(data={**scope, "games": [], "message": message}, answer=message)
 
-    games: list[dict[str, Any]] = []
-    raws: list[dict[str, Any]] = []
-    for game_date, season, opponent, home, winner, team_id, is_rebuilt, *values in rows:
-        raw = dict(zip(needed, values, strict=True))
-        game: dict[str, Any] = {
-            "date": _eastern_date(game_date),
-            "season": season,
-            "opponent": opponent,
-            "home_away": "home" if home else "away",
-            "result": None if winner is None else ("W" if winner == team_id else "L"),
-            "reconstructed": bool(is_rebuilt),
-        }
-        for h in headers:
-            game[_log_key(h)] = _pct(raw[_LOG_PERCENTAGES[h][0]], raw[_LOG_PERCENTAGES[h][1]]) if h in _LOG_PERCENTAGES else raw[h]
-        games.append(game)
-        raws.append(raw)
-
-    averages: dict[str, float | None] = {}
-    for h in headers:
-        if h in _LOG_PERCENTAGES:
-            made_h, attempted_h, key = _LOG_PERCENTAGES[h]
-            averages[key] = _pct(sum(r[made_h] or 0 for r in raws), sum(r[attempted_h] or 0 for r in raws))
-        else:
-            present = [r[h] for r in raws if r[h] is not None]
-            averages[_LOG_COLUMNS[h]] = sum(present) / len(present) if present else None
-
-    count = len(games)
-    if narrowed.date:
-        listed = "game" if count == 1 else "games"
-        scope_text = f"{listed} on {narrowed.date}"
-    elif count == 1:
-        scope_text = "first game" if ascending else "most recent game"
-    else:
-        scope_text = f"first {count} games" if ascending else f"last {count} games"
-    seasons = [g["season"] for g in games]
-    if span.season is not None:
-        where_text = f" of the {_period(span.season, span.season_type)}"
-    elif narrowed.date:
-        where_text = f" ({span.years(min(seasons), max(seasons))})"
-    else:
-        where_text = f" of his career ({span.years(min(seasons), max(seasons))})"
-    header = f"{player.name}{narrowed.filters(dated=False)}, {scope_text}{where_text}:"
-
-    titles = ["date", "opp", "W/L", *headers]
-    body = [[g["date"], f"{'vs' if g['home_away'] == 'home' else '@'} {g['opponent']}", g["result"] or "-", *(_log_cell(h, g[_log_key(h)]) for h in headers)] for g in games]
-    body.append(["per game", "", "", *(_log_cell(h, averages[_log_key(h)], average=True) for h in headers)])
-
-    notes: list[str] = []
-    if asked and count < asked and not narrowed.date:
-        found_in = "in his box scores" if span.career else f"in the {_period(span.season or current_season(), span.season_type)} - ask about his career to reach earlier seasons"
-        notes.append(f"Only {count} game{'s' if count != 1 else ''}{narrowed.filters()} {found_in}.")
-    rebuilt_shown = sum(1 for g in games if g["reconstructed"])
-    notes += _box_score_notes(con, player, span, narrowed, career_note=not narrowed.date, rebuilt=rebuilt, rebuilt_shown=rebuilt_shown)
+    games, raws = _player_game_log_rows(rows, needed, headers)
+    averages = _player_game_log_averages(headers, raws)
+    header = _player_game_log_header(player, span, narrowed, games, ascending=ascending)
+    table = _player_game_log_table(headers, games, averages)
+    notes = _player_game_log_notes(con, player, span, narrowed, games, asked=asked, rebuilt=rebuilt)
     return TemplateResult(
         data={**scope, "columns": headers, "games": games, "averages": averages},
-        answer="\n".join([header, *_aligned(titles, body, left=3), *notes]),
+        answer="\n".join([header, *table, *notes]),
     )
 
 
@@ -3840,14 +3898,7 @@ def fingerprint(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     # "compare their fingerprints" arrives as `players`, one name as `player`.
     # Both draw one plot; two polygons on shared axes IS the comparison, so
     # this does not need a second intent.
-    names = slots.get("players") if isinstance(slots.get("players"), list) else None
-    names = [n for n in names if isinstance(n, str) and n.strip()] if names else []
-    if not names:
-        single = slots.get("player")
-        if not isinstance(single, str) or not single.strip():
-            raise TemplateUnsupported("fingerprint needs a player name")
-        names = [single]
-    names = names[:MAX_FINGERPRINT_PLAYERS]
+    names = _fingerprint_names(slots.get("players"), slots.get("player"))
 
     # A question about one game draws that game, from the long per-game table
     # rather than the season file - see fingerprint.load_game_fingerprints for
@@ -3870,12 +3921,44 @@ def fingerprint(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     # the season file has no season_type at all.
     availability = GAME_FINGERPRINT_AVAILABILITY if order else FINGERPRINT_AVAILABILITY
 
+    resolved = _fingerprint_resolve_players(ctx.con, names, availability, season)
+    if isinstance(resolved, TemplateResult):
+        return resolved
+    players, ambiguous = resolved
+
+    # The router's word for it is `side`, which is what a question says ("his
+    # defensive fingerprint"); the renderer's is `view`, because each skill
+    # already carries the side it is measured on and this only picks which
+    # skills are drawn.
+    view = slots.get("side")
+    if view not in FINGERPRINT_VIEWS:
+        view = "total"
+    return _fingerprint_render(ctx, players, ambiguous, season, view=view, season_type=season_type, order=order)
+
+
+def _fingerprint_names(players_slot: Any, player_slot: Any) -> list[str]:
+    """The player name(s) asked for, from the `players` slot (a comparison) or
+    the `player` slot (one name)."""
+    names = players_slot if isinstance(players_slot, list) else None
+    names = [n for n in names if isinstance(n, str) and n.strip()] if names else []
+    if not names:
+        if not isinstance(player_slot, str) or not player_slot.strip():
+            raise TemplateUnsupported("fingerprint needs a player name")
+        names = [player_slot]
+    return names[:MAX_FINGERPRINT_PLAYERS]
+
+
+def _fingerprint_resolve_players(con: duckdb.DuckDBPyConnection, names: list[str], availability: Availability, season: int) -> tuple[list[Entity], list[str]] | TemplateResult:
+    """Each name resolved against the table the plot will actually be drawn
+    from, the same best-match way `shot_chart` does: a plot titled with the
+    resolved name shows a wrong match on sight, which is what makes
+    best-match resolution safe here and not in a template reporting numbers."""
     players: list[Entity] = []
     ambiguous: list[str] = []
     for name in names:
-        found = resolve_chart_player(ctx.con, name, availability, season)
+        found = resolve_chart_player(con, name, availability, season)
         if found is None:
-            message = no_match(ctx.con, name)
+            message = no_match(con, name)
             return TemplateResult(data={"message": message}, answer=message)
         if isinstance(found, Ambiguous):
             return _clarify(name, found.candidates, active=found.active)
@@ -3886,14 +3969,12 @@ def fingerprint(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         if player.id not in {p.id for p in players}:
             players.append(player)
         ambiguous.extend(also)
+    return players, ambiguous
 
-    # The router's word for it is `side`, which is what a question says ("his
-    # defensive fingerprint"); the renderer's is `view`, because each skill
-    # already carries the side it is measured on and this only picks which
-    # skills are drawn.
-    view = slots.get("side")
-    if view not in FINGERPRINT_VIEWS:
-        view = "total"
+
+def _fingerprint_render(ctx: TemplateContext, players: list[Entity], ambiguous: list[str], season: int, *, view: str, season_type: int, order: str | None) -> TemplateResult:
+    """Renders the plot and builds the answer, or returns the renderer's own
+    message when the table it reads has nothing to draw."""
     try:
         rendered = render_for_players(ctx.con, ctx.out_dir, players, ambiguous, season, view=view, season_type=season_type, order=order)
     except FingerprintUnavailable as exc:
@@ -4019,31 +4100,10 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     season_type = slots.get("season_type") or 2
     limit = _clamp_limit(slots.get("limit"), default=DEFAULT_SINGLE_GAME_LIMIT)
 
-    scope, params = _box_scope("l", season, season_type)
-    # A line with no minutes is a game with NO BOX SCORE, not a game he played
-    # and did nothing in. Those lines carry 0 rather than NULL, so they survive
-    # the NULL check beside this one - and where a whole team-season is empty
-    # (every Chicago and New Orleans season from 2013 to 2018), a zero then
-    # wins the maximum outright: "Anthony Davis's highest point total in a
-    # single game in the 2015 regular season was 0, on 2014-10-28 vs ORL" -
-    # fluent, dated, and false. This is the same line _played() draws in
-    # `conditions`, which is why streaks and splits were never affected by it.
-    # A rebuilt line may answer this, but only for a stat a rebuild gets right
-    # (REBUILT_STATS) - and only where the warehouse actually carries the flag,
-    # since an older one has no such column. Without both, the guard is the
-    # plain one and a rebuilt line stays invisible, exactly as before.
-    from_rebuilt = column in REBUILT_STATS and _log_carries_rebuilt(ctx.con)
-    where = [scope, f"l.{column} IS NOT NULL", "(l.minutes IS NOT NULL OR l.reconstructed)" if from_rebuilt else "l.minutes IS NOT NULL"]
-    text = slots.get("player")
-    named_player: Entity | None = None
-    # The player slot is optional here: unset means "the league".
-    if isinstance(text, str) and text.strip():
-        resolved = _resolved_player(ctx.con, text, available=_GAME_LOGS, season=season, through=_career_end(season))
-        if isinstance(resolved, TemplateResult):
-            return resolved
-        named_player = resolved
-        where.append("l.athlete_id = ?")
-        params.append(resolved.id)
+    scoped = _single_game_high_scope(ctx, column, season, season_type, slots.get("player"))
+    if isinstance(scoped, TemplateResult):
+        return scoped
+    where, params, named_player, from_rebuilt = scoped
 
     rows = ctx.con.execute(
         f"SELECT l.player_name, l.{column}, l.game_date, l.opponent_abbr, {'l.reconstructed' if from_rebuilt else 'FALSE'} "
@@ -4070,6 +4130,48 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     # Only when the answer is empty AND the stat was deliberately withheld: a
     # refusal that names a decision beats one that implies missing data.
     withheld = 0 if games or column in REBUILT_STATS else _rebuilt_in_scope(ctx.con, season, season_type, named_player.id if named_player else None)
+    answer = _single_game_high_answer(games, label, span, who, empty=empty, withheld=withheld)
+    return TemplateResult(
+        data={"question_shape": shape, "season": season, "span": "career" if career else None, "stat": stat, "games": games, "empty_box_scores": empty[0]},
+        answer=answer,
+    )
+
+
+def _single_game_high_scope(ctx: TemplateContext, column: str, season: int | None, season_type: int, player_text: Any) -> tuple[list[str], list[Any], Entity | None, bool] | TemplateResult:
+    """The WHERE clause and params for the qualifying rows, whether a rebuilt
+    (play-by-play) line may stand in for a missing box score line, and the
+    named player if the question asked about one - unset means "the league"."""
+    scope, params = _box_scope("l", season, season_type)
+    # A line with no minutes is a game with NO BOX SCORE, not a game he played
+    # and did nothing in. Those lines carry 0 rather than NULL, so they survive
+    # the NULL check beside this one - and where a whole team-season is empty
+    # (every Chicago and New Orleans season from 2013 to 2018), a zero then
+    # wins the maximum outright: "Anthony Davis's highest point total in a
+    # single game in the 2015 regular season was 0, on 2014-10-28 vs ORL" -
+    # fluent, dated, and false. This is the same line _played() draws in
+    # `conditions`, which is why streaks and splits were never affected by it.
+    # A rebuilt line may answer this, but only for a stat a rebuild gets right
+    # (REBUILT_STATS) - and only where the warehouse actually carries the flag,
+    # since an older one has no such column. Without both, the guard is the
+    # plain one and a rebuilt line stays invisible, exactly as before.
+    from_rebuilt = column in REBUILT_STATS and _log_carries_rebuilt(ctx.con)
+    where = [scope, f"l.{column} IS NOT NULL", "(l.minutes IS NOT NULL OR l.reconstructed)" if from_rebuilt else "l.minutes IS NOT NULL"]
+    named_player: Entity | None = None
+    # The player slot is optional here: unset means "the league".
+    if isinstance(player_text, str) and player_text.strip():
+        resolved = _resolved_player(ctx.con, player_text, available=_GAME_LOGS, season=season, through=_career_end(season))
+        if isinstance(resolved, TemplateResult):
+            return resolved
+        named_player = resolved
+        where.append("l.athlete_id = ?")
+        params.append(resolved.id)
+    return where, params, named_player, from_rebuilt
+
+
+def _single_game_high_answer(games: list[dict[str, Any]], label: str, span: _GameSpan, who: str | None, *, empty: tuple[int, int | None, int | None], withheld: int) -> str:
+    """The full sentence: the phrase, any league-coverage caveat, the
+    empty-box-scores note (suppressed when ``withheld`` already explains the
+    gap), and the rebuilt-line caveat when the answer itself rests on one."""
     answer = span.preface + _phrase_single_game_high(games, label, span, who, empty=empty, withheld=withheld)
     if span.league_note:
         answer += f" Box scores begin in {span.since}, so this is not an all-time record: earlier games are not in this warehouse."
@@ -4083,10 +4185,7 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     # needs to know about the number they were given.
     if games and games[0]["reconstructed"]:
         answer += " That game has no box score from ESPN - the figure is rebuilt from its play-by-play, so treat it as close rather than exact."
-    return TemplateResult(
-        data={"question_shape": shape, "season": season, "span": "career" if career else None, "stat": stat, "games": games, "empty_box_scores": empty[0]},
-        answer=answer,
-    )
+    return answer
 
 
 def _phrase_single_game_high(
@@ -4150,6 +4249,44 @@ def _season_games(season: int, season_type: int, alias: str) -> tuple[str, list[
     return f"{alias}.season = ?", [season]
 
 
+def _head_to_head_names(teams_slot: Any, team_slot: Any, opponent_slot: Any) -> list[str]:
+    """The team names asked for, merged from `teams`, `team` and `opponent`.
+
+    A city name rather than a nickname ("...play Boston?") makes the router
+    split the two teams across `team` and `teams` instead of putting both in
+    `teams`. Name resolution is fine either way, so treating `team` as a third
+    candidate absorbs the split rather than rejecting an answerable question.
+    The router also writes the other side as `opponent` ("Celtics vs Bulls
+    head to head" arrives as team + opponent): it is one of the two teams.
+    """
+    names = [n for n in teams_slot if isinstance(n, str) and n.strip()] if isinstance(teams_slot, list) else []
+    if isinstance(team_slot, str) and team_slot.strip() and team_slot not in names:
+        names = [team_slot, *names]
+    if isinstance(opponent_slot, str) and opponent_slot.strip() and opponent_slot not in names:
+        names = [*names, opponent_slot]
+    if len(set(names)) < 2:
+        raise TemplateUnsupported("head_to_head needs two team names")
+    return names
+
+
+def _head_to_head_teams(con: duckdb.DuckDBPyConnection, names: list[str], season: int | None) -> tuple[Entity, Entity] | TemplateResult:
+    """Until two DIFFERENT teams resolve, not the first two names: "Celtics" in
+    `team` and "Boston Celtics" in `teams` are one team, and the opponent
+    after them is the second."""
+    resolved: list[Entity] = []
+    for name in names:
+        team = _resolved_team(con, name, season=season)
+        if isinstance(team, TemplateResult):
+            return team
+        if team.id not in {t.id for t in resolved}:
+            resolved.append(team)
+        if len(resolved) == 2:
+            break
+    if len(resolved) != 2:
+        raise TemplateUnsupported("the named teams resolved to the same team")
+    return resolved[0], resolved[1]
+
+
 def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """ "How many times did the 76ers play Boston?" - games between two teams.
 
@@ -4159,39 +4296,17 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     worked WRONG example, in its prompt. Prompting cannot fix that; resolving
     names to ids in code can."""
     con = ctx.con
-    # A city name rather than a nickname ("...play Boston?") makes the router
-    # split the two teams across `team` and `teams` instead of putting both in
-    # `teams`. Name resolution is fine either way, so treating `team` as a third
-    # candidate absorbs the split rather than rejecting an answerable question.
     teams_slot = slots.get("teams")
-    names = [n for n in teams_slot if isinstance(n, str) and n.strip()] if isinstance(teams_slot, list) else []
     team_slot = slots.get("team")
-    if isinstance(team_slot, str) and team_slot.strip() and team_slot not in names:
-        names = [team_slot, *names]
     # The router also writes the other side as `opponent` ("Celtics vs Bulls
     # head to head" arrives as team + opponent): it is one of the two teams.
     opponent_slot = slots.get("opponent")
-    if isinstance(opponent_slot, str) and opponent_slot.strip() and opponent_slot not in names:
-        names = [*names, opponent_slot]
-    if len(set(names)) < 2:
-        raise TemplateUnsupported("head_to_head needs two team names")
+    names = _head_to_head_names(teams_slot, team_slot, opponent_slot)
 
-    # Until two DIFFERENT teams resolve, not the first two names: "Celtics" in
-    # `team` and "Boston Celtics" in `teams` are one team, and the opponent
-    # after them is the second.
-    resolved: list[Entity] = []
-    for name in names:
-        team = _resolved_team(con, name, season=_slot_season(slots))
-        if isinstance(team, TemplateResult):
-            return team
-        if team.id not in {t.id for t in resolved}:
-            resolved.append(team)
-        if len(resolved) == 2:
-            break
-    if len(resolved) != 2:
-        raise TemplateUnsupported("the named teams resolved to the same team")
-
-    a, b = resolved
+    teams = _head_to_head_teams(con, names, _slot_season(slots))
+    if isinstance(teams, TemplateResult):
+        return teams
+    a, b = teams
     # No season named means the CURRENT one, as everywhere else. "All time" is
     # a defensible reading here, but silently answering a different span than
     # the rest of the system is the substitution this design exists to prevent.
@@ -4307,22 +4422,40 @@ def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> Template
         # template's - see the docstring.
         raise TemplateUnsupported("team_quarter_points cannot answer for a named player")
 
-    team = _resolved_team(con, slots.get("team"), season=_slot_season(slots))
+    resolved = _team_quarter_points_teams(con, slots.get("team"), slots.get("opponent"), _slot_season(slots))
+    if isinstance(resolved, TemplateResult):
+        return resolved
+    team, opponent = resolved
+
+    season = slots.get("season") or current_season()
+    season_type = slots.get("season_type") or 2
+    games = _team_quarter_points_games(con, team, opponent, season, season_type, period)
+
+    period_label = _period_label(period)
+    period_str = _period(season, season_type)
+    return _team_quarter_points_answer(team, opponent, games, period=period, period_label=period_label, period_str=period_str)
+
+
+def _team_quarter_points_teams(con: duckdb.DuckDBPyConnection, team_text: Any, opponent_text: Any, season: int | None) -> tuple[Entity, Entity | None] | TemplateResult:
+    """The team and, if the question named one, the opponent - checked to be a
+    different team from the one asked about."""
+    team = _resolved_team(con, team_text, season=season)
     if isinstance(team, TemplateResult):
         return team
-
     opponent: Entity | None = None
-    opponent_text = slots.get("opponent")
     if isinstance(opponent_text, str) and opponent_text.strip():
-        resolved_opponent = _resolved_team(con, opponent_text, season=_slot_season(slots))
+        resolved_opponent = _resolved_team(con, opponent_text, season=season)
         if isinstance(resolved_opponent, TemplateResult):
             return resolved_opponent
         opponent = resolved_opponent
         if opponent.id == team.id:
             raise TemplateUnsupported("team_quarter_points opponent must differ from the team")
+    return team, opponent
 
-    season = slots.get("season") or current_season()
-    season_type = slots.get("season_type") or 2
+
+def _team_quarter_points_games(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity | None, season: int, season_type: int, period: int) -> list[dict[str, Any]]:
+    """Each qualifying game's date, opponent and points in the asked-for
+    period - None where the game never reached it, not zero."""
     season_clause, season_params = _season_games(season, season_type, "g")
     where = ["tbs.team_id = ?", season_clause, "tbs.season_type = ?"]
     params: list[Any] = [team.id, *season_params, season_type]
@@ -4330,18 +4463,19 @@ def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> Template
         where.append("tbs.opponent_team_id = ?")
         params.append(opponent.id)
     rows = con.execute(f"{_TEAM_QUARTER_SQL} WHERE {' AND '.join(where)} ORDER BY g.date", params).fetchall()
-
-    period_label = _period_label(period)
-    period_str = _period(season, season_type)
-    vs = f" against the {opponent.name}" if opponent else ""
-    opponent_name = opponent.name if opponent else None
-
     games = []
     for date, own_linescores, opp_name in rows:
         scores = _linescores(own_linescores)
         points = scores[period - 1] if period - 1 < len(scores) else None
         games.append({"date": _eastern_date(date), "opponent": opp_name, "points": points})
+    return games
 
+
+def _team_quarter_points_answer(team: Entity, opponent: Entity | None, games: list[dict[str, Any]], *, period: int, period_label: str, period_str: str) -> TemplateResult:
+    """The no-games refusal, the none-reached-that-period refusal, or the
+    normal per-game breakdown and total."""
+    vs = f" against the {opponent.name}" if opponent else ""
+    opponent_name = opponent.name if opponent else None
     if not games:
         answer = f"The warehouse has no {period_str} games for the {team.name}{vs}."
         return TemplateResult(data={"team": team.name, "opponent": opponent_name, "games": []}, answer=answer)
