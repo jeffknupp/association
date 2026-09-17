@@ -14,6 +14,15 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
+## Unreleased
+- **The 2001 playoff caveat names every short series, and counts
+  Philadelphia right.** A 2001 postseason answer said Philadelphia's run
+  "reads 15 games" and named only the LAL-PHI Final and the MIL-PHI
+  conference final. Finals Game 5, recovered by the scoreboard discovery pass,
+  brought Philadelphia to 16, and MIL-CHA (two games) and LAL-SA (one) are
+  short too. The note on `games` and `team_box_stats` now says ten games across
+  all four series and 16 against ESPN's 23.
+
 ## 2.2.0 - 2026-09-17
 - **Docs brought up to date with the code.** A pass over the README, the
   Sphinx pages, `AGENTS.md`, `DATA.md`, `ISSUES.md` and the package docstrings

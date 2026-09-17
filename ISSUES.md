@@ -173,21 +173,14 @@ found.
 - **Next step:** nothing actionable here - it is ESPN's gap and it is declared.
   Re-check if ESPN ever backfills its own archive.
 - **Source:** DATA.md, "The 2000 and 2001 playoffs stop before the Finals"
-- **Re-checked 2026-09-15:** holds (PHI -7, LAL -5, MIL -5, CHA (id 3) -2, SA -1
-  against `real_games`), but the caveat text in `coverage.py:168,189` is now
-  stale - it says Philadelphia "reads 15 games" when Finals Game 5 brought it to
-  16, and it names only the Final and MIL-PHI while MIL-CHA (2) and LAL-SA (1)
-  are also short. 2000 is clean: 75 games in `real_games`, matching ESPN. The
-  "70 -> 79" figure elsewhere is the raw `games` count, which includes 4
+- **Re-checked 2026-09-17:** holds. Per-team game counts in `real_games`
+  against ESPN's own `team_season_stats` totals (points / avgPoints): PHI
+  16/23, LAL 11/16, MIL 13/18, CHA (id 3, the Charlotte Hornets in 2001) 8/10,
+  SA 12/13 - ten games in all: LAL-PHI Games 1-4, three of MIL-PHI, two of
+  MIL-CHA and one of LAL-SA. The caveat in `coverage.py` now names all four
+  series and says 16. 2000 is clean: 75 games in `real_games`, matching ESPN.
+  The "70 -> 79" figure above is the raw `games` count, which includes 4
   placeholder rows.
-- **Re-checked 2026-09-16, by the issues audit.** Per-team game counts in
-  `real_games` (against ESPN's own totals): PHI 16/23, LAL 11/16, MIL 13/18,
-  CHA (id 3) 8/10, SA 12/13 - the id-3 franchise was the Charlotte Hornets in
-  2001, not New Orleans (`association/franchises.py`, `FRANCHISE_ERAS`), so "NO
-  -2" above named the wrong team. `coverage.py:166-170` and `:187-191`
-  (not :168,189) still say Philadelphia's run "reads 15 games" - it reads 16 -
-  and still name only the Final and MIL-PHI, leaving MIL-CHA and LAL-SA
-  unmentioned; that text has not been updated.
 - **GitHub:** #6
 
 ### Nearly every Bulls and Pelicans box score from 2013 to 2018 is zeros

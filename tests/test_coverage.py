@@ -145,8 +145,9 @@ def test_2003_shots_carry_a_partial_season_caveat() -> None:
 
 
 def test_a_postseason_that_stops_early_is_caveated_on_postseason_questions() -> None:
-    """ESPN's 2001 playoffs are missing about ten games - Games 1-4 of the
-    Final and the end of the MIL-PHI conference final - and no pull adds them:
+    """ESPN's 2001 playoffs are missing ten games - Games 1-4 of the Final,
+    three of the MIL-PHI conference final, two of MIL-CHA and one of LAL-SA -
+    and no pull adds them:
     the scoreboard endpoint, which had the whole 2000 Final, answers 23 of
     those days with nothing at all."""
     note = coverage_caveat("head_to_head", {"season": 2001, "season_type": POSTSEASON})

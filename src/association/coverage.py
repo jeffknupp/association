@@ -165,8 +165,8 @@ COVERAGE: dict[str, Coverage] = {
         # return nothing at all - so that season says what it is missing.
         postseason_partial=(2001,),
         postseason_partial_note=(
-            "ESPN is missing about ten games of the 2001 playoffs - Games 1-4 of the LAL-PHI Final and the end of the MIL-PHI conference final - so Philadelphia's run reads 15 games "
-            "against the 23 ESPN's own season totals give it, and a series can look shorter than it was"
+            "ESPN is missing ten games of the 2001 playoffs - Games 1-4 of the LAL-PHI Final, three games of the MIL-PHI conference final, two of MIL-CHA and one of LAL-SA - "
+            "so Philadelphia's run reads 16 games against the 23 ESPN's own season totals give it, and a series can look shorter than it was"
         ),
         postseason_reason=(
             "ESPN files every season before 1993-94 under the year it STARTED, so the postseason it labels 1988 is the 1989 playoffs, and the 1987-88 playoffs are not in its archive at all"
@@ -186,8 +186,8 @@ COVERAGE: dict[str, Coverage] = {
         # return nothing at all - so that season says what it is missing.
         postseason_partial=(2001,),
         postseason_partial_note=(
-            "ESPN is missing about ten games of the 2001 playoffs - Games 1-4 of the LAL-PHI Final and the end of the MIL-PHI conference final - so Philadelphia's run reads 15 games "
-            "against the 23 ESPN's own season totals give it, and a series can look shorter than it was"
+            "ESPN is missing ten games of the 2001 playoffs - Games 1-4 of the LAL-PHI Final, three games of the MIL-PHI conference final, two of MIL-CHA and one of LAL-SA - "
+            "so Philadelphia's run reads 16 games against the 23 ESPN's own season totals give it, and a series can look shorter than it was"
         ),
         postseason_reason=(
             "ESPN files every season before 1993-94 under the year it STARTED, so the postseason it labels 1988 is the 1989 playoffs, and the 1987-88 playoffs are not in its archive at all"
