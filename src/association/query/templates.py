@@ -3945,31 +3945,10 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     season_type = slots.get("season_type") or 2
     limit = _clamp_limit(slots.get("limit"), default=DEFAULT_SINGLE_GAME_LIMIT)
 
-    scope, params = _box_scope("l", season, season_type)
-    # A line with no minutes is a game with NO BOX SCORE, not a game he played
-    # and did nothing in. Those lines carry 0 rather than NULL, so they survive
-    # the NULL check beside this one - and where a whole team-season is empty
-    # (every Chicago and New Orleans season from 2013 to 2018), a zero then
-    # wins the maximum outright: "Anthony Davis's highest point total in a
-    # single game in the 2015 regular season was 0, on 2014-10-28 vs ORL" -
-    # fluent, dated, and false. This is the same line _played() draws in
-    # `conditions`, which is why streaks and splits were never affected by it.
-    # A rebuilt line may answer this, but only for a stat a rebuild gets right
-    # (REBUILT_STATS) - and only where the warehouse actually carries the flag,
-    # since an older one has no such column. Without both, the guard is the
-    # plain one and a rebuilt line stays invisible, exactly as before.
-    from_rebuilt = column in REBUILT_STATS and _log_carries_rebuilt(ctx.con)
-    where = [scope, f"l.{column} IS NOT NULL", "(l.minutes IS NOT NULL OR l.reconstructed)" if from_rebuilt else "l.minutes IS NOT NULL"]
-    text = slots.get("player")
-    named_player: Entity | None = None
-    # The player slot is optional here: unset means "the league".
-    if isinstance(text, str) and text.strip():
-        resolved = _resolved_player(ctx.con, text, available=_GAME_LOGS, season=season, through=_career_end(season))
-        if isinstance(resolved, TemplateResult):
-            return resolved
-        named_player = resolved
-        where.append("l.athlete_id = ?")
-        params.append(resolved.id)
+    scoped = _single_game_high_scope(ctx, column, season, season_type, slots.get("player"))
+    if isinstance(scoped, TemplateResult):
+        return scoped
+    where, params, named_player, from_rebuilt = scoped
 
     rows = ctx.con.execute(
         f"SELECT l.player_name, l.{column}, l.game_date, l.opponent_abbr, {'l.reconstructed' if from_rebuilt else 'FALSE'} "
@@ -3996,6 +3975,48 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     # Only when the answer is empty AND the stat was deliberately withheld: a
     # refusal that names a decision beats one that implies missing data.
     withheld = 0 if games or column in REBUILT_STATS else _rebuilt_in_scope(ctx.con, season, season_type, named_player.id if named_player else None)
+    answer = _single_game_high_answer(games, label, span, who, empty=empty, withheld=withheld)
+    return TemplateResult(
+        data={"question_shape": shape, "season": season, "span": "career" if career else None, "stat": stat, "games": games, "empty_box_scores": empty[0]},
+        answer=answer,
+    )
+
+
+def _single_game_high_scope(ctx: TemplateContext, column: str, season: int | None, season_type: int, player_text: Any) -> tuple[list[str], list[Any], Entity | None, bool] | TemplateResult:
+    """The WHERE clause and params for the qualifying rows, whether a rebuilt
+    (play-by-play) line may stand in for a missing box score line, and the
+    named player if the question asked about one - unset means "the league"."""
+    scope, params = _box_scope("l", season, season_type)
+    # A line with no minutes is a game with NO BOX SCORE, not a game he played
+    # and did nothing in. Those lines carry 0 rather than NULL, so they survive
+    # the NULL check beside this one - and where a whole team-season is empty
+    # (every Chicago and New Orleans season from 2013 to 2018), a zero then
+    # wins the maximum outright: "Anthony Davis's highest point total in a
+    # single game in the 2015 regular season was 0, on 2014-10-28 vs ORL" -
+    # fluent, dated, and false. This is the same line _played() draws in
+    # `conditions`, which is why streaks and splits were never affected by it.
+    # A rebuilt line may answer this, but only for a stat a rebuild gets right
+    # (REBUILT_STATS) - and only where the warehouse actually carries the flag,
+    # since an older one has no such column. Without both, the guard is the
+    # plain one and a rebuilt line stays invisible, exactly as before.
+    from_rebuilt = column in REBUILT_STATS and _log_carries_rebuilt(ctx.con)
+    where = [scope, f"l.{column} IS NOT NULL", "(l.minutes IS NOT NULL OR l.reconstructed)" if from_rebuilt else "l.minutes IS NOT NULL"]
+    named_player: Entity | None = None
+    # The player slot is optional here: unset means "the league".
+    if isinstance(player_text, str) and player_text.strip():
+        resolved = _resolved_player(ctx.con, player_text, available=_GAME_LOGS, season=season, through=_career_end(season))
+        if isinstance(resolved, TemplateResult):
+            return resolved
+        named_player = resolved
+        where.append("l.athlete_id = ?")
+        params.append(resolved.id)
+    return where, params, named_player, from_rebuilt
+
+
+def _single_game_high_answer(games: list[dict[str, Any]], label: str, span: _GameSpan, who: str | None, *, empty: tuple[int, int | None, int | None], withheld: int) -> str:
+    """The full sentence: the phrase, any league-coverage caveat, the
+    empty-box-scores note (suppressed when ``withheld`` already explains the
+    gap), and the rebuilt-line caveat when the answer itself rests on one."""
     answer = span.preface + _phrase_single_game_high(games, label, span, who, empty=empty, withheld=withheld)
     if span.league_note:
         answer += f" Box scores begin in {span.since}, so this is not an all-time record: earlier games are not in this warehouse."
@@ -4009,10 +4030,7 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     # needs to know about the number they were given.
     if games and games[0]["reconstructed"]:
         answer += " That game has no box score from ESPN - the figure is rebuilt from its play-by-play, so treat it as close rather than exact."
-    return TemplateResult(
-        data={"question_shape": shape, "season": season, "span": "career" if career else None, "stat": stat, "games": games, "empty_box_scores": empty[0]},
-        answer=answer,
-    )
+    return answer
 
 
 def _phrase_single_game_high(
