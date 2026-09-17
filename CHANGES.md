@@ -15,6 +15,14 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **No function is more complex than radon grade C** (cyclomatic complexity
+  20) - work in progress toward a xenon gate. The worst were the router's
+  `route()` at 127, `parse_game_summary` at 61 and a set of query templates
+  between 21 and 89; each is split into named steps called in the original
+  order. No behavior changes: every split was checked against the original
+  code by calling it with thousands of inputs (405,588 for `route()`, 4,433
+  slot sets for the templates, every fixture for the parser) and comparing
+  the full results, besides the test suite.
 - **Breaking: the package is reorganized, so the next release is 3.0.0.**
   Nothing about what the commands or the query engine do changes; module paths
   do.

@@ -1088,7 +1088,7 @@ def _phrase_career_leaderboard(rows: list[dict[str, Any]], label: str, kind: str
     1993-94 or later, counted over his whole career, and nobody whose career
     ended before it - Kareem Abdul-Jabbar is not in the warehouse at all - so
     presenting it as "all-time" would be the unrepresentative ranking
-    coverage.py's second floor exists to refuse."""
+    nba/coverage.py's second floor exists to refuse."""
     gap = f"Careers that ended before {since} are not in this warehouse, so this is not an all-time list."
     if not rows:
         return f"No player qualified for {label} in the {kind}{qualifier}. {gap}"
@@ -1587,7 +1587,7 @@ def _eastern_day(day: str) -> tuple[str, str]:
     ``LIKE 'YYYY-MM-DD%'`` matched the UTC date instead, so asking for a game on
     the 15th found the one played the evening of the 14th, and missed its own
     whenever it tipped after 7pm. The range follows daylight time
-    (:func:`association.season.eastern_day_utc_range`), so a summer date-only
+    (:func:`association.nba.season.eastern_day_utc_range`), so a summer date-only
     stamp - midnight Eastern, 04:00Z - is found on the day it names."""
     datetime.strptime(day, "%Y-%m-%d")  # noqa: DTZ007 - the same ValueError on a malformed day as before; the value is discarded
     return eastern_day_utc_range(day)
@@ -1693,7 +1693,7 @@ _RECORDED = "pgl.minutes IS NOT NULL"
 #:
 #: Where ESPN serves an empty box score, ``player_box_stats_filled`` carries a
 #: line rebuilt from play-by-play (see
-#: :mod:`association.fetch.reconstructed_box`). Measured per player-game against
+#: :mod:`association.fetch.repairs.reconstructed_box`). Measured per player-game against
 #: the 22,646 games of the 2015 regular season whose real box score survived,
 #: the mean absolute error of a rebuilt figure is:
 #:
@@ -2306,7 +2306,7 @@ _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # Joined on season as well as event_id: the phantom 1993 shares every event id
 # with 1994, so a 1994 log keyed on event_id alone listed each game twice.
 #
-# Read from `real_games`, the one filtered list (fetch/real_games.py): this
+# Read from `real_games`, the one filtered list (fetch/repairs/real_games.py): this
 # join used to be over `games`, on the belief that joining team_box_stats
 # excluded the junk rows by itself. It does not - EVERY games row has a
 # team_box_stats row, phantoms and 0-0 placeholders included - so a 1999 or
@@ -4249,7 +4249,7 @@ def _phrase_team_quarter_points(team: str, opponent: str | None, period_label: s
 # The two bad ones have known causes rather than being noise. 2002 cannot be
 # answered at all - it is `UNSEPARABLE_SHOT_VALUES`, so `SHOT_VALUE_SQL` is
 # NULL for 20,534 of its made shots and a sum over them is meaningless (4.9%).
-# 2016 is the season `fetch/reconstructed_box` also singles out: its scoring
+# 2016 is the season `fetch/repairs/reconstructed_box` also singles out: its scoring
 # plays carry types no rule can classify, and it reconciles at 76.5%, which is
 # one quarter in four.
 PERIOD_RECONCILIATION: dict[int, float] = {2003: 93.5, 2004: 95.7, 2005: 95.9, 2006: 95.8, 2013: 93.7, 2016: 76.5}

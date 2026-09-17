@@ -1189,6 +1189,25 @@ found.
 
 ## P4: tooling, docs, low impact
 
+### A single-game-high list cut at a tie picks the players at random
+- **Found:** 2026-09-17, by the templates complexity refactor's golden
+  comparison; re-measured the same day
+- **Evidence:** `single_game_high` orders by the stat descending, then
+  `game_date`, and nothing breaks a tie on the same date. Eight identical calls
+  of `{'stat': 'turnovers', 'season': 1996, 'limit': 10}` against the main
+  warehouse gave two answers (5 and 3 times): the tenth name is Latrell
+  Sprewell or Vernon Maxwell, both with 9 on 1996-04-06. With `stat: fouls,
+  season: 2015` the order of Andre Drummond and Dwight Howard (6 each,
+  2014-10-29) swaps the same way. DuckDB's parallel execution returns tied rows
+  in no fixed order.
+- **User sees:** the same question listing a different last player, or the
+  same players in a different order, from one ask to the next - and no sign
+  that more players tie at the cutoff. Arguably P2 (incomplete without saying
+  so); ranked here because every name shown is correct.
+- **Next step:** add a deterministic tiebreak (`athlete_id`, or the display
+  name) to the ORDER BY, and consider saying "N more tied" when the limit cuts
+  through a tie. A behavior change, so it was kept out of the refactor.
+
 ### Advanced-stat aggregates are not bit-reproducible between runs
 - **Found:** 2026-09-17, by the complexity refactor's golden comparison of
   `run_leaderboard`; re-measured the same day
