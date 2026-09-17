@@ -753,6 +753,124 @@ def _team_grounded(con: duckdb.DuckDBPyConnection, question: str, team: Entity) 
     return bool(carried & asked)
 
 
+def _scope_from_question_only_player(con: duckdb.DuckDBPyConnection, question: str) -> str | None:
+    """The one player the question names, or None if it names none or several."""
+    named = players_named_in(con, question)
+    return named[0] if len(named) == 1 else None
+
+
+def _scope_from_question_player_in_team_slot(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], notes: list[str]) -> bool:
+    """Move a player's name out of ``team`` and into ``player``. Returns whether it did."""
+    team_text = slots.get("team")
+    if isinstance(team_text, str) and team_text.strip():
+        # A player's name in `team`. Measured: "Podziemski game log without
+        # curry" arrived as team='Podziemski', player='Curry' - the subject in
+        # the team slot and the absent teammate in the player slot.
+        as_player = find_players(con, team_text)
+        held, without = slots.get("player"), teammate_names(slots.get("without"))
+        if len(as_player) == 1 and (not held or (isinstance(held, str) and any(held.casefold() == name.casefold() for name in without))):
+            slots.pop("team", None)
+            slots["player"] = as_player[0].name
+            notes.append(f"{team_text!r} is a player, not a team; the subject is {as_player[0].name!r}")
+            return True
+    return False
+
+
+def _scope_from_question_displaced_player(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], notes: list[str], team: Entity, versus: Entity | None) -> Entity | None:
+    """Put back the player a team in ``team`` displaced. Returns the team still in the slot, or None once it has gone."""
+    # The team in `team` is the opponent, or a team the question never
+    # mentioned (the router's guess at the player's own): either way the
+    # player it displaced is the subject.
+    displaced = versus is not None and team.id == versus.id
+    if displaced or not _team_grounded(con, question, team):
+        player = _scope_from_question_only_player(con, question)
+        if player is not None:
+            slots.pop("team", None)
+            slots["player"] = player
+            notes.append(f"{team.name!r} was {'the opponent' if displaced else 'not in the question'}; the subject is {player!r}")
+            return None
+    return team
+
+
+def _scope_from_question_team_in_players(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], notes: list[str], versus: Entity | None, season: int | None) -> None:
+    """Take the team the question plays against out of ``players``."""
+    listed = slots.get("players")
+    if versus is not None and isinstance(listed, list):
+        kept = [name for name in listed if not ((found := _team_named(con, name, season)) is not None and found.id == versus.id)]
+        if len(kept) != len(listed):
+            notes.append(f"{versus.name!r} is a team, not a player to compare")
+            if len(kept) == 1:
+                slots.pop("players", None)
+                slots["player"] = kept[0]
+            else:
+                slots["players"] = kept
+
+
+def _scope_from_question_restore_player(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], notes: list[str]) -> None:
+    """Put back the one player the question names, where the router left the player out."""
+    player = _scope_from_question_only_player(con, question)
+    if player is not None:
+        slots["player"] = player
+        notes.append(f"player {player!r} (from the question; the router left it out)")
+
+
+def _scope_from_question_drop_opposing_team(slots: dict[str, Any], notes: list[str], team: Entity) -> None:
+    """Drop the team the question plays against from ``team``, where it sits beside a player."""
+    # The team the question plays AGAINST, filed as the subject's team
+    # beside a player the router kept. Left there, nothing reads it: the
+    # check below leaves a team already in `team` alone, which is how
+    # head_to_head carries its own side, so no opponent was set and
+    # check_scope had nothing to refuse. Measured: "compare curry and
+    # lebron vs the celtics" came back with team='Boston Celtics'.
+    slots.pop("team", None)
+    notes.append(f"{team.name!r} is the team the question plays against, not the subject's")
+
+
+def _scope_from_question_unheld_opponent(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], notes: list[str], versus: Entity, season: int | None, *, carries_player: bool) -> None:
+    """Fill an empty ``opponent`` with the team the question plays against, unless the slots already carry that team as a side."""
+    listed_teams = [name for name in slots.get("teams") or [] if isinstance(name, str)]
+    if carries_player and any((found := _team_named(con, name, season)) is not None and found.id == versus.id for name in listed_teams):
+        # A player is the subject, so the team after "vs" is his opponent even
+        # when the router filed it in `teams`. The "already carried" rule
+        # below exists for head_to_head, which reads `teams` as its two sides;
+        # player_stat and game_log never read that slot, so leaving it there
+        # answers every opponent. "Keyonte George against blazers" arrived as
+        # teams=["Portland Blazers"] and was answered correctly only while
+        # that name failed to resolve - resolving it answered his whole
+        # 54-game season instead of his 2 games against Portland.
+        kept = [name for name in listed_teams if not ((found := _team_named(con, name, season)) is not None and found.id == versus.id)]
+        if kept:
+            slots["teams"] = kept
+        else:
+            slots.pop("teams", None)
+        slots["opponent"] = versus.name
+        notes.append(f"opponent {versus.name!r} (the question plays against it; the router filed it as a team)")
+        return
+    carried = [slots.get("team"), *(slots.get("teams") or [])]
+    if not any((found := _team_named(con, name, season)) is not None and found.id == versus.id for name in carried):
+        slots["opponent"] = versus.name
+        notes.append(f"opponent {versus.name!r} (from the question)")
+
+
+def _scope_from_question_opponent(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], notes: list[str], versus: Entity | None, season: int | None, *, carries_player: bool) -> None:
+    """Set ``opponent`` to the team the question plays against, where the slots do not already carry it.
+    ``carries_player`` is whether a player-reading template has a player as its subject."""
+    held = slots.get("opponent")
+    held_team = _team_named(con, held, season) if held else None
+    if versus is not None and held and (held_team is None or (held_team.id != versus.id and not _team_grounded(con, question, held_team))):
+        # The router filled `opponent`, and what it wrote is either no team at
+        # all or a team the question never mentions - while the question names
+        # one outright. The question wins. This used to fill the slot only when
+        # it was EMPTY, so an unresolvable string beat a team the question
+        # named: "duren v nets 1h gameloh" arrived as opponent="New Jersey
+        # Nets", this read "nets" as the Brooklyn Nets correctly, and threw it
+        # away. Same rule as override_invented_players, for the other entity.
+        slots["opponent"] = versus.name
+        notes.append(f"opponent {held!r} -> {versus.name!r} (the question names it; the router's {'resolves to no team' if held_team is None else 'is not in the question'})")
+    elif versus is not None and not held:
+        _scope_from_question_unheld_opponent(con, slots, notes, versus, season, carries_player=carries_player)
+
+
 def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], *, reads_player: bool, needs_player: bool = False) -> list[str]:
     """Put a team the question plays AGAINST where a template will see it.
     Mutates ``slots``; returns a line per change, for the trace.
@@ -794,99 +912,21 @@ def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: di
     has_player = bool(slots.get("player")) or bool(slots.get("players"))
     team = _team_named(con, slots.get("team"), season)
 
-    def only_player() -> str | None:
-        """The one player the question names, or None if it names none or several."""
-        named = players_named_in(con, question)
-        return named[0] if len(named) == 1 else None
-
-    team_text = slots.get("team")
-    if reads_player and team is None and isinstance(team_text, str) and team_text.strip():
-        # A player's name in `team`. Measured: "Podziemski game log without
-        # curry" arrived as team='Podziemski', player='Curry' - the subject in
-        # the team slot and the absent teammate in the player slot.
-        as_player = find_players(con, team_text)
-        held, without = slots.get("player"), teammate_names(slots.get("without"))
-        if len(as_player) == 1 and (not held or (isinstance(held, str) and any(held.casefold() == name.casefold() for name in without))):
-            slots.pop("team", None)
-            slots["player"] = as_player[0].name
-            has_player = True
-            notes.append(f"{team_text!r} is a player, not a team; the subject is {as_player[0].name!r}")
+    if reads_player and team is None:
+        has_player = _scope_from_question_player_in_team_slot(con, slots, notes) or has_player
 
     if team is not None and not has_player and reads_player:
-        # The team in `team` is the opponent, or a team the question never
-        # mentioned (the router's guess at the player's own): either way the
-        # player it displaced is the subject.
-        displaced = versus is not None and team.id == versus.id
-        if displaced or not _team_grounded(con, question, team):
-            player = only_player()
-            if player is not None:
-                slots.pop("team", None)
-                slots["player"] = player
-                notes.append(f"{team.name!r} was {'the opponent' if displaced else 'not in the question'}; the subject is {player!r}")
-                team = None
+        team = _scope_from_question_displaced_player(con, question, slots, notes, team, versus)
 
-    listed = slots.get("players")
-    if versus is not None and isinstance(listed, list):
-        kept = [name for name in listed if not ((found := _team_named(con, name, season)) is not None and found.id == versus.id)]
-        if len(kept) != len(listed):
-            notes.append(f"{versus.name!r} is a team, not a player to compare")
-            if len(kept) == 1:
-                slots.pop("players", None)
-                slots["player"] = kept[0]
-            else:
-                slots["players"] = kept
+    _scope_from_question_team_in_players(con, slots, notes, versus, season)
 
     if needs_player and not slots.get("player") and not slots.get("players"):
-        player = only_player()
-        if player is not None:
-            slots["player"] = player
-            notes.append(f"player {player!r} (from the question; the router left it out)")
+        _scope_from_question_restore_player(con, question, slots, notes)
 
     if reads_player and has_player and team is not None and versus is not None and team.id == versus.id and not slots.get("opponent"):
-        # The team the question plays AGAINST, filed as the subject's team
-        # beside a player the router kept. Left there, nothing reads it: the
-        # check below leaves a team already in `team` alone, which is how
-        # head_to_head carries its own side, so no opponent was set and
-        # check_scope had nothing to refuse. Measured: "compare curry and
-        # lebron vs the celtics" came back with team='Boston Celtics'.
-        slots.pop("team", None)
-        notes.append(f"{team.name!r} is the team the question plays against, not the subject's")
+        _scope_from_question_drop_opposing_team(slots, notes, team)
 
-    held = slots.get("opponent")
-    held_team = _team_named(con, held, season) if held else None
-    if versus is not None and held and (held_team is None or (held_team.id != versus.id and not _team_grounded(con, question, held_team))):
-        # The router filled `opponent`, and what it wrote is either no team at
-        # all or a team the question never mentions - while the question names
-        # one outright. The question wins. This used to fill the slot only when
-        # it was EMPTY, so an unresolvable string beat a team the question
-        # named: "duren v nets 1h gameloh" arrived as opponent="New Jersey
-        # Nets", this read "nets" as the Brooklyn Nets correctly, and threw it
-        # away. Same rule as override_invented_players, for the other entity.
-        slots["opponent"] = versus.name
-        notes.append(f"opponent {held!r} -> {versus.name!r} (the question names it; the router's {'resolves to no team' if held_team is None else 'is not in the question'})")
-    elif versus is not None and not held:
-        listed_teams = [name for name in slots.get("teams") or [] if isinstance(name, str)]
-        if reads_player and has_player and any((found := _team_named(con, name, season)) is not None and found.id == versus.id for name in listed_teams):
-            # A player is the subject, so the team after "vs" is his opponent even
-            # when the router filed it in `teams`. The "already carried" rule
-            # below exists for head_to_head, which reads `teams` as its two sides;
-            # player_stat and game_log never read that slot, so leaving it there
-            # answers every opponent. "Keyonte George against blazers" arrived as
-            # teams=["Portland Blazers"] and was answered correctly only while
-            # that name failed to resolve - resolving it answered his whole
-            # 54-game season instead of his 2 games against Portland.
-            kept = [name for name in listed_teams if not ((found := _team_named(con, name, season)) is not None and found.id == versus.id)]
-            if kept:
-                slots["teams"] = kept
-            else:
-                slots.pop("teams", None)
-            slots["opponent"] = versus.name
-            notes.append(f"opponent {versus.name!r} (the question plays against it; the router filed it as a team)")
-            return notes
-        carried = [slots.get("team"), *(slots.get("teams") or [])]
-        if not any((found := _team_named(con, name, season)) is not None and found.id == versus.id for name in carried):
-            slots["opponent"] = versus.name
-            notes.append(f"opponent {versus.name!r} (from the question)")
+    _scope_from_question_opponent(con, question, slots, notes, versus, season, carries_player=reads_player and has_player)
     return notes
 
 
