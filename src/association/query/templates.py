@@ -3434,12 +3434,11 @@ def _postseason_scope(span: _Span) -> tuple[str, list[Any]]:
     return f"CAST(substr(g.date, 1, 4) AS INTEGER) >= ?{excluded}", [span.first, *phantom]
 
 
-def _team_game_log(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, *, opponent: Any, venue: Any, date: str | None, limit: int, ascending: bool) -> TemplateResult:
-    """A team's games in ``span``, narrowed to an opponent, a venue and a date
-    where the question named them."""
-    # A postseason by the calendar year it was played in - see _season_games.
-    clause, params = _postseason_scope(span) if span.season_type == 3 else span.clause("tbs.season")
-    base, base_params = ["tbs.team_id = ?", "tbs.season_type = ?", clause], [team.id, span.season_type, *params]
+def _team_game_log_filters(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, *, opponent: Any, venue: Any, date: str | None) -> tuple[list[str], list[Any], str] | TemplateResult:
+    """The extra WHERE clauses for an opponent, a venue and a date where the
+    question named them, plus the narrowing phrase for the header and the
+    empty-result sentence. Returns a `TemplateResult` early if a named
+    opponent cannot be resolved, or is the team itself."""
     extra: list[str] = []
     extra_params: list[Any] = []
     filters: list[str] = []
@@ -3461,31 +3460,32 @@ def _team_game_log(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, *,
         start, end = _eastern_day(date)
         extra.append("g.date >= ? AND g.date < ?")
         extra_params += [start, end]
-    narrowed = "".join(f" {f}" for f in filters)
-    rows = con.execute(
-        f"{_TEAM_GAMES_SQL} WHERE {' AND '.join(base + extra)} ORDER BY g.date {'ASC' if ascending else 'DESC'} LIMIT ?",
-        [*base_params, *extra_params, limit],
-    ).fetchall()
-    if not rows:
-        # Which fact is missing: the team's games in that span, or the match.
-        found = con.execute(
-            f"SELECT COUNT(*), MIN({_TEAM_SEASON}), MAX({_TEAM_SEASON}) FROM team_box_stats tbs JOIN real_games g ON g.event_id = tbs.event_id AND g.season = tbs.season WHERE {' AND '.join(base)}",
-            base_params,
-        ).fetchone()
-        total, first, last = found if found else (0, None, None)
-        if not total:
-            where = _period(span.season, span.season_type) if span.season is not None else f"{span.kind}s on record"
-            return TemplateResult(data={"team": team.name, "games": []}, answer=f"No {where} games found for the {team.name}.")
-        on_date = f" on {date}" if date else ""
-        answer = f"The {team.name} played {total:,} games {span.during(first, last, whose='all seasons on record')}, none of them{narrowed}{on_date}."
-        return TemplateResult(data={"team": team.name, "games": []}, answer=answer)
+    return extra, extra_params, "".join(f" {f}" for f in filters)
 
+
+def _team_game_log_none(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, base: list[str], base_params: list[Any], *, narrowed: str, date: str | None) -> TemplateResult:
+    """Which fact is missing when no row matched: the team's games in that
+    span, or the match - so the sentence names the right one."""
+    found = con.execute(
+        f"SELECT COUNT(*), MIN({_TEAM_SEASON}), MAX({_TEAM_SEASON}) FROM team_box_stats tbs JOIN real_games g ON g.event_id = tbs.event_id AND g.season = tbs.season WHERE {' AND '.join(base)}",
+        base_params,
+    ).fetchone()
+    total, first, last = found if found else (0, None, None)
+    if not total:
+        where = _period(span.season, span.season_type) if span.season is not None else f"{span.kind}s on record"
+        return TemplateResult(data={"team": team.name, "games": []}, answer=f"No {where} games found for the {team.name}.")
+    on_date = f" on {date}" if date else ""
+    answer = f"The {team.name} played {total:,} games {span.during(first, last, whose='all seasons on record')}, none of them{narrowed}{on_date}."
+    return TemplateResult(data={"team": team.name, "games": []}, answer=answer)
+
+
+def _team_game_log_rows(team: Entity, span: _Span, rows: list[tuple[Any, ...]], *, narrowed: str, date: str | None, ascending: bool) -> TemplateResult:
+    """The games listing, and the wins/losses record tallied over exactly the
+    rows being shown rather than recounted from it later - that recount is
+    where a wins/losses total gets inverted."""
     games = [
         {"date": _eastern_date(r[0]), "home_away": r[1], "opponent": r[2], "team_score": r[3], "opponent_score": r[4], "won": None if r[5] is None else r[5] == r[6], "season": r[7]} for r in rows
     ]
-    # Tallied here, over exactly the rows being shown, rather than left to be
-    # counted back out of the listing - that recount is where a wins/losses
-    # total gets inverted.
     wins = sum(1 for g in games if g["won"] is True)
     losses = sum(1 for g in games if g["won"] is False)
     unknown = len(games) - wins - losses
@@ -3500,6 +3500,26 @@ def _team_game_log(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, *,
     mark = {True: "W", False: "L", None: "?"}
     lines = [f"  {g['date']}  {mark[g['won']]} {g['team_score']}-{g['opponent_score']}  {'vs' if g['home_away'] == 'home' else 'at'} {g['opponent']}" for g in games]
     return TemplateResult(data={"team": team.name, "wins": wins, "losses": losses, "games": games}, answer="\n".join([header, *lines]))
+
+
+def _team_game_log(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, *, opponent: Any, venue: Any, date: str | None, limit: int, ascending: bool) -> TemplateResult:
+    """A team's games in ``span``, narrowed to an opponent, a venue and a date
+    where the question named them."""
+    # A postseason by the calendar year it was played in - see _season_games.
+    clause, params = _postseason_scope(span) if span.season_type == 3 else span.clause("tbs.season")
+    base, base_params = ["tbs.team_id = ?", "tbs.season_type = ?", clause], [team.id, span.season_type, *params]
+    filtered = _team_game_log_filters(con, team, span, opponent=opponent, venue=venue, date=date)
+    if isinstance(filtered, TemplateResult):
+        return filtered
+    extra, extra_params, narrowed = filtered
+    rows = con.execute(
+        f"{_TEAM_GAMES_SQL} WHERE {' AND '.join(base + extra)} ORDER BY g.date {'ASC' if ascending else 'DESC'} LIMIT ?",
+        [*base_params, *extra_params, limit],
+    ).fetchall()
+    if not rows:
+        # Which fact is missing: the team's games in that span, or the match.
+        return _team_game_log_none(con, team, span, base, base_params, narrowed=narrowed, date=date)
+    return _team_game_log_rows(team, span, rows, narrowed=narrowed, date=date, ascending=ascending)
 
 
 def _pct(made: Any, attempted: Any) -> float | None:
@@ -3531,8 +3551,9 @@ def _aligned(titles: list[str], rows: list[list[str]], left: int) -> list[str]:
     return [_line(titles), *(_line(row) for row in rows)]
 
 
-def _player_game_log(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: _Narrowed, extras: tuple[str, ...], *, limit: int, asked: int | None, ascending: bool) -> TemplateResult:
-    """The listing, and the per-game averages over exactly the rows in it."""
+def _player_game_log_columns(con: duckdb.DuckDBPyConnection, extras: tuple[str, ...]) -> tuple[list[str], list[str], bool]:
+    """The columns to show, the raw columns fetched behind them, and whether a
+    rebuilt (play-by-play) line can stand in for a missing box score line."""
     headers = list(dict.fromkeys([*_LOG_BASE, *extras]))
     # A percentage is never fetched: it is computed from the made/attempted pair
     # behind it, which is fetched whether or not it is shown.
@@ -3543,6 +3564,91 @@ def _player_game_log(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span
     # Ask for a player's fouls and the log goes back to fetched lines only,
     # because a rebuilt foul is wrong in one game in six.
     rebuilt = _rebuilt_readable(con, needed)
+    return headers, needed, rebuilt
+
+
+def _player_game_log_rows(rows: list[tuple[Any, ...]], needed: list[str], headers: list[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Each fetched row turned into a display game (with its percentages
+    derived) and the raw made/attempted values behind it, kept for the
+    averages below."""
+    games: list[dict[str, Any]] = []
+    raws: list[dict[str, Any]] = []
+    for game_date, season, opponent, home, winner, team_id, is_rebuilt, *values in rows:
+        raw = dict(zip(needed, values, strict=True))
+        game: dict[str, Any] = {
+            "date": _eastern_date(game_date),
+            "season": season,
+            "opponent": opponent,
+            "home_away": "home" if home else "away",
+            "result": None if winner is None else ("W" if winner == team_id else "L"),
+            "reconstructed": bool(is_rebuilt),
+        }
+        for h in headers:
+            game[_log_key(h)] = _pct(raw[_LOG_PERCENTAGES[h][0]], raw[_LOG_PERCENTAGES[h][1]]) if h in _LOG_PERCENTAGES else raw[h]
+        games.append(game)
+        raws.append(raw)
+    return games, raws
+
+
+def _player_game_log_averages(headers: list[str], raws: list[dict[str, Any]]) -> dict[str, float | None]:
+    """Per-game averages over exactly the rows being shown, made/attempted
+    summed rather than a mean of the per-game percentages."""
+    averages: dict[str, float | None] = {}
+    for h in headers:
+        if h in _LOG_PERCENTAGES:
+            made_h, attempted_h, key = _LOG_PERCENTAGES[h]
+            averages[key] = _pct(sum(r[made_h] or 0 for r in raws), sum(r[attempted_h] or 0 for r in raws))
+        else:
+            present = [r[h] for r in raws if r[h] is not None]
+            averages[_LOG_COLUMNS[h]] = sum(present) / len(present) if present else None
+    return averages
+
+
+def _player_game_log_header(player: Entity, span: _Span, narrowed: _Narrowed, games: list[dict[str, Any]], *, ascending: bool) -> str:
+    """The listing's headline: how many games, over what span, filtered how."""
+    count = len(games)
+    if narrowed.date:
+        listed = "game" if count == 1 else "games"
+        scope_text = f"{listed} on {narrowed.date}"
+    elif count == 1:
+        scope_text = "first game" if ascending else "most recent game"
+    else:
+        scope_text = f"first {count} games" if ascending else f"last {count} games"
+    seasons = [g["season"] for g in games]
+    if span.season is not None:
+        where_text = f" of the {_period(span.season, span.season_type)}"
+    elif narrowed.date:
+        where_text = f" ({span.years(min(seasons), max(seasons))})"
+    else:
+        where_text = f" of his career ({span.years(min(seasons), max(seasons))})"
+    return f"{player.name}{narrowed.filters(dated=False)}, {scope_text}{where_text}:"
+
+
+def _player_game_log_table(headers: list[str], games: list[dict[str, Any]], averages: dict[str, float | None]) -> list[str]:
+    """The aligned date/opponent/result/stat table, its last row the per-game
+    averages."""
+    titles = ["date", "opp", "W/L", *headers]
+    body = [[g["date"], f"{'vs' if g['home_away'] == 'home' else '@'} {g['opponent']}", g["result"] or "-", *(_log_cell(h, g[_log_key(h)]) for h in headers)] for g in games]
+    body.append(["per game", "", "", *(_log_cell(h, averages[_log_key(h)], average=True) for h in headers)])
+    return _aligned(titles, body, left=3)
+
+
+def _player_game_log_notes(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: _Narrowed, games: list[dict[str, Any]], *, asked: int | None, rebuilt: bool) -> list[str]:
+    """The truncation note (fewer games than asked) followed by the box-score
+    coverage notes."""
+    count = len(games)
+    notes: list[str] = []
+    if asked and count < asked and not narrowed.date:
+        found_in = "in his box scores" if span.career else f"in the {_period(span.season or current_season(), span.season_type)} - ask about his career to reach earlier seasons"
+        notes.append(f"Only {count} game{'s' if count != 1 else ''}{narrowed.filters()} {found_in}.")
+    rebuilt_shown = sum(1 for g in games if g["reconstructed"])
+    notes += _box_score_notes(con, player, span, narrowed, career_note=not narrowed.date, rebuilt=rebuilt, rebuilt_shown=rebuilt_shown)
+    return notes
+
+
+def _player_game_log(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: _Narrowed, extras: tuple[str, ...], *, limit: int, asked: int | None, ascending: bool) -> TemplateResult:
+    """The listing, and the per-game averages over exactly the rows in it."""
+    headers, needed, rebuilt = _player_game_log_columns(con, extras)
     where, params = narrowed.clauses(rebuilt=rebuilt)
     rows = con.execute(
         f"SELECT pgl.game_date, pgl.season, pgl.opponent_abbr, g.home_team_id = pgl.team_id, g.winner_team_id, pgl.team_id, "
@@ -3562,62 +3668,14 @@ def _player_game_log(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span
         message = _no_narrowed_games(con, player, span, narrowed)
         return TemplateResult(data={**scope, "games": [], "message": message}, answer=message)
 
-    games: list[dict[str, Any]] = []
-    raws: list[dict[str, Any]] = []
-    for game_date, season, opponent, home, winner, team_id, is_rebuilt, *values in rows:
-        raw = dict(zip(needed, values, strict=True))
-        game: dict[str, Any] = {
-            "date": _eastern_date(game_date),
-            "season": season,
-            "opponent": opponent,
-            "home_away": "home" if home else "away",
-            "result": None if winner is None else ("W" if winner == team_id else "L"),
-            "reconstructed": bool(is_rebuilt),
-        }
-        for h in headers:
-            game[_log_key(h)] = _pct(raw[_LOG_PERCENTAGES[h][0]], raw[_LOG_PERCENTAGES[h][1]]) if h in _LOG_PERCENTAGES else raw[h]
-        games.append(game)
-        raws.append(raw)
-
-    averages: dict[str, float | None] = {}
-    for h in headers:
-        if h in _LOG_PERCENTAGES:
-            made_h, attempted_h, key = _LOG_PERCENTAGES[h]
-            averages[key] = _pct(sum(r[made_h] or 0 for r in raws), sum(r[attempted_h] or 0 for r in raws))
-        else:
-            present = [r[h] for r in raws if r[h] is not None]
-            averages[_LOG_COLUMNS[h]] = sum(present) / len(present) if present else None
-
-    count = len(games)
-    if narrowed.date:
-        listed = "game" if count == 1 else "games"
-        scope_text = f"{listed} on {narrowed.date}"
-    elif count == 1:
-        scope_text = "first game" if ascending else "most recent game"
-    else:
-        scope_text = f"first {count} games" if ascending else f"last {count} games"
-    seasons = [g["season"] for g in games]
-    if span.season is not None:
-        where_text = f" of the {_period(span.season, span.season_type)}"
-    elif narrowed.date:
-        where_text = f" ({span.years(min(seasons), max(seasons))})"
-    else:
-        where_text = f" of his career ({span.years(min(seasons), max(seasons))})"
-    header = f"{player.name}{narrowed.filters(dated=False)}, {scope_text}{where_text}:"
-
-    titles = ["date", "opp", "W/L", *headers]
-    body = [[g["date"], f"{'vs' if g['home_away'] == 'home' else '@'} {g['opponent']}", g["result"] or "-", *(_log_cell(h, g[_log_key(h)]) for h in headers)] for g in games]
-    body.append(["per game", "", "", *(_log_cell(h, averages[_log_key(h)], average=True) for h in headers)])
-
-    notes: list[str] = []
-    if asked and count < asked and not narrowed.date:
-        found_in = "in his box scores" if span.career else f"in the {_period(span.season or current_season(), span.season_type)} - ask about his career to reach earlier seasons"
-        notes.append(f"Only {count} game{'s' if count != 1 else ''}{narrowed.filters()} {found_in}.")
-    rebuilt_shown = sum(1 for g in games if g["reconstructed"])
-    notes += _box_score_notes(con, player, span, narrowed, career_note=not narrowed.date, rebuilt=rebuilt, rebuilt_shown=rebuilt_shown)
+    games, raws = _player_game_log_rows(rows, needed, headers)
+    averages = _player_game_log_averages(headers, raws)
+    header = _player_game_log_header(player, span, narrowed, games, ascending=ascending)
+    table = _player_game_log_table(headers, games, averages)
+    notes = _player_game_log_notes(con, player, span, narrowed, games, asked=asked, rebuilt=rebuilt)
     return TemplateResult(
         data={**scope, "columns": headers, "games": games, "averages": averages},
-        answer="\n".join([header, *_aligned(titles, body, left=3), *notes]),
+        answer="\n".join([header, *table, *notes]),
     )
 
 
