@@ -227,6 +227,99 @@ def default_min_sample(spec: LeaderboardMetric, season_type: int) -> int | None:
     return spec.default_min_sample
 
 
+def _run_leaderboard_validate(metric: str, season_type: int, fields: list[str] | None) -> LeaderboardMetric:
+    """The three input checks ``run_leaderboard`` raises on, in the order they
+    are validated: an unknown metric (with a close-match suggestion), an
+    invalid ``season_type``, and any ``fields`` entry outside the known set."""
+    spec = LEADERBOARD_METRICS.get(metric)
+    if spec is None:
+        # A close-match suggestion (e.g. "points" -> "avg_points") keeps a
+        # wrong guess a one-turn fix - confirmed live, without it a wrong
+        # metric name sent the model on an unrelated multi-turn detour that
+        # eventually recovered but dropped the team/fields it had originally
+        # been asked for.
+        suggestion = get_close_matches(metric, LEADERBOARD_METRICS, n=1)
+        hint = f" Did you mean {suggestion[0]!r}?" if suggestion else ""
+        raise LeaderboardError(f"Error: unknown metric {metric!r}.{hint} Known metrics: {sorted(LEADERBOARD_METRICS)}")
+    if season_type not in SEASON_TYPE_LABELS:
+        raise LeaderboardError(f"Error: season_type must be 1 (preseason), 2 (regular season), or 3 (postseason) - got {season_type!r}.")
+    unknown_fields = [f for f in fields or [] if f not in EXTRA_FIELD_COLUMNS]
+    if unknown_fields:
+        raise LeaderboardError(f"Error: unknown field(s) {unknown_fields}. Known fields: {sorted(EXTRA_FIELD_COLUMNS)}")
+    return spec
+
+
+def _run_leaderboard_team(con: duckdb.DuckDBPyConnection, team: str) -> tuple[str, str]:
+    """Resolve a team filter to its id and display name, or raise - called only
+    when ``team`` is not None, so the caller's own None case never reaches this."""
+    match resolve_team(con, team):
+        case Entity() as resolved:
+            return resolved.id, resolved.name
+        case Ambiguous(candidates=candidates):
+            raise LeaderboardError(f"Error: {team!r} matches more than one team: {candidates}. Be more specific.")
+        case NotFound():
+            raise LeaderboardError(f"Error: no team found matching {team!r}.")
+
+
+def _run_leaderboard_select(spec: LeaderboardMetric, fields: list[str] | None, resolved_season: int, season_type: int) -> tuple[list[str], str, list[Any]]:
+    """SELECT columns and FROM clause, plus the params the optional ``fields``
+    join needs.
+
+    A box-score join, keyed on (athlete_id, season, season_type) and deduped
+    to the season-combined row (same pattern as a traded player's
+    season-total row), is needed for `fields` regardless of which table the
+    ranked metric itself lives in - player_season_stats is the one table
+    every metric can join to this way.
+    """
+    select_cols = ["p.display_name AS display_name", f"{_value_sql(spec)} AS value"]
+    select_cols.extend(f"t.{col}" for col in spec.extra_columns)
+    select_cols.extend(f"box.{EXTRA_FIELD_COLUMNS[f]} AS {f}" for f in fields or [])
+    from_clause = f"FROM {spec.table} t JOIN players p ON p.athlete_id = t.{spec.id_column}"
+    params: list[Any] = []
+    if fields:
+        from_clause += (
+            " LEFT JOIN (SELECT * FROM player_season_stats WHERE season = ? AND season_type = ? "
+            "QUALIFY ROW_NUMBER() OVER (PARTITION BY athlete_id ORDER BY (team_id IS NULL) DESC) = 1) box "
+            f"ON box.athlete_id = t.{spec.id_column}"
+        )
+        params.extend([resolved_season, season_type])
+    return select_cols, from_clause, params
+
+
+def _run_leaderboard_where(
+    spec: LeaderboardMetric,
+    resolved_season: int,
+    season_type: int,
+    season_type_value: int | str,
+    effective_min_sample: int | None,
+    resolved_team_id: str | None,
+    metric: str,
+) -> tuple[list[str], list[Any]]:
+    """The WHERE clause and its params: season, season_type, the postseason-copy
+    exclusion, the minimum-sample qualifier, and an optional team filter - in
+    the order ``run_leaderboard`` applies them."""
+    where = [f"t.{spec.season_column} = ?"]
+    params: list[Any] = [resolved_season]
+    if spec.has_season_type:
+        where.append(f"t.{spec.season_type_column} = ?")
+        params.append(season_type_value)
+    if spec.table == "player_season_stats" and season_type == POSTSEASON:
+        where.append(not_a_postseason_copy(_value_columns(spec)))
+    if effective_min_sample is not None:
+        if spec.min_sample_column is None:
+            raise LeaderboardError(f"Error: metric {metric!r} has no minimum-sample column to apply min_sample to.")
+        where.append(f"t.{spec.min_sample_column} >= ?")
+        params.append(effective_min_sample)
+    if resolved_team_id is not None:
+        # A per-stint EXISTS check, not the deduped `box` join above - a traded
+        # player's deduped/combined row has team_id IS NULL, which would
+        # wrongly exclude them from every team's roster even though they really
+        # did play for one of their stint teams that season.
+        where.append(f"EXISTS (SELECT 1 FROM player_season_stats pss WHERE pss.athlete_id = t.{spec.id_column} AND pss.season = ? AND pss.season_type = ? AND pss.team_id = ?)")
+        params.extend([resolved_season, season_type, resolved_team_id])
+    return where, params
+
+
 def run_leaderboard(
     con: duckdb.DuckDBPyConnection,
     metric: str,
@@ -253,21 +346,7 @@ def run_leaderboard(
        column; a postseason can carry its own qualifier; a postseason row that
        copies the regular season is excluded.
     """
-    spec = LEADERBOARD_METRICS.get(metric)
-    if spec is None:
-        # A close-match suggestion (e.g. "points" -> "avg_points") keeps a
-        # wrong guess a one-turn fix - confirmed live, without it a wrong
-        # metric name sent the model on an unrelated multi-turn detour that
-        # eventually recovered but dropped the team/fields it had originally
-        # been asked for.
-        suggestion = get_close_matches(metric, LEADERBOARD_METRICS, n=1)
-        hint = f" Did you mean {suggestion[0]!r}?" if suggestion else ""
-        raise LeaderboardError(f"Error: unknown metric {metric!r}.{hint} Known metrics: {sorted(LEADERBOARD_METRICS)}")
-    if season_type not in SEASON_TYPE_LABELS:
-        raise LeaderboardError(f"Error: season_type must be 1 (preseason), 2 (regular season), or 3 (postseason) - got {season_type!r}.")
-    unknown_fields = [f for f in fields or [] if f not in EXTRA_FIELD_COLUMNS]
-    if unknown_fields:
-        raise LeaderboardError(f"Error: unknown field(s) {unknown_fields}. Known fields: {sorted(EXTRA_FIELD_COLUMNS)}")
+    spec = _run_leaderboard_validate(metric, season_type, fields)
 
     resolved_season = season if season is not None else current_season()
     season_type_value: int | str = SEASON_TYPE_LABELS[season_type] if spec.season_type_is_string else season_type
@@ -276,51 +355,11 @@ def run_leaderboard(
     resolved_team_id: str | None = None
     resolved_team_name: str | None = None
     if team is not None:
-        match resolve_team(con, team):
-            case Entity() as resolved:
-                resolved_team_id, resolved_team_name = resolved.id, resolved.name
-            case Ambiguous(candidates=candidates):
-                raise LeaderboardError(f"Error: {team!r} matches more than one team: {candidates}. Be more specific.")
-            case NotFound():
-                raise LeaderboardError(f"Error: no team found matching {team!r}.")
+        resolved_team_id, resolved_team_name = _run_leaderboard_team(con, team)
 
-    # A box-score join, keyed on (athlete_id, season, season_type) and deduped
-    # to the season-combined row (same pattern as a traded player's
-    # season-total row), is needed for `fields` regardless of which table the
-    # ranked metric itself lives in - player_season_stats is the one table
-    # every metric can join to this way.
-    select_cols = ["p.display_name AS display_name", f"{_value_sql(spec)} AS value"]
-    select_cols.extend(f"t.{col}" for col in spec.extra_columns)
-    select_cols.extend(f"box.{EXTRA_FIELD_COLUMNS[f]} AS {f}" for f in fields or [])
-    from_clause = f"FROM {spec.table} t JOIN players p ON p.athlete_id = t.{spec.id_column}"
-    params: list[Any] = []
-    if fields:
-        from_clause += (
-            " LEFT JOIN (SELECT * FROM player_season_stats WHERE season = ? AND season_type = ? "
-            "QUALIFY ROW_NUMBER() OVER (PARTITION BY athlete_id ORDER BY (team_id IS NULL) DESC) = 1) box "
-            f"ON box.athlete_id = t.{spec.id_column}"
-        )
-        params.extend([resolved_season, season_type])
-
-    where = [f"t.{spec.season_column} = ?"]
-    params.append(resolved_season)
-    if spec.has_season_type:
-        where.append(f"t.{spec.season_type_column} = ?")
-        params.append(season_type_value)
-    if spec.table == "player_season_stats" and season_type == POSTSEASON:
-        where.append(not_a_postseason_copy(_value_columns(spec)))
-    if effective_min_sample is not None:
-        if spec.min_sample_column is None:
-            raise LeaderboardError(f"Error: metric {metric!r} has no minimum-sample column to apply min_sample to.")
-        where.append(f"t.{spec.min_sample_column} >= ?")
-        params.append(effective_min_sample)
-    if resolved_team_id is not None:
-        # A per-stint EXISTS check, not the deduped `box` join above - a traded
-        # player's deduped/combined row has team_id IS NULL, which would
-        # wrongly exclude them from every team's roster even though they really
-        # did play for one of their stint teams that season.
-        where.append(f"EXISTS (SELECT 1 FROM player_season_stats pss WHERE pss.athlete_id = t.{spec.id_column} AND pss.season = ? AND pss.season_type = ? AND pss.team_id = ?)")
-        params.extend([resolved_season, season_type, resolved_team_id])
+    select_cols, from_clause, select_params = _run_leaderboard_select(spec, fields, resolved_season, season_type)
+    where, where_params = _run_leaderboard_where(spec, resolved_season, season_type, season_type_value, effective_min_sample, resolved_team_id, metric)
+    params = select_params + where_params
     qualify = "QUALIFY ROW_NUMBER() OVER (PARTITION BY t.athlete_id ORDER BY (t.team_id IS NULL) DESC) = 1" if spec.dedup_traded else ""
 
     sql = f"SELECT {', '.join(select_cols)} {from_clause} WHERE {' AND '.join(where)} {qualify} ORDER BY value DESC NULLS LAST, display_name LIMIT ?"

@@ -149,6 +149,77 @@ def _series_var(index: int) -> str:
     return f"var(--series-{'abc'[index % 3]})"
 
 
+def _render_fingerprint_html_rings(rings: list[tuple[float, str]], count: int) -> tuple[list[str], str]:
+    """The reference rings' SVG shapes and their legend line."""
+    ring_shapes = []
+    ring_legend = "".join(f'<span><span class="ringswatch" style="border-style: {"dashed" if fraction < 1 else "dotted"}"></span> {html.escape(label)}</span>' for fraction, label in rings if label)
+    for fraction, label in rings:
+        dash = ' stroke-dasharray="5,4"' if label else ""
+        ring_shapes.append(f'<polygon points="{_ring(fraction, count)}" fill="none" stroke="var(--ring)" stroke-width="1"{dash}/>')
+        # A labeled ring is named in the legend, not on the plot. Drawn on the
+        # plot it lands under a skill label wherever it is put: every direction
+        # out of the center ends at one.
+    return ring_shapes, ring_legend
+
+
+def _render_fingerprint_html_spokes(axes: list[Axis], count: int) -> tuple[list[str], list[str]]:
+    """The spokes from center to the outer ring, and each axis's label text."""
+    spokes, labels = [], []
+    for index, axis in enumerate(axes):
+        ex, ey = _point(index, count, 1.0)
+        spokes.append(f'<line x1="0" y1="0" x2="{ex:.2f}" y2="{ey:.2f}" stroke="var(--ring)" stroke-width="0.75"/>')
+        lx, ly = _point(index, count, LABEL_RADIUS_FRACTION)
+        labels.append(f'<text x="{lx:.2f}" y="{ly:.2f}" class="axis {_group_class(axis.group)}" text-anchor="{_label_anchor(lx)}" dominant-baseline="middle">{html.escape(axis.label)}</text>')
+    return spokes, labels
+
+
+def _render_fingerprint_html_series_shapes(series: list[Series], count: int) -> list[str]:
+    """Each player's polygon plus a dot-with-tooltip at every axis."""
+    shapes = []
+    for position, entry in enumerate(series):
+        color = _series_var(position)
+        shapes.append(f'<polygon points="{_polygon(entry.axes)}" fill="{color}" fill-opacity="0.18" stroke="{color}" stroke-width="2" stroke-linejoin="round"/>')
+        for index, axis in enumerate(entry.axes):
+            px, py = _point(index, count, axis.radius)
+            shapes.append(f'<circle cx="{px:.2f}" cy="{py:.2f}" r="3.5" fill="{color}"><title>{html.escape(entry.name)} - {html.escape(axis.tooltip)}</title></circle>')
+    return shapes
+
+
+def _render_fingerprint_html_headlines(series: list[Series]) -> str:
+    """The bolded headline stats above the plot, one block per player."""
+    return "".join(
+        f'<div class="headline"><span class="who" style="color: {_series_var(i)}">{html.escape(entry.name)}</span>'
+        + "".join(f'<span class="stat"><b>{html.escape(value)}</b> {html.escape(label)}' + (f" <i>{html.escape(note)}</i>" if note else "") + "</span>" for label, value, note in entry.headline)
+        + "</div>"
+        for i, entry in enumerate(series)
+    )
+
+
+def _render_fingerprint_html_table_body(table_headers: list[str], table_rows: list[tuple[str, str, list[Cell]]]) -> str:
+    """The table under the plot, with a section heading row whenever the group changes."""
+    body: list[str] = []
+    current_group = None
+    for label, group, cells in table_rows:
+        # A heading whenever the group changes, the way the reference lists its
+        # skills. table_rows arrives grouped; this does not regroup it, so a
+        # caller that sorts across groups gets repeated headings rather than
+        # rows quietly filed under the wrong one.
+        if group != current_group:
+            body.append(f'<tr class="section"><th scope="rowgroup" colspan="{len(table_headers) + 1}" class="{_group_class(group)}">{html.escape(group)}</th></tr>')
+            current_group = group
+        body.append(
+            f'<tr><th scope="row">{html.escape(label)}</th>'
+            + "".join(
+                f'<td style="background: rgba(var(--series-{"abc"[cell.series % 3]}-rgb), {cell.intensity:.3f})">{html.escape(cell.text)}</td>'
+                if cell.series is not None and cell.intensity > 0
+                else f"<td>{html.escape(cell.text)}</td>"
+                for cell in cells
+            )
+            + "</tr>"
+        )
+    return "".join(body)
+
+
 def render_fingerprint_html(
     title: str,
     subtitle: str,
@@ -184,59 +255,13 @@ def render_fingerprint_html(
     width = 2 * (PLOT_RADIUS + LABEL_MARGIN)
     height = 2 * (PLOT_RADIUS * LABEL_RADIUS_FRACTION + VERTICAL_MARGIN)
 
-    ring_shapes = []
-    ring_legend = "".join(f'<span><span class="ringswatch" style="border-style: {"dashed" if fraction < 1 else "dotted"}"></span> {html.escape(label)}</span>' for fraction, label in rings if label)
-    for fraction, label in rings:
-        dash = ' stroke-dasharray="5,4"' if label else ""
-        ring_shapes.append(f'<polygon points="{_ring(fraction, count)}" fill="none" stroke="var(--ring)" stroke-width="1"{dash}/>')
-        # A labeled ring is named in the legend, not on the plot. Drawn on the
-        # plot it lands under a skill label wherever it is put: every direction
-        # out of the center ends at one.
-
-    spokes, labels = [], []
-    for index, axis in enumerate(axes):
-        ex, ey = _point(index, count, 1.0)
-        spokes.append(f'<line x1="0" y1="0" x2="{ex:.2f}" y2="{ey:.2f}" stroke="var(--ring)" stroke-width="0.75"/>')
-        lx, ly = _point(index, count, LABEL_RADIUS_FRACTION)
-        labels.append(f'<text x="{lx:.2f}" y="{ly:.2f}" class="axis {_group_class(axis.group)}" text-anchor="{_label_anchor(lx)}" dominant-baseline="middle">{html.escape(axis.label)}</text>')
-
-    shapes = []
-    for position, entry in enumerate(series):
-        color = _series_var(position)
-        shapes.append(f'<polygon points="{_polygon(entry.axes)}" fill="{color}" fill-opacity="0.18" stroke="{color}" stroke-width="2" stroke-linejoin="round"/>')
-        for index, axis in enumerate(entry.axes):
-            px, py = _point(index, count, axis.radius)
-            shapes.append(f'<circle cx="{px:.2f}" cy="{py:.2f}" r="3.5" fill="{color}"><title>{html.escape(entry.name)} - {html.escape(axis.tooltip)}</title></circle>')
-
-    headlines = "".join(
-        f'<div class="headline"><span class="who" style="color: {_series_var(i)}">{html.escape(entry.name)}</span>'
-        + "".join(f'<span class="stat"><b>{html.escape(value)}</b> {html.escape(label)}' + (f" <i>{html.escape(note)}</i>" if note else "") + "</span>" for label, value, note in entry.headline)
-        + "</div>"
-        for i, entry in enumerate(series)
-    )
+    ring_shapes, ring_legend = _render_fingerprint_html_rings(rings, count)
+    spokes, labels = _render_fingerprint_html_spokes(axes, count)
+    shapes = _render_fingerprint_html_series_shapes(series, count)
+    headlines = _render_fingerprint_html_headlines(series)
     group_legend = "".join(f'<span class="{_group_class(group)}">{html.escape(group)}</span>' for group in GROUP_COLORS)
     header_cells = "".join(f"<th>{html.escape(h)}</th>" for h in table_headers)
-    body: list[str] = []
-    current_group = None
-    for label, group, cells in table_rows:
-        # A heading whenever the group changes, the way the reference lists its
-        # skills. table_rows arrives grouped; this does not regroup it, so a
-        # caller that sorts across groups gets repeated headings rather than
-        # rows quietly filed under the wrong one.
-        if group != current_group:
-            body.append(f'<tr class="section"><th scope="rowgroup" colspan="{len(table_headers) + 1}" class="{_group_class(group)}">{html.escape(group)}</th></tr>')
-            current_group = group
-        body.append(
-            f'<tr><th scope="row">{html.escape(label)}</th>'
-            + "".join(
-                f'<td style="background: rgba(var(--series-{"abc"[cell.series % 3]}-rgb), {cell.intensity:.3f})">{html.escape(cell.text)}</td>'
-                if cell.series is not None and cell.intensity > 0
-                else f"<td>{html.escape(cell.text)}</td>"
-                for cell in cells
-            )
-            + "</tr>"
-        )
-    body_rows = "".join(body)
+    body_rows = _render_fingerprint_html_table_body(table_headers, table_rows)
     group_rules = "".join(f"  .{_group_class(group)} {{ color: {light}; fill: {light}; }}\n" for group, (light, _) in GROUP_COLORS.items())
     group_rules_dark = "".join(f"    .{_group_class(group)} {{ color: {dark}; fill: {dark}; }}\n" for group, (_, dark) in GROUP_COLORS.items())
     series_vars = "".join(f"    --series-{'abc'[i]}-rgb: {rgb};\n" for i, rgb in enumerate(SERIES_RGB))

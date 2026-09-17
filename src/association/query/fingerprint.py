@@ -31,6 +31,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import duckdb
 
@@ -322,6 +323,96 @@ def _percentile_midrank(values: list[float], value: float) -> float:
     return (below + tied / 2) / len(values)
 
 
+def _load_fingerprints_scale_rows(rows: list[tuple[Any, ...]], summary_len: int) -> dict[str, tuple[float, float, list[float], list[float]]]:
+    """Scale every season row to per-100 possessions, keyed by athlete_id.
+
+    per-100 is the comparable unit; a season total mostly ranks by minutes.
+    """
+    scaled: dict[str, tuple[float, float, list[float], list[float]]] = {}
+    for athlete_id, minutes, possessions, *values in rows:
+        if not possessions:
+            continue
+        factor = 100.0 / possessions
+        headline = [(v or 0.0) * factor for v in values[:summary_len]]
+        scaled[athlete_id] = (minutes or 0.0, possessions, headline, [(v or 0.0) * factor for v in values[summary_len:]])
+    return scaled
+
+
+def _load_fingerprints_pool(
+    scaled: dict[str, tuple[float, float, list[float], list[float]]], min_minutes: int, season: int, skill_count: int, summary_count: int
+) -> tuple[list[list[float]], list[list[float]], list[list[float]]]:
+    """The qualified pool's skill values and headline values, each pivoted from
+    per-player rows to per-axis columns for :func:`_percentile` to rank against.
+
+    Raises:
+        FingerprintUnavailable: nobody in the season reached ``min_minutes``.
+    """
+    qualified = [(headline, values) for minutes, _, headline, values in scaled.values() if minutes >= min_minutes]
+    if not qualified:
+        raise FingerprintUnavailable(f"No player reached {min_minutes} minutes in season {season}, so there is nothing to compare against.")
+    pool = [values for _, values in qualified]
+    by_axis = [[player_values[index] for player_values in pool] for index in range(skill_count)]
+    # The headline three are ranked against the same pool as the spokes, so the
+    # percentile on "+1.20 overall" means what the percentiles under it mean.
+    headline_pool = [[headline[index] for headline, _ in qualified] for index in range(summary_count)]
+    return pool, by_axis, headline_pool
+
+
+def _load_fingerprints_players(
+    players: list[Entity],
+    scaled: dict[str, tuple[float, float, list[float], list[float]]],
+    skills: tuple[Skill, ...],
+    by_axis: list[list[float]],
+    headline_pool: list[list[float]],
+    season: int,
+    min_minutes: int,
+) -> list[PlayerFingerprint]:
+    """One :class:`PlayerFingerprint` per named player with a row in ``scaled``,
+    in the order asked for."""
+    fingerprints = []
+    for player in players:
+        entry = scaled.get(player.id)
+        if entry is None:
+            continue
+        minutes, possessions, headline, values = entry
+        skill_values = []
+        for index, skill in enumerate(skills):
+            others = by_axis[index]
+            value = values[index]
+            # Net points are already signed toward "good" in every category - a
+            # turnover category is negative on offense and positive on defense -
+            # so a higher percentile means better on every axis, with no
+            # per-skill direction to get backwards.
+            skill_values.append(
+                SkillValue(
+                    skill=skill,
+                    total=value * possessions / 100.0,
+                    value=value,
+                    percentile=_percentile(others, value),
+                    league_average=sum(others) / len(others),
+                    league_best=max(others),
+                )
+            )
+        fingerprints.append(
+            PlayerFingerprint(
+                athlete_id=player.id,
+                name=player.name,
+                season=season,
+                minutes=minutes,
+                possessions=possessions,
+                qualified=minutes >= min_minutes,
+                overall=headline[0],
+                offense=headline[1],
+                defense=headline[2],
+                overall_percentile=_percentile(headline_pool[0], headline[0]),
+                offense_percentile=_percentile(headline_pool[1], headline[1]),
+                defense_percentile=_percentile(headline_pool[2], headline[2]),
+                values=skill_values,
+            )
+        )
+    return fingerprints
+
+
 def load_fingerprints(
     con: duckdb.DuckDBPyConnection,
     players: list[Entity],
@@ -370,65 +461,9 @@ def load_fingerprints(
     if not rows:
         raise FingerprintUnavailable(f"The warehouse has no NetPoints fingerprint data for season {season}.")
 
-    # per-100 is the comparable unit; a season total mostly ranks by minutes.
-    scaled: dict[str, tuple[float, float, list[float], list[float]]] = {}
-    for athlete_id, minutes, possessions, *values in rows:
-        if not possessions:
-            continue
-        factor = 100.0 / possessions
-        headline = [(v or 0.0) * factor for v in values[: len(summary)]]
-        scaled[athlete_id] = (minutes or 0.0, possessions, headline, [(v or 0.0) * factor for v in values[len(summary) :]])
-
-    qualified = [(headline, values) for minutes, _, headline, values in scaled.values() if minutes >= min_minutes]
-    if not qualified:
-        raise FingerprintUnavailable(f"No player reached {min_minutes} minutes in season {season}, so there is nothing to compare against.")
-    pool = [values for _, values in qualified]
-    by_axis = [[player_values[index] for player_values in pool] for index in range(len(skills))]
-    # The headline three are ranked against the same pool as the spokes, so the
-    # percentile on "+1.20 overall" means what the percentiles under it mean.
-    headline_pool = [[headline[index] for headline, _ in qualified] for index in range(len(summary))]
-
-    fingerprints = []
-    for player in players:
-        entry = scaled.get(player.id)
-        if entry is None:
-            continue
-        minutes, possessions, headline, values = entry
-        skill_values = []
-        for index, skill in enumerate(skills):
-            others = by_axis[index]
-            value = values[index]
-            # Net points are already signed toward "good" in every category - a
-            # turnover category is negative on offense and positive on defense -
-            # so a higher percentile means better on every axis, with no
-            # per-skill direction to get backwards.
-            skill_values.append(
-                SkillValue(
-                    skill=skill,
-                    total=value * possessions / 100.0,
-                    value=value,
-                    percentile=_percentile(others, value),
-                    league_average=sum(others) / len(others),
-                    league_best=max(others),
-                )
-            )
-        fingerprints.append(
-            PlayerFingerprint(
-                athlete_id=player.id,
-                name=player.name,
-                season=season,
-                minutes=minutes,
-                possessions=possessions,
-                qualified=minutes >= min_minutes,
-                overall=headline[0],
-                offense=headline[1],
-                defense=headline[2],
-                overall_percentile=_percentile(headline_pool[0], headline[0]),
-                offense_percentile=_percentile(headline_pool[1], headline[1]),
-                defense_percentile=_percentile(headline_pool[2], headline[2]),
-                values=skill_values,
-            )
-        )
+    scaled = _load_fingerprints_scale_rows(rows, len(summary))
+    pool, by_axis, headline_pool = _load_fingerprints_pool(scaled, min_minutes, season, len(skills), len(summary))
+    fingerprints = _load_fingerprints_players(players, scaled, skills, by_axis, headline_pool, season, min_minutes)
     if not fingerprints:
         # Names the PLAYERS, because the season is known to have rows by the
         # time control reaches here. This branch used to report the season as
@@ -466,6 +501,117 @@ def _skill_expression(skill: Skill) -> str:
     :data:`FINGERPRINT_SKILLS`, which is code.
     """
     return f"max(CASE WHEN f.category = '{skill.category}' THEN f.{FINGERPRINT_SIDES[skill.side]}_net_pts END)"
+
+
+def _load_game_fingerprints_rows(con: duckdb.DuckDBPyConnection, season: int, season_type: int, columns: list[str]) -> list[tuple[Any, ...]]:
+    """Run the per-game pivot query, translating a missing table into the
+    per-game-specific refusal rather than a raw binder error.
+    """
+    try:
+        rows = con.execute(
+            f"SELECT f.event_id, f.athlete_id, max(g.t_poss), {', '.join(columns)} "
+            "FROM net_points_player_game_fingerprint f "
+            # A plain join: net_points_player_game holds one row per
+            # player-game. It used to hold two for 611 of them in 2026 alone,
+            # disagreeing, because two NetPoints dates resolved to one ESPN
+            # game - fixed at the source in NetPointsGameIndex rather than
+            # collapsed here. max() over the group is still what reads the
+            # possessions, since the group is the category pivot.
+            "JOIN net_points_player_game g ON g.event_id = f.event_id AND g.athlete_id = f.athlete_id "
+            "WHERE f.season = ? AND f.season_type = ? AND f.athlete_id IS NOT NULL "
+            "GROUP BY f.event_id, f.athlete_id",
+            [season, season_type],
+        ).fetchall()
+    except duckdb.CatalogException as exc:
+        # ONLY the missing-table case. A bare `except duckdb.Error` here read a
+        # binder error in this module's own SQL as "you have not pulled this
+        # data", which is the wrong-cause refusal in its purest form: a made-up
+        # answer about the warehouse, produced by a bug in the query above it.
+        raise FingerprintUnavailable(f"Per-game NetPoints fingerprints are not in this warehouse - pull them with `data pull --include-net-points-daily`. ({exc})") from exc
+    if not rows:
+        raise FingerprintUnavailable(f"The warehouse has no per-game NetPoints fingerprint data for season {season}.")
+    return rows
+
+
+def _load_game_fingerprints_pool(
+    rows: list[tuple[Any, ...]], summary_len: int, min_possessions: int, season: int
+) -> tuple[list[list[float]], list[list[float]], dict[tuple[str, str], tuple[float, list[float], list[float]]]]:
+    """Every game's skill/headline values keyed by (athlete_id, event_id), and
+    the subset of them - ``min_possessions`` or more - the percentiles are
+    ranked against.
+
+    Raises:
+        FingerprintUnavailable: no game in the season reached ``min_possessions``.
+    """
+    pool_values: list[list[float]] = []
+    headline_pool: list[list[float]] = [[], [], []]
+    by_game: dict[tuple[str, str], tuple[float, list[float], list[float]]] = {}
+    for event_id, athlete_id, possessions, *values in rows:
+        headline = [v or 0.0 for v in values[:summary_len]]
+        skill_row = [v or 0.0 for v in values[summary_len:]]
+        by_game[(str(athlete_id), str(event_id))] = (possessions or 0.0, headline, skill_row)
+        if (possessions or 0.0) >= min_possessions:
+            pool_values.append(skill_row)
+            for index in range(3):
+                headline_pool[index].append(headline[index])
+    if not pool_values:
+        raise FingerprintUnavailable(f"No game in season {season} reached {min_possessions} possessions, so there is nothing to compare against.")
+    return pool_values, headline_pool, by_game
+
+
+def _load_game_fingerprints_players(
+    con: duckdb.DuckDBPyConnection,
+    players: list[Entity],
+    season: int,
+    season_type: int,
+    order: str,
+    skills: tuple[Skill, ...],
+    by_game: dict[tuple[str, str], tuple[float, list[float], list[float]]],
+    by_axis: list[list[float]],
+    headline_pool: list[list[float]],
+    min_possessions: int,
+) -> tuple[list[PlayerFingerprint], dict[str, GamePlayed]]:
+    """One :class:`PlayerFingerprint` per named player's ``order`` game, and
+    which game each came from."""
+    fingerprints: list[PlayerFingerprint] = []
+    games: dict[str, GamePlayed] = {}
+    for player in players:
+        played = _game_for(con, player.id, season, season_type, order)
+        if played is None:
+            continue
+        entry = by_game.get((player.id, played.event_id))
+        if entry is None:
+            continue
+        possessions, headline, skill_row = entry
+        games[player.id] = played
+        fingerprints.append(
+            PlayerFingerprint(
+                athlete_id=player.id,
+                name=player.name,
+                season=season,
+                minutes=0.0,
+                possessions=possessions,
+                qualified=possessions >= min_possessions,
+                overall=headline[0],
+                offense=headline[1],
+                defense=headline[2],
+                overall_percentile=_percentile_midrank(headline_pool[0], headline[0]),
+                offense_percentile=_percentile_midrank(headline_pool[1], headline[1]),
+                defense_percentile=_percentile_midrank(headline_pool[2], headline[2]),
+                values=[
+                    SkillValue(
+                        skill=skill,
+                        total=skill_row[index],
+                        value=skill_row[index],
+                        percentile=_percentile_midrank(by_axis[index], skill_row[index]),
+                        league_average=sum(by_axis[index]) / len(by_axis[index]),
+                        league_best=max(by_axis[index]),
+                    )
+                    for index, skill in enumerate(skills)
+                ],
+            )
+        )
+    return fingerprints, games
 
 
 def load_game_fingerprints(
@@ -521,84 +667,12 @@ def load_game_fingerprints(
     # DuckDB says so, but only once the join is present.
     summary = [f"max(CASE WHEN f.category = '{FINGERPRINT_SUMMARY_CATEGORY}' THEN f.{letter}_net_pts END)" for letter in ("t", "o", "d")]
     columns = summary + [_skill_expression(skill) for skill in skills]
-    try:
-        rows = con.execute(
-            f"SELECT f.event_id, f.athlete_id, max(g.t_poss), {', '.join(columns)} "
-            "FROM net_points_player_game_fingerprint f "
-            # A plain join: net_points_player_game holds one row per
-            # player-game. It used to hold two for 611 of them in 2026 alone,
-            # disagreeing, because two NetPoints dates resolved to one ESPN
-            # game - fixed at the source in NetPointsGameIndex rather than
-            # collapsed here. max() over the group is still what reads the
-            # possessions, since the group is the category pivot.
-            "JOIN net_points_player_game g ON g.event_id = f.event_id AND g.athlete_id = f.athlete_id "
-            "WHERE f.season = ? AND f.season_type = ? AND f.athlete_id IS NOT NULL "
-            "GROUP BY f.event_id, f.athlete_id",
-            [season, season_type],
-        ).fetchall()
-    except duckdb.CatalogException as exc:
-        # ONLY the missing-table case. A bare `except duckdb.Error` here read a
-        # binder error in this module's own SQL as "you have not pulled this
-        # data", which is the wrong-cause refusal in its purest form: a made-up
-        # answer about the warehouse, produced by a bug in the query above it.
-        raise FingerprintUnavailable(f"Per-game NetPoints fingerprints are not in this warehouse - pull them with `data pull --include-net-points-daily`. ({exc})") from exc
-    if not rows:
-        raise FingerprintUnavailable(f"The warehouse has no per-game NetPoints fingerprint data for season {season}.")
+    rows = _load_game_fingerprints_rows(con, season, season_type, columns)
 
-    pool_values: list[list[float]] = []
-    headline_pool: list[list[float]] = [[], [], []]
-    by_game: dict[tuple[str, str], tuple[float, list[float], list[float]]] = {}
-    for event_id, athlete_id, possessions, *values in rows:
-        headline = [v or 0.0 for v in values[: len(summary)]]
-        skill_row = [v or 0.0 for v in values[len(summary) :]]
-        by_game[(str(athlete_id), str(event_id))] = (possessions or 0.0, headline, skill_row)
-        if (possessions or 0.0) >= min_possessions:
-            pool_values.append(skill_row)
-            for index in range(3):
-                headline_pool[index].append(headline[index])
-    if not pool_values:
-        raise FingerprintUnavailable(f"No game in season {season} reached {min_possessions} possessions, so there is nothing to compare against.")
-
+    pool_values, headline_pool, by_game = _load_game_fingerprints_pool(rows, len(summary), min_possessions, season)
     by_axis = [[game[index] for game in pool_values] for index in range(len(skills))]
 
-    fingerprints: list[PlayerFingerprint] = []
-    games: dict[str, GamePlayed] = {}
-    for player in players:
-        played = _game_for(con, player.id, season, season_type, order)
-        if played is None:
-            continue
-        entry = by_game.get((player.id, played.event_id))
-        if entry is None:
-            continue
-        possessions, headline, skill_row = entry
-        games[player.id] = played
-        fingerprints.append(
-            PlayerFingerprint(
-                athlete_id=player.id,
-                name=player.name,
-                season=season,
-                minutes=0.0,
-                possessions=possessions,
-                qualified=possessions >= min_possessions,
-                overall=headline[0],
-                offense=headline[1],
-                defense=headline[2],
-                overall_percentile=_percentile_midrank(headline_pool[0], headline[0]),
-                offense_percentile=_percentile_midrank(headline_pool[1], headline[1]),
-                defense_percentile=_percentile_midrank(headline_pool[2], headline[2]),
-                values=[
-                    SkillValue(
-                        skill=skill,
-                        total=skill_row[index],
-                        value=skill_row[index],
-                        percentile=_percentile_midrank(by_axis[index], skill_row[index]),
-                        league_average=sum(by_axis[index]) / len(by_axis[index]),
-                        league_best=max(by_axis[index]),
-                    )
-                    for index, skill in enumerate(skills)
-                ],
-            )
-        )
+    fingerprints, games = _load_game_fingerprints_players(con, players, season, season_type, order, skills, by_game, by_axis, headline_pool, min_possessions)
     if not fingerprints:
         who = ", ".join(player.name for player in players) if players else "any player"
         which = "earliest" if order == "first" else "most recent"
@@ -675,6 +749,51 @@ def _rings(scale: str) -> list[tuple[float, str]]:
     return [(VALUE_ZERO_FRACTION, "zero"), (0.5, ""), (0.75, ""), (1.0, "league best")]
 
 
+def _table_single(fingerprint: PlayerFingerprint, unit: Unit) -> tuple[list[str], list[tuple[str, str, list[Cell]]]]:
+    """The one-player table: every skill's own value, percentile and league context."""
+    headers = [unit.column, "percentile", "league avg", "league best"]
+    rows = [
+        (
+            value.skill.label,
+            value.skill.group,
+            [
+                Cell(f"{value.value:+.2f}"),
+                Cell(_ordinal(value.percentile)),
+                Cell(f"{value.league_average:+.2f}"),
+                Cell(f"{value.league_best:+.2f}"),
+            ],
+        )
+        for value in fingerprint.values
+    ]
+    return headers, rows
+
+
+def _table_comparison(fingerprints: list[PlayerFingerprint], values: list[list[SkillValue]], gaps: list[float], widest: float) -> tuple[list[str], list[tuple[str, str, list[Cell]]]]:
+    """The comparison table: a column per player plus the shared league-average
+    column, with every row shading the leader's cell in that player's color.
+
+    The shade carries how far ahead they are: the widest gap in the table is
+    full strength and everything else is a fraction of it, so a row that is
+    all but tied looks all but tied instead of looking like a win.
+    """
+    headers = [f.name for f in fingerprints] + ["league avg"]
+    rows = []
+    for index, gap in enumerate(gaps):
+        column = [f.values[index].value for f in fingerprints]
+        leader = column.index(max(column)) if gap > 0 else None
+        # A floor under the shade, so a real but narrow lead is still
+        # visible rather than rounding away to no highlight at all.
+        intensity = 0.08 + 0.55 * (gap / widest) if leader is not None else 0.0
+        rows.append(
+            (
+                values[0][index].skill.label,
+                values[0][index].skill.group,
+                [Cell(f"{value:+.2f}", leader if position == leader else None, intensity) for position, value in enumerate(column)] + [Cell(f"{fingerprints[0].values[index].league_average:+.2f}")],
+            )
+        )
+    return headers, rows
+
+
 def _table(fingerprints: list[PlayerFingerprint], scale: str, unit: Unit = PER_100_POSSESSIONS) -> tuple[list[str], list[tuple[str, str, list[Cell]]]]:
     """The numbers under the plot. The radar is a shape; this is what makes it
     checkable, which is why it is always drawn and not an option.
@@ -689,37 +808,9 @@ def _table(fingerprints: list[PlayerFingerprint], scale: str, unit: Unit = PER_1
     widest = max(gaps) or 1.0
 
     if len(fingerprints) == 1:
-        headers = [unit.column, "percentile", "league avg", "league best"]
-        rows = [
-            (
-                value.skill.label,
-                value.skill.group,
-                [
-                    Cell(f"{value.value:+.2f}"),
-                    Cell(_ordinal(value.percentile)),
-                    Cell(f"{value.league_average:+.2f}"),
-                    Cell(f"{value.league_best:+.2f}"),
-                ],
-            )
-            for value in fingerprints[0].values
-        ]
+        headers, rows = _table_single(fingerprints[0], unit)
     else:
-        headers = [f.name for f in fingerprints] + ["league avg"]
-        rows = []
-        for index, gap in enumerate(gaps):
-            column = [f.values[index].value for f in fingerprints]
-            leader = column.index(max(column)) if gap > 0 else None
-            # A floor under the shade, so a real but narrow lead is still
-            # visible rather than rounding away to no highlight at all.
-            intensity = 0.08 + 0.55 * (gap / widest) if leader is not None else 0.0
-            rows.append(
-                (
-                    values[0][index].skill.label,
-                    values[0][index].skill.group,
-                    [Cell(f"{value:+.2f}", leader if position == leader else None, intensity) for position, value in enumerate(column)]
-                    + [Cell(f"{fingerprints[0].values[index].league_average:+.2f}")],
-                )
-            )
+        headers, rows = _table_comparison(fingerprints, values, gaps, widest)
 
     # Grouped exactly as the plot is grouped, and sorted by the drawn quantity
     # WITHIN each group. Sorting across groups instead would list the skills in
@@ -743,6 +834,103 @@ def _when_drawn(fingerprints: list[PlayerFingerprint], games: dict[str, GamePlay
         return f"{season} season"
     dates = sorted({game.date for game in games.values()})
     return dates[0] if len(dates) == 1 else " and ".join(dates)
+
+
+def _render_for_players_load(
+    con: duckdb.DuckDBPyConnection,
+    players: list[Entity],
+    season: int,
+    view: str,
+    scale: str,
+    min_minutes: int,
+    season_type: int,
+    order: str | None,
+    ambiguous: list[str],
+) -> tuple[list[PlayerFingerprint], LeagueScale, dict[str, GamePlayed], Unit]:
+    """Validate ``scale``, load the season or per-game fingerprints depending on
+    ``order``, and carry ``ambiguous`` onto a failure.
+    """
+    if scale not in FINGERPRINT_SCALES:
+        raise FingerprintUnavailable(f"scale must be one of {list(FINGERPRINT_SCALES)} - got {scale!r}.")
+    games: dict[str, GamePlayed] = {}
+    unit = PER_GAME if order else PER_100_POSSESSIONS
+    try:
+        if order:
+            fingerprints, league, games = load_game_fingerprints(con, players, season, season_type=season_type, order=order, view=view)
+        else:
+            fingerprints, league = load_fingerprints(con, players, season, view=view, min_minutes=min_minutes)
+    except FingerprintUnavailable as exc:
+        # The other matches are carried onto the failure path, not only the
+        # success one. Names here are resolved best-match, and what makes that
+        # safe is the plot being titled with the name that won - which is
+        # precisely what does not happen when nothing is drawn. Dropping the
+        # runners-up in the one case that needs them is what left "Maxey"
+        # reading as a data gap rather than as an ambiguous name.
+        if not ambiguous:
+            raise
+        raise FingerprintUnavailable(f"{exc} Note: other players also matched: {', '.join(ambiguous)}.") from exc
+    return fingerprints, league, games, unit
+
+
+def _render_for_players_subtitle(
+    fingerprints: list[PlayerFingerprint],
+    games: dict[str, GamePlayed],
+    season: int,
+    view: str,
+    scale: str,
+    order: str | None,
+    unit: Unit,
+    league: LeagueScale,
+    min_minutes: int,
+) -> tuple[str, str, str, str]:
+    """The plot's title, subtitle and axis note, plus ``when`` (also used in
+    the final message) - what the numbers mean and which games/season they cover."""
+    title = " vs ".join(f.name for f in fingerprints)
+    ranked_against = "games" if order else "the league"
+    units = f"percentile of {ranked_against}" if scale == "percentile" else unit.prose
+    scope = {"total": "offense and defense", "offense": "offensive skills only", "defense": "defensive skills only"}[view]
+    when = _when_drawn(fingerprints, games, season)
+    subtitle = f"{when} - {scope}, {units}"
+    pool = f"{league.pool_size} games" if order else f"{league.pool_size} players with at least {min_minutes} minutes"
+    axis_note = (
+        f"Each spoke is one skill, in {unit.prose}, as a percentile of the {pool} in the {season} season. Further out is better."
+        if scale == "percentile"
+        else (f"Each spoke is one skill, in {unit.prose}, on one shared scale - bigger skills draw bigger. The inner ring is zero; the outer is the best any of the {pool} posted in any skill.")
+    )
+    return title, subtitle, axis_note, when
+
+
+def _render_for_players_filename(fingerprints: list[PlayerFingerprint], season: int, order: str | None, view: str, scale: str) -> str:
+    """The HTML file's name: the players drawn, the season/game stamp, the view and the scale."""
+    safe = "_vs_".join("".join(c if c.isalnum() else "_" for c in f.name.lower()) for f in fingerprints)
+    stamp = f"{season}_{order}_game" if order else str(season)
+    return f"fingerprint_{safe}_{stamp}_{view}_{scale}.html"
+
+
+def _render_for_players_message(
+    view: str,
+    title: str,
+    when: str,
+    scale: str,
+    out_path: Path,
+    fingerprints: list[PlayerFingerprint],
+    order: str | None,
+    min_minutes: int,
+    missing: list[str],
+    ambiguous: list[str],
+) -> str:
+    """The success message: what was drawn, then every note - unqualified
+    players, players with no fingerprint at all, and runners-up that also matched."""
+    message = f"Rendered NetPoints fingerprint ({view}) for {title} ({when}, {scale} scale) to {out_path}"
+    unqualified = [f.name for f in fingerprints if not f.qualified]
+    if unqualified:
+        short = f"under {FINGERPRINT_MIN_GAME_POSSESSIONS} possessions in that game" if order else f"under {min_minutes} minutes"
+        message += f". Note: {', '.join(unqualified)} played {short}, so they are plotted against a pool they are not in"
+    if missing:
+        message += f". No fingerprint on record for: {', '.join(missing)}"
+    if ambiguous:
+        message += f". Note: other players also matched: {ambiguous}"
+    return message
 
 
 def render_for_players(
@@ -790,43 +978,14 @@ def render_for_players(
        ``(message, path)`` tuple, the same shape
        :func:`association.query.shotchart.render_for_player` now returns.
     """
-    if scale not in FINGERPRINT_SCALES:
-        raise FingerprintUnavailable(f"scale must be one of {list(FINGERPRINT_SCALES)} - got {scale!r}.")
-    games: dict[str, GamePlayed] = {}
-    unit = PER_GAME if order else PER_100_POSSESSIONS
-    try:
-        if order:
-            fingerprints, league, games = load_game_fingerprints(con, players, season, season_type=season_type, order=order, view=view)
-        else:
-            fingerprints, league = load_fingerprints(con, players, season, view=view, min_minutes=min_minutes)
-    except FingerprintUnavailable as exc:
-        # The other matches are carried onto the failure path, not only the
-        # success one. Names here are resolved best-match, and what makes that
-        # safe is the plot being titled with the name that won - which is
-        # precisely what does not happen when nothing is drawn. Dropping the
-        # runners-up in the one case that needs them is what left "Maxey"
-        # reading as a data gap rather than as an ambiguous name.
-        if not ambiguous:
-            raise
-        raise FingerprintUnavailable(f"{exc} Note: other players also matched: {', '.join(ambiguous)}.") from exc
+    fingerprints, league, games, unit = _render_for_players_load(con, players, season, view, scale, min_minutes, season_type, order, ambiguous)
     # A player with no row in this season's fingerprint file is dropped by
     # load_fingerprints rather than drawn as a zero polygon, which would read as
     # "played and contributed nothing". Named in the message instead.
     drawn = {f.athlete_id for f in fingerprints}
     missing = [p.name for p in players if p.id not in drawn]
 
-    title = " vs ".join(f.name for f in fingerprints)
-    ranked_against = "games" if order else "the league"
-    units = f"percentile of {ranked_against}" if scale == "percentile" else unit.prose
-    scope = {"total": "offense and defense", "offense": "offensive skills only", "defense": "defensive skills only"}[view]
-    when = _when_drawn(fingerprints, games, season)
-    subtitle = f"{when} - {scope}, {units}"
-    pool = f"{league.pool_size} games" if order else f"{league.pool_size} players with at least {min_minutes} minutes"
-    axis_note = (
-        f"Each spoke is one skill, in {unit.prose}, as a percentile of the {pool} in the {season} season. Further out is better."
-        if scale == "percentile"
-        else (f"Each spoke is one skill, in {unit.prose}, on one shared scale - bigger skills draw bigger. The inner ring is zero; the outer is the best any of the {pool} posted in any skill.")
-    )
+    title, subtitle, axis_note, when = _render_for_players_subtitle(fingerprints, games, season, view, scale, order, unit, league, min_minutes)
     headers, table_rows = _table(fingerprints, scale, unit)
     html = render_fingerprint_html(
         title=title,
@@ -838,21 +997,12 @@ def render_for_players(
         table_rows=table_rows,
     )
 
-    safe = "_vs_".join("".join(c if c.isalnum() else "_" for c in f.name.lower()) for f in fingerprints)
+    fname = _render_for_players_filename(fingerprints, season, order, view, scale)
     out_dir.mkdir(parents=True, exist_ok=True)
-    stamp = f"{season}_{order}_game" if order else str(season)
-    out_path = out_dir / f"fingerprint_{safe}_{stamp}_{view}_{scale}.html"
+    out_path = out_dir / fname
     out_path.write_text(html)
 
-    message = f"Rendered NetPoints fingerprint ({view}) for {title} ({when}, {scale} scale) to {out_path}"
-    unqualified = [f.name for f in fingerprints if not f.qualified]
-    if unqualified:
-        short = f"under {FINGERPRINT_MIN_GAME_POSSESSIONS} possessions in that game" if order else f"under {min_minutes} minutes"
-        message += f". Note: {', '.join(unqualified)} played {short}, so they are plotted against a pool they are not in"
-    if missing:
-        message += f". No fingerprint on record for: {', '.join(missing)}"
-    if ambiguous:
-        message += f". Note: other players also matched: {ambiguous}"
+    message = _render_for_players_message(view, title, when, scale, out_path, fingerprints, order, min_minutes, missing, ambiguous)
     return RenderResult(message, Artifact("fingerprint", out_path))
 
 

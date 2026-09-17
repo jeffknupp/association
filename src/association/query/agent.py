@@ -6,7 +6,7 @@ from __future__ import annotations
 import re
 import time
 import traceback
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -321,6 +321,155 @@ class Agent:
         # TemplateResult for why that is both faster and safer than narrating.
         return routed.intent, result
 
+    def _ask_inner_chat(self, history: RunHistory) -> ollama.Message:
+        """One model turn: call ollama, log any thinking, and append the raw
+        response to the conversation. Returns the response message.
+
+        The ``thinking`` field is stripped from what gets appended - it is
+        scratch work for the turn that produced it, not memory the model needs
+        later, and re-sending it costs real prompt-eval time on every
+        subsequent iteration (confirmed live: stripping it cut a follow-up
+        iteration's prompt eval from ~5.6s to ~0.9s on an 8-token-context
+        conversation - the effect compounds with each further tool-call round).
+        """
+        chat_kwargs: dict[str, Any] = {"model": self.model, "messages": self.messages, "tools": TOOLS, "keep_alive": KEEP_ALIVE, "options": {"num_ctx": AGENT_NUM_CTX}}
+        if self.think:
+            chat_kwargs["think"] = True
+        t0 = time.monotonic()
+        try:
+            response = ollama.chat(**chat_kwargs)
+        except ollama.ResponseError as exc:
+            if self.think and "does not support thinking" in str(exc):
+                raise SystemExit(f"Error: model {self.model!r} does not support --think (try a thinking-capable model, e.g. qwen3:8b).") from None
+            raise
+        history.record_model_call(time.monotonic() - t0)
+        msg = response.message
+        if self.think and msg.thinking:
+            history.log(f"  [thinking] {msg.thinking}")
+        dumped = msg.model_dump()
+        dumped.pop("thinking", None)
+        self.messages.append(dumped)
+        return msg
+
+    def _ask_inner_finalize(
+        self,
+        question: str,
+        history: RunHistory,
+        msg: ollama.Message,
+        auto_recoveries: int,
+        error_recoveries: int,
+        pending_error: str | None,
+        pending_error_tool: str | None,
+    ) -> tuple[Answer | None, int, int]:
+        """What happens when a model turn asks for no tool call: either a
+        recovery nudge (returning None so the caller's loop continues) or a
+        final Answer, plus the possibly-incremented recovery counters.
+
+        Covers three shapes in the order they are checked: SQL the model wrote
+        as prose instead of calling run_sql, a finalize attempted right after
+        an unrecovered tool error, and - once both recovery caps are spent -
+        the honest messages for each.
+        """
+        unrun_sql = _extract_unrun_sql(msg.content or "")
+        if unrun_sql and auto_recoveries < MAX_AUTO_SQL_RECOVERIES:
+            auto_recoveries += 1
+            history.log(f"  -> (auto) running SQL the model wrote instead of calling run_sql: {unrun_sql!r}")
+            t0 = time.monotonic()
+            result = self.toolbox.run_sql(unrun_sql)
+            history.record_tool_call("run_sql (auto)", time.monotonic() - t0)
+            self.messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "You wrote SQL directly in your reply instead of calling the run_sql "
+                        "tool, so nothing had actually run. I ran it for you - here are the "
+                        "real results. Give your final answer using this data now, and call "
+                        "run_sql yourself next time instead of printing a query:\n" + result
+                    ),
+                }
+            )
+            return None, auto_recoveries, error_recoveries
+        if not unrun_sql and pending_error and error_recoveries < MAX_ERROR_RECOVERIES:
+            # The last tool call errored and the model never got real data
+            # afterward, yet it's trying to finalize anyway - confirmed live,
+            # this produced a fabricated answer with literal "[Player Name 1]"
+            # / "[NetPoints Value]" placeholder text after a column-not-found
+            # error, presented as if it were real. Never let a finalize
+            # through right after an unrecovered error - nudge a retry
+            # instead of trusting whatever it wrote.
+            error_recoveries += 1
+            history.log("  -> (guard) blocked a finalize right after a tool error, nudging a retry")
+            self.messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        f"Your last {pending_error_tool} call failed, so you do not have real data "
+                        "yet - do not answer with placeholder or made-up values. Call "
+                        f"{pending_error_tool} again with corrected arguments, keeping every other "
+                        "argument you had already filled in (season, team, fields, limit, etc.) "
+                        "exactly as before - only fix what caused the error. If you can't get it "
+                        "working, say plainly that you couldn't get the data. The error was:\n" + pending_error
+                    ),
+                }
+            )
+            return None, auto_recoveries, error_recoveries
+        self._trim_history()
+        if unrun_sql:
+            # Recovery cap hit and the model is STILL just printing SQL
+            # instead of running it - returning msg.content as-is would
+            # read as "I'm about to do this" while doing nothing
+            # (confirmed live: a real answer ending in "Let's run this
+            # corrected query" that never ran). Say plainly that it
+            # didn't work, with the last attempt shown, rather than a
+            # reply that only looks like an in-progress action.
+            answer = self._answer(
+                question,
+                history,
+                "I wasn't able to get a working query after a few attempts. The last one I tried was:\n\n```sql\n" + unrun_sql + "\n```\n\nYou can run it yourself, or try rephrasing the question.",
+                "agent",
+            )
+            return answer, auto_recoveries, error_recoveries
+        if pending_error:
+            # Recovery cap hit and it's STILL trying to finalize right after
+            # an unrecovered error - say so honestly rather than returning
+            # whatever it fabricated.
+            answer = self._answer(question, history, "I ran into an error retrieving that data and wasn't able to recover. The last error was:\n\n" + pending_error, "agent")
+            return answer, auto_recoveries, error_recoveries
+        return self._answer(question, history, msg.content or "", "agent"), auto_recoveries, error_recoveries
+
+    def _ask_inner_dispatch_calls(self, history: RunHistory, tool_calls: Sequence[ollama.Message.ToolCall]) -> tuple[str | None, str | None]:
+        """Run every tool call in one model turn, appending each result to the
+        conversation, and return the fabrication guard's state after all of
+        them - the last data-fetching call's error, if any.
+
+        Only run_sql/get_leaderboard drive the fabrication guard above - a
+        describe_table miss (e.g. an unknown table name) doesn't mean the
+        model lacks real data, since an earlier run_sql/get_leaderboard call in
+        the same turn may have already succeeded.
+        """
+        pending_error: str | None = None
+        pending_error_tool: str | None = None
+        for call in tool_calls:
+            name = call.function.name
+            args = call.function.arguments or {}
+            history.log(f"  -> {name}({args})")
+            fn = self.dispatch.get(name)
+            t0 = time.monotonic()
+            if fn is None:
+                result = f"Error: unknown tool {name!r}"
+            else:
+                try:
+                    result = fn(**args)
+                except Exception as exc:  # noqa: BLE001 - the model sees the error and can retry, rather than the question dying
+                    result = f"Error calling {name}: {exc}"
+            history.record_tool_call(name, time.monotonic() - t0)
+            result = str(result)
+            if name in ("run_sql", "get_leaderboard"):
+                pending_error = result if _is_tool_error(result) else None
+                pending_error_tool = name if pending_error else None
+            self.messages.append({"role": "tool", "content": result})
+        return pending_error, pending_error_tool
+
     def _ask_inner(self, question: str, history: RunHistory) -> Answer:
         fast = self._try_fast_path(question, history)
         if fast is not None:
@@ -349,122 +498,15 @@ class Agent:
         pending_error_tool: str | None = None
 
         for _ in range(MAX_TOOL_ITERATIONS):
-            chat_kwargs: dict[str, Any] = {"model": self.model, "messages": self.messages, "tools": TOOLS, "keep_alive": KEEP_ALIVE, "options": {"num_ctx": AGENT_NUM_CTX}}
-            if self.think:
-                chat_kwargs["think"] = True
-            t0 = time.monotonic()
-            try:
-                response = ollama.chat(**chat_kwargs)
-            except ollama.ResponseError as exc:
-                if self.think and "does not support thinking" in str(exc):
-                    raise SystemExit(f"Error: model {self.model!r} does not support --think (try a thinking-capable model, e.g. qwen3:8b).") from None
-                raise
-            history.record_model_call(time.monotonic() - t0)
-            msg = response.message
-            if self.think and msg.thinking:
-                history.log(f"  [thinking] {msg.thinking}")
-            dumped = msg.model_dump()
-            # Don't replay past reasoning back into the model's own context - it's
-            # scratch work for the turn that produced it, not memory it needs later,
-            # and re-sending it costs real prompt-eval time on every subsequent
-            # iteration (confirmed live: stripping it cut a follow-up iteration's
-            # prompt eval from ~5.6s to ~0.9s on an 8-token-context conversation -
-            # the effect compounds with each further tool-call round).
-            dumped.pop("thinking", None)
-            self.messages.append(dumped)
+            msg = self._ask_inner_chat(history)
 
             if not msg.tool_calls:
-                unrun_sql = _extract_unrun_sql(msg.content or "")
-                if unrun_sql and auto_recoveries < MAX_AUTO_SQL_RECOVERIES:
-                    auto_recoveries += 1
-                    history.log(f"  -> (auto) running SQL the model wrote instead of calling run_sql: {unrun_sql!r}")
-                    t0 = time.monotonic()
-                    result = self.toolbox.run_sql(unrun_sql)
-                    history.record_tool_call("run_sql (auto)", time.monotonic() - t0)
-                    self.messages.append(
-                        {
-                            "role": "user",
-                            "content": (
-                                "You wrote SQL directly in your reply instead of calling the run_sql "
-                                "tool, so nothing had actually run. I ran it for you - here are the "
-                                "real results. Give your final answer using this data now, and call "
-                                "run_sql yourself next time instead of printing a query:\n" + result
-                            ),
-                        }
-                    )
-                    continue
-                if not unrun_sql and pending_error and error_recoveries < MAX_ERROR_RECOVERIES:
-                    # The last tool call errored and the model never got real data
-                    # afterward, yet it's trying to finalize anyway - confirmed live,
-                    # this produced a fabricated answer with literal "[Player Name 1]"
-                    # / "[NetPoints Value]" placeholder text after a column-not-found
-                    # error, presented as if it were real. Never let a finalize
-                    # through right after an unrecovered error - nudge a retry
-                    # instead of trusting whatever it wrote.
-                    error_recoveries += 1
-                    history.log("  -> (guard) blocked a finalize right after a tool error, nudging a retry")
-                    self.messages.append(
-                        {
-                            "role": "user",
-                            "content": (
-                                f"Your last {pending_error_tool} call failed, so you do not have real data "
-                                "yet - do not answer with placeholder or made-up values. Call "
-                                f"{pending_error_tool} again with corrected arguments, keeping every other "
-                                "argument you had already filled in (season, team, fields, limit, etc.) "
-                                "exactly as before - only fix what caused the error. If you can't get it "
-                                "working, say plainly that you couldn't get the data. The error was:\n" + pending_error
-                            ),
-                        }
-                    )
-                    continue
-                self._trim_history()
-                if unrun_sql:
-                    # Recovery cap hit and the model is STILL just printing SQL
-                    # instead of running it - returning msg.content as-is would
-                    # read as "I'm about to do this" while doing nothing
-                    # (confirmed live: a real answer ending in "Let's run this
-                    # corrected query" that never ran). Say plainly that it
-                    # didn't work, with the last attempt shown, rather than a
-                    # reply that only looks like an in-progress action.
-                    return self._answer(
-                        question,
-                        history,
-                        "I wasn't able to get a working query after a few attempts. "
-                        "The last one I tried was:\n\n```sql\n" + unrun_sql + "\n```\n\n"
-                        "You can run it yourself, or try rephrasing the question.",
-                        "agent",
-                    )
-                if pending_error:
-                    # Recovery cap hit and it's STILL trying to finalize right after
-                    # an unrecovered error - say so honestly rather than returning
-                    # whatever it fabricated.
-                    return self._answer(question, history, "I ran into an error retrieving that data and wasn't able to recover. The last error was:\n\n" + pending_error, "agent")
-                return self._answer(question, history, msg.content or "", "agent")
+                answer, auto_recoveries, error_recoveries = self._ask_inner_finalize(question, history, msg, auto_recoveries, error_recoveries, pending_error, pending_error_tool)
+                if answer is not None:
+                    return answer
+                continue
 
-            for call in msg.tool_calls:
-                name = call.function.name
-                args = call.function.arguments or {}
-                history.log(f"  -> {name}({args})")
-                fn = self.dispatch.get(name)
-                t0 = time.monotonic()
-                if fn is None:
-                    result = f"Error: unknown tool {name!r}"
-                else:
-                    try:
-                        result = fn(**args)
-                    except Exception as exc:  # noqa: BLE001 - the model sees the error and can retry, rather than the question dying
-                        result = f"Error calling {name}: {exc}"
-                history.record_tool_call(name, time.monotonic() - t0)
-                result = str(result)
-                if name in ("run_sql", "get_leaderboard"):
-                    # Only these two data-fetching tools drive the fabrication
-                    # guard below - a describe_table miss (e.g. an unknown table
-                    # name) doesn't mean the model lacks real data, since an
-                    # earlier run_sql/get_leaderboard call in the same turn may
-                    # have already succeeded.
-                    pending_error = result if _is_tool_error(result) else None
-                    pending_error_tool = name if pending_error else None
-                self.messages.append({"role": "tool", "content": result})
+            pending_error, pending_error_tool = self._ask_inner_dispatch_calls(history, msg.tool_calls)
 
         self._trim_history()
         return self._answer(question, history, "Gave up after too many tool-call iterations.", "agent")
