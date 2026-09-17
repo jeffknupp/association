@@ -69,6 +69,14 @@ repos:
         entry: .venv/bin/codespell
         language: system
         types: [text]
+      # Package layering and dependency rules. Contracts, each with its reason,
+      # in [tool.importlinter].
+      - id: import-linter
+        name: import contracts (import-linter)
+        entry: .venv/bin/lint-imports
+        language: system
+        pass_filenames: false
+        files: ^(src/.*\.py|pyproject\.toml)$
       - id: duplicate-names
         name: one concept, one definition
         entry: scripts/check_duplicate_names.py

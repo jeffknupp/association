@@ -20,7 +20,7 @@ we do about it. Read `DATA.md` before trusting a column.
 ## Before you commit
 
 ```bash
-uv run pre-commit run --all-files   # all twelve gates
+uv run pre-commit run --all-files   # all thirteen gates
 uv run pytest -q                    # fully offline: no network, no ollama
 ```
 
@@ -106,6 +106,11 @@ Add to the `## Unreleased` section.
   and both are declared anyway, because a release of either that stopped
   bundling them would otherwise break at import time with nothing in this repo
   having changed. A dev or docs tool goes in its extra, never in the core list.
+- **The package layers are a contract.** `cli` > `web` > `query | check` >
+  `fetch` > the leaf modules (`season`, `franchises`, `coverage`, ...), with
+  `fetch` and `query` independent and the core free of the `web` extra's
+  packages (`[tool.importlinter]`). A new module that needs to sit somewhere
+  else changes the contract, with a reason, rather than an ignore.
 - **American spelling.** "defense", "offense", "serialize". British spellings
   drifted back in twice after being removed wholesale in `c09d6f7`, so
   codespell now enforces it (`en-GB_to_en-US`, `[tool.codespell]`). A word it
@@ -531,7 +536,13 @@ everything about it is constrained by things measured elsewhere in this file.
 - **Nothing in `web/app.py` may import a model client.** `Answerer.ready` is a
   property on the runner precisely so the health check does not reach ollama
   from the API layer — that is what keeps the web tests offline by
-  construction rather than by discipline. The whole suite still runs with no
+  construction rather than by discipline. This is enforced now, twice:
+  import-linter forbids `web.app` reaching `ollama` by any chain, and
+  `test_importing_the_api_layer_loads_no_model_client` checks a fresh
+  interpreter. The rule was already broken when the contract was written -
+  `web/runner.py` imported `Agent` at module level for one annotation, which
+  loaded ollama - so a type-only import of the query engine goes under
+  `if TYPE_CHECKING:`. The whole suite still runs with no
   network and no ollama, and that has to stay true.
 - **Events carry trace lines verbatim.** Do not parse `"-> (router) intent=..."`
   back into structured fields. Everything a client acts on — which path

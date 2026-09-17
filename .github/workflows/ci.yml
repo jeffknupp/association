@@ -63,6 +63,11 @@ jobs:
         # CHANGES.md and binaries and enforces American spelling.
         run: git ls-files -z | xargs -0 uv run codespell
 
+      - name: Import contracts (import-linter)
+        # Layers, fetch/query independence, no model client under web.app, and
+        # no web-extra imports in the core. Contracts in [tool.importlinter].
+        run: uv run lint-imports
+
       - name: One concept, one definition
         # Cross-module constant collisions, against an allowlist of the ones
         # already filed - so this fails only on a NEW one. Ruff's F811 covers

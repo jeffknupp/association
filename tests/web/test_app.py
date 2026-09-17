@@ -8,6 +8,8 @@ so the thing under test is the API, never the model.
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -285,3 +287,15 @@ def test_every_request_gets_its_own_conversation(tmp_path: Path) -> None:
     # The second question saw neither the first question nor its answer.
     assert [m["content"] for m in agent.messages] == ["x", "what about jokic"]
     assert agent.last_question == "what about jokic"
+
+
+def test_importing_the_api_layer_loads_no_model_client() -> None:
+    """The runtime half of the "ollama stays out of the API layer" import
+    contract. import-linter sees imports statically and has to be told that
+    ``AgentRunner.ready`` imports ollama only when it is called; this checks the
+    thing that matters in a fresh interpreter - that nothing on the way to
+    ``web.app`` loads it. It once did, through a runtime import of ``Agent`` that
+    only an annotation needed."""
+    probe = "import sys, association.web.app; print('ollama' in sys.modules)"
+    result = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=True)
+    assert result.stdout.strip() == "False"

@@ -15,10 +15,15 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
-from ..query.agent import Agent
 from ..query.answer import Answer
+
+if TYPE_CHECKING:
+    # For the annotation only. Importing the Agent at runtime brings ollama with
+    # it, and web/app.py imports this module: the API layer must load no model
+    # client (the "ollama stays out of the API layer" contract in pyproject.toml).
+    from ..query.agent import Agent
 
 
 def discard(line: str) -> None:

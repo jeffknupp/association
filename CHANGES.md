@@ -15,6 +15,14 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Importing the web API no longer loads ollama.** `association.web.runner`
+  imported the query `Agent` at module level for a type annotation, so
+  `import association.web.app` brought in the model client that AGENTS.md says
+  the API layer must never import. The import is now type-checking only. The
+  rule and the package layering are enforced by import-linter in pre-commit and
+  CI: `cli` > `web` > `query | check` > `fetch` > the leaf modules, `fetch`
+  and `query` independent, and no `fastapi`, `uvicorn` or `pydantic` outside
+  `web`.
 - **Spelling is checked.** codespell runs in pre-commit and CI with its
   British-to-American dictionary, and the 37 findings are fixed - mostly
   British forms in comments, docstrings and docs ("neighbouring", "cancelled",
