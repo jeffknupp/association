@@ -36,7 +36,9 @@ the tag agrees. Nothing else needs editing on a bump.
 The exception, while PyPI is unreachable, is the install commands in
 ``README.md``, :doc:`installation` and :doc:`usage`, which pin a release tag. Update them in
 the bump commit, or they keep pointing at an old release: they said ``v1.4.0``
-through 2.0.0.
+through 2.0.0, and 3.0.0 shipped still pointing at ``v2.2.0``. ``git grep -n
+'association@v'`` finds all of them, and a released tag in the working tree
+that is not the version in ``pyproject.toml`` means this step was missed.
 
 Cutting a release
 -----------------
