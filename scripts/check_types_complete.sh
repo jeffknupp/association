@@ -12,7 +12,7 @@ THRESHOLD="${TYPE_COMPLETENESS_THRESHOLD:-100}"
 target="$(mktemp -d)"
 trap 'rm -rf "$target"' EXIT
 
-uv pip install --quiet --target "$target" --no-deps . >/dev/null
+uv pip install --quiet --target "${target}" --no-deps . >/dev/null
 
 # The scratch install is --no-deps, so nothing the package imports is beside it
 # - and .venv's site-packages has to be on the path explicitly for pyright to
@@ -24,21 +24,21 @@ uv pip install --quiet --target "$target" --no-deps . >/dev/null
 # BASE interpreter's site-packages first depending on how the venv was made.
 site="$(.venv/bin/python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
 
-report="$(PYTHONPATH="$target:$site" .venv/bin/pyright --verifytypes association --ignoreexternal 2>&1 || true)"
-score="$(printf '%s\n' "$report" | sed -n 's/^Type completeness score: *\([0-9.]*\)%.*/\1/p' | tail -1)"
+report="$(PYTHONPATH="${target}:${site}" .venv/bin/pyright --verifytypes association --ignoreexternal 2>&1 || true)"
+score="$(printf '%s\n' "${report}" | sed -n 's/^Type completeness score: *\([0-9.]*\)%.*/\1/p' | tail -1)"
 
-if [[ -z "$score" ]]; then
-    printf '%s\n' "$report" >&2
+if [[ -z "${score}" ]]; then
+    printf '%s\n' "${report}" >&2
     echo "type completeness: could not parse a score from pyright" >&2
     exit 1
 fi
 
-if awk "BEGIN{exit !($score < $THRESHOLD)}"; then
+if awk "BEGIN{exit !(${score} < ${THRESHOLD})}"; then
     # The whole report, not just the lines matching 'error:' - pyright puts the
     # SYMBOL on one line and its complaint on the next, so grepping for the
     # complaint alone prints "Return type is partially unknown" with no way to
     # tell which return type. That cost a CI round trip.
-    printf '%s\n' "$report" >&2
+    printf '%s\n' "${report}" >&2
     echo "type completeness ${score}% is below the required ${THRESHOLD}%" >&2
     exit 1
 fi

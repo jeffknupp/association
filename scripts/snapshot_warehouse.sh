@@ -59,105 +59,125 @@ pick_compressor() {
     echo "gzip -6"
 }
 COMPRESSOR="$(pick_compressor)"
-EXT="$([[ "$COMPRESSOR" == zstd* ]] && echo tar.zst || echo tar.gz)"
+EXT="$([[ "${COMPRESSOR}" == zstd* ]] && echo tar.zst || echo tar.gz)"
 
 human() { numfmt --to=iec --suffix=B "$1" 2>/dev/null || echo "$1"; }
 
-case "$MODE" in
+case "${MODE}" in
 list)
-    mkdir -p "$STORE"
-    if ! ls -1 "$STORE"/*.tar.* >/dev/null 2>&1; then echo "no snapshots in $STORE"; exit 0; fi
-    for a in "$STORE"/*.tar.*; do
-        printf '%s  %s\n' "$(human "$(stat -c %s "$a")")" "$a"
-        [[ -f "$a.manifest" ]] && sed 's/^/    /' "$a.manifest"
+    mkdir -p "${STORE}"
+    if ! ls -1 "${STORE}"/*.tar.* >/dev/null 2>&1; then echo "no snapshots in ${STORE}"; exit 0; fi
+    for a in "${STORE}"/*.tar.*; do
+        # One step per substitution: nested inside printf's arguments, a failed
+        # stat would not stop the script (set -e does not see into them).
+        bytes=$(stat -c %s "${a}")
+        size=$(human "${bytes}")
+        printf '%s  %s\n' "${size}" "${a}"
+        [[ -f "${a}.manifest" ]] && sed 's/^/    /' "${a}.manifest"
     done
     exit 0
     ;;
 
 restore)
-    [[ -f "$ARCHIVE_ARG" ]] || { echo "no such archive: $ARCHIVE_ARG" >&2; exit 1; }
-    if [[ -f "$ARCHIVE_ARG.sha256" ]]; then
+    [[ -f "${ARCHIVE_ARG}" ]] || { echo "no such archive: ${ARCHIVE_ARG}" >&2; exit 1; }
+    if [[ -f "${ARCHIVE_ARG}.sha256" ]]; then
         echo "verifying checksum..."
-        (cd "$(dirname "$ARCHIVE_ARG")" && sha256sum -c "$(basename "$ARCHIVE_ARG").sha256")
+        (cd "$(dirname "${ARCHIVE_ARG}")" && sha256sum -c "$(basename "${ARCHIVE_ARG}").sha256")
     fi
-    if [[ $FORCE -ne 1 ]] && fuser "$SRC_DB" >/dev/null 2>&1; then
-        echo "REFUSING: something holds $SRC_DB. Stop it, or pass --force." >&2; exit 1
+    if [[ ${FORCE} -ne 1 ]] && fuser "${SRC_DB}" >/dev/null 2>&1; then
+        echo "REFUSING: something holds ${SRC_DB}. Stop it, or pass --force." >&2; exit 1
     fi
     echo "restoring over the LIVE files:"
-    echo "   $SRC_DB"
-    echo "   $SRC_PARQUET"
+    echo "   ${SRC_DB}"
+    echo "   ${SRC_PARQUET}"
     read -r -p "Continue? [y/N] " reply
-    [[ "$reply" == [yY] ]] || { echo "aborted"; exit 1; }
-    tar --use-compress-program="$(echo "$COMPRESSOR" | awk '{print $1" -d"}')" \
-        -xf "$ARCHIVE_ARG" -C "$(dirname "$SRC_PARQUET")/.." 2>/dev/null \
-      || tar -xaf "$ARCHIVE_ARG" -C "$(dirname "$SRC_PARQUET")/.."
+    [[ "${reply}" == [yY] ]] || { echo "aborted"; exit 1; }
+    # The compressor's own command name, told to decompress ("zstd -3 -T0" -> "zstd -d").
+    tar --use-compress-program="${COMPRESSOR%% *} -d" \
+        -xf "${ARCHIVE_ARG}" -C "$(dirname "${SRC_PARQUET}")/.." 2>/dev/null \
+      || tar -xaf "${ARCHIVE_ARG}" -C "$(dirname "${SRC_PARQUET}")/.."
     echo "restored."
     exit 0
+    ;;
+
+create) ;;  # the default mode, handled below
+
+*)
+    echo "unknown mode: ${MODE}" >&2; exit 2
     ;;
 esac
 
 # ---- create -----------------------------------------------------------------
-[[ -f "$SRC_DB" ]] || { echo "no warehouse at $SRC_DB" >&2; exit 1; }
-[[ -d "$SRC_PARQUET" ]] || { echo "no parquet tree at $SRC_PARQUET" >&2; exit 1; }
+[[ -f "${SRC_DB}" ]] || { echo "no warehouse at ${SRC_DB}" >&2; exit 1; }
+[[ -d "${SRC_PARQUET}" ]] || { echo "no parquet tree at ${SRC_PARQUET}" >&2; exit 1; }
 
-if [[ $FORCE -ne 1 ]] && fuser "$SRC_DB" >/dev/null 2>&1; then
-    echo "REFUSING: something holds $SRC_DB open; a copy taken mid-write is not a snapshot." >&2
+if [[ ${FORCE} -ne 1 ]] && fuser "${SRC_DB}" >/dev/null 2>&1; then
+    echo "REFUSING: something holds ${SRC_DB} open; a copy taken mid-write is not a snapshot." >&2
     echo "Close it, or pass --force if you know the holder is a read-only reader." >&2
     exit 1
 fi
 
-need=$(( $(stat -c %s "$SRC_DB") + $(du -sb "$SRC_PARQUET" | cut -f1) ))
-avail=$(( $(df -B1 --output=avail "$STORE" 2>/dev/null | tail -1 || df -B1 --output=avail /home | tail -1) ))
-echo "source: $(human "$need")   free: $(human "$avail")"
+need=$(( $(stat -c %s "${SRC_DB}") + $(du -sb "${SRC_PARQUET}" | cut -f1) ))
+avail=$(( $(df -B1 --output=avail "${STORE}" 2>/dev/null | tail -1 || df -B1 --output=avail /home | tail -1) ))
+need_h=$(human "${need}")
+avail_h=$(human "${avail}")
+echo "source: ${need_h}   free: ${avail_h}"
 if (( avail < need )); then
     echo "REFUSING: less free space than the uncompressed source. Snapshot would be tight." >&2; exit 1
 fi
 
-mkdir -p "$STORE"
-ARCHIVE="$STORE/warehouse-$LABEL.$EXT"
-[[ -e "$ARCHIVE" && $FORCE -ne 1 ]] && { echo "exists: $ARCHIVE (use --label or --force)" >&2; exit 1; }
+mkdir -p "${STORE}"
+ARCHIVE="${STORE}/warehouse-${LABEL}.${EXT}"
+[[ -e "${ARCHIVE}" && ${FORCE} -ne 1 ]] && { echo "exists: ${ARCHIVE} (use --label or --force)" >&2; exit 1; }
 
-SHA="$(git -C "$(dirname "$SRC_DB")" rev-parse --short HEAD 2>/dev/null || echo unknown)"
-PARQUET_FILES=$(find "$SRC_PARQUET" -name '*.parquet' | wc -l)
+SHA="$(git -C "$(dirname "${SRC_DB}")" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+PARQUET_FILES=$(find "${SRC_PARQUET}" -name '*.parquet' | wc -l)
 
-echo "archiving with: $COMPRESSOR"
-echo "  -> $ARCHIVE"
+echo "archiving with: ${COMPRESSOR}"
+echo "  -> ${ARCHIVE}"
 # Paths are stored relative to the checkout root, so --restore and --extract-to
 # both land on the same ./nba.duckdb + ./data/parquet shape.
-ROOT="$(cd "$(dirname "$SRC_DB")" && pwd)"
-tar --use-compress-program="$COMPRESSOR" \
-    -cf "$ARCHIVE" \
-    -C "$ROOT" \
-    "$(basename "$SRC_DB")" \
+ROOT="$(cd "$(dirname "${SRC_DB}")" && pwd)"
+tar --use-compress-program="${COMPRESSOR}" \
+    -cf "${ARCHIVE}" \
+    -C "${ROOT}" \
+    "$(basename "${SRC_DB}")" \
     "data/parquet"
 
-SIZE=$(stat -c %s "$ARCHIVE")
-(cd "$STORE" && sha256sum "$(basename "$ARCHIVE")" > "$(basename "$ARCHIVE").sha256")
+SIZE=$(stat -c %s "${ARCHIVE}")
+(cd "${STORE}" && sha256sum "$(basename "${ARCHIVE}")" > "$(basename "${ARCHIVE}").sha256")
 
-cat > "$ARCHIVE.manifest" <<MANIFEST
-taken:          $(date -Is)
-git:            $SHA
-source db:      $SRC_DB ($(human "$(stat -c %s "$SRC_DB")"))
-source parquet: $SRC_PARQUET ($PARQUET_FILES files)
-archive:        $(human "$SIZE")
-ratio:          $(awk -v a="$SIZE" -v b="$need" 'BEGIN{printf "%.1f%%", 100*a/b}')
-compressor:     $COMPRESSOR
+# Computed before the heredoc rather than inside it, where a failure would be
+# written into the manifest as an empty field instead of stopping the script.
+TAKEN=$(date -Is)
+DB_BYTES=$(stat -c %s "${SRC_DB}")
+DB_SIZE=$(human "${DB_BYTES}")
+ARCHIVE_SIZE=$(human "${SIZE}")
+RATIO=$(awk -v a="${SIZE}" -v b="${need}" 'BEGIN{printf "%.1f%%", 100*a/b}')
+cat > "${ARCHIVE}.manifest" <<MANIFEST
+taken:          ${TAKEN}
+git:            ${SHA}
+source db:      ${SRC_DB} (${DB_SIZE})
+source parquet: ${SRC_PARQUET} (${PARQUET_FILES} files)
+archive:        ${ARCHIVE_SIZE}
+ratio:          ${RATIO}
+compressor:     ${COMPRESSOR}
 MANIFEST
-echo "--- manifest ---"; sed 's/^/  /' "$ARCHIVE.manifest"
+echo "--- manifest ---"; sed 's/^/  /' "${ARCHIVE}.manifest"
 
-if [[ -n "$EXTRACT_TO" ]]; then
-    echo "materializing a readable snapshot at $EXTRACT_TO"
-    mkdir -p "$EXTRACT_TO"
-    if [[ $LINK -eq 1 ]]; then
+if [[ -n "${EXTRACT_TO}" ]]; then
+    echo "materializing a readable snapshot at ${EXTRACT_TO}"
+    mkdir -p "${EXTRACT_TO}"
+    if [[ ${LINK} -eq 1 ]]; then
         # Parquet only, and only because a pull writes NEW files. Never the db.
-        cp -al "$SRC_PARQUET" "$EXTRACT_TO/data-parquet-linked"
-        cp "$SRC_DB" "$EXTRACT_TO/nba.duckdb"
+        cp -al "${SRC_PARQUET}" "${EXTRACT_TO}/data-parquet-linked"
+        cp "${SRC_DB}" "${EXTRACT_TO}/nba.duckdb"
         echo "  parquet hardlinked, duckdb copied (a hardlinked db would be written through)"
     else
-        tar -xaf "$ARCHIVE" -C "$EXTRACT_TO"
+        tar -xaf "${ARCHIVE}" -C "${EXTRACT_TO}"
     fi
-    chmod -R a-w "$EXTRACT_TO" 2>/dev/null || true
-    echo "  read-only at: $EXTRACT_TO"
-    echo "  point a reader at: --db-path $EXTRACT_TO/nba.duckdb --data-dir $EXTRACT_TO/data/parquet"
+    chmod -R a-w "${EXTRACT_TO}" 2>/dev/null || true
+    echo "  read-only at: ${EXTRACT_TO}"
+    echo "  point a reader at: --db-path ${EXTRACT_TO}/nba.duckdb --data-dir ${EXTRACT_TO}/data/parquet"
 fi
 echo "done."

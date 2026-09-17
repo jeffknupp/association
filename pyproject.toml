@@ -63,6 +63,7 @@ dev = [
     "pyright>=1.1.390",
     "pytest>=8.0",
     "ruff>=0.16.5",
+    "shellcheck-py>=0.11",
     "vulture>=2.14",
 ]
 docs = [

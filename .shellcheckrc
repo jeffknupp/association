@@ -1,0 +1,6 @@
+# Every optional check. The one that earns its place here is SC2312: a failing
+# command inside $(...) passed as an argument does not trip `set -e`, which is
+# the same exit-0-but-wrong shape AGENTS.md warns about for `cmd | tail`. The
+# rest (braces on every variable, a default case) are style, taken for
+# consistency rather than picked one by one.
+enable=all

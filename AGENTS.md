@@ -20,7 +20,7 @@ we do about it. Read `DATA.md` before trusting a column.
 ## Before you commit
 
 ```bash
-uv run pre-commit run --all-files   # all thirteen gates
+uv run pre-commit run --all-files   # all fourteen gates
 uv run pytest -q                    # fully offline: no network, no ollama
 ```
 
@@ -51,6 +51,11 @@ mode is always the same: green locally, red on the PR.
 - **Read the exit status, not the output.** `pre-commit run --all-files | tail`
   hides a failure in the *first* hook - and `ruff` is first. Redirect to a file
   and check `$?`.
+- **Shell scripts pass shellcheck with every optional check on**
+  (`.shellcheckrc`). The one that matters is SC2312: a command substitution
+  nested in another command's arguments, or in a heredoc, fails without
+  tripping `set -e`, so assign it to a variable first. Braces on every
+  variable are style, taken for consistency.
 - **A gate script has to work when run directly**, not only through `uv run`.
   `pre-commit` runs its hooks under `uv run`, which exports `VIRTUAL_ENV`; CI
   invokes the same scripts bare. `scripts/check_types_complete.sh` resolved

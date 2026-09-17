@@ -33,13 +33,13 @@ set -euo pipefail
 OUT="${1:-docs/_build/html}"
 
 SPHINX="${SPHINX_BUILD:-.venv/bin/sphinx-build}"
-if [[ ! -x "$SPHINX" ]]; then
-    echo "docs: $SPHINX not found - run 'uv sync --extra docs'" >&2
+if [[ ! -x "${SPHINX}" ]]; then
+    echo "docs: ${SPHINX} not found - run 'uv sync --extra docs'" >&2
     exit 1
 fi
 
-"$SPHINX" -b html docs "$OUT" -q -W --keep-going -E
+"${SPHINX}" -b html docs "${OUT}" -q -W --keep-going -E
 
 # The interpreter beside sphinx-build, so the check runs under the same
 # environment on Read the Docs as here.
-"$(dirname "$SPHINX")/python" "$(dirname "$0")/check_docs_markup.py" "$OUT"
+"$(dirname "${SPHINX}")/python" "$(dirname "$0")/check_docs_markup.py" "${OUT}"

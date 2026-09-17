@@ -28,6 +28,6 @@ trap 'rm -f "$requirements"' EXIT
 
 # --no-emit-project: association itself is not on PyPI, so there is nothing to
 # look up, and --strict would fail on the skip.
-uv export --frozen --all-extras --no-emit-project --quiet --output-file "$requirements"
+uv export --frozen --all-extras --no-emit-project --quiet --output-file "${requirements}"
 
-uvx "pip-audit==${PIP_AUDIT_VERSION}" --requirement "$requirements" --disable-pip --strict --progress-spinner off "${IGNORED[@]}" "$@"
+uvx "pip-audit==${PIP_AUDIT_VERSION}" --requirement "${requirements}" --disable-pip --strict --progress-spinner off "${IGNORED[@]}" "$@"
