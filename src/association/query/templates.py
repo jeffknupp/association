@@ -2913,14 +2913,28 @@ def team_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     lines = season_table(con, season, season_type)
     mine = next((line for line in lines if line.team == team.name), None)
     if mine is None:
-        # Which fact is missing decides the sentence: a team that did not reach
-        # the postseason is not a team the warehouse lacks numbers for.
-        if season_type == 3 and any(line.team == team.name for line in season_table(con, season, 2)):
-            answer = f"The {team.name} did not play in the {period}."
-        else:
-            answer = f"The warehouse has no {period} team stats for the {team.name}."
-        return TemplateResult(data={"team": team.name, "season": season, "stats": {}}, answer=answer)
+        return _team_stat_missing(con, team, season, season_type, period)
 
+    stats = _team_stat_table(lines, wanted, team, mine)
+
+    if key is not None:
+        return _team_stat_single(key, stats, period, team, mine, season, lines)
+    return _team_stat_summary(stats, wanted, team, period, mine, season)
+
+
+def _team_stat_missing(con: duckdb.DuckDBPyConnection, team: Entity, season: int, season_type: int, period: str) -> TemplateResult:
+    """team_stat's answer when the team has no season line. Which fact is
+    missing decides the sentence: a team that did not reach the postseason is
+    not a team the warehouse lacks numbers for."""
+    if season_type == 3 and any(line.team == team.name for line in season_table(con, season, 2)):
+        answer = f"The {team.name} did not play in the {period}."
+    else:
+        answer = f"The warehouse has no {period} team stats for the {team.name}."
+    return TemplateResult(data={"team": team.name, "season": season, "stats": {}}, answer=answer)
+
+
+def _team_stat_table(lines: list[TeamLine], wanted: list[str], team: Entity, mine: TeamLine) -> dict[str, dict[str, Any]]:
+    """team_stat's value and league rank for each stat asked for."""
     stats: dict[str, dict[str, Any]] = {}
     for name in wanted:
         metric = TEAM_METRICS[name]
@@ -2930,22 +2944,30 @@ def team_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         if value is not None and complete:
             rank = next(r for r, t, _ in ranked({line.team: line.values[name] or 0.0 for line in lines}, descending_for(metric, "best")) if t == team.name)
         stats[metric.label] = {"value": value, "rank": rank, "of": len(lines)}
+    return stats
 
-    if key is not None:
-        metric = TEAM_METRICS[key]
-        entry = stats[metric.label]
-        if entry["value"] is None:
-            answer = _incomplete_opponents(metric, period, lines, team.name)
-            return TemplateResult(data={"team": team.name, "season": season, "stats": stats, "message": answer}, answer=answer)
-        where = ""
-        if entry["rank"] is not None:
-            order = "best" if metric.lower_is_better is not None else "highest"
-            where = f", {_ordinal(entry['rank'])}-{order} of {entry['of']} teams"
-        answer = f"The {_possessive(team.name)} {metric.label} was {_metric_cell(metric, entry['value'])} in the {period} ({mine.games} games){where}."
-        if _uses_possessions([key]):
-            answer += f" {RATING_NOTE}"
-        return TemplateResult(data={"team": team.name, "season": season, "games": mine.games, "stats": stats}, answer=answer)
 
+def _team_stat_single(key: str, stats: dict[str, dict[str, Any]], period: str, team: Entity, mine: TeamLine, season: int, lines: list[TeamLine]) -> TemplateResult:
+    """team_stat's answer for one named stat: its value and rank, or the
+    incomplete-opponents refusal where the value itself is missing."""
+    metric = TEAM_METRICS[key]
+    entry = stats[metric.label]
+    if entry["value"] is None:
+        answer = _incomplete_opponents(metric, period, lines, team.name)
+        return TemplateResult(data={"team": team.name, "season": season, "stats": stats, "message": answer}, answer=answer)
+    where = ""
+    if entry["rank"] is not None:
+        order = "best" if metric.lower_is_better is not None else "highest"
+        where = f", {_ordinal(entry['rank'])}-{order} of {entry['of']} teams"
+    answer = f"The {_possessive(team.name)} {metric.label} was {_metric_cell(metric, entry['value'])} in the {period} ({mine.games} games){where}."
+    if _uses_possessions([key]):
+        answer += f" {RATING_NOTE}"
+    return TemplateResult(data={"team": team.name, "season": season, "games": mine.games, "stats": stats}, answer=answer)
+
+
+def _team_stat_summary(stats: dict[str, dict[str, Any]], wanted: list[str], team: Entity, period: str, mine: TeamLine, season: int) -> TemplateResult:
+    """team_stat's compact multi-stat table, with a note where a value or a
+    rank had to be left out."""
     label_width = max(len(label) for label in stats)
     cells = {label: "-" if e["value"] is None else _metric_cell(TEAM_METRICS[name], e["value"]) for (label, e), name in zip(stats.items(), wanted, strict=True)}
     value_width = max(5, *(len(c) for c in cells.values()))
