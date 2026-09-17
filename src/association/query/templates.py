@@ -4290,22 +4290,40 @@ def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> Template
         # template's - see the docstring.
         raise TemplateUnsupported("team_quarter_points cannot answer for a named player")
 
-    team = _resolved_team(con, slots.get("team"), season=_slot_season(slots))
+    resolved = _team_quarter_points_teams(con, slots.get("team"), slots.get("opponent"), _slot_season(slots))
+    if isinstance(resolved, TemplateResult):
+        return resolved
+    team, opponent = resolved
+
+    season = slots.get("season") or current_season()
+    season_type = slots.get("season_type") or 2
+    games = _team_quarter_points_games(con, team, opponent, season, season_type, period)
+
+    period_label = _period_label(period)
+    period_str = _period(season, season_type)
+    return _team_quarter_points_answer(team, opponent, games, period=period, period_label=period_label, period_str=period_str)
+
+
+def _team_quarter_points_teams(con: duckdb.DuckDBPyConnection, team_text: Any, opponent_text: Any, season: int | None) -> tuple[Entity, Entity | None] | TemplateResult:
+    """The team and, if the question named one, the opponent - checked to be a
+    different team from the one asked about."""
+    team = _resolved_team(con, team_text, season=season)
     if isinstance(team, TemplateResult):
         return team
-
     opponent: Entity | None = None
-    opponent_text = slots.get("opponent")
     if isinstance(opponent_text, str) and opponent_text.strip():
-        resolved_opponent = _resolved_team(con, opponent_text, season=_slot_season(slots))
+        resolved_opponent = _resolved_team(con, opponent_text, season=season)
         if isinstance(resolved_opponent, TemplateResult):
             return resolved_opponent
         opponent = resolved_opponent
         if opponent.id == team.id:
             raise TemplateUnsupported("team_quarter_points opponent must differ from the team")
+    return team, opponent
 
-    season = slots.get("season") or current_season()
-    season_type = slots.get("season_type") or 2
+
+def _team_quarter_points_games(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity | None, season: int, season_type: int, period: int) -> list[dict[str, Any]]:
+    """Each qualifying game's date, opponent and points in the asked-for
+    period - None where the game never reached it, not zero."""
     season_clause, season_params = _season_games(season, season_type, "g")
     where = ["tbs.team_id = ?", season_clause, "tbs.season_type = ?"]
     params: list[Any] = [team.id, *season_params, season_type]
@@ -4313,18 +4331,19 @@ def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> Template
         where.append("tbs.opponent_team_id = ?")
         params.append(opponent.id)
     rows = con.execute(f"{_TEAM_QUARTER_SQL} WHERE {' AND '.join(where)} ORDER BY g.date", params).fetchall()
-
-    period_label = _period_label(period)
-    period_str = _period(season, season_type)
-    vs = f" against the {opponent.name}" if opponent else ""
-    opponent_name = opponent.name if opponent else None
-
     games = []
     for date, own_linescores, opp_name in rows:
         scores = _linescores(own_linescores)
         points = scores[period - 1] if period - 1 < len(scores) else None
         games.append({"date": _eastern_date(date), "opponent": opp_name, "points": points})
+    return games
 
+
+def _team_quarter_points_answer(team: Entity, opponent: Entity | None, games: list[dict[str, Any]], *, period: int, period_label: str, period_str: str) -> TemplateResult:
+    """The no-games refusal, the none-reached-that-period refusal, or the
+    normal per-game breakdown and total."""
+    vs = f" against the {opponent.name}" if opponent else ""
+    opponent_name = opponent.name if opponent else None
     if not games:
         answer = f"The warehouse has no {period_str} games for the {team.name}{vs}."
         return TemplateResult(data={"team": team.name, "opponent": opponent_name, "games": []}, answer=answer)
