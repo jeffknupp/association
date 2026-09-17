@@ -40,7 +40,8 @@ import urllib.request
 sys.path.insert(0, "scripts")
 from check_routing import CASES
 
-from association.query.router import ROUTER_PROMPT, ROUTER_SCHEMA, SEASON_TYPES, _validate_season
+from association.query.router import SEASON_TYPES, _validate_season
+from association.query.router_prompt import ROUTER_PROMPT, ROUTER_SCHEMA
 
 
 def route_with(model, question):

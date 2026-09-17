@@ -19,7 +19,7 @@ import pytest
 from association.query.leaderboard import resolve_metric
 from association.query.metrics import BOX_SCORE_METRIC_NAMES, CORE_METRIC_NAMES, LEADERBOARD_METRICS
 from association.query.prompt import TOOLS, build_system_prompt
-from association.query.router import ROUTER_PROMPT
+from association.query.router_prompt import ROUTER_PROMPT
 from association.query.templates import TemplateContext, TemplateUnsupported, check_scope, leaderboard, single_game_high, threshold_count
 from association.season import current_season
 

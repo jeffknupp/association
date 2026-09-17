@@ -25,6 +25,11 @@ had no published version to be compatible with.
   - The load-time repairs and filtered tables moved under
     `association.fetch.repairs`: `game_repair`, `team_box_repair`,
     `season_totals_repair`, `reconstructed_box` and `real_games`.
+  - `ROUTER_PROMPT`, `ROUTER_SCHEMA`, `ROUTER_NUM_CTX` and
+    `ROUTER_PROMPT_TOKEN_BUDGET` moved from `association.query.router` to
+    `association.query.router_prompt`, byte-identical (hashed before and
+    after), so what the model is told sits apart from what is done with its
+    answer.
 - **Importing the web API no longer loads ollama.** `association.web.runner`
   imported the query `Agent` at module level for a type annotation, so
   `import association.web.app` brought in the model client that AGENTS.md says

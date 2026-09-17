@@ -291,6 +291,11 @@ The pipeline is router → template → deterministic answer, with the agent as
 fall-through. A question the router cannot classify falls through to the
 slower SQL-writing agent; that is by design, not a bug.
 
+- **What the router model sees lives in `query/router_prompt.py`, alone.**
+  `ROUTER_PROMPT`, `ROUTER_SCHEMA` and the window they share are there; the
+  post-processing of the slots the model returns is in `query/router.py`. So a
+  diff that touches only `router.py` cannot move a slot on some unrelated
+  question, and a diff to `router_prompt.py` always can.
 - **Router prompt and JSON schema must agree.** An intent described in
   `ROUTER_PROMPT` but missing from `ROUTER_SCHEMA`'s enum can never be emitted
   under constrained decoding, so it silently routes elsewhere. This happened
