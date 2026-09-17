@@ -85,8 +85,28 @@ def _game(
         opponent = away if team == home else home
         c.execute(
             "INSERT INTO player_box_stats VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            [event, season, 2, team, opponent, athlete, starter, dnp, minutes, points, 0 if minutes is None else 5, 0 if minutes is None else 3, 0, 0, 0]
-            + [0 if minutes is None else 1, points // 2, points, 0, 0],
+            [
+                event,
+                season,
+                2,
+                team,
+                opponent,
+                athlete,
+                starter,
+                dnp,
+                minutes,
+                points,
+                0 if minutes is None else 5,
+                0 if minutes is None else 3,
+                0,
+                0,
+                0,
+                0 if minutes is None else 1,
+                points // 2,
+                points,
+                0,
+                0,
+            ],
         )
 
 
@@ -562,7 +582,7 @@ def test_the_split_kinds_are_the_ones_the_router_reads() -> None:
     the player_compare bug."""
     from association.query.router import SPLIT_WORDS
 
-    assert SPLIT_KINDS == tuple(SPLIT_WORDS)
+    assert tuple(SPLIT_WORDS) == SPLIT_KINDS
 
 
 def test_every_query_eastern_date_is_the_shared_rule() -> None:

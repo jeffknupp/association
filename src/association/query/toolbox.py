@@ -215,7 +215,7 @@ class Toolbox:
             cur = self.con.execute(q)
             cols = [d[0] for d in cur.description]
             rows = cur.fetchmany(MAX_ROWS)
-        except Exception as exc:  # let the model see the DB error and retry
+        except Exception as exc:  # noqa: BLE001 - let the model see the DB error and retry
             return f"SQL error: {exc}"
         result = [dict(zip(cols, row, strict=True)) for row in rows]
         self._enrich_ids_with_names(cols, result)

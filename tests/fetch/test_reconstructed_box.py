@@ -50,7 +50,7 @@ def _box(event: str, athlete: str, *, minutes: int | None, points: int = 0) -> d
         "ejected": False,
         "plusMinus": None if minutes is None else 4,
     }
-    row.update({stat: 0 for stat in _STATS})
+    row.update(dict.fromkeys(_STATS, 0))
     row["points"] = points
     return row
 

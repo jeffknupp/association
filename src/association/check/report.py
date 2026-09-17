@@ -12,6 +12,7 @@ Pass --force to re-verify against ESPN anyway.
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 
 import duckdb
@@ -36,10 +37,8 @@ def discover_seasons(data_dir: Path) -> list[int]:
         return []
     seasons = set()
     for p in games_dir.glob("season=*"):
-        try:
+        with contextlib.suppress(ValueError):
             seasons.add(int(p.name.split("=", 1)[1]))
-        except ValueError:
-            pass
     return sorted(seasons)
 
 
@@ -55,10 +54,8 @@ def discover_season_types(data_dir: Path) -> list[int]:
         return []
     types = set()
     for p in games_dir.glob("season=*/season_type=*"):
-        try:
+        with contextlib.suppress(ValueError):
             types.add(int(p.name.split("=", 1)[1]))
-        except ValueError:
-            pass
     return sorted(types)
 
 

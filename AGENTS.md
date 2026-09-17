@@ -33,6 +33,13 @@ and the gates never run. Run CI's own line first:
 Both must be clean. Everything in `pre-commit` also runs in CI
 (`.github/workflows/ci.yml`), so a green local run means a green PR.
 
+One CI check is deliberately *not* a hook: `scripts/audit_dependencies.sh`
+(pip-audit over `uv.lock`, extras included) needs the network, and commits
+here work offline. It runs in `.github/workflows/audit.yml` on every push and
+weekly, so an advisory against an unchanged lock still turns up. Run it by hand
+after changing `uv.lock`. An accepted advisory goes in its `IGNORED` list with
+a comment saying why it does not apply.
+
 That equivalence is not automatic, and it has broken three times. All three
 were the local run being *weaker* than CI, never the reverse, so the failure
 mode is always the same: green locally, red on the PR.
@@ -82,6 +89,12 @@ Add to the `## Unreleased` section.
   much of the code is prompt text and SQL that reads worse wrapped. The
   formatter inherits the same setting, so it *joins* long strings rather than
   fighting them.
+- **A lint suppression carries its reason.** Beyond ruff's defaults the lint
+  selects `DTZ`, `BLE`, `RUF`, `PERF`, `C4`, `SIM`, `RET`, `PLW` and `PLE`
+  (`pyproject.toml`). The few places that break one on purpose - a blind
+  `except` at a boundary that must not die, the machine's local date in
+  `current_season` - say why on the same line: `# noqa: BLE001 - ...`. A bare
+  `noqa` gives the next reader nothing to judge it by.
 - **American spelling.** "defense", "offense", "serialize". British spellings
   have drifted in before and were removed wholesale in `c09d6f7`.
 - **Every public module, class and function needs a docstring** — a separate

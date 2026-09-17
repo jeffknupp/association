@@ -167,7 +167,7 @@ class ESPNClient:
             self._throttle()
             try:
                 resp = self.session.get(url, params=params, timeout=self.timeout)
-            except Exception as exc:  # connection errors, timeouts
+            except Exception as exc:  # noqa: BLE001 - connection errors and timeouts, whose types vary by transport; retried
                 last_exc = exc
                 log.warning("request error (attempt %d) %s: %s", attempt + 1, url, exc)
                 self._sleep_backoff(attempt)

@@ -15,6 +15,17 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Stricter lint, a dependency audit, and three pieces of dead code gone.**
+  Ruff now also enforces `DTZ`, `BLE`, `RUF`, `PERF`, `C4`, `SIM`, `RET`, `PLW`
+  and `PLE`; the 66 findings were fixed, and the handful that are deliberate (a
+  blind `except` at a boundary, the local calendar date in `current_season`)
+  carry an inline reason. No behavior changed: `eastern_day_utc_range` now
+  builds UTC-aware datetimes, which format to the same strings. pip-audit runs
+  over `uv.lock` in a new *Dependency audit* workflow on every push and weekly
+  (`scripts/audit_dependencies.sh`). Removed as unused: `fetch.storage.write_row`
+  (no caller outside its own test - `Pipeline._write_row` is the real path),
+  `fetch.team_box_repair.REBUILT_COLUMNS` (never read; the repair's SQL names
+  its columns itself), and the private `templates._as_int`.
 - **The 2001 playoff caveat names every short series, and counts
   Philadelphia right.** A 2001 postseason answer said Philadelphia's run
   "reads 15 games" and named only the LAL-PHI Final and the MIL-PHI

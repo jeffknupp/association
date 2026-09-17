@@ -6,14 +6,14 @@ so neither package has to depend on the other for it."""
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 
 def current_season() -> int:
     """A season starting in October of year Y is season Y+1, otherwise it's
     the current year (e.g. season=2026 for the 2025-26 season, from October
     2025 through the following September)."""
-    today = date.today()
+    today = date.today()  # noqa: DTZ011 - the machine's own calendar date is the one meant: a season turns over in October wherever you are
     return today.year + 1 if today.month >= 10 else today.year
 
 
@@ -131,6 +131,6 @@ def eastern_day_utc_range(day: str) -> tuple[str, str]:
     """
     first = date.fromisoformat(day)
     following = first + timedelta(days=1)
-    start = datetime(first.year, first.month, first.day) + timedelta(hours=eastern_utc_offset_hours(first))
-    end = datetime(following.year, following.month, following.day) + timedelta(hours=eastern_utc_offset_hours(following))
+    start = datetime(first.year, first.month, first.day, tzinfo=timezone.utc) + timedelta(hours=eastern_utc_offset_hours(first))
+    end = datetime(following.year, following.month, following.day, tzinfo=timezone.utc) + timedelta(hours=eastern_utc_offset_hours(following))
     return start.strftime("%Y-%m-%dT%H:%MZ"), end.strftime("%Y-%m-%dT%H:%MZ")

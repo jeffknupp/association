@@ -90,9 +90,11 @@ def main() -> int:
     for season in seasons:
         # The same discovery a pull runs, so what this fetches is exactly what
         # a pull would. The scoreboard half is what finds the missing games.
-        for event_id in pipeline.event_ids_for(season, POSTSEASON, team_ids):
-            if not (data_dir / "games" / f"season={season}" / f"season_type={POSTSEASON}" / f"event_{event_id}.parquet").exists():
-                missing.append((event_id, season))
+        missing.extend(
+            (event_id, season)
+            for event_id in pipeline.event_ids_for(season, POSTSEASON, team_ids)
+            if not (data_dir / "games" / f"season={season}" / f"season_type={POSTSEASON}" / f"event_{event_id}.parquet").exists()
+        )
 
     print(f"postseason games held: {', '.join(f'{s}={before.get(s, 0)}' for s in seasons)}")
     print(f"{len(missing)} game(s) discovered that are not on disk")

@@ -571,9 +571,8 @@ def _orphaned_tool_results(messages: list[dict[str, Any]]) -> list[int]:
     for i, message in enumerate(messages):
         if message.get("role") == "assistant":
             outstanding = bool(message.get("tool_calls"))
-        elif message.get("role") == "tool":
-            if not outstanding:
-                orphans.append(i)
+        elif message.get("role") == "tool" and not outstanding:
+            orphans.append(i)
     return orphans
 
 
@@ -626,7 +625,7 @@ def test_the_fixed_slice_this_replaced_would_have_split_a_turn() -> None:
             conversation += [{"role": "tool", "content": "{}"}, {"role": "tool", "content": "{}"}]
         conversation.append({"role": "assistant", "content": "answer"})
         if len(conversation) > MAX_HISTORY_MESSAGES:
-            old_way = [conversation[0]] + conversation[-(MAX_HISTORY_MESSAGES - 1) :]
+            old_way = [conversation[0], *conversation[-(MAX_HISTORY_MESSAGES - 1) :]]
             split_somewhere = split_somewhere or bool(_orphaned_tool_results(old_way))
 
     assert split_somewhere

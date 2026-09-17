@@ -61,7 +61,7 @@ def main() -> int:
     text = path.read_text()
     existing = {
         i["title"]: i["number"]
-        for i in json.loads(subprocess.run(["gh", "issue", "list", "--state", "all", "--limit", "500", "--json", "title,number"], cwd=ROOT, capture_output=True, text=True).stdout or "[]")
+        for i in json.loads(subprocess.run(["gh", "issue", "list", "--state", "all", "--limit", "500", "--json", "title,number"], cwd=ROOT, capture_output=True, text=True, check=False).stdout or "[]")
     }
     made, skipped = [], []
     for section, title, body_lines in entries(text):
@@ -78,7 +78,7 @@ def main() -> int:
         cmd = ["gh", "issue", "create", "--title", title, "--body", body + FOOTER.format(title=title, section=section)]
         for lab in labels:
             cmd += ["--label", lab]
-        run = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+        run = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, check=False)
         if run.returncode:
             print(f"FAILED {title}: {run.stderr.strip()[:160]}")
             return 1

@@ -106,10 +106,9 @@ def test_the_question_reaches_the_engine_with_a_label_naming_the_request(tmp_pat
 def test_the_stream_reports_progress_and_then_the_answer(tmp_path: Path) -> None:
     """A fall-through takes minutes. The trace is what makes that legible
     rather than indistinguishable from a hang."""
-    with _client(StubAnswerer(), tmp_path) as client:
-        with client.stream("GET", "/api/ask/stream", params={"question": "q"}) as response:
-            assert response.headers["content-type"].startswith("text/event-stream")
-            events = _events(response.iter_lines())
+    with _client(StubAnswerer(), tmp_path) as client, client.stream("GET", "/api/ask/stream", params={"question": "q"}) as response:
+        assert response.headers["content-type"].startswith("text/event-stream")
+        events = _events(response.iter_lines())
 
     assert [name for name, _ in events] == ["progress", "progress", "answer"]
     assert events[0][1]["line"].startswith("-> (router)")
@@ -125,9 +124,8 @@ def test_the_stream_reports_an_engine_failure_rather_than_truncating(tmp_path: P
         def ask(self, question: str, label: str, trace: Callable[[str], None] = lambda line: None) -> Answer:
             raise RuntimeError("ollama is not running")
 
-    with _client(Failing(), tmp_path) as client:
-        with client.stream("GET", "/api/ask/stream", params={"question": "q"}) as response:
-            events = _events(response.iter_lines())
+    with _client(Failing(), tmp_path) as client, client.stream("GET", "/api/ask/stream", params={"question": "q"}) as response:
+        events = _events(response.iter_lines())
 
     assert [name for name, _ in events] == ["error"]
     assert events[0][1]["message"] == "RuntimeError: ollama is not running"
@@ -136,9 +134,8 @@ def test_the_stream_reports_an_engine_failure_rather_than_truncating(tmp_path: P
 def test_a_waiting_request_is_told_it_is_waiting(tmp_path: Path) -> None:
     answerer = StubAnswerer()
     answerer.busy = True
-    with _client(answerer, tmp_path) as client:
-        with client.stream("GET", "/api/ask/stream", params={"question": "q"}) as response:
-            events = _events(response.iter_lines())
+    with _client(answerer, tmp_path) as client, client.stream("GET", "/api/ask/stream", params={"question": "q"}) as response:
+        events = _events(response.iter_lines())
 
     assert events[0][0] == "queued"
 

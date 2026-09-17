@@ -147,7 +147,7 @@ class Agent:
             return
         oldest_kept = len(self.messages) - (MAX_HISTORY_MESSAGES - 1)
         cut = next((start for start in self._turn_starts if start >= oldest_kept), self._turn_starts[-1] if self._turn_starts else len(self.messages))
-        self.messages = [self.messages[0]] + self.messages[cut:]
+        self.messages = [self.messages[0], *self.messages[cut:]]
         self._turn_starts = [start - cut + 1 for start in self._turn_starts if start >= cut]
 
     def ask(self, question: str, label: str = "") -> Answer:
@@ -349,7 +349,7 @@ class Agent:
         pending_error_tool: str | None = None
 
         for _ in range(MAX_TOOL_ITERATIONS):
-            chat_kwargs: dict[str, Any] = dict(model=self.model, messages=self.messages, tools=TOOLS, keep_alive=KEEP_ALIVE, options={"num_ctx": AGENT_NUM_CTX})
+            chat_kwargs: dict[str, Any] = {"model": self.model, "messages": self.messages, "tools": TOOLS, "keep_alive": KEEP_ALIVE, "options": {"num_ctx": AGENT_NUM_CTX}}
             if self.think:
                 chat_kwargs["think"] = True
             t0 = time.monotonic()
@@ -452,7 +452,7 @@ class Agent:
                 else:
                     try:
                         result = fn(**args)
-                    except Exception as exc:
+                    except Exception as exc:  # noqa: BLE001 - the model sees the error and can retry, rather than the question dying
                         result = f"Error calling {name}: {exc}"
                 history.record_tool_call(name, time.monotonic() - t0)
                 result = str(result)

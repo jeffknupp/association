@@ -1,5 +1,6 @@
 """Regression + sanity tests for the ESPN HTTP client."""
 
+import itertools
 from typing import Any
 
 import pytest
@@ -153,7 +154,7 @@ def test_the_rate_limit_is_shared_between_threads() -> None:
         t.join()
 
     stamps.sort()
-    gaps = [b - a for a, b in zip(stamps, stamps[1:], strict=False)]
+    gaps = [b - a for a, b in itertools.pairwise(stamps)]
     # Generous slack: a loaded machine makes gaps LARGER, never smaller, so a
     # floor is the safe thing to assert.
     assert min(gaps) >= 0.015, gaps

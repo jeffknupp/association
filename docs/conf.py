@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 project = "association"
 author = "Jeff Knupp"
-copyright = f"{date.today().year}, {author}"
+copyright = f"{date.today().year}, {author}"  # noqa: DTZ011 - a copyright year needs no time zone
 
 # Read the version from installed package metadata rather than repeating the
 # literal here. pyproject.toml is the single source of truth - the publish

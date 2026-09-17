@@ -74,7 +74,7 @@ def score(model):
     for question, want_intent, want_slots in CASES:
         try:
             intent, slots, elapsed = route_with(model, question)
-        except Exception:
+        except Exception:  # noqa: BLE001 - any failure to route is scored as an error, not a crash of the benchmark
             errors += 1
             continue
         times.append(elapsed)

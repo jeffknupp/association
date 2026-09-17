@@ -14,14 +14,14 @@ from dataclasses import dataclass, field
 from association.net_points_categories import FINGERPRINT_CATEGORIES, FINGERPRINT_SIDE_LABELS
 
 __all__ = [
+    "BOX_SCORE_METRIC_NAMES",
+    "CORE_METRIC_NAMES",
+    "EXTRA_FIELD_COLUMNS",
+    "FINGERPRINT_METRIC_NAMES",
+    "LEADERBOARD_METRICS",
     "SEASON_TYPE_LABELS",
     "CareerAggregate",
     "LeaderboardMetric",
-    "LEADERBOARD_METRICS",
-    "EXTRA_FIELD_COLUMNS",
-    "CORE_METRIC_NAMES",
-    "FINGERPRINT_METRIC_NAMES",
-    "BOX_SCORE_METRIC_NAMES",
 ]
 
 SEASON_TYPE_LABELS = {1: "Preseason", 2: "Regular Season", 3: "Postseason"}
@@ -328,7 +328,7 @@ CORE_METRIC_NAMES = frozenset(LEADERBOARD_METRICS)
 # FINGERPRINT_METRIC_NAMES) so prompt.py can describe this whole group by its
 # <category>_<side>_net_pts naming pattern instead of spelling out all 66
 # names in prose - the tool's JSON schema enum still lists every one.
-for _src_category, _our_prefix in FINGERPRINT_CATEGORIES.items():
+for _our_prefix in FINGERPRINT_CATEGORIES.values():
     for _side, _side_label in FINGERPRINT_SIDE_LABELS.items():
         _metric_name = f"{_our_prefix}_{_side}_net_pts"
         LEADERBOARD_METRICS[_metric_name] = LeaderboardMetric(

@@ -1,5 +1,7 @@
 """Tests for the names a franchise played under, in both the Python and SQL forms."""
 
+import itertools
+
 import duckdb
 import pytest
 
@@ -58,6 +60,6 @@ def test_every_franchise_has_exactly_one_name_today_and_no_overlapping_eras() ->
     for team_id in {era.team_id for era in FRANCHISE_ERAS}:
         eras = sorted((e for e in FRANCHISE_ERAS if e.team_id == team_id), key=lambda e: e.first_season)
         assert sum(e.last_season is None for e in eras) == 1, team_id
-        for before, after in zip(eras, eras[1:], strict=False):
+        for before, after in itertools.pairwise(eras):
             assert before.last_season is not None and before.last_season < after.first_season, team_id
     assert era_of("17", 2012) is not None and era_of("17", 2012).name == "New Jersey Nets"  # type: ignore[union-attr]

@@ -133,7 +133,7 @@ class Pipeline:
     def _exists(self, path: Path) -> bool:
         return storage.exists(path) and not self.force
 
-    def _write_rows(self, path: Path, rows: list[dict[str, Any]]) -> None:  # noqa: D401
+    def _write_rows(self, path: Path, rows: list[dict[str, Any]]) -> None:
         """Write rows and record which table they belong to.
 
         The table name is the first path component under the root, which is how
@@ -247,7 +247,7 @@ class Pipeline:
                 params={"season": season, "seasontype": season_type},
             )
             ids.update(parse.parse_schedule_event_ids(data))
-        return sorted(ids, key=lambda x: int(x))
+        return sorted(ids, key=int)
 
     def _scoreboard_event_ids(self, season: int, known: set[str]) -> set[str]:
         """Postseason ids the schedules missed, read off the daily scoreboard.
@@ -407,7 +407,7 @@ class Pipeline:
         dataset = ds.dataset(str(path), format="parquet")
         table = dataset.to_table(columns=["athlete_id"])
         ids = {str(v) for v in table.column("athlete_id").to_pylist() if v is not None}
-        return sorted(ids, key=lambda x: int(x))
+        return sorted(ids, key=int)
 
     def fetch_player_season_stats(self, athlete_id: str, season_type: int, force_refresh: bool = False) -> None:
         """One file covers this player's WHOLE career for a season_type (ESPN's

@@ -182,9 +182,7 @@ def _replacements(present: set[str]) -> list[tuple[str, str]]:
     A column absent from the loaded table is dropped, so a thin fixture repairs
     what it has instead of failing.
     """
-    fixes: list[tuple[str, str]] = []
-    for column in TOTAL_COLUMNS:
-        fixes.append((column, f"CASE WHEN {_BROKEN} THEN s.s_{column} ELSE t.{column} END"))
+    fixes: list[tuple[str, str]] = [(column, f"CASE WHEN {_BROKEN} THEN s.s_{column} ELSE t.{column} END") for column in TOTAL_COLUMNS]
     for column, total in AVERAGE_COLUMNS:
         per_game = _OVER.format(denominator="s.s_gamesPlayed", expression=f"round(CAST(s.s_{total} AS DOUBLE) / s.s_gamesPlayed, 1)")
         fixes.append((column, f"CASE WHEN {_BROKEN} THEN {per_game} ELSE t.{column} END"))

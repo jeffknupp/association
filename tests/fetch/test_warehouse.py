@@ -86,7 +86,7 @@ def test_build_creates_current_season_macro_unconditionally(tmp_path: Path) -> N
     result = con.execute("SELECT current_season()").fetchone()
     con.close()
 
-    today = datetime.date.today()
+    today = datetime.date.today()  # noqa: DTZ011 - mirrors current_season(), which reads the local date on purpose
     expected = today.year + 1 if today.month >= 10 else today.year
     assert result == (expected,)
 

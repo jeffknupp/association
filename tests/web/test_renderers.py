@@ -191,6 +191,6 @@ def test_the_pages_javascript_parses() -> None:
     with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as handle:
         handle.write(script.group(1))
         path = handle.name
-    result = subprocess.run([node, "--check", path], capture_output=True, text=True)
+    result = subprocess.run([node, "--check", path], capture_output=True, text=True, check=False)
     Path(path).unlink()
     assert result.returncode == 0, result.stderr

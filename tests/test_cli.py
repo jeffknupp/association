@@ -1,6 +1,6 @@
 """Sanity tests for CLI argument parsing (Click)."""
 
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 import click
 import pytest
@@ -233,7 +233,7 @@ def test_dunder_version_matches_installed_metadata() -> None:
 class _WrittenPipeline:
     """A Pipeline stand-in that reports having written a fixed set of tables."""
 
-    written: set[str] = set()
+    written: ClassVar[set[str]] = set()
 
     def __init__(self, client: object, data_dir: object, **kwargs: Any) -> None:
         pass
@@ -282,7 +282,7 @@ def test_data_pull_passes_workers_through(monkeypatch: pytest.MonkeyPatch) -> No
     captured: dict[str, Any] = {}
 
     class FakePipeline:
-        written: set[str] = set()
+        written: ClassVar[set[str]] = set()
 
         def __init__(self, client: object, data_dir: object, **kwargs: Any) -> None:
             captured["kwargs"] = kwargs
@@ -307,7 +307,7 @@ def test_data_pull_defaults_to_several_workers(monkeypatch: pytest.MonkeyPatch) 
     captured: dict[str, Any] = {}
 
     class FakePipeline:
-        written: set[str] = set()
+        written: ClassVar[set[str]] = set()
 
         def __init__(self, client: object, data_dir: object, **kwargs: Any) -> None:
             captured["kwargs"] = kwargs

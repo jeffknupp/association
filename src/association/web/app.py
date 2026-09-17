@@ -293,7 +293,7 @@ def _stream(answerer: Answerer, question: str) -> Iterator[str]:
         try:
             answer = answerer.ask(question, label=f"GET /api/ask/stream {question!r}", trace=lambda line: events.put(("progress", {"line": line.strip()})))
             events.put(("answer", as_response(answer).model_dump()))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - see below
             # Reported to the browser rather than raised: the response has
             # already started, so raising here would truncate the stream with
             # no explanation. The history file has the traceback.

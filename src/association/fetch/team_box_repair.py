@@ -150,14 +150,6 @@ The changeover is exact: 0 in 2,459 of 2,460 rows in 2011 and in 0 of 2,126 in
 .. versionadded:: 2.2.0
 """
 
-REBUILT_COLUMNS: tuple[str, ...] = ("assists", "steals", "blocks", "fouls", "turnovers", "fieldGoalPct", "freeThrowPct")
-"""Columns re-derived for :data:`SHIFTED_SEASON` from the row's own fetched numbers.
-
-The first five are summed from ``player_box_stats``; the two percentages are
-computed from the made/attempted columns in the same team row, which are right.
-
-.. versionadded:: 2.2.0
-"""
 
 CLEARED_COLUMNS: tuple[str, ...] = ("flagrantFouls", "technicalFouls", "totalTechnicalFouls", "totalTurnovers", "pointsInPaint")
 """Columns set to NULL for :data:`SHIFTED_SEASON`: proven wrong, and no source to rebuild them from.

@@ -27,12 +27,6 @@ def test_write_rows_empty_list_is_noop(tmp_path: Path) -> None:
     assert not path.exists()
 
 
-def test_write_row_single_dict(tmp_path: Path) -> None:
-    path = tmp_path / "row.parquet"
-    storage.write_row(path, {"x": 1, "y": "hello"})
-    assert storage.exists(path)
-
-
 def test_a_narrow_first_row_does_not_truncate_the_file(tmp_path: Path) -> None:
     """The real shape, and the bug it caused. ESPN's career endpoint leaves a
     scoreless season out of its `totals` category, so a career whose earliest

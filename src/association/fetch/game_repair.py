@@ -92,7 +92,7 @@ def repair(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
 
     .. versionadded:: 2.2.0
     """
-    if "games" in loaded and _SIDE_GAME_COLUMNS <= _columns(con, "games"):
+    if "games" in loaded and _columns(con, "games") >= _SIDE_GAME_COLUMNS:
         served = _served("g")
         con.execute(f"""
             CREATE OR REPLACE TABLE games AS
@@ -107,7 +107,7 @@ def repair(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
         """)
     else:
         log.info("skip game side repair for games (not loaded, or missing columns)")
-    if "team_box_stats" in loaded and _SIDE_TEAM_BOX_COLUMNS <= _columns(con, "team_box_stats"):
+    if "team_box_stats" in loaded and _columns(con, "team_box_stats") >= _SIDE_TEAM_BOX_COLUMNS:
         served = _team_served("t")
         con.execute(f"""
             CREATE OR REPLACE TABLE team_box_stats AS

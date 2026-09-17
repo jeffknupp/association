@@ -735,7 +735,7 @@ def _eastern_date(timestamp: str) -> str | None:
     """The US Eastern calendar date of an ESPN ``games.date``, or None if it is
     not the ``YYYY-MM-DDTHH:MMZ`` shape everything in that column has."""
     try:
-        _datetime.strptime(timestamp, "%Y-%m-%dT%H:%MZ")
+        _datetime.strptime(timestamp, "%Y-%m-%dT%H:%MZ")  # noqa: DTZ007 - a shape check only; the value is discarded
     except ValueError:
         return None
     return eastern_date(timestamp)

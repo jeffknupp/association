@@ -115,8 +115,8 @@ See completions/ in the repo for ready-made static scripts instead of the eval f
 
 def _parse_seasons(spec: str) -> list[int]:
     seasons: set[int] = set()
-    for part in spec.split(","):
-        part = part.strip()
+    for raw_part in spec.split(","):
+        part = raw_part.strip()
         if not part:
             continue
         if "-" in part:
@@ -147,12 +147,11 @@ def _query_engine_options(f: F) -> F:
         is_flag=True,
         help="Skip the intent router and answer every question with the full tool-calling agent. For comparing the two paths while more question shapes are ported to templates.",
     )(f)
-    f = click.option(
+    return click.option(
         "--think",
         is_flag=True,
         help="Show the model's reasoning trace before each response (requires a thinking-capable model, e.g. qwen3:8b - qwen2.5 does not support this).",
     )(f)
-    return f
 
 
 @click.group(epilog=CLI_EPILOG, context_settings={"help_option_names": ["-h", "--help"]})

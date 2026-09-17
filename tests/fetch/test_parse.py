@@ -445,7 +445,7 @@ def test_parse_team_season_stats_empty_value_becomes_none() -> None:
             ]
         }
     }
-    row, glossary = parse.parse_team_season_stats(data, 2021, 2, "13")
+    row, _glossary = parse.parse_team_season_stats(data, 2021, 2, "13")
     assert row is not None
     assert row["blocks"] == 5.0
     assert row["sosRemaining"] is None
@@ -474,7 +474,7 @@ def test_parse_power_index_empty_value_becomes_none_and_team_id_extracted_from_r
             }
         ]
     }
-    rows, glossary = parse.parse_power_index(data)
+    rows, _glossary = parse.parse_power_index(data)
     assert len(rows) == 1
     assert rows[0]["team_id"] == "13"
     assert rows[0]["bpi"] == 6.173
@@ -505,7 +505,7 @@ def test_parse_player_career_stats_splits_compound_and_groups_by_season_team() -
             }
         ]
     }
-    rows, glossary = parse.parse_player_career_stats(data, "3155526", season_type=2)
+    rows, _glossary = parse.parse_player_career_stats(data, "3155526", season_type=2)
     assert len(rows) == 1
     row = rows[0]
     assert row["athlete_id"] == "3155526"

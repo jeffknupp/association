@@ -349,6 +349,6 @@ def test_the_repair_does_not_change_the_column_set_or_types(tmp_path: Path) -> N
     described = con.execute("DESCRIBE team_box_stats").fetchall()
     con.close()
     assert [r[0] for r in described] == list(_TEAM_DEFAULTS)
-    types = dict((r[0], r[1]) for r in described)
+    types = {r[0]: r[1] for r in described}
     assert types["assists"] == "BIGINT"
     assert types["fieldGoalPct"] == "BIGINT"

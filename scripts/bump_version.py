@@ -120,7 +120,7 @@ def stamp_changelog(version: str) -> None:
     text = CHANGELOG.read_text()
     if not UNRELEASED.search(text):
         sys.exit("error: no `## Unreleased` section in CHANGES.md - describe the release before cutting it")
-    CHANGELOG.write_text(UNRELEASED.sub(f"## {version} - {date.today().isoformat()}", text, count=1))
+    CHANGELOG.write_text(UNRELEASED.sub(f"## {version} - {date.today().isoformat()}", text, count=1))  # noqa: DTZ011 - the releaser's own calendar date is the one meant
 
 
 def main() -> int:

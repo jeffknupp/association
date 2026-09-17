@@ -417,7 +417,7 @@ def _split_rows(con: duckdb.DuckDBPyConnection, base: str, params: dict[str, Any
     measures = ", ".join(sql for _, _, sql in line)
     found = con.execute(f"WITH {alias} AS ({base}) SELECT {group} AS grp, COUNT(*), COUNT(*) FILTER (WHERE {alias}.won), {measures} FROM {alias} GROUP BY grp", params).fetchall()
     by_group = {str(row[0]): row for row in found if row[0] is not None}
-    if split == "month":
+    if split == "month":  # noqa: SIM108 - the else branch's comment has no place in a ternary
         keys = sorted(by_group, key=lambda m: _season_month_order(int(m)))
     else:
         # A value outside the expected pair is shown rather than dropped, so a
@@ -547,11 +547,7 @@ def _stints(con: duckdb.DuckDBPyConnection, athlete_id: str, phantoms: tuple[int
 
 def _overlaps(ours: Sequence[_Stint], theirs: Sequence[_Stint]) -> list[_Stint]:
     """The spells two players were on the same team at the same time."""
-    shared = []
-    for a in ours:
-        for b in theirs:
-            if a.team_id == b.team_id and max(a.first, b.first) <= min(a.last, b.last):
-                shared.append(_Stint(a.team_id, max(a.first, b.first), min(a.last, b.last)))
+    shared = [_Stint(a.team_id, max(a.first, b.first), min(a.last, b.last)) for a in ours for b in theirs if a.team_id == b.team_id and max(a.first, b.first) <= min(a.last, b.last)]
     return sorted(shared, key=lambda s: s.first)
 
 
@@ -708,21 +704,20 @@ def _meetings(con: duckdb.DuckDBPyConnection, scope: _Scope, a: str, b: str) -> 
         params,
     ).fetchone()
     stats = [c.strip() for c in columns.split(",")]
-    meetings = []
-    for row in rows:
-        meetings.append(
-            {
-                "day": row[0],
-                "season": row[18],
-                "won": bool(row[1]),
-                "team_score": row[2],
-                "opponent_score": row[3],
-                "team_id": str(row[4]),
-                "opponent_team_id": str(row[5]),
-                "a": dict(zip(stats, row[6:12], strict=True)),
-                "b": dict(zip(stats, row[12:18], strict=True)),
-            }
-        )
+    meetings = [
+        {
+            "day": row[0],
+            "season": row[18],
+            "won": bool(row[1]),
+            "team_score": row[2],
+            "opponent_score": row[3],
+            "team_id": str(row[4]),
+            "opponent_team_id": str(row[5]),
+            "a": dict(zip(stats, row[6:12], strict=True)),
+            "b": dict(zip(stats, row[12:18], strict=True)),
+        }
+        for row in rows
+    ]
     return meetings, int(together[0]) if together else 0
 
 

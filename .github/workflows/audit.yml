@@ -1,0 +1,30 @@
+name: Dependency audit
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  # Weekly, because an advisory published against an unchanged uv.lock would
+  # otherwise surface only on the next push. Monday 06:00 UTC.
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pip-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Audit locked dependencies (pip-audit)
+        # Reads uv.lock directly, extras included; no environment to sync.
+        run: scripts/audit_dependencies.sh

@@ -55,7 +55,7 @@ STARS = [
     ("4", "Dee Scrub", 100.0, 200.0, 8.0, 8.0),
 ]
 
-CATEGORIES = [name for name in FINGERPRINT_CATEGORIES.values()]
+CATEGORIES = list(FINGERPRINT_CATEGORIES.values())
 
 
 @pytest.fixture
@@ -360,7 +360,7 @@ def _shaded(html: str) -> list[tuple[str, str, float]]:
 
 def test_the_leader_of_each_category_is_shaded_in_their_own_color(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
     path = _drawn(render_for_players(con, tmp_path, [_entity("1"), _entity("2")], [], 2026))
-    shaded = dict((label, series) for label, series, _ in _shaded(path.read_text()))
+    shaded = {label: series for label, series, _ in _shaded(path.read_text())}
     # Ada Star is series a and leads rim scoring; Bo Wall is series b and leads
     # forced turnovers. Shading the wrong side is the whole point of this test.
     assert shaded["rim scoring"] == "a"

@@ -105,11 +105,6 @@ def write_rows(path: Path, rows: list[dict[str, Any]]) -> None:
         raise
 
 
-def write_row(path: Path, row: dict[str, Any]) -> None:
-    """Write a single row, for endpoints that return one record per file."""
-    write_rows(path, [row])
-
-
 def mark_complete(path: Path) -> None:
     """Write an empty sentinel marking a scope (e.g. one season+season_type)
     as fully, verifiably fetched. Atomic like write_rows, for the same reason."""

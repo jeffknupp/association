@@ -1354,10 +1354,9 @@ def _phrase_netpoints(
             continue
         lines.append("")
         lines.append(f"  {heading}, {units}{scope}:")
-        for row in ranked:
-            # Two decimals: per-100 values are small, and one decimal collapses
-            # most of the categories onto the same number.
-            lines.append("  " + row["category"].ljust(width) + f"{row[side]:.2f}".rjust(9))
+        # Two decimals: per-100 values are small, and one decimal collapses
+        # most of the categories onto the same number.
+        lines.extend("  " + row["category"].ljust(width) + f"{row[side]:.2f}".rjust(9) for row in ranked)
         # The sum is printed so the reader can check it against the headline -
         # these six really do add up, and showing it says so without asserting.
         lines.append("  " + "-" * (width + 9))
@@ -1444,8 +1443,7 @@ def _phrase_history(name: str, label: str, period: str, history: list[dict[str, 
     years = f"{oldest}" if oldest == newest else f"{oldest}-{newest}"
     shown = f"career, {years}" if career else years
     lines = [f"{name}, {label} by {period}, {shown} (most recent first):", "  ".join(h.rjust(w) for h, w in zip(headers, widths, strict=True))]
-    for row in history:
-        lines.append("  ".join(_table_cell(row.get(k)).rjust(w) for k, w in zip(keys, widths, strict=True)))
+    lines.extend("  ".join(_table_cell(row.get(k)).rjust(w) for k, w in zip(keys, widths, strict=True)) for row in history)
     return "\n".join(lines)
 
 
@@ -1510,7 +1508,7 @@ def _eastern_day(day: str) -> tuple[str, str]:
     whenever it tipped after 7pm. The range follows daylight time
     (:func:`association.season.eastern_day_utc_range`), so a summer date-only
     stamp - midnight Eastern, 04:00Z - is found on the day it names."""
-    datetime.strptime(day, "%Y-%m-%d")  # the same ValueError on a malformed day as before
+    datetime.strptime(day, "%Y-%m-%d")  # noqa: DTZ007 - the same ValueError on a malformed day as before; the value is discarded
     return eastern_day_utc_range(day)
 
 
@@ -2123,7 +2121,7 @@ def _career_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span: _S
         values[per_game_col] = _rounded(row[4 + 2 * index])
         amount = row[5 + 2 * index]
         if total_col and amount is not None:
-            values[total_col] = int(round(amount))
+            values[total_col] = round(amount)
     return TemplateResult(
         data={"player": player.name, **scope, "stats": values},
         answer=_phrase_player_stat(player.name, f"career {span.kind}s", values, wanted, when=when),
@@ -2246,10 +2244,6 @@ FROM team_box_stats tbs
 JOIN real_games g ON g.event_id = tbs.event_id AND g.season = tbs.season
 JOIN teams opp ON opp.team_id = tbs.opponent_team_id
 """
-
-
-def _as_int(value: Any) -> str:
-    return str(int(value)) if isinstance(value, (int, float)) else str(value)
 
 
 def _ordinal(n: int) -> str:
@@ -3986,8 +3980,8 @@ def _linescores(raw: Any) -> list[int]:
     if not isinstance(raw, str) or not raw.strip():
         return []
     out = []
-    for part in raw.split(","):
-        part = part.strip()
+    for raw_part in raw.split(","):
+        part = raw_part.strip()
         if part:
             try:
                 out.append(int(part))
@@ -4406,7 +4400,7 @@ def _phrase_compare(rows: dict[str, dict[str, Any]], wanted: list[str], period: 
             entries.append((label, [_signed_cell(net.get(name, {}).get(column)) for name in names]))
 
     label_width = max(len(label) for label, _ in entries)
-    name_width = max(max(len(name) for name in names), *(len(cell) for _, cells in entries for cell in cells))
+    name_width = max(len(text) for text in (*names, *(cell for _, cells in entries for cell in cells)))
     # rstripped so the blank separator row is an empty line rather than a line
     # of spaces, which shows up as trailing whitespace wherever this is stored.
     lines = [f"{' vs '.join(names)}, {period}:", (f"{' ' * label_width}  " + "  ".join(name.rjust(name_width) for name in names)).rstrip()]

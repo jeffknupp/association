@@ -90,7 +90,7 @@ class AgentRunner:
 
         try:
             ollama.list()
-        except Exception:
+        except Exception:  # noqa: BLE001 - any failure to reach ollama means not ready, whatever the transport raised
             return False
         return True
 
