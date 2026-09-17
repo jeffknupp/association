@@ -5087,15 +5087,7 @@ def streak(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     con = ctx.con
     want_win = slots.get("kind") != "loss"
     stat, threshold = slots.get("stat"), slots.get("threshold")
-    column = THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
-    named_stat = isinstance(stat, str) and bool(stat.strip()) and stat.strip().casefold() not in _RESULT_STATS
-    has_threshold = isinstance(threshold, int) and not isinstance(threshold, bool)
-    if named_stat and column is None:
-        raise TemplateUnsupported(f"no per-game column for stat {stat!r}")
-    if has_threshold != (column is not None) or (isinstance(threshold, int) and threshold < 1):
-        raise TemplateUnsupported(f"a streak of a stat needs both a known stat and a positive threshold, got {stat!r}/{threshold!r}")
-    by_stat = column is not None
-    unit = f"{STAT_LABELS.get(stat or '', stat or '')}s"
+    column, by_stat, unit = _streak_kind(stat, threshold)
     result = "winning streak" if want_win else "losing streak"
     # A player's rows carry the stat as `value` (see conditions._player_streak_rows); a team's carry only `won`.
     hit = "x.value >= $threshold" if by_stat else "x.won = $want"
@@ -5107,54 +5099,156 @@ def streak(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
 
     name = slots.get("player")
     if isinstance(name, str) and name.strip():
-        scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), _PLAYER_GAME_TABLES)
-        player = _resolved_player(con, name, available=_BOX_SCORES, season=scope.season, through=_career_end(scope.season))
-        if isinstance(player, TemplateResult):
-            return player
-        params: dict[str, Any] = {**scope.params(), "player": player.id}
-        if team is not None:
-            params["team"] = team.id
-        base = _player_games(scope, extra=" AND pbs.team_id = $team" if team else "", box=box_source(con))
-        games, first, last = _totals(con, base, params)
-        if not games:
-            return _no_games(con, player, scope, team)
-        rows_sql = _player_streak_rows(scope, base, f"p.{column}" if by_stat else "NULL", box_source(con))
-        runs = _longest_runs(con, rows_sql, {**params, **condition}, ("athlete_id",), hit, 3, best_per_partition=False)
-        label = scope.label(first, last)
-        what = f"consecutive games with {threshold}+ {unit}" if by_stat else f"{result} in games he played"
-        rule = "Only games he played count: a game he missed neither extends the run nor ends it" + (", and a run carries on from one season into the next." if scope.season is None else ".")
-        rule += _UNSEEN_ENDS_RUN if _unseen(con, scope, base, params, box_source(con)) else ""
-        if not runs:
-            never = f"never had a game with {threshold}+ {unit}" if by_stat else f"never {'won' if want_win else 'lost'} a game he played"
-            return TemplateResult(data={"player": player.name, "span": label, "streaks": []}, answer=f"{player.name} {never} in the {label}.")
-        return _single_streak(f"{player.name}'s longest run of {what}" if by_stat else f"{player.name}'s longest {what}", label, runs, rule, scope, {"player": player.name})
+        return _streak_player(con, name, slots, span, team, by_stat, column, threshold, unit, want_win, result, hit, condition)
 
     if team is not None:
-        if by_stat:
-            raise TemplateUnsupported("a team's streak is of wins or losses, not of a stat")
-        scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), _TEAM_GAME_TABLES)
-        misfiled = _misfiled_postseason(scope)
-        if misfiled is not None:
-            return misfiled
-        params = {**scope.params(), "team": team.id}
-        base = _team_games(scope, " AND tbs.team_id = $team")
-        games, first, last = _totals(con, base, params)
-        label = scope.label(first, last)
-        if not games:
-            return TemplateResult(data={"team": team.name, "streaks": []}, answer=f"The warehouse has no games with a result for the {team.name} {_where_in(scope)}.")
-        runs = _longest_runs(con, base, {**params, **condition}, ("team_id", "season"), hit, 3, best_per_partition=False)
-        if not runs:
-            return TemplateResult(data={"team": team.name, "span": label, "streaks": []}, answer=f"The {team.name} did not {'win' if want_win else 'lose'} a game in the {label}.")
-        return _single_streak(
-            f"The {team.name}' longest {result}" if team.name.endswith("s") else f"The {team.name}'s longest {result}",
-            label,
-            runs,
-            "Streaks are counted within one season.",
-            scope,
-            {"team": team.name},
-        )
+        return _streak_team(con, slots, span, team, by_stat, want_win, result, hit, condition)
 
     # Nobody named: the league's longest, each team-season or player once.
+    return _streak_league(con, slots, span, by_stat, column, stat, threshold, unit, want_win, result, hit, condition)
+
+
+def _streak_kind(stat: Any, threshold: Any) -> tuple[str | None, bool, str]:
+    """Validate a streak's stat/threshold pair and derive its per-game column,
+    whether it is a stat streak at all (as against one of wins or losses), and
+    the unit its threshold is counted in.
+
+    Raises :class:`TemplateUnsupported` for a named stat with no per-game
+    column, or a stat/threshold pair that only half-names a condition -
+    "most consecutive double-doubles" must not come back as a win streak."""
+    column = THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
+    named_stat = isinstance(stat, str) and bool(stat.strip()) and stat.strip().casefold() not in _RESULT_STATS
+    has_threshold = isinstance(threshold, int) and not isinstance(threshold, bool)
+    if named_stat and column is None:
+        raise TemplateUnsupported(f"no per-game column for stat {stat!r}")
+    if has_threshold != (column is not None) or (isinstance(threshold, int) and threshold < 1):
+        raise TemplateUnsupported(f"a streak of a stat needs both a known stat and a positive threshold, got {stat!r}/{threshold!r}")
+    by_stat = column is not None
+    unit = f"{STAT_LABELS.get(stat or '', stat or '')}s"
+    return column, by_stat, unit
+
+
+def _streak_player(
+    con: duckdb.DuckDBPyConnection,
+    name: str,
+    slots: dict[str, Any],
+    span: Any,
+    team: Entity | None,
+    by_stat: bool,
+    column: str | None,
+    threshold: Any,
+    unit: str,
+    want_win: bool,
+    result: str,
+    hit: str,
+    condition: dict[str, Any],
+) -> TemplateResult:
+    """A named player's longest run of games meeting the condition."""
+    scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), _PLAYER_GAME_TABLES)
+    player = _resolved_player(con, name, available=_BOX_SCORES, season=scope.season, through=_career_end(scope.season))
+    if isinstance(player, TemplateResult):
+        return player
+    params: dict[str, Any] = {**scope.params(), "player": player.id}
+    if team is not None:
+        params["team"] = team.id
+    base = _player_games(scope, extra=" AND pbs.team_id = $team" if team else "", box=box_source(con))
+    games, first, last = _totals(con, base, params)
+    if not games:
+        return _no_games(con, player, scope, team)
+    rows_sql = _player_streak_rows(scope, base, f"p.{column}" if by_stat else "NULL", box_source(con))
+    runs = _longest_runs(con, rows_sql, {**params, **condition}, ("athlete_id",), hit, 3, best_per_partition=False)
+    label = scope.label(first, last)
+    what = f"consecutive games with {threshold}+ {unit}" if by_stat else f"{result} in games he played"
+    rule = "Only games he played count: a game he missed neither extends the run nor ends it" + (", and a run carries on from one season into the next." if scope.season is None else ".")
+    rule += _UNSEEN_ENDS_RUN if _unseen(con, scope, base, params, box_source(con)) else ""
+    if not runs:
+        never = f"never had a game with {threshold}+ {unit}" if by_stat else f"never {'won' if want_win else 'lost'} a game he played"
+        return TemplateResult(data={"player": player.name, "span": label, "streaks": []}, answer=f"{player.name} {never} in the {label}.")
+    return _single_streak(f"{player.name}'s longest run of {what}" if by_stat else f"{player.name}'s longest {what}", label, runs, rule, scope, {"player": player.name})
+
+
+def _streak_team(
+    con: duckdb.DuckDBPyConnection,
+    slots: dict[str, Any],
+    span: Any,
+    team: Entity,
+    by_stat: bool,
+    want_win: bool,
+    result: str,
+    hit: str,
+    condition: dict[str, Any],
+) -> TemplateResult:
+    """A named team's longest run of wins or losses in a season."""
+    if by_stat:
+        raise TemplateUnsupported("a team's streak is of wins or losses, not of a stat")
+    scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), _TEAM_GAME_TABLES)
+    misfiled = _misfiled_postseason(scope)
+    if misfiled is not None:
+        return misfiled
+    params = {**scope.params(), "team": team.id}
+    base = _team_games(scope, " AND tbs.team_id = $team")
+    games, first, last = _totals(con, base, params)
+    label = scope.label(first, last)
+    if not games:
+        return TemplateResult(data={"team": team.name, "streaks": []}, answer=f"The warehouse has no games with a result for the {team.name} {_where_in(scope)}.")
+    runs = _longest_runs(con, base, {**params, **condition}, ("team_id", "season"), hit, 3, best_per_partition=False)
+    if not runs:
+        return TemplateResult(data={"team": team.name, "span": label, "streaks": []}, answer=f"The {team.name} did not {'win' if want_win else 'lose'} a game in the {label}.")
+    return _single_streak(
+        f"The {team.name}' longest {result}" if team.name.endswith("s") else f"The {team.name}'s longest {result}",
+        label,
+        runs,
+        "Streaks are counted within one season.",
+        scope,
+        {"team": team.name},
+    )
+
+
+def _streak_league_by_stat(
+    con: duckdb.DuckDBPyConnection, scope: _Scope, column: str | None, threshold: Any, unit: str, hit: str, condition: dict[str, Any], limit: int
+) -> tuple[str, list[dict[str, Any]], str, list[str], str]:
+    """Each player's longest run of games meeting the stat threshold, one per player."""
+    base = _player_streak_rows(scope, _player_games(scope, player="", box=box_source(con)), f"p.{column}", box_source(con))
+    runs = _longest_runs(con, base, {**scope.params(), **condition}, ("athlete_id",), hit, limit, best_per_partition=True)
+    names = _names(con, "players", "athlete_id", [r["athlete_id"] for r in runs])
+    what, who = f"run of consecutive games with {threshold}+ {unit}", [names[r["athlete_id"]] for r in runs]
+    rule = "Each player's longest run, counting only games he played" + (", carried across seasons." if scope.season is None else ".")
+    rule += _UNSEEN_ENDS_RUN if _totals(con, _box_missing(scope, box_source(con)), scope.params())[0] else ""
+    return base, runs, what, who, rule
+
+
+def _streak_league_by_result(con: duckdb.DuckDBPyConnection, scope: _Scope, result: str, hit: str, condition: dict[str, Any], limit: int) -> tuple[str, list[dict[str, Any]], str, list[str], str]:
+    """Each team's longest run of wins or losses in a season, one per team-season."""
+    # Teams the `teams` table does not hold are exhibition opponents that
+    # turn up in a few regular-season rows (1992-2000), not franchises.
+    base = _team_games(scope, " AND tbs.team_id IN (SELECT team_id FROM teams)")
+    runs = _longest_runs(con, base, {**scope.params(), **condition}, ("team_id", "season"), hit, limit, best_per_partition=True)
+    names = _names(con, "teams", "team_id", [r["team_id"] for r in runs])
+    what = result
+    # Every run lies inside one season, so each is named as its team was
+    # that season. This used to add "franchises are named as they are
+    # today" to every all-seasons answer, which is what it was.
+    who = [season_name(r["team_id"], int(r["season"]), names[r["team_id"]]) + (f" ({r['season']})" if scope.season is None else "") for r in runs]
+    rule = "Each team's longest in a season, counted within that season."
+    return base, runs, what, who, rule
+
+
+def _streak_league(
+    con: duckdb.DuckDBPyConnection,
+    slots: dict[str, Any],
+    span: Any,
+    by_stat: bool,
+    column: str | None,
+    stat: Any,
+    threshold: Any,
+    unit: str,
+    want_win: bool,
+    result: str,
+    hit: str,
+    condition: dict[str, Any],
+) -> TemplateResult:
+    """The league's longest run with nobody named: one per player (a stat
+    streak) or one per team-season (a win/loss streak)."""
     tables = _PLAYER_GAME_TABLES if by_stat else _TEAM_GAME_TABLES
     scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), tables)
     misfiled = _misfiled_postseason(scope)
@@ -5162,24 +5256,9 @@ def streak(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         return misfiled
     limit = _clamp_limit(slots.get("limit"), _DEFAULT_STREAK_LIMIT)
     if by_stat:
-        base = _player_streak_rows(scope, _player_games(scope, player="", box=box_source(con)), f"p.{column}", box_source(con))
-        runs = _longest_runs(con, base, {**scope.params(), **condition}, ("athlete_id",), hit, limit, best_per_partition=True)
-        names = _names(con, "players", "athlete_id", [r["athlete_id"] for r in runs])
-        what, who = f"run of consecutive games with {threshold}+ {unit}", [names[r["athlete_id"]] for r in runs]
-        rule = "Each player's longest run, counting only games he played" + (", carried across seasons." if scope.season is None else ".")
-        rule += _UNSEEN_ENDS_RUN if _totals(con, _box_missing(scope, box_source(con)), scope.params())[0] else ""
+        base, runs, what, who, rule = _streak_league_by_stat(con, scope, column, threshold, unit, hit, condition, limit)
     else:
-        # Teams the `teams` table does not hold are exhibition opponents that
-        # turn up in a few regular-season rows (1992-2000), not franchises.
-        base = _team_games(scope, " AND tbs.team_id IN (SELECT team_id FROM teams)")
-        runs = _longest_runs(con, base, {**scope.params(), **condition}, ("team_id", "season"), hit, limit, best_per_partition=True)
-        names = _names(con, "teams", "team_id", [r["team_id"] for r in runs])
-        what = result
-        # Every run lies inside one season, so each is named as its team was
-        # that season. This used to add "franchises are named as they are
-        # today" to every all-seasons answer, which is what it was.
-        who = [season_name(r["team_id"], int(r["season"]), names[r["team_id"]]) + (f" ({r['season']})" if scope.season is None else "") for r in runs]
-        rule = "Each team's longest in a season, counted within that season."
+        base, runs, what, who, rule = _streak_league_by_result(con, scope, result, hit, condition, limit)
     # The span searched, not the seasons the leaders' runs happen to fall in:
     # "1997-2023" under a question about every season reads as a narrower search.
     _, first, last = _totals(con, base, scope.params())
