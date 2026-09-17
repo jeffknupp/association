@@ -33,6 +33,7 @@ classifiers = [
 ]
 dependencies = [
     "boto3>=1.34",
+    "botocore>=1.34",
     "click>=8.1",
     "curl_cffi>=0.7",
     "duckdb>=1.0",
@@ -53,6 +54,7 @@ association = "association.cli:main"
 
 [project.optional-dependencies]
 dev = [
+    "deptry>=0.23",
     "httpx>=0.27",
     "mypy>=2.3.1",
     "pre-commit>=4.6.2",
@@ -64,6 +66,7 @@ dev = [
 docs = [
     "furo>=2024.8.6",
     "myst-parser>=4.0",
+    "packaging>=24",
     "sphinx>=8.1,<9",
     "sphinx-autodoc-typehints>=2.5",
     "sphinx-click>=6.0",
@@ -71,6 +74,7 @@ docs = [
 ]
 web = [
     "fastapi>=0.115",
+    "pydantic>=2",
     "uvicorn>=0.30",
 ]
 
@@ -118,6 +122,24 @@ ignore = [
 # (framework-registered callbacks, public API) are named in the whitelist.
 paths = ["src", "tests", "scripts", "vulture_whitelist.py"]
 min_confidence = 60
+
+[tool.deptry]
+# Everything that imports a package: the shipped code, the maintenance scripts
+# and the Sphinx config. tests/ stays excluded (deptry's default), since it
+# imports dev-only packages by design.
+known_first_party = [
+    "association",
+    # scripts/bench_router_models.py imports its sibling script.
+    "check_routing",
+]
+# Tools that are run rather than imported (pytest, mypy, sphinx, ...) are
+# never reported as unused, and importing one from src would be reported.
+optional_dependencies_dev_groups = ["dev", "docs"]
+
+[tool.deptry.per_rule_ignores]
+# docs/conf.py is the docs extra's own code: importing that extra is the point
+# there, not a dev dependency leaking into the package.
+DEP004 = ["packaging", "sphinx_autodoc_typehints"]
 
 [tool.mypy]
 python_version = "3.10"

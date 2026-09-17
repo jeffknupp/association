@@ -20,7 +20,7 @@ we do about it. Read `DATA.md` before trusting a column.
 ## Before you commit
 
 ```bash
-uv run pre-commit run --all-files   # all ten gates
+uv run pre-commit run --all-files   # all eleven gates
 uv run pytest -q                    # fully offline: no network, no ollama
 ```
 
@@ -100,6 +100,12 @@ Add to the `## Unreleased` section.
   calls goes in `vulture_whitelist.py` with a comment naming its real caller.
   Tests count as callers, so a function kept alive only by its own test passes
   the gate; delete it rather than relying on that.
+- **Import only what is declared (deptry).** A package imported directly
+  must be named in `pyproject.toml`, even when another dependency already
+  pulls it in - `botocore` arrives with `boto3` and `pydantic` with `fastapi`,
+  and both are declared anyway, because a release of either that stopped
+  bundling them would otherwise break at import time with nothing in this repo
+  having changed. A dev or docs tool goes in its extra, never in the core list.
 - **American spelling.** "defense", "offense", "serialize". British spellings
   have drifted in before and were removed wholesale in `c09d6f7`.
 - **Every public module, class and function needs a docstring** — a separate

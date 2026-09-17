@@ -15,6 +15,11 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Every imported package is declared.** `botocore` (imported by the
+  NetPoints client) is now a core dependency and `pydantic` (imported by the
+  web API) is in the `web` extra; both used to arrive only through `boto3` and
+  `fastapi`. The `docs` extra names `packaging`, which `docs/conf.py` imports.
+  Nothing new is installed. deptry now checks this in pre-commit and CI.
 - **Dead code is now a gate.** vulture runs in pre-commit and CI at its lowest
   confidence, with the names only a framework calls listed, each with its
   caller, in `vulture_whitelist.py`. Its one real finding is removed:

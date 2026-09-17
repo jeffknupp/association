@@ -55,6 +55,13 @@ repos:
         language: system
         pass_filenames: false
         types: [python]
+      # Imports against declared dependencies. Settings in [tool.deptry].
+      - id: deptry
+        name: dependency declarations (deptry)
+        entry: .venv/bin/deptry .
+        language: system
+        pass_filenames: false
+        files: ^(src/.*\.py|scripts/.*\.py|docs/conf\.py|pyproject\.toml)$
       - id: duplicate-names
         name: one concept, one definition
         entry: scripts/check_duplicate_names.py

@@ -53,6 +53,11 @@ jobs:
         # are in vulture_whitelist.py, each with its caller.
         run: uv run vulture
 
+      - name: Dependency declarations (deptry)
+        # Every import in src, scripts and docs/conf.py is declared, and every
+        # core dependency is imported. Settings in [tool.deptry].
+        run: uv run deptry .
+
       - name: One concept, one definition
         # Cross-module constant collisions, against an allowlist of the ones
         # already filed - so this fails only on a NEW one. Ruff's F811 covers
