@@ -25,6 +25,7 @@ import pytest
 
 from association.fetch.repairs import real_games
 from association.fetch.repairs.reconstructed_box import _FILLED_COLUMNS as FILLED_COLUMNS
+from association.nba.season import current_season
 from association.query.conditions import RAW_BOX, UNGATED_ON_REBUILD, box_source
 from association.query.templates import (
     REBUILT_STATS,
@@ -39,7 +40,6 @@ from association.query.templates import (
     streak,
     with_without,
 )
-from association.season import current_season
 
 S = current_season()
 BOS, LAL, PHI = "2", "13", "20"
@@ -588,9 +588,9 @@ def test_the_split_kinds_are_the_ones_the_router_reads() -> None:
 def test_every_query_eastern_date_is_the_shared_rule() -> None:
     """Six copies of a five-hour shift lived here once; a daylight-time rule
     copied six times is six places for it to drift."""
+    from association.nba.season import eastern_date_sql
     from association.query.conditions import _eastern_day
     from association.query.team_metrics import TEAM_GAMES_SQL
-    from association.season import eastern_date_sql
 
     assert _eastern_day("g.date") == eastern_date_sql("g.date")
     assert eastern_date_sql("g.date") in TEAM_GAMES_SQL

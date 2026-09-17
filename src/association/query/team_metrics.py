@@ -45,8 +45,8 @@ from typing import Any
 
 import duckdb
 
-from association.franchises import season_name_sql
-from association.season import eastern_date_sql
+from association.nba.franchises import season_name_sql
+from association.nba.season import eastern_date_sql
 
 
 @dataclass(frozen=True)

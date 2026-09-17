@@ -16,11 +16,14 @@ game, at 25.8. Next: Bill Cartwright (21.7)" - fluent, confident, and drawn
 from a league of seven players.
 
 The floors are also NOT arithmetic a model should do. They live here, next to
-:func:`association.season.current_season`, for the same reason relative-date
+:func:`association.nba.season.current_season`, for the same reason relative-date
 resolution does: a lookup against a fixed table is code, and putting it in a
 prompt would spend tokens on every question to buy a 3B model's arithmetic.
 
 .. versionadded:: 2.1.0
+
+.. versionchanged:: 3.0.0
+   Moved from ``association.coverage``.
 """
 
 from __future__ import annotations

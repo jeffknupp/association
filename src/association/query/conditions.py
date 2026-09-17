@@ -32,7 +32,7 @@ against the warehouse rather than assumed:
 - **A game happens on its US Eastern date.** ``games.date`` is a UTC tip
   time, so a 7:30pm Eastern tip lands on the next calendar day, and a split by
   month would put a March 31st game in April. Read through
-  :func:`~association.season.eastern_date_sql`, the same real Eastern clock
+  :func:`~association.nba.season.eastern_date_sql`, the same real Eastern clock
   ``fetch.parse`` uses to match NetPoints files to games - not a fixed
   five-hour shift, which gets a game with no stored tip time (ESPN's midnight
   Eastern placeholder) wrong in the summer.
@@ -47,7 +47,7 @@ against the warehouse rather than assumed:
   apply ``winner_team_id IS NOT NULL`` and nothing else, which caught the
   placeholders and no other kind.
 
-Season 1993 is a copy of 1994 (see :mod:`association.coverage`), so a span of
+Season 1993 is a copy of 1994 (see :mod:`association.nba.coverage`), so a span of
 several seasons leaves it out rather than counting 1993-94 twice.
 
 .. versionadded:: 2.1.0
@@ -62,8 +62,8 @@ from typing import Any
 
 import duckdb
 
-from association.coverage import COVERAGE
-from association.season import eastern_date_sql
+from association.nba.coverage import COVERAGE
+from association.nba.season import eastern_date_sql
 
 _SEASON_TYPE_WORDS = {2: "regular season", 3: "postseason"}
 
@@ -189,7 +189,7 @@ class _Scope:
     """The games a question covers: one season, or every season on record.
 
     ``first`` and ``phantoms`` only matter for the second, and come from
-    :data:`association.coverage.COVERAGE`: a span of seasons starts where the
+    :data:`association.nba.coverage.COVERAGE`: a span of seasons starts where the
     narrowest table does - the floor ``check_coverage`` refuses a single
     season under - and never counts a phantom season."""
 

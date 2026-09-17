@@ -41,7 +41,7 @@ How far back the data goes
 
 A season is named for the year it ends, so 1993-94 is ``1994``. Each kind of
 data starts in a different season, and the gaps are ESPN's: its endpoints
-return nothing earlier, so no pull fills them in. :mod:`association.coverage`
+return nothing earlier, so no pull fills them in. :mod:`association.nba.coverage`
 holds these floors, and :doc:`usage` says what a question below one gets.
 
 .. list-table::

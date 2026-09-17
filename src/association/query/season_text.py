@@ -17,12 +17,12 @@ from __future__ import annotations
 
 import re
 
-from association.season import current_season
+from association.nba.season import current_season
 
 MIN_SEASON = 1947
 """The earliest year read as a season: the league's first (1946-47).
 
-Deliberately not a data floor. Those live in :mod:`association.coverage`,
+Deliberately not a data floor. Those live in :mod:`association.nba.coverage`,
 where a season below a table's first one is refused, with the reason. At 1990
 this dropped every earlier year before the coverage check could see it, and
 "who led the league in scoring in 1980" was answered with the current

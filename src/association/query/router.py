@@ -26,7 +26,7 @@ from typing import Any
 
 import ollama
 
-from association.season import current_season
+from association.nba.season import current_season
 
 from .keepalive import KEEP_ALIVE
 from .router_prompt import ROUTER_NUM_CTX, ROUTER_PROMPT, ROUTER_SCHEMA
@@ -291,7 +291,7 @@ def _validate_date(question: str, season: int | None) -> str | None:
     The year is not in the question and does not need to be, because a season
     fixes it: season Y runs from October of Y-1 through June of Y, so October
     to December belong to ``season - 1`` and January onward to ``season``. That
-    is this project's own numbering (:func:`~association.season.current_season`)
+    is this project's own numbering (:func:`~association.nba.season.current_season`)
     applied to a month, not a guess - "Desmond bane march 17" against season
     2026 is 2026-03-17, and `game_log` answers it with that game.
 

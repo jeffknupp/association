@@ -21,14 +21,14 @@ import pyarrow.parquet as pq
 from curl_cffi import requests as cf_requests
 from tqdm import tqdm
 
-from association.season import current_season
+from association.nba.season import current_season
 
 from . import endpoints, parse, storage
 from .netpoints_client import NetPointsDailyClient
 
 log: logging.Logger = logging.getLogger("association.fetch.pipeline")
 # ESPN's season-type code for the playoffs. Defined here rather than imported
-# from association.coverage, which also holds it: `fetch` depends on nothing in
+# from association.nba.coverage, which also holds it: `fetch` depends on nothing in
 # the query layer today (only `season` and `net_points_categories`), and this
 # is the source's own wire code - the same 3 the CLI passes in --season-types
 # and _run_season_type takes as a parameter - not a coverage policy.

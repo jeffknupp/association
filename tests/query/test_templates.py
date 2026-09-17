@@ -8,6 +8,7 @@ import duckdb
 import pytest
 
 from association.fetch.repairs import real_games
+from association.nba.season import current_season
 from association.query import shotchart
 from association.query.entities import MAX_CANDIDATES
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
@@ -34,7 +35,6 @@ from association.query.templates import (
     team_record,
     threshold_count,
 )
-from association.season import current_season
 
 
 @pytest.fixture
@@ -1831,7 +1831,7 @@ def test_leaderboard_refuses_when_a_player_is_named(lb_con: TemplateContext) -> 
 
 @pytest.fixture
 def np_ctx(tmp_path: Path) -> TemplateContext:
-    from association.net_points_categories import FINGERPRINT_CATEGORIES
+    from association.nba.netpoints import FINGERPRINT_CATEGORIES
 
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
@@ -2106,7 +2106,7 @@ def test_shot_distance_scopes_to_one_game(sc_ctx: TemplateContext) -> None:
 
 @pytest.fixture
 def fp_ctx(tmp_path: Path) -> TemplateContext:
-    from association.net_points_categories import FINGERPRINT_CATEGORIES
+    from association.nba.netpoints import FINGERPRINT_CATEGORIES
 
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")

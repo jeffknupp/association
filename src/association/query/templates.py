@@ -18,11 +18,11 @@ from typing import Any
 
 import duckdb
 
-from association.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON, caveat, unavailable
-from association.franchises import season_name, season_name_sql
-from association.net_points_categories import FINGERPRINT_CATEGORIES
-from association.season import current_season, eastern_day_utc_range
-from association.season import eastern_date as _eastern_date
+from association.nba.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON, caveat, unavailable
+from association.nba.franchises import season_name, season_name_sql
+from association.nba.netpoints import FINGERPRINT_CATEGORIES
+from association.nba.season import current_season, eastern_day_utc_range
+from association.nba.season import eastern_date as _eastern_date
 
 from .answer import Artifact
 from .conditions import (

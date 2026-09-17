@@ -12,7 +12,7 @@ from pathlib import Path
 
 import duckdb
 
-from association.franchises import season_name_sql
+from association.nba.franchises import season_name_sql
 
 from . import advanced_stats
 from .repairs import game_repair, real_games, reconstructed_box, season_totals_repair, team_box_repair

@@ -167,14 +167,14 @@ exclude_type_checking_imports = true
 name = "Package layers"
 type = "layers"
 # Higher layers may import lower ones, never the reverse. `|` marks siblings
-# that must not import each other either. The bottom row imports nothing
-# internal at all, which is what lets fetch and query share it.
+# that must not import each other either. The bottom row, association.nba,
+# imports nothing internal at all, which is what lets fetch and query share it.
 layers = [
     "association.cli",
     "association.web",
     "association.query | association.check",
     "association.fetch",
-    "association.coverage | association.season | association.franchises | association.net_points_categories",
+    "association.nba",
 ]
 
 [[tool.importlinter.contracts]]
@@ -209,10 +209,7 @@ source_modules = [
     "association.query",
     "association.fetch",
     "association.check",
-    "association.coverage",
-    "association.season",
-    "association.franchises",
-    "association.net_points_categories",
+    "association.nba",
 ]
 forbidden_modules = ["fastapi", "uvicorn", "pydantic"]
 

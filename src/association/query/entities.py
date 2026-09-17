@@ -29,8 +29,8 @@ from typing import Any
 
 import duckdb
 
-from association.franchises import FRANCHISE_ERAS, FranchiseEra, season_name
-from association.season import current_season
+from association.nba.franchises import FRANCHISE_ERAS, FranchiseEra, season_name
+from association.nba.season import current_season
 
 MAX_CANDIDATES = 10
 

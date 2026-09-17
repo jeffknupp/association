@@ -17,7 +17,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from association.net_points_categories import FINGERPRINT_CATEGORIES
+from association.nba.netpoints import FINGERPRINT_CATEGORIES
 from association.query.answer import RenderResult
 from association.query.entities import Entity
 from association.query.fingerprint import (

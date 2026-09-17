@@ -236,13 +236,12 @@ for how the warehouse and query engine are built from it.
 
 ```
 src/association/
-  cli.py            entrypoint: data pull|load|check, query, web
-  coverage.py       the season each table's data starts in, and the refusal for a season before it
-  season.py         season naming, the current season, and US Eastern game dates
-  franchises.py     each franchise's names by season (Seattle, New Jersey, Charlotte/New Orleans, ...)
-  fetch/            client, endpoints, parse, storage, pipeline, warehouse, and the load-time repairs of ESPN's faults
+  cli/              the `association` command (commands.py) and the default warehouse/data paths (paths.py)
+  nba/              what fetch and query both need to know: seasons and Eastern dates, franchise names by season, each table's coverage floor, NetPoints categories
+  fetch/            client, endpoints, parse, storage, pipeline, warehouse
+    repairs/        load-time repairs of ESPN's faults, and the filtered game list and rebuilt box lines
   check/            data coverage report, cross-checked live against ESPN
-  query/            intent router, query templates, entity resolution, leaderboard, conditions (splits, with/without, streaks), leaderboard and team metrics, shot chart, fingerprint, prompt/knowledge base, tools, court and radar renderers, agent loop
+  query/            intent router (router.py, and what the model is told in router_prompt.py), query templates, entity resolution, leaderboard, conditions (splits, with/without, streaks), team metrics, shot chart, fingerprint, prompt/knowledge base, tools, court and radar renderers, agent loop
   web/              the local web interface: HTTP API, one-at-a-time runner, single-page app
 scripts/
   backfill_markers.sh   re-derive completion markers for data fetched before they existed

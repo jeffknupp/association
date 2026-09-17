@@ -29,7 +29,7 @@ import sys
 import duckdb
 
 from association.cli.paths import default_db_path
-from association.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON, Coverage
+from association.nba.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON, Coverage
 
 # A season holding less than this share of the table's median season is a
 # fragment, not a season. Generous on purpose: a real lockout season (1999's 50

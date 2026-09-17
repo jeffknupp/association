@@ -37,7 +37,7 @@ keeping that visible:
   (:mod:`association.fetch.advanced_stats`), rather than ESPN's camelCase. A
   column named ``field_goals_made`` cannot be mistaken for ``fieldGoalsMade``
   at a glance, which is the point.
-- **No** :mod:`association.coverage` **entry.** Floors exist to refuse
+- **No** :mod:`association.nba.coverage` **entry.** Floors exist to refuse
   questions, and no template reads this, so there is no question to refuse.
 
 **A player who appears in no play is absent, not zero.** Minutes are gone, so

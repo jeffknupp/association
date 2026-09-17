@@ -26,8 +26,8 @@ from typing import Any
 
 import duckdb
 
-from association.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON
-from association.season import current_season
+from association.nba.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON
+from association.nba.season import current_season
 
 from .entities import Ambiguous, Entity, NotFound, resolve_team
 from .metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS, CareerAggregate, LeaderboardMetric

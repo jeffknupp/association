@@ -107,8 +107,8 @@ Each owns one question shape and builds its own SQL, with every correctness
 rule in code rather than in prose: season defaults, traded-player dedup,
 minimum-sample floors, the home/away perspective flip, the string
 ``season_type`` that NetPoints uses, the season each table's data starts in
-(:mod:`association.coverage`), and dating a game by its US Eastern day rather
-than ESPN's UTC timestamp (:func:`association.season.eastern_date`). They phrase their own answers, so the
+(:mod:`association.nba.coverage`), and dating a game by its US Eastern day rather
+than ESPN's UTC timestamp (:func:`association.nba.season.eastern_date`). They phrase their own answers, so the
 common case is a single model call end to end.
 
 **The agent** (:mod:`association.query.agent`) is the fall-through for

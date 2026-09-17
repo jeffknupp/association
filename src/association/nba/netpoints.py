@@ -2,7 +2,11 @@
 fetch pipeline (parse.py, building the 66 column names it writes) and the
 query engine (metrics.py, building the matching get_leaderboard entries) need
 the exact same source-category -> our-column-prefix mapping, so it lives here
-once rather than being duplicated (and risking drift) in both places."""
+once rather than being duplicated (and risking drift) in both places.
+
+.. versionchanged:: 3.0.0
+   Moved from ``association.net_points_categories``.
+"""
 
 from __future__ import annotations
 

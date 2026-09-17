@@ -7,8 +7,8 @@ covered the current season instead.
 
 import pytest
 
+from association.nba.season import current_season
 from association.query.season_text import season_from_text
-from association.season import current_season
 
 
 @pytest.mark.parametrize(

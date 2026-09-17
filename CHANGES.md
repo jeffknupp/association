@@ -22,6 +22,11 @@ had no published version to be compatible with.
     `association.cli.commands`, and `association.repo_paths` is now
     `association.cli.paths`. `association.cli:main` (the console entry point)
     and `association.cli:cli` resolve as before.
+  - The modules both `fetch` and `query` read moved from the package root
+    into `association.nba`: `association.season`, `association.coverage`
+    and `association.franchises` are now `association.nba.season`,
+    `association.nba.coverage` and `association.nba.franchises`, and
+    `association.net_points_categories` is `association.nba.netpoints`.
   - The load-time repairs and filtered tables moved under
     `association.fetch.repairs`: `game_repair`, `team_box_repair`,
     `season_totals_repair`, `reconstructed_box` and `real_games`.

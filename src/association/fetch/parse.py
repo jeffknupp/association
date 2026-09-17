@@ -16,8 +16,8 @@ from datetime import datetime as _datetime
 from datetime import timedelta as _timedelta
 from typing import Any
 
-from association.net_points_categories import FINGERPRINT_CATEGORIES
-from association.season import eastern_date
+from association.nba.netpoints import FINGERPRINT_CATEGORIES
+from association.nba.season import eastern_date
 
 TEAM_REF_RE = re.compile(r"/teams/(\d+)")
 

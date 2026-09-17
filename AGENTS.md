@@ -468,7 +468,7 @@ load-bearing:
   tips - and false of the stamps that are not tips. ESPN stores a game with no
   tip time as *midnight* Eastern (`04:00Z` in summer), exactly the hour the
   shift gets wrong, and 391 games, the whole 1989-1992 postseason among them,
-  printed a day early. `season.py` holds the US daylight-time rules by hand
+  printed a day early. `nba/season.py` holds the US daylight-time rules by hand
   (so a machine with no tz database still dates games), a test checks them
   against zoneinfo for every day 1976-2039, and **every** stamp-to-date
   conversion goes through `eastern_date`, `eastern_date_sql` or
@@ -587,7 +587,7 @@ everything about it is constrained by things measured elsewhere in this file.
 ## Data gotchas
 
 - **A season is named for the year it ends.** 2023-24 is season `2024`. See
-  `season.py`.
+  `nba/season.py`.
 - **NetPoints tables disagree with each other about `season_type`.**
   `net_points_player` uses its own *string* column (`net_points_season_type`,
   e.g. "Regular Season"); `net_points_player_game` and
@@ -625,7 +625,7 @@ everything about it is constrained by things measured elsewhere in this file.
 - **Each table starts in a different year, and the gaps are ESPN's, not ours.**
   A question is only answerable as far back as its *narrowest* table, and there
   is no pull that fills these in. **`DATA.md` ("Coverage floors") has the table
-  and what is before each floor**; `association/coverage.py` is the enforced
+  and what is before each floor**; `association/nba/coverage.py` is the enforced
   copy. Three rules to carry while writing code:
   - **Select a postseason by the calendar year it was played in, never by
     label** (`templates._season_games`, `team_metrics.games_scope`,
@@ -675,7 +675,7 @@ everything about it is constrained by things measured elsewhere in this file.
   so those two seasons are not this fault at all.
 - Query connections to DuckDB are **read-only**, as a hard guarantee.
 
-**Those floors are enforced, not just documented.** `association/coverage.py`
+**Those floors are enforced, not just documented.** `association/nba/coverage.py`
 holds them as a table — `COVERAGE`, one entry per queryable table — and
 `templates.check_coverage()` refuses a question that lands under one. Add an
 entry whenever a template reads a new table, and declare the template's tables

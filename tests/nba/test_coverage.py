@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from association.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON, caveat, unavailable
+from association.nba.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON, caveat, unavailable
 from association.query.prompt import KNOWN_TABLES
 from association.query.templates import RANKING_INTENTS, TEMPLATE_SOURCES, TEMPLATES, check_coverage, coverage_caveat
 

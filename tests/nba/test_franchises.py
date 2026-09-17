@@ -5,7 +5,7 @@ import itertools
 import duckdb
 import pytest
 
-from association.franchises import FRANCHISE_ERAS, era_of, season_name, season_name_sql
+from association.nba.franchises import FRANCHISE_ERAS, era_of, season_name, season_name_sql
 
 
 @pytest.mark.parametrize(

@@ -12,6 +12,9 @@ A neutral module rather than part of ``query``, because both packages need it:
 query templates name them everywhere else. Same reason ``season.py`` exists.
 
 .. versionadded:: 2.2.0
+
+.. versionchanged:: 3.0.0
+   Moved from ``association.franchises``.
 """
 
 from __future__ import annotations

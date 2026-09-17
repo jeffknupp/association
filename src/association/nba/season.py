@@ -2,7 +2,11 @@
 applied to today's real date - shared between the fetch pipeline (deciding
 whether a season-aggregate endpoint is still "live" and needs refreshing)
 and the query engine (defaulting an unspecified season to the current one),
-so neither package has to depend on the other for it."""
+so neither package has to depend on the other for it.
+
+.. versionchanged:: 3.0.0
+   Moved from ``association.season``.
+"""
 
 from __future__ import annotations
 

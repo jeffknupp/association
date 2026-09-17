@@ -70,7 +70,7 @@ _TEAM_TOTALS_CTE = """
                SUM(turnovers) AS team_tov
         FROM player_box_stats
         -- season too: the phantom 1993 season shares its event ids with 1994
-        -- (see coverage.py), and grouping on event_id alone summed both copies.
+        -- (see nba/coverage.py), and grouping on event_id alone summed both copies.
         GROUP BY event_id, season, team_id
     )
 """

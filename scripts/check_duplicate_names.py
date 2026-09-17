@@ -50,7 +50,7 @@ ALLOWED: dict[str, str] = {
     # "total", twice. No entry of its own: it is one literal in two modules
     # that never import each other, and #83 covers the pattern.
     "FINGERPRINT_SUMMARY_CATEGORY": "",
-    # ESPN's season-type code. coverage.py holds it for the query layer;
+    # ESPN's season-type code. nba/coverage.py holds it for the query layer;
     # fetch/pipeline.py holds its own so `fetch` depends on nothing above it -
     # a deliberate duplication of a wire constant, not a drifting fact.
     "POSTSEASON": "",

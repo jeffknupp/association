@@ -35,7 +35,7 @@ from typing import Any
 
 import duckdb
 
-from association.season import current_season, eastern_date
+from association.nba.season import current_season, eastern_date
 
 from .answer import Artifact, RenderResult
 from .entities import Ambiguous, Availability, Entity, clarification, no_match

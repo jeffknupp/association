@@ -189,6 +189,6 @@ def test_the_real_games_eastern_day_is_the_shared_rule() -> None:
     """The Eastern date a duplicate is judged on has to be the same one the
     NetPoints matcher and every answer use, or two parts of the warehouse
     disagree about which day a game happened."""
-    from association.season import eastern_date_sql
+    from association.nba.season import eastern_date_sql
 
     assert eastern_date_sql("g.date") in real_games.real_games_sql(box_scores=True)

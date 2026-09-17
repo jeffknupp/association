@@ -993,7 +993,7 @@ found.
   is still at `templates.py:1008` (`_career_leaderboard`, raising
   `TemplateUnsupported("franchise career leaderboards are not supported")`),
   but "the rule for relocated franchises is open" is now decided elsewhere:
-  `association/franchises.py` established that an ESPN `team_id` belongs to
+  `association/nba/franchises.py` established that an ESPN `team_id` belongs to
   the franchise, not the name, so a per-`team_id` sum already follows a
   relocation correctly. What remains is mechanical, not a decision: lift the
   refusal, title the resulting list by the franchise's era (using

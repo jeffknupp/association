@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta, timezone
 import duckdb
 import pytest
 
-from association.season import eastern_date, eastern_date_sql, eastern_day_utc_range
+from association.nba.season import eastern_date, eastern_date_sql, eastern_day_utc_range
 
 
 def test_a_game_is_dated_by_the_day_it_was_played() -> None:

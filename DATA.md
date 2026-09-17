@@ -729,7 +729,7 @@ the parser throws the grouping away. The birth-date half stands.
     1988-1992 alone (1988 RS 11 / PO 62, 1989 PO 72, 1990 PO 68, 1991 RS 8 / PO
     73, 1992 RS 9 / PO 76). A fixed five-hour shift meant for a real tip time
     moved every summer (`T04:00Z`, EDT) one to the day BEFORE, and did so until
-    2026-09-16: `season.py` now reads the real Eastern clock, which puts all
+    2026-09-16: `nba/season.py` now reads the real Eastern clock, which puts all
     391 (these 379 plus 2000-2001's 12) on their written date - 318 of 318
     whose old-format event id encodes the date agree with it. The same stamp
     in 2026 is not date-only: its ten `T04:00Z` rows all fall in November-March,
@@ -767,7 +767,7 @@ the parser throws the grouping away. The birth-date half stands.
   `team_metrics.TEAM_GAMES_SQL`, the team
   `game_log` and `team_quarter_points` all read it instead of `games`. It does
   NOT collapse season 1993, which is a phantom SEASON rather than a phantom row
-  — that stays with `coverage.py` and the cross-season `QUALIFY` in
+  — that stays with `nba/coverage.py` and the cross-season `QUALIFY` in
   `TEAM_GAMES_SQL`. Until 2026-09-14 each path filtered a different subset:
   `TEAM_GAMES_SQL` dropped placeholders and same-day duplicates but kept every
   phantom that had a winner, `conditions` filtered only on
@@ -864,9 +864,9 @@ consistently, which is exactly what makes it dangerous: the data looks healthy.
 ### A season is named for the year it ends
 
 - **What ESPN does:** labels 2023-24 as season `2024`.
-- **Evidence:** consistent across every table from 1994 on. See `season.py`.
+- **Evidence:** consistent across every table from 1994 on. See `nba/season.py`.
 - **Does a refetch fix it?** **Not applicable** — a convention, not a fault.
-- **How we handle it:** `season.py` is the single place that knows.
+- **How we handle it:** `nba/season.py` is the single place that knows.
 - **Tracked in:** no action needed.
 
 ### Before 1993-94, ESPN labels a season by the year it STARTED
@@ -901,7 +901,7 @@ consistently, which is exactly what makes it dangerous: the data looks healthy.
   the 1992-93 season.
 - **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull**, which
   reproduced `games` exactly.
-- **How we handle it:** `coverage.py` declares 1993 a `phantom` rather than
+- **How we handle it:** `nba/coverage.py` declares 1993 a `phantom` rather than
   merely excluding it, so `check_coverage.py` can verify the duplication
   instead of reading a full-looking season as a floor set too high. **Joins
   over this era must key on `season` as well as `event_id`** — a game log that
@@ -1209,7 +1209,7 @@ Re-verified 2026-09-11, counting **distinct regular-season players**: **2 in
 1977, 7 in 1980, 141 in 1988, 217 in 1990, 403 in 1994**. (`AGENTS.md`
 previously gave "5 in 1977, 240 in 1988, 668 in 1994"; those are *row* counts
 across both season types — confirmed: 5, 240 and 668 rows respectively — and
-the distinct-player figures are the ones `coverage.py` uses.) It is a survivor
+the distinct-player figures are the ones `nba/coverage.py` uses.) It is a survivor
 sample, not league-wide coverage: a leaderboard over it before ~1994 measures
 who played longest. Kareem Abdul-Jabbar, Larry Bird and Julius Erving are not
 in `players` at all, and before the floors existed "who led the league in
@@ -1220,7 +1220,7 @@ scoring in 1980" answered "Moses Malone, at 25.8. Next: Bill Cartwright (21.7)"
 `player_season_stats` twice. ESPN holds Michael Jordan's real 1990 line, so his
 own average is answerable; ranking that season is not.
 
-These floors are **enforced, not just documented** — `association/coverage.py`
+These floors are **enforced, not just documented** — `association/nba/coverage.py`
 holds them as a table and `templates.check_coverage()` refuses a question that
 lands under one. `scripts/check_coverage.py` verifies every floor against a
 built warehouse. See `AGENTS.md` for the rules an agent must follow when adding

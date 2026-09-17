@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from association.net_points_categories import FINGERPRINT_CATEGORIES, FINGERPRINT_SIDE_LABELS
+from association.nba.netpoints import FINGERPRINT_CATEGORIES, FINGERPRINT_SIDE_LABELS
 
 __all__ = [
     "BOX_SCORE_METRIC_NAMES",

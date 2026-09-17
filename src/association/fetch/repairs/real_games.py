@@ -43,7 +43,7 @@ before it was written:
   are winter games and carry 05:00Z.
 - **"No box score" alone would delete the 1988-1992 archive.** Every one of
   those 595 games is stored date-only and none has a player box score, because
-  ESPN publishes none before 1993-94 - and ``coverage.py`` declares the
+  ESPN publishes none before 1993-94 - and ``nba/coverage.py`` declares the
   postseason answerable from 1989. So the rule fires only where the season and
   season_type have box scores at all, which is what separates a phantom from a
   game that is simply older than the box scores. It also leaves alone the real
@@ -61,7 +61,7 @@ above is 24 player rows against none.
 The partition includes ``season``, deliberately. Season 1993 is a phantom
 SEASON - ESPN answers ``season=1993`` and ``season=1994`` with the identical
 1,185 events - and that is a different fault with a different owner
-(:mod:`association.coverage`, and the cross-season ``QUALIFY`` in
+(:mod:`association.nba.coverage`, and the cross-season ``QUALIFY`` in
 :data:`association.query.team_metrics.TEAM_GAMES_SQL`). Collapsing it here
 would hide it from both.
 
@@ -80,7 +80,7 @@ import logging
 
 import duckdb
 
-from association.season import eastern_date_sql
+from association.nba.season import eastern_date_sql
 
 log: logging.Logger = logging.getLogger("association.fetch.repairs.real_games")
 

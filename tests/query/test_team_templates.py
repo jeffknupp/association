@@ -17,6 +17,7 @@ import duckdb
 import pytest
 
 from association.fetch.repairs import real_games
+from association.nba.season import current_season
 from association.query.team_metrics import TEAM_METRICS, descending_for, resolve_team_metric
 from association.query.templates import (
     TemplateContext,
@@ -28,7 +29,6 @@ from association.query.templates import (
     team_record,
     team_stat,
 )
-from association.season import current_season
 
 S = current_season()
 LAST = f"{S - 1}-{S % 100:02d}"
