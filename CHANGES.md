@@ -14,7 +14,7 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
-## Unreleased
+## 2.2.0 - 2026-09-17
 - **Docs brought up to date with the code.** A pass over the README, the
   Sphinx pages, `AGENTS.md`, `DATA.md`, `ISSUES.md` and the package docstrings
   for claims the last release's work had made untrue. `docs/architecture.rst`
