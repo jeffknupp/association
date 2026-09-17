@@ -4597,48 +4597,85 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     season = slots.get("season") or current_season()
     season_type = slots.get("season_type") or 2
     agreement = PERIOD_RECONCILIATION.get(season)
-    if season in UNSEPARABLE_SHOT_VALUES or (agreement is not None and agreement < PERIOD_REFUSE_BELOW):
-        why = UNSEPARABLE_SHOT_VALUES.get(season) or f"its per-period points agree with ESPN's own quarter scores only {agreement:.0f}% of the time"
-        message = f"Per-quarter scoring cannot be answered for {season}: {why}."
-        return TemplateResult(data={"season": season, "message": message}, answer=message)
+    refusal = _period_split_refusal(season, agreement)
+    if refusal is not None:
+        return refusal
 
     player = _resolved_player(con, slots.get("player"), available=SHOT_AVAILABILITY, season=season)
     if isinstance(player, TemplateResult):
         return player
 
-    opponent: Entity | None = None
-    if isinstance(slots.get("opponent"), str) and slots["opponent"].strip():
-        resolved = _resolved_team(con, slots["opponent"], season=_slot_season(slots))
-        if isinstance(resolved, TemplateResult):
-            return resolved
-        opponent = resolved
+    opponent = _optional_team(con, slots.get("opponent"), season=_slot_season(slots))
+    if isinstance(opponent, TemplateResult):
+        return opponent
 
-    # The games are the ones he PLAYED, with zero where he did not score in the
-    # period - not the games that have a made shot. The first version counted
-    # only the latter, so every scoreless quarter left the denominator: "RJ
-    # Barrett ... over 46 games, averaging 5.4" was a player with 57 games and
-    # a true 4.4. The sum was right, which is exactly why it read as correct.
-    #
-    # A played game counts only where the shot table covers that game at all.
-    # 2003's shots cover 986 of its games, and a game with no located shots
-    # would otherwise contribute a confident zero.
-    #
-    # SHOT_VALUE_SQL names `shot_chart`'s columns bare, and `season` is a column
-    # of `games` too - so the value is summed in a CTE over `shot_chart` alone,
-    # where those names can only mean one thing.
+    venue = slots.get("venue") if slots.get("venue") in ("home", "away") else None
+    rows = _period_split_rows(con, player, season, season_type, periods, venue, opponent)
+
+    scope = _period(season, season_type)
+    vs = f" against the {opponent.name}" if opponent else ""
+    at = f" at {'home' if venue == 'home' else 'away'}" if venue else ""
+    games = [{"date": _eastern_date(d), "opponent": name, "home_away": side, "points": int(pts or 0)} for d, side, name, pts in rows]
+    data: dict[str, Any] = {
+        "player": player.name,
+        "period": period_label,
+        "season": season,
+        "opponent": opponent.name if opponent else None,
+        "venue": venue,
+        "games": games,
+        "games_played": len(games),
+    }
+    if not games:
+        message = f"No {scope} games found for {player.name}{vs}{at}."
+        return TemplateResult(data={**data, "message": message}, answer=message)
+
+    total = sum(g["points"] for g in games)
+    average = total / len(games)
+    data |= {"total": total, "average": average}
+    header = _period_split_header(player, period_label, scope, vs, at, total, average, games, slots)
+    return TemplateResult(data=data, answer=header + _period_split_caveat(season, agreement))
+
+
+def _period_split_refusal(season: int, agreement: float | None) -> TemplateResult | None:
+    """A refusal for a season whose per-period points do not reliably match
+    ESPN's own quarter scores (see :data:`PERIOD_RECONCILIATION`), or None
+    for a season trusted at face value."""
+    if season in UNSEPARABLE_SHOT_VALUES or (agreement is not None and agreement < PERIOD_REFUSE_BELOW):
+        why = UNSEPARABLE_SHOT_VALUES.get(season) or f"its per-period points agree with ESPN's own quarter scores only {agreement:.0f}% of the time"
+        message = f"Per-quarter scoring cannot be answered for {season}: {why}."
+        return TemplateResult(data={"season": season, "message": message}, answer=message)
+    return None
+
+
+def _period_split_rows(con: duckdb.DuckDBPyConnection, player: Entity, season: int, season_type: int, periods: tuple[int, ...], venue: str | None, opponent: Entity | None) -> list[tuple[Any, ...]]:
+    """A player's per-game point total in the wanted periods, one row a game.
+
+    The games are the ones he PLAYED, with zero where he did not score in the
+    period - not the games that have a made shot. The first version counted
+    only the latter, so every scoreless quarter left the denominator: "RJ
+    Barrett ... over 46 games, averaging 5.4" was a player with 57 games and
+    a true 4.4. The sum was right, which is exactly why it read as correct.
+
+    A played game counts only where the shot table covers that game at all.
+    2003's shots cover 986 of its games, and a game with no located shots
+    would otherwise contribute a confident zero.
+
+    SHOT_VALUE_SQL names `shot_chart`'s columns bare, and `season` is a column
+    of `games` too - so the value is summed in a CTE over `shot_chart` alone,
+    where those names can only mean one thing.
+    """
     box = box_source(con)
     appeared = "(b.minutes IS NOT NULL OR b.reconstructed)" if box.rebuilt else "b.minutes IS NOT NULL"
     marks = ", ".join("?" for _ in periods)
     params: list[Any] = [player.id, season, season_type, *periods, player.id, season, season_type]
     where: list[str] = []
-    venue = slots.get("venue") if slots.get("venue") in ("home", "away") else None
     if venue is not None:
         where.append("(CASE WHEN g.home_team_id = b.team_id THEN 'home' ELSE 'away' END) = ?")
         params.append(venue)
     if opponent is not None:
         where.append("(CASE WHEN g.home_team_id = b.team_id THEN g.away_team_id ELSE g.home_team_id END) = ?")
         params.append(opponent.id)
-    rows = con.execute(
+    return con.execute(
         f"""
         WITH scored AS (
             SELECT event_id, SUM({SHOT_VALUE_SQL}) AS points
@@ -4662,32 +4699,11 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         params,
     ).fetchall()
 
-    scope = _period(season, season_type)
-    vs = f" against the {opponent.name}" if opponent else ""
-    at = f" at {'home' if venue == 'home' else 'away'}" if venue else ""
-    games = [{"date": _eastern_date(d), "opponent": name, "home_away": side, "points": int(pts or 0)} for d, side, name, pts in rows]
-    data: dict[str, Any] = {
-        "player": player.name,
-        "period": period_label,
-        "season": season,
-        "opponent": opponent.name if opponent else None,
-        "venue": venue,
-        "games": games,
-        "games_played": len(games),
-    }
-    if not games:
-        message = f"No {scope} games found for {player.name}{vs}{at}."
-        return TemplateResult(data={**data, "message": message}, answer=message)
 
-    total = sum(g["points"] for g in games)
-    average = total / len(games)
-    data |= {"total": total, "average": average}
-    caveat = ""
-    if agreement is not None:
-        caveat = (
-            f"\n  (Summed from shot data rather than an official per-quarter box score. In {season} that sum matches ESPN's own "
-            f"quarter scores {agreement:.0f}% of the time, so treat a single game as approximate.)"
-        )
+def _period_split_header(player: Entity, period_label: str, scope: str, vs: str, at: str, total: int, average: float, games: list[dict[str, Any]], slots: dict[str, Any]) -> str:
+    """The headline sentence: one game's own wording when there is only one,
+    the recent-games log appended when ``per_game`` asked for it, or the
+    plain season average otherwise."""
     plural = "game" if len(games) == 1 else "games"
     header = f"{player.name} scored {total} points in the {period_label} over {len(games)} {plural} of the {scope}{vs}{at}, averaging {average:.1f}."
     if len(games) == 1:
@@ -4704,7 +4720,19 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         rows_out = [f"  {g['date']}  {'vs' if g['home_away'] == 'home' else '@ '} {g['opponent'] or '?':<24} {g['points']:>3}" for g in reversed(shown)]
         label = "every game" if len(shown) == len(games) else f"the {len(shown)} most recent"
         header += f"\n  {period_label} points, {label}:\n" + "\n".join(rows_out)
-    return TemplateResult(data=data, answer=header + caveat)
+    return header
+
+
+def _period_split_caveat(season: int, agreement: float | None) -> str:
+    """The note that a season's per-period points are summed from shot data
+    rather than an official box score, for a season whose accuracy against
+    ESPN's own quarter scores has been measured; empty otherwise."""
+    if agreement is None:
+        return ""
+    return (
+        f"\n  (Summed from shot data rather than an official per-quarter box score. In {season} that sum matches ESPN's own "
+        f"quarter scores {agreement:.0f}% of the time, so treat a single game as approximate.)"
+    )
 
 
 MAX_COMPARED_PLAYERS = 4
@@ -4938,65 +4966,105 @@ def player_splits(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult
     if isinstance(team, TemplateResult):
         return team
 
+    span = slots.get("span")
     name = slots.get("player")
     if isinstance(name, str) and name.strip():
-        scope = _condition_scope(slots.get("season"), slots.get("span"), slots.get("season_type"), _PLAYER_GAME_TABLES)
-        player = _resolved_player(con, name, available=_BOX_SCORES, season=scope.season, through=_career_end(scope.season))
-        if isinstance(player, TemplateResult):
-            return player
-        params: dict[str, Any] = {**scope.params(), "player": player.id}
-        if team is not None:
-            params["team"] = team.id
-        base = _player_games(scope, extra=" AND pbs.team_id = $team" if team else "", box=box_source(con))
-        games, first, last = _totals(con, base, params)
-        if not games:
-            return _no_games(con, player, scope, team)
-        subject, alias, line, counted = player.name + (f" for the {team.name}" if team else ""), "p", _PLAYER_LINE, f"{games} games he played"
-        data: dict[str, Any] = {"player": player.name, "team": team.name if team else None}
-        caveat = _unseen_note(_unseen(con, scope, base, params, box_source(con)))
+        found = _player_splits_player(con, name, slots, span, team)
     else:
         if team is None:
             raise TemplateUnsupported("player_splits needs a player or a team")
-        if split == "starter_bench":
-            # "Bench scoring" is a sum over a team's players - a different
-            # question from any this template answers.
-            raise TemplateUnsupported("a team has no starter/bench split of its own")
-        scope = _condition_scope(slots.get("season"), slots.get("span"), slots.get("season_type"), _TEAM_GAME_TABLES)
-        misfiled = _misfiled_postseason(scope)
-        if misfiled is not None:
-            return misfiled
-        params = {**scope.params(), "team": team.id}
-        base = _team_games(scope, " AND tbs.team_id = $team")
-        games, first, last = _totals(con, base, params)
-        if not games:
-            message = f"The warehouse has no games with a result for the {team.name} {_where_in(scope)}."
-            return TemplateResult(data={"team": team.name, "span": scope.label(), "games": 0}, answer=message)
-        subject, alias, line, counted = f"The {team.name}", "t", _TEAM_LINE, f"{games} games"
-        data = {"player": None, "team": team.name}
-        # The score of a game with no box score is still on record, but its
-        # team box stats are NULL - averaged over the rest, and said so.
-        blank = con.execute(f"SELECT COUNT(*) FILTER (WHERE fieldGoalsAttempted IS NULL) FROM ({base})", params).fetchone()
-        blanks = int(blank[0]) if blank else 0
-        caveat = f" Rebounds, assists, 3-pointers and FG% are missing from {blanks} of those games' box scores and are averaged over the rest." if blanks else ""
+        found = _player_splits_team(con, slots, span, team, split)
+    if isinstance(found, TemplateResult):
+        return found
+    return _player_splits_answer(con, found, split)
 
-    kinds = [split] if split else [k for k in SPLIT_KINDS if alias == "p" or k != "starter_bench"]
-    splits = {kind: _split_rows(con, base, params, alias, line, kind) for kind in kinds}
-    label = scope.label(first, last)
+
+def _player_splits_answer(con: duckdb.DuckDBPyConnection, found: _SplitSubject, split: Any) -> TemplateResult:
+    """The shared table over whichever subject was resolved: one or all four
+    splits, each split's rows, and the notes that qualify them."""
+    kinds = [split] if split else [k for k in SPLIT_KINDS if found.alias == "p" or k != "starter_bench"]
+    splits = {kind: _split_rows(con, found.base, found.params, found.alias, found.line, kind) for kind in kinds}
+    label = found.scope.label(found.first, found.last)
     rows: list[tuple[str, list[str]]] = []
     for kind in kinds:
         if rows:
             rows.append(("", []))
-        rows += [(_split_label(kind, entry), _split_cells(entry, line)) for entry in splits[kind]]
+        rows += [(_split_label(kind, entry), _split_cells(entry, found.line)) for entry in splits[kind]]
     what = _SPLIT_TITLES[split] if split else "splits"
     notes = []
-    if alias == "p":
+    if found.alias == "p":
         notes.append("Played means he appeared in the game, and W-L is his team's record in those games.")
     if "month" in kinds:
         notes.append("Months go by the US Eastern date of the game.")
-    answer = _table(f"{subject}, {what}, {label} ({counted}):", ["G", "W-L", *(h for _, h, _ in line)], rows)
-    notes += [note.strip() for note in (scope.floor_note(first), caveat) if note]
+    answer = _table(f"{found.subject}, {what}, {label} ({found.counted}):", ["G", "W-L", *(h for _, h, _ in found.line)], rows)
+    notes += [note.strip() for note in (found.scope.floor_note(found.first), found.caveat) if note]
     answer += "\n" + " ".join(notes)
-    return TemplateResult(data={**data, "span": label, "games": games, "splits": splits}, answer=answer.strip())
+    return TemplateResult(data={**found.data, "span": label, "games": found.games, "splits": splits}, answer=answer.strip())
+
+
+@dataclass(frozen=True)
+class _SplitSubject:
+    """What player_splits divides - a player's own games or a team's - with
+    the SQL already scoped and the label pieces ready for the shared table
+    player_splits builds from either."""
+
+    scope: _Scope
+    base: str
+    params: dict[str, Any]
+    games: int
+    first: int | None
+    last: int | None
+    subject: str
+    alias: str
+    line: tuple[tuple[str, str, str], ...]
+    counted: str
+    data: dict[str, Any]
+    caveat: str
+
+
+def _player_splits_player(con: duckdb.DuckDBPyConnection, name: str, slots: dict[str, Any], span: Any, team: Entity | None) -> _SplitSubject | TemplateResult:
+    """A named player's own games, optionally narrowed to one team."""
+    scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), _PLAYER_GAME_TABLES)
+    player = _resolved_player(con, name, available=_BOX_SCORES, season=scope.season, through=_career_end(scope.season))
+    if isinstance(player, TemplateResult):
+        return player
+    params: dict[str, Any] = {**scope.params(), "player": player.id}
+    if team is not None:
+        params["team"] = team.id
+    base = _player_games(scope, extra=" AND pbs.team_id = $team" if team else "", box=box_source(con))
+    games, first, last = _totals(con, base, params)
+    if not games:
+        return _no_games(con, player, scope, team)
+    subject, alias, line, counted = player.name + (f" for the {team.name}" if team else ""), "p", _PLAYER_LINE, f"{games} games he played"
+    data: dict[str, Any] = {"player": player.name, "team": team.name if team else None}
+    caveat = _unseen_note(_unseen(con, scope, base, params, box_source(con)))
+    return _SplitSubject(scope, base, params, games, first, last, subject, alias, line, counted, data, caveat)
+
+
+def _player_splits_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], span: Any, team: Entity, split: Any) -> _SplitSubject | TemplateResult:
+    """A named team's own games, with no player named."""
+    if split == "starter_bench":
+        # "Bench scoring" is a sum over a team's players - a different
+        # question from any this template answers.
+        raise TemplateUnsupported("a team has no starter/bench split of its own")
+    scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), _TEAM_GAME_TABLES)
+    misfiled = _misfiled_postseason(scope)
+    if misfiled is not None:
+        return misfiled
+    params = {**scope.params(), "team": team.id}
+    base = _team_games(scope, " AND tbs.team_id = $team")
+    games, first, last = _totals(con, base, params)
+    if not games:
+        message = f"The warehouse has no games with a result for the {team.name} {_where_in(scope)}."
+        return TemplateResult(data={"team": team.name, "span": scope.label(), "games": 0}, answer=message)
+    subject, alias, line, counted = f"The {team.name}", "t", _TEAM_LINE, f"{games} games"
+    data: dict[str, Any] = {"player": None, "team": team.name}
+    # The score of a game with no box score is still on record, but its
+    # team box stats are NULL - averaged over the rest, and said so.
+    blank = con.execute(f"SELECT COUNT(*) FILTER (WHERE fieldGoalsAttempted IS NULL) FROM ({base})", params).fetchone()
+    blanks = int(blank[0]) if blank else 0
+    caveat = f" Rebounds, assists, 3-pointers and FG% are missing from {blanks} of those games' box scores and are averaged over the rest." if blanks else ""
+    return _SplitSubject(scope, base, params, games, first, last, subject, alias, line, counted, data, caveat)
 
 
 def with_without(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
@@ -5353,15 +5421,7 @@ def streak(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     con = ctx.con
     want_win = slots.get("kind") != "loss"
     stat, threshold = slots.get("stat"), slots.get("threshold")
-    column = THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
-    named_stat = isinstance(stat, str) and bool(stat.strip()) and stat.strip().casefold() not in _RESULT_STATS
-    has_threshold = isinstance(threshold, int) and not isinstance(threshold, bool)
-    if named_stat and column is None:
-        raise TemplateUnsupported(f"no per-game column for stat {stat!r}")
-    if has_threshold != (column is not None) or (isinstance(threshold, int) and threshold < 1):
-        raise TemplateUnsupported(f"a streak of a stat needs both a known stat and a positive threshold, got {stat!r}/{threshold!r}")
-    by_stat = column is not None
-    unit = f"{STAT_LABELS.get(stat or '', stat or '')}s"
+    column, by_stat, unit = _streak_kind(stat, threshold)
     result = "winning streak" if want_win else "losing streak"
     # A player's rows carry the stat as `value` (see conditions._player_streak_rows); a team's carry only `won`.
     hit = "x.value >= $threshold" if by_stat else "x.won = $want"
@@ -5373,54 +5433,156 @@ def streak(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
 
     name = slots.get("player")
     if isinstance(name, str) and name.strip():
-        scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), _PLAYER_GAME_TABLES)
-        player = _resolved_player(con, name, available=_BOX_SCORES, season=scope.season, through=_career_end(scope.season))
-        if isinstance(player, TemplateResult):
-            return player
-        params: dict[str, Any] = {**scope.params(), "player": player.id}
-        if team is not None:
-            params["team"] = team.id
-        base = _player_games(scope, extra=" AND pbs.team_id = $team" if team else "", box=box_source(con))
-        games, first, last = _totals(con, base, params)
-        if not games:
-            return _no_games(con, player, scope, team)
-        rows_sql = _player_streak_rows(scope, base, f"p.{column}" if by_stat else "NULL", box_source(con))
-        runs = _longest_runs(con, rows_sql, {**params, **condition}, ("athlete_id",), hit, 3, best_per_partition=False)
-        label = scope.label(first, last)
-        what = f"consecutive games with {threshold}+ {unit}" if by_stat else f"{result} in games he played"
-        rule = "Only games he played count: a game he missed neither extends the run nor ends it" + (", and a run carries on from one season into the next." if scope.season is None else ".")
-        rule += _UNSEEN_ENDS_RUN if _unseen(con, scope, base, params, box_source(con)) else ""
-        if not runs:
-            never = f"never had a game with {threshold}+ {unit}" if by_stat else f"never {'won' if want_win else 'lost'} a game he played"
-            return TemplateResult(data={"player": player.name, "span": label, "streaks": []}, answer=f"{player.name} {never} in the {label}.")
-        return _single_streak(f"{player.name}'s longest run of {what}" if by_stat else f"{player.name}'s longest {what}", label, runs, rule, scope, {"player": player.name})
+        return _streak_player(con, name, slots, span, team, by_stat, column, threshold, unit, want_win, result, hit, condition)
 
     if team is not None:
-        if by_stat:
-            raise TemplateUnsupported("a team's streak is of wins or losses, not of a stat")
-        scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), _TEAM_GAME_TABLES)
-        misfiled = _misfiled_postseason(scope)
-        if misfiled is not None:
-            return misfiled
-        params = {**scope.params(), "team": team.id}
-        base = _team_games(scope, " AND tbs.team_id = $team")
-        games, first, last = _totals(con, base, params)
-        label = scope.label(first, last)
-        if not games:
-            return TemplateResult(data={"team": team.name, "streaks": []}, answer=f"The warehouse has no games with a result for the {team.name} {_where_in(scope)}.")
-        runs = _longest_runs(con, base, {**params, **condition}, ("team_id", "season"), hit, 3, best_per_partition=False)
-        if not runs:
-            return TemplateResult(data={"team": team.name, "span": label, "streaks": []}, answer=f"The {team.name} did not {'win' if want_win else 'lose'} a game in the {label}.")
-        return _single_streak(
-            f"The {team.name}' longest {result}" if team.name.endswith("s") else f"The {team.name}'s longest {result}",
-            label,
-            runs,
-            "Streaks are counted within one season.",
-            scope,
-            {"team": team.name},
-        )
+        return _streak_team(con, slots, span, team, by_stat, want_win, result, hit, condition)
 
     # Nobody named: the league's longest, each team-season or player once.
+    return _streak_league(con, slots, span, by_stat, column, stat, threshold, unit, want_win, result, hit, condition)
+
+
+def _streak_kind(stat: Any, threshold: Any) -> tuple[str | None, bool, str]:
+    """Validate a streak's stat/threshold pair and derive its per-game column,
+    whether it is a stat streak at all (as against one of wins or losses), and
+    the unit its threshold is counted in.
+
+    Raises :class:`TemplateUnsupported` for a named stat with no per-game
+    column, or a stat/threshold pair that only half-names a condition -
+    "most consecutive double-doubles" must not come back as a win streak."""
+    column = THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
+    named_stat = isinstance(stat, str) and bool(stat.strip()) and stat.strip().casefold() not in _RESULT_STATS
+    has_threshold = isinstance(threshold, int) and not isinstance(threshold, bool)
+    if named_stat and column is None:
+        raise TemplateUnsupported(f"no per-game column for stat {stat!r}")
+    if has_threshold != (column is not None) or (isinstance(threshold, int) and threshold < 1):
+        raise TemplateUnsupported(f"a streak of a stat needs both a known stat and a positive threshold, got {stat!r}/{threshold!r}")
+    by_stat = column is not None
+    unit = f"{STAT_LABELS.get(stat or '', stat or '')}s"
+    return column, by_stat, unit
+
+
+def _streak_player(
+    con: duckdb.DuckDBPyConnection,
+    name: str,
+    slots: dict[str, Any],
+    span: Any,
+    team: Entity | None,
+    by_stat: bool,
+    column: str | None,
+    threshold: Any,
+    unit: str,
+    want_win: bool,
+    result: str,
+    hit: str,
+    condition: dict[str, Any],
+) -> TemplateResult:
+    """A named player's longest run of games meeting the condition."""
+    scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), _PLAYER_GAME_TABLES)
+    player = _resolved_player(con, name, available=_BOX_SCORES, season=scope.season, through=_career_end(scope.season))
+    if isinstance(player, TemplateResult):
+        return player
+    params: dict[str, Any] = {**scope.params(), "player": player.id}
+    if team is not None:
+        params["team"] = team.id
+    base = _player_games(scope, extra=" AND pbs.team_id = $team" if team else "", box=box_source(con))
+    games, first, last = _totals(con, base, params)
+    if not games:
+        return _no_games(con, player, scope, team)
+    rows_sql = _player_streak_rows(scope, base, f"p.{column}" if by_stat else "NULL", box_source(con))
+    runs = _longest_runs(con, rows_sql, {**params, **condition}, ("athlete_id",), hit, 3, best_per_partition=False)
+    label = scope.label(first, last)
+    what = f"consecutive games with {threshold}+ {unit}" if by_stat else f"{result} in games he played"
+    rule = "Only games he played count: a game he missed neither extends the run nor ends it" + (", and a run carries on from one season into the next." if scope.season is None else ".")
+    rule += _UNSEEN_ENDS_RUN if _unseen(con, scope, base, params, box_source(con)) else ""
+    if not runs:
+        never = f"never had a game with {threshold}+ {unit}" if by_stat else f"never {'won' if want_win else 'lost'} a game he played"
+        return TemplateResult(data={"player": player.name, "span": label, "streaks": []}, answer=f"{player.name} {never} in the {label}.")
+    return _single_streak(f"{player.name}'s longest run of {what}" if by_stat else f"{player.name}'s longest {what}", label, runs, rule, scope, {"player": player.name})
+
+
+def _streak_team(
+    con: duckdb.DuckDBPyConnection,
+    slots: dict[str, Any],
+    span: Any,
+    team: Entity,
+    by_stat: bool,
+    want_win: bool,
+    result: str,
+    hit: str,
+    condition: dict[str, Any],
+) -> TemplateResult:
+    """A named team's longest run of wins or losses in a season."""
+    if by_stat:
+        raise TemplateUnsupported("a team's streak is of wins or losses, not of a stat")
+    scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), _TEAM_GAME_TABLES)
+    misfiled = _misfiled_postseason(scope)
+    if misfiled is not None:
+        return misfiled
+    params = {**scope.params(), "team": team.id}
+    base = _team_games(scope, " AND tbs.team_id = $team")
+    games, first, last = _totals(con, base, params)
+    label = scope.label(first, last)
+    if not games:
+        return TemplateResult(data={"team": team.name, "streaks": []}, answer=f"The warehouse has no games with a result for the {team.name} {_where_in(scope)}.")
+    runs = _longest_runs(con, base, {**params, **condition}, ("team_id", "season"), hit, 3, best_per_partition=False)
+    if not runs:
+        return TemplateResult(data={"team": team.name, "span": label, "streaks": []}, answer=f"The {team.name} did not {'win' if want_win else 'lose'} a game in the {label}.")
+    return _single_streak(
+        f"The {team.name}' longest {result}" if team.name.endswith("s") else f"The {team.name}'s longest {result}",
+        label,
+        runs,
+        "Streaks are counted within one season.",
+        scope,
+        {"team": team.name},
+    )
+
+
+def _streak_league_by_stat(
+    con: duckdb.DuckDBPyConnection, scope: _Scope, column: str | None, threshold: Any, unit: str, hit: str, condition: dict[str, Any], limit: int
+) -> tuple[str, list[dict[str, Any]], str, list[str], str]:
+    """Each player's longest run of games meeting the stat threshold, one per player."""
+    base = _player_streak_rows(scope, _player_games(scope, player="", box=box_source(con)), f"p.{column}", box_source(con))
+    runs = _longest_runs(con, base, {**scope.params(), **condition}, ("athlete_id",), hit, limit, best_per_partition=True)
+    names = _names(con, "players", "athlete_id", [r["athlete_id"] for r in runs])
+    what, who = f"run of consecutive games with {threshold}+ {unit}", [names[r["athlete_id"]] for r in runs]
+    rule = "Each player's longest run, counting only games he played" + (", carried across seasons." if scope.season is None else ".")
+    rule += _UNSEEN_ENDS_RUN if _totals(con, _box_missing(scope, box_source(con)), scope.params())[0] else ""
+    return base, runs, what, who, rule
+
+
+def _streak_league_by_result(con: duckdb.DuckDBPyConnection, scope: _Scope, result: str, hit: str, condition: dict[str, Any], limit: int) -> tuple[str, list[dict[str, Any]], str, list[str], str]:
+    """Each team's longest run of wins or losses in a season, one per team-season."""
+    # Teams the `teams` table does not hold are exhibition opponents that
+    # turn up in a few regular-season rows (1992-2000), not franchises.
+    base = _team_games(scope, " AND tbs.team_id IN (SELECT team_id FROM teams)")
+    runs = _longest_runs(con, base, {**scope.params(), **condition}, ("team_id", "season"), hit, limit, best_per_partition=True)
+    names = _names(con, "teams", "team_id", [r["team_id"] for r in runs])
+    what = result
+    # Every run lies inside one season, so each is named as its team was
+    # that season. This used to add "franchises are named as they are
+    # today" to every all-seasons answer, which is what it was.
+    who = [season_name(r["team_id"], int(r["season"]), names[r["team_id"]]) + (f" ({r['season']})" if scope.season is None else "") for r in runs]
+    rule = "Each team's longest in a season, counted within that season."
+    return base, runs, what, who, rule
+
+
+def _streak_league(
+    con: duckdb.DuckDBPyConnection,
+    slots: dict[str, Any],
+    span: Any,
+    by_stat: bool,
+    column: str | None,
+    stat: Any,
+    threshold: Any,
+    unit: str,
+    want_win: bool,
+    result: str,
+    hit: str,
+    condition: dict[str, Any],
+) -> TemplateResult:
+    """The league's longest run with nobody named: one per player (a stat
+    streak) or one per team-season (a win/loss streak)."""
     tables = _PLAYER_GAME_TABLES if by_stat else _TEAM_GAME_TABLES
     scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), tables)
     misfiled = _misfiled_postseason(scope)
@@ -5428,24 +5590,9 @@ def streak(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         return misfiled
     limit = _clamp_limit(slots.get("limit"), _DEFAULT_STREAK_LIMIT)
     if by_stat:
-        base = _player_streak_rows(scope, _player_games(scope, player="", box=box_source(con)), f"p.{column}", box_source(con))
-        runs = _longest_runs(con, base, {**scope.params(), **condition}, ("athlete_id",), hit, limit, best_per_partition=True)
-        names = _names(con, "players", "athlete_id", [r["athlete_id"] for r in runs])
-        what, who = f"run of consecutive games with {threshold}+ {unit}", [names[r["athlete_id"]] for r in runs]
-        rule = "Each player's longest run, counting only games he played" + (", carried across seasons." if scope.season is None else ".")
-        rule += _UNSEEN_ENDS_RUN if _totals(con, _box_missing(scope, box_source(con)), scope.params())[0] else ""
+        base, runs, what, who, rule = _streak_league_by_stat(con, scope, column, threshold, unit, hit, condition, limit)
     else:
-        # Teams the `teams` table does not hold are exhibition opponents that
-        # turn up in a few regular-season rows (1992-2000), not franchises.
-        base = _team_games(scope, " AND tbs.team_id IN (SELECT team_id FROM teams)")
-        runs = _longest_runs(con, base, {**scope.params(), **condition}, ("team_id", "season"), hit, limit, best_per_partition=True)
-        names = _names(con, "teams", "team_id", [r["team_id"] for r in runs])
-        what = result
-        # Every run lies inside one season, so each is named as its team was
-        # that season. This used to add "franchises are named as they are
-        # today" to every all-seasons answer, which is what it was.
-        who = [season_name(r["team_id"], int(r["season"]), names[r["team_id"]]) + (f" ({r['season']})" if scope.season is None else "") for r in runs]
-        rule = "Each team's longest in a season, counted within that season."
+        base, runs, what, who, rule = _streak_league_by_result(con, scope, result, hit, condition, limit)
     # The span searched, not the seasons the leaders' runs happen to fall in:
     # "1997-2023" under a question about every season reads as a narrower search.
     _, first, last = _totals(con, base, scope.params())
