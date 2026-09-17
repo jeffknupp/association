@@ -2414,33 +2414,10 @@ def team_record(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         # tallies the record over exactly the games it lists.
         raise TemplateUnsupported("a record over a limited set of games is a game_log question")
 
-    team_text = slots.get("team")
-    listed = [n for n in slots.get("teams") or [] if isinstance(n, str) and n.strip()] if isinstance(slots.get("teams"), list) else []
-    if not (isinstance(team_text, str) and team_text.strip()) and listed:
-        # "celtics vs bulls record" can land both teams in `teams`, which
-        # scope_from_question leaves alone; the first is the subject.
-        team_text, listed = listed[0], listed[1:]
-    team = _resolved_team(con, team_text, season=_slot_season(slots))
-    if isinstance(team, TemplateResult):
-        return team
-
-    opponent: Entity | None = None
-    opponent_text = slots.get("opponent")
-    if isinstance(opponent_text, str) and opponent_text.strip():
-        found = _resolved_team(con, opponent_text, season=_slot_season(slots))
-        if isinstance(found, TemplateResult):
-            return found
-        if found.id == team.id:
-            raise TemplateUnsupported("team_record's opponent must differ from the team")
-        opponent = found
-    else:
-        for text in listed:
-            found = _resolved_team(con, text, season=_slot_season(slots))
-            if isinstance(found, TemplateResult):
-                return found
-            if found.id != team.id:
-                opponent = found
-                break
+    teams = _team_record_teams(con, slots, slots.get("opponent"))
+    if isinstance(teams, TemplateResult):
+        return teams
+    team, opponent = teams
 
     season_type = slots.get("season_type") or 2
     venue = slots.get("venue") if slots.get("venue") in VENUE_WORDS else None
@@ -2455,6 +2432,43 @@ def team_record(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
             return _standings_career(con, team, venue)
         return _standings_season(con, team, season or current_season(), venue)
     return _games_record(con, team, opponent, None if career else (season or current_season()), season_type, venue)
+
+
+def _team_record_teams(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], opponent_text: Any) -> tuple[Entity, Entity | None] | TemplateResult:
+    """The team a record is for and the opponent it is against, if any - or the
+    clarifying question one of the names needs. ``opponent_text`` is the
+    ``opponent`` slot."""
+    team_text = slots.get("team")
+    listed = [n for n in slots.get("teams") or [] if isinstance(n, str) and n.strip()] if isinstance(slots.get("teams"), list) else []
+    if not (isinstance(team_text, str) and team_text.strip()) and listed:
+        # "celtics vs bulls record" can land both teams in `teams`, which
+        # scope_from_question leaves alone; the first is the subject.
+        team_text, listed = listed[0], listed[1:]
+    team = _resolved_team(con, team_text, season=_slot_season(slots))
+    if isinstance(team, TemplateResult):
+        return team
+    opponent = _team_record_opponent(con, slots, team, listed, opponent_text)
+    if isinstance(opponent, TemplateResult):
+        return opponent
+    return team, opponent
+
+
+def _team_record_opponent(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], team: Entity, listed: list[str], opponent_text: Any) -> Entity | TemplateResult | None:
+    """The ``opponent`` slot's team, or else the first other team in ``teams``."""
+    if isinstance(opponent_text, str) and opponent_text.strip():
+        found = _resolved_team(con, opponent_text, season=_slot_season(slots))
+        if isinstance(found, TemplateResult):
+            return found
+        if found.id == team.id:
+            raise TemplateUnsupported("team_record's opponent must differ from the team")
+        return found
+    for text in listed:
+        found = _resolved_team(con, text, season=_slot_season(slots))
+        if isinstance(found, TemplateResult):
+            return found
+        if found.id != team.id:
+            return found
+    return None
 
 
 def _standings_gap(con: duckdb.DuckDBPyConnection, team: Entity, seasons: list[tuple[int, int]]) -> str | None:
@@ -2494,44 +2508,12 @@ def _standings_season(con: duckdb.DuckDBPyConnection, team: Entity, season: int,
     # standings stores these as DOUBLE; reporting a 53-29 record as "53.0-29.0"
     # is the kind of detail that makes a correct answer look untrustworthy.
     w, lost = int(wins), int(losses)
-    home, road = _parse_record(home_text), _parse_record(road_text)
-    # '0-0' is how standings say "no split", every season before 1993-94.
-    split = (home, road) if home and road and sum(home) + sum(road) > 0 else None
-    # Neutral-site games count as neither home nor away from 2025 on, so the
-    # halves can sum to less than the whole - and a reader adding them up
-    # deserves to know why.
-    neutral = w + lost - sum(split[0]) - sum(split[1]) if split else 0
-    neutral_note = f" ({neutral} neutral-site game{'s' if neutral != 1 else ''} count{'s' if neutral == 1 else ''} as neither home nor away)" if neutral > 0 else ""
+    split, neutral, neutral_note = _standings_season_split(w, lost, home_text, road_text)
     data: dict[str, Any] = {"team": team.name, "season": season, "wins": w, "losses": lost, "win_pct": win_pct}
     gap = _standings_gap(con, team, [(season, w + lost)])
 
     if venue is not None:
-        if split is None:
-            message = (
-                f"ESPN's {season} standings carry no home/road split for the {team.name} (it reads 0-0 before 1993-94), and the warehouse has no full game list for that season to tally one from."
-            )
-            return TemplateResult(data={**data, "message": message}, answer=message)
-        vw, vl = split[0] if venue == "home" else split[1]
-        answer = f"The {team.name} were {_tally(vw, vl)} {VENUE_WORDS[venue]} in the {season} regular season, {w}-{lost} overall{neutral_note}."
-        # `wins`/`losses`/`win_pct` are what the web page draws as the record
-        # card, so they carry the record that was asked for. Leaving the
-        # season's there would print 53-29 in large type under a question
-        # about the home record - the substitution this path exists to stop.
-        data.update(
-            {
-                "wins": vw,
-                "losses": vl,
-                "win_pct": vw / (vw + vl) if vw + vl else 0.0,
-                "season_wins": w,
-                "season_losses": lost,
-                "season_win_pct": win_pct,
-                "venue": venue,
-                "venue_wins": vw,
-                "venue_losses": vl,
-                "neutral_site_games": neutral,
-            }
-        )
-        return TemplateResult(data=data, answer=f"{answer} {gap}" if gap else answer)
+        return _standings_season_venue(team, season, venue, (w, lost, win_pct), split, neutral, neutral_note, data, gap)
 
     answer = f"The {team.name} were {w}-{lost} in the {season} regular season"
     if win_pct is not None:
@@ -2542,15 +2524,7 @@ def _standings_season(con: duckdb.DuckDBPyConnection, team: Entity, season: int,
     if streak:
         extras.append(f"{'won' if streak > 0 else 'lost'} {abs(int(streak))} straight")
     answer += f", {', '.join(extras)}." if extras else "."
-    detail = []
-    if split:
-        detail.append(f"Home {'-'.join(map(str, split[0]))}, road {'-'.join(map(str, split[1]))}{neutral_note}")
-    if isinstance(last_ten, str) and last_ten.strip():
-        detail.append(f"last 10: {last_ten}")
-    if behind:
-        detail.append(f"{_format_value(float(behind))} game{'s' if behind != 1 else ''} back")
-    if detail:
-        answer += "\n  " + "; ".join(detail) + "."
+    answer += _standings_season_detail(split, neutral_note, last_ten, behind)
     if points_for is not None and points_against is not None:
         answer += f"\n  {points_for:.1f} points per game, {points_against:.1f} allowed ({(differential if differential is not None else points_for - points_against):+.1f})."
     data.update(
@@ -2566,6 +2540,71 @@ def _standings_season(con: duckdb.DuckDBPyConnection, team: Entity, season: int,
     return TemplateResult(data=data, answer=f"{answer}\n  {gap}" if gap else answer)
 
 
+def _standings_season_split(w: int, lost: int, home_text: Any, road_text: Any) -> tuple[tuple[tuple[int, int], tuple[int, int]] | None, int, str]:
+    """The standings' home and road records, if the season has a split, and the
+    neutral-site games that are in neither - with the note that says so."""
+    home, road = _parse_record(home_text), _parse_record(road_text)
+    # '0-0' is how standings say "no split", every season before 1993-94.
+    split = (home, road) if home and road and sum(home) + sum(road) > 0 else None
+    # Neutral-site games count as neither home nor away from 2025 on, so the
+    # halves can sum to less than the whole - and a reader adding them up
+    # deserves to know why.
+    neutral = w + lost - sum(split[0]) - sum(split[1]) if split else 0
+    neutral_note = f" ({neutral} neutral-site game{'s' if neutral != 1 else ''} count{'s' if neutral == 1 else ''} as neither home nor away)" if neutral > 0 else ""
+    return split, neutral, neutral_note
+
+
+def _standings_season_venue(
+    team: Entity,
+    season: int,
+    venue: str,
+    record: tuple[int, int, Any],
+    split: tuple[tuple[int, int], tuple[int, int]] | None,
+    neutral: int,
+    neutral_note: str,
+    data: dict[str, Any],
+    gap: str | None,
+) -> TemplateResult:
+    """A season's home or road record, from the standings' own split. ``record`` is (wins, losses, win_pct) for the whole season."""
+    w, lost, win_pct = record
+    if split is None:
+        message = f"ESPN's {season} standings carry no home/road split for the {team.name} (it reads 0-0 before 1993-94), and the warehouse has no full game list for that season to tally one from."
+        return TemplateResult(data={**data, "message": message}, answer=message)
+    vw, vl = split[0] if venue == "home" else split[1]
+    answer = f"The {team.name} were {_tally(vw, vl)} {VENUE_WORDS[venue]} in the {season} regular season, {w}-{lost} overall{neutral_note}."
+    # `wins`/`losses`/`win_pct` are what the web page draws as the record
+    # card, so they carry the record that was asked for. Leaving the
+    # season's there would print 53-29 in large type under a question
+    # about the home record - the substitution this path exists to stop.
+    data.update(
+        {
+            "wins": vw,
+            "losses": vl,
+            "win_pct": vw / (vw + vl) if vw + vl else 0.0,
+            "season_wins": w,
+            "season_losses": lost,
+            "season_win_pct": win_pct,
+            "venue": venue,
+            "venue_wins": vw,
+            "venue_losses": vl,
+            "neutral_site_games": neutral,
+        }
+    )
+    return TemplateResult(data=data, answer=f"{answer} {gap}" if gap else answer)
+
+
+def _standings_season_detail(split: tuple[tuple[int, int], tuple[int, int]] | None, neutral_note: str, last_ten: Any, behind: Any) -> str:
+    """The line under a season's record: home and road, the last ten games, and games back."""
+    detail = []
+    if split:
+        detail.append(f"Home {'-'.join(map(str, split[0]))}, road {'-'.join(map(str, split[1]))}{neutral_note}")
+    if isinstance(last_ten, str) and last_ten.strip():
+        detail.append(f"last 10: {last_ten}")
+    if behind:
+        detail.append(f"{_format_value(float(behind))} game{'s' if behind != 1 else ''} back")
+    return "\n  " + "; ".join(detail) + "." if detail else ""
+
+
 def _standings_career(con: duckdb.DuckDBPyConnection, team: Entity, venue: str | None) -> TemplateResult:
     rows = con.execute(
         'SELECT season, wins, losses, "Home", "Road" FROM standings WHERE team_id = ? AND wins + losses > 0 ORDER BY season',
@@ -2574,37 +2613,7 @@ def _standings_career(con: duckdb.DuckDBPyConnection, team: Entity, venue: str |
     if not rows:
         return TemplateResult(data={"team": team.name}, answer=f"The warehouse has no standings at all for the {team.name}.")
     if venue is not None:
-        halves = []
-        for season, wins, losses, home_text, road_text in rows:
-            home, road = _parse_record(home_text), _parse_record(road_text)
-            if home and road and sum(home) + sum(road) > 0:
-                halves.append((season, int(wins) + int(losses), home if venue == "home" else road, sum(home) + sum(road)))
-        if not halves:
-            message = f"ESPN's standings carry no home/road split for the {team.name} in any season the warehouse holds."
-            return TemplateResult(data={"team": team.name, "message": message}, answer=message)
-        vw = sum(h[2][0] for h in halves)
-        vl = sum(h[2][1] for h in halves)
-        neutral = sum(h[1] - h[3] for h in halves)
-        first, last = halves[0][0], halves[-1][0]
-        answer = (
-            f"The {team.name} are {_tally(vw, vl)} {VENUE_WORDS[venue]} across the {len(halves)} regular seasons from {_season_name(first)} through {_season_name(last)}"
-            + (" - ESPN's standings carry no home/road split before 1993-94" if first == FIRST_FULL_REGULAR_SEASON else "")
-            + "."
-        )
-        if neutral > 0:
-            answer += f" {neutral} neutral-site game{'s' if neutral != 1 else ''} count{'s' if neutral == 1 else ''} as neither."
-        data: dict[str, Any] = {
-            "team": team.name,
-            "venue": venue,
-            "wins": vw,
-            "losses": vl,
-            "win_pct": vw / (vw + vl) if vw + vl else 0.0,
-            "first_season": first,
-            "last_season": last,
-            "seasons": len(halves),
-        }
-        gap = _standings_gap(con, team, [(h[0], h[1]) for h in halves])
-        return TemplateResult(data=data, answer=f"{answer} {gap}" if gap else answer)
+        return _standings_career_venue(con, team, venue, rows)
 
     wins = sum(int(r[1]) for r in rows)
     losses = sum(int(r[2]) for r in rows)
@@ -2630,6 +2639,41 @@ def _standings_career(con: duckdb.DuckDBPyConnection, team: Entity, venue: str |
         },
         answer=f"{answer} {gap}" if gap else answer,
     )
+
+
+def _standings_career_venue(con: duckdb.DuckDBPyConnection, team: Entity, venue: str, rows: list[tuple[Any, ...]]) -> TemplateResult:
+    """Every season's home or road record added up, over the seasons whose standings carry a split."""
+    halves = []
+    for season, wins, losses, home_text, road_text in rows:
+        home, road = _parse_record(home_text), _parse_record(road_text)
+        if home and road and sum(home) + sum(road) > 0:
+            halves.append((season, int(wins) + int(losses), home if venue == "home" else road, sum(home) + sum(road)))
+    if not halves:
+        message = f"ESPN's standings carry no home/road split for the {team.name} in any season the warehouse holds."
+        return TemplateResult(data={"team": team.name, "message": message}, answer=message)
+    vw = sum(h[2][0] for h in halves)
+    vl = sum(h[2][1] for h in halves)
+    neutral = sum(h[1] - h[3] for h in halves)
+    first, last = halves[0][0], halves[-1][0]
+    answer = (
+        f"The {team.name} are {_tally(vw, vl)} {VENUE_WORDS[venue]} across the {len(halves)} regular seasons from {_season_name(first)} through {_season_name(last)}"
+        + (" - ESPN's standings carry no home/road split before 1993-94" if first == FIRST_FULL_REGULAR_SEASON else "")
+        + "."
+    )
+    if neutral > 0:
+        answer += f" {neutral} neutral-site game{'s' if neutral != 1 else ''} count{'s' if neutral == 1 else ''} as neither."
+    data: dict[str, Any] = {
+        "team": team.name,
+        "venue": venue,
+        "wins": vw,
+        "losses": vl,
+        "win_pct": vw / (vw + vl) if vw + vl else 0.0,
+        "first_season": first,
+        "last_season": last,
+        "seasons": len(halves),
+    }
+    gap = _standings_gap(con, team, [(h[0], h[1]) for h in halves])
+    return TemplateResult(data=data, answer=f"{answer} {gap}" if gap else answer)
 
 
 def _game_list_gaps(con: duckdb.DuckDBPyConnection, team: Entity, season_type: int, season: int | None) -> str | None:
@@ -2689,30 +2733,11 @@ def _games_record(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity
         refused = unavailable(("games",), season, season_type)
         if refused is not None:
             return TemplateResult(data={"team": team.name, "season": season, "message": refused}, answer=refused)
-    scope, params = games_scope(season_type, season)
-    where = [scope, "tg.team_id = ?"]
-    params = [*params, team.id]
-    if opponent is not None:
-        where.append("tg.opponent_id = ?")
-        params.append(opponent.id)
-    rows = con.execute(
-        f"{TEAM_GAMES_SQL} SELECT tg.eastern_date, tg.side, tg.neutral, tg.team_score, tg.opponent_score, tg.won, {season_name_sql('o.team_id', 'tg.season', 'o.display_name')} "
-        f"FROM team_games tg JOIN teams o ON o.team_id = tg.opponent_id WHERE {' AND '.join(where)} ORDER BY tg.eastern_date",
-        params,
-    ).fetchall()
-    games = [{"date": str(r[0]), "venue": "neutral" if r[2] else r[1], "team_score": r[3], "opponent_score": r[4], "won": bool(r[5]), "opponent": r[6]} for r in rows]
+    games = _games_record_games(con, team, opponent, season, season_type)
     shown = [g for g in games if venue is None or g["venue"] == venue]
     wins = sum(1 for g in shown if g["won"])
     losses = len(shown) - wins
     kind = "postseason" if season_type == 3 else "regular season"
-    if season is not None:
-        span = f"the {_period(season, season_type)}"
-    elif season_type == 3:
-        span = "every postseason from 1989 through the latest - the warehouse's game list starts with the 1989 playoffs"
-    else:
-        span = f"the regular seasons from {_season_name(FIRST_FULL_REGULAR_SEASON)} on - the first the warehouse holds every game of"
-    against = f" against the {opponent.name}" if opponent else ""
-    where_played = f" {VENUE_WORDS[venue]}" if venue else ""
     data: dict[str, Any] = {
         "team": team.name,
         "opponent": opponent.name if opponent else None,
@@ -2728,16 +2753,50 @@ def _games_record(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity
     if not games:
         return TemplateResult(data={**data, "games": []}, answer=_no_team_games(con, team, opponent, season, season_type))
 
+    answer = _games_record_answer(team, opponent, season, season_type, venue, games, shown)
+    if opponent is not None and season_type == 2:
+        cup_text, cup_final = _games_record_cup_final(con, team, opponent, season)
+        answer += cup_text
+        data["cup_final"] = cup_final
+    gap = _game_list_gaps(con, team, season_type, season)
+    if gap:
+        answer += f"\n  {gap}"
+    data["games"] = shown
+    return TemplateResult(data=data, answer=answer)
+
+
+def _games_record_games(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity | None, season: int | None, season_type: int) -> list[dict[str, Any]]:
+    """The team's games in scope, against ``opponent`` if one is named, oldest first."""
+    scope, params = games_scope(season_type, season)
+    where = [scope, "tg.team_id = ?"]
+    params = [*params, team.id]
+    if opponent is not None:
+        where.append("tg.opponent_id = ?")
+        params.append(opponent.id)
+    rows = con.execute(
+        f"{TEAM_GAMES_SQL} SELECT tg.eastern_date, tg.side, tg.neutral, tg.team_score, tg.opponent_score, tg.won, {season_name_sql('o.team_id', 'tg.season', 'o.display_name')} "
+        f"FROM team_games tg JOIN teams o ON o.team_id = tg.opponent_id WHERE {' AND '.join(where)} ORDER BY tg.eastern_date",
+        params,
+    ).fetchall()
+    return [{"date": str(r[0]), "venue": "neutral" if r[2] else r[1], "team_score": r[3], "opponent_score": r[4], "won": bool(r[5]), "opponent": r[6]} for r in rows]
+
+
+def _games_record_answer(team: Entity, opponent: Entity | None, season: int | None, season_type: int, venue: str | None, games: list[dict[str, Any]], shown: list[dict[str, Any]]) -> str:
+    """The tallied record, its home/away split and, for one season against one team, the meetings."""
+    wins = sum(1 for g in shown if g["won"])
+    losses = len(shown) - wins
+    if season is not None:
+        span = f"the {_period(season, season_type)}"
+    elif season_type == 3:
+        span = "every postseason from 1989 through the latest - the warehouse's game list starts with the 1989 playoffs"
+    else:
+        span = f"the regular seasons from {_season_name(FIRST_FULL_REGULAR_SEASON)} on - the first the warehouse holds every game of"
+    against = f" against the {opponent.name}" if opponent else ""
+    where_played = f" {VENUE_WORDS[venue]}" if venue else ""
     verb = "went" if season is not None else "are"
     answer = f"The {team.name} {verb} {_tally(wins, losses)}{where_played}{against} in {span}."
     if venue is None:
-        home = [g for g in games if g["venue"] == "home"]
-        away = [g for g in games if g["venue"] == "away"]
-        split = f"Home {sum(g['won'] for g in home)}-{sum(not g['won'] for g in home)}, away {sum(g['won'] for g in away)}-{sum(not g['won'] for g in away)}"
-        neutral = len(games) - len(home) - len(away)
-        if neutral:
-            split += f", neutral site {sum(g['won'] for g in games if g['venue'] == 'neutral')}-{sum(not g['won'] for g in games if g['venue'] == 'neutral')}"
-        answer += f"\n  {split}."
+        answer += _games_record_split(games)
     elif len(shown) < len(games) and any(g["venue"] == "neutral" for g in games):
         answer += "\n  Neutral-site games count as neither home nor away."
     # A season's meetings are few enough to list, and the list is what "vs"
@@ -2748,23 +2807,32 @@ def _games_record(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity
             + (" (neutral site)" if g["venue"] == "neutral" else "")
             for g in shown
         )
-    if opponent is not None and season_type == 2:
-        # The NBA Cup final is a regular-season game that counts in no
-        # standings, so it is not in the record above - but it is a meeting,
-        # and leaving it out without a word would read as a missing game.
-        cup_scope = "season_type = 2 AND cup_final" + ("" if season is None else " AND season = ?")
-        cup = con.execute(
-            f"{TEAM_GAMES_SQL} SELECT eastern_date, team_score, opponent_score, won FROM team_games WHERE {cup_scope} AND team_id = ? AND opponent_id = ? ORDER BY 1",
-            [*([season] if season is not None else []), team.id, opponent.id],
-        ).fetchall()
-        for date, own, theirs, won in cup:
-            answer += f"\n  They also met in the NBA Cup final on {date}, which counts in no standings: {'won' if won else 'lost'} {own}-{theirs}."
-        data["cup_final"] = [{"date": str(d), "won": bool(won), "team_score": own, "opponent_score": theirs} for d, own, theirs, won in cup]
-    gap = _game_list_gaps(con, team, season_type, season)
-    if gap:
-        answer += f"\n  {gap}"
-    data["games"] = shown
-    return TemplateResult(data=data, answer=answer)
+    return answer
+
+
+def _games_record_split(games: list[dict[str, Any]]) -> str:
+    """The home, away and neutral-site records within a tally."""
+    home = [g for g in games if g["venue"] == "home"]
+    away = [g for g in games if g["venue"] == "away"]
+    split = f"Home {sum(g['won'] for g in home)}-{sum(not g['won'] for g in home)}, away {sum(g['won'] for g in away)}-{sum(not g['won'] for g in away)}"
+    neutral = len(games) - len(home) - len(away)
+    if neutral:
+        split += f", neutral site {sum(g['won'] for g in games if g['venue'] == 'neutral')}-{sum(not g['won'] for g in games if g['venue'] == 'neutral')}"
+    return f"\n  {split}."
+
+
+def _games_record_cup_final(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity, season: int | None) -> tuple[str, list[dict[str, Any]]]:
+    """Any NBA Cup final the two teams met in, as sentences and as data."""
+    # The NBA Cup final is a regular-season game that counts in no
+    # standings, so it is not in the record above - but it is a meeting,
+    # and leaving it out without a word would read as a missing game.
+    cup_scope = "season_type = 2 AND cup_final" + ("" if season is None else " AND season = ?")
+    cup = con.execute(
+        f"{TEAM_GAMES_SQL} SELECT eastern_date, team_score, opponent_score, won FROM team_games WHERE {cup_scope} AND team_id = ? AND opponent_id = ? ORDER BY 1",
+        [*([season] if season is not None else []), team.id, opponent.id],
+    ).fetchall()
+    text = "".join(f"\n  They also met in the NBA Cup final on {date}, which counts in no standings: {'won' if won else 'lost'} {own}-{theirs}." for date, own, theirs, won in cup)
+    return text, [{"date": str(d), "won": bool(won), "team_score": own, "opponent_score": theirs} for d, own, theirs, won in cup]
 
 
 # ---- one team's numbers, and every team ranked ----
