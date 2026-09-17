@@ -5017,10 +5017,7 @@ def record_when(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """
     con = ctx.con
     stat = slots.get("stat")
-    column = THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
-    threshold = slots.get("threshold")
-    if column is None or not isinstance(threshold, int) or isinstance(threshold, bool) or threshold < 1:
-        raise TemplateUnsupported(f"record_when needs a known stat and a positive threshold, got {stat!r}/{threshold!r}")
+    column, threshold = _record_when_stat(stat, slots.get("threshold"))
     scope = _condition_scope(slots.get("season"), slots.get("span"), slots.get("season_type"), _PLAYER_GAME_TABLES)
     player = _resolved_player(con, slots.get("player"), "record_when needs a player", available=_BOX_SCORES, season=scope.season, through=_career_end(scope.season))
     if isinstance(player, TemplateResult):
@@ -5029,6 +5026,29 @@ def record_when(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     if isinstance(team, TemplateResult):
         return team
 
+    query = _record_when_query(con, scope, player, team, column, threshold)
+    if isinstance(query, TemplateResult):
+        return query
+    found, names, base, params = query
+    return _record_when_answer(con, scope, player, stat, threshold, found, names, base, params)
+
+
+def _record_when_stat(stat: Any, threshold: Any) -> tuple[str, int]:
+    """The box-score column a whitelisted stat reads, and the threshold
+    narrowed to ``int`` - or the refusal for an unknown stat or a threshold
+    that is not a positive integer."""
+    column = THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
+    if column is None or not isinstance(threshold, int) or isinstance(threshold, bool) or threshold < 1:
+        raise TemplateUnsupported(f"record_when needs a known stat and a positive threshold, got {stat!r}/{threshold!r}")
+    return column, threshold
+
+
+def _record_when_query(
+    con: duckdb.DuckDBPyConnection, scope: _Scope, player: Entity, team: Entity | None, column: str, threshold: int
+) -> tuple[list[Any], dict[str, str], str, dict[str, Any]] | TemplateResult:
+    """The player's games grouped by whether he reached the threshold, and the
+    team names for whichever teams he suited up for in them - or the refusal
+    for a player with no games in scope at all."""
     params: dict[str, Any] = {**scope.params(), "player": player.id}
     if team is not None:
         params["team"] = team.id
@@ -5040,23 +5060,30 @@ def record_when(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     ).fetchall()
     if not found:
         return _no_games(con, player, scope, team)
-
-    by_hit = {bool(row[0]): row for row in found}
     team_ids = {str(t) for row in found for t in row[6]}
     # One season names each team as it was then. A career groups every season
     # of an id together, so it keeps today's name rather than picking one era.
     names = {team_id: season_name(team_id, scope.season, name) for team_id, name in _names(con, "teams", "team_id", team_ids).items()}
+    return found, names, base, params
+
+
+def _record_when_group(by_hit: dict[bool, Any], hit: bool | None) -> dict[str, Any]:
+    """The team's record in the games he reached the threshold (True), fell short (False), or both (None)."""
+    rows = [by_hit[h] for h in ((hit,) if hit is not None else (True, False)) if h in by_hit]
+    games = sum(int(r[1]) for r in rows)
+    wins = sum(int(r[2]) for r in rows)
+    margin = sum((r[3] or 0) * int(r[1]) for r in rows) / games if games else None
+    return {"games": games, "wins": wins, "losses": games - wins, "avg_margin": margin}
+
+
+def _record_when_answer(
+    con: duckdb.DuckDBPyConnection, scope: _Scope, player: Entity, stat: Any, threshold: int, found: list[Any], names: dict[str, str], base: str, params: dict[str, Any]
+) -> TemplateResult:
+    """The two-row table - reached the threshold, fell short - and the caveats
+    beside it: games with no box score, and the coverage floor."""
+    by_hit = {bool(row[0]): row for row in found}
     unit = f"{STAT_LABELS.get(stat or '', stat or '')}s"
-
-    def group(hit: bool | None) -> dict[str, Any]:
-        """The team's record in the games he reached the threshold (True), fell short (False), or both (None)."""
-        rows = [by_hit[h] for h in ((hit,) if hit is not None else (True, False)) if h in by_hit]
-        games = sum(int(r[1]) for r in rows)
-        wins = sum(int(r[2]) for r in rows)
-        margin = sum((r[3] or 0) * int(r[1]) for r in rows) / games if games else None
-        return {"games": games, "wins": wins, "losses": games - wins, "avg_margin": margin}
-
-    reached, short, every = group(True), group(False), group(None)
+    reached, short, every = _record_when_group(by_hit, True), _record_when_group(by_hit, False), _record_when_group(by_hit, None)
     label = scope.label(min(r[4] for r in found), max(r[5] for r in found))
     teams = sorted(names.values())
     whose = f"{teams[0]} record" if len(teams) == 1 else f"Record of {player.name}'s teams ({', '.join(teams)})"
@@ -5090,15 +5117,10 @@ def player_matchup(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
     if len(texts) != 2:
         raise TemplateUnsupported(f"player_matchup needs exactly two players, got {texts!r}")
     scope = _condition_scope(slots.get("season"), slots.get("span"), slots.get("season_type"), _PLAYER_GAME_TABLES)
-    resolved: list[Entity] = []
-    for text in texts:
-        found = _resolved_player(con, text, available=_BOX_SCORES, season=scope.season, through=_career_end(scope.season))
-        if isinstance(found, TemplateResult):
-            return found
-        resolved.append(found)
+    resolved = _player_matchup_resolve(con, texts, scope)
+    if isinstance(resolved, TemplateResult):
+        return resolved
     a, b = resolved
-    if a.id == b.id:
-        raise TemplateUnsupported("the named players resolved to the same person")
 
     meetings, together = _meetings(con, scope, a.id, b.id)
     unseen = _unseen_meetings(con, scope, a.id, b.id)
@@ -5108,36 +5130,97 @@ def player_matchup(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
         else ""
     )
     if not meetings:
-        for player in (a, b):
-            if _totals(con, _player_games(scope, box=box_source(con)), {**scope.params(), "player": player.id})[0] == 0:
-                return _no_games(con, player, scope, None)
-        teammates = f" - they were teammates in all {together} games they both played" if together else ""
-        message = f"{a.name} and {b.name} never played against each other {_where_in(scope)}{teammates}.{caveat}"
-        return TemplateResult(data={"players": [a.name, b.name], "meetings": 0, "teammate_games": together}, answer=message)
+        return _player_matchup_no_meetings(con, scope, a, b, together, caveat)
 
+    wins, lines, count, summary = _player_matchup_summary(a, b, meetings)
+    shown, log = _player_matchup_log(con, meetings, slots.get("limit"), a, b)
+    return _player_matchup_answer(a, b, scope, meetings, wins, lines, count, summary, shown, log, caveat)
+
+
+def _player_matchup_resolve(con: duckdb.DuckDBPyConnection, texts: list[str], scope: _Scope) -> tuple[Entity, Entity] | TemplateResult:
+    """The two named players, resolved against the box scores - refusing a
+    question whose two names resolve to the same person."""
+    resolved: list[Entity] = []
+    for text in texts:
+        found = _resolved_player(con, text, available=_BOX_SCORES, season=scope.season, through=_career_end(scope.season))
+        if isinstance(found, TemplateResult):
+            return found
+        resolved.append(found)
+    a, b = resolved
+    if a.id == b.id:
+        raise TemplateUnsupported("the named players resolved to the same person")
+    return a, b
+
+
+def _player_matchup_no_meetings(con: duckdb.DuckDBPyConnection, scope: _Scope, a: Entity, b: Entity, together: int, caveat: str) -> TemplateResult:
+    """The refusal for two players who never played against each other in
+    scope - naming whichever of them has no games at all, since that is the
+    missing fact rather than the matchup itself."""
+    for player in (a, b):
+        if _totals(con, _player_games(scope, box=box_source(con)), {**scope.params(), "player": player.id})[0] == 0:
+            return _no_games(con, player, scope, None)
+    teammates = f" - they were teammates in all {together} games they both played" if together else ""
+    message = f"{a.name} and {b.name} never played against each other {_where_in(scope)}{teammates}.{caveat}"
+    return TemplateResult(data={"players": [a.name, b.name], "meetings": 0, "teammate_games": together}, answer=message)
+
+
+def _player_matchup_summary(a: Entity, b: Entity, meetings: list[dict[str, Any]]) -> tuple[int, dict[str, dict[str, Any]], int, list[tuple[str, list[str]]]]:
+    """The head-to-head record and each player's averages in the meetings, as
+    the summary table's rows."""
     wins = sum(1 for m in meetings if m["won"])
     lines = {a.name: _matchup_line([m["a"] for m in meetings]), b.name: _matchup_line([m["b"] for m in meetings])}
-    label = scope.label(min(m["season"] for m in meetings), max(m["season"] for m in meetings))
     count = len(meetings)
-    title = f"{a.name} vs {b.name}, {label}: {count} meeting{'' if count == 1 else 's'}, {a.name}'s team won {wins}."
     summary = [("wins", [str(wins), str(count - wins)])] + [
         (header, [_cell(lines[p.name][key]) for p in (a, b)]) for key, header in (("minutes", "minutes"), ("points", "points"), ("rebounds", "rebounds"), ("assists", "assists"), ("fg_pct", "FG%"))
     ]
-    shown = meetings[: _clamp_limit(slots.get("limit"), _DEFAULT_MEETINGS_LOGGED)]
+    return wins, lines, count, summary
+
+
+def _player_matchup_stat_line(stats: dict[str, Any]) -> str:
+    """One player's points/rebounds/assists in one meeting, for the log."""
+    return f"{stats['points']}/{stats['rebounds']}/{stats['assists']}"
+
+
+def _player_matchup_abbr(team_id: str, season: int, abbr: dict[str, str]) -> str:
+    """A meeting's team as it was abbreviated THAT season - a 2005 Nets game reads NJ, not BKN."""
+    return season_name(team_id, season, abbr[team_id], column="abbreviation")
+
+
+def _player_matchup_log(con: duckdb.DuckDBPyConnection, meetings: list[dict[str, Any]], limit: Any, a: Entity, b: Entity) -> tuple[list[dict[str, Any]], list[tuple[str, list[str]]]]:
+    """The most recent meetings logged: each one's score and both players'
+    points/rebounds/assists, with teams abbreviated the way they were that season."""
+    shown = meetings[: _clamp_limit(limit, _DEFAULT_MEETINGS_LOGGED)]
     abbr = _names(con, "teams", "team_id", {m["team_id"] for m in shown} | {m["opponent_team_id"] for m in shown}, column="abbreviation")
-
-    def line(stats: dict[str, Any]) -> str:
-        """One player's points/rebounds/assists in one meeting, for the log."""
-        return f"{stats['points']}/{stats['rebounds']}/{stats['assists']}"
-
-    def abbreviated(team_id: str, season: int) -> str:
-        """A meeting's team as it was abbreviated THAT season - a 2005 Nets game reads NJ, not BKN."""
-        return season_name(team_id, season, abbr[team_id], column="abbreviation")
-
     log = [
-        (str(m["day"]), [f"{abbreviated(m['team_id'], m['season'])} {m['team_score']}-{m['opponent_score']} {abbreviated(m['opponent_team_id'], m['season'])}", line(m["a"]), line(m["b"])])
+        (
+            str(m["day"]),
+            [
+                f"{_player_matchup_abbr(m['team_id'], m['season'], abbr)} {m['team_score']}-{m['opponent_score']} {_player_matchup_abbr(m['opponent_team_id'], m['season'], abbr)}",
+                _player_matchup_stat_line(m["a"]),
+                _player_matchup_stat_line(m["b"]),
+            ],
+        )
         for m in shown
     ]
+    return shown, log
+
+
+def _player_matchup_answer(
+    a: Entity,
+    b: Entity,
+    scope: _Scope,
+    meetings: list[dict[str, Any]],
+    wins: int,
+    lines: dict[str, dict[str, Any]],
+    count: int,
+    summary: list[tuple[str, list[str]]],
+    shown: list[dict[str, Any]],
+    log: list[tuple[str, list[str]]],
+    caveat: str,
+) -> TemplateResult:
+    """The head-to-head summary table and the most recent meetings beside it."""
+    label = scope.label(min(m["season"] for m in meetings), max(m["season"] for m in meetings))
+    title = f"{a.name} vs {b.name}, {label}: {count} meeting{'' if count == 1 else 's'}, {a.name}'s team won {wins}."
     answer = _table(title, [a.name, b.name], summary)
     answer += "\n\n" + _table(f"Most recent {len(shown)} of {count} (points/rebounds/assists):", ["score", a.name, b.name], log)
     answer += f"\n{caveat.strip()}" if caveat else ""
