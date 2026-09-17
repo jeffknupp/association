@@ -1189,6 +1189,23 @@ found.
 
 ## P4: tooling, docs, low impact
 
+### Advanced-stat aggregates are not bit-reproducible between runs
+- **Found:** 2026-09-17, by the complexity refactor's golden comparison of
+  `run_leaderboard`; re-measured the same day
+- **Evidence:** the same query, `SELECT athlete_id, usage_pct, ts_pct FROM
+  player_season_advanced_stats WHERE season=2024 AND season_type=2`, run on four
+  fresh read-only connections to the main warehouse: 588 rows each, and against
+  the first run 143, 185 and 184 rows differ, by at most 1.07e-14 (e.g.
+  `10.60335677967314` vs `10.603356779673142`). The view is computed at query
+  time (`fetch/advanced_stats.py`), and DuckDB's parallel `SUM` combines partial
+  sums in a different order run to run.
+- **User sees:** nothing - every value is printed to one or two decimals. A
+  leaderboard ordering could in principle flip between two players tied to 14
+  digits.
+- **Next step:** none needed for answers. Anything comparing results across
+  runs (a golden test, a cache check) should round, or the view could round
+  `usage_pct`/`ts_pct`/`efg_pct` to a sane precision at build time.
+
 ### `games.date` is a VARCHAR, and the agent is taught only part of how to filter it
 - **Found:** 2026-09-16 during the query-set audit; **corrected and re-ranked
   P3 -> P4 the same day** by the issues audit

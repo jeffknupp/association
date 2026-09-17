@@ -51,11 +51,6 @@ mode is always the same: green locally, red on the PR.
 - **Read the exit status, not the output.** `pre-commit run --all-files | tail`
   hides a failure in the *first* hook - and `ruff` is first. Redirect to a file
   and check `$?`.
-- **Shell scripts pass shellcheck with every optional check on**
-  (`.shellcheckrc`). The one that matters is SC2312: a command substitution
-  nested in another command's arguments, or in a heredoc, fails without
-  tripping `set -e`, so assign it to a variable first. Braces on every
-  variable are style, taken for consistency.
 - **A gate script has to work when run directly**, not only through `uv run`.
   `pre-commit` runs its hooks under `uv run`, which exports `VIRTUAL_ENV`; CI
   invokes the same scripts bare. `scripts/check_types_complete.sh` resolved
@@ -63,7 +58,7 @@ mode is always the same: green locally, red on the PR.
   passed locally and failed in CI on the same commit. Test a change to one with
   plain `bash scripts/x.sh`.
 
-Three things about the gates surprise people:
+Some things about the gates surprise people:
 
 - **The docs gate rebuilds from scratch (`-E`) and then reads the HTML.**
   An incremental Sphinx build re-reads a page only when a source it knows
@@ -75,6 +70,14 @@ Three things about the gates surprise people:
   thing here as in CI. `scripts/check_docs_markup.py` then fails the build on
   a docstring field marker printed as text (`:rtype:` after a line of prose),
   which is valid reStructuredText and so nothing `-W` can see.
+- **The docs gate deletes `docs/api/generated/` before building.** autosummary
+  writes a stub page per module and never removes one, so after a module moved
+  the stale stub still named the old path: autodoc failed to import it locally,
+  while CI, which starts with no stubs, passed. The directory is gitignored and
+  regenerated every build.
+- **The hook lints more than CI's ruff step.** CI runs `ruff check src tests
+  scripts`; the pre-commit hook lints every tracked Python file, `docs/conf.py`
+  included. Run the hooks, not the CI line, before calling lint clean.
 - **mypy runs twice**, over `src` and `tests` separately, never as one
   invocation. Combined, mypy resolves the `association` package two different
   ways (source-rooted `src/` vs. the editable install `tests/` imports) and
@@ -87,6 +90,16 @@ Three things about the gates surprise people:
 
 Any commit touching `src/` must also touch `CHANGES.md`; a hook enforces it.
 Add to the `## Unreleased` section.
+
+**Adding a gate** follows the shape of the ones already there, so local and CI
+keep saying the same thing: pin the tool in the `dev` extra (`uv add --optional
+dev <tool>`, which also updates `uv.lock`), add a `language: system` hook that
+runs `.venv/bin/<tool>` with its settings in `pyproject.toml` (or the tool's own
+rc file), add the matching `uv run <tool>` step to `ci.yml`, and update the
+count on the `pre-commit` line above. Then break what it guards and watch it
+fail (see "Verifying your work"). Every finding it reports on arrival is fixed
+or suppressed with a written reason in the same commit - a gate that starts red
+gets turned off.
 
 ## Conventions
 
@@ -111,11 +124,36 @@ Add to the `## Unreleased` section.
   and both are declared anyway, because a release of either that stopped
   bundling them would otherwise break at import time with nothing in this repo
   having changed. A dev or docs tool goes in its extra, never in the core list.
+- **Every module lives in a package; the root of `src/association` holds only
+  `__init__.py` and `py.typed`.** Modules had drifted to the root because both
+  `fetch` and `query` needed them; that is what `nba/` is for. Where things go:
+  - `cli/` - the `association` command (`commands.py`) and the default
+    warehouse and data paths the scripts share (`paths.py`).
+  - `nba/` - what both `fetch` and `query` need to know: seasons and Eastern
+    dates, franchise names by season, coverage floors, NetPoints categories.
+    It imports nothing else from `association`.
+  - `fetch/` - ESPN and NetPoints clients, parsing, the pipeline and the
+    warehouse build; `fetch/repairs/` - load-time repairs of ESPN's faults and
+    the tables built beside them.
+  - `check/` - the coverage report. `query/` - router (`router.py`, with what
+    the model sees in `router_prompt.py`), templates, entities, renderers, the
+    agent. `web/` - the local web interface.
 - **The package layers are a contract.** `cli` > `web` > `query | check` >
-  `fetch` > the leaf modules (`season`, `franchises`, `coverage`, ...), with
-  `fetch` and `query` independent and the core free of the `web` extra's
-  packages (`[tool.importlinter]`). A new module that needs to sit somewhere
-  else changes the contract, with a reason, rather than an ignore.
+  `fetch` > `nba`, with `fetch` and `query` independent and the core free of
+  the `web` extra's packages (`[tool.importlinter]`). A new module that needs
+  to sit somewhere else changes the contract, with a reason, rather than an
+  ignore.
+- **Call-time imports are absolute.** A `from .fetch import warehouse` inside a
+  function resolves against wherever the module lives *when it is called*:
+  moving `cli.py` into `cli/` turned seven of them into imports of
+  `association.cli.fetch`, which fails only when the command runs - the import
+  of the module itself was fine. Write `from association.fetch import ...`
+  inside functions.
+- **Shell scripts pass shellcheck with every optional check on**
+  (`.shellcheckrc`). The one that matters is SC2312: a command substitution
+  nested in another command's arguments, or in a heredoc, fails without
+  tripping `set -e`, so assign it to a variable first. Braces on every
+  variable are style, taken for consistency.
 - **American spelling.** "defense", "offense", "serialize". British spellings
   drifted back in twice after being removed wholesale in `c09d6f7`, so
   codespell now enforces it (`en-GB_to_en-US`, `[tool.codespell]`). A word it
@@ -134,7 +172,12 @@ Add to the `## Unreleased` section.
 - **Mark public API changes with a version directive.** A new public function,
   class or module gets `.. versionadded:: X.Y.Z` at the end of its docstring; a
   renamed or reshaped one gets `.. versionchanged:: X.Y.Z` saying what moved.
-  Use the version being released next, not the current one. Only the public
+  Use the version being released next, not the current one - and work out
+  which that is from `git tag` and what `## Unreleased` already holds, not from
+  memory: 2.2.0 went out with directives naming 2.3.0 and 2.1.1, versions nobody
+  released, which a pre-release audit had to correct. While `## Unreleased`
+  records a breaking change (the 3.0.0 reorganization), a new directive says
+  the next *major* version. Only the public
   surface is worth marking — internal helpers and the template/intent set are
   explicitly outside the compatibility promise (see the preamble in
   `CHANGES.md`). Module-level constants need an attribute docstring (a string
@@ -716,6 +759,21 @@ a season.
 
 The habits that caught real bugs here, in rough order of how often they paid:
 
+- **A refactor is proven by a golden comparison, not by the suite alone.** The
+  complexity refactor that split `route()`, `parse_game_summary` and the
+  templates into steps was checked by calling each function with many inputs
+  - the routing corpus's slots, the tests' own cases, one per branch - against
+  the original code and again after, and diffing the full results (answer text,
+  data, exceptions, written files, types as well as values). Import each copy
+  explicitly (`PYTHONPATH=<tree>/src PYTHONDONTWRITEBYTECODE=1`, print
+  `association.__file__`), and perturb one token of the refactored code to
+  prove the comparison can fail. A green suite says only that the tested
+  inputs still pass.
+- **Run the original twice before calling a float difference a regression.**
+  DuckDB's parallel `SUM` is not bit-reproducible: the same query over
+  `player_season_advanced_stats` twice returns up to 185 of 588 rows differing
+  in the 15th digit. Compare aggregates rounded, or establish the noise first.
+
 - **Read the fixture, do not guess what it contains.** Several wrong test
   assertions came from assuming a shot count or a made/attempted split.
 - **Exit 0 is not proof.** A Sphinx build passed `-W` with the version variable
@@ -781,6 +839,15 @@ The habits that caught real bugs here, in rough order of how often they paid:
   `no-redef` and ruff's F811 catch it, but only when the gates run on the
   merged tree. After merging parallel work, scan for duplicated top-level
   names before reading anything into either side's green tests.
+- **Never rewrite `CLAUDE.md` in place.** It is a symlink to `AGENTS.md`, and
+  `git ls-files` lists it, so a `sed -i` or `perl -pi` over a file list
+  replaces the link with a regular copy (`git status` shows `T CLAUDE.md`). The
+  two then drift silently. Exclude it from bulk edits and edit `AGENTS.md`.
+- **`/tmp` is a shared 7.9G tmpfs.** Four agents' golden-comparison outputs,
+  plus older sessions' scratch directories, filled it to 100% mid-run, where a
+  failed write looks like a diff or a crash unrelated to the change. Compress
+  or hash large outputs, delete them once compared, and check `df -h /tmp`
+  before a large run.
 - **A DuckDB `SET` is per-connection.** A test asserting one has to observe it
   on the connection the code under test used; a freshly opened connection
   reports the default and the assertion looks like a real failure.
@@ -880,7 +947,18 @@ next agent has to rediscover from scratch, or never does.
   plus `bug` or `enhancement`), and writes the number back into the entry. Pass
   `--area` to add one of `data`, `query`, `tooling` or `documentation`. Run it
   with `--dry-run` first. When a fix removes an entry, close its issue in the
-  same breath and name the commit.
+  same breath and name the commit. An entry's heading *is* its issue's title,
+  so renaming a heading (a spelling fix renamed #56's) means retitling the
+  issue too.
+
+**Dispatching agents.** Beyond asking for findings (above): give parallel
+agents disjoint files, each in its own worktree, and have them prefix new
+private helpers with the function they came from (the collisions under
+"Verifying your work" are what happens otherwise). Tell them to run the tests
+and hooks in the foreground: an agent that backgrounds a run and waits for a
+notification stops instead, and has to be resumed by hand - two did in one
+session. Tell every one not to run ollama or `scripts/check_routing.py`
+unless it is the only one doing so, for the reason in that script's docstring.
 
 ## Releasing
 
