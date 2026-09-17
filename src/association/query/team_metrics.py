@@ -24,13 +24,15 @@ What was measured, against the built warehouse:
 - ``pointsInPaint`` and ``fastBreakPoints`` are 0 for every team before 2009.
 - ``plusMinus`` is -1 for every team in every season, and is not used.
 - There is no offensive or defensive rating column. Both are derived here,
-  from points and possessions, and opponent points come from ``games``: a team
-  season's opponent points are summed over its games there and used only when
-  that game count equals ``team_season_stats.gamesPlayed``. The count does not
-  always match - the 1999-2000 regular season is 80 games for most teams in
-  ``games`` against 82 in ``team_season_stats``, and several postseasons around
-  2000 are missing games - and a rating built from 80 games of points allowed
-  over 82 games of possessions would be wrong without looking wrong.
+  from points and possessions, and opponent points come from ``real_games``
+  (:mod:`association.fetch.real_games`, the filtered list team_games is built
+  from - see :data:`TEAM_GAMES_SQL`): a team season's opponent points are
+  summed over its games there and used only when that game count equals
+  ``team_season_stats.gamesPlayed``. The count does not always match - the
+  1999-2000 regular season is 80 games for most teams there against 82 in
+  ``team_season_stats``, and several postseasons around 2000 are missing
+  games - and a rating built from 80 games of points allowed over 82 games of
+  possessions would be wrong without looking wrong.
 
 .. versionadded:: 2.1.0
 """
@@ -371,10 +373,10 @@ class TeamLine:
 
 def season_table(con: duckdb.DuckDBPyConnection, season: int, season_type: int) -> list[TeamLine]:
     """Every team's line for one season, from ``team_season_stats`` with
-    opponent points from ``games``.
+    opponent points from ``real_games``.
 
     A metric needing opponent points is None for a team whose games in
-    ``games`` do not number its ``gamesPlayed`` - the points allowed would
+    ``real_games`` do not number its ``gamesPlayed`` - the points allowed would
     cover a different set of games than everything they are divided by. A
     metric is None for every team before its own ``first_season``.
 
@@ -435,8 +437,8 @@ class TeamRecord:
 
 def record_table(con: duckdb.DuckDBPyConnection, season: int, season_type: int) -> list[TeamRecord]:
     """Every team's record for one season: ``standings`` for a regular season,
-    the authoritative source, and a tally of ``games`` for a postseason, which
-    standings do not cover.
+    the authoritative source, and a tally of ``real_games`` for a postseason,
+    which standings do not cover.
 
     .. versionadded:: 2.1.0
     """

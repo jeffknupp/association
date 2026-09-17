@@ -11,7 +11,7 @@ A neutral module rather than part of ``query``, because both packages need it:
 ``fetch/warehouse.py`` names teams in the ``player_game_log`` view, and the
 query templates name them everywhere else. Same reason ``season.py`` exists.
 
-.. versionadded:: 2.3.0
+.. versionadded:: 2.2.0
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ class FranchiseEra:
     """One name and abbreviation a franchise played under, and the seasons it
     held them. ``last_season`` is None for the name it holds today.
 
-    .. versionadded:: 2.3.0
+    .. versionadded:: 2.2.0
     """
 
     team_id: str
@@ -68,7 +68,7 @@ expansion years. The three pure renames - Bullets to Wizards, Hornets to
 Pelicans, Bobcats to Hornets - moved no arena, so no column records them; those
 boundaries are league history.
 
-.. versionadded:: 2.3.0
+.. versionadded:: 2.2.0
 """
 
 _COLUMNS = ("display_name", "abbreviation")
@@ -85,7 +85,7 @@ def _value(era: FranchiseEra, column: str) -> str:
 def era_of(team_id: str, season: int) -> FranchiseEra | None:
     """The name franchise ``team_id`` carried in ``season``, if it was renamed.
 
-    .. versionadded:: 2.3.0
+    .. versionadded:: 2.2.0
     """
     return next((era for era in FRANCHISE_ERAS if era.team_id == team_id and era.covers(season)), None)
 
@@ -99,7 +99,7 @@ def season_name(team_id: str, season: int | None, current: str, column: str = "d
     table filed under "3" - a test warehouse's Detroit Pistons came back as the
     New Orleans Pelicans.
 
-    .. versionadded:: 2.3.0
+    .. versionadded:: 2.2.0
     """
     if column not in _COLUMNS:
         raise ValueError(f"season_name reads display_name or abbreviation, not {column!r}")
@@ -119,7 +119,7 @@ def season_name_sql(team_id: str, season: str, current: str, column: str = "disp
     relocation needs. Every literal comes from :data:`FRANCHISE_ERAS`, never from
     a question, and quotes are escaped regardless.
 
-    .. versionadded:: 2.3.0
+    .. versionadded:: 2.2.0
     """
     if column not in _COLUMNS:
         raise ValueError(f"season_name_sql reads display_name or abbreviation, not {column!r}")

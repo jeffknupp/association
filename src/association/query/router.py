@@ -296,7 +296,7 @@ instructions go first and the examples stay, so
 ROUTER_PROMPT_TOKEN_BUDGET = ROUTER_NUM_CTX * 3 // 4
 """What the router's prompt and a long question may cost together, in tokens.
 
-.. versionadded:: 2.3.0
+.. versionadded:: 2.2.0
 """
 
 # The model picks a word; the numeric season_type every table uses is looked up
@@ -371,7 +371,7 @@ the exemption is why this is a named constant rather than a literal in a test:
 a template that is unreachable by BOTH routes is dead, and the two lists have
 to disagree deliberately rather than by drift.
 
-.. versionadded:: 2.3.0
+.. versionadded:: 2.2.0
 """
 
 _ORDINAL_PERIODS = {"first": 1, "1st": 1, "second": 2, "2nd": 2, "third": 3, "3rd": 3, "fourth": 4, "4th": 4}
@@ -395,7 +395,7 @@ def _period_asked(question: str) -> dict[str, int] | None:
     one - a breakdown across all four is a different shape, and this template
     answers one period.
 
-    .. versionadded:: 2.3.0
+    .. versionadded:: 2.2.0
     """
     half = _WHICH_HALF.search(question)
     if half is not None:
@@ -578,7 +578,7 @@ def _validate_date(question: str, season: int | None) -> str | None:
       on ("lebron on march 17 all time" spans 20 of them), so it refuses
       instead.
 
-    .. versionadded:: 2.3.0
+    .. versionadded:: 2.2.0
     """
     match = _CALENDAR_DATE.search(question)
     if match is None or match.group("range"):
@@ -943,7 +943,7 @@ def _is_team_name(name: str) -> bool:
     ``_TEAM_CITY``, where fuzzy matching was measured and rejected because it
     turns 16 real player surnames into teams.
 
-    .. versionchanged:: 2.3.0
+    .. versionchanged:: 2.2.0
        Recognizes a city and an abbreviation. Before this, a team the question
        named any way but by nickname read as a player, and "mathurin v det"
        was routed as a matchup between two players.

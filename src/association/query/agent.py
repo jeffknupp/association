@@ -335,7 +335,7 @@ class Agent:
             return self._answer(question, history, templated.answer, "fast", intent=intent, data=templated.data, artifacts=templated.artifacts)
 
         self.last_question = question
-        # Only the entries this question needs, rather than all 26 - see
+        # Only the entries this question needs, rather than all 13 - see
         # prompt.select_knowledge. Swapping the system message costs one
         # cache miss on this question's FIRST iteration; the prefix is then
         # stable for the tool-call rounds after it, which is where the cost

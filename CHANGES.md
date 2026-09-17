@@ -15,6 +15,22 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Docs brought up to date with the code.** A pass over the README, the
+  Sphinx pages, `AGENTS.md`, `DATA.md`, `ISSUES.md` and the package docstrings
+  for claims the last release's work had made untrue. `docs/architecture.rst`
+  now describes the load-time repairs (`game_repair`, `team_box_repair`,
+  `season_totals_repair`, `reconstructed_box`, `real_games`) and the
+  temp-file warehouse swap; the README and `docs/usage.rst` list quarter and
+  half questions, and the empty 2013-18 box scores are described as rebuilt
+  from play-by-play for per-game answers rather than only counted; the
+  development setup syncs the `web` extra the tests need; `docs/releasing.rst`
+  says the PyPI upload currently fails. In the docstrings,
+  `association.query.fingerprint` no longer says a single game cannot be
+  fingerprinted, `conditions` no longer describes a fixed five-hour Eastern
+  shift, `team_metrics` names `real_games` as its source, and
+  `override_invented_players` no longer says an invented name falls through to
+  the agent. Version directives that named 2.3.0 or 2.1.1 now name 2.2.0, the
+  release they ship in.
 - **The Pistons' 1990 title clincher is a Detroit win again.** ESPN serves
   Game 5 of the 1990 Finals (`100614008`, 14 June at Portland, Detroit 92-90)
   with the two teams on each other's sides - Detroit at home, losing 90-92 -

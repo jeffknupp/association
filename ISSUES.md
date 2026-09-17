@@ -59,7 +59,7 @@ found.
   day of 2020-21 - with `numwins` and `numlosses` both 0. `team_outlook`
   answers "2021 regular-season snapshot (updated 2020-12-22, 30 teams) ... BPI
   -5.9 ... no games played yet, projected 16-56" for the Knicks, who finished
-  41-31. The caveat at `templates.py:3073` cannot fire, because it tests
+  41-31. The caveat at `templates.py:3063` cannot fire, because it tests
   `str(updated)[:4] > str(season)` and `"2020" > "2021"` is False - it was
   written for the 2017-2020 snapshots, which are stamped *after* their season.
   Pre-existing; the backfill now shows it for 30 teams rather than 9.
@@ -184,7 +184,7 @@ found.
   `real_games` (against ESPN's own totals): PHI 16/23, LAL 11/16, MIL 13/18,
   CHA (id 3) 8/10, SA 12/13 - the id-3 franchise was the Charlotte Hornets in
   2001, not New Orleans (`association/franchises.py`, `FRANCHISE_ERAS`), so "NO
-  -2" above named the wrong team. `coverage.py:167-170` and `:188-191`
+  -2" above named the wrong team. `coverage.py:166-170` and `:187-191`
   (not :168,189) still say Philadelphia's run "reads 15 games" - it reads 16 -
   and still name only the Final and MIL-PHI, leaving MIL-CHA and LAL-SA
   unmentioned; that text has not been updated.
@@ -354,21 +354,17 @@ found.
     spread over 25 teams at 1-2 games each. League-wide, 115 null team rows on
     real 1996 games have real player rows beside them; with one 2000 game
     (`191102003`, ORL@NO) that is the 117 the comment at
-    `fetch/team_box_repair.py:88` counts - but that comment names Chicago 2000
-    as the other case, which is wrong.
-- **Re-checked 2026-09-16, by the issues audit: the code comment is still
-  wrong.** `fetch/team_box_repair.py:88-89` still reads "Vancouver 1996 and
-  Chicago 2000" - unchanged since the Chicago half was found to be a different
-  fault (2026-09-15, above).
+    `fetch/team_box_repair.py:108` counts. That comment used to name Chicago
+    2000 as the other case; it was corrected on 2026-09-17.
 - **Source:** DATA.md, "Vancouver 1996 is an empty TEAM box, not an empty player box"
 - **User sees:** nothing at all for a per-player question - those rows are
   sound. A team-level read of 1996 Vancouver gets NULLs, and
   `_empty_box_scores` does not count these (it tests player minutes), so such
   an answer carries no caveat. **This is half wrong.** The team branch of
-  `player_splits` (`templates.py:4575-4577`) does caveat: it counts rows with
+  `player_splits` (`templates.py:4568-4570`) does caveat: it counts rows with
   `fieldGoalsAttempted IS NULL` and says "Rebounds, assists, 3-pointers and FG%
   are missing from N of those games' box scores and are averaged over the
-  rest." But `_team_games` (`conditions.py:264-278`), which backs team
+  rest." But `_team_games` (`conditions.py:257-271`), which backs team
   `streak` and `record_when`, reads `tbs.totalRebounds`/`tbs.assists` directly
   with no NULL count or caveat at all - so a 1996 Grizzlies rebound streak or
   threshold question silently excludes all 82 games, with nothing said.
@@ -418,7 +414,7 @@ found.
 - **Evidence:** `real_games` (`fetch/real_games.py`) now holds the 43,353 rows
   of `games`'s 43,504 that are actually games (both counts moved +10 with
   `72b599c`'s 2000 playoff recovery; the gap is still 151), and every TEAM
-  template reads it. `_PLAYER_GAMES` (`templates.py:1704`) still joins raw
+  template reads it. `_PLAYER_GAMES` (`templates.py:1694`) still joins raw
   `games` rather than `real_games` - harmlessly today, since no player row
   falls on one of the 151 dropped events (see "Not affected, measured" below).
   Two readers do not read `real_games` at all, both by design rather than
@@ -431,7 +427,7 @@ found.
     just fixed for, reached by the slower path. Adding a line to
     `TABLE_SUMMARY` is not free: `PREAMBLE_TOKEN_BUDGET` is 6,400 and
     AGENTS.md forbids buying room by trimming that text.
-  - **The web health line.** `_warehouse_seasons` (`web/app.py:197`) counts
+  - **The web health line.** `_warehouse_seasons` (`web/app.py:196`) counts
     `games`, so the page says 43,504 where 43,353 were played.
 - **User sees:** an agent-written answer that counts rows that are not games,
   with nothing to mark it as different from the template answer to the same
@@ -597,12 +593,12 @@ found.
 - **Re-checked 2026-09-15: it now refuses instead of undercounting, and the
   next step below cannot work.** `with_without` for Klay Thompson 2021 answers
   that his tenure "falls outside the 2021 regular season" - the refusal built
-  in the `if not games:` branch of `with_without` (`templates.py:4716`).
+  in the `if not games:` branch of `with_without` (`templates.py:4707`).
   Durant/Nets 2020 is the same. `player_season_stats` has **no row** for a
   season a player missed entirely, so it cannot supply tenure. Worse,
   `game_log` and `player_stat` say "Klay Thompson was not Stephen Curry's
   teammate in any of his 63 games" - the wrong-cause sentence built in
-  `_no_narrowed_games` (`templates.py:1949`) - about a rostered, injured
+  `_no_narrowed_games` (`templates.py:1937`) - about a rostered, injured
   player.
 - **GitHub:** #16
 
@@ -728,17 +724,18 @@ found.
 - **Found:** 2026-09-16, issues audit, from the latest replay
 - **Evidence:** "Bam adebeyo jan 19" routes to `player_stat` with
   `date="2023-01-19"` resolved, and falls through on `player_stat cannot
-  honour ['date']`; "celtics record vs sixers on november 11" does the same on
-  `head_to_head`. `game_log` honours `date` (`templates.py:152`), and
-  `player_stat` already redirects a `limit` to `game_log` (`templates.py:2057`)
-  but not a `date`. (The 2023 in the first example is itself the model's
+  honor ['date']`; "celtics record vs sixers on november 11" does the same on
+  `head_to_head`. `game_log` honors `date` (`templates.py:152`), and
+  `player_stat` already declines a `limit` as a `game_log` question
+  (`templates.py:2053`, falling through rather than redirecting) and has no
+  equivalent for a `date`. (The 2023 in the first example is itself the model's
   invention - see the next entry.)
 - **User sees:** a slow agent answer for a question a template answers
   exactly, and no "did you mean Bam Adebayo?", since `check_scope` refuses
   before the name is resolved.
 - **Next step:** in `route()`, send a `player_stat` with a resolved `date` to
   `game_log` with a limit of 1, the same way `CODE_ASSIGNED_INTENTS` handles a
-  period; decide separately whether `head_to_head` should honour `date`.
+  period; decide separately whether `head_to_head` should honor `date`.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #94
 
@@ -819,7 +816,7 @@ found.
   fast path; **fixed for every measured case and re-ranked P1 -> P3 on
   2026-09-16**, after the second pass measured zero left.
 - **What it was.** `check_scope()` refuses a narrowing a template cannot
-  honour, but it can only see slots the router emits, and `ROUTER_SCHEMA` has
+  honor, but it can only see slots the router emits, and `ROUTER_SCHEMA` has
   no slot for a weekday, a holiday, an age, a minutes condition, "since
   returning from injury", a calendar date, a game of a playoff series or a
   season named by ordinal. Those words never reached it, so the template
@@ -858,7 +855,7 @@ found.
   was being dropped too - but worth knowing the refusal is not free.
 - **Re-checked 2026-09-16, and the mechanism moved.** "Bam adebeyo jan 19" now
   arrives with `date="2023-01-19"` already resolved and routed to
-  `player_stat`, which does not honour `date` - so it still refuses before
+  `player_stat`, which does not honor `date` - so it still refuses before
   name resolution and still pre-empts "did you mean Bam Adebayo?", but the
   cause is no longer `check_scope` dropping the date; it is `player_stat` not
   redirecting a resolved `date` to `game_log`. That gap is now tracked
@@ -869,7 +866,7 @@ found.
   some slot, so an unrecognized narrowing refuses by default instead of being
   ignored by default. Re-measure against `fastpath_after_rows_graded.jsonl`,
   which is the current baseline (261 rows: correct 87, wrong 29, fell_through
-  94, clarified 25, refused 12, partial 12).
+  94, clarified 25, refused 12, partial 12, unclear 2).
 - **Source:** the wrong answers are ours, not ESPN's; no DATA.md entry.
 - **GitHub:** #84
 
@@ -914,7 +911,7 @@ found.
   one player's box-score line against one opponent for `player_stat`.
 - **Re-checked 2026-09-16: no longer a one-off construction - six feed
   questions fall through on it in the latest replay**, all on
-  `player_matchup`/`player_compare cannot honour ['opponent']`: "sam hauser v
+  `player_matchup`/`player_compare cannot honor ['opponent']`: "sam hauser v
   mil", "Curry vs dallas last q0 games", "julius randle stats vs blazers with
   minnestota", "oubre vs warriors without embiid", "de'aaron fox vs magic
   ...", "stating centers vs suns". Commit `d7a8db1` does not touch this shape.
@@ -933,7 +930,7 @@ found.
   15 and 14, 1990 returns 13 and 14; and `&level=3` returns the six divisions
   at 5 teams each. `standings` also carries "vs. Conf." and "vs. Div." records,
   populated from 2004.
-- **Evidence:** `parse_standings` (`fetch/parse.py:341`) walks `children`
+- **Evidence:** `parse_standings` (`fetch/parse.py:342`) walks `children`
   purely to reach the entries and throws the group name away - its own test
   says so (`tests/fetch/test_parse.py:413-414`). `games.conference_game` is
   False on all 43,504 rows. No table maps a team to a conference, so
@@ -1000,7 +997,7 @@ found.
   raises `TemplateUnsupported`, which is a fall-through to the agent, not a
   refusal the user reads.
 - **Re-checked 2026-09-16: the relocation rule is no longer open.** The refusal
-  is still at `templates.py:1006` (`_career_leaderboard`, raising
+  is still at `templates.py:1008` (`_career_leaderboard`, raising
   `TemplateUnsupported("franchise career leaderboards are not supported")`),
   but "the rule for relocated franchises is open" is now decided elsewhere:
   `association/franchises.py` established that an ESPN `team_id` belongs to
@@ -1262,7 +1259,7 @@ found.
 - **Evidence:** `scripts/perturb.py` against
   `tests/query/test_team_templates.py`: **removing** the
   `CASE season_type WHEN {BPI_PRESEASON} THEN 0 ELSE 1 END` from
-  `query/templates.py:3024` is MISSED (62 passed, exit 0), while **reversing**
+  `query/templates.py:3014` is MISSED (62 passed, exit 0), while **reversing**
   it to `THEN 1 ELSE 0` is CAUGHT by
   `test_a_same_dated_preseason_snapshot_never_wins_the_regular_season_question`.
   The reason it cannot be tested is the useful part: the `CASE` maps preseason
@@ -1284,7 +1281,7 @@ found.
 - **Found:** 2026-09-15, issues audit (P4 data/query auditor)
 - **Evidence:** the rule that drops a postseason line ESPN copied from the
   regular season exists twice, in different words:
-  `fetch/warehouse.py:235` (the `player_season_stats_deduped` view: more than 28
+  `fetch/warehouse.py:239` (the `player_season_stats_deduped` view: more than 28
   games, or games+points equal to that season's regular-season line on any team)
   and `query/leaderboard.py:186` `not_a_postseason_copy` (games plus the value
   columns, on the same team). They agree today - each drops 436 of 7,941 rows -
@@ -1318,7 +1315,7 @@ found.
 ### One rule, two hand-maintained copies: the traded-player dedup
 - **Found:** 2026-09-15, while fixing #9
 - **Evidence:** "prefer the combined row over the per-team stints" is written
-  as SQL in `fetch/warehouse.py:255` (the `player_season_stats_deduped` view)
+  as SQL in `fetch/warehouse.py:259` (the `player_season_stats_deduped` view)
   and twice in `query/leaderboard.py` (lines 300 and 324, the `dedup_traded`
   QUALIFY). Fixing #9 had to touch both, and a fix that touched only one would
   have left the leaderboard reading the broken row while the deduped view was
@@ -1342,7 +1339,7 @@ found.
   not the same gap marked differently: the entry originally said
   `team_season_stats` uses 0 for the same era, which is wrong (only its
   `fastBreakPoints` is 0). `query/team_metrics.py:24` and the user-visible
-  refusal `_PAINT_REASON` (`:92`) both still repeat that error.
+  refusal `_PAINT_REASON` (`:98`) both still repeat that error.
 - **User sees:** nothing today — no template reads the column. Agent SQL asking
   for points in the paint in an old season gets -1 a game, which reads as a
   number rather than as a gap.
@@ -1432,13 +1429,13 @@ found.
 
 ### Broad `except duckdb.Error` in `_single_game_netpoints`
 - **Found:** 2026-09-11, repo audit
-- **Evidence:** `_single_game_netpoints` (`query/templates.py:1288`) catches
+- **Evidence:** `_single_game_netpoints` (`query/templates.py:1280`) catches
   every DuckDB error. `fingerprint.py` already narrowed the same pattern to the
   missing-table error.
 - **User sees:** a SQL bug reported as "unavailable", then a slow fall-through.
 - **Next step:** catch `duckdb.CatalogException` only.
 - **Re-checked 2026-09-15:** the pattern occurs twice. The second is
-  `templates.py:4382`, in `_compare_netpoints`, which catches `duckdb.Error`
+  `templates.py:4375`, in `_compare_netpoints`, which catches `duckdb.Error`
   and returns `{}` - so a SQL bug there makes the NetPoints rows silently
   disappear from a comparison.
 - **GitHub:** #44

@@ -1689,8 +1689,9 @@ def _rebuilt_readable(con: duckdb.DuckDBPyConnection, needed: list[str]) -> bool
 
 
 # One join serves venue and result both: games.home_team_id agrees with
-# team_box_stats.home_away on every row (checked, all 83,424). Keyed on season
-# too, since the phantom 1993 shares its event ids with 1994.
+# team_box_stats.home_away on every row (checked, all 87,008 as of the warehouse
+# this was last verified against - the count grows with every pull). Keyed on
+# season too, since the phantom 1993 shares its event ids with 1994.
 _PLAYER_GAMES = "FROM player_game_log pgl JOIN games g ON g.event_id = pgl.event_id AND g.season = pgl.season"
 
 
@@ -4112,7 +4113,7 @@ PERIOD_RECONCILIATION: dict[int, float] = {2003: 93.5, 2004: 95.7, 2005: 95.9, 2
 """Per-season agreement between summed shot values and ESPN's linescores, for
 the seasons under 99%. Read by :func:`period_split` to caveat or refuse.
 
-.. versionadded:: 2.3.0
+.. versionadded:: 2.2.0
 """
 
 PERIOD_REFUSE_BELOW = 90.0
@@ -4122,7 +4123,7 @@ Set between 2016's 76.5% and 2003's 93.5% deliberately: a season that is right
 19 times in 20 is worth answering with a caveat, and one that is wrong in a
 quarter of its quarters is not an answer at all.
 
-.. versionadded:: 2.3.0
+.. versionadded:: 2.2.0
 """
 
 _HALF_PERIODS: dict[int, tuple[int, ...]] = {1: (1, 2), 2: (3, 4)}
@@ -4176,7 +4177,7 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     refused with that named as the reason rather than answered from a weaker
     source.
 
-    .. versionadded:: 2.3.0
+    .. versionadded:: 2.2.0
     """
     con = ctx.con
     periods, period_label = _period_scope(slots)

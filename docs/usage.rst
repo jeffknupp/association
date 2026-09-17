@@ -201,6 +201,14 @@ routing check (``scripts/check_routing.py``) and StatMuse's query feed.
 * **Games, highs and counts**: "Show me the Knicks last 5 games", "luka ft
   log", "Most rebounds Jokic has had in one game?", "Who had the most 30+ point
   games this season?", "Diabate career high assists".
+* **A quarter or half**: a team's, from the official linescore ("How many
+  points did the 76ers score in the 4th quarter against Boston this season?"),
+  or a named player's, summed from his made shots' court location ("How many
+  points did Jokic score in the 3rd quarter?"). Points only - no other stat is
+  recorded per period - and a player's is refused for 2002 and 2016, whose
+  per-period reconstruction does not agree with ESPN's own quarter scores
+  closely enough to trust; every other season since 2001-02 answers, with a
+  measured accuracy caveat for 2003-2006 and 2013.
 * **Careers**: "career points leaders". A career answer covers the careers that
   reached 1993-94, and says it is not an all-time list.
 * **Games under a condition**: splits ("Nikola Jokic home and away splits",

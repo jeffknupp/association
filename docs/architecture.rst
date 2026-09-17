@@ -31,14 +31,56 @@ Load
 ----
 
 :mod:`association.fetch.warehouse` builds ``nba.duckdb`` from whatever Parquet
-is on disk — no network. It also creates the derived pieces the query engine
-relies on: the ``current_season()`` macro, the ``player_season_stats_deduped``
-view that collapses a traded player's multiple rows and drops the postseason
-lines ESPN's career endpoint copied from a regular season, and the computed advanced
-stats in :mod:`association.fetch.advanced_stats`.
+is on disk — no network. Loading each table is one ``CREATE OR REPLACE TABLE
+... read_parquet(...)`` statement; after all of them come the load-time
+repairs and views, in dependency order, every one of which also reruns on a
+partial ``association data load --tables ...``:
+
+* :mod:`association.fetch.game_repair` puts the teams of a game ESPN serves on
+  the wrong sides back where they played (one game so far: 1990 Finals Game
+  5). Runs ahead of ``real_games``, which copies ``games``, and of every view
+  that reads a winner or a side.
+* :mod:`association.fetch.team_box_repair` rewrites ``team_box_stats`` in
+  place, correcting three column-level faults ESPN serves (2018's stats
+  shifted under a neighboring column's name, ``turnovers`` zero before 2013,
+  2008's rebound columns holding something else).
+* :mod:`association.fetch.season_totals_repair` rewrites ``player_season_stats``
+  in place, rebuilding a traded player's combined-season row from his own
+  stints where ESPN's career endpoint disagrees with itself.
+* :mod:`association.fetch.advanced_stats` builds the computed
+  ``player_advanced_stats`` / ``player_season_advanced_stats`` views (true
+  shooting %, eFG%, usage rate, game score) — pure closed-form formulas over
+  already-fetched columns, so they are always rebuilt when ``player_box_stats``
+  is present rather than gated behind a flag.
+* :mod:`association.fetch.reconstructed_box` builds
+  ``player_box_stats_reconstructed`` and ``player_box_stats_filled``, rebuilding
+  a per-game box line from ``plays`` for the roughly 1,025 Chicago/New Orleans
+  games (2013-2018) ESPN serves with every stat zero. Deliberately its own
+  views rather than a rewrite of ``player_box_stats`` itself, and deliberately
+  absent from :data:`association.query.prompt.KNOWN_TABLES` — a reconstructed
+  number sitting in the same column as a fetched one would be indistinguishable
+  from it.
+* :mod:`association.fetch.real_games` builds the ``real_games`` table: the rows
+  of ``games`` that are actually games, with ESPN's placeholder, duplicate and
+  phantom rows read past once rather than re-filtered in every template.
+
+The same pass also creates the ``current_season()`` macro and the
+``player_season_stats_deduped`` view that collapses a traded player's multiple
+rows and drops the postseason lines ESPN's career endpoint copied from a
+regular season.
 
 Rebuilding is idempotent and cheap, so it is the right loop when iterating on
-schema or parsing.
+schema or parsing. A **full** rebuild (``tables=None``, i.e. no ``--tables``
+flag) builds into ``<db_path>.building`` and only renames it over ``db_path``
+once every load, repair and view finishes without raising, so an interrupted
+build — OOM kill or otherwise — leaves the previous warehouse untouched rather
+than half-replaced; a leftover ``.building`` file is itself evidence of one and
+is replaced by the next full build. It also runs with
+``preserve_insertion_order=false`` and ``enable_external_file_cache=false``
+(see ``AGENTS.md``, "Working on the fetch path", for the two out-of-memory
+failures each setting fixes). A **partial** rebuild (``--tables``) writes
+``db_path`` in place, since it depends on tables already there that it is not
+reloading.
 
 Query: a router in front of an agent
 ------------------------------------

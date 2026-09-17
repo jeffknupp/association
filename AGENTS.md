@@ -268,7 +268,9 @@ slower SQL-writing agent; that is by design, not a bug.
   Treat the tool list as a **budget, not a list**. Each tool costs ~190 tokens
   of JSON schema, charged on every question whether or not it is relevant —
   unlike knowledge-base entries, which `select_knowledge` already filters per
-  question. Five tools leave ~220 tokens of headroom; a sixth does not fit.
+  question. Five tools leave as little as ~100 tokens of headroom in the worst
+  case (measured: a question that pulls the maximum three selected
+  knowledge-base entries); a sixth does not fit.
   `docs/architecture.rst` ("The tool budget") has the levers, cheapest first.
   Do not buy room by trimming `TABLE_SUMMARY` or the standing rules: that is
   the text the original truncation bug destroyed, and no gate can tell that the
@@ -348,7 +350,7 @@ seasons already on disk makes no request and rebuilds nothing (0.4s against
 **A change that alters warehouse data is not finished until the warehouse
 holds it.** This covers a parser fix, a new or reshaped view, a new column, a
 corrected derived table, and a fetch fix. A fix merged but never loaded looks
-done in the code and stays wrong in every answer. The view fixes in `e1cc1c8`
+done in the code and stays wrong in every answer. The view fixes in `220f8aa`
 were in the code for hours, and reached the warehouse only when someone ran a
 separate `data load`. Do both halves:
 
@@ -611,13 +613,16 @@ everything about it is constrained by things measured elsewhere in this file.
   what `_empty_box_scores` is for. `DATA.md` has the counts and the seasons.
 
   **Do not confuse that with the team-box-only fault**, which looks similar and
-  is not. Vancouver 1996, Chicago 2000 and Chicago 1999 have an all-NULL
-  `team_box_stats` row for every game beside **real player rows with real
-  minutes** — so a per-player answer is fine and only team-level reads are
-  affected. An earlier note here called Vancouver 1996 "the same shape" as
-  Chicago and New Orleans; it was measured on `team_box_stats` alone and is
-  wrong. `player_box_stats` holds 785 Vancouver rows with minutes, 12 a game,
-  which is the league-normal roster size that season.
+  is not. Vancouver 1996 has an all-NULL `team_box_stats` row for every game
+  beside **real player rows with real minutes** — so a per-player answer is
+  fine and only team-level reads are affected. An earlier note here called
+  Vancouver 1996 "the same shape" as Chicago and New Orleans; it was measured
+  on `team_box_stats` alone and is wrong. `player_box_stats` holds 785
+  Vancouver rows with minutes, 12 a game, which is the league-normal roster
+  size that season. Chicago 2000 and 1999 were briefly grouped in with
+  Vancouver under this same fault; re-measured, their all-NULL team rows sit
+  on zero `real_games` events — placeholder rows `real_games` already drops —
+  so those two seasons are not this fault at all.
 - Query connections to DuckDB are **read-only**, as a hard guarantee.
 
 **Those floors are enforced, not just documented.** `association/coverage.py`

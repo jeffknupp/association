@@ -105,8 +105,9 @@ NULL``, the test :func:`association.query.templates.player_splits` already uses
 to caveat a team split) **and** its team-game has at least one player row with
 minutes. A row failing either test keeps every column exactly as ESPN served
 it: fully corrected or fully untouched, never half of each. That also leaves
-alone the 117 all-NULL team rows whose player rows are real (Vancouver 1996 and
-Chicago 2000 - ``DATA.md``, "Vancouver 1996 is an empty TEAM box"), which are a
+alone the 117 all-NULL team rows whose player rows are real (115 on 1996 games,
+mostly Vancouver's and its opponents', and one 2000 game, ORL@NO - ``DATA.md``,
+"Vancouver 1996 is an empty TEAM box"), which are a
 different fault with a different fix, and which a turnover rebuild would
 otherwise have given a lone turnover count in an otherwise empty row.
 

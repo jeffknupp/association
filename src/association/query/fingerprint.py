@@ -5,16 +5,26 @@ does the drawing. Split the same way :mod:`association.query.shotchart` and
 :mod:`association.query.court` are, and for the same reason: one implementation
 behind both the fast-path template and anything else that wants a plot.
 
-Modelled on espnanalytics.com's Net Pts Fingerprint, which is where the
-underlying numbers come from: one axis per skill, in net points per 100
-possessions, either as a percentile of the league or on a shared value scale.
+Modeled on espnanalytics.com's Net Pts Fingerprint, which is where the
+underlying numbers come from: one axis per skill, either as a percentile of the
+league or on a shared value scale.
 
-Season level only. ``net_points_player_game`` carries an offense/defense/total
-split and nothing else - there is no per-game play-type breakdown anywhere in the
-warehouse - so a request to fingerprint one game is refused rather than answered
-with the season's shape under a game's title.
+A season fingerprint is drawn in net points per 100 possessions, from
+``net_points_player_fingerprint``. A single game's can be drawn too, from the
+LONG per-game counterpart ``net_points_player_game_fingerprint`` (one row per
+player per game per category - see :func:`load_game_fingerprints`), in that
+game's raw net points rather than a per-100 rate: over one game's ~30
+possessions a per-100 rate would turn a single made corner three into a
+league-leading season figure. See :class:`Unit` for how the two are told apart
+on the plot.
 
 .. versionadded:: 1.3.0
+
+.. versionchanged:: 2.1.0
+   Added the single-game fingerprint, via :func:`load_game_fingerprints` and
+   the ``order`` parameter of :func:`render_for_players`. Before this, every
+   request was answered with the season's shape, whether or not one game was
+   asked for.
 """
 
 from __future__ import annotations
@@ -154,8 +164,8 @@ class FingerprintUnavailable(Exception):
     """Raised when no fingerprint can be drawn for what was asked.
 
     The message is written to be shown to a person: a season with no
-    fingerprint rows, an unknown view or scale, or a request scoped to a single
-    game, which this data cannot answer at all.
+    fingerprint rows, an unknown view or scale, or a single game scoped to a
+    player or a season the per-game table has no row for.
 
     .. versionadded:: 1.3.0
     """

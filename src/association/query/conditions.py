@@ -31,10 +31,11 @@ against the warehouse rather than assumed:
   them rather than carry it across, and say how many there were.
 - **A game happens on its US Eastern date.** ``games.date`` is a UTC tip
   time, so a 7:30pm Eastern tip lands on the next calendar day, and a split by
-  month would put a March 31st game in April. The shift is the same fixed five
-  hours ``fetch.parse`` uses to match NetPoints files to games, and it is safe
-  for the same reason: EST and EDT disagree about a date only between midnight
-  and 1am Eastern, when no NBA game starts.
+  month would put a March 31st game in April. Read through
+  :func:`~association.season.eastern_date_sql`, the same real Eastern clock
+  ``fetch.parse`` uses to match NetPoints files to games - not a fixed
+  five-hour shift, which gets a game with no stored tip time (ESPN's midnight
+  Eastern placeholder) wrong in the summer.
 - **Not every row of ``games`` is a game.** ESPN serves 0-0 placeholders with
   no winner (268 team-games in 1999-2002, 252 of them on the same Eastern date
   as that team's real game), rows naming a team id that is in no franchise, and

@@ -111,7 +111,7 @@ class LeaderboardMetric:
     .. versionchanged:: 2.1.0
        Added ``ratio``, ``postseason_min_sample`` and ``career``.
 
-    .. versionchanged:: 2.1.1
+    .. versionchanged:: 2.2.0
        Every per-game average now carries the games qualifiers, so a ranking
        by one is qualified in both season types.
     """

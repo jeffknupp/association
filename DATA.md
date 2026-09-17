@@ -158,8 +158,7 @@ likewise.
   sit beside real player rows, spread over 25 teams at 1-2 games each.
   League-wide, 115 all-NULL team rows on real 1996 games have real player rows
   beside them; with one 2000 game (`191102003`, ORL@NO) that makes the 117 the
-  comment at `fetch/team_box_repair.py:88` counts — though that comment names
-  Chicago 2000 as the second case, which is wrong.
+  comment at `fetch/team_box_repair.py:108` counts.
 - **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull**, which
   reproduced `team_box_stats` exactly.
 - **How we handle it:** nothing yet, and `_empty_box_scores` does NOT catch
@@ -392,7 +391,7 @@ the parser throws the grouping away. The birth-date half stands.
   `&level=3` returns the six divisions at 5 teams each. It publishes no birth
   date through any endpoint the pull reads.
 - **Evidence:** `games.conference_game` is False on all 43,504 rows.
-  `parse_standings` (`fetch/parse.py:341`) walks `children` only to reach the
+  `parse_standings` (`fetch/parse.py:342`) walks `children` only to reach the
   entries and keeps no group name — its own test says the entries "appear at
   both conference and division level" (`tests/fetch/test_parse.py:413-414`).
   `standings` also carries "vs. Conf." and "vs. Div." records, real from 2004.
@@ -666,8 +665,10 @@ the parser throws the grouping away. The birth-date half stands.
   season's regular-season games and points exactly. Every real run checked was
   kept. **Read the deduped view for postseason lines; the raw table still has
   them.**
-- **Tracked in:** ISSUES.md, "Three wrong statements in the docs" (#43) for the
-  unit confusion. The dedup itself needs no further action.
+- **Tracked in:** no action needed. The unit-confusion docs bug this pointed to
+  was ISSUES.md #43, "Three wrong statements in the docs," fixed 2026-09-16 (see
+  ISSUES.md #93's note that both comments now give the re-measured 436/7,941
+  and 340/7,845 figures); the dedup itself needed no further action either way.
 
 ### Traded players' combined season rows disagree with their own stints
 
@@ -683,14 +684,18 @@ the parser throws the grouping away. The birth-date half stands.
   1-game stint. 7 have NULL points because a stint's totals are NULL.
 - **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull**, which
   reproduced every one of these rows.
-- **How we handle it:** `player_season_stats_deduped` and the leaderboard's
-  `dedup_traded` both *prefer* the combined row, so the wrong line is the one
-  that shows.
-- **How we handle it:** `fetch/season_totals_repair.py` rebuilds a combined
-  row from its own stints at load time wherever the two disagree, so every
-  reader sees the summed line rather than ESPN's. 19 rows as of 2026-09-15.
-  `avgMinutes` is NULLed on a rebuilt row: it has no season total behind it
-  and both approximations were fitted and rejected (81% and 61% exact).
+- **How we handle it:** before 2026-09-15, `player_season_stats_deduped` and
+  the leaderboard's `dedup_traded` both *preferred* the combined row, which
+  meant the wrong line was the one that showed. `fetch/season_totals_repair.py`
+  now rebuilds a combined row from its own stints at load time wherever the
+  two disagree, so every reader sees the summed line rather than ESPN's. 19
+  rows as of 2026-09-15. `avgMinutes` is NULLed on a rebuilt row: it has no
+  season total behind it and both approximations were fitted and rejected (81%
+  and 61% exact).
+- **Tracked in:** no action needed — repaired at load time. ISSUES.md, "One
+  rule, two hand-maintained copies: the traded-player dedup" (#83) tracks the
+  separate risk that the "prefer the combined row" rule is still hand-written
+  in two other places (`player_season_stats_deduped` and `dedup_traded`).
 
 ### `games` carries placeholder, duplicate and phantom rows
 
@@ -730,7 +735,10 @@ the parser throws the grouping away. The birth-date half stands.
     in 2026 is not date-only: its ten `T04:00Z` rows all fall in November-March,
     where that is a real 11pm EST tip, and the clock dates them the day before.
   - **Every `games` row has `team_box_stats` rows**, phantoms and placeholders
-    included — measured 2026-09-14, 43,494 of 43,494. Only the PLAYER box is
+    included — measured 2026-09-14, 43,494 of 43,494 (both figures now read
+    43,504 of 43,504, +10 since the 2000 playoff discovery pass, `72b599c`,
+    which added real games rather than junk ones and did not change the ratio).
+    Only the PLAYER box is
     absent. This entry used to say the team `game_log` was safe "because it
     joins `team_box_stats`, which the phantoms lack"; that was wrong on its
     facts, and the log listed them. The 302 `team_box_stats` rows belonging to
@@ -754,7 +762,9 @@ the parser throws the grouping away. The birth-date half stands.
   reproduced `games` exactly — placeholders, duplicates and phantoms included.
 - **How we handle it:** one shared filtered list. `real_games`
   (`fetch/real_games.py`) is built at load time and keeps 43,343 of the 43,494
-  rows; `head_to_head`, `conditions`, `team_metrics.TEAM_GAMES_SQL`, the team
+  rows (now 43,353 of 43,504, +10 each since the 2000 playoff discovery pass,
+  `72b599c` — the 151-row gap is unchanged); `head_to_head`, `conditions`,
+  `team_metrics.TEAM_GAMES_SQL`, the team
   `game_log` and `team_quarter_points` all read it instead of `games`. It does
   NOT collapse season 1993, which is a phantom SEASON rather than a phantom row
   — that stays with `coverage.py` and the cross-season `QUALIFY` in

@@ -82,11 +82,23 @@ holds these floors, and :doc:`usage` says what a question below one gets.
      - The source answers 403 for anything earlier.
 
 One more gap sits inside that range. Every game Chicago or New Orleans played
-from 2012-13 to 2017-18, playoffs included, has an empty box score apart from
-two: every player on both teams is listed with no minutes and every stat zero.
-Those games' play-by-play and shots survived, and so did the season totals.
-Answers built from box scores over those seasons say how many games they could
-not see.
+from 2012-13 to 2017-18, playoffs included, has an empty box score in ESPN's
+own feed apart from two: every player on both teams is listed with no minutes
+and every stat zero. Those games' play-by-play and shots survived, and so did
+the season totals.
+
+The warehouse rebuilds a per-game line from play-by-play for these games
+(:mod:`association.fetch.reconstructed_box`, loaded as the
+``player_box_stats_filled`` view), and a per-game answer built on it — a game
+log, a single-game high, a threshold count, a streak or a split — reads the
+rebuild and says so. The rebuild covers points, rebounds, assists, steals,
+blocks, field goals made and free throws made; it refuses turnovers, fouls and
+plus/minus for those games rather than guessing at them. Reading the raw
+``player_box_stats`` table directly, or anything computed from it before the
+rebuild (e.g. per-game advanced stats), still sees the zeroed lines: summed
+box-score points across the two franchises' 2013-2018 seasons run 86.5-87.3%
+of the season totals. Through the rebuild, the same sum runs 96-100% (99%+
+outside 2016, which is short even reconstructed).
 
 Being a good citizen
 --------------------

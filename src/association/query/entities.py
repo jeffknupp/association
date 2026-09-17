@@ -321,8 +321,9 @@ def override_invented_players(con: duckdb.DuckDBPyConnection, question: str, slo
     So every name is checked against the question before a template reads it,
     and a name with no trace there is not answered about. Where the question
     names somebody nothing else claims, that player takes its place; where it
-    does not, the name is reported and the caller falls through to the agent,
-    which at least reads the question. Guessing is not on the list.
+    does not, the name is reported and the caller says so rather than handing
+    the question to the agent: measured, the agent filled that silence with a
+    player who does not exist. Guessing is not on the list.
 
     Returns:
         The ``(was, now)`` pairs replaced, and the ungrounded names that could
@@ -616,7 +617,7 @@ def franchise_by_name(text: str, season: int | None = None) -> list[Entity] | No
     ``season`` None means the current season, because every template defaults
     to it and a question naming no year means now.
 
-    .. versionadded:: 2.3.0
+    .. versionadded:: 2.2.0
     """
     eras = _ERAS_BY_KEY.get(_team_key(text))
     if not eras:
@@ -1227,7 +1228,7 @@ def find_teams(con: duckdb.DuckDBPyConnection, text: str, season: int | None = N
     when nothing matches literally, a name whose city the router garbled is
     read by its nickname (:func:`_by_nickname`).
 
-    .. versionchanged:: 2.3.0
+    .. versionchanged:: 2.2.0
        Reads ``season``, resolves former franchise names, and falls back to the
        nickname when the city is wrong.
     """
@@ -1347,7 +1348,7 @@ def resolve_team(con: duckdb.DuckDBPyConnection, text: str, season: int | None =
     """One team, or a refusal. See :func:`resolve_player` for why ambiguity is
     returned rather than resolved.
 
-    .. versionchanged:: 2.3.0
+    .. versionchanged:: 2.2.0
        Takes the ``season`` a team name is read for.
     """
     return _resolve(find_teams(con, text, season), text, ("name", "id"))

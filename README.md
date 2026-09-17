@@ -38,8 +38,8 @@ above are the same build, one light and one dark.
 
 ```bash
 association query "who led the league in assists this season?"
-# Nikola Jokic led the league in assists per game in the 2026 regular season, at 10.7.
-# Next: Cade Cunningham (9.9), Josh Giddey (9.1), Luka Doncic (8.3), Ja Morant (8.1), ...
+# Nikola Jokic led the league in assists per game in the 2026 regular season
+# (minimum 20 games), at 10.7.
 
 association query "how many times did the 76ers play the Celtics this season?"
 # The Philadelphia 76ers and the Boston Celtics met 4 times in the 2026 regular
@@ -57,7 +57,7 @@ association query "Luka Doncic vs Shai Gilgeous-Alexander this season"
 
 association query "top 5 rebounders on the Lakers in the playoffs"
 # Deandre Ayton led the Los Angeles Lakers in rebounds per game in the 2026
-# postseason, at 9.6. Next: LeBron James (6.7), Austin Reaves (4.0), Rui Hachimura (4.0), Luke Kennard (3.5).
+# postseason (minimum 5 games), at 9.6. Next: LeBron James (6.7), Austin Reaves (4.0), Rui Hachimura (4.0), Luke Kennard (3.5).
 
 association query "Steph Curry's 3pt percentage over the past 4 seasons"
 # Stephen Curry, 3PT% by regular season, 2023-2026 (most recent first):
@@ -85,6 +85,7 @@ StatMuse's live query feed. For example:
 - **With or without a teammate**: "Celtics record without Tatum"
 - **A record under a condition**: "Sixers record when Embiid scores 30 points"
 - **Two players' meetings**: "lebron vs kawhi head to head"
+- **A quarter or half**: "How many points did Jokic score in the 3rd quarter?", "76ers 4th quarter scoring against Boston"
 - **Streaks**: "Lakers longest winning streak this season"
 - **Careers**: "career points leaders", "Jokic career averages"
 - **Team rankings, lines and outlook**: "which team scores the most points per game", "Knicks home record", "what are the celtics playoff odds"
@@ -153,7 +154,7 @@ per-game NetPoints files, which are an opt-in pull
 ## Setup
 
 ```bash
-uv tool install git+https://github.com/jeffknupp/association@v2.1.0
+uv tool install git+https://github.com/jeffknupp/association@v2.2.0
 brew install ollama               # or see https://ollama.com/download
 ollama serve &
 ollama pull qwen2.5:3b            # router, the fast path - required, ~1.9GB
@@ -256,10 +257,15 @@ tests/              pytest, one file per source module
 ## Development
 
 ```bash
-uv sync --extra dev
+uv sync --extra dev --extra docs --extra web
 pre-commit install     # one-time, wires the git hook
 pytest -q
 ```
+
+All three extras are needed even just to run the tests and gates: the docs
+build is one of the pre-commit hooks, and `tests/web/` imports `fastapi`
+directly with no skip guard, so it fails to collect without the `web` extra
+installed.
 
 `ruff` and `mypy` run as pre-commit hooks, along with docstring coverage and
 type completeness checks on `src/`. The same checks run in CI on push and pull
@@ -295,9 +301,16 @@ enforced by a pre-commit hook.
   Julius Erving are not in the warehouse, and a career list says it is not
   all-time.
 - **Empty box scores.** Every game Chicago or New Orleans played from 2012-13
-  to 2017-18, playoffs included, has an empty box score for both teams, apart
-  from two games. Most answers built from box scores say how many games they
-  could not see.
+  to 2017-18, playoffs included, has an empty box score for both teams in
+  ESPN's data, apart from two games. Per-game and per-condition answers (game
+  logs, single-game highs, threshold counts, splits, streaks, with/without,
+  head-to-head) rebuild the missing line from play-by-play for points,
+  rebounds, assists, steals, blocks, and made field goals and free throws, and
+  say the figure is rebuilt; turnovers and fouls are refused rather than
+  guessed. Season totals summed directly from the box scores are still short
+  (about 87% of ESPN's own totals for those team-seasons) since a rebuilt
+  season aggregate is right only about half the time - `player_season_stats`,
+  a separate ESPN endpoint, is unaffected.
 - **No round or conference data.** Nothing records a playoff round or a team's
   conference.
 - `data check --live` cross-checks are opt-in and can be slow for seasons

@@ -69,7 +69,7 @@ def default_db_path() -> str:
     """``./nba.duckdb`` where that exists, else the main checkout's copy,
     else the literal default unchanged.
 
-    .. versionadded:: 2.3.0
+    .. versionadded:: 2.2.0
     """
     return _resolve(DB_FILENAME)
 
@@ -78,6 +78,6 @@ def default_data_dir() -> str:
     """``./data/parquet`` where that exists, else the main checkout's copy,
     else the literal default unchanged.
 
-    .. versionadded:: 2.3.0
+    .. versionadded:: 2.2.0
     """
     return _resolve(DATA_DIRNAME)

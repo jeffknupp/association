@@ -5,7 +5,7 @@ is the drawing half of the shot chart: this module knows about angles, radii and
 SVG, and nothing about DuckDB. :mod:`association.query.fingerprint` does the
 querying and hands the numbers over already scaled.
 
-Modelled on espnanalytics.com's Net Pts Fingerprint - one axis per skill, grouped
+Modeled on espnanalytics.com's Net Pts Fingerprint - one axis per skill, grouped
 into scoring, shot types, creation, rebounding and defense, and the whole polygon
 read as a shape rather than as two dozen separate numbers.
 

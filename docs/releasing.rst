@@ -7,6 +7,17 @@ PyPI's `Trusted Publishing
 in the repository: PyPI verifies the GitHub Actions workflow identity over OIDC
 at upload time.
 
+.. note::
+
+   The PyPI upload currently fails, and that is expected: Trusted Publishing
+   answers ``invalid-publisher`` because no publisher is registered for this
+   repository on PyPI yet, pending an account-access issue — not a workflow
+   bug, and not something to fix by adding a token or making the job tolerate
+   failure. The rest of the ``build`` job still runs (the full gate suite,
+   then the wheel and sdist attached to the GitHub release), so a release
+   still ships from there; see :doc:`installation`. Every version tagged so
+   far stays uploadable under its own number once the account is restored.
+
 Versioning
 ----------
 

@@ -15,13 +15,13 @@ Install from a release tag:
 
 .. code-block:: console
 
-   $ pip install git+https://github.com/jeffknupp/association@v2.1.0
+   $ pip install git+https://github.com/jeffknupp/association@v2.2.0
 
 Or, to get the CLI on your PATH without adding it to a project environment:
 
 .. code-block:: console
 
-   $ uv tool install git+https://github.com/jeffknupp/association@v2.1.0
+   $ uv tool install git+https://github.com/jeffknupp/association@v2.2.0
 
 Releases cut from now on also carry the built wheel and sdist as downloadable
 assets, so ``pip install ./association-X.Y.Z-py3-none-any.whl`` works from a
@@ -70,9 +70,12 @@ To work on ``association`` itself:
 
    $ git clone https://github.com/jeffknupp/association
    $ cd association
-   $ uv sync --extra dev --extra docs
+   $ uv sync --extra dev --extra docs --extra web
    $ uv run pre-commit install
 
 ``uv sync`` installs the package in editable mode along with the linting,
-typing, test and documentation toolchain. See :doc:`releasing` for how a
-version reaches PyPI.
+typing, test and documentation toolchain. All three extras are needed even
+just to run the tests and gates - the docs build is one of the pre-commit
+hooks, and ``tests/web/`` imports ``fastapi`` directly with no skip guard, so
+it fails to collect without the ``web`` extra installed. See :doc:`releasing`
+for how a version reaches PyPI.

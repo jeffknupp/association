@@ -162,9 +162,14 @@ GET  /api/artifacts/{name} a rendered chart, from the output directory
   "intent": "leaderboard",
   "data": {"season": 2026, "leaders": []},
   "artifacts": [{"kind": "shot_chart", "name": "shotchart_stephen_curry.html"}],
-  "timing": {"total": 1.42, "model": 1.39, "calls": 1}
+  "timing": {"total_seconds": 1.42, "model_seconds": 1.39, "model_calls": 1, "tool_seconds": 0.0, "tool_calls": 0}
 }
 ```
+
+(Field names as shipped, in `web/app.py`'s `TimingResponse` — the plan's
+shorthand `total`/`model`/`calls` did not survive; timing also splits out tool
+time and tool-call count, which the fall-through path needs and the fast path
+always reports as zero.)
 
 `answered_by` is `fast` or `agent`; `intent` and `data` are null when the agent
 answered, since only a template produces them. (The plan first called this
@@ -174,6 +179,8 @@ SSE events, in order: `queued` (only if something else is running), `routed`
 (intent and slots), `tool` (name, elapsed) zero or more times, then `answer` or
 `error`. These map one-to-one onto what `RunHistory` already records, which is
 why the refactor should give `RunHistory` a sink rather than hardcoding stderr.
+(This is the plan as first written; what shipped is one `progress` event per
+trace line, not parsed `routed`/`tool` events — see the note under Phase 1.)
 
 ## Phases
 
