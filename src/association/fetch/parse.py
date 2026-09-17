@@ -145,6 +145,222 @@ def parse_scoreboard_events(data: JSON | None) -> list[tuple[str, int, int]]:
     return events
 
 
+def _parse_game_summary_linescore(c: dict[str, Any]) -> str:
+    """Period-by-period scores as a compact string, since the row is otherwise
+    one column per period of a variable-length game."""
+    return ",".join(str(x.get("displayValue", "")) for x in (c.get("linescores") or []))
+
+
+def _parse_game_summary_competitor(competitors: list[dict[str, Any]], home_away: str) -> dict[str, Any]:
+    """The home or away half of a competition's ``competitors`` list."""
+    return next((c for c in competitors if c.get("homeAway") == home_away), {})
+
+
+def _parse_game_summary_winner_team_id(home: dict[str, Any], away: dict[str, Any], home_team_id: Any, away_team_id: Any) -> Any:
+    """Which team's ``winner`` flag is set, home checked first - matches the
+    original if/elif priority exactly (both set is not a real ESPN shape)."""
+    if home.get("winner"):
+        return home_team_id
+    if away.get("winner"):
+        return away_team_id
+    return None
+
+
+def _parse_game_summary_game_row(
+    event_id: Any,
+    season: int,
+    season_type: int,
+    comp: dict[str, Any],
+    home: dict[str, Any],
+    away: dict[str, Any],
+    home_team_id: Any,
+    away_team_id: Any,
+    winner_team_id: Any,
+    venue: dict[str, Any],
+    game_info: dict[str, Any],
+    status: dict[str, Any],
+) -> Row:
+    """The single ``games`` row: header, competitor, venue and status fields
+    flattened together."""
+    return {
+        "event_id": event_id,
+        "season": season,
+        "season_type": season_type,
+        "date": comp.get("date"),
+        "home_team_id": home_team_id,
+        "away_team_id": away_team_id,
+        "home_score": _num(home.get("score")),
+        "away_score": _num(away.get("score")),
+        "winner_team_id": winner_team_id,
+        "home_linescores": _parse_game_summary_linescore(home),
+        "away_linescores": _parse_game_summary_linescore(away),
+        "neutral_site": comp.get("neutralSite"),
+        "conference_game": comp.get("conferenceCompetition"),
+        "venue_id": venue.get("id"),
+        "venue_name": venue.get("fullName"),
+        "venue_city": (venue.get("address") or {}).get("city"),
+        "venue_state": (venue.get("address") or {}).get("state"),
+        "attendance": _num(game_info.get("attendance")),
+        "status": status.get("name"),
+        "status_completed": bool(status.get("completed")),
+        "status_state": status.get("state"),  # 'pre' | 'in' | 'post' - 'post' + not completed = postponed/canceled, not pending
+    }
+
+
+def _parse_game_summary_team_box(boxscore: JSON, event_id: Any, season: int, season_type: int, opponent_of: dict[Any, Any]) -> list[Row]:
+    """One row per team from ``boxscore['teams']``."""
+    rows: list[Row] = []
+    for t in boxscore.get("teams") or []:
+        team_id = (t.get("team") or {}).get("id")
+        row = {
+            "event_id": event_id,
+            "season": season,
+            "season_type": season_type,
+            "team_id": team_id,
+            "opponent_team_id": opponent_of.get(team_id),
+            "home_away": t.get("homeAway"),
+        }
+        for stat in t.get("statistics") or []:
+            _assign_stat(row, stat.get("name"), stat.get("displayValue"))
+        rows.append(row)
+    return rows
+
+
+def _parse_game_summary_player_box(boxscore: JSON, event_id: Any, season: int, season_type: int, opponent_of: dict[Any, Any]) -> tuple[list[Row], dict[Any, Row], list[Row]]:
+    """Player box rows, ``players_seen`` bios and glossary rows - built together
+    since they share one pass over ``boxscore['players']``."""
+    player_box: list[Row] = []
+    players_seen: dict[Any, Row] = {}
+    glossary: list[Row] = []
+    for team_block in boxscore.get("players") or []:
+        team_id = (team_block.get("team") or {}).get("id")
+        stat_groups = team_block.get("statistics") or []
+        if not stat_groups:
+            continue
+        sg = stat_groups[0]
+        keys = sg.get("keys") or sg.get("names") or []
+        glossary.extend(_glossary_rows(keys, sg.get("labels"), sg.get("descriptions"), "player_box_stats"))
+        for ath in sg.get("athletes") or []:
+            athlete = ath.get("athlete") or {}
+            athlete_id = athlete.get("id")
+            if athlete_id is None:
+                continue
+            row = {
+                "event_id": event_id,
+                "season": season,
+                "season_type": season_type,
+                "team_id": team_id,
+                "opponent_team_id": opponent_of.get(team_id),
+                "athlete_id": athlete_id,
+                "starter": ath.get("starter", False),
+                "did_not_play": ath.get("didNotPlay", False),
+                "dnp_reason": ath.get("reason"),
+                "ejected": ath.get("ejected", False),
+            }
+            # stats can be shorter than keys (e.g. empty for a DNP player) - truncate, don't error
+            for k, v in zip(keys, ath.get("stats") or [], strict=False):
+                _assign_stat(row, k, v)
+            player_box.append(row)
+
+            pos = athlete.get("position") or {}
+            players_seen[athlete_id] = {
+                "athlete_id": athlete_id,
+                "display_name": athlete.get("displayName"),
+                "short_name": athlete.get("shortName"),
+                "jersey": athlete.get("jersey"),
+                "position_abbr": pos.get("abbreviation"),
+                "position_name": pos.get("name"),
+                "headshot_url": (athlete.get("headshot") or {}).get("href"),
+            }
+    return player_box, players_seen, glossary
+
+
+def _parse_game_summary_shot_coordinate(play: JSON) -> tuple[Any, Any]:
+    """A shooting play's court position, or ``(None, None)``.
+
+    Free throws (and occasionally other plays) carry an ESPN sentinel "no real
+    coordinate" value instead of a court position; null it out rather than
+    passing along garbage magnitudes.
+    """
+    coord = play.get("coordinate") or {}
+    cx, cy = coord.get("x"), coord.get("y")
+    if cx is None or cy is None or abs(cx) > 500 or abs(cy) > 500:
+        return None, None
+    return cx, cy
+
+
+def _parse_game_summary_plays_and_shots(data: JSON, event_id: Any, season: int, season_type: int) -> tuple[list[Row], list[Row]]:
+    """Play-by-play rows, plus the shot-chart subset of them (shooting plays
+    only, with a sentinel-free coordinate)."""
+    plays: list[Row] = []
+    shot_chart: list[Row] = []
+    for p in data.get("plays") or []:
+        play_id = p.get("id")
+        period = (p.get("period") or {}).get("number")
+        clock = (p.get("clock") or {}).get("displayValue")
+        team_id = (p.get("team") or {}).get("id")
+        participants = p.get("participants") or []
+        athlete_ids = [str(pp["athlete"]["id"]) for pp in participants if pp.get("athlete", {}).get("id")]
+        primary_athlete_id = athlete_ids[0] if athlete_ids else None
+
+        plays.append(
+            {
+                "event_id": event_id,
+                "play_id": play_id,
+                "season": season,
+                "season_type": season_type,
+                "period": period,
+                "clock": clock,
+                "team_id": team_id,
+                "athlete_id": primary_athlete_id,
+                "participant_athlete_ids": ",".join(athlete_ids) or None,
+                "type": (p.get("type") or {}).get("text"),
+                "text": p.get("text"),
+                "home_score": p.get("homeScore"),
+                "away_score": p.get("awayScore"),
+                "scoring_play": p.get("scoringPlay"),
+            }
+        )
+
+        if p.get("shootingPlay"):
+            cx, cy = _parse_game_summary_shot_coordinate(p)
+            shot_chart.append(
+                {
+                    "event_id": event_id,
+                    "play_id": play_id,
+                    "season": season,
+                    "season_type": season_type,
+                    "athlete_id": primary_athlete_id,
+                    "participant_athlete_ids": ",".join(athlete_ids) or None,
+                    "team_id": team_id,
+                    "period": period,
+                    "clock": clock,
+                    "made": bool(p.get("scoringPlay")),
+                    "shot_type": (p.get("type") or {}).get("text"),
+                    "points_attempted": p.get("pointsAttempted"),
+                    "coordinate_x": cx,
+                    "coordinate_y": cy,
+                    "description": p.get("text"),
+                }
+            )
+    return plays, shot_chart
+
+
+def _parse_game_summary_win_probability(data: JSON, event_id: Any, season: int, season_type: int) -> list[Row]:
+    """One row per recorded win-probability sample."""
+    return [
+        {
+            "event_id": event_id,
+            "play_id": wp.get("playId"),
+            "season": season,
+            "season_type": season_type,
+            "home_win_pct": wp.get("homeWinPercentage"),
+            "tie_pct": wp.get("tiePercentage"),
+        }
+        for wp in data.get("winprobability") or []
+    ]
+
+
 def parse_game_summary(data: JSON | None, season: int, season_type: int) -> dict[str, Any]:
     """Returns dict with: game (dict|None), player_box, team_box, plays,
     shot_chart, win_probability (lists of Row), players_seen (athlete_id -> bio Row),
@@ -170,171 +386,20 @@ def parse_game_summary(data: JSON | None, season: int, season_type: int) -> dict
     venue = game_info.get("venue") or {}
     status = (comp.get("status") or {}).get("type") or {}
 
-    home: dict[str, Any] = next((c for c in competitors if c.get("homeAway") == "home"), {})
-    away: dict[str, Any] = next((c for c in competitors if c.get("homeAway") == "away"), {})
+    home = _parse_game_summary_competitor(competitors, "home")
+    away = _parse_game_summary_competitor(competitors, "away")
     home_team_id = (home.get("team") or {}).get("id")
     away_team_id = (away.get("team") or {}).get("id")
     opponent_of = {home_team_id: away_team_id, away_team_id: home_team_id}
+    winner_team_id = _parse_game_summary_winner_team_id(home, away, home_team_id, away_team_id)
 
-    def linescore_str(c: dict[str, Any]) -> str:
-        """Period-by-period scores as a compact string, since the row is otherwise
-        one column per period of a variable-length game."""
-        return ",".join(str(x.get("displayValue", "")) for x in (c.get("linescores") or []))
-
-    winner_team_id = None
-    if home.get("winner"):
-        winner_team_id = home_team_id
-    elif away.get("winner"):
-        winner_team_id = away_team_id
-
-    result["game"] = {
-        "event_id": event_id,
-        "season": season,
-        "season_type": season_type,
-        "date": comp.get("date"),
-        "home_team_id": home_team_id,
-        "away_team_id": away_team_id,
-        "home_score": _num(home.get("score")),
-        "away_score": _num(away.get("score")),
-        "winner_team_id": winner_team_id,
-        "home_linescores": linescore_str(home),
-        "away_linescores": linescore_str(away),
-        "neutral_site": comp.get("neutralSite"),
-        "conference_game": comp.get("conferenceCompetition"),
-        "venue_id": venue.get("id"),
-        "venue_name": venue.get("fullName"),
-        "venue_city": (venue.get("address") or {}).get("city"),
-        "venue_state": (venue.get("address") or {}).get("state"),
-        "attendance": _num(game_info.get("attendance")),
-        "status": status.get("name"),
-        "status_completed": bool(status.get("completed")),
-        "status_state": status.get("state"),  # 'pre' | 'in' | 'post' - 'post' + not completed = postponed/canceled, not pending
-    }
+    result["game"] = _parse_game_summary_game_row(event_id, season, season_type, comp, home, away, home_team_id, away_team_id, winner_team_id, venue, game_info, status)
 
     boxscore = data.get("boxscore") or {}
-
-    for t in boxscore.get("teams") or []:
-        team_id = (t.get("team") or {}).get("id")
-        row = {
-            "event_id": event_id,
-            "season": season,
-            "season_type": season_type,
-            "team_id": team_id,
-            "opponent_team_id": opponent_of.get(team_id),
-            "home_away": t.get("homeAway"),
-        }
-        for stat in t.get("statistics") or []:
-            _assign_stat(row, stat.get("name"), stat.get("displayValue"))
-        result["team_box"].append(row)
-
-    for team_block in boxscore.get("players") or []:
-        team_id = (team_block.get("team") or {}).get("id")
-        stat_groups = team_block.get("statistics") or []
-        if not stat_groups:
-            continue
-        sg = stat_groups[0]
-        keys = sg.get("keys") or sg.get("names") or []
-        result["glossary"].extend(_glossary_rows(keys, sg.get("labels"), sg.get("descriptions"), "player_box_stats"))
-        for ath in sg.get("athletes") or []:
-            athlete = ath.get("athlete") or {}
-            athlete_id = athlete.get("id")
-            if athlete_id is None:
-                continue
-            row = {
-                "event_id": event_id,
-                "season": season,
-                "season_type": season_type,
-                "team_id": team_id,
-                "opponent_team_id": opponent_of.get(team_id),
-                "athlete_id": athlete_id,
-                "starter": ath.get("starter", False),
-                "did_not_play": ath.get("didNotPlay", False),
-                "dnp_reason": ath.get("reason"),
-                "ejected": ath.get("ejected", False),
-            }
-            # stats can be shorter than keys (e.g. empty for a DNP player) - truncate, don't error
-            for k, v in zip(keys, ath.get("stats") or [], strict=False):
-                _assign_stat(row, k, v)
-            result["player_box"].append(row)
-
-            pos = athlete.get("position") or {}
-            result["players_seen"][athlete_id] = {
-                "athlete_id": athlete_id,
-                "display_name": athlete.get("displayName"),
-                "short_name": athlete.get("shortName"),
-                "jersey": athlete.get("jersey"),
-                "position_abbr": pos.get("abbreviation"),
-                "position_name": pos.get("name"),
-                "headshot_url": (athlete.get("headshot") or {}).get("href"),
-            }
-
-    for p in data.get("plays") or []:
-        play_id = p.get("id")
-        period = (p.get("period") or {}).get("number")
-        clock = (p.get("clock") or {}).get("displayValue")
-        team_id = (p.get("team") or {}).get("id")
-        participants = p.get("participants") or []
-        athlete_ids = [str(pp["athlete"]["id"]) for pp in participants if pp.get("athlete", {}).get("id")]
-        primary_athlete_id = athlete_ids[0] if athlete_ids else None
-
-        result["plays"].append(
-            {
-                "event_id": event_id,
-                "play_id": play_id,
-                "season": season,
-                "season_type": season_type,
-                "period": period,
-                "clock": clock,
-                "team_id": team_id,
-                "athlete_id": primary_athlete_id,
-                "participant_athlete_ids": ",".join(athlete_ids) or None,
-                "type": (p.get("type") or {}).get("text"),
-                "text": p.get("text"),
-                "home_score": p.get("homeScore"),
-                "away_score": p.get("awayScore"),
-                "scoring_play": p.get("scoringPlay"),
-            }
-        )
-
-        if p.get("shootingPlay"):
-            coord = p.get("coordinate") or {}
-            # Free throws (and occasionally other plays) carry an ESPN sentinel
-            # "no real coordinate" value instead of a court position; null it out
-            # rather than passing along garbage magnitudes.
-            cx, cy = coord.get("x"), coord.get("y")
-            if cx is None or cy is None or abs(cx) > 500 or abs(cy) > 500:
-                cx, cy = None, None
-            result["shot_chart"].append(
-                {
-                    "event_id": event_id,
-                    "play_id": play_id,
-                    "season": season,
-                    "season_type": season_type,
-                    "athlete_id": primary_athlete_id,
-                    "participant_athlete_ids": ",".join(athlete_ids) or None,
-                    "team_id": team_id,
-                    "period": period,
-                    "clock": clock,
-                    "made": bool(p.get("scoringPlay")),
-                    "shot_type": (p.get("type") or {}).get("text"),
-                    "points_attempted": p.get("pointsAttempted"),
-                    "coordinate_x": cx,
-                    "coordinate_y": cy,
-                    "description": p.get("text"),
-                }
-            )
-
-    for wp in data.get("winprobability") or []:
-        result["win_probability"].append(
-            {
-                "event_id": event_id,
-                "play_id": wp.get("playId"),
-                "season": season,
-                "season_type": season_type,
-                "home_win_pct": wp.get("homeWinPercentage"),
-                "tie_pct": wp.get("tiePercentage"),
-            }
-        )
+    result["team_box"] = _parse_game_summary_team_box(boxscore, event_id, season, season_type, opponent_of)
+    result["player_box"], result["players_seen"], result["glossary"] = _parse_game_summary_player_box(boxscore, event_id, season, season_type, opponent_of)
+    result["plays"], result["shot_chart"] = _parse_game_summary_plays_and_shots(data, event_id, season, season_type)
+    result["win_probability"] = _parse_game_summary_win_probability(data, event_id, season, season_type)
 
     return result
 
