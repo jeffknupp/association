@@ -1077,10 +1077,9 @@ def _named_a_stat(question: str) -> bool:
     return bool(_STAT_WORDS.search(question))
 
 
-def route(model: str, question: str, previous_question: str | None = None) -> Route | None:
-    """Classify one question. Returns None if the model is unreachable or
-    replies with something unparsable - the caller falls through to the full
-    agent, so a router failure costs a round trip, never an answer."""
+def _route_ask_model(model: str, question: str, previous_question: str | None) -> dict[str, Any] | None:
+    """The model's raw slots for one question, or None if it is unreachable or
+    replies with something that is not an object carrying an intent."""
     user = f"Q: {question}"
     if previous_question:
         # A follow-up ("what about 2025?") is not self-contained. One line of
@@ -1106,6 +1105,11 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
         return None
     if not isinstance(raw, dict) or not isinstance(raw.get("intent"), str):
         return None
+    return raw
+
+
+def _route_period_intents(raw: dict[str, Any], question: str) -> None:
+    """Fouling out, and a quarter or half: intents code assigns from the question's own words."""
     low = question.lower()
     if _FOULED_OUT.search(low):
         raw["intent"] = "threshold_count"
@@ -1141,6 +1145,11 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
                 raw["per_game"] = True
         else:
             raw["intent"] = "other"
+
+
+def _route_team_and_player_intents(raw: dict[str, Any], question: str) -> None:
+    """A team where a player ranking was asked for, a record, a fingerprint with
+    no fingerprint words, and a player measured against a team."""
     if raw["intent"] in _PLAYER_RANKING_INTENTS and _TEAM_SUBJECT.search(question):
         # A team ranking has a template; a team's single-game record and a
         # count of team games do not, and answering either with players is the
@@ -1161,6 +1170,11 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
         raw["intent"] = "player_stat"
     if raw["intent"] == "player_stat" and _LOG_WORDS.search(question):
         raw["intent"] = "game_log"
+    _route_matchup_against_team(raw, question, listed)
+
+
+def _route_matchup_against_team(raw: dict[str, Any], question: str, listed: list[str]) -> None:
+    """A ``player_matchup`` whose second "player" is a team."""
     if raw["intent"] == "player_matchup" and any(map(_is_team_name, listed)):
         # One of the "two players" is a team: this is a player's games against
         # it. entities.scope_from_question moves the team to `opponent`.
@@ -1180,6 +1194,11 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
         against = raw.get("opponent") or next(iter(raw.get("teams") or []), None)
         if isinstance(against, str) and _is_team_name(against):
             raw["intent"] = "game_log" if _LOG_WORDS.search(question) or _GAMES_WORDS.search(question) else "player_stat"
+
+
+def _route_line_and_record_intents(raw: dict[str, Any], question: str) -> bool:
+    """A history that is really a line, a record ranking, and a career high.
+    Returns whether a history was rerouted to a line."""
     rerouted_to_line = False
     if raw["intent"] == "player_history" and (not _named_a_stat(question) or (_VERSUS_WORDS.search(question) and _TEAM_WORD.search(question))):
         # A season-by-season history of one stat is neither "career averages"
@@ -1197,7 +1216,11 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
         # Measured: "Diabate career high assists" was answered with his assists
         # per game.
         raw["intent"] = "single_game_high"
+    return rerouted_to_line
 
+
+def _route_season_slots(raw: dict[str, Any], question: str) -> dict[str, Any]:
+    """The slots, with blanks dropped and the season and season type read the code's way."""
     # A blank string is how the model says "no value" for a required slot;
     # dropping it here keeps every template's `slots.get(...) or default`
     # working and keeps the logged Route readable.
@@ -1209,6 +1232,11 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     else:
         slots["season"] = resolved_season
     slots["season_type"] = _validate_season_type(question)
+    return slots
+
+
+def _route_threshold(raw: dict[str, Any], slots: dict[str, Any], question: str) -> None:
+    """A threshold the model left out, and a count of games that has none."""
     if raw["intent"] in _THRESHOLD_INTENTS and not isinstance(slots.get("threshold"), int):
         # Measured: "Sixers record when Embiid scores 30 points" came back with
         # the intent right and no threshold at all.
@@ -1220,6 +1248,10 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
         # threes" is a season ranking - measured, it arrived here with none and
         # fell through.
         raw["intent"] = "leaderboard"
+
+
+def _route_filter_slots(slots: dict[str, Any], question: str) -> tuple[str | None, list[str]]:
+    """Span, venue, teammates missing, a ceiling and a situation. Returns the span and the absent teammates."""
     # The scoping slots below are read from the question and never asked of the
     # model: none is in ROUTER_SCHEMA, so adding them changed no grammar and can
     # have moved no other question's routing. A template that cannot honor one
@@ -1243,6 +1275,11 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     situation = _SITUATION.search(question)
     if situation is not None:
         slots["situation"] = situation.group(0).casefold()
+    return span, without
+
+
+def _route_calendar_slots(slots: dict[str, Any], question: str, span: str | None) -> None:
+    """A calendar day, a playoff round, a range of seasons and a split."""
     # After `span`, which pops the season on a career question. The season that
     # fixes the year is the one a template would use - `slots.get("season") or
     # current_season()`, the same default they all apply - EXCEPT on a career
@@ -1277,35 +1314,47 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     splits = [name for name, pattern in SPLIT_WORDS.items() if pattern.search(question)]
     if len(splits) == 1:
         slots["split"] = splits[0]
+
+
+def _route_intent_slots(intent: str, slots: dict[str, Any], question: str, without: list[str]) -> None:
+    """Slots only one template reads."""
     # Intent-specific: each means nothing to any other template, so each is
     # only added where one reads it - the same rule `side` follows below.
-    if raw["intent"] == "with_without":
+    if intent == "with_without":
         with_player = _names_after(_WITH, question)
         if with_player and not without:
             slots["with_player"] = with_player
-    if raw["intent"] == "player_splits" and slots.get("split") == "home_away":
+    if intent == "player_splits" and slots.get("split") == "home_away":
         slots.pop("venue", None)  # a split over venues is not a filter to one
-    if raw["intent"] == "team_leaderboard":
+    if intent == "team_leaderboard":
         rank = next((name for name, pattern in RANK_WORDS if pattern.search(question)), None)
         if rank is not None:
             slots["rank"] = rank
-    if raw["intent"] == "streak":
+    if intent == "streak":
         slots["kind"] = "loss" if _LOSING_STREAK.search(question) else "win"
+
+
+def _route_line_stat(intent: str, slots: dict[str, Any], question: str, rerouted_to_line: bool) -> None:
+    """A required ``stat`` the question never named, a history's season count, and an advanced metric the question did name."""
     # For the two templates whose default is a whole line, which still holds
     # any stat the word list missed. Dropping it for `leaderboard` would leave
     # it with no metric to rank by. Measured on player_stat: "Jokic career
     # averages" arrived with stat='points' and "LeBron James career playoff
     # stats" with stat='career_playoffs'.
-    if raw["intent"] in ("player_compare", "player_stat") and not _named_a_stat(question):
+    if intent in ("player_compare", "player_stat") and not _named_a_stat(question):
         slots.pop("stat", None)
     if rerouted_to_line:
         # A history's `limit` counted seasons; the line it became has none.
         for key in ("limit", "fields"):
             slots.pop(key, None)
-    if raw["intent"] in _ADVANCED_STAT_INTENTS:
+    if intent in _ADVANCED_STAT_INTENTS:
         advanced = next((metric for metric, pattern in _ADVANCED_STAT_WORDS if pattern.search(question)), None)
         if advanced is not None:
             slots["stat"] = advanced
+
+
+def _route_team_slots(intent: str, slots: dict[str, Any], question: str) -> None:
+    """A pseudo-team dropped, and a team's or a streak's ``stat`` kept only where the question names one."""
     team_slot = slots.get("team")
     if isinstance(team_slot, str) and _PSEUDO_TEAM.fullmatch(team_slot.strip()):
         slots.pop("team", None)
@@ -1313,19 +1362,23 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     # the question names no stat: "Knicks stats" arrived as stat='points' and
     # narrowed a team's line to one number, and a team's winning streak arrived
     # with a stat and no threshold and was refused.
-    if raw["intent"] == "team_stat" and not (_named_a_stat(question) or _TEAM_STAT_WORDS.search(question)):
+    if intent == "team_stat" and not (_named_a_stat(question) or _TEAM_STAT_WORDS.search(question)):
         slots.pop("stat", None)
-    if raw["intent"] in ("team_stat", "team_leaderboard"):
+    if intent in ("team_stat", "team_leaderboard"):
         named_metric = _team_metric_in(question)
         if named_metric is not None:
             slots["stat"] = named_metric
-    if raw["intent"] == "streak" and not _named_a_stat(question):
+    if intent == "streak" and not _named_a_stat(question):
         slots.pop("stat", None)
+
+
+def _route_subject_slots(intent: str, slots: dict[str, Any], question: str) -> None:
+    """The last meetings with an opponent across seasons, and a single-game high's missing subject."""
     # "last 8 games vs pistons" with no season named means the last eight
     # meetings, wherever they fall - answered from the current season alone it
     # found four and said so. A season the question names still wins.
     if (
-        raw["intent"] == "game_log"
+        intent == "game_log"
         and _VERSUS_WORDS.search(question)
         and (isinstance(slots.get("limit"), int) or re.search(r"\blast\b", question, re.IGNORECASE))
         and season_from_text(question) is None
@@ -1333,14 +1386,18 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     ):
         slots["span"] = "career"
         slots.pop("season", None)
-    if raw["intent"] == "single_game_high" and not slots.get("player") and not slots.get("players"):
+    if intent == "single_game_high" and not slots.get("player") and not slots.get("players"):
         # An optional slot the model dropped, restored from the question's own
         # grammar - see _subject_named_in. Only where the template reads one
         # player: a leaderboard with no player IS the league's ranking.
         subject = _subject_named_in(question)
         if subject is not None:
             slots["player"] = subject
-    if raw["intent"] == "fingerprint":
+
+
+def _route_side_and_order(intent: str, slots: dict[str, Any], question: str) -> None:
+    """The side of the ball for a fingerprint, and which end of the season was asked for."""
+    if intent == "fingerprint":
         side = _validate_side(slots, question)
         if side is None:
             slots.pop("side", None)
@@ -1348,7 +1405,7 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
             slots["side"] = side
     # Only for the templates that honor it - see ORDER_INTENTS for why adding
     # it anywhere else would cost an answer rather than sharpen one.
-    if raw["intent"] in ORDER_INTENTS:
+    if intent in ORDER_INTENTS:
         order = _validate_order(slots, question)
         if order is None:
             # Only a value the schema cannot emit ever gets dropped here; a
@@ -1366,4 +1423,29 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
         slots.pop("order", None)
         if slots.get("limit") == 1:
             slots.pop("limit", None)
+
+
+def route(model: str, question: str, previous_question: str | None = None) -> Route | None:
+    """Classify one question. Returns None if the model is unreachable or
+    replies with something unparsable - the caller falls through to the full
+    agent, so a router failure costs a round trip, never an answer."""
+    raw = _route_ask_model(model, question, previous_question)
+    if raw is None:
+        return None
+    # The stages run in this order because each reads what the ones before it
+    # rewrote: the intents code assigns decide which slots are read, and a
+    # threshold the question lacks turns a count back into a ranking before
+    # any intent-specific slot is chosen.
+    _route_period_intents(raw, question)
+    _route_team_and_player_intents(raw, question)
+    rerouted_to_line = _route_line_and_record_intents(raw, question)
+    slots = _route_season_slots(raw, question)
+    _route_threshold(raw, slots, question)
+    span, without = _route_filter_slots(slots, question)
+    _route_calendar_slots(slots, question, span)
+    _route_intent_slots(raw["intent"], slots, question, without)
+    _route_line_stat(raw["intent"], slots, question, rerouted_to_line)
+    _route_team_slots(raw["intent"], slots, question)
+    _route_subject_slots(raw["intent"], slots, question)
+    _route_side_and_order(raw["intent"], slots, question)
     return Route(intent=raw["intent"], slots=slots)
