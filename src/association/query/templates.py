@@ -3034,34 +3034,14 @@ def team_leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     limit = _clamp_limit(slots.get("limit"), default=DEFAULT_TEAM_LEADERBOARD_LIMIT)
     venue = slots.get("venue") if slots.get("venue") in VENUE_WORDS else None
 
-    named: Entity | None = None
-    if isinstance(slots.get("team"), str) and slots["team"].strip():
-        found = _resolved_team(con, slots["team"], season=_slot_season(slots))
-        if isinstance(found, TemplateResult):
-            return found
-        named = found
+    named = _team_leaderboard_named(con, slots)
+    if isinstance(named, TemplateResult):
+        return named
 
-    display: dict[str, str] = {}
-    if metric.expression is None:
-        records: list[TeamRecord] | str = _venue_records(con, season, season_type, venue) if venue else record_table(con, season, season_type)
-        if isinstance(records, str):
-            return TemplateResult(data={"message": records, "season": season}, answer=records)
-        values = {r.team: (r.win_pct if key == "record" else 1 - r.win_pct) for r in records}
-        display = {r.team: _tally(r.wins, r.losses) for r in records}
-    else:
-        if venue is not None:
-            # Team season stats have no home/road split; team_box_stats does,
-            # and the agent can reach it.
-            raise TemplateUnsupported(f"team season stats have no {venue} split for {metric.label}")
-        refusal = _first_season_refusal(metric, season)
-        if refusal is not None:
-            return refusal
-        lines = season_table(con, season, season_type)
-        if lines and any(line.values.get(key) is None for line in lines):
-            message = _incomplete_opponents(metric, period, lines)
-            return TemplateResult(data={"message": message, "season": season}, answer=message)
-        values = {line.team: line.values[key] or 0.0 for line in lines}
-        display = {team: _metric_cell(metric, value) for team, value in values.items()}
+    values_or_result = _team_leaderboard_values(con, key, metric, season, season_type, venue, period)
+    if isinstance(values_or_result, TemplateResult):
+        return values_or_result
+    values, display = values_or_result
 
     title = f"{metric.label.capitalize()}{f' {VENUE_WORDS[venue]}' if venue else ''}, {period}"
     if not values:
@@ -3069,6 +3049,52 @@ def team_leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
         return TemplateResult(data={"question_shape": title, "season": season, "teams": []}, answer=answer)
 
     order = ranked(values, descending)
+    end = _team_leaderboard_order_label(metric, key, rank_word, descending)
+    return _team_leaderboard_result(order, display, limit, named, title, season, end, key)
+
+
+def _team_leaderboard_named(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> Entity | TemplateResult | None:
+    """team_leaderboard's named team, resolved so its own row can be appended
+    past the limit where it would otherwise be cut off; None where the
+    question named none."""
+    if isinstance(slots.get("team"), str) and slots["team"].strip():
+        return _resolved_team(con, slots["team"], season=_slot_season(slots))
+    return None
+
+
+def _team_leaderboard_values(
+    con: duckdb.DuckDBPyConnection, key: str, metric: TeamMetric, season: int, season_type: int, venue: str | None, period: str
+) -> tuple[dict[str, float], dict[str, str]] | TemplateResult:
+    """team_leaderboard's per-team values and their display strings: the
+    standings for a record metric (venue-split where asked), team_metrics
+    otherwise - each with its own early-refusal path."""
+    if metric.expression is None:
+        records: list[TeamRecord] | str = _venue_records(con, season, season_type, venue) if venue else record_table(con, season, season_type)
+        if isinstance(records, str):
+            return TemplateResult(data={"message": records, "season": season}, answer=records)
+        values = {r.team: (r.win_pct if key == "record" else 1 - r.win_pct) for r in records}
+        display = {r.team: _tally(r.wins, r.losses) for r in records}
+        return values, display
+    if venue is not None:
+        # Team season stats have no home/road split; team_box_stats does,
+        # and the agent can reach it.
+        raise TemplateUnsupported(f"team season stats have no {venue} split for {metric.label}")
+    refusal = _first_season_refusal(metric, season)
+    if refusal is not None:
+        return refusal
+    lines = season_table(con, season, season_type)
+    if lines and any(line.values.get(key) is None for line in lines):
+        message = _incomplete_opponents(metric, period, lines)
+        return TemplateResult(data={"message": message, "season": season}, answer=message)
+    values = {line.team: line.values[key] or 0.0 for line in lines}
+    display = {team: _metric_cell(metric, value) for team, value in values.items()}
+    return values, display
+
+
+def _team_leaderboard_order_label(metric: TeamMetric, key: str, rank_word: str | None, descending: bool) -> str:
+    """team_leaderboard's "highest/lowest/best/worst first" phrase - the
+    answer says which end it lists first, because a list of the fastest teams
+    under a question about the slowest would otherwise look perfectly right."""
     if metric.lower_is_better is None or rank_word in ("most", "fewest"):
         end = "highest first" if descending else "lowest first"
     else:
@@ -3076,6 +3102,12 @@ def team_leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
         end = ("best first" if best_first else "worst first") + (" (highest)" if descending else " (lowest)")
     if key in ("record", "losses"):
         end = "best record first" if (key == "record") == descending else "worst record first"
+    return end
+
+
+def _team_leaderboard_result(order: list[tuple[int, str, float]], display: dict[str, str], limit: int, named: Entity | None, title: str, season: int, end: str, key: str) -> TemplateResult:
+    """team_leaderboard's final table: the ranked rows up to the limit, with a
+    named team's own row appended past it where it would otherwise be cut."""
     shown = order[:limit]
     extra = [row for row in order[limit:] if named is not None and row[1] == named.name]
     name_width = max(len(team) for _, team, _ in [*shown, *extra])
