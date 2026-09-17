@@ -546,7 +546,7 @@ _MONTHS = {
 _CALENDAR_DATE = re.compile(
     r"(?P<range>\b(?:since|after|before|from|through|until)\s+(?:the\s+)?)?"
     r"\b(?P<month>jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+"
-    r"(?P<day>\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(?P<year>(?:19|20)\d\d))?\b",
+    r"(?P<day>\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(?P<year>(?:19|20)\d\d))?\b",  # codespell:ignore nd - an ordinal suffix
     re.IGNORECASE,
 )
 
@@ -814,7 +814,8 @@ _SITUATION = re.compile(
     # here is the date this project cannot turn into one day - a window opened
     # by "since March 1", and a date in a career question, which spans twenty
     # Octobers and so fixes no year. Both refuse.
-    r"\b(?:since|after|before|from|through|until)\s+(?:the\s+)?(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}(?:st|nd|rd|th)?\b|"
+    r"\b(?:since|after|before|from|through|until)\s+(?:the\s+)?(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}"
+    r"(?:st|nd|rd|th)?\b|"  # codespell:ignore nd - an ordinal suffix
     # One game of a playoff series. `round` already carries "game 7", which is
     # a round in everything but name; 1-6 are not. "Ayton stats in game 4
     # playoff games" answered with his whole postseason, all 10 games.
@@ -823,12 +824,12 @@ _SITUATION = re.compile(
     # does not resolve it - it reads the ordinal as a year: "his 18th season"
     # came back as season 2018, with LeBron dropped entirely, and the answer was
     # the 2018 league leaderboard.
-    r"\b\d+(?:st|nd|rd|th)\s+season\b",
+    r"\b\d+(?:st|nd|rd|th)\s+season\b",  # codespell:ignore nd - an ordinal suffix
     re.IGNORECASE,
 )
 
 # Words that name a TEAM stat, beyond the box-score words _STAT_WORDS knows.
-_TEAM_STAT_WORDS = re.compile(r"\b(?:pace|ratings?|offen\w*|defen\w*|net|possessions?|record|wins?|losses)\b", re.IGNORECASE)
+_TEAM_STAT_WORDS = re.compile(r"\b(?:pace|ratings?|offen\w*|defen\w*|net|possessions?|record|wins?|losses)\b", re.IGNORECASE)  # codespell:ignore offen - a regex stem
 
 # "vs"/"against", for a game log's last N meetings - see route().
 _VERSUS_WORDS = re.compile(r"\b(?:vs\.?|versus|against)\s", re.IGNORECASE)
@@ -1078,7 +1079,7 @@ def _named_a_stat(question: str) -> bool:
 
 def route(model: str, question: str, previous_question: str | None = None) -> Route | None:
     """Classify one question. Returns None if the model is unreachable or
-    replies with something unparseable - the caller falls through to the full
+    replies with something unparsable - the caller falls through to the full
     agent, so a router failure costs a round trip, never an answer."""
     user = f"Q: {question}"
     if previous_question:

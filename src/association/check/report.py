@@ -5,7 +5,7 @@ Local-only (no network) by default - pass --live to also cross-check against
 ESPN's schedule and report expected game counts, not just what's on disk.
 
 A season+season_type that `pull` has already verified complete (postponed/
-cancelled games included) gets its local `_complete` marker trusted here too -
+canceled games included) gets its local `_complete` marker trusted here too -
 no live schedule call needed, since a finished season's schedule can't change.
 Pass --force to re-verify against ESPN anyway.
 """
@@ -86,7 +86,7 @@ def _counts_by(con: duckdb.DuckDBPyConnection, table_dir: Path, *keys: str) -> d
 
 
 def _resolved_count(data_dir: Path, season: int, season_type: int) -> int:
-    # Games ESPN settled as postponed/cancelled - never played, but not "missing"
+    # Games ESPN settled as postponed/canceled - never played, but not "missing"
     # either. Directory listing only, same cheap check pipeline.py's own
     # completeness logic uses.
     d = data_dir / "_resolved" / f"season={season}" / f"season_type={season_type}"
@@ -105,7 +105,7 @@ def run_check(
 
     Offline by default: compares what is on disk against local checkpoints.
     With ``live``, cross-checks against ESPN's own schedule, which is the real
-    test of whether a pull is complete. Postponed, cancelled and forfeited
+    test of whether a pull is complete. Postponed, canceled and forfeited
     games are accounted for rather than counted as gaps.
     """
     data_dir = Path(data_dir)

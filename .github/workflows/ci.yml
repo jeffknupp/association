@@ -58,6 +58,11 @@ jobs:
         # core dependency is imported. Settings in [tool.deptry].
         run: uv run deptry .
 
+      - name: Spelling (codespell)
+        # Every tracked file, as pre-commit passes them; [tool.codespell] skips
+        # CHANGES.md and binaries and enforces American spelling.
+        run: git ls-files -z | xargs -0 uv run codespell
+
       - name: One concept, one definition
         # Cross-module constant collisions, against an allowlist of the ones
         # already filed - so this fails only on a NEW one. Ruff's F811 covers

@@ -209,7 +209,7 @@ def test_a_regular_season_never_touches_the_scoreboard(tmp_path: Path) -> None:
 def test_discovery_files_a_game_by_its_own_season_not_the_leagues(tmp_path: Path) -> None:
     """The trap, confirmed live: on 2000-06-07 the response's leagues[].season
     reads type 2 while the event reads type 3. Reading the league's would drop
-    every Finals game as "not this postseason" - and a game from a neighbouring
+    every Finals game as "not this postseason" - and a game from a neighboring
     season that happens to fall in the scan window must not be swept in."""
     _write_game(tmp_path, 2000, 3, "100", "2000-06-01T04:00Z")
     responses: dict[str, Any] = {
@@ -245,7 +245,7 @@ def test_fetch_teams_writes_then_skips_on_rerun(tmp_path: Path) -> None:
 def test_run_season_type_marks_complete_when_all_games_resolved(tmp_path: Path) -> None:
     """A season is only "complete" once every discovered game is either played
     (has a games/*.parquet row) or permanently settled as never-played
-    (postponed/cancelled -> _resolved/*.marker)."""
+    (postponed/canceled -> _resolved/*.marker)."""
     responses: dict[str, Any] = {TEAMS_URL: _teams_response(2)}
     for i in (1, 2):
         responses[_schedule_url(str(i))] = _schedule_response(["100", "101"])

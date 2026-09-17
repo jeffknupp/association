@@ -15,6 +15,12 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Spelling is checked.** codespell runs in pre-commit and CI with its
+  British-to-American dictionary, and the 37 findings are fixed - mostly
+  British forms in comments, docstrings and docs ("neighbouring", "cancelled",
+  "behaviour", "judgement"), plus "unparseable" and "pre-empts". Comments and
+  docs only: the router's compiled patterns and the prompt text hash
+  identically before and after.
 - **Every imported package is declared.** `botocore` (imported by the
   NetPoints client) is now a core dependency and `pydantic` (imported by the
   web API) is in the `web` extra; both used to arrive only through `boto3` and

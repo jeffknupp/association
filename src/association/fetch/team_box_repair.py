@@ -9,7 +9,7 @@ parser assigns each value to the column ESPN's own ``name`` field gives it
 code reproduced ``team_box_stats`` byte for byte.
 
 **2018 is shifted.** Every non-empty 2018 row - both season types - holds
-several values under a neighbouring statistic's name. The displacement is a
+several values under a neighboring statistic's name. The displacement is a
 cycle, and it shows up in the league means as one column holding the next
 one's number (2017 mean, then what 2018 stores, then what 2018 comes to hold
 once rebuilt):
@@ -127,7 +127,7 @@ import duckdb
 log: logging.Logger = logging.getLogger("association.fetch.team_box_repair")
 
 SHIFTED_SEASON: int = 2018
-"""The one season whose team box row holds values under neighbouring names.
+"""The one season whose team box row holds values under neighboring names.
 
 2017 and 2019 come from the same code and the same column order with the right
 values, which is what makes this ESPN's fault rather than the parser's.

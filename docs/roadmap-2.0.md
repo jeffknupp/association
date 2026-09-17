@@ -381,10 +381,10 @@ carries it the same way a template's does.
 
 ## Risks
 
-**Cancelling a slow answer.** A 113s agent question with no cancel is the worst
+**Canceling a slow answer.** A 113s agent question with no cancel is the worst
 UX in the plan. Server-side cancellation is genuinely hard: the ollama call is
 blocking and does not take a cancellation token. Mitigation, in order: stream
-progress so the wait is legible; check a per-request cancelled flag between tool
+progress so the wait is legible; check a per-request canceled flag between tool
 iterations (bounded by one inference, not the whole run); document that closing
 the tab does not stop the current inference. Do not pretend to cancel.
 

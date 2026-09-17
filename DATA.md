@@ -469,7 +469,7 @@ the parser throws the grouping away. The birth-date half stands.
   values.
 
   **Re-measured 2026-09-14, and the block is wider than first recorded.** The
-  league means put each displacement beside its neighbours (2017 → 2018 → 2019):
+  league means put each displacement beside its neighbors (2017 → 2018 → 2019):
   `technicalFouls` and `totalTechnicalFouls` 0.646 → **0.037** → 0.639, which is
   a flagrant-foul magnitude rather than a technical one; `pointsInPaint` 43.455
   → **-1.000** → 48.600, a sentinel in every row rather than a displaced value.
@@ -556,7 +556,7 @@ the parser throws the grouping away. The birth-date half stands.
   and 2009's 41.29 — and 2008's `assists`, `steals`, `blocks` and `fouls` each
   match their player sums in 2,443 to 2,460 of 2,460 rows, so nothing else in
   the row moved. The team total sits **19.57** a game above the player sum,
-  against about 8.2 in every neighbouring season — and the arithmetic is exact:
+  against about 8.2 in every neighboring season — and the arithmetic is exact:
   `totalRebounds` equals the player rebound sum plus the row's own stored OREB
   and DREB in **2,452 of 2,460** rows, so whatever those two columns hold is
   being added to the total on top of the players' rebounds. The **postseason is
@@ -680,7 +680,7 @@ the parser throws the grouping away. The birth-date half stands.
   NULL (Moses Malone 1977, James Edwards 1978 and 1983, Bill Laimbeer 1982,
   Danny Schayes 1983, Sleepy Floyd 1983). 12 from 1996 copy a single stint,
   losing 3,042 points between them — Eric Murdock's combined row reads 9 games
-  and 62 points against stints totalling 73 and 647. Jevon Carter 2023 drops a
+  and 62 points against stints totaling 73 and 647. Jevon Carter 2023 drops a
   1-game stint. 7 have NULL points because a stint's totals are NULL.
 - **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull**, which
   reproduced every one of these rows.

@@ -20,7 +20,7 @@ we do about it. Read `DATA.md` before trusting a column.
 ## Before you commit
 
 ```bash
-uv run pre-commit run --all-files   # all eleven gates
+uv run pre-commit run --all-files   # all twelve gates
 uv run pytest -q                    # fully offline: no network, no ollama
 ```
 
@@ -107,7 +107,12 @@ Add to the `## Unreleased` section.
   bundling them would otherwise break at import time with nothing in this repo
   having changed. A dev or docs tool goes in its extra, never in the core list.
 - **American spelling.** "defense", "offense", "serialize". British spellings
-  have drifted in before and were removed wholesale in `c09d6f7`.
+  drifted back in twice after being removed wholesale in `c09d6f7`, so
+  codespell now enforces it (`en-GB_to_en-US`, `[tool.codespell]`). A word it
+  flags that is right - a basketball token, a regex stem, a misspelling a test
+  depends on - takes `# codespell:ignore <word> - <why>` on its line, or joins
+  `ignore-words-list` if it recurs. `CHANGES.md` is skipped: released entries
+  quote the spellings that were fixed.
 - **Every public module, class and function needs a docstring** — a separate
   gate from the Sphinx build, because autodoc renders an undocumented function
   perfectly happily, just uselessly.
@@ -721,7 +726,7 @@ The habits that caught real bugs here, in rough order of how often they paid:
   actually a stale `.pyc` and a `SyntaxError` in the harness — both of which
   look exactly like a green run from the outside.
 - **Use `scripts/perturb.py` rather than a hand-rolled harness.** The bullet
-  above is easy to honour in letter while missing what actually breaks: the
+  above is easy to honor in letter while missing what actually breaks: the
   harness reporting CAUGHT for a reason unrelated to the perturbation. All
   three of these happened in one session, on top of the `.pyc` and `SyntaxError`
   already recorded:
@@ -773,7 +778,7 @@ prompted them:
   what was true when it was written. Two of its counts had already been fixed
   by other work in the same week.
 - **Say which copy of the code and which warehouse you measured**, and never
-  report a template's behaviour from a direct call when the agent path adds
+  report a template's behavior from a direct call when the agent path adds
   something - `agent.py` appends the coverage caveat, so a template called
   directly looks like it is missing one. Compare against `real_games` rather
   than `games` for anything counted against `team_season_stats`; two "new

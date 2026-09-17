@@ -355,7 +355,7 @@ def test_parse_game_summary_free_throw_sentinel_coordinate_nulled() -> None:
 
 
 def test_parse_game_summary_postponed_game_not_completed_but_state_post() -> None:
-    """Regression: a postponed/cancelled game has completed=False but
+    """Regression: a postponed/canceled game has completed=False but
     state='post' (permanently settled, not pending) - distinct from a
     still-upcoming game (state='pre'). Conflating the two meant a season could
     never be marked complete, and the same postponed game got re-fetched on
@@ -955,7 +955,7 @@ def test_parse_net_points_daily_handles_missing_data() -> None:
 
 def test_net_points_category_normalises_onto_the_season_files_names() -> None:
     """The per-game file and the season file are one taxonomy under two
-    spellings. Normalising here is what lets one skill list drive both tables -
+    spellings. Normalizing here is what lets one skill list drive both tables -
     unmapped, `mid` and `mid_range` are two categories and the per-game plot
     draws an empty spoke where the season plot has mid-range."""
     assert parse.net_points_category("mid") == "mid_range"

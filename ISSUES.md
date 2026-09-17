@@ -623,11 +623,11 @@ found.
   one who retired, gets their last N seasons played. "Curry's scoring over the
   last 4 seasons" would give Dell Curry 1999-2002. The header now names the
   range the rows reach ("by regular season, 2023-2026"), so the seasons are
-  labelled truthfully. Because the template reads that way, name narrowing
+  labeled truthfully. Because the template reads that way, name narrowing
   keeps every Curry for the question, narrowed through the anchor season with
   Seth and Stephen named first. It cannot drop players with nothing in the
   calendar window.
-- **User sees:** "last 5 seasons" answered with seasons from years ago, labelled
+- **User sees:** "last 5 seasons" answered with seasons from years ago, labeled
   as such but not flagged as outside the window the question asked about.
 - **Next step:** decide whether "last N seasons" means the calendar window. If
   it does, read that window and narrow names by it too; `narrow_to_available`
@@ -844,12 +844,12 @@ found.
   regex somebody has to remember to extend.
 - **It also costs a clarification.** "Bam adebeyo jan 19" went from `clarified`
   to `fell_through`: `check_scope` runs before name resolution, so refusing the
-  date pre-empts "did you mean Bam Adebayo?". Right on its own terms - the date
+  date preempts "did you mean Bam Adebayo?". Right on its own terms - the date
   was being dropped too - but worth knowing the refusal is not free.
 - **Re-checked 2026-09-16, and the mechanism moved.** "Bam adebeyo jan 19" now
   arrives with `date="2023-01-19"` already resolved and routed to
   `player_stat`, which does not honor `date` - so it still refuses before
-  name resolution and still pre-empts "did you mean Bam Adebayo?", but the
+  name resolution and still preempts "did you mean Bam Adebayo?", but the
   cause is no longer `check_scope` dropping the date; it is `player_stat` not
   redirecting a resolved `date` to `game_log`. That gap is now tracked
   separately under #94.
@@ -1598,10 +1598,10 @@ found.
   subtitle.
 - **GitHub:** #55
 
-### A slow agent answer cannot be cancelled
+### A slow agent answer cannot be canceled
 - **Found:** before 2026-09-11 (`web/app.py` comment, `roadmap-2.0.md`)
 - **Evidence:** closing the tab does not stop the inference. The planned fix, a
-  cancelled flag checked between tool calls, is not built.
+  canceled flag checked between tool calls, is not built.
 - **User sees:** the next question waits behind an abandoned one.
 - **Next step:** build the flag.
 - **GitHub:** #56

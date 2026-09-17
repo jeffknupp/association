@@ -341,7 +341,7 @@ def test_an_ordinary_question_is_not_forced_to_the_agent() -> None:
     ],
 )
 def test_fouling_out_is_normalized_to_six_fouls(question: str) -> None:
-    """Six personal fouls is an NBA rule, not a judgement call. Confirmed live:
+    """Six personal fouls is an NBA rule, not a judgment call. Confirmed live:
     the router got the shape right but emitted stat "fouls committed" with
     threshold 1, and the question then hung in the agent until it was aborted."""
     with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"player_stat","stat":"fouls committed","threshold":1}')):

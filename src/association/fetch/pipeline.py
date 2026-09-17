@@ -331,7 +331,7 @@ class Pipeline:
             return
         if not game_row.get("status_completed"):
             if game_row.get("status_state") == "post":
-                # Terminally resolved but never played (postponed/cancelled/forfeited) -
+                # Terminally resolved but never played (postponed/canceled/forfeited) -
                 # there's no box score to store, but it's settled, not pending. Mark it
                 # so we stop re-fetching this event every run and so the season-level
                 # completion check (which compares against ESPN's full schedule count)
@@ -389,7 +389,7 @@ class Pipeline:
         # Directory listings only - no file content reads. Cheap even for a
         # season with 1000+ small per-game files. Counts both games that were
         # actually played (games/*.parquet) and ones ESPN settled as never
-        # happening (postponed/cancelled - _resolved/*.marker), since both are
+        # happening (postponed/canceled - _resolved/*.marker), since both are
         # "nothing left to do here", just with different outcomes.
         games_dir = self._p("games", f"season={season}", f"season_type={season_type}")
         resolved_dir = self._p("_resolved", f"season={season}", f"season_type={season_type}")

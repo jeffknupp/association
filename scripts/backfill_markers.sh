@@ -10,7 +10,7 @@
 #     get re-downloaded.
 #   - The only network calls are: the season+type schedule pull (needed once
 #     to discover the full official game list, including any postponed/
-#     cancelled games we don't have a local marker for yet), and a summary()
+#     canceled games we don't have a local marker for yet), and a summary()
 #     call for each event_id that has neither a games/*.parquet file nor a
 #     _resolved/*.marker - i.e. games whose outcome we don't already know.
 #   - Once a season+type turns out fully accounted for (every discovered game

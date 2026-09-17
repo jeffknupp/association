@@ -6,7 +6,7 @@ source's rows, not this project's - a full fresh pull on 2026-09-11 reproduced
 ``games`` exactly, placeholders and all - so there is nothing to re-fetch and
 nothing a parser fix would change. What there is to do is read past them, once,
 in one place. See ``DATA.md`` ("``games`` carries placeholder, duplicate and
-phantom rows") for the catalogue and the evidence.
+phantom rows") for the catalog and the evidence.
 
 Measured against the 2026-09-14 warehouse, this table keeps 43,343 of
 ``games``' 43,494 rows, and the 151 it drops are exactly the rows ``DATA.md``

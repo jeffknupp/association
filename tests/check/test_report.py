@@ -1,7 +1,7 @@
 """Regression tests for `association data check`.
 
 Covers two real bugs from the same incident: the reported "missing" game
-count didn't account for locally-resolved (postponed/cancelled) games, making
+count didn't account for locally-resolved (postponed/canceled) games, making
 even a fully-accounted-for season look incomplete; and the live schedule
 cross-check re-hit ESPN's API every run even for seasons already verified
 complete by `pull`.

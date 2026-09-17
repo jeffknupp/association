@@ -57,7 +57,7 @@ a pull is complete — add ``--live``:
 ``--live`` only re-verifies seasons not already checkpointed complete; add
 ``--force`` to re-verify everything.
 
-Note that a missing game is not always a gap. Postponed, cancelled and
+Note that a missing game is not always a gap. Postponed, canceled and
 forfeited games are recorded as such, and :mod:`association.check.report`
 accounts for them rather than reporting them as missing data.
 

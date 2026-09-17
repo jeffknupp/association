@@ -62,6 +62,13 @@ repos:
         language: system
         pass_filenames: false
         files: ^(src/.*\.py|scripts/.*\.py|docs/conf\.py|pyproject\.toml)$
+      # Typos, and British spellings (en-GB_to_en-US). Settings in
+      # [tool.codespell]; pre-commit passes every tracked text file.
+      - id: codespell
+        name: spelling (codespell)
+        entry: .venv/bin/codespell
+        language: system
+        types: [text]
       - id: duplicate-names
         name: one concept, one definition
         entry: scripts/check_duplicate_names.py

@@ -134,7 +134,7 @@ def main() -> int:
         return 0
 
     print(f"MISSED  {label}")
-    print("        The suite is green with the behaviour reverted, so the test asserts")
+    print("        The suite is green with the behavior reverted, so the test asserts")
     print("        something true under both branches. Rewrite it or delete the guard.")
     return 1
 

@@ -48,7 +48,7 @@ CASES: list[tuple[str, str, dict]] = [
     ("Most games with 20+ rebounds this year", "threshold_count", {"stat": "rebounds", "threshold": 20}),
     ("Most games with 15+ assists in 2024?", "threshold_count", {"stat": "assists", "threshold": 15, "season": 2024}),
     # No limit asserted: 10 is already the template's default.
-    ("Who were the top 10 in netpoints/100 possesions?", "leaderboard", {"stat": "netpoints_per_100"}),
+    ("Who were the top 10 in netpoints/100 possesions?", "leaderboard", {"stat": "netpoints_per_100"}),  # codespell:ignore possesions - the misspelling is the test: users type it
     # A single-game maximum is NOT a season ranking. Confirmed live: with no
     # such intent, "who had the most assists in a single game" was answered
     # "Nikola Jokic led the league in assists per game, at 10.7" in 1.76s -
@@ -194,7 +194,7 @@ CASES: list[tuple[str, str, dict]] = [
     # and shot_chart - so these three came back with no order at all (3/3 at
     # temperature 0) and the template drew the whole season under a question
     # about one game. Read out of the question text instead; the fingerprint
-    # template honours the slot by refusing.
+    # template honors the slot by refusing.
     ("show me a fingerprint for steph curry's last game in 2026", "fingerprint", {"player": "Stephen Curry", "season": 2026, "order": "recent"}),
     ("fingerprint for curry's first game of 2026", "fingerprint", {"player": "Stephen Curry", "season": 2026, "order": "first"}),
     ("plot jokic's fingerprint for his last game", "fingerprint", {"player": "Nikola Jokic", "order": "recent"}),

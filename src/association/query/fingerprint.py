@@ -462,7 +462,7 @@ def _skill_expression(skill: Skill) -> str:
 
     ``net_points_player_game_fingerprint`` is one row per category, not one
     column per category, so the season file's wide shape is rebuilt here.
-    Interpolated rather than parameterised because both halves come from
+    Interpolated rather than parameterized because both halves come from
     :data:`FINGERPRINT_SKILLS`, which is code.
     """
     return f"max(CASE WHEN f.category = '{skill.category}' THEN f.{FINGERPRINT_SIDES[skill.side]}_net_pts END)"
@@ -637,7 +637,7 @@ def _radius(value: float, percentile: float, scale: str, league: LeagueScale) ->
 
 def _ordinal(percentile: float) -> str:
     rank = max(1, round(percentile * 100))
-    suffix = "th" if 11 <= rank % 100 <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(rank % 10, "th")
+    suffix = "th" if 11 <= rank % 100 <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(rank % 10, "th")  # codespell:ignore nd - an ordinal suffix
     return f"{rank}{suffix}"
 
 

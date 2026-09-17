@@ -208,7 +208,7 @@ def parse_game_summary(data: JSON | None, season: int, season_type: int) -> dict
         "attendance": _num(game_info.get("attendance")),
         "status": status.get("name"),
         "status_completed": bool(status.get("completed")),
-        "status_state": status.get("state"),  # 'pre' | 'in' | 'post' - 'post' + not completed = postponed/cancelled, not pending
+        "status_state": status.get("state"),  # 'pre' | 'in' | 'post' - 'post' + not completed = postponed/canceled, not pending
     }
 
     boxscore = data.get("boxscore") or {}
@@ -462,7 +462,7 @@ def parse_player_season_totals(data: JSON | None) -> tuple[Row, list[Row]]:
     every other about the column's type. ``displayValue`` is the same string
     shape the career endpoint serves (``"942"``, ``"1.9"``), so ``_num`` types
     it identically. Confirmed live: no ``displayValue`` here carries a thousands
-    separator, which is the one thing that would make it unparseable.
+    separator, which is the one thing that would make it unparsable.
 
     Returns:
         The flattened row (empty when ESPN has no such season), and glossary

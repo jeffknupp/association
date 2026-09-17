@@ -632,7 +632,7 @@ def test_the_fixed_slice_this_replaced_would_have_split_a_turn() -> None:
 
 
 def test_a_turn_longer_than_the_cap_is_kept_whole_rather_than_beheaded(tmp_path: Path) -> None:
-    """A cap is a ceiling on old turns, not a licence to drop the question
+    """A cap is a ceiling on old turns, not a license to drop the question
     being answered. Nothing observed produces a turn this long - MAX_TOOL_
     ITERATIONS bounds it well under the cap - but 'keep whole turns' has to
     mean the current one too, or the fallback quietly deletes it."""

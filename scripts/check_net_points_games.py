@@ -114,7 +114,7 @@ def _against_source(con: duckdb.DuckDBPyConnection, season: int, dates: int) -> 
             row = con.execute("SELECT points FROM player_box_stats WHERE event_id = ? AND athlete_id = ?", [game[0], athlete_id]).fetchone()
             if row is None:
                 # ESPN's box score does not list this player at all. That is
-                # only evidence about the DATE if some neighbouring game of
+                # only evidence about the DATE if some neighboring game of
                 # theirs does - otherwise the two sources simply disagree
                 # about who dressed, which they do for end-of-bench players
                 # (Lachlan Olbrich, 11.8 possessions and 2 points on
