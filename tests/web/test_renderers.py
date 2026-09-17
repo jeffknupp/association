@@ -22,7 +22,8 @@ from typing import Any
 import duckdb
 import pytest
 
-from association.query.templates import TEMPLATES, TemplateContext
+from association.query.templates import TEMPLATES
+from association.query.templates.common import TemplateContext
 from association.web.app import INDEX_HTML
 
 # One set of slots per intent that has a renderer, chosen to produce the shape

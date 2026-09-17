@@ -59,7 +59,7 @@ found.
   day of 2020-21 - with `numwins` and `numlosses` both 0. `team_outlook`
   answers "2021 regular-season snapshot (updated 2020-12-22, 30 teams) ... BPI
   -5.9 ... no games played yet, projected 16-56" for the Knicks, who finished
-  41-31. The caveat at `templates.py:3063` cannot fire, because it tests
+  41-31. The caveat at `query/templates/teams.py` cannot fire, because it tests
   `str(updated)[:4] > str(season)` and `"2020" > "2021"` is False - it was
   written for the 2017-2020 snapshots, which are stamped *after* their season.
   Pre-existing; the backfill now shows it for 30 teams rather than 9.
@@ -354,7 +354,7 @@ found.
   sound. A team-level read of 1996 Vancouver gets NULLs, and
   `_empty_box_scores` does not count these (it tests player minutes), so such
   an answer carries no caveat. **This is half wrong.** The team branch of
-  `player_splits` (`templates.py:4568-4570`) does caveat: it counts rows with
+  `player_splits` (`query/templates/splits.py`) does caveat: it counts rows with
   `fieldGoalsAttempted IS NULL` and says "Rebounds, assists, 3-pointers and FG%
   are missing from N of those games' box scores and are averaged over the
   rest." But `_team_games` (`conditions.py:257-271`), which backs team
@@ -371,7 +371,7 @@ found.
   break
 - **Evidence:** `game_log` filters on `_RECORDED` (`pgl.minutes IS NOT NULL`),
   so the empty lines are correctly left out - but when that removes everything,
-  `_no_narrowed_games` (`query/templates.py`) falls to its `if not total`
+  `_no_narrowed_games` (`query/templates/common.py`) falls to its `if not total`
   branch and reports the span as holding no games. Live against the warehouse:
   `game_log {"player": "Anthony Davis", "season": 2015}` answers "No 2015
   regular season games found for Anthony Davis." He played 68.
@@ -395,8 +395,8 @@ found.
   `game_log {"player": "Anthony Davis", "season": 2015, "stat": "turnovers"}`
   and the same with `"stat": "fouls"` both answer "No 2015 regular season games
   found for Anthony Davis." `_box_score_player_stat`
-  (`templates.py:2142`) calls `narrowed.clauses()` at its default
-  (`rebuilt: bool = False`, `templates.py:1746`), so **any** `player_stat`
+  (`query/templates/players.py`) calls `narrowed.clauses()` at its default
+  (`rebuilt: bool = False`, `query/templates/common.py`), so **any** `player_stat`
   narrowed by opponent, venue or `without` over those seasons gives the same
   wrong-cause sentence - **even for points**, the one stat the rebuild gets
   right: "Anthony Davis points vs the Lakers in 2015" answers the same refusal
@@ -407,7 +407,7 @@ found.
 - **Evidence:** `real_games` (`fetch/repairs/real_games.py`) now holds the 43,353 rows
   of `games`'s 43,504 that are actually games (both counts moved +10 with
   `72b599c`'s 2000 playoff recovery; the gap is still 151), and every TEAM
-  template reads it. `_PLAYER_GAMES` (`templates.py:1694`) still joins raw
+  template reads it. `_PLAYER_GAMES` (`query/templates/common.py`) still joins raw
   `games` rather than `real_games` - harmlessly today, since no player row
   falls on one of the 151 dropped events (see "Not affected, measured" below).
   Two readers do not read `real_games` at all, both by design rather than
@@ -586,12 +586,12 @@ found.
 - **Re-checked 2026-09-15: it now refuses instead of undercounting, and the
   next step below cannot work.** `with_without` for Klay Thompson 2021 answers
   that his tenure "falls outside the 2021 regular season" - the refusal built
-  in the `if not games:` branch of `with_without` (`templates.py:4707`).
+  in the `if not games:` branch of `with_without` (`query/templates/splits.py`).
   Durant/Nets 2020 is the same. `player_season_stats` has **no row** for a
   season a player missed entirely, so it cannot supply tenure. Worse,
   `game_log` and `player_stat` say "Klay Thompson was not Stephen Curry's
   teammate in any of his 63 games" - the wrong-cause sentence built in
-  `_no_narrowed_games` (`templates.py:1937`) - about a rostered, injured
+  `_no_narrowed_games` (`query/templates/common.py`) - about a rostered, injured
   player.
 - **GitHub:** #16
 
@@ -619,7 +619,7 @@ found.
 ### `player_history` answers "last N seasons on record", not a calendar window
 - **Found:** 2026-09-11, while fixing name clarification
 - **Evidence:** the query reads `season <= ? ORDER BY season DESC LIMIT ?` per
-  player (`player_history` in `query/templates.py`), so a player with gaps, or
+  player (`player_history` in `query/templates/players.py`), so a player with gaps, or
   one who retired, gets their last N seasons played. "Curry's scoring over the
   last 4 seasons" would give Dell Curry 1999-2002. The header now names the
   range the rows reach ("by regular season, 2023-2026"), so the seasons are
@@ -718,9 +718,9 @@ found.
 - **Evidence:** "Bam adebeyo jan 19" routes to `player_stat` with
   `date="2023-01-19"` resolved, and falls through on `player_stat cannot
   honor ['date']`; "celtics record vs sixers on november 11" does the same on
-  `head_to_head`. `game_log` honors `date` (`templates.py:152`), and
+  `head_to_head`. `game_log` honors `date` (`query/templates/common.py`), and
   `player_stat` already declines a `limit` as a `game_log` question
-  (`templates.py:2053`, falling through rather than redirecting) and has no
+  (`query/templates/players.py`, falling through rather than redirecting) and has no
   equivalent for a `date`. (The 2023 in the first example is itself the model's
   invention - see the next entry.)
 - **User sees:** a slow agent answer for a question a template answers
@@ -865,7 +865,7 @@ found.
 
 ### Four question filters are recognized but no template answers them
 - **Found:** 2026-09-11, template work and final corpus run
-- **Evidence:** `SCOPING_SLOTS` against `HONORED_SCOPING` (`query/templates.py`):
+- **Evidence:** `SCOPING_SLOTS` against `HONORED_SCOPING` (`query/templates/common.py`):
   - `since`/`until`: "most 3 pointers made since 2020";
   - `below`: "Sga games with under 14 fta";
   - `situation`: "Celtics record on back to backs", overtime, by month;
@@ -882,7 +882,7 @@ found.
   `split=month` and `player_splits` answers it for a player or a team.
 - **Re-checked 2026-09-16, and a fifth slot is missing from the same list.**
   `until` is set at `router.py:1269` alongside `since`, but is in neither
-  `HONORED_SCOPING` nor `SCOPING_SLOTS` (`templates.py:146`) - so `check_scope`
+  `HONORED_SCOPING` nor `SCOPING_SLOTS` (`query/templates/common.py`) - so `check_scope`
   cannot see it to refuse it. Harmless today, because `until` is only ever set
   together with `since` and no template honors `since`, so the question is
   refused over `since` first. It becomes a silent wrong answer the day a
@@ -897,7 +897,7 @@ found.
   within P3 on 2026-09-16** - the latest replay shows this touches more
   questions than its original position reflected
 - **Evidence:** `player_compare` and `player_matchup` read season lines and
-  honor no `opponent` (`HONORED_SCOPING`, `query/templates.py`), so "compare
+  honor no `opponent` (`HONORED_SCOPING`, `query/templates/common.py`), so "compare
   curry and lebron vs the celtics" refuses on the template path and falls
   through. Before the fix that moved the Celtics out of `team`, it compared
   the two players' whole 2026 seasons. `_narrow_player_games` already builds
@@ -973,7 +973,7 @@ found.
 
 ### Fingerprint for a specific date
 - **Found:** before 2026-09-11 (docstring)
-- **Evidence:** the fingerprint template in `query/templates.py` says "... but not
+- **Evidence:** the fingerprint template in `query/templates/netpoints.py` says "... but not
   yet for a particular date". `game_log` already honors `date`.
 - **User sees:** a helpful refusal.
 - **Next step:** resolve the date to the player's game with `_eastern_day`, then
@@ -982,7 +982,7 @@ found.
 
 ### Franchise career leaderboards
 - **Found:** before 2026-09-11 (docstring)
-- **Evidence:** the leaderboard in `query/templates.py` says "Refused until that
+- **Evidence:** the leaderboard in `query/templates/players.py` says "Refused until that
   is decided". The rule for relocated franchises is open.
 - **User sees:** a refusal for "timberwolves career leaders in total points".
 - **Next step:** decide the relocation rule, then map it.
@@ -990,7 +990,7 @@ found.
   raises `TemplateUnsupported`, which is a fall-through to the agent, not a
   refusal the user reads.
 - **Re-checked 2026-09-16: the relocation rule is no longer open.** The refusal
-  is still at `templates.py:1008` (`_career_leaderboard`, raising
+  is still at `query/templates/players.py` (`_career_leaderboard`, raising
   `TemplateUnsupported("franchise career leaderboards are not supported")`),
   but "the rule for relocated franchises is open" is now decided elsewhere:
   `association/nba/franchises.py` established that an ESPN `team_id` belongs to
@@ -1288,7 +1288,7 @@ found.
 - **Evidence:** `scripts/perturb.py` against
   `tests/query/test_team_templates.py`: **removing** the
   `CASE season_type WHEN {BPI_PRESEASON} THEN 0 ELSE 1 END` from
-  `query/templates.py:3014` is MISSED (62 passed, exit 0), while **reversing**
+  `query/templates/teams.py` is MISSED (62 passed, exit 0), while **reversing**
   it to `THEN 1 ELSE 0` is CAUGHT by
   `test_a_same_dated_preseason_snapshot_never_wins_the_regular_season_question`.
   The reason it cannot be tested is the useful part: the `CASE` maps preseason
@@ -1326,7 +1326,7 @@ found.
 ### `MAX_LIMIT` is 100 in one module and 50 in another
 - **Found:** 2026-09-15, in the cross-module constant scan written after #6/#9
 - **Evidence:** `query/leaderboard.py:38` declares `MAX_LIMIT = 100` (the cap on
-  a model-supplied limit on the agent path); `query/templates.py:121` declares
+  a model-supplied limit on the agent path); `query/templates/common.py` declares
   `MAX_LIMIT = 50` (what `_clamp_limit` clamps a template to). Same name, two
   different facts, neither importing the other.
 - **User sees:** nothing wrong today - each is used only in its own module, and
@@ -1458,13 +1458,13 @@ found.
 
 ### Broad `except duckdb.Error` in `_single_game_netpoints`
 - **Found:** 2026-09-11, repo audit
-- **Evidence:** `_single_game_netpoints` (`query/templates.py:1280`) catches
+- **Evidence:** `_single_game_netpoints` (`query/templates/netpoints.py`) catches
   every DuckDB error. `fingerprint.py` already narrowed the same pattern to the
   missing-table error.
 - **User sees:** a SQL bug reported as "unavailable", then a slow fall-through.
 - **Next step:** catch `duckdb.CatalogException` only.
 - **Re-checked 2026-09-15:** the pattern occurs twice. The second is
-  `templates.py:4375`, in `_compare_netpoints`, which catches `duckdb.Error`
+  `query/templates/players.py`, in `_compare_netpoints`, which catches `duckdb.Error`
   and returns `{}` - so a SQL bug there makes the NetPoints rows silently
   disappear from a comparison.
 - **GitHub:** #44
@@ -1600,7 +1600,7 @@ found.
 - **Source:** DATA.md, "`dnp_reason` is set on players who played"
 - **Re-checked 2026-09-15:** figures reproduce, two details changed. Player
   `plusMinus` **is** read now (the game log's "+/-" column - three sites,
-  `templates.py:3139,3166,3382`), and `team_season_stats.plusMinus` is -1 in
+  `query/templates/games.py`), and `team_season_stats.plusMinus` is -1 in
   828 rows (2009 on) and NULL in 675 before that, not "-1 in every season" as
   `team_metrics.py:25` says.
 - **GitHub:** #53

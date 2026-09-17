@@ -11,9 +11,9 @@ This module does only the first job. Its prompt carries no schema, no SQL and
 no gotchas - an intent list, its slots and worked examples, ~2,500 tokens
 against a 4,096-token window (see :mod:`association.query.router_prompt`, which holds it) - so it
 fits, stays cached, and answers in ~1-2s warm. Recognized intents go to a template in
-templates.py; everything else falls through to the agent unchanged.
+the templates package; everything else falls through to the agent unchanged.
 
-Slot values are advisory: every one of them is re-validated in templates.py
+Slot values are advisory: every one of them is re-validated in the templates package
 against a whitelist before it reaches SQL. Nothing here is trusted."""
 
 from __future__ import annotations

@@ -19,16 +19,8 @@ import pytest
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.query.team_metrics import TEAM_METRICS, descending_for, resolve_team_metric
-from association.query.templates import (
-    TemplateContext,
-    TemplateUnsupported,
-    check_coverage,
-    check_scope,
-    team_leaderboard,
-    team_outlook,
-    team_record,
-    team_stat,
-)
+from association.query.templates.common import TemplateContext, TemplateUnsupported, check_coverage, check_scope
+from association.query.templates.teams import team_leaderboard, team_outlook, team_record, team_stat
 
 S = current_season()
 LAST = f"{S - 1}-{S % 100:02d}"

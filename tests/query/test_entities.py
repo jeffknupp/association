@@ -239,13 +239,19 @@ def test_every_declared_availability_names_a_real_table() -> None:
     """The table name is interpolated into SQL, so a typo is a runtime error on
     a path only an ambiguous name reaches. Checked against the query package's
     own list of tables rather than a warehouse, so it stays offline."""
+    import importlib
+    import pkgutil
+
     from association.query import fingerprint, shotchart, templates
     from association.query.entities import Availability
     from association.query.prompt import KNOWN_TABLES
 
     # Every one each module declares, tuples included, rather than a list here
     # that a new template's narrowing table would have to remember to join.
-    declared = [v for module in (shotchart, fingerprint, templates) for v in vars(module).values()]
+    # templates is a package: every submodule of it, so a new subject module's
+    # narrowing table is covered without being added here.
+    modules = [shotchart, fingerprint, templates, *(importlib.import_module(m.name) for m in pkgutil.iter_modules(templates.__path__, templates.__name__ + "."))]
+    declared = [v for module in modules for v in vars(module).values()]
     flat = [a for v in declared for a in (v if isinstance(v, tuple) else (v,)) if isinstance(a, Availability)]
     assert {a.table for a in flat} >= {"shot_chart", "net_points_player_fingerprint", "player_season_stats_deduped", "player_game_log"}
     for available in flat:

@@ -476,7 +476,7 @@ def test_the_order_intents_are_the_ones_that_honor_order() -> None:
     does not import the templates. An intent honoring `order` and missing here
     keeps the bug this fixed; one listed here that does not honor it turns
     into a fall-through."""
-    from association.query.templates import HONORED_SCOPING
+    from association.query.templates.common import HONORED_SCOPING
 
     assert frozenset(intent for intent, honored in HONORED_SCOPING.items() if "order" in honored) == ORDER_INTENTS
 

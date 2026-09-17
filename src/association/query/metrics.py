@@ -4,7 +4,7 @@ here in code instead of re-derived by the model from prose on every query.
 
 Standalone (it imports nothing from the rest of query/) so every consumer can
 read it without a cycle: leaderboard.py builds SQL from it, prompt.py lists the
-known metrics in the get_leaderboard tool description, templates.py validates
+known metrics in the get_leaderboard tool description, the templates package validates
 router slots against it."""
 
 from __future__ import annotations

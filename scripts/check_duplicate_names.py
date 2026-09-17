@@ -7,7 +7,7 @@
 Two module-level constants with the same name are either one fact written
 twice - which drifts - or two different facts wearing one name, which is worse.
 ``MAX_LIMIT`` is the second kind: 100 in ``query/leaderboard.py`` and 50 in
-``query/templates.py``, so a reader who knows one is wrong about the other.
+``query/templates/common.py``, so a reader who knows one is wrong about the other.
 
 This is the constants half of a shape `AGENTS.md` already records for
 functions ("Branches built in parallel collide on private helper names,
@@ -45,7 +45,7 @@ SRC = pathlib.Path(__file__).resolve().parent.parent / "src" / "association"
 #: couplings, not false positives - nothing answers wrong because of them
 #: today, which is why they are P4 rather than fixed in place.
 ALLOWED: dict[str, str] = {
-    # 100 in leaderboard.py, 50 in templates.py - one name, two limits.
+    # 100 in leaderboard.py, 50 in templates/common.py - one name, two limits.
     "MAX_LIMIT": "#81",
     # "total", twice. No entry of its own: it is one literal in two modules
     # that never import each other, and #83 covers the pattern.

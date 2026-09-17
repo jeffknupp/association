@@ -12,29 +12,12 @@ from association.nba.season import current_season
 from association.query import shotchart
 from association.query.entities import MAX_CANDIDATES
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
-from association.query.templates import (
-    HONORED_SCOPING,
-    SCOPING_SLOTS,
-    TemplateContext,
-    TemplateUnsupported,
-    _rebuilt_readable,
-    check_scope,
-    fingerprint,
-    game_log,
-    head_to_head,
-    leaderboard,
-    period_split,
-    player_compare,
-    player_history,
-    player_netpoints,
-    player_stat,
-    shot_chart,
-    shot_distance,
-    single_game_high,
-    team_quarter_points,
-    team_record,
-    threshold_count,
-)
+from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, TemplateContext, TemplateUnsupported, check_scope
+from association.query.templates.games import _rebuilt_readable, game_log, head_to_head, period_split, team_quarter_points
+from association.query.templates.netpoints import fingerprint, player_netpoints
+from association.query.templates.players import leaderboard, player_compare, player_history, player_stat, single_game_high, threshold_count
+from association.query.templates.shots import shot_chart, shot_distance
+from association.query.templates.teams import team_record
 
 
 @pytest.fixture
@@ -684,7 +667,7 @@ def test_a_without_teammate_is_found_past_the_first_page_of_matches() -> None:
     only find_players' first page of ten, so a teammate who sorted eleventh was
     reported as nobody's teammate at all."""
     from association.query.entities import Entity
-    from association.query.templates import _resolved_teammate, _Span
+    from association.query.templates.common import _resolved_teammate, _Span
 
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
@@ -1064,7 +1047,7 @@ def test_a_comparison_is_not_refused_before_netpoints_begins(ps_con: TemplateCon
     """The NetPoints table is deliberately absent from player_compare's
     TEMPLATE_SOURCES: listing it would put a 2019 coverage floor on every
     comparison and refuse the 1994-2018 ones outright."""
-    from association.query.templates import check_coverage
+    from association.query.templates.common import check_coverage
 
     assert check_coverage("player_compare", {"season": 2005, "season_type": 2}) is None
 
@@ -1101,7 +1084,8 @@ def test_no_template_outside_player_intents_reads_a_player_slot() -> None:
     checked against TEMPLATES."""
     import inspect
 
-    from association.query.templates import PLAYER_INTENTS, TEMPLATES
+    from association.query.templates import TEMPLATES
+    from association.query.templates.common import PLAYER_INTENTS
 
     for intent, handler in TEMPLATES.items():
         source = inspect.getsource(handler)
@@ -1145,7 +1129,7 @@ def test_player_compare_reports_a_player_with_no_rows_rather_than_dropping_them(
 
 
 def test_player_compare_is_capped(ps_con: TemplateContext) -> None:
-    from association.query.templates import MAX_COMPARED_PLAYERS
+    from association.query.templates.players import MAX_COMPARED_PLAYERS
 
     ps_con.con.execute("INSERT INTO players VALUES ('9','A A'),('10','B B'),('11','C C'),('12','D D')")
     result = player_compare(ps_con, {"players": ["Luka Doncic", "Nikola Jokic", "A A", "B B", "C C", "D D"]})
@@ -1608,7 +1592,7 @@ def test_team_quarter_points_summarizes_rather_than_tables_many_games(tq_con: Te
     # A whole-season, no-opponent question can span dozens of games - listing
     # every one is unreadable, so above a small cap this reports the total
     # and average instead of a per-game breakdown.
-    monkeypatch.setattr("association.query.templates._QUARTER_BREAKDOWN_LIMIT", 1)
+    monkeypatch.setattr("association.query.templates.games._QUARTER_BREAKDOWN_LIMIT", 1)
     result = team_quarter_points(tq_con, {"team": "Knicks", "period": 1, "season": current_season()})
     answer = result.answer or ""
     assert "averaging" in answer
@@ -1787,7 +1771,7 @@ def test_player_history_spans_several_seasons(ps_con: TemplateContext) -> None:
 
 
 def test_player_history_defaults_to_four_seasons(ps_con: TemplateContext) -> None:
-    from association.query.templates import DEFAULT_HISTORY_SEASONS
+    from association.query.templates.players import DEFAULT_HISTORY_SEASONS
 
     s = current_season()
     for offset in range(1, 8):
@@ -1940,7 +1924,7 @@ def test_the_six_core_categories_partition_the_total(np_ctx: TemplateContext) ->
     the offensive and defensive totals - verified against the separately stored
     net_points_player.offense/.defense for every top-minutes player in 2026,
     max deviation 0.005. The other categories are overlapping slices."""
-    from association.query.templates import FINGERPRINT_PARTITION
+    from association.query.templates.netpoints import FINGERPRINT_PARTITION
 
     assert set(FINGERPRINT_PARTITION) == {"two_pt", "three_pt", "free_throw", "turnover", "rebound", "foul"}
     answer = player_netpoints(np_ctx, {"player": "SGA", "rate": "total"}).answer or ""
@@ -2692,7 +2676,7 @@ def test_player_stat_names_the_real_cause_when_nothing_matches(pg_ctx: TemplateC
 def test_a_narrowed_question_carries_the_box_score_floor() -> None:
     """Jordan's 1990 season line is real and answerable; his 1990 line against
     one opponent needs box scores, which start in 1993-94."""
-    from association.query.templates import check_coverage
+    from association.query.templates.common import check_coverage
 
     assert check_coverage("player_stat", {"player": "Michael Jordan", "season": 1990, "season_type": 2}) is None
     assert check_coverage("player_stat", {"player": "Michael Jordan", "season": 1990, "season_type": 2, "opponent": "New York Knicks"}) is not None

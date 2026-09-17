@@ -7,7 +7,7 @@ import math
 from typing import Any
 
 # The frame is defined here, once, because this module draws in it: the
-# shot-distance math in templates.py and the shot-value rule in shotchart.py
+# shot-distance math in templates/shots.py and the shot-value rule in shotchart.py
 # measure from the same point, and a rim drawn somewhere other than where
 # distance is measured from is a silent disagreement no test would catch.
 

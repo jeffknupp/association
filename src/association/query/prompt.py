@@ -115,7 +115,7 @@ team_id / athlete_id / event_id are all VARCHAR - join and filter on them as str
 # `date = 'YYYY-MM-DD'` return zero rows), math that is wrong rather than empty
 # (fieldGoalsMade already includes threes), and derivations no template does
 # (per-quarter scoring, shot distance). Add here only when the fall-through
-# path needs it; a shape a template should own belongs in templates.py.
+# path needs it; a shape a template should own belongs in the templates package.
 KNOWLEDGE_BASE: list[dict[str, Any]] = [
     {
         "topic": "No season named in the question -> default to the CURRENT season",

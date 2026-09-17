@@ -27,19 +27,9 @@ from association.fetch.repairs import real_games
 from association.fetch.repairs.reconstructed_box import _FILLED_COLUMNS as FILLED_COLUMNS
 from association.nba.season import current_season
 from association.query.conditions import RAW_BOX, UNGATED_ON_REBUILD, box_source
-from association.query.templates import (
-    REBUILT_STATS,
-    SPLIT_KINDS,
-    TemplateContext,
-    TemplateResult,
-    TemplateUnsupported,
-    check_coverage,
-    player_matchup,
-    player_splits,
-    record_when,
-    streak,
-    with_without,
-)
+from association.query.templates.common import REBUILT_STATS, TemplateContext, TemplateResult, TemplateUnsupported, check_coverage
+from association.query.templates.games import player_matchup
+from association.query.templates.splits import SPLIT_KINDS, player_splits, record_when, streak, with_without
 
 S = current_season()
 BOS, LAL, PHI = "2", "13", "20"

@@ -115,7 +115,7 @@ class BoxSource:
 #: Columns `player_box_stats_filled` substitutes that no reader may trust.
 #:
 #: The rebuild fills more columns than it got measured for. `REBUILT_STATS`
-#: (query/templates.py) is the list a rebuilt figure may be READ for - points,
+#: (query/templates/common.py) is the list a rebuilt figure may be READ for - points,
 #: rebounds, assists, steals, blocks, field goals made, free throws made, each
 #: wrong by hundredths of a game - and everything else the view substitutes is
 #: below that bar or was never measured at all: a rebuilt foul is wrong in

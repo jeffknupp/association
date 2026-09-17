@@ -73,7 +73,7 @@ def test_selection_picks_the_entry_a_question_actually_needs() -> None:
 
 
 def test_entries_a_template_now_owns_are_gone() -> None:
-    """These moved into templates.py, where the rule is code and tested rather
+    """These moved into the templates package, where the rule is code and tested rather
     than prose the model has to remember. Recoverable from git if a gap turns
     up; see the note above KNOWLEDGE_BASE."""
     topics = {e["topic"] for e in KNOWLEDGE_BASE}

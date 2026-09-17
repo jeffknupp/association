@@ -15,7 +15,8 @@ import pytest
 
 from association.nba.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON, caveat, unavailable
 from association.query.prompt import KNOWN_TABLES
-from association.query.templates import RANKING_INTENTS, TEMPLATE_SOURCES, TEMPLATES, check_coverage, coverage_caveat
+from association.query.templates import TEMPLATES
+from association.query.templates.common import RANKING_INTENTS, TEMPLATE_SOURCES, check_coverage, coverage_caveat
 
 
 def test_every_covered_table_is_a_real_table() -> None:

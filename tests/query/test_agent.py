@@ -280,7 +280,7 @@ def test_the_fast_path_replaces_a_player_the_question_never_named(monkeypatch: p
     second slot and answered with a confident table about him. The template is
     not reached until the names are the question's."""
     from association.query.router import Route
-    from association.query.templates import TemplateResult
+    from association.query.templates.common import TemplateResult
 
     seen: list[str] = []
 
@@ -300,7 +300,7 @@ def test_a_player_the_question_cannot_account_for_is_refused_not_passed_on(monke
     included, for "Ronaldo Lopes" - who does not exist. Same reasoning as
     check_coverage returning its refusal rather than raising it."""
     from association.query.router import Route
-    from association.query.templates import TemplateResult
+    from association.query.templates.common import TemplateResult
 
     monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="player_compare", slots={"players": ["Jusuf Nurkic", "Joel Embiid"]}))
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_compare": lambda ctx, slots: TemplateResult(data={}, answer="templated")})
@@ -315,7 +315,7 @@ def test_a_stray_name_on_a_question_no_template_reads_one_for_changes_nothing(mo
     cannot make the answer about the wrong person - and refusing over it would
     break a question that works."""
     from association.query.router import Route
-    from association.query.templates import TemplateResult
+    from association.query.templates.common import TemplateResult
 
     monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="head_to_head", slots={"player": "Jusuf Nurkic"}))
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"head_to_head": lambda ctx, slots: TemplateResult(data={}, answer="templated")})
@@ -327,7 +327,7 @@ def test_a_fingerprint_keeps_every_player_the_question_named(monkeypatch: pytest
     player slot, and one polygon is not half an answer - it is a different
     question, answered without saying so."""
     from association.query.router import Route
-    from association.query.templates import TemplateResult
+    from association.query.templates.common import TemplateResult
 
     seen: list[str] = []
 
@@ -347,7 +347,7 @@ def test_a_fingerprint_that_lost_a_player_to_a_typo_says_so(monkeypatch: pytest.
     one polygon where two were asked for, with nothing saying so, is the
     failure shape this project keeps producing."""
     from association.query.router import Route
-    from association.query.templates import TemplateResult
+    from association.query.templates.common import TemplateResult
 
     monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="fingerprint", slots={"player": "Joel Embiid"}))
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"fingerprint": lambda ctx, slots: TemplateResult(data={}, answer="Rendered.")})
@@ -359,7 +359,7 @@ def test_the_fast_path_asks_about_a_surname_the_router_completed(monkeypatch: py
     """End to end, because the value of this is that the template sees the
     question's own word and asks - not that a helper returned a string."""
     from association.query.router import Route
-    from association.query.templates import TemplateResult
+    from association.query.templates.common import TemplateResult
 
     seen: list[str] = []
 
@@ -406,7 +406,7 @@ def test_fast_path_answer_is_recorded_in_conversation_for_later_followups(monkey
     """The tool loop never runs on the fast path, but a follow-up that DOES
     fall through still needs to see what was already asked and answered."""
     from association.query.router import Route
-    from association.query.templates import TemplateResult
+    from association.query.templates.common import TemplateResult
 
     monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="threshold_count", slots={"stat": "points", "threshold": 30}))
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"threshold_count": lambda con, slots: TemplateResult(data={"leaders": []}, answer="template answer")})
@@ -449,7 +449,7 @@ def test_the_fast_path_carries_out_the_intent_and_data_it_used_to_discard(monkey
     and _try_fast_path returned only result.answer, so nothing ever could.
     That is the whole reason Phase 0 of the 2.0 plan exists."""
     from association.query.router import Route
-    from association.query.templates import TemplateResult
+    from association.query.templates.common import TemplateResult
 
     monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="leaderboard", slots={"stat": "points"}))
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"leaderboard": lambda con, slots: TemplateResult(data={"leaders": ["Jokic"]}, answer="Jokic.")})
@@ -477,7 +477,7 @@ def test_an_agent_answer_has_no_intent_or_data_rather_than_an_empty_one(monkeypa
 def test_a_fast_path_answer_carries_the_chart_the_template_wrote(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from association.query.answer import Artifact
     from association.query.router import Route
-    from association.query.templates import TemplateResult
+    from association.query.templates.common import TemplateResult
 
     drawn = Artifact("shot_chart", tmp_path / "shotchart_x.html")
     monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="shot_chart", slots={"player": "x"}))

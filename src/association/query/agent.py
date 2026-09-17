@@ -19,7 +19,8 @@ from .keepalive import KEEP_ALIVE
 from .models import DEFAULT_ROUTER_MODEL
 from .prompt import AGENT_NUM_CTX, TOOLS, build_system_prompt
 from .router import route
-from .templates import PLAYER_INTENTS, PLAYER_REQUIRED_INTENTS, TEMPLATES, TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, check_scope, coverage_caveat
+from .templates import TEMPLATES
+from .templates.common import PLAYER_INTENTS, PLAYER_REQUIRED_INTENTS, TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, check_scope, coverage_caveat
 from .toolbox import Toolbox
 
 MAX_TOOL_ITERATIONS = 8

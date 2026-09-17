@@ -38,6 +38,13 @@ had no published version to be compatible with.
   - The load-time repairs and filtered tables moved under
     `association.fetch.repairs`: `game_repair`, `team_box_repair`,
     `season_totals_repair`, `reconstructed_box` and `real_games`.
+  - `association.query.templates` is a package, one module per subject:
+    `common` (the context and result types, the scoping and coverage checks,
+    and the helpers more than one subject uses), `players`, `games`, `teams`,
+    `shots`, `netpoints` and `splits`. The package re-exports `TEMPLATES` and
+    the scoping API, so `from association.query.templates import TEMPLATES,
+    check_scope, ...` still works; a private helper is imported from the
+    module that defines it.
   - `ROUTER_PROMPT`, `ROUTER_SCHEMA`, `ROUTER_NUM_CTX` and
     `ROUTER_PROMPT_TOKEN_BUDGET` moved from `association.query.router` to
     `association.query.router_prompt`, byte-identical (hashed before and

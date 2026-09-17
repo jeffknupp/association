@@ -228,7 +228,7 @@ def build_views(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
     con.execute(f"""
         CREATE OR REPLACE VIEW player_box_stats_reconstructed AS
         WITH empty_games AS (
-            -- The same test _empty_box_scores draws in query/templates.py: a
+            -- The same test _empty_box_scores draws in query/templates/players.py: a
             -- team-game where no player has any minutes at all. Keyed on
             -- season as well as event_id, because the phantom 1993 season
             -- shares its event ids with 1994 (see coverage.py).

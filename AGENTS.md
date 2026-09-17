@@ -195,7 +195,7 @@ template covered the real one and something adjacent matched instead.
 The consequence for how you work: **an answer that looks right is not
 evidence.** Check that the shape you added is the shape being exercised. This
 is why templates now refuse rather than approximate — see `check_scope()` and
-`HONORED_SCOPING` in `query/templates.py`, which make a template declare which
+`HONORED_SCOPING` in `query/templates/common.py`, which make a template declare which
 scoping slots it honors and raise on the rest, instead of silently ignoring
 `order` or `date` and returning a whole-season answer to a single-game
 question.
@@ -875,7 +875,7 @@ prompted them:
 
 **One concept, one definition.** Ruff's F811 and mypy's `no-redef` catch a name
 defined twice in one module and are blind to the same name in two - so
-`MAX_LIMIT` is 100 in `query/leaderboard.py` and 50 in `query/templates.py`,
+`MAX_LIMIT` is 100 in `query/leaderboard.py` and 50 in `query/templates/common.py`,
 and the NBA's five-hour Eastern offset was once declared six times under five
 names.
 `scripts/check_duplicate_names.py` reports cross-module constant collisions

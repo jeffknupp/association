@@ -91,7 +91,7 @@ likewise.
   73, 64, 71, 70, 77. Where our box scores are good the gamelog agrees with
   them to within a game, so it is a sound source that simply lacks this data
   too.
-- **How we handle it:** `_empty_box_scores` (`query/templates.py`) counts the
+- **How we handle it:** `_empty_box_scores` (`query/templates/players.py`) counts the
   games a per-game answer could not see and says so; the caveat gives a count,
   not "every Bulls and Pelicans game". Since 2026-09-14 `single_game_high` also
   refuses to read these lines at all, because a stat column on them is `0`
