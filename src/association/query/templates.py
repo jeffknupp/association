@@ -3766,14 +3766,7 @@ def fingerprint(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     # "compare their fingerprints" arrives as `players`, one name as `player`.
     # Both draw one plot; two polygons on shared axes IS the comparison, so
     # this does not need a second intent.
-    names = slots.get("players") if isinstance(slots.get("players"), list) else None
-    names = [n for n in names if isinstance(n, str) and n.strip()] if names else []
-    if not names:
-        single = slots.get("player")
-        if not isinstance(single, str) or not single.strip():
-            raise TemplateUnsupported("fingerprint needs a player name")
-        names = [single]
-    names = names[:MAX_FINGERPRINT_PLAYERS]
+    names = _fingerprint_names(slots.get("players"), slots.get("player"))
 
     # A question about one game draws that game, from the long per-game table
     # rather than the season file - see fingerprint.load_game_fingerprints for
@@ -3796,12 +3789,44 @@ def fingerprint(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     # the season file has no season_type at all.
     availability = GAME_FINGERPRINT_AVAILABILITY if order else FINGERPRINT_AVAILABILITY
 
+    resolved = _fingerprint_resolve_players(ctx.con, names, availability, season)
+    if isinstance(resolved, TemplateResult):
+        return resolved
+    players, ambiguous = resolved
+
+    # The router's word for it is `side`, which is what a question says ("his
+    # defensive fingerprint"); the renderer's is `view`, because each skill
+    # already carries the side it is measured on and this only picks which
+    # skills are drawn.
+    view = slots.get("side")
+    if view not in FINGERPRINT_VIEWS:
+        view = "total"
+    return _fingerprint_render(ctx, players, ambiguous, season, view=view, season_type=season_type, order=order)
+
+
+def _fingerprint_names(players_slot: Any, player_slot: Any) -> list[str]:
+    """The player name(s) asked for, from the `players` slot (a comparison) or
+    the `player` slot (one name)."""
+    names = players_slot if isinstance(players_slot, list) else None
+    names = [n for n in names if isinstance(n, str) and n.strip()] if names else []
+    if not names:
+        if not isinstance(player_slot, str) or not player_slot.strip():
+            raise TemplateUnsupported("fingerprint needs a player name")
+        names = [player_slot]
+    return names[:MAX_FINGERPRINT_PLAYERS]
+
+
+def _fingerprint_resolve_players(con: duckdb.DuckDBPyConnection, names: list[str], availability: Availability, season: int) -> tuple[list[Entity], list[str]] | TemplateResult:
+    """Each name resolved against the table the plot will actually be drawn
+    from, the same best-match way `shot_chart` does: a plot titled with the
+    resolved name shows a wrong match on sight, which is what makes
+    best-match resolution safe here and not in a template reporting numbers."""
     players: list[Entity] = []
     ambiguous: list[str] = []
     for name in names:
-        found = resolve_chart_player(ctx.con, name, availability, season)
+        found = resolve_chart_player(con, name, availability, season)
         if found is None:
-            message = no_match(ctx.con, name)
+            message = no_match(con, name)
             return TemplateResult(data={"message": message}, answer=message)
         if isinstance(found, Ambiguous):
             return _clarify(name, found.candidates, active=found.active)
@@ -3812,14 +3837,12 @@ def fingerprint(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         if player.id not in {p.id for p in players}:
             players.append(player)
         ambiguous.extend(also)
+    return players, ambiguous
 
-    # The router's word for it is `side`, which is what a question says ("his
-    # defensive fingerprint"); the renderer's is `view`, because each skill
-    # already carries the side it is measured on and this only picks which
-    # skills are drawn.
-    view = slots.get("side")
-    if view not in FINGERPRINT_VIEWS:
-        view = "total"
+
+def _fingerprint_render(ctx: TemplateContext, players: list[Entity], ambiguous: list[str], season: int, *, view: str, season_type: int, order: str | None) -> TemplateResult:
+    """Renders the plot and builds the answer, or returns the renderer's own
+    message when the table it reads has nothing to draw."""
     try:
         rendered = render_for_players(ctx.con, ctx.out_dir, players, ambiguous, season, view=view, season_type=season_type, order=order)
     except FingerprintUnavailable as exc:
