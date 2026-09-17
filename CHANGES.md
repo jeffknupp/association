@@ -22,6 +22,12 @@ had no published version to be compatible with.
   brought Philadelphia to 16, and MIL-CHA (two games) and LAL-SA (one) are
   short too. The note on `games` and `team_box_stats` now says ten games across
   all four series and 16 against ESPN's 23.
+- **The README's first install command works.** It was
+  `pip install 'association[web]'`, which the README's own note says does not
+  work while PyPI is unreachable; it now installs from the release tag, as
+  `docs/usage.rst` does too. The README also lists the 2001 playoffs' ten
+  missing games among its known limitations, and its project layout names
+  `season.py`, `franchises.py` and the load-time repairs.
 
 ## 2.2.0 - 2026-09-17
 - **Docs brought up to date with the code.** A pass over the README, the

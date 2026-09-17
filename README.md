@@ -8,7 +8,7 @@ no cloud API calls anywhere.
 ## Ask it something
 
 ```bash
-pip install 'association[web]'
+uv tool install 'association[web] @ git+https://github.com/jeffknupp/association@v2.2.0'
 association web
 # association is serving at http://127.0.0.1:40525  (ctrl-c to stop)
 ```
@@ -172,8 +172,8 @@ the fall-through agent handles anything the templates don't cover.
 > [releases page](https://github.com/jeffknupp/association/releases). This note
 > goes away once PyPI publishing is restored.
 
-To work on `association` itself, clone the repo and `uv sync --extra dev`
-instead of installing from PyPI.
+To work on `association` itself, clone the repo and sync it instead (see
+[Development](#development)).
 
 ### Hardware
 
@@ -238,7 +238,9 @@ for how the warehouse and query engine are built from it.
 src/association/
   cli.py            entrypoint: data pull|load|check, query, web
   coverage.py       the season each table's data starts in, and the refusal for a season before it
-  fetch/            client, endpoints, parse, storage, pipeline, warehouse
+  season.py         season naming, the current season, and US Eastern game dates
+  franchises.py     each franchise's names by season (Seattle, New Jersey, Charlotte/New Orleans, ...)
+  fetch/            client, endpoints, parse, storage, pipeline, warehouse, and the load-time repairs of ESPN's faults
   check/            data coverage report, cross-checked live against ESPN
   query/            intent router, query templates, entity resolution, leaderboard, conditions (splits, with/without, streaks), leaderboard and team metrics, shot chart, fingerprint, prompt/knowledge base, tools, court and radar renderers, agent loop
   web/              the local web interface: HTTP API, one-at-a-time runner, single-page app
@@ -296,6 +298,9 @@ enforced by a pre-commit hook.
   2001-02 and 2002-03); ESPN's power index from 2016-17; win probability from
   2017-18; NetPoints from 2018-19. These are ESPN's gaps, and no pull fills
   them. A question below a table's floor is refused with the reason.
+- **The 2001 playoffs are missing ten games**, Games 1-4 of the Lakers-76ers
+  Final among them, and ESPN's archive has them nowhere. A 2001 playoff answer
+  carries a note saying which series are short.
 - **Careers.** Career answers cover only careers that reached 1993-94, because
   players are found through box scores: Kareem Abdul-Jabbar, Larry Bird and
   Julius Erving are not in the warehouse, and a career list says it is not
