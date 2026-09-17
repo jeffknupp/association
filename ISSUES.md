@@ -1207,6 +1207,7 @@ found.
 - **Next step:** add a deterministic tiebreak (`athlete_id`, or the display
   name) to the ORDER BY, and consider saying "N more tied" when the limit cuts
   through a tie. A behavior change, so it was kept out of the refactor.
+- **GitHub:** #99
 
 ### Advanced-stat aggregates are not bit-reproducible between runs
 - **Found:** 2026-09-17, by the complexity refactor's golden comparison of
@@ -1224,6 +1225,7 @@ found.
 - **Next step:** none needed for answers. Anything comparing results across
   runs (a golden test, a cache check) should round, or the view could round
   `usage_pct`/`ts_pct`/`efg_pct` to a sane precision at build time.
+- **GitHub:** #100
 
 ### `games.date` is a VARCHAR, and the agent is taught only part of how to filter it
 - **Found:** 2026-09-16 during the query-set audit; **corrected and re-ranked
