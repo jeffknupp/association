@@ -224,6 +224,139 @@ def render_shot_chart(
     )
 
 
+def _render_for_player_refusal(shot_value: int | None, season: int | None, resolved_name: str) -> str | None:
+    """A message refusing to draw the chart, if ``shot_value``/``season`` say
+    so - a free throw filter (no court position worth drawing) or a season in
+    :data:`UNSEPARABLE_SHOT_VALUES` - or None to proceed.
+    """
+    if shot_value == 1:
+        return "Free throws are all taken from the same line and carry no court position worth drawing, so there is no free-throw chart to render."
+    kind = {2: "2PT attempts", 3: "3PT attempts"}.get(shot_value or 0, f"{shot_value}pt attempts")
+    if shot_value is not None and season in UNSEPARABLE_SHOT_VALUES:
+        return f"{UNSEPARABLE_SHOT_VALUES[season]}. A chart of {resolved_name}'s {kind} in {season} cannot be drawn."
+    return None
+
+
+def _render_for_player_where(
+    athlete_id: str,
+    season: int | None,
+    season_type: int | None,
+    event_id: str | None,
+    period: int | None,
+    shot_value: int | None,
+    made_only: bool | None,
+) -> tuple[list[str], list[Any]]:
+    """The WHERE clause and its params, in the order ``render_for_player``
+    applies its filters."""
+    where = ["athlete_id = ?", HAS_POSITION_SQL]
+    filter_params: list[Any] = [athlete_id]
+    if season is not None:
+        where.append("season = ?")
+        filter_params.append(season)
+    if season_type is not None:
+        where.append("season_type = ?")
+        filter_params.append(season_type)
+    if event_id is not None:
+        where.append("event_id = ?")
+        filter_params.append(event_id)
+    if period is not None:
+        where.append("period = ?")
+        filter_params.append(period)
+    if shot_value is not None:
+        # NULL is kept here so it can be counted and said, rather than dropped
+        # by the filter where nobody would know.
+        where.append(f"({SHOT_VALUE_SQL} = ? OR {SHOT_VALUE_SQL} IS NULL)")
+        filter_params.append(shot_value)
+    else:
+        where.append(f"{SHOT_VALUE_SQL} IS DISTINCT FROM 1")
+    if made_only is not None:
+        where.append("made = ?")
+        filter_params.append(made_only)
+    return where, filter_params
+
+
+def _render_for_player_notes(kept: list[tuple[Any, ...]], unknown: list[tuple[Any, ...]], shot_value: int | None) -> list[str]:
+    """Caveats about what a ``shot_value`` filter left out or derived - shots
+    that cannot be told apart as twos or threes, and seasons whose split is
+    derived rather than labeled (:data:`DERIVED_SHOT_VALUES`)."""
+    notes = []
+    if unknown:
+        # Only reachable across seasons (a career or one game): a single
+        # unseparable season was refused above.
+        why = "; ".join(UNSEPARABLE_SHOT_VALUES.get(s, f"nothing records their value in {s}") for s in sorted({r[7] for r in unknown}))
+        notes.append(f"left out {len(unknown):,} {'shot' if len(unknown) == 1 else 'shots'} that cannot be told apart as twos or threes: {why}")
+    if shot_value is not None:
+        notes.extend(DERIVED_SHOT_VALUES[s] for s in sorted({r[7] for r in kept} & DERIVED_SHOT_VALUES.keys()))
+    return notes
+
+
+def _render_for_player_subtitle(
+    season: int | None,
+    season_type: int | None,
+    event_id: str | None,
+    period: int | None,
+    shot_value: int | None,
+    made_only: bool | None,
+    made: int,
+    total: int,
+) -> str:
+    """The plot's subtitle: which filters scoped it, plus the made/attempted split."""
+    subtitle_parts = []
+    if season is not None:
+        subtitle_parts.append(f"season {season}")
+    if season_type is not None:
+        subtitle_parts.append({1: "preseason", 2: "regular season", 3: "postseason"}.get(season_type, str(season_type)))
+    if event_id is not None:
+        subtitle_parts.append(f"game {event_id}")
+    if period is not None:
+        subtitle_parts.append({1: "Q1", 2: "Q2", 3: "Q3", 4: "Q4"}.get(period, f"OT{period - 4}"))
+    if shot_value is not None:
+        subtitle_parts.append({1: "free throws", 2: "2PT attempts", 3: "3PT attempts"}.get(shot_value, f"{shot_value}pt attempts"))
+    if made_only is not None:
+        subtitle_parts.append("makes only" if made_only else "misses only")
+    subtitle = ", ".join(subtitle_parts) or "all games"
+    subtitle += f" - {made}/{total} ({made / total:.1%}) shown"
+    return subtitle
+
+
+def _render_for_player_filename(
+    resolved_name: str,
+    season: int | None,
+    season_type: int | None,
+    event_id: str | None,
+    period: int | None,
+    shot_value: int | None,
+    made_only: bool | None,
+) -> str:
+    """The HTML file's name: the player, and every filter that scoped the chart."""
+    safe_name = "".join(c if c.isalnum() else "_" for c in resolved_name.lower())
+    scope = "_".join(
+        filter(
+            None,
+            [
+                str(season) if season else None,
+                str(season_type) if season_type else None,
+                event_id,
+                f"p{period}" if period else None,
+                f"{shot_value}pt" if shot_value else None,
+                ("makes" if made_only else "misses") if made_only is not None else None,
+            ],
+        )
+    )
+    return f"shotchart_{safe_name}" + (f"_{scope}" if scope else "") + ".html"
+
+
+def _render_for_player_message(resolved_name: str, made: int, total: int, out_path: Path, ambiguous: list[str], notes: list[str]) -> str:
+    """The success message: the made/attempted split, then every note - the
+    runners-up that also matched, and any shot_value caveat."""
+    msg = f"Rendered shot chart for {resolved_name} ({made}/{total} made, {made / total:.1%}) to {out_path}"
+    if ambiguous:
+        msg += f". Note: other players also matched: {ambiguous}"
+    for note in notes:
+        msg += f". Note: {note}"
+    return msg
+
+
 def render_for_player(
     con: duckdb.DuckDBPyConnection,
     out_dir: Path,
@@ -277,49 +410,17 @@ def render_for_player(
         season = None
         season_type = None
 
-    if shot_value == 1:
-        return RenderResult("Free throws are all taken from the same line and carry no court position worth drawing, so there is no free-throw chart to render.", None)
-    kind = {2: "2PT attempts", 3: "3PT attempts"}.get(shot_value or 0, f"{shot_value}pt attempts")
-    if shot_value is not None and season in UNSEPARABLE_SHOT_VALUES:
-        return RenderResult(f"{UNSEPARABLE_SHOT_VALUES[season]}. A chart of {resolved_name}'s {kind} in {season} cannot be drawn.", None)
+    refusal = _render_for_player_refusal(shot_value, season, resolved_name)
+    if refusal is not None:
+        return RenderResult(refusal, None)
 
-    where = ["athlete_id = ?", HAS_POSITION_SQL]
-    filter_params: list[Any] = [athlete_id]
-    if season is not None:
-        where.append("season = ?")
-        filter_params.append(season)
-    if season_type is not None:
-        where.append("season_type = ?")
-        filter_params.append(season_type)
-    if event_id is not None:
-        where.append("event_id = ?")
-        filter_params.append(event_id)
-    if period is not None:
-        where.append("period = ?")
-        filter_params.append(period)
-    if shot_value is not None:
-        # NULL is kept here so it can be counted and said, rather than dropped
-        # by the filter where nobody would know.
-        where.append(f"({SHOT_VALUE_SQL} = ? OR {SHOT_VALUE_SQL} IS NULL)")
-        filter_params.append(shot_value)
-    else:
-        where.append(f"{SHOT_VALUE_SQL} IS DISTINCT FROM 1")
-    if made_only is not None:
-        where.append("made = ?")
-        filter_params.append(made_only)
+    where, filter_params = _render_for_player_where(athlete_id, season, season_type, event_id, period, shot_value, made_only)
 
     sql = f"SELECT coordinate_x, coordinate_y, made, shot_type, period, clock, event_id, season, {SHOT_VALUE_SQL} FROM shot_chart WHERE {' AND '.join(where)}"
     rows = con.execute(sql, filter_params).fetchall()
     kept = [r for r in rows if shot_value is None or r[8] == shot_value]
     unknown = [r for r in rows if shot_value is not None and r[8] is None]
-    notes = []
-    if unknown:
-        # Only reachable across seasons (a career or one game): a single
-        # unseparable season was refused above.
-        why = "; ".join(UNSEPARABLE_SHOT_VALUES.get(s, f"nothing records their value in {s}") for s in sorted({r[7] for r in unknown}))
-        notes.append(f"left out {len(unknown):,} {'shot' if len(unknown) == 1 else 'shots'} that cannot be told apart as twos or threes: {why}")
-    if shot_value is not None:
-        notes.extend(DERIVED_SHOT_VALUES[s] for s in sorted({r[7] for r in kept} & DERIVED_SHOT_VALUES.keys()))
+    notes = _render_for_player_notes(kept, unknown, shot_value)
     shots = [r[:7] for r in kept]
     if not shots:
         message = f"No shots found for {resolved_name} with the given filters."
@@ -328,38 +429,10 @@ def render_for_player(
     made = sum(1 for s in shots if s[2])
     total = len(shots)
     title = resolved_name
-    subtitle_parts = []
-    if season is not None:
-        subtitle_parts.append(f"season {season}")
-    if season_type is not None:
-        subtitle_parts.append({1: "preseason", 2: "regular season", 3: "postseason"}.get(season_type, str(season_type)))
-    if event_id is not None:
-        subtitle_parts.append(f"game {event_id}")
-    if period is not None:
-        subtitle_parts.append({1: "Q1", 2: "Q2", 3: "Q3", 4: "Q4"}.get(period, f"OT{period - 4}"))
-    if shot_value is not None:
-        subtitle_parts.append({1: "free throws", 2: "2PT attempts", 3: "3PT attempts"}.get(shot_value, f"{shot_value}pt attempts"))
-    if made_only is not None:
-        subtitle_parts.append("makes only" if made_only else "misses only")
-    subtitle = ", ".join(subtitle_parts) or "all games"
-    subtitle += f" - {made}/{total} ({made / total:.1%}) shown"
+    subtitle = _render_for_player_subtitle(season, season_type, event_id, period, shot_value, made_only, made, total)
 
     html = render_court_html(title, subtitle, shots)
-    safe_name = "".join(c if c.isalnum() else "_" for c in resolved_name.lower())
-    scope = "_".join(
-        filter(
-            None,
-            [
-                str(season) if season else None,
-                str(season_type) if season_type else None,
-                event_id,
-                f"p{period}" if period else None,
-                f"{shot_value}pt" if shot_value else None,
-                ("makes" if made_only else "misses") if made_only is not None else None,
-            ],
-        )
-    )
-    fname = f"shotchart_{safe_name}" + (f"_{scope}" if scope else "") + ".html"
+    fname = _render_for_player_filename(resolved_name, season, season_type, event_id, period, shot_value, made_only)
     # Toolbox creates out_dir in its constructor, but this function is also
     # called straight from a template with whatever directory it was given -
     # it must not depend on someone else having made it first.
@@ -367,9 +440,5 @@ def render_for_player(
     out_path = out_dir / fname
     out_path.write_text(html)
 
-    msg = f"Rendered shot chart for {resolved_name} ({made}/{total} made, {made / total:.1%}) to {out_path}"
-    if ambiguous:
-        msg += f". Note: other players also matched: {ambiguous}"
-    for note in notes:
-        msg += f". Note: {note}"
+    msg = _render_for_player_message(resolved_name, made, total, out_path, ambiguous, notes)
     return RenderResult(msg, Artifact("shot_chart", out_path))
