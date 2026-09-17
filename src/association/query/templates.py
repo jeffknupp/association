@@ -3159,10 +3159,7 @@ def team_outlook(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         [team.id, season],
     ).fetchall()
 
-    def _describe(kind: int, updated: Any, teams: int) -> str:
-        return f"a {BPI_SNAPSHOT_NAMES.get(kind, f'type-{kind}')} snapshot ({str(updated)[:10]}, {teams} team{'s' if teams != 1 else ''})"
-
-    listing = [_describe(k, u, n) for k, u, n, _ in snapshots]
+    listing = [_team_outlook_describe(k, u, n) for k, u, n, _ in snapshots]
     if not snapshots:
         message = f"ESPN's power index has no {season} snapshot in the warehouse."
         return TemplateResult(data={"team": team.name, "season": season, "message": message}, answer=message)
@@ -3174,20 +3171,7 @@ def team_outlook(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     candidates = post if postseason else (pre or post)
     chosen = candidates[-1] if candidates else None
     if chosen is None:
-        # Which snapshot is missing, or which one the team is missing from, is
-        # the whole answer - "no data" would send the reader to the wrong place.
-        have = _joined(listing)
-        if postseason and not any(s[0] == 3 for s in snapshots):
-            gap = "and no postseason snapshot"
-        elif postseason:
-            gap = f"and the {team.name} are not in its postseason snapshot"
-        else:
-            gap = f"and the {team.name} are {'not in it' if len(listing) == 1 else 'in neither' if len(listing) == 2 else 'in none of them'}"
-        message = f"ESPN's power index for {season} has {have}, {gap}."
-        holding = [d for (*_, has), d in zip(snapshots, listing, strict=True) if has]
-        if holding:
-            message += f" The {team.name} are only in {_joined(holding)} - ask about the regular season to see it."
-        return TemplateResult(data={"team": team.name, "season": season, "snapshots": listing, "message": message}, answer=message)
+        return _team_outlook_missing(team, season, postseason, snapshots, listing)
 
     kind = chosen[0]
     row = con.execute(
@@ -3197,47 +3181,116 @@ def team_outlook(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         [season, kind, team.id],
     ).fetchone()
     assert row is not None  # the snapshot was chosen because it holds this team
-    updated, bpi, offense, defense, wins, losses, proj_w, proj_l, *chances_and_sos = row
-    chances = dict(zip([c for _, c in _BPI_CHANCES], chances_and_sos[:4], strict=True))
-    sos, sos_rank, higher = chances_and_sos[4], chances_and_sos[5], chances_and_sos[6]
+    return _team_outlook_detail(team, season, postseason, chosen, kind, row, snapshots, listing)
+
+
+def _team_outlook_describe(kind: int, updated: Any, teams: int) -> str:
+    """team_outlook's phrase for one snapshot: its kind, date and team count."""
+    return f"a {BPI_SNAPSHOT_NAMES.get(kind, f'type-{kind}')} snapshot ({str(updated)[:10]}, {teams} team{'s' if teams != 1 else ''})"
+
+
+def _team_outlook_missing(team: Entity, season: int, postseason: bool, snapshots: list[tuple[Any, ...]], listing: list[str]) -> TemplateResult:
+    """team_outlook's answer when no snapshot of the kind asked for holds the
+    team. Which snapshot is missing, or which one the team is missing from, is
+    the whole answer - "no data" would send the reader to the wrong place."""
+    have = _joined(listing)
+    if postseason and not any(s[0] == 3 for s in snapshots):
+        gap = "and no postseason snapshot"
+    elif postseason:
+        gap = f"and the {team.name} are not in its postseason snapshot"
+    else:
+        gap = f"and the {team.name} are {'not in it' if len(listing) == 1 else 'in neither' if len(listing) == 2 else 'in none of them'}"
+    message = f"ESPN's power index for {season} has {have}, {gap}."
+    holding = [d for (*_, has), d in zip(snapshots, listing, strict=True) if has]
+    if holding:
+        message += f" The {team.name} are only in {_joined(holding)} - ask about the regular season to see it."
+    return TemplateResult(data={"team": team.name, "season": season, "snapshots": listing, "message": message}, answer=message)
+
+
+def _team_outlook_record_line(kind: int, wins: Any, losses: Any, proj_w: Any, proj_l: Any) -> str:
+    """team_outlook's record line: for a postseason snapshot, the finished
+    regular season plus any playoff games added on top - a team whose record
+    still equals the projection played none (the 2026 Hornets, out in the
+    play-in) - or the record so far with a projection otherwise."""
+    played = int(wins) + int(losses)
+    regular = (round(proj_w), round(proj_l)) if proj_w is not None and proj_l is not None else None
+    if kind == 3:
+        # In a postseason snapshot the "projection" is the finished regular
+        # season, and the record adds the playoff games to it.
+        if regular and played > sum(regular):
+            return f"  record {int(wins)}-{int(losses)} including the playoffs; {regular[0]}-{regular[1]} in the regular season"
+        return f"  record {int(wins)}-{int(losses)}, no playoff games"
+    projection = f", projected {regular[0]}-{regular[1]}" if regular else ""
+    return f"  record {int(wins)}-{int(losses)}{projection}" if played else f"  no games played yet{projection}"
+
+
+def _team_outlook_headline(team: Entity, season: int, postseason: bool, chosen: tuple[Any, ...], kind: int, updated: Any) -> list[str]:
+    """team_outlook's opening line, plus a note when the postseason snapshot
+    stands in for a missing regular-season one, or when ESPN stamped the
+    snapshot after the season it describes had ended (every 2017-2020
+    snapshot is stamped 2019 or 2020, and the 2017 preseason and
+    regular-season snapshots carry identical ratings under different
+    records)."""
     name = BPI_SNAPSHOT_NAMES.get(kind, f"type-{kind}")
     lines_out = [f"ESPN's power index for the {team.name}, {season} {name} snapshot (updated {str(updated)[:10]}, {chosen[2]} teams):"]
     if not postseason and kind == 3:
         lines_out.append("  (No pre-playoff snapshot for that season holds them, so this is the postseason one.)")
     if str(updated)[:4] > str(season):
-        # Every 2017-2020 snapshot is stamped 2019 or 2020 - after the season
-        # it describes had ended - and the 2017 preseason and regular-season
-        # snapshots carry identical ratings under different records.
         lines_out.append(f"  (ESPN stamps this snapshot {str(updated)[:10]}, after the {season} season ended, so it may not reflect any one moment of it.)")
-    if bpi is not None:
-        detail = f" (offense {offense:+.1f}, defense {defense:+.1f})" if offense is not None and defense is not None else ""
-        lines_out.append(f"  BPI {bpi:+.1f}{detail}, {_ordinal(int(higher) + 1)} of the {chosen[2]} teams in the snapshot")
-    if wins is not None and losses is not None:
-        played = int(wins) + int(losses)
-        regular = (round(proj_w), round(proj_l)) if proj_w is not None and proj_l is not None else None
-        if kind == 3:
-            # In a postseason snapshot the "projection" is the finished regular
-            # season, and the record adds the playoff games to it - so a team
-            # whose two agree played none (the 2026 Hornets, out in the play-in).
-            if regular and played > sum(regular):
-                lines_out.append(f"  record {int(wins)}-{int(losses)} including the playoffs; {regular[0]}-{regular[1]} in the regular season")
-            else:
-                lines_out.append(f"  record {int(wins)}-{int(losses)}, no playoff games")
-        else:
-            projection = f", projected {regular[0]}-{regular[1]}" if regular else ""
-            lines_out.append(f"  record {int(wins)}-{int(losses)}{projection}" if played else f"  no games played yet{projection}")
+    return lines_out
+
+
+def _team_outlook_bpi_line(bpi: Any, offense: Any, defense: Any, higher: Any, teams: int) -> str | None:
+    """team_outlook's BPI line, or None where the snapshot carries no rating."""
+    if bpi is None:
+        return None
+    detail = f" (offense {offense:+.1f}, defense {defense:+.1f})" if offense is not None and defense is not None else ""
+    return f"  BPI {bpi:+.1f}{detail}, {_ordinal(int(higher) + 1)} of the {teams} teams in the snapshot"
+
+
+def _team_outlook_chances_line(chances: dict[str, Any]) -> str | None:
+    """team_outlook's playoff/title-chances line, or None where the snapshot
+    carries none of them."""
     odds = [f"{label} {chances[column]:.1f}%" for label, column in _BPI_CHANCES if chances[column] is not None]
-    if odds:
-        lines_out.append("  chances: " + ", ".join(odds))
-    # ESPN's schedule-strength rank is a league-wide rank only from 2022; the
-    # values before it (7,909 to 59,238) are not ranks.
-    if sos is not None and 0 < sos < 1:
-        rank_note = f", {_ordinal(int(sos_rank))} hardest in the league" if sos_rank is not None and 1 <= sos_rank <= 30 else ""
-        lines_out.append(f"  strength of schedule {_record_pct(sos)}{rank_note}")
+    return "  chances: " + ", ".join(odds) if odds else None
+
+
+def _team_outlook_sos_line(sos: Any, sos_rank: Any) -> str | None:
+    """team_outlook's strength-of-schedule line, or None where the snapshot
+    carries none. ESPN's schedule-strength rank is a league-wide rank only
+    from 2022; the values before it (7,909 to 59,238) are not ranks."""
+    if sos is None or not (0 < sos < 1):
+        return None
+    rank_note = f", {_ordinal(int(sos_rank))} hardest in the league" if sos_rank is not None and 1 <= sos_rank <= 30 else ""
+    return f"  strength of schedule {_record_pct(sos)}{rank_note}"
+
+
+def _team_outlook_others_line(season: int, kind: int, snapshots: list[tuple[Any, ...]], listing: list[str]) -> str | None:
+    """team_outlook's note about the season's other snapshots, or None where
+    the chosen one is the only one."""
     others = [d for (k, *_), d in zip(snapshots, listing, strict=True) if k != kind]
-    if others:
-        lines_out.append(f"  ESPN's power index for {season} also has {_joined(others)}.")
-    data = {
+    return f"  ESPN's power index for {season} also has {_joined(others)}." if others else None
+
+
+def _team_outlook_data(
+    team: Entity,
+    season: int,
+    name: str,
+    chosen: tuple[Any, ...],
+    updated: Any,
+    bpi: Any,
+    offense: Any,
+    defense: Any,
+    higher: Any,
+    wins: Any,
+    losses: Any,
+    proj_w: Any,
+    proj_l: Any,
+    chances: dict[str, Any],
+    sos: Any,
+) -> dict[str, Any]:
+    """team_outlook's structured data, alongside its prose answer."""
+    return {
         "team": team.name,
         "season": season,
         "snapshot": name,
@@ -3254,6 +3307,31 @@ def team_outlook(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         "chances": {label: chances[column] for label, column in _BPI_CHANCES},
         "strength_of_schedule": sos,
     }
+
+
+def _team_outlook_detail(team: Entity, season: int, postseason: bool, chosen: tuple[Any, ...], kind: int, row: tuple[Any, ...], snapshots: list[tuple[Any, ...]], listing: list[str]) -> TemplateResult:
+    """team_outlook's answer once a snapshot holds the team: the BPI line, the
+    record and its projection, title chances, and strength of schedule."""
+    updated, bpi, offense, defense, wins, losses, proj_w, proj_l, *chances_and_sos = row
+    chances = dict(zip([c for _, c in _BPI_CHANCES], chances_and_sos[:4], strict=True))
+    sos, sos_rank, higher = chances_and_sos[4], chances_and_sos[5], chances_and_sos[6]
+    name = BPI_SNAPSHOT_NAMES.get(kind, f"type-{kind}")
+    lines_out = _team_outlook_headline(team, season, postseason, chosen, kind, updated)
+    bpi_line = _team_outlook_bpi_line(bpi, offense, defense, higher, chosen[2])
+    if bpi_line is not None:
+        lines_out.append(bpi_line)
+    if wins is not None and losses is not None:
+        lines_out.append(_team_outlook_record_line(kind, wins, losses, proj_w, proj_l))
+    chances_line = _team_outlook_chances_line(chances)
+    if chances_line is not None:
+        lines_out.append(chances_line)
+    sos_line = _team_outlook_sos_line(sos, sos_rank)
+    if sos_line is not None:
+        lines_out.append(sos_line)
+    others_line = _team_outlook_others_line(season, kind, snapshots, listing)
+    if others_line is not None:
+        lines_out.append(others_line)
+    data = _team_outlook_data(team, season, name, chosen, updated, bpi, offense, defense, higher, wins, losses, proj_w, proj_l, chances, sos)
     return TemplateResult(data=data, answer="\n".join(lines_out))
 
 
