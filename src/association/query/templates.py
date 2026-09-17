@@ -4117,6 +4117,44 @@ def _season_games(season: int, season_type: int, alias: str) -> tuple[str, list[
     return f"{alias}.season = ?", [season]
 
 
+def _head_to_head_names(teams_slot: Any, team_slot: Any, opponent_slot: Any) -> list[str]:
+    """The team names asked for, merged from `teams`, `team` and `opponent`.
+
+    A city name rather than a nickname ("...play Boston?") makes the router
+    split the two teams across `team` and `teams` instead of putting both in
+    `teams`. Name resolution is fine either way, so treating `team` as a third
+    candidate absorbs the split rather than rejecting an answerable question.
+    The router also writes the other side as `opponent` ("Celtics vs Bulls
+    head to head" arrives as team + opponent): it is one of the two teams.
+    """
+    names = [n for n in teams_slot if isinstance(n, str) and n.strip()] if isinstance(teams_slot, list) else []
+    if isinstance(team_slot, str) and team_slot.strip() and team_slot not in names:
+        names = [team_slot, *names]
+    if isinstance(opponent_slot, str) and opponent_slot.strip() and opponent_slot not in names:
+        names = [*names, opponent_slot]
+    if len(set(names)) < 2:
+        raise TemplateUnsupported("head_to_head needs two team names")
+    return names
+
+
+def _head_to_head_teams(con: duckdb.DuckDBPyConnection, names: list[str], season: int | None) -> tuple[Entity, Entity] | TemplateResult:
+    """Until two DIFFERENT teams resolve, not the first two names: "Celtics" in
+    `team` and "Boston Celtics" in `teams` are one team, and the opponent
+    after them is the second."""
+    resolved: list[Entity] = []
+    for name in names:
+        team = _resolved_team(con, name, season=season)
+        if isinstance(team, TemplateResult):
+            return team
+        if team.id not in {t.id for t in resolved}:
+            resolved.append(team)
+        if len(resolved) == 2:
+            break
+    if len(resolved) != 2:
+        raise TemplateUnsupported("the named teams resolved to the same team")
+    return resolved[0], resolved[1]
+
+
 def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """ "How many times did the 76ers play Boston?" - games between two teams.
 
@@ -4126,39 +4164,17 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     worked WRONG example, in its prompt. Prompting cannot fix that; resolving
     names to ids in code can."""
     con = ctx.con
-    # A city name rather than a nickname ("...play Boston?") makes the router
-    # split the two teams across `team` and `teams` instead of putting both in
-    # `teams`. Name resolution is fine either way, so treating `team` as a third
-    # candidate absorbs the split rather than rejecting an answerable question.
     teams_slot = slots.get("teams")
-    names = [n for n in teams_slot if isinstance(n, str) and n.strip()] if isinstance(teams_slot, list) else []
     team_slot = slots.get("team")
-    if isinstance(team_slot, str) and team_slot.strip() and team_slot not in names:
-        names = [team_slot, *names]
     # The router also writes the other side as `opponent` ("Celtics vs Bulls
     # head to head" arrives as team + opponent): it is one of the two teams.
     opponent_slot = slots.get("opponent")
-    if isinstance(opponent_slot, str) and opponent_slot.strip() and opponent_slot not in names:
-        names = [*names, opponent_slot]
-    if len(set(names)) < 2:
-        raise TemplateUnsupported("head_to_head needs two team names")
+    names = _head_to_head_names(teams_slot, team_slot, opponent_slot)
 
-    # Until two DIFFERENT teams resolve, not the first two names: "Celtics" in
-    # `team` and "Boston Celtics" in `teams` are one team, and the opponent
-    # after them is the second.
-    resolved: list[Entity] = []
-    for name in names:
-        team = _resolved_team(con, name, season=_slot_season(slots))
-        if isinstance(team, TemplateResult):
-            return team
-        if team.id not in {t.id for t in resolved}:
-            resolved.append(team)
-        if len(resolved) == 2:
-            break
-    if len(resolved) != 2:
-        raise TemplateUnsupported("the named teams resolved to the same team")
-
-    a, b = resolved
+    teams = _head_to_head_teams(con, names, _slot_season(slots))
+    if isinstance(teams, TemplateResult):
+        return teams
+    a, b = teams
     # No season named means the CURRENT one, as everywhere else. "All time" is
     # a defensible reading here, but silently answering a different span than
     # the rest of the system is the substitution this design exists to prevent.
