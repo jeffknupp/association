@@ -999,19 +999,7 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         # seasons" landed here and came back with the league's true-shooting
         # leaders, Klay silently dropped.
         raise TemplateUnsupported(f"a leaderboard cannot answer about one named player ({slots['player']!r})")
-    # "top 10 in NetPoints ALONGSIDE their points per game" used to be answered
-    # without the second half and without saying so - a silent partial answer,
-    # the failure this whole architecture exists to prevent. An unknown field
-    # falls through rather than being dropped.
-    requested = [f for f in slots.get("fields") or [] if isinstance(f, str)]
-    unknown = [f for f in requested if f not in EXTRA_FIELD_COLUMNS]
-    if unknown:
-        raise TemplateUnsupported(f"unknown leaderboard field(s) {unknown}")
-    # Deduplicated, order preserved: the router repeats itself sometimes
-    # (["points","minutes","minutes"]), which is a slip, not a reason to spend
-    # minutes in the agent. A field restating the ranked metric goes too - it
-    # rendered the same 33.5 twice under two headings.
-    fields = [f for f in dict.fromkeys(requested) if metric != f"avg_{f}"]
+    fields = _leaderboard_fields(slots, metric)
     if career:
         return _career_leaderboard(con, metric, slots, fields)
     try:
@@ -1042,6 +1030,23 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         data={"question_shape": summary, "season": result.season, "fields": fields, "min_sample": result.min_sample_applied, "leaders": result.rows},
         answer=answer,
     )
+
+
+def _leaderboard_fields(slots: dict[str, Any], metric: str) -> list[str]:
+    """The extra columns a leaderboard was asked to show beside its metric."""
+    # "top 10 in NetPoints ALONGSIDE their points per game" used to be answered
+    # without the second half and without saying so - a silent partial answer,
+    # the failure this whole architecture exists to prevent. An unknown field
+    # falls through rather than being dropped.
+    requested = [f for f in slots.get("fields") or [] if isinstance(f, str)]
+    unknown = [f for f in requested if f not in EXTRA_FIELD_COLUMNS]
+    if unknown:
+        raise TemplateUnsupported(f"unknown leaderboard field(s) {unknown}")
+    # Deduplicated, order preserved: the router repeats itself sometimes
+    # (["points","minutes","minutes"]), which is a slip, not a reason to spend
+    # minutes in the agent. A field restating the ranked metric goes too - it
+    # rendered the same 33.5 twice under two headings.
+    return [f for f in dict.fromkeys(requested) if metric != f"avg_{f}"]
 
 
 def _career_leaderboard(con: duckdb.DuckDBPyConnection, metric: str, slots: dict[str, Any], fields: list[str]) -> TemplateResult:
@@ -1279,24 +1284,7 @@ def player_netpoints(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     per_100 = slots.get("rate") != "total" and bool(possessions)
     scale = 100.0 / possessions if per_100 and possessions else 1.0
 
-    breakdown: list[dict[str, Any]] = []
-    if fingerprint is not None:
-        for index, category in enumerate(categories):
-            o, d, t = fingerprint[1 + index * 3 : 1 + index * 3 + 3]
-            if o is None and d is None and t is None:
-                continue
-            breakdown.append(
-                {
-                    "category": category.replace("_", " "),
-                    "offense": None if o is None else o * scale,
-                    "defense": None if d is None else d * scale,
-                    "total": None if t is None else t * scale,
-                    "offense_season_total": o,
-                    "defense_season_total": d,
-                    "total_season_total": t,
-                }
-            )
-        breakdown.sort(key=lambda row: -abs(row["total"] or 0))
+    breakdown = _netpoints_breakdown(fingerprint, categories, scale) if fingerprint is not None else []
 
     period = _period(season, season_type)
     if headline is None and not breakdown:
@@ -1308,6 +1296,30 @@ def player_netpoints(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
         data={"player": player.name, "season": season, "headline": headline, "fingerprint": breakdown},
         answer=_phrase_netpoints(player.name, period, headline, breakdown, per_100, possessions),
     )
+
+
+def _netpoints_breakdown(fingerprint: tuple[Any, ...], categories: list[str], scale: float) -> list[dict[str, Any]]:
+    """The fingerprint's categories, scaled, largest total first. ``fingerprint``
+    is the row read by player_netpoints: possessions, then offense, defense and
+    total for each of ``categories`` in turn."""
+    breakdown: list[dict[str, Any]] = []
+    for index, category in enumerate(categories):
+        o, d, t = fingerprint[1 + index * 3 : 1 + index * 3 + 3]
+        if o is None and d is None and t is None:
+            continue
+        breakdown.append(
+            {
+                "category": category.replace("_", " "),
+                "offense": None if o is None else o * scale,
+                "defense": None if d is None else d * scale,
+                "total": None if t is None else t * scale,
+                "offense_season_total": o,
+                "defense_season_total": d,
+                "total_season_total": t,
+            }
+        )
+    breakdown.sort(key=lambda row: -abs(row["total"] or 0))
+    return breakdown
 
 
 def _single_game_netpoints(ctx: TemplateContext, player: Entity, season: int, season_type: int, order: str) -> TemplateResult:
@@ -1360,6 +1372,28 @@ def _phrase_netpoints(
     per_100: bool,
     possessions: float | None,
 ) -> str:
+    lines = _phrase_netpoints_headline(name, period, headline)
+
+    if not breakdown:
+        lines.append("  No play-type fingerprint on record for this season.")
+        return "\n".join(lines)
+
+    units = "per 100 possessions" if per_100 else "season totals"
+    scope = f" over {possessions:,.0f} possessions" if per_100 and possessions else ""
+    width = max(len(row["category"]) for row in breakdown)
+    partition_names = {c.replace("_", " ") for c in FINGERPRINT_PARTITION}
+    # NOT `detail`: the headline block above binds that to a list of strings,
+    # and reusing it here is the same shadowing that made a rate=total request
+    # print under a per-100 heading.
+    partition_rows = [r for r in breakdown if r["category"] in partition_names]
+    detail_rows = [r for r in breakdown if r["category"] not in partition_names]
+    lines += _phrase_netpoints_partition(partition_rows, units, scope, width)
+    lines += _phrase_netpoints_detail(detail_rows, units, width)
+    return "\n".join(lines)
+
+
+def _phrase_netpoints_headline(name: str, period: str, headline: tuple[Any, ...] | None) -> list[str]:
+    """The season-total line, and its minutes and games, or the note that there are none."""
     lines = []
     if headline is not None:
         # NOT `per_100`: that is the parameter saying which UNITS the
@@ -1378,21 +1412,12 @@ def _phrase_netpoints(
             lines.append("  " + ", ".join(detail) + ".")
     else:
         lines.append(f"{name}, NetPoints fingerprint in the {period} (no season totals on record):")
+    return lines
 
-    if not breakdown:
-        lines.append("  No play-type fingerprint on record for this season.")
-        return "\n".join(lines)
 
-    units = "per 100 possessions" if per_100 else "season totals"
-    scope = f" over {possessions:,.0f} possessions" if per_100 and possessions else ""
-    width = max(len(row["category"]) for row in breakdown)
-    partition_names = {c.replace("_", " ") for c in FINGERPRINT_PARTITION}
-    # NOT `detail`: the headline block above binds that to a list of strings,
-    # and reusing it here is the same shadowing that made a rate=total request
-    # print under a per-100 heading.
-    partition_rows = [r for r in breakdown if r["category"] in partition_names]
-    detail_rows = [r for r in breakdown if r["category"] not in partition_names]
-
+def _phrase_netpoints_partition(partition_rows: list[dict[str, Any]], units: str, scope: str, width: int) -> list[str]:
+    """The six categories that partition the total, as an offense section and a defense section."""
+    lines: list[str] = []
     # Offense and defense get a section each, sorted by their OWN side. One
     # table sorted by total renders the defensive profile invisible: for SGA,
     # `turnover` carries the largest defensive value of any category and lands
@@ -1410,16 +1435,23 @@ def _phrase_netpoints(
         # these six really do add up, and showing it says so without asserting.
         lines.append("  " + "-" * (width + 9))
         lines.append("  " + "total".ljust(width) + f"{sum(r[side] for r in ranked):.2f}".rjust(9))
+    return lines
 
-    if detail_rows:
-        lines.append("")
-        lines.append(f"  Play-type detail, {units} (overlapping slices - a driving layup at the rim")
-        lines.append("  counts in driving, layup and rim, so these do not add up):")
-        lines.append("  " + "category".ljust(width) + "".join(h.rjust(9) for h in ("O", "D")))
-        for row in sorted(detail_rows, key=lambda r: -abs(r["total"] or 0)):
-            cells = "".join(("-" if row[k] is None else f"{row[k]:.2f}").rjust(9) for k in ("offense", "defense"))
-            lines.append("  " + row["category"].ljust(width) + cells)
-    return "\n".join(lines)
+
+def _phrase_netpoints_detail(detail_rows: list[dict[str, Any]], units: str, width: int) -> list[str]:
+    """The overlapping play-type slices, which are shown but do not add up."""
+    if not detail_rows:
+        return []
+    lines = [
+        "",
+        f"  Play-type detail, {units} (overlapping slices - a driving layup at the rim",
+        "  counts in driving, layup and rim, so these do not add up):",
+        "  " + "category".ljust(width) + "".join(h.rjust(9) for h in ("O", "D")),
+    ]
+    for row in sorted(detail_rows, key=lambda r: -abs(r["total"] or 0)):
+        cells = "".join(("-" if row[k] is None else f"{row[k]:.2f}").rjust(9) for k in ("offense", "defense"))
+        lines.append("  " + row["category"].ljust(width) + cells)
+    return lines
 
 
 DEFAULT_HISTORY_SEASONS = 4
