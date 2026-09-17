@@ -43,7 +43,7 @@ import logging
 
 import duckdb
 
-log: logging.Logger = logging.getLogger("association.fetch.game_repair")
+log: logging.Logger = logging.getLogger("association.fetch.repairs.game_repair")
 
 SWAPPED_SIDES: dict[str, tuple[str, str]] = {
     # 1990 Finals Game 5, 14 June 1990 at Portland: Detroit 92, Portland 90.

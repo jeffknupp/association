@@ -36,15 +36,15 @@ is on disk — no network. Loading each table is one ``CREATE OR REPLACE TABLE
 repairs and views, in dependency order, every one of which also reruns on a
 partial ``association data load --tables ...``:
 
-* :mod:`association.fetch.game_repair` puts the teams of a game ESPN serves on
+* :mod:`association.fetch.repairs.game_repair` puts the teams of a game ESPN serves on
   the wrong sides back where they played (one game so far: 1990 Finals Game
   5). Runs ahead of ``real_games``, which copies ``games``, and of every view
   that reads a winner or a side.
-* :mod:`association.fetch.team_box_repair` rewrites ``team_box_stats`` in
+* :mod:`association.fetch.repairs.team_box_repair` rewrites ``team_box_stats`` in
   place, correcting three column-level faults ESPN serves (2018's stats
   shifted under a neighboring column's name, ``turnovers`` zero before 2013,
   2008's rebound columns holding something else).
-* :mod:`association.fetch.season_totals_repair` rewrites ``player_season_stats``
+* :mod:`association.fetch.repairs.season_totals_repair` rewrites ``player_season_stats``
   in place, rebuilding a traded player's combined-season row from his own
   stints where ESPN's career endpoint disagrees with itself.
 * :mod:`association.fetch.advanced_stats` builds the computed
@@ -52,7 +52,7 @@ partial ``association data load --tables ...``:
   shooting %, eFG%, usage rate, game score) — pure closed-form formulas over
   already-fetched columns, so they are always rebuilt when ``player_box_stats``
   is present rather than gated behind a flag.
-* :mod:`association.fetch.reconstructed_box` builds
+* :mod:`association.fetch.repairs.reconstructed_box` builds
   ``player_box_stats_reconstructed`` and ``player_box_stats_filled``, rebuilding
   a per-game box line from ``plays`` for the roughly 1,025 Chicago/New Orleans
   games (2013-2018) ESPN serves with every stat zero. Deliberately its own
@@ -60,7 +60,7 @@ partial ``association data load --tables ...``:
   absent from :data:`association.query.prompt.KNOWN_TABLES` — a reconstructed
   number sitting in the same column as a fetched one would be indistinguishable
   from it.
-* :mod:`association.fetch.real_games` builds the ``real_games`` table: the rows
+* :mod:`association.fetch.repairs.real_games` builds the ``real_games`` table: the rows
   of ``games`` that are actually games, with ESPN's placeholder, duplicate and
   phantom rows read past once rather than re-filtered in every template.
 

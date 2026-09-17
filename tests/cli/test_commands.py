@@ -6,7 +6,7 @@ import click
 import pytest
 from click.testing import CliRunner
 
-from association.cli import _configure_logging, _parse_season_types, _parse_seasons, cli, data_check, data_load, data_pull, query
+from association.cli.commands import _configure_logging, _parse_season_types, _parse_seasons, cli, data_check, data_load, data_pull, query
 from association.query.answer import Answer, Timing
 
 
@@ -329,7 +329,7 @@ def test_web_reports_the_install_command_when_the_extra_is_missing(monkeypatch: 
     ImportError traceback."""
     import builtins
 
-    from association.cli import web
+    from association.cli.commands import web
 
     real_import = builtins.__import__
 

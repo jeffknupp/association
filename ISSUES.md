@@ -248,7 +248,7 @@ found.
   Chicago years. So rebuilding from `plays` is the only route to a per-game
   number, and there is nothing to re-fetch.
 - **Done 2026-09-14 - the rebuild exists.** `player_box_stats_reconstructed`
-  (`fetch/reconstructed_box.py`) is a load-time view over the 1,024 of these
+  (`fetch/repairs/reconstructed_box.py`) is a load-time view over the 1,024 of these
   1,025 events that have plays, with fidelity documented per column on the
   module. It is deliberately separate: its own view over the empty games only,
   snake_case columns, no template reads it, and it is absent from
@@ -347,7 +347,7 @@ found.
     spread over 25 teams at 1-2 games each. League-wide, 115 null team rows on
     real 1996 games have real player rows beside them; with one 2000 game
     (`191102003`, ORL@NO) that is the 117 the comment at
-    `fetch/team_box_repair.py:108` counts. That comment used to name Chicago
+    `fetch/repairs/team_box_repair.py:108` counts. That comment used to name Chicago
     2000 as the other case; it was corrected on 2026-09-17.
 - **Source:** DATA.md, "Vancouver 1996 is an empty TEAM box, not an empty player box"
 - **User sees:** nothing at all for a per-player question - those rows are
@@ -404,7 +404,7 @@ found.
 - **GitHub:** #72
 ### The SQL agent and the web health line still read raw `games`
 - **Found:** 2026-09-14, building the shared `real_games` list (issue #7)
-- **Evidence:** `real_games` (`fetch/real_games.py`) now holds the 43,353 rows
+- **Evidence:** `real_games` (`fetch/repairs/real_games.py`) now holds the 43,353 rows
   of `games`'s 43,504 that are actually games (both counts moved +10 with
   `72b599c`'s 2000 playoff recovery; the gap is still 151), and every TEAM
   template reads it. `_PLAYER_GAMES` (`templates.py:1694`) still joins raw
@@ -1337,7 +1337,7 @@ found.
   for points in the paint in an old season gets -1 a game, which reads as a
   number rather than as a gap.
 - **Next step:** NULL the sentinel at load, beside the 2018 clearing
-  `fetch/team_box_repair.py` already does. One predicate, `pointsInPaint = -1`,
+  `fetch/repairs/team_box_repair.py` already does. One predicate, `pointsInPaint = -1`,
   and no season needs naming.
 - **Source:** DATA.md, "`pointsInPaint` is -1 before 2009, and two lead columns exist only in 2026"
 - **GitHub:** #78

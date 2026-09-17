@@ -39,9 +39,9 @@ import sys
 
 import duckdb
 
+from association.cli.paths import default_db_path
 from association.fetch.netpoints_client import NetPointsDailyClient
 from association.fetch.parse import NET_POINTS_ABBREV_TO_ESPN, NetPointsGameIndex
-from association.repo_paths import default_db_path
 
 # Enough dates to cover a season's shapes (back-to-backs, afternoon tips, the
 # turn of a month) without spending an hour on S3. Sampled deterministically.

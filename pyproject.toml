@@ -174,7 +174,7 @@ layers = [
     "association.web",
     "association.query | association.check",
     "association.fetch",
-    "association.coverage | association.season | association.franchises | association.net_points_categories | association.repo_paths",
+    "association.coverage | association.season | association.franchises | association.net_points_categories",
 ]
 
 [[tool.importlinter.contracts]]
@@ -213,7 +213,6 @@ source_modules = [
     "association.season",
     "association.franchises",
     "association.net_points_categories",
-    "association.repo_paths",
 ]
 forbidden_modules = ["fastapi", "uvicorn", "pydantic"]
 

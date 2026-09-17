@@ -37,11 +37,11 @@ from pathlib import Path
 
 import duckdb
 
+from association.cli.paths import default_data_dir, default_db_path
 from association.coverage import POSTSEASON
 from association.fetch import warehouse
 from association.fetch.client import ESPNClient
 from association.fetch.pipeline import Pipeline
-from association.repo_paths import default_data_dir, default_db_path
 
 log = logging.getLogger("backfill_missing_playoffs")
 

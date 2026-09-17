@@ -10,7 +10,7 @@ exactly what the check exists to find.
 
 # ruff: noqa: B018, F821 - bare, unbound names are the whole mechanism
 
-# association/cli.py: registered by Click's @data.command / @cli.command.
+# association/cli/commands.py: registered by Click's @data.command / @cli.command.
 data_pull
 data_load
 data_check

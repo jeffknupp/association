@@ -30,11 +30,11 @@ import time
 
 import duckdb
 
+from association.cli.paths import default_db_path
 from association.query.entities import override_invented_players, override_nicknames, restore_dropped_players, scope_from_question
 from association.query.models import DEFAULT_ROUTER_MODEL
 from association.query.router import route
 from association.query.templates import PLAYER_INTENTS, PLAYER_REQUIRED_INTENTS, TEMPLATES
-from association.repo_paths import default_db_path
 from association.season import current_season
 
 # (question, expected intent, expected slots). A list-valued expectation is a

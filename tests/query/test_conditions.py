@@ -23,8 +23,8 @@ from typing import Any
 import duckdb
 import pytest
 
-from association.fetch import real_games
-from association.fetch.reconstructed_box import _FILLED_COLUMNS as FILLED_COLUMNS
+from association.fetch.repairs import real_games
+from association.fetch.repairs.reconstructed_box import _FILLED_COLUMNS as FILLED_COLUMNS
 from association.query.conditions import RAW_BOX, UNGATED_ON_REBUILD, box_source
 from association.query.templates import (
     REBUILT_STATS,

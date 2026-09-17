@@ -27,7 +27,7 @@ happens at fetch time - so 19 is what is left for this module to do.)
 Why this rewrites the table instead of adding a view
 -----------------------------------------------------
 
-The same reasoning as :mod:`association.fetch.team_box_repair`: a season's
+The same reasoning as :mod:`association.fetch.repairs.team_box_repair`: a season's
 total IS the sum of its stints - a player's games and points do not exist
 anywhere but in the games he played - so this is a re-derivation, not an
 estimate, and every reader should see it. A view would fix
@@ -79,7 +79,7 @@ import logging
 
 import duckdb
 
-log: logging.Logger = logging.getLogger("association.fetch.season_totals_repair")
+log: logging.Logger = logging.getLogger("association.fetch.repairs.season_totals_repair")
 
 #: Season totals that are simply the sum of the stints'.
 TOTAL_COLUMNS: tuple[str, ...] = (

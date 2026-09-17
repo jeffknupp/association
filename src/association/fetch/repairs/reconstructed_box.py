@@ -123,7 +123,7 @@ import logging
 
 import duckdb
 
-log: logging.Logger = logging.getLogger("association.fetch.reconstructed_box")
+log: logging.Logger = logging.getLogger("association.fetch.repairs.reconstructed_box")
 
 #: The views this module builds.
 #:

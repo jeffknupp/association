@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Regenerate completions/association.{bash,zsh,fish} from the current CLI
-# definition (src/association/cli.py). Click derives these directly from the
+# definition (src/association/cli/commands.py). Click derives these directly from the
 # command/option definitions, so there's nothing to hand-edit here - just
 # re-run this after adding/renaming a command or option.
 #

@@ -82,7 +82,7 @@ import duckdb
 
 from association.season import eastern_date_sql
 
-log: logging.Logger = logging.getLogger("association.fetch.real_games")
+log: logging.Logger = logging.getLogger("association.fetch.repairs.real_games")
 
 # Midnight US Eastern under EDT and under EST. ESPN writes one of these when it
 # has the date of a game but not its tip time.

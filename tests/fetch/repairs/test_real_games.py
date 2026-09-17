@@ -13,7 +13,7 @@ from __future__ import annotations
 import duckdb
 import pytest
 
-from association.fetch import real_games
+from association.fetch.repairs import real_games
 
 # 40 is in no franchise: the shape of ESPN's 1202, 75, 1300, 100, 31, 125, 83.
 REAL, ALSO_REAL, GHOST_TEAM = "1", "2", "40"

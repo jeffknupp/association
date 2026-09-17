@@ -88,7 +88,7 @@ and every stat zero. Those games' play-by-play and shots survived, and so did
 the season totals.
 
 The warehouse rebuilds a per-game line from play-by-play for these games
-(:mod:`association.fetch.reconstructed_box`, loaded as the
+(:mod:`association.fetch.repairs.reconstructed_box`, loaded as the
 ``player_box_stats_filled`` view), and a per-game answer built on it — a game
 log, a single-game high, a threshold count, a streak or a split — reads the
 rebuild and says so. The rebuild covers points, rebounds, assists, steals,

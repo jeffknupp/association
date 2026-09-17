@@ -135,7 +135,7 @@ def _epilog_commands_as_code_blocks(app: object, ctx: object, lines: list[str]) 
     sphinx-click turns every ``\\b``-preserved paragraph into an RST line
     block (``| some text``), which keeps line breaks but renders as plain
     text - no monospacing, no highlighting, no copy button. The command
-    examples in :data:`association.cli.CLI_EPILOG` want the same treatment as
+    examples in :data:`association.cli.commands.CLI_EPILOG` want the same treatment as
     every other command example in these docs, so runs of line-block text are
     rewritten here into ``.. code-block:: console`` before Sphinx parses them.
     """

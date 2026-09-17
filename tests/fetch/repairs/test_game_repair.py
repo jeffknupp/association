@@ -14,7 +14,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from association.fetch import game_repair, warehouse
+from association.fetch import warehouse
+from association.fetch.repairs import game_repair
 
 
 @pytest.fixture

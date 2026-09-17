@@ -25,7 +25,7 @@ What was measured, against the built warehouse:
 - ``plusMinus`` is -1 for every team in every season, and is not used.
 - There is no offensive or defensive rating column. Both are derived here,
   from points and possessions, and opponent points come from ``real_games``
-  (:mod:`association.fetch.real_games`, the filtered list team_games is built
+  (:mod:`association.fetch.repairs.real_games`, the filtered list team_games is built
   from - see :data:`TEAM_GAMES_SQL`): a team season's opponent points are
   summed over its games there and used only when that game count equals
   ``team_season_stats.gamesPlayed``. The count does not always match - the
@@ -259,7 +259,7 @@ def resolve_team_metric(stat: object) -> str | None:
 # actually played - built from `real_games` alone, because it is the only table
 # holding who won and it needs no second table to say which side a team was on.
 #
-# `real_games` (fetch/real_games.py) is the shared filtered list, and it is
+# `real_games` (fetch/repairs/real_games.py) is the shared filtered list, and it is
 # where the 0-0 placeholders, the rows naming a team id no franchise has, and
 # the same-day duplicates now go. This used to do two of those three for
 # itself: it dropped rows with no winner and same-day duplicates, and kept

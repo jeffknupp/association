@@ -18,6 +18,9 @@ parent is the main checkout's root. Falling back to the literal default when
 git is unavailable, or the resolved path does not exist, keeps the old
 behavior (and its error messages) everywhere this was never broken - a plain
 clone, a CI checkout, a machine with no warehouse built yet at all.
+
+.. versionchanged:: 3.0.0
+   Moved from ``association.repo_paths``.
 """
 
 from __future__ import annotations

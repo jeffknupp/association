@@ -8,7 +8,7 @@ prompt and the router model are one unit - swapping either invalidates the
 check - which makes a second copy of the name a real hazard rather than
 untidiness.
 
-Deliberately free of heavy imports so `cli.py` can read it at module level
+Deliberately free of heavy imports so ``cli/commands.py`` can read it at module level
 without pulling in ollama and duckdb at startup.
 
 .. versionadded:: 1.2.0

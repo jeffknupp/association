@@ -15,6 +15,16 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **Breaking: the package is reorganized, so the next release is 3.0.0.**
+  Nothing about what the commands or the query engine do changes; module paths
+  do.
+  - `association.cli` is a package: the commands are in
+    `association.cli.commands`, and `association.repo_paths` is now
+    `association.cli.paths`. `association.cli:main` (the console entry point)
+    and `association.cli:cli` resolve as before.
+  - The load-time repairs and filtered tables moved under
+    `association.fetch.repairs`: `game_repair`, `team_box_repair`,
+    `season_totals_repair`, `reconstructed_box` and `real_games`.
 - **Importing the web API no longer loads ollama.** `association.web.runner`
   imported the query `Agent` at module level for a type annotation, so
   `import association.web.app` brought in the model client that AGENTS.md says

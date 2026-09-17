@@ -23,8 +23,8 @@ import sys
 
 import duckdb
 
+from association.cli.paths import default_db_path
 from association.query.entities import PLAYER_NICKNAMES
-from association.repo_paths import default_db_path
 
 # Keys that ARE another player's real name token, kept on purpose: one player
 # dominates the shorthand badly enough that a question carrying only it cannot

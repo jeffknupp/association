@@ -63,7 +63,7 @@ as a team assist - and the same holds for steals, blocks, fouls and (individual)
 turnovers. ESPN agrees: in the control seasons its own team column equals the
 player sum in 2,134 of 2,134 rows (2017) and 2,436 of 2,460 (2019). So this
 writes into ``team_box_stats`` rather than sitting in a separate view, unlike
-:mod:`association.fetch.reconstructed_box`, whose play-by-play rebuild is an
+:mod:`association.fetch.repairs.reconstructed_box`, whose play-by-play rebuild is an
 approximation and is kept visibly apart for exactly that reason. Nothing here
 is derived from plays, and nothing here fills a gap ESPN left empty.
 
@@ -124,7 +124,7 @@ import logging
 
 import duckdb
 
-log: logging.Logger = logging.getLogger("association.fetch.team_box_repair")
+log: logging.Logger = logging.getLogger("association.fetch.repairs.team_box_repair")
 
 SHIFTED_SEASON: int = 2018
 """The one season whose team box row holds values under neighboring names.

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from association.repo_paths import DATA_DIRNAME, DB_FILENAME, default_data_dir, default_db_path
+from association.cli.paths import DATA_DIRNAME, DB_FILENAME, default_data_dir, default_db_path
 
 
 def _init_repo(root: Path) -> None:

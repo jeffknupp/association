@@ -158,7 +158,7 @@ likewise.
   sit beside real player rows, spread over 25 teams at 1-2 games each.
   League-wide, 115 all-NULL team rows on real 1996 games have real player rows
   beside them; with one 2000 game (`191102003`, ORL@NO) that makes the 117 the
-  comment at `fetch/team_box_repair.py:108` counts.
+  comment at `fetch/repairs/team_box_repair.py:108` counts.
 - **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull**, which
   reproduced `team_box_stats` exactly.
 - **How we handle it:** nothing yet, and `_empty_box_scores` does NOT catch
@@ -488,7 +488,7 @@ the parser throws the grouping away. The birth-date half stands.
 - **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull**, which
   reproduced `team_box_stats` exactly.
 - **How we handle it:** corrected at load by
-  :mod:`association.fetch.team_box_repair` — the five summable columns are
+  :mod:`association.fetch.repairs.team_box_repair` — the five summable columns are
   re-derived from the game's own player rows (a team's assists ARE the sum of
   its players'; ESPN's own column equals that sum in 2,134 of 2,134 rows in
   2017), the two percentages are recomputed from the made/attempted columns
@@ -518,7 +518,7 @@ the parser throws the grouping away. The birth-date half stands.
   tables need opposite rules, which is why each states its own.
 - **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull.**
 - **How we handle it:** two places, for two tables. In `team_box_stats`,
-  :mod:`association.fetch.team_box_repair` sums `turnovers` from the player
+  :mod:`association.fetch.repairs.team_box_repair` sums `turnovers` from the player
   rows at load (13.59 a game in 2011, against a stored 0.002) and clears
   `teamTurnovers`, leaving `totalTurnovers` alone. In `team_season_stats`,
   `team_metrics` recomputes possessions as FGA - OREB + TOV + 0.44 x FTA using
@@ -574,7 +574,7 @@ the parser throws the grouping away. The birth-date half stands.
   serves Cleveland `totalRebounds` 70, `offensiveRebounds` 8,
   `defensiveRebounds` 15 - and even the box score's own totals line reads
   REB 23 / OREB 8 / DREB 15, beside player rows summing to 47 / 15 / 32.
-- **How we handle it:** `fetch/team_box_repair.py` rebuilds the three columns
+- **How we handle it:** `fetch/repairs/team_box_repair.py` rebuilds the three columns
   at load time for the 2008 regular season: the splits from the player sums,
   and `totalRebounds` as the player rebound sum plus the stored
   `offensiveRebounds` (the team figure), so 2008 follows the same definition
@@ -602,7 +602,7 @@ the parser throws the grouping away. The birth-date half stands.
   1988-1992 regular seasons cannot be checked the same way: `real_games` holds
   only 28 of their games.
 - **Does a refetch fix it?** **No** (above).
-- **How we handle it:** `fetch/game_repair.py` swaps the two team ids at load
+- **How we handle it:** `fetch/repairs/game_repair.py` swaps the two team ids at load
   time (and `team_box_stats.home_away`), keyed on the event id and only while
   the row still holds what ESPN serves.
 - **Tracked in:** no action needed - repaired at load time.
@@ -643,7 +643,7 @@ the parser throws the grouping away. The birth-date half stands.
   :mod:`association.query.team_metrics`), `team_box_stats` uses -1.
 - **Does a refetch fix it?** Not tested.
 - **How we handle it:** 2018's are set to NULL by
-  :mod:`association.fetch.team_box_repair`, because that season's whole block is
+  :mod:`association.fetch.repairs.team_box_repair`, because that season's whole block is
   displaced. Nothing handles the pre-2009 ones.
 - **Tracked in:** ISSUES.md, "`pointsInPaint` is -1 for every team-game before
   2009".
@@ -686,7 +686,7 @@ the parser throws the grouping away. The birth-date half stands.
   reproduced every one of these rows.
 - **How we handle it:** before 2026-09-15, `player_season_stats_deduped` and
   the leaderboard's `dedup_traded` both *preferred* the combined row, which
-  meant the wrong line was the one that showed. `fetch/season_totals_repair.py`
+  meant the wrong line was the one that showed. `fetch/repairs/season_totals_repair.py`
   now rebuilds a combined row from its own stints at load time wherever the
   two disagree, so every reader sees the summed line rather than ESPN's. 19
   rows as of 2026-09-15. `avgMinutes` is NULLed on a rebuilt row: it has no
@@ -761,7 +761,7 @@ the parser throws the grouping away. The birth-date half stands.
 - **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull**, which
   reproduced `games` exactly — placeholders, duplicates and phantoms included.
 - **How we handle it:** one shared filtered list. `real_games`
-  (`fetch/real_games.py`) is built at load time and keeps 43,343 of the 43,494
+  (`fetch/repairs/real_games.py`) is built at load time and keeps 43,343 of the 43,494
   rows (now 43,353 of 43,504, +10 each since the 2000 playoff discovery pass,
   `72b599c` — the 151-row gap is unchanged); `head_to_head`, `conditions`,
   `team_metrics.TEAM_GAMES_SQL`, the team

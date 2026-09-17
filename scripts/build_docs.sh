@@ -38,6 +38,13 @@ if [[ ! -x "${SPHINX}" ]]; then
     exit 1
 fi
 
+# autosummary writes a stub per module into docs/api/generated/ and never
+# deletes one, so a module that moves or is removed leaves a page -E still
+# reads: it fails autodoc's import here while CI, which starts with no stubs,
+# passes. Regenerating them each time keeps the two builds reading the same
+# pages - the same reason for -E.
+rm -rf docs/api/generated
+
 "${SPHINX}" -b html docs "${OUT}" -q -W --keep-going -E
 
 # The interpreter beside sphinx-build, so the check runs under the same

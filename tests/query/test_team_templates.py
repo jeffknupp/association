@@ -16,7 +16,7 @@ from typing import Any
 import duckdb
 import pytest
 
-from association.fetch import real_games
+from association.fetch.repairs import real_games
 from association.query.team_metrics import TEAM_METRICS, descending_for, resolve_team_metric
 from association.query.templates import (
     TemplateContext,

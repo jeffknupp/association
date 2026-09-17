@@ -7,7 +7,7 @@ from typing import Any
 import duckdb
 import pytest
 
-from association.fetch import real_games
+from association.fetch.repairs import real_games
 from association.query import shotchart
 from association.query.entities import MAX_CANDIDATES
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES

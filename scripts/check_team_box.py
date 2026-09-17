@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Warehouse check for the team-box repair in fetch/team_box_repair.py.
+"""Warehouse check for the team-box repair in fetch/repairs/team_box_repair.py.
 
 The repair is a claim about the data, not about the code: that 2018's team
 columns now hold their own statistic and that the turnover columns work before
@@ -23,8 +23,8 @@ import sys
 
 import duckdb
 
-from association.fetch.team_box_repair import CLEARED_COLUMNS, LAST_MISSING_TURNOVER_SEASON, SHIFTED_SEASON
-from association.repo_paths import default_db_path
+from association.cli.paths import default_db_path
+from association.fetch.repairs.team_box_repair import CLEARED_COLUMNS, LAST_MISSING_TURNOVER_SEASON, SHIFTED_SEASON
 
 # Team columns that are the sum of the game's player rows, and the player
 # column each sums. ESPN's own team column equals the sum in 2,134 of 2,134

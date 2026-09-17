@@ -42,7 +42,7 @@ against the warehouse rather than assumed:
   phantoms that carry a winner but no box score. Counted, a placeholder is a
   loss and a phantom is a result nobody played. Every query here reads
   ``real_games`` instead - the one filtered list, built at load time by
-  :mod:`association.fetch.real_games` and shared with ``head_to_head`` and
+  :mod:`association.fetch.repairs.real_games` and shared with ``head_to_head`` and
   ``team_metrics`` - rather than filtering for itself. This module used to
   apply ``winner_team_id IS NOT NULL`` and nothing else, which caught the
   placeholders and no other kind.
@@ -95,7 +95,7 @@ class BoxSource:
     Every Chicago and New Orleans game from 2013 to 2018 is served zeroed by
     ESPN, and `player_box_stats_filled` substitutes figures rebuilt from
     play-by-play with a `reconstructed` flag on exactly those rows (see
-    fetch/reconstructed_box.py). A rebuilt row has NULL `minutes` - play-by-play
+    fetch/repairs/reconstructed_box.py). A rebuilt row has NULL `minutes` - play-by-play
     cannot recover them - so the plain "did he play" test reads every one of
     those games as a game he missed.
 

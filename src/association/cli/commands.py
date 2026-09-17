@@ -1,5 +1,8 @@
-#!/usr/bin/env python3
-"""association - a single CLI for the ESPN NBA dataset: fetch it, audit it, query it."""
+"""The ``association`` commands: ``data pull``, ``data load``, ``data check``, ``query`` and ``web``.
+
+.. versionadded:: 3.0.0
+   Split out of the former ``association.cli`` module, which is now a package.
+"""
 
 from __future__ import annotations
 
@@ -11,16 +14,16 @@ from typing import Any, TypeVar
 import click
 
 from association import __version__
+from association.cli.paths import default_data_dir, default_db_path
 
 # query.models holds no heavy imports, so this does not pull ollama or duckdb
 # into CLI startup - unlike the Agent import, which stays lazy below.
 from association.query.models import DEFAULT_MODEL, DEFAULT_ROUTER_MODEL
-from association.repo_paths import default_data_dir, default_db_path
 
 log: logging.Logger = logging.getLogger("association.cli")
 
 # Resolved once at import, against the process's cwd - a worktree with no
-# warehouse of its own gets the main checkout's, per repo_paths.
+# warehouse of its own gets the main checkout's, per association.cli.paths.
 DEFAULT_DATA_DIR = default_data_dir()
 DEFAULT_DB_PATH = default_db_path()
 DEFAULT_OUT_DIR = "./query_output"
@@ -210,9 +213,9 @@ def data_pull(
     # Imported inside each command, not at module level, so `association
     # --help` and tab-completion do not pay to import duckdb, pyarrow and
     # ollama. Leave them here.
-    from .fetch import warehouse
-    from .fetch.client import ESPNClient
-    from .fetch.pipeline import Pipeline
+    from association.fetch import warehouse
+    from association.fetch.client import ESPNClient
+    from association.fetch.pipeline import Pipeline
 
     _configure_logging(log_level)
     parsed_seasons = _parse_seasons(seasons)
@@ -269,7 +272,7 @@ def _rebuild_changed(warehouse: Any, data_dir: Path, db_path: Path, written: set
 @click.option("--log-level", type=click.Choice(LOG_LEVELS), default="INFO", show_default=True)
 def data_load(data_dir: str, db_path: str, tables: str | None, log_level: str) -> None:
     """(Re)build the DuckDB warehouse from Parquet files already on disk, without fetching."""
-    from .fetch import warehouse
+    from association.fetch import warehouse
 
     _configure_logging(log_level)
     parsed_tables = [t.strip() for t in tables.split(",") if t.strip()] if tables else None
@@ -291,7 +294,7 @@ def data_load(data_dir: str, db_path: str, tables: str | None, log_level: str) -
 @click.option("--force", is_flag=True, help="With --live, re-verify against ESPN even for seasons already marked complete locally.")
 def data_check(seasons: str | None, season_types: str | None, data_dir: str, rate_limit: float, live: bool, force: bool) -> None:
     """Report data coverage vs. what ESPN's API actually has, per season/season_type."""
-    from .check.report import run_check
+    from association.check.report import run_check
 
     parsed_seasons = _parse_seasons(seasons) if seasons else None
     parsed_season_types = _parse_season_types(season_types) if season_types else None
@@ -306,7 +309,7 @@ def query(question: str, model: str, router_model: str, db_path: str, out_dir: s
     import shlex
     import sys
 
-    from .query.agent import Agent
+    from association.query.agent import Agent
 
     agent = Agent(model, db_path, Path(out_dir), verbose=verbose, think=think, fast_path=not no_fast_path, router_model=router_model)
     # Agent.ask no longer reads sys.argv - a caller says what the request was,
@@ -326,7 +329,7 @@ def web(port: int, host: str, model: str, router_model: str, db_path: str, out_d
 
     Needs the `web` extra: pip install 'association[web]'
     """
-    from .web.serve import serve
+    from association.web.serve import serve
 
     serve(host, port, db_path, Path(out_dir), model=model, router_model=router_model)
 
