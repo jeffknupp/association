@@ -16,7 +16,8 @@ had no published version to be compatible with.
 
 ## Unreleased
 - **No function is more complex than radon grade C** (cyclomatic complexity
-  20) - work in progress toward a xenon gate. The worst were the router's
+  20), enforced by a xenon gate in pre-commit and CI, with no module worse
+  than C and the average no worse than B. The worst were the router's
   `route()` at 127, `parse_game_summary` at 61 and a set of query templates
   between 21 and 89; each is split into named steps called in the original
   order. No behavior changes: every split was checked against the original

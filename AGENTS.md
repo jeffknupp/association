@@ -20,7 +20,7 @@ we do about it. Read `DATA.md` before trusting a column.
 ## Before you commit
 
 ```bash
-uv run pre-commit run --all-files   # all fourteen gates
+uv run pre-commit run --all-files   # all fifteen gates
 uv run pytest -q                    # fully offline: no network, no ollama
 ```
 
@@ -124,6 +124,12 @@ gets turned off.
   and both are declared anyway, because a release of either that stopped
   bundling them would otherwise break at import time with nothing in this repo
   having changed. A dev or docs tool goes in its extra, never in the core list.
+- **No function is more complex than radon grade C** (cyclomatic complexity
+  20), no module worse than C, and the average no worse than B - a xenon gate.
+  The way past it is the one the templates and `route()` took: split the body
+  into named steps called in the original order, each step keeping the comment
+  that explains it. A pure refactor here is proven by a golden comparison, not
+  by the suite alone (see "Verifying your work").
 - **Every module lives in a package; the root of `src/association` holds only
   `__init__.py` and `py.typed`.** Modules had drifted to the root because both
   `fetch` and `query` needed them; that is what `nba/` is for. Where things go:

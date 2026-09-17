@@ -73,6 +73,11 @@ jobs:
         # (anything with a shell shebang, not only *.sh). Checks: .shellcheckrc.
         run: uv run pre-commit run shellcheck --all-files
 
+      - name: Complexity (xenon)
+        # radon grades: no function worse than C, no module worse than C,
+        # average no worse than B.
+        run: uv run xenon --max-absolute C --max-modules C --max-average B src scripts
+
       - name: One concept, one definition
         # Cross-module constant collisions, against an allowlist of the ones
         # already filed - so this fails only on a NEW one. Ruff's F811 covers
