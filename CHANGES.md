@@ -14,7 +14,7 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
-## Unreleased
+## 3.0.0 - 2026-09-17
 - **No function is more complex than radon grade C** (cyclomatic complexity
   20), enforced by a xenon gate in pre-commit and CI, with no module worse
   than C and the average no worse than B. The worst were the router's
