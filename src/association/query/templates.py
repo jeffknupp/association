@@ -2913,14 +2913,28 @@ def team_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     lines = season_table(con, season, season_type)
     mine = next((line for line in lines if line.team == team.name), None)
     if mine is None:
-        # Which fact is missing decides the sentence: a team that did not reach
-        # the postseason is not a team the warehouse lacks numbers for.
-        if season_type == 3 and any(line.team == team.name for line in season_table(con, season, 2)):
-            answer = f"The {team.name} did not play in the {period}."
-        else:
-            answer = f"The warehouse has no {period} team stats for the {team.name}."
-        return TemplateResult(data={"team": team.name, "season": season, "stats": {}}, answer=answer)
+        return _team_stat_missing(con, team, season, season_type, period)
 
+    stats = _team_stat_table(lines, wanted, team, mine)
+
+    if key is not None:
+        return _team_stat_single(key, stats, period, team, mine, season, lines)
+    return _team_stat_summary(stats, wanted, team, period, mine, season)
+
+
+def _team_stat_missing(con: duckdb.DuckDBPyConnection, team: Entity, season: int, season_type: int, period: str) -> TemplateResult:
+    """team_stat's answer when the team has no season line. Which fact is
+    missing decides the sentence: a team that did not reach the postseason is
+    not a team the warehouse lacks numbers for."""
+    if season_type == 3 and any(line.team == team.name for line in season_table(con, season, 2)):
+        answer = f"The {team.name} did not play in the {period}."
+    else:
+        answer = f"The warehouse has no {period} team stats for the {team.name}."
+    return TemplateResult(data={"team": team.name, "season": season, "stats": {}}, answer=answer)
+
+
+def _team_stat_table(lines: list[TeamLine], wanted: list[str], team: Entity, mine: TeamLine) -> dict[str, dict[str, Any]]:
+    """team_stat's value and league rank for each stat asked for."""
     stats: dict[str, dict[str, Any]] = {}
     for name in wanted:
         metric = TEAM_METRICS[name]
@@ -2930,22 +2944,30 @@ def team_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         if value is not None and complete:
             rank = next(r for r, t, _ in ranked({line.team: line.values[name] or 0.0 for line in lines}, descending_for(metric, "best")) if t == team.name)
         stats[metric.label] = {"value": value, "rank": rank, "of": len(lines)}
+    return stats
 
-    if key is not None:
-        metric = TEAM_METRICS[key]
-        entry = stats[metric.label]
-        if entry["value"] is None:
-            answer = _incomplete_opponents(metric, period, lines, team.name)
-            return TemplateResult(data={"team": team.name, "season": season, "stats": stats, "message": answer}, answer=answer)
-        where = ""
-        if entry["rank"] is not None:
-            order = "best" if metric.lower_is_better is not None else "highest"
-            where = f", {_ordinal(entry['rank'])}-{order} of {entry['of']} teams"
-        answer = f"The {_possessive(team.name)} {metric.label} was {_metric_cell(metric, entry['value'])} in the {period} ({mine.games} games){where}."
-        if _uses_possessions([key]):
-            answer += f" {RATING_NOTE}"
-        return TemplateResult(data={"team": team.name, "season": season, "games": mine.games, "stats": stats}, answer=answer)
 
+def _team_stat_single(key: str, stats: dict[str, dict[str, Any]], period: str, team: Entity, mine: TeamLine, season: int, lines: list[TeamLine]) -> TemplateResult:
+    """team_stat's answer for one named stat: its value and rank, or the
+    incomplete-opponents refusal where the value itself is missing."""
+    metric = TEAM_METRICS[key]
+    entry = stats[metric.label]
+    if entry["value"] is None:
+        answer = _incomplete_opponents(metric, period, lines, team.name)
+        return TemplateResult(data={"team": team.name, "season": season, "stats": stats, "message": answer}, answer=answer)
+    where = ""
+    if entry["rank"] is not None:
+        order = "best" if metric.lower_is_better is not None else "highest"
+        where = f", {_ordinal(entry['rank'])}-{order} of {entry['of']} teams"
+    answer = f"The {_possessive(team.name)} {metric.label} was {_metric_cell(metric, entry['value'])} in the {period} ({mine.games} games){where}."
+    if _uses_possessions([key]):
+        answer += f" {RATING_NOTE}"
+    return TemplateResult(data={"team": team.name, "season": season, "games": mine.games, "stats": stats}, answer=answer)
+
+
+def _team_stat_summary(stats: dict[str, dict[str, Any]], wanted: list[str], team: Entity, period: str, mine: TeamLine, season: int) -> TemplateResult:
+    """team_stat's compact multi-stat table, with a note where a value or a
+    rank had to be left out."""
     label_width = max(len(label) for label in stats)
     cells = {label: "-" if e["value"] is None else _metric_cell(TEAM_METRICS[name], e["value"]) for (label, e), name in zip(stats.items(), wanted, strict=True)}
     value_width = max(5, *(len(c) for c in cells.values()))
@@ -3034,34 +3056,14 @@ def team_leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     limit = _clamp_limit(slots.get("limit"), default=DEFAULT_TEAM_LEADERBOARD_LIMIT)
     venue = slots.get("venue") if slots.get("venue") in VENUE_WORDS else None
 
-    named: Entity | None = None
-    if isinstance(slots.get("team"), str) and slots["team"].strip():
-        found = _resolved_team(con, slots["team"], season=_slot_season(slots))
-        if isinstance(found, TemplateResult):
-            return found
-        named = found
+    named = _team_leaderboard_named(con, slots)
+    if isinstance(named, TemplateResult):
+        return named
 
-    display: dict[str, str] = {}
-    if metric.expression is None:
-        records: list[TeamRecord] | str = _venue_records(con, season, season_type, venue) if venue else record_table(con, season, season_type)
-        if isinstance(records, str):
-            return TemplateResult(data={"message": records, "season": season}, answer=records)
-        values = {r.team: (r.win_pct if key == "record" else 1 - r.win_pct) for r in records}
-        display = {r.team: _tally(r.wins, r.losses) for r in records}
-    else:
-        if venue is not None:
-            # Team season stats have no home/road split; team_box_stats does,
-            # and the agent can reach it.
-            raise TemplateUnsupported(f"team season stats have no {venue} split for {metric.label}")
-        refusal = _first_season_refusal(metric, season)
-        if refusal is not None:
-            return refusal
-        lines = season_table(con, season, season_type)
-        if lines and any(line.values.get(key) is None for line in lines):
-            message = _incomplete_opponents(metric, period, lines)
-            return TemplateResult(data={"message": message, "season": season}, answer=message)
-        values = {line.team: line.values[key] or 0.0 for line in lines}
-        display = {team: _metric_cell(metric, value) for team, value in values.items()}
+    values_or_result = _team_leaderboard_values(con, key, metric, season, season_type, venue, period)
+    if isinstance(values_or_result, TemplateResult):
+        return values_or_result
+    values, display = values_or_result
 
     title = f"{metric.label.capitalize()}{f' {VENUE_WORDS[venue]}' if venue else ''}, {period}"
     if not values:
@@ -3069,6 +3071,52 @@ def team_leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
         return TemplateResult(data={"question_shape": title, "season": season, "teams": []}, answer=answer)
 
     order = ranked(values, descending)
+    end = _team_leaderboard_order_label(metric, key, rank_word, descending)
+    return _team_leaderboard_result(order, display, limit, named, title, season, end, key)
+
+
+def _team_leaderboard_named(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> Entity | TemplateResult | None:
+    """team_leaderboard's named team, resolved so its own row can be appended
+    past the limit where it would otherwise be cut off; None where the
+    question named none."""
+    if isinstance(slots.get("team"), str) and slots["team"].strip():
+        return _resolved_team(con, slots["team"], season=_slot_season(slots))
+    return None
+
+
+def _team_leaderboard_values(
+    con: duckdb.DuckDBPyConnection, key: str, metric: TeamMetric, season: int, season_type: int, venue: str | None, period: str
+) -> tuple[dict[str, float], dict[str, str]] | TemplateResult:
+    """team_leaderboard's per-team values and their display strings: the
+    standings for a record metric (venue-split where asked), team_metrics
+    otherwise - each with its own early-refusal path."""
+    if metric.expression is None:
+        records: list[TeamRecord] | str = _venue_records(con, season, season_type, venue) if venue else record_table(con, season, season_type)
+        if isinstance(records, str):
+            return TemplateResult(data={"message": records, "season": season}, answer=records)
+        values = {r.team: (r.win_pct if key == "record" else 1 - r.win_pct) for r in records}
+        display = {r.team: _tally(r.wins, r.losses) for r in records}
+        return values, display
+    if venue is not None:
+        # Team season stats have no home/road split; team_box_stats does,
+        # and the agent can reach it.
+        raise TemplateUnsupported(f"team season stats have no {venue} split for {metric.label}")
+    refusal = _first_season_refusal(metric, season)
+    if refusal is not None:
+        return refusal
+    lines = season_table(con, season, season_type)
+    if lines and any(line.values.get(key) is None for line in lines):
+        message = _incomplete_opponents(metric, period, lines)
+        return TemplateResult(data={"message": message, "season": season}, answer=message)
+    values = {line.team: line.values[key] or 0.0 for line in lines}
+    display = {team: _metric_cell(metric, value) for team, value in values.items()}
+    return values, display
+
+
+def _team_leaderboard_order_label(metric: TeamMetric, key: str, rank_word: str | None, descending: bool) -> str:
+    """team_leaderboard's "highest/lowest/best/worst first" phrase - the
+    answer says which end it lists first, because a list of the fastest teams
+    under a question about the slowest would otherwise look perfectly right."""
     if metric.lower_is_better is None or rank_word in ("most", "fewest"):
         end = "highest first" if descending else "lowest first"
     else:
@@ -3076,6 +3124,12 @@ def team_leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
         end = ("best first" if best_first else "worst first") + (" (highest)" if descending else " (lowest)")
     if key in ("record", "losses"):
         end = "best record first" if (key == "record") == descending else "worst record first"
+    return end
+
+
+def _team_leaderboard_result(order: list[tuple[int, str, float]], display: dict[str, str], limit: int, named: Entity | None, title: str, season: int, end: str, key: str) -> TemplateResult:
+    """team_leaderboard's final table: the ranked rows up to the limit, with a
+    named team's own row appended past it where it would otherwise be cut."""
     shown = order[:limit]
     extra = [row for row in order[limit:] if named is not None and row[1] == named.name]
     name_width = max(len(team) for _, team, _ in [*shown, *extra])
@@ -3159,10 +3213,7 @@ def team_outlook(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         [team.id, season],
     ).fetchall()
 
-    def _describe(kind: int, updated: Any, teams: int) -> str:
-        return f"a {BPI_SNAPSHOT_NAMES.get(kind, f'type-{kind}')} snapshot ({str(updated)[:10]}, {teams} team{'s' if teams != 1 else ''})"
-
-    listing = [_describe(k, u, n) for k, u, n, _ in snapshots]
+    listing = [_team_outlook_describe(k, u, n) for k, u, n, _ in snapshots]
     if not snapshots:
         message = f"ESPN's power index has no {season} snapshot in the warehouse."
         return TemplateResult(data={"team": team.name, "season": season, "message": message}, answer=message)
@@ -3174,20 +3225,7 @@ def team_outlook(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     candidates = post if postseason else (pre or post)
     chosen = candidates[-1] if candidates else None
     if chosen is None:
-        # Which snapshot is missing, or which one the team is missing from, is
-        # the whole answer - "no data" would send the reader to the wrong place.
-        have = _joined(listing)
-        if postseason and not any(s[0] == 3 for s in snapshots):
-            gap = "and no postseason snapshot"
-        elif postseason:
-            gap = f"and the {team.name} are not in its postseason snapshot"
-        else:
-            gap = f"and the {team.name} are {'not in it' if len(listing) == 1 else 'in neither' if len(listing) == 2 else 'in none of them'}"
-        message = f"ESPN's power index for {season} has {have}, {gap}."
-        holding = [d for (*_, has), d in zip(snapshots, listing, strict=True) if has]
-        if holding:
-            message += f" The {team.name} are only in {_joined(holding)} - ask about the regular season to see it."
-        return TemplateResult(data={"team": team.name, "season": season, "snapshots": listing, "message": message}, answer=message)
+        return _team_outlook_missing(team, season, postseason, snapshots, listing)
 
     kind = chosen[0]
     row = con.execute(
@@ -3197,47 +3235,116 @@ def team_outlook(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         [season, kind, team.id],
     ).fetchone()
     assert row is not None  # the snapshot was chosen because it holds this team
-    updated, bpi, offense, defense, wins, losses, proj_w, proj_l, *chances_and_sos = row
-    chances = dict(zip([c for _, c in _BPI_CHANCES], chances_and_sos[:4], strict=True))
-    sos, sos_rank, higher = chances_and_sos[4], chances_and_sos[5], chances_and_sos[6]
+    return _team_outlook_detail(team, season, postseason, chosen, kind, row, snapshots, listing)
+
+
+def _team_outlook_describe(kind: int, updated: Any, teams: int) -> str:
+    """team_outlook's phrase for one snapshot: its kind, date and team count."""
+    return f"a {BPI_SNAPSHOT_NAMES.get(kind, f'type-{kind}')} snapshot ({str(updated)[:10]}, {teams} team{'s' if teams != 1 else ''})"
+
+
+def _team_outlook_missing(team: Entity, season: int, postseason: bool, snapshots: list[tuple[Any, ...]], listing: list[str]) -> TemplateResult:
+    """team_outlook's answer when no snapshot of the kind asked for holds the
+    team. Which snapshot is missing, or which one the team is missing from, is
+    the whole answer - "no data" would send the reader to the wrong place."""
+    have = _joined(listing)
+    if postseason and not any(s[0] == 3 for s in snapshots):
+        gap = "and no postseason snapshot"
+    elif postseason:
+        gap = f"and the {team.name} are not in its postseason snapshot"
+    else:
+        gap = f"and the {team.name} are {'not in it' if len(listing) == 1 else 'in neither' if len(listing) == 2 else 'in none of them'}"
+    message = f"ESPN's power index for {season} has {have}, {gap}."
+    holding = [d for (*_, has), d in zip(snapshots, listing, strict=True) if has]
+    if holding:
+        message += f" The {team.name} are only in {_joined(holding)} - ask about the regular season to see it."
+    return TemplateResult(data={"team": team.name, "season": season, "snapshots": listing, "message": message}, answer=message)
+
+
+def _team_outlook_record_line(kind: int, wins: Any, losses: Any, proj_w: Any, proj_l: Any) -> str:
+    """team_outlook's record line: for a postseason snapshot, the finished
+    regular season plus any playoff games added on top - a team whose record
+    still equals the projection played none (the 2026 Hornets, out in the
+    play-in) - or the record so far with a projection otherwise."""
+    played = int(wins) + int(losses)
+    regular = (round(proj_w), round(proj_l)) if proj_w is not None and proj_l is not None else None
+    if kind == 3:
+        # In a postseason snapshot the "projection" is the finished regular
+        # season, and the record adds the playoff games to it.
+        if regular and played > sum(regular):
+            return f"  record {int(wins)}-{int(losses)} including the playoffs; {regular[0]}-{regular[1]} in the regular season"
+        return f"  record {int(wins)}-{int(losses)}, no playoff games"
+    projection = f", projected {regular[0]}-{regular[1]}" if regular else ""
+    return f"  record {int(wins)}-{int(losses)}{projection}" if played else f"  no games played yet{projection}"
+
+
+def _team_outlook_headline(team: Entity, season: int, postseason: bool, chosen: tuple[Any, ...], kind: int, updated: Any) -> list[str]:
+    """team_outlook's opening line, plus a note when the postseason snapshot
+    stands in for a missing regular-season one, or when ESPN stamped the
+    snapshot after the season it describes had ended (every 2017-2020
+    snapshot is stamped 2019 or 2020, and the 2017 preseason and
+    regular-season snapshots carry identical ratings under different
+    records)."""
     name = BPI_SNAPSHOT_NAMES.get(kind, f"type-{kind}")
     lines_out = [f"ESPN's power index for the {team.name}, {season} {name} snapshot (updated {str(updated)[:10]}, {chosen[2]} teams):"]
     if not postseason and kind == 3:
         lines_out.append("  (No pre-playoff snapshot for that season holds them, so this is the postseason one.)")
     if str(updated)[:4] > str(season):
-        # Every 2017-2020 snapshot is stamped 2019 or 2020 - after the season
-        # it describes had ended - and the 2017 preseason and regular-season
-        # snapshots carry identical ratings under different records.
         lines_out.append(f"  (ESPN stamps this snapshot {str(updated)[:10]}, after the {season} season ended, so it may not reflect any one moment of it.)")
-    if bpi is not None:
-        detail = f" (offense {offense:+.1f}, defense {defense:+.1f})" if offense is not None and defense is not None else ""
-        lines_out.append(f"  BPI {bpi:+.1f}{detail}, {_ordinal(int(higher) + 1)} of the {chosen[2]} teams in the snapshot")
-    if wins is not None and losses is not None:
-        played = int(wins) + int(losses)
-        regular = (round(proj_w), round(proj_l)) if proj_w is not None and proj_l is not None else None
-        if kind == 3:
-            # In a postseason snapshot the "projection" is the finished regular
-            # season, and the record adds the playoff games to it - so a team
-            # whose two agree played none (the 2026 Hornets, out in the play-in).
-            if regular and played > sum(regular):
-                lines_out.append(f"  record {int(wins)}-{int(losses)} including the playoffs; {regular[0]}-{regular[1]} in the regular season")
-            else:
-                lines_out.append(f"  record {int(wins)}-{int(losses)}, no playoff games")
-        else:
-            projection = f", projected {regular[0]}-{regular[1]}" if regular else ""
-            lines_out.append(f"  record {int(wins)}-{int(losses)}{projection}" if played else f"  no games played yet{projection}")
+    return lines_out
+
+
+def _team_outlook_bpi_line(bpi: Any, offense: Any, defense: Any, higher: Any, teams: int) -> str | None:
+    """team_outlook's BPI line, or None where the snapshot carries no rating."""
+    if bpi is None:
+        return None
+    detail = f" (offense {offense:+.1f}, defense {defense:+.1f})" if offense is not None and defense is not None else ""
+    return f"  BPI {bpi:+.1f}{detail}, {_ordinal(int(higher) + 1)} of the {teams} teams in the snapshot"
+
+
+def _team_outlook_chances_line(chances: dict[str, Any]) -> str | None:
+    """team_outlook's playoff/title-chances line, or None where the snapshot
+    carries none of them."""
     odds = [f"{label} {chances[column]:.1f}%" for label, column in _BPI_CHANCES if chances[column] is not None]
-    if odds:
-        lines_out.append("  chances: " + ", ".join(odds))
-    # ESPN's schedule-strength rank is a league-wide rank only from 2022; the
-    # values before it (7,909 to 59,238) are not ranks.
-    if sos is not None and 0 < sos < 1:
-        rank_note = f", {_ordinal(int(sos_rank))} hardest in the league" if sos_rank is not None and 1 <= sos_rank <= 30 else ""
-        lines_out.append(f"  strength of schedule {_record_pct(sos)}{rank_note}")
+    return "  chances: " + ", ".join(odds) if odds else None
+
+
+def _team_outlook_sos_line(sos: Any, sos_rank: Any) -> str | None:
+    """team_outlook's strength-of-schedule line, or None where the snapshot
+    carries none. ESPN's schedule-strength rank is a league-wide rank only
+    from 2022; the values before it (7,909 to 59,238) are not ranks."""
+    if sos is None or not (0 < sos < 1):
+        return None
+    rank_note = f", {_ordinal(int(sos_rank))} hardest in the league" if sos_rank is not None and 1 <= sos_rank <= 30 else ""
+    return f"  strength of schedule {_record_pct(sos)}{rank_note}"
+
+
+def _team_outlook_others_line(season: int, kind: int, snapshots: list[tuple[Any, ...]], listing: list[str]) -> str | None:
+    """team_outlook's note about the season's other snapshots, or None where
+    the chosen one is the only one."""
     others = [d for (k, *_), d in zip(snapshots, listing, strict=True) if k != kind]
-    if others:
-        lines_out.append(f"  ESPN's power index for {season} also has {_joined(others)}.")
-    data = {
+    return f"  ESPN's power index for {season} also has {_joined(others)}." if others else None
+
+
+def _team_outlook_data(
+    team: Entity,
+    season: int,
+    name: str,
+    chosen: tuple[Any, ...],
+    updated: Any,
+    bpi: Any,
+    offense: Any,
+    defense: Any,
+    higher: Any,
+    wins: Any,
+    losses: Any,
+    proj_w: Any,
+    proj_l: Any,
+    chances: dict[str, Any],
+    sos: Any,
+) -> dict[str, Any]:
+    """team_outlook's structured data, alongside its prose answer."""
+    return {
         "team": team.name,
         "season": season,
         "snapshot": name,
@@ -3254,6 +3361,31 @@ def team_outlook(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         "chances": {label: chances[column] for label, column in _BPI_CHANCES},
         "strength_of_schedule": sos,
     }
+
+
+def _team_outlook_detail(team: Entity, season: int, postseason: bool, chosen: tuple[Any, ...], kind: int, row: tuple[Any, ...], snapshots: list[tuple[Any, ...]], listing: list[str]) -> TemplateResult:
+    """team_outlook's answer once a snapshot holds the team: the BPI line, the
+    record and its projection, title chances, and strength of schedule."""
+    updated, bpi, offense, defense, wins, losses, proj_w, proj_l, *chances_and_sos = row
+    chances = dict(zip([c for _, c in _BPI_CHANCES], chances_and_sos[:4], strict=True))
+    sos, sos_rank, higher = chances_and_sos[4], chances_and_sos[5], chances_and_sos[6]
+    name = BPI_SNAPSHOT_NAMES.get(kind, f"type-{kind}")
+    lines_out = _team_outlook_headline(team, season, postseason, chosen, kind, updated)
+    bpi_line = _team_outlook_bpi_line(bpi, offense, defense, higher, chosen[2])
+    if bpi_line is not None:
+        lines_out.append(bpi_line)
+    if wins is not None and losses is not None:
+        lines_out.append(_team_outlook_record_line(kind, wins, losses, proj_w, proj_l))
+    chances_line = _team_outlook_chances_line(chances)
+    if chances_line is not None:
+        lines_out.append(chances_line)
+    sos_line = _team_outlook_sos_line(sos, sos_rank)
+    if sos_line is not None:
+        lines_out.append(sos_line)
+    others_line = _team_outlook_others_line(season, kind, snapshots, listing)
+    if others_line is not None:
+        lines_out.append(others_line)
+    data = _team_outlook_data(team, season, name, chosen, updated, bpi, offense, defense, higher, wins, losses, proj_w, proj_l, chances, sos)
     return TemplateResult(data=data, answer="\n".join(lines_out))
 
 
