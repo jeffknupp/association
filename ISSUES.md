@@ -92,22 +92,6 @@ found.
 - **Source:** DATA.md, "Every Chicago and New Orleans game from 2013 to 2018 has an empty box score"
 - **GitHub:** #85
 
-### The 2001 playoff caveat never reaches two of the templates that need it
-- **Found:** 2026-09-15, issues audit (P2 data auditor)
-- **Evidence:** `coverage.postseason_partial=(2001,)` is declared on `games` and
-  `team_box_stats`, and `caveat()` only fires for a table a template declares in
-  `TEMPLATE_SOURCES`. `single_game_high` and `threshold_count` declare
-  `player_game_log`/`player_box_stats`, which carry no `postseason_partial`, so
-  a 2001 playoff question through either gets no note.
-  - Shaquille O'Neal's 2001 postseason holds 11 of his 16 games in the box
-    table; "had 4 games with 30+ points" comes back with nothing said.
-- **User sees:** a short 2001 playoff count or single-game high, stated as fact,
-  while the same season caveats correctly through `head_to_head` or `game_log`.
-- **Next step:** add a `postseason_partial` entry for `player_box_stats` (and
-  `player_game_log`), or have the caveat follow the season rather than the table.
-- **Source:** DATA.md, "The 2000 and 2001 playoffs stop before the Finals"
-- **GitHub:** #86
-
 ### ESPN files one player under two athlete ids in the same box score
 - **Found:** 2026-09-15, issues audit - found independently by two auditors
 - **Evidence:** grouping `player_box_stats` by `(event_id, team_id,

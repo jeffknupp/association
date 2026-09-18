@@ -133,6 +133,23 @@ class Coverage:
         return Floor(first, reason, self, subject=subject)
 
 
+# Ten games of the 2001 playoffs are not in ESPN's archive anywhere - probed
+# live, 23 days across that postseason's conference finals and Final return no
+# events at all - so no pull adds them and every table built from those game
+# summaries is short by the same games. Each affected table declares it, and
+# the sentences differ because a team's series and a player's own numbers are
+# shortened in different words: a reader told "a series can look shorter than
+# it was" about a single-game high is being sent to look in the wrong place.
+_MISSING_2001_PLAYOFF_GAMES = "ESPN is missing ten games of the 2001 playoffs - Games 1-4 of the LAL-PHI Final, three games of the MIL-PHI conference final, two of MIL-CHA and one of LAL-SA"
+
+_TEAM_2001_POSTSEASON_NOTE = f"{_MISSING_2001_PLAYOFF_GAMES} - so Philadelphia's run reads 16 games against the 23 ESPN's own season totals give it, and a series can look shorter than it was"
+
+_PLAYER_2001_POSTSEASON_NOTE = (
+    f"{_MISSING_2001_PLAYOFF_GAMES} - so a player on one of those five teams is missing games too, and a total, a count or a single-game high can be low: "
+    "40 players have fewer playoff box scores than ESPN's own season line gives them, 152 games in all"
+)
+
+
 # Sourced from the coverage table in AGENTS.md and re-measured against the
 # built warehouse - `python scripts/check_coverage.py` asserts every floor
 # below against real row counts, because these are claims about the data and
@@ -167,10 +184,7 @@ COVERAGE: dict[str, Coverage] = {
         # missing games, and 23 days across the conference finals and the Final
         # return nothing at all - so that season says what it is missing.
         postseason_partial=(2001,),
-        postseason_partial_note=(
-            "ESPN is missing ten games of the 2001 playoffs - Games 1-4 of the LAL-PHI Final, three games of the MIL-PHI conference final, two of MIL-CHA and one of LAL-SA - "
-            "so Philadelphia's run reads 16 games against the 23 ESPN's own season totals give it, and a series can look shorter than it was"
-        ),
+        postseason_partial_note=_TEAM_2001_POSTSEASON_NOTE,
         postseason_reason=(
             "ESPN files every season before 1993-94 under the year it STARTED, so the postseason it labels 1988 is the 1989 playoffs, and the 1987-88 playoffs are not in its archive at all"
         ),
@@ -188,10 +202,7 @@ COVERAGE: dict[str, Coverage] = {
         # missing games, and 23 days across the conference finals and the Final
         # return nothing at all - so that season says what it is missing.
         postseason_partial=(2001,),
-        postseason_partial_note=(
-            "ESPN is missing ten games of the 2001 playoffs - Games 1-4 of the LAL-PHI Final, three games of the MIL-PHI conference final, two of MIL-CHA and one of LAL-SA - "
-            "so Philadelphia's run reads 16 games against the 23 ESPN's own season totals give it, and a series can look shorter than it was"
-        ),
+        postseason_partial_note=_TEAM_2001_POSTSEASON_NOTE,
         postseason_reason=(
             "ESPN files every season before 1993-94 under the year it STARTED, so the postseason it labels 1988 is the 1989 playoffs, and the 1987-88 playoffs are not in its archive at all"
         ),
@@ -201,12 +212,21 @@ COVERAGE: dict[str, Coverage] = {
         subject="Player box scores",
         first_season=1994,
         reason="ESPN returns no box scores before 1993-94, and answers season=1993 with that same season's games",
+        # The ten missing 2001 playoff games take their box scores with them, so
+        # a player's postseason is short exactly where his team's is. Declared
+        # here as well as on `games` because the caveat follows the TABLE a
+        # template reads: single_game_high and threshold_count never touch
+        # `games`, and without this a short count is stated as fact.
+        postseason_partial=(2001,),
+        postseason_partial_note=_PLAYER_2001_POSTSEASON_NOTE,
         phantom=(1993,),
     ),
     "player_game_log": Coverage(
         subject="Player game logs",
         first_season=1994,
         reason="they are built from box scores, which ESPN does not have before 1993-94",
+        postseason_partial=(2001,),
+        postseason_partial_note=_PLAYER_2001_POSTSEASON_NOTE,
         phantom=(1993,),
     ),
     "player_advanced_stats": Coverage(
@@ -219,6 +239,10 @@ COVERAGE: dict[str, Coverage] = {
         subject="Advanced season stats",
         first_season=1994,
         reason="they are derived from box scores, which ESPN does not have before 1993-94",
+        # Summed out of the same short box scores, so a 2001 postseason rate is
+        # computed over fewer games than the player played.
+        postseason_partial=(2001,),
+        postseason_partial_note=_PLAYER_2001_POSTSEASON_NOTE,
         phantom=(1993,),
     ),
     "team_season_stats": Coverage(

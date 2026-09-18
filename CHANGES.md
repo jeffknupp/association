@@ -14,6 +14,18 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
+## Unreleased
+- **A 2001 playoff question answered from the player tables now says what is
+  missing.** Ten games of that postseason are not in ESPN's archive anywhere,
+  and the caveat saying so was declared only on `games` and `team_box_stats` -
+  which `single_game_high` and `threshold_count` never read, so "Shaquille
+  O'Neal had 4 games with 30+ points" was stated as fact over 11 of the 16
+  playoff games he played. `player_box_stats`, `player_game_log` and
+  `player_season_advanced_stats` now declare it too, in the player's own words:
+  40 of the 190 players with a 2001 postseason line are short in the box
+  scores, 152 games in all. ESPN's per-player season line is complete and is
+  deliberately left uncaveated, since it is what proves the box scores short.
+
 ## 3.0.0 - 2026-09-17
 - **No function is more complex than radon grade C** (cyclomatic complexity
   20), enforced by a xenon gate in pre-commit and CI, with no module worse

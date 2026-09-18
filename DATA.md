@@ -195,8 +195,20 @@ likewise.
   probed live through the project's own client, 23 days across that
   postseason's conference finals and Final return no events at all, so ESPN
   does not have them anywhere. `coverage.postseason_partial` declares the 2001
-  postseason partial on both `games` and `team_box_stats` so answers say what
-  is missing rather than stating a short series as fact.
+  postseason partial so answers say what is missing rather than stating a short
+  series as fact.
+- **The gap reaches the player tables too, and it is a different sentence.**
+  The missing games take their box scores with them: measured 2026-09-17
+  against `player_season_stats`, ESPN's own per-player season line - which is
+  complete - **40 of the 190 players with a 2001 postseason line hold fewer
+  playoff box scores than it gives them, 152 player-games in all**, spread over
+  exactly the five affected teams (PHI 8 players / 50 games, LAL 9 / 41, MIL
+  9 / 40, CHA 7 / 14, SA 7 / 7). Shaquille O'Neal has 11 box scores against the
+  16 games ESPN credits him with. So a count or a single-game high can be low
+  where the season line is right, which is what makes the two tables a
+  cross-check on each other. `player_box_stats`, `player_game_log` and
+  `player_season_advanced_stats` each declare the postseason partial in the
+  player's words; `player_season_stats` does not, because it is not short.
 - **Tracked in:** ISSUES.md, "The 2000 and 2001 playoffs stop before the
   Finals" (#6).
 

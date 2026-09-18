@@ -178,3 +178,41 @@ def test_a_postseason_caveat_covers_the_team_box_as_well_as_the_game_list() -> N
     listed first in TEMPLATE_SOURCES."""
     assert caveat(("team_box_stats",), 2001, POSTSEASON) is not None
     assert caveat(("team_box_stats",), 2001, REGULAR_SEASON) is None
+
+
+def test_the_2001_caveat_reaches_the_templates_that_never_read_the_game_list() -> None:
+    """`single_game_high` and `threshold_count` read only the player tables, so
+    a caveat declared on `games` alone never reached them: Shaquille O'Neal's
+    "4 games with 30+ points" was stated as fact over 11 of the 16 playoff
+    games he played."""
+    for intent in ("single_game_high", "threshold_count"):
+        note = coverage_caveat(intent, {"season": 2001, "season_type": POSTSEASON, "player": "Shaquille O'Neal", "stat": "points"})
+        assert note is not None and "2001 playoffs" in note, intent
+        assert coverage_caveat(intent, {"season": 2001, "season_type": REGULAR_SEASON, "player": "Shaquille O'Neal", "stat": "points"}) is None
+
+
+def test_the_2001_player_caveat_says_what_a_player_is_missing() -> None:
+    """A team's note and a player's are different claims. Telling somebody
+    asking for a single-game high that "a series can look shorter than it was"
+    sends them to look at the bracket, not at the games missing from the
+    player's own line."""
+    team = caveat(("team_box_stats",), 2001, POSTSEASON)
+    assert team is not None and "Philadelphia's run" in team
+    # Every table the player templates read says it in the player's words, and
+    # says it alone - the log is declared separately from the box because
+    # TEMPLATE_SOURCES is free to list either without the other.
+    for table in ("player_box_stats", "player_game_log", "player_season_advanced_stats"):
+        player = caveat((table,), 2001, POSTSEASON)
+        assert player is not None, table
+        assert "40 players" in player, table
+        assert "Philadelphia's run" not in player, table
+        assert caveat((table,), 2001, REGULAR_SEASON) is None, table
+
+
+def test_espns_own_2001_season_line_is_complete_and_uncaveated() -> None:
+    """The missing games cost the BOX SCORES, not ESPN's per-player season
+    totals - it gives Shaquille O'Neal all 16 playoff games. Caveating
+    `player_season_stats` would apologize for data that is there, and it is
+    the table that proves the box scores are short."""
+    assert caveat(("player_season_stats",), 2001, POSTSEASON) is None
+    assert caveat(("player_season_stats_deduped",), 2001, POSTSEASON) is None
