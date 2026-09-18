@@ -339,7 +339,7 @@ It needs the ``web`` extra, which is not installed by default:
 
 .. code-block:: console
 
-   $ uv tool install 'association[web] @ git+https://github.com/jeffknupp/association@v4.0.1'
+   $ uv tool install 'association[web] @ git+https://github.com/jeffknupp/association@v4.1.0'
 
 Answers are rendered per question shape, from the structured data the template
 already produced - a leaderboard or a game log as a table, a multi-season

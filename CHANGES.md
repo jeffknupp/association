@@ -14,7 +14,7 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
-## Unreleased
+## 4.1.0 - 2026-09-18
 - The new pin rewriting refused its own first real bump, and now does not. Its
   post-rewrite check greps the whole tree for the old pin, so it fired on a
   comment inside `bump_version.py` - and would have fired on `CHANGES.md` at
