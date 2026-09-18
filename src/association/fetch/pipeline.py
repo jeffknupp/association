@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections import defaultdict
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date as _date
@@ -652,9 +653,29 @@ class Pipeline:
 
     def _name_to_athlete_id(self) -> dict[str, str]:
         """display_name -> athlete_id, built from players already on disk.
-        A name shared by more than one locally-known player is dropped
+
+        A name shared by more than TWO locally-known players is dropped
         entirely rather than guessed - NetPoints' per-game files have no
-        athlete_id of their own, only a display name to match against."""
+        athlete_id of their own, only a display name to match against. A name
+        shared by exactly two is not automatically ambiguous: ESPN's own
+        duplicate-id fault (DATA.md, "ESPN files one player under two athlete
+        ids in the same box score") files one real person under two ids, and
+        every one of the 8 known cases is proven by the pair sharing a game in
+        `player_box_stats` - the same test `fetch/repairs/duplicate_athletes.py`
+        uses to merge them at load time. `_resolve_duplicate_athlete_pairs`
+        applies that test here too, at fetch time, so a name like Corey
+        Brewer's - permanently unmatched before this - resolves to his one
+        established id instead of losing every season's NetPoints data
+        (ISSUES.md #101). A pair that never shares a game is left unresolved,
+        same as before: most of `players`' 21 shared names (#21) are two
+        different people, and nothing here tells those apart from a real
+        duplicate id without that shared-game proof.
+
+        .. versionchanged:: 4.0.2
+           Resolves a name shared by exactly two athlete ids when the pair is
+           proven to be the same person by a shared box-score game, instead of
+           dropping every two-id name unconditionally.
+        """
         path = self._p("players")
         if not path.exists():
             return {}
@@ -663,7 +684,62 @@ class Pipeline:
         for athlete_id, name in zip(table.column("athlete_id").to_pylist(), table.column("display_name").to_pylist(), strict=True):
             if name:
                 by_name.setdefault(name, set()).add(str(athlete_id))
-        return {name: next(iter(ids)) for name, ids in by_name.items() if len(ids) == 1}
+        resolved = {name: next(iter(ids)) for name, ids in by_name.items() if len(ids) == 1}
+        pairs = {name: ids for name, ids in by_name.items() if len(ids) == 2}
+        resolved.update(self._resolve_duplicate_athlete_pairs(pairs))
+        return resolved
+
+    def _resolve_duplicate_athlete_pairs(self, pairs: dict[str, set[str]]) -> dict[str, str]:
+        """Of the display names shared by exactly two athlete ids, resolve the
+        ones ESPN's own duplicate-id fault explains - see
+        :meth:`_name_to_athlete_id`. Reads `player_box_stats` straight off
+        disk (there is no warehouse yet at fetch time), scoped to the ids
+        `pairs` names, and applies the same test
+        `fetch/repairs/duplicate_athletes.py` does: the two ids are the same
+        roster slot filed twice only if they appear in the SAME team's box
+        score for the SAME game. Where they do, the "established" id wins -
+        more career rows with real minutes, then more rows, then the lower id
+        - the identical tiebreak that module's `id_history`/`ranked` CTEs use.
+        A pair that never shares a game is left out, which is what keeps this
+        from guessing between two different people who happen to share a name
+        (#21)."""
+        if not pairs:
+            return {}
+        box_path = self._p("player_box_stats")
+        if not box_path.exists():
+            return {}
+        ids_of_interest = {athlete_id for ids in pairs.values() for athlete_id in ids}
+        table = ds.dataset(str(box_path), format="parquet").to_table(columns=["event_id", "team_id", "athlete_id", "minutes"])
+        games_by_id: dict[str, set[tuple[str, str]]] = defaultdict(set)
+        rows_with_minutes: dict[str, int] = defaultdict(int)
+        total_rows: dict[str, int] = defaultdict(int)
+        for event_id, team_id, raw_athlete_id, minutes in zip(
+            table.column("event_id").to_pylist(),
+            table.column("team_id").to_pylist(),
+            table.column("athlete_id").to_pylist(),
+            table.column("minutes").to_pylist(),
+            strict=True,
+        ):
+            athlete_id = str(raw_athlete_id)
+            if athlete_id not in ids_of_interest:
+                continue
+            games_by_id[athlete_id].add((str(event_id), str(team_id)))
+            total_rows[athlete_id] += 1
+            if minutes is not None:
+                rows_with_minutes[athlete_id] += 1
+
+        def _established(athlete_id: str) -> tuple[int, int, str]:
+            """Sort key for the id that survives a merge: most career rows
+            with real minutes, then most rows overall, then the lower id -
+            `duplicate_athletes_sql`'s own `ranked` CTE ordering."""
+            return (-rows_with_minutes[athlete_id], -total_rows[athlete_id], athlete_id)
+
+        resolved: dict[str, str] = {}
+        for name, ids in pairs.items():
+            first_id, second_id = sorted(ids)
+            if games_by_id[first_id] & games_by_id[second_id]:
+                resolved[name] = min(ids, key=_established)
+        return resolved
 
     def _net_points_dates_and_seasons(self) -> dict[str, int]:
         """NetPoints label -> project season, for every date with at least one

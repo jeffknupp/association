@@ -801,7 +801,9 @@ def test_parse_net_points_team_handles_missing_data() -> None:
 def test_parse_net_points_daily_resolves_via_team_and_date_not_nba_ids() -> None:
     """NetPoints' per-date payload has no ESPN ids anywhere (only NBA.com's
     own plyrID/teamId/gmId) - event_id/season/season_type come entirely from
-    matching (team_id, date) against this project's own games table."""
+    matching (team_id, date) against this project's own games table.
+    ``plyrID`` is kept on the row (as ``nba_player_id``, ISSUES.md #22), but
+    only as a passenger - resolution never reads it."""
     data = {
         "player_box": [
             {"tmName": "NYK", "displayName": "Jalen Brunson", "plyrID": 1628973, "oNetPts": 8.7, "dNetPts": 2.6, "tNetPts": 11.3},
@@ -823,6 +825,8 @@ def test_parse_net_points_daily_resolves_via_team_and_date_not_nba_ids() -> None
             "season_type": 2,
             "team_id": "18",
             "athlete_id": "3934672",
+            "display_name": "Jalen Brunson",
+            "nba_player_id": "1628973",
             "o_net_pts": 8.7,
             "d_net_pts": 2.6,
             "t_net_pts": 11.3,
@@ -949,6 +953,31 @@ def test_parse_net_points_daily_ambiguous_or_unmatched_name_leaves_athlete_id_no
     assert player_rows[0]["athlete_id"] is None
 
 
+def test_parse_net_points_daily_keeps_the_name_when_unmatched() -> None:
+    """ISSUES.md #22: an unmatched row used to keep no name at all, so nothing
+    on it said who it was and a query grouping by (event_id, athlete_id)
+    counted every unmatched row on a date as a duplicate of every other. The
+    source displayName (and NBA.com's own plyrID, where the file carries one)
+    survive the drop to athlete_id=None."""
+    data = {"player_box": [{"tmName": "NYK", "displayName": "Unknown Player", "plyrID": 42, "oNetPts": 1.0}], "team_box": []}
+    game_index = parse.NetPointsGameIndex([("1", 2026, 2, "2026-04-12T23:00Z", "18", "30")])
+    player_rows, _ = parse.parse_net_points_daily(data, "2026-04-12", {"NY": "18"}, game_index, {})
+    assert player_rows[0]["athlete_id"] is None
+    assert player_rows[0]["display_name"] == "Unknown Player"
+    assert player_rows[0]["nba_player_id"] == "42"
+
+
+def test_parse_net_points_daily_keeps_the_matched_name_too() -> None:
+    """The name is kept even when the match succeeds, not only on the failure
+    path - one schema, not a column that only exists conditionally."""
+    data = {"player_box": [{"tmName": "NYK", "displayName": "Jalen Brunson", "oNetPts": 1.0}], "team_box": []}
+    game_index = parse.NetPointsGameIndex([("1", 2026, 2, "2026-04-12T23:00Z", "18", "30")])
+    player_rows, _ = parse.parse_net_points_daily(data, "2026-04-12", {"NY": "18"}, game_index, {"Jalen Brunson": "3934672"})
+    assert player_rows[0]["athlete_id"] == "3934672"
+    assert player_rows[0]["display_name"] == "Jalen Brunson"
+    assert player_rows[0]["nba_player_id"] is None
+
+
 def test_parse_net_points_daily_handles_missing_data() -> None:
     assert parse.parse_net_points_daily(None, "2026-04-12", {}, parse.NetPointsGameIndex([]), {}) == ([], [])
 
@@ -997,9 +1026,41 @@ def test_parse_net_points_daily_players_is_long_and_resolved_like_its_sibling() 
     )
 
     assert rows == [
-        {"event_id": "401585183", "season": 2026, "season_type": 2, "team_id": "18", "athlete_id": "3934672", "category": "mid_range", "o_net_pts": 1.5, "d_net_pts": 0.2, "t_net_pts": 1.7},
-        {"event_id": "401585183", "season": 2026, "season_type": 2, "team_id": "18", "athlete_id": "3934672", "category": "total", "o_net_pts": 8.7, "d_net_pts": 2.6, "t_net_pts": 11.3},
+        {
+            "event_id": "401585183",
+            "season": 2026,
+            "season_type": 2,
+            "team_id": "18",
+            "athlete_id": "3934672",
+            "display_name": "Jalen Brunson",
+            "category": "mid_range",
+            "o_net_pts": 1.5,
+            "d_net_pts": 0.2,
+            "t_net_pts": 1.7,
+        },
+        {
+            "event_id": "401585183",
+            "season": 2026,
+            "season_type": 2,
+            "team_id": "18",
+            "athlete_id": "3934672",
+            "display_name": "Jalen Brunson",
+            "category": "total",
+            "o_net_pts": 8.7,
+            "d_net_pts": 2.6,
+            "t_net_pts": 11.3,
+        },
     ]
+
+
+def test_parse_net_points_daily_players_keeps_the_name_when_unmatched() -> None:
+    """ISSUES.md #22's fix on the sibling parser's own sibling: this file has
+    no confirmed NBA.com player-id field, but the displayName survives an
+    unmatched row exactly the same way."""
+    data = [{"deanAbbrev": "NYK", "displayName": "Unknown Player", "actionType": "rim", "oNetPts": 2.0}]
+    rows = parse.parse_net_points_daily_players(data, "2026-04-12", {"NY": "18"}, parse.NetPointsGameIndex([("401585183", 2026, 2, "2026-04-12T23:00Z", "18", "30")]), {})
+    assert rows[0]["athlete_id"] is None
+    assert rows[0]["display_name"] == "Unknown Player"
 
 
 def test_parse_net_points_daily_players_drops_rows_it_cannot_place_in_a_game() -> None:

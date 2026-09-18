@@ -902,12 +902,20 @@ def parse_net_points_daily(
     unambiguous game on this date - see :class:`NetPointsGameIndex`) are
     dropped rather than written with a null event_id. Player rows are matched
     to athlete_id by exact displayName - ambiguous or unmatched names are left
-    with athlete_id=None rather than guessed.
+    with athlete_id=None, but the source ``displayName`` and NBA.com's own
+    ``plyrID`` are kept on the row regardless of whether the match succeeded,
+    so a row with no athlete_id still says who NetPoints thinks it is instead
+    of looking like an anonymous duplicate of every other unmatched row on the
+    same date (see ISSUES.md #22).
 
     .. versionchanged:: 2.1.0
        Takes a :class:`NetPointsGameIndex` in place of the
        ``(team_id, date) -> game`` dict, which could not distinguish a game
        from the next night's and wrote both NetPoints dates onto one of them.
+
+    .. versionchanged:: 4.0.2
+       Keeps ``display_name`` and ``nba_player_id`` on every player row
+       instead of dropping the name when the exact match fails.
     """
     player_rows: list[Row] = []
     team_rows: list[Row] = []
@@ -920,13 +928,17 @@ def parse_net_points_daily(
         if game is None:
             continue
         event_id, season, season_type = game
+        display_name = raw.get("displayName")
+        plyr_id = raw.get("plyrID")
         player_rows.append(
             {
                 "event_id": event_id,
                 "season": season,
                 "season_type": season_type,
                 "team_id": team_id,
-                "athlete_id": name_to_athlete_id.get(raw.get("displayName")),
+                "athlete_id": name_to_athlete_id.get(display_name),
+                "display_name": display_name,
+                "nba_player_id": str(plyr_id) if plyr_id is not None else None,
                 "o_net_pts": raw.get("oNetPts"),
                 "d_net_pts": raw.get("dNetPts"),
                 "t_net_pts": raw.get("tNetPts"),
@@ -1007,9 +1019,16 @@ def parse_net_points_daily_players(
     athlete_id - because the ids this file carries are NBA.com's, with no
     crosswalk to ESPN's provided. Note it spells both differently again:
     ``gmID`` here against ``gmId`` there, and ``deanAbbrev`` against
-    ``tmName``.
+    ``tmName``. The source ``displayName`` is kept on every row regardless of
+    whether it matched, the same reason as its sibling (ISSUES.md #22) - this
+    file has no confirmed NBA.com player-id field to keep alongside it, unlike
+    the sibling's ``plyrID``.
 
     .. versionadded:: 2.1.0
+
+    .. versionchanged:: 4.0.2
+       Keeps ``display_name`` on every row instead of dropping the name when
+       the exact match fails.
     """
     rows: list[Row] = []
     if not data:
@@ -1024,6 +1043,7 @@ def parse_net_points_daily_players(
         if game is None:
             continue
         display_name = raw.get("displayName")
+        display_name = display_name if isinstance(display_name, str) else None
         event_id, season, season_type = game
         rows.append(
             {
@@ -1031,7 +1051,8 @@ def parse_net_points_daily_players(
                 "season": season,
                 "season_type": season_type,
                 "team_id": team_id,
-                "athlete_id": name_to_athlete_id.get(display_name) if isinstance(display_name, str) else None,
+                "athlete_id": name_to_athlete_id.get(display_name) if display_name else None,
+                "display_name": display_name,
                 "category": net_points_category(action_type),
                 "o_net_pts": raw.get("oNetPts"),
                 "d_net_pts": raw.get("dNetPts"),
