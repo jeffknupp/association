@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 import duckdb
 
@@ -628,6 +628,47 @@ def _head_to_head_teams(con: duckdb.DuckDBPyConnection, names: list[str], season
     return resolved[0], resolved[1]
 
 
+def _head_to_head_scope(a: Entity, b: Entity, venue: str | None, date: str | None, season_slot: Any, season_type: int) -> tuple[list[str], list[Any], int | None]:
+    """The WHERE clauses for the matchup itself, narrowed to ``venue`` and
+    ``date`` where the caller already read them from the question, plus the
+    season the clauses settled on (``None`` once ``date`` has replaced it).
+
+    A date names its game outright, the same way it does in :func:`game_log`:
+    the router's season is usually its "current" default, and a date from a
+    past season looked for inside this one finds nothing. A venue is always
+    read from ``a``'s side - the team named first, the same team
+    ``_head_to_head_names`` puts first for "Celtics vs Bulls" - so "Lakers vs
+    Mavs ... home games" narrows to the Lakers' home games, not the Mavericks'.
+    """
+    if venue == "home":
+        matchup, matchup_params = "(g.home_team_id = ? AND g.away_team_id = ?)", [a.id, b.id]
+    elif venue == "away":
+        matchup, matchup_params = "(g.home_team_id = ? AND g.away_team_id = ?)", [b.id, a.id]
+    else:
+        # Both orderings, since `games` is home/away-oriented rather than
+        # team-perspective.
+        matchup = "((g.home_team_id = ? AND g.away_team_id = ?) OR (g.home_team_id = ? AND g.away_team_id = ?))"
+        matchup_params = [a.id, b.id, b.id, a.id]
+    where = [matchup, "g.season_type = ?"]
+    params: list[Any] = [*matchup_params, season_type]
+    if date:
+        start, end = _eastern_day(date)
+        where.append("g.date >= ? AND g.date < ?")
+        params += [start, end]
+        return where, params, None
+    # No season named means the CURRENT one, as everywhere else. "All time" is
+    # a defensible reading here, but silently answering a different span than
+    # the rest of the system is the substitution this design exists to prevent.
+    # The answer names the season, so another one is a follow-up away. Kept
+    # parenthesized around the whole matchup - `A OR B AND season = ...`
+    # applies the season to one side only.
+    season = season_slot or current_season()
+    season_clause, season_params = _season_games(season, season_type, "g")
+    where.append(season_clause)
+    params += season_params
+    return where, params, season
+
+
 def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """ "How many times did the 76ers play Boston?" - games between two teams.
 
@@ -635,7 +676,13 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     The agent wrote `home_team_id = 'PHI'` against an opaque numeric VARCHAR
     ('20'), so the filter matched nothing - with the rule against it, and a
     worked WRONG example, in its prompt. Prompting cannot fix that; resolving
-    names to ids in code can."""
+    names to ids in code can.
+
+    .. versionchanged:: 4.3.0
+       Honors ``venue`` (narrowed to the first-named team's home or road
+       games) and ``date`` (one calendar day, replacing the season the same
+       way it does in :func:`game_log`) instead of refusing them.
+    """
     con = ctx.con
     teams_slot = slots.get("teams")
     team_slot = slots.get("team")
@@ -648,22 +695,11 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     if isinstance(teams, TemplateResult):
         return teams
     a, b = teams
-    # No season named means the CURRENT one, as everywhere else. "All time" is
-    # a defensible reading here, but silently answering a different span than
-    # the rest of the system is the substitution this design exists to prevent.
-    # The answer names the season, so another one is a follow-up away.
-    season = slots.get("season") or current_season()
     season_type = slots.get("season_type") or 2
-    # Both orderings, since `games` is home/away-oriented rather than
-    # team-perspective, and the season filter parenthesized around the whole
-    # matchup - `A OR B AND season = ...` applies the season to one side only.
-    season_clause, season_params = _season_games(season, season_type, "g")
-    where = [
-        "((g.home_team_id = ? AND g.away_team_id = ?) OR (g.home_team_id = ? AND g.away_team_id = ?))",
-        "g.season_type = ?",
-        season_clause,
-    ]
-    params: list[Any] = [a.id, b.id, b.id, a.id, season_type, *season_params]
+    raw_date = slots.get("date")
+    date = raw_date if isinstance(raw_date, str) and _ISO_DATE.match(raw_date) else None
+    venue = _checked_venue(slots["venue"]) if slots.get("venue") else None
+    where, params, season = _head_to_head_scope(a, b, venue, date, slots.get("season"), season_type)
     rows = con.execute(
         f"SELECT g.date, g.home_team_id, g.home_score, g.away_score, g.winner_team_id FROM real_games g WHERE {' AND '.join(where)} ORDER BY g.date",
         params,
@@ -671,11 +707,15 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
 
     a_wins = sum(1 for r in rows if r[4] == a.id)
     b_wins = sum(1 for r in rows if r[4] == b.id)
-    period = _period(season, season_type)
-    return TemplateResult(
-        data={"teams": [a.name, b.name], "games": len(rows), "wins": {a.name: a_wins, b.name: b_wins}},
-        answer=_phrase_head_to_head(a.name, b.name, len(rows), a_wins, b_wins, period),
-    )
+    data = {"teams": [a.name, b.name], "games": len(rows), "wins": {a.name: a_wins, b.name: b_wins}, "venue": venue, "date": date}
+    if venue or date:
+        answer = _head_to_head_narrowed_phrase(a.name, b.name, len(rows), a_wins, b_wins, venue=venue, date=date, season=season, season_type=season_type)
+    else:
+        # `_head_to_head_scope` only returns `season=None` once `date` has
+        # replaced it, and the branch above already took that case, so this
+        # one always has a season - `cast` says that to the type checker.
+        answer = _phrase_head_to_head(a.name, b.name, len(rows), a_wins, b_wins, _period(cast(int, season), season_type))
+    return TemplateResult(data=data, answer=answer)
 
 
 def _phrase_head_to_head(a: str, b: str, games: int, a_wins: int, b_wins: int, period: str) -> str:
@@ -683,6 +723,29 @@ def _phrase_head_to_head(a: str, b: str, games: int, a_wins: int, b_wins: int, p
         return f"The warehouse has no {period} games between the {a} and the {b}."
     times = "once" if games == 1 else f"{games} times"
     lead = f"The {a} and the {b} met {times} in the {period}"
+    if a_wins == b_wins:
+        return f"{lead}, splitting them {a_wins}-{b_wins}."
+    leader, trailing = (a, f"{a_wins}-{b_wins}") if a_wins > b_wins else (b, f"{b_wins}-{a_wins}")
+    return f"{lead}; the {leader} won the series {trailing}."
+
+
+def _head_to_head_narrowed_phrase(a: str, b: str, games: int, a_wins: int, b_wins: int, *, venue: str | None, date: str | None, season: int | None, season_type: int) -> str:
+    """The head-to-head sentence once ``venue`` or ``date`` has narrowed the
+    games, phrased to say what was actually counted rather than reusing the
+    plain season sentence (:func:`_phrase_head_to_head`, left untouched) with
+    a different number silently attached to it."""
+    if date:
+        where = f"on {date}"
+    else:
+        # "Lakers'", not "Lakers's" - most team names end in "s" (Celtics,
+        # Warriors, Nets...), and templates/teams.py's own `_possessive` makes
+        # the same call inline rather than being imported cross-module.
+        possessive = f"{a}'" if a.endswith("s") else f"{a}'s"
+        where = f"in the {possessive} {'home' if venue == 'home' else 'road'} games of the {_period(season or current_season(), season_type)}"
+    if games == 0:
+        return f"The warehouse has no games between the {a} and the {b} {where}."
+    times = "once" if games == 1 else f"{games} times"
+    lead = f"The {a} and the {b} met {times} {where}"
     if a_wins == b_wins:
         return f"{lead}, splitting them {a_wins}-{b_wins}."
     leader, trailing = (a, f"{a_wins}-{b_wins}") if a_wins > b_wins else (b, f"{b_wins}-{a_wins}")
@@ -1090,14 +1153,37 @@ def player_matchup(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
     which they were teammates is not a meeting, and when every shared game was
     one, the answer says that rather than that they never played.
 
+    .. versionchanged:: 4.3.0
+       One player and a team ``opponent`` - "sam hauser v mil", "julius randle
+       stats vs blazers with minnestota" - is answered as the player-vs-team
+       question it actually is, the same way :func:`game_log` answers it,
+       instead of refused. ``router._route_matchup_against_team`` already
+       reroutes this shape to ``game_log``/``player_stat`` where it can, but
+       only from the router's raw output; it cannot see a player name
+       ``entities.scope_from_question`` restores afterward, in ``agent.py``,
+       which is how these three still arrived here with one name and an
+       opponent. A genuine two-player matchup still refuses ``opponent``,
+       since it has no third team to narrow by.
+
     .. versionadded:: 2.1.0
     """
     con = ctx.con
     players = slots.get("players")
     listed: list[Any] = players if isinstance(players, list) else []
     texts = list(dict.fromkeys(n.strip() for n in [*listed, slots.get("player")] if isinstance(n, str) and n.strip()))
+    if len(texts) == 1 and slots.get("opponent"):
+        # One name and a team opponent - not a fabricated second player, an
+        # actual player-vs-team question that named itself that way. Answered
+        # by the same code game_log uses for "player vs opponent", not
+        # reimplemented: it is the same question, however it got routed here.
+        return game_log(ctx, {**slots, "player": texts[0]})
     if len(texts) != 2:
         raise TemplateUnsupported(f"player_matchup needs exactly two players, got {texts!r}")
+    if slots.get("opponent"):
+        # check_scope lets `opponent` through for the fallback above, so a
+        # real two-player matchup that still has one left over has to refuse
+        # it itself - it names no third team to narrow the meetings by.
+        raise TemplateUnsupported("player_matchup cannot narrow a two-player matchup to one opponent")
     scope = _condition_scope(slots.get("season"), slots.get("span"), slots.get("season_type"), _PLAYER_GAME_TABLES)
     resolved = _player_matchup_resolve(con, texts, scope)
     if isinstance(resolved, TemplateResult):

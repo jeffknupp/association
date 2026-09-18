@@ -14,6 +14,24 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
+## Unreleased
+- **`head_to_head` honors `venue` and `date` instead of refusing them.**
+  "lakers vs mavs record last 10 home games played" narrows to the
+  first-named team's home or road games; "celtics record vs sixers on
+  november 11" answers one calendar date, the same way `game_log`'s own
+  `date` replaces the season rather than being filtered inside it. Both are
+  said in the answer text, not silently applied - a home-only record with no
+  note would read exactly like the whole-season one.
+- **`player_matchup` answers a player-vs-team question instead of refusing
+  its `opponent`.** "sam hauser v mil", "julius randle stats vs blazers with
+  minnestota" and "Curry vs dallas last q0 games" all reach this template
+  with one player name and a team `opponent` - `router._route_matchup_against_team`
+  exists for this exact shape but only sees the router's raw output, before
+  `entities.scope_from_question` restores a name it drops afterward. One name
+  and a team opponent is answered the way `game_log` answers it; a genuine
+  two-player matchup with an opponent left over still refuses it, since it
+  has no third team to narrow the meetings by.
+
 ## 4.2.0 - 2026-09-18
 - **A NetPoints name ESPN spells with a generational suffix, or hyphenates
   differently, now matches too.** `match_key` reduces both sides to a

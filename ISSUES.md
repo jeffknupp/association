@@ -714,11 +714,11 @@ found.
 - **GitHub:** #105
 
 ### A calendar date on `player_stat` or `head_to_head` falls through instead of answering the game
-- **Found:** 2026-09-16, issues audit, from the latest replay
+- **Found:** 2026-09-16, issues audit, from the latest replay; **narrowed
+  2026-09-18** - `head_to_head`'s half of this is fixed, see below
 - **Evidence:** "Bam adebeyo jan 19" routes to `player_stat` with
   `date="2023-01-19"` resolved, and falls through on `player_stat cannot
-  honor ['date']`; "celtics record vs sixers on november 11" does the same on
-  `head_to_head`. `game_log` honors `date` (`query/templates/common.py`), and
+  honor ['date']`. `game_log` honors `date` (`query/templates/common.py`), and
   `player_stat` already declines a `limit` as a `game_log` question
   (`query/templates/players.py`, falling through rather than redirecting) and has no
   equivalent for a `date`. (The 2023 in the first example is itself the model's
@@ -728,7 +728,14 @@ found.
   before the name is resolved.
 - **Next step:** in `route()`, send a `player_stat` with a resolved `date` to
   `game_log` with a limit of 1, the same way `CODE_ASSIGNED_INTENTS` handles a
-  period; decide separately whether `head_to_head` should honor `date`.
+  period.
+- **Fixed 2026-09-18 (head_to_head half):** `head_to_head` now honors `date`
+  (`HONORED_SCOPING`, `query/templates/games.py`) the same way `game_log`'s own
+  `date` replaces the season rather than being filtered inside it - "celtics
+  record vs sixers on november 11" now answers "The Boston Celtics and the
+  Philadelphia 76ers met once on 2025-11-11; the Philadelphia 76ers won the
+  series 1-0." `player_stat`'s half (`query/templates/players.py`) is
+  untouched and still falls through.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #94
 
@@ -924,11 +931,99 @@ found.
   mil", "Curry vs dallas last q0 games", "julius randle stats vs blazers with
   minnestota", "oubre vs warriors without embiid", "de'aaron fox vs magic
   ...", "stating centers vs suns". Commit `d7a8db1` does not touch this shape.
-- **User sees:** a fall-through to the agent, for six real questions and not
-  only the constructed one this entry started from.
+- **Fixed 2026-09-18 (partial, `player_matchup` only):** the router routes
+  these as a fake two-player matchup - one real name plus a team it could not
+  place anywhere else - not a genuine comparison, so `player_matchup` now
+  recognizes exactly one player name plus a team `opponent` and answers it the
+  way `game_log` answers "player vs team" (`HONORED_SCOPING["player_matchup"]`
+  and the new branch at the top of `player_matchup`, `query/templates/games.py`).
+  Confirmed against the recorded routing corpus (`replay_recorded_routes.py`):
+  "sam hauser v mil", "julius randle stats vs blazers with minnestota" and
+  "Curry vs dallas last q0 games" now answer (the last as a clarifying
+  question - "Curry" is ambiguous, correctly). **Still open:**
+  "oubre vs warriors without embiid" and "de'aaron fox vs magic ... without
+  wembyanama" - both carry a second name in `players` (a garbled team name in
+  the first case, a genuinely-resolvable but spurious second player in the
+  second) *and* a `without`, neither of which the new branch reads, so both
+  still fall through, correctly refused rather than guessed at. `player_compare`
+  is untouched, so "compare curry and lebron vs the celtics" and "stating
+  centers vs suns" (also a position-group question, a separate gap) still fall
+  through too.
 - **Next step:** let `player_compare` honor `opponent` by building each
-  player's line through `_narrow_player_games`.
+  player's line through `_narrow_player_games`. For the two still-open
+  `player_matchup` rows, `entities.py` would need to tell a garbled team name
+  in `players` apart from a real second player before `opponent`+`without`
+  could be answered safely - not attempted here, since a wrong guess there is
+  worse than the current refusal.
 - **GitHub:** #34
+
+### `split="starter_bench"` reaches `game_log`/`period_split` with no direction, so it stays refused
+- **Found:** 2026-09-18, fixing `player_matchup`'s and `head_to_head`'s
+  `check_scope` refusals in `query/templates/games.py`
+- **Evidence:** `router.SPLIT_WORDS["starter_bench"]` matches either
+  "starter"/"starting"/"starts" OR "bench"/"reserve" in one pattern, and
+  `router.py:1079` (`slots["split"] = splits[0]`) records only the category
+  name, "starter_bench" - never which word actually matched. `player_splits`
+  is built around that: with `split="starter_bench"` it shows BOTH groups
+  side by side (`_player_splits_answer`, `query/templates/splits.py`), which
+  is a legitimate way to honor a directionless slot. `game_log` and
+  `period_split` cannot do the same thing usefully - "Jrue holiday last 50
+  games as a starter" wants exactly his starts filtered in, not his last 50
+  games (both starts and bench appearances) with a column added - and
+  `TemplateContext` carries no raw question text for either template to
+  recover which word was actually used the way `router._validate_venue`
+  recovers "home" vs "away" for `venue`. `player_box_stats.starter` (boolean)
+  exists and would support the filter once the direction reaches it.
+  Five reasonable feed queries hit this: "Jrue holiday last 50 games as a
+  starter", "kyle kuzma last 50 games as a starter", "taurean prince game log
+  as a starter" (`game_log`), "zach collins first quarter stats last 5 games
+  as a starter log", "barlow stats in the second half this season while
+  starting vs pacers" (`period_split`).
+- **User sees:** a fall-through to the slow agent for all five, rather than a
+  filtered log or a refusal.
+- **Next step:** two options, and the first is cheaper. (a) Read the
+  direction from the question text the same way `_validate_venue` does for
+  `venue`, into a new slot (e.g. `slots["starter"] = True/False`) in
+  `router.py`, then filter `game_log`/`period_split` on
+  `player_box_stats.starter`. (b) Extend `game_log` to show both groups the
+  way `player_splits` does, narrowed and counted separately - more work, and
+  answers a broader question than the one asked ("his last 50 games, split by
+  starter/bench" rather than "his last 50 starts") unless very carefully
+  worded. Not attempted here: guessing the direction (assuming "starter_bench"
+  always means "starter", since every measured example says so) was
+  considered and rejected - a "bench" question asked the same way would get a
+  fluently wrong answer, the failure mode this project ranks worst.
+- **GitHub:** not yet filed
+
+### A weekday or holiday `situation` narrowing falls through to the slow agent instead of a fast refusal
+- **Found:** 2026-09-18, reading `/home/jeff/association-research/statmuse-2026-09/query_set_audit.md`
+  while judging `game_log`'s `situation` refusals
+- **Evidence:** `situation` is deliberately unhonored by every template
+  ("Each narrowing the router has no slot for needs its own regex", above),
+  so a weekday-shaped question - "jamal murray career games on Tuesdays" - hits
+  `check_scope`, raises `TemplateUnsupported`, and falls all the way through to
+  the slow SQL-writing agent (`agent.py`'s `except TemplateUnsupported:
+  return None`). The audit that catalogued all 261 feed queries flags 8 of them
+  as a weekday split, calls all 8 low-value, and says explicitly: "the owner
+  should know the feed keeps asking: if the decision is 'never', it is worth a
+  refusal that says so rather than a fall-through that spends 55 agent-seconds."
+  The same reasoning applies to the two other `game_log` `situation` rows
+  judged here: "paul reed gamelog with 25 minutes" (the audit's own #103,
+  flagged ambiguous - "at least" vs "exactly" 25 minutes, so answering it would
+  be a guess) and "forwards with 20+ mins vs gsw log" (a position-group
+  subject, a different missing shape entirely, not a single-player or
+  single-team question `game_log` has any way to answer).
+- **User sees:** a ~55-second wait for an answer that, for the weekday case,
+  the system could know instantly it cannot give.
+- **Next step:** a fast, worded refusal for a `situation` shape that is known
+  never to be answerable (weekday, holiday) needs a check that runs BEFORE
+  `check_scope`'s raise sends the question to the agent - `check_scope` itself
+  only ever raises (never returns a refusal `TemplateResult`), by design, so
+  it is the wrong place to add one. This is a router/agent-level mechanism
+  change, not a `games.py` template fix, and was not attempted here for that
+  reason - `HONORED_SCOPING` is documented to mean "actually filters by it and
+  says so," and a refusal is neither.
+- **GitHub:** not yet filed
 
 ### Conference and division are in the standings we fetch, and the parser drops them
 - **Found:** 2026-09-11, template work (agent B); **cause corrected 2026-09-15**
@@ -1358,6 +1453,23 @@ found.
 - **GitHub:** #77
 
 ## P4: tooling, docs, low impact
+
+### `ISSUES.md` has no `## P3: refusal or gap` heading, so P2 and P3 entries are merged
+- **Found:** 2026-09-18, looking for where to file two new refusal/gap
+  findings and finding no P3 section to put them in
+- **Evidence:** the priority definitions at the top of the file list four
+  tiers, but `grep -n "^## P" ISSUES.md` finds only `## P1`, `## P2` and
+  `## P4` - every P3-shaped entry ("Each narrowing the router has no slot for
+  needs its own regex", "Two players against one team has no template", the
+  two filed alongside them today) sits under `## P2: misleading or
+  incomplete` instead, undifferentiated from actual P2s.
+- **User sees:** nothing - this is about the file's own readability, not an
+  answer.
+- **Next step:** add the missing `## P3: refusal or gap` heading in the right
+  place and move the P3-shaped entries currently under `## P2` beneath it.
+  Left undone here since it touches many entries other agents may be editing
+  concurrently and risks a merge conflict far out of proportion to the fix.
+- **GitHub:** not yet filed
 
 ### The header status line still states coverage as a single misleading range, beside a correct one
 - **Found:** 2026-09-18, while fixing #71 (the web page never says what data

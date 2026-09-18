@@ -102,8 +102,11 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # A period is not a scoping slot - it IS the question - so only the two
     # filters on WHICH games count are listed.
     "period_split": frozenset({"opponent", "venue"}),
-    # The opponent IS the second team of a head-to-head.
-    "head_to_head": frozenset({"opponent"}),
+    # The opponent IS the second team of a head-to-head. `venue` narrows to
+    # the first-named team's home or road games, and `date` replaces the
+    # season with one calendar day - both filters on `real_games`, the same
+    # table the plain answer already reads.
+    "head_to_head": frozenset({"opponent", "venue", "date"}),
     "shot_chart": frozenset({"order"}),
     "shot_distance": frozenset({"order"}),
     "player_netpoints": frozenset({"order"}),
@@ -127,7 +130,12 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     "player_splits": frozenset({"span", "split"}),
     "with_without": frozenset({"span", "without"}),
     "record_when": frozenset({"span"}),
-    "player_matchup": frozenset({"span"}),
+    # `opponent` is honored only for the one-name-and-a-team shape that is
+    # really a player-vs-team question in disguise - see the versionchanged
+    # note on player_matchup itself. A genuine two-player matchup with an
+    # opponent left over refuses it from inside the template, since check_scope
+    # cannot tell the two shapes apart from the slots alone.
+    "player_matchup": frozenset({"span", "opponent"}),
     "streak": frozenset({"span"}),
     # The home/road split, the record against one team, and every season at
     # once - "Knicks home record" was answered with their overall 53-29.
