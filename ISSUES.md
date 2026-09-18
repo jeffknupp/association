@@ -72,32 +72,86 @@ found.
 - **GitHub:** #89
 
 ### ESPN files one player under two athlete ids in the same box score
-- **Found:** 2026-09-15, issues audit - found independently by two auditors
+- **Found:** 2026-09-15, issues audit - found independently by two auditors.
+  Re-measured, extended and partly fixed 2026-09-17.
 - **Evidence:** grouping `player_box_stats` by `(event_id, team_id,
-  display_name)` and counting distinct `athlete_id` finds one person listed
-  twice in one game.
-  - Isaiah Canaan (`2490589` and `4412182`) in 20 Phoenix and Minnesota
-    team-games in 2019, **with identical lines in 18 of them**. Corey Brewer
-    (`3191`, `4415554`) in 8 of 8 in 2019. Daryl Macon (`4066243`, `4610145`)
-    in 3 of 4 in 2020. Ken Johnson 2003 (`1008`, `1972`, 33 games) shows the
-    pattern with non-identical lines.
+  display_name)` and counting distinct `athlete_id` finds **8 players, 69
+  team-games** - Isaiah Canaan, Corey Brewer, Daryl Macon, Ken Johnson (the
+  four originally found) plus four single-game 2019 cases new to this count:
+  Tahjere McCall, John Jenkins, Mitchell Creek, Henry Ellenson. Full counts and
+  the classification of every one of the 69 games (both sides real and
+  identical / one real beside a fabricated zero / both blank) are in
+  `DATA.md`.
   - This explains most of #54's 2019 disagreement: the team box's derived
     points equal the final score in every row of 2019, 2021 and 2026, while the
     player sums overshoot in 23 team-games in 2019 - **re-measured 2026-09-16:
     Phoenix 14, Philadelphia 7, Sacramento 1, Minnesota 1** (this read "almost
     all Phoenix (15) and Philadelphia (7)" until then, which is 22 of the 23
     and misses the two one-game teams).
-  - It also crosses tables: `net_points_player` uses ESPN's `dot_com_id` while
-    the box scores and the name-matched fingerprint use the other id, so 8
-    `net_points_player_fingerprint` rows have no matching `net_points_player`
-    row and joins drop them.
-- **User sees:** a team total summed from player rows double-counts that player,
-  and the player's own career is split across two ids.
-- **Next step:** detect the duplicate pairs at load time and map them to one id.
-  Some of #21's "shared display names" are this, not two players, so the
-  ambiguity rule there drops a real player's data.
-- **Source:** DATA.md, "ESPN files one player under two athlete ids" (`DATA.md:103`)
+- **Fixed in code, not yet backfilled.**
+  `association.fetch.repairs.duplicate_athletes` merges each pair at load
+  time into `player_box_stats_deduped`: the id with more career games carrying
+  real minutes wins, the other id's rows for that game are dropped, and
+  `player_game_log` now reads the merged table. A pair is merged only where
+  every shared game is safe (one side has no minutes, or both sides agree
+  exactly) - measured true for all 69 - so a future pair that disagrees for
+  real is left unmerged rather than guessed at. Backfill:
+  `association data load` (a load-time repair, not a parser fix - no re-fetch
+  needed). Re-measure with the query at the top of this entry after the load;
+  it should return 0 rows.
+- **What this does NOT fix, and remains open:**
+  - **The team-total double-count** (#54's 23 team-games) is unresolved:
+    `query/team_metrics.py` and `query/conditions.py` sum `player_box_stats`
+    directly, not the new deduped table. Re-scope or hand off once #54's owner
+    is free to switch that source.
+  - **`player_advanced_stats` and `player_season_advanced_stats`**
+    (`fetch/advanced_stats.py`) also read raw `player_box_stats` and are built
+    before the merge runs, so the 8 players still show two athlete_ids' worth
+    of advanced stats for their affected seasons.
+  - **The NetPoints per-game tables lose these players' entire careers, not
+    just the affected season** - a bigger, separate consequence measured
+    2026-09-17 and filed as its own entry immediately below, since fixing it
+    needs a fetch-time change this load-time repair cannot reach.
+- **User sees:** a team total summed from player rows double-counts that
+  player (open); a per-game lookup through `player_game_log` (single-game
+  highs, streaks, career-from-box-scores) now sees one identity (fixed, once
+  loaded); an advanced-stats or NetPoints per-game question about one of these
+  8 players still does not (open, see above and the entry below).
+- **Source:** DATA.md, "ESPN files one player under two athlete ids" (`DATA.md:118`)
 - **GitHub:** #87
+
+### Duplicate-athlete-id players are invisible to NetPoints' per-game tables, for their whole career
+- **Found:** 2026-09-17, while fixing #87
+- **Evidence:** `Pipeline._name_to_athlete_id()` (`fetch/pipeline.py:653`)
+  drops any display name shared by more than one `athlete_id` in `players` -
+  built from the WHOLE table on disk, not scoped to a season - and
+  `parse_net_points_daily_players` / `parse_net_points_fingerprint` both
+  resolve NetPoints' bare display name through it. Every one of #87's 8
+  players has two ids in `players` permanently (that fault is ESPN's, not an
+  artifact of pull order the way #21 is), so their name is ambiguous for
+  every pull, not just the one that finds the second id. Measured against the
+  2026-09-17 warehouse: all 8 have **zero** rows in `net_points_player_game`
+  and `net_points_player_game_fingerprint`, across every season on file -
+  Corey Brewer (2008-2020, 985 `player_box_stats` rows) has no per-game
+  NetPoints data for a single one of them, not only 2019.
+  `net_points_player_fingerprint` (season file, also name-matched) is nearly
+  as bad - 0 rows for 6 of the 8, 1-2 for the other 2.
+- **User sees:** a play-type or per-game NetPoints question about any of these
+  8 players (a real, sometimes years-long career) returns "no data" for a
+  reason that has nothing to do with NetPoints coverage - the name is
+  intrinsically ambiguous against `players`, not missing from the source. If
+  the refusal names a coverage floor or a season gap, that would be the same
+  false-cause shape `AGENTS.md` warns about for "Maxey": the real cause is the
+  match, not the data.
+- **Next step:** a fetch-time fix, not a warehouse one - `_name_to_athlete_id`
+  needs to prefer the established id (most career games with real minutes,
+  the same rule #87's load-time merge uses) instead of dropping the name
+  outright, at least for a pair `duplicate_athletes` would merge. This is
+  broader than #87 alone: 21 display names in `players` are shared by 42
+  players total (#21), so any of them can lose per-game NetPoints data this
+  way, not only the 8 known duplicate-id cases.
+- **Source:** DATA.md, "ESPN files one player under two athlete ids" (`DATA.md:118`)
+- **GitHub:** none yet
 
 ### The 2001 playoffs are missing about ten games, and ESPN has them nowhere
 - **Found:** 2026-09-11, template work (agent B); 2000 fixed and this rewritten 2026-09-15

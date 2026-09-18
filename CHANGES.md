@@ -15,6 +15,19 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A player ESPN lists twice in one team's box score, under two
+  `athlete_id`s, is now merged into one row.** Measured against the
+  2026-09-17 warehouse: 8 players, 69 team-games, none before 2003. A new
+  `player_box_stats_deduped` table (`association.fetch.repairs.duplicate_athletes`)
+  picks the id with more career games carrying real minutes and keeps the
+  real row over a fabricated all-zero blank; a pair is merged only where
+  every shared game is safe (one side has no minutes, or both sides agree
+  exactly), so a future pair that genuinely disagrees is left unmerged rather
+  than guessed at. `player_game_log` now reads the merged table, so a
+  per-game lookup for one of these 8 players (single-game highs, streaks) no
+  longer sees a fractured career under two identities. Team-level sums and
+  `player_advanced_stats` still read the raw table and are unaffected - see
+  `ISSUES.md`.
 - **A 2013-2018 shooting leaderboard now says who is missing from it.** Those
   rates are summed from the box scores ESPN serves zeroed for every Chicago and
   New Orleans game, so 21 to 33 players a season clear the qualifying floor by
