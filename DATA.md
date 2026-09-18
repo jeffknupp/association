@@ -438,6 +438,36 @@ likewise.
   keep no name" (#22), and "The NetPoints season fingerprint matches players
   mid-pull, so a name can be lost" (#21).
 
+### NetPoints spells 2026's names with diacritics, and ESPN does not
+
+- **What NetPoints does:** serves the same player under two spellings depending
+  on the season's files. Its 2026 files say `Nikola Jokić`, `Kristaps
+  Porziņģis`, `Bogdan Bogdanović`, `Pacôme Dadiet`; its 2019-2025 files say
+  `Nikola Jokic` and so on, un-accented, which is what ESPN's `players` table
+  holds. It also spells some players without the suffix ESPN gives them -
+  `Jimmy Butler` against ESPN's `Jimmy Butler III`.
+- **Evidence, measured 2026-09-18** against a warehouse re-fetched that day:
+  unmatched rows in `net_points_player_game` run 86-400 a season from 2019 to
+  2025 and **1,106 in 2026**. Nikola Jokic matches in every season 2019-2025
+  (94, 92, 82, 79, 89, 91, 84 rows) and **none** in 2026, where his 71 rows are
+  filed under `Nikola Jokić`. Folding diacritics (NFKD, dropping combining
+  marks) makes **20 of the 33 distinct unmatched names** resolve to exactly one
+  ESPN name; 4 more are a suffix mismatch; 9 are genuinely absent from
+  `players` (`Cui Yongxi`, `Rondae Hollis-Jefferson`, `Carlton Carrington`).
+- **It changed under us.** Those same 2026 rows matched before the re-fetch:
+  comparing the pre-refetch warehouse with the post, **682 (event_id,
+  athlete_id) pairs resolved before and do not now**, against 344 newly
+  resolved - so the source re-spelled files this project had already fetched.
+  A "does a refetch fix it" answer for this endpoint has a shelf life, which
+  this file already says of the career endpoint.
+- **Does a refetch fix it?** **No - a refetch is what causes it.** Any pull of
+  2026, wide or narrow, gets the accented spellings.
+- **How we handle it:** nothing yet. `Pipeline._name_to_athlete_id` matches
+  exactly, so these rows keep a NULL `athlete_id` and their source
+  `display_name` (which is how they were identified at all).
+- **Tracked in:** ISSUES.md, "A NetPoints name spelled with diacritics matches
+  nothing, so 2026 loses those players' per-game rows".
+
 ### ESPN's power index is a paged collection, and holds all 30 teams
 
 **This entry said the opposite until 2026-09-15, and the correction is the
