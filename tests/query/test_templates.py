@@ -13,7 +13,7 @@ from association.query import shotchart
 from association.query.entities import MAX_CANDIDATES
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, TemplateContext, TemplateUnsupported, check_scope
-from association.query.templates.games import _rebuilt_readable, game_log, head_to_head, period_split, team_quarter_points
+from association.query.templates.games import _rebuilt_readable, game_log, head_to_head, period_split, player_matchup, team_quarter_points
 from association.query.templates.netpoints import fingerprint, player_netpoints
 from association.query.templates.players import SHOOTING_STATS, _box_score_stat_rebuilt, leaderboard, player_compare, player_history, player_stat, single_game_high, threshold_count
 from association.query.templates.shots import shot_chart, shot_distance
@@ -1608,6 +1608,68 @@ def test_head_to_head_ignores_a_team_slot_that_only_restates_teams(gl_con: Templ
         head_to_head(gl_con, {"team": "Knicks", "teams": ["Knicks"]})
 
 
+def test_head_to_head_narrows_to_the_first_named_teams_home_games(gl_con: TemplateContext) -> None:
+    """ "lakers vs mavs record last 10 home games played" - `venue` used to be
+    refused outright. The fixture's two meetings split one home, one away for
+    the Knicks (named first); "home" keeps only their home game."""
+    result = head_to_head(gl_con, {"teams": ["Knicks", "Celtics"], "season": current_season(), "venue": "home"})
+    assert result.data["games"] == 1
+    assert "New York Knicks" in (result.answer or "") and "home games" in (result.answer or "")
+
+
+def test_head_to_head_venue_possessive_drops_the_extra_s(gl_con: TemplateContext) -> None:
+    """ "New York Knicks's" reads as a typo - most team names already end in
+    "s" (Celtics, Warriors, Nets...), so the possessive is just an apostrophe."""
+    answer = head_to_head(gl_con, {"teams": ["Knicks", "Celtics"], "season": current_season(), "venue": "home"}).answer or ""
+    assert "New York Knicks' home games" in answer
+    assert "Knicks's" not in answer
+
+
+def test_head_to_head_narrows_to_the_first_named_teams_road_games(gl_con: TemplateContext) -> None:
+    result = head_to_head(gl_con, {"teams": ["Knicks", "Celtics"], "season": current_season(), "venue": "away"})
+    games = result.data["games"]
+    assert games == 1
+    # The Knicks' one road game in the fixture (2026-04-12) was a loss.
+    assert result.data["wins"]["New York Knicks"] == 0
+
+
+def test_head_to_head_venue_is_said_in_the_answer_not_silently_applied(gl_con: TemplateContext) -> None:
+    """Honoring a scoping slot means filtering by it AND saying so - a table
+    with fewer rows and no note reads exactly like the whole-season answer."""
+    answer = head_to_head(gl_con, {"teams": ["Knicks", "Celtics"], "season": current_season(), "venue": "home"}).answer or ""
+    assert "home games" in answer
+
+
+def test_head_to_head_filters_an_exact_calendar_date(gl_con: TemplateContext) -> None:
+    """ "celtics record vs sixers on november 11" - a date names its game
+    outright, the same way it does for game_log."""
+    result = head_to_head(gl_con, {"teams": ["Knicks", "Celtics"], "date": "2026-04-12"})
+    assert result.data["games"] == 1
+    assert "on 2026-04-12" in (result.answer or "")
+
+
+def test_head_to_head_date_is_not_scoped_to_a_named_season(gl_con: TemplateContext) -> None:
+    """A date pins one exact game, so - like game_log's own `date` - it is not
+    additionally filtered to "the current season": a season from a year the
+    game was not actually played in must not hide it."""
+    result = head_to_head(gl_con, {"teams": ["Knicks", "Celtics"], "date": "2026-04-12", "season": 1999})
+    assert result.data["games"] == 1
+
+
+def test_head_to_head_no_game_on_that_date_is_reported_honestly(gl_con: TemplateContext) -> None:
+    result = head_to_head(gl_con, {"teams": ["Knicks", "Celtics"], "date": "2026-04-11"})
+    assert result.data["games"] == 0
+    assert "no games" in (result.answer or "").lower()
+    assert "on 2026-04-11" in (result.answer or "")
+
+
+def test_head_to_head_plain_wording_is_unchanged_by_the_venue_and_date_additions(gl_con: TemplateContext) -> None:
+    """The existing (no venue, no date) sentence must read exactly as it did
+    before - a regression on wording nobody asked to change."""
+    answer = head_to_head(gl_con, {"teams": ["Knicks", "Celtics"], "season": current_season()}).answer or ""
+    assert answer == f"The New York Knicks and the Boston Celtics met 2 times in the {current_season()} regular season, splitting them 1-1."
+
+
 def test_team_quarter_points_reads_each_games_own_side_of_linescores(tq_con: TemplateContext) -> None:
     """Regression: "how many points did the 76ers score in the 4th quarter
     against Boston this season?" forced the router's _AGENT_ONLY override to
@@ -2810,6 +2872,54 @@ def test_a_narrowed_question_carries_the_box_score_floor() -> None:
     assert check_coverage("player_stat", {"player": "Michael Jordan", "season": 1990, "season_type": 2}) is None
     assert check_coverage("player_stat", {"player": "Michael Jordan", "season": 1990, "season_type": 2, "opponent": "New York Knicks"}) is not None
     assert check_coverage("game_log", {"player": "Michael Jordan", "season": 1990, "season_type": 2}) is not None
+
+
+# ---------------- player_matchup with a team opponent, not a second player ----------------
+
+
+def test_player_matchup_with_one_name_and_a_team_opponent_answers_like_game_log(pg_ctx: TemplateContext) -> None:
+    """ "sam hauser v mil", "julius randle stats vs blazers with minnestota" and
+    "Curry vs dallas last q0 games" all reach player_matchup with one name and
+    a team `opponent` - router._route_matchup_against_team cannot see the
+    player name entities.scope_from_question restores after it runs, so the
+    intent stays player_matchup. This used to refuse `opponent` outright; it
+    now answers exactly what game_log would for the same slots."""
+    slots = {"player": "Brandin Podziemski", "opponent": "Detroit Pistons"}
+    matchup = player_matchup(pg_ctx, slots)
+    log = game_log(pg_ctx, dict(slots))
+    assert matchup.answer == log.answer
+    assert matchup.data == log.data
+    assert matchup.data["games"]  # the fixture has real Podziemski-vs-Pistons games
+
+
+def test_player_matchup_falls_back_from_a_single_element_players_list_too(pg_ctx: TemplateContext) -> None:
+    """The router sometimes fills `players` rather than `player` even with one
+    name in it - the fallback has to read both, the same way the two-player
+    path already merges them."""
+    matchup = player_matchup(pg_ctx, {"players": ["Brandin Podziemski"], "opponent": "Detroit Pistons"})
+    log = game_log(pg_ctx, {"player": "Brandin Podziemski", "opponent": "Detroit Pistons"})
+    assert matchup.answer == log.answer
+
+
+def test_player_matchup_refuses_a_real_two_player_matchup_with_a_leftover_opponent(pg_ctx: TemplateContext) -> None:
+    """check_scope now lets `opponent` through for player_matchup, to let the
+    fallback above run - a genuine two-player matchup has no third team to
+    narrow the meetings by, so it has to refuse it itself rather than silently
+    answer the whole matchup."""
+    with pytest.raises(TemplateUnsupported):
+        player_matchup(pg_ctx, {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons"})
+
+
+def test_check_scope_lets_player_matchup_honor_a_team_opponent(pg_ctx: TemplateContext) -> None:
+    check_scope("player_matchup", {"player": "Brandin Podziemski", "opponent": "Detroit Pistons"})
+
+
+def test_check_scope_still_refuses_player_matchup_on_an_unhonored_slot(pg_ctx: TemplateContext) -> None:
+    """`opponent` being honored must not quietly let other scoping slots
+    through too - "oubre vs warriors without embiid" still has a `without`
+    check_scope catches before the handler ever runs."""
+    with pytest.raises(TemplateUnsupported, match="different span"):
+        check_scope("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons", "without": ["Seth Curry"]})
 
 
 # ---------------- a narrowed reading over a whole empty-box-score season (#72) ----------------
