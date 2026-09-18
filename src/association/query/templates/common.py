@@ -160,7 +160,10 @@ TEMPLATE_SOURCES: dict[str, tuple[str, ...]] = {
     # The season line by default and box scores once the question narrows the
     # games, so _sources_for picks per question: a 1990 season line is
     # answerable, and a 1990 line against one opponent is not.
-    "player_stat": ("player_season_stats_deduped", "player_game_log", "player_box_stats", "games"),
+    # player_season_advanced_stats is the third case: a computed stat (true
+    # shooting, effective FG%, usage, game score) is answered from it alone,
+    # and it reaches back only to 1994 where the season line reaches 1977.
+    "player_stat": ("player_season_stats_deduped", "player_game_log", "player_box_stats", "games", "player_season_advanced_stats"),
     "player_compare": ("player_season_stats_deduped",),
     "player_history": ("player_season_stats_deduped",),
     "player_netpoints": ("net_points_player", "net_points_player_fingerprint"),
@@ -287,13 +290,32 @@ _BOX_SCORE_SCOPING = ("opponent", "venue", "without")
 _PLAYER_BOX_SOURCES = ("player_game_log", "player_box_stats", "games")
 
 
+# The computed advanced stats live in their own table with its own floor, and
+# `player_stat` answers them from it. Named here rather than imported from the
+# template, which imports this module.
+_ADVANCED_STAT_NAMES = frozenset({"ts_pct", "efg_pct", "usage_pct", "game_score"})
+
+
+def _sources_for_player_stat(slots: dict[str, Any]) -> tuple[str, ...]:
+    """The table one player's numbers would come from.
+
+    An advanced stat is charged its own floor (1994, from box scores) rather
+    than the season line's (1977): "Kareem's true shooting in 1980" is refused
+    because that stat is not computed that far back, and refusing it in the
+    season line's words would name a floor the question does not depend on.
+    """
+    if isinstance(slots.get("stat"), str) and slots["stat"] in _ADVANCED_STAT_NAMES:
+        return ("player_season_advanced_stats",)
+    return _PLAYER_BOX_SOURCES if any(slots.get(s) for s in _BOX_SCORE_SCOPING) else ("player_season_stats_deduped",)
+
+
 def _sources_for(intent: str, slots: dict[str, Any]) -> tuple[str, ...]:
     """The tables an answer would be built from, resolved per question because
     a leaderboard's depends on which metric was asked for."""
     if intent == "game_log":
         return _sources_for_game_log(slots)
     if intent == "player_stat":
-        return _PLAYER_BOX_SOURCES if any(slots.get(s) for s in _BOX_SCORE_SCOPING) else ("player_season_stats_deduped",)
+        return _sources_for_player_stat(slots)
     if intent in ("player_splits", "streak"):
         return _sources_for_splits_or_streak(intent, slots)
     if intent == "team_record":

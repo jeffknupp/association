@@ -198,6 +198,39 @@ LEADERBOARD_METRICS: dict[str, LeaderboardMetric] = {
         default_min_sample=20,
         requires="warehouse rebuilt with `association data load` after player_box_stats was fetched",
     ),
+    # Hollinger's single-game composite, already computed per game and averaged
+    # per season by `fetch/advanced_stats.py`. It was reachable only by the SQL
+    # agent (`prompt.py` names it) and by nothing on the fast path, so "game
+    # score nba leader" was answered with POINTS PER GAME - a different metric,
+    # printed as fluently as the right one. That is the substitution this
+    # project refuses everywhere else, and it is what this entry closes.
+    #
+    # Qualified on games like every other per-game average, not left
+    # unqualified: measured over 1994-2026, 28 season boards are led by a
+    # player with under 20 games and ALL 28 are postseasons, where a short run
+    # is the format rather than a fluke - which is exactly the split
+    # PER_GAME_MIN_POSTSEASON_GAMES already encodes. At 5 games the postseason
+    # board loses the ones that are really small-sample (Kawhi Leonard's 2
+    # games leading 2023, Charles Barkley's 4 in 1996 and 1999, Tracy
+    # McGrady's 4 in 2001) and keeps the rest. No REGULAR-season board is led
+    # from under 20 games in any season on record, so that floor is there for
+    # consistency with the other per-game metrics rather than to correct
+    # anything measured.
+    #
+    # No `career`, for the same reason usage and true shooting have none: the
+    # career SQL multiplies a per-game column back out by `t.gamesPlayed`
+    # (`leaderboard._career_value`), which is player_season_stats' spelling of
+    # that column and does not exist on this table.
+    "avg_game_score": LeaderboardMetric(
+        table="player_season_advanced_stats",
+        column="avg_game_score",
+        label="game score",
+        extra_columns=("games_played",),
+        min_sample_column="games_played",
+        default_min_sample=PER_GAME_MIN_GAMES,
+        postseason_min_sample=PER_GAME_MIN_POSTSEASON_GAMES,
+        requires="warehouse rebuilt with `association data load` after player_box_stats was fetched",
+    ),
     # The two shooting percentages qualify on ATTEMPTS, each on its own
     # denominator, not on games. Twenty games let Kai Jones top 2025's true
     # shooting at .804 on 109 shots, with Patrick Baldwin Jr.'s 35 third.

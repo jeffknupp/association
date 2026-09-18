@@ -14,6 +14,42 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
+## Unreleased
+- **A stat the system can rank is now one it can also look up.** True shooting,
+  effective FG%, usage rate and game score are computed from box scores by
+  `fetch/advanced_stats.py` and have been rankable since 2.1.0, but
+  `player_stat` knew only ESPN's own columns and refused them as unknown - so
+  "kevin durant true shooting percentage career", with the router emitting
+  `stat="ts_pct"` correctly, fell through to the agent with "no per-game column
+  for stat 'ts_pct'". One concept carrying two vocabularies, each half correct
+  on its own, which is why nothing caught it. `ADVANCED_STATS` is now the
+  lookup half, and a test asserts the two lists still name the same set.
+
+  Three things the career figure does that a first cut would not. It is
+  **weighted by the stat's own denominator** - true shooting by true-shooting
+  attempts, effective FG% by field-goal attempts - never averaged across
+  seasons, which is the discipline the shooting percentages already state;
+  usage and game score have no such denominator, so they answer for a season
+  and **refuse a career** rather than report a mean of means. It **excludes the
+  phantom 1993**, which is a copy of 1994 and would otherwise be counted twice.
+  And it **says which seasons it could not see**: ESPN serves whole
+  team-seasons of empty box scores from 2013 to 2018, so Jimmy Butler's 2013,
+  2014, 2015 and 2017 carry games played, zero attempts and a NULL rate - an
+  unfiltered answer credited his career rate with 290 games it never saw and
+  named a span it did not cover.
+
+  An advanced stat is also charged **its own coverage floor** (1994, from box
+  scores) rather than the season line's (1977), so "Kareem's true shooting in
+  1980" is refused in the words of the table the question actually depends on.
+  A question that narrows the games (`opponent`, `venue`, `without`) is refused
+  with that as its stated cause rather than answered with the season figure.
+- **`game score` is a leaderboard metric.** `avg_game_score` was computed, stored
+  and named to the SQL agent, and reachable by nothing on the fast path. It
+  carries the same games qualifiers as every other per-game average: measured
+  over 1994-2026, 28 season boards are led by a player under 20 games and all
+  28 are postseasons, where the 5-game floor drops the genuinely small samples
+  (Kawhi Leonard's 2 games leading 2023) and keeps the rest.
+
 ## 4.2.0 - 2026-09-18
 - **A NetPoints name ESPN spells with a generational suffix, or hyphenates
   differently, now matches too.** `match_key` reduces both sides to a

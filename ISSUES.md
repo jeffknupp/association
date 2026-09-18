@@ -46,8 +46,37 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
-Empty. The 391 date-only games printed a day early (#76), 2008's team rebound
-columns (#74) and the swapped 1990 Finals Game 5 were fixed on 2026-09-16. Before declaring this section empty,
+### "game score" is answered with points per game, because the router substitutes a stat it knows
+- **Found:** 2026-09-18, while making the computed advanced stats lookup-able
+- **Evidence:** in the StatMuse replay corpus
+  (`~/association-research/statmuse-2026-09/fastpath_after_rows_graded.jsonl`),
+  "game score nba leader" arrives at `leaderboard` with `stat: 'points'` - not
+  with an unknown stat, and not with no stat. `stat` is a REQUIRED slot in
+  `ROUTER_SCHEMA`, so the decoder fills it with the nearest value it knows, and
+  "game score" is not one of them. The answer is "Luka Doncic led the league in
+  points per game in the 2026 regular season (minimum 20 games), at 33.5" -
+  correct about points, and not what was asked. Game Score is Hollinger's
+  single-game composite and it is a different ranking (`avg_game_score` for
+  2026: Jokic 28.7, Doncic 26.4, Gilgeous-Alexander 26.4).
+- **User sees:** a fluently wrong answer, with no sign anything was
+  substituted. This is the failure shape at the top of `AGENTS.md`, arriving
+  through a required slot rather than through a template.
+- **Next step:** the metric half is now done - `avg_game_score` is in
+  `LEADERBOARD_METRICS` with its games qualifiers. What is left is routing, and
+  it must NOT be a `ROUTER_PROMPT` edit (that moves slots on unrelated
+  questions and cannot be measured without ollama). Read "game score" off the
+  question text in `route()`, the way `_validate_side` reads the side of the
+  ball, and prove the model's input is unchanged by hashing `ROUTER_PROMPT` and
+  `ROUTER_SCHEMA` before and after. Then re-run `scripts/check_routing.py` and
+  the full `fastpath_feed.py` replay - `replay_recorded_routes.py` cannot see a
+  `router.py` change, because it replays recorded slots.
+- **Note:** the same substitution is worth checking for every stat name the
+  router does not know. "ats okc" and "players with the highest scoring triple
+  doubles" are graded `wrong metric` in the same corpus.
+
+### Where the old P1s went
+The 391 date-only games printed a day early (#76), 2008's team rebound
+columns (#74) and the swapped 1990 Finals Game 5 were fixed on 2026-09-16. Before adding to this section,
 re-read the P2s against the P1 definition: that is how both of those were
 found.
 
@@ -1358,6 +1387,63 @@ found.
 - **GitHub:** #77
 
 ## P4: tooling, docs, low impact
+
+### Plus/minus can be neither ranked nor looked up, though the data is complete
+- **Found:** 2026-09-18, while making the computed advanced stats lookup-able
+- **Evidence:** "nba leaders in plus minus in 25-26" routes to `leaderboard`
+  with `stat: 'plus_minus'` - the router names it correctly - and falls through
+  with "no leaderboard metric for stat 'plus_minus'". The data is there and is
+  complete where it matters: **0 of 860,230 `player_box_stats` rows with real
+  minutes have a NULL `plusMinus`** (measured read-only against
+  `nba.duckdb`, 2026-09-18), confirming `DATA.md`'s corrected note that the
+  NULLs are a strict subset of the did-not-play rows. Summed for 2026 it gives
+  a sensible board: Gilgeous-Alexander +788, Holmgren +678, Wembanyama +664.
+- **User sees:** a fall-through to the agent on a stat people ask about often.
+- **Next step:** unlike true shooting, this has no season-level table to rank -
+  `player_season_stats` has no `plusMinus` column, and every
+  `LeaderboardMetric` names a pre-aggregated table. It needs a derived season
+  aggregate in `fetch/warehouse.py` (summed from `player_box_stats` over rows
+  with real minutes, so the did-not-play rows cannot pull it toward zero), a
+  `COVERAGE` entry, and then a metric. That is a warehouse change and wants a
+  `data load` after it. **Do not** use `team_season_stats.plusMinus`, which
+  `DATA.md` records as an ESPN placeholder (-1.0 on 828 of 1,503 rows).
+- **Source:** DATA.md, "NULL minutes mean \"did not appear\", and NULL
+  `plusMinus` is a subset of them"
+
+### No metric on `player_season_advanced_stats` can have a career ranking
+- **Found:** 2026-09-18, while adding `avg_game_score` as a leaderboard metric
+- **Evidence:** `leaderboard.py:490` builds a weighted career value as
+  `SUM(t.{numerator} * t.gamesPlayed) / NULLIF(SUM(t.gamesPlayed) ...)`, and
+  `t.gamesPlayed` is `player_season_stats`' spelling of that column. The
+  advanced table calls it `games_played`, so a `CareerAggregate` on any metric
+  reading it would generate SQL against a column that does not exist. The
+  `LeaderboardMetric` docstring explains the missing careers for usage and true
+  shooting as "they need team context the season rows do not carry", which is a
+  real argument for usage and not the reason the code could not do it anyway.
+- **User sees:** nothing today - `ts_pct`, `efg_pct`, `usage_pct` and
+  `avg_game_score` all have `career=None`, so no career ranking is offered
+  rather than offered and broken. It is a ceiling, not a bug.
+- **Next step:** if a career game-score or true-shooting ranking is ever
+  wanted, take the games column from the metric rather than hardcoding it
+  (`LeaderboardMetric.min_sample_column` already names it for both tables), and
+  correct the docstring's stated reason at the same time.
+
+### A career advanced rate counts a season ESPN served almost, but not entirely, empty
+- **Found:** 2026-09-18, while adding the career true-shooting figure
+- **Evidence:** the new career answer excludes seasons whose rate is NULL and
+  says how many it left out, which covers the fully-empty 2013-2018
+  team-seasons. A season ESPN served *partly* is not caught: Jimmy Butler's
+  2016 has 67 games played and **18.32 true-shooting attempts** at .710, so it
+  counts as a season that is present, contributes 18 of his 8,606 career
+  attempts, and adds its 67 games to the "in 641 games" the answer prints.
+- **User sees:** a career games count that is slightly overstated - 641 where
+  the rate really rests on about 574. The rate itself is unaffected to three
+  decimals, because it is weighted by attempts and 18 of 8,606 is noise.
+- **Next step:** decide whether a per-season attempt floor belongs inside a
+  career sum at all. It probably reads better as a second clause on the same
+  sentence ("and 1 more is nearly empty") than as a silent exclusion, since
+  excluding it would make the games count right and the attempt count wrong.
+
 
 ### The header status line still states coverage as a single misleading range, beside a correct one
 - **Found:** 2026-09-18, while fixing #71 (the web page never says what data

@@ -770,6 +770,53 @@ percentage, so a season, a career and a set of games are all the same sum.
 """
 
 
+@dataclass(frozen=True)
+class _AdvancedStat:
+    """One of the stats computed from box scores rather than served by ESPN.
+
+    ``column`` is its name in ``player_season_advanced_stats``; ``label`` is how
+    the sentence says it; ``weight`` is the volume column a career is weighted
+    by, with ``volume`` naming it in prose, and ``None`` means the stat has no
+    career answer.
+    """
+
+    column: str
+    label: str
+    weight: str | None
+    percentage: bool
+    volume: str = ""
+
+
+# These were RANKABLE and not LOOKUP-ABLE, which is one concept carrying two
+# vocabularies. `leaderboard` has ranked true shooting, effective FG% and usage
+# since 2.1.0, and the router emits their names correctly - "kevin durant true
+# shooting percentage career" arrives with `stat="ts_pct"` - but `player_stat`
+# knew only PLAYER_STAT_COLUMNS and refused it with "no per-game column for
+# stat 'ts_pct'". A stat the system can rank is one it should be able to look
+# up, and the gap was invisible because each half was correct on its own.
+#
+# A career is weighted by the stat's OWN denominator, never averaged across
+# seasons - the discipline SHOOTING_STATS already states. TS% weighted by true
+# shooting attempts is exact, because a season's ts_pct times its attempts IS
+# that season's points over two; the same holds for eFG% over field-goal
+# attempts. Usage and game score have no such denominator (usage is a rate per
+# possession while on court, and weighting it by games is an approximation
+# nobody asked for), so they answer for a season and refuse a career rather
+# than quietly reporting a mean of means. That is the same line
+# `metrics.LeaderboardMetric.career` draws for the ranking.
+ADVANCED_STATS: dict[str, _AdvancedStat] = {
+    "ts_pct": _AdvancedStat("ts_pct", "true shooting percentage", "true_shooting_attempts", percentage=True, volume="true-shooting attempts"),
+    "efg_pct": _AdvancedStat("efg_pct", "effective field goal percentage", "field_goals_attempted", percentage=True, volume="field-goal attempts"),
+    "usage_pct": _AdvancedStat("usage_pct", "usage rate", None, percentage=False),
+    "game_score": _AdvancedStat("avg_game_score", "game score", None, percentage=False),
+}
+"""The computed advanced stats ``player_stat`` can look up, mapped to how each
+one reads and how it adds up over a career.
+
+.. versionadded:: 4.3.0
+"""
+
+
 # A career per-game figure is the career total over career games, never an
 # average of season averages. Rebounds' total column is named differently from
 # the per-stat key; minutes have none, and are weighted by games instead.
@@ -852,6 +899,14 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         raise TemplateUnsupported("a player's numbers over a limited set of games is a game_log question")
 
     stat = slots.get("stat")
+    # Before the ESPN-served columns, because these carry their own table, their
+    # own floor and their own career arithmetic - and because _wanted_stats
+    # would otherwise refuse them as unknown, which is how "kevin durant true
+    # shooting percentage career" fell through while the leaderboard ranked the
+    # same stat happily.
+    if isinstance(stat, str) and stat in ADVANCED_STATS:
+        return _player_stat_advanced(con, player, span, stat, from_box_scores)
+
     shooting = SHOOTING_STATS.get(stat) if isinstance(stat, str) else None
     wanted = [] if shooting else _wanted_stats(slots)
 
@@ -863,6 +918,15 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     if span.career:
         return _career_player_stat(con, player, span, wanted, shooting)
 
+    return _season_player_stat(con, player, span, season_type, wanted, shooting)
+
+
+def _season_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, season_type: int, wanted: list[str], shooting: tuple[str, str, str, str] | None) -> TemplateResult:
+    """One season's line, read from the deduplicated season table.
+
+    Split out of ``player_stat`` so that function stays inside the complexity
+    gate; the steps are in the order they were, and each keeps its comment.
+    """
     season = span.season or current_season()
     columns = ["gamesPlayed"]
     for name in wanted:
@@ -937,6 +1001,100 @@ def _career_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span: _S
     return TemplateResult(
         data={"player": player.name, **scope, "stats": values},
         answer=_phrase_player_stat(player.name, f"career {span.kind}s", values, wanted, when=when),
+    )
+
+
+def _player_stat_advanced_value(spec: _AdvancedStat, value: Any) -> str:
+    """One advanced figure as the sentence prints it.
+
+    A percentage is printed as a three-decimal fraction (``.622``), the way a
+    shooting line reads, because these are stored as 0-1 fractions; usage is
+    already a 0-100 rate and game score is a raw composite, so both take one
+    decimal."""
+    if spec.percentage:
+        return f"{float(value):.3f}".lstrip("0")
+    return f"{float(value):.1f}"
+
+
+def _player_stat_advanced_gap(missing: int, spec: _AdvancedStat) -> str:
+    """What a career figure says about the seasons it could not see.
+
+    Silence here would be the failure this project keeps producing: a precise
+    number over a span it does not actually cover, printed as fluently as a
+    complete one. The seasons are not scattered games - ESPN serves whole
+    team-seasons of empty box scores from 2013 to 2018 (``DATA.md``), and a
+    player who spent them on Chicago or New Orleans has nothing at all for
+    those years."""
+    if not missing:
+        return ""
+    subject = "season in that span is" if missing == 1 else "seasons in that span are"
+    them = "it" if missing == 1 else "them"
+    return f" {missing} {subject} not counted: ESPN's box scores for {them} are empty, so no {spec.label} can be computed from {them}."
+
+
+def _player_stat_advanced(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, stat: str, from_box_scores: bool) -> TemplateResult:
+    """One player's computed advanced stat, for a season or a career.
+
+    Read from ``player_season_advanced_stats``, which starts in 1994 and has
+    1993 as a phantom copy of it - a shorter reach than the season line this
+    template normally uses, so the span is rebuilt against that table rather
+    than inherited, and a career excludes the phantom by name.
+    """
+    spec = ADVANCED_STATS[stat]
+    if from_box_scores:
+        # The per-game figures exist (`player_advanced_stats`, and the same
+        # columns on `player_game_log`), so this is a gap rather than an
+        # impossibility - but narrowing them to an opponent, a venue or a
+        # teammate's absence is the machinery in _narrow_player_games, and
+        # answering a season line to a question that narrowed the games is the
+        # substitution this module exists to stop. Refused with its own cause.
+        raise TemplateUnsupported(f"{spec.label} over a narrowed set of games is not supported yet - it is computed per season")
+    if span.career and spec.weight is None:
+        raise TemplateUnsupported(f"{spec.label} has no career figure - it has no volume column to weight the seasons by, so a career would be a mean of means")
+    span = _span_of("career" if span.career else None, span.season, span.season_type, "player_season_advanced_stats") if span.career else span
+    where, params = span.clause("season")
+    if span.career:
+        assert spec.weight is not None
+        # Every figure but the last is filtered to the seasons that actually
+        # carry the stat, and the last counts the ones that do not. A season
+        # ESPN served empty has a row here with 0 attempts and a NULL rate
+        # (`player_season_advanced_stats` is summed from the STORED box scores,
+        # and 2013-2018 has whole team-seasons of empty ones) - so an
+        # unfiltered SUM(games_played) counts games the rate never saw, and an
+        # unfiltered MIN/MAX names a span the answer does not cover. Jimmy
+        # Butler is the worked example: 2013, 2014, 2015 and 2017 are empty,
+        # and a career "2012-2026" over 824 games was really 12 seasons over
+        # 534. See `_player_stat_advanced_gap`.
+        have = f"{spec.column} IS NOT NULL"
+        selects = (
+            f"SUM({spec.column} * {spec.weight}) / NULLIF(SUM({spec.weight}), 0), SUM({spec.weight}), "
+            f"SUM(games_played) FILTER (WHERE {have}), MIN(season) FILTER (WHERE {have}), MAX(season) FILTER (WHERE {have}), "
+            f"COUNT(*) FILTER (WHERE {have}), COUNT(*) FILTER (WHERE NOT {have})"
+        )
+    else:
+        selects = f"{spec.column}, NULL, games_played, season, season, 1, 0"
+    row = con.execute(
+        f"SELECT {selects} FROM player_season_advanced_stats WHERE athlete_id = ? AND season_type = ? AND {where}",
+        [player.id, span.season_type, *params],
+    ).fetchone()
+
+    when = span.during(row[3], row[4]) if row and row[0] is not None else span.during()
+    if row is None or row[0] is None:
+        return TemplateResult(
+            data={"player": player.name, "stat": stat, "stats": {}},
+            answer=f"{player.name} has no {spec.label} on record {when} - it is computed from box scores, which start in 1994.",
+        )
+    value, volume, games, first, last, seasons, missing = row
+    printed = _player_stat_advanced_value(spec, value)
+    # The volume goes in the sentence for the same reason a shooting line
+    # carries its attempts: a rate without it is the thing people ask "out of
+    # how many?" about.
+    behind = f" on {int(volume):,} {spec.volume}" if volume is not None and spec.volume else ""
+    scope: dict[str, Any] = {"span": "career", "seasons": [first, last], "season_count": seasons} if span.career else {"season": first}
+    sentence = f"{player.name} has a {printed} {spec.label} {when}{behind}, in {int(games):,} games." if games else f"{player.name} has a {printed} {spec.label} {when}{behind}."
+    return TemplateResult(
+        data={"player": player.name, "stat": stat, **scope, "stats": {spec.column: value, "games_played": int(games) if games is not None else None}, "seasons_missing": int(missing)},
+        answer=sentence + _player_stat_advanced_gap(int(missing), spec),
     )
 
 
