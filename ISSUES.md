@@ -1291,49 +1291,31 @@ found.
   page, and add a test with a session that answers 400.
 - **GitHub:** #90
 
-### A regular-season BPI question answers from the play-in snapshot in 2023, 2025 and 2026
-- **Found:** 2026-09-15, reviewing `4ef119f` before merging it; **re-ranked P3 -> P4 on 2026-09-16** - the answer is correct and says which snapshot it read
-- **Evidence:** now that the paging fix gives every snapshot 30 teams, the
-  play-in snapshot holds the team too, so `team_outlook`'s `pre` list (season
-  types 1, 2 and 5) is ordered by date and `candidates[-1]` takes the latest.
-  Measured read-only: the play-in stamp postdates the regular-season one in
-  2023 (04-15 vs 04-10), 2025 (04-19 vs 04-14) and 2026 (04-18 vs 04-13), but
-  not in 2024, whose regular-season snapshot is stamped 2024-06-28. Before the
-  paging fix the 13-team play-in snapshot simply did not hold most teams and
-  lost by default.
-- **User sees:** a correct, clearly labeled answer - but the same question
-  names a different snapshot depending on the season, and "how good were the
-  Knicks in the 2026 regular season" is answered from the play-in view.
-- **Next step:** decide whether `season_type=2` should prefer the
-  regular-season snapshot outright rather than the latest pre-playoff one, and
-  pin whichever it is with a test. It is a deliberate choice either way; today
-  nothing records that it was made.
-- **Source:** DATA.md, "ESPN's power index is a paged collection, and holds all
-  30 teams"
-- **GitHub:** #88
-
-### The BPI preseason tiebreak cannot be perturbation-tested through the template
-- **Found:** 2026-09-15, reviewing `4ef119f` before merging it
-- **Evidence:** `scripts/perturb.py` against
-  `tests/query/test_team_templates.py`: **removing** the
-  `CASE season_type WHEN {BPI_PRESEASON} THEN 0 ELSE 1 END` from
-  `query/templates/teams.py` is MISSED (62 passed, exit 0), while **reversing**
-  it to `THEN 1 ELSE 0` is CAUGHT by
-  `test_a_same_dated_preseason_snapshot_never_wins_the_regular_season_question`.
-  The reason it cannot be tested is the useful part: the `CASE` maps preseason
-  to 0 and every other type to 1, and DuckDB already emits the groups in
-  ascending `season_type`, so the guard agrees with the engine's incidental
-  order for *every* possible pair. Reordering the fixture's inserts was tried
-  and changes nothing.
-- **User sees:** nothing. The guard is correct and worth keeping - it defends
-  against an ordering DuckDB does not promise - but it is unprotected, so a
-  later refactor can drop it silently. `4ef119f`'s message says "Five
-  perturbations, each watched to fail", which is not true of this one; the
-  test's docstring now records that.
-- **Next step:** either accept it as untestable-by-construction (the docstring
-  is then the record), or make the ordering explicit in Python where a test can
-  reach it, rather than leaving the decision inside an `ORDER BY`.
-- **GitHub:** #92
+### The 2026 regular-season power index snapshot carries no BPI rating for any team
+- **Found:** 2026-09-18, while fixing #88 below
+- **Evidence:** measured read-only against the live warehouse: every
+  `(season, season_type)` group `team_power_index` holds except one has zero
+  NULL `bpi`; `season=2026, season_type=2` (stamped `2026-04-13T09:43Z`) has
+  all 30 team rows NULL in `bpi`, `bpioffense` and `bpidefense`, while the same
+  rows' win/loss, projected record, playoff/title chances and
+  strength-of-schedule columns are all populated. See DATA.md, "ESPN's power
+  index is a paged collection, and holds all 30 teams", for the full query and
+  numbers.
+- **User sees:** now that a regular-season question reads the regular-season
+  snapshot outright (the fix below), "how good were the Knicks in the 2026
+  regular season" answers from this snapshot - record, projection, chances and
+  strength of schedule all print, but the BPI rating line is silently absent
+  (`_team_outlook_bpi_line` returns `None` on a `None` bpi, by design, with no
+  caveat saying a rating is missing). The same question read the 2026 play-in
+  snapshot before the fix below, which does carry a BPI rating - so this one
+  season's answer is measurably shorter than it was yesterday, in exchange for
+  reading the snapshot actually asked about.
+- **Next step:** say a rating is missing from an otherwise data-bearing
+  snapshot, the way `_team_outlook_missing` already names what is missing
+  rather than saying "no data" - and check whether a refetch of 2026 fills in
+  `bpi`, the way `scripts/backfill_power_index.py` fixed the paging fault.
+- **Priority:** P3 - nothing false is said, and only one season's BPI rating is
+  affected, but the omission has no caveat.
 
 ### The "postseason copy" rule is written twice
 - **Found:** 2026-09-15, issues audit (P4 data/query auditor)

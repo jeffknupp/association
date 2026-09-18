@@ -463,6 +463,18 @@ def test_a_same_dated_preseason_snapshot_never_wins_the_regular_season_question(
     reversal is caught. ISSUES.md ("The BPI preseason tiebreak cannot be
     perturbation-tested through the template") records the gap, so the next
     reader does not mistake a passing test here for a watched-to-fail guard.
+
+    A regular-season question now reads a regular-season snapshot outright
+    (ISSUES.md #88, and the fixture-based guard is
+    `test_a_regular_season_question_reads_the_regular_season_snapshot_even_when_a_play_in_one_is_later`
+    below) - `team_outlook` finds `season_type == 2` directly rather than by
+    comparing dates, so this fixture's answer no longer depends on ordering at
+    all for the preseason/regular pair specifically. It is kept because it
+    still pins the *observable* outcome (a same-dated preseason snapshot never
+    wins), and the ordering it was written to test remains live for a pairing
+    this fixture does not cover - two non-regular, non-postseason snapshots
+    (preseason and play-in) tied on date with no regular-season snapshot at
+    all, which no season in the warehouse has today.
     """
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR, location VARCHAR, name VARCHAR)")
@@ -480,6 +492,81 @@ def test_a_same_dated_preseason_snapshot_never_wins_the_regular_season_question(
     answer = team_outlook(TemplateContext(con=c, out_dir=tmp_path), {"team": "Knicks", "season": 2018}).answer or ""
     assert "regular-season snapshot" in answer
     assert "BPI +1.5" in answer, "the preseason rating (-2.5) was chosen on a date tie"
+
+
+def test_a_same_dated_preseason_and_play_in_snapshot_favors_play_in_with_no_regular_season_snapshot(tmp_path: Path) -> None:
+    """Keeps the SQL tiebreak's *own* guard alive.
+
+    Preferring a direct `season_type == 2` match (added for #88, see the test
+    above) makes `test_a_same_dated_preseason_snapshot_never_wins_the_regular_season_question`
+    pass regardless of the `CASE season_type WHEN {BPI_PRESEASON} ...` ordering
+    in `team_outlook`'s SQL - `next()` finds the one `season_type == 2` row no
+    matter where it sorts. Measured with `scripts/perturb.py`: reversing that
+    `CASE` is now MISSED through that test where it used to be CAUGHT, because
+    a season with both a preseason and a regular-season snapshot never reaches
+    the tiebreak's `pre`/`post` lists at all any more.
+
+    The tiebreak's only live pairing left is two non-regular, non-postseason
+    snapshots - preseason and play-in - tied on date with **no** regular-season
+    snapshot to short-circuit past it. No season in the warehouse has that
+    shape today, but the ordering exists to handle it deliberately rather than
+    by accident of `GROUP BY`'s incidental order, and this fixture is what
+    would have to be true for date order alone to decide between them.
+    """
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR, location VARCHAR, name VARCHAR)")
+    c.execute("INSERT INTO teams VALUES ('18','NY','New York Knicks','New York','Knicks')")
+    c.execute(
+        "CREATE TABLE team_power_index (season BIGINT, season_type BIGINT, team_id VARCHAR, last_updated VARCHAR, bpi DOUBLE, bpioffense DOUBLE, bpidefense DOUBLE, "
+        "numwins DOUBLE, numlosses DOUBLE, projectedw DOUBLE, projectedl DOUBLE, probmakeplayoffs DOUBLE, probmakeconfchamp DOUBLE, probmaketitlegame DOUBLE, "
+        "probwintitle DOUBLE, sosoverall DOUBLE, sosoverallrank DOUBLE)"
+    )
+    for season_type, bpi in ((1, -2.5), (5, 4.5)):
+        c.execute(
+            "INSERT INTO team_power_index VALUES (2027,?,'18','2027-04-15T00:00Z',?,0.5,0.5,31,51,31.2,50.8,0.0,0.0,0.0,0.0,0.49,12)",
+            [season_type, bpi],
+        )
+    answer = team_outlook(TemplateContext(con=c, out_dir=tmp_path), {"team": "Knicks", "season": 2027}).answer or ""
+    assert "play-in snapshot" in answer
+    assert "BPI +4.5" in answer, "the preseason rating (-2.5) was chosen on a date tie"
+
+
+def test_a_regular_season_question_reads_the_regular_season_snapshot_even_when_a_play_in_one_is_later(tmp_path: Path) -> None:
+    """The real bug (ISSUES.md #88), not the boundary case above.
+
+    Once the paging fix gave every power-index snapshot all 30 teams, the
+    play-in snapshot (season type 5) started **postdating** the regular-season
+    one - measured read-only against the live warehouse on 2026-09-17, this is
+    true for every season that has both: 2023 (04-15 vs 04-10), 2025 (04-19 vs
+    04-14) and 2026 (04-18 vs 04-13). A regular-season question ("how good were
+    the Knicks in the 2026 regular season") used to pick "the latest pre-
+    playoff snapshot", which is the play-in one in exactly those seasons -
+    answering a regular-season question from the play-in view, silently and
+    correctly-looking, because the answer still named the snapshot it read.
+
+    A regular-season question now reads the regular-season snapshot outright
+    whenever it holds the team, never comparing its date to any other
+    snapshot's. This fixture reproduces the real ordering (regular dated
+    *before* play-in) with two BPI values far enough apart that reading the
+    wrong one is unmistakable.
+    """
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR, location VARCHAR, name VARCHAR)")
+    c.execute("INSERT INTO teams VALUES ('18','NY','New York Knicks','New York','Knicks')")
+    c.execute(
+        "CREATE TABLE team_power_index (season BIGINT, season_type BIGINT, team_id VARCHAR, last_updated VARCHAR, bpi DOUBLE, bpioffense DOUBLE, bpidefense DOUBLE, "
+        "numwins DOUBLE, numlosses DOUBLE, projectedw DOUBLE, projectedl DOUBLE, probmakeplayoffs DOUBLE, probmakeconfchamp DOUBLE, probmaketitlegame DOUBLE, "
+        "probwintitle DOUBLE, sosoverall DOUBLE, sosoverallrank DOUBLE)"
+    )
+    # season_type 2 (regular), stamped first - the real 2023/2025/2026 order.
+    c.execute("INSERT INTO team_power_index VALUES (2026,2,'18','2026-04-13T09:43Z',6.9,3.2,3.7,53,29,53,29,100.0,42.0,21.5,7.2,0.503,14)")
+    # season_type 5 (play-in), stamped LATER, with a wildly different BPI so a
+    # misread is obvious rather than a coincidental match.
+    c.execute("INSERT INTO team_power_index VALUES (2026,5,'18','2026-04-18T02:23Z',99.9,50.0,49.9,53,29,53,29,100.0,42.0,21.5,7.2,0.503,14)")
+    answer = team_outlook(TemplateContext(con=c, out_dir=tmp_path), {"team": "Knicks", "season": 2026}).answer or ""
+    assert "regular-season snapshot" in answer
+    assert "BPI +6.9" in answer, "the later play-in snapshot (BPI +99.9) was read instead of the regular-season one"
+    assert "BPI +99.9" not in answer
 
 
 def test_the_outlook_names_its_snapshot_date_and_size(team_ctx: TemplateContext) -> None:

@@ -14,6 +14,21 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
+## Unreleased
+- **A regular-season BPI question now reads the regular-season power-index
+  snapshot outright**, instead of whichever pre-playoff snapshot ESPN stamped
+  last. Once the paging fix gave every snapshot all 30 teams, the play-in
+  snapshot (season type 5) started postdating the regular-season one in 2023,
+  2025 and 2026, so the same question named a different snapshot depending on
+  the season - "how good were the Knicks in the 2026 regular season" answered
+  from the play-in view. `team_outlook` (`query/templates/teams.py`) now finds
+  the `season_type == 2` snapshot directly and only falls back to the latest
+  other pre-playoff snapshot, then the postseason one, where no
+  regular-season snapshot holds the team - true of no season the warehouse
+  holds today (2017-2026), measured read-only. See `ISSUES.md`, "A
+  regular-season BPI question answers from the play-in snapshot in 2023, 2025
+  and 2026" (#88).
+
 ## 4.0.0 - 2026-09-17
 - The version directives on this release's new public symbols name 4.0.0, and
   the pinned install commands in `README.md`, `docs/installation.rst` and
