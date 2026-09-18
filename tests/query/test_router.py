@@ -968,6 +968,65 @@ def test_true_shooting_is_not_answered_as_three_point_percentage() -> None:
     assert got.slots["stat"] == "ts_pct"
 
 
+# ---------------- "game score" is not answered with points per game (ISSUES.md #114) ----------------
+
+
+def test_game_score_leaderboard_gets_the_leaderboard_spelling() -> None:
+    """Measured: "game score nba leader" arrived at leaderboard with
+    stat='points' and was answered with the points-per-game leaders - correct
+    about points, not about what was asked. `leaderboard` reads this metric
+    through metrics.LEADERBOARD_METRICS, keyed "avg_game_score"."""
+    got = _ask("game score nba leader", '{"intent":"leaderboard","stat":"points"}')
+    assert got.slots["stat"] == "avg_game_score"
+
+
+def test_game_score_player_stat_gets_the_player_stat_spelling() -> None:
+    """player_stat reads this metric through templates.players.ADVANCED_STATS,
+    keyed "game_score" with no prefix - a different spelling than leaderboard's,
+    because the two tables were built by different agents against different
+    conventions."""
+    got = _ask("kevin durant game score this season", '{"intent":"player_stat","player":"Kevin Durant","stat":"points"}')
+    assert got.slots["stat"] == "game_score"
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        # "score" alone means points everywhere else in basketball, and a loose
+        # match on it would hijack every one of these into a Game Score
+        # leaderboard - trading one fluently wrong answer for several.
+        "pacers score",
+        "what was the score of the game",
+        "Total points scored by the toronto raptors",
+        "least points scored by the wizards this season",
+        # The boundary after "score" is what rejects this one: "scored" is not
+        # "score" at a word boundary, even though "game" and "score" are only
+        # a few characters apart.
+        "2024 nba stephen curry double double per game scored on fridays",
+    ],
+)
+def test_game_score_pattern_does_not_fire_on_ordinary_scoring_language(question: str) -> None:
+    got = _ask(question, '{"intent":"leaderboard","stat":"points"}')
+    assert got.slots["stat"] == "points"
+
+
+def test_a_question_actually_about_points_still_emits_points() -> None:
+    """The guard has to leave the ordinary case alone, not just avoid the
+    near-miss ones above."""
+    got = _ask("who led the league in points per game", '{"intent":"leaderboard","stat":"points"}')
+    assert got.slots["stat"] == "points"
+
+
+def test_game_score_is_left_alone_outside_leaderboard_and_player_stat() -> None:
+    """player_compare reads a player's stat line through PLAYER_STAT_COLUMNS /
+    COMPARE_STAT_LINE, never ADVANCED_STATS - a "game_score" value there would
+    be silently unreadable rather than answered, so it is not set. The model's
+    own (wrong) guess is left in place, same as before this fix; that is a
+    pre-existing gap this task is scoped not to touch."""
+    got = _ask("compare durant and lebron in game score", '{"intent":"player_compare","players":["Kevin Durant","LeBron James"],"stat":"points"}')
+    assert got.slots.get("stat") == "points"
+
+
 def test_an_order_the_question_never_asked_for_is_dropped() -> None:
     got = _ask("evan mobley avg against bucks", '{"intent":"player_stat","player":"Evan Mobley","stat":"points","order":"recent","limit":1}')
     assert "order" not in got.slots and "limit" not in got.slots
