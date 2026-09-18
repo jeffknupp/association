@@ -14,6 +14,24 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
+## Unreleased
+- **The web page now reports `GET /api/coverage`, what the warehouse actually
+  holds grouped into the three tiers a question can land in** - box score, box
+  score plus play-by-play, and both of those plus NetPoints - and the page
+  renders it as a row of pills under the header. This replaces `/api/health`'s
+  single min/max season as the page's only claim about coverage, which read as
+  "the whole span is answerable" when only its narrowest table was (#71): a
+  2016 shot chart and a 2016 NetPoints fingerprint looked equally reasonable to
+  ask for, and only one of them was. Each tier's floor is read straight from
+  `association.nba.coverage.COVERAGE` - the same enforced table a template's
+  own refusal reads - rather than recomputed from row counts, so the page and
+  a refusal cannot say two different things about the same season; only how
+  far a tier's data currently reaches (`last_season`) is counted live, since no
+  floor records that. A season inside a tier's range but declared partial
+  there (2002's play-by-play, 2002-2003's shot chart) is marked rather than
+  shown as uniformly whole, and 1993 - ESPN's phantom copy of 1994 - is
+  excluded from the box score tier's range rather than offered.
+
 ## 4.0.1 - 2026-09-18
 - **A narrowed `game_log` or `player_stat` question over a season whose box
   scores ESPN served empty no longer says the games do not exist.** Both read

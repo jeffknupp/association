@@ -27,6 +27,11 @@ output_dir
 models
 ollama_ready
 
+# association/web/app.py, TierResponse (#71): pydantic response fields,
+# serialized by FastAPI and read as JSON by the page's coverage pills.
+partial_seasons
+phantom_seasons
+
 # association/query/answer.py: public API (versionadded 2.0.0) for callers that
 # dispatch on Artifact.kind; nothing in this repo needs to.
 ARTIFACT_KINDS

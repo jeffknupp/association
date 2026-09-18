@@ -1083,41 +1083,6 @@ found.
   a query every few seconds.
 - **GitHub:** #70
 
-### The web page never says what data the warehouse actually holds
-- **Found:** 2026-09-14, requested
-- **Evidence:** the page's only claim about coverage is the status line written
-  once at load - "3,043 games, 1994-2026" - built from `/api/health`, whose
-  `_warehouse_seasons` is a `min(season)`, `max(season)` and `count(*)` over
-  `games` alone. That range is true and misleading in exactly the way
-  `coverage.py` exists to prevent: it reads as "1994 to 2026 is answerable",
-  when box scores start in 1994, play-by-play in 2003 (2002 is about half),
-  shot charts in 2002 (partial through 2003) and NetPoints in 2019. The real
-  per-season, per-season_type coverage is already computed by
-  `association data check` (`check/report.py`) and the enforced floors already
-  live in `coverage.py`; neither reaches the page.
-- **User sees:** no way to tell what is answerable before asking. A 2016 shot
-  chart and a 2016 NetPoints fingerprint look equally reasonable to ask for,
-  and only one of them is.
-- **Next step:** surface a readable subset of `data check` at the top right of
-  a session, grouped by what a season actually supports, in three tiers:
-  - **box score** - `games`, `player_box_stats`, `team_box_stats`
-  - **+ play-by-play** - adds `plays` and `shot_chart`
-  - **+ NetPoints** - adds the five NetPoints tables
-
-  Show the season span each tier covers and mark the partial and phantom
-  seasons `coverage.py` already declares. Three constraints. Read the tiers
-  from `COVERAGE` rather than restating them in the page, or they become a
-  fourth copy of the floors to drift out of date. Compute the counts at
-  startup or cache them: `data check` scans the Parquet tree, and the health
-  endpoint is on the path a polling indicator would hammer. And keep it
-  honest about the difference `coverage.py` already draws - a season can be
-  present, partial, unrepresentative for ranking, or a phantom, and "1994" is
-  not one number for every table.
-- **Re-checked 2026-09-15: the example is now worse.** `_warehouse_seasons`
-  reads `min(season), max(season), count(*) FROM games`, which today returns
-  1988, 2026 and 43,504 - so the page would claim "43,504 games, 1988-2026"
-  when the regular-season floor is 1994 and 151 of those rows are not games.
-- **GitHub:** #71
 ### ESPN publishes PER, RPM, VORP and WARP per player-season, and we store none of it
 - **Found:** 2026-09-14, fixing the NULL-totals issue (#5)
 - **Evidence:** the core per-season endpoint now read by
@@ -1151,6 +1116,30 @@ found.
 - **GitHub:** #77
 
 ## P4: tooling, docs, low impact
+
+### The header status line still states coverage as a single misleading range, beside a correct one
+- **Found:** 2026-09-18, while fixing #71 (the web page never says what data
+  the warehouse actually holds)
+- **Evidence:** #71's fix added `GET /api/coverage` and a row of tier pills
+  under the header (`web/app.py`, `web/static/index.html`) that correctly say
+  "box score: 1994-2026", "+ play-by-play: 2002-2026 (partial: 2002, 2003)"
+  and "+ NetPoints: 2019-2026" against the live warehouse. The header's own
+  status line, built from `/api/health`'s `_warehouse_seasons`, is untouched
+  and still reads "43,353 games, 1988-2026" - the exact wrong-cause phrasing
+  #71 was filed about, now sitting one line above its own correction. #71's
+  fix was scoped to adding the tiers, not to rewording the line that used to
+  be the page's only coverage claim; #70 (the connection indicator) already
+  owns making that status line live and is the natural place to also soften
+  its wording now that the tiered breakdown is right below it.
+- **User sees:** two claims about the same warehouse, one general and
+  technically true ("43,353 games, 1988-2026"), one specific and correct (the
+  tier pills) - a reader who does not look at both could still walk away with
+  the misleading one, though the correct one is now on the page for anyone who
+  reads past the header.
+- **Next step:** when #70 makes the status line live, consider dropping its
+  season range (the tiers already say it, per table) and keeping just the
+  game count and liveness state - or word it as "raw row count" rather than a
+  season span, so it stops looking like a coverage claim at all.
 
 ### `get_collection`'s declared-vs-fetched warning depends on page one carrying a `count`
 - **Found:** 2026-09-17, fixing #90 (the first-page-goes-quiet bug above).
