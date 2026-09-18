@@ -258,10 +258,34 @@ likewise.
   postseason is empty in bulk as well — 62 games in 1988, 72 in 1989, 68 in
   1990, 73 in 1991, 76 in 1992 — which is the box-score floor below, not a
   scattering.
-- **Does a refetch fix it?** **Untested for these specific events.** The fresh
-  pull reproduced `team_box_stats` exactly, which is strong evidence, but no
-  single event was refetched with `--force` to confirm.
-- **How we handle it:** `_empty_box_scores` counts them.
+- **Does a refetch fix it? No — tested per event, 2026-09-17.** Every one of
+  the 32 games listed here and in the regular-season entry above was probed
+  live through the project's own client: **all 32 return a summary carrying a
+  `boxscore` object with zero athlete lines.** The probe is not vacuous, which
+  is the part worth recording — six control games in the same six seasons
+  (1994 `131105001`, 1996 `151103001`, 1997 `161101002`, 1998 `171031002`, 2000
+  `191102003`, and 1997 postseason `170424010`) each return 24 athlete lines
+  through the identical code path. Two further sources agree: the athlete
+  gamelog omits them (Michael Jordan's 1997 log holds 96 events and none of the
+  five ECF games), and `plays` has nothing for any of the 32, so a
+  play-by-play rebuild is impossible as well - they are all before 2002, which
+  is where `plays` starts. The `cdn.espn.com` box score answered HTTP 202 for
+  the controls too, so that host proved nothing either way.
+- **The team line is empty as well.** All 32 events have `team_box_stats` rows
+  - 74 of them, since the 1994 events carry the duplicate rows the phantom
+  season produces - and **not one has a non-NULL `fieldGoalsAttempted`**.
+- **What it costs, measured against ESPN's own per-player season line:** 1995
+  loses one Finals game (Game 4, ORL at HOU) and 12 players are a game short;
+  1996 one game (SAC-SEA, 2 May) and 13 players; 1998 one (HOU at UTAH, 3 May)
+  and 16 players; **1997 loses all five games of the CHI-MIA conference final,
+  leaving 19 players short 84 games between them** - Michael Jordan's 1997
+  postseason reads 14 games and 439 points against ESPN's own 19 and 590.
+- **How we handle it:** `_empty_box_scores` counts them, and
+  `coverage.postseason_partial` now declares 1995-1998 on the box tables so a
+  playoff count or single-game high says which games it could not see. The game
+  LIST is deliberately not caveated: ESPN lists all eight of these games with
+  scores and a winner, so a playoff game count or head-to-head record over them
+  is right.
 - **Tracked in:** ISSUES.md, "Smaller game and box-score gaps, 1994-2003"
   (#14).
 

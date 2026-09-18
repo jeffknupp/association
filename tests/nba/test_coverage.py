@@ -209,6 +209,45 @@ def test_the_2001_player_caveat_says_what_a_player_is_missing() -> None:
         assert caveat((table,), 2001, REGULAR_SEASON) is None, table
 
 
+def test_each_partial_season_carries_its_own_sentence() -> None:
+    """Two unrelated faults hit `team_box_stats`' postseasons - five games of
+    1997 served with an empty box, ten games of 2001 absent from ESPN
+    altogether - so one shared note would name both in an answer about either.
+    That is the wrong-cause noise this module exists to stop."""
+    ninety_seven = caveat(("team_box_stats",), 1997, POSTSEASON)
+    two_thousand_one = caveat(("team_box_stats",), 2001, POSTSEASON)
+    assert ninety_seven is not None and two_thousand_one is not None
+    assert "Chicago-Miami" in ninety_seven and "2001" not in ninety_seven
+    assert "2001 playoffs" in two_thousand_one and "Chicago-Miami" not in two_thousand_one
+    # Same for the two partial shot seasons, whose game counts differ.
+    assert "509 of 2002's" in (caveat(("shot_chart",), 2002) or "")
+    assert "986 of 2003's" in (caveat(("shot_chart",), 2003) or "")
+
+
+def test_an_empty_playoff_box_score_is_caveated_from_1995_to_1998() -> None:
+    """ESPN lists these eight games and serves each one a box score with no
+    player lines: probed live 2026-09-17, all eight return a `boxscore` with
+    zero athlete lines where control games in the same seasons return 24.
+    Michael Jordan's 1997 postseason reads 14 games against ESPN's own 19."""
+    for season in (1995, 1996, 1997, 1998):
+        note = coverage_caveat("threshold_count", {"season": season, "season_type": POSTSEASON, "player": "Michael Jordan", "stat": "points"})
+        assert note is not None and "empty box score" in note, season
+        # The regular seasons of those years are whole.
+        assert coverage_caveat("threshold_count", {"season": season, "season_type": REGULAR_SEASON, "player": "Michael Jordan", "stat": "points"}) is None, season
+    assert coverage_caveat("threshold_count", {"season": 1999, "season_type": POSTSEASON, "player": "Michael Jordan", "stat": "points"}) is None
+
+
+def test_the_game_list_is_not_caveated_for_an_empty_box_score() -> None:
+    """The eight games are all IN `games`, with scores and a winner - it is
+    only their box scores that are empty. So a playoff game count or a
+    head-to-head record over them is right, and caveating it would apologize
+    for data that is there. 2001 is the opposite case: those games are absent
+    from `games` too."""
+    assert caveat(("games",), 1997, POSTSEASON) is None
+    assert coverage_caveat("head_to_head", {"season": 1997, "season_type": POSTSEASON}) is None
+    assert caveat(("games",), 2001, POSTSEASON) is not None
+
+
 def test_a_2013_to_2018_shooting_board_says_who_is_missing_from_it() -> None:
     """The advanced table is summed from the stored box scores, which ESPN
     serves zeroed for every Chicago and New Orleans game in those seasons, so

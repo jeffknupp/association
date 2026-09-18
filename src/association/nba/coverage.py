@@ -28,7 +28,9 @@ prompt would spend tokens on every question to buy a 3B model's arithmetic.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 
 #: The season type every table calls the regular season.
 REGULAR_SEASON = 2
@@ -85,19 +87,21 @@ class Coverage:
       about ONE named player from 1977, because it is fetched per player over a
       whole career. It cannot answer a question about the LEAGUE until the pool
       is the league.
-    - ``partial`` and ``partial_note`` - a season that exists but holds only
-      part of what it should is answerable, and has to say so. Part of the
-      YEAR for most of them (2002's play-by-play is about half a season), and
-      part of the LEAGUE for ``player_season_advanced_stats``, whose 2013-2018
-      rates are summed from box scores ESPN serves zeroed for two franchises.
-      One field, because the answer needs the same thing in both cases: a
-      sentence naming what is not in it.
-    - ``postseason_partial`` and ``postseason_partial_note`` - the same, for a
-      postseason alone. Separate from ``partial`` because they are different
-      claims about different halves of one year: ESPN's 2001 playoffs stop
-      before the Finals while its 2001 REGULAR season is complete, so a single
-      shared tuple would both caveat every 2001 regular-season answer and
-      exempt that season from its own floor check.
+    - ``partial`` - a season that exists but holds only part of what it should
+      is answerable, and has to say so. Part of the YEAR for most of them
+      (2002's play-by-play is about half a season), and part of the LEAGUE for
+      ``player_season_advanced_stats``, whose 2013-2018 rates are summed from
+      box scores ESPN serves zeroed for two franchises. It maps each such
+      season to its own sentence, rather than sharing one across the table:
+      ``team_box_stats`` is short five games of the 1997 playoffs and ten of
+      2001's, for unrelated reasons, and a note naming both in an answer about
+      one is the same wrong-cause noise this module exists to stop.
+    - ``postseason_partial`` - the same, for a postseason alone. Separate from
+      ``partial`` because they are different claims about different halves of
+      one year: ESPN's 2001 playoffs stop before the Finals while its 2001
+      REGULAR season is complete, so a single shared mapping would both caveat
+      every 2001 regular-season answer and exempt that season from its own
+      floor check.
     - ``phantom`` - a season whose rows are a full, healthy copy of a DIFFERENT
       season. ESPN answers ``season=1993`` and ``season=1994`` with the
       identical 1,185 events, so 1993 looks complete by every row count and is
@@ -106,6 +110,13 @@ class Coverage:
       instead of reading a full season as a floor set too high.
 
     .. versionadded:: 2.1.0
+
+    .. versionchanged:: 4.0.0
+       ``partial`` and ``postseason_partial`` map each season to its own
+       sentence instead of being tuples paired with one shared
+       ``partial_note`` / ``postseason_partial_note``; those two fields are
+       gone. Two unrelated faults can hit one table's postseasons, and a
+       shared note names both in an answer about either.
     """
 
     subject: str
@@ -116,10 +127,8 @@ class Coverage:
     postseason_reason: str = ""
     first_ranking_season: int | None = None
     ranking_reason: str = ""
-    partial: tuple[int, ...] = ()
-    partial_note: str = ""
-    postseason_partial: tuple[int, ...] = ()
-    postseason_partial_note: str = ""
+    partial: Mapping[int, str] = MappingProxyType({})
+    postseason_partial: Mapping[int, str] = MappingProxyType({})
     phantom: tuple[int, ...] = ()
 
     def floor(self, season_type: int = REGULAR_SEASON, *, ranking: bool = False) -> Floor:
@@ -152,6 +161,62 @@ _TEAM_2001_POSTSEASON_NOTE = f"{_MISSING_2001_PLAYOFF_GAMES} - so Philadelphia's
 _PLAYER_2001_POSTSEASON_NOTE = (
     f"{_MISSING_2001_PLAYOFF_GAMES} - so a player on one of those five teams is missing games too, and a total, a count or a single-game high can be low: "
     "40 players have fewer playoff box scores than ESPN's own season line gives them, 152 games in all"
+)
+
+
+# A second, unrelated postseason gap, and the reason the notes are per season
+# rather than per table: these games ARE in ESPN's archive - it lists them, and
+# `games` holds them - but it serves each one a box score with no player lines
+# at all. Probed live 2026-09-17 through the project's own client: all eight
+# return a summary carrying a `boxscore` object and zero athlete lines, where
+# control games in the same seasons return 24 each. The athlete gamelog omits
+# them too (Michael Jordan's 1997 log has none of the five), and `plays` cannot
+# fill in for them because it starts in 2002. So there is nothing to re-fetch
+# and nothing to rebuild.
+#
+# 1997 is the one that costs an answer: the whole CHI-MIA conference final, so
+# Jordan's 1997 postseason reads 14 games and 439 points against the 19 and 590
+# ESPN's own season line gives him. The other three seasons are one game each.
+_EMPTY_POSTSEASON_BOX_NOTE = (
+    "ESPN serves an empty box score for {games} of that postseason - {detail} - so a box-derived playoff total, count or single-game high can be low. "
+    "The games themselves are in ESPN's archive and no re-fetch fills them in"
+)
+
+_PLAYER_EMPTY_POSTSEASON_NOTES = {
+    1995: _EMPTY_POSTSEASON_BOX_NOTE.format(games="one game", detail="Game 4 of the Finals, leaving 12 players a game short of ESPN's own season line"),
+    1996: _EMPTY_POSTSEASON_BOX_NOTE.format(games="one game", detail="SAC-SEA on 2 May, leaving 13 players a game short of ESPN's own season line"),
+    1997: _EMPTY_POSTSEASON_BOX_NOTE.format(
+        games="five games",
+        detail="all five of the Chicago-Miami conference final, so 19 players are short 84 games between them and Michael Jordan's run reads 14 games against ESPN's own 19",
+    ),
+    1998: _EMPTY_POSTSEASON_BOX_NOTE.format(games="one game", detail="UTAH-HOU on 3 May, leaving 16 players a game short of ESPN's own season line"),
+}
+
+_TEAM_EMPTY_POSTSEASON_NOTES = {
+    1995: _EMPTY_POSTSEASON_BOX_NOTE.format(games="one game", detail="Game 4 of the Finals, whose team line is all NULL"),
+    1996: _EMPTY_POSTSEASON_BOX_NOTE.format(games="one game", detail="SAC-SEA on 2 May, whose team line is all NULL"),
+    1997: _EMPTY_POSTSEASON_BOX_NOTE.format(games="five games", detail="all five of the Chicago-Miami conference final, whose team lines are all NULL"),
+    1998: _EMPTY_POSTSEASON_BOX_NOTE.format(games="one game", detail="UTAH-HOU on 3 May, whose team line is all NULL"),
+}
+
+#: The game LIST loses only 2001's games. The eight empty-box games of
+#: 1995-1998 are all present in `games` - ESPN lists them, with scores and a
+#: winner - so a game count or a head-to-head record over them is right, and
+#: caveating it would apologize for data that is there. Only the box tables
+#: below are short.
+_GAMES_POSTSEASON_NOTES: Mapping[int, str] = MappingProxyType({2001: _TEAM_2001_POSTSEASON_NOTE})
+
+_TEAM_POSTSEASON_NOTES: Mapping[int, str] = MappingProxyType({**_TEAM_EMPTY_POSTSEASON_NOTES, 2001: _TEAM_2001_POSTSEASON_NOTE})
+
+_PLAYER_POSTSEASON_NOTES: Mapping[int, str] = MappingProxyType({**_PLAYER_EMPTY_POSTSEASON_NOTES, 2001: _PLAYER_2001_POSTSEASON_NOTE})
+
+_EMPTY_BOX_SEASON_NOTES: Mapping[int, str] = MappingProxyType(
+    dict.fromkeys(
+        range(2013, 2019),
+        "ESPN serves every Chicago and New Orleans game from 2013 to 2018 with each player's line zeroed, and these rates are summed from those box scores, so the attempts "
+        "are short for anyone who played in one - not just those two rosters. 21 to 33 players a season clear the qualifying floor by ESPN's own season totals and fall "
+        "under it here, so they are missing from this ranking entirely",
+    )
 )
 
 
@@ -188,8 +253,7 @@ COVERAGE: dict[str, Coverage] = {
         # lists them. 2001's is not - the scoreboard has exactly one of its
         # missing games, and 23 days across the conference finals and the Final
         # return nothing at all - so that season says what it is missing.
-        postseason_partial=(2001,),
-        postseason_partial_note=_TEAM_2001_POSTSEASON_NOTE,
+        postseason_partial=_GAMES_POSTSEASON_NOTES,
         postseason_reason=(
             "ESPN files every season before 1993-94 under the year it STARTED, so the postseason it labels 1988 is the 1989 playoffs, and the 1987-88 playoffs are not in its archive at all"
         ),
@@ -206,8 +270,7 @@ COVERAGE: dict[str, Coverage] = {
         # lists them. 2001's is not - the scoreboard has exactly one of its
         # missing games, and 23 days across the conference finals and the Final
         # return nothing at all - so that season says what it is missing.
-        postseason_partial=(2001,),
-        postseason_partial_note=_TEAM_2001_POSTSEASON_NOTE,
+        postseason_partial=_TEAM_POSTSEASON_NOTES,
         postseason_reason=(
             "ESPN files every season before 1993-94 under the year it STARTED, so the postseason it labels 1988 is the 1989 playoffs, and the 1987-88 playoffs are not in its archive at all"
         ),
@@ -222,16 +285,14 @@ COVERAGE: dict[str, Coverage] = {
         # here as well as on `games` because the caveat follows the TABLE a
         # template reads: single_game_high and threshold_count never touch
         # `games`, and without this a short count is stated as fact.
-        postseason_partial=(2001,),
-        postseason_partial_note=_PLAYER_2001_POSTSEASON_NOTE,
+        postseason_partial=_PLAYER_POSTSEASON_NOTES,
         phantom=(1993,),
     ),
     "player_game_log": Coverage(
         subject="Player game logs",
         first_season=1994,
         reason="they are built from box scores, which ESPN does not have before 1993-94",
-        postseason_partial=(2001,),
-        postseason_partial_note=_PLAYER_2001_POSTSEASON_NOTE,
+        postseason_partial=_PLAYER_POSTSEASON_NOTES,
         phantom=(1993,),
     ),
     "player_advanced_stats": Coverage(
@@ -251,16 +312,10 @@ COVERAGE: dict[str, Coverage] = {
         # for exactly that reason. So the empty 2013-2018 games cost this table
         # the attempts they held, and the honest move is to say so rather than
         # to rank players on a derived denominator.
-        partial=(2013, 2014, 2015, 2016, 2017, 2018),
-        partial_note=(
-            "ESPN serves every Chicago and New Orleans game from 2013 to 2018 with each player's line zeroed, and these rates are summed from those box scores, so the attempts "
-            "are short for anyone who played in one - not just those two rosters. 21 to 33 players a season clear the qualifying floor by ESPN's own season totals and fall "
-            "under it here, so they are missing from this ranking entirely"
-        ),
+        partial=_EMPTY_BOX_SEASON_NOTES,
         # Summed out of the same short box scores, so a 2001 postseason rate is
         # computed over fewer games than the player played.
-        postseason_partial=(2001,),
-        postseason_partial_note=_PLAYER_2001_POSTSEASON_NOTE,
+        postseason_partial=_PLAYER_POSTSEASON_NOTES,
         phantom=(1993,),
     ),
     "team_season_stats": Coverage(
@@ -298,8 +353,7 @@ COVERAGE: dict[str, Coverage] = {
         subject="Play-by-play records",
         first_season=2002,
         reason="ESPN's play-by-play endpoint returns empty for every earlier season",
-        partial=(2002,),
-        partial_note="2002 is about half a season of play-by-play (244,717 plays against 469,429 in 2003), so it covers part of the year rather than all of it",
+        partial=MappingProxyType({2002: "2002 is about half a season of play-by-play (244,717 plays against 469,429 in 2003), so it covers part of the year rather than all of it"}),
     ),
     # Derived from `plays`, out of the same game summary, so there is no
     # separate shot source to fetch for 2002 and earlier.
@@ -309,8 +363,12 @@ COVERAGE: dict[str, Coverage] = {
         reason="shots are derived from play-by-play, which ESPN does not have before 2002",
         # 2003's play-by-play is complete (1,189 of 1,190 games) but its shots
         # are not: about 200 games' plays carry no located shot.
-        partial=(2002, 2003),
-        partial_note=("ESPN's shot data covers only part of that season's games - 509 of 2002's 1,190 and 986 of 2003's - so the answer covers part of the year rather than all of it"),
+        partial=MappingProxyType(
+            {
+                2002: "ESPN's shot data covers only 509 of 2002's 1,190 games, so the answer covers part of the year rather than all of it",
+                2003: "ESPN's shot data covers only 986 of 2003's 1,190 games, so the answer covers part of the year rather than all of it",
+            }
+        ),
     ),
     "team_power_index": Coverage(
         subject="Team power index ratings",
@@ -397,15 +455,17 @@ def caveat(tables: tuple[str, ...], season: int, season_type: int = REGULAR_SEAS
     .. versionchanged:: 2.2.0
        Takes ``season_type`` and reads ``postseason_partial`` for a postseason
        question. A caller that omits it gets the regular season, as before.
+
+    .. versionchanged:: 4.0.0
+       Reads the note declared for that season rather than the table's one
+       shared note. See :class:`Coverage`.
     """
     notes = []
     for table in tables:
         coverage = COVERAGE.get(table)
         if coverage is None:
             continue
-        if season_type == POSTSEASON:
-            if season in coverage.postseason_partial:
-                notes.append(coverage.postseason_partial_note)
-        elif season in coverage.partial:
-            notes.append(coverage.partial_note)
+        declared = coverage.postseason_partial if season_type == POSTSEASON else coverage.partial
+        if season in declared:
+            notes.append(declared[season])
     return f"Note: {notes[0]}." if notes else None

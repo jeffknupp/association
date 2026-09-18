@@ -15,6 +15,26 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A playoff answer from 1995-1998 now says which games have no box score.**
+  ESPN lists eight of those postseason games and serves each one a box score
+  with no player lines in it - probed live, all eight return a `boxscore`
+  carrying zero athlete lines where control games in the same seasons return
+  24, the athlete gamelog omits them, and `plays` starts too late to rebuild
+  them. 1997 is the one that costs an answer: the whole Chicago-Miami
+  conference final, so Michael Jordan's postseason read 14 games and 439 points
+  against ESPN's own 19 and 590, with nothing said. The game LIST is
+  deliberately not caveated - those games are in it, with scores and a winner,
+  so a playoff game count or head-to-head record over them is right.
+- **Breaking: `Coverage.partial` and `postseason_partial` now map each season
+  to its own sentence**, replacing a tuple of seasons plus one shared note;
+  `partial_note` and `postseason_partial_note` are gone. `team_box_stats` is
+  short five games of the 1997 playoffs and ten of 2001's for unrelated
+  reasons, and one shared note named both in an answer about either - the
+  wrong-cause noise that module exists to stop. Nothing outside
+  `association.nba.coverage` read the two removed fields, and `season in
+  coverage.partial` still works, so the change is breaking only for a caller
+  that read a note off a `Coverage` directly. **The next release is therefore
+  4.0.0**, which is what the version directives here name.
 - **A 2013-2018 shooting leaderboard now says who is missing from it.** Those
   rates are summed from the box scores ESPN serves zeroed for every Chicago and
   New Orleans game, so 21 to 33 players a season clear the qualifying floor by

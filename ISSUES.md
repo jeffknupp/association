@@ -491,32 +491,44 @@ found.
 - **GitHub:** #13
 
 ### Smaller game and box-score gaps, 1994-2003
-- **Found:** 2026-09-11, template work (agents A, D) and the issues audit
+- **Found:** 2026-09-11, template work (agents A, D) and the issues audit;
+  **the refetch question settled per event 2026-09-17**
 - **Evidence:**
   - **2000 regular season:** `games` holds 1,166 of 1,189 real games. 18 teams
     have 80 of their 82, 10 have 81, and LAC has all 82.
   - **Real regular-season games with no box score, counted against
     `real_games`:** 5 in 1994, 5 in 1996, 6 in 1997, 4 in 1998, 4 in 2000 and 0
-    in 2003 - 24 games total. (This read "83 in 1996" until 2026-09-14. That
-    number counted empty *team box* rows, not games missing a player box
-    score; Vancouver's 1996 player rows are real. See "Vancouver 1996 has an
-    empty TEAM box" under P2. An earlier re-check read "6/5/6/5/5/1" against
-    raw `games`, whose 1994, 1998 and 2003 counts included phantom rows; the
-    figures here are against `real_games` instead.) Each season's gaps are one
-    visiting team's road games - DAL 1994, VAN 1996, VAN/BOS 1997, DEN 1998,
-    LAC 2000 - and **23 of the 24 are at UTAH, CLE or WSH**; the exception is
-    `160405003`.
+    in 2003 - 24 games total, re-measured 2026-09-17 and unchanged. Each
+    season's gaps are one visiting team's road games - DAL 1994, VAN 1996,
+    VAN/BOS 1997, DEN 1998, LAC 2000 - and **23 of the 24 are at UTAH, CLE or
+    WSH**; the exception is `160405003`.
   - **Real postseason games with no box score:** the entire 1997 ECF CHI-MIA
     (`170520014`, `170522014`, `170524004`, `170526004`, `170528014`),
-    `150614019` (1995 Finals), `160502025` (1996 SAC-SEA) and `230503026` (1998
-    UTAH-HOU).
+    `150614019` (1995 Finals Game 4, ORL at HOU), `160502025` (1996 SAC-SEA) and
+    `230503026` (1998 HOU at UTAH).
+  - **A refetch does not fix any of them.** All 32 were probed live through the
+    project's own client on 2026-09-17: every one returns a summary carrying a
+    `boxscore` object with **zero athlete lines**, while six control games in
+    the same seasons return 24 each through the identical code path. The
+    athlete gamelog omits them too, and `plays` holds nothing for any of the 32
+    - all are before 2002, where `plays` starts - so there is nothing to
+    rebuild either. Their `team_box_stats` rows all exist and all carry NULL
+    stats.
   - **NULL minutes in 2006-2012** mean the player did not appear. Dropping those
     rows raised 2009's games-played agreement from 30 to 378 of 445 players.
-- **User sees:** small shortfalls, with no caveat, in box-derived answers for
-  those seasons.
-- **Next step:** refetch the listed events through the pipeline. Check that every
-  box-derived template treats NULL minutes as "did not play".
-- **Source:** DATA.md, "Real postseason games with no box score"
+- **User sees:** the postseason half now carries a caveat naming the missing
+  games (`coverage.postseason_partial`, 1995-1998), so a playoff count or
+  single-game high says what it could not see. **The regular-season half still
+  has none:** 24 games spread over five seasons, at most 5 in one season out of
+  ~1,190, so a per-game average is off in the third decimal and a season total
+  is short by up to two games for one team.
+- **Next step:** decide whether 24 games across five seasons is worth a
+  regular-season caveat, given the postseason one is now in place. A season
+  total for an affected team (DAL 1994, VAN 1996, VAN/BOS 1997, DEN 1998, LAC
+  2000) is the case that would benefit; a league-wide average is not. Also
+  check that every box-derived template treats NULL minutes as "did not play".
+- **Source:** DATA.md, "Real postseason games with no box score" and "The 2000
+  regular season is short, and the 2000 standings share the gap"
 - **GitHub:** #14
 
 ### The 2026 shot chart holds more shots than the box score

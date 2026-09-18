@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Mapping
 
 import duckdb
 
@@ -62,8 +63,9 @@ def _counts(con: duckdb.DuckDBPyConnection, table: str, season_type: int | None)
     return {int(s): n for s, n in con.execute(f"SELECT season, count(*) FROM {table}{where} GROUP BY 1").fetchall()}
 
 
-def _partial_for(label: str, coverage: Coverage) -> tuple[int, ...]:
-    """The seasons declared partial for the half of the year being checked.
+def _partial_for(label: str, coverage: Coverage) -> Mapping[int, str]:
+    """The seasons declared partial for the half of the year being checked,
+    each mapped to the sentence it is caveated with.
 
     A postseason that stops early is declared in ``postseason_partial``, and
     reading ``partial`` for it would both miss that declaration and apply the
