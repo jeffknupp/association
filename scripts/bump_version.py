@@ -48,7 +48,7 @@ VERSION_LINE = re.compile(r'^version = "([^"]+)"$', re.MULTILINE)
 UNRELEASED = re.compile(r"^## Unreleased\s*$", re.MULTILINE)
 
 # Matches the version inside an install-command pin
-# (``git+https://github.com/jeffknupp/association@v4.0.1``) wherever one
+# (``git+https://github.com/jeffknupp/association@vX.Y.Z``) wherever one
 # appears, so a doc that grows a new pin is covered without editing this list.
 PIN = re.compile(r"association@v(\d+\.\d+\.\d+)")
 
@@ -202,6 +202,16 @@ def rewrite_install_pins(files: list[Path], current: str, version: str, root: Pa
     ever made them correct. After rewriting, no ``@v<current>`` pin may survive
     anywhere in ``root`` - checked with a second ``git grep`` rather than
     trusted, so a bug here fails loudly instead of leaving a stale pin behind.
+
+    The check honors :data:`PIN_EXCLUDED_PREFIXES`, and must: a released
+    ``CHANGES.md`` entry quoting the tag it shipped is a stale pin ON PURPOSE,
+    so grepping the whole tree would refuse every release whose changelog
+    mentions an install command. Measured: this refused the 4.1.0 bump on a
+    comment in this very file.
+
+    .. versionchanged:: 4.1.0
+       Skips the paths that hold the pattern for reasons other than
+       instructing an install.
     """
     old = f"association@v{current}"
     new = f"association@v{version}"
@@ -214,9 +224,10 @@ def rewrite_install_pins(files: list[Path], current: str, version: str, root: Pa
         capture_output=True,
         text=True,
         check=False,
-    ).stdout.strip()
-    if leftover:
-        sys.exit(f"error: {old} still appears after rewriting install pins:\n{leftover}")
+    ).stdout.splitlines()
+    survivors = [line for line in leftover if line and not _is_excluded_from_pins(line)]
+    if survivors:
+        sys.exit(f"error: {old} still appears after rewriting install pins:\n" + "\n".join(survivors))
 
 
 def rewrite_pyproject(current: str, version: str) -> None:

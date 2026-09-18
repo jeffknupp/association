@@ -192,3 +192,31 @@ def test_the_real_repository_is_bumpable() -> None:
     # Does not raise: every version-bearing pin names the current release.
     pinned = bump_version.check_install_pins(current, "99.0.0", root)
     assert {p.relative_to(root).as_posix() for p in pinned} == {"README.md", "docs/installation.rst", "docs/usage.rst"}
+
+
+def test_rewriting_tolerates_the_old_pin_surviving_where_it_is_meant_to(tmp_path: Path) -> None:
+    """The post-rewrite check must honor the same exclusions the discovery does.
+
+    A released `CHANGES.md` entry quoting the tag it shipped under is a stale
+    pin ON PURPOSE, so a check that greps the whole tree refuses every release
+    whose changelog mentions an install command. It is not hypothetical: this
+    refused the real 4.1.0 bump on a comment inside `bump_version.py` itself,
+    and would have refused the next one on `CHANGES.md`.
+    """
+    repo = _repo(tmp_path)
+    (repo / "README.md").write_text("install: git+https://github.com/jeffknupp/association@v1.0.0\n")
+    # Both of these keep the OLD pin after the rewrite, legitimately.
+    (repo / "CHANGES.md").write_text("## 1.0.0\n- shipped as git+https://github.com/jeffknupp/association@v1.0.0\n")
+    scripts = repo / "scripts"
+    scripts.mkdir()
+    (scripts / "bump_version.py").write_text("# matches association@v1.0.0 in an install command\n")
+    _commit_all(repo)
+
+    pinned = bump_version.check_install_pins("1.0.0", "2.0.0", repo)
+    assert {p.name for p in pinned} == {"README.md"}, "CHANGES.md and scripts/ are not install instructions"
+
+    # Does not raise: the survivors are all excluded paths.
+    bump_version.rewrite_install_pins(pinned, "1.0.0", "2.0.0", repo)
+
+    assert "association@v2.0.0" in (repo / "README.md").read_text()
+    assert "association@v1.0.0" in (repo / "CHANGES.md").read_text(), "released history must not be rewritten"

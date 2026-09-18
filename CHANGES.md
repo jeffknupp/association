@@ -15,6 +15,12 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- The new pin rewriting refused its own first real bump, and now does not. Its
+  post-rewrite check greps the whole tree for the old pin, so it fired on a
+  comment inside `bump_version.py` - and would have fired on `CHANGES.md` at
+  the next release, because a released entry quoting the tag it shipped under
+  is a stale pin on purpose. The check honors the same exclusions the
+  discovery does, and a test covers the case.
 - The version directives on this release's new public symbols name 4.1.0, not
   4.0.2. Five agents working in parallel were each told 4.0.2, correct for a
   release of fixes; `GET /api/coverage` is a new endpoint, which makes this a
