@@ -2914,12 +2914,88 @@ def test_check_scope_lets_player_matchup_honor_a_team_opponent(pg_ctx: TemplateC
     check_scope("player_matchup", {"player": "Brandin Podziemski", "opponent": "Detroit Pistons"})
 
 
+def test_check_scope_lets_player_matchup_honor_without_too(pg_ctx: TemplateContext) -> None:
+    """`without` is honored the same way `opponent` is - only for the shape a
+    fabricated second player or a teammate named twice collapses down to a
+    single player vs a team (ISSUES #34's last two rows: "de'aaron fox vs
+    magic ... without wembyanama", "oubre vs warriors without embiid").
+    check_scope cannot tell that shape from a genuine two-player matchup by
+    the slots alone, so it lets both through, and the template itself is what
+    refuses a leftover slot on a genuine matchup - see
+    test_player_matchup_refuses_a_real_two_player_matchup_with_a_leftover_without."""
+    check_scope("player_matchup", {"player": "Brandin Podziemski", "without": ["Stephen Curry"]})
+
+
 def test_check_scope_still_refuses_player_matchup_on_an_unhonored_slot(pg_ctx: TemplateContext) -> None:
-    """`opponent` being honored must not quietly let other scoping slots
-    through too - "oubre vs warriors without embiid" still has a `without`
-    check_scope catches before the handler ever runs."""
+    """`opponent` and `without` being honored must not quietly let every
+    other scoping slot through too."""
     with pytest.raises(TemplateUnsupported, match="different span"):
-        check_scope("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons", "without": ["Seth Curry"]})
+        check_scope("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "venue": "home"})
+
+
+def test_player_matchup_refuses_a_real_two_player_matchup_with_a_leftover_without(pg_ctx: TemplateContext) -> None:
+    """ "jokic vs embiid without jamal murray" names no team, so
+    _player_matchup_drop_fabricated_second never runs (it only looks for a
+    fabricated second player once there is an `opponent` to fold the question
+    into) and this stays the genuine two-player matchup it looks like. A
+    meeting's own teammates are not what either player's box-score row
+    narrows, so `without` is refused rather than silently dropped, the same
+    way a leftover `opponent` already is."""
+    with pytest.raises(TemplateUnsupported, match="teammate's absence"):
+        player_matchup(pg_ctx, {"players": ["Brandin Podziemski", "Stephen Curry"], "without": ["Jaylen Brown"]})
+
+
+def test_player_matchup_refuses_a_real_two_player_matchup_with_opponent_and_without(pg_ctx: TemplateContext) -> None:
+    """The same refusal, with a team present too: two real, unrelated players
+    and a `without` naming neither of them - not the fabricated-second-player
+    shape _player_matchup_drop_fabricated_second exists for, since Jaylen
+    Brown is not confirmably the same person as Stephen Curry - so the
+    reduction attempt leaves `texts` untouched and this is still a genuine
+    two-player matchup with two scoping slots it cannot honor."""
+    with pytest.raises(TemplateUnsupported, match="cannot narrow a two-player matchup"):
+        player_matchup(pg_ctx, {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons", "without": ["Jaylen Brown"]})
+
+
+# ---------------- player_matchup: a fabricated second "player" that is really `without` or noise ----------------
+
+
+def test_player_matchup_drops_a_second_player_who_matches_no_one(pg_ctx: TemplateContext) -> None:
+    """ "oubre vs warriors without embiid" keeps a garbled team name in
+    `players` beside the `opponent` already resolved correctly from it - not
+    a second player, noise with no match in the warehouse at all. Dropped
+    outright, and the rest reads exactly like the one-name-and-a-team
+    shape."""
+    matchup = player_matchup(pg_ctx, {"players": ["Brandin Podziemski", "Pistns"], "opponent": "Detroit Pistons", "without": ["Stephen Curry"]})
+    log = game_log(pg_ctx, {"player": "Brandin Podziemski", "opponent": "Detroit Pistons", "without": ["Stephen Curry"]})
+    assert matchup.answer == log.answer
+    assert matchup.data == log.data
+    assert matchup.data["games"]  # the fixture has real Podziemski-vs-Pistons games
+
+
+def test_player_matchup_drops_a_second_player_confirmed_by_without(pg_ctx: TemplateContext) -> None:
+    """ "de'aaron fox vs magic ... without wembyanama" carries Fox's own
+    teammate both as the fabricated second "player" and, in `without`. Here
+    Stephen Curry plays that role for Podziemski: dropped only because
+    `without` independently names the very same player - never merely
+    because the two share a team, which would silently drop a genuine second
+    player a real comparison had named (see the refusal test above, where
+    Jaylen Brown does NOT confirm Stephen Curry and the matchup is refused)."""
+    matchup = player_matchup(pg_ctx, {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons", "without": ["Stephen Curry"]})
+    log = game_log(pg_ctx, {"player": "Brandin Podziemski", "opponent": "Detroit Pistons", "without": ["Stephen Curry"]})
+    assert matchup.answer == log.answer
+    assert matchup.data == log.data
+
+
+def test_player_matchup_drops_a_second_player_confirmed_by_a_near_spelling_of_without(pg_ctx: TemplateContext) -> None:
+    """The router corrects the fabricated second player's spelling
+    ("Wembanyama") while `without` still carries the user's own typo
+    ("wembyanama") - so the identity confirmation has to reach through
+    suggest_players' near-spelling pass, not just an exact match. "Stephen
+    Cury" here is one letter short of Stephen Curry and matches nobody else,
+    the same shape "wembyanama" is for Victor Wembanyama."""
+    matchup = player_matchup(pg_ctx, {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons", "without": ["Stephen Cury"]})
+    log = game_log(pg_ctx, {"player": "Brandin Podziemski", "opponent": "Detroit Pistons", "without": ["Stephen Cury"]})
+    assert matchup.answer == log.answer == "No player found matching 'Stephen Cury' - did you mean Stephen Curry?"
 
 
 # ---------------- a narrowed reading over a whole empty-box-score season (#72) ----------------

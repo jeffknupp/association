@@ -65,6 +65,19 @@ had no published version to be compatible with.
   and a team opponent is answered the way `game_log` answers it; a genuine
   two-player matchup with an opponent left over still refuses it, since it
   has no third team to narrow the meetings by.
+
+  It now also honors `without`, for the same shape. "oubre vs warriors
+  without embiid" and "de'aaron fox vs magic ... without wembyanama" each
+  arrive with a second, fabricated "player" beside the real one - a garbled
+  team name already resolved into `opponent`, or (checked against the
+  warehouse) the real subject's own teammate, named a second time in
+  `without`. `_player_matchup_drop_fabricated_second` eliminates the noise -
+  a name matching no player at all outright, a name duplicating `without`
+  only when confirmed by the same near-spelling resolution `without` already
+  trusts - and folds the question into the one-player-and-a-team branch,
+  which already reads `without` because `game_log` does. A genuine
+  two-player matchup with a `without` left over is refused from inside the
+  template rather than silently dropped, the same way `opponent` already is.
 - **A name the router mis-slots as a team is recovered from the question, not
   just from the fragment left in the slot.** "Will Riley last 5 game s"
   arrived as `team='Riley'`, which `find_players` cannot settle alone - three

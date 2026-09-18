@@ -18,7 +18,7 @@ from association.nba.season import current_season, eastern_day_utc_range
 from association.nba.season import eastern_date as _eastern_date
 
 from ..conditions import _PLAYER_GAME_TABLES, _cell, _matchup_line, _meetings, _names, _player_games, _Scope, _table, _totals, _unseen_meetings, box_source
-from ..entities import Entity
+from ..entities import Entity, find_players, teammate_names
 from ..leaderboard import resolve_metric
 from ..shotchart import SHOT_AVAILABILITY, SHOT_VALUE_SQL, UNSEPARABLE_SHOT_VALUES
 from .common import (
@@ -47,6 +47,7 @@ from .common import (
     _period,
     _resolved_player,
     _resolved_team,
+    _resolved_teammate,
     _slot_season,
     _Span,
     _span_of,
@@ -1165,25 +1166,50 @@ def player_matchup(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
        opponent. A genuine two-player matchup still refuses ``opponent``,
        since it has no third team to narrow by.
 
+       The same shape arrives with a third name too - "de'aaron fox vs magic
+       last five games without wembyanama" carries Fox's actual Spurs
+       teammate Wembanyama both as a fabricated second "player" and, typo and
+       all, as ``without``; "oubre vs warriors without embiid" keeps a
+       garbled "Warriners" in ``players`` beside the ``opponent`` that was
+       already resolved correctly from it. Both are the one-player-and-a-team
+       question above with a teammate's absence named on top, not a genuine
+       three-way question, and :func:`_player_matchup_drop_fabricated_second`
+       recognizes each shape - eliminating, never guessing which of two real
+       players was meant - and folds it back into the branch above, which
+       already reads ``without`` because :func:`game_log` does. A ``without``
+       left over on a genuine two-player matchup is refused rather than
+       silently dropped, the same reasoning ``opponent`` already gets.
+
     .. versionadded:: 2.1.0
     """
     con = ctx.con
     players = slots.get("players")
     listed: list[Any] = players if isinstance(players, list) else []
     texts = list(dict.fromkeys(n.strip() for n in [*listed, slots.get("player")] if isinstance(n, str) and n.strip()))
-    if len(texts) == 1 and slots.get("opponent"):
+    opponent, without = slots.get("opponent"), slots.get("without")
+    if len(texts) == 2 and opponent:
+        texts = _player_matchup_drop_fabricated_second(con, texts, without, slots.get("season"), slots.get("span"), slots.get("season_type"))
+    if len(texts) == 1 and opponent:
         # One name and a team opponent - not a fabricated second player, an
         # actual player-vs-team question that named itself that way. Answered
         # by the same code game_log uses for "player vs opponent", not
         # reimplemented: it is the same question, however it got routed here.
+        # `without` rides along unchanged - game_log already reads it.
         return game_log(ctx, {**slots, "player": texts[0]})
     if len(texts) != 2:
         raise TemplateUnsupported(f"player_matchup needs exactly two players, got {texts!r}")
-    if slots.get("opponent"):
+    if opponent:
         # check_scope lets `opponent` through for the fallback above, so a
         # real two-player matchup that still has one left over has to refuse
         # it itself - it names no third team to narrow the meetings by.
         raise TemplateUnsupported("player_matchup cannot narrow a two-player matchup to one opponent")
+    if without:
+        # check_scope lets `without` through for the same fallback, so a
+        # genuine two-player matchup with one left over has to refuse it
+        # itself too - a meeting's OWN teammates are not what either player's
+        # box-score row narrows, and nothing here answers which side a name
+        # belongs to.
+        raise TemplateUnsupported("player_matchup cannot narrow a two-player matchup by a teammate's absence")
     scope = _condition_scope(slots.get("season"), slots.get("span"), slots.get("season_type"), _PLAYER_GAME_TABLES)
     resolved = _player_matchup_resolve(con, texts, scope)
     if isinstance(resolved, TemplateResult):
@@ -1203,6 +1229,61 @@ def player_matchup(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
     wins, lines, count, summary = _player_matchup_summary(a, b, meetings)
     shown, log = _player_matchup_log(con, meetings, slots.get("limit"), a, b)
     return _player_matchup_answer(a, b, scope, meetings, wins, lines, count, summary, shown, log, caveat)
+
+
+def _player_matchup_drop_fabricated_second(con: duckdb.DuckDBPyConnection, texts: list[str], without: Any, season: Any, span: Any, season_type: Any) -> list[str]:
+    """``texts`` down to one name when the "second player" was never a second
+    player - a one-player-vs-a-team question the router dressed as a
+    two-player matchup, the shape ISSUES #34 describes. Two ways that
+    happens, both left exactly as ``texts`` when neither applies, which keeps
+    a genuine two-player matchup refusing ``opponent``/``without`` exactly as
+    it always has:
+
+    - **A name matching no player at all.** "oubre vs warriors without
+      embiid" keeps a garbled "Warriners" in ``players`` beside the
+      ``opponent`` that ``entities.scope_from_question`` already resolved
+      correctly from it - not a second player, noise already captured
+      elsewhere. Eliminated outright: a string nothing in the warehouse
+      answers to was never naming anybody.
+    - **A name duplicating ``without``.** "de'aaron fox vs magic ... without
+      wembyanama" carries Fox's own Spurs teammate Victor Wembanyama both as
+      the fabricated second "player" (typo-corrected already, the way
+      ``players`` always is) and, typo and all, as ``without``. Dropped only
+      when :func:`_player_matchup_confirms_teammate` CONFIRMS the two name the
+      same person - never on the two merely sharing a team, which would
+      silently drop a genuine second player a real comparison had named.
+
+    Tried in both name orders, since nothing here says which of the two texts
+    is the real subject and which is the noise.
+    """
+    without_names = teammate_names(without)
+    teammate_span = _span_of(span, season, season_type or 2, "player_game_log")
+    for primary, other in ((texts[0], texts[1]), (texts[1], texts[0])):
+        other_matches = find_players(con, other, limit=2)
+        if not other_matches:
+            return [primary]
+        if len(other_matches) != 1 or not without_names:
+            continue
+        primary_matches = find_players(con, primary, limit=2)
+        if len(primary_matches) == 1 and _player_matchup_confirms_teammate(con, without_names, primary_matches[0], other_matches[0], teammate_span):
+            return [primary]
+    return texts
+
+
+def _player_matchup_confirms_teammate(con: duckdb.DuckDBPyConnection, without_names: list[str], primary: Entity, other: Entity, span: _Span) -> bool:
+    """Whether ``without`` names the very player already sitting in
+    ``other`` - resolved the same way ``game_log``'s own ``without`` resolves
+    a name, typos included, so a fabricated second player is recognized by
+    the machinery that already trusts it rather than a fresh fuzzy match
+    invented here. A name that is not confirmably the same player is left
+    alone, which is what keeps this an elimination and not a guess."""
+    for name in without_names:
+        mate = _resolved_teammate(con, name, primary, span)
+        if isinstance(mate, Entity) and mate.id == other.id:
+            return True
+        if isinstance(mate, TemplateResult) and other.name in mate.data.get("suggestions", []):
+            return True
+    return False
 
 
 def _player_matchup_resolve(con: duckdb.DuckDBPyConnection, texts: list[str], scope: _Scope) -> tuple[Entity, Entity] | TemplateResult:
