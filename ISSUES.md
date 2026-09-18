@@ -649,41 +649,40 @@ found.
 - **Source:** DATA.md, "NetPoints publishes a display name, not a player id"
 - **GitHub:** #21
 
-### A NetPoints name ESPN spells differently, or does not hold at all, still matches nothing
-- **Found:** 2026-09-18, the remainder of #22 once the name was kept and the
-  diacritic fold landed. #22 asked for the source name to be retained and then
-  for somebody to count which spellings the exact match misses; both are done,
-  and this is the answer.
-- **Evidence:** measured against the re-fetched warehouse, `net_points_player_game`
-  holds **1,393** rows with no `athlete_id` (down from 2,190 before any of this
-  work and 2,528 at the worst point), and `net_points_player_game_fingerprint`
-  **41,199** (from 64,210). They split cleanly into two causes, and neither is
-  a spelling the fold can bridge:
-  - **1,060 rows whose name is not in `players` at all.** The biggest single
-    one is a suffix mismatch: NetPoints says `Jimmy Butler`, ESPN says `Jimmy
-    Butler III`, **498 rows**. Then `Rondae Hollis-Jefferson` (144),
-    `Omari Spellman` (95), `Carlton Carrington` (82), `Cui Yongxi`, `NA Nene` -
-    some are players ESPN never gave us, some are a second spelling.
-  - **333 rows whose name is two different people in `players`** - Brandon
-    Williams (140), Wayne Selden (78), Greg Monroe (69) and the rest of the 13
-    real shared-name pairs. These are **correctly** refused: nothing on a
-    NetPoints row says which of the two it is, and guessing is the failure this
-    project keeps producing.
+### A NetPoints name that is a different NAME, not a different spelling, matches nothing
+- **Found:** 2026-09-18, what remains of #112 once the spelling differences
+  were bridged. **Every spelling difference between the two sources is now
+  handled** (`parse.match_key`: diacritics, hyphens, whitespace, generational
+  suffixes); these are not spellings.
+- **Evidence:** measured against the re-fetched warehouse,
+  `net_points_player_game` holds **683** rows with no `athlete_id`, down from
+  2,190 before any of this work, and they are two piles that want opposite
+  treatment:
+  - **350 rows where NetPoints uses a different name.** `Carlton Carrington`
+    against ESPN's `Bub Carrington` (82 - a nickname), `Alexandre Sarr` against
+    `Alex Sarr` (67) and `Nathan Mensah` against `Nate Mensah` (25 - a formal
+    against a short first name), `Cam Reynolds` against `Cameron Reynolds` (24
+    - the same thing in reverse), `Omari Spellman` against ESPN's
+    `Omari Rasulala Spellman` (95 - a middle name), `Cui Yongxi` against
+    `Yongxi Cui` (5 - reversed order), and `NA Nene` against ESPN's `"Nene "`
+    (49 - a mononym, with a trailing space on ESPN's side).
+  - **333 rows whose name belongs to two different people** - Brandon Williams
+    (140), Wayne Selden (78), Greg Monroe (69) and the rest of the 13 real
+    shared-name pairs. **These are correctly refused and want no fix.** Nothing
+    on a NetPoints row says which of the two it is, and this project's worst
+    failures are all a rule that guessed.
 - **User sees:** a per-game NetPoints or fingerprint question about one of
-  those players returns nothing, with no caveat. For Jimmy Butler that is his
-  whole per-game record.
-- **Next step:** the suffix case is worth its own rule and wants care, because
-  a prefix match is precisely the substring trap `players_named_in` was written
-  against ("the highest scoring game" naming Jaron Blossomgame). A bounded
-  version is defensible: accept a NetPoints name that differs from exactly ONE
-  ESPN name by a trailing generational suffix from a closed set (`Jr.`, `Sr.`,
-  `II`, `III`, `IV`), and only where the plain form is not itself an ESPN name.
-  Measure how many names that resolves before shipping it. The genuinely absent
-  players need a different answer - probably none, since ESPN not holding a
-  player is not something this project can fix.
+  those ~9 players returns nothing, with no caveat.
+- **Next step:** a curated alias list, not a rule - which is the conclusion
+  `query/entities.py` already reached with `PLAYER_NICKNAMES` after measuring
+  and rejecting a prominence tiebreak. Each entry is a judgment somebody makes
+  once and can be checked (`Bub Carrington` IS Carlton Carrington), where a
+  general first-name rule would match `Chris Johnson` to a different
+  `Christopher Johnson`. Nine names cover all 350 rows, so the list is small.
+  ESPN's trailing space in `"Nene "` is worth stripping when the map is built
+  whatever else happens.
 - **Source:** DATA.md, "NetPoints publishes a display name, not a player id"
-  and "NetPoints spells 2026's names with diacritics, and ESPN does not"
-- **GitHub:** #112
+- **GitHub:** #113
 
 ### `shot_chart`'s empty refusal never names the season, even when one was asked for
 - **Found:** 2026-09-18, fixing #18 (the retired-player default-season bug)
