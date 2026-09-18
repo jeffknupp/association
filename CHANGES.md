@@ -188,6 +188,17 @@ had no published version to be compatible with.
   naming BOTH halves keeps the category and is still refused by `check_scope`
   for these two, because both groups side by side is `player_splits`' answer
   and not one they produce.
+- **`period_split` honors the same named half**, filtering on the `starter`
+  column of the box table it already joins - "Dominick Barlow scored 228 points
+  in the 2nd half over 59 games as a starter" against 71 games unfiltered.
+- **A `limit` of 1 the question never asked for no longer costs an answer.**
+  The decoder reaches for 1 when it has nothing to put in a slot it must fill,
+  and `player_stat` refuses any limit, so "westbrook stats as a starter for
+  kings" was refused as "a game_log question" over a narrowing nobody
+  requested. A bare `limit` of 1 with no `order` is now dropped for the intents
+  that cannot honor `order`, unless the question names a count - the same
+  filler rule `_route_side_and_order` already applied when an `order` carried
+  it in.
 
 ## 4.2.0 - 2026-09-18
 - **A NetPoints name ESPN spells with a generational suffix, or hyphenates

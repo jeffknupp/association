@@ -104,7 +104,8 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     "team_quarter_points": frozenset({"opponent"}),
     # A period is not a scoping slot - it IS the question - so only the two
     # filters on WHICH games count are listed.
-    "period_split": frozenset({"opponent", "venue"}),
+    # `split` only for a NAMED half, like game_log and player_stat.
+    "period_split": frozenset({"opponent", "venue", "split"}),
     # The opponent IS the second team of a head-to-head. `venue` narrows to
     # the first-named team's home or road games, and `date` replaces the
     # season with one calendar day - both filters on `real_games`, the same
@@ -426,7 +427,7 @@ def coverage_caveat(intent: str, slots: dict[str, Any]) -> str | None:
 
 #: Templates that honor one NAMED half of the starter/bench split and refuse
 #: the bare category, which asks for a table they do not produce.
-_SPLIT_SIDE_ONLY = frozenset({"game_log", "player_stat"})
+_SPLIT_SIDE_ONLY = frozenset({"game_log", "player_stat", "period_split"})
 
 
 def check_scope(intent: str, slots: dict[str, Any]) -> None:

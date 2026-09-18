@@ -838,6 +838,18 @@ ORDER_WORDS: dict[str, re.Pattern[str]] = {
     "first": re.compile(r"\b(?:first|opening|earliest)\s+(?:\d+\s+)?games?\b", re.IGNORECASE),
 }
 
+#: Intents whose template REFUSES a limit outright, so a filler one costs the
+#: answer entirely rather than just widening a list. Deliberately not "every
+#: intent that does not honor `order`": a `limit` of 1 is legitimate on a
+#: leaderboard ("who leads"), and dropping it there turned a one-row answer
+#: into ten for no reason anybody asked for.
+_LIMIT_REFUSING_INTENTS: frozenset[str] = frozenset({"player_stat"})
+
+
+# A number of games named in the question, which makes a `limit` real rather
+# than filler: "last 5 games", "his one game", "top 10".
+_COUNT_WORDS = re.compile(r"\b(?:\d+|one|two|three|four|five|ten|last|first|top|only)\b", re.IGNORECASE)
+
 ORDER_INTENTS: frozenset[str] = frozenset({"fingerprint", "game_log", "player_netpoints", "shot_chart", "shot_distance"})
 """Intents whose template honors ``order``, so filling it from the question can
 only make the answer match what was asked.
@@ -1273,6 +1285,17 @@ def _route_side_and_order(intent: str, slots: dict[str, Any], question: str) -> 
         # one rode in with it and goes too; a real one ("top 5") stays.
         slots.pop("order", None)
         if slots.get("limit") == 1:
+            slots.pop("limit", None)
+    elif intent in _LIMIT_REFUSING_INTENTS and slots.get("limit") == 1 and not slots.get("order"):
+        # The same filler, arriving WITHOUT an `order` to carry it in.
+        # "westbrook stats as a starter for kings" came back with limit=1 and
+        # side='total' on a question that narrows to no number of games at all,
+        # and `player_stat` refuses any limit (a player's numbers over his last
+        # N games is a game_log question) - so the filler cost the answer. A
+        # real one still stands: a question that names a count keeps it,
+        # because the decoder only reaches for 1 when it has nothing to put
+        # there.
+        if not _COUNT_WORDS.search(question):
             slots.pop("limit", None)
 
 

@@ -28,6 +28,7 @@ from .common import (
     HISTORY_COLUMNS,
     PLAYER_STAT_COLUMNS,
     REBUILT_STATS,
+    STARTER_SIDES,
     THRESHOLD_STAT_COLUMNS,
     TemplateContext,
     TemplateResult,
@@ -1013,12 +1014,16 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     if isinstance(opponent, TemplateResult):
         return opponent
 
-    venue = slots.get("venue") if slots.get("venue") in ("home", "away") else None
-    rows = _period_split_rows(con, player, season, season_type, periods, venue, opponent)
+    venue, started = _period_split_narrowing(slots.get("venue"), slots.get("split"))
+    rows = _period_split_rows(con, player, season, season_type, periods, venue, opponent, started)
 
     scope = _period(season, season_type)
     vs = f" against the {opponent.name}" if opponent else ""
     at = f" at {'home' if venue == 'home' else 'away'}" if venue else ""
+    # Said in the answer, like every other narrowing: a total over his starts
+    # headed as though it covered every game is the silent narrowing
+    # `check_scope` exists to stop.
+    at += "" if started is None else (" as a starter" if started else " off the bench")
     games = [{"date": _eastern_date(d), "opponent": name, "home_away": side, "points": int(pts or 0)} for d, side, name, pts in rows]
     data: dict[str, Any] = {
         "player": player.name,
@@ -1026,6 +1031,7 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         "season": season,
         "opponent": opponent.name if opponent else None,
         "venue": venue,
+        "started": started,
         "games": games,
         "games_played": len(games),
     }
@@ -1051,7 +1057,22 @@ def _period_split_refusal(season: int, agreement: float | None) -> TemplateResul
     return None
 
 
-def _period_split_rows(con: duckdb.DuckDBPyConnection, player: Entity, season: int, season_type: int, periods: tuple[int, ...], venue: str | None, opponent: Entity | None) -> list[tuple[Any, ...]]:
+def _period_split_narrowing(venue: Any, split: Any) -> tuple[str | None, bool | None]:
+    """The venue and the starter/bench half this question narrows to.
+
+    Split out of :func:`period_split` to keep it inside the complexity gate.
+    Takes the slot VALUES rather than the slots dict, so `period_split`'s own
+    source still names every scoping slot it honors - which is what
+    ``test_every_template_honoring_a_scope_slot_actually_reads_it`` reads back
+    out of it. Only a NAMED half of the split filters (:data:`common.STARTER_SIDES`).
+    """
+    checked = venue if venue in ("home", "away") else None
+    return checked, (STARTER_SIDES.get(split) if isinstance(split, str) else None)
+
+
+def _period_split_rows(
+    con: duckdb.DuckDBPyConnection, player: Entity, season: int, season_type: int, periods: tuple[int, ...], venue: str | None, opponent: Entity | None, started: bool | None = None
+) -> list[tuple[Any, ...]]:
     """A player's per-game point total in the wanted periods, one row a game.
 
     The games are the ones he PLAYED, with zero where he did not score in the
@@ -1079,6 +1100,13 @@ def _period_split_rows(con: duckdb.DuckDBPyConnection, player: Entity, season: i
     if opponent is not None:
         where.append("(CASE WHEN g.home_team_id = b.team_id THEN g.away_team_id ELSE g.home_team_id END) = ?")
         params.append(opponent.id)
+    if started is not None:
+        # The box table this already joins carries `starter`, so one half of
+        # the split is a clause here rather than a new source - see
+        # `common.STARTER_SIDES` and `router._split_side` for why only a NAMED
+        # half filters.
+        where.append("b.starter = ?")
+        params.append(started)
     return con.execute(
         f"""
         WITH scored AS (
