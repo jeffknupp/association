@@ -832,6 +832,7 @@ those were found.
   into `without` (already correct) - a judgment call better made alongside
   whichever template's `HONORED_SCOPING` actually reads these two rows.
 - **Source:** ours, not ESPN's.
+- **GitHub:** #118
 
 ### A quarter or half is answered for a player, and for nobody else
 - **Found:** 2026-09-16 auditing the feed; **the player half shipped the same
@@ -1090,6 +1091,7 @@ those were found.
   considered and rejected - a "bench" question asked the same way would get a
   fluently wrong answer, the failure mode this project ranks worst.
 - **GitHub:** not yet filed
+- **GitHub:** #119
 
 ### A weekday or holiday `situation` narrowing falls through to the slow agent instead of a fast refusal
 - **Found:** 2026-09-18, reading `/home/jeff/association-research/statmuse-2026-09/query_set_audit.md`
@@ -1120,6 +1122,7 @@ those were found.
   reason - `HONORED_SCOPING` is documented to mean "actually filters by it and
   says so," and a refusal is neither.
 - **GitHub:** not yet filed
+- **GitHub:** #120
 ### A team is the real subject of a question routed to a player-only template
 - **Found:** 2026-09-18, entity-resolution pass over the StatMuse replay set
   (`fastpath_after_rows_graded.jsonl`)
@@ -1141,6 +1144,7 @@ those were found.
   (`team_stat`/`team_leaderboard`), or add the missing shapes (a team's
   per-game shot-distance breakdown; `team_leaderboard` ranking every team by a
   counting stat with no `stat` narrowed to one metric already listed).
+- **GitHub:** #121
 
 ### Conference and division are in the standings we fetch, and the parser drops them
 - **Found:** 2026-09-11, template work (agent B); **cause corrected 2026-09-15**
@@ -1325,6 +1329,7 @@ those were found.
   fabricated-close to Jemel) - measured against the corpus before shipping,
   the way `PLAYER_NICKNAMES` and the prominence tiebreak above it were.
 - **Source:** ours (a matching heuristic), not ESPN's.
+- **GitHub:** #122
 
 ### A pre-1994 legend gets "no player matching", not the coverage-floor refusal
 - **Found:** 2026-09-18, entity-resolution pass over the StatMuse replay set
@@ -1357,6 +1362,7 @@ those were found.
   Speculative until measured against how many other empty-`players`-match
   cases are actually pre-1994 legends versus genuine typos.
 - **Source:** DATA.md, "Coverage floors" (`player_season_stats` section).
+- **GitHub:** #123
 
 ### The web page keeps no history, so closing the tab loses every answer
 - **Found:** 2026-09-14, requested
@@ -1653,6 +1659,7 @@ those were found.
   and either one needs `scripts/check_routing.py` run after, per
   `router_prompt.py`'s own rules.
 - **GitHub:** none yet
+- **GitHub:** #124
 
 ## P4: tooling, docs, low impact
 
@@ -1697,6 +1704,7 @@ those were found.
   No corpus row currently shows a `player_matchup` two-player question naming
   a specific `stat`, so this is unmeasured rather than confirmed-wrong - worth
   folding into the audit this entry already calls for.
+- **GitHub:** #125
 
 
 ### `stat` is the same unguarded shape as `limit`, and the enum-required slot makes it worse
@@ -1730,6 +1738,7 @@ those were found.
 - **Priority note:** filed P4 because it is unmeasured harm today, not a
   wrong answer - re-rank to P1/P2 if the audit finds a template that trusts
   `stat` unchecked.
+- **GitHub:** #126
 
 
 ### Plus/minus can be neither ranked nor looked up, though the data is complete
@@ -1807,6 +1816,7 @@ those were found.
   Left undone here since it touches many entries other agents may be editing
   concurrently and risks a merge conflict far out of proportion to the fix.
 - **GitHub:** not yet filed
+- **GitHub:** #127
 
 ### The header status line still states coverage as a single misleading range, beside a correct one
 - **Found:** 2026-09-18, while fixing #71 (the web page never says what data
@@ -2556,3 +2566,4 @@ those were found.
   tool draws seasons only") rather than what the data lacks. Hash the preamble
   and re-check `PREAMBLE_TOKEN_BUDGET` headroom, since this text is charged on
   every agent call.
+- **GitHub:** #128
