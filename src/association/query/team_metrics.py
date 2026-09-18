@@ -33,6 +33,19 @@ What was measured, against the built warehouse:
   ``team_season_stats``, and several postseasons around 2000 are missing
   games - and a rating built from 80 games of points allowed over 82 games of
   possessions would be wrong without looking wrong.
+- ``team_season_stats.avgRebounds`` is NOT the game-level fault
+  :mod:`association.query.conditions` works around (DATA.md, "The team
+  ``totalRebounds`` column stops including team rebounds in 2022"). Checked
+  against the 2026-09-17 warehouse: it equals ``avgOffensiveRebounds +
+  avgDefensiveRebounds`` to rounding in every regular season from 1994 to
+  2026, 2008 included, with no drop across 2021-2022 - unlike
+  ``team_box_stats.totalRebounds`` (the per-game column), ESPN's season
+  aggregate never counted a separate bucket of team-credited rebounds. So
+  ``TEAM_METRICS["rebounds"]`` reads it unchanged. The *season-total*
+  ``team_season_stats.totalRebounds`` column is a different story - it carries
+  the same fault as the per-game one (53.17/game in 2020, 49.00 in 2021,
+  44.45 in 2022, read as ``totalRebounds / gamesPlayed``) - but nothing here
+  reads it; only ``run_sql`` can reach it.
 
 .. versionadded:: 2.1.0
 """

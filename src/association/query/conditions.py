@@ -259,13 +259,16 @@ def _team_games(scope: _Scope, extra: str = "") -> str:
 
     ``games`` is home/away-oriented and joining a team to only one side of it
     silently returns half its games, so the team's own row in team_box_stats
-    decides which side it was on - the same join ``game_log`` uses."""
+    decides which side it was on - the same join ``game_log`` uses.
+
+    Selects ``offensiveRebounds``/``defensiveRebounds`` rather than
+    ``totalRebounds`` - see :data:`_TEAM_LINE`'s rebounds entry for why."""
     return f"""
         SELECT tbs.team_id, tbs.season, tbs.event_id, g.date AS stamp, {_eastern_day("g.date")} AS day, tbs.home_away,
                g.winner_team_id = tbs.team_id AS won,
                CASE WHEN tbs.home_away = 'home' THEN g.home_score ELSE g.away_score END AS team_score,
                CASE WHEN tbs.home_away = 'home' THEN g.away_score ELSE g.home_score END AS opponent_score,
-               tbs.totalRebounds, tbs.assists, tbs.threePointFieldGoalsMade, tbs.fieldGoalsMade, tbs.fieldGoalsAttempted
+               tbs.offensiveRebounds, tbs.defensiveRebounds, tbs.assists, tbs.threePointFieldGoalsMade, tbs.fieldGoalsMade, tbs.fieldGoalsAttempted
         FROM team_box_stats tbs JOIN real_games g ON g.event_id = tbs.event_id AND g.season = tbs.season
         WHERE {scope.where("tbs")}{extra}"""
 
@@ -386,7 +389,19 @@ _PLAYER_LINE: tuple[tuple[str, str, str], ...] = (
 _TEAM_LINE: tuple[tuple[str, str, str], ...] = (
     ("points", "PTS", "AVG(t.team_score)"),
     ("opponent_points", "OPP", "AVG(t.opponent_score)"),
-    ("rebounds", "REB", "AVG(t.totalRebounds)"),
+    # Not AVG(t.totalRebounds): through 2020 that column is the players'
+    # rebounds PLUS the ones ESPN credits to no player, and from 2022 it is
+    # exactly offensiveRebounds + defensiveRebounds with the team rebounds
+    # gone - 2021 is half and half. A split spanning the change would show a
+    # team's rebounding falling off a cliff for no basketball reason (measured
+    # against the 2026-09-17 warehouse: team_box_stats.totalRebounds averages
+    # ~52/game in 2019-2020, ~48 in 2021, 44.45 from 2022 on, while
+    # offensiveRebounds + defensiveRebounds already equals ESPN's own
+    # totalRebounds in every 2022+ row). offensiveRebounds and defensiveRebounds
+    # are never NULL where totalRebounds is not, so this substitutes cleanly in
+    # every season a template can reach. See DATA.md, "The team
+    # `totalRebounds` column stops including team rebounds in 2022".
+    ("rebounds", "REB", "AVG(t.offensiveRebounds + t.defensiveRebounds)"),
     ("assists", "AST", "AVG(t.assists)"),
     ("threes", "3PM", "AVG(t.threePointFieldGoalsMade)"),
     ("fg_pct", "FG%", "100.0 * SUM(t.fieldGoalsMade) / NULLIF(SUM(t.fieldGoalsAttempted), 0)"),

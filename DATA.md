@@ -706,19 +706,48 @@ the useful half of this entry is what is wrong with it.
   exactly `offensiveRebounds + defensiveRebounds`, with the team rebounds gone.
   2021 is half and half. The column name does not change, so nothing marks the
   season the definition moved.
-- **Evidence:** measured 2026-09-14. `totalRebounds` equals the player rebound
-  sum in 0 to 3 of about 2,200 non-empty regular-season rows in every season
-  from 1993 to 2018, then in 333 of 2,460 (2019), 314 of 2,118 (2020), 1,120 of
-  2,160 (2021), and **2,460 of 2,460** in 2022, 2023 and 2024. The gap between
-  the team figure and the player sum closes accordingly: +8.07 a game in 2018,
-  +7.28 in 2019, +7.10 in 2020, +3.66 in 2021, **+0.00** from 2022.
-  `team_season_stats` moves the same way — 53.17 rebounds a game in 2020, 49.00
-  in 2021, 44.45 in 2022 — so this is ESPN's convention changing, not the box
-  scores alone.
+- **Evidence:** measured 2026-09-14, re-measured 2026-09-17 against the same
+  warehouse (`totalRebounds` = `offensiveRebounds + defensiveRebounds` in
+  `team_box_stats`, regular season, `fieldGoalsAttempted IS NOT NULL`): equal
+  in 0 to 9 of about 2,200-2,460 rows a season from 1993 to 2018, then 332 of
+  2,460 (2019), 314 of 2,118 (2020), 1,158 of 2,160 (2021), and **every row**
+  (2,460-2,462 of 2,462) from 2022 through 2026. `offensiveRebounds` and
+  `defensiveRebounds` are never NULL in any row `totalRebounds` is not, in any
+  season, in either season type. The average gap (`totalRebounds` minus the
+  split sum) closes the same way: +8.07 a game in 2018, +7.30 in 2019, +7.10 in
+  2020, +3.66 in 2021, **+0.00** from 2022 - the postseason moves the same way
+  but one season EARLIER: its 2020 gap is still 7.95 (2 of 166 games matched),
+  and by 2021 it has already reached **+0.00** (170 of 170), a full season
+  before the regular season gets there.
+- **`team_season_stats` carries the SAME fault under a DIFFERENT column, and
+  is clean under a third.** Its season-total `totalRebounds` column (raw,
+  divided by `gamesPlayed`) reproduces the exact numbers this entry's title
+  names: 53.17 rebounds a game in 2020, 49.00 in 2021, 44.45 in 2022. But its
+  `avgRebounds` column - a separate, already-averaged figure ESPN publishes
+  alongside it - is NOT this fault: measured 2026-09-17, `avgRebounds` equals
+  `avgOffensiveRebounds + avgDefensiveRebounds` (rounded) in 974 of 975
+  team-seasons from 1994 to 2026, 2008 included (the one miss, team_id `5` in
+  2021 at 42.75 vs 42.749998, is float rounding at the 6th decimal, not a real
+  disagreement), with no NULLs and no drop across 2021-2022 (44.3 in 2021,
+  44.45 in 2022). So `team_season_stats` holds one column with this
+  fault (`totalRebounds`, the season total) and one without it (`avgRebounds`)
+  - a second instance of "the column name does not change, so nothing marks
+  which one moved," this time between two columns in the same row rather than
+  between two seasons of the same column.
 - **Does a refetch fix it?** **No** — a change of definition, not a bad value.
-- **How we handle it:** nothing yet.
-- **Tracked in:** ISSUES.md, "A team's rebounds are not comparable across 2021
-  and 2022".
+- **How we handle it:** `query/conditions.py`'s `_team_games` and `_TEAM_LINE`
+  (which feed `player_splits` and `streak` for a team subject) read
+  `offensiveRebounds + defensiveRebounds` instead of `totalRebounds`, which
+  substitutes cleanly (see the NULL claim above) and is comparable in every
+  season. `query/team_metrics.py`'s `TEAM_METRICS["rebounds"]` (`team_stat`,
+  `team_leaderboard`) needed no change - it already reads `avgRebounds`, which
+  this entry's second bullet shows was never exposed. The raw
+  `team_season_stats.totalRebounds` column is unread by any template and
+  reachable only through the SQL agent's `run_sql` tool - see ISSUES.md, "The
+  SQL agent can read a team-rebounds column with the 2021/2022 discontinuity".
+- **Tracked in:** fixed in `association.query.conditions` (`_team_games`,
+  `_TEAM_LINE`); the `run_sql` exposure of `team_season_stats.totalRebounds`
+  is tracked in ISSUES.md.
 
 ### `pointsInPaint` is -1 before 2009, and two lead columns exist only in 2026
 
