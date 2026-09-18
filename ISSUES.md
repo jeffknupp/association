@@ -2459,3 +2459,23 @@ those were found.
 - **Source:** DATA.md, "The team `totalRebounds` column stops including team
   rebounds in 2022"
 - **GitHub:** #103
+
+### The agent's prompt says there is no per-game fingerprint, and the warehouse holds one
+- **Found:** 2026-09-18, while writing up the query path
+- **Evidence:** `query/prompt.py:525-528` tells the agent that
+  `render_fingerprint` covers one season and "There is no per-game fingerprint:
+  say so rather than plotting a season for a question about one game". The
+  same prompt's `TABLE_SUMMARY` (`prompt.py:73-76`) describes
+  `net_points_player_game_fingerprint`, the per-game play-type table, and the
+  `fingerprint` template draws a single game from it when `order` is set. The
+  tool does not reach that table, but the sentence claims the data does not
+  exist.
+- **User sees:** rarely anything. The fast path answers a one-game
+  fingerprint question itself. A question that reaches the agent anyway, such as
+  one the router mis-slots or one that falls through on another scoping slot,
+  gets a refusal that names the wrong cause ("no per-game fingerprint exists").
+  P4 on reach; the shape is P2's wrong-cause refusal.
+- **Next step:** reword the tool line to describe what the tool cannot do ("this
+  tool draws seasons only") rather than what the data lacks. Hash the preamble
+  and re-check `PREAMBLE_TOKEN_BUDGET` headroom, since this text is charged on
+  every agent call.
