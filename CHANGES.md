@@ -15,6 +15,26 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A narrowed `game_log` or `player_stat` question over a season whose box
+  scores ESPN served empty no longer says the games do not exist.** Both read
+  `_no_narrowed_games` when their guard leaves nothing, and it used to check
+  only for a recorded (or rebuilt) box score - so a stat outside
+  `REBUILT_STATS` (turnovers, fouls, 3PM, `plusMinus`) sent the read back to
+  the fetched lines, which are empty for every 2013-2018 Chicago or New
+  Orleans game, and the answer became "No 2015 regular season games found for
+  Anthony Davis" of a man who played 68. It now checks whether the games exist
+  with an empty box score before saying they do not exist at all - "Anthony
+  Davis played 68 games in the 2015 regular season, but the box score is empty
+  for all of them" - the mirror-image bug `AGENTS.md` describes, in
+  `single_game_high`'s own shape.
+- **`player_stat` narrowed by `opponent`, `venue` or `without` now reads a line
+  rebuilt from play-by-play in place of an empty ESPN box score, for a stat the
+  rebuild gets right.** It never did before, even for points - the one stat
+  measured most accurate - so "Anthony Davis points vs the Lakers in 2015"
+  answered the same wrong-cause refusal as a stat the rebuild does not trust.
+  `game_log` already read rebuilt lines for its own narrowed span; this brings
+  `player_stat` in line with it. A shooting percentage still never widens to a
+  rebuilt line - its attempts are outside what the rebuild was measured for.
 - **A power-index answer whose snapshot carries no rating now says so**, rather
   than dropping the line. The power index is that answer's headline, so the old
   behavior left a reader with a record, a projection and chances and no sign

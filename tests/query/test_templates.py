@@ -15,7 +15,7 @@ from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, P
 from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, TemplateContext, TemplateUnsupported, check_scope
 from association.query.templates.games import _rebuilt_readable, game_log, head_to_head, period_split, team_quarter_points
 from association.query.templates.netpoints import fingerprint, player_netpoints
-from association.query.templates.players import leaderboard, player_compare, player_history, player_stat, single_game_high, threshold_count
+from association.query.templates.players import SHOOTING_STATS, _box_score_stat_rebuilt, leaderboard, player_compare, player_history, player_stat, single_game_high, threshold_count
 from association.query.templates.shots import shot_chart, shot_distance
 from association.query.templates.teams import team_record
 
@@ -2681,6 +2681,182 @@ def test_a_narrowed_question_carries_the_box_score_floor() -> None:
     assert check_coverage("player_stat", {"player": "Michael Jordan", "season": 1990, "season_type": 2}) is None
     assert check_coverage("player_stat", {"player": "Michael Jordan", "season": 1990, "season_type": 2, "opponent": "New York Knicks"}) is not None
     assert check_coverage("game_log", {"player": "Michael Jordan", "season": 1990, "season_type": 2}) is not None
+
+
+# ---------------- a narrowed reading over a whole empty-box-score season (#72) ----------------
+
+
+@pytest.fixture
+def empty_season_ctx(tmp_path: Path) -> TemplateContext:
+    """One player whose whole season is the empty box score ESPN leaves - every
+    Chicago and New Orleans game from 2013 to 2018 in miniature. Built to
+    exercise `game_log` and `player_stat`'s narrowed reading, which `sgh_ctx`
+    above cannot: `single_game_high` never joins `games`, and these two do. No
+    `reconstructed` column, so - like `pg_ctx` - the log carries no rebuild at
+    all, the same shape an older warehouse still has."""
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO players VALUES ('1','Anthony Davis')")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO teams VALUES ('1','NO','New Orleans Pelicans'),('2','LAL','Los Angeles Lakers')")
+    c.execute(
+        "CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR, home_team_id VARCHAR, away_team_id VARCHAR, "
+        "home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR)"
+    )
+    s = current_season()
+    c.executemany(
+        "INSERT INTO games VALUES (?, ?, 2, ?, ?, ?, ?, ?, ?)",
+        [("e1", s, f"{s - 1}-11-02T00:30Z", "2", "1", 100, 90, "2"), ("e2", s, f"{s - 1}-12-02T00:30Z", "1", "2", 95, 92, "1")],
+    )
+    c.execute(f"CREATE TABLE player_box_stats ({_BOX_COLUMNS})")
+    c.executemany(
+        f"INSERT INTO player_box_stats VALUES ({', '.join('?' for _ in range(24))})",
+        [_box("e1", s, "1", "2", "1", minutes=None), _box("e2", s, "1", "2", "1", minutes=None)],
+    )
+    c.execute(
+        "CREATE VIEW player_game_log AS SELECT pbs.*, p.display_name AS player_name, g.date AS game_date, "
+        "t.abbreviation AS team_abbr, o.abbreviation AS opponent_abbr "
+        "FROM player_box_stats pbs LEFT JOIN players p ON p.athlete_id = pbs.athlete_id "
+        "LEFT JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season "
+        "LEFT JOIN teams t ON t.team_id = pbs.team_id LEFT JOIN teams o ON o.team_id = pbs.opponent_team_id"
+    )
+    return TemplateContext(con=c, out_dir=tmp_path)
+
+
+def test_game_log_says_the_box_score_is_empty_not_that_the_games_are_missing(empty_season_ctx: TemplateContext) -> None:
+    """The named case in ISSUES.md #72: naming a stat outside REBUILT_STATS
+    sent the log back to the fetched lines - empty for his whole season - and
+    the refusal named the wrong missing fact. "No games found for Anthony
+    Davis" is false of a man who played both of them; live against the real
+    warehouse this was "No 2015 regular season games found for Anthony Davis"
+    for a man who played 68."""
+    answer = game_log(empty_season_ctx, {"player": "Anthony Davis", "stat": "turnovers"}).answer
+    assert answer == f"Anthony Davis played 2 games in the {current_season()} regular season, but the box score is empty for all of them - ESPN served no minutes or stats for any."
+
+
+def test_player_stat_narrowed_by_opponent_says_the_box_score_is_empty(empty_season_ctx: TemplateContext) -> None:
+    """The other named case: any `player_stat` narrowed by `opponent`, `venue`
+    or `without` over an empty-box-score season gave the same wrong-cause
+    refusal, for a stat the rebuild does not trust either."""
+    answer = player_stat(empty_season_ctx, {"player": "Anthony Davis", "opponent": "Los Angeles Lakers", "stat": "turnovers"}).answer
+    assert answer == f"Anthony Davis played 2 games in the {current_season()} regular season, but the box score is empty for all of them - ESPN served no minutes or stats for any."
+
+
+def test_a_season_with_no_games_at_all_is_still_told_apart_from_an_empty_one(empty_season_ctx: TemplateContext) -> None:
+    """The guard above must not fire for a season with no games in it at all -
+    that is still "no games found", never "empty box score". Perturbing the
+    fix to always claim an empty box score is exactly what this catches."""
+    answer = game_log(empty_season_ctx, {"player": "Anthony Davis", "season": current_season() - 5}).answer
+    assert answer == f"No {current_season() - 5} regular season games found for Anthony Davis."
+
+
+@pytest.fixture
+def narrowed_rebuilt_ctx(tmp_path: Path) -> TemplateContext:
+    """The same empty season as ``empty_season_ctx``, but with a `reconstructed`
+    log the way the real warehouse builds one: `player_box_stats` keeps ESPN's
+    zeroed rows, and `player_game_log` carries the figures rebuilt from
+    play-by-play, `reconstructed` marking exactly those - the split
+    `rebuilt_ctx` above uses, with the `team_id`/`opponent_team_id` columns
+    `player_stat`'s narrowed (``opponent``/``venue``/``without``) reading
+    needs and `rebuilt_ctx` does not carry."""
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO players VALUES ('1','Anthony Davis')")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO teams VALUES ('1','NO','New Orleans Pelicans'),('2','LAL','Los Angeles Lakers'),('3','BOS','Boston Celtics')")
+    c.execute(
+        "CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR, home_team_id VARCHAR, away_team_id VARCHAR, "
+        "home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR)"
+    )
+    s = current_season()
+    c.executemany(
+        "INSERT INTO games VALUES (?, ?, 2, ?, ?, ?, ?, ?, ?)",
+        [("e1", s, f"{s - 1}-11-02T00:30Z", "2", "1", 100, 90, "2"), ("e2", s, f"{s - 1}-12-02T00:30Z", "1", "2", 95, 92, "1")],
+    )
+    c.execute(f"CREATE TABLE player_box_stats ({_BOX_COLUMNS})")
+    c.executemany(
+        f"INSERT INTO player_box_stats VALUES ({', '.join('?' for _ in range(24))})",
+        [_box("e1", s, "1", "2", "1", minutes=None), _box("e2", s, "1", "2", "1", minutes=None)],
+    )
+    # rebounds/assists are here even though no test reads them: game_log's
+    # _LOG_BASE always shows MIN/PTS/REB/AST, so a default (no-stat) game_log
+    # query needs the columns present whatever `stat` was asked for.
+    c.execute(
+        "CREATE TABLE player_game_log (event_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, opponent_team_id VARCHAR, athlete_id VARCHAR, "
+        "player_name VARCHAR, did_not_play BOOLEAN, minutes INTEGER, points INTEGER, rebounds INTEGER, assists INTEGER, turnovers INTEGER, fouls INTEGER, "
+        "fieldGoalsMade INTEGER, fieldGoalsAttempted INTEGER, game_date VARCHAR, opponent_abbr VARCHAR, reconstructed BOOLEAN)"
+    )
+    c.executemany(
+        "INSERT INTO player_game_log VALUES (?,?,2,'1','2','1','Anthony Davis',FALSE,NULL,?,?,?,?,?,?,?,?,'LAL',TRUE)",
+        [("e1", s, 24, 8, 3, 3, 2, 9, 18, f"{s - 1}-11-01"), ("e2", s, 18, 6, 4, 5, 4, 7, 15, f"{s - 1}-12-01")],
+    )
+    return TemplateContext(con=c, out_dir=tmp_path)
+
+
+def test_player_stat_reads_rebuilt_games_before_deciding_none_matched_the_opponent(narrowed_rebuilt_ctx: TemplateContext) -> None:
+    """The `player_stat` mirror of the `game_log` case below: both of Anthony
+    Davis's games here are covered by the rebuild, so a `points` question
+    narrowed to an opponent he never faced is missing the OPPONENT, not a box
+    score - `_no_narrowed_games` has to be given the same `rebuilt` reading
+    `_box_score_player_stat`'s own query used, or its diagnostic is stricter
+    than the answer it is explaining."""
+    answer = player_stat(narrowed_rebuilt_ctx, {"player": "Anthony Davis", "opponent": "Boston Celtics", "stat": "points"}).answer
+    assert answer == f"Anthony Davis played 2 games in the {current_season()} regular season, none of them vs the Boston Celtics."
+    assert "empty box score" not in answer
+
+
+def test_game_log_reads_rebuilt_games_before_deciding_none_matched_the_opponent(narrowed_rebuilt_ctx: TemplateContext) -> None:
+    """The fact that is really missing when a rebuilt season is narrowed to an
+    opponent it never faced is the opponent, not the season - and telling them
+    apart needs `_no_narrowed_games` to check for a recorded game under the
+    SAME `rebuilt` reading the caller's own query used. Both of Anthony Davis's
+    games here are covered by the rebuild (`reconstructed`), so the season is
+    NOT "empty box score" from `game_log`'s point of view; asking about an
+    opponent he never faced must say so, not repeat the box-score message."""
+    answer = game_log(narrowed_rebuilt_ctx, {"player": "Anthony Davis", "opponent": "Boston Celtics"}).answer
+    assert answer == f"Anthony Davis played 2 games in the {current_season()} regular season, none of them vs the Boston Celtics."
+    assert "empty box score" not in answer
+
+
+def test_narrowed_player_stat_reads_a_rebuilt_line_for_a_trusted_stat(narrowed_rebuilt_ctx: TemplateContext) -> None:
+    """The P2 this closes for `player_stat`: before it, ANY narrowing
+    (``opponent``, ``venue`` or ``without``) read only the stored table, which
+    is empty for every one of these games - even for points, the one stat the
+    rebuild is trusted for. Live against the real warehouse this was "Anthony
+    Davis points vs the Lakers in 2015" answering the wrong-cause refusal."""
+    result = player_stat(narrowed_rebuilt_ctx, {"player": "Anthony Davis", "opponent": "Los Angeles Lakers", "stat": "points"})
+    assert result.data["stats"]["gamesPlayed"] == 2
+    assert result.data["stats"]["avgPoints"] == 21.0
+    assert "no games found" not in result.answer.lower()
+    assert "empty box score" not in result.answer
+    assert "2 of these games have no box score from ESPN" in result.answer
+    assert "rebuilt from play-by-play" in result.answer
+
+
+def test_narrowed_player_stat_still_refuses_a_rebuilt_line_for_an_untrusted_stat(narrowed_rebuilt_ctx: TemplateContext) -> None:
+    """Turnovers are outside REBUILT_STATS, so the narrowed reading must not
+    widen to the rebuild even though one exists here - and the refusal still
+    has to name the fact that is really missing (the box score, not the
+    season)."""
+    answer = player_stat(narrowed_rebuilt_ctx, {"player": "Anthony Davis", "opponent": "Los Angeles Lakers", "stat": "turnovers"}).answer
+    assert answer == f"Anthony Davis played 2 games in the {current_season()} regular season, but the box score is empty for all of them - ESPN served no minutes or stats for any."
+
+
+def test_narrowed_player_stat_never_reads_a_shooting_percentage_from_a_rebuilt_line(narrowed_rebuilt_ctx: TemplateContext) -> None:
+    """A rebuilt line's attempts are outside what the rebuild was measured for
+    (`UNGATED_ON_REBUILD`), so a shooting percentage must never widen to it
+    even though makes and attempts are both present here. Asserted directly on
+    the gate as well as through the template: `player_stat` itself never asks
+    for a shooting stat and a per-game stat at once (`wanted` is always empty
+    when `shooting` is set), so a query-level assertion alone cannot tell this
+    guard apart from that caller's own invariant - the same reasoning
+    `_rebuilt_readable` in `games.py` is asserted on directly for."""
+    con = narrowed_rebuilt_ctx.con
+    assert _box_score_stat_rebuilt(con, ["points"], None) is True
+    assert _box_score_stat_rebuilt(con, ["points"], SHOOTING_STATS["fieldGoalPct"]) is False
+    assert _box_score_stat_rebuilt(con, [], SHOOTING_STATS["fieldGoalPct"]) is False
+    answer = player_stat(narrowed_rebuilt_ctx, {"player": "Anthony Davis", "opponent": "Los Angeles Lakers", "stat": "fieldGoalPct"}).answer
+    assert answer == f"Anthony Davis played 2 games in the {current_season()} regular season, but the box score is empty for all of them - ESPN served no minutes or stats for any."
 
 
 def test_player_history_career_is_every_season(ps_con: TemplateContext) -> None:
