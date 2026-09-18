@@ -199,6 +199,25 @@ TEMPLATE_SOURCES: dict[str, tuple[str, ...]] = {
 }
 
 
+TABLELESS_INTENTS: frozenset[str] = frozenset({"coach"})
+"""Intents whose template reads no warehouse table at all.
+
+Only ``coach`` today: it is a refusal, and there is nothing for it to read -
+no table here holds a coach, which is the whole reason it refuses. So it
+declares no sources, and :func:`check_coverage` and :func:`coverage_caveat`
+both come back None for it, which is right: appending "there is no data for
+1996" to a sentence that already explains what is missing would name a second,
+wrong cause.
+
+A named constant rather than a literal in a test, for the reason
+:data:`association.query.router.CODE_ASSIGNED_INTENTS` is: a template absent
+from ``TEMPLATE_SOURCES`` is normally one no floor can refuse, and the two
+lists have to disagree deliberately rather than by drift.
+
+.. versionadded:: 4.0.0
+"""
+
+
 # Templates that read a player name at all - resolving it, filtering on it, or
 # refusing because of it. A name the question does not support is only worth
 # refusing over where the answer would actually be about that player; for

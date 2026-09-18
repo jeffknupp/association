@@ -246,6 +246,13 @@ CASES: list[tuple[str, str, dict]] = [
     ("worst record 2025-26", "team_leaderboard", {"rank": "worst"}),
     ("Longest winning streak in the NBA this season", "streak", {}),
     ("Celtics vs Bulls head to head record", "head_to_head", {}),
+    # No table here holds a coach, so `route()` assigns this intent from the
+    # question's own words and the template refuses, naming the real cause.
+    # The point of the case is that the WORD decides it: whatever the model
+    # replies with is overridden, so this should never move - and it is
+    # asserted with no slots, because a coach question carries none.
+    ("nick nurse coaching record all-time nba in december on the road", "coach", {}),
+    ("who coached the bulls in 1996", "coach", {}),
 ]
 
 

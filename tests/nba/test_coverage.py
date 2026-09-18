@@ -16,7 +16,7 @@ import pytest
 from association.nba.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON, caveat, unavailable
 from association.query.prompt import KNOWN_TABLES
 from association.query.templates import TEMPLATES
-from association.query.templates.common import RANKING_INTENTS, TEMPLATE_SOURCES, check_coverage, coverage_caveat
+from association.query.templates.common import RANKING_INTENTS, TABLELESS_INTENTS, TEMPLATE_SOURCES, check_coverage, coverage_caveat
 
 
 def test_every_covered_table_is_a_real_table() -> None:
@@ -29,8 +29,17 @@ def test_every_template_declares_the_tables_it_reads() -> None:
     """TEMPLATE_SOURCES and TEMPLATES are two hand-maintained lists of the same
     intents, the shape that already produced the player_compare bug. A template
     missing here is one no floor can ever refuse."""
-    declared = set(TEMPLATE_SOURCES) | {"leaderboard"}  # leaderboard resolves its table per metric
+    declared = set(TEMPLATE_SOURCES) | {"leaderboard"} | TABLELESS_INTENTS  # leaderboard resolves its table per metric; the tableless ones read none
     assert declared == set(TEMPLATES)
+
+
+def test_a_tableless_intent_is_neither_refused_nor_caveated() -> None:
+    """`coach` is a refusal that reads nothing, so a coverage floor has no
+    purchase on it. Appending "there is no data for 1996" to a sentence that
+    already explains what is missing would name a second, wrong cause."""
+    for intent in TABLELESS_INTENTS:
+        assert check_coverage(intent, {"season": 1996, "season_type": REGULAR_SEASON}) is None, intent
+        assert coverage_caveat(intent, {"season": 2015}) is None, intent
 
 
 def test_every_declared_source_has_a_floor() -> None:

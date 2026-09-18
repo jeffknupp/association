@@ -2,7 +2,7 @@
 the model is and is not trusted to have gotten right."""
 
 import re
-from typing import Any
+from typing import Any, cast
 from unittest.mock import patch
 
 import ollama
@@ -13,6 +13,7 @@ from association.nba.season import current_season
 from association.query.prompt import estimate_tokens
 from association.query.router import CODE_ASSIGNED_INTENTS, ORDER_INTENTS, ORDER_WORDS, SIDE_VALUES, Route, route
 from association.query.router_prompt import ROUTER_NUM_CTX, ROUTER_PROMPT, ROUTER_PROMPT_TOKEN_BUDGET, ROUTER_SCHEMA
+from association.query.templates import TEMPLATES, TemplateContext
 
 
 def _reply(payload: str) -> ChatResponse:
@@ -1166,3 +1167,55 @@ def test_the_router_prompt_leaves_room_for_the_question_and_the_reply() -> None:
     assert cost <= ROUTER_PROMPT_TOKEN_BUDGET, f"router prompt plus a long question is ~{cost} tokens, over the {ROUTER_PROMPT_TOKEN_BUDGET} budget: shorten ROUTER_PROMPT or raise ROUTER_NUM_CTX"
     # The quarter left over is the chat template and a reply of under 100 tokens of JSON.
     assert ROUTER_NUM_CTX - ROUTER_PROMPT_TOKEN_BUDGET >= 1024
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "nick nurse coaching record all-time nba in december on the road",
+        "who coached the bulls in 1996",
+        "how many games did doc rivers coach",
+        "head coach of the lakers",
+    ],
+)
+def test_a_coach_question_is_refused_rather_than_handed_to_the_agent(question: str) -> None:
+    """Nothing here holds a coach, so the agent would query tables with no such
+    column and is then free to fill the silence from its own weights - the
+    failure check_coverage exists to stop. The intent is assigned from the
+    question's own words, so no model reply can avoid it: the reply below asks
+    for something else entirely and is overridden."""
+    with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"player_stat","player":"Nick Nurse","stat":"points"}')):
+        got = route("m", question)
+    assert got is not None and got.intent == "coach"
+    # No slots: the model's are for a question that cannot be answered, and a
+    # team or player name reaching the refusal would only invite a wrong cause.
+    assert got.slots == {}
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "how many points does embiid average",
+        "what was the lakers record last season",
+        "who led the league in scoring in 1996",
+        # The surname alone is deliberately not enough: "nurse" and "rivers"
+        # are ordinary words, and matching one would be the substring trap
+        # players_named_in was written against.
+        "nick nurse",
+    ],
+)
+def test_an_ordinary_question_is_not_taken_for_a_coach_question(question: str) -> None:
+    with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"player_stat","player":"Joel Embiid","stat":"points"}')):
+        got = route("m", question)
+    assert got is not None and got.intent != "coach"
+
+
+def test_the_coach_refusal_names_the_source_rather_than_blaming_it() -> None:
+    """The obvious sentence - "ESPN does not publish coaches" - was probed on
+    2026-09-17 and is false: it serves two coach collections, both unusable.
+    Saying the source has none would be the wrong-cause refusal this project
+    keeps producing, so the sentence says what is actually wrong with them."""
+    answer = TEMPLATES["coach"](cast("TemplateContext", None), {}).answer
+    assert "No table here holds a coach" in answer
+    assert "ESPN does publish coaches" in answer
+    assert "Player and team questions are unaffected" in answer

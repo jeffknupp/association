@@ -41,6 +41,56 @@ from .common import TemplateContext, TemplateResult, TemplateUnsupported, _clamp
 _CONFERENCE_WORDS = re.compile(r"\b(?:conferences?|divisions?|east(?:ern)?|west(?:ern)?|atlantic|central|southeast|northwest|pacific|southwest)\b", re.IGNORECASE)
 
 
+#: What a coach question is answered with, and why it is a refusal rather than
+#: a fall-through.
+#:
+#: No table here holds a coach - 20 base tables and 6 views, zero columns named
+#: anything like it - so the SQL agent has nothing to find. Left to fall
+#: through it would spend a slow round trip and then be free to fill the
+#: silence from its own weights, which is the failure `check_coverage` exists
+#: to stop: an agent with nothing to read writes a confident answer. So this
+#: refuses, and names which fact is missing.
+#:
+#: The sentence says what it says because the obvious reading - "ESPN does not
+#: publish coaches" - was checked on 2026-09-17 and is false. ESPN serves two
+#: coach collections, and neither is usable: the league-wide one ignores the
+#: season it is asked for (1977 answers with today's staff, Doug Christie and
+#: JJ Redick among them), and the team-scoped one covers 12 of 30 teams in
+#: 1996, never names two coaches for a team-season - so no mid-season change
+#: exists in it - and is wrong about Detroit for every season sampled from
+#: 1994 to 2026. Telling somebody the source has no coaches would be the
+#: wrong-cause refusal this project keeps producing; telling them it has an
+#: unusable one is true. See DATA.md, "ESPN publishes coaches, and the
+#: collection that looks league-wide is not historical".
+COACH_REFUSAL: str = (
+    "No table here holds a coach, so nothing about one can be answered - not a record, not a tenure, not a game. "
+    "ESPN does publish coaches, but not in a form worth storing: the season-by-season list it serves ignores the season asked for and returns the current staff, "
+    "and its per-team list covers 12 of 30 teams in 1996, never shows a mid-season change, and names the wrong coach for some franchises outright. "
+    "Player and team questions are unaffected."
+)
+"""The sentence a coach question is answered with. See above.
+
+.. versionadded:: 4.0.0
+"""
+
+
+def coach(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+    """Refuse a question about a coach, naming the real cause.
+
+    Assigned by :func:`association.query.router.route` from the question's own
+    words rather than by the model - it is in
+    :data:`association.query.router.CODE_ASSIGNED_INTENTS`, so no
+    ``ROUTER_PROMPT`` or ``ROUTER_SCHEMA`` change was needed and no other
+    question's routing can have moved.
+
+    Takes no slots and reads no table: there is nothing to read.
+
+    .. versionadded:: 4.0.0
+    """
+    del ctx, slots  # A refusal needs neither a connection nor a slot.
+    return TemplateResult(data={"message": COACH_REFUSAL, "unanswerable": "coach"}, answer=COACH_REFUSAL)
+
+
 def _conference_refusal(slots: dict[str, Any]) -> TemplateResult | None:
     """A refusal naming the real cause, if any team slot holds a conference or a
     division rather than a team."""

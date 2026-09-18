@@ -88,7 +88,22 @@ def _is_team_quarter_points(raw: dict[str, Any]) -> bool:
     return raw.get("intent") == "team_quarter_points" and not (isinstance(raw.get("player"), str) and raw["player"].strip())
 
 
-CODE_ASSIGNED_INTENTS: frozenset[str] = frozenset({"period_split"})
+# A coach question, which has no answer here and is refused rather than left to
+# fall through (templates/teams.py's COACH_REFUSAL says why, and what ESPN
+# actually serves). Read from the question's own words for the same reason
+# `period_split` is: the word is unmistakable, and a new ROUTER_SCHEMA enum
+# value or ROUTER_PROMPT line would move slots on unrelated questions.
+#
+# Deliberately only the word itself and its inflections. No coach is named
+# without it in practice ("nick nurse coaching record all-time"), and matching
+# a bare surname would be the substring trap `players_named_in` was written
+# against - "nurse" and "rivers" are ordinary words, and Doc Rivers, Nick Nurse
+# and Quin Snyder are all real people a player question could name. Checked
+# against the warehouse: no player or team has "coach" anywhere in its name, so
+# the word cannot collide with a subject.
+_COACH_WORDS = re.compile(r"\bcoach(?:es|ed|ing|es'|'s)?\b|\bhead\s+coach\b", re.IGNORECASE)
+
+CODE_ASSIGNED_INTENTS: frozenset[str] = frozenset({"coach", "period_split"})
 """Intents no model can emit, because :func:`route` assigns them from the
 question's own text.
 
@@ -842,6 +857,20 @@ def _route_ask_model(model: str, question: str, previous_question: str | None) -
     return raw
 
 
+def _route_coach_intent(raw: dict[str, Any], question: str) -> bool:
+    """True when the question is about a coach, which nothing here can answer.
+
+    Runs before every other stage and stops them: a coach question is refused
+    whatever the model made of it, and the slots the model returned are for a
+    question that cannot be answered anyway. Reading them would only risk
+    a team or player name reaching the refusal.
+    """
+    if not _COACH_WORDS.search(question):
+        return False
+    raw["intent"] = "coach"
+    return True
+
+
 def _route_period_intents(raw: dict[str, Any], question: str) -> None:
     """Fouling out, and a quarter or half: intents code assigns from the question's own words."""
     low = question.lower()
@@ -1166,6 +1195,10 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     raw = _route_ask_model(model, question, previous_question)
     if raw is None:
         return None
+    # A coach question is refused whatever the model said, and carries no
+    # slots, so it short-circuits before any of the stages below run.
+    if _route_coach_intent(raw, question):
+        return Route(intent=raw["intent"], slots={})
     # The stages run in this order because each reads what the ones before it
     # rewrote: the intents code assigns decide which slots are read, and a
     # threshold the question lacks turns a count back into a ranking before

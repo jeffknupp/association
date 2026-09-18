@@ -23,6 +23,7 @@ from .common import HONORED_SCOPING as HONORED_SCOPING
 from .common import PLAYER_INTENTS as PLAYER_INTENTS
 from .common import PLAYER_REQUIRED_INTENTS as PLAYER_REQUIRED_INTENTS
 from .common import RANKING_INTENTS as RANKING_INTENTS
+from .common import TABLELESS_INTENTS as TABLELESS_INTENTS
 from .common import TEMPLATE_SOURCES as TEMPLATE_SOURCES
 from .common import TemplateContext, TemplateResult
 from .common import TemplateUnsupported as TemplateUnsupported
@@ -34,7 +35,7 @@ from .netpoints import fingerprint, player_netpoints
 from .players import leaderboard, player_compare, player_history, player_stat, single_game_high, threshold_count
 from .shots import shot_chart, shot_distance
 from .splits import player_splits, record_when, streak, with_without
-from .teams import team_leaderboard, team_outlook, team_record, team_stat
+from .teams import coach, team_leaderboard, team_outlook, team_record, team_stat
 
 TEMPLATES: dict[str, Callable[[TemplateContext, dict[str, Any]], TemplateResult]] = {
     "threshold_count": threshold_count,
@@ -60,4 +61,7 @@ TEMPLATES: dict[str, Callable[[TemplateContext, dict[str, Any]], TemplateResult]
     "team_stat": team_stat,
     "team_leaderboard": team_leaderboard,
     "team_outlook": team_outlook,
+    # No slots and no table: a refusal naming why a coach question has no
+    # answer here. Assigned by route() from the question, not by the model.
+    "coach": coach,
 }

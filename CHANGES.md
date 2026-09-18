@@ -15,6 +15,18 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A coach question is refused, naming the real cause, instead of falling
+  through to the agent.** No table here holds a coach, so the agent queried
+  tables with no such column and was then free to fill the silence from its own
+  weights - the failure `check_coverage` exists to stop. The refusal says what
+  is actually wrong rather than blaming the source, because "ESPN does not
+  publish coaches" was probed and is false: it serves two coach collections and
+  neither is usable (the season-by-season one ignores the season it is asked
+  for and returns today's staff, the per-team one covers 12 of 30 teams in
+  1996, never shows a mid-season change, and names the wrong coach for some
+  franchises outright). `route()` assigns the intent from the question's own
+  words, so `ROUTER_PROMPT` and `ROUTER_SCHEMA` are untouched - both hashes
+  unchanged - and no other question's routing can have moved.
 - **A player ESPN lists twice in one team's box score, under two
   `athlete_id`s, is now merged into one row.** Measured against the
   2026-09-17 warehouse: 8 players, 69 team-games, none before 2003. A new
