@@ -913,7 +913,7 @@ def parse_net_points_daily(
        ``(team_id, date) -> game`` dict, which could not distinguish a game
        from the next night's and wrote both NetPoints dates onto one of them.
 
-    .. versionchanged:: 4.0.2
+    .. versionchanged:: 4.1.0
        Keeps ``display_name`` and ``nba_player_id`` on every player row
        instead of dropping the name when the exact match fails.
     """
@@ -1026,7 +1026,7 @@ def parse_net_points_daily_players(
 
     .. versionadded:: 2.1.0
 
-    .. versionchanged:: 4.0.2
+    .. versionchanged:: 4.1.0
        Keeps ``display_name`` on every row instead of dropping the name when
        the exact match fails.
     """

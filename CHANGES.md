@@ -15,6 +15,12 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- The version directives on this release's new public symbols name 4.1.0, not
+  4.0.2. Five agents working in parallel were each told 4.0.2, correct for a
+  release of fixes; `GET /api/coverage` is a new endpoint, which makes this a
+  minor bump. Corrected in the pre-release audit, which is what that audit is
+  for - and the pinned install commands were rewritten by the bump script
+  itself this time (#60), rather than by hand minutes before the tag.
 - **The web page now reports `GET /api/coverage`, what the warehouse actually
   holds grouped into the three tiers a question can land in** - box score, box
   score plus play-by-play, and both of those plus NetPoints - and the page

@@ -121,7 +121,7 @@ class PartialSeasonResponse(BaseModel):
     naming one while the season sits under the other's problem is the
     false-cause answer :mod:`association.nba.coverage` exists to stop.
 
-    .. versionadded:: 4.0.2
+    .. versionadded:: 4.1.0
     """
 
     season: int
@@ -139,7 +139,7 @@ class TierResponse(BaseModel):
     1994 - is not offered at all, which is why it is surfaced separately in
     ``phantom_seasons`` rather than folded into the range.
 
-    .. versionadded:: 4.0.2
+    .. versionadded:: 4.1.0
     """
 
     name: str
@@ -164,7 +164,7 @@ class CoverageResponse(BaseModel):
     play-by-play can touch box scores too, and its floor is the narrowest
     among all of them.
 
-    .. versionadded:: 4.0.2
+    .. versionadded:: 4.1.0
     """
 
     tiers: list[TierResponse]

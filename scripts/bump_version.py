@@ -115,7 +115,7 @@ def check_changelog() -> None:
 #: rather than inline so the reason lives in one place and a fourth exception
 #: has somewhere obvious to go.
 #:
-#: .. versionadded:: 4.0.2
+#: .. versionadded:: 4.1.0
 PIN_EXCLUDED_PREFIXES: tuple[str, ...] = ("CHANGES.md", "tests/", "scripts/")
 
 
@@ -155,7 +155,7 @@ def find_pinned_files(root: Path = ROOT) -> list[Path]:
     with ``docs/releasing.rst`` matching the bare string in prose and dropping
     out for carrying no version.
 
-    .. versionadded:: 4.0.2
+    .. versionadded:: 4.1.0
     """
     result = subprocess.run(
         ["git", "grep", "--fixed-strings", "--files-with-matches", "association@v"],

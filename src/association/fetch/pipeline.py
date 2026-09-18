@@ -671,7 +671,7 @@ class Pipeline:
         different people, and nothing here tells those apart from a real
         duplicate id without that shared-game proof.
 
-        .. versionchanged:: 4.0.2
+        .. versionchanged:: 4.1.0
            Resolves a name shared by exactly two athlete ids when the pair is
            proven to be the same person by a shared box-score game, instead of
            dropping every two-id name unconditionally.

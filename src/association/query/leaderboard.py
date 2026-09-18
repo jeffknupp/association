@@ -250,7 +250,7 @@ def _team_games_for_season(con: duckdb.DuckDBPyConnection, season: int) -> int |
     predates this function and is not this fix's to update - so a caller falls
     back to the unscaled floor rather than raising.
 
-    .. versionadded:: 4.0.2
+    .. versionadded:: 4.1.0
     """
     try:
         row = con.execute(
@@ -283,7 +283,7 @@ def _scale_min_sample(base: int, team_games: int) -> int:
     rounding direction is not a choice at all - it is nearest, same as it
     would be by any other rule.
 
-    .. versionadded:: 4.0.2
+    .. versionadded:: 4.1.0
     """
     return math.floor(base * team_games / SCHEDULE_BASE_GAMES + 0.5)
 
@@ -306,7 +306,7 @@ def default_min_sample(
 
     .. versionadded:: 2.1.0
 
-    .. versionchanged:: 4.0.2
+    .. versionchanged:: 4.1.0
        Added ``con`` and ``season``, and the scaling itself - see
        ``LeaderboardMetric.scales_with_schedule`` and ISSUES.md #13.
     """
@@ -438,7 +438,7 @@ def run_leaderboard(
        column; a postseason can carry its own qualifier; a postseason row that
        copies the regular season is excluded.
 
-    .. versionchanged:: 4.0.2
+    .. versionchanged:: 4.1.0
        A ``scales_with_schedule`` metric's default floor is scaled to the
        season's own team-game count in a shortened season (ISSUES.md #13),
        and ``min_sample_applied`` on the result always names the number

@@ -37,7 +37,7 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     refusal: a chart of the wrong Curry is obvious on sight, and titled with the
     resolved name.
 
-    .. versionchanged:: 4.0.2
+    .. versionchanged:: 4.1.0
        A defaulted (unnamed) season with no shots for the player now redirects
        to the seasons he does have on record, when there are any, rather than
        "No shots found ... with the given filters" - which blamed a filter

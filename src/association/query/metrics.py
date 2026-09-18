@@ -123,7 +123,7 @@ class LeaderboardMetric:
        Every per-game average now carries the games qualifiers, so a ranking
        by one is qualified in both season types.
 
-    .. versionchanged:: 4.0.2
+    .. versionchanged:: 4.1.0
        Added ``scales_with_schedule``.
     """
 

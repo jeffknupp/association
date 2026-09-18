@@ -238,7 +238,7 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        empty rather than the wrong-cause "no games found". "Anthony Davis
        turnovers, 2015" no longer reads as though he never played.
 
-    .. versionchanged:: 4.0.2
+    .. versionchanged:: 4.1.0
        A player's log with a defaulted (unnamed) season and no games in it
        now redirects to the seasons he has on record, when there are any,
        rather than a refusal that reads as though his whole career were

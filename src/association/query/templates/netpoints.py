@@ -56,7 +56,7 @@ def player_netpoints(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     guard that turns a wrong answer into a slow one needs something to fall
     through TO.
 
-    .. versionchanged:: 4.0.2
+    .. versionchanged:: 4.1.0
        A defaulted (unnamed) season with no NetPoints for the player now
        redirects to the seasons he does have on record, when there are any,
        rather than a flat refusal that reads as though the warehouse held

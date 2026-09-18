@@ -823,7 +823,7 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        games ESPN zeroed. A span left with no games at all says whose box
        scores are empty rather than that no games were found.
 
-    .. versionchanged:: 4.0.2
+    .. versionchanged:: 4.1.0
        A season that was never named - the slot defaulted to "now" rather than
        being asked for - now redirects to the seasons the player actually has
        on record when the current one has nothing, instead of a refusal that
@@ -1074,7 +1074,7 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
        Eastern calendar day it was played; it used to be the UTC day it is
        stored under, a day late for every game tipping after 7pm Eastern.
 
-    .. versionchanged:: 4.0.2
+    .. versionchanged:: 4.1.0
        A defaulted (unnamed) season with no games for a named player now
        redirects to the seasons he does have on record, when there are any,
        rather than a refusal that reads as though he never played - "Allen
