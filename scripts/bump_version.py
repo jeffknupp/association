@@ -14,6 +14,15 @@ The changelog contract is a section headed ``## Unreleased``. This script
 renames it to ``## X.Y.Z - <today>``; if there is no such section it stops
 rather than inventing one, because a release with no description of what
 changed is worse than a release that failed to happen.
+
+Because PyPI is unreachable for this project, ``README.md``,
+``docs/installation.rst`` and ``docs/usage.rst`` also carry install commands
+pinned to a release tag (``git+https://github.com/jeffknupp/association@vX.Y.Z``).
+This script rewrites every ``@v<current>`` pin it finds to ``@v<new>`` in the
+same run - see :func:`find_pinned_files`, :func:`check_install_pins` and
+:func:`rewrite_install_pins`. Before this existed the pins rotted silently: they
+said ``v1.4.0`` through three later releases, and 3.0.0 shipped still pointing
+at ``v2.2.0`` (`#60 <https://github.com/jeffknupp/association/issues/60>`_).
 """
 
 from __future__ import annotations
@@ -37,6 +46,11 @@ LOCK = ROOT / "uv.lock"
 SEMVER = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 VERSION_LINE = re.compile(r'^version = "([^"]+)"$', re.MULTILINE)
 UNRELEASED = re.compile(r"^## Unreleased\s*$", re.MULTILINE)
+
+# Matches the version inside an install-command pin
+# (``git+https://github.com/jeffknupp/association@v4.0.1``) wherever one
+# appears, so a doc that grows a new pin is covered without editing this list.
+PIN = re.compile(r"association@v(\d+\.\d+\.\d+)")
 
 BUMPS = ("major", "minor", "patch")
 
@@ -95,6 +109,83 @@ def check_changelog() -> None:
         sys.exit(f"error: CHANGES.md has {headings} `## Unreleased` headings - only the first would be stamped, leaving the rest in the history as unreleased; merge them first")
 
 
+def find_pinned_files(root: Path = ROOT) -> list[Path]:
+    """Return tracked files under ``root`` whose content pins an install command to a release tag.
+
+    Uses ``git grep`` rather than a hardcoded list of files - a fixed list of
+    just ``README.md`` and ``docs/installation.rst`` is exactly what let the
+    pins rot for three releases (#60): ``docs/usage.rst`` carries the same pin
+    and was never in it. ``root`` defaults to the real project root and is
+    overridable so tests can point this at a throwaway git repository instead
+    of scanning this project's own tree.
+
+    A tracked symlink such as ``CLAUDE.md`` is stored by git as a blob holding
+    only its target path (``AGENTS.md``), never the target's contents, so it
+    can never contain this pattern and is never a candidate for rewriting -
+    no special-case exclusion is needed to keep it intact.
+    """
+    result = subprocess.run(
+        ["git", "grep", "--fixed-strings", "--files-with-matches", "association@v"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return [root / line for line in result.stdout.splitlines() if line]
+
+
+def check_install_pins(current: str, version: str, root: Path = ROOT) -> list[Path]:
+    """Validate every install-command pin under ``root`` and return the files that need rewriting.
+
+    Refuses outright, the same way :func:`check_clean_tree` and
+    :func:`check_tag_free` do, when a pin names a version that is neither the
+    one being released from nor the one being released to - that can only mean
+    a pin already drifted or was hand-edited to some other tag, and guessing
+    which one is right is worse than stopping and saying which file and which
+    version it found.
+    """
+    to_rewrite: list[Path] = []
+    for path in find_pinned_files(root):
+        pins = set(PIN.findall(path.read_text()))
+        if not pins:
+            continue
+        unexpected = sorted(pins - {current, version})
+        if unexpected:
+            sys.exit(
+                f"error: {path.relative_to(root)} pins association@v{unexpected[0]}, which is neither the current version ({current}) nor the new one ({version}) - fix the pin by hand before bumping"
+            )
+        if current in pins:
+            to_rewrite.append(path)
+    return to_rewrite
+
+
+def rewrite_install_pins(files: list[Path], current: str, version: str, root: Path = ROOT) -> None:
+    """Rewrite ``@v<current>`` to ``@v<version>`` in every file :func:`check_install_pins` flagged.
+
+    This is the fix for #60: install commands in ``README.md``,
+    ``docs/installation.rst`` and ``docs/usage.rst`` used to keep pointing at
+    an old release tag because nothing rewrote them automatically, and a human
+    updating them by hand immediately before a bump was the only thing that
+    ever made them correct. After rewriting, no ``@v<current>`` pin may survive
+    anywhere in ``root`` - checked with a second ``git grep`` rather than
+    trusted, so a bug here fails loudly instead of leaving a stale pin behind.
+    """
+    old = f"association@v{current}"
+    new = f"association@v{version}"
+    for path in files:
+        path.write_text(path.read_text().replace(old, new))
+
+    leftover = subprocess.run(
+        ["git", "grep", "--fixed-strings", "--files-with-matches", old],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.strip()
+    if leftover:
+        sys.exit(f"error: {old} still appears after rewriting install pins:\n{leftover}")
+
+
 def rewrite_pyproject(current: str, version: str) -> None:
     """Replace the version line in ``pyproject.toml``."""
     text = PYPROJECT.read_text()
@@ -142,14 +233,19 @@ def main() -> int:
     check_clean_tree()
     check_tag_free(version)
     check_changelog()
+    pinned_files = check_install_pins(current, version)
 
     rewrite_pyproject(current, version)
     relock(version)
     stamp_changelog(version)
+    rewrite_install_pins(pinned_files, current, version)
     print(f"{current} -> {version}")
+    for path in pinned_files:
+        print(f"  pinned {path.relative_to(ROOT)} to v{version}")
 
     if args.commit:
-        subprocess.run(["git", "add", "pyproject.toml", "uv.lock", "CHANGES.md"], cwd=ROOT, check=True)
+        pin_paths = [str(path) for path in pinned_files]
+        subprocess.run(["git", "add", "pyproject.toml", "uv.lock", "CHANGES.md", *pin_paths], cwd=ROOT, check=True)
         subprocess.run(["git", "commit", "-m", f"Release {version}"], cwd=ROOT, check=True)
     if args.tag:
         subprocess.run(["git", "tag", "-a", f"v{version}", "-m", f"association {version}"], cwd=ROOT, check=True)

@@ -15,6 +15,18 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **`scripts/bump_version.py` now rewrites the install-command pins itself
+  (#60).** Because PyPI is unreachable, `README.md`, `docs/installation.rst`
+  and `docs/usage.rst` pin a release tag
+  (`git+https://github.com/jeffknupp/association@vX.Y.Z`), and nothing rewrote
+  them automatically - they said `v1.4.0` through three later releases, and
+  3.0.0 shipped still pointing at `v2.2.0`. The bump script now finds every
+  such pin with `git grep` (not a fixed file list, so a pin added to a new doc
+  is covered the same way), rewrites `@v<current>` to `@v<new>` in the same
+  run as the version bump, refuses outright if a pin names a version that is
+  neither the current one nor the new one, and asserts no `@v<current>` pin
+  survives anywhere in the tree afterward. `docs/releasing.rst` now describes
+  this instead of telling a human to update the pins by hand.
 - **A retired player's question that names no season no longer defaults to
   the current one and stops there.** `player_stat`, `single_game_high`,
   `game_log`, `player_netpoints` and `shot_chart` all read a missing `season`

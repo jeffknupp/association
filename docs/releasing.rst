@@ -34,11 +34,18 @@ through ``--version``; and the publish workflow parses the same file to check
 the tag agrees. Nothing else needs editing on a bump.
 
 The exception, while PyPI is unreachable, is the install commands in
-``README.md``, :doc:`installation` and :doc:`usage`, which pin a release tag. Update them in
-the bump commit, or they keep pointing at an old release: they said ``v1.4.0``
-through 2.0.0, and 3.0.0 shipped still pointing at ``v2.2.0``. ``git grep -n
-'association@v'`` finds all of them, and a released tag in the working tree
-that is not the version in ``pyproject.toml`` means this step was missed.
+``README.md``, :doc:`installation` and :doc:`usage`, which pin a release tag.
+``scripts/bump_version.py`` rewrites every ``@v<current>`` pin it finds to
+``@v<new>`` in the same run as the version bump, so nothing needs updating by
+hand - before this existed the pins kept pointing at an old release: they said
+``v1.4.0`` through 2.0.0, and 3.0.0 shipped still pointing at ``v2.2.0``. It
+finds the pins with ``git grep`` rather than a fixed file list, so a pin added
+to a new doc is covered automatically, and it refuses outright if a pin names a
+version that is neither the one being released from nor the one being released
+to, rather than guessing which is right. ``git grep -n 'association@v'`` is
+still the way to verify the result by hand: every match should read the new
+tag, and a released tag in the working tree that does not means a bump
+somehow skipped this step.
 
 Cutting a release
 -----------------
@@ -53,9 +60,11 @@ Cutting a release
       $ scripts/bump_version.py minor --tag
 
    Accepts ``major``, ``minor``, ``patch`` or an explicit ``X.Y.Z``. It renames
-   the ``## Unreleased`` heading to the version and today's date, refuses to run
-   on a dirty working tree, and refuses to reuse a tag that already exists —
-   PyPI would not accept a second upload for that version either.
+   the ``## Unreleased`` heading to the version and today's date, rewrites the
+   install-command pins in ``README.md``, ``docs/installation.rst`` and
+   ``docs/usage.rst`` from the old tag to the new one, refuses to run on a
+   dirty working tree, and refuses to reuse a tag that already exists — PyPI
+   would not accept a second upload for that version either.
 
 #. Rehearse against TestPyPI if the packaging itself changed: run the *Publish*
    workflow manually with the target ``testpypi``, then check the result

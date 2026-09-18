@@ -1710,18 +1710,6 @@ found.
   each tagged version.
 - **GitHub:** #58
 
-### The release script does not update the install pins
-- **Found:** 2026-09-11, docs survey for 2.1.0
-- **Evidence:** because PyPI is unreachable, `README.md` and
-  `docs/installation.rst` pin `git+https://github.com/jeffknupp/association@vX.Y.Z`.
-  `scripts/bump_version.py` rewrites only `pyproject.toml`, `uv.lock` and
-  `CHANGES.md`. So the pins said `v1.4.0` through three later releases, until
-  they were updated by hand for 2.1.0.
-- **User sees:** install instructions that install an old release.
-- **Next step:** have the bump script rewrite `@v<current>` to `@v<new>` in both
-  files, and refuse if a pin names neither version.
-- **GitHub:** #60
-
 ### A coverage caveat is added to a refusal that drew nothing
 - **Found:** 2026-09-11, docs edits for 2.1.0
 - **Evidence:** "plot Kobe Bryant's threes in 2002" is refused, and the answer
