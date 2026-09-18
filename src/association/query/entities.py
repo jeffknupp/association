@@ -317,6 +317,217 @@ def _grounded(con: duckdb.DuckDBPyConnection, question: str, name: str) -> bool:
     return False
 
 
+def _exact_name_span(con: duckdb.DuckDBPyConnection, span: list[str], limit: int = 2) -> list[Entity]:
+    """Players whose ``display_name`` holds every word of ``span`` as a whole
+    word - the exact-match building block :func:`players_named_in` and
+    :func:`_question_derived_player` both need, so the query is written once.
+
+    ``limit`` bounds the scan; 2 is enough to tell "exactly one" from "more
+    than one" without reading out a whole surname's worth of rows.
+    """
+    where = " AND ".join(["list_contains(regexp_split_to_array(lower(display_name), '[^a-z]+'), ?)"] * len(span))
+    rows = con.execute(f"SELECT athlete_id, display_name FROM players WHERE {where} LIMIT {int(limit)}", [w.casefold() for w in span]).fetchall()
+    return [Entity(id=str(r[0]), name=r[1]) for r in rows]
+
+
+def _fuzzy_name_span(con: duckdb.DuckDBPyConnection, span: list[str], limit: int) -> list[Entity]:
+    """Players within :func:`_edit_budget` of every word of ``span``, each
+    against its nearest word of the name - the near-spelling counterpart of
+    :func:`_exact_name_span`, and the same query :func:`suggest_players`
+    already runs for its own last pass. The AND across tokens is what keeps a
+    short span from matching everybody.
+    """
+    gaps = ", ".join(f"{_NEAREST_WORD} AS gap{i}" for i in range(len(span)))
+    where = " AND ".join(f"gap{i} <= ?" for i in range(len(span)))
+    rows = con.execute(
+        f"SELECT athlete_id, display_name FROM (SELECT athlete_id, display_name, {gaps} FROM players) WHERE {where} LIMIT {int(limit)}",
+        [*span, *(_edit_budget(w) for w in span)],
+    ).fetchall()
+    return [Entity(id=str(r[0]), name=r[1]) for r in rows]
+
+
+# players_named_in's own cap: a name is never longer than three words once
+# _words has split a hyphenated one into halves.
+_SPAN_MAX_WORDS = 3
+
+
+def _anchor_word_position(con: duckdb.DuckDBPyConnection, q_words: list[str], lowered_q: list[str], word: str) -> int | None:
+    """Where ``word`` (one word of the router's name) turns up in the
+    question - exactly, or the nearest near spelling within
+    :func:`_edit_budget` - or ``None`` when it turns up nowhere at all."""
+    exact = next((i for i, w in enumerate(lowered_q) if w == word.casefold()), None)
+    if exact is not None:
+        return exact
+    if len(word) < 3:
+        return None  # a near spelling of a word this short is a different word
+    distances = con.execute(
+        "SELECT list_transform(?::VARCHAR[], q -> damerau_levenshtein(lower(q), ?))",
+        [q_words, word.casefold()],
+    ).fetchone()
+    row = distances[0] if distances else None
+    if row is None:
+        return None
+    budget = _edit_budget(word)
+    near = [i for i, d in enumerate(row) if d is not None and d <= budget and len(lowered_q[i]) >= 3]
+    return min(near, key=lambda i: row[i]) if near else None
+
+
+def _resolve_word_span(con: duckdb.DuckDBPyConnection, span: list[str]) -> Entity | None:
+    """``span``, resolved to one player - exact words before near ones, the
+    same order :func:`players_named_in` tries - or ``None``. A single word is
+    never handed to the fuzzy pass; see :func:`_question_derived_player`."""
+    if any(len(w) < 3 for w in span):
+        return None
+    matches = _exact_name_span(con, span)
+    if len(matches) != 1 and len(span) > 1:
+        matches = _fuzzy_name_span(con, span, limit=2)
+    return matches[0] if len(matches) == 1 else None
+
+
+def _question_derived_player(con: duckdb.DuckDBPyConnection, question: str, name: str) -> Entity | None:
+    """The one player a window of the question's OWN words - anchored to
+    wherever ``name`` (the router's guess, right or wrong) itself appears -
+    plausibly names, when that is confident enough to act on.
+
+    Two faults this repairs, both structural, and both invisible to
+    :func:`_grounded`'s "any one word is enough" check because that check is
+    deliberately generous: the router TRUNCATES a name the question spells in
+    full ("dennis schröder", typed correctly, arrived as just ``'Dennis'`` -
+    grounded, and a 7-way surname), and it FABRICATES a word next to a real
+    one ("tatum rec home" arrived as ``'Jaylen Tatum'``, the league's only
+    Tatum with an invented given name bolted on; "Grady dick" arrived as
+    ``'Grady Dickinson'``, grounded by its own typo'd given name). Neither
+    ever reaches a repair, because grounding already says yes.
+
+    So this reads the question instead of trusting the router's spelling: it
+    anchors each of ``name``'s own words to where it turns up nearby - exactly,
+    or within :func:`_edit_budget`, since the router silently corrects typos
+    and a near spelling still marks the spot - and resolves the question's
+    literal words there against the roster, never the router's spelling.
+
+    Deliberately anchored, never a sentence-wide scan: fuzzy-matching a
+    question's leftover words was measured and rejected elsewhere in this
+    module ("season" is one edit from Tari Eason, wherever it turns up), and
+    what keeps this safe is that nothing is tried unless it sits next to a
+    word the router already pointed at - a name with no anchor at all is left
+    for the ungrounded path below to report, exactly as before.
+
+    Two things measured against real corpus rows keep this from trusting too
+    little of a coincidence:
+
+    - **Two or more of the router's own words anchoring is answered from
+      within exactly that range of the question, narrowed a word at a time -
+      but never down to one word alone.** "kareem stats vs bob lanier"
+      anchors both "bob" and "lanier" (the question's own words, spelled
+      exactly), and that pair names nobody: Bob Lanier retired before the
+      warehouse's 1993-94 floor. Falling back to "lanier" alone then named
+      Chaz Lanier, a real but wholly unrelated player - the same false-cause
+      shape the Maxey example in the module docstring warns about, arrived at
+      through this function instead of a nickname. The range still shrinks
+      rather than being tried whole-or-nothing, because the router's own
+      spelling can itself be the mismatch: "de'angelo russell" anchors "de",
+      "angelo" and "russell" all exactly, and the full three-word span fails
+      only because the roster spells the first of them "d", not "de" -
+      dropping it and resolving "angelo russell" alone is what recovers
+      D'Angelo Russell. What is never tried is the SINGLE remaining word once
+      the range is down to it: two anchored words failing together, with no
+      narrower range above one word left to try, is the answer, not an
+      invitation to trust one of them alone.
+    - **With exactly one anchor, a WINDOW around it (two words or more) is
+      trusted regardless of where the anchor sits** - "Grady dick" anchors
+      only on the given name "Grady", and the window's "grady dick" is what
+      resolves it to Gradey Dick. What is trusted only when that anchor is
+      the LAST of the router's words, the position a surname sits in, is
+      falling all the way back to the anchor word ALONE, with nothing else
+      corroborating it. "Jaylen Tatum" anchors only on "Tatum", its last
+      word, and the league's only Tatum is trustworthy alone. "Kareem
+      Abdul-Jabbar" anchors only on "Kareem", its FIRST word, and "Kareem"
+      alone is exactly as unrelated a near-miss as "lanier" alone above, for
+      the identical reason - Kareem Abdul-Jabbar is the other player these
+      two corpus rows have in common, and neither he nor Bob Lanier has a
+      row in `players` at all. A router-supplied given name with nothing
+      else in the question corroborating it is left alone here, for
+      :func:`_grounded` to judge as it always has.
+
+    Returns:
+        The one player the question's own words resolve to, or ``None`` when
+        nothing anchors at all, when two or more anchored words do not
+        resolve together, when a single anchor resolves only alone and is
+        not the last of the router's words, or when what is left resolves to
+        more than one player (left for :func:`resolve_player` to ask about)
+        or to none.
+    """
+    q_words = _words(question)
+    name_words = [w for w in _words(name) if w]
+    if not q_words or not name_words:
+        return None
+
+    lowered_q = [w.casefold() for w in q_words]
+    positions = [_anchor_word_position(con, q_words, lowered_q, word) for word in name_words]
+    anchors = {p for p in positions if p is not None}
+    if not anchors:
+        return None
+
+    bounds = _question_derived_player_multi_anchor_window(q_words, anchors) if len(anchors) >= 2 else _question_derived_player_single_anchor_window(q_words, name_words, positions, anchors)
+    if bounds is None:
+        return None
+    window, min_size = bounds
+
+    try:
+        return _question_derived_player_search(con, window, min_size)
+    except duckdb.CatalogException:
+        # A warehouse without `players` (a partial load, or a test double) has
+        # nothing here to resolve against - the same best-effort rule
+        # `_team_named` follows: finding nothing leaves the slots exactly as
+        # the router gave them, which is never worse than before this ran.
+        return None
+
+
+def _question_derived_player_multi_anchor_window(q_words: list[str], anchors: set[int]) -> tuple[list[str], int] | None:
+    """The window and size floor for two or more anchored words - resolved
+    from exactly that range of the question, one word narrower at a time,
+    but never down to a single word alone. See
+    :func:`_question_derived_player`'s docstring's "kareem ... bob lanier"
+    measurement for why: falling back that far is what named Chaz Lanier.
+    "de'angelo russell" is why the range still shrinks at all - the router's
+    own spelling of "De" does not match the roster's "D", and dropping it
+    lets "angelo russell" resolve on its own. ``None`` when the anchors are
+    too spread out to be one coherent name."""
+    if max(anchors) - min(anchors) > 4:
+        return None
+    return q_words[min(anchors) : max(anchors) + 1], 2
+
+
+def _question_derived_player_single_anchor_window(q_words: list[str], name_words: list[str], positions: list[int | None], anchors: set[int]) -> tuple[list[str], int]:
+    """The window and size floor for exactly one anchored word: a small
+    window around it, never the whole question - what keeps
+    :func:`_question_derived_player` from becoming the rejected
+    leftover-word scan. Two or more words of THIS window agreeing is trusted
+    regardless of where the anchor sits ("Grady dick" anchors on the given
+    name "Grady", and the window's "grady dick" is what resolves it) - what
+    is trusted only from the surname position (the floor of 1 rather than 2)
+    is falling all the way back to the anchor WORD ALONE, with nothing else
+    corroborating it; see the docstring's "Kareem" measurement."""
+    anchor_index = next(i for i, p in enumerate(positions) if p is not None)
+    anchor = next(iter(anchors))
+    window = q_words[max(0, anchor - 1) : min(len(q_words), anchor + 2)]
+    min_size = 1 if anchor_index == len(name_words) - 1 else 2
+    return window, min_size
+
+
+def _question_derived_player_search(con: duckdb.DuckDBPyConnection, window: list[str], min_size: int) -> Entity | None:
+    """``window``, tried longest span first down to ``min_size``, exact
+    words before near ones - the shared search both
+    :func:`_question_derived_player_multi_anchor_window` and
+    :func:`_question_derived_player_single_anchor_window` resolve into."""
+    for size in range(min(_SPAN_MAX_WORDS, len(window)), min_size - 1, -1):
+        found = [resolved for start in range(len(window) - size + 1) if (resolved := _resolve_word_span(con, window[start : start + size])) is not None]
+        unique_ids = {c.id for c in found}
+        if len(unique_ids) == 1:
+            return found[0]
+    return None
+
+
 def override_invented_players(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any]) -> tuple[list[tuple[str, str]], list[str]]:
     """Replace router-supplied player names the question does not support, or
     report the ones that cannot be replaced. Mutates ``slots``.
@@ -328,8 +539,13 @@ def override_invented_players(con: duckdb.DuckDBPyConnection, question: str, slo
     players, one of whom the question never mentioned. Nothing downstream could
     notice - "Jusuf Nurkic" resolves perfectly.
 
-    So every name is checked against the question before a template reads it,
-    and a name with no trace there is not answered about. Where the question
+    So every name is checked against the question before a template reads it.
+    First against the question's OWN span (:func:`_question_derived_player`),
+    which repairs a name confidently even where it is already "grounded" by
+    the looser check below - a truncated or partly-fabricated name the router
+    produced. Second, for whatever that leaves untouched, against the
+    generous word-or-nickname-or-initials check that is :func:`_grounded`: a
+    name with no trace there at all is not answered about. Where the question
     names somebody nothing else claims, that player takes its place; where it
     does not, the name is reported and the caller says so rather than handing
     the question to the agent: measured, the agent filled that silence with a
@@ -340,37 +556,79 @@ def override_invented_players(con: duckdb.DuckDBPyConnection, question: str, slo
         not be replaced. A non-empty second element means the slots are not
         safe to answer from, even though the first may also be non-empty.
 
-    .. versionadded:: 2.1.0
+    .. versionchanged:: 4.3.0
+       Tries :func:`_question_derived_player` first, so a name the question's
+       own words resolve confidently is corrected even when it was already
+       "grounded" by the older, looser check - the shape that let a truncated
+       "dennis schröder" (typed correctly, arrived as ``'Dennis'``) stand as a
+       7-way clarification the question never should have asked.
     """
     slot = "players" if isinstance(slots.get("players"), list) else "player"
-    values = slots.get(slot)
-    named = [v for v in (values if isinstance(values, list) else [values]) if isinstance(v, str) and v.strip()]
-    if not named:
+    raw_list, is_list = _override_invented_players_slot(slots, slot)
+    positions = [i for i, v in enumerate(raw_list) if isinstance(v, str) and v.strip()]
+    if not positions:
         return [], []
 
-    ungrounded = [name for name in named if not _grounded(con, question, name)]
-    if not ungrounded:
-        return [], []
+    changed, still_ungrounded = _override_invented_players_derive(con, question, slots, slot, raw_list, is_list, positions)
+    if not still_ungrounded:
+        return changed, []
 
     # Only the names nothing already accounts for are available as
-    # replacements: "compare sga and embiid" names two players, and one of them
-    # is the slot that came through fine.
-    kept = [name for name in named if name not in ungrounded]
+    # replacements: "compare sga and embiid" names two players, and one of
+    # them is the slot that came through fine (or was already repaired above).
+    kept = [raw_list[i] for i in positions if i not in still_ungrounded]
+    ungrounded_names = [raw_list[i] for i in still_ungrounded]
     spare = [name for name in players_named_in(con, question) if not any(_shares_word(name, k) for k in kept)]
-    if len(spare) != len(ungrounded):
-        return [], ungrounded
+    if len(spare) != len(ungrounded_names):
+        return changed, ungrounded_names
 
-    changed = []
-    replacement = dict(zip(ungrounded, spare, strict=True))
-    if slot == "players" and isinstance(values, list):
-        for i, was in enumerate(values):
-            if was in replacement:
-                values[i] = replacement[was]
-                changed.append((str(was), replacement[was]))
-    else:
-        slots[slot] = replacement[named[0]]
-        changed.append((named[0], replacement[named[0]]))
+    replacement = dict(zip(ungrounded_names, spare, strict=True))
+    for i in still_ungrounded:
+        was = raw_list[i]
+        _override_invented_players_write(slots, slot, raw_list, is_list, i, replacement[was])
+        changed.append((was, replacement[was]))
     return changed, []
+
+
+def _override_invented_players_slot(slots: dict[str, Any], slot: str) -> tuple[list[Any], bool]:
+    """The list :func:`override_invented_players` mutates, and whether it is
+    the real ``slots["players"]`` list rather than a throwaway wrapper around
+    the single ``slots["player"]`` value - what
+    :func:`_override_invented_players_write` needs to know before it can
+    write a repair back."""
+    values = slots.get(slot)
+    if slot == "players" and isinstance(values, list):
+        return values, True
+    return [values], False
+
+
+def _override_invented_players_write(slots: dict[str, Any], slot: str, raw_list: list[Any], is_list: bool, i: int, new_value: str) -> None:
+    """Write ``new_value`` at position ``i`` of ``raw_list``, and back into
+    ``slots`` too when ``raw_list`` is only a throwaway wrapper around
+    ``slots[slot]`` rather than that same list object."""
+    raw_list[i] = new_value
+    if not is_list:
+        slots[slot] = new_value
+
+
+def _override_invented_players_derive(
+    con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], slot: str, raw_list: list[Any], is_list: bool, positions: list[int]
+) -> tuple[list[tuple[str, str]], list[int]]:
+    """The first pass over every named position: repair it from the
+    question's own span where :func:`_question_derived_player` resolves that
+    confidently, and collect whatever is left that :func:`_grounded` still
+    calls ungrounded."""
+    changed: list[tuple[str, str]] = []
+    still_ungrounded: list[int] = []
+    for i in positions:
+        name = raw_list[i]
+        derived = _question_derived_player(con, question, name)
+        if derived is not None and derived.name.casefold() != name.strip().casefold():
+            changed.append((name, derived.name))
+            _override_invented_players_write(slots, slot, raw_list, is_list, i, derived.name)
+        elif not _grounded(con, question, name):
+            still_ungrounded.append(i)
+    return changed, still_ungrounded
 
 
 def restore_dropped_players(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any]) -> tuple[str, str] | None:
@@ -493,10 +751,32 @@ def undo_name_completion(con: duckdb.DuckDBPyConnection, question: str, slots: d
     no answer, and a name the question spells in full is not a part at all.
     Measured over the ``check_routing.py`` corpus, no slot moves.
 
+    A name :func:`_question_derived_player` already resolved is the same kind
+    of settled case as a nickname, for the same reason: "Dylon harper" typos
+    the given name, and matching ``asked`` exactly (this function's own job,
+    everywhere else) reads the CORRECTED "Dylan" as absent from the question
+    - not typo'd, invented - and would cut a right answer back to the
+    ambiguous "Harper" over a misspelling nobody asked to have undone.
+
+    Deliberately not extended to trust a bare fragment's own exact
+    uniqueness the way :func:`_question_derived_player` does: "Kon" and
+    "Gui" are each, by themselves, an exact and globally unique match
+    ("Kon Knueppel", "Gui Santos") the same way "Kareem" is ("Kareem Rush") -
+    and "Kareem" is a coincidence, not an answer, measured directly against
+    this function (`test_two_anchored_words_that_fail_together_do_not_fall_back_to_one`'s
+    shape, reached through here instead of :func:`_question_derived_player`,
+    named Kareem Rush for "Kareem Abdul-Jabbar" before this line existed).
+    Nothing here can tell a real player's mangled surname from a fabricated
+    one apart from the position check :func:`_question_derived_player`
+    already applies, so a bare matched fragment is left exactly as
+    ambiguous as :func:`find_players` says it is.
+
     Returns:
         The ``(was, now)`` pairs cut back, for the trace.
 
-    .. versionadded:: 2.1.0
+    .. versionchanged:: 4.3.0
+       Also leaves alone a name :func:`_question_derived_player` resolves to
+       from the question's own span - see above.
     """
     asked = {word.casefold() for word in _words(question)}
     nicknamed = nicknames_in(question)
@@ -509,6 +789,9 @@ def undo_name_completion(con: duckdb.DuckDBPyConnection, question: str, slots: d
         # A nickname the question actually used is a resolution the curated
         # table made, not one the router guessed: "steph curry" is Stephen.
         if not matched or len(matched) == len(words) or name in nicknamed:
+            return None
+        derived = _question_derived_player(con, question, name)
+        if derived is not None and derived.name.casefold() == name.casefold():
             return None
         fragment = " ".join(matched)
         return fragment if len(find_players(con, fragment)) > 1 else None

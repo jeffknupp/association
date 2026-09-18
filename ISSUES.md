@@ -1306,28 +1306,41 @@ those were found.
 
 ### The surname backoff in `suggest_players` can confidently name a different real player
 - **Found:** 2026-09-18, entity-resolution pass over the StatMuse replay set
-- **Evidence:** "Grady dick last 10 games" (the real player is "Gradey Dick")
-  routed to `game_log` with `player='Grady Dickinson'` - the given name
-  correct-ish, the surname fabricated. `suggest_players`' surname-only pass
-  (`entities.py`, pass 1) drops back to the last token, finds exactly one
-  player whose surname is "Dickinson" - Hunter Dickinson, a real but wholly
-  unrelated player - and returns him without ever checking the given name.
-  That is not a bug in isolation: the same "ignore the given name once the
-  surname is exact and unique" rule is what makes "Jemel Embiid" recover Joel
-  Embiid (`test_a_fabricated_given_name_falls_back_to_the_surname`), and
-  tightening it to also check "Grady" against "Hunter" would break that
-  measured, tested fix - Damerau-Levenshtein("jemel","joel") is 2, above
-  `_edit_budget(5)=1`, so a stricter cross-check rejects the case the pass
-  exists for. The two cases are the same shape (router invents a surname) with
-  opposite right answers, and nothing in the text tells them apart.
-- **User sees:** "did you mean Hunter Dickinson?" - a confident, wrong "did you
-  mean", worse than falling through, because it reads as an answer.
-- **Next step:** needs a real design, not a patch: something that weighs a
-  *second* signal before trusting the surname-only match - e.g. only trusting
-  it when the given-name token independently near-matches nobody else's given
-  name in the same surname group (Hunter is not close to Grady, but Joel is
-  fabricated-close to Jemel) - measured against the corpus before shipping,
-  the way `PLAYER_NICKNAMES` and the prominence tiebreak above it were.
+- **Fixed 2026-09-18, for the reported case** (span-contract work,
+  `entities._question_derived_player`): "Grady dick last 10 games" now
+  answers Gradey Dick's real game log directly. The fix is not a patch to
+  `suggest_players` - it never reaches it for this shape anymore.
+  `override_invented_players` now resolves "Grady Dickinson" from the
+  question's own words *before* `resolve_player`/`suggest_players` ever see
+  it: "Grady" anchors the question's own (typo'd) given name, the window
+  extends to the adjacent "dick", and "grady dick" resolves to Gradey Dick
+  by the same near-spelling-plus-exact discipline `suggest_players` already
+  used - just run against the question's literal words instead of the
+  router's fabricated surname. Measured against the 261-question replay:
+  this row moves from "did you mean Hunter Dickinson?" (wrong, confident) to
+  the correct answer, and a dedicated regression test
+  (`test_a_fabricated_surname_extension_is_discarded_not_the_router_s_wrong_guess`)
+  pins it.
+- **What remains open, narrower than before:** `suggest_players`' own
+  surname-only pass (pass 1) is untouched and still ignores the given name
+  once a surname matches exactly and uniquely - the same shape could still
+  reach it and misname someone the way Hunter Dickinson did, but only when
+  *no* window around any anchor resolves first. That needs both the given
+  name AND the surname to fail every exact-or-near check
+  `_question_derived_player` tries (unlikely for an ordinary "First Last"
+  question, since the two are adjacent and the window search tries the pair
+  together) - not reproduced since the fix, and not chased further here for
+  lack of a live example. The original "Jemel Embiid" tension this entry's
+  own evidence describes (tightening the surname-only pass would break the
+  case it exists for) is unchanged and still true of `suggest_players`
+  itself.
+- **Evidence (original report):** "Grady dick last 10 games" (the real player
+  is "Gradey Dick") routed to `game_log` with `player='Grady Dickinson'` -
+  the given name correct-ish, the surname fabricated. `suggest_players`'
+  surname-only pass (`entities.py`, pass 1) drops back to the last token,
+  finds exactly one player whose surname is "Dickinson" - Hunter Dickinson,
+  a real but wholly unrelated player - and returns him without ever checking
+  the given name.
 - **Source:** ours (a matching heuristic), not ESPN's.
 - **GitHub:** #122
 
@@ -1660,6 +1673,60 @@ those were found.
   `router_prompt.py`'s own rules.
 - **GitHub:** none yet
 - **GitHub:** #124
+
+### Two more router typo'd names resolve to a safe clarification rather than a direct answer, and a stricter fix was measured and reverted
+- **Found:** 2026-09-18, building the span-contract fix for entity resolution
+  (`entities._question_derived_player`, ISSUES.md #122's fix)
+- **Evidence:** "kon knepuell stats last 10 games" (router: `player='Kon
+  Knepuvel'`) and "gui last 5 games vs sours" (router, after its own given-name
+  fabrication is repaired: `player='Gui Santos'`) both still ask "'Kon'/'Gui'
+  matches more than one player - did you mean ... ?" rather than answering
+  directly, even after the span-contract fix. Both fragments ("Kon", "Gui")
+  are in fact EXACT, globally unique whole-word matches
+  (`entities._exact_name_span`) - the same shape `players_named_in` already
+  uses elsewhere to answer confidently - so a version of this fix that also
+  trusted a bare matched fragment's own exact uniqueness inside
+  `undo_name_completion` answered both directly (`Kon Knueppel`, `Gui
+  Santos`).
+- **Why it was reverted rather than shipped:** measured on the same 261-row
+  replay, that version also answered "kareem stats vs bob lanier" with
+  **Kareem Rush** - a real but wholly unrelated player - because "Kareem"
+  alone is *equally* an exact, globally unique whole-word match, and Kareem
+  Abdul-Jabbar (like Bob Lanier) retired before the warehouse's 1993-94
+  floor and has no row to be found under at all (DATA.md, "Coverage
+  floors"). Nothing in the fragment-uniqueness check can tell "the surname
+  is garbled beyond this repair" (Kon, Gui - real players, just spelled
+  worse than this fix's edit budgets reach) apart from "the intended person
+  simply is not in `players`" (Kareem, Bob Lanier) - both are a single
+  given name, exactly and uniquely matching someone real but unrelated. The
+  position-based guard that protects `_question_derived_player` itself
+  (trust a lone anchor only from the surname position) does not help here
+  either: "Kon" and "Kareem" are both given names, the same position, with
+  opposite right answers. A P1 wrong-entity answer for a real, if narrow,
+  question shape (a pre-1994 legend named alongside a typo'd modern player)
+  was judged worse than two rows staying a safe, if imperfect, clarification
+  that already names the right player among its options - so the
+  fragment-uniqueness branch was removed before this shipped, and
+  `test_two_anchored_words_that_fail_together_do_not_fall_back_to_one` /
+  `test_a_given_name_anchor_alone_is_not_trusted_but_its_window_is` pin the
+  guard that would otherwise regress if this is attempted again.
+- **User sees:** an unnecessary "did you mean Kon Knueppel, John Konchar, or
+  Yanic Konan Niederhauser?" (or the Gui-Santos equivalent) where a direct
+  answer is possible - safe, not misleading, but a clarification the
+  question did not need to ask.
+- **Next step:** needs a second, independent signal the way #122's own
+  "Next step" already called for before this fix existed - something that
+  tells "Kon"/"Gui" apart from "Kareem"/"Bob Lanier" other than exact
+  uniqueness, e.g. checking whether the OTHER word of the router's name has
+  literally any surname-shaped near neighbor in the question at all (Kon
+  Knepuvel's "Knepuvel" is one edit outside this fix's own budget of
+  "knepuell", the question's own spelling, and could be caught by widening
+  that budget slightly; Kareem Abdul-Jabbar's "Abdul"/"Jabbar" have no
+  question word anywhere near them). Not attempted here - it needs measuring
+  against the corpus the same way the guard that replaced it was, and this
+  session's budget did not extend to a second round of that measurement.
+- **Source:** ours (a matching heuristic), not ESPN's.
+- **GitHub:** not yet filed
 
 ## P4: tooling, docs, low impact
 

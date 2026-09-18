@@ -449,6 +449,191 @@ def test_no_player_slot_is_nothing_to_check(con: duckdb.DuckDBPyConnection) -> N
     assert override_invented_players(con, "who led the league in scoring?", {"stat": "points"}) == ([], [])
 
 
+# ---------------- the question's own span, not the router's spelling ----------------
+#
+# `_grounded`'s "any one word is enough" check passes every name below - a
+# truncated one because the word it kept is right there, a fabricated one
+# because whichever half is real is right there too - so none of them ever
+# reached the repair above. These are the five rows AGENTS.md records as
+# measured against the live router, and the fixture below matches its own
+# description of each: a surname shared by several first names (or the
+# reverse), so a wrong repair would resolve to the wrong real person, not
+# just fail loudly.
+
+
+@pytest.fixture
+def span_con() -> duckdb.DuckDBPyConnection:
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    c.execute(
+        "INSERT INTO players VALUES "
+        # "dennis schröder" typed correctly arrived as just 'Dennis' - grounded,
+        # and seven Dennises make it a clarification that need not have asked.
+        "('1','Dennis Schroder'),('2','Dennis Scott'),('3','Dennis Rodman'),('4','RayJ Dennis'),"
+        "('5','Dennis Smith Jr.'),('6','Dexter Dennis'),('7','Dennis Horner'),"
+        # "Aaron gordan" arrived as 'Aaron' - grounded, and many Aarons make it
+        # a clarification too, when only Gordon's surname is a typo away.
+        "('8','Aaron Gordon'),('9','Aaron Holiday'),('10','Aaron Nesmith'),('11','Aaron Wiggins'),"
+        # "jayleyn brown" arrived as 'Brown' - grounded, and several Browns make
+        # it a clarification, when only Jaylen's given name is a typo away.
+        "('12','Jaylen Brown'),('13','Bruce Brown'),('14','Kobe Brown'),"
+        # "tatum rec home" arrived as 'Jaylen Tatum' - grounded by 'Tatum' alone
+        # - and there is exactly one.
+        "('15','Jayson Tatum'),"
+        # "Grady dick" arrived as 'Grady Dickinson' - grounded by 'Grady' alone
+        # - and the real player is 'Gradey Dick'; 'Dickinson' is a different,
+        # real player (ISSUES.md #122's own wrong suggestion).
+        "('16','Gradey Dick'),('17','Hunter Dickinson'),('18','Dickey Simpkins'),"
+        # 19-20 are what guards the short-word span filter: "Williams's"
+        # splits into a stray one-letter "s" (the same possessive
+        # test_a_possessive_s_is_not_a_player guards against for
+        # players_named_in), which is a whole word of John S. Williams. Two
+        # real Williamses make "williams" alone ambiguous, so only the stray
+        # "s" could spuriously narrow it - never a name anyone typed.
+        "('19','John S. Williams'),('20','Aaron Williams'),"
+        # 21-22 guard the two rules above: "kareem stats vs bob lanier" names
+        # two pre-1994 legends the warehouse has no row for at all (ISSUES.md
+        # #123). Kareem Rush and Chaz Lanier are the real, unrelated players
+        # each near-miss coincidentally and confidently names instead.
+        "('21','Kareem Rush'),('22','Chaz Lanier')"
+    )
+    return c
+
+
+def test_a_truncated_name_is_expanded_from_the_question(span_con: duckdb.DuckDBPyConnection) -> None:
+    """The router dropped the surname the question spelled correctly, and
+    'Dennis' alone is grounded (the word is right there) - so the old check
+    never touched it, and seven Dennises would have been asked about, one
+    right answer among them."""
+    slots = {"player": "Dennis"}
+    changed, invented = override_invented_players(span_con, "how many points does dennis schroder average", slots)
+    assert changed == [("Dennis", "Dennis Schroder")]
+    assert invented == []
+    assert slots["player"] == "Dennis Schroder"
+
+
+def test_a_typo_on_the_dropped_half_of_a_name_still_resolves(span_con: duckdb.DuckDBPyConnection) -> None:
+    """The router dropped the surname entirely, and the question's own
+    spelling of it ('gordan') is a typo - but AND-across-tokens with the given
+    name it kept narrows four Aarons to the one whose surname is a real edit
+    away, the same discipline suggest_players already trusts for a
+    suggestion, strong enough here to act on directly."""
+    slots = {"player": "Aaron"}
+    changed, invented = override_invented_players(span_con, "aaron gordan points per game", slots)
+    assert changed == [("Aaron", "Aaron Gordon")]
+    assert invented == []
+    assert slots["player"] == "Aaron Gordon"
+
+
+def test_a_typo_on_the_kept_half_of_a_name_still_resolves(span_con: duckdb.DuckDBPyConnection) -> None:
+    """The router kept only the exact surname the question used, and the
+    question's given name ('jayleyn') is a typo - narrowed against three
+    Browns to the one whose given name is a real edit away."""
+    slots = {"player": "Brown"}
+    changed, invented = override_invented_players(span_con, "jayleyn brown last 10 games", slots)
+    assert changed == [("Brown", "Jaylen Brown")]
+    assert invented == []
+    assert slots["player"] == "Jaylen Brown"
+
+
+def test_a_fabricated_given_name_next_to_an_exact_surname_is_discarded(span_con: duckdb.DuckDBPyConnection) -> None:
+    """The router invented 'Jaylen' out of nothing and bolted it onto the
+    league's only Tatum; grounded by 'Tatum' alone, so the old check let the
+    invented half ride through. The surname alone is an EXACT match here, not
+    a guess, which is what makes discarding the invented half safe rather
+    than a substitution."""
+    slots = {"player": "Jaylen Tatum"}
+    changed, invented = override_invented_players(span_con, "tatum rec home", slots)
+    assert changed == [("Jaylen Tatum", "Jayson Tatum")]
+    assert invented == []
+    assert slots["player"] == "Jayson Tatum"
+
+
+def test_a_fabricated_surname_extension_is_discarded_not_the_router_s_wrong_guess(span_con: duckdb.DuckDBPyConnection) -> None:
+    """ISSUES.md #122: the router's 'Dickinson' is a real surname, grounded by
+    the question's own typo'd 'Grady', so the old check never touched it -
+    and suggest_players' surname-only backoff then found Hunter Dickinson, a
+    different real player, by backing off to the ROUTER's fabricated
+    surname. This resolves from the QUESTION's own 'dick' instead, which
+    Hunter Dickinson's surname does not literally contain as a whole word,
+    so he is never a candidate here at all."""
+    slots = {"player": "Grady Dickinson"}
+    changed, invented = override_invented_players(span_con, "Grady dick last 10 games", slots)
+    assert changed == [("Grady Dickinson", "Gradey Dick")]
+    assert invented == []
+    assert slots["player"] == "Gradey Dick"
+
+
+def test_a_span_that_already_matches_the_router_is_a_no_op(span_con: duckdb.DuckDBPyConnection) -> None:
+    """The common case: the router already wrote the exact name the question
+    spells out, so nothing should be logged as changed."""
+    slots = {"player": "Jayson Tatum"}
+    assert override_invented_players(span_con, "how many points does jayson tatum average", slots) == ([], [])
+    assert slots["player"] == "Jayson Tatum"
+
+
+def test_two_anchored_words_that_fail_together_do_not_fall_back_to_one(span_con: duckdb.DuckDBPyConnection) -> None:
+    """ISSUES.md #123's shape, reached through this function instead of
+    suggest_players: "Kareem Abdul-Jabbar" and "Bob Lanier" are both real
+    players the router correctly named in full - neither is in `players` at
+    all, because both retired before the warehouse's 1993-94 floor. "Kareem"
+    alone exactly names Kareem Rush and "Lanier" alone exactly names Chaz
+    Lanier, two real but wholly unrelated players - a wrong-entity answer
+    that measurably happened before this guard existed. Both words of each
+    name are exactly in the question, so the failure of the full span must
+    be believed rather than repaired from a single leftover word."""
+    slots = {"players": ["Kareem Abdul-Jabbar", "Bob Lanier"]}
+    assert override_invented_players(span_con, "kareem stats vs bob lanier", slots) == ([], [])
+    assert slots["players"] == ["Kareem Abdul-Jabbar", "Bob Lanier"]
+
+
+def test_a_given_name_anchor_alone_is_not_trusted_but_its_window_is(span_con: duckdb.DuckDBPyConnection) -> None:
+    """The other half of the same guard: "Kareem" anchors only the FIRST
+    word of a name the router invented the rest of, with nothing else in the
+    question backing "Abdul-Jabbar" at all - unlike "Grady dick", where the
+    window around the given-name anchor ("grady dick") is what resolves it.
+    A lone given-name anchor with no corroborating window must stay unfixed,
+    the same as a lone fuzzy surname."""
+    slots = {"player": "Kareem Abdul-Jabbar"}
+    assert override_invented_players(span_con, "kareem stats this season", slots) == ([], [])
+    assert slots["player"] == "Kareem Abdul-Jabbar"
+
+
+def test_a_lone_fuzzy_word_is_still_left_for_a_suggestion_not_a_silent_pick(span_con: duckdb.DuckDBPyConnection) -> None:
+    """The mirror image of the cases above: only ONE word resolves, and only
+    by near spelling, with nothing else in the window to corroborate it. That
+    is exactly what suggest_players already treats as a suggestion rather
+    than a substitution (test_a_near_spelling_still_counts_as_naming_somebody
+    covers the same shape against the smaller `con` fixture), so this must
+    stay a no-op and let the existing grounded/suggestion path run."""
+    slots = {"player": "Jemel Gradee"}
+    assert override_invented_players(span_con, "how many rebounds does gradee average", slots) == ([], [])
+    assert slots["player"] == "Jemel Gradee"
+
+
+def test_a_stray_possessive_letter_does_not_narrow_an_ambiguous_surname(span_con: duckdb.DuckDBPyConnection) -> None:
+    """ "Williams's" splits into a stray one-letter "s" next to the anchor,
+    which is a whole word of John S. Williams - and with a second real
+    Williams in the fixture, "williams" alone is ambiguous. The stray "s"
+    must not be allowed to break that tie: nobody typed it to mean anything,
+    and the same trap already caught players_named_in over "Jokic's" without
+    a length floor on a span's own words."""
+    slots = {"player": "Jemel Williams"}
+    assert override_invented_players(span_con, "williams's rebounds this game", slots) == ([], [])
+    assert slots["player"] == "Jemel Williams"
+
+
+def test_an_ambiguous_span_is_left_for_the_clarification_to_ask(span_con: duckdb.DuckDBPyConnection) -> None:
+    """ "who is better, tatum or brown" - 'brown' alone resolves to three
+    real players here, so the window must not guess between them; the
+    existing undo_name_completion trims the router's completed 'Jaylen
+    Brown' back to the ambiguous 'brown' afterward, unaffected by this."""
+    slots = {"players": ["Jayson Tatum", "Jaylen Brown"]}
+    assert override_invented_players(span_con, "who is better, tatum or brown", slots) == ([], [])
+    assert slots["players"] == ["Jayson Tatum", "Jaylen Brown"]
+
+
 # ---------------- what the question itself names ----------------
 
 
