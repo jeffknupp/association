@@ -109,6 +109,22 @@ def check_changelog() -> None:
         sys.exit(f"error: CHANGES.md has {headings} `## Unreleased` headings - only the first would be stamped, leaving the rest in the history as unreleased; merge them first")
 
 
+#: Paths whose ``association@v`` mentions are not install instructions.
+#:
+#: See :func:`find_pinned_files` for why each one is here. Kept as a constant
+#: rather than inline so the reason lives in one place and a fourth exception
+#: has somewhere obvious to go.
+#:
+#: .. versionadded:: 4.0.2
+PIN_EXCLUDED_PREFIXES: tuple[str, ...] = ("CHANGES.md", "tests/", "scripts/")
+
+
+def _is_excluded_from_pins(path: str) -> bool:
+    """True for a git-relative path that holds the pin pattern for some reason
+    other than instructing somebody to install a release."""
+    return path.startswith(PIN_EXCLUDED_PREFIXES)
+
+
 def find_pinned_files(root: Path = ROOT) -> list[Path]:
     """Return tracked files under ``root`` whose content pins an install command to a release tag.
 
@@ -123,6 +139,23 @@ def find_pinned_files(root: Path = ROOT) -> list[Path]:
     only its target path (``AGENTS.md``), never the target's contents, so it
     can never contain this pattern and is never a candidate for rewriting -
     no special-case exclusion is needed to keep it intact.
+
+    Three places are excluded, because they hold the pattern for reasons that
+    are not an install instruction, and scanning them refused a real bump:
+
+    - ``CHANGES.md`` names the tags of past releases. Rewriting a released
+      entry would falsify the history it exists to record - the same reason
+      codespell skips this file.
+    - ``tests/`` carries fixture pins on purpose (``association@v1.0.0``), so
+      including it made this function's own tests break the next bump.
+    - ``scripts/`` holds the pattern as the regex below.
+
+    Measured against this repository after the exclusions: the candidates are
+    exactly ``README.md``, ``docs/installation.rst`` and ``docs/usage.rst``,
+    with ``docs/releasing.rst`` matching the bare string in prose and dropping
+    out for carrying no version.
+
+    .. versionadded:: 4.0.2
     """
     result = subprocess.run(
         ["git", "grep", "--fixed-strings", "--files-with-matches", "association@v"],
@@ -131,7 +164,7 @@ def find_pinned_files(root: Path = ROOT) -> list[Path]:
         text=True,
         check=False,
     )
-    return [root / line for line in result.stdout.splitlines() if line]
+    return [root / line for line in result.stdout.splitlines() if line and not _is_excluded_from_pins(line)]
 
 
 def check_install_pins(current: str, version: str, root: Path = ROOT) -> list[Path]:

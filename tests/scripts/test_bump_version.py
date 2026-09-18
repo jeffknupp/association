@@ -168,3 +168,27 @@ def test_symlink_is_never_a_pin_candidate_and_survives_rewriting(tmp_path: Path)
     assert claude_md.is_symlink()
     assert os.readlink(claude_md) == "AGENTS.md"
     assert "association@v" not in (repo / "AGENTS.md").read_text()
+
+
+def test_the_real_repository_is_bumpable() -> None:
+    """The check that the fixture tests above cannot make.
+
+    Every other test here builds a throwaway repository, so none of them sees
+    what `git grep` returns for THIS one - and against this one the pin check
+    refused outright: `tests/scripts/test_bump_version.py` carries fixture
+    pins like `association@v1.0.0`, `CHANGES.md` names the tags of past
+    releases, and `scripts/bump_version.py` holds the pattern as its own
+    regex. The next real bump would have stopped dead, which is worse than the
+    rotting pins this script exists to prevent.
+
+    So this asserts the real tree resolves to exactly the three files that are
+    install instructions, and that the pre-flight check passes on it.
+    """
+    root = Path(__file__).resolve().parents[2]
+    candidates = {p.relative_to(root).as_posix() for p in bump_version.find_pinned_files(root)}
+    assert candidates == {"README.md", "docs/installation.rst", "docs/usage.rst", "docs/releasing.rst"}
+
+    current = bump_version.current_version()
+    # Does not raise: every version-bearing pin names the current release.
+    pinned = bump_version.check_install_pins(current, "99.0.0", root)
+    assert {p.relative_to(root).as_posix() for p in pinned} == {"README.md", "docs/installation.rst", "docs/usage.rst"}

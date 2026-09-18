@@ -15,6 +15,17 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **`scripts/bump_version.py` rewrites the pinned install commands itself**, so
+  a release can no longer ship instructions that install an older one. The pins
+  said `v1.4.0` through three later releases, 3.0.0 shipped still pointing at
+  `v2.2.0`, and 4.0.0 and 4.0.1 were only right because a human edited them
+  minutes before each bump. The script discovers them with `git grep` rather
+  than a hardcoded list (a list of two files is what let `docs/usage.rst` rot
+  unnoticed), refuses to run if a pin names neither the current nor the new
+  version, and asserts no old pin survives the rewrite. It skips `CHANGES.md`,
+  `tests/` and `scripts/`, which hold the same pattern as release history,
+  fixtures and the regex itself - scanning them refused a real bump, which a
+  test against this repository now catches.
 - **`scripts/bump_version.py` now rewrites the install-command pins itself
   (#60).** Because PyPI is unreachable, `README.md`, `docs/installation.rst`
   and `docs/usage.rst` pin a release tag
