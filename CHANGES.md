@@ -15,6 +15,43 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A truncated or partly-fabricated player name is now repaired from the
+  question's own span, not just checked against it.** `override_invented_players`
+  only ever asked whether a router-supplied name had ANY trace in the
+  question at all - generous by design, so half a name could stand in for
+  the whole of it. That let a name the router simply cut short pass as
+  "grounded" and reach `resolve_player` unrepaired: "dennis schröder", typed
+  correctly, arrived as just `'Dennis'` and asked a 7-way clarification the
+  question never should have; "jayleyn brown" and "Aaron gordan" did the
+  same over a typo'd half of a name the router dropped instead of
+  completing. It also let a router-fabricated word survive next to a real
+  one: "tatum rec home" arrived as `'Jaylen Tatum'` - the league's only
+  Tatum, with an invented given name bolted on - and "Grady dick" arrived
+  as `'Grady Dickinson'`, whose fabricated surname then sent
+  `suggest_players`' surname-only backoff to **Hunter Dickinson**, a real
+  but wholly unrelated player (ISSUES.md #122).
+
+  `entities._question_derived_player` anchors each of the router's words to
+  where it turns up in the question - exactly, or within a near spelling,
+  since the router silently corrects typos - and resolves the question's
+  own words there against the roster, never the router's spelling. Two
+  guards keep it from trusting a coincidence: two or more anchored words
+  are answered from exactly that range, never falling back to one of them
+  alone (a bare given name that happens to be a rare, unrelated player's
+  whole name too - "kareem stats vs bob lanier" names two players who
+  retired before the 1993-94 floor, and a naive fallback answered Kareem
+  Rush and Chaz Lanier, two real but wholly unrelated players, instead of
+  refusing); and a single anchor is trusted alone only from the surname
+  position, never a bare given name with nothing else corroborating it.
+  `undo_name_completion` also leaves alone a name this now resolves, so a
+  typo'd but already-repaired name is not cut back to an ambiguous
+  fragment afterward.
+
+  Measured against a 261-question replay of real StatMuse-style traffic
+  (slots replayed through templates, no model call): 18 rows moved from a
+  needless clarification or a "did you mean" non-answer to a direct,
+  correct one; 18 more carry a fuller resolved name in the trace with no
+  change to the answer given; zero rows moved the other way.
 - **A stat the system can rank is now one it can also look up.** True shooting,
   effective FG%, usage rate and game score are computed from box scores by
   `fetch/advanced_stats.py` and have been rankable since 2.1.0, but
