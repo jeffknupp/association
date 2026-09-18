@@ -162,7 +162,7 @@ whether a value "looks wrong" - running it twice writes the same numbers, which
 is what lets it run on every build and every partial ``data load``.
 
 .. versionadded:: 2.2.0
-.. versionchanged:: 3.1.0
+.. versionchanged:: 4.0.0
    Rebuilds the columns a player-row sum can prove (field goals,
    three-pointers, free throws, assists, steals, blocks, fouls, individual
    turnovers, and the offensive/defensive rebound split) on a team row that

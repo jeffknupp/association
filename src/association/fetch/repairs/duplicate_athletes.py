@@ -110,7 +110,7 @@ across every season on file, not only the ones with the duplicate id. Fixing
 that needs a fetch-time change to `players` or to `_name_to_athlete_id`
 itself, which is out of scope here - see ``ISSUES.md``.
 
-.. versionadded:: 3.1.0
+.. versionadded:: 4.0.0
 """
 
 from __future__ import annotations
@@ -126,7 +126,7 @@ log: logging.Logger = logging.getLogger("association.fetch.repairs.duplicate_ath
 #: A drop-in for ``player_box_stats`` (or ``player_box_stats_filled`` when it
 #: exists): same columns, minus 1-2 rows per merged pair.
 #:
-#: .. versionadded:: 3.1.0
+#: .. versionadded:: 4.0.0
 TABLE: str = "player_box_stats_deduped"
 
 # Every counting stat the safety check compares. Written out rather than
@@ -151,7 +151,7 @@ COUNTING_COLUMNS: tuple[str, ...] = (
 )
 """Every counting stat the merge-safety check compares between a pair's two rows.
 
-.. versionadded:: 3.1.0
+.. versionadded:: 4.0.0
 """
 
 _DUP_REQUIRED_BOX_COLUMNS = frozenset({"event_id", "season", "season_type", "team_id", "athlete_id", "minutes", "did_not_play"}) | set(COUNTING_COLUMNS)
@@ -174,7 +174,7 @@ def duplicate_athletes_sql(box_source: str) -> str:
     Returns:
         One SQL statement.
 
-    .. versionadded:: 3.1.0
+    .. versionadded:: 4.0.0
     """
     stat_equal = " AND ".join(f'x."{c}" IS NOT DISTINCT FROM y."{c}"' for c in COUNTING_COLUMNS)
     return f"""
@@ -278,7 +278,7 @@ def build_table(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
         con: An open, writable warehouse connection.
         loaded: The tables (and views) that currently exist in it.
 
-    .. versionadded:: 3.1.0
+    .. versionadded:: 4.0.0
     """
     if not {"player_box_stats", "players"} <= loaded:
         log.info("skip %s (needs player_box_stats and players)", TABLE)

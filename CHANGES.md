@@ -15,6 +15,11 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- The version directives on this release's new public symbols name 4.0.0, and
+  the pinned install commands in `README.md`, `docs/installation.rst` and
+  `docs/usage.rst` point at `v4.0.0`. Both are pre-release corrections rather
+  than changes: six directives said 3.1.0, written before the breaking change
+  below settled the number, and 3.0.0 shipped with its pins still on v2.2.0.
 - **A coach question is refused, naming the real cause, instead of falling
   through to the agent.** No table here holds a coach, so the agent queried
   tables with no such column and was then free to fill the silence from its own
