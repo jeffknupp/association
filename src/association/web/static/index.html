@@ -59,6 +59,35 @@
   }
   header h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .02em; }
   header .status { font-size: 12px; color: var(--muted); margin-left: auto; }
+  /* #71: what the warehouse actually holds, in the tiers coverage.py
+     enforces - box score, +play-by-play, +NetPoints - rather than the single
+     min/max season the status line above gives, which reads as "the whole
+     range is answerable" when only the narrowest table in it is. */
+  .coverage {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    font-size: 11.5px;
+  }
+  .coverage:empty { display: none; }
+  .coverage-tier {
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 3px 10px;
+    color: var(--muted);
+    cursor: default;
+  }
+  .coverage-tier b { color: var(--ink); font-weight: 600; }
+  /* A season inside the range but not fully covered - shown, not hidden,
+     since half a season is a real answer and silence about which half would
+     be the same false-cause mistake coverage.py exists to stop. */
+  .coverage-tier.partial { border-color: var(--agent); color: var(--agent); }
+  /* No data loaded for this tier at all - distinct from "partial": nothing
+     here is wrong, it just was never pulled. */
+  .coverage-tier.missing { opacity: .55; }
   main { flex: 1; overflow-y: auto; }
   .thread { max-width: 820px; margin: 0 auto; padding: 24px 20px 8px; }
   .turn { margin-bottom: 22px; }
@@ -236,6 +265,7 @@
   <h1>association</h1>
   <span class="status" id="status">checking…</span>
 </header>
+<div class="coverage" id="coverage"></div>
 
 <main>
   <div class="thread" id="thread">
@@ -275,6 +305,41 @@
     status.textContent = parts.join(" · ");
     status.title = `${h.warehouse}\nrouter: ${h.models.router}\nagent: ${h.models.agent}`;
   }).catch(() => { status.textContent = "server unreachable"; });
+
+  // #71: what's actually answerable, per tier - read straight off the
+  // response, never recomputed here. A tier with no `last_season` was never
+  // loaded at all; one whose range holds a partial season is marked rather
+  // than shown as uniformly whole, which is the same distinction a template's
+  // own refusal or caveat draws.
+  const coverage = document.getElementById("coverage");
+  fetch("/api/coverage").then(r => r.json()).then(c => {
+    for (const tier of c.tiers || []) {
+      const pill = el("span", "coverage-tier");
+      const partialSeasons = [...new Set((tier.partial_seasons || []).map(p => p.season))];
+      if (tier.first_season == null || tier.last_season == null) {
+        pill.classList.add("missing");
+        pill.appendChild(document.createTextNode(tier.name + ": not loaded"));
+      } else {
+        pill.appendChild(document.createTextNode(tier.name + ": "));
+        pill.appendChild(el("b", null, `${tier.first_season}–${tier.last_season}`));
+        if (partialSeasons.length) {
+          pill.classList.add("partial");
+          pill.appendChild(document.createTextNode(` (partial: ${partialSeasons.join(", ")})`));
+        }
+        // The tooltip is where a phantom season is marked too - 1993 is
+        // already excluded from the range by `first_season`, so it has
+        // nothing to attach a visible badge to, but the reason it is missing
+        // is worth saying rather than leaving as silent as any other gap.
+        const titleLines = (tier.partial_seasons || []).map(p => `${p.season} (${p.table}): ${p.note}`);
+        if ((tier.phantom_seasons || []).length) {
+          const phantom = tier.phantom_seasons.join(", ");
+          titleLines.push(`${phantom} excluded: ESPN serves ${tier.phantom_seasons.length > 1 ? "those seasons" : "that season"} as a duplicate copy of another season's rows`);
+        }
+        if (titleLines.length) pill.title = titleLines.join("\n");
+      }
+      coverage.appendChild(pill);
+    }
+  }).catch(() => {});  // the status line above already reports a dead server
 
   document.querySelectorAll(".examples button").forEach(b => {
     b.addEventListener("click", () => { input.value = b.textContent; ask(); });

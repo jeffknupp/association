@@ -26,6 +26,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
+from ..nba.coverage import COVERAGE
 from ..query.answer import Answer
 from ..query.toolbox import connect_read_only
 from .runner import Answerer
@@ -109,6 +110,64 @@ class HealthResponse(BaseModel):
     models: dict[str, str]
     ollama_ready: bool
     busy: bool
+
+
+class PartialSeasonResponse(BaseModel):
+    """One season a tier's range includes but does not fully cover.
+
+    ``table`` names which table the note describes: two tables in one tier can
+    be partial for unrelated reasons (2002's play-by-play is half a year,
+    2003's shot chart is missing locations for about 200 games), and a note
+    naming one while the season sits under the other's problem is the
+    false-cause answer :mod:`association.nba.coverage` exists to stop.
+
+    .. versionadded:: 4.0.2
+    """
+
+    season: int
+    table: str
+    note: str
+
+
+class TierResponse(BaseModel):
+    """What one coverage tier answers, and where it stops being whole.
+
+    ``first_season`` and ``last_season`` bound the range this tier can be
+    asked about at all; a season inside that range but named in
+    ``partial_seasons`` is answerable with a caveat, not silently whole. A
+    season below ``first_season`` - 1993 among them, ESPN's phantom copy of
+    1994 - is not offered at all, which is why it is surfaced separately in
+    ``phantom_seasons`` rather than folded into the range.
+
+    .. versionadded:: 4.0.2
+    """
+
+    name: str
+    tables: list[str]
+    first_season: int | None
+    last_season: int | None
+    partial_seasons: list[PartialSeasonResponse]
+    phantom_seasons: list[int]
+
+
+class CoverageResponse(BaseModel):
+    """What the warehouse actually holds, grouped into the three tiers a
+    question can land in: box score, box score plus play-by-play, and both of
+    those plus NetPoints.
+
+    Built from :data:`association.nba.coverage.COVERAGE` - the same enforced
+    floors :func:`association.nba.coverage.unavailable` refuses a question
+    against - rather than recomputed from row counts, so this page and a
+    template's own refusal cannot say two different things about the same
+    season. ``tiers[i].tables`` is cumulative: the play-by-play tier's tables
+    include the box score tier's, because a question that touches
+    play-by-play can touch box scores too, and its floor is the narrowest
+    among all of them.
+
+    .. versionadded:: 4.0.2
+    """
+
+    tiers: list[TierResponse]
 
 
 def as_response(answer: Answer) -> AnswerResponse:
@@ -229,6 +288,124 @@ def _warehouse_seasons(db_path: str) -> dict[str, int] | None:
     return {"first": int(row[0]), "last": int(row[1]), "games": int(row[2])}
 
 
+# The three tiers #71 asks for, each naming only the tables IT adds - "tables"
+# in the wire response is the cumulative list, built by summing these in
+# order, because a question that reaches play-by-play can touch a box score
+# too and its floor is the narrowest of every table involved. The tables
+# named here are exactly #71's three bullets: box score is `games`,
+# `player_box_stats`, `team_box_stats`; play-by-play adds `plays` and
+# `shot_chart`; NetPoints adds its five tables.
+_COVERAGE_TIERS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("box score", ("games", "player_box_stats", "team_box_stats")),
+    ("+ play-by-play", ("plays", "shot_chart")),
+    (
+        "+ NetPoints",
+        ("net_points_player", "net_points_player_game", "net_points_player_fingerprint", "net_points_team_game", "net_points_player_game_fingerprint"),
+    ),
+)
+
+
+def _cumulative_tier_tables(upto: int) -> tuple[str, ...]:
+    """Every table this tier and each one before it names, in order."""
+    tables: list[str] = []
+    for _, own in _COVERAGE_TIERS[: upto + 1]:
+        tables.extend(own)
+    return tuple(tables)
+
+
+def _tier_first_season(tables: tuple[str, ...]) -> int | None:
+    """The narrowest declared floor among ``tables`` - the same reasoning
+    :func:`association.nba.coverage.unavailable` uses, read from the enforced
+    ``COVERAGE`` table rather than restated here. A table `COVERAGE` does not
+    list (there is none among the ones this module names) is skipped rather
+    than assumed to have no floor."""
+    floors = [COVERAGE[t].floor().season for t in tables if t in COVERAGE]
+    return max(floors) if floors else None
+
+
+def _tier_last_season(con: duckdb.DuckDBPyConnection, present: set[str], tables: tuple[str, ...]) -> int | None:
+    """How far this tier's data actually reaches - the one figure `COVERAGE`
+    does not carry, since a floor is a permanent fact about ESPN and this is a
+    fact about what is currently loaded. Reads ``real_games`` in place of
+    `games` where the warehouse has it, for the same reason :func:`_game_span`
+    does. None if any of ``tables`` is missing: a tier whose own table is not
+    loaded cannot say where it stops."""
+    lasts = []
+    for table in tables:
+        source = "real_games" if table == "games" and "real_games" in present else table
+        if source not in present:
+            return None
+        row = con.execute(f"SELECT max(season) FROM {source}").fetchone()
+        if row is None or row[0] is None:
+            return None
+        lasts.append(int(row[0]))
+    return min(lasts) if lasts else None
+
+
+def _tier_partial_seasons(own_tables: tuple[str, ...], first: int | None, last: int | None) -> list[PartialSeasonResponse]:
+    """The seasons within this tier's own range that `COVERAGE` marks partial
+    for one of ``own_tables`` - only the tables this tier itself adds, so a
+    season already flagged partial by an earlier tier is not repeated here."""
+    if first is None or last is None:
+        return []
+    notes = [PartialSeasonResponse(season=season, table=table, note=note) for table in own_tables if table in COVERAGE for season, note in COVERAGE[table].partial.items() if first <= season <= last]
+    return sorted(notes, key=lambda p: (p.season, p.table))
+
+
+def _tier_phantom_seasons(own_tables: tuple[str, ...]) -> list[int]:
+    """The seasons `COVERAGE` marks as a phantom copy of another season, for
+    one of ``own_tables`` - 1993 among the box score tables, whose rows
+    duplicate 1994's. Already excluded from the tier's range by its
+    ``first_season``; listed here so the page can say why rather than just
+    skip it silently."""
+    seasons = {season for table in own_tables if table in COVERAGE for season in COVERAGE[table].phantom}
+    return sorted(seasons)
+
+
+def _coverage_tiers(con: duckdb.DuckDBPyConnection) -> list[TierResponse]:
+    """The three tiers, each bounded by ``COVERAGE``'s declared floors and by
+    what this warehouse actually has loaded."""
+    present = {row[0] for row in con.execute("SELECT table_name FROM information_schema.tables").fetchall()}
+    tiers = []
+    for i, (name, own_tables) in enumerate(_COVERAGE_TIERS):
+        tables = _cumulative_tier_tables(i)
+        first = _tier_first_season(tables)
+        last = _tier_last_season(con, present, tables)
+        tiers.append(
+            TierResponse(
+                name=name,
+                tables=list(tables),
+                first_season=first,
+                last_season=last,
+                partial_seasons=_tier_partial_seasons(own_tables, first, last),
+                phantom_seasons=_tier_phantom_seasons(own_tables),
+            )
+        )
+    return tiers
+
+
+def _warehouse_coverage(db_path: str) -> list[TierResponse]:
+    """The tiers for the warehouse at ``db_path``, or an empty list if it is
+    not there or not yet loaded.
+
+    Its own short-lived connection, for the same reason :func:`_warehouse_seasons`
+    keeps one: it must never compete with the Agent's connection for however
+    long a question takes.
+    """
+    if not Path(db_path).exists():
+        return []
+    try:
+        con = connect_read_only(db_path)
+    except duckdb.Error:
+        return []
+    try:
+        return _coverage_tiers(con)
+    except duckdb.Error:
+        return []  # a table COVERAGE names is not loaded yet
+    finally:
+        con.close()
+
+
 def create_app(answerer: Answerer, db_path: str, out_dir: Path, model: str, router_model: str) -> FastAPI:
     """Build the app around an already-constructed engine.
 
@@ -256,6 +433,12 @@ def create_app(answerer: Answerer, db_path: str, out_dir: Path, model: str, rout
             ollama_ready=answerer.ready,
             busy=answerer.busy,
         )
+
+    @app.get("/api/coverage")
+    def coverage() -> CoverageResponse:
+        """What the warehouse actually holds, in the three tiers #71 asks for
+        rather than the single misleading min/max `/api/health` reports."""
+        return CoverageResponse(tiers=_warehouse_coverage(db_path))
 
     @app.post("/api/ask")
     def ask(request: AskRequest) -> AnswerResponse:

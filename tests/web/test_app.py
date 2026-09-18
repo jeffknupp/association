@@ -211,6 +211,241 @@ def test_health_survives_a_warehouse_with_no_games_table(tmp_path: Path) -> None
     assert body["seasons"] is None
 
 
+def _build_coverage_warehouse(db_path: Path, seasons: dict[str, list[int]], *, real_games_excludes: tuple[int, ...] = ()) -> None:
+    """One table per key in ``seasons``, each holding one row per season
+    listed - enough for `SELECT max(season)` to answer without needing real
+    box scores. ``real_games_excludes`` adds a `real_games` view over `games`
+    that drops those seasons, the same shape `_game_span` reads a warehouse
+    built before that view existed does not have."""
+    import duckdb
+
+    con = duckdb.connect(str(db_path))
+    for table, years in seasons.items():
+        con.execute(f"CREATE TABLE {table} (event_id VARCHAR, season INTEGER)")
+        for i, year in enumerate(years):
+            con.execute(f"INSERT INTO {table} VALUES (?, ?)", [str(i), year])
+    if "games" in seasons and real_games_excludes:
+        excluded = ", ".join(str(year) for year in real_games_excludes)
+        con.execute(f"CREATE VIEW real_games AS SELECT * FROM games WHERE season NOT IN ({excluded})")
+    con.close()
+
+
+def test_coverage_reports_no_tiers_for_a_warehouse_that_is_not_there(tmp_path: Path) -> None:
+    """#71: nothing to say about coverage before a warehouse exists at all -
+    the same reasoning `/api/health`'s `seasons` field already follows."""
+    body = _client(StubAnswerer(), tmp_path).get("/api/coverage").json()
+    assert body["tiers"] == []
+
+
+def test_coverage_tier_first_season_is_the_narrowest_of_its_own_and_earlier_tiers(tmp_path: Path) -> None:
+    """The '+ play-by-play' tier's floor is 2002, not 1994, because it also
+    carries the box score tables and a question touching both is only as
+    answerable as the narrower one - `association.nba.coverage.unavailable`'s
+    own reasoning, read from `COVERAGE` rather than restated."""
+    db_path = tmp_path / "nba.duckdb"
+    _build_coverage_warehouse(
+        db_path,
+        {
+            "games": [1994, 2026],
+            "player_box_stats": [1994, 2026],
+            "team_box_stats": [1994, 2026],
+            "plays": [2002, 2026],
+            "shot_chart": [2002, 2026],
+        },
+    )
+    tiers = {t["name"]: t for t in _client(StubAnswerer(), tmp_path).get("/api/coverage").json()["tiers"]}
+
+    assert tiers["box score"]["first_season"] == 1994
+    assert tiers["+ play-by-play"]["first_season"] == 2002
+
+
+def test_coverage_tier_tables_are_cumulative(tmp_path: Path) -> None:
+    """`CoverageResponse`'s own docstring promise: each tier's `tables` include
+    every earlier tier's, not just what it adds - a question that touches
+    play-by-play can touch a box score too, so the reader needs the whole list
+    to know what a tier's floor and range are actually bounded by."""
+    db_path = tmp_path / "nba.duckdb"
+    _build_coverage_warehouse(
+        db_path,
+        {
+            "games": [1994, 2026],
+            "player_box_stats": [1994, 2026],
+            "team_box_stats": [1994, 2026],
+            "plays": [2002, 2026],
+            "shot_chart": [2002, 2026],
+            "net_points_player": [2019, 2026],
+            "net_points_player_game": [2019, 2026],
+            "net_points_player_fingerprint": [2019, 2026],
+            "net_points_team_game": [2019, 2026],
+            "net_points_player_game_fingerprint": [2019, 2026],
+        },
+    )
+    tiers = {t["name"]: t for t in _client(StubAnswerer(), tmp_path).get("/api/coverage").json()["tiers"]}
+
+    assert set(tiers["box score"]["tables"]) == {"games", "player_box_stats", "team_box_stats"}
+    assert set(tiers["+ play-by-play"]["tables"]) == {"games", "player_box_stats", "team_box_stats", "plays", "shot_chart"}
+    assert set(tiers["+ NetPoints"]["tables"]) == {
+        "games",
+        "player_box_stats",
+        "team_box_stats",
+        "plays",
+        "shot_chart",
+        "net_points_player",
+        "net_points_player_game",
+        "net_points_player_fingerprint",
+        "net_points_team_game",
+        "net_points_player_game_fingerprint",
+    }
+    # 2002 and 2003 are declared partial for `plays`/`shot_chart`, which the
+    # "+ NetPoints" tier also carries in its cumulative `tables` - but they are
+    # not ITS OWN table, so its own `partial_seasons` must not repeat them.
+    assert tiers["+ NetPoints"]["partial_seasons"] == []
+
+
+def test_coverage_tier_last_season_follows_its_own_narrowest_table(tmp_path: Path) -> None:
+    """A tier's range stops where its OWN table stops, even when an earlier
+    tier's tables reach further - the same "narrowest wins" rule as the floor,
+    applied to how far the data currently reaches rather than to where it is
+    permanently allowed to start."""
+    db_path = tmp_path / "nba.duckdb"
+    _build_coverage_warehouse(
+        db_path,
+        {
+            "games": [1994, 2026],
+            "player_box_stats": [1994, 2026],
+            "team_box_stats": [1994, 2026],
+            "plays": [2002, 2020],  # this pull never fetched play-by-play past 2020
+            "shot_chart": [2002, 2026],
+        },
+    )
+    tiers = {t["name"]: t for t in _client(StubAnswerer(), tmp_path).get("/api/coverage").json()["tiers"]}
+
+    assert tiers["box score"]["last_season"] == 2026
+    assert tiers["+ play-by-play"]["last_season"] == 2020
+
+
+def test_coverage_still_names_a_tiers_floor_when_none_of_its_tables_are_loaded(tmp_path: Path) -> None:
+    """A floor is a permanent fact about what ESPN publishes, not about what
+    this warehouse has pulled - so the NetPoints tier still says 2019 even
+    with no NetPoints table loaded at all, while its `last_season` says None
+    rather than guessing at data that was never fetched."""
+    db_path = tmp_path / "nba.duckdb"
+    _build_coverage_warehouse(
+        db_path,
+        {
+            "games": [1994, 2026],
+            "player_box_stats": [1994, 2026],
+            "team_box_stats": [1994, 2026],
+            "plays": [2002, 2026],
+            "shot_chart": [2002, 2026],
+        },
+    )
+    tiers = {t["name"]: t for t in _client(StubAnswerer(), tmp_path).get("/api/coverage").json()["tiers"]}
+
+    assert tiers["+ NetPoints"]["first_season"] == 2019
+    assert tiers["+ NetPoints"]["last_season"] is None
+
+
+def test_coverage_surfaces_the_declared_partial_seasons_for_the_tier_that_adds_the_table(tmp_path: Path) -> None:
+    """2002's play-by-play and 2002-2003's shot chart are declared partial in
+    `COVERAGE`; the endpoint reads that declaration rather than recomputing it
+    from row counts, and names which table each note is about."""
+    db_path = tmp_path / "nba.duckdb"
+    _build_coverage_warehouse(
+        db_path,
+        {
+            "games": [1994, 2026],
+            "player_box_stats": [1994, 2026],
+            "team_box_stats": [1994, 2026],
+            "plays": [2002, 2026],
+            "shot_chart": [2002, 2026],
+        },
+    )
+    tier = next(t for t in _client(StubAnswerer(), tmp_path).get("/api/coverage").json()["tiers"] if t["name"] == "+ play-by-play")
+    partial = {(p["season"], p["table"]) for p in tier["partial_seasons"]}
+
+    assert (2002, "plays") in partial
+    assert (2002, "shot_chart") in partial
+    assert (2003, "shot_chart") in partial
+    # The box score tier's own tables carry no declared partial season, so
+    # nothing here is misattributed to them.
+    assert all(table in ("plays", "shot_chart") for _, table in partial)
+
+
+def test_coverage_does_not_surface_a_partial_season_beyond_what_is_loaded(tmp_path: Path) -> None:
+    """`COVERAGE` declares both 2002 and 2003 partial for `shot_chart`, but a
+    warehouse whose `shot_chart` stops at 2002 has not loaded 2003 at all - so
+    the endpoint must not repeat a partial note for a season outside the
+    tier's own `last_season`, the same way it must not repeat one below
+    `first_season`."""
+    db_path = tmp_path / "nba.duckdb"
+    _build_coverage_warehouse(
+        db_path,
+        {
+            "games": [1994, 2026],
+            "player_box_stats": [1994, 2026],
+            "team_box_stats": [1994, 2026],
+            "plays": [2002],
+            "shot_chart": [2002],  # this pull never reached 2003
+        },
+    )
+    tier = next(t for t in _client(StubAnswerer(), tmp_path).get("/api/coverage").json()["tiers"] if t["name"] == "+ play-by-play")
+    partial = {(p["season"], p["table"]) for p in tier["partial_seasons"]}
+
+    assert tier["last_season"] == 2002
+    assert (2002, "shot_chart") in partial
+    assert (2003, "shot_chart") not in partial
+
+
+def test_coverage_surfaces_1993_as_a_phantom_rather_than_offering_it(tmp_path: Path) -> None:
+    """1993 is a full, healthy-looking copy of 1994's rows in `games`,
+    `player_box_stats` and `team_box_stats` - `COVERAGE` lists it as a phantom
+    rather than a real season, and the box score tier's `first_season` (1994)
+    already excludes it from the range. `phantom_seasons` says why."""
+    db_path = tmp_path / "nba.duckdb"
+    _build_coverage_warehouse(
+        db_path,
+        {
+            "games": [1993, 1994, 2026],
+            "player_box_stats": [1993, 1994, 2026],
+            "team_box_stats": [1993, 1994, 2026],
+        },
+    )
+    tiers = {t["name"]: t for t in _client(StubAnswerer(), tmp_path).get("/api/coverage").json()["tiers"]}
+
+    assert tiers["box score"]["first_season"] == 1994  # 1993 is not offered as a season on its own
+    assert tiers["box score"]["phantom_seasons"] == [1993]
+    # `games`, `player_box_stats` and `team_box_stats` are also part of the
+    # later tiers' cumulative `tables`, but 1993 is not THEIR own phantom, so
+    # a later tier must not repeat the box score tier's note.
+    assert tiers["+ play-by-play"]["phantom_seasons"] == []
+    assert tiers["+ NetPoints"]["phantom_seasons"] == []
+
+
+def test_coverage_uses_real_games_where_the_warehouse_has_it(tmp_path: Path) -> None:
+    """The same fault `test_health_counts_real_games_rather_than_every_row_in_games`
+    guards: a placeholder row in `games` for a season with no real game would
+    otherwise report that season as covered.
+
+    `player_box_stats` and `team_box_stats` also reach 2027 here, deliberately
+    - if they stopped at 2026 the tier's own "narrowest of the tier's tables"
+    rule would report 2026 regardless of whether `games` or `real_games` was
+    read, and the assertion below would pass even with the fallback deleted."""
+    db_path = tmp_path / "nba.duckdb"
+    _build_coverage_warehouse(
+        db_path,
+        {
+            "games": [1994, 2026, 2027],  # 2027 is the placeholder real_games drops
+            "player_box_stats": [1994, 2027],
+            "team_box_stats": [1994, 2027],
+        },
+        real_games_excludes=(2027,),
+    )
+    tier = next(t for t in _client(StubAnswerer(), tmp_path).get("/api/coverage").json()["tiers"] if t["name"] == "box score")
+
+    assert tier["last_season"] == 2026
+
+
 def test_the_page_is_served_and_is_self_contained(tmp_path: Path) -> None:
     """One file, no build step, nothing else to survive packaging. An external
     stylesheet or script would be a second asset to lose in a wheel."""
