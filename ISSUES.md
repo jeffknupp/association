@@ -46,6 +46,51 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### The agent fall-through answers 1 question in 23, and does not finish 61% of the time
+- **Found:** 2026-09-18, the first measurement of the agent path in this project
+- **Evidence:** 24 questions stratified across the four fall-through causes, run
+  through the real `Agent` at production defaults (`qwen2.5:7b` agent,
+  `qwen2.5:3b` router, `fast_path=True`) against the live warehouse. **14 of 24
+  did not finish within 240s**; one ran past 17 minutes before being killed by
+  hand, pinning the 7B at 560% CPU throughout. Of the 9 that finished: **1
+  correct, 1 partial, 6 wrong, 1 appropriately refused.** Median latency of the
+  9: **155.5s** (range 81.7-192.4). The "documented 55s case" is the floor, not
+  a typical case. Raw rows in
+  `~/association-research/statmuse-2026-09/agent_results.jsonl`.
+- **User sees:** a 2.5-minute wait that usually produces nothing, and when it
+  does produce something it is wrong five times out of six. The fast path
+  answers the same class of question correctly 48.8% of the time in 2-6s.
+- **Next step:** decide whether the fall-through survives in its current form.
+  It is inconsistent with `check_coverage`'s own stated reasoning - refusing
+  because "the agent would query the same empty tables, more slowly, and is
+  then free to fill the silence from its own weights" - which is exactly what
+  it was measured doing. Gating it to the question shapes it can actually serve,
+  or replacing it with a refusal that names the shape, both beat the status quo.
+- **GitHub:** #129
+
+### Three fabricated agent answers, each verified false against the warehouse
+- **Found:** 2026-09-18, grading the agent measurement above
+- **Evidence:** each re-verified independently by the lead, read-only:
+  - `lebron james 2 3 pointers all-time vs jazz on tuesdays` answered **"0 made
+    out of 12,688"** (2PT) and **"0 made out of 5,923"** (3PT), 0.0% both.
+    Measured: **399/695 (57.4%) 2PT and 77/238 (32.4%) 3PT** vs Utah. It also
+    dropped "Tuesdays" silently - `render_shot_chart` cannot honor it.
+  - `jonas valancunas vs last 10 games min` answered "there are no box stats
+    available for Jonas Valanciunas in the last 10 games." **False** -
+    `player_box_stats` holds those games with real minutes (4, 10, 3, 8, 6...).
+    This is the wrong-cause refusal shape `AGENTS.md` names in the Maxey
+    fingerprint example, now reproduced live rather than historically.
+  - `Most reb by a hawk player history` answered "Jalen Johnson, 18", silently
+    narrowing "history" to the current season. Measured all-time single-game
+    high on record for the Hawks: **Dikembe Mutombo, 29** (2000 and 2001).
+- **User sees:** fluent, confidently formatted, false answers with precise-looking
+  denominators - the exact failure shape at the top of `AGENTS.md`, on the path
+  that exists as the safety net.
+- **Next step:** these are symptoms of the entry above, not separate bugs. Fix
+  the path, not the three answers.
+- **GitHub:** #130
+
+
 ### "game score" is answered with points per game, because the router substitutes a stat it knows
 - **Found:** 2026-09-18, while making the computed advanced stats lookup-able
 - **Evidence:** in the StatMuse replay corpus
@@ -1727,8 +1772,46 @@ those were found.
   session's budget did not extend to a second round of that measurement.
 - **Source:** ours (a matching heuristic), not ESPN's.
 - **GitHub:** not yet filed
+- **GitHub:** #131
 
 ## P4: tooling, docs, low impact
+
+### The agent can finalize having made zero tool calls, delivering its own plan as the answer
+- **Found:** 2026-09-18, measuring the agent path
+- **Evidence:** 2 of the 9 answers that finished made **zero** tool calls and
+  returned the narration as the final answer - `stating centers vs suns` ->
+  "First, I'll use `player_season_stats_deduped`... Let's start by filtering..."
+  (~82s), and `myles turner vs 76ers last 5 games` -> "I will write a SQL query
+  to fetch the relevant player box statistics. Let's proceed with this query."
+  (~156s). `Agent._ask_inner_finalize` guards SQL-written-as-prose and
+  finalize-after-a-tool-error, but not finalize-with-no-tool-call-ever.
+- **User sees:** 80-155 seconds of waiting for text that reads as work in
+  progress and contains no data. Worse than a timeout, because it looks like an
+  answer.
+- **Next step:** add the third guard beside the two existing ones in
+  `_ask_inner_finalize`.
+- **GitHub:** #132
+
+### `models.py`'s model-size note is true about intent and silent about names
+- **Found:** 2026-09-18, benchmarking router models on name fidelity
+- **Evidence:** the comment says every model from 1.5B to 8B landed "within a
+  case or two" over `check_routing.py`'s cases. True, and about *intent
+  classification*, which is already ~99.6% stable run to run. Measured
+  separately over 60 name-bearing corpus questions, single model resident,
+  graded through the real `override_invented_players`/`find_teams`:
+  **qwen2.5:3b 64% clean / 4.5% unrepairable fabrication; qwen2.5:7b 64% /
+  9.4%; llama3.1:8b 80% / 3.6%.** Bigger within the same family made
+  fabrication *more* common, not less (n is ~50 per model, so 4.5% vs 9.4% is
+  not decisive - but it is certainly not the improvement a bigger-router
+  argument needs). Warm latency: 3b 3.36s median, 7b 5.86s, llama3.1:8b 5.60s;
+  cold load 33.4s / 68.5s / 68.6s.
+- **User sees:** nothing directly. This exists so the model-size question is not
+  re-litigated from scratch.
+- **Next step:** note the measurement near that comment. The operative finding
+  is that at every size and family tested, 18-34% of player slots needed the
+  repair layer - the router model is not where the leverage is.
+- **GitHub:** #133
+
 
 ### `limit` is not a scoping slot, so a template that ignores it does so silently
 - **Found:** 2026-09-18, merging the StatMuse scoping branches and re-measuring
