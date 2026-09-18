@@ -1776,6 +1776,69 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
+### Router name fidelity is a per-model property, not a floor - and a smaller, faster model beats the current default on it
+- **Found:** 2026-09-18, sweeping six local models over the same 60 name-bearing
+  corpus questions, one model resident at a time, graded through the real
+  `override_invented_players` / `find_teams` against the read-only warehouse
+- **Evidence:**
+
+  | model | warm median | clean | needed repair | fabricated |
+  | --- | --- | --- | --- | --- |
+  | qwen2.5:3b (current) | 3.36s | 64% | 34% | 2% |
+  | **llama3.2:3b** | **2.66s** | **73%** | 25% | **2%** |
+  | gemma3:4b | 3.09s | 57% | 31% | 12% |
+  | phi4-mini | 5.31s | 50% | 32% | 18% |
+  | qwen2.5:7b | 5.86s | 64% | 28% | 8% |
+  | llama3.1:8b | 5.60s | 80% | 18% | 2% |
+
+  Fabrication is **not** a constant across families, which an earlier two-family
+  reading suggested: both llama models and the current qwen2.5:3b sit at 2%,
+  while qwen2.5:7b is 8%, gemma3:4b 12% and phi4-mini 18%. What varies far more
+  is the clean rate - 50% to 80%. `phi4-mini` emitted a player slot on only 28
+  of 60 questions, so its row is not comparable to the others.
+- **User sees:** nothing yet. `llama3.2:3b` is the same size class as the
+  current default and is both faster and cleaner, so it is a candidate upgrade.
+- **Next step:** it is **not** adoptable on these numbers alone. It agrees with
+  the current router on only 67% of intents in this sample, and agreement is not
+  accuracy - nobody has established who is right on the disagreements.
+  `scripts/check_routing.py --model llama3.2:3b` over its 85 ground-truth cases
+  is the deciding test; the current default scores 85/85. A model that misroutes
+  a common shape is disqualified regardless of its name fidelity.
+- **Raw data:** `~/association-research/statmuse-2026-09/router_*_prodgraded.jsonl`,
+  shared sample `router_bench_sample.json`, runner `router_bench.py`.
+- **GitHub:** #134
+
+### A per-question candidate enum could make a fabricated name unemittable
+- **Found:** 2026-09-18, testing whether the `format=` grammar could constrain
+  `player` the way it already constrains `intent`
+- **Evidence:** `ROUTER_SCHEMA` is compiled into a decoder grammar by ollama, so
+  an intent outside the enum can never be emitted. `player` is a free string, so
+  a name with no basis in the question can be. Measured offline over the
+  261-question replay, building a candidate set per question from the roster
+  indexed by whole word, plus the curated nickname table:
+  **recall 154/157 = 98.1%** against resolved names that are genuinely on the
+  roster, with an enum of **median 9, p90 39, max 70** names - small enough to
+  compile per call and negligible against the 4096-token window.
+
+  All three apparent misses are cases where the current pipeline resolves to a
+  player the question never names, and the enum would refuse them:
+  `jay huff game log vs Embiid` -> **Jayson Tatum**;
+  `Ingram game log against the tockets` -> **Shai Gilgeous-Alexander**;
+  `garland on mondays game log` -> **Bradley Beal**. So recall on correct
+  resolutions is effectively total, and the misses are three wrong answers the
+  constraint would prevent.
+- **User sees:** nothing yet - this is feasibility only.
+- **Next step:** two things need a live model. Whether ollama 0.33.3 compiles a
+  per-call enum of 9-70 strings into a working grammar and at what latency cost;
+  and whether constraining `player` distorts other slots - this project's own
+  notes record that a constrained decoder fills required fields first, so
+  narrowing `player` could plausibly move `stat` or `intent`. That second risk
+  is the real one and only a live run shows it.
+- **Script:** `~/association-research/statmuse-2026-09/candidate_enum.py`,
+  runs offline with no model.
+- **GitHub:** #135
+
+
 ### The agent can finalize having made zero tool calls, delivering its own plan as the answer
 - **Found:** 2026-09-18, measuring the agent path
 - **Evidence:** 2 of the 9 answers that finished made **zero** tool calls and
