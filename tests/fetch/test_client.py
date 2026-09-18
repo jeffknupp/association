@@ -281,3 +281,74 @@ def test_get_json_stays_quiet_for_a_single_page_response(monkeypatch: pytest.Mon
     with caplog.at_level("WARNING"):
         client.get_json("http://example.com/onepage")
     assert caplog.text == ""
+
+
+def test_get_collection_warns_and_returns_empty_when_the_first_page_is_rejected(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    """The bug in GH #90: `_request_json` returns None for a 400 (same as a
+    404), `get_collection` used to hit `if not isinstance(data, dict): break`
+    with `expected` still None, and the declared-vs-fetched check below could
+    not fire because there was never a declared count to compare against. An
+    endpoint that starts rejecting `limit=1000` reproduces the original 25-row
+    power-index bug with nothing in the log. This also pins the docstring's
+    claim that `get_collection` returns `[]` exactly where `get_json` would
+    return None."""
+    client = ESPNClient()
+
+    class Rejecting:
+        def get(self, url: str, params: dict | None = None, timeout: float | None = None) -> Any:
+            class FakeResp:
+                status_code = 400
+                content = b""
+
+            return FakeResp()
+
+    session = Rejecting()
+    monkeypatch.setattr(ESPNClient, "session", property(lambda self: session))
+
+    assert client.get_json("http://example.com/powerindex") is None
+
+    with caplog.at_level("WARNING"):
+        items = client.get_collection("http://example.com/powerindex")
+    assert items == []
+    assert "powerindex" in caplog.text and "first page" in caplog.text
+
+
+def test_get_collection_warns_when_the_first_page_is_not_the_paged_shape(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    """A 200 whose body has no `items` list is just as unreadable as a 400 -
+    `get_collection` must not go quiet on it either."""
+    client = ESPNClient()
+
+    class Malformed:
+        def get(self, url: str, params: dict | None = None, timeout: float | None = None) -> Any:
+            class FakeResp:
+                status_code = 200
+                content = b'{"unexpected": true}'
+
+                def json(self) -> dict:
+                    return {"unexpected": True}
+
+                def raise_for_status(self) -> None:
+                    pass
+
+            return FakeResp()
+
+    session = Malformed()
+    monkeypatch.setattr(ESPNClient, "session", property(lambda self: session))
+
+    with caplog.at_level("WARNING"):
+        items = client.get_collection("http://example.com/powerindex")
+    assert items == []
+    assert "powerindex" in caplog.text and "first page" in caplog.text
+
+
+def test_get_collection_stays_quiet_for_a_genuinely_empty_collection(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    """A real empty collection (count 0, one page, no items) must not warn like
+    a failure - the whole point of the new warning is to make the failure case
+    loud without making this one noisy."""
+    client = ESPNClient()
+    session = _PagedSession(count=0)
+    monkeypatch.setattr(ESPNClient, "session", property(lambda self: session))
+    with caplog.at_level("WARNING"):
+        items = client.get_collection("http://example.com/empty")
+    assert items == []
+    assert caplog.text == ""

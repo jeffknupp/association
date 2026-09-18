@@ -1188,6 +1188,27 @@ found.
 
 ## P4: tooling, docs, low impact
 
+### `get_collection`'s declared-vs-fetched warning depends on page one carrying a `count`
+- **Found:** 2026-09-17, fixing #90 (the first-page-goes-quiet bug above).
+- **Evidence:** `get_collection` (`fetch/client.py`) now warns when page one
+  itself cannot be read (non-dict, or a dict with no `items` list), and a
+  later page's failure is covered by the existing "collection %s declared %d
+  items, fetched %d" check - but only because `expected` was set from page
+  one's `count` field. If page one is a well-formed paged object that happens
+  to omit `count` (or has it as something other than an `int`), `expected`
+  stays `None` for the whole read, and a later page failing the same way as
+  the original bug - non-dict, or dict-without-items - ends the loop with
+  nothing logged, the same silent short read #90 was about.
+- **User sees:** nothing, same as #90 did - a table quietly short. Unmeasured
+  whether this actually happens: every ESPN core-API collection response seen
+  in this codebase's fixtures and tests carries `count`, so this is a gap in
+  the design rather than an observed failure.
+- **Next step:** either warn on any non-first-page read failure directly
+  (dropping the `expected is not None` guard on that specific log line), or
+  assert page one's response always carries an integer `count` and warn if it
+  does not. Small enough to fold into whichever change next touches
+  `get_collection`.
+
 ### The team-splits caveat uses one bit to stand for several columns
 - **Found:** 2026-09-17, fixing "Vancouver 1996 has an empty TEAM box, not an
   empty player box" (#67).
@@ -1278,23 +1299,6 @@ found.
   `season.eastern_date`, so this is about agent SQL only.
 - **GitHub:** #98
 
-### `get_collection` goes quiet on the exact failure it exists to make loud
-- **Found:** 2026-09-15, reviewing `4ef119f`; **re-ranked P3 -> P4 on 2026-09-16** - nothing a user sees, which is P4's definition
-- **Evidence:** `_request_json` returns `None` for any status in
-  `NOT_FOUND_STATUS = {400, 404}` (`fetch/client.py:53`). In `get_collection`
-  that hits `if not isinstance(data, dict): break` with `expected` still
-  `None`, so the "collection %s declared %d items, fetched %d" warning cannot
-  fire. The method returns `[]`, `parse_power_index([])` yields no rows, and
-  `Pipeline._write_rows` no-ops on an empty list - leaving the season's old,
-  possibly short Parquet in place with nothing in the log. An endpoint that
-  rejects `limit=1000` with a 400 reproduces the original 25-row bug silently.
-  No test covers the `None` path, and the docstring's "Returns an empty list
-  where `get_json` would return None" is unasserted.
-- **User sees:** nothing - a table quietly one pull behind, which is exactly
-  how the 25-row power index survived for months.
-- **Next step:** log at WARNING when a collection read ends on a non-dict first
-  page, and add a test with a session that answers 400.
-- **GitHub:** #90
 
 ### A regular-season BPI question answers from the play-in snapshot in 2023, 2025 and 2026
 - **Found:** 2026-09-15, reviewing `4ef119f` before merging it; **re-ranked P3 -> P4 on 2026-09-16** - the answer is correct and says which snapshot it read
