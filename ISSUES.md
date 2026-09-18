@@ -163,6 +163,7 @@ found.
   way, not only the 8 known duplicate-id cases.
 - **Source:** DATA.md, "ESPN files one player under two athlete ids" (`DATA.md:118`)
 - **GitHub:** none yet
+- **GitHub:** #101
 
 ### The 2001 playoffs are missing about ten games, and ESPN has them nowhere
 - **Found:** 2026-09-11, template work (agent B); 2000 fixed and this rewritten 2026-09-15
@@ -1213,6 +1214,7 @@ found.
   all" from "box score present but a stat is NULL".
 - **Source:** DATA.md, "Vancouver 1996 is an empty TEAM box, not an empty
   player box"
+- **GitHub:** #102
 
 ### A single-game-high list cut at a tie picks the players at random
 - **Found:** 2026-09-17, by the templates complexity refactor's golden
@@ -1854,3 +1856,4 @@ found.
   scope for the deterministic-template fix, and unmeasured how often it fires.
 - **Source:** DATA.md, "The team `totalRebounds` column stops including team
   rebounds in 2022"
+- **GitHub:** #103
