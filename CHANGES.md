@@ -14,7 +14,7 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
-## Unreleased
+## 4.0.0 - 2026-09-17
 - The version directives on this release's new public symbols name 4.0.0, and
   the pinned install commands in `README.md`, `docs/installation.rst` and
   `docs/usage.rst` point at `v4.0.0`. Both are pre-release corrections rather
