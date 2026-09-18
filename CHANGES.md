@@ -49,6 +49,16 @@ had no published version to be compatible with.
   over 1994-2026, 28 season boards are led by a player under 20 games and all
   28 are postseasons, where the 5-game floor drops the genuinely small samples
   (Kawhi Leonard's 2 games leading 2023) and keeps the rest.
+- **`leaderboard` and `player_stat` now reach that metric.** `stat` is the one
+  REQUIRED slot in `ROUTER_SCHEMA`, so a constrained decoder filled it with the
+  nearest value it knew - "game score nba leader" arrived with `stat='points'`
+  and was answered "Luka Doncic led the league in points per game ... at
+  33.5", correct about points and not about what was asked. `router.route()`
+  now reads the two-word phrase off the question text, the same way
+  `_validate_side` reads which half of a fingerprint was asked for, and sets
+  the spelling each template expects (`avg_game_score` for `leaderboard`,
+  `game_score` for `player_stat`) - anchored so "score" alone, which means
+  points everywhere else in basketball, is not swept in with it.
 - **`head_to_head` honors `venue` and `date` instead of refusing them.**
   "lakers vs mavs record last 10 home games played" narrows to the
   first-named team's home or road games; "celtics record vs sixers on

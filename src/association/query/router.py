@@ -619,6 +619,59 @@ _ADVANCED_STAT_WORDS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 _ADVANCED_STAT_INTENTS = frozenset({"player_stat", "player_compare", "player_history", "leaderboard", "game_log"})
 
+# Hollinger's single-game composite (ISSUES.md #114). ROUTER_SCHEMA has no
+# `stat` value for it, and `stat` is the one REQUIRED slot, so the decoder
+# fills it with the nearest one it knows: "game score nba leader" arrived at
+# `leaderboard` with stat='points' and was answered "Luka Doncic led the
+# league in points per game ... at 33.5" - correct about points, and not what
+# was asked. Same mechanism as `_validate_side`, same remedy: read it off the
+# question text in route() rather than teach ROUTER_SCHEMA a new enum value,
+# which would move slots on unrelated questions and cannot be measured
+# without ollama.
+#
+# Anchored to the two-word phrase and not to "score" alone, because "score"
+# alone means points everywhere else in basketball - "pacers score", "what
+# was the score of the game", "total points scored by the toronto raptors"
+# would all be hijacked into a Game Score leaderboard, trading one fluently
+# wrong answer for several. The trailing `\b` is what keeps "per game scored
+# on fridays" out: "scored" fails the boundary after "score". Verified against
+# the 261-question StatMuse feed corpus: the phrase appears in exactly one
+# question, and the pattern rejects all three near-miss shapes above.
+_GAME_SCORE = re.compile(r"\bgame\s*scores?\b", re.IGNORECASE)
+
+# The two templates that can look this metric up name it differently, so the
+# question's own intent decides which spelling to emit - a value correct for
+# one is unknown to the other. `leaderboard` reads it through
+# `metrics.LEADERBOARD_METRICS`, keyed "avg_game_score" like every other
+# per-game average there (avg_points, avg_rebounds); `player_stat` reads it
+# through `templates.players.ADVANCED_STATS`, keyed "game_score" with no
+# prefix, alongside ts_pct/efg_pct/usage_pct. Left out of every other intent
+# in _ADVANCED_STAT_INTENTS on purpose: player_compare, player_history and
+# game_log read a player's stat line through PLAYER_STAT_COLUMNS /
+# COMPARE_STAT_LINE, never ADVANCED_STATS, so a game_score value there would
+# be silently unreadable rather than answered - the same "looks handled, does
+# nothing" trap a stray slot leaves everywhere else in this module.
+_GAME_SCORE_STAT_BY_INTENT: dict[str, str] = {"leaderboard": "avg_game_score", "player_stat": "game_score"}
+
+
+def _route_game_score(intent: str, slots: dict[str, Any], question: str) -> None:
+    """Hollinger's single-game composite, read from the question text - see
+    the comment above :data:`_GAME_SCORE` for why and :data:`_GAME_SCORE_STAT_BY_INTENT`
+    for why the value it sets depends on the intent.
+
+    Runs after the rest of ``stat`` resolution so it overrides whatever the
+    model or ``_ADVANCED_STAT_WORDS`` guessed, not just fills a gap: "game
+    score" contains "score", which ``_named_a_stat`` already treats as naming
+    a stat, so the model's wrong guess (typically ``points``) would otherwise
+    survive untouched.
+
+    .. versionadded:: 4.3.0
+    """
+    if intent not in _GAME_SCORE_STAT_BY_INTENT or not _GAME_SCORE.search(question):
+        return
+    slots["stat"] = _GAME_SCORE_STAT_BY_INTENT[intent]
+
+
 # A game log asked for by name. Measured: "luka ft log" routed to player_stat
 # and was answered with a season average.
 _LOG_WORDS = re.compile(r"\b(?:game\s*logs?|gamelogs?|logs?)\b|\b(?:each|every|by)\s+game\b", re.IGNORECASE)
@@ -1212,6 +1265,7 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     _route_calendar_slots(slots, question, span)
     _route_intent_slots(raw["intent"], slots, question, without)
     _route_line_stat(raw["intent"], slots, question, rerouted_to_line)
+    _route_game_score(raw["intent"], slots, question)
     _route_team_slots(raw["intent"], slots, question)
     _route_subject_slots(raw["intent"], slots, question)
     _route_side_and_order(raw["intent"], slots, question)

@@ -61,15 +61,27 @@ before that commit needs re-checking against the current warehouse.
 - **User sees:** a fluently wrong answer, with no sign anything was
   substituted. This is the failure shape at the top of `AGENTS.md`, arriving
   through a required slot rather than through a template.
-- **Next step:** the metric half is now done - `avg_game_score` is in
-  `LEADERBOARD_METRICS` with its games qualifiers. What is left is routing, and
-  it must NOT be a `ROUTER_PROMPT` edit (that moves slots on unrelated
-  questions and cannot be measured without ollama). Read "game score" off the
-  question text in `route()`, the way `_validate_side` reads the side of the
-  ball, and prove the model's input is unchanged by hashing `ROUTER_PROMPT` and
-  `ROUTER_SCHEMA` before and after. Then re-run `scripts/check_routing.py` and
-  the full `fastpath_feed.py` replay - `replay_recorded_routes.py` cannot see a
-  `router.py` change, because it replays recorded slots.
+- **Next step:** the metric half is done - `avg_game_score` is in
+  `LEADERBOARD_METRICS` with its games qualifiers, and `game_score` is in
+  `templates.players.ADVANCED_STATS` so `player_stat` can look it up too. The
+  routing half is now also in code: `router._route_game_score` reads the
+  two-word phrase off the question text (anchored `\bgame\s*scores?\b`, so
+  "score" alone - which means points everywhere else - is not swept in) and
+  sets the spelling each template expects (`avg_game_score` for `leaderboard`,
+  `game_score` for `player_stat`; every other intent is left alone, since
+  neither `player_compare` nor `player_history` nor `game_log` reads
+  `ADVANCED_STATS`). `ROUTER_PROMPT` and `ROUTER_SCHEMA` are untouched -
+  confirmed by hashing both before and after the change and by `git diff`
+  reporting no change to `router_prompt.py`. Unit tests cover the positive
+  case for both intents, the negative controls ("pacers score", "what was the
+  score of the game", "Total points scored by the toronto raptors", "least
+  points scored by the wizards", and the "scored" boundary case), a question
+  genuinely about points, and that the value is left alone outside
+  `leaderboard`/`player_stat`; both the intent-spelling table and the regex
+  anchor were perturbed with `scripts/perturb.py` and CAUGHT. **Still open:**
+  re-running `scripts/check_routing.py` and the full `fastpath_feed.py` replay
+  against ollama, which this agent was told not to run - the dispatching
+  session is running that confirming measurement separately.
 - **Note:** the same substitution is worth checking for every stat name the
   router does not know. "ats okc" and "players with the highest scoring triple
   doubles" are graded `wrong metric` in the same corpus.
@@ -1653,6 +1665,39 @@ those were found.
 - **Priority note:** filed P4 rather than P2 because exactly one corpus row
   shows it and that row is audit-flagged as over-specific; re-rank if an audit
   of the other templates finds more.
+
+
+### `stat` is the same unguarded shape as `limit`, and the enum-required slot makes it worse
+- **Found:** 2026-09-18, while routing "game score" (#114) and checking
+  whether the required-slot mechanism that fixed it could hide the same
+  problem in reverse
+- **Evidence:** of 161 corpus questions (the 261-query StatMuse feed) carrying
+  a `stat` slot, 94 carry one the question does not support and **64 carry a
+  value not in `ROUTER_SCHEMA`'s enum at all** - `'vs Portland Trail Blazers'`,
+  `'made_rebounds'`, `'games_played_against'`, `'per_game'`, `'playoffs'`,
+  `'none'`, `'all'`. `stat` is not in `SCOPING_SLOTS`
+  (`templates/common.py:87`) any more than `limit` was, so `check_scope`
+  cannot refuse a template that is handed one of these and ignores it.
+- **User sees:** nothing today - harmless only because every template that
+  currently reads `stat` for these intents either validates it against a
+  whitelist before using it (`player_stat`'s `PLAYER_STAT_COLUMNS` /
+  `ADVANCED_STATS`, `leaderboard`'s `resolve_metric`) or ignores it outright.
+  The risk is latent: a future template, or a future stat lookup added to an
+  existing one, that trusts `stat` without a whitelist check would substitute
+  silently the same way `limit` did for `head_to_head` - "correct data, wrong
+  question, no sign anything was dropped" is this project's own definition of
+  a P1.
+- **Next step:** an audit, not a patch - this entry is explicitly out of scope
+  for #114's fix. Enumerate every template that reads `slots.get("stat")` and
+  confirm each validates against an explicit table before using the value
+  (the same discipline `resolve_metric` and `ADVANCED_STATS` already apply);
+  flag any that does not. Given how large the unsupported-value population is
+  (94 of 161, 64 outside the enum), consider whether `stat` belongs in
+  `SCOPING_SLOTS` for the templates that do not already self-guard, the same
+  decision `limit` above is waiting on.
+- **Priority note:** filed P4 because it is unmeasured harm today, not a
+  wrong answer - re-rank to P1/P2 if the audit finds a template that trusts
+  `stat` unchecked.
 
 
 ### Plus/minus can be neither ranked nor looked up, though the data is complete
