@@ -15,6 +15,14 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A power-index answer whose snapshot carries no rating now says so**, rather
+  than dropping the line. The power index is that answer's headline, so the old
+  behavior left a reader with a record, a projection and chances and no sign
+  that the number they asked for was missing. ESPN's 2026 regular-season
+  snapshot is the live case - all 30 teams NULL in `bpi`, `bpioffense` and
+  `bpidefense` while their records and projections are populated, and the only
+  one of the table's 21 season/season-type groups with any NULL rating - and it
+  is the snapshot a 2026 regular-season question now reads.
 - **A regular-season BPI question now reads the regular-season power-index
   snapshot outright**, instead of whichever pre-playoff snapshot ESPN stamped
   last. Once the paging fix gave every snapshot all 30 teams, the play-in

@@ -482,7 +482,9 @@ ESPN's core API. The missing rows were never missing from ESPN.
   columns are all populated, so it is specifically the rating that is missing,
   not the row. Not re-probed against a live ESPN request (no network here);
   unknown whether a refetch fills it in the way `scripts/backfill_power_index.py`
-  fixed the paging fault above.
+  fixed the paging fault above. **A 2026 regular-season answer says the rating
+  is absent** rather than dropping the line, since the power index is that
+  answer's headline and the season's other snapshots do carry one.
 - **Tracked in:** ISSUES.md, "The power index has no dated series" (#27) and
   "The 2026 regular-season power index snapshot carries no BPI rating for any
   team".

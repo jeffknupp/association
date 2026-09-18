@@ -651,3 +651,32 @@ def test_best_and_worst_depend_on_the_metric() -> None:
     assert descending_for(TEAM_METRICS["points"], "worst") is False
     assert descending_for(TEAM_METRICS["pace"], None) is True
     assert descending_for(TEAM_METRICS["pace"], "worst") is False
+
+
+def test_a_snapshot_with_no_rating_says_so_rather_than_dropping_the_line(tmp_path: Path) -> None:
+    """The power index IS this answer's headline, so omitting it silently
+    leaves a reader with a record, chances and no sign that the number they
+    asked for is missing - short of the truth with no caveat.
+
+    This is live, not hypothetical: ESPN's 2026 regular-season snapshot carries
+    a NULL `bpi` for all 30 teams while their records and projections are
+    populated, and #88's fix is what makes a 2026 regular-season question read
+    it. The other 2026 snapshots do have ratings, and the "also has" line
+    already names them."""
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR, location VARCHAR, name VARCHAR)")
+    c.execute("INSERT INTO teams VALUES ('18','NY','New York Knicks','New York','Knicks')")
+    c.execute(
+        "CREATE TABLE team_power_index (season BIGINT, season_type BIGINT, team_id VARCHAR, last_updated VARCHAR, bpi DOUBLE, bpioffense DOUBLE, bpidefense DOUBLE, "
+        "numwins DOUBLE, numlosses DOUBLE, projectedw DOUBLE, projectedl DOUBLE, probmakeplayoffs DOUBLE, probmakeconfchamp DOUBLE, probmaketitlegame DOUBLE, "
+        "probwintitle DOUBLE, sosoverall DOUBLE, sosoverallrank DOUBLE)"
+    )
+    # The rating is NULL; everything else on the row is real, exactly as ESPN
+    # serves 2026's regular-season snapshot.
+    c.execute("INSERT INTO team_power_index VALUES (2026,2,'18','2026-04-13T09:43Z',NULL,NULL,NULL,53,29,53.0,29.0,100.0,38.1,18.5,5.2,0.506,7)")
+
+    answer = team_outlook(TemplateContext(con=c, out_dir=tmp_path), {"team": "Knicks", "season": 2026}).answer or ""
+    assert "no BPI rating in this snapshot" in answer
+    # The rest of the row is ESPN's own and still printed.
+    assert "record 53-29" in answer
+    assert "playoffs 100.0%" in answer

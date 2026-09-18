@@ -1094,9 +1094,27 @@ def _team_outlook_headline(team: Entity, season: int, postseason: bool, chosen: 
 
 
 def _team_outlook_bpi_line(bpi: Any, offense: Any, defense: Any, higher: Any, teams: int) -> str | None:
-    """team_outlook's BPI line, or None where the snapshot carries no rating."""
+    """team_outlook's BPI line, or a sentence saying the snapshot carries no
+    rating.
+
+    Never None, and that is the point: the power index IS this answer's
+    headline, so dropping the line silently leaves a reader with the record and
+    the chances and no sign that the number they asked for is missing - short
+    of the truth with no caveat, which is what this file's P2 means. ESPN's
+    2026 regular-season snapshot is the live case: all 30 of its teams carry a
+    NULL ``bpi`` while their records, projections, chances and SOS are all
+    populated, and it is the only one of the table's 21 (season, season_type)
+    groups with any NULL rating (measured 2026-09-18). The other snapshots for
+    that season DO have ratings, and ``_team_outlook_others_line`` already
+    lists them, so saying the rating is absent here points the reader straight
+    at the one that has it.
+
+    .. versionchanged:: 4.0.1
+       Says so when the snapshot carries no rating, rather than omitting the
+       line.
+    """
     if bpi is None:
-        return None
+        return f"  no BPI rating in this snapshot - ESPN left it empty for all {teams} teams, though the record and projections below are its own"
     detail = f" (offense {offense:+.1f}, defense {defense:+.1f})" if offense is not None and defense is not None else ""
     return f"  BPI {bpi:+.1f}{detail}, {_ordinal(int(higher) + 1)} of the {teams} teams in the snapshot"
 

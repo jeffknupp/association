@@ -1301,7 +1301,8 @@ found.
 
 
 ### The 2026 regular-season power index snapshot carries no BPI rating for any team
-- **Found:** 2026-09-18, while fixing #88 below
+- **Found:** 2026-09-18, while fixing #88 below. **The caveat half was fixed
+  the same day; what remains is the missing data itself.**
 - **Evidence:** measured read-only against the live warehouse: every
   `(season, season_type)` group `team_power_index` holds except one has zero
   NULL `bpi`; `season=2026, season_type=2` (stamped `2026-04-13T09:43Z`) has
@@ -1310,21 +1311,28 @@ found.
   strength-of-schedule columns are all populated. See DATA.md, "ESPN's power
   index is a paged collection, and holds all 30 teams", for the full query and
   numbers.
-- **User sees:** now that a regular-season question reads the regular-season
-  snapshot outright (the fix below), "how good were the Knicks in the 2026
-  regular season" answers from this snapshot - record, projection, chances and
-  strength of schedule all print, but the BPI rating line is silently absent
-  (`_team_outlook_bpi_line` returns `None` on a `None` bpi, by design, with no
-  caveat saying a rating is missing). The same question read the 2026 play-in
-  snapshot before the fix below, which does carry a BPI rating - so this one
-  season's answer is measurably shorter than it was yesterday, in exchange for
-  reading the snapshot actually asked about.
-- **Next step:** say a rating is missing from an otherwise data-bearing
-  snapshot, the way `_team_outlook_missing` already names what is missing
-  rather than saying "no data" - and check whether a refetch of 2026 fills in
-  `bpi`, the way `scripts/backfill_power_index.py` fixed the paging fault.
-- **Priority:** P3 - nothing false is said, and only one season's BPI rating is
-  affected, but the omission has no caveat.
+- **Fixed 2026-09-18 - the omission is no longer silent.**
+  `_team_outlook_bpi_line` used to return None on a NULL rating, dropping the
+  line; it now says "no BPI rating in this snapshot - ESPN left it empty for
+  all 30 teams, though the record and projections below are its own". That
+  matters more here than it would elsewhere because the power index IS this
+  answer's headline: a reader got a record, a projection and chances with no
+  sign that the number they asked for was absent. The "also has" line already
+  names the season's other snapshots, which DO carry ratings, so the sentence
+  points at where the number is. Pinned by
+  `test_a_snapshot_with_no_rating_says_so_rather_than_dropping_the_line` and
+  one perturbation watched to fail.
+- **User sees:** a 2026 regular-season outlook that names the missing rating
+  and prints everything else ESPN does serve on those rows. Before #88 the
+  same question read the 2026 play-in snapshot, which has a rating - so the
+  answer is still shorter than it was, in exchange for reading the snapshot
+  actually asked about, and it now says so.
+- **Next step:** check whether a refetch of 2026 fills in `bpi`, the way
+  `scripts/backfill_power_index.py` fixed the paging fault. If ESPN serves a
+  rating today, this closes; if it does not, the caveat is the answer and this
+  becomes a `DATA.md` fact alone.
+- **Priority:** P4 - the omission is stated, so nothing is misleading; what is
+  left is one season's missing column and an unrun refetch.
 
 ### The "postseason copy" rule is written twice
 - **Found:** 2026-09-15, issues audit (P4 data/query auditor)
