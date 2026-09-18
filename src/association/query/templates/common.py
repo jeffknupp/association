@@ -92,10 +92,13 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # Every one of them, for a player: opponent, venue and a teammate's absence
     # are filters on the box-score rows, and a career is every season of them.
     # A team's log refuses `without` itself - that is with_without's question.
-    "game_log": frozenset({"order", "date", "opponent", "venue", "span", "without"}),
+    # `split` only for a NAMED half of the starter/bench split - a question
+    # naming both halves is a player_splits question, and check_scope still
+    # refuses it here, because `route()` leaves the category in place then.
+    "game_log": frozenset({"order", "date", "opponent", "venue", "span", "without", "split"}),
     # The three that narrow games are answered from box scores rather than the
     # season line; a career is summed from the season table.
-    "player_stat": frozenset({"opponent", "venue", "span", "without"}),
+    "player_stat": frozenset({"opponent", "venue", "span", "without", "split"}),
     "player_history": frozenset({"span"}),
     # It always read `opponent`; listed now that `opponent` is a scoping slot.
     "team_quarter_points": frozenset({"opponent"}),
@@ -421,11 +424,22 @@ def coverage_caveat(intent: str, slots: dict[str, Any]) -> str | None:
     return caveat(_sources_for(intent, slots), season, season_type) if isinstance(season, int) else None
 
 
+#: Templates that honor one NAMED half of the starter/bench split and refuse
+#: the bare category, which asks for a table they do not produce.
+_SPLIT_SIDE_ONLY = frozenset({"game_log", "player_stat"})
+
+
 def check_scope(intent: str, slots: dict[str, Any]) -> None:
     """Raise if the question scoped to particular games and this template
     cannot honor that. Falling through is slow; answering a different question
     quickly is worse."""
     ignored = sorted(s for s in SCOPING_SLOTS if slots.get(s) and s not in HONORED_SCOPING.get(intent, frozenset()))
+    # `split` is honored by the filtering templates only for a NAMED half. The
+    # bare category means "show me both groups", which is player_splits' whole
+    # answer and something they cannot do - so it is refused here rather than
+    # quietly filtered to one side or quietly ignored.
+    if slots.get("split") == "starter_bench" and intent in _SPLIT_SIDE_ONLY:
+        ignored = sorted({*ignored, "split"})
     if ignored:
         raise TemplateUnsupported(f"{intent} cannot honor {ignored} - it would answer for a different span than was asked")
 
@@ -834,6 +848,9 @@ class _Narrowed:
     extra_params: list[Any] = field(default_factory=list)
     opponent: Entity | None = None
     venue: str | None = None
+    #: True for a log of starts, False for one off the bench, None when the
+    #: question named neither half.
+    started: bool | None = None
     # Every teammate the question named, with that teammate's tenure clause
     # beside it. All of them at once: a game is "without" them only when none
     # of them played it, so a dropped name would answer a wider question.
@@ -866,6 +883,11 @@ class _Narrowed:
             parts.append(f"vs the {self.opponent.name}")
         if self.venue:
             parts.append("at home" if self.venue == "home" else "on the road")
+        if self.started is not None:
+            # Said outright, like every other narrowing here. A log of 50
+            # starts headed only "last 50 games" is the silent narrowing this
+            # module exists to stop - it reads as his last 50 games played.
+            parts.append("as a starter" if self.started else "off the bench")
         if self.without:
             parts.append(f"without {_joined([mate.name for mate in self.without])}")
         if self.date and dated:
@@ -879,10 +901,32 @@ def _checked_venue(venue: Any) -> str:
     return str(venue)
 
 
-def _narrow_player_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, *, opponent: Any, venue: Any, without: Any) -> _Narrowed | TemplateResult:
-    """``player``'s games in ``span``, narrowed to an opponent, a venue and a
-    teammate's absence where the question named them. A name that needs a
-    clarifying question comes back as the TemplateResult asking it."""
+#: The two halves of the starter/bench split, as `router._split_side` narrows
+#: them when a question names one. ``starter_bench`` itself is NOT here: that is
+#: the category, and a question naming both halves is asking for a splits table
+#: rather than a filtered set of games.
+STARTER_SIDES: dict[str, bool] = {"starter": True, "bench": False}
+"""Which value of ``player_game_log.starter`` each named half of the split means.
+
+.. versionadded:: 4.3.0
+"""
+
+
+def _narrow_player_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, *, opponent: Any, venue: Any, without: Any, split: Any = None) -> _Narrowed | TemplateResult:
+    """``player``'s games in ``span``, narrowed to an opponent, a venue, a
+    teammate's absence and a starter/bench half where the question named them.
+    A name that needs a clarifying question comes back as the TemplateResult
+    asking it.
+
+    Every narrowing here is a filter over the same set of player-games, which
+    is why they compose: a new one becomes available to every caller at once
+    rather than being taught to each template separately. ``split`` was the
+    fourth, and it reaches both `game_log` and `player_stat` through this one
+    change.
+
+    .. versionchanged:: 4.3.0
+       Honors one half of the starter/bench split (``split``).
+    """
     season_clause, season_params = span.clause("pgl.season")
     narrowed = _Narrowed(
         base=["pgl.athlete_id = ?", "pgl.season_type = ?", season_clause, "NOT pgl.did_not_play"],
@@ -899,6 +943,13 @@ def _narrow_player_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _
         narrowed.venue = _checked_venue(venue)
         narrowed.extra.append("(g.home_team_id = pgl.team_id) = ?")
         narrowed.extra_params.append(narrowed.venue == "home")
+    if split in STARTER_SIDES:
+        # Only a NAMED half filters. `starter_bench` reaches here unchanged
+        # when the question named both, and is refused by check_scope for the
+        # templates that cannot show a split table.
+        narrowed.started = STARTER_SIDES[split]
+        narrowed.extra.append("pgl.starter = ?")
+        narrowed.extra_params.append(narrowed.started)
     # Every name the question gave, required together: "without Tatum and
     # Brown" is the games NEITHER played. Reading only the first answered a
     # question about two players with the games one of them missed - fluently,

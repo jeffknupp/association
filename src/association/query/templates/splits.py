@@ -205,9 +205,18 @@ def _player_splits_narrow_phrase(venue: str | None, opponent: Entity | None) -> 
     return f" ({' '.join(parts)})" if parts else ""
 
 
+#: The two halves `route()` narrows ``starter_bench`` to when the question names
+#: one. This template wants the CATEGORY - a splits answer is both groups side
+#: by side - so it folds them back, while `game_log` and the other filtering
+#: templates read the half. See ``router._split_side``.
+_STARTER_BENCH_SIDES = frozenset({"starter", "bench"})
+
+
 def _player_splits_answer(con: duckdb.DuckDBPyConnection, found: _SplitSubject, split: Any) -> TemplateResult:
     """The shared table over whichever subject was resolved: one or all four
     splits, each split's rows, and the notes that qualify them."""
+    if split in _STARTER_BENCH_SIDES:
+        split = "starter_bench"
     kinds = [split] if split else [k for k in SPLIT_KINDS if found.alias == "p" or k != "starter_bench"]
     splits = {kind: _split_rows(con, found.base, found.params, found.alias, found.line, kind) for kind in kinds}
     label = found.scope.label(found.first, found.last)
@@ -273,9 +282,10 @@ def _player_splits_player(
 
 def _player_splits_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], span: Any, team: Entity, split: Any, venue: str | None, opponent: Entity | None) -> _SplitSubject | TemplateResult:
     """A named team's own games, with no player named, optionally narrowed to one venue and/or one opponent."""
-    if split == "starter_bench":
+    if split == "starter_bench" or split in _STARTER_BENCH_SIDES:
         # "Bench scoring" is a sum over a team's players - a different
-        # question from any this template answers.
+        # question from any this template answers. True of one named half as
+        # much as of the category.
         raise TemplateUnsupported("a team has no starter/bench split of its own")
     scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), _TEAM_GAME_TABLES)
     misfiled = _misfiled_postseason(scope)

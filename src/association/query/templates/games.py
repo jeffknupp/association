@@ -285,7 +285,7 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     if isinstance(player, TemplateResult):
         return player
     extras = _log_extras(slots.get("stat"))
-    narrowed = _narrow_player_games(con, player, scope, opponent=opponent, venue=venue, without=without)
+    narrowed = _narrow_player_games(con, player, scope, opponent=opponent, venue=venue, without=without, split=slots.get("split"))
     if isinstance(narrowed, TemplateResult):
         return narrowed
     if date:

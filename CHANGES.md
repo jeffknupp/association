@@ -167,6 +167,28 @@ had no published version to be compatible with.
   anywhere in the text, so a window ("since january 31st") is not mistaken for
   a month filter.
 
+## Unreleased
+- **A question that names one half of the starter/bench split now filters by
+  it, in every template that narrows a player's games.** "Jrue holiday last 50
+  games as a starter" was refused, because `SPLIT_WORDS` records the *category*
+  `starter_bench` and discards which half was named - right for `player_splits`,
+  whose answer is both groups side by side, and useless to a template that has
+  to filter. `TemplateContext` carries no question text, so `route()` reads the
+  half (`_split_side`), the way it already reads the side of the ball: no
+  `ROUTER_SCHEMA` change, so no other question's slots can move.
+
+  The filter itself is one clause added to `_narrow_player_games`, which is
+  where `opponent`, `venue` and `without` already compose over the same set of
+  player-games - so it reached `game_log` and `player_stat` at once rather than
+  being taught to each. That is the point: a new narrowing should become
+  available to every caller, not to one template.
+
+  Said in the answer, never silently: "Taurean Prince as a starter, last 7
+  games" and "in 58 games as a starter" against 64 unfiltered. A question
+  naming BOTH halves keeps the category and is still refused by `check_scope`
+  for these two, because both groups side by side is `player_splits`' answer
+  and not one they produce.
+
 ## 4.2.0 - 2026-09-18
 - **A NetPoints name ESPN spells with a generational suffix, or hyphenates
   differently, now matches too.** `match_key` reduces both sides to a

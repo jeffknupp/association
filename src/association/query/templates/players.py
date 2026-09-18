@@ -26,6 +26,7 @@ from .common import (
     PLAYER_STAT_COLUMNS,
     REBUILT_STATS,
     SEASON_TYPE_NAMES,
+    STARTER_SIDES,
     STAT_LABELS,
     THRESHOLD_STAT_COLUMNS,
     TemplateContext,
@@ -886,7 +887,10 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     # answer - a career keeps Dell Curry, this season does not.
     season_type = slots.get("season_type") or 2
     opponent, venue, without = slots.get("opponent"), slots.get("venue"), slots.get("without")
-    from_box_scores = bool(opponent or venue or without)
+    # A named half of the starter/bench split narrows the GAMES, so it reads
+    # box scores like the other three - the season line has no such column.
+    split_side = slots.get("split") if slots.get("split") in STARTER_SIDES else None
+    from_box_scores = bool(opponent or venue or without or split_side)
     span = _span_of(slots.get("span"), slots.get("season"), season_type, "player_game_log" if from_box_scores else "player_season_stats_deduped")
     lines = _GAME_LOGS if from_box_scores else _SEASON_LINES
     player = _resolved_player(con, slots.get("player"), "player_stat needs a player name", available=lines, season=span.season, through=_career_end(span.season))
@@ -911,7 +915,7 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     wanted = [] if shooting else _wanted_stats(slots)
 
     if from_box_scores:
-        narrowed = _narrow_player_games(con, player, span, opponent=opponent, venue=venue, without=without)
+        narrowed = _narrow_player_games(con, player, span, opponent=opponent, venue=venue, without=without, split=split_side)
         if isinstance(narrowed, TemplateResult):
             return narrowed
         return _box_score_player_stat(con, player, span, narrowed, wanted, shooting)
@@ -1146,6 +1150,7 @@ def _box_score_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span:
         "opponent": narrowed.opponent.name if narrowed.opponent else None,
         "venue": narrowed.venue,
         "without": [mate.name for mate in narrowed.without],
+        "started": narrowed.started,
     }
     if row is None or not row[0]:
         message = _no_narrowed_games(con, player, span, narrowed, rebuilt=rebuilt)

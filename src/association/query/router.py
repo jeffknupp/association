@@ -501,6 +501,41 @@ SPLIT_WORDS: dict[str, re.Pattern[str]] = {
     "month": re.compile(r"\b(?:by|each|per)\s+month\b|\bmonthly\b", re.IGNORECASE),
 }
 
+# One half of the starter/bench split, where the question names a half.
+#
+# `SPLIT_WORDS["starter_bench"]` matches "starter" or "bench" and records only
+# the CATEGORY, which is right for `player_splits` - a splits question wants
+# both groups side by side - and useless to a template that has to FILTER.
+# "Jrue holiday last 50 games as a starter" is a log of his starts, not a log
+# of everything with a starter/bench breakdown, and `TemplateContext` carries
+# no question text, so the direction can only be recovered here.
+#
+# Read from the question for the same reason `_validate_side` reads the side of
+# the ball: it costs nothing and cannot move a slot on any other question,
+# where teaching `ROUTER_SCHEMA` a new value reproducibly can. A question that
+# names BOTH halves ("starting vs coming off the bench") keeps the category, on
+# purpose - that IS the splits question.
+_STARTER_WORDS = re.compile(r"\b(?:starter|starting|starts|started)\b", re.IGNORECASE)
+_BENCH_WORDS = re.compile(r"\b(?:bench|reserve|reserves)\b", re.IGNORECASE)
+
+
+def _split_side(split: str, question: str) -> str:
+    """``split``, narrowed to the half the question names where it names one.
+
+    Returns ``"starter"`` or ``"bench"`` for a question about one half, and the
+    original category otherwise - both halves named, or a split that has no
+    halves (``month``, ``home_away``, ``wins_losses``).
+    """
+    if split != "starter_bench":
+        return split
+    starter, bench = bool(_STARTER_WORDS.search(question)), bool(_BENCH_WORDS.search(question))
+    if starter and not bench:
+        return "starter"
+    if bench and not starter:
+        return "bench"
+    return split
+
+
 # Which end of a team ranking was asked for. The four are not two pairs: for a
 # stat where lower is better, "fewest turnovers" and "worst in turnovers" sit
 # at opposite ends, so the template - which knows the stat - resolves them.
@@ -1129,7 +1164,7 @@ def _route_calendar_slots(slots: dict[str, Any], question: str, span: str | None
     # by season.
     splits = [name for name, pattern in SPLIT_WORDS.items() if pattern.search(question)]
     if len(splits) == 1:
-        slots["split"] = splits[0]
+        slots["split"] = _split_side(splits[0], question)
 
 
 def _route_intent_slots(intent: str, slots: dict[str, Any], question: str, without: list[str]) -> None:
