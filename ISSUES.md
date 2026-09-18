@@ -1303,6 +1303,7 @@ found.
   `radar.py`'s per-game percentile scale without changes beyond wiring - that
   needs the scale checked against real numbers, not assumed from the shared
   category names.
+- **GitHub:** #110
 
 ### The connection indicator is written once at load and never updated
 - **Found:** 2026-09-14, requested
