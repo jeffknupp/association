@@ -14,6 +14,19 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
+## Unreleased
+- **`scripts/backfill_netpoints_names.py`** re-parses the NetPoints tables that
+  are matched by display name, without refetching ESPN. The 4.1.0 parser fixes
+  (#22, #101) mean the Parquet on disk was written by the old code, so a load
+  alone changes nothing - but a full `data pull --force` over the NetPoints era
+  also refetches about 11,000 ESPN game summaries the fix does not touch, some
+  40 minutes at the default rate limit. This runs the NetPoints steps of a pull
+  and nothing else, through the same `Pipeline` methods, `_write_rows` and
+  `warehouse.build`, and reports both measurements before and after: unmatched
+  rows per table, and the row counts of the players ESPN files under two ids,
+  which is the only one that shows #101 moving (that table drops an unmatched
+  row rather than nulling its id, so its unmatched count is always 0).
+
 ## 4.1.0 - 2026-09-18
 - The new pin rewriting refused its own first real bump, and now does not. Its
   post-rewrite check greps the whole tree for the old pin, so it fired on a

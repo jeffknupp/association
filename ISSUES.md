@@ -176,14 +176,15 @@ found.
 - **User sees:** was "no data" for a real, sometimes years-long career, for a
   reason that had nothing to do with NetPoints coverage; will see real
   per-game NetPoints and fingerprint data for these 8 players once backfilled.
-- **Backfill command** (not run - the dispatching agent runs backfills
-  serially): `association data pull --seasons 2003,2019,2020,2026 --force
-  --include-net-points-daily` from the main checkout (or `--data-dir`/
-  `--db-path` pointing at it) - 2003 for Ken Johnson, 2019-2020 for the other
-  7, and the current season because `fetch_net_points_fingerprint` always
-  re-fetches it. `--include-net-points-daily` is needed for
-  `net_points_player_game`/`net_points_player_game_fingerprint`; the season
-  fingerprint table refreshes without it. Then `association data load` (the
+- **Backfill command** (not run yet):
+  `python scripts/backfill_netpoints_names.py` from the main checkout. It runs
+  the NetPoints steps of a pull and nothing else - the same `Pipeline` fetch
+  methods, the same `_write_rows`, the same `warehouse.build` - and reports
+  these 8 players' row counts before and after, which is the measurement that
+  shows this entry moving. A full `association data pull --force` over the
+  NetPoints era works too and is what the script replaces, but it also refetches
+  about 11,000 ESPN game summaries the fix does not touch, some 40 minutes at
+  the default rate limit. Then `association data load` (the
   pull already reloads what it wrote, so this is only needed if the pull is
   split from the load). Re-measure with the query in this entry's evidence
   and update `player_box_stats_deduped`'s own cross-check if `duplicate_athletes.py`
@@ -671,15 +672,14 @@ found.
   the backfill, the same rows carry a name a query or a person can act on
   (look up the right spelling, add it to a nickname/alias table, decide it is
   a name `players` genuinely does not have).
-- **Backfill command** (not run - the dispatching agent runs backfills
-  serially): a parser fix, so a load alone does nothing - the Parquet on disk
-  was written by the old parser. Re-fetch with
-  `association data pull --seasons <affected range> --force
-  --include-net-points-daily` from the main checkout (or with `--data-dir`/
-  `--db-path` pointing at it); NetPoints' own floor is season 2019
-  (`NET_POINTS_FIRST_SEASON`), so `--seasons 2019-2026` covers every date this
-  can affect. The pull reloads `net_points_player_game` and
-  `net_points_player_game_fingerprint` itself.
+- **Backfill command** (not run yet): a parser fix, so a load alone does
+  nothing - the Parquet on disk was written by the old parser and has to be
+  fetched and parsed again. `python scripts/backfill_netpoints_names.py` from
+  the main checkout does exactly that and nothing else, and prints the
+  unmatched-row counts this entry is measured by before and after. It covers
+  every date with a local game, which is every date this can affect, since
+  NetPoints' own floor is season 2019. A full `association data pull --force`
+  is equivalent but also refetches the ESPN summaries the fix does not touch.
 - **Next step after backfilling:** count unmatched names per season (now that
   they are retained as `display_name`) to find which spellings the exact match
   misses - the original next step, unchanged.
