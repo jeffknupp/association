@@ -123,15 +123,24 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     "single_game_high": frozenset({"span"}),
     # A career is every season on record rather than the current one; see
     # _condition_scope. `without` is the teammate with_without divides by, and
-    # `split` is the one player_splits was asked for.
-    "player_splits": frozenset({"span", "split"}),
+    # `split` is the one player_splits was asked for. `venue` and `opponent`
+    # are filters on the same box-score rows `team` already narrows - a home
+    # or road split for a player is answerable the same way a team's already
+    # is (see team_record below).
+    "player_splits": frozenset({"span", "split", "venue", "opponent"}),
     "with_without": frozenset({"span", "without"}),
     "record_when": frozenset({"span"}),
     "player_matchup": frozenset({"span"}),
     "streak": frozenset({"span"}),
     # The home/road split, the record against one team, and every season at
     # once - "Knicks home record" was answered with their overall 53-29.
-    "team_record": frozenset({"venue", "opponent", "span"}),
+    # `situation` is honored only where it names a real calendar month
+    # ("in october") - team_record itself refuses every other value, the same
+    # way `check_scope` used to refuse all of them (see ISSUES.md #84: this
+    # does not touch the weekday/holiday/age/"since returning" narrowings that
+    # stay refused). `split` is honored only as "month" - a record broken out
+    # by calendar month, read from the same per-game date a month filter uses.
+    "team_record": frozenset({"venue", "opponent", "span", "situation", "split"}),
     # Honored for the record metrics, from the standings' own home/road
     # strings; any other metric refuses it, since team season stats carry no
     # venue split at all.

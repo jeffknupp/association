@@ -14,6 +14,25 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
+## Unreleased
+- **`player_splits` honors a venue and/or an opponent** rather than falling
+  through - "Jalen Duren away vs Denver", "Pat Spencer home vs the Suns" - the
+  same filters `team_record` already applies to a team. A `limit` greater than
+  1 is refused instead of silently answering the whole span it should have
+  narrowed to: `player_splits` has no "last N games" mechanism the way
+  `game_log` does, and answering the full season under that framing would be
+  the exact silent substitution `check_scope` exists to stop. A bare `limit`
+  of 1 is left alone - the router already uses it as filler elsewhere, and
+  here it never changes the answer.
+- **`team_record` honors a calendar month**, filtering ("76ers record in
+  October, away") or breaking a record out by month ("Knicks record by
+  month"), read from `games` rather than `standings`, which has no per-game
+  date to filter or group by. Every other `situation` value - a weekday, an
+  age, "since returning from injury", a division - is still refused: only a
+  literal "in <month>" shape is read, deliberately not a month name found
+  anywhere in the text, so a window ("since january 31st") is not mistaken for
+  a month filter.
+
 ## 4.2.0 - 2026-09-18
 - **A NetPoints name ESPN spells with a generational suffix, or hyphenates
   differently, now matches too.** `match_key` reduces both sides to a

@@ -52,6 +52,7 @@ from .common import (
     TemplateResult,
     TemplateUnsupported,
     _career_end,
+    _checked_venue,
     _clamp_limit,
     _condition_scope,
     _joined,
@@ -119,30 +120,89 @@ def player_splits(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult
 
     A named ``team`` narrows a player's games to that team ("westbrook stats as
     a starter for kings"), since a traded player's splits are otherwise a mix
-    of two rosters. Only games he played count, and months are the US Eastern
-    date the game was played on - see :mod:`association.query.conditions`.
+    of two rosters. A named ``venue`` and/or ``opponent`` narrow them further -
+    "Duren away vs Denver" - the same filters ``team_record`` already applies
+    to a team. Only games he played count, and months are the US Eastern date
+    the game was played on - see :mod:`association.query.conditions`.
 
     .. versionadded:: 2.1.0
+
+    .. versionchanged:: 4.3.0
+       Honors ``venue`` and ``opponent``, narrowing the games either subject's
+       splits are computed over rather than falling through.
     """
     con = ctx.con
     split = slots.get("split")
     if split is not None and split not in SPLIT_KINDS:
         raise TemplateUnsupported(f"no split named {split!r}")
+    limit = slots.get("limit")
+    if isinstance(limit, int) and not isinstance(limit, bool) and limit > 1:
+        # This divides a whole span into groups; it has no notion of "his last
+        # N games" the way game_log does, and answering the whole span under
+        # that framing would be the exact silent substitution check_scope
+        # exists to stop - "Pat Spencer st home last four games" would answer
+        # his entire 35-game home season instead. `limit` is not a scoping
+        # slot check_scope reads (nothing else needs it to refuse), so it is
+        # checked here. A bare 1 is left alone: router.py already treats it as
+        # noise for the same reason elsewhere (_route_side_and_order drops a
+        # limit of 1 once its `order` is dropped), and here it never changes
+        # the answer - the games a venue/opponent narrows to are shown in
+        # full either way, so a real "last one" and the router's filler 1
+        # produce the same table.
+        raise TemplateUnsupported("player_splits has no notion of a limited number of recent games")
+    venue = _checked_venue(slots["venue"]) if slots.get("venue") else None
+    if split == "home_away" and venue is not None:
+        # Breaking games out by home/away while also narrowing to one of the
+        # two asks the same axis twice; the narrowing wins rather than showing
+        # one real row beside an empty one.
+        raise TemplateUnsupported("a home/away split conflicts with a venue already narrowed to one")
     team = _optional_team(con, slots.get("team"), season=_slot_season(slots))
     if isinstance(team, TemplateResult):
         return team
+    opponent = _optional_team(con, slots.get("opponent"), season=_slot_season(slots))
+    if isinstance(opponent, TemplateResult):
+        return opponent
 
     span = slots.get("span")
     name = slots.get("player")
     if isinstance(name, str) and name.strip():
-        found = _player_splits_player(con, name, slots, span, team)
+        found = _player_splits_player(con, name, slots, span, team, venue, opponent)
     else:
         if team is None:
             raise TemplateUnsupported("player_splits needs a player or a team")
-        found = _player_splits_team(con, slots, span, team, split)
+        found = _player_splits_team(con, slots, span, team, split, venue, opponent)
     if isinstance(found, TemplateResult):
         return found
     return _player_splits_answer(con, found, split)
+
+
+def _player_splits_narrow_sql(venue: str | None, opponent: Entity | None) -> tuple[str, dict[str, Any]]:
+    """Extra ``WHERE`` SQL and its params narrowing to a venue and/or an
+    opponent - shared by a player's own games and a team's, since
+    ``conditions._player_games`` and ``conditions._team_games`` both alias
+    ``team_box_stats`` ``tbs`` and ``real_games`` ``g`` the same way, and both
+    already join them unconditionally."""
+    extra = ""
+    params: dict[str, Any] = {}
+    if venue is not None:
+        extra += " AND tbs.home_away = $venue"
+        params["venue"] = venue
+    if opponent is not None:
+        extra += " AND (CASE WHEN tbs.home_away = 'home' THEN g.away_team_id ELSE g.home_team_id END) = $opponent"
+        params["opponent"] = opponent.id
+    return extra, params
+
+
+def _player_splits_narrow_phrase(venue: str | None, opponent: Entity | None) -> str:
+    """ "(on the road vs the Denver Nuggets)" - what a venue and/or opponent
+    narrowing reads as after a subject's name, so honoring it is said in the
+    answer rather than left for the reader to assume."""
+    parts = []
+    if venue is not None:
+        parts.append("at home" if venue == "home" else "on the road")
+    if opponent is not None:
+        parts.append(f"vs the {opponent.name}")
+    return f" ({' '.join(parts)})" if parts else ""
 
 
 def _player_splits_answer(con: duckdb.DuckDBPyConnection, found: _SplitSubject, split: Any) -> TemplateResult:
@@ -188,27 +248,31 @@ class _SplitSubject:
     caveat: str
 
 
-def _player_splits_player(con: duckdb.DuckDBPyConnection, name: str, slots: dict[str, Any], span: Any, team: Entity | None) -> _SplitSubject | TemplateResult:
-    """A named player's own games, optionally narrowed to one team."""
+def _player_splits_player(
+    con: duckdb.DuckDBPyConnection, name: str, slots: dict[str, Any], span: Any, team: Entity | None, venue: str | None, opponent: Entity | None
+) -> _SplitSubject | TemplateResult:
+    """A named player's own games, optionally narrowed to one team, one venue and/or one opponent."""
     scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), _PLAYER_GAME_TABLES)
     player = _resolved_player(con, name, available=_BOX_SCORES, season=scope.season, through=_career_end(scope.season))
     if isinstance(player, TemplateResult):
         return player
-    params: dict[str, Any] = {**scope.params(), "player": player.id}
+    narrow_sql, narrow_params = _player_splits_narrow_sql(venue, opponent)
+    params: dict[str, Any] = {**scope.params(), "player": player.id, **narrow_params}
     if team is not None:
         params["team"] = team.id
-    base = _player_games(scope, extra=" AND pbs.team_id = $team" if team else "", box=box_source(con))
+    base = _player_games(scope, extra=(" AND pbs.team_id = $team" if team else "") + narrow_sql, box=box_source(con))
     games, first, last = _totals(con, base, params)
     if not games:
         return _no_games(con, player, scope, team)
-    subject, alias, line, counted = player.name + (f" for the {team.name}" if team else ""), "p", _PLAYER_LINE, f"{games} games he played"
-    data: dict[str, Any] = {"player": player.name, "team": team.name if team else None}
+    subject = player.name + (f" for the {team.name}" if team else "") + _player_splits_narrow_phrase(venue, opponent)
+    alias, line, counted = "p", _PLAYER_LINE, f"{games} game{'s' if games != 1 else ''} he played"
+    data: dict[str, Any] = {"player": player.name, "team": team.name if team else None, "venue": venue, "opponent": opponent.name if opponent else None}
     caveat = _unseen_note(_unseen(con, scope, base, params, box_source(con)))
     return _SplitSubject(scope, base, params, games, first, last, subject, alias, line, counted, data, caveat)
 
 
-def _player_splits_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], span: Any, team: Entity, split: Any) -> _SplitSubject | TemplateResult:
-    """A named team's own games, with no player named."""
+def _player_splits_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], span: Any, team: Entity, split: Any, venue: str | None, opponent: Entity | None) -> _SplitSubject | TemplateResult:
+    """A named team's own games, with no player named, optionally narrowed to one venue and/or one opponent."""
     if split == "starter_bench":
         # "Bench scoring" is a sum over a team's players - a different
         # question from any this template answers.
@@ -217,14 +281,15 @@ def _player_splits_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], s
     misfiled = _misfiled_postseason(scope)
     if misfiled is not None:
         return misfiled
-    params = {**scope.params(), "team": team.id}
-    base = _team_games(scope, " AND tbs.team_id = $team")
+    narrow_sql, narrow_params = _player_splits_narrow_sql(venue, opponent)
+    params = {**scope.params(), "team": team.id, **narrow_params}
+    base = _team_games(scope, " AND tbs.team_id = $team" + narrow_sql)
     games, first, last = _totals(con, base, params)
     if not games:
         message = f"The warehouse has no games with a result for the {team.name} {_where_in(scope)}."
         return TemplateResult(data={"team": team.name, "span": scope.label(), "games": 0}, answer=message)
-    subject, alias, line, counted = f"The {team.name}", "t", _TEAM_LINE, f"{games} games"
-    data: dict[str, Any] = {"player": None, "team": team.name}
+    subject, alias, line, counted = f"The {team.name}" + _player_splits_narrow_phrase(venue, opponent), "t", _TEAM_LINE, f"{games} game{'s' if games != 1 else ''}"
+    data: dict[str, Any] = {"player": None, "team": team.name, "venue": venue, "opponent": opponent.name if opponent else None}
     # The score of a game with no box score is still on record, but its
     # team box stats are NULL - averaged over the rest, and said so.
     blank = con.execute(f"SELECT COUNT(*) FILTER (WHERE fieldGoalsAttempted IS NULL) FROM ({base})", params).fetchone()

@@ -319,6 +319,14 @@ def test_team_record_honors_venue_opponent_and_span_but_not_order() -> None:
         check_scope("team_record", {"order": "recent"})
 
 
+def test_team_record_honors_situation_and_split_at_the_check_scope_level() -> None:
+    """check_scope only checks that the slot is declared - team_record itself
+    still refuses a `situation` that names no month and a `split` that is not
+    "month" (see the tests above), the same way it always refused `order`."""
+    check_scope("team_record", {"situation": "in october"})
+    check_scope("team_record", {"split": "month"})
+
+
 # ---------------- team_stat ----------------
 
 
@@ -680,3 +688,67 @@ def test_a_snapshot_with_no_rating_says_so_rather_than_dropping_the_line(tmp_pat
     # The rest of the row is ESPN's own and still printed.
     assert "record 53-29" in answer
     assert "playoffs 100.0%" in answer
+
+
+# ---------------- team_record: a calendar month ----------------
+
+
+def test_a_named_month_filters_the_games_tally(team_ctx: TemplateContext) -> None:
+    """standings has no per-game date, so a month reaches this through
+    `games` instead - the Knicks' one November game (g1) is a win."""
+    answer = team_record(team_ctx, {"team": "Knicks", "situation": "in november"}).answer or ""
+    assert "went 1-0 (1.000) in November in the" in answer
+
+
+def test_a_named_month_with_no_games_says_so(team_ctx: TemplateContext) -> None:
+    """g2's UTC stamp of January 1st is December 31st Eastern, so the Knicks
+    have no January game this season even though one game's UTC date says so -
+    the whole reason a month reads the Eastern date rather than the stored one."""
+    answer = team_record(team_ctx, {"team": "Knicks", "situation": "in january"}).answer or ""
+    assert answer == f"The New York Knicks played no games in January in the {S} regular season."
+
+
+def test_a_named_month_combines_with_venue(team_ctx: TemplateContext) -> None:
+    """g3, a neutral-site game, is excluded from a venue narrowing - only g2
+    (away, a loss) is a December game at a real venue."""
+    answer = team_record(team_ctx, {"team": "Knicks", "situation": "in december", "venue": "away"}).answer or ""
+    assert "0-1 (.000) in December on the road" in answer
+
+
+def test_a_situation_naming_no_month_is_still_refused(team_ctx: TemplateContext) -> None:
+    """check_scope lets any `situation` value through now (see
+    HONORED_SCOPING); team_record itself still refuses everything but a bare
+    "in <month>" - #84's weekday/holiday/age/window narrowings stay refused."""
+    with pytest.raises(TemplateUnsupported):
+        team_record(team_ctx, {"team": "Knicks", "situation": "since january 31st"})
+    with pytest.raises(TemplateUnsupported):
+        team_record(team_ctx, {"team": "Knicks", "situation": "on tuesdays"})
+
+
+def test_split_by_month_breaks_the_record_out(team_ctx: TemplateContext) -> None:
+    """The Knicks' three regular-season games this year: g1 in November (win),
+    g3 in December (a neutral-site win that still counts) and g2, whose UTC
+    January 1st stamp is December 31st Eastern - so December is 1-1, and
+    January never appears at all."""
+    result = team_record(team_ctx, {"team": "Knicks", "split": "month"})
+    assert result.data["months"] == [
+        {"month": "November", "games": 1, "wins": 1, "losses": 0},
+        {"month": "December", "games": 2, "wins": 1, "losses": 1},
+    ]
+    assert "January" not in (result.answer or "")
+
+
+def test_an_unnamed_split_is_refused(team_ctx: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        team_record(team_ctx, {"team": "Knicks", "split": "starter_bench"})
+
+
+def test_a_default_limit_does_not_block_a_month_narrowing_or_split(team_ctx: TemplateContext) -> None:
+    """The router fills `limit` with a default whether or not the question
+    asked for one, the same shape team_record already treats as noise for a
+    bare "last N games" refusal - but only once a real month narrowing or a
+    by-month split is what is actually driving the answer."""
+    assert "1-0" in (team_record(team_ctx, {"team": "Knicks", "situation": "in november", "limit": 12}).answer or "")
+    assert team_record(team_ctx, {"team": "Knicks", "split": "month", "limit": 12}).data["months"]
+    with pytest.raises(TemplateUnsupported, match="game_log"):
+        team_record(team_ctx, {"team": "Knicks", "limit": 12})

@@ -1357,6 +1357,33 @@ found.
   unpredictably and in part"
 - **GitHub:** #77
 
+### A question naming two seasons routes with only one, and the answer never says so
+- **Found:** 2026-09-18, adding `team_record`'s month split
+- **Evidence:** "knicks record by month 2024 2025" (a question naming both the
+  2023-24 and 2024-25 seasons, most plausibly asking for both broken out by
+  month) routes with `slots = {"team": "New York Knicks", "season": 2024,
+  "split": "month", ...}` - the second year is dropped entirely, with nothing
+  in the slots recording that the question named it. `team_record` now
+  answers the by-month table for 2024 alone, correctly and completely for that
+  one season - but the answer has no way to know a second season was asked
+  for, since the router never carried it past routing. Measured against
+  `replay_recorded_routes.py` and the built warehouse: the 2024 table it
+  returns is numerically exact (November 9-5 through April 6-2, cross-checked
+  against a direct SQL tally), so this is not a wrong answer - it is a
+  narrower one, stated as though it were the whole question.
+- **User sees:** a correct, complete answer for one of the two seasons named,
+  with no caveat that the other was dropped - the same shape #19
+  (`player_history`) and #20 (a fingerprint comparison losing its second name)
+  already describe for a name or a season silently narrowed.
+- **Next step:** this is a router-level gap (`ROUTER_SCHEMA`'s `season` slot
+  takes one integer, not a list or a range), not a template one - no template
+  file can restore a second season the router never emitted. Fixing it needs
+  either a `season` slot that can carry a span, or reading a second year out
+  of the question text the way `CODE_ASSIGNED_INTENTS` does for other slots,
+  and either one needs `scripts/check_routing.py` run after, per
+  `router_prompt.py`'s own rules.
+- **GitHub:** none yet
+
 ## P4: tooling, docs, low impact
 
 ### The header status line still states coverage as a single misleading range, beside a correct one
