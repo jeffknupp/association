@@ -166,6 +166,24 @@ had no published version to be compatible with.
   literal "in <month>" shape is read, deliberately not a month name found
   anywhere in the text, so a window ("since january 31st") is not mistaken for
   a month filter.
+- **13 more query intents render as HTML instead of a raw `<pre>` block** on
+  the web page: `player_stat`, `shot_distance` (a stat card each),
+  `head_to_head` (a two-team score card), `team_quarter_points` and
+  `period_split` (a sparkline plus a per-game table), `player_splits` (one
+  table per split, home/away, starter/bench, wins/losses, by month),
+  `with_without` and `record_when` (a two-row team-record comparison),
+  `player_matchup` (a comparison table plus the recent-meetings log),
+  `streak` (a ranked table for the league-wide shape, a plain one for a
+  named player or team), `team_stat` (value and rank per metric),
+  `team_leaderboard` (a ranked table) and `team_outlook` (a stat-card grid
+  for BPI, record, chances and strength of schedule). Together with the
+  seven `RENDERERS` already had, every intent but the tableless `coach`
+  refusal now has one (ISSUES.md #110, staged plan step 1 - renderer-only,
+  no template change: every key read was already on `Answer.data`). The
+  prose answer is unchanged and stays available under the "text" disclosure;
+  a rendering bug in any of the new renderers falls back to it rather than
+  losing the answer, the same guard the existing seven already relied on.
+  `tests/web/test_renderers.py`'s contract test now covers all 20.
 
 ## 4.2.0 - 2026-09-18
 - **A NetPoints name ESPN spells with a generational suffix, or hyphenates
