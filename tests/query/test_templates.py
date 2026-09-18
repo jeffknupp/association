@@ -540,6 +540,41 @@ def test_player_stat_reports_a_missing_season_honestly(ps_con: TemplateContext) 
     assert result.answer == "Luka Doncic has no 1999 regular season numbers in the warehouse."
 
 
+def test_player_stat_defaulted_season_redirects_to_a_retired_players_range(ps_con: TemplateContext) -> None:
+    """The season was never named - it defaulted to "now" - so a retired
+    player with nothing there gets pointed at what the warehouse DOES hold for
+    him instead of a refusal that reads as though his whole career were
+    missing (issue #18). "Allen Iverson has no 2026 regular season numbers"
+    is true and answers a different question than the one asked."""
+    ps_con.con.execute("INSERT INTO players VALUES ('6','Old Timer')")
+    ps_con.con.execute("INSERT INTO player_season_stats_deduped VALUES ('6',2005,2,70,20.0,1400,5.0,4.0,280,1.0,0.5,2.0,2.0,35.0,140)")
+    ps_con.con.execute("INSERT INTO player_season_stats_deduped VALUES ('6',2008,2,60,18.0,1080,4.0,3.5,210,1.0,0.4,1.8,1.8,32.0,108)")
+    answer = player_stat(ps_con, {"player": "Old Timer", "stat": "points"}).answer
+    assert answer == (
+        f"Old Timer has no {current_season()} regular season numbers in the warehouse. He last appears in 2008. The warehouse holds his 2005-2008 regular seasons; name one, or ask for his career."
+    )
+
+
+def test_player_stat_defaulted_season_with_nothing_on_record_stays_plain(ps_con: TemplateContext) -> None:
+    """A defaulted season is only a redirect when there is somewhere to
+    redirect to. A player with no rows in the table at all - as opposed to no
+    rows in the current season - has nothing to point at, and the plain
+    refusal is the honest answer: there is genuinely no data on record."""
+    ps_con.con.execute("INSERT INTO players VALUES ('7','Nobody Yet')")
+    answer = player_stat(ps_con, {"player": "Nobody Yet", "stat": "points"}).answer
+    assert answer == f"Nobody Yet has no {current_season()} regular season numbers in the warehouse."
+
+
+def test_player_stat_a_named_season_keeps_the_plain_refusal(ps_con: TemplateContext) -> None:
+    """The season the question named IS the fact the answer is about - unlike
+    the defaulted case above, redirecting a season asked for outright would be
+    a fluent answer to a question nobody asked."""
+    ps_con.con.execute("INSERT INTO players VALUES ('6','Old Timer')")
+    ps_con.con.execute("INSERT INTO player_season_stats_deduped VALUES ('6',2005,2,70,20.0,1400,5.0,4.0,280,1.0,0.5,2.0,2.0,35.0,140)")
+    answer = player_stat(ps_con, {"player": "Old Timer", "stat": "points", "season": 1999}).answer
+    assert answer == "Old Timer has no 1999 regular season numbers in the warehouse."
+
+
 def test_player_stat_never_reports_a_total_as_a_per_game_number(ps_con: TemplateContext) -> None:
     # Regression on phrasing: the total used to be inlined as "33.5 points
     # (2143 total) per game", which states something false.
@@ -899,6 +934,29 @@ def test_shot_chart_reports_no_matching_shots_rather_than_falling_through(sc_ctx
     # so an empty result is the answer, not a reason to spend minutes.
     result = shot_chart(sc_ctx, {"player": "Stephen Curry", "season": 1999})
     assert "No shots found" in (result.answer or "")
+
+
+def test_shot_chart_defaulted_season_redirects_to_a_retired_players_range(sc_ctx: TemplateContext) -> None:
+    """No season was named - "now" defaulted - so a player with shots only in
+    an earlier season is pointed at it instead of "with the given filters",
+    which blames a filter that was never given and reads as though the
+    warehouse held nothing of his at all (issue #18). No "or ask for his
+    career" - shot_chart draws one season, never a career."""
+    sc_ctx.con.execute("INSERT INTO players VALUES ('2','Old Timer')")
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('2',2010,2,'e9',1,'8:00',TRUE,'Jump Shot',25,26,2,'20-foot two point jumper')")
+    result = shot_chart(sc_ctx, {"player": "Old Timer"})
+    assert result.answer == "No shots found for Old Timer with the given filters. He last appears in 2010. The warehouse holds his 2010 regular season; name one."
+    assert result.artifacts == []
+
+
+def test_shot_chart_a_named_season_keeps_the_plain_refusal(sc_ctx: TemplateContext) -> None:
+    """The season the question named is the fact the refusal is about, so it
+    is left exactly as it read before this fix - unlike the defaulted case
+    above."""
+    sc_ctx.con.execute("INSERT INTO players VALUES ('2','Old Timer')")
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('2',2010,2,'e9',1,'8:00',TRUE,'Jump Shot',25,26,2,'20-foot two point jumper')")
+    result = shot_chart(sc_ctx, {"player": "Old Timer", "season": 1999})
+    assert result.answer == "No shots found for Old Timer with the given filters."
 
 
 def test_shot_chart_ignores_a_nonsense_shot_value(sc_ctx: TemplateContext) -> None:
@@ -1404,6 +1462,27 @@ def test_single_game_high_reports_an_empty_season_honestly(sgh_ctx: TemplateCont
     assert "no 1999 regular season games" in (single_game_high(sgh_ctx, {"stat": "assists", "season": 1999}).answer or "")
 
 
+def test_single_game_high_defaulted_season_redirects_to_a_retired_players_range(sgh_ctx: TemplateContext) -> None:
+    """No season was named - the question asked about "now" - so a player
+    with games only long before it gets pointed at his own range rather than a
+    refusal that reads as though he never played at all (issue #18)."""
+    s, past = current_season(), current_season() - 16
+    sgh_ctx.con.execute("INSERT INTO players VALUES ('3','Old Timer')")
+    sgh_ctx.con.execute("INSERT INTO player_game_log VALUES ('3',?,2,'Old Timer','2010-04-12T00:30Z','BOS',5,20,32)", [past])
+    answer = single_game_high(sgh_ctx, {"stat": "points", "player": "Old Timer"}).answer or ""
+    assert answer == (f"Old Timer has no {s} regular season games in the warehouse. He last appears in {past}. The warehouse holds his {past} regular season; name one, or ask for his career.")
+
+
+def test_single_game_high_a_named_season_keeps_the_plain_refusal(sgh_ctx: TemplateContext) -> None:
+    """The season the question named is the fact the refusal is about; a
+    redirect there would answer a season nobody asked about."""
+    past = current_season() - 16
+    sgh_ctx.con.execute("INSERT INTO players VALUES ('3','Old Timer')")
+    sgh_ctx.con.execute("INSERT INTO player_game_log VALUES ('3',?,2,'Old Timer','2010-04-12T00:30Z','BOS',5,20,32)", [past])
+    answer = single_game_high(sgh_ctx, {"stat": "points", "player": "Old Timer", "season": 1999}).answer or ""
+    assert answer == "Old Timer has no 1999 regular season games in the warehouse."
+
+
 def _all_box_scores_empty(ctx: TemplateContext, name: str) -> None:
     """One player whose whole season is the empty line ESPN leaves: listed as
     having played, no minutes, every stat 0. Anthony Davis's 2015 in miniature."""
@@ -1862,6 +1941,28 @@ def test_player_netpoints_uses_the_string_season_type(np_ctx: TemplateContext) -
 
 def test_player_netpoints_reports_a_missing_season_honestly(np_ctx: TemplateContext) -> None:
     assert "no 1999 regular season NetPoints" in (player_netpoints(np_ctx, {"player": "SGA", "season": 1999}).answer or "")
+
+
+def test_player_netpoints_defaulted_season_redirects_to_a_retired_players_range(np_ctx: TemplateContext) -> None:
+    """No season was named - "now" defaulted - so a player with NetPoints only
+    on record in an earlier season is pointed at it instead of a flat refusal
+    that reads as though the warehouse held nothing of his at all (issue #18).
+    No "or ask for his career" here: player_netpoints has no career span to
+    offer."""
+    np_ctx.con.execute("INSERT INTO players VALUES ('2','Old Timer')")
+    np_ctx.con.execute("INSERT INTO net_points_player VALUES ('2',2020,'Regular Season',100.0,80.0,20.0,5.0,1000,50)")
+    s = current_season()
+    answer = player_netpoints(np_ctx, {"player": "Old Timer"}).answer or ""
+    assert answer == f"The warehouse has no {s} regular season NetPoints for Old Timer. He last appears in 2020. The warehouse holds his 2020 regular season; name one."
+
+
+def test_player_netpoints_a_named_season_keeps_the_plain_refusal(np_ctx: TemplateContext) -> None:
+    """The season the question named is the fact the refusal is about - unlike
+    the defaulted case above, redirecting it would be a different question."""
+    np_ctx.con.execute("INSERT INTO players VALUES ('2','Old Timer')")
+    np_ctx.con.execute("INSERT INTO net_points_player VALUES ('2',2020,'Regular Season',100.0,80.0,20.0,5.0,1000,50)")
+    answer = player_netpoints(np_ctx, {"player": "Old Timer", "season": 1999}).answer or ""
+    assert answer == "The warehouse has no 1999 regular season NetPoints for Old Timer."
 
 
 def test_player_netpoints_without_a_player_falls_through(np_ctx: TemplateContext) -> None:
@@ -2596,6 +2697,34 @@ def test_no_games_against_an_opponent_is_not_no_games(pg_ctx: TemplateContext) -
 def test_a_season_with_no_games_at_all_says_that(pg_ctx: TemplateContext) -> None:
     s = current_season() - 5
     assert game_log(pg_ctx, {"player": "Brandin Podziemski", "season": s}).answer == f"No {s} regular season games found for Brandin Podziemski."
+
+
+def test_a_defaulted_season_with_no_games_redirects_to_a_retired_players_range(pg_ctx: TemplateContext) -> None:
+    """The season was never named - it defaulted to "now" - so a player whose
+    only games are long past gets pointed at his own range instead of a
+    refusal that reads as though his whole career were missing (issue #18).
+    Podziemski's own case above, with an explicit season, must keep its plain
+    refusal: that is the negative control this fix must not move."""
+    pg_ctx.con.execute("INSERT INTO players VALUES ('30','Old Timer')")
+    pg_ctx.con.executemany(
+        f"INSERT INTO player_box_stats VALUES ({', '.join('?' for _ in range(24))})",
+        [_box("e8", 1995, "5", "3", "30", minutes=30, pts=20)],
+    )
+    s = current_season()
+    answer = game_log(pg_ctx, {"player": "Old Timer"}).answer
+    assert answer == f"No {s} regular season games found for Old Timer. He last appears in 1995. The warehouse holds his 1995 regular season; name one, or ask for his career."
+
+
+def test_a_named_season_with_no_games_keeps_the_plain_refusal(pg_ctx: TemplateContext) -> None:
+    """Unlike the default case above, the season here is what the question is
+    about - redirecting it would answer a year nobody asked for."""
+    pg_ctx.con.execute("INSERT INTO players VALUES ('30','Old Timer')")
+    pg_ctx.con.executemany(
+        f"INSERT INTO player_box_stats VALUES ({', '.join('?' for _ in range(24))})",
+        [_box("e8", 1995, "5", "3", "30", minutes=30, pts=20)],
+    )
+    answer = game_log(pg_ctx, {"player": "Old Timer", "season": 1999}).answer
+    assert answer == "No 1999 regular season games found for Old Timer."
 
 
 def test_a_career_never_counts_the_phantom_season_twice(pg_ctx: TemplateContext) -> None:

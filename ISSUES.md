@@ -561,27 +561,6 @@ found.
   player.
 - **GitHub:** #16
 
-### A retired player's question defaults to the current season
-- **Found:** 2026-09-08 (reported, not re-verified)
-- **Evidence:** "The Answer's avg points" answers "Allen Iverson has no 2026
-  regular season numbers".
-- **User sees:** a refusal that is true but beside the point: the question meant
-  his career.
-- **Next step:** when a player has no rows in the defaulted season, answer their
-  last season or career, and say so.
-- **Re-checked 2026-09-15: broader than filed.** The same "has no 2026
-  numbers" shape appears in `player_stat`, `single_game_high`, `game_log` and
-  `player_netpoints`; `shot_chart` says "No shots found ... with the given
-  filters" without naming the season at all. Only `player_history` answers.
-- **Reproduced live 2026-09-16, direct template calls, no router involved.**
-  `game_log` with `{"player": "Tim Hardaway", "opponent": "New York Knicks"}`
-  answers "No 2026 regular season games found for Tim Hardaway."; `player_stat`
-  with `{"player": "Allen Iverson", "stat": "points"}` answers "Allen Iverson
-  has no 2026 regular season numbers in the warehouse." Both resolved the
-  retired player himself, with no clarification offered, even though "Tim
-  Hardaway Jr." exists in the warehouse and could have been asked about.
-- **GitHub:** #18
-
 ### `player_history` answers "last N seasons on record", not a calendar window
 - **Found:** 2026-09-11, while fixing name clarification
 - **Evidence:** the query reads `season <= ? ORDER BY season DESC LIMIT ?` per
@@ -659,6 +638,34 @@ found.
 - **GitHub:** #22
 
 ## P3: refusal or gap
+
+### `shot_chart`'s empty refusal never names the season, even when one was asked for
+- **Found:** 2026-09-18, fixing #18 (the retired-player default-season bug)
+- **Evidence:** `shotchart.render_for_player`'s empty branch
+  (`query/shotchart.py`, `if not shots: message = f"No shots found for
+  {resolved_name} with the given filters."`) never mentions ``season`` at all -
+  unlike `player_stat` ("no 1999 regular season numbers") and `game_log` ("No
+  1999 regular season games found"), which both name the season in the plain
+  refusal. `shot_chart(ctx, {"player": "Stephen Curry", "season": 1999})`
+  against a warehouse with only current-season shots answers exactly "No shots
+  found for Stephen Curry with the given filters." - true when no filters were
+  given (a bare `player` and `season` are not filters this sentence counts),
+  and misleading when they were, since it does not say which one emptied the
+  result.
+- **User sees:** a refusal that does not say which season it is refusing, and
+  reads as though a filter (`shot_value`, `period`, ...) is why nothing was
+  found even when the question named nothing but a player and a season. #18's
+  fix appends a redirect naming the season only for a *defaulted* season with
+  something to redirect to; an *explicit* season with nothing on record - or a
+  defaulted one where the player has no shots on record at all - still gets
+  this unscoped sentence.
+- **Next step:** have `render_for_player`'s empty branch say the season and
+  season_type it queried (mirroring `_period`), and separately list which
+  filters (if any) were actually applied, rather than a blanket "with the
+  given filters" that fires even with none. Threading that through touches
+  `shotchart.py`'s shared renderer, which the agent's `render_shot_chart` tool
+  also calls - check both callers before changing the message shape.
+- **Source:** ours, not ESPN's.
 
 ### A calendar date on `player_stat` or `head_to_head` falls through instead of answering the game
 - **Found:** 2026-09-16, issues audit, from the latest replay

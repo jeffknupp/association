@@ -237,6 +237,14 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        never widened to a rebuild at all - now says whose box scores are
        empty rather than the wrong-cause "no games found". "Anthony Davis
        turnovers, 2015" no longer reads as though he never played.
+
+    .. versionchanged:: 4.0.2
+       A player's log with a defaulted (unnamed) season and no games in it
+       now redirects to the seasons he has on record, when there are any,
+       rather than a refusal that reads as though his whole career were
+       missing - "No 2026 regular season games found for Tim Hardaway" now
+       also says he last appears in 2003 and names his 1995-2003 range. A
+       season the question named outright keeps the plain refusal.
     """
     con = ctx.con
     season_type = slots.get("season_type") or 2
