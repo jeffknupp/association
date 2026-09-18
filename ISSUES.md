@@ -74,11 +74,11 @@ before that commit needs re-checking against the current warehouse.
   router does not know. "ats okc" and "players with the highest scoring triple
   doubles" are graded `wrong metric` in the same corpus.
 
-### Where the old P1s went
-The 391 date-only games printed a day early (#76), 2008's team rebound
-columns (#74) and the swapped 1990 Finals Game 5 were fixed on 2026-09-16. Before adding to this section,
-re-read the P2s against the P1 definition: that is how both of those were
-found.
+The 391 date-only games printed a day early (#76), 2008's team rebound columns
+(#74) and the swapped 1990 Finals Game 5 were fixed on 2026-09-16. Before adding
+to this section, re-read the P2s against the P1 definition: that is how both of
+those were found.
+- **GitHub:** #114
 
 ## P2: misleading or incomplete
 
@@ -1409,6 +1409,7 @@ found.
   `DATA.md` records as an ESPN placeholder (-1.0 on 828 of 1,503 rows).
 - **Source:** DATA.md, "NULL minutes mean \"did not appear\", and NULL
   `plusMinus` is a subset of them"
+- **GitHub:** #115
 
 ### No metric on `player_season_advanced_stats` can have a career ranking
 - **Found:** 2026-09-18, while adding `avg_game_score` as a leaderboard metric
@@ -1427,6 +1428,7 @@ found.
   wanted, take the games column from the metric rather than hardcoding it
   (`LeaderboardMetric.min_sample_column` already names it for both tables), and
   correct the docstring's stated reason at the same time.
+- **GitHub:** #116
 
 ### A career advanced rate counts a season ESPN served almost, but not entirely, empty
 - **Found:** 2026-09-18, while adding the career true-shooting figure
@@ -1443,6 +1445,7 @@ found.
   career sum at all. It probably reads better as a second clause on the same
   sentence ("and 1 more is nearly empty") than as a silent exclusion, since
   excluding it would make the games count right and the attempt count wrong.
+- **GitHub:** #117
 
 
 ### The header status line still states coverage as a single misleading range, beside a correct one
