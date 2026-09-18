@@ -20,6 +20,7 @@ player whose career reached 1993-94, not every player who ever played."""
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from difflib import get_close_matches
 from typing import Any
@@ -36,6 +37,13 @@ from .metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABEL
 # a leaderboard of 5,000 helps nobody and floods the context window. Applied to
 # the SQL LIMIT itself, so the fetch below cannot return more than this.
 MAX_LIMIT = 100
+
+# What a `scales_with_schedule` floor was calibrated against - see
+# `metrics.LeaderboardMetric.scales_with_schedule` and `default_min_sample`
+# below. Not `nba.season`'s business: this is the schedule length ts_pct's 550
+# and efg_pct's 480 were measured against (ISSUES.md #13), not a fact about
+# any one season.
+SCHEDULE_BASE_GAMES = 82
 
 
 class LeaderboardError(Exception):
@@ -217,14 +225,98 @@ def _value_columns(spec: LeaderboardMetric) -> tuple[str, ...]:
     return spec.ratio if spec.ratio else (spec.column,)
 
 
-def default_min_sample(spec: LeaderboardMetric, season_type: int) -> int | None:
+def _team_games_for_season(con: duckdb.DuckDBPyConnection, season: int) -> int | None:
+    """How many regular-season games a team typically played that season, read
+    from the warehouse rather than a hardcoded per-season table.
+
+    The MEDIAN of each team's own ``real_games`` count (home starts plus away
+    starts), rounded to the nearest game. Not ``games``, which carries 151 rows
+    that are not games (AGENTS.md, "Working on the query path" -> "Saying what
+    you measured").
+
+    MEDIAN over MAX or a fixed per-season constant because a shortened season
+    is not always uniform across teams: 2020's ``real_games`` counts range
+    64-75 (the pandemic hiatus, then an 8-game bubble restart for 22 of the 30
+    teams; the other 8 never resumed), while 2021's 72-game season gave every
+    team exactly 72. The median reads 72 for both - one number, not three, and
+    the same number a person would call "the 2020 season" and "the 2021
+    season" by. A full 82-game season still reads 82 despite the two Cup-final
+    teams' extra counted game (DATA.md, "The NBA Cup final is stored as a
+    regular-season game") landing in the tails rather than the middle, so a
+    normal season's floor is untouched by this function existing at all.
+
+    Returns ``None`` on anything that stops the query - most commonly
+    ``real_games`` not existing, true of every fixture in this test suite that
+    predates this function and is not this fix's to update - so a caller falls
+    back to the unscaled floor rather than raising.
+
+    .. versionadded:: 4.0.2
+    """
+    try:
+        row = con.execute(
+            "WITH per_team AS ("
+            "  SELECT home_team_id AS team_id, COUNT(*) AS n FROM real_games WHERE season = ? AND season_type = ? GROUP BY 1"
+            "  UNION ALL"
+            "  SELECT away_team_id AS team_id, COUNT(*) AS n FROM real_games WHERE season = ? AND season_type = ? GROUP BY 1"
+            "), totals AS (SELECT team_id, SUM(n) AS games FROM per_team GROUP BY 1)"
+            "SELECT MEDIAN(games) FROM totals",
+            [season, REGULAR_SEASON, season, REGULAR_SEASON],
+        ).fetchone()
+    except duckdb.Error:
+        # Missing real_games (an older warehouse, or a fixture built before
+        # this floor scaled) - degrade to the flat, unscaled floor rather than
+        # taking the whole leaderboard down over a schedule-length lookup.
+        return None
+    if row is None or row[0] is None:
+        return None
+    return math.floor(row[0] + 0.5)
+
+
+def _scale_min_sample(base: int, team_games: int) -> int:
+    """Scale an 82-game-season floor to a season whose teams played
+    ``team_games`` games instead, rounding half up.
+
+    Half up, not half to even or truncated, because a qualifier exists to
+    exclude a small sample on purpose: at the one boundary where the scaled
+    value lands exactly on a half-game, the deliberate choice is the stricter
+    (higher) floor, not the more permissive one. Away from that boundary the
+    rounding direction is not a choice at all - it is nearest, same as it
+    would be by any other rule.
+
+    .. versionadded:: 4.0.2
+    """
+    return math.floor(base * team_games / SCHEDULE_BASE_GAMES + 0.5)
+
+
+def default_min_sample(
+    spec: LeaderboardMetric,
+    season_type: int,
+    con: duckdb.DuckDBPyConnection | None = None,
+    season: int | None = None,
+) -> int | None:
     """The qualifier a season ranking applies when the question gives none.
 
+    A postseason floor is its own constant (see
+    ``LeaderboardMetric.postseason_min_sample``), never scaled by this
+    function. A regular-season floor with ``scales_with_schedule`` set is
+    scaled to the season's own team-game count when ``con`` and ``season`` are
+    given; without them - or without a usable ``real_games`` for that season -
+    it falls back to the flat, 82-game-calibrated value, exactly as it read
+    before ``scales_with_schedule`` existed.
+
     .. versionadded:: 2.1.0
+
+    .. versionchanged:: 4.0.2
+       Added ``con`` and ``season``, and the scaling itself - see
+       ``LeaderboardMetric.scales_with_schedule`` and ISSUES.md #13.
     """
     if season_type == POSTSEASON and spec.postseason_min_sample is not None:
         return spec.postseason_min_sample
-    return spec.default_min_sample
+    base = spec.default_min_sample
+    if base is None or not spec.scales_with_schedule or season_type != REGULAR_SEASON or con is None or season is None:
+        return base
+    team_games = _team_games_for_season(con, season)
+    return base if team_games is None else _scale_min_sample(base, team_games)
 
 
 def _run_leaderboard_validate(metric: str, season_type: int, fields: list[str] | None) -> LeaderboardMetric:
@@ -345,12 +437,18 @@ def run_leaderboard(
        A percentage ranks makes over attempts rather than ESPN's rounded
        column; a postseason can carry its own qualifier; a postseason row that
        copies the regular season is excluded.
+
+    .. versionchanged:: 4.0.2
+       A ``scales_with_schedule`` metric's default floor is scaled to the
+       season's own team-game count in a shortened season (ISSUES.md #13),
+       and ``min_sample_applied`` on the result always names the number
+       actually applied, scaled or not.
     """
     spec = _run_leaderboard_validate(metric, season_type, fields)
 
     resolved_season = season if season is not None else current_season()
     season_type_value: int | str = SEASON_TYPE_LABELS[season_type] if spec.season_type_is_string else season_type
-    effective_min_sample = min_sample if min_sample is not None else default_min_sample(spec, season_type)
+    effective_min_sample = min_sample if min_sample is not None else default_min_sample(spec, season_type, con, resolved_season)
 
     resolved_team_id: str | None = None
     resolved_team_name: str | None = None
