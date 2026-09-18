@@ -812,6 +812,14 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     .. versionchanged:: 2.2.0
        ``without`` takes every teammate the question names and counts a game
        only where none of them played.
+
+    .. versionchanged:: 4.0.1
+       A game narrowed by ``opponent``, ``venue`` or ``without`` now reads a
+       line rebuilt from play-by-play in place of an ESPN box score served
+       empty, for a stat the rebuild gets right - "Anthony Davis points vs the
+       Lakers in 2015" no longer refuses a season that is entirely Pelicans
+       games ESPN zeroed. A span left with no games at all says whose box
+       scores are empty rather than that no games were found.
     """
     con = ctx.con
     # Settled before the name is resolved: the span, and the table it is read
@@ -908,16 +916,46 @@ def _career_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span: _S
     )
 
 
+def _box_score_stat_rebuilt(con: duckdb.DuckDBPyConnection, wanted: list[str], shooting: tuple[str, str, str, str] | None) -> bool:
+    """Whether ``_box_score_player_stat`` may read a line rebuilt from
+    play-by-play for a game ESPN served with an empty box score.
+
+    Every stat asked for has to be one a rebuild gets right (:data:`REBUILT_STATS`)
+    - never a shooting percentage, whose makes and, especially, attempts are
+    outside what the rebuild was measured for (see ``UNGATED_ON_REBUILD`` in
+    :mod:`association.query.conditions`). Without this, "Anthony Davis points vs the
+    Lakers in 2015" read only the stored table, which is empty for every
+    Pelicans game that season, and answered the wrong-cause refusal this
+    project keeps producing even though points is exactly the stat the rebuild
+    is trusted for.
+
+    .. versionadded:: 4.0.1
+    """
+    return bool(wanted) and shooting is None and all(stat in REBUILT_STATS for stat in wanted) and _log_carries_rebuilt(con)
+
+
 def _box_score_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: _Narrowed, wanted: list[str], shooting: tuple[str, str, str, str] | None) -> TemplateResult:
     """Averages over exactly the games a question narrowed to. The box-score
     column for each stat is the stat's own name (``points``, ``fouls``...), so
-    PLAYER_STAT_COLUMNS' keys reach SQL here, never the slot text itself."""
+    PLAYER_STAT_COLUMNS' keys reach SQL here, never the slot text itself.
+
+    .. versionchanged:: 4.0.1
+       Reads a line rebuilt from play-by-play in place of an empty ESPN box
+       score, for the stats a rebuild gets right (see
+       :func:`_box_score_stat_rebuilt`) - previously this narrowed reading
+       (an ``opponent``, a ``venue`` or ``without``) never did, even for
+       points. A span left with no games at all now says so - "his games have
+       an empty box score" - rather than the wrong-cause "no games found".
+    """
+    rebuilt = _box_score_stat_rebuilt(con, wanted, shooting)
     selects = ["COUNT(*)", "MIN(pgl.season)", "MAX(pgl.season)"]
     for stat in wanted:
         selects += [f"AVG(pgl.{stat})", f"SUM(pgl.{stat})"]
     if shooting:
         selects += [f"SUM(pgl.{shooting[0]})", f"SUM(pgl.{shooting[1]})"]
-    where, params = narrowed.clauses()
+    if rebuilt:
+        selects.append("SUM(CASE WHEN pgl.reconstructed THEN 1 ELSE 0 END)")
+    where, params = narrowed.clauses(rebuilt=rebuilt)
     row = con.execute(f"SELECT {', '.join(selects)} {_PLAYER_GAMES} WHERE {where}", params).fetchone()
     filters = narrowed.filters()
     scope: dict[str, Any] = {
@@ -928,11 +966,12 @@ def _box_score_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span:
         "without": [mate.name for mate in narrowed.without],
     }
     if row is None or not row[0]:
-        message = _no_narrowed_games(con, player, span, narrowed)
+        message = _no_narrowed_games(con, player, span, narrowed, rebuilt=rebuilt)
         return TemplateResult(data={"player": player.name, **scope, "games": 0, "stats": {}}, answer=message)
     games, first, last = row[:3]
+    rebuilt_shown = int(row[-1]) if rebuilt and row[-1] is not None else 0
     when = span.during(first, last)
-    notes = _box_score_notes(con, player, span, narrowed)
+    notes = _box_score_notes(con, player, span, narrowed, rebuilt=rebuilt, rebuilt_shown=rebuilt_shown)
     values: dict[str, Any] = {"gamesPlayed": int(games)}
     if shooting:
         values[shooting[0]], values[shooting[1]] = row[3], row[4]

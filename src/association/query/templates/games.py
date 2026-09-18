@@ -230,6 +230,13 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     .. versionchanged:: 2.2.0
        ``without`` takes every teammate the question names and lists a game
        only where none of them played.
+
+    .. versionchanged:: 4.0.1
+       A narrowed span left with no games at all - a stat that sends a rebuilt
+       log back to its empty ESPN box scores, or a games-in-span guard that
+       never widened to a rebuild at all - now says whose box scores are
+       empty rather than the wrong-cause "no games found". "Anthony Davis
+       turnovers, 2015" no longer reads as though he never played.
     """
     con = ctx.con
     season_type = slots.get("season_type") or 2
@@ -538,7 +545,7 @@ def _player_game_log(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span
         "without": [mate.name for mate in narrowed.without],
     }
     if not rows:
-        message = _no_narrowed_games(con, player, span, narrowed)
+        message = _no_narrowed_games(con, player, span, narrowed, rebuilt=rebuilt)
         return TemplateResult(data={**scope, "games": [], "message": message}, answer=message)
 
     games, raws = _player_game_log_rows(rows, needed, headers)

@@ -972,17 +972,37 @@ def _resolved_teammate(con: duckdb.DuckDBPyConnection, text: Any, player: Entity
     return resolved
 
 
-def _no_narrowed_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: _Narrowed) -> str:
+def _no_narrowed_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: _Narrowed, *, rebuilt: bool = False) -> str:
     """Why a narrowed question found no games, naming the fact that is really
-    missing - his games in that span, the teammate, or the match. They are
-    different sentences, and "X has no games" said of a player who simply never
-    met that opponent sends the reader to look in the wrong place."""
+    missing - his games in that span, the teammate, the match, or an empty box
+    score. They are different sentences, and "X has no games" said of a player
+    who simply never met that opponent - or whose games are every one of
+    them there, with ESPN's box score served empty - sends the reader to look
+    in the wrong place.
+
+    ``rebuilt`` has to match whatever the caller's own query used to decide a
+    played game: with it, a game reconstructed from play-by-play already counts
+    as recorded, so what is left over here is genuinely unrecorded, not merely
+    unread. Passing the wrong value would either call a rebuilt game "empty" or
+    call a truly empty one "recorded".
+    """
     if narrowed.date:
         # One named day: the rest of his career is not the fact that is missing.
         return f"No {span.kind} game on {narrowed.date} found for {player.name}{narrowed.filters(dated=False)}."
-    where, params = narrowed.clauses(narrowed=False)
+    where, params = narrowed.clauses(narrowed=False, rebuilt=rebuilt)
     total, first, last = con.execute(f"SELECT COUNT(*), MIN(pgl.season), MAX(pgl.season) {_PLAYER_GAMES} WHERE {where}", params).fetchone() or (0, None, None)
     if not total:
+        # Before saying his games do not exist, check whether they do and ESPN
+        # simply served no box score for them - the mirror-image bug AGENTS.md
+        # records, in its own shape: a refusal that is confident and names the
+        # wrong missing fact (the season, rather than the box scores). Every
+        # Chicago and New Orleans game from 2013 to 2018 is one of these, and a
+        # player whose games in the span are entirely such games has none that
+        # pass the guard above - which used to read as "he has no games at all".
+        empty_where, empty_params = narrowed.clauses(narrowed=False, recorded=False, rebuilt=rebuilt)
+        empty_total, empty_first, empty_last = con.execute(f"SELECT COUNT(*), MIN(pgl.season), MAX(pgl.season) {_PLAYER_GAMES} WHERE {empty_where}", empty_params).fetchone() or (0, None, None)
+        if empty_total:
+            return f"{player.name} played {_count_games(empty_total)} {span.during(empty_first, empty_last)}, but the box score is empty for all of them - ESPN served no minutes or stats for any."
         if span.career:
             return f"{player.name} has no {span.kind} box scores in the warehouse, which begin with the {_season_name(span.first)} season."
         return f"No {span.during()[len('in the ') :]} games found for {player.name}."
