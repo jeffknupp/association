@@ -503,6 +503,7 @@ found.
   (`query/metrics.py`) - the scaling mechanism (`leaderboard.py`,
   `_team_games_for_season`/`_scale_min_sample`) already handles any metric
   that flag is set on.
+- **GitHub:** #104
 
 ### Smaller game and box-score gaps, 1994-2003
 - **Found:** 2026-09-11, template work (agents A, D) and the issues audit;
@@ -714,6 +715,7 @@ found.
   `shotchart.py`'s shared renderer, which the agent's `render_shot_chart` tool
   also calls - check both callers before changing the message shape.
 - **Source:** ours, not ESPN's.
+- **GitHub:** #105
 
 ### A calendar date on `player_stat` or `head_to_head` falls through instead of answering the game
 - **Found:** 2026-09-16, issues audit, from the latest replay
@@ -1195,6 +1197,7 @@ found.
   season range (the tiers already say it, per table) and keeping just the
   game count and liveness state - or word it as "raw row count" rather than a
   season span, so it stops looking like a coverage claim at all.
+- **GitHub:** #106
 
 ### `get_collection`'s declared-vs-fetched warning depends on page one carrying a `count`
 - **Found:** 2026-09-17, fixing #90 (the first-page-goes-quiet bug above).
@@ -1216,6 +1219,7 @@ found.
   assert page one's response always carries an integer `count` and warn if it
   does not. Small enough to fold into whichever change next touches
   `get_collection`.
+- **GitHub:** #107
 
 ### The team-splits caveat uses one bit to stand for several columns
 - **Found:** 2026-09-17, fixing "Vancouver 1996 has an empty TEAM box, not an
@@ -1341,6 +1345,7 @@ found.
   becomes a `DATA.md` fact alone.
 - **Priority:** P4 - the omission is stated, so nothing is misleading; what is
   left is one season's missing column and an unrun refetch.
+- **GitHub:** #108
 
 ### The "postseason copy" rule is written twice
 - **Found:** 2026-09-15, issues audit (P4 data/query auditor)
@@ -1602,6 +1607,7 @@ found.
   `reconstructed` counterpart) as the fixture, the same shape `_all_box_scores_empty`
   uses in `test_templates.py`.
 - **Source:** DATA.md, "Every Chicago and New Orleans game from 2013 to 2018 has an empty box score"
+- **GitHub:** #109
 
 ### Clarifications can name twenty players
 - **Found:** 2026-09-11, season-narrowing branch
