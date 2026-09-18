@@ -14,7 +14,7 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
-## Unreleased
+## 4.0.1 - 2026-09-18
 - **A narrowed `game_log` or `player_stat` question over a season whose box
   scores ESPN served empty no longer says the games do not exist.** Both read
   `_no_narrowed_games` when their guard leaves nothing, and it used to check
