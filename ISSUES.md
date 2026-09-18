@@ -133,36 +133,63 @@ found.
 
 ### Duplicate-athlete-id players are invisible to NetPoints' per-game tables, for their whole career
 - **Found:** 2026-09-17, while fixing #87
-- **Evidence:** `Pipeline._name_to_athlete_id()` (`fetch/pipeline.py:653`)
-  drops any display name shared by more than one `athlete_id` in `players` -
-  built from the WHOLE table on disk, not scoped to a season - and
-  `parse_net_points_daily_players` / `parse_net_points_fingerprint` both
-  resolve NetPoints' bare display name through it. Every one of #87's 8
-  players has two ids in `players` permanently (that fault is ESPN's, not an
-  artifact of pull order the way #21 is), so their name is ambiguous for
-  every pull, not just the one that finds the second id. Measured against the
-  2026-09-17 warehouse: all 8 have **zero** rows in `net_points_player_game`
-  and `net_points_player_game_fingerprint`, across every season on file -
-  Corey Brewer (2008-2020, 985 `player_box_stats` rows) has no per-game
-  NetPoints data for a single one of them, not only 2019.
-  `net_points_player_fingerprint` (season file, also name-matched) is nearly
-  as bad - 0 rows for 6 of the 8, 1-2 for the other 2.
-- **User sees:** a play-type or per-game NetPoints question about any of these
-  8 players (a real, sometimes years-long career) returns "no data" for a
-  reason that has nothing to do with NetPoints coverage - the name is
-  intrinsically ambiguous against `players`, not missing from the source. If
-  the refusal names a coverage floor or a season gap, that would be the same
-  false-cause shape `AGENTS.md` warns about for "Maxey": the real cause is the
-  match, not the data.
-- **Next step:** a fetch-time fix, not a warehouse one - `_name_to_athlete_id`
-  needs to prefer the established id (most career games with real minutes,
-  the same rule #87's load-time merge uses) instead of dropping the name
-  outright, at least for a pair `duplicate_athletes` would merge. This is
-  broader than #87 alone: 21 display names in `players` are shared by 42
-  players total (#21), so any of them can lose per-game NetPoints data this
-  way, not only the 8 known duplicate-id cases.
+- **Fixed in code, not yet backfilled**, 2026-09-18. `Pipeline._name_to_athlete_id()`
+  (`fetch/pipeline.py`) now resolves a display name shared by exactly two
+  `athlete_id`s in `players` when the pair is provably one person: a new
+  `_resolve_duplicate_athlete_pairs` reads `player_box_stats` off disk at
+  fetch time and applies the exact proof `fetch/repairs/duplicate_athletes.py`
+  uses to merge these ids at load time - the two ids appear in the SAME
+  team's box score for the SAME game - then picks the established id (more
+  career rows with real minutes, then more rows, then the lower id), the
+  identical tiebreak that module's own ranking uses. A pair that never shares
+  a game is left unresolved, same as before.
+- **Re-measured 2026-09-18 against the live warehouse and the current Parquet
+  tree** (`/home/jeff/code/association/data/parquet`, this worktree's copy of
+  the code, `PYTHONPATH` confirmed via `association.__file__`): calling the
+  new `_name_to_athlete_id()` directly resolves all 8 of #87's players
+  (Isaiah Canaan, Corey Brewer, Daryl Macon, Ken Johnson, Tahjere McCall, John
+  Jenkins, Mitchell Creek, Henry Ellenson), each to the SAME id
+  `player_box_stats_deduped` already treats as canonical for that name -
+  checked directly against the warehouse, all 8 agree exactly. Of the other 13
+  names in `players` shared by exactly two ids (the rest of #21's 21 - Mike
+  James, Chris Johnson, Tony Mitchell, Dee Brown, Marcus Williams, Wayne
+  Selden, Chris Smith, Reggie Williams, Ray Spalding, Trevon Scott, Greg
+  Monroe, Brandon Williams, Chris Wright), **zero** picked up a false match -
+  none of them share a game, so the pair-resolution correctly leaves every one
+  of them dropped. `players` holds no name shared by three or more ids today,
+  so that branch (which the code also refuses to resolve, matching
+  `duplicate_athletes_sql`'s own `HAVING COUNT(DISTINCT athlete_id) = 2`) is
+  untested against real data, only against a fixture
+  (`test_name_to_athlete_id_still_drops_a_name_shared_by_three_or_more`).
+- **Performance, measured 2026-09-18:** `_resolve_duplicate_athlete_pairs`
+  reads all of `player_box_stats` (42,724 files, 501 MiB, 1.1M rows) once per
+  call, ~8-9s on this machine - filtering by `athlete_id` at read time (tried:
+  `pyarrow.compute.field("athlete_id").isin(...)`) does not skip files, since
+  each file is one game and carries no per-file statistics an `isin` predicate
+  can use to skip it. `_name_to_athlete_id()` is only called from
+  `fetch_net_points_fingerprint` (skipped by its own on-disk/season checkpoint
+  for every season except the current one and any `--force`d one) and once
+  from `fetch_net_points_daily` (opt-in, called once per run, not per date),
+  so this does not touch the "seasons already on disk" 0.4s no-op case
+  `AGENTS.md` describes - it adds a bounded ~9s to a run that already makes a
+  NetPoints network request for the season(s) in question.
+- **User sees:** was "no data" for a real, sometimes years-long career, for a
+  reason that had nothing to do with NetPoints coverage; will see real
+  per-game NetPoints and fingerprint data for these 8 players once backfilled.
+- **Backfill command** (not run - the dispatching agent runs backfills
+  serially): `association data pull --seasons 2003,2019,2020,2026 --force
+  --include-net-points-daily` from the main checkout (or `--data-dir`/
+  `--db-path` pointing at it) - 2003 for Ken Johnson, 2019-2020 for the other
+  7, and the current season because `fetch_net_points_fingerprint` always
+  re-fetches it. `--include-net-points-daily` is needed for
+  `net_points_player_game`/`net_points_player_game_fingerprint`; the season
+  fingerprint table refreshes without it. Then `association data load` (the
+  pull already reloads what it wrote, so this is only needed if the pull is
+  split from the load). Re-measure with the query in this entry's evidence
+  and update `player_box_stats_deduped`'s own cross-check if `duplicate_athletes.py`
+  changes what it considers canonical for any of these 8 names before the
+  backfill runs.
 - **Source:** DATA.md, "ESPN files one player under two athlete ids" (`DATA.md:118`)
-- **GitHub:** none yet
 - **GitHub:** #101
 
 ### The 2001 playoffs are missing about ten games, and ESPN has them nowhere
@@ -622,18 +649,39 @@ found.
 
 ### Per-game NetPoints rows whose name did not match keep no name
 - **Found:** 2026-09-11, building the warehouse comparison harness
-- **Evidence:** `parse_net_points_daily` and `parse_net_points_daily_players`
-  store `athlete_id = None` when the display name matches no single player, and
-  drop the name. `net_points_player_game` has 2,190 such rows, and
-  `net_points_player_game_fingerprint` has 64,210. Nothing on the row says who
-  they were: 159 keys in the first table and 4,657 in the second hold two or
-  more rows that differ only in their values, and 701 of those groups are exact
-  copies.
-- **User sees:** nothing for those players, with no caveat, and a query grouping
-  by (event_id, athlete_id) counts the unmatched rows as duplicates.
-- **Next step:** keep the source `displayName` (and NBA.com's id) on the row.
-  Then count unmatched names per season to find which spellings the exact match
-  misses.
+- **Fixed in code, not yet backfilled**, 2026-09-18. `parse_net_points_daily`
+  and `parse_net_points_daily_players` (`fetch/parse.py`) now keep the source
+  `displayName` as `display_name` on every player row, matched or not, instead
+  of dropping it when `athlete_id` comes back `None`. `parse_net_points_daily`
+  also keeps NBA.com's own `plyrID` as `nba_player_id` where the file carries
+  one - confirmed present in the daily player_box block; `parse_net_points_daily_players`
+  (the `_player.json` play-type file) has no confirmed id field of its own, so
+  only `display_name` was added there.
+- **Re-measured 2026-09-18, read-only against the live warehouse**
+  (`/home/jeff/code/association/nba.duckdb`): the population is unchanged from
+  when this was written - `select count(*) from net_points_player_game where
+  athlete_id is null` is still **2,190**, and the fingerprint table's is still
+  **64,210** - because the fix is in the parser, not the warehouse, and
+  nothing has re-pulled NetPoints since. Both tables still carry every column
+  they always did, plus the two new ones once a pull writes them.
+- **User sees:** unchanged until backfilled - still nothing for an unmatched
+  row, with no caveat, and a query grouping by (event_id, athlete_id) still
+  counts every unmatched row on a date as a duplicate of every other. After
+  the backfill, the same rows carry a name a query or a person can act on
+  (look up the right spelling, add it to a nickname/alias table, decide it is
+  a name `players` genuinely does not have).
+- **Backfill command** (not run - the dispatching agent runs backfills
+  serially): a parser fix, so a load alone does nothing - the Parquet on disk
+  was written by the old parser. Re-fetch with
+  `association data pull --seasons <affected range> --force
+  --include-net-points-daily` from the main checkout (or with `--data-dir`/
+  `--db-path` pointing at it); NetPoints' own floor is season 2019
+  (`NET_POINTS_FIRST_SEASON`), so `--seasons 2019-2026` covers every date this
+  can affect. The pull reloads `net_points_player_game` and
+  `net_points_player_game_fingerprint` itself.
+- **Next step after backfilling:** count unmatched names per season (now that
+  they are retained as `display_name`) to find which spellings the exact match
+  misses - the original next step, unchanged.
 - **Source:** DATA.md, "NetPoints publishes a display name, not a player id"
 - **GitHub:** #22
 

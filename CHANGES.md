@@ -15,6 +15,33 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **NetPoints per-date rows that fail the exact display-name match now keep
+  the source name instead of dropping it.** `parse_net_points_daily` and
+  `parse_net_points_daily_players` used to write `athlete_id=None` with
+  nothing else on the row, so a query grouping by `(event_id, athlete_id)`
+  counted every unmatched row on a date as a duplicate of every other -
+  2,190 rows in `net_points_player_game` and 64,210 in
+  `net_points_player_game_fingerprint`, measured 2026-09-18. Both tables now
+  carry `display_name` on every row (matched or not), and
+  `net_points_player_game` also carries NBA.com's own `nba_player_id`
+  (`plyrID` in the source), where the file provides one (ISSUES.md #22).
+- **A NetPoints display name shared by exactly two locally-known athlete ids
+  is no longer dropped unconditionally.** `Pipeline._name_to_athlete_id` used
+  to treat any name with more than one match as permanently ambiguous, which
+  meant every one of the 8 players ESPN files under two `athlete_id`s in the
+  same box score (#87) had zero rows in `net_points_player_game`,
+  `net_points_player_game_fingerprint` and `net_points_player_fingerprint`
+  for their entire career - Corey Brewer, 985 `player_box_stats` rows over
+  2008-2020, had no per-game NetPoints for a single one of them. A new
+  `Pipeline._resolve_duplicate_athlete_pairs` applies the same proof
+  `fetch/repairs/duplicate_athletes.py` uses to merge those ids at load time -
+  the pair appears in the SAME team's box score for the SAME game - straight
+  off the `player_box_stats` Parquet tree at fetch time, and resolves the name
+  to the established id when that proof holds. Measured against the live
+  warehouse: all 8 known pairs now resolve, to the identical id
+  `player_box_stats_deduped` already treats as canonical, and none of the
+  other 13 names shared by exactly two ids (real different people, #21) picked
+  up a false match (ISSUES.md #101).
 - **`scripts/bump_version.py` rewrites the pinned install commands itself**, so
   a release can no longer ship instructions that install an older one. The pins
   said `v1.4.0` through three later releases, 3.0.0 shipped still pointing at

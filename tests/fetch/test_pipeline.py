@@ -781,6 +781,10 @@ def _write_players_fixture(data_dir: Path, rows: list[dict]) -> None:
     storage.write_rows(data_dir / "players" / "f.parquet", rows)
 
 
+def _write_box_fixture(data_dir: Path, rows: list[dict]) -> None:
+    storage.write_rows(data_dir / "player_box_stats" / "f.parquet", rows)
+
+
 def test_net_points_game_index_covers_home_and_away(tmp_path: Path) -> None:
     _write_games_fixture(
         tmp_path,
@@ -821,6 +825,104 @@ def test_name_to_athlete_id_drops_ambiguous_names(tmp_path: Path) -> None:
     pipeline = Pipeline(FakeClient({}), tmp_path)
     mapping = pipeline._name_to_athlete_id()
     assert mapping == {"Unique Player": "1"}
+
+
+def test_name_to_athlete_id_resolves_a_pair_that_shares_a_game(tmp_path: Path) -> None:
+    """ISSUES.md #101: a name shared by exactly two ids is not automatically
+    ambiguous. ESPN's own duplicate-id fault (DATA.md, "ESPN files one player
+    under two athlete ids in the same box score") files one real person under
+    two ids that appear in the SAME team's box score for the SAME game - the
+    same proof fetch/repairs/duplicate_athletes.py uses to merge them at load
+    time. The established id (more games with real minutes) wins, the same
+    tiebreak that module's own ranking uses."""
+    _write_players_fixture(
+        tmp_path,
+        [
+            {"athlete_id": "3191", "display_name": "Corey Brewer"},
+            {"athlete_id": "4415554", "display_name": "Corey Brewer"},
+        ],
+    )
+    _write_box_fixture(
+        tmp_path,
+        [
+            {"event_id": "1", "team_id": "18", "athlete_id": "3191", "minutes": 32},
+            {"event_id": "1", "team_id": "18", "athlete_id": "4415554", "minutes": None},
+            {"event_id": "2", "team_id": "18", "athlete_id": "3191", "minutes": 28},
+        ],
+    )
+    pipeline = Pipeline(FakeClient({}), tmp_path)
+    assert pipeline._name_to_athlete_id() == {"Corey Brewer": "3191"}
+
+
+def test_name_to_athlete_id_leaves_a_pair_that_never_shares_a_game(tmp_path: Path) -> None:
+    """The mirror case: two different people who happen to share a name
+    (#21) never appear in the same team's box score for the same game, so
+    nothing here can tell them apart from a real duplicate id, and the name
+    stays dropped rather than guessed."""
+    _write_players_fixture(
+        tmp_path,
+        [
+            {"athlete_id": "1", "display_name": "Shared Name"},
+            {"athlete_id": "2", "display_name": "Shared Name"},
+        ],
+    )
+    _write_box_fixture(
+        tmp_path,
+        [
+            {"event_id": "1", "team_id": "18", "athlete_id": "1", "minutes": 20},
+            {"event_id": "2", "team_id": "25", "athlete_id": "2", "minutes": 18},
+        ],
+    )
+    pipeline = Pipeline(FakeClient({}), tmp_path)
+    assert pipeline._name_to_athlete_id() == {}
+
+
+def test_name_to_athlete_id_prefers_more_total_rows_when_neither_has_minutes(tmp_path: Path) -> None:
+    """Both sides of a duplicate pair can be minutes-less (an explicit DNP
+    beside ESPN's fabricated all-zero blank, per DATA.md) - the tiebreak then
+    falls to the id with more games recorded, the same order
+    duplicate_athletes_sql's ranking uses."""
+    _write_players_fixture(
+        tmp_path,
+        [
+            {"athlete_id": "1008", "display_name": "Ken Johnson"},
+            {"athlete_id": "1972", "display_name": "Ken Johnson"},
+        ],
+    )
+    _write_box_fixture(
+        tmp_path,
+        [
+            {"event_id": "1", "team_id": "5", "athlete_id": "1008", "minutes": None},
+            {"event_id": "1", "team_id": "5", "athlete_id": "1972", "minutes": None},
+            {"event_id": "2", "team_id": "5", "athlete_id": "1972", "minutes": None},
+        ],
+    )
+    pipeline = Pipeline(FakeClient({}), tmp_path)
+    assert pipeline._name_to_athlete_id() == {"Ken Johnson": "1972"}
+
+
+def test_name_to_athlete_id_still_drops_a_name_shared_by_three_or_more(tmp_path: Path) -> None:
+    """The pair-resolution rule is exactly for a two-way split - a name held
+    by three or more locally-known players stays dropped even if two of the
+    three happen to share a game, matching duplicate_athletes_sql's own
+    `HAVING COUNT(DISTINCT athlete_id) = 2` group definition."""
+    _write_players_fixture(
+        tmp_path,
+        [
+            {"athlete_id": "1", "display_name": "Shared Name"},
+            {"athlete_id": "2", "display_name": "Shared Name"},
+            {"athlete_id": "3", "display_name": "Shared Name"},
+        ],
+    )
+    _write_box_fixture(
+        tmp_path,
+        [
+            {"event_id": "1", "team_id": "18", "athlete_id": "1", "minutes": 20},
+            {"event_id": "1", "team_id": "18", "athlete_id": "2", "minutes": None},
+        ],
+    )
+    pipeline = Pipeline(FakeClient({}), tmp_path)
+    assert pipeline._name_to_athlete_id() == {}
 
 
 def test_fetch_net_points_daily_writes_resolved_rows(tmp_path: Path) -> None:
