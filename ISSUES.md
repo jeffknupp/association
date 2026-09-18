@@ -94,6 +94,7 @@ found.
   before/after report will show whether the number moved.
 - **Source:** DATA.md, "NetPoints spells 2026's names with diacritics, and ESPN
   does not"
+- **GitHub:** #111
 
 ### Season 2021's regular-season BPI snapshot is a day-one projection
 - **Found:** 2026-09-15, reviewing `4ef119f`; **re-ranked P3 -> P2 on 2026-09-16** - a preseason projection presented as a season's index, with no caveat
