@@ -1183,6 +1183,27 @@ found.
 
 ## P4: tooling, docs, low impact
 
+### `get_collection`'s declared-vs-fetched warning depends on page one carrying a `count`
+- **Found:** 2026-09-17, fixing #90 (the first-page-goes-quiet bug above).
+- **Evidence:** `get_collection` (`fetch/client.py`) now warns when page one
+  itself cannot be read (non-dict, or a dict with no `items` list), and a
+  later page's failure is covered by the existing "collection %s declared %d
+  items, fetched %d" check - but only because `expected` was set from page
+  one's `count` field. If page one is a well-formed paged object that happens
+  to omit `count` (or has it as something other than an `int`), `expected`
+  stays `None` for the whole read, and a later page failing the same way as
+  the original bug - non-dict, or dict-without-items - ends the loop with
+  nothing logged, the same silent short read #90 was about.
+- **User sees:** nothing, same as #90 did - a table quietly short. Unmeasured
+  whether this actually happens: every ESPN core-API collection response seen
+  in this codebase's fixtures and tests carries `count`, so this is a gap in
+  the design rather than an observed failure.
+- **Next step:** either warn on any non-first-page read failure directly
+  (dropping the `expected is not None` guard on that specific log line), or
+  assert page one's response always carries an integer `count` and warn if it
+  does not. Small enough to fold into whichever change next touches
+  `get_collection`.
+
 ### The team-splits caveat uses one bit to stand for several columns
 - **Found:** 2026-09-17, fixing "Vancouver 1996 has an empty TEAM box, not an
   empty player box" (#67).
