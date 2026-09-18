@@ -1027,9 +1027,13 @@ consistently, which is exactly what makes it dangerous: the data looks healthy.
 
 - **What ESPN does:** gives every free throw a position under the rim for those
   seasons, and stops doing so afterwards.
-- **Evidence:** re-verified 2026-09-11 — free throws with coordinates: 26,092
-  of 26,092 in 2002, 64,775 of 64,775 in 2010, 56,988 of 56,988 in 2018, then
-  **93 of 60,813 in 2019 and 0 of 62,023 in 2026**. So "has coordinates" never
+- **Evidence:** re-verified 2026-09-17 — free throws with coordinates: 25,992
+  of 25,992 in 2002 (this read "26,092 of 26,092" until then, which does not
+  reproduce; the claim it was making - every 2002 free throw carries a
+  position - does), 64,775 of 64,775 in 2010, 56,988 of 56,988 in 2018, then
+  **93 of 60,813 in 2019, 0 of 52,906 in 2020 and 0 of 62,023 in 2026**. It
+  stops for good after 2019: every season from 2020 on is a clean zero. So
+  "has coordinates" never
   excluded them: an unfiltered chart drew them as shots, and Curry's 2010 shot
   distance averaged in all 200 of his free throws among 1,343 "attempts".
   Separately, `(0, 0)` — a point on the sideline — is used for 7,109 of 2002's

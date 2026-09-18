@@ -1723,18 +1723,6 @@ found.
   next full load.
 - **GitHub:** #66
 
-### Free-throw coordinates stop after 2018
-- **Found:** 2026-09-11, writing DATA.md
-- **Evidence:** free throws carry a court position through 2018 and then stop:
-  93 of 60,813 in 2019, and none by 2026.
-- **Source:** DATA.md, "Free throws carry a court position from 2002 to 2018"
-- **User sees:** nothing today. A shot chart excludes free throws by value, not
-  by position, so the gap changes no answer. Anything that started reading a
-  free throw's coordinates would be reading nothing for recent seasons.
-- **Next step:** none until something reads them. Recorded so the next reader
-  does not mistake the gap for a parser fault.
-- **GitHub:** #68
-
 ### ESPN's career endpoint answered differently on two days three days apart
 - **Found:** 2026-09-14, fixing the NULL-totals issue (#5). **The first version
   of this entry blamed a pull that never refetched. That was wrong, and it was
