@@ -1776,6 +1776,42 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
+### A team word only names a player when a second word of that player's name is present
+- **Found:** 2026-09-18, after a per-question candidate enum regressed on team
+  references and a special-case list was proposed instead
+- **Evidence:** the PERSON/ORG overlap between the 30 teams and 3,080 players is
+  **8 words reaching 23 players** - `antonio`, `boston`, `cleveland`, `houston`,
+  `magic`, `orlando`, `washington`, `york`. Small enough to enumerate, which is
+  what prompted the question, but a suppression list is wrong: **four of the 23
+  are active with real records** (P.J. Washington has 468 games, plus Orlando
+  Robinson, TyTy Washington Jr., Brandon Boston Jr.), so "P.J. Washington vs gsw"
+  would break.
+
+  The rule that needs no list: **a colliding word names a player only when some
+  OTHER word of that player's name is also in the question.** Measured over the
+  261-question corpus, **13 of 13** colliding occurrences classify correctly -
+  `magic vs nets last 10` and `most total career points on the houston rockets`
+  read as teams, `P.J. Washington vs gsw` reads as the player because "p.j." is
+  present. It survives the hard edges too: `orlando robinson vs magic` resolves
+  BOTH correctly in one question, and `boston celtics vs brandon boston jr`
+  reads as the player.
+
+  Note the two different word sets this needs. A single letter may CONFIRM a
+  colliding word ("p.j." confirming "washington") but must never FIND a
+  candidate on its own - `AGENTS.md` records that a one-letter span makes the
+  possessive left by "Jokic's" name John S. Williams.
+- **User sees:** today, `magic vs nets last 10` is answered about Magic Johnson
+  by the enum prototype, and the shipped pipeline resolves a player for
+  `Most reb by a hawk player history`. The rule is not yet in `src/`.
+- **Next step:** this belongs in `entities.py` beside `players_named_in`, which
+  already enforces whole-word matching and whose own notes record that "boston"
+  is Brandon Boston Jr. It generalizes something the codebase half-knew, and it
+  needs no maintenance when a rookie named Memphis arrives.
+- **Script:** `~/association-research/statmuse-2026-09/candidate_enum.py`,
+  `team_words()` and the `teams` argument to `candidates()`; runs offline.
+- **GitHub:** #136
+
+
 ### Router name fidelity is a per-model property, not a floor - and a smaller, faster model beats the current default on it
 - **Found:** 2026-09-18, sweeping six local models over the same 60 name-bearing
   corpus questions, one model resident at a time, graded through the real
