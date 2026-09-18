@@ -226,6 +226,23 @@ def test_a_name_that_starts_a_word_beats_one_it_only_lands_inside(con: duckdb.Du
     assert resolve_player(con, "Ball") == Entity(id="7", name="LaMelo Ball")
 
 
+def test_a_curated_first_name_beats_an_unrelated_alphabetical_tie() -> None:
+    """ "Rui" is Hachimura's real given name, the same shape as "luka" and
+    "kobe" - and the warehouse also holds a "Rui Betancourt" who shares the
+    token, which is why this matters: unresolved, plain word-boundary
+    matching hands the answer to whichever name sorts first alphabetically,
+    and "Betancourt" does. The curated table is checked before that ordering
+    ever runs."""
+    con = duckdb.connect(":memory:")
+    con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    con.execute("INSERT INTO players VALUES ('1','Rui Betancourt'),('2','Rui Hachimura')")
+    assert [c.name for c in find_players(con, "Rui")] == ["Rui Hachimura"]
+    assert resolve_player(con, "Rui") == Entity(id="2", name="Rui Hachimura")
+    # Naming Betancourt in full still reaches him - the curated table only
+    # intercepts the bare shorthand, never a name spelled out.
+    assert [c.name for c in find_players(con, "Rui Betancourt")] == ["Rui Betancourt"]
+
+
 def test_both_halves_of_a_hyphenated_name_start_a_word(con: duckdb.DuckDBPyConnection) -> None:
     """The boundary is any non-letter rather than a space, so "Alexander"
     reaches Nickeil Alexander-Walker and Shai Gilgeous-Alexander. Requiring a
@@ -323,6 +340,10 @@ def test_nicknames_are_found_in_the_question_as_whole_words(con: duckdb.DuckDBPy
     assert nicknames_in("how many points did Durant average") == []
     # A key ending in a non-word character still needs a boundary after it.
     assert nicknames_in("what are A.I.'s numbers") == ["Allen Iverson"]
+    # "OG" is Anunoby's own given name, the same shape as "Ja" and "Ant"; "ant
+    # man" is a two-word key, matched the same way "chef curry" is.
+    assert nicknames_in("OG last 15 home games") == ["OG Anunoby"]
+    assert nicknames_in("ant man log vs portland") == ["Anthony Edwards"]
 
 
 def test_override_replaces_a_player_the_router_invented() -> None:
@@ -489,6 +510,32 @@ def test_a_suggestion_too_long_to_be_one_is_dropped() -> None:
     con.execute("INSERT INTO players SELECT i::VARCHAR, 'Chris Smit' || chr((97 + i)::INTEGER) FROM range(8) t(i)")
     assert suggest_players(con, "Chris Smit") == []  # the surname backoff
     assert suggest_players(con, "Smitz") == []  # and the near-spelling pass
+
+
+def test_a_common_surname_falls_back_to_the_near_spelling_pass() -> None:
+    """ "Dylon Harper" backs off to six real Harpers - too many to suggest on
+    the surname alone (the shape above) - but the surname backoff used to give
+    up right there instead of trying the stricter pass below it, which needs
+    BOTH names close and finds the one real match: Dylan, not Derek, Jared,
+    Justin or either Ron."""
+    con = duckdb.connect(":memory:")
+    con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    con.execute("INSERT INTO players VALUES ('1','Derek Harper'),('2','Dylan Harper'),('3','Jared Harper'),('4','Justin Harper'),('5','Ron Harper'),('6','Ron Harper Jr.')")
+    assert [p.name for p in suggest_players(con, "Dylon Harper")] == ["Dylan Harper"]
+
+
+def test_a_team_name_is_not_suggested_as_a_player() -> None:
+    """ "Hawks" is one edit from a real "Hawes", and "Most reb by a hawk player
+    history" answered "did you mean Spencer Hawes?" instead of naming the
+    actual cause: the question is about a team, which this near-spelling pass
+    cannot know unless it checks. A team the text names outright is not a near
+    miss on a player, whatever the edit distance says."""
+    con = duckdb.connect(":memory:")
+    con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    con.execute("INSERT INTO players VALUES ('1','Spencer Hawes')")
+    con.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    con.execute("INSERT INTO teams VALUES ('1','ATL','Atlanta Hawks')")
+    assert suggest_players(con, "Hawks") == []
 
 
 def test_no_match_names_the_near_miss(con: duckdb.DuckDBPyConnection) -> None:
@@ -724,6 +771,29 @@ def test_a_player_in_the_team_slot_becomes_the_subject(scope_con: duckdb.DuckDBP
     slots: dict[str, Any] = {"player": "Curry", "team": "Podziemski", "without": ["curry"]}
     scope_from_question(scope_con, "Podziemski game log without curry", slots, reads_player=True)
     assert slots["player"] == "Brandin Podziemski" and "team" not in slots and slots["without"] == ["curry"]
+
+
+def test_an_ambiguous_fragment_in_the_team_slot_is_settled_by_the_question(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """Measured: "Will Riley last 5 game s" arrived as team='Riley', and
+    find_players alone cannot settle it - three Rileys share the surname. The
+    question spells the whole name, so players_named_in does, the same
+    discipline override_invented_players applies to a name the router
+    invented outright rather than merely truncated."""
+    scope_con.execute("INSERT INTO players VALUES ('9','Eric Riley'),('10','Riley Minix'),('11','Will Riley')")
+    slots: dict[str, Any] = {"team": "Riley", "order": "recent", "limit": 5}
+    notes = scope_from_question(scope_con, "Will Riley last 5 game s", slots, reads_player=True)
+    assert slots == {"order": "recent", "limit": 5, "player": "Will Riley"}
+    assert notes == ["'Riley' is a player, not a team; the subject is 'Will Riley'"]
+
+
+def test_the_fragment_fallback_does_not_borrow_an_unrelated_name(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """A garbled `team` sharing no word with the one player the question
+    happens to name elsewhere must not borrow that name - only a fragment
+    that is actually part of the recovered name is safe to trust."""
+    slots: dict[str, Any] = {"team": "Zqx", "order": "recent"}
+    notes = scope_from_question(scope_con, "Zqx last 5 games, a Luka Doncic fan favorite", slots, reads_player=True)
+    assert slots["team"] == "Zqx" and "player" not in slots
+    assert notes == []
 
 
 # ---------------- team names across a franchise's history ----------------

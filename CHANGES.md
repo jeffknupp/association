@@ -14,6 +14,32 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
+## Unreleased
+- **A name the router mis-slots as a team is recovered from the question, not
+  just from the fragment left in the slot.** "Will Riley last 5 game s"
+  arrived as `team='Riley'`, which `find_players` cannot settle alone - three
+  Rileys share the surname - but the question spells the whole name.
+  `entities._scope_from_question_player_in_team_slot` now falls back to
+  `players_named_in`, gated on the fragment sharing a word with what it
+  finds, the same discipline `override_invented_players` applies to an
+  invented name. Measured against the 261-query StatMuse replay set: 7 rows
+  move, all from `fell_through` to either a correct answer or an honest "did
+  you mean" - none from `correct`.
+- **`suggest_players` no longer gives up when a common surname alone matches
+  too many players.** It now falls through to the stricter near-spelling pass
+  instead of returning nothing, which recovers a real match the surname-only
+  pass could not settle: "Dylon Harper" backs off to six real Harpers, too
+  many to suggest on the surname alone, but only Dylan is also close on the
+  given name.
+- **`suggest_players` no longer suggests a player for a name that names a real
+  team.** "Most reb by a hawk player history" answered "did you mean Spencer
+  Hawes?" - a fluently wrong guess - because "Hawks" is one edit from a real
+  surname. A name that resolves to a team outright is never offered as a near
+  miss on a player now, regardless of edit distance.
+- **`PLAYER_NICKNAMES` gained "og" (OG Anunoby), "rui" (Rui Hachimura, over an
+  alphabetically-earlier "Rui Betancourt" the warehouse also holds), and
+  "ant man"/"ant-man" (Anthony Edwards).**
+
 ## 4.2.0 - 2026-09-18
 - **A NetPoints name ESPN spells with a generational suffix, or hyphenates
   differently, now matches too.** `match_key` reduces both sides to a
