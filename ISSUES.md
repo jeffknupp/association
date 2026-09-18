@@ -1595,6 +1595,39 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
+### `limit` is not a scoping slot, so a template that ignores it does so silently
+- **Found:** 2026-09-18, merging the StatMuse scoping branches and re-measuring
+- **Evidence:** `SCOPING_SLOTS` (`templates/common.py:87`) holds `order`,
+  `date`, `opponent`, `venue`, `span`, `without`, `round`, `split`, `since`,
+  `below` and `situation` - **not `limit`** - so `check_scope` cannot refuse a
+  template that is handed one and does nothing with it. `head_to_head` reads no
+  `limit` anywhere in its body. Measured on the merged tree: "lakers vs mavs
+  record last 10 home games played" arrives with
+  `{'teams': [...], 'limit': 10, 'venue': 'home'}` and answers "The Los Angeles
+  Lakers and the Dallas Mavericks met 2 times in the Los Angeles Lakers' home
+  games of the 2026 regular season" - the venue honored, the "last 10" dropped
+  without a word.
+- **User sees:** a narrower answer than was asked for, with its season named
+  but no sign that "last 10" was ignored. It reads as a complete answer to the
+  question asked.
+- **How it surfaced:** this is not new. `limit` has always been unguarded and
+  `head_to_head` has always ignored it; the row used to fall through on
+  `venue`, which hid it. Honoring a slot can expose a *different* slot that
+  nothing was checking - the same shape the StatMuse README records for
+  `tim hardaway vs nyk`, where a fixed fall-through revealed #18.
+- **Next step:** decide per template, not globally. Adding `limit` to
+  `SCOPING_SLOTS` would make every template that does not list it refuse, which
+  is right for `head_to_head` (a limit there is a real narrowing) and wrong for
+  the several templates that already read `limit` deliberately and would then
+  need it added to `HONORED_SCOPING` in the same commit or start refusing
+  questions they answer correctly today. Audit which templates read `limit`
+  first, then move it in one change with those entries. Check `rate`, `fields`
+  and `stat` for the same shape while there.
+- **Priority note:** filed P4 rather than P2 because exactly one corpus row
+  shows it and that row is audit-flagged as over-specific; re-rank if an audit
+  of the other templates finds more.
+
+
 ### Plus/minus can be neither ranked nor looked up, though the data is complete
 - **Found:** 2026-09-18, while making the computed advanced stats lookup-able
 - **Evidence:** "nba leaders in plus minus in 25-26" routes to `leaderboard`
