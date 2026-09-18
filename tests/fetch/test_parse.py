@@ -1132,3 +1132,60 @@ def test_resolve_athlete_id_still_refuses_a_name_it_does_not_know() -> None:
     assert parse.resolve_athlete_id(names, "Cui Yongxi") is None
     assert parse.resolve_athlete_id(names, None) is None
     assert parse.resolve_athlete_id(names, "") is None
+
+
+def test_match_key_bridges_the_four_measured_spelling_differences() -> None:
+    """Each step is a difference measured between NetPoints' spelling and
+    ESPN's, not a guess about what might differ."""
+    assert parse.match_key("Nikola Jokić") == "Nikola Jokic"
+    assert parse.match_key("Rondae Hollis-Jefferson") == "Rondae Hollis Jefferson"
+    assert parse.match_key("Nene ") == "Nene"
+    assert parse.match_key("Jimmy Butler III") == "Jimmy Butler"
+    assert parse.match_key("Billy Garrett Jr.") == "Billy Garrett"
+    assert parse.match_key("Darius Brown II") == "Darius Brown"
+
+
+def test_match_key_leaves_a_different_name_different() -> None:
+    """The 350 rows this deliberately does NOT reach. A short or formal first
+    name, a nickname, a middle name and a reversed order are different NAMES,
+    and bridging them needs a curated list rather than a rule - the conclusion
+    `query/entities.py` already reached with PLAYER_NICKNAMES."""
+    assert parse.match_key("Alexandre Sarr") != parse.match_key("Alex Sarr")
+    assert parse.match_key("Carlton Carrington") != parse.match_key("Bub Carrington")
+    assert parse.match_key("Omari Spellman") != parse.match_key("Omari Rasulala Spellman")
+    assert parse.match_key("Cui Yongxi") != parse.match_key("Yongxi Cui")
+    # A suffix that is really part of a surname is not a suffix.
+    assert parse.match_key("Vince Carter") == "Vince Carter"
+
+
+def test_a_generational_suffix_is_only_stripped_from_the_end() -> None:
+    """ "V" and "II" are tokens that are never a surname, which is why the set
+    is closed - but they still only count as a suffix in final position.
+
+    The anchor is what stops a middle initial being eaten: without it
+    `Robert V Williams` reduces to `Robert Williams`, who is a different and
+    very real player."""
+    assert parse.match_key("Jaren Jackson Jr.") == "Jaren Jackson"
+    assert parse.match_key("Sr. Smith") == "Sr. Smith"
+    assert parse.match_key("Iv Jones") == "Iv Jones"
+    assert parse.match_key("Robert V Williams") == "Robert V Williams"
+    assert parse.match_key("Michael II Jordan") == "Michael II Jordan"
+
+
+def test_resolve_athlete_id_uses_the_reduced_key_as_a_fallback() -> None:
+    """The live case: ESPN says `Jimmy Butler III`, NetPoints says
+    `Jimmy Butler`, and that was 498 unmatched rows - his whole per-game
+    record."""
+    names = {"Jimmy Butler III": "6430", parse.match_key("Jimmy Butler III"): "6430"}
+    assert parse.resolve_athlete_id(names, "Jimmy Butler") == "6430"
+    assert parse.resolve_athlete_id(names, "Jimmy Butler III") == "6430"
+
+
+def test_an_exact_name_is_never_answered_with_someone_elses_id() -> None:
+    """The guard that makes widening the fallback safe. ESPN holds both
+    `Gary Payton` and `Gary Payton II` - father and son - so the reduced key
+    is ambiguous and must not be built; the father keeps his exact entry and
+    is never answered with his son's id."""
+    names = {"Gary Payton": "640", "Gary Payton II": "3134903"}
+    assert parse.resolve_athlete_id(names, "Gary Payton") == "640"
+    assert parse.resolve_athlete_id(names, "Gary Payton II") == "3134903"

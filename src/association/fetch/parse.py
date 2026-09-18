@@ -906,19 +906,71 @@ def fold_name(name: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFKD", name) if not unicodedata.combining(c))
 
 
+#: Generational suffixes ESPN appends to a name and NetPoints does not.
+#:
+#: A closed set on purpose. The whole risk in this area is a rule that decides
+#: two spellings are one person, and an open-ended "drop the last token" would
+#: do exactly that; these six are the only tokens that are never a surname.
+GENERATIONAL_SUFFIX = re.compile(r"\s+(?:Jr\.?|Sr\.?|I{2,3}|IV|V)$", re.IGNORECASE)
+
+
+def match_key(name: str) -> str:
+    """``name`` reduced to the form two sources can be compared on.
+
+    Four steps, each one a difference measured between NetPoints' spelling and
+    ESPN's, and each one unable on its own to merge two people:
+
+    1. **diacritics dropped** (:func:`fold_name`) - NetPoints' 2026 files
+       accent names ESPN does not (``Nikola Jokić``).
+    2. **hyphens to spaces** - ESPN writes ``Rondae Hollis Jefferson`` where
+       NetPoints writes ``Rondae Hollis-Jefferson``, 144 rows.
+    3. **whitespace collapsed and stripped** - ESPN stores ``"Nene "`` with a
+       trailing space.
+    4. **a trailing generational suffix removed** - ESPN says ``Jimmy Butler
+       III``, ``Trey Jemison III``, ``Billy Garrett Jr.``, ``Darius Brown II``
+       where NetPoints says the plain name; 566 rows, 498 of them Jimmy
+       Butler's.
+
+    Step 4 is the one that can collide two real people, and it does: ESPN holds
+    both ``Gary Payton`` and ``Gary Payton II``, ``Tim Hardaway`` and ``Tim
+    Hardaway Jr.``, ``Jabari Smith`` and ``Jabari Smith Jr.`` - fathers and
+    sons. That is handled where the keys are built rather than here: a key
+    reached by more than one athlete id is never usable, so those names resolve
+    only by their exact spelling. See
+    :meth:`association.fetch.pipeline.Pipeline._name_to_athlete_id`.
+
+    What this deliberately does NOT do is bridge a different *name*: a short or
+    formal first name (``Alexandre Sarr`` against ESPN's ``Alex Sarr``), a
+    nickname (``Carlton Carrington`` against ``Bub Carrington``), a middle name
+    (``Omari Rasulala Spellman``) or a reversed order (``Cui Yongxi`` against
+    ``Yongxi Cui``). Those are 350 remaining rows and they need a curated list,
+    not a rule - the same conclusion ``query/entities.py`` reached with
+    ``PLAYER_NICKNAMES``.
+
+    .. versionadded:: 4.2.0
+    """
+    collapsed = " ".join(fold_name(name).replace("-", " ").split())
+    return GENERATIONAL_SUFFIX.sub("", collapsed)
+
+
 def resolve_athlete_id(name_to_athlete_id: dict[str, str], display_name: str | None) -> str | None:
     """The athlete id for a NetPoints display name, exactly or folded.
 
-    The exact spelling always wins; a folded one is the fallback. Returns None
-    where neither matches, which is how an unmatched row keeps a NULL
-    ``athlete_id`` beside the source name it came with (``ISSUES.md`` #22).
+    The exact spelling always wins; :func:`match_key`'s reduced form is the
+    fallback. Returns None where neither matches, which is how an unmatched row
+    keeps a NULL ``athlete_id`` beside the source name it came with
+    (``ISSUES.md`` #22).
+
+    Exact-first is what makes the fallback safe to widen: a player who really
+    is named the reduced form keeps his own id, so ESPN's ``Gary Payton`` is
+    never answered with his son's.
 
     .. versionadded:: 4.2.0
     """
     if not display_name:
         return None
     exact = name_to_athlete_id.get(display_name)
-    return exact if exact is not None else name_to_athlete_id.get(fold_name(display_name))
+    return exact if exact is not None else name_to_athlete_id.get(match_key(display_name))
 
 
 def parse_net_points_daily(

@@ -78,6 +78,42 @@ class DailyNetPointsFetcher(Protocol):
         ...
 
 
+def _match_key_aliases(by_name: dict[str, set[str]]) -> dict[str, str]:
+    """Extra keys for the name map, under :func:`association.fetch.parse.match_key`'s
+    reduced spelling.
+
+    NetPoints and ESPN write the same player differently in four measured ways
+    (see ``match_key``), and this is what lets the reduced spelling reach an id.
+    Two guards, and both are load-bearing rather than defensive:
+
+    - **a key more than one athlete id can reach is refused.** Removing a
+      generational suffix collides fathers with sons - ESPN holds both ``Gary
+      Payton`` and ``Gary Payton II``, ``Tim Hardaway`` and ``Tim Hardaway
+      Jr.``, ``Jabari Smith`` and ``Jabari Smith Jr.`` - and 31 keys collide in
+      all, the rest being the names two different people share outright (#21).
+      Those resolve only by their exact spelling, which is the honest answer:
+      nothing on a NetPoints row says which of the two it is.
+    - **a key that is already somebody's real name is left alone**, which
+      keeps the map to the 116 aliases that add something over 3,038 that
+      mostly would not. Measured, this guard is about size rather than
+      safety: of the 2,922 keys it drops, **zero** would have disagreed with
+      the exact entry they duplicate, because a name reducing to itself puts
+      its own ids in that key and any second name reducing to it trips the
+      guard above. Nothing is lost by dropping them - where the reduced form
+      IS a real name the ordinary exact entry answers it, which is how
+      ``Rondae Hollis-Jefferson`` reaches ESPN's ``Rondae Hollis Jefferson``.
+
+    Measured over the live warehouse: 710 of the 1,060 unmatched per-game rows
+    resolve through this, every one to the right player, checked by name.
+
+    .. versionadded:: 4.2.0
+    """
+    by_key: dict[str, set[str]] = {}
+    for name, ids in by_name.items():
+        by_key.setdefault(parse.match_key(name), set()).update(ids)
+    return {key: next(iter(ids)) for key, ids in by_key.items() if len(ids) == 1 and key not in by_name}
+
+
 class Pipeline:
     """Drives a full fetch: teams, schedules, games, players, aggregates.
 
@@ -687,6 +723,7 @@ class Pipeline:
         resolved = {name: next(iter(ids)) for name, ids in by_name.items() if len(ids) == 1}
         pairs = {name: ids for name, ids in by_name.items() if len(ids) == 2}
         resolved.update(self._resolve_duplicate_athlete_pairs(pairs))
+        resolved.update(_match_key_aliases(by_name))
         return resolved
 
     def _resolve_duplicate_athlete_pairs(self, pairs: dict[str, set[str]]) -> dict[str, str]:

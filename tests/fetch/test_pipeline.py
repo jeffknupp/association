@@ -12,6 +12,7 @@ import pyarrow.parquet as pq
 import pytest
 from curl_cffi import requests as cf_requests
 
+import association.fetch.pipeline as pipeline_module
 from association.fetch import storage
 from association.fetch.pipeline import Pipeline
 
@@ -1369,3 +1370,77 @@ def test_written_and_glossary_survive_concurrent_writers(tmp_path: Path) -> None
 
 def test_workers_below_one_is_treated_as_serial(tmp_path: Path) -> None:
     assert Pipeline(None, tmp_path, workers=0).workers == 1
+
+
+def test_name_to_athlete_id_adds_a_reduced_spelling_for_a_suffixed_name(tmp_path: Path) -> None:
+    """ISSUES.md #112: ESPN says `Jimmy Butler III`, NetPoints says
+    `Jimmy Butler`, and that cost him all 498 of his per-game rows. The map
+    gains the reduced spelling so the incoming name reaches his id."""
+    _write_players_fixture(
+        tmp_path,
+        [
+            {"athlete_id": "6430", "display_name": "Jimmy Butler III"},
+            {"athlete_id": "1", "display_name": "Plain Name"},
+        ],
+    )
+    mapping = Pipeline(FakeClient({}), tmp_path)._name_to_athlete_id()
+    assert mapping["Jimmy Butler III"] == "6430"
+    assert mapping["Jimmy Butler"] == "6430", "the reduced spelling is what NetPoints sends"
+
+
+def test_name_to_athlete_id_refuses_a_reduced_spelling_two_players_share(tmp_path: Path) -> None:
+    """The guard that makes the suffix rule safe at all. ESPN holds fathers and
+    sons - `Gary Payton` and `Gary Payton II`, `Tim Hardaway` and `Tim Hardaway
+    Jr.`, `Jabari Smith` and `Jabari Smith Jr.` - so dropping the suffix
+    collides two real people. 31 keys collide in the live table. Each keeps its
+    exact spelling and neither gets the shared one, because nothing on a
+    NetPoints row says which of the two it is."""
+    _write_players_fixture(
+        tmp_path,
+        [
+            {"athlete_id": "640", "display_name": "Gary Payton"},
+            {"athlete_id": "3134903", "display_name": "Gary Payton II"},
+            # Two suffixed siblings, so their shared reduced form is nobody's
+            # actual name - the only way to isolate this guard, since a
+            # reduced form that IS a name is blocked for that reason instead.
+            {"athlete_id": "10", "display_name": "Split Family Jr."},
+            {"athlete_id": "11", "display_name": "Split Family III"},
+        ],
+    )
+    mapping = Pipeline(FakeClient({}), tmp_path)._name_to_athlete_id()
+    assert mapping["Gary Payton"] == "640"
+    assert mapping["Gary Payton II"] == "3134903"
+    assert "Split Family" not in mapping, "two players reduce to it, so it names neither"
+    assert mapping["Split Family Jr."] == "10"
+    assert mapping["Split Family III"] == "11"
+
+
+def test_name_to_athlete_id_never_lets_an_alias_resolve_a_refused_name(tmp_path: Path) -> None:
+    """A name three players share is refused, and a suffixed sibling must not
+    smuggle it back in: `Three Ways` stays unresolved even though
+    `Three Ways Jr.` reduces to it."""
+    _write_players_fixture(
+        tmp_path,
+        [
+            {"athlete_id": "1", "display_name": "Three Ways"},
+            {"athlete_id": "2", "display_name": "Three Ways"},
+            {"athlete_id": "3", "display_name": "Three Ways"},
+            {"athlete_id": "4", "display_name": "Three Ways Jr."},
+        ],
+    )
+    mapping = Pipeline(FakeClient({}), tmp_path)._name_to_athlete_id()
+    assert "Three Ways" not in mapping
+    assert mapping["Three Ways Jr."] == "4"
+
+
+def test_match_key_aliases_adds_nothing_for_a_name_that_reduces_to_itself() -> None:
+    """Asserted on the helper directly, because it cannot be seen through the
+    map: an alias for a name that reduces to itself carries the same id as the
+    exact entry, so the map is identical either way. What it changes is size -
+    116 useful aliases against 3,038 - and measured over the live table, zero
+    of the dropped keys would have disagreed with the entry they duplicate."""
+    plain = {"Solo Player": {"1"}, "Another Name": {"2"}}
+    assert pipeline_module._match_key_aliases(plain) == {}
+    # A suffixed name reduces to something nobody is called, so it does add one.
+    suffixed = {"Jimmy Butler III": {"6430"}}
+    assert pipeline_module._match_key_aliases(suffixed) == {"Jimmy Butler": "6430"}

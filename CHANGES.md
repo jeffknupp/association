@@ -15,6 +15,20 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A NetPoints name ESPN spells with a generational suffix, or hyphenates
+  differently, now matches too.** `match_key` reduces both sides to a
+  comparable form in four measured steps - diacritics dropped, hyphens to
+  spaces, whitespace collapsed, and a trailing suffix from a closed set
+  removed - which recovers 710 of the 1,060 remaining unmatched per-game rows:
+  `Jimmy Butler` to ESPN's `Jimmy Butler III` (498 rows, his whole per-game
+  record), `Rondae Hollis-Jefferson` to `Rondae Hollis Jefferson` (144),
+  `Trey Jemison`, `Billy Garrett`, `Darius Brown`. The suffix step is the one
+  that can merge two real people, and it does - ESPN holds `Gary Payton` and
+  `Gary Payton II`, `Tim Hardaway` and `Tim Hardaway Jr.`, fathers and sons, 31
+  colliding keys in all - so a reduced spelling more than one athlete id can
+  reach is never usable, and those names resolve only exactly. What is left
+  unmatched is a different name rather than a different spelling (a nickname, a
+  short first name, a middle name, a reversed order) and wants a curated list.
 - **A NetPoints name spelled with diacritics now matches ESPN's spelling of
   it.** NetPoints' 2026 files say `Nikola Jokić` where ESPN's `players` says
   `Nikola Jokic`, so an exact match lost those players their whole 2026 season:
