@@ -1,10 +1,11 @@
-"""Tests for the load-time repair of the two team-box faults.
+"""Tests for the load-time repair of the four team-box faults.
 
 Every fixture row below is the shape ESPN really serves. The 2018 team row is
 event ``400974437``'s Boston line verbatim - ``assists`` 4 beside a player-box
-assist sum of 24, ``blocks`` 24 beside a block sum of 4 - and the empty row is
-the all-NULL shape every Chicago and New Orleans game from 2013 to 2018 has,
-beside player rows listing everyone as having played with no minutes.
+assist sum of 24, ``blocks`` 24 beside a block sum of 4 - and the Chicago/New
+Orleans empty row is the all-NULL shape those games have, beside player rows
+listing everyone as having played with no minutes. The 1996 row is Vancouver's
+shape: an all-NULL TEAM row beside REAL player rows with real minutes.
 """
 
 from pathlib import Path
@@ -66,6 +67,12 @@ _PLAYER_DEFAULTS: dict[str, Any] = {
     "rebounds": 0,
     "offensiveRebounds": 0,
     "defensiveRebounds": 0,
+    "fieldGoalsMade": 0,
+    "fieldGoalsAttempted": 0,
+    "threePointFieldGoalsMade": 0,
+    "threePointFieldGoalsAttempted": 0,
+    "freeThrowsMade": 0,
+    "freeThrowsAttempted": 0,
 }
 
 
@@ -131,10 +138,57 @@ _PLAYERS_2000 = [
 ]
 
 # --- 1996: an all-NULL TEAM row whose PLAYER rows are real (Vancouver's shape).
-# A different fault with a different fix; a turnover rebuild must not give this
-# row a lone turnover count in an otherwise empty line.
+# Everything a player sum can prove is rebuilt from these two rows: fgm 14,
+# fga 34, 3pm 2, 3pa 6, ftm 5, fta 6, assists 9, steals 3, blocks 1, turnovers
+# 6, fouls 7, oreb 3, dreb 9. totalRebounds and the columns with no player-box
+# sibling (teamTurnovers, totalTurnovers, technicalFouls, totalTechnicalFouls,
+# flagrantFouls, pointsInPaint, largestLead) have nothing to rebuild from and
+# must stay NULL - see the module docstring's "What cannot".
 _EMPTY_TEAM_REAL_PLAYERS_1996 = _empty_team(event_id="g96", season=1996, team_id="29")
-_PLAYERS_1996 = [_player(event_id="g96", season=1996, team_id="29", athlete_id="f", minutes=31, turnovers=4, assists=6)]
+_PLAYERS_1996 = [
+    _player(
+        event_id="g96",
+        season=1996,
+        team_id="29",
+        athlete_id="f",
+        minutes=31,
+        fieldGoalsMade=9,
+        fieldGoalsAttempted=20,
+        threePointFieldGoalsMade=2,
+        threePointFieldGoalsAttempted=5,
+        freeThrowsMade=3,
+        freeThrowsAttempted=4,
+        assists=6,
+        steals=2,
+        blocks=1,
+        turnovers=4,
+        fouls=3,
+        offensiveRebounds=2,
+        defensiveRebounds=5,
+        rebounds=7,
+    ),
+    _player(
+        event_id="g96",
+        season=1996,
+        team_id="29",
+        athlete_id="g",
+        minutes=28,
+        fieldGoalsMade=5,
+        fieldGoalsAttempted=14,
+        threePointFieldGoalsMade=0,
+        threePointFieldGoalsAttempted=1,
+        freeThrowsMade=2,
+        freeThrowsAttempted=2,
+        assists=3,
+        steals=1,
+        blocks=0,
+        turnovers=2,
+        fouls=4,
+        offensiveRebounds=1,
+        defensiveRebounds=4,
+        rebounds=5,
+    ),
+]
 
 # --- 2018: a STORED row beside player rows that are all zeros with no minutes.
 # The empty games have both halves missing at once, so only this shape can tell
@@ -241,7 +295,24 @@ def test_an_empty_2018_team_game_stays_empty(tmp_path: Path) -> None:
     con = _build(tmp_path)
     row = _row(con, "g18e")
     con.close()
-    for column in ("assists", "steals", "blocks", "turnovers", "fouls", "fieldGoalPct", "freeThrowPct", "teamTurnovers", "totalTurnovers", "pointsInPaint", "flagrantFouls"):
+    for column in (
+        "assists",
+        "steals",
+        "blocks",
+        "turnovers",
+        "fouls",
+        "fieldGoalsMade",
+        "fieldGoalsAttempted",
+        "offensiveRebounds",
+        "defensiveRebounds",
+        "fieldGoalPct",
+        "threePointFieldGoalPct",
+        "freeThrowPct",
+        "teamTurnovers",
+        "totalTurnovers",
+        "pointsInPaint",
+        "flagrantFouls",
+    ):
         assert row[column] is None, f"{column} was fabricated for an empty team-game"
 
 
@@ -259,16 +330,49 @@ def test_a_stored_2018_row_whose_player_rows_are_zeros_is_left_alone(tmp_path: P
     assert row["pointsInPaint"] == 44  # not cleared either
 
 
-def test_an_empty_team_row_with_real_player_rows_stays_empty(tmp_path: Path) -> None:
-    """Vancouver 1996 and Chicago 2000: the team row is all NULL but the player
-    rows are real. That is a different fault with a different fix, and filling
-    only this era's turnover column would leave one number in an empty line."""
+def test_an_empty_team_row_with_real_player_rows_is_rebuilt_from_them(tmp_path: Path) -> None:
+    """Vancouver 1996 (and one 2000 game, the same shape): the team row is all
+    NULL but the player rows are real, with real minutes. Unlike the Chicago/
+    New Orleans case, there is something here to sum - so every column a
+    player sum can prove exactly (no such thing as a team assist, field goal,
+    steal, block, foul or individual turnover, and the offensive/defensive
+    rebound split) is rebuilt from the two player rows above."""
     con = _build(tmp_path)
     row = _row(con, "g96")
     con.close()
-    assert row["turnovers"] is None
-    assert row["assists"] is None
-    assert row["teamTurnovers"] is None
+    assert (row["fieldGoalsMade"], row["fieldGoalsAttempted"]) == (14, 34)
+    assert (row["threePointFieldGoalsMade"], row["threePointFieldGoalsAttempted"]) == (2, 6)
+    assert (row["freeThrowsMade"], row["freeThrowsAttempted"]) == (5, 6)
+    assert (row["assists"], row["steals"], row["blocks"], row["turnovers"], row["fouls"]) == (9, 3, 1, 6, 7)
+    assert (row["offensiveRebounds"], row["defensiveRebounds"]) == (3, 9)
+
+
+def test_an_empty_team_rows_percentages_are_recomputed_from_the_player_sums(tmp_path: Path) -> None:
+    """`fieldGoalPct`, `threePointFieldGoalPct` and `freeThrowPct` are all NULL
+    on the stored row, so they are recomputed from the rebuilt made/attempted
+    sums - rounded, the same convention ESPN uses everywhere else."""
+    con = _build(tmp_path)
+    row = _row(con, "g96")
+    con.close()
+    assert row["fieldGoalPct"] == 41  # round(100 * 14 / 34)
+    assert row["threePointFieldGoalPct"] == 33  # round(100 * 2 / 6)
+    assert row["freeThrowPct"] == 83  # round(100 * 5 / 6)
+
+
+def test_an_empty_team_rows_unrebuildable_columns_stay_null(tmp_path: Path) -> None:
+    """`totalRebounds` runs ~8.8 a game above the player oreb+dreb sum before
+    2022 (the team's own boards, credited to no player - see `DATA.md`, "The
+    team `totalRebounds` column stops including team rebounds in 2022"), and
+    the player box has no sibling at all for team turnovers, technicals,
+    flagrant fouls, points in the paint or a largest lead. None of those has
+    anything to rebuild from, so a rebuilt row leaves them exactly as NULL as
+    ESPN served them - restored to what a player sum can prove, not to a
+    complete row."""
+    con = _build(tmp_path)
+    row = _row(con, "g96")
+    con.close()
+    for column in ("totalRebounds", "teamTurnovers", "totalTurnovers", "technicalFouls", "totalTechnicalFouls", "flagrantFouls", "pointsInPaint", "largestLead"):
+        assert row[column] is None, f"{column} was fabricated for a row with no source for it"
 
 
 def test_a_control_season_is_untouched(tmp_path: Path) -> None:
@@ -321,13 +425,15 @@ def test_the_repair_is_idempotent(tmp_path: Path) -> None:
     value looks wrong - so a second build, or a partial `data load`, writes the
     same numbers instead of summing the sums."""
     con = _build(tmp_path, builds=2)
-    shifted, control, old, rebounds = _row(con, "g18"), _row(con, "g17"), _row(con, "g00"), _row(con, "g08")
+    shifted, control, old, rebounds, vancouver = _row(con, "g18"), _row(con, "g17"), _row(con, "g00"), _row(con, "g08"), _row(con, "g96")
     con.close()
     assert (rebounds["offensiveRebounds"], rebounds["defensiveRebounds"], rebounds["totalRebounds"]) == (15, 32, 55)
     assert (shifted["assists"], shifted["steals"], shifted["blocks"], shifted["fouls"]) == (24, 11, 4, 24)
     assert shifted["fieldGoalPct"] == 41
     assert control["assists"] == 24
     assert old["turnovers"] == 15
+    assert (vancouver["fieldGoalsMade"], vancouver["fieldGoalsAttempted"], vancouver["assists"]) == (14, 34, 9)
+    assert vancouver["totalRebounds"] is None  # never fabricated, not even on a second run
 
 
 def test_the_repair_is_skipped_without_player_box_stats(tmp_path: Path) -> None:

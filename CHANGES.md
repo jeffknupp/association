@@ -15,6 +15,19 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A team-level question about Vancouver's 1995-96 season is no longer
+  answered from NULLs it did not have to be.** ESPN serves an all-NULL
+  `team_box_stats` row for every 1995-96 Grizzlies game - and, unrecorded
+  until now, for 25 more teams' games against them that season, plus one 2000
+  game - while its `player_box_stats` rows for the same games are real, with
+  real minutes. `team_box_repair` now rebuilds field goals, three-pointers,
+  free throws (with their shooting percentages), assists, steals, blocks,
+  fouls, individual turnovers and the offensive/defensive rebound split from
+  those player rows on any team row this shape touches - measured exact on
+  all 2,387 surviving 1996 regular-season team rows and all 2,472 surviving
+  2000 ones. `totalRebounds` and the columns the player box has no sibling
+  for (team turnovers, technicals, flagrant fouls, points in the paint, a
+  largest lead) still have nothing to rebuild from and stay NULL.
 - **A 2013-2018 shooting leaderboard now says who is missing from it.** Those
   rates are summed from the box scores ESPN serves zeroed for every Chicago and
   New Orleans game, so 21 to 33 players a season clear the qualifying floor by

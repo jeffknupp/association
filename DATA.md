@@ -176,9 +176,21 @@ likewise.
   comment at `fetch/repairs/team_box_repair.py:108` counts.
 - **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull**, which
   reproduced `team_box_stats` exactly.
-- **How we handle it:** nothing yet, and `_empty_box_scores` does NOT catch
-  these — it tests player minutes, which are present here — so a team-level
-  answer for these three seasons carries no caveat at all.
+- **How we handle it (as of 2026-09-17, fixed in code, not yet backfilled):**
+  `fetch/repairs/team_box_repair.py` rebuilds an all-NULL team row from its
+  game's real player rows, for every column a player sum proves exactly -
+  field goals, three-pointers, free throws and their percentages, assists,
+  steals, blocks, fouls, individual turnovers, and the offensive/defensive
+  rebound split. Measured exact (100%) against all 2,387 surviving 1996
+  regular-season team rows and all 2,472 surviving 2000 ones.
+  `totalRebounds` is left NULL on a rebuilt row: it runs 8.80 a game above the
+  player oreb+dreb sum on those same rows (see "The team `totalRebounds`
+  column stops including team rebounds in 2022", below) and matches it in
+  only 1 of 2,387, so there is nothing to rebuild it from. `_empty_box_scores`
+  still does NOT catch these rows (it tests player minutes, which are present
+  here) - now moot for the rebuilt columns, since they carry real values
+  instead of a silent NULL, but a `totalRebounds` answer over these games
+  still needs its own caveat, which nothing gives it yet.
 - **Tracked in:** ISSUES.md, "Vancouver 1996 has an empty TEAM box, not an
   empty player box" (#67).
 
