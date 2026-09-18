@@ -16,7 +16,7 @@ from association.nba.season import eastern_date as _eastern_date
 from ..court import HAS_POSITION_SQL, SHOT_DISTANCE_SQL
 from ..entities import Ambiguous, no_match
 from ..shotchart import DERIVED_SHOT_VALUES, SHOT_AVAILABILITY, SHOT_VALUE_SQL, UNSEPARABLE_SHOT_VALUES, render_for_player, resolve_chart_player
-from .common import TemplateContext, TemplateResult, TemplateUnsupported, _clarify, _period, _resolved_player
+from .common import SEASON_TYPE_NAMES, TemplateContext, TemplateResult, TemplateUnsupported, _clarify, _defaulted_season_note, _period, _resolved_player, _season_redirect
 
 
 def _scoping_game(con: duckdb.DuckDBPyConnection, athlete_id: str, season: int, season_type: int, order: str) -> tuple[Any, ...] | None:
@@ -35,7 +35,15 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     Uses shotchart.render_shot_chart, the same function the agent tool calls,
     so it inherits best-match player handling rather than resolve_player's
     refusal: a chart of the wrong Curry is obvious on sight, and titled with the
-    resolved name."""
+    resolved name.
+
+    .. versionchanged:: 4.0.2
+       A defaulted (unnamed) season with no shots for the player now redirects
+       to the seasons he does have on record, when there are any, rather than
+       "No shots found ... with the given filters" - which blamed a filter
+       that was never given. A season the question named outright is
+       unaffected.
+    """
     name = slots.get("player")
     if not isinstance(name, str) or not name.strip():
         raise TemplateUnsupported("shot_chart needs a player name")
@@ -48,7 +56,9 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     #
     # Settled before the name is resolved, because the season is what narrows
     # an ambiguous name to the players who could have taken these shots.
-    season = slots.get("season") or current_season()
+    raw_season = slots.get("season")
+    defaulted = not (isinstance(raw_season, int) and raw_season)
+    season = raw_season or current_season()
     season_type = slots.get("season_type") or 2
 
     # Resolved ONCE, here, and the same player is then used both to find the
@@ -87,9 +97,21 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     # rather than falling through: the agent has no better source for a chart
     # than the same table this just queried.
     artifact = rendered.artifact
+    message = rendered.message
+    if artifact is None and event_id is None and defaulted:
+        # "No shots found ... with the given filters" blames the filters even
+        # when there were none - the season was defaulted to "now", and a
+        # retired player's "now" has nothing to draw. That reads as though the
+        # warehouse holds no shots of his at all, which is false for anyone
+        # with a season on record (issue #18); redirect to it instead. No
+        # "or ask for his career" - shot_chart draws one season, never a
+        # career - and a season the question named outright keeps this
+        # refusal plain, because it is the correct answer.
+        redirect = _season_redirect(ctx.con, player.id, season_type, "shot_chart")
+        message += _defaulted_season_note(redirect, SEASON_TYPE_NAMES.get(season_type, "regular season"), career_hint=False)
     return TemplateResult(
-        data={"message": rendered.message, "player": player.name, "path": str(artifact.path) if artifact else None},
-        answer=rendered.message,
+        data={"message": message, "player": player.name, "path": str(artifact.path) if artifact else None},
+        answer=message,
         artifacts=[artifact] if artifact else [],
     )
 

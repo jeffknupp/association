@@ -615,12 +615,23 @@ def _joined(names: list[str], word: str = "and") -> str:
 class _Span:
     """The seasons an answer covers: one (``season``), or a whole career
     (``season`` None) from ``first`` on, less any ``phantom`` season that is a
-    copy of another."""
+    copy of another.
+
+    ``defaulted`` is True when ``season`` was never named - the question asked
+    about "now", not about this particular year - and False when the question
+    named it outright, career spans included (where the field is meaningless:
+    a career has no single season to have been defaulted). It is what lets a
+    refusal built from this span tell "the current season has nothing on
+    record" from "the season you named has nothing on record": only the first
+    is safe to redirect toward the player's other seasons (issue #18), because
+    the second is a correct, specific answer and redirecting it would be the
+    same guess-dressed-as-an-answer this project keeps refusing to make."""
 
     season: int | None
     season_type: int
     first: int = 0
     phantom: tuple[int, ...] = ()
+    defaulted: bool = False
 
     @property
     def career(self) -> bool:
@@ -662,7 +673,8 @@ def _span_of(span: Any, season: Any, season_type: int, table: str) -> _Span:
     reaches - box scores from 1994, the season line from 1977 - since a career
     is only as long as the table it is summed from."""
     if not span:
-        return _Span(season if isinstance(season, int) and season else current_season(), season_type)
+        named = isinstance(season, int) and bool(season)
+        return _Span(season if named else current_season(), season_type, defaulted=not named)
     if span != "career":
         raise TemplateUnsupported(f"no span called {span!r}")
     if isinstance(season, int) and season:
@@ -972,6 +984,41 @@ def _resolved_teammate(con: duckdb.DuckDBPyConnection, text: Any, player: Entity
     return resolved
 
 
+def _season_redirect(con: duckdb.DuckDBPyConnection, athlete_id: str, season_type: int, table: str, *, athlete_column: str = "athlete_id") -> tuple[int, int] | None:
+    """The first and last season ``athlete_id`` has a row in ``table`` for
+    ``season_type`` - or None with nothing on record there at all.
+
+    Backs the redirect a defaulted season's empty refusal gives (issue #18): a
+    retired player's question that names no season used to be answered as
+    though the current one had been asked outright - a true statement about
+    the wrong year, the mirror-image refusal AGENTS.md warns against. Reading
+    the player's own range lets the answer redirect instead of guessing which
+    season, career, or nothing was meant."""
+    row = con.execute(f"SELECT MIN(season), MAX(season) FROM {table} WHERE {athlete_column} = ? AND season_type = ?", [athlete_id, season_type]).fetchone()
+    if row is None or row[0] is None:
+        return None
+    return int(row[0]), int(row[1])
+
+
+def _defaulted_season_note(season_range: tuple[int, int] | None, kind: str, *, career_hint: bool = True) -> str:
+    """The sentence a defaulted-season refusal appends when :func:`_season_redirect`
+    found something to point at - empty with nothing on record at all, which
+    leaves the plain refusal standing: that is a genuine gap, not a wrong
+    default, and there is nothing here to redirect toward.
+
+    Never substitutes an answer, only names where to ask again - the same
+    discipline `entities.suggest_players` follows for a near-miss name."""
+    if season_range is None:
+        return ""
+    first, last = season_range
+    # Singular for one season, plural for a range - the same rule _Span.years
+    # uses, so "he last appears in 2010" is never followed by "his 2010
+    # seasons" for a player on record in exactly one.
+    span = f"{first} {kind}" if first == last else f"{first}-{last} {kind}s"
+    tail = ", or ask for his career." if career_hint else "."
+    return f" He last appears in {last}. The warehouse holds his {span}; name one{tail}"
+
+
 def _no_narrowed_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: _Narrowed, *, rebuilt: bool = False) -> str:
     """Why a narrowed question found no games, naming the fact that is really
     missing - his games in that span, the teammate, the match, or an empty box
@@ -1005,7 +1052,16 @@ def _no_narrowed_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _Sp
             return f"{player.name} played {_count_games(empty_total)} {span.during(empty_first, empty_last)}, but the box score is empty for all of them - ESPN served no minutes or stats for any."
         if span.career:
             return f"{player.name} has no {span.kind} box scores in the warehouse, which begin with the {_season_name(span.first)} season."
-        return f"No {span.during()[len('in the ') :]} games found for {player.name}."
+        message = f"No {span.during()[len('in the ') :]} games found for {player.name}."
+        if span.defaulted:
+            # The season was never named - the question asked about "now", and
+            # a retired player's "now" is empty. Redirecting to his own range
+            # beats a refusal that reads as though his career itself were the
+            # gap (issue #18); a season the question named keeps this plain,
+            # because that refusal is correct as given.
+            redirect = _season_redirect(con, player.id, span.season_type, "player_game_log")
+            message += _defaulted_season_note(redirect, span.kind)
+        return message
     during = span.during(first, last)
     # One at a time: with two teammates named, the fact that is missing is
     # which of them never shared a team with him, and saying "one of them did

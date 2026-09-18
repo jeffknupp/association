@@ -18,7 +18,7 @@ from ..entities import Ambiguous, Availability, Entity, no_match
 from ..fingerprint import FINGERPRINT_AVAILABILITY, FINGERPRINT_VIEWS, GAME_FINGERPRINT_AVAILABILITY, FingerprintUnavailable, render_for_players
 from ..metrics import SEASON_TYPE_LABELS
 from ..shotchart import resolve_chart_player
-from .common import TemplateContext, TemplateResult, TemplateUnsupported, _clarify, _period, _resolved_player, _table_cell
+from .common import SEASON_TYPE_NAMES, TemplateContext, TemplateResult, TemplateUnsupported, _clarify, _defaulted_season_note, _period, _resolved_player, _table_cell
 
 # Beyond three polygons on one radar the shapes stop being separable - and the
 # palette in radar.py holds three series colors for the same reason.
@@ -54,11 +54,21 @@ def player_netpoints(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     a question about one player had nowhere to land: the guard in player_stat
     fired correctly, then the agent ranked the league and dropped the player. A
     guard that turns a wrong answer into a slow one needs something to fall
-    through TO."""
+    through TO.
+
+    .. versionchanged:: 4.0.2
+       A defaulted (unnamed) season with no NetPoints for the player now
+       redirects to the seasons he does have on record, when there are any,
+       rather than a flat refusal that reads as though the warehouse held
+       nothing of his at all. A season the question named outright is
+       unaffected.
+    """
     con = ctx.con
     # Settled before the name is resolved: the season is what narrows an
     # ambiguous name to the players with NetPoints in it.
-    season = slots.get("season") or current_season()
+    raw_season = slots.get("season")
+    defaulted = not (isinstance(raw_season, int) and raw_season)
+    season = raw_season or current_season()
     season_type = slots.get("season_type") or 2
     one_game = slots.get("order") in ("recent", "first")
     player = _resolved_player(con, slots.get("player"), "player_netpoints needs a player name", available=_NET_POINTS_GAMES if one_game else _NET_POINTS, season=season)
@@ -99,9 +109,23 @@ def player_netpoints(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
 
     period = _period(season, season_type)
     if headline is None and not breakdown:
+        answer = f"The warehouse has no {period} NetPoints for {player.name}."
+        if defaulted:
+            # The season was defaulted to "now", not asked for. A player with
+            # NetPoints on record in other seasons is a redirect (issue #18),
+            # not the flat refusal above read alone - which, for a retired
+            # player, sounds like the warehouse holds nothing of his at all.
+            # No "or ask for his career" here: player_netpoints has no career
+            # span to offer. A season the question named keeps this plain.
+            row = con.execute(
+                "SELECT MIN(season), MAX(season) FROM net_points_player WHERE athlete_id = ? AND net_points_season_type = ?",
+                [player.id, label],
+            ).fetchone()
+            redirect = (int(row[0]), int(row[1])) if row and row[0] is not None else None
+            answer += _defaulted_season_note(redirect, SEASON_TYPE_NAMES.get(season_type, "regular season"), career_hint=False)
         return TemplateResult(
             data={"player": player.name, "season": season},
-            answer=f"The warehouse has no {period} NetPoints for {player.name}.",
+            answer=answer,
         )
     return TemplateResult(
         data={"player": player.name, "season": season, "headline": headline, "fingerprint": breakdown},

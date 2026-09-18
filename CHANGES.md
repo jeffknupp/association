@@ -14,6 +14,25 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
+## Unreleased
+- **A retired player's question that names no season no longer defaults to
+  the current one and stops there.** `player_stat`, `single_game_high`,
+  `game_log`, `player_netpoints` and `shot_chart` all read a missing `season`
+  slot as "now", and a retired player's "now" is empty - "Allen Iverson's
+  points" answered "Allen Iverson has no 2026 regular season numbers in the
+  warehouse", true and about a year nobody asked for. The refusal now
+  redirects to what the warehouse actually holds for him when the season was
+  defaulted rather than named: "... He last appears in 2010. The warehouse
+  holds his 1997-2010 regular seasons; name one, or ask for his career." Never
+  substitutes an answer, only names where to ask again - the same discipline
+  `entities.suggest_players` already follows for a near-miss name. A season
+  the question names outright keeps its plain refusal, because that answer is
+  correct as given: `_Span` now carries a `defaulted` flag from `_span_of` so
+  every reader downstream can tell the two cases apart. `player_netpoints` and
+  `shot_chart` do the same from their own local flag, since neither is built
+  on `_Span`; neither offers "or ask for his career", since neither template
+  has a career span to redirect to. (#18)
+
 ## 4.0.1 - 2026-09-18
 - **A narrowed `game_log` or `player_stat` question over a season whose box
   scores ESPN served empty no longer says the games do not exist.** Both read

@@ -35,6 +35,7 @@ from .common import (
     _career_end,
     _clamp_limit,
     _count_games,
+    _defaulted_season_note,
     _format_value,
     _log_carries_rebuilt,
     _narrow_player_games,
@@ -42,6 +43,7 @@ from .common import (
     _no_narrowed_games,
     _period,
     _resolved_player,
+    _season_redirect,
     _Span,
     _span_of,
     _table_cell,
@@ -820,6 +822,16 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        Lakers in 2015" no longer refuses a season that is entirely Pelicans
        games ESPN zeroed. A span left with no games at all says whose box
        scores are empty rather than that no games were found.
+
+    .. versionchanged:: 4.0.2
+       A season that was never named - the slot defaulted to "now" rather than
+       being asked for - now redirects to the seasons the player actually has
+       on record when the current one has nothing, instead of a refusal that
+       reads as though his whole career were missing. "Allen Iverson's points"
+       used to answer "no 2026 regular season numbers", true and about the
+       wrong year; it now also says he last appears in 2010 and names his
+       1997-2010 range. A season the question named outright keeps the plain
+       refusal, because it is the correct answer.
     """
     con = ctx.con
     # Settled before the name is resolved: the span, and the table it is read
@@ -864,9 +876,21 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
 
     period = _period(season, season_type)
     if row is None:
+        answer = f"{player.name} has no {period} numbers in the warehouse."
+        if span.defaulted:
+            # The season was defaulted to "now", not asked for - a retired
+            # player's "now" is empty and the refusal above, read alone, sounds
+            # like his whole career is missing (issue #18). Redirect to what
+            # the warehouse actually holds for him rather than guessing a
+            # season or falling back to a career summary that can badly
+            # misrepresent him (Iverson's last season is 13.8 ppg against a
+            # 26.7 career average). A season the question named outright keeps
+            # this refusal plain, because it is the correct answer.
+            redirect = _season_redirect(con, player.id, season_type, "player_season_stats_deduped")
+            answer += _defaulted_season_note(redirect, SEASON_TYPE_NAMES.get(season_type, "regular season"))
         return TemplateResult(
             data={"player": player.name, "season": season, "stats": {}},
-            answer=f"{player.name} has no {period} numbers in the warehouse.",
+            answer=answer,
         )
     values = dict(zip(columns, row, strict=True))
     if shooting:
@@ -1049,6 +1073,14 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
        best since 1993-94, each saying what it covers. A game's date is the
        Eastern calendar day it was played; it used to be the UTC day it is
        stored under, a day late for every game tipping after 7pm Eastern.
+
+    .. versionchanged:: 4.0.2
+       A defaulted (unnamed) season with no games for a named player now
+       redirects to the seasons he does have on record, when there are any,
+       rather than a refusal that reads as though he never played - "Allen
+       Iverson's highest point total" used to answer "no 2026 regular season
+       games", true of the wrong year. A season the question named outright
+       is unaffected.
     """
     stat = slots.get("stat")
     column = THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
@@ -1056,6 +1088,10 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
         raise TemplateUnsupported(f"single_game_high needs a known stat, got {stat!r}")
 
     career = _career_span("single_game_high", slots.get("span"), slots.get("season"))
+    # Whether the season came from the question or from "now" - the same
+    # distinction _span_of.defaulted makes for the templates built on it. This
+    # one is not, so it is read straight from the raw slot.
+    defaulted = not career and not (isinstance(slots.get("season"), int) and slots.get("season"))
     season = None if career else (slots.get("season") or current_season())
     season_type = slots.get("season_type") or 2
     limit = _clamp_limit(slots.get("limit"), default=DEFAULT_SINGLE_GAME_LIMIT)
@@ -1091,6 +1127,7 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     # refusal that names a decision beats one that implies missing data.
     withheld = 0 if games or column in REBUILT_STATS else _rebuilt_in_scope(ctx.con, season, season_type, named_player.id if named_player else None)
     answer = _single_game_high_answer(games, label, span, who, empty=empty, withheld=withheld)
+    answer += _single_game_high_redirect(ctx.con, defaulted, named_player, games, empty, withheld, season_type)
     return TemplateResult(
         data={"question_shape": shape, "season": season, "span": "career" if career else None, "stat": stat, "games": games, "empty_box_scores": empty[0]},
         answer=answer,
@@ -1126,6 +1163,25 @@ def _single_game_high_scope(ctx: TemplateContext, column: str, season: int | Non
         where.append("l.athlete_id = ?")
         params.append(resolved.id)
     return where, params, named_player, from_rebuilt
+
+
+def _single_game_high_redirect(
+    con: duckdb.DuckDBPyConnection, defaulted: bool, named_player: Entity | None, games: list[dict[str, Any]], empty: tuple[int, int | None, int | None], withheld: int, season_type: int
+) -> str:
+    """What ``single_game_high`` appends when its season was defaulted rather
+    than named and the answer came back with nothing to show (issue #18) -
+    see :func:`association.query.templates.common._season_redirect`.
+
+    Empty whenever the empty answer is about something else: a season the
+    question named outright, no named player to redirect (a league-wide
+    question has no "his" to point at), an empty-box-scores gap, or a
+    withheld stat - each of those already has its own sentence, and this one
+    would either duplicate it or, worse, answer over it.
+    """
+    if not defaulted or named_player is None or games or empty[0] or withheld:
+        return ""
+    redirect = _season_redirect(con, named_player.id, season_type, "player_game_log")
+    return _defaulted_season_note(redirect, SEASON_TYPE_NAMES.get(season_type, "regular season"))
 
 
 def _single_game_high_answer(games: list[dict[str, Any]], label: str, span: _GameSpan, who: str | None, *, empty: tuple[int, int | None, int | None], withheld: int) -> str:
