@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from collections.abc import Iterable
 from datetime import date as _date
 from datetime import datetime as _datetime
@@ -880,6 +881,46 @@ class NetPointsGameIndex:
         return self._by_utc.get((team_id, next_day)) or self._by_utc.get((team_id, date))
 
 
+def fold_name(name: str) -> str:
+    """``name`` with its diacritics removed: ``"Nikola Jokić"`` -> ``"Nikola Jokic"``.
+
+    NetPoints and ESPN disagree about how to spell the same player, and only
+    in one direction: NetPoints' 2026 files accent names that ESPN's
+    ``players`` table does not (``DATA.md``, "NetPoints spells 2026's names
+    with diacritics, and ESPN does not"). Matching exactly cost 682 already
+    resolved player-games when those files were re-fetched - Nikola Jokic
+    matched every season from 2019 to 2025 and none of 2026.
+
+    Deliberately ONLY diacritics. Not case, not punctuation, not whitespace:
+    each of those would widen what counts as the same name, and this project's
+    worst bugs are all a name-matching rule that admitted one case too many.
+    Folding cannot make two people into one here, which was checked rather
+    than assumed: **no ESPN name carries a diacritic** (0 of 3,080 in
+    ``players``) and **no two ESPN names fold to the same string**, so a folded
+    lookup can only ever reach the one player whose name it already was. That
+    also means the fold is needed in one direction only - on the name coming
+    IN from NetPoints, never on ESPN's own.
+
+    .. versionadded:: 4.2.0
+    """
+    return "".join(c for c in unicodedata.normalize("NFKD", name) if not unicodedata.combining(c))
+
+
+def resolve_athlete_id(name_to_athlete_id: dict[str, str], display_name: str | None) -> str | None:
+    """The athlete id for a NetPoints display name, exactly or folded.
+
+    The exact spelling always wins; a folded one is the fallback. Returns None
+    where neither matches, which is how an unmatched row keeps a NULL
+    ``athlete_id`` beside the source name it came with (``ISSUES.md`` #22).
+
+    .. versionadded:: 4.2.0
+    """
+    if not display_name:
+        return None
+    exact = name_to_athlete_id.get(display_name)
+    return exact if exact is not None else name_to_athlete_id.get(fold_name(display_name))
+
+
 def parse_net_points_daily(
     data: JSON | None,
     date: str,
@@ -936,7 +977,7 @@ def parse_net_points_daily(
                 "season": season,
                 "season_type": season_type,
                 "team_id": team_id,
-                "athlete_id": name_to_athlete_id.get(display_name),
+                "athlete_id": resolve_athlete_id(name_to_athlete_id, display_name),
                 "display_name": display_name,
                 "nba_player_id": str(plyr_id) if plyr_id is not None else None,
                 "o_net_pts": raw.get("oNetPts"),
@@ -1051,7 +1092,7 @@ def parse_net_points_daily_players(
                 "season": season,
                 "season_type": season_type,
                 "team_id": team_id,
-                "athlete_id": name_to_athlete_id.get(display_name) if display_name else None,
+                "athlete_id": resolve_athlete_id(name_to_athlete_id, display_name),
                 "display_name": display_name,
                 "category": net_points_category(action_type),
                 "o_net_pts": raw.get("oNetPts"),
@@ -1078,7 +1119,7 @@ def parse_net_points_fingerprint(
     source."""
     rows: list[Row] = []
     for raw in (data or {}).values():
-        athlete_id = name_to_athlete_id.get(raw.get("displayName"))
+        athlete_id = resolve_athlete_id(name_to_athlete_id, raw.get("displayName"))
         if athlete_id is None:
             continue
         row: dict[str, Any] = {

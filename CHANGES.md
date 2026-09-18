@@ -15,6 +15,17 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A NetPoints name spelled with diacritics now matches ESPN's spelling of
+  it.** NetPoints' 2026 files say `Nikola Jokić` where ESPN's `players` says
+  `Nikola Jokic`, so an exact match lost those players their whole 2026 season:
+  Jokic matched every season from 2019 to 2025 and none of 2026, and
+  re-fetching cost 682 already-resolved player-games. The name coming in from
+  NetPoints is now folded (NFKD, combining marks dropped) when the exact
+  spelling misses, which resolves 20 of the 39 unmatched names. Checked rather
+  than assumed: no ESPN name carries a diacritic (0 of 3,080) and no two fold
+  to the same string, so the fold cannot reach a player it was not already
+  about, and the exact spelling always wins where both exist. Only diacritics -
+  not case, punctuation or whitespace.
 - **`scripts/backfill_netpoints_names.py`** re-parses the NetPoints tables that
   are matched by display name, without refetching ESPN. The 4.1.0 parser fixes
   (#22, #101) mean the Parquet on disk was written by the old code, so a load

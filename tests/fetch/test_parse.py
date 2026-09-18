@@ -1087,3 +1087,48 @@ def test_parse_net_points_daily_players_ignores_a_row_with_no_action_type() -> N
     )
 
     assert rows == []
+
+
+def test_fold_name_removes_diacritics_and_nothing_else() -> None:
+    """NetPoints' 2026 files accent names ESPN's `players` does not, and that
+    is the ONLY difference the fold is allowed to bridge. Case, punctuation and
+    whitespace are left alone deliberately: every one of this project's worst
+    bugs is a name rule that admitted one case too many."""
+    assert parse.fold_name("Nikola Jokić") == "Nikola Jokic"
+    assert parse.fold_name("Kristaps Porziņģis") == "Kristaps Porzingis"
+    assert parse.fold_name("Pacôme Dadiet") == "Pacome Dadiet"
+    assert parse.fold_name("Nikola Jokic") == "Nikola Jokic"
+    # Not case, not punctuation, not whitespace.
+    assert parse.fold_name("nikola jokic") == "nikola jokic"
+    assert parse.fold_name("Shaquille O'Neal") == "Shaquille O'Neal"
+    assert parse.fold_name("Karl-Anthony Towns") == "Karl-Anthony Towns"
+    assert parse.fold_name("  Luka Doncic  ") == "  Luka Doncic  "
+
+
+def test_resolve_athlete_id_prefers_the_exact_spelling_over_a_folded_one() -> None:
+    """Two players whose names differ only by an accent are two people. The
+    exact key always wins, so a player actually named the un-accented form
+    keeps his own id rather than being shadowed by the fold."""
+    names = {"Nikola Jokic": "1", "Nikola Jokić": "2"}
+    assert parse.resolve_athlete_id(names, "Nikola Jokic") == "1"
+    assert parse.resolve_athlete_id(names, "Nikola Jokić") == "2"
+
+
+def test_resolve_athlete_id_falls_back_to_the_folded_spelling() -> None:
+    """The live case: ESPN holds `Nikola Jokic`, NetPoints' 2026 file says
+    `Nikola Jokić`, and matching exactly cost him all 71 of his 2026 rows."""
+    names = {"Nikola Jokic": "3112335"}
+    assert parse.resolve_athlete_id(names, "Nikola Jokić") == "3112335"
+    assert parse.resolve_athlete_id(names, "Nikola Jokic") == "3112335"
+
+
+def test_resolve_athlete_id_still_refuses_a_name_it_does_not_know() -> None:
+    """An unmatched name keeps a NULL id beside the source spelling it came
+    with, which is what makes the gap diagnosable (#22). Folding must not turn
+    "no match" into a guess: `Jimmy Butler` is a suffix mismatch against ESPN's
+    `Jimmy Butler III`, a different problem, and it stays unresolved here."""
+    names = {"Jimmy Butler III": "6430", "Nikola Jokic": "3112335"}
+    assert parse.resolve_athlete_id(names, "Jimmy Butler") is None
+    assert parse.resolve_athlete_id(names, "Cui Yongxi") is None
+    assert parse.resolve_athlete_id(names, None) is None
+    assert parse.resolve_athlete_id(names, "") is None
