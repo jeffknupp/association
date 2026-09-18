@@ -14,6 +14,14 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
+## Unreleased
+- **The web page's games count no longer counts rows that are not games.**
+  `games` carries 151 of its 43,504 rows that were never played - placeholders,
+  team-slots naming an id no franchise has, phantoms and a duplicate - so the
+  health line said 43,504 where 43,353 were played. It reads `real_games` now,
+  falling back to `games` for a warehouse loaded before that view existed,
+  which is the same check `conditions.box_source` makes for the filled box.
+
 ## 4.0.0 - 2026-09-17
 - The version directives on this release's new public symbols name 4.0.0, and
   the pinned install commands in `README.md`, `docs/installation.rst` and

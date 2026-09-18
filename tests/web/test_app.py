@@ -164,6 +164,9 @@ def test_health_reports_an_unreachable_model_backend(tmp_path: Path) -> None:
 
 
 def test_health_reports_the_seasons_a_real_warehouse_holds(tmp_path: Path) -> None:
+    """A warehouse loaded before `real_games` existed holds `games` alone, and
+    the health line falls back to it rather than reporting the warehouse
+    empty over one missing view."""
     import duckdb
 
     db_path = tmp_path / "nba.duckdb"
@@ -174,6 +177,25 @@ def test_health_reports_the_seasons_a_real_warehouse_holds(tmp_path: Path) -> No
 
     body = _client(StubAnswerer(), tmp_path).get("/api/health").json()
     assert body["warehouse_ready"] is True
+    assert body["seasons"] == {"first": 2024, "last": 2026, "games": 2}
+
+
+def test_health_counts_real_games_rather_than_every_row_in_games(tmp_path: Path) -> None:
+    """`games` carries rows that are not games - 151 of 43,504 in the real
+    warehouse - so counting it said 43,504 where 43,353 were played. Every
+    team template already reads `real_games`; this was the last reader that
+    did not."""
+    import duckdb
+
+    con = duckdb.connect(str(tmp_path / "nba.duckdb"))
+    con.execute("CREATE TABLE games (event_id VARCHAR, season INTEGER)")
+    # The third row is the shape real_games drops: a placeholder that is not a
+    # game. Counting it is the bug.
+    con.execute("INSERT INTO games VALUES ('1', 2024), ('2', 2026), ('3', 2026)")
+    con.execute("CREATE VIEW real_games AS SELECT * FROM games WHERE event_id <> '3'")
+    con.close()
+
+    body = _client(StubAnswerer(), tmp_path).get("/api/health").json()
     assert body["seasons"] == {"first": 2024, "last": 2026, "games": 2}
 
 

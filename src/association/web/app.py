@@ -175,6 +175,31 @@ def artifact_path(out_dir: Path, name: str) -> Path | None:
     return path
 
 
+def _game_span(con: duckdb.DuckDBPyConnection) -> tuple[Any, ...] | None:
+    """First season, last season and game count, counted from ``real_games``
+    where the warehouse has it and ``games`` otherwise.
+
+    ``games`` carries rows that are not games - 151 of its 43,504 today: 134
+    placeholders, 23 team-slots naming an id no franchise has, phantom rows and
+    a duplicate (``DATA.md``, "``games`` carries placeholder, duplicate and
+    phantom rows"). Counting them made the page say 43,504 where 43,353 were
+    played. Every team template already reads ``real_games``; this is the last
+    reader that did not.
+
+    The fallback is not defensive noise: ``real_games`` is built at load time,
+    so a warehouse loaded before it existed has ``games`` alone, and a health
+    check is exactly the wrong place to report a warehouse as empty because one
+    view is missing. Asked of the catalog rather than by catching an error per
+    table, which is the same question ``conditions.box_source`` asks about the
+    filled box - and it keeps a real failure (a corrupt file, a lock) raising
+    where the caller already handles it, instead of being swallowed as "that
+    table is absent".
+    """
+    present = {row[0] for row in con.execute("SELECT table_name FROM information_schema.tables").fetchall()}
+    table = "real_games" if "real_games" in present else "games"
+    return con.execute(f"SELECT min(season), max(season), count(*) FROM {table}").fetchone()
+
+
 def _warehouse_seasons(db_path: str) -> dict[str, int] | None:
     """First season, last season and game count, or None if the warehouse is
     not there or holds no games yet.
@@ -194,7 +219,7 @@ def _warehouse_seasons(db_path: str) -> dict[str, int] | None:
     except duckdb.Error:
         return None
     try:
-        row = con.execute("SELECT min(season), max(season), count(*) FROM games").fetchone()
+        row = _game_span(con)
     except duckdb.Error:
         return None  # no games table yet - a warehouse that exists but was never loaded
     finally:

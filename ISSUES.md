@@ -403,21 +403,26 @@ found.
     just fixed for, reached by the slower path. Adding a line to
     `TABLE_SUMMARY` is not free: `PREAMBLE_TOKEN_BUDGET` is 6,400 and
     AGENTS.md forbids buying room by trimming that text.
-  - **The web health line.** `_warehouse_seasons` (`web/app.py:196`) counts
-    `games`, so the page says 43,504 where 43,353 were played.
+  - **The web health line. Fixed 2026-09-18.** `_warehouse_seasons`
+    (`web/app.py`) counted `games`, so the page said 43,504 where 43,353 were
+    played. It reads `real_games` now, through `_game_span`, which asks the
+    catalog for the view and falls back to `games` for a warehouse loaded
+    before that view existed.
 - **User sees:** an agent-written answer that counts rows that are not games,
   with nothing to mark it as different from the template answer to the same
-  question; and a games count on the web page that is 151 too high.
+  question. The web page's count is fixed.
 - **Not affected, measured:** `player_box_stats`, `plays` and `shot_chart` hold
   0 rows against the 151 dropped events, so the player paths (`_PLAYER_GAMES`,
   `fingerprint.py`) never counted one. The 302 `team_box_stats` rows that do
   exist for them are entirely NULL, so no sum over that table was inflated
   either - they only ever mattered because a join could find them.
-- **Next step:** decide whether the agent should be pointed at `real_games` -
-  renaming the table it sees costs no tokens, but it changes what `describe_table`
-  and hand-written SQL mean, and `games` would then be reachable only by a name
-  the preamble does not mention. Fix the health line either way; it is one
-  identifier.
+- **Next step, and it needs a decision rather than a patch:** whether the
+  agent should be pointed at `real_games`. Renaming the table it sees costs no
+  tokens, but it changes what `describe_table` and hand-written SQL mean, and
+  `games` would then be reachable only by a name the preamble does not
+  mention - and `KNOWN_TABLES`/`TABLE_SUMMARY` are model-facing text, which is
+  not edited without measuring what it does to every other question. The
+  health line, which needed no such decision, is done.
 - **Source:** DATA.md, "`games` carries placeholder, duplicate and phantom rows"
 - **GitHub:** #73
 
