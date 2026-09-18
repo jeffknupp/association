@@ -71,27 +71,6 @@ found.
   30 teams"
 - **GitHub:** #89
 
-### Shooting leaderboards silently drop 2013-2018 qualifiers
-- **Found:** 2026-09-15, issues audit (P2 query auditor)
-- **Evidence:** `player_season_advanced_stats` is built from the raw
-  `player_box_stats`, so every Chicago and New Orleans player-season from
-  2013-2018 has 0 true-shooting attempts there (Anthony Davis 2015: TSA 0.0,
-  `ts_pct` NULL) even though `player_box_stats_filled` now rebuilds those
-  games. 21-33 player-seasons a season (0 in 2012 and 2019) clear 550 TSA in
-  `player_season_stats_deduped` but fall under it in the advanced table.
-  - The 2015 TS% board says "Kyle Korver led ... at 0.69". Tyson Chandler has
-    553.1 TSA and .697 by the season table against 521.6 in the advanced one,
-    so under our own rule he would lead it. Rudy Gobert 2018 (.657) is missing
-    the same way.
-  - `coverage_caveat` returns None for these seasons.
-- **User sees:** a shooting leaderboard that omits qualified players, with no
-  note - and the omissions are not random, they are two franchises.
-- **Next step:** build the advanced view from `player_box_stats_filled`, or
-  caveat 2013-2018 shooting boards. Note the rebuild does not recover minutes,
-  so any per-minute advanced figure stays out.
-- **Source:** DATA.md, "Every Chicago and New Orleans game from 2013 to 2018 has an empty box score"
-- **GitHub:** #85
-
 ### ESPN files one player under two athlete ids in the same box score
 - **Found:** 2026-09-15, issues audit - found independently by two auditors
 - **Evidence:** grouping `player_box_stats` by `(event_id, team_id,
@@ -256,7 +235,9 @@ found.
   `player_season_stats` (99%+ outside 2016, which the module's own docstring
   already flags as the weak season) - so "still about 87%" below is true only
   of a reader on the raw `player_box_stats` table, or on
-  `player_season_advanced_stats`, which is built from it (see #85), or of
+  `player_season_advanced_stats`, which is built from it (the board now says
+  so - DATA.md, "Every Chicago and New Orleans game from 2013 to 2018 has an
+  empty box score"), or of
   agent-written SQL that reads the raw table directly.
 - **Done 2026-09-14 - the per-game templates read it.** `player_game_log` is
   built from `player_box_stats_filled`, and `single_game_high` and `game_log`
@@ -495,7 +476,9 @@ found.
   the lowest of any season checked - consistent with a shortened schedule.
   **2013-2018 read 143-157 in `player_season_advanced_stats`, but that is not
   the schedule** - those six seasons are full 82-game ones, and the low count
-  is the empty-box-score fault (#85): `player_season_advanced_stats` is built
+  is the empty-box-score fault (#1, and those seasons are now declared
+  `partial` on that table so a board says who is missing from it):
+  `player_season_advanced_stats` is built
   from raw `player_box_stats`, whose Chicago and New Orleans rows are zeroed
   those years, so real qualifiers are undercounted there specifically, not
   flattened by a short season. Published rules scale per team game.

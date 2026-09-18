@@ -85,8 +85,13 @@ class Coverage:
       about ONE named player from 1977, because it is fetched per player over a
       whole career. It cannot answer a question about the LEAGUE until the pool
       is the league.
-    - ``partial`` and ``partial_note`` - a season that exists but covers part of
-      the year is answerable, and has to say so.
+    - ``partial`` and ``partial_note`` - a season that exists but holds only
+      part of what it should is answerable, and has to say so. Part of the
+      YEAR for most of them (2002's play-by-play is about half a season), and
+      part of the LEAGUE for ``player_season_advanced_stats``, whose 2013-2018
+      rates are summed from box scores ESPN serves zeroed for two franchises.
+      One field, because the answer needs the same thing in both cases: a
+      sentence naming what is not in it.
     - ``postseason_partial`` and ``postseason_partial_note`` - the same, for a
       postseason alone. Separate from ``partial`` because they are different
       claims about different halves of one year: ESPN's 2001 playoffs stop
@@ -239,6 +244,19 @@ COVERAGE: dict[str, Coverage] = {
         subject="Advanced season stats",
         first_season=1994,
         reason="they are derived from box scores, which ESPN does not have before 1993-94",
+        # Summed from the STORED box scores, never the rebuilt ones: a rebuilt
+        # season total is exact only about half the time and its error is
+        # biased low (fetch/repairs/reconstructed_box.py), and no attempt column
+        # was ever measured - the rebuild's figures are in UNGATED_ON_REBUILD
+        # for exactly that reason. So the empty 2013-2018 games cost this table
+        # the attempts they held, and the honest move is to say so rather than
+        # to rank players on a derived denominator.
+        partial=(2013, 2014, 2015, 2016, 2017, 2018),
+        partial_note=(
+            "ESPN serves every Chicago and New Orleans game from 2013 to 2018 with each player's line zeroed, and these rates are summed from those box scores, so the attempts "
+            "are short for anyone who played in one - not just those two rosters. 21 to 33 players a season clear the qualifying floor by ESPN's own season totals and fall "
+            "under it here, so they are missing from this ranking entirely"
+        ),
         # Summed out of the same short box scores, so a 2001 postseason rate is
         # computed over fewer games than the player played.
         postseason_partial=(2001,),

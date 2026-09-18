@@ -97,6 +97,21 @@ likewise.
   refuses to read these lines at all, because a stat column on them is `0`
   rather than NULL and the maximum over a wholly empty season was one of those
   zeros.
+- **It costs a league-wide shooting board its qualifiers, and not only the two
+  rosters'.** `player_season_advanced_stats` sums its attempts out of these box
+  scores, so a player is short every game he played against Chicago or New
+  Orleans as well as every game he played for them. Measured 2026-09-17 against
+  ESPN's own season totals at the 550-attempt qualifying floor: **21, 26, 33,
+  22, 27 and 24 players a season clear it there and fall under it in the
+  advanced table** (2013-2018), 153 player-seasons in all - of which 70 are
+  Bulls and Pelicans and **83 are on the other 28 teams**, each having lost the
+  4-7 games he played against them. The 2015 TS% board omits Tyson Chandler,
+  who is second by ESPN's own line (.6970 against Kyle Korver's .6987 - the
+  leader is right, the runner-up is absent). Those seasons are declared
+  `partial` on that table so the board says who is not in it. The rebuilt box
+  is deliberately NOT used to fill the gap: a rebuilt season total is exact
+  about half the time and biased low, and no attempt column was ever measured
+  against ESPN's.
 - **Tracked in:** ISSUES.md, "Nearly every Bulls and Pelicans box score from
   2013 to 2018 is zeros" (#1).
 

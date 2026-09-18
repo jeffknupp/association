@@ -209,6 +209,28 @@ def test_the_2001_player_caveat_says_what_a_player_is_missing() -> None:
         assert caveat((table,), 2001, REGULAR_SEASON) is None, table
 
 
+def test_a_2013_to_2018_shooting_board_says_who_is_missing_from_it() -> None:
+    """The advanced table is summed from the stored box scores, which ESPN
+    serves zeroed for every Chicago and New Orleans game in those seasons, so
+    21-33 players a season clear the qualifying floor by ESPN's own season
+    totals and fall under it here. The board dropped them silently."""
+    for season in (2013, 2015, 2018):
+        note = coverage_caveat("leaderboard", {"season": season, "stat": "ts_pct"})
+        assert note is not None and "missing from this ranking" in note, season
+    for season in (2012, 2019):
+        assert coverage_caveat("leaderboard", {"season": season, "stat": "ts_pct"}) is None, season
+
+
+def test_the_shooting_caveat_does_not_reach_a_board_ranked_from_espns_own_totals() -> None:
+    """`player_season_stats` is fetched per player and is complete for these
+    seasons - Anthony Davis has all 1,656 of his 2015 points there. A points
+    board reads it, so caveating one would apologize for data that is right,
+    and it is the table the shortfall is measured against."""
+    for season in (2013, 2015, 2018):
+        assert coverage_caveat("leaderboard", {"season": season, "stat": "points"}) is None, season
+    assert caveat(("player_season_stats",), 2015) is None
+
+
 def test_espns_own_2001_season_line_is_complete_and_uncaveated() -> None:
     """The missing games cost the BOX SCORES, not ESPN's per-player season
     totals - it gives Shaquille O'Neal all 16 playoff games. Caveating

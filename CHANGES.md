@@ -15,6 +15,15 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A 2013-2018 shooting leaderboard now says who is missing from it.** Those
+  rates are summed from the box scores ESPN serves zeroed for every Chicago and
+  New Orleans game, so 21 to 33 players a season clear the qualifying floor by
+  ESPN's own season totals and fall under it in the advanced table - 153
+  player-seasons, of which 83 are on the other 28 teams, short only the games
+  they played against those two. The 2015 true-shooting board omits Tyson
+  Chandler, its runner-up. The seasons are declared partial rather than filled
+  from the rebuilt box: a rebuilt season total is exact about half the time and
+  biased low, and no attempt column was ever measured.
 - **A 2001 playoff question answered from the player tables now says what is
   missing.** Ten games of that postseason are not in ESPN's archive anywhere,
   and the caveat saying so was declared only on `games` and `team_box_stats` -
