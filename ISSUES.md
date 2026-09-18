@@ -88,17 +88,28 @@ found.
     Phoenix 14, Philadelphia 7, Sacramento 1, Minnesota 1** (this read "almost
     all Phoenix (15) and Philadelphia (7)" until then, which is 22 of the 23
     and misses the two one-game teams).
-- **Fixed in code, not yet backfilled.**
+- **Fixed and backfilled 2026-09-17.**
   `association.fetch.repairs.duplicate_athletes` merges each pair at load
   time into `player_box_stats_deduped`: the id with more career games carrying
   real minutes wins, the other id's rows for that game are dropped, and
   `player_game_log` now reads the merged table. A pair is merged only where
   every shared game is safe (one side has no minutes, or both sides agree
   exactly) - measured true for all 69 - so a future pair that disagrees for
-  real is left unmerged rather than guessed at. Backfill:
-  `association data load` (a load-time repair, not a parser fix - no re-fetch
-  needed). Re-measure with the query at the top of this entry after the load;
-  it should return 0 rows.
+  real is left unmerged rather than guessed at.
+
+  Backfilled with `association data load --tables player_box_stats` and
+  re-measured against the rebuilt table: **0 remaining duplicates** (the
+  query at the top of this entry returns nothing), 69 rows merged away,
+  1,100,341 rows against the raw table's 1,100,410. No real line was lost -
+  the deduped table agrees with `player_box_stats_filled` on every shared key,
+  and 70 filled keys disappear against a net 69 because Ken Johnson's ghost id
+  `1008` holds one game (`221129001`) that his real id `1972` does not, so
+  that row is relabelled rather than dropped: he ends with 34 rows, 32 points
+  and 16 games carrying minutes, exactly what the real id already had plus
+  that one blank. Corey Brewer's points rise from 7,224 under his canonical id
+  to 7,479 for an unrelated reason worth knowing - the deduped table is built
+  on `player_box_stats_filled`, so it carries the rebuilt lines for his 30
+  games against Chicago and New Orleans in 2013-2018.
 - **What this does NOT fix, and remains open:**
   - **The team-total double-count** (#54's 23 team-games) is unresolved:
     `query/team_metrics.py` and `query/conditions.py` sum `player_box_stats`
