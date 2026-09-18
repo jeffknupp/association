@@ -1516,6 +1516,50 @@ found.
   correct one.
 - **GitHub:** #47
 
+### `_no_games` can still say "did not play" of a game with no box score
+- **Found:** 2026-09-17/18, fixing #72 (`_no_narrowed_games` naming the wrong
+  missing fact for `game_log`/`player_stat`)
+- **Evidence:** `_no_games` (`query/templates/common.py:1081`, used by
+  `player_splits`, `with_without`, `record_when`, `player_matchup` and
+  `streak` in `splits.py`/`games.py` when their `box_source()`-aware main
+  query finds zero played games) reads raw `player_box_stats` directly rather
+  than through `box_source()`. That is the right table for a game the player
+  genuinely has no row for, but wrong for the population #72 fixed elsewhere:
+  a row that exists, is not `did_not_play`, and has no minutes because ESPN
+  served the whole team's box score empty. `_no_games` would call that "was
+  listed in N box scores ... but did not play in any of them" - the same
+  wrong-cause shape #72 fixed, just via the "did not play" sentence instead of
+  "no games found".
+  - **Measured against `/home/jeff/code/association/nba.duckdb`:** restricted
+    to the real empty-TEAM-box population (every player's line NULL for that
+    event/season, matching `_empty_box_scores`'s own definition - 21,204
+    player rows), 38 of them have no `reconstructed` counterpart in
+    `player_box_stats_filled` either, so even the rebuild-aware main query
+    cannot find them as played. (An unrestricted count that also picks up the
+    ~10,000-a-season 2006-2012 "appearances nobody made" rows - which are
+    correctly "did not play", not an ESPN empty box score - is 62,058; that is
+    the wrong population and should not be repeated as this finding's size.)
+  - The 38 are one to two rows per affected player-season, scattered across
+    2013, 2015 and mostly 2016. Not checked: whether any of the five templates
+    above ever narrows a real question down to a span consisting ENTIRELY of
+    one of these 38 rows and nothing else - a player's season otherwise has
+    many real or rebuild-covered games, so `_no_games` firing at all over one
+    of these needs a further narrowing (a single game, a specific opponent, a
+    `with_without` split) that happens to land exactly there. No such question
+    was tried live.
+- **User sees:** a possible "X was listed in N box scores ... but did not play
+  in any of them", stated as fact, about a game where he may well have played
+  and ESPN simply never published his line. Not confirmed against a real
+  question - the population is real, whether it is ever reached is not.
+- **Next step:** thread `box_source(con)` through `_no_games` (it already
+  reaches every call site through `scope`/`con`) so its count reads the same
+  table the main query did, and give it `_no_narrowed_games`'s two-fact split
+  - genuinely no row, vs. a row with an empty box score - rather than
+  collapsing both into "did not play". Add a test with an orphaned row (no
+  `reconstructed` counterpart) as the fixture, the same shape `_all_box_scores_empty`
+  uses in `test_templates.py`.
+- **Source:** DATA.md, "Every Chicago and New Orleans game from 2013 to 2018 has an empty box score"
+
 ### Clarifications can name twenty players
 - **Found:** 2026-09-11, season-narrowing branch
 - **Evidence:** `Ambiguous.active` (`entities.py:935`) makes a clarification
