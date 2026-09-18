@@ -431,6 +431,47 @@ the parser throws the grouping away. The birth-date half stands.
   fetch, and the parser drops them" (#25) and "Shapes deferred for lack of data
   or logic" (#32).
 
+### ESPN publishes coaches, and the collection that looks league-wide is not historical
+
+**Probed live 2026-09-17**, to settle a question that had been asserted both
+ways without being checked: whether ESPN serves a coach anywhere. It does, and
+the useful half of this entry is what is wrong with it.
+
+- **What ESPN does:** serves two coach collections under the core API, and they
+  behave differently.
+  - `seasons/{year}/coaches` **ignores the season**. Its 21 items for 1977 and
+    27 for 1994 are every one a subset of its 2026 list: asked for 1977 it
+    answers with Doug Christie and JJ Redick. So the endpoint that looks like a
+    league-wide historical index is a list of today's staff wearing a season in
+    its path, which is the same shape as the phantom 1993 season - a
+    full-looking response that is not the season it names.
+  - `seasons/{year}/teams/{team}/coaches` **does** honor the season, and is the
+    only one worth reading. It returns at most one coach.
+- **Evidence, oracle-free:** all 30 teams probed for three seasons. A coach
+  comes back for **12 of 30 teams in 1996, 29 of 30 in 2010 and 30 of 30 in
+  2024**, and in **none of those 90 team-seasons are there two coaches** - so a
+  mid-season change is never represented. Sacramento 2021-22 (Luke Walton
+  fired in November, Alvin Gentry after him) returns exactly one name, and
+  Golden State 2015-16 gives Steve Kerr with no sign of Luke Walton's 39-game
+  interim spell.
+- **Evidence, spot-checked against known history** (a weak oracle, so read it
+  as a smell rather than a rate): the Lakers are right for all nine seasons
+  sampled 1994-2026 (Magic Johnson 1994, Del Harris 1998, Phil Jackson 2002-10,
+  D'Antoni 2014, Walton 2018, Vogel 2022, Redick 2026). Detroit is wrong or
+  empty in all nine - empty for 1994, 1998 and 2002, then Brendan Malone for
+  2006 and 2010, Mike Brown for 2014, Tyronn Lue for 2018 - none of whom
+  coached Detroit in those seasons. Chicago 2002 returns Bill Berry.
+- **Does a refetch fix it?** **No.** The sparseness and the wrong names are
+  what the endpoint serves; there is no second coach source here, and no
+  parameter that asks for the season's actual staff.
+- **How we handle it:** nothing is fetched today, so no table holds a coach and
+  a coach question falls through. Deciding whether to fetch a column this
+  unreliable is an open question, not an oversight - the cost of fetching it is
+  that "Nick Nurse's coaching record" would be answered from a source that is
+  wrong about Detroit for two decades and cannot see a mid-season change.
+- **Tracked in:** ISSUES.md, "Whether ESPN publishes coaches is unverified"
+  (#97).
+
 ### The athlete gamelog is a second source for per-game lines, and it counts All-Star games
 
 - **What ESPN does:** `WEB_V3/athletes/{id}/gamelog?season=` returns one row

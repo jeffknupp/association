@@ -756,19 +756,35 @@ found.
 - **GitHub:** #96
 
 
-### Whether ESPN publishes coaches is unverified
-- **Found:** 2026-09-16, query-set audit
+### A coach question has nothing to read, and ESPN's coaches are not worth reading
+- **Found:** 2026-09-16, query-set audit; **the source question settled by live
+  probing 2026-09-17**, which is what this entry asked for
 - **Evidence:** "nick nurse coaching record all-time nba in december on the
-  road" has nothing to read: none of the warehouse's tables holds a coach - **20
-  base tables plus 6 views, re-counted 2026-09-16 (this entry said "25 tables"),
-  and zero columns anywhere named `%coach%`.** Whether any endpoint the pull
-  already reaches serves them was **not checked**, and is deliberately not
-  asserted here either way.
-- **User sees:** a fall-through on any coach question.
-- **Next step:** probe the endpoints for a coach field before filing anything
-  further. If ESPN does serve them and the pull discards them, that half is a
-  `DATA.md` entry - the same shape as the conference-membership correction -
-  and this entry links to it.
+  road" has nothing to read: none of the warehouse's 20 base tables or 6 views
+  holds a coach, and there is no column anywhere named `%coach%`.
+  - **ESPN does serve coaches** - so this is not a gap in the source, which
+    the original entry deliberately did not assert either way. What it serves
+    is unreliable, and that is the finding. `seasons/{year}/coaches` ignores
+    the season entirely (asked for 1977 it answers with Doug Christie and JJ
+    Redick); the team-scoped `seasons/{year}/teams/{team}/coaches` honors it
+    but returns a coach for only **12 of 30 teams in 1996** (29 of 30 in 2010,
+    30 of 30 in 2024), never returns two for one team-season in the 90
+    sampled - so a mid-season change is invisible - and is wrong for whole
+    franchises: Detroit is empty or wrong in all nine seasons sampled from
+    1994 to 2026.
+- **User sees:** a fall-through on any coach question, which lands on the SQL
+  agent with no coach column to find - the case `check_coverage` exists for,
+  except that nothing declares it, so the agent is free to fill the silence
+  from its own weights.
+- **Next step:** a decision, not a fetch. Either (a) leave it unfetched and
+  refuse a coach question with a sentence naming the real cause, which needs a
+  router intent and so a `ROUTER_PROMPT` edit - and any such edit moves slots
+  on unrelated questions, so it needs `scripts/check_routing.py` run after it;
+  or (b) fetch the team-scoped endpoint and caveat it hard, which means
+  publishing a coaching record that is wrong about Detroit for two decades.
+  (a) is the cheaper and more honest of the two.
+- **Source:** DATA.md, "ESPN publishes coaches, and the collection that looks
+  league-wide is not historical"
 - **GitHub:** #97
 
 ### Each narrowing the router has no slot for needs its own regex
