@@ -1798,12 +1798,35 @@ those were found.
   of 60 questions, so its row is not comparable to the others.
 - **User sees:** nothing yet. `llama3.2:3b` is the same size class as the
   current default and is both faster and cleaner, so it is a candidate upgrade.
-- **Next step:** it is **not** adoptable on these numbers alone. It agrees with
-  the current router on only 67% of intents in this sample, and agreement is not
-  accuracy - nobody has established who is right on the disagreements.
-  `scripts/check_routing.py --model llama3.2:3b` over its 85 ground-truth cases
-  is the deciding test; the current default scores 85/85. A model that misroutes
-  a common shape is disqualified regardless of its name fidelity.
+- **Settled: it is not adoptable.** `scripts/check_routing.py --model
+  llama3.2:3b` scores **76/85** against the current default's **85/85**, and the
+  nine failures are ordinary shapes rather than edge cases - "which team scores
+  the most points per game" routed `team_stat` instead of `team_leaderboard`,
+  "how did curry do against the celtics this year" routed `head_to_head`
+  instead of `player_stat`, "Giannis stats by month" routed `player_stat`
+  instead of `player_splits`.
+
+  Hand-grading the 20 intent disagreements on the corpus sample independently
+  reached the same verdict: **qwen2.5:3b is better on 14, llama3.2:3b on 3, 3
+  are ties.** Its dominant failure is routing a player-vs-team question to
+  `head_to_head` with the *player* in the `teams` slot (`tim hardaway vs nyk`,
+  `keon ellis stats vs trailblazers`, `jokic vs cade since 2022`), and it puts
+  question text in the `stat` slot (`stat: "P.J. Washington vs gsw"`). It also
+  invented `Jalen Mathurin` (Bennedict) and `Thaddeus Portis` (Bobby), and
+  produced `team: "Vancouver Grizzlies"` - a franchise dissolved in 2001 - from
+  "vj edgecombe".
+
+  `qwen3:4b` is separately disqualified on latency: a single cold call took
+  **244.7s**, because it emits visible reasoning before the JSON.
+
+  **The metric that suggested otherwise was measuring the wrong thing.** "Clean
+  name rate" counts a correctly-spelled name as clean wherever it lands, so a
+  name in the wrong slot scores well and is useless. Do not rank routers on name
+  fidelity alone; pair it with `check_routing`'s ground truth.
+- **Next step:** stay on `qwen2.5:3b`. `ROUTER_PROMPT` and the intent taxonomy
+  are tuned around this model's failure modes, so a family swap trades one set
+  of failures for another rather than net-improving. Re-tuning the prompt for
+  another family is a real project, not a free win.
 - **Raw data:** `~/association-research/statmuse-2026-09/router_*_prodgraded.jsonl`,
   shared sample `router_bench_sample.json`, runner `router_bench.py`.
 - **GitHub:** #134
