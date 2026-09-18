@@ -182,8 +182,14 @@ gets turned off.
   which that is from `git tag` and what `## Unreleased` already holds, not from
   memory: 2.2.0 went out with directives naming 2.3.0 and 2.1.1, versions nobody
   released, which a pre-release audit had to correct. While `## Unreleased`
-  records a breaking change (the 3.0.0 reorganization), a new directive says
-  the next *major* version. Only the public
+  records a breaking change, a new directive says the next *major* version -
+  and note that the number can move under you, so **re-check every directive
+  added since the last tag as part of the pre-release audit**
+  (`git grep -n 'version\(added\|changed\):: '` over the diff). Three agents
+  working in parallel were told 3.1.0, correctly at the time; a breaking change
+  in a fourth branch made the release 4.0.0 and six directives had to be
+  rewritten before the bump. An agent cannot know a number that another
+  branch has not settled yet. Only the public
   surface is worth marking — internal helpers and the template/intent set are
   explicitly outside the compatibility promise (see the preamble in
   `CHANGES.md`). Module-level constants need an attribute docstring (a string
@@ -412,6 +418,26 @@ slower SQL-writing agent; that is by design, not a bug.
   assert in a case only what changes the *answer* (both those strings resolve
   to team_id 13 and produce an identical sentence), never the encoding the
   model happened to pick.
+- **A new intent does not need a prompt edit if the question's own words name
+  it.** `CODE_ASSIGNED_INTENTS` is the route for that: `route()` assigns
+  `period_split` and `coach` from the text, they are absent from
+  `ROUTER_SCHEMA`'s enum and `ROUTER_PROMPT`, and so adding them could not move
+  a slot on any other question - proved by hashing both constants before and
+  after and by `check_routing.py` coming back with the existing cases
+  unchanged. Reach for it before touching the prompt, especially for a
+  refusal: a question nothing can answer needs the model's help least. `coach`
+  is the worked example - the word is unmistakable, nothing else in the
+  warehouse is named it, and a bare surname is deliberately not matched
+  ("nurse" and "rivers" are ordinary words, the substring trap
+  `players_named_in` exists for). Such a template declares no tables, so it
+  goes in `TABLELESS_INTENTS` or the coverage gate fails.
+- **Refusing beats falling through wherever the agent has nothing to read.**
+  That is `check_coverage`'s reasoning, and it applies past the floors: a coach
+  question reached an agent that queried tables with no coach column and was
+  then free to fill the silence from its own weights. Before writing the
+  refusal, check what the source actually serves - "ESPN does not publish
+  coaches" was the obvious sentence and it is false, and a refusal naming the
+  wrong cause reads as honest while sending the reader somewhere useless.
 - **Add a case to `scripts/check_routing.py`** whenever you port a shape or
   find a mis-route in the wild. It is the only regression net for routing —
   pytest cannot catch a prompt change that starts routing questions to `other`.
@@ -965,6 +991,22 @@ and hooks in the foreground: an agent that backgrounds a run and waits for a
 notification stops instead, and has to be resumed by hand - two did in one
 session. Tell every one not to run ollama or `scripts/check_routing.py`
 unless it is the only one doing so, for the reason in that script's docstring.
+
+**Re-verify a merged agent's load-bearing measurement yourself, and re-read
+`ISSUES.md` for entries the pair invalidated.** Each branch is sound alone and
+the risk is in the combination. In one session an agent filed a P2 saying a
+caveat would go quiet on rebounds, true of the code it could see; a second
+agent had meanwhile changed that column's read, so measured on the merged tree
+the two counts agreed exactly and the P2 did not exist. The reverse also
+happens: a rebuild that fills a column only helps because another branch
+pointed the reader at it. So after merging, run the gates on the merged tree,
+re-measure whatever the reports claim, and re-rank the file - the entries an
+agent writes are about the tree it had.
+
+A load-time change is not finished when the branch merges. Have the dispatcher
+run `association data load --tables <names>` serially (never three agents
+against one warehouse), then re-measure and record the numbers in the entry
+before closing anything.
 
 ## Releasing
 
