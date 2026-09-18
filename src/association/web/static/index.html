@@ -174,6 +174,25 @@
   .spark path { fill: none; stroke: var(--accent); stroke-width: 1.6; }
   .spark circle { fill: var(--accent); }
   .spark text { font: 10px ui-monospace, Menlo, monospace; fill: var(--muted); }
+  /* A single record's numbers, side by side rather than in a one-row table -
+     team_outlook, player_stat, shot_distance and team_stat's per-metric ranks
+     all have this shape: a handful of named values with nothing to rank or
+     compare them against. */
+  .stats { display: flex; flex-wrap: wrap; gap: 16px 28px; }
+  .stats .stat { display: flex; flex-direction: column; gap: 2px; }
+  .stats .stat .v { font-size: 20px; font-weight: 600; letter-spacing: -.01em; }
+  .stats .stat .l { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  /* head_to_head's two-team score, the same idiom as .record but with a
+     second side across a "vs". */
+  .h2h { display: flex; align-items: center; gap: 18px; }
+  .h2h .side { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .h2h .side .wins { font-size: 24px; font-weight: 600; letter-spacing: -.01em; }
+  .h2h .side .team { font-size: 12px; color: var(--muted); }
+  .h2h .vs { font-size: 11px; color: var(--muted); }
+  /* A label between two stacked tables - player_splits' four kinds,
+     player_matchup's summary above its game log. */
+  .group-title { font-size: 12px; font-weight: 600; color: var(--muted); margin: 14px 0 4px; }
+  .group-title:first-child { margin-top: 0; }
   details.text summary, details summary { cursor: pointer; }
   details.text pre {
     margin: 8px 0 0;
@@ -378,6 +397,10 @@
     fieldGoalPct: "FG%", fieldGoalsMade: "FGM", fieldGoalsAttempted: "FGA",
     freeThrowPct: "FT%", freeThrowsMade: "FTM", freeThrowsAttempted: "FTA",
     team_score: "for", opponent_score: "against", home_away: "", won: "",
+    // conditions._PLAYER_LINE / _TEAM_LINE / _matchup_line's own keys, read by
+    // player_splits, with_without, record_when and player_matchup.
+    steals: "STL", blocks: "BLK", turnovers: "TOV", threes: "3PM", fg_pct: "FG%",
+    opponent_points: "OPP", avg_margin: "Margin",
   };
 
   function label(key) {
@@ -486,6 +509,39 @@
     return svg;
   }
 
+  // A handful of named values with nothing to rank or compare them against -
+  // team_outlook's BPI and chances, player_stat's and shot_distance's single
+  // line, team_stat's per-metric value and rank. `items` is
+  // [{value, label}, ...], already formatted - this only lays them out.
+  function statGrid(items) {
+    const grid = el("div", "stats");
+    for (const item of items) {
+      const tile = el("div", "stat");
+      tile.appendChild(el("span", "v", item.value));
+      tile.appendChild(el("span", "l", item.label));
+      grid.appendChild(tile);
+    }
+    return grid;
+  }
+
+  // record_when's stat name as a plural word ("points", "field goals made")
+  // for "32+ points" - conditions.THRESHOLD_STAT_COLUMNS' keys are already
+  // ordinary English but for the camelCase ones (fieldGoalsMade) label()'s
+  // spacing reads better than the raw column name.
+  function statUnit(stat) {
+    return /[A-Z]/.test(stat) ? label(stat) : stat;
+  }
+
+  // player_splits' own group keys ("home", "wins", a month number as a
+  // string) to the word a reader expects - conditions._GROUP_LABELS, kept in
+  // step here because the raw key is what the page reads off Answer.data.
+  const GROUP_LABELS = { home: "Home", away: "Away", starter: "Starter", bench: "Bench", wins: "Wins", losses: "Losses" };
+  const SPLIT_TITLES = { home_away: "Home / away", starter_bench: "Starter / bench", wins_losses: "Wins / losses", month: "By month" };
+
+  function groupLabel(kind, group) {
+    return kind === "month" ? group : GROUP_LABELS[group] || group;
+  }
+
   // intent -> {needs, render}. `needs` is the Answer.data keys the renderer
   // reads; a Python test checks each one against what the template actually
   // produces, because a renamed key would silently drop the table and fall
@@ -580,6 +636,205 @@
         // The sentence carries the seed and the streak, which are NOT in data.
         // Dropping it for the card alone would lose them, so it stays whole.
         return { caption: text, body: card };
+      },
+    },
+    player_stat: {
+      needs: ["player", "stats"],
+      render: (d, text) => {
+        const entries = Object.entries(d.stats);
+        // {} on the refusal path ("no numbers in the warehouse") - a stat
+        // grid with nothing on it would be a worse rendering of the same
+        // refusal the sentence already states.
+        if (!entries.length) return null;
+        return { caption: firstLine(text), body: statGrid(entries.map(([k, v]) => ({ value: num(v), label: label(k) }))) };
+      },
+    },
+    shot_distance: {
+      needs: ["avg_feet", "attempts"],
+      render: (d, text) => ({
+        caption: firstLine(text),
+        body: statGrid([
+          { value: d.avg_feet.toFixed(1) + " ft", label: "avg distance" },
+          { value: num(d.attempts), label: "attempts" },
+        ]),
+      }),
+    },
+    head_to_head: {
+      needs: ["teams", "games", "wins"],
+      render: (d, text) => {
+        // Zero meetings is a real answer, but a 0-0 card says nothing the
+        // sentence does not say better.
+        if (!d.games) return null;
+        const [a, b] = d.teams;
+        const side = name => {
+          const s = el("div", "side");
+          s.appendChild(el("span", "wins", num(d.wins[name] || 0)));
+          s.appendChild(el("span", "team", name));
+          return s;
+        };
+        const card = el("div", "h2h");
+        card.appendChild(side(a));
+        card.appendChild(el("span", "vs", `${d.games} game${d.games === 1 ? "" : "s"}`));
+        card.appendChild(side(b));
+        return { caption: firstLine(text), body: card };
+      },
+    },
+    team_quarter_points: {
+      needs: ["games", "total"],
+      render: (d, text) => {
+        if (!d.games.length) return null;
+        return {
+          caption: firstLine(text),
+          spark: d.games.length > 1 ? d.games.map(g => ({ label: g.date, value: g.points })) : null,
+          body: table(["date", "opponent", "PTS"], d.games.map(g => [g.date, g.opponent, num(g.points)])),
+        };
+      },
+    },
+    period_split: {
+      needs: ["games", "total", "average"],
+      render: (d, text) => {
+        if (!d.games.length) return null;
+        return {
+          caption: firstLine(text),
+          spark: d.games.length > 1 ? d.games.map(g => ({ label: g.date, value: g.points })) : null,
+          body: table(["date", "opponent", "PTS"], d.games.map(g => [g.date, (g.home_away === "home" ? "vs " : "at ") + g.opponent, num(g.points)])),
+        };
+      },
+    },
+    player_splits: {
+      needs: ["splits"],
+      render: (d, text) => {
+        const kinds = Object.keys(d.splits);
+        if (!kinds.length) return null;
+        // Every kind's rows carry the same stat keys (conditions._PLAYER_LINE
+        // or _TEAM_LINE) - read off the first kind's first row rather than
+        // hard-coding either line here.
+        const statKeys = Object.keys(d.splits[kinds[0]][0] || {}).filter(k => !["group", "games", "wins", "losses"].includes(k));
+        const box = el("div");
+        for (const kind of kinds) {
+          if (kinds.length > 1) box.appendChild(el("div", "group-title", SPLIT_TITLES[kind] || kind));
+          box.appendChild(
+            table(
+              ["", "G", "W-L", ...statKeys.map(label)],
+              d.splits[kind].map(g => [groupLabel(kind, g.group), num(g.games), `${g.wins}-${g.losses}`, ...statKeys.map(k => num(g[k]))]),
+            ),
+          );
+        }
+        return { caption: firstLine(text), body: box };
+      },
+    },
+    with_without: {
+      needs: ["groups"],
+      render: (d, text) => {
+        // Every refusal path (never on the same roster, time outside scope,
+        // ...) still carries "groups": [] - an empty table would repeat that
+        // refusal with nothing in it.
+        if (!d.groups.length) return null;
+        // The player columns are always in `groups` (conditions._with_without_group
+        // computes them whether or not a subject was named), but they read as
+        // zeroed noise when nobody was: gate on the same key the answer does.
+        const showPlayer = !!d.player;
+        const headers = ["", "G", "W-L", "Win%", "Margin"].concat(showPlayer ? ["MIN", "PTS", "REB", "AST", "FG%"] : []);
+        const rows = d.groups.map(g => {
+          const winPct = g.games ? g.wins / g.games : null;
+          const row = [`${g.team} – ${g.teammate_played ? "with" : "without"} ${d.teammate}`, num(g.games), `${g.wins}-${g.losses}`, winPct == null ? "-" : winPct.toFixed(3).replace(/^0/, ""), num(g.avg_margin)];
+          return showPlayer ? row.concat([num(g.minutes), num(g.points), num(g.rebounds), num(g.assists), num(g.fg_pct)]) : row;
+        });
+        return { caption: firstLine(text), body: table(headers, rows) };
+      },
+    },
+    record_when: {
+      needs: ["reached", "fell_short"],
+      render: (d, text) => {
+        const unit = statUnit(d.stat || "");
+        const row = (name, g) => {
+          const winPct = g.games ? g.wins / g.games : null;
+          return [name, num(g.games), `${g.wins}-${g.losses}`, winPct == null ? "-" : winPct.toFixed(3).replace(/^0/, ""), num(g.avg_margin)];
+        };
+        return {
+          caption: firstLine(text),
+          body: table(["", "G", "W-L", "Win%", "Margin"], [row(`${d.threshold}+ ${unit}`, d.reached), row(`under ${d.threshold} ${unit}`, d.fell_short)]),
+        };
+      },
+    },
+    player_matchup: {
+      needs: ["averages", "games"],
+      render: (d, text) => {
+        // No meetings carries no "averages" key at all (see _player_matchup_no_meetings),
+        // so `needs` already falls back to text for that case; this guards
+        // only the shape, not a refusal.
+        if (!d.games.length) return null;
+        const [a, b] = Object.keys(d.averages);
+        const summary = table(
+          ["", a, b],
+          ["games", "minutes", "points", "rebounds", "assists", "fg_pct"].map(k => [label(k), num(d.averages[a][k]), num(d.averages[b][k])]),
+        );
+        const line = s => `${num(s.points)}/${num(s.rebounds)}/${num(s.assists)}`;
+        const log = table(
+          ["date", "result", a, b],
+          d.games.map(g => [g.date, g.won === true ? "W" : g.won === false ? "L" : "–", line(g[a]), line(g[b])]),
+        );
+        const box = el("div");
+        box.appendChild(summary);
+        box.appendChild(el("div", "group-title", "Most recent meetings (points/rebounds/assists)"));
+        box.appendChild(log);
+        return { caption: firstLine(text), body: box };
+      },
+    },
+    streak: {
+      needs: ["streaks"],
+      render: (d, text) => {
+        // "Never had one" is a real answer that carries "streaks": [].
+        if (!d.streaks.length) return null;
+        // The league-wide shape (one row per player or team-season) carries a
+        // "name" the single-subject shape does not - templates.splits._streak_league
+        // vs _single_streak.
+        const league = "name" in d.streaks[0];
+        const row = (s, i) => {
+          const length = num(s.length) + (s.open ? " *" : "");
+          return league ? [i + 1, s.name, length, s.from, s.to] : [length, s.from, s.to];
+        };
+        const headers = league ? ["#", "name", "games", "from", "to"] : ["games", "from", "to"];
+        return { caption: firstLine(text), body: table(headers, d.streaks.map(row)) };
+      },
+    },
+    team_stat: {
+      needs: ["stats"],
+      render: (d, text) => {
+        const entries = Object.entries(d.stats);
+        // {} on the "no stats for this team" refusal.
+        if (!entries.length) return null;
+        // Whether a metric is a percentage is not itself on the data - team_metrics.TEAM_METRICS
+        // marks it with `percent=True`, and every one of those labels
+        // happens to say "percentage" (field goal percentage, 3-point
+        // percentage, ...), which is a fact about that table, not a
+        // guess: no non-percent label contains the word.
+        const rows = entries.map(([lbl, e]) => {
+          const percent = /percentage/i.test(lbl);
+          const value = e.value == null ? "-" : percent ? e.value.toFixed(1) + "%" : num(e.value);
+          return [lbl, value, e.rank == null ? "-" : `${e.rank} of ${e.of}`];
+        });
+        return { caption: firstLine(text), body: table(["stat", "value", "rank"], rows) };
+      },
+    },
+    team_leaderboard: {
+      needs: ["teams"],
+      render: d => {
+        if (d.teams.length < 2) return null;
+        return { caption: d.question_shape, body: table(["#", "team", "value"], d.teams.map(t => [t.rank, t.team, t.display])) };
+      },
+    },
+    team_outlook: {
+      needs: ["team", "season", "snapshot", "position", "chances"],
+      render: d => {
+        const items = [{ value: d.bpi == null ? "–" : (d.bpi >= 0 ? "+" : "") + d.bpi.toFixed(1), label: `BPI (${d.position} of ${d.teams_in_snapshot})` }];
+        if (d.wins != null && d.losses != null) items.push({ value: `${num(d.wins)}–${num(d.losses)}`, label: "record" });
+        if (d.projected_wins != null && d.projected_losses != null) items.push({ value: `${num(d.projected_wins)}–${num(d.projected_losses)}`, label: "projected" });
+        for (const [chanceLabel, value] of Object.entries(d.chances)) {
+          if (value != null) items.push({ value: value.toFixed(1) + "%", label: chanceLabel });
+        }
+        if (d.strength_of_schedule != null) items.push({ value: (d.strength_of_schedule * 100).toFixed(1) + "%", label: "strength of schedule" });
+        return { caption: `${d.snapshot} snapshot, updated ${d.updated}`, body: statGrid(items) };
       },
     },
   };

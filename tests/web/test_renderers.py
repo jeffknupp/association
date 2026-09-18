@@ -36,6 +36,19 @@ CASES: dict[str, dict[str, Any]] = {
     "player_compare": {"players": ["Ada Star", "Bo Wall"]},
     "game_log": {"player": "Ada Star", "limit": 3},
     "team_record": {"team": "Rockets", "season": 2026},
+    "player_stat": {"player": "Ada Star", "stat": "points", "season": 2026},
+    "shot_distance": {"player": "Ada Star", "season": 2026},
+    "head_to_head": {"teams": ["Rockets", "Mavericks"], "season": 2026},
+    "team_quarter_points": {"team": "Rockets", "period": 1, "season": 2026},
+    "period_split": {"player": "Ada Star", "period": 1, "season": 2026},
+    "player_splits": {"player": "Ada Star", "split": "wins_losses", "season": 2026},
+    "with_without": {"team": "Rockets", "with_player": "Ada Star", "season": 2026},
+    "record_when": {"player": "Ada Star", "stat": "points", "threshold": 32, "season": 2026},
+    "player_matchup": {"players": ["Ada Star", "Bo Wall"], "season": 2026},
+    "streak": {"team": "Rockets", "kind": "win", "season": 2026},
+    "team_stat": {"team": "Rockets", "stat": "points", "season": 2026},
+    "team_leaderboard": {"stat": "record", "season": 2026},
+    "team_outlook": {"team": "Rockets", "season": 2026},
 }
 
 
@@ -93,24 +106,73 @@ def ctx(tmp_path: Path) -> TemplateContext:
     con.execute("INSERT INTO players VALUES ('1', 'Ada Star'), ('2', 'Bo Wall')")
     con.execute("CREATE TABLE teams (team_id VARCHAR, display_name VARCHAR, abbreviation VARCHAR, location VARCHAR, name VARCHAR)")
     con.execute("INSERT INTO teams VALUES ('10', 'Houston Rockets', 'HOU', 'Houston', 'Rockets'), ('11', 'Dallas Mavericks', 'DAL', 'Dallas', 'Mavericks')")
+    # home_linescores/away_linescores are team_quarter_points' source, comma-joined
+    # per-period points summing to home_score/away_score. neutral_site/venue_city
+    # back team_metrics.TEAM_GAMES_SQL's NBA Cup final detection - neither game
+    # here is one.
     con.execute(
         "CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR, home_team_id VARCHAR, "
-        "away_team_id VARCHAR, winner_team_id VARCHAR, home_score INTEGER, away_score INTEGER)"
+        "away_team_id VARCHAR, winner_team_id VARCHAR, home_score INTEGER, away_score INTEGER, home_linescores VARCHAR, away_linescores VARCHAR, "
+        "neutral_site BOOLEAN, venue_city VARCHAR)"
     )
-    con.execute("INSERT INTO games VALUES ('e1', 2026, 2, '2026-01-01', '10', '11', '10', 110, 100), ('e2', 2026, 2, '2026-01-03', '11', '10', '10', 99, 120)")
+    con.execute(
+        "INSERT INTO games VALUES "
+        "('e1', 2026, 2, '2026-01-01', '10', '11', '10', 110, 100, '28,27,30,25', '24,26,25,25', FALSE, 'Houston'),"
+        "('e2', 2026, 2, '2026-01-03', '11', '10', '10', 99, 120, '24,25,25,25', '30,32,28,30', FALSE, 'Dallas')"
+    )
+    # real_games is the one filtered view of `games` every template reads
+    # instead (see conditions.py's module docstring) - a plain copy here, since
+    # this fixture holds no placeholder, phantom or duplicate rows to filter.
+    con.execute("CREATE VIEW real_games AS SELECT * FROM games")
     # did_not_play is on every real row, and a player's game log reads it: a
-    # DNP is not a game he played.
+    # DNP is not a game he played. fieldGoalsAttempted is read alongside
+    # fieldGoalsMade wherever FG% is computed (conditions._PLAYER_LINE,
+    # _matchup_line) - not only where a renderer displays it.
     con.execute(
         "CREATE TABLE player_box_stats (event_id VARCHAR, athlete_id VARCHAR, team_id VARCHAR, opponent_team_id VARCHAR, season INTEGER, season_type INTEGER, "
         "did_not_play BOOLEAN, minutes INTEGER, points INTEGER, rebounds INTEGER, assists INTEGER, steals INTEGER, blocks INTEGER, turnovers INTEGER, fouls INTEGER, "
-        "threePointFieldGoalsMade INTEGER, fieldGoalsMade INTEGER, freeThrowsMade INTEGER)"
+        "threePointFieldGoalsMade INTEGER, fieldGoalsMade INTEGER, fieldGoalsAttempted INTEGER, freeThrowsMade INTEGER)"
     )
     con.execute(
         "INSERT INTO player_box_stats VALUES "
-        "('e1','1','10','11',2026,2,FALSE,36,34,10,5,1,1,2,2,4,12,6),"
-        "('e2','1','10','11',2026,2,FALSE,35,31,9,6,2,0,3,1,3,11,6),"
-        "('e1','2','11','10',2026,2,FALSE,30,18,4,9,1,0,2,3,2,7,2)"
+        "('e1','1','10','11',2026,2,FALSE,36,34,10,5,1,1,2,2,4,12,22,6),"
+        "('e2','1','10','11',2026,2,FALSE,35,31,9,6,2,0,3,1,3,11,21,6),"
+        "('e1','2','11','10',2026,2,FALSE,30,18,4,9,1,0,2,3,2,7,16,2)"
     )
+    # team_box_stats carries the team-perspective row of each game - the home
+    # side of it (games is home/away-oriented) - and is what conditions._team_games
+    # and _player_games both join through for a team's or a player's result.
+    con.execute(
+        "CREATE TABLE team_box_stats (event_id VARCHAR, team_id VARCHAR, opponent_team_id VARCHAR, season INTEGER, season_type INTEGER, home_away VARCHAR, "
+        "offensiveRebounds INTEGER, defensiveRebounds INTEGER, assists INTEGER, threePointFieldGoalsMade INTEGER, fieldGoalsMade INTEGER, fieldGoalsAttempted INTEGER)"
+    )
+    con.execute(
+        "INSERT INTO team_box_stats VALUES "
+        "('e1','10','11',2026,2,'home',10,30,25,12,40,85),"
+        "('e1','11','10',2026,2,'away',8,28,20,10,36,80),"
+        "('e2','11','10',2026,2,'home',9,27,22,11,35,78),"
+        "('e2','10','11',2026,2,'away',11,31,28,14,44,88)"
+    )
+    # shot_chart backs period_split and shot_distance. Coordinates are feet
+    # from the rim (25, 0) - see court.HOOP_Y - not the baseline.
+    con.execute(
+        "CREATE TABLE shot_chart (event_id VARCHAR, athlete_id VARCHAR, season INTEGER, season_type INTEGER, period INTEGER, made BOOLEAN, "
+        "shot_type VARCHAR, points_attempted INTEGER, description VARCHAR, coordinate_x DOUBLE, coordinate_y DOUBLE)"
+    )
+    con.execute(
+        "INSERT INTO shot_chart VALUES "
+        "('e1','1',2026,2,1,TRUE,'Jump Shot',2,'Ada Star makes 10-foot jumper',25,10),"
+        "('e1','1',2026,2,1,FALSE,'Jump Shot',0,'Ada Star misses 24-foot three point jumper',25,26),"
+        "('e1','1',2026,2,2,TRUE,'Jump Shot',3,'Ada Star makes 25-foot three point jumper',25,27),"
+        "('e2','1',2026,2,1,TRUE,'Jump Shot',2,'Ada Star makes 8-foot jumper',25,8)"
+    )
+    # team_power_index backs team_outlook - one regular-season BPI snapshot.
+    con.execute(
+        "CREATE TABLE team_power_index (season INTEGER, season_type INTEGER, team_id VARCHAR, last_updated VARCHAR, bpi DOUBLE, bpioffense DOUBLE, bpidefense DOUBLE, "
+        "numwins DOUBLE, numlosses DOUBLE, projectedw DOUBLE, projectedl DOUBLE, probmakeplayoffs DOUBLE, probmakeconfchamp DOUBLE, probmaketitlegame DOUBLE, "
+        "probwintitle DOUBLE, sosoverall DOUBLE, sosoverallrank DOUBLE)"
+    )
+    con.execute("INSERT INTO team_power_index VALUES (2026, 2, '10', '2026-04-10', 5.2, 3.1, -2.1, 50, 32, 52, 30, 95.0, 20.0, 10.0, 5.0, 0.51, 15)")
     con.execute(
         "CREATE TABLE player_season_stats (athlete_id VARCHAR, team_id VARCHAR, season INTEGER, season_type INTEGER, gamesPlayed INTEGER, "
         "avgPoints DOUBLE, avgRebounds DOUBLE, avgAssists DOUBLE, avgSteals DOUBLE, avgBlocks DOUBLE, avgTurnovers DOUBLE, avgFouls DOUBLE, avgMinutes DOUBLE, "
@@ -137,10 +199,65 @@ def ctx(tmp_path: Path) -> TemplateContext:
         "CREATE TABLE standings (team_id VARCHAR, season INTEGER, season_type INTEGER, wins DOUBLE, losses DOUBLE, winPercent DOUBLE, playoffSeed DOUBLE, streak DOUBLE, "
         'gamesBehind DOUBLE, "Home" VARCHAR, "Road" VARCHAR, "Last Ten Games" VARCHAR, avgPointsFor DOUBLE, avgPointsAgainst DOUBLE, differential DOUBLE)'
     )
-    con.execute("INSERT INTO standings VALUES ('10', 2026, 2, 50, 32, 0.6098, 3, 1, 4, '28-13', '22-19', '6-4', 115.2, 111.0, 4.2)")
-    # team_record checks a season's standings against the team's own game count.
-    con.execute("CREATE TABLE team_season_stats (season INTEGER, season_type INTEGER, team_id VARCHAR, gamesPlayed DOUBLE)")
-    con.execute("INSERT INTO team_season_stats VALUES (2026, 2, '10', 82)")
+    con.execute(
+        "INSERT INTO standings VALUES "
+        "('10', 2026, 2, 50, 32, 0.6098, 3, 1, 4, '28-13', '22-19', '6-4', 115.2, 111.0, 4.2),"
+        "('11', 2026, 2, 40, 42, 0.4878, 8, -1, 12, '20-21', '20-21', '5-5', 108.0, 110.0, -2.0)"
+    )
+    # team_record checks a season's standings against the team's own game
+    # count; team_stat's non-record metrics (team_metrics.season_table) read
+    # the rest of this table's columns for every team in the season, whether
+    # or not the question asked about them - `wanted` narrows which ones
+    # `team_stat` reports, not which ones the SQL computes.
+    con.execute(
+        "CREATE TABLE team_season_stats (season INTEGER, season_type INTEGER, team_id VARCHAR, gamesPlayed DOUBLE, points DOUBLE, avgPoints DOUBLE, "
+        "fieldGoalsMade DOUBLE, fieldGoalsAttempted DOUBLE, fieldGoalPct DOUBLE, threePointFieldGoalsMade DOUBLE, threePointFieldGoalsAttempted DOUBLE, threePointFieldGoalPct DOUBLE, "
+        "freeThrowsMade DOUBLE, freeThrowsAttempted DOUBLE, freeThrowPct DOUBLE, trueShootingPct DOUBLE, effectiveFGPct DOUBLE, "
+        "avgRebounds DOUBLE, offensiveRebounds DOUBLE, avgOffensiveRebounds DOUBLE, avgDefensiveRebounds DOUBLE, avgAssists DOUBLE, avgSteals DOUBLE, avgBlocks DOUBLE, avgFouls DOUBLE, "
+        "avgThreePointFieldGoalsMade DOUBLE, avgThreePointFieldGoalsAttempted DOUBLE, avgFieldGoalsMade DOUBLE, avgFreeThrowsMade DOUBLE, avgFreeThrowsAttempted DOUBLE, "
+        "totalTurnovers DOUBLE, turnovers DOUBLE, pointsInPaint DOUBLE, fastBreakPoints DOUBLE)"
+    )
+    # Built from a {column: value} dict rather than a positional VALUES tuple:
+    # the table has 34 columns, and a miscounted tuple binds a real column to
+    # the wrong figure with no error - exactly the silent-mismatch shape this
+    # file exists to catch elsewhere. Two rows, close but not equal, so
+    # team_stat's rank is a real comparison rather than a tie.
+    _team_season_row = {
+        "gamesPlayed": 82.0,
+        "points": 9430.0,
+        "avgPoints": 115.0,
+        "fieldGoalsMade": 40.5,
+        "fieldGoalsAttempted": 85.0,
+        "fieldGoalPct": 47.6,
+        "threePointFieldGoalsMade": 13.0,
+        "threePointFieldGoalsAttempted": 35.0,
+        "threePointFieldGoalPct": 37.1,
+        "freeThrowsMade": 19.0,
+        "freeThrowsAttempted": 23.0,
+        "freeThrowPct": 82.6,
+        "trueShootingPct": 58.5,
+        "effectiveFGPct": 53.0,
+        "avgRebounds": 44.0,
+        "offensiveRebounds": 9.0,
+        "avgOffensiveRebounds": 35.0,
+        "avgDefensiveRebounds": 26.0,
+        "avgAssists": 7.5,
+        "avgSteals": 5.0,
+        "avgBlocks": 18.0,
+        "avgFouls": 13.0,
+        "avgThreePointFieldGoalsMade": 35.0,
+        "avgThreePointFieldGoalsAttempted": 40.5,
+        "avgFieldGoalsMade": 19.0,
+        "avgFreeThrowsMade": 23.0,
+        "avgFreeThrowsAttempted": 12.5,
+        "totalTurnovers": 12.5,
+        "turnovers": 12.5,
+        "pointsInPaint": 45.0,
+        "fastBreakPoints": 15.0,
+    }
+    for _team_id, _factor in (("10", 1.0), ("11", 0.94)):
+        _row = {"season": 2026, "season_type": 2, "team_id": _team_id, **{k: v * _factor if isinstance(v, float) else v for k, v in _team_season_row.items()}}
+        con.execute(f"INSERT INTO team_season_stats ({', '.join(_row)}) VALUES ({', '.join('?' for _ in _row)})", list(_row.values()))
     con.execute(
         "CREATE OR REPLACE VIEW player_game_log AS SELECT pbs.*, p.display_name AS player_name, g.date AS game_date, t.abbreviation AS team_abbr, o.abbreviation AS opponent_abbr "
         "FROM player_box_stats pbs LEFT JOIN players p ON p.athlete_id = pbs.athlete_id LEFT JOIN games g ON g.event_id = pbs.event_id "
