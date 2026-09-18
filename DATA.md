@@ -118,29 +118,53 @@ likewise.
 ### ESPN files one player under two athlete ids in the same box score
 
 - **What ESPN does:** lists the same person twice in one team's box score,
-  under two different `athlete_id`s, sometimes with identical stat lines.
-- **Evidence (2026-09-15):** grouping `player_box_stats` by `(event_id,
-  team_id, display_name)` and counting distinct `athlete_id`:
+  under two different `athlete_id`s, sometimes with identical stat lines,
+  sometimes with one side a fabricated all-zero blank.
+- **Evidence (2026-09-15, re-measured and extended 2026-09-17):** grouping
+  `player_box_stats` by `(event_id, team_id, display_name)` and counting
+  distinct `athlete_id` finds **8 players, 69 team-games** - four more players
+  than first recorded, each a single 2019 game:
   - **Isaiah Canaan** (`2490589`, `4412182`) in 20 Phoenix and Minnesota
     team-games in 2019, with identical lines in 18 of them.
   - **Corey Brewer** (`3191`, `4415554`) in 8 of 8 in 2019.
   - **Daryl Macon** (`4066243`, `4610145`) in 3 of 4 in 2020.
-  - **Ken Johnson** 2003 (`1008`, `1972`, 33 games), with lines that differ.
+  - **Ken Johnson** 2003 (`1008`, `1972`, 33 games).
+  - **Tahjere McCall**, **John Jenkins**, **Mitchell Creek** and **Henry
+    Ellenson**, one 2019 game each.
+  - Classifying what each side of the pair holds (real minutes and stats, an
+    explicit `did_not_play` blank with every stat NULL, or an all-zero row with
+    no minutes and `did_not_play = false` - a shape ESPN never uses for a
+    player who was actually benched) accounts for all 69 with nothing left
+    over: **29 are both sides real and IDENTICAL** (18 of Canaan's 20, all 8 of
+    Brewer's, 3 of Macon's 4), **21 are one real side beside the fabricated
+    zero** (the four single-game players among them), and **17 are both sides
+    blank** (all Ken Johnson - one flagged `did_not_play`, the other the same
+    fabricated zero). The losing id never once carries a real appearance
+    anywhere in its own history, shared game or not - Ken Johnson's `1008` has
+    34 total rows and zero with minutes.
   - The team box is not affected: its derived points (2·FGM + 3PM + FTM) equal
     the final score in every row of 2019, 2021 and 2026. The player sums
     overshoot in 23 team-games in 2019 — 15 Phoenix, 7 Philadelphia — which is
     most of the disagreement recorded under "Team box scores disagree slightly
     with player-box sums".
+  - `player_season_stats` (ESPN's separate career endpoint) is NOT split the
+    same way - checked for all 8 players, it uses only the established id,
+    never the fabricated one. The splitting is confined to the box scores and
+    anything built from them.
   - It crosses tables: `net_points_player` keys off ESPN's `dot_com_id`
     (`3059316` for Wayne Selden 2022) while the box scores and the name-matched
     fingerprint use the other id, so 8 `net_points_player_fingerprint` rows have
     no `net_points_player` row of the same id and season, and a join drops them.
+    Wayne Selden himself is a DIFFERENT shape from the 8 above: his two ids
+    (`3059316` 2017-2019, `4895499` 2022) never share a game, so this entry's
+    detection rule does not - and should not - touch him; see ISSUES.md #21.
 - **Does a refetch fix it?** Not tested. The ids come back the way ESPN serves
   them, and both are real athlete records on its side.
-- **How we handle it:** nothing yet. Anything summing player rows to a team
-  total double-counts these games.
+- **How we handle it:** merged at load time into `player_box_stats_deduped`,
+  wired into `player_game_log` - see ISSUES.md for what still reads the raw,
+  unmerged table.
 - **Tracked in:** ISSUES.md, "ESPN files one player under two athlete ids in the
-  same box score".
+  same box score" (#87).
 
 ### Vancouver 1996 is an empty TEAM box, not an empty player box
 

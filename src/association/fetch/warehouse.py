@@ -15,7 +15,7 @@ import duckdb
 from association.nba.franchises import season_name_sql
 
 from . import advanced_stats
-from .repairs import game_repair, real_games, reconstructed_box, season_totals_repair, team_box_repair
+from .repairs import duplicate_athletes, game_repair, real_games, reconstructed_box, season_totals_repair, team_box_repair
 
 log: logging.Logger = logging.getLogger("association.fetch.warehouse")
 
@@ -171,6 +171,13 @@ def _repair_and_build_views(con: duckdb.DuckDBPyConnection) -> None:
     # tables already loaded, so it sits beside the advanced-stat views
     # rather than in _build_views, which only knows about box scores.
     reconstructed_box.build_views(con, existing)
+    existing = _existing_tables(con)  # refresh so the merge can read player_box_stats_filled when it exists
+    # Merges a person ESPN lists twice in one team's box score, under two
+    # athlete_ids, into one row (see fetch/repairs/duplicate_athletes.py).
+    # Reads player_box_stats_filled when reconstructed_box just built it, so
+    # it must run after that and before anything that reads either box table
+    # for identity - player_game_log below, in particular.
+    duplicate_athletes.build_table(con, existing)
     # Rebuilt on every call, including a partial `data load --tables games`,
     # so the filtered list can never be a pull behind the table it filters.
     real_games.build_table(con, existing)
@@ -281,14 +288,24 @@ def _build_views(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
     # list. games.season always equals player_box_stats.season (checked: 0 rows
     # disagree), so the extra key drops nothing.
     advanced_join = "LEFT JOIN player_advanced_stats pas ON pas.event_id = pbs.event_id AND pas.athlete_id = pbs.athlete_id AND pas.season = pbs.season" if has_advanced else ""
-    # Read the FILLED view where it exists: the same rows, with figures rebuilt
-    # from play-by-play substituted into the lines ESPN serves empty, plus a
-    # `reconstructed` flag marking exactly those. A rebuilt row still has NULL
-    # minutes, so it stays invisible to every reader that filters on minutes -
-    # which is all of them except the two that opt in explicitly (see
-    # REBUILT_STATS in query/templates/common.py). Falls back to the stored table so a
-    # warehouse without `plays`, or one built before 2.2.0, still gets a log.
-    box_source = "player_box_stats_filled" if "player_box_stats_filled" in loaded else "player_box_stats"
+    # Read the best available box score, cheapest fallback last. DEDUPED merges
+    # a person ESPN lists twice in one team's box score under two athlete_ids
+    # into one row (fetch/repairs/duplicate_athletes.py) - without it, one
+    # player's game would appear as two rows in the log, one of them fiction.
+    # It is itself built from FILLED when that exists: the same rows, with
+    # figures rebuilt from play-by-play substituted into the lines ESPN serves
+    # empty, plus a `reconstructed` flag marking exactly those. A rebuilt row
+    # still has NULL minutes, so it stays invisible to every reader that
+    # filters on minutes - which is all of them except the two that opt in
+    # explicitly (see REBUILT_STATS in query/templates/common.py). Falls back
+    # to the stored table so a warehouse built before 2.2.0, or one missing
+    # `plays`, still gets a log.
+    if "player_box_stats_deduped" in loaded:
+        box_source = "player_box_stats_deduped"
+    elif "player_box_stats_filled" in loaded:
+        box_source = "player_box_stats_filled"
+    else:
+        box_source = "player_box_stats"
     con.execute(
         f"""
         CREATE OR REPLACE VIEW player_game_log AS
