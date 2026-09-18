@@ -53,49 +53,6 @@ found.
 
 ## P2: misleading or incomplete
 
-### A NetPoints name spelled with diacritics matches nothing, so 2026 loses those players' per-game rows
-- **Found:** 2026-09-18, immediately after backfilling #22/#101 - the backfill's
-  own before/after report is what surfaced it, which is what keeping the
-  unmatched name was for.
-- **Evidence:** `Pipeline._name_to_athlete_id` matches NetPoints' display name
-  to ESPN's exactly, and NetPoints' 2026 files spell names with diacritics
-  where ESPN's `players` does not (`DATA.md`, "NetPoints spells 2026's names
-  with diacritics, and ESPN does not"). Measured against the re-fetched
-  warehouse: unmatched rows in `net_points_player_game` are 86-400 a season for
-  2019-2025 and **1,106 in 2026**; Nikola Jokic matches all seven earlier
-  seasons and **none of 2026**, his 71 rows sitting under `Nikola Jokić`.
-  Comparing the pre-refetch warehouse against the post, **682 (event_id,
-  athlete_id) pairs resolved before and do not now** (344 newly resolved, net
-  -338), and the lost ones are Jokic, Doncic, Porzingis, Vucevic, Schroder,
-  Valanciunas, Nurkic, Bogdanovic, Krejci, Jovic, Diabate, Dadiet and the rest
-  of the same shape - every one of them a single, unambiguous id in `players`.
-  The same fault costs `net_points_player_game_fingerprint` 10,979 more
-  unmatched rows (64,210 -> 75,189).
-- **Not a regression of the #22/#101 fix.** Those rows were re-spelled at the
-  source, so ANY pull of 2026 hits this - the wide `data pull --force` the
-  backfill replaced would have done the same. What the fix changed is that the
-  rows now carry the name, so the cause is visible instead of being 1,106
-  anonymous NULLs.
-- **User sees:** a per-game NetPoints or per-game fingerprint question about one
-  of ~20 named players returns nothing for the 2026 season while answering for
-  2019-2025, with no caveat - and these are not marginal players (Jokic,
-  Doncic, Porzingis). **No player lost their data entirely**, measured: 0
-  players went from some per-game rows to none.
-- **Next step:** fold diacritics on both sides when building the name map -
-  NFKD, drop combining marks - which resolves **20 of the 33 distinct unmatched
-  names** to exactly one ESPN name. Require the folded match to be unique
-  before accepting it, the same discipline the two-id resolver uses: folding
-  must not become a second way to guess between two people. A further 4 names
-  are a suffix mismatch (`Jimmy Butler` against ESPN's `Jimmy Butler III`, 498
-  rows) and want their own decision - a prefix match is exactly the substring
-  trap `players_named_in` was written against, so it needs a uniqueness rule
-  rather than a `startswith`. Then re-run
-  `python scripts/backfill_netpoints_names.py`, which is 3 minutes, and the
-  before/after report will show whether the number moved.
-- **Source:** DATA.md, "NetPoints spells 2026's names with diacritics, and ESPN
-  does not"
-- **GitHub:** #111
-
 ### Season 2021's regular-season BPI snapshot is a day-one projection
 - **Found:** 2026-09-15, reviewing `4ef119f`; **re-ranked P3 -> P2 on 2026-09-16** - a preseason projection presented as a season's index, with no caveat
 - **Evidence:** all 30 of season 2021's rows are stamped 2020-12-22 - opening
@@ -692,44 +649,41 @@ found.
 - **Source:** DATA.md, "NetPoints publishes a display name, not a player id"
 - **GitHub:** #21
 
-### Per-game NetPoints rows whose name did not match keep no name
-- **Found:** 2026-09-11, building the warehouse comparison harness
-- **Fixed in code, not yet backfilled**, 2026-09-18. `parse_net_points_daily`
-  and `parse_net_points_daily_players` (`fetch/parse.py`) now keep the source
-  `displayName` as `display_name` on every player row, matched or not, instead
-  of dropping it when `athlete_id` comes back `None`. `parse_net_points_daily`
-  also keeps NBA.com's own `plyrID` as `nba_player_id` where the file carries
-  one - confirmed present in the daily player_box block; `parse_net_points_daily_players`
-  (the `_player.json` play-type file) has no confirmed id field of its own, so
-  only `display_name` was added there.
-- **Re-measured 2026-09-18, read-only against the live warehouse**
-  (`/home/jeff/code/association/nba.duckdb`): the population is unchanged from
-  when this was written - `select count(*) from net_points_player_game where
-  athlete_id is null` is still **2,190**, and the fingerprint table's is still
-  **64,210** - because the fix is in the parser, not the warehouse, and
-  nothing has re-pulled NetPoints since. Both tables still carry every column
-  they always did, plus the two new ones once a pull writes them.
-- **User sees:** unchanged until backfilled - still nothing for an unmatched
-  row, with no caveat, and a query grouping by (event_id, athlete_id) still
-  counts every unmatched row on a date as a duplicate of every other. After
-  the backfill, the same rows carry a name a query or a person can act on
-  (look up the right spelling, add it to a nickname/alias table, decide it is
-  a name `players` genuinely does not have).
-- **Backfill command** (not run yet): a parser fix, so a load alone does
-  nothing - the Parquet on disk was written by the old parser and has to be
-  fetched and parsed again. `python scripts/backfill_netpoints_names.py` from
-  the main checkout does exactly that and nothing else, and prints the
-  unmatched-row counts this entry is measured by before and after. It covers
-  every date with a local game, which is every date this can affect, since
-  NetPoints' own floor is season 2019. A full `association data pull --force`
-  is equivalent but also refetches the ESPN summaries the fix does not touch.
-- **Next step after backfilling:** count unmatched names per season (now that
-  they are retained as `display_name`) to find which spellings the exact match
-  misses - the original next step, unchanged.
+### A NetPoints name ESPN spells differently, or does not hold at all, still matches nothing
+- **Found:** 2026-09-18, the remainder of #22 once the name was kept and the
+  diacritic fold landed. #22 asked for the source name to be retained and then
+  for somebody to count which spellings the exact match misses; both are done,
+  and this is the answer.
+- **Evidence:** measured against the re-fetched warehouse, `net_points_player_game`
+  holds **1,393** rows with no `athlete_id` (down from 2,190 before any of this
+  work and 2,528 at the worst point), and `net_points_player_game_fingerprint`
+  **41,199** (from 64,210). They split cleanly into two causes, and neither is
+  a spelling the fold can bridge:
+  - **1,060 rows whose name is not in `players` at all.** The biggest single
+    one is a suffix mismatch: NetPoints says `Jimmy Butler`, ESPN says `Jimmy
+    Butler III`, **498 rows**. Then `Rondae Hollis-Jefferson` (144),
+    `Omari Spellman` (95), `Carlton Carrington` (82), `Cui Yongxi`, `NA Nene` -
+    some are players ESPN never gave us, some are a second spelling.
+  - **333 rows whose name is two different people in `players`** - Brandon
+    Williams (140), Wayne Selden (78), Greg Monroe (69) and the rest of the 13
+    real shared-name pairs. These are **correctly** refused: nothing on a
+    NetPoints row says which of the two it is, and guessing is the failure this
+    project keeps producing.
+- **User sees:** a per-game NetPoints or fingerprint question about one of
+  those players returns nothing, with no caveat. For Jimmy Butler that is his
+  whole per-game record.
+- **Next step:** the suffix case is worth its own rule and wants care, because
+  a prefix match is precisely the substring trap `players_named_in` was written
+  against ("the highest scoring game" naming Jaron Blossomgame). A bounded
+  version is defensible: accept a NetPoints name that differs from exactly ONE
+  ESPN name by a trailing generational suffix from a closed set (`Jr.`, `Sr.`,
+  `II`, `III`, `IV`), and only where the plain form is not itself an ESPN name.
+  Measure how many names that resolves before shipping it. The genuinely absent
+  players need a different answer - probably none, since ESPN not holding a
+  player is not something this project can fix.
 - **Source:** DATA.md, "NetPoints publishes a display name, not a player id"
-- **GitHub:** #22
-
-## P3: refusal or gap
+  and "NetPoints spells 2026's names with diacritics, and ESPN does not"
+- **GitHub:** #112
 
 ### `shot_chart`'s empty refusal never names the season, even when one was asked for
 - **Found:** 2026-09-18, fixing #18 (the retired-player default-season bug)
