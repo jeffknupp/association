@@ -8,7 +8,7 @@ no cloud API calls anywhere.
 ## Ask it something
 
 ```bash
-uv tool install 'association[web] @ git+https://github.com/jeffknupp/association@v4.1.0'
+uv tool install 'association[web] @ git+https://github.com/jeffknupp/association@v4.2.0'
 association web
 # association is serving at http://127.0.0.1:40525  (ctrl-c to stop)
 ```
@@ -154,7 +154,7 @@ per-game NetPoints files, which are an opt-in pull
 ## Setup
 
 ```bash
-uv tool install git+https://github.com/jeffknupp/association@v4.1.0
+uv tool install git+https://github.com/jeffknupp/association@v4.2.0
 brew install ollama               # or see https://ollama.com/download
 ollama serve &
 ollama pull qwen2.5:3b            # router, the fast path - required, ~1.9GB
