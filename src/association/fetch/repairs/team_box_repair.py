@@ -1,9 +1,10 @@
-"""Team box columns ESPN serves under the wrong name, put back at load time.
+"""Team box columns ESPN serves under the wrong name - or not at all - put back at load time.
 
-Three faults, all ESPN's and all proven to survive a refetch (see ``DATA.md``,
+Four faults, all ESPN's and all proven to survive a refetch (see ``DATA.md``,
 "2018 team box scores hold values under the wrong column names", "The team
-box ``turnovers`` column is zero before 2013" and "2008's team rebound columns
-hold something other than rebounds"). Neither is a parser bug: the
+box ``turnovers`` column is zero before 2013", "2008's team rebound columns
+hold something other than rebounds" and "Vancouver 1996 is an empty TEAM box,
+not an empty player box"). None is a parser bug: the
 parser assigns each value to the column ESPN's own ``name`` field gives it
 (:func:`association.fetch.parse._assign_stat`), and a clean pull with current
 code reproduced ``team_box_stats`` byte for byte.
@@ -89,8 +90,8 @@ written to both names. So it is left alone, while ``totalTurnovers``, which
 ESPN keeps equal to ``turnovers + teamTurnovers`` in every season and which
 therefore means 1.181 a game against a real ~14, is cleared.
 
-An empty team-game stays empty
--------------------------------
+An empty team-game stays empty - unless its players did not
+-------------------------------------------------------------
 
 Every Chicago and New Orleans game from 2013 to 2018 has an all-NULL
 ``team_box_stats`` row beside player rows that list everyone as having played
@@ -104,18 +105,70 @@ So a row is repaired only when it is non-empty (``fieldGoalsAttempted IS NOT
 NULL``, the test :func:`association.query.templates.player_splits` already uses
 to caveat a team split) **and** its team-game has at least one player row with
 minutes. A row failing either test keeps every column exactly as ESPN served
-it: fully corrected or fully untouched, never half of each. That also leaves
-alone the 117 all-NULL team rows whose player rows are real (115 on 1996 games,
-mostly Vancouver's and its opponents', and one 2000 game, ORL@NO - ``DATA.md``,
-"Vancouver 1996 is an empty TEAM box"), which are a
-different fault with a different fix, and which a turnover rebuild would
-otherwise have given a lone turnover count in an otherwise empty row.
+it: fully corrected or fully untouched, never half of each.
+
+A fourth fault needs the opposite guard, because it is the mirror image: the
+team row is empty and the PLAYER rows are real. Vancouver's entire 1995-96
+team box is all-NULL, but its player box holds 936 rows across 78 of its 82
+games, 12 a game, with real minutes (``DATA.md``, "Vancouver 1996 is an empty
+TEAM box, not an empty player box"). The same fault reaches 25 more teams
+through their games against Vancouver that season, and one 2000 game
+(``191102003``, ORL@NO) - 117 all-NULL team rows in all (115 in 1996, 2 on
+the single 2000 game), every one of them sitting beside a real player box to
+sum.
+
+**What can be rebuilt whole.** A made field goal, three-pointer or free
+throw, an assist, a steal, a block, a foul, an individual turnover, and an
+offensive or defensive rebound of a KNOWN type ARE the sum of what the
+players recorded - the same "no such thing as a team assist" reasoning given
+above for the 2018 and pre-2013 fixes, extended here to shooting and the
+rebound split. Measured against the REAL (non-empty) 1996 regular-season
+team rows - games in the SAME season whose team row survived, the population
+``AGENTS.md`` asks for - all of ``fieldGoalsMade/Attempted``,
+``threePointFieldGoalsMade/Attempted``, ``freeThrowsMade/Attempted``,
+``assists``, ``steals``, ``blocks``, ``turnovers``, ``fouls``,
+``offensiveRebounds`` and ``defensiveRebounds`` equal the player sum in
+**2,387 of 2,387** rows, and ESPN's own rounding convention
+(``round(100 * made / attempted)``) reproduces its stored ``fieldGoalPct``,
+``threePointFieldGoalPct`` and ``freeThrowPct`` in all 2,387 as well. The
+2000 season's 2,472 surviving rows agree at the same 100% on every one of
+those columns.
+
+**What cannot.** ``totalRebounds`` is deliberately left off that list:
+against those same 2,387 rows it runs 8.80 a game above the player
+offensive-plus-defensive sum and matches it in only 1 of 2,387 - consistent
+with ``DATA.md``, "The team ``totalRebounds`` column stops including team
+rebounds in 2022" (through 2020 the figure is the players' rebounds PLUS the
+team's own, credited to no player). There is no source for that team-only
+share, so ``totalRebounds`` stays NULL on a rebuilt row, along with
+``teamTurnovers``, ``totalTurnovers``, ``technicalFouls``,
+``totalTechnicalFouls``, ``flagrantFouls``, ``turnoverPoints``,
+``fastBreakPoints``, ``pointsInPaint``, ``largestLead``, ``leadChanges`` and
+``leadPercentage`` - every column the player box has no sibling for. A row
+this rule touches is therefore restored to what a player sum can prove, not
+to everything ESPN would have served: still an improvement for a team-level
+question (the pre-fix answer was NULL on every one of those columns too), but
+not a complete row.
+
+Gated by :data:`_EMPTY_TEAM_ROW` - the mirror of :data:`_REPAIRABLE`: the
+stored row is empty (``fieldGoalsAttempted IS NULL``) AND that team-game's
+players have minutes. A team-game whose player rows are ALSO empty (the
+2013-2018 case above) fails the second half and is left exactly as empty as
+before - summing zeros still yields a fabricated zero, whichever direction
+the row is missing from.
 
 Idempotent, because the repair keys on ``season`` and on emptiness, never on
 whether a value "looks wrong" - running it twice writes the same numbers, which
 is what lets it run on every build and every partial ``data load``.
 
 .. versionadded:: 2.2.0
+.. versionchanged:: 3.1.0
+   Rebuilds the columns a player-row sum can prove (field goals,
+   three-pointers, free throws, assists, steals, blocks, fouls, individual
+   turnovers, and the offensive/defensive rebound split) on a team row that
+   is itself all-NULL beside real player rows - the Vancouver 1996 case
+   above. ``totalRebounds`` and the columns with no player-box sibling stay
+   NULL.
 """
 
 from __future__ import annotations
@@ -179,6 +232,15 @@ _PLAYER_TOTALS = """
                CAST(SUM(rebounds) AS BIGINT) AS p_rebounds,
                CAST(SUM(offensiveRebounds) AS BIGINT) AS p_offensive_rebounds,
                CAST(SUM(defensiveRebounds) AS BIGINT) AS p_defensive_rebounds,
+               -- Read only for a wholly-empty team row (_EMPTY_TEAM_ROW): see
+               -- the module docstring's "What can be rebuilt whole" - measured
+               -- exact against every surviving 1996 and 2000 team row.
+               CAST(SUM(fieldGoalsMade) AS BIGINT) AS p_field_goals_made,
+               CAST(SUM(fieldGoalsAttempted) AS BIGINT) AS p_field_goals_attempted,
+               CAST(SUM(threePointFieldGoalsMade) AS BIGINT) AS p_three_point_made,
+               CAST(SUM(threePointFieldGoalsAttempted) AS BIGINT) AS p_three_point_attempted,
+               CAST(SUM(freeThrowsMade) AS BIGINT) AS p_free_throws_made,
+               CAST(SUM(freeThrowsAttempted) AS BIGINT) AS p_free_throws_attempted,
                MAX(minutes) AS p_max_minutes
         FROM player_box_stats
         -- season and season_type as well as event_id: the phantom 1993 season
@@ -195,6 +257,11 @@ _SHIFTED = f"({_REPAIRABLE} AND t.season = {SHIFTED_SEASON})"
 _NO_TURNOVERS = f"({_REPAIRABLE} AND t.season <= {LAST_MISSING_TURNOVER_SEASON})"
 # Regular season only: the 2008 postseason matches its player sums in 172 of 172 rows.
 _REBOUNDS_SWAPPED = f"({_REPAIRABLE} AND t.season = {SWAPPED_REBOUNDS_SEASON} AND t.season_type = 2)"
+# The mirror of _REPAIRABLE: the stored row itself is empty, but the players
+# who played it are real. See the module docstring's fourth fault (Vancouver
+# 1996 and one 2000 game). Not scoped to a season - the condition alone is
+# what makes it exact, the same way _REPAIRABLE is not scoped to one either.
+_EMPTY_TEAM_ROW = "(t.fieldGoalsAttempted IS NULL AND p.p_max_minutes IS NOT NULL)"
 
 # Columns the rebuild reads. A partial `data load --tables` subset, or a
 # genuinely thin ESPN response, skips the repair with a logged reason rather
@@ -214,6 +281,12 @@ _REQUIRED_PLAYER_COLUMNS = {
     "rebounds",
     "offensiveRebounds",
     "defensiveRebounds",
+    "fieldGoalsMade",
+    "fieldGoalsAttempted",
+    "threePointFieldGoalsMade",
+    "threePointFieldGoalsAttempted",
+    "freeThrowsMade",
+    "freeThrowsAttempted",
 }
 _REQUIRED_TEAM_COLUMNS = {"event_id", "season", "season_type", "team_id", "fieldGoalsAttempted"}
 
@@ -224,23 +297,57 @@ def _corrections() -> list[tuple[str, str]]:
     A column absent from the loaded table is dropped by :func:`repair`, so a
     thin fixture repairs what it has instead of nothing."""
     fixes: list[tuple[str, str]] = [
-        ("assists", f"CASE WHEN {_SHIFTED} THEN p.p_assists ELSE t.assists END"),
-        ("steals", f"CASE WHEN {_SHIFTED} THEN p.p_steals ELSE t.steals END"),
-        ("blocks", f"CASE WHEN {_SHIFTED} THEN p.p_blocks ELSE t.blocks END"),
-        ("fouls", f"CASE WHEN {_SHIFTED} THEN p.p_fouls ELSE t.fouls END"),
-        # The one column both faults touch: displaced in 2018, absent before 2013.
-        ("turnovers", f"CASE WHEN {_SHIFTED} OR {_NO_TURNOVERS} THEN p.p_turnovers ELSE t.turnovers END"),
-        ("fieldGoalPct", f"CASE WHEN {_SHIFTED} THEN {_PCT.format(made='t.fieldGoalsMade', attempted='t.fieldGoalsAttempted')} ELSE t.fieldGoalPct END"),
-        ("freeThrowPct", f"CASE WHEN {_SHIFTED} THEN {_PCT.format(made='t.freeThrowsMade', attempted='t.freeThrowsAttempted')} ELSE t.freeThrowPct END"),
+        # _EMPTY_TEAM_ROW and _SHIFTED can never both be true - one requires
+        # fieldGoalsAttempted IS NULL, the other requires it IS NOT NULL (inside
+        # _REPAIRABLE) - and both read the same player sum, so they share one branch.
+        ("assists", f"CASE WHEN {_EMPTY_TEAM_ROW} OR {_SHIFTED} THEN p.p_assists ELSE t.assists END"),
+        ("steals", f"CASE WHEN {_EMPTY_TEAM_ROW} OR {_SHIFTED} THEN p.p_steals ELSE t.steals END"),
+        ("blocks", f"CASE WHEN {_EMPTY_TEAM_ROW} OR {_SHIFTED} THEN p.p_blocks ELSE t.blocks END"),
+        ("fouls", f"CASE WHEN {_EMPTY_TEAM_ROW} OR {_SHIFTED} THEN p.p_fouls ELSE t.fouls END"),
+        # The one column three faults touch: displaced in 2018, absent before 2013, missing on an empty row.
+        ("turnovers", f"CASE WHEN {_EMPTY_TEAM_ROW} OR {_SHIFTED} OR {_NO_TURNOVERS} THEN p.p_turnovers ELSE t.turnovers END"),
+        # fieldGoalsMade/Attempted, three-pointers and free throws are never
+        # displaced by the 2018 fault (only the columns above are), so these
+        # four are new columns this rule alone touches.
+        ("fieldGoalsMade", f"CASE WHEN {_EMPTY_TEAM_ROW} THEN p.p_field_goals_made ELSE t.fieldGoalsMade END"),
+        ("fieldGoalsAttempted", f"CASE WHEN {_EMPTY_TEAM_ROW} THEN p.p_field_goals_attempted ELSE t.fieldGoalsAttempted END"),
+        ("threePointFieldGoalsMade", f"CASE WHEN {_EMPTY_TEAM_ROW} THEN p.p_three_point_made ELSE t.threePointFieldGoalsMade END"),
+        ("threePointFieldGoalsAttempted", f"CASE WHEN {_EMPTY_TEAM_ROW} THEN p.p_three_point_attempted ELSE t.threePointFieldGoalsAttempted END"),
+        ("freeThrowsMade", f"CASE WHEN {_EMPTY_TEAM_ROW} THEN p.p_free_throws_made ELSE t.freeThrowsMade END"),
+        ("freeThrowsAttempted", f"CASE WHEN {_EMPTY_TEAM_ROW} THEN p.p_free_throws_attempted ELSE t.freeThrowsAttempted END"),
+        # Percentages read the player sums directly on an empty row (t.fieldGoalsMade
+        # etc are NULL there - REPLACE expressions read the stored row, not a
+        # sibling REPLACE's result), and the stored columns everywhere else.
+        (
+            "fieldGoalPct",
+            f"CASE WHEN {_EMPTY_TEAM_ROW} THEN {_PCT.format(made='p.p_field_goals_made', attempted='p.p_field_goals_attempted')} "
+            f"WHEN {_SHIFTED} THEN {_PCT.format(made='t.fieldGoalsMade', attempted='t.fieldGoalsAttempted')} ELSE t.fieldGoalPct END",
+        ),
+        (
+            "threePointFieldGoalPct",
+            f"CASE WHEN {_EMPTY_TEAM_ROW} THEN {_PCT.format(made='p.p_three_point_made', attempted='p.p_three_point_attempted')} ELSE t.threePointFieldGoalPct END",
+        ),
+        (
+            "freeThrowPct",
+            f"CASE WHEN {_EMPTY_TEAM_ROW} THEN {_PCT.format(made='p.p_free_throws_made', attempted='p.p_free_throws_attempted')} "
+            f"WHEN {_SHIFTED} THEN {_PCT.format(made='t.freeThrowsMade', attempted='t.freeThrowsAttempted')} ELSE t.freeThrowPct END",
+        ),
         # 2008: the stored offensiveRebounds is the team-rebound figure, so the
         # real total is the players' rebounds plus it. Every REPLACE expression
         # reads the stored row, so the order of these three does not matter.
-        ("offensiveRebounds", f"CASE WHEN {_REBOUNDS_SWAPPED} THEN p.p_offensive_rebounds ELSE t.offensiveRebounds END"),
-        ("defensiveRebounds", f"CASE WHEN {_REBOUNDS_SWAPPED} THEN p.p_defensive_rebounds ELSE t.defensiveRebounds END"),
+        # _EMPTY_TEAM_ROW and _REBOUNDS_SWAPPED are likewise mutually exclusive,
+        # and both read the same player sum.
+        ("offensiveRebounds", f"CASE WHEN {_EMPTY_TEAM_ROW} OR {_REBOUNDS_SWAPPED} THEN p.p_offensive_rebounds ELSE t.offensiveRebounds END"),
+        ("defensiveRebounds", f"CASE WHEN {_EMPTY_TEAM_ROW} OR {_REBOUNDS_SWAPPED} THEN p.p_defensive_rebounds ELSE t.defensiveRebounds END"),
+        # totalRebounds is deliberately NOT given an _EMPTY_TEAM_ROW branch: see
+        # the module docstring's "What cannot" - it runs 8.80 a game above the
+        # player oreb+dreb sum on the very rows this rule validates against, so
+        # it stays NULL on a rebuilt row exactly as ESPN left it.
         ("totalRebounds", f"CASE WHEN {_REBOUNDS_SWAPPED} THEN p.p_rebounds + t.offensiveRebounds ELSE t.totalRebounds END"),
         # Before 2013 this holds a copy of totalTurnovers (2,204 of 2,204 rows
         # in 1994), not the ~0.6 team turnovers a game it names. Nothing in the
-        # player box can rebuild it, so it says so.
+        # player box can rebuild it, so it says so. Likewise not given an
+        # _EMPTY_TEAM_ROW branch - stays NULL on a rebuilt row, same reason.
         ("teamTurnovers", f"CASE WHEN {_NO_TURNOVERS} THEN NULL ELSE t.teamTurnovers END"),
     ]
     fixes += [(column, f"CASE WHEN {_SHIFTED} THEN NULL ELSE t.{column} END") for column in CLEARED_COLUMNS]
@@ -248,7 +355,7 @@ def _corrections() -> list[tuple[str, str]]:
 
 
 def repair(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
-    """Rewrite ``team_box_stats`` with the three ESPN faults corrected.
+    """Rewrite ``team_box_stats`` with the four ESPN faults corrected.
 
     Reads ``player_box_stats`` for the sums, so it is skipped with a logged
     reason when either table is absent or missing a column the rebuild needs,
@@ -286,4 +393,10 @@ def repair(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
         LEFT JOIN tbr_player_totals p
           ON p.event_id = t.event_id AND p.season = t.season AND p.season_type = t.season_type AND p.team_id = t.team_id
     """)
-    log.info("team box repair applied: %d columns (%s shifted, %s rebounds, turnovers through %s)", len(fixes), SHIFTED_SEASON, SWAPPED_REBOUNDS_SEASON, LAST_MISSING_TURNOVER_SEASON)
+    log.info(
+        "team box repair applied: %d columns (%s shifted, %s rebounds, turnovers through %s, empty rows rebuilt from real player rows)",
+        len(fixes),
+        SHIFTED_SEASON,
+        SWAPPED_REBOUNDS_SEASON,
+        LAST_MISSING_TURNOVER_SEASON,
+    )
