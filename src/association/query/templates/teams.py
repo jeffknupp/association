@@ -899,10 +899,26 @@ def _team_leaderboard_result(order: list[tuple[int, str, float]], display: dict[
 #:
 #: Named because it is a tiebreak, not a filter: a preseason rating is a real
 #: answer where it is the only snapshot holding a team, and merely the worst
-#: one to pick when a same-dated regular-season snapshot exists.
+#: one to pick among the pre-playoff snapshots when neither is the
+#: regular-season one - :data:`BPI_REGULAR` is preferred outright and never
+#: reaches this tiebreak.
 #:
 #: .. versionadded:: 2.2.0
+#: .. versionchanged:: 4.0.1
+#:    Its docstring now says what actually reaches the tiebreak - a
+#:    regular-season question no longer compares dates against preseason at
+#:    all, `team_outlook` reads the regular-season snapshot outright.
 BPI_PRESEASON = 1
+
+
+#: ESPN's season-type code for a regular-season power-index snapshot.
+#:
+#: A regular-season question (``season_type`` unset or ``2``) reads this
+#: snapshot outright when it holds the team asked about, rather than
+#: whichever pre-playoff snapshot ESPN stamped last - see `team_outlook`.
+#:
+#: .. versionadded:: 4.0.1
+BPI_REGULAR = 2
 
 
 BPI_SNAPSHOT_NAMES = {1: "preseason", 2: "regular-season", 3: "postseason", 5: "play-in"}
@@ -914,6 +930,37 @@ BPI_SNAPSHOT_NAMES = {1: "preseason", 2: "regular-season", 3: "postseason", 5: "
 _BPI_CHANCES = (("playoffs", "probmakeplayoffs"), ("conference finals", "probmakeconfchamp"), ("Finals", "probmaketitlegame"), ("title", "probwintitle"))
 
 
+def _team_outlook_choose(snapshots: list[tuple[Any, ...]], postseason: bool) -> tuple[Any, ...] | None:
+    """The one row of `snapshots` (grouped by ``season_type``, one row per
+    type) that answers this question, or None where nothing does.
+
+    A postseason question reads the postseason snapshot. A regular-season
+    question reads the regular-season snapshot outright whenever it holds the
+    team, never "whichever pre-playoff snapshot is latest" - that used to be
+    the play-in one (season type 5) in 2023, 2025 and 2026, because the paging
+    fix gave it all 30 teams and it is stamped after the regular-season
+    snapshot in those years. See ``DATA.md``, "ESPN's power index is a paged
+    collection, and holds all 30 teams", and ``ISSUES.md`` #88. Falling back
+    to the latest OTHER pre-playoff snapshot (preseason or play-in), and then
+    to the postseason one, only happens when no regular-season snapshot holds
+    this team - measured across every season `team_power_index` holds
+    (2017-2026), that never happens today, but the fallback exists so a gap
+    answers from the next-best snapshot instead of refusing outright.
+
+    .. versionadded:: 4.0.1
+    """
+    regular = next((s for s in snapshots if s[0] == BPI_REGULAR and s[3]), None)
+    pre = [s for s in snapshots if s[0] not in (BPI_REGULAR, 3) and s[3]]
+    post = [s for s in snapshots if s[0] == 3 and s[3]]
+    if postseason:
+        candidates = post
+    elif regular is not None:
+        candidates = [regular]
+    else:
+        candidates = pre or post
+    return candidates[-1] if candidates else None
+
+
 def team_outlook(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """A team's ESPN Basketball Power Index: its rating and where it sits,
     projected record, playoff and title chances, and strength of schedule.
@@ -923,8 +970,8 @@ def team_outlook(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     and ESPN overwrites rather than keeping a dated series. Every answer names
     the snapshot, its date and how many teams it holds, and a team missing from
     one is told which snapshots exist rather than that there is "no data". A
-    regular-season question reads the latest pre-playoff snapshot holding the
-    team; a postseason one reads the postseason snapshot.
+    regular-season question reads the regular-season snapshot outright when it
+    holds the team asked about; a postseason one reads the postseason snapshot.
 
     The sizes this docstring used to quote ("2026 has a play-in snapshot of 13
     teams and a postseason one of 12, and no regular-season snapshot at all")
@@ -937,6 +984,16 @@ def team_outlook(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     hold values like 83, 2,625 and 26,058.
 
     .. versionadded:: 2.1.0
+    .. versionchanged:: 4.0.1
+       A regular-season question used to read whichever pre-playoff snapshot
+       ESPN stamped last, which was the play-in one (season type 5) in 2023,
+       2025 and 2026 once the paging fix gave it all 30 teams - so the same
+       question named a different snapshot depending on the season. It now
+       reads the regular-season snapshot outright whenever one holds the team,
+       and falls back to the latest other pre-playoff snapshot, then the
+       postseason one, only where no regular-season snapshot does. See
+       ``ISSUES.md``, "A regular-season BPI question answers from the play-in
+       snapshot in 2023, 2025 and 2026" (#88).
     """
     con = ctx.con
     refused = _conference_refusal(slots)
@@ -965,13 +1022,7 @@ def team_outlook(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     if not snapshots:
         message = f"ESPN's power index has no {season} snapshot in the warehouse."
         return TemplateResult(data={"team": team.name, "season": season, "message": message}, answer=message)
-    pre = [s for s in snapshots if s[0] != 3 and s[3]]
-    post = [s for s in snapshots if s[0] == 3 and s[3]]
-    # The latest snapshot of the kind asked for that holds this team. A
-    # regular-season question falls back to the postseason snapshot only when
-    # no earlier one holds the team, and the answer says it did.
-    candidates = post if postseason else (pre or post)
-    chosen = candidates[-1] if candidates else None
+    chosen = _team_outlook_choose(snapshots, postseason)
     if chosen is None:
         return _team_outlook_missing(team, season, postseason, snapshots, listing)
 

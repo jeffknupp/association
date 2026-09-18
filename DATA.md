@@ -471,7 +471,21 @@ ESPN's core API. The missing rows were never missing from ESPN.
 - **How we handle it:** `team_outlook` names its snapshot, date and size in
   every answer, counts a team's standing within the snapshot rather than
   trusting ESPN's rank columns, and tells a missing team which snapshots exist.
-- **Tracked in:** ISSUES.md, "The power index has no dated series" (#27).
+- **The 2026 regular-season snapshot carries no BPI rating for any team.**
+  Measured read-only against the live warehouse, 2026-09-18:
+  `SELECT season, season_type, count(*), sum(bpi IS NULL) FROM
+  team_power_index GROUP BY 1, 2` shows zero NULL `bpi` in every one of the
+  other 20 `(season, season_type)` groups the table holds (2017-2026), and 30
+  of 30 NULL in `season=2026, season_type=2` (stamped `2026-04-13T09:43Z`) -
+  `bpioffense` and `bpidefense` are NULL on the same 30 rows. The same rows'
+  win/loss, projected record, playoff/title chances and strength-of-schedule
+  columns are all populated, so it is specifically the rating that is missing,
+  not the row. Not re-probed against a live ESPN request (no network here);
+  unknown whether a refetch fills it in the way `scripts/backfill_power_index.py`
+  fixed the paging fault above.
+- **Tracked in:** ISSUES.md, "The power index has no dated series" (#27) and
+  "The 2026 regular-season power index snapshot carries no BPI rating for any
+  team".
 
 ### No birth dates anywhere, and conference membership is fetched but discarded
 
