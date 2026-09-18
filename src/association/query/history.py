@@ -1,5 +1,6 @@
 """Records every `query` run's command, full event trace, and timing
-metrics to a file under `.history/`, named with a random hash - regardless of
+metrics to a file under `.history/`, named with the build that produced it and
+a random hash - regardless of
 whether `--verbose` was passed, so a confusing or failed run's full evidence
 is always on disk afterward, not just whatever happened to print to the
 terminal at the time.
@@ -10,6 +11,8 @@ gets its own history file, the same as a one-shot `query` call would."""
 
 from __future__ import annotations
 
+import functools
+import subprocess
 import sys
 import time
 import uuid
@@ -17,7 +20,51 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
+from association import __version__
+
 DEFAULT_HISTORY_DIR = Path(".history")
+
+
+@functools.cache
+def build_id() -> str:
+    """What this run was produced by: the short commit where the source is a git
+    checkout, else the released version.
+
+    A history file is evidence about a behavior, and the version alone cannot
+    say which behavior - dozens of commits share ``4.2.0``, and the answers
+    this project keeps changing are exactly the ones a reader needs to tie back
+    to a build. A dirty tree is marked, because a run from uncommitted work is
+    not reproducible from the commit alone.
+
+    ``git`` is asked about the **package's own directory**, never the caller's
+    working directory: running ``association query`` inside some unrelated
+    checkout must not stamp that repository's commit onto this run. Anything
+    that goes wrong - no git, no checkout, a wheel installed outside one - falls
+    back to the version, since a history file that fails to write is far worse
+    than one identified a little more loosely. Cached: it cannot change inside a
+    process, and ``ask()`` would otherwise pay a subprocess per question.
+
+    .. versionadded:: 4.3.0
+    """
+    package = Path(__file__).resolve().parent
+    try:
+        commit = subprocess.run(
+            ["git", "-C", str(package), "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=True,
+        ).stdout.strip()
+        dirty = subprocess.run(
+            ["git", "-C", str(package), "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=True,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return __version__
+    return f"{commit}-dirty" if dirty else commit
 
 
 def echo_to_stderr(line: str) -> None:
@@ -92,10 +139,13 @@ class RunHistory:
         an exception's traceback text as `answer` is exactly the "failed run"
         evidence this exists to keep."""
         self.history_dir.mkdir(parents=True, exist_ok=True)
-        path = self.history_dir / f"{uuid.uuid4().hex[:16]}.log"
+        # The build leads the name so `ls` groups a run with the code that
+        # produced it, and so one commit's runs can be selected with a glob.
+        path = self.history_dir / f"{build_id()}-{uuid.uuid4().hex[:16]}.log"
         started = datetime.fromtimestamp(time.time() - self.total_seconds, tz=timezone.utc).isoformat()
         parts = [
             f"command: {command}",
+            f"build: {build_id()}",
             f"model: {model} (think={think})" + (f", router: {router_model}" if router_model else ""),
             f"started: {started}",
             f"question: {question}",

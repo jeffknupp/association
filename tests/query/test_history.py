@@ -5,7 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from association.query.history import RunHistory
+from association import __version__
+from association.query import history as history_module
+from association.query.history import RunHistory, build_id
 
 
 def test_log_always_recorded_but_only_printed_when_verbose(capsys: pytest.CaptureFixture[str]) -> None:
@@ -51,7 +53,11 @@ def test_write_creates_file_named_with_a_hash_containing_everything(tmp_path: Pa
 
     assert path.parent == history_dir
     assert path.suffix == ".log"
-    assert len(path.stem) == 16  # random hash, not a fixed/predictable name
+    # The build that produced the run, then a random hash - the hash keeps the
+    # name unpredictable (two runs of one commit must not collide), the prefix
+    # ties the file to the code.
+    assert path.stem.startswith(f"{build_id()}-")
+    assert len(path.stem.removeprefix(f"{build_id()}-")) == 16
     content = path.read_text()
     assert "command: association query 'x'" in content
     assert "question: x" in content
@@ -95,3 +101,54 @@ def test_a_sink_is_still_gated_on_verbose(capsys: pytest.CaptureFixture[str]) ->
     seen: list[str] = []
     RunHistory(verbose=False, sink=seen.append).log("quiet line")
     assert seen == []
+
+
+def test_the_history_file_names_the_build_that_produced_it(tmp_path: Path) -> None:
+    """A history file is evidence about a behavior, and the version alone cannot
+    say which: dozens of commits share one release number, and the answers this
+    project keeps changing are exactly the ones a reader needs to tie to a
+    build."""
+    history = RunHistory(verbose=False, history_dir=tmp_path)
+    path = history.write(command="query 'x'", model="m", think=False, question="x", answer="y")
+    build = build_id()
+    assert path.name.startswith(f"{build}-"), path.name
+    assert f"build: {build}" in path.read_text()
+
+
+def test_the_build_id_falls_back_to_the_version_without_git(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A wheel installed outside a checkout still writes history. Losing the
+    file would be far worse than identifying it a little more loosely, so every
+    way git can fail lands on the version."""
+
+    def no_git(*_args: object, **_kwargs: object) -> object:
+        raise OSError("git is not installed")
+
+    build_id.cache_clear()
+    monkeypatch.setattr("association.query.history.subprocess.run", no_git)
+    try:
+        assert build_id() == __version__
+    finally:
+        build_id.cache_clear()
+
+
+def test_the_build_id_asks_about_the_package_not_the_caller(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Running `association query` inside an unrelated checkout must not stamp
+    THAT repository's commit onto the run - git is asked about the package's own
+    directory, which is what makes the recorded build meaningful."""
+    seen: list[list[str]] = []
+
+    class _Done:
+        stdout = "abc1234"
+
+    def record(argv: list[str], **_kwargs: object) -> _Done:
+        seen.append(argv)
+        return _Done()
+
+    build_id.cache_clear()
+    monkeypatch.setattr("association.query.history.subprocess.run", record)
+    try:
+        build_id()
+    finally:
+        build_id.cache_clear()
+    package = str(Path(history_module.__file__).resolve().parent)
+    assert seen and all(argv[:3] == ["git", "-C", package] for argv in seen), seen

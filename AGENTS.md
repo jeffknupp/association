@@ -91,6 +91,15 @@ Some things about the gates surprise people:
 Any commit touching `src/` must also touch `CHANGES.md`; a hook enforces it.
 Add to the `## Unreleased` section.
 
+**There must be exactly one `## Unreleased` heading, and the same hook now
+checks that too.** Two parallel branches each adding one merge *without a
+conflict* - git sees an insert in two places, not a clash - and the changelog
+ends up with two Unreleased sections. `bump_version.py` renames the first and
+silently leaves the second behind, so the next release ships a changelog with an
+orphaned section in the middle of its history. Nothing caught this: the older
+rule only asked that the file was touched. Found by reading the file after a
+merge, which is not a gate; now it is one.
+
 **Adding a gate** follows the shape of the ones already there, so local and CI
 keep saying the same thing: pin the tool in the `dev` extra (`uv add --optional
 dev <tool>`, which also updates `uv.lock`), add a `language: system` hook that

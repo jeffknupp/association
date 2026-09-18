@@ -15,6 +15,54 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A question that names one half of the starter/bench split now filters by
+  it, in every template that narrows a player's games.** "Jrue holiday last 50
+  games as a starter" was refused, because `SPLIT_WORDS` records the *category*
+  `starter_bench` and discards which half was named - right for `player_splits`,
+  whose answer is both groups side by side, and useless to a template that has
+  to filter. `TemplateContext` carries no question text, so `route()` reads the
+  half (`_split_side`), the way it already reads the side of the ball: no
+  `ROUTER_SCHEMA` change, so no other question's slots can move.
+  The filter itself is one clause added to `_narrow_player_games`, which is
+  where `opponent`, `venue` and `without` already compose over the same set of
+  player-games - so it reached `game_log` and `player_stat` at once rather than
+  being taught to each. That is the point: a new narrowing should become
+  available to every caller, not to one template.
+  Said in the answer, never silently: "Taurean Prince as a starter, last 7
+  games" and "in 58 games as a starter" against 64 unfiltered. A question
+  naming BOTH halves keeps the category and is still refused by `check_scope`
+  for these two, because both groups side by side is `player_splits`' answer
+  and not one they produce.
+- **`period_split` honors the same named half**, filtering on the `starter`
+  column of the box table it already joins - "Dominick Barlow scored 228 points
+  in the 2nd half over 59 games as a starter" against 71 games unfiltered.
+- **A `limit` of 1 the question never asked for no longer costs an answer.**
+  The decoder reaches for 1 when it has nothing to put in a slot it must fill,
+  and `player_stat` refuses any limit, so "westbrook stats as a starter for
+  kings" was refused as "a game_log question" over a narrowing nobody
+  requested. A bare `limit` of 1 with no `order` is now dropped for the intents
+  that cannot honor `order`, unless the question names a count - the same
+  filler rule `_route_side_and_order` already applied when an `order` carried
+  it in.
+
+- **A history file now names the build that produced it**:
+  `<commit>-<hash>.log` rather than `<hash>.log`, with a matching `build:` line
+  in the header. The release version alone cannot identify a behavior - dozens
+  of commits share `4.2.0`, and the answers this project keeps changing are
+  exactly the ones a reader needs to tie back to a build. A dirty tree is marked
+  `<commit>-dirty`, since a run from uncommitted work is not reproducible from
+  the commit alone.
+
+  `git` is asked about the **package's own directory**, never the caller's, so
+  running `association query` inside an unrelated checkout cannot stamp that
+  repository's commit onto the run. Where there is no git, no checkout, or a
+  wheel installed outside one, it falls back to the version - losing the file
+  would be far worse than identifying it a little more loosely.
+
+  Web sessions already wrote history and still do: `history.write()` runs from a
+  `finally` in `Agent.ask()`, so it fires whatever the caller and whether or not
+  the trace is discarded.
+
 - **A truncated or partly-fabricated player name is now repaired from the
   question's own span, not just checked against it.** `override_invented_players`
   only ever asked whether a router-supplied name had ANY trace in the
@@ -184,39 +232,6 @@ had no published version to be compatible with.
   a rendering bug in any of the new renderers falls back to it rather than
   losing the answer, the same guard the existing seven already relied on.
   `tests/web/test_renderers.py`'s contract test now covers all 20.
-
-## Unreleased
-- **A question that names one half of the starter/bench split now filters by
-  it, in every template that narrows a player's games.** "Jrue holiday last 50
-  games as a starter" was refused, because `SPLIT_WORDS` records the *category*
-  `starter_bench` and discards which half was named - right for `player_splits`,
-  whose answer is both groups side by side, and useless to a template that has
-  to filter. `TemplateContext` carries no question text, so `route()` reads the
-  half (`_split_side`), the way it already reads the side of the ball: no
-  `ROUTER_SCHEMA` change, so no other question's slots can move.
-
-  The filter itself is one clause added to `_narrow_player_games`, which is
-  where `opponent`, `venue` and `without` already compose over the same set of
-  player-games - so it reached `game_log` and `player_stat` at once rather than
-  being taught to each. That is the point: a new narrowing should become
-  available to every caller, not to one template.
-
-  Said in the answer, never silently: "Taurean Prince as a starter, last 7
-  games" and "in 58 games as a starter" against 64 unfiltered. A question
-  naming BOTH halves keeps the category and is still refused by `check_scope`
-  for these two, because both groups side by side is `player_splits`' answer
-  and not one they produce.
-- **`period_split` honors the same named half**, filtering on the `starter`
-  column of the box table it already joins - "Dominick Barlow scored 228 points
-  in the 2nd half over 59 games as a starter" against 71 games unfiltered.
-- **A `limit` of 1 the question never asked for no longer costs an answer.**
-  The decoder reaches for 1 when it has nothing to put in a slot it must fill,
-  and `player_stat` refuses any limit, so "westbrook stats as a starter for
-  kings" was refused as "a game_log question" over a narrowing nobody
-  requested. A bare `limit` of 1 with no `order` is now dropped for the intents
-  that cannot honor `order`, unless the question names a count - the same
-  filler rule `_route_side_and_order` already applied when an `order` carried
-  it in.
 
 ## 4.2.0 - 2026-09-18
 - **A NetPoints name ESPN spells with a generational suffix, or hyphenates
@@ -578,7 +593,7 @@ had no published version to be compatible with.
 - **Spelling is checked.** codespell runs in pre-commit and CI with its
   British-to-American dictionary, and the 37 findings are fixed - mostly
   British forms in comments, docstrings and docs ("neighbouring", "cancelled",
-  "behaviour", "judgement"), plus "unparseable" and "pre-empts". Comments and
+  "behavior", "judgement"), plus "unparseable" and "pre-empts". Comments and
   docs only: the router's compiled patterns and the prompt text hash
   identically before and after.
 - **Every imported package is declared.** `botocore` (imported by the
@@ -765,7 +780,7 @@ had no published version to be compatible with.
   one-row ranking stays a sentence), and the template prints the list only
   past one row.
 - **American spelling throughout `src/`.** 43 British spellings ("honour",
-  "behaviour", "labelled" and their forms) replaced there, and 24 more in the
+  "behavior", "labelled" and their forms) replaced there, and 24 more in the
   tests, including the user-visible
   `check_scope` trace "cannot honour" and three published docstrings. The
   router prompt and schema hash identically before and after, so no routing
@@ -2876,7 +2891,7 @@ score, and the 2000 and 2001 playoffs stop before the Finals.
 
   - `entities.py` said an ambiguous name "falls through to the agent". It has not
     for some time - templates ask a clarifying question via `_clarify`, which is
-    a handled outcome, and the docstring was describing the behaviour the code
+    a handled outcome, and the docstring was describing the behavior the code
     was written to replace.
   - `prompt.py` described the tool as `get_leaderboard(metric, season,
     season_type, min_sample, limit)`, omitting `team` and `fields`. Both are real
