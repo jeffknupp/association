@@ -659,25 +659,6 @@ found.
 - **Source:** DATA.md, "NetPoints publishes a display name, not a player id"
 - **GitHub:** #22
 
-### A team's rebounds are not comparable across 2021 and 2022
-- **Found:** 2026-09-14, while fixing #8
-- **Evidence:** the team box `totalRebounds` is the players' rebounds plus the
-  team's own through 2020, and exactly `offensiveRebounds + defensiveRebounds`
-  from 2022. It equals the player rebound sum in 0-3 of ~2,200 rows a season
-  from 1993 to 2018, 333 of 2,460 in 2019, 1,120 of 2,160 in 2021, and 2,460 of
-  2,460 in 2022-2024. The gap closes +8.07 (2018), +7.28 (2019), +7.10 (2020),
-  +3.66 (2021), +0.00 (2022 on). `team_season_stats` shows the same drop: 53.17
-  rebounds a game in 2020, 49.00 in 2021, 44.45 in 2022.
-- **User sees:** a team rebound figure that falls about 8 a game at 2021-22 for
-  reasons that are ESPN's bookkeeping, with no caveat. `_TEAM_LINE`'s REB column
-  and `_team_games`' `tbs.totalRebounds` are the reads; a span crossing the
-  change, or any comparison of an old season with a recent one, is affected.
-- **Next step:** decide what REB should mean and make it one thing —
-  `offensiveRebounds + defensiveRebounds` is comparable in every season and is
-  what ESPN now publishes — or caveat a span that crosses 2021. Check
-  `team_metrics` for the same exposure on `team_season_stats`.
-- **Source:** DATA.md, "The team `totalRebounds` column stops including team rebounds in 2022"
-- **GitHub:** #75
 ## P3: refusal or gap
 
 ### A calendar date on `player_stat` or `head_to_head` falls through instead of answering the game
@@ -1781,3 +1762,30 @@ found.
   falling** rather than trusted after one pass - re-running costs only the rows
   still NULL.
 - **GitHub:** #79
+
+### The SQL agent can read a team-rebounds column with the 2021/2022 discontinuity
+- **Found:** 2026-09-17, while fixing #75 (the deterministic
+  `player_splits`/`streak` team-rebounds read)
+- **Evidence:** `team_season_stats.totalRebounds` (the season-total column,
+  read as `totalRebounds / gamesPlayed`) reproduces the exact drop the fixed
+  issue was about - 53.17 a game in 2020, 49.00 in 2021, 44.45 in 2022 - while
+  its sibling `avgRebounds` does not (974 of 975 team-seasons 1994-2026 already
+  equal `avgOffensiveRebounds + avgDefensiveRebounds`, see DATA.md). No
+  template reads the raw `totalRebounds` column - only `run_sql`, the
+  SQL-writing agent's fallback tool, can reach it, since `team_season_stats` is
+  one of the tables its preamble describes.
+- **User sees:** nothing today - this is a gap nobody has hit, not a wrong
+  answer delivered. A question that falls through to the agent and asks it to
+  compare or trend a team's rebounds across the 2021/2022 boundary (e.g. "how
+  have the Celtics' rebounds trended since 2019") could have the agent write
+  `SUM(totalRebounds)` or read the column directly, producing a fluent,
+  ESPN-accurate-per-row, cross-era-incomparable number with no caveat - the
+  same failure `player_splits` used to have, one level down in the tool stack.
+- **Next step:** either add a `run_sql` preamble note steering a rebounds
+  question toward `avgOffensiveRebounds + avgDefensiveRebounds` (cheap, but
+  competes for the same token budget every other preamble addition does - see
+  AGENTS.md, "The tool budget"), or measure how often `run_sql` actually gets a
+  rebounds-trend question before spending budget on it. Not fixed here: out of
+  scope for the deterministic-template fix, and unmeasured how often it fires.
+- **Source:** DATA.md, "The team `totalRebounds` column stops including team
+  rebounds in 2022"

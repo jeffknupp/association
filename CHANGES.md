@@ -15,6 +15,19 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **A team's rebounds are now comparable across the 2021/2022 season
+  boundary.** ESPN's team box `totalRebounds` stopped counting rebounds it
+  credits to no player from 2022 on, so a split spanning the change (or any
+  comparison of an old season with a recent one) showed a team's rebounding
+  falling off a cliff for no basketball reason - measured at ~52 a game in
+  2019-2020, ~48 in 2021, 44.45 from 2022 on. `player_splits` and `streak`'s
+  team-rebounds reads (`query/conditions.py`'s `_team_games` and `_TEAM_LINE`)
+  now use `offensiveRebounds + defensiveRebounds`, which already equals ESPN's
+  own `totalRebounds` in every season from 2022 on and is populated everywhere
+  `totalRebounds` is. `team_metrics.py`'s `avgRebounds` (used by `team_stat`
+  and `team_leaderboard`) was checked and needs no change: unlike the
+  game-level column, ESPN's season aggregate already equals
+  `avgOffensiveRebounds + avgDefensiveRebounds` in every season since 1994.
 - **A 2013-2018 shooting leaderboard now says who is missing from it.** Those
   rates are summed from the box scores ESPN serves zeroed for every Chicago and
   New Orleans game, so 21 to 33 players a season clear the qualifying floor by

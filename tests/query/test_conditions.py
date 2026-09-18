@@ -69,8 +69,12 @@ def _game(
     decided = (home if home_score > away_score else away) if winner == "auto" else winner
     c.execute("INSERT INTO games VALUES (?,?,?,?,?,?,?,?,?)", [event, season, 2, date, home, away, home_score, away_score, decided])
     for team, opponent, side in ((home, away, "home"), (away, home, "away")):
-        stats = [40, 20, 10, 40, 85] if team_box else [None] * 5
-        c.execute("INSERT INTO team_box_stats VALUES (?,?,?,?,?,?,?,?,?,?,?)", [event, season, 2, team, opponent, side, *stats])
+        # totalRebounds (40) is deliberately NOT offensiveRebounds +
+        # defensiveRebounds (12 + 23 = 35) - the way a real pre-2022 row
+        # differs, with a few rebounds ESPN credits to no player. Reading the
+        # stale column would show 40.0; see test_conditions.py's rebounds test.
+        stats = [40, 12, 23, 20, 10, 40, 85] if team_box else [None] * 7
+        c.execute("INSERT INTO team_box_stats VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", [event, season, 2, team, opponent, side, *stats])
     for athlete, team, minutes, points, starter, dnp in lines:
         opponent = away if team == home else home
         c.execute(
@@ -111,7 +115,7 @@ def league(tmp_path: Path) -> TemplateContext:
     )
     c.execute(
         "CREATE TABLE team_box_stats (event_id VARCHAR, season BIGINT, season_type BIGINT, team_id VARCHAR, opponent_team_id VARCHAR, home_away VARCHAR, "
-        "totalRebounds BIGINT, assists BIGINT, threePointFieldGoalsMade BIGINT, fieldGoalsMade BIGINT, fieldGoalsAttempted BIGINT)"
+        "totalRebounds BIGINT, offensiveRebounds BIGINT, defensiveRebounds BIGINT, assists BIGINT, threePointFieldGoalsMade BIGINT, fieldGoalsMade BIGINT, fieldGoalsAttempted BIGINT)"
     )
     c.execute(
         "CREATE TABLE player_box_stats (event_id VARCHAR, season BIGINT, season_type BIGINT, team_id VARCHAR, opponent_team_id VARCHAR, athlete_id VARCHAR, "
@@ -328,6 +332,19 @@ def test_a_team_split_uses_the_teams_own_games(league: TemplateContext) -> None:
     rows = _rows(result, "wins_losses")
     assert (rows["wins"]["games"], rows["losses"]["games"]) == (4, 2)
     assert "missing from 1 of those games' box scores" in result.answer
+
+
+def test_a_team_splits_rebounds_are_offensive_plus_defensive_not_the_raw_total(league: TemplateContext) -> None:
+    """`totalRebounds` stops meaning the same thing across 2021/2022 - DATA.md,
+    "The team `totalRebounds` column stops including team rebounds in 2022".
+    `_TEAM_LINE` reads offensiveRebounds + defensiveRebounds instead, which is
+    what ESPN's own totalRebounds equals in every season from 2022 on. The
+    fixture's totalRebounds (40) deliberately differs from offensiveRebounds +
+    defensiveRebounds (12 + 23 = 35) the way a real pre-2022 row does, so
+    reading the wrong column would show 40.0 here instead."""
+    rows = _rows(player_splits(league, _slots(team="Boston Celtics", split="wins_losses")), "wins_losses")
+    assert rows["wins"]["rebounds"] == pytest.approx(35.0)
+    assert rows["losses"]["rebounds"] == pytest.approx(35.0)
 
 
 def test_a_team_has_no_starter_split(league: TemplateContext) -> None:
