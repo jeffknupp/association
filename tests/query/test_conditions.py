@@ -668,3 +668,72 @@ def test_a_matchup_log_abbreviates_each_team_for_the_season_of_the_meeting(old_f
     against Vancouver."""
     answer = player_matchup(old_franchises, _slots(players=["Kenyon Martin", "Pau Gasol"], season=2001)).answer or ""
     assert "NJ 100-90 VAN" in answer and "BKN" not in answer
+
+
+# ---------------- player_splits: venue and opponent ----------------
+
+
+def test_a_venue_narrows_a_players_games(league: TemplateContext) -> None:
+    """Tatum's three games this season are e1 (home), e4 and e7 (away); a
+    venue narrows the games the splits are computed over, not just which
+    row of the home/away split is shown."""
+    result = player_splits(league, _slots(player="Jayson Tatum", venue="home"))
+    assert result.data["games"] == 1
+    assert "(at home)" in (result.answer or "")
+    rows = _rows(result, "home_away")
+    assert (rows["home"]["games"], rows["away"]["games"]) == (1, 0)
+
+
+def test_an_opponent_narrows_a_players_games(league: TemplateContext) -> None:
+    """Tatum played the Lakers twice: e1 at home (30 points) and e7 on the
+    road (31)."""
+    result = player_splits(league, _slots(player="Jayson Tatum", opponent="Los Angeles Lakers"))
+    assert result.data["games"] == 2
+    assert "(vs the Los Angeles Lakers)" in (result.answer or "")
+
+
+def test_venue_and_opponent_narrow_together(league: TemplateContext) -> None:
+    """Only e7 - Tatum's road game against the Lakers - matches both."""
+    result = player_splits(league, _slots(player="Jayson Tatum", venue="away", opponent="Los Angeles Lakers"))
+    assert result.data["games"] == 1
+    assert "(on the road vs the Los Angeles Lakers)" in (result.answer or "")
+    assert "1 game he played" in (result.answer or ""), "not '1 games' - the pluralization a venue/opponent narrowing exposes"
+
+
+def test_a_venue_narrows_a_teams_own_games_too(league: TemplateContext) -> None:
+    """The Celtics' three home games this season (e1, e3, e5) are all wins."""
+    result = player_splits(league, _slots(team="Boston Celtics", venue="home"))
+    assert result.data["games"] == 3
+    rows = _rows(result, "wins_losses")
+    assert (rows["wins"]["games"], rows["losses"]["games"]) == (3, 0)
+
+
+def test_an_opponent_narrows_a_teams_own_games_too(league: TemplateContext) -> None:
+    """The Celtics played the Lakers four times: e1, e5 at home (both wins) and e2, e7 on the road (both losses)."""
+    result = player_splits(league, _slots(team="Boston Celtics", opponent="Los Angeles Lakers"))
+    assert result.data["games"] == 4
+    rows = _rows(result, "home_away")
+    assert (rows["home"]["wins"], rows["away"]["wins"]) == (2, 0)
+
+
+def test_a_home_away_split_conflicts_with_an_already_narrowed_venue(league: TemplateContext) -> None:
+    """Asking to break games out by home/away while also filtering to one of
+    the two asks the same axis twice."""
+    with pytest.raises(TemplateUnsupported):
+        player_splits(league, _slots(player="Jayson Tatum", split="home_away", venue="home"))
+
+
+def test_a_real_limit_is_refused_rather_than_answering_the_whole_span(league: TemplateContext) -> None:
+    """player_splits has no notion of "his last N games" - answering under
+    that framing with the whole span (all 3 of Tatum's games) would be the
+    silent substitution this whole module exists to prevent."""
+    with pytest.raises(TemplateUnsupported):
+        player_splits(league, _slots(player="Jayson Tatum", venue="home", limit=4))
+
+
+def test_a_bare_limit_of_one_is_not_refused(league: TemplateContext) -> None:
+    """The router's own filler value elsewhere (router._route_side_and_order
+    drops a limit of 1 for the same reason) - and here it changes nothing,
+    since the games a venue narrows to are shown in full either way."""
+    result = player_splits(league, _slots(player="Jayson Tatum", venue="home", limit=1))
+    assert result.data["games"] == 1

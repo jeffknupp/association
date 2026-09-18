@@ -15,6 +15,7 @@ from association.nba.coverage import unavailable
 from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
 
+from ..conditions import _MONTH_NAMES, _season_month_order, _table
 from ..entities import Entity
 from ..team_metrics import (
     DEFAULT_TEAM_LINE,
@@ -131,17 +132,79 @@ def _possessive(name: str) -> str:
 VENUE_WORDS = {"home": "at home", "away": "on the road"}
 
 
+# A `situation` slot's only honored shape: "in october". check_scope lets any
+# `situation` value through for team_record now (see HONORED_SCOPING), so this
+# is where the ones that are not a real calendar month are still refused - the
+# same discipline #84 already established: a weekday, a holiday, an age, "vs
+# southeast division" or a window ("since january 31st") name nothing this
+# table can filter on, and only a bare "in <month>" does. Deliberately
+# anchored to that exact shape rather than searching for a month name
+# anywhere in the text, so "since january 31st" - a window, not a month filter
+# - is not mistaken for one.
+_MONTH_SITUATION = re.compile(
+    r"^in (january|february|march|april|may|june|july|august|september|october|november|december)$",
+    re.IGNORECASE,
+)
+
+
+def _team_record_month(situation: Any) -> int | None:
+    """The calendar month ``situation`` names ("in october" -> 10), or None for
+    anything else - including a value naming no month at all. A real column
+    (the game's own Eastern date) can filter to a month; nothing here can
+    filter to a weekday, an age or a window, so those stay refused.
+
+    .. versionadded:: 4.3.0
+    """
+    if not isinstance(situation, str):
+        return None
+    match = _MONTH_SITUATION.fullmatch(situation.strip())
+    if match is None:
+        return None
+    return [name.lower() for name in _MONTH_NAMES].index(match.group(1).lower()) + 1
+
+
+def _team_record_month_and_split(split: Any, situation: Any, limit: Any) -> tuple[str | None, int | None]:
+    """The validated ``split`` and calendar ``month`` a question narrows to -
+    or the refusal for a ``split`` that is not "month", a ``situation`` naming
+    no month, or a bare ``limit`` with neither. Pulled out of ``team_record``
+    itself so that function reads as one linear sequence of steps rather than
+    growing a branch for each of the three; called with the slots themselves
+    (``slots.get("split")`` and so on), not the whole dict, so team_record's
+    own source still names every slot it honors -
+    test_every_template_honoring_a_scope_slot_actually_reads_it checks that
+    literally."""
+    if split is not None and split != "month":
+        raise TemplateUnsupported(f"no split named {split!r}")
+    month = _team_record_month(situation)
+    if situation and month is None:
+        raise TemplateUnsupported(f"no calendar month narrowing in situation {situation!r}")
+    if limit and split is None and month is None:
+        # "how did they do in their last 10 games?" is a game_log question -
+        # standings only has the full-season record, and answering with it
+        # under a "last 10" question is a silent substitution. game_log already
+        # tallies the record over exactly the games it lists. Measured over
+        # this corpus, a month narrowing or a by-month split never carries a
+        # real limit of its own - the router fills `limit` with a default
+        # (commonly 12, one slot per month) whether or not the question named
+        # one - so only a bare limit, with neither of those, is read as "last
+        # N games".
+        raise TemplateUnsupported("a record over a limited set of games is a game_log question")
+    return split, month
+
+
 def team_record(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """A team's win-loss record: for a season, at home or on the road, against
-    one team, in a postseason, or across every season the warehouse holds.
+    one team, in a postseason, in one calendar month, broken out by month, or
+    across every season the warehouse holds.
 
     A season's record and its home/road split are read from standings, the
     authoritative source - its "Home" and "Road" strings agree with a tally of
     ``games`` for every team-season from 1994 to 2026 once each era's
     neutral-site rule is applied (through 2024 a neutral-site game counts for
     its designated home team; from 2025 it counts as neither). A record against
-    one team or in a postseason has no standings column, and is tallied from
-    ``games`` - see team_metrics.TEAM_GAMES_SQL for what that tally removes.
+    one team, in a postseason, in one named month or broken out by month has no
+    standings column, and is tallied from ``games`` instead - see
+    team_metrics.TEAM_GAMES_SQL for what that tally removes.
 
     Every answer names the span it covers, because "all-time" here is not the
     franchise's history: standings begin with 1987-88, and ``games`` holds every
@@ -151,17 +214,17 @@ def team_record(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        Honors ``venue``, ``opponent`` and ``span``, answers a postseason
        record from ``games`` instead of refusing it, and adds points for and
        against, games behind and the last ten games to a season's record.
+
+    .. versionchanged:: 4.3.0
+       Honors ``situation`` where it names a real calendar month ("in
+       october") and ``split`` where it is "month" (broken out by month) -
+       every other value of either still falls through, the same as before.
     """
     con = ctx.con
     refused = _conference_refusal(slots)
     if refused is not None:
         return refused
-    if slots.get("limit"):
-        # "how did they do in their last 10 games?" is a game_log question -
-        # standings only has the full-season record, and answering with it
-        # under a "last 10" question is a silent substitution. game_log already
-        # tallies the record over exactly the games it lists.
-        raise TemplateUnsupported("a record over a limited set of games is a game_log question")
+    split, month = _team_record_month_and_split(slots.get("split"), slots.get("situation"), slots.get("limit"))
 
     teams = _team_record_teams(con, slots, slots.get("opponent"))
     if isinstance(teams, TemplateResult):
@@ -176,11 +239,13 @@ def team_record(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         # "all-time ... in 2020" is either a slip or a range this cannot read.
         raise TemplateUnsupported("a career span and a single season at once")
 
-    if opponent is None and season_type == 2:
+    if split == "month":
+        return _team_record_by_month(con, team, opponent, None if career else (season or current_season()), season_type, venue)
+    if opponent is None and season_type == 2 and month is None:
         if career:
             return _standings_career(con, team, venue)
         return _standings_season(con, team, season or current_season(), venue)
-    return _games_record(con, team, opponent, None if career else (season or current_season()), season_type, venue)
+    return _games_record(con, team, opponent, None if career else (season or current_season()), season_type, venue, month)
 
 
 def _team_record_teams(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], opponent_text: Any) -> tuple[Entity, Entity | None] | TemplateResult:
@@ -452,15 +517,18 @@ ORDER BY 1""",
     return f"Note: ESPN's game list and the {_possessive(team.name)} season totals disagree on how many {kind} games they played in {parts}, so this tally is off by those games."
 
 
-def _no_team_games(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity | None, season: int | None, season_type: int) -> str:
+def _no_team_games(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity | None, season: int | None, season_type: int, month: int | None = None) -> str:
     """Why a tally found nothing. Three different facts, and three sentences:
     the warehouse has no games that season at all (it holds no 1988
-    postseason), the team played none, or the two teams did not meet."""
+    postseason), the team played none, or the two teams did not meet -
+    each narrowed to the named month too, where the question asked for one, so
+    a team with games in OTHER months is not told it has none at all."""
     kind = "postseason" if season_type == 3 else "regular-season"
+    where = f" in {_MONTH_NAMES[month - 1]}" if month is not None else ""
     if season is None:
         if opponent is None:
-            return f"The warehouse holds no {kind} games for the {team.name}."
-        return f"The warehouse holds no {kind} games between the {team.name} and the {opponent.name}."
+            return f"The warehouse holds no {kind} games for the {team.name}{where}."
+        return f"The warehouse holds no {kind} games between the {team.name} and the {opponent.name}{where}."
     scope, params = games_scope(season_type, season)
     period = _period(season, season_type)
     counts = con.execute(f"{TEAM_GAMES_SQL} SELECT count(*), count(*) FILTER (WHERE team_id = ?) FROM team_games WHERE {scope}", [team.id, *params]).fetchone()
@@ -468,13 +536,16 @@ def _no_team_games(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entit
     if not league:
         return f"The warehouse holds no {period} games for any team."
     if opponent is not None and own:
-        return f"The {team.name} and the {opponent.name} did not meet in the {period}."
-    return f"The {team.name} played no games in the {period}."
+        return f"The {team.name} and the {opponent.name} did not meet{where} in the {period}."
+    return f"The {team.name} played no games{where} in the {period}."
 
 
-def _games_record(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity | None, season: int | None, season_type: int, venue: str | None) -> TemplateResult:
+def _games_record(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity | None, season: int | None, season_type: int, venue: str | None, month: int | None = None) -> TemplateResult:
     """A record tallied from ``games``: against one team, or in a postseason,
-    for one season or (``season`` None) every season it holds."""
+    for one season or (``season`` None) every season it holds, optionally
+    narrowed to one calendar month - ``standings`` has no game-level date to
+    filter a month from, so a month narrowing reaches this path even where
+    neither an opponent nor a postseason would have."""
     if season is not None:
         # _sources_for sends this path through the `games` floor, but a record
         # against a team named only in `teams` reaches it with the standings'
@@ -482,7 +553,7 @@ def _games_record(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity
         refused = unavailable(("games",), season, season_type)
         if refused is not None:
             return TemplateResult(data={"team": team.name, "season": season, "message": refused}, answer=refused)
-    games = _games_record_games(con, team, opponent, season, season_type)
+    games = _games_record_games(con, team, opponent, season, season_type, month)
     shown = [g for g in games if venue is None or g["venue"] == venue]
     wins = sum(1 for g in shown if g["won"])
     losses = len(shown) - wins
@@ -493,6 +564,7 @@ def _games_record(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity
         "season": season,
         "season_type": kind,
         "venue": venue,
+        "month": _MONTH_NAMES[month - 1] if month is not None else None,
         "wins": wins,
         "losses": losses,
         # Read by the web page's record card, like the standings paths' own.
@@ -500,9 +572,9 @@ def _games_record(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity
     }
 
     if not games:
-        return TemplateResult(data={**data, "games": []}, answer=_no_team_games(con, team, opponent, season, season_type))
+        return TemplateResult(data={**data, "games": []}, answer=_no_team_games(con, team, opponent, season, season_type, month))
 
-    answer = _games_record_answer(team, opponent, season, season_type, venue, games, shown)
+    answer = _games_record_answer(team, opponent, season, season_type, venue, games, shown, month)
     if opponent is not None and season_type == 2:
         cup_text, cup_final = _games_record_cup_final(con, team, opponent, season)
         answer += cup_text
@@ -514,14 +586,18 @@ def _games_record(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity
     return TemplateResult(data=data, answer=answer)
 
 
-def _games_record_games(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity | None, season: int | None, season_type: int) -> list[dict[str, Any]]:
-    """The team's games in scope, against ``opponent`` if one is named, oldest first."""
+def _games_record_games(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity | None, season: int | None, season_type: int, month: int | None = None) -> list[dict[str, Any]]:
+    """The team's games in scope, against ``opponent`` and/or in ``month`` if
+    named, oldest first."""
     scope, params = games_scope(season_type, season)
     where = [scope, "tg.team_id = ?"]
     params = [*params, team.id]
     if opponent is not None:
         where.append("tg.opponent_id = ?")
         params.append(opponent.id)
+    if month is not None:
+        where.append("month(tg.eastern_date) = ?")
+        params.append(month)
     rows = con.execute(
         f"{TEAM_GAMES_SQL} SELECT tg.eastern_date, tg.side, tg.neutral, tg.team_score, tg.opponent_score, tg.won, {season_name_sql('o.team_id', 'tg.season', 'o.display_name')} "
         f"FROM team_games tg JOIN teams o ON o.team_id = tg.opponent_id WHERE {' AND '.join(where)} ORDER BY tg.eastern_date",
@@ -530,7 +606,9 @@ def _games_record_games(con: duckdb.DuckDBPyConnection, team: Entity, opponent: 
     return [{"date": str(r[0]), "venue": "neutral" if r[2] else r[1], "team_score": r[3], "opponent_score": r[4], "won": bool(r[5]), "opponent": r[6]} for r in rows]
 
 
-def _games_record_answer(team: Entity, opponent: Entity | None, season: int | None, season_type: int, venue: str | None, games: list[dict[str, Any]], shown: list[dict[str, Any]]) -> str:
+def _games_record_answer(
+    team: Entity, opponent: Entity | None, season: int | None, season_type: int, venue: str | None, games: list[dict[str, Any]], shown: list[dict[str, Any]], month: int | None = None
+) -> str:
     """The tallied record, its home/away split and, for one season against one team, the meetings."""
     wins = sum(1 for g in shown if g["won"])
     losses = len(shown) - wins
@@ -542,8 +620,9 @@ def _games_record_answer(team: Entity, opponent: Entity | None, season: int | No
         span = f"the regular seasons from {_season_name(FIRST_FULL_REGULAR_SEASON)} on - the first the warehouse holds every game of"
     against = f" against the {opponent.name}" if opponent else ""
     where_played = f" {VENUE_WORDS[venue]}" if venue else ""
+    month_phrase = f" in {_MONTH_NAMES[month - 1]}" if month is not None else ""
     verb = "went" if season is not None else "are"
-    answer = f"The {team.name} {verb} {_tally(wins, losses)}{where_played}{against} in {span}."
+    answer = f"The {team.name} {verb} {_tally(wins, losses)}{month_phrase}{where_played}{against} in {span}."
     if venue is None:
         answer += _games_record_split(games)
     elif len(shown) < len(games) and any(g["venue"] == "neutral" for g in games):
@@ -557,6 +636,48 @@ def _games_record_answer(team: Entity, opponent: Entity | None, season: int | No
             for g in shown
         )
     return answer
+
+
+def _team_record_by_month(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity | None, season: int | None, season_type: int, venue: str | None) -> TemplateResult:
+    """team_record's answer for ``split == "month"``: the team's record broken
+    out by calendar month. ``standings`` has no game-level date to group a
+    month from, so - the same as a single month's filter - this reads a tally
+    of ``games`` instead, the source a record against one opponent or in a
+    postseason already uses.
+
+    .. versionadded:: 4.3.0
+    """
+    if season is not None:
+        refused = unavailable(("games",), season, season_type)
+        if refused is not None:
+            return TemplateResult(data={"team": team.name, "season": season, "message": refused}, answer=refused)
+    games = _games_record_games(con, team, opponent, season, season_type)
+    shown = [g for g in games if venue is None or g["venue"] == venue]
+    if not shown:
+        return TemplateResult(data={"team": team.name, "season": season, "months": []}, answer=_no_team_games(con, team, opponent, season, season_type))
+    by_month: dict[int, list[dict[str, Any]]] = {}
+    for g in shown:
+        by_month.setdefault(int(g["date"][5:7]), []).append(g)
+    rows: list[tuple[str, list[str]]] = []
+    months_data: list[dict[str, Any]] = []
+    for month in sorted(by_month, key=_season_month_order):
+        entries = by_month[month]
+        wins = sum(1 for g in entries if g["won"])
+        losses = len(entries) - wins
+        rows.append((_MONTH_NAMES[month - 1], [str(len(entries)), f"{wins}-{losses}"]))
+        months_data.append({"month": _MONTH_NAMES[month - 1], "games": len(entries), "wins": wins, "losses": losses})
+    if season is not None:
+        span = f"the {_period(season, season_type)}"
+    elif season_type == 3:
+        span = "every postseason from 1989 through the latest - the warehouse's game list starts with the 1989 playoffs"
+    else:
+        span = f"the regular seasons from {_season_name(FIRST_FULL_REGULAR_SEASON)} on - the first the warehouse holds every game of"
+    against = f" against the {opponent.name}" if opponent else ""
+    where_played = f" {VENUE_WORDS[venue]}" if venue else ""
+    title = f"The {team.name}, record by month{where_played}{against}, {span}:"
+    answer = _table(title, ["G", "W-L"], rows)
+    data = {"team": team.name, "season": season, "opponent": opponent.name if opponent else None, "venue": venue, "months": months_data}
+    return TemplateResult(data=data, answer=answer)
 
 
 def _games_record_split(games: list[dict[str, Any]]) -> str:
