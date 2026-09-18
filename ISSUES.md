@@ -454,28 +454,28 @@ found.
   number, or say in each comment why they differ.
 - **GitHub:** #12
 
-### Shooting qualifiers are flat across shortened seasons
-- **Found:** 2026-09-11, while qualifying true shooting and eFG% (`f66e1f1`)
-- **Evidence:** the 550/480 floors assume an 82-game schedule. At 550
-  true-shooting attempts, 2020 qualifies 157 players and 2021 qualifies 155,
-  against 174-184 in 2019 and in 2022-2026. **The 2012 lockout season (66
-  games) now measured: 127 qualify at 550 TSA** (`player_season_stats_deduped`),
-  the lowest of any season checked - consistent with a shortened schedule.
-  **2013-2018 read 143-157 in `player_season_advanced_stats`, but that is not
-  the schedule** - those six seasons are full 82-game ones, and the low count
-  is the empty-box-score fault (#1, and those seasons are now declared
-  `partial` on that table so a board says who is missing from it):
-  `player_season_advanced_stats` is built
-  from raw `player_box_stats`, whose Chicago and New Orleans rows are zeroed
-  those years, so real qualifiers are undercounted there specifically, not
-  flattened by a short season. Published rules scale per team game.
-- **User sees:** fewer qualified players in short seasons. The qualifier is
-  stated, but it is harsher than the published one.
-- **Next step:** scale the floor per team game, and keep `min_sample_applied`
-  honest about the scaled number. The floors to change live in
-  `query/metrics.py` (`default_min_sample=550` at `:220`, `=480` at `:230`,
-  the `fg_pct` 400-attempt floor at `:398`), not in `leaderboard.py`.
-- **GitHub:** #13
+### `three_pt_pct` and `ft_pct` are the same shape as #13 and are not scaled
+- **Found:** 2026-09-18, while fixing #13 (shooting qualifiers flat across
+  shortened seasons)
+- **Evidence:** `three_pt_pct` (200 attempts) and `ft_pct` (125 attempts) are
+  built by the same `_percentage()` helper as `fg_pct`, calibrated the same
+  way - "5, 2.5 and 1.5 attempts a game... over 82... games" - and so carry
+  the identical 82-game-flat flaw #13 measured for `ts_pct`/`efg_pct`/`fg_pct`.
+  Not measured here: #13's evidence and next step named only those three
+  floors (`query/metrics.py:220,230,398` at the time), so only those three
+  were fixed (`LeaderboardMetric.scales_with_schedule`,
+  `leaderboard.default_min_sample`) - extending it to two more floors nobody
+  had measured would have been a guess, not a fix.
+- **User sees:** a 3-point or free-throw percentage leaderboard for a
+  shortened season (2020, 2021, the 2012 lockout season, and any earlier
+  strike/lockout season) applies a stricter-than-published qualifier, the
+  same way #13's three floors did before the fix.
+- **Next step:** measure `three_pt_pct` and `ft_pct`'s qualifying counts for
+  2020/2021/2012 against full seasons the way #13 was measured, then set
+  `scales_with_schedule=True` on both in `_percentage()`'s callers
+  (`query/metrics.py`) - the scaling mechanism (`leaderboard.py`,
+  `_team_games_for_season`/`_scale_min_sample`) already handles any metric
+  that flag is set on.
 
 ### Smaller game and box-score gaps, 1994-2003
 - **Found:** 2026-09-11, template work (agents A, D) and the issues audit;

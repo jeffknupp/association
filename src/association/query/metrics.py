@@ -108,12 +108,23 @@ class LeaderboardMetric:
     rows do not carry, and NetPoints starts in 2019, so a "career" of it would
     be seven seasons presented as a career.
 
+    ``scales_with_schedule`` says ``default_min_sample`` was calibrated
+    against an 82-game season and should be scaled down for a shorter one
+    (``leaderboard.default_min_sample`` does the scaling, from the warehouse's
+    own team-game count for that season - see its docstring). Unset for every
+    metric whose floor is not calibrated this way: a games-played floor
+    already reads the actual games column, and a postseason floor is already
+    its own scaled-to-ten-games constant rather than a fraction of this one.
+
     .. versionchanged:: 2.1.0
        Added ``ratio``, ``postseason_min_sample`` and ``career``.
 
     .. versionchanged:: 2.2.0
        Every per-game average now carries the games qualifiers, so a ranking
        by one is qualified in both season types.
+
+    .. versionchanged:: 4.0.2
+       Added ``scales_with_schedule``.
     """
 
     table: str
@@ -132,6 +143,7 @@ class LeaderboardMetric:
     ratio: tuple[str, str] | None = None
     postseason_min_sample: int | None = None
     career: CareerAggregate | None = None
+    scales_with_schedule: bool = False
 
 
 # The career-average qualifier: 400 games is the long-standing record-book
@@ -209,8 +221,16 @@ LEADERBOARD_METRICS: dict[str, LeaderboardMetric] = {
     # The postseason floors are the same per-game rate over 10 games rather
     # than 82. No published postseason list is qualified at all (StatMuse's
     # 2025 leader shot 150% on two attempts), so those are scaled, not
-    # calibrated. The season floors are flat, not scaled to the schedule: the
-    # shortened 2020 and 2021 seasons qualify ~155 players against ~180.
+    # calibrated, and stay flat constants - a postseason's length is not "the
+    # schedule" the way a regular season's is.
+    #
+    # The season floors ARE scaled to the schedule (`scales_with_schedule`),
+    # because 550/480 are calibrated against an 82-game season and nothing
+    # else: unscaled, the shortened 2020 and 2021 seasons qualified ~155
+    # players against 174-184 in every other measured season, and the 2012
+    # lockout season (66 games) qualified 127 - a published rule scales per
+    # team game, so this was a stricter qualifier than the one it claimed to
+    # be, not a missing one. See `leaderboard.default_min_sample` for how.
     "ts_pct": LeaderboardMetric(
         table="player_season_advanced_stats",
         column="ts_pct",
@@ -220,6 +240,7 @@ LEADERBOARD_METRICS: dict[str, LeaderboardMetric] = {
         default_min_sample=550,
         postseason_min_sample=67,
         requires="warehouse rebuilt with `association data load` after player_box_stats was fetched",
+        scales_with_schedule=True,
     ),
     "efg_pct": LeaderboardMetric(
         table="player_season_advanced_stats",
@@ -230,6 +251,7 @@ LEADERBOARD_METRICS: dict[str, LeaderboardMetric] = {
         default_min_sample=480,
         postseason_min_sample=59,
         requires="warehouse rebuilt with `association data load` after player_box_stats was fetched",
+        scales_with_schedule=True,
     ),
     # Built by the same helper the newer per-game metrics use, so there is one
     # definition of "a per-game metric" rather than two that can disagree.
@@ -347,7 +369,7 @@ def _season_total(column: str, label: str) -> LeaderboardMetric:
     return LeaderboardMetric(table="player_season_stats", column=column, label=label, dedup_traded=True, min_sample_column="gamesPlayed", career=CareerAggregate(numerator=column))
 
 
-def _percentage(column: str, made: str, attempted: str, label: str, qualifiers: tuple[int, int, int, int]) -> LeaderboardMetric:
+def _percentage(column: str, made: str, attempted: str, label: str, qualifiers: tuple[int, int, int, int], *, scales_with_schedule: bool = False) -> LeaderboardMetric:
     """A shooting percentage, qualified on ATTEMPTS.
 
     ``qualifiers`` is (season, postseason, career, postseason career), and each
@@ -358,6 +380,12 @@ def _percentage(column: str, made: str, attempted: str, label: str, qualifiers: 
     with the same attempts does not: the qualifier leans on the thing it
     ranks. Measured on 2025-26, the season values still name the same three
     leaders the made-shot rule does (Gobert, Kennard, Cam Spencer).
+
+    ``scales_with_schedule`` carries through to the metric the same way it does
+    for ``ts_pct``/``efg_pct`` - see ``LeaderboardMetric.scales_with_schedule``.
+    Only ``fg_pct`` sets it (ISSUES.md #13 measured only the 550/480/400
+    floors); ``three_pt_pct`` and ``ft_pct`` are the identical shape,
+    unmeasured, and left flat - a follow-up, not this fix.
     """
     season, postseason, career, postseason_career = qualifiers
     return LeaderboardMetric(
@@ -371,6 +399,7 @@ def _percentage(column: str, made: str, attempted: str, label: str, qualifiers: 
         postseason_min_sample=postseason,
         ratio=(made, attempted),
         career=CareerAggregate(numerator=made, denominator=attempted, min_sample=career, postseason_min_sample=postseason_career),
+        scales_with_schedule=scales_with_schedule,
     )
 
 
@@ -395,7 +424,9 @@ _BOX_SCORE_METRICS: dict[str, LeaderboardMetric] = {
     "avg_minutes": _per_game("avgMinutes", None, "minutes per game"),
     "avg_fouls": _per_game("avgFouls", "fouls", "fouls per game"),
     # 5, 2.5 and 1.5 attempts a game, over 82 / 10 / 400 / 50 games, rounded.
-    "fg_pct": _percentage("fieldGoalPct", "fieldGoalsMade", "fieldGoalsAttempted", "field-goal percentage", (400, 50, 2000, 250)),
+    # fg_pct's 400 is one of the three floors ISSUES.md #13 measured against a
+    # shortened season, so it scales; three_pt_pct and ft_pct do not yet.
+    "fg_pct": _percentage("fieldGoalPct", "fieldGoalsMade", "fieldGoalsAttempted", "field-goal percentage", (400, 50, 2000, 250), scales_with_schedule=True),
     "three_pt_pct": _percentage("threePointFieldGoalPct", "threePointFieldGoalsMade", "threePointFieldGoalsAttempted", "3-point percentage", (200, 25, 1000, 125)),
     "ft_pct": _percentage("freeThrowPct", "freeThrowsMade", "freeThrowsAttempted", "free-throw percentage", (125, 15, 600, 75)),
 }

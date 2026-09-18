@@ -14,6 +14,27 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
+## Unreleased
+- **A shooting-percentage leaderboard's qualifier now scales to a shortened
+  season instead of applying an 82-game-calibrated floor flat.** `ts_pct`
+  (550 true-shooting attempts), `efg_pct` (480 field-goal attempts) and
+  `fg_pct` (400 field-goal attempts) were measured against the warehouse: at
+  the flat floors, 2020 qualified 157 players and 2021 155, against 174-184
+  in every full season measured (2019, 2022-2026), and the 66-game 2012
+  lockout season qualified 127 - a published rule scales per team game, so
+  this was a stricter qualifier than the one it claimed to be, not a missing
+  one. `LeaderboardMetric.scales_with_schedule` marks the three floors this
+  applies to; `leaderboard.default_min_sample` scales them from the season's
+  own MEDIAN `real_games` team-game count (72 for 2020 and 2021, 66 for
+  2012), rounding half up, and falls back to the flat floor when
+  `real_games` is unavailable. Re-measured: 2020 moves to 171-183 across the
+  three metrics, 2021 to 176-220, 2012 to 176-211, and every full season is
+  unchanged (proven identical, not just close, since the scaling factor at
+  82/82 is 1). `LeaderboardResult.min_sample_applied` - already wired into
+  the answer text - now names the real, scaled number rather than the flat
+  one. `three_pt_pct` and `ft_pct` share the identical shape and are not
+  scaled yet - see ISSUES.md.
+
 ## 4.0.1 - 2026-09-18
 - **A narrowed `game_log` or `player_stat` question over a season whose box
   scores ESPN served empty no longer says the games do not exist.** Both read
