@@ -133,7 +133,21 @@ class ESPNClient:
         missing collection and an empty one are the same thing to every caller
         here.
 
+        Logs at WARNING when the *first* page cannot be read at all - a 400 or
+        404 (``_request_json`` returns ``None`` for both), or a 200 whose body
+        is not the paged-collection shape. That is the case the declared-vs-fetched
+        check below cannot see: with no first page there is no ``count`` to
+        compare against, so a caller reading the returned ``[]`` would otherwise
+        get no signal that anything went wrong - indistinguishable from a
+        collection that is genuinely empty. A later page failing the same way is
+        already loud: page one's ``count`` is on record by then, and the
+        declared-vs-fetched warning below fires because ``len(items)`` falls
+        short of it.
+
         .. versionadded:: 2.2.0
+        .. versionchanged:: 4.0.1
+           Warns when the first page itself cannot be read, instead of
+           returning ``[]`` with nothing logged.
         """
         items: list[Any] = []
         page = 1
@@ -142,9 +156,13 @@ class ESPNClient:
             merged = {**(params or {}), "limit": COLLECTION_PAGE_SIZE, "page": page}
             data = self._request_json(url, merged)
             if not isinstance(data, dict):
+                if page == 1:
+                    log.warning("collection %s: first page was not a JSON object (got %s) - returning no items", url, type(data).__name__)
                 break
             batch = data.get("items")
             if not isinstance(batch, list):
+                if page == 1:
+                    log.warning("collection %s: first page had no items list (got %s) - returning no items", url, type(batch).__name__)
                 break
             items.extend(batch)
             if expected is None and isinstance(data.get("count"), int):

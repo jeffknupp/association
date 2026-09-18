@@ -14,6 +14,20 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
+## Unreleased
+- **`ESPNClient.get_collection` now warns when the first page of a collection
+  cannot be read at all**, instead of quietly returning `[]`. `_request_json`
+  returns `None` for a 400 or 404, which used to hit
+  `if not isinstance(data, dict): break` with `expected` still `None`, so the
+  existing declared-vs-fetched warning had no count to compare against and
+  never fired - an endpoint that started rejecting `limit=1000` with a 400
+  would have reproduced the original 25-row power-index bug with nothing in
+  the log. A 200 whose body is not the paged-collection shape (no `items`
+  list) is the same failure and now warns the same way. A later page failing
+  is unaffected: page one's `count` is already on record by then, so the
+  declared-vs-fetched warning already covers it, and a genuinely empty
+  collection (`count: 0`, one page, no items) still logs nothing.
+
 ## 4.0.0 - 2026-09-17
 - The version directives on this release's new public symbols name 4.0.0, and
   the pinned install commands in `README.md`, `docs/installation.rst` and
