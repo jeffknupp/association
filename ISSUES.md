@@ -1014,21 +1014,43 @@ those were found.
   Confirmed against the recorded routing corpus (`replay_recorded_routes.py`):
   "sam hauser v mil", "julius randle stats vs blazers with minnestota" and
   "Curry vs dallas last q0 games" now answer (the last as a clarifying
-  question - "Curry" is ambiguous, correctly). **Still open:**
-  "oubre vs warriors without embiid" and "de'aaron fox vs magic ... without
-  wembyanama" - both carry a second name in `players` (a garbled team name in
-  the first case, a genuinely-resolvable but spurious second player in the
-  second) *and* a `without`, neither of which the new branch reads, so both
-  still fall through, correctly refused rather than guessed at. `player_compare`
-  is untouched, so "compare curry and lebron vs the celtics" and "stating
-  centers vs suns" (also a position-group question, a separate gap) still fall
-  through too.
+  question - "Curry" is ambiguous, correctly).
+- **Fixed 2026-09-18 (the two remaining `player_matchup` rows):** "oubre vs
+  warriors without embiid" and "de'aaron fox vs magic ... without wembyanama"
+  each carry a second name in `players` *and* a `without` - a garbled team
+  name in the first case ("Warriners", already correctly resolved into
+  `opponent` by `entities.scope_from_question`), a genuinely-resolvable but
+  spurious second player in the second (Victor Wembanyama, Fox's own Spurs
+  teammate, named a second time - typo and all - in `without`). Checked
+  against the warehouse: Fox and Wembanyama are both on the Spurs (team 24) in
+  season 2026, and Oubre and Embiid are both on the 76ers (team 20) - so in
+  both rows `without` names a genuine TEAMMATE of the real subject, not an
+  opposing player, and `game_log`'s existing definition ("a game only where
+  none of the named teammates played") is the right one; no new semantic was
+  needed. `player_matchup` now honors `without` for exactly this shape
+  (`HONORED_SCOPING["player_matchup"]`), and
+  `_player_matchup_drop_fabricated_second` (`query/templates/games.py`)
+  eliminates the noise before falling into the one-player-and-a-team branch:
+  a second name matching no player at all is dropped outright, and a second
+  name is dropped for duplicating `without` only when
+  `_player_matchup_confirms_teammate` CONFIRMS the two name the same player -
+  reusing `_resolved_teammate`'s own near-spelling resolution rather than a
+  fresh fuzzy match, and never merely because the two share a team. A genuine
+  two-player matchup with a leftover `without` is refused from inside the
+  template rather than silently dropped, the same way a leftover `opponent`
+  already is. Confirmed against the recorded routing corpus: "oubre vs
+  warriors without embiid" now answers a one-game narrowed log (verified
+  against the warehouse: Oubre has exactly one game against the Warriors this
+  season, 2026-02-03, and Embiid has no box-score row for it); "de'aaron fox
+  vs magic ... without wembyanama" now answers "did you mean Victor
+  Wembanyama?" - a typo genuinely one edit from ambiguous otherwise, and the
+  same honest suggestion `game_log`'s own `without` already gives for a typo,
+  rather than guessed at. No other row in the 261-question corpus moved.
+- **Still open:** `player_compare` is untouched, so "compare curry and lebron
+  vs the celtics" and "stating centers vs suns" (also a position-group
+  question, a separate gap) still fall through.
 - **Next step:** let `player_compare` honor `opponent` by building each
-  player's line through `_narrow_player_games`. For the two still-open
-  `player_matchup` rows, `entities.py` would need to tell a garbled team name
-  in `players` apart from a real second player before `opponent`+`without`
-  could be answered safely - not attempted here, since a wrong guess there is
-  worse than the current refusal.
+  player's line through `_narrow_player_games`.
 - **GitHub:** #34
 
 ### `split="starter_bench"` reaches `game_log`/`period_split` with no direction, so it stays refused
@@ -1665,6 +1687,16 @@ those were found.
 - **Priority note:** filed P4 rather than P2 because exactly one corpus row
   shows it and that row is audit-flagged as over-specific; re-rank if an audit
   of the other templates finds more.
+- **A second instance, found 2026-09-18 while fixing #34's `without` rows:**
+  `player_matchup`'s genuine two-player branch (`_player_matchup_answer`,
+  `query/templates/games.py`) reads neither `stat` nor `fields` - the summary
+  table always shows minutes/points/rebounds/assists/FG% regardless of what
+  either slot asks for. Not new behavior and not touched by this session's
+  fix (the one-player-and-a-team branch it now shares delegates to
+  `game_log`, which DOES read `stat` via `_log_extras`, so that half is fine).
+  No corpus row currently shows a `player_matchup` two-player question naming
+  a specific `stat`, so this is unmeasured rather than confirmed-wrong - worth
+  folding into the audit this entry already calls for.
 
 
 ### `stat` is the same unguarded shape as `limit`, and the enum-required slot makes it worse

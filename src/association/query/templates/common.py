@@ -133,12 +133,12 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     "player_splits": frozenset({"span", "split", "venue", "opponent"}),
     "with_without": frozenset({"span", "without"}),
     "record_when": frozenset({"span"}),
-    # `opponent` is honored only for the one-name-and-a-team shape that is
-    # really a player-vs-team question in disguise - see the versionchanged
-    # note on player_matchup itself. A genuine two-player matchup with an
-    # opponent left over refuses it from inside the template, since check_scope
-    # cannot tell the two shapes apart from the slots alone.
-    "player_matchup": frozenset({"span", "opponent"}),
+    # `opponent` and `without` are honored only for the one-name-and-a-team
+    # shape that is really a player-vs-team question in disguise - see the
+    # versionchanged note on player_matchup itself. A genuine two-player
+    # matchup with either left over refuses it from inside the template,
+    # since check_scope cannot tell the two shapes apart from the slots alone.
+    "player_matchup": frozenset({"span", "opponent", "without"}),
     "streak": frozenset({"span"}),
     # The home/road split, the record against one team, and every season at
     # once - "Knicks home record" was answered with their overall 53-29.
