@@ -1851,12 +1851,40 @@ those were found.
   resolutions is effectively total, and the misses are three wrong answers the
   constraint would prevent.
 - **User sees:** nothing yet - this is feasibility only.
-- **Next step:** two things need a live model. Whether ollama 0.33.3 compiles a
-  per-call enum of 9-70 strings into a working grammar and at what latency cost;
-  and whether constraining `player` distorts other slots - this project's own
-  notes record that a constrained decoder fills required fields first, so
-  narrowing `player` could plausibly move `stat` or `intent`. That second risk
-  is the real one and only a live run shows it.
+- **Live result, 2026-09-18:** it works, and the distortion risk inverted.
+  **Zero grammar failures** - ollama 0.33.3 compiles a per-call enum of 1-70
+  names without complaint - and constrained decoding is slightly **faster**
+  (2.62s against 2.83s median), since a narrower grammar is less to search. The
+  router is deterministic at temperature 0 (verified: identical calls give
+  identical slots), so every difference is attributable to the enum.
+
+  Other slots moved on 9 of 19 questions, but graded: **5 improvements, 1
+  regression, 3 neutral.** Constraining `player` freed the decoder to get other
+  slots right - `luka ft log` went `stat: fieldGoalsMade` to `freeThrowsMade`;
+  `Cody Martin reb log` went `stat: none` to `rebounds`; and
+  `jay huff game log vs Embiid` went from `players: ['Jayson Tatum', 'Nikola
+  Jokic']` - two players the question never names - to `player: 'Jay Huff'` with
+  the intent corrected to `game_log`.
+
+  **The one regression was a bug in the candidate generator, not the concept.**
+  It near-matched at edit distance 1 without excluding ordinary words, so
+  **"while" reached "white"** and `barlow ... while starting` offered every
+  player named White; the model picked Jahidi White. This is the exact trap
+  `AGENTS.md` records for a different fuzzy matcher ("season" is one edit from
+  Tari Eason), reintroduced in a file whose own docstring cites it. Fixed by
+  refusing to near-match any word in the system dictionary - a user's misspelled
+  name is not an ordinary word, so `achiwawa`, `cossoko`, `jayleyn`, `knepuell`,
+  `dylon` and `fraymond` all still resolve.
+- **Recall after that fix: 152/157 (96.8%)**, enum median 5, p90 30, max 68.
+  Three of the five misses are fabrications the enum correctly refuses, so
+  recall on genuinely-correct resolutions is 152/154 (98.7%). The two real
+  losses are normalization - `adam's` against `adams`, `Amen` against `Amen`
+  with an accent.
+- **Next step:** fold the question's words with `fetch/parse.py`'s `match_key`
+  before matching - it already drops diacritics and punctuation for the
+  NetPoints name work, and would recover both remaining losses. Then run the
+  full 261 both ways and grade **end-to-end answers**, not slots: 19 questions
+  shows the mechanism works and is far too small to size the gain.
 - **Script:** `~/association-research/statmuse-2026-09/candidate_enum.py`,
   runs offline with no model.
 - **GitHub:** #135
