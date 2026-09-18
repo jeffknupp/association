@@ -176,7 +176,7 @@ likewise.
   comment at `fetch/repairs/team_box_repair.py:108` counts.
 - **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull**, which
   reproduced `team_box_stats` exactly.
-- **How we handle it (as of 2026-09-17, fixed in code, not yet backfilled):**
+- **How we handle it (fixed and backfilled 2026-09-17):**
   `fetch/repairs/team_box_repair.py` rebuilds an all-NULL team row from its
   game's real player rows, for every column a player sum proves exactly -
   field goals, three-pointers, free throws and their percentages, assists,
@@ -186,13 +186,22 @@ likewise.
   `totalRebounds` is left NULL on a rebuilt row: it runs 8.80 a game above the
   player oreb+dreb sum on those same rows (see "The team `totalRebounds`
   column stops including team rebounds in 2022", below) and matches it in
-  only 1 of 2,387, so there is nothing to rebuild it from. `_empty_box_scores`
-  still does NOT catch these rows (it tests player minutes, which are present
-  here) - now moot for the rebuilt columns, since they carry real values
-  instead of a silent NULL, but a `totalRebounds` answer over these games
-  still needs its own caveat, which nothing gives it yet.
-- **Tracked in:** ISSUES.md, "Vancouver 1996 has an empty TEAM box, not an
-  empty player box" (#67).
+  only 1 of 2,387, so there is nothing to rebuild it from - and nothing
+  user-facing reads it any more: `_TEAM_LINE` and `_team_games` read
+  `offensiveRebounds + defensiveRebounds`, which the rebuild fills (see "The
+  team `totalRebounds` column stops including team rebounds in 2022", below).
+  The two remaining `totalRebounds` reads are on `player_season_stats`, where
+  a player's rebounds carry no team bucket.
+- **Confirmed against the rebuilt warehouse, 2026-09-17:** the 117 rows are
+  now zero, the row count is conserved at 87,008, Vancouver holds 78 of its 82
+  team rows populated (the other 4 being the games with no player rows at all,
+  the same 4 counted above), and 1996's league means read normally - 80.19
+  field goals attempted, 22.68 assists, 41.26 offensive plus defensive
+  rebounds a game. `_empty_box_scores` still does not catch these rows (it
+  tests player minutes, which are present here), which is now moot: the
+  columns carry real values instead of a silent NULL.
+- **Tracked in:** nothing open. Fixed in code and in the warehouse; the fault
+  above is ESPN's and permanent, so this entry stays as the record of it.
 
 ### The 2000 and 2001 playoffs stop before the Finals
 

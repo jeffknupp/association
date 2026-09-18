@@ -283,135 +283,6 @@ found.
 - **Source:** DATA.md, "Every Chicago and New Orleans game from 2013 to 2018 has an empty box score"
 - **GitHub:** #1
 
-### Vancouver 1996 has an empty TEAM box, not an empty player box
-- **Found:** 2026-09-11 writing DATA.md; **re-measured and corrected 2026-09-14**,
-  which also moved it from P1 to here
-- **Evidence:** this entry used to say all 82 games were stored "with every
-  player row at NULL minutes and zero stats: the same shape as the Chicago and
-  New Orleans seasons". Measured on **both** tables, that is wrong, and the two
-  faults are not the same shape at all:
-  - `team_box_stats`: 82 of 82 Vancouver rows are all-NULL. This half was right.
-  - `player_box_stats`: 936 rows across 78 of the 82 games, 12 a game - the
-    league-normal roster size that season (2,189 of 1996's team-games have
-    exactly 12) - and only 151 of those 936 rows lack minutes. **The player box
-    is real.** For contrast, Chicago and New Orleans across 2013-2018 have
-    *zero* player rows with minutes.
-  - Vancouver's box points total 7,030 against ESPN's own season table's 7,362.
-    That shortfall is the 4 games missing from `player_box_stats` outright, not
-    a zeroed season.
-  - Only **5** of 1,189 games in 1996 have no player box rows at all - which is
-    exactly the "5 in 1996" figure this entry was created to overturn. The
-    original figure was correct.
-  - **The Chicago half of this bullet was wrong** (re-measured 2026-09-15).
-    Chicago 2000's 82 all-NULL rows and 1999's 50 sit on **zero** `real_games`
-    events: they are the 0-0 `T17:00Z` placeholder rows that `real_games`
-    already drops. Chicago's real games have normal team rows (80 in 2000, 50
-    in 1999), so those two seasons are not this fault at all.
-  - **Vancouver is wider than recorded.** In 41 of its 82 games the *opponent's*
-    team row is all-NULL too, and 37 of those sit beside real player rows,
-    spread over 25 teams at 1-2 games each. League-wide, 115 null team rows on
-    real 1996 games have real player rows beside them; with one 2000 game
-    (`191102003`, ORL@NO) that is the 117 the comment at
-    `fetch/repairs/team_box_repair.py:108` counts. That comment used to name Chicago
-    2000 as the other case; it was corrected on 2026-09-17. Re-measured
-    2026-09-17 against the live warehouse (read-only): 115 in 1996, 2 rows
-    (both sides) on the single 2000 game - 117 confirmed exactly.
-- **Source:** DATA.md, "Vancouver 1996 is an empty TEAM box, not an empty player box"
-- **User sees (before the fix below):** nothing at all for a per-player
-  question - those rows are sound. A team-level read of 1996 Vancouver gets
-  NULLs, and `_empty_box_scores` does not count these (it tests player
-  minutes), so such an answer carries no caveat. **This was half wrong.** The
-  team branch of `player_splits` (`query/templates/splits.py`) does caveat: it
-  counts rows with `fieldGoalsAttempted IS NULL` and says "Rebounds, assists,
-  3-pointers and FG% are missing from N of those games' box scores and are
-  averaged over the rest." But `_team_games` (`conditions.py:257-271`), which
-  backs team `streak` and `record_when`, reads
-  `tbs.totalRebounds`/`tbs.assists` directly with no NULL count or caveat at
-  all - so a 1996 Grizzlies rebound streak or threshold question silently
-  excluded all 82 games, with nothing said.
-- **Fixed in code 2026-09-17, not yet backfilled.**
-  `fetch/repairs/team_box_repair.py` now rebuilds a team row that is itself
-  all-NULL (`_EMPTY_TEAM_ROW`) from its game's player rows, for every column a
-  player sum can prove exactly: `fieldGoalsMade/Attempted`,
-  `threePointFieldGoalsMade/Attempted`, `freeThrowsMade/Attempted` (with their
-  percentages), `assists`, `steals`, `blocks`, `turnovers`, `fouls`, and the
-  `offensiveRebounds`/`defensiveRebounds` split. Measured against the 2,387
-  surviving (non-empty) 1996 regular-season team rows and the 2,472 surviving
-  2000 ones - the population `AGENTS.md` asks for, games in the SAME seasons
-  whose team row survived - every one of those columns equals the player sum
-  in 100% of rows, and ESPN's own `round(100 * made / attempted)` reproduces
-  its stored shooting percentages in 100% as well. `totalRebounds` is
-  deliberately NOT rebuilt: it runs 8.80 a game above the player oreb+dreb sum
-  on those same 2,387 rows and matches it in only 1 of 2,387, because before
-  2022 it includes the team's own boards, credited to no player (`DATA.md`,
-  "The team `totalRebounds` column stops including team rebounds in 2022").
-  Neither is `teamTurnovers`, `totalTurnovers`, `technicalFouls`,
-  `totalTechnicalFouls`, `flagrantFouls`, `pointsInPaint`, `fastBreakPoints`,
-  `largestLead`, `leadChanges` or `leadPercentage` - the player box has no
-  sibling for any of them, so they stay NULL on a rebuilt row exactly as ESPN
-  served them.
-
-  This makes the `_team_games` half of "User sees" above moot for the columns
-  it reads (`totalRebounds`, `assists`): `assists` is now rebuilt and populated
-  for these rows, so a 1996 Grizzlies assist streak or threshold question will
-  see them; a `totalRebounds` one still will not, correctly, since that column
-  has no source to rebuild from and stays NULL. `conditions.py` was not
-  touched (out of this change's scope) and needs no change for `assists` to
-  start working - the fix is entirely upstream, in what `team_box_stats`
-  holds after a load.
-
-  **Not yet backfilled against the live warehouse.** The fix is load-time
-  (`fetch/repairs/team_box_repair.py`, run from `_repair_and_build_views` on
-  every `warehouse.build`), so it needs `association data load` (not a
-  `data pull`) against the real data directory to reach
-  `/home/jeff/code/association/nba.duckdb`:
-  `association data load --data-dir ./data/parquet --db-path ./nba.duckdb`
-  (or the project's own default paths, run from the main checkout). Re-measure
-  afterwards with the same query this entry's evidence used, and confirm the
-  117 rows now hold real `assists`/`fieldGoalsMade`/etc and NULL `totalRebounds`.
-- **GitHub:** #67
-
-### The team-splits rebounds caveat goes quiet on exactly the games it exists for
-- **Found:** 2026-09-17, fixing the Vancouver 1996 team-box entry above.
-- **Evidence:** `_player_splits_team` (`query/templates/splits.py:225-233`) adds
-  "Rebounds, assists, 3-pointers and FG% are missing from N of those games'
-  box scores and are averaged over the rest" by counting rows where
-  `fieldGoalsAttempted IS NULL` in `_TEAM_LINE`'s base query - a single bit
-  standing in for "this row has nothing". Once `team_box_repair` rebuilds the
-  117 Vancouver/1996-opponent/2000 rows above, that bit flips to "populated"
-  for all of them, because `fieldGoalsAttempted` genuinely is now real - but
-  `totalRebounds` (what `_TEAM_LINE`'s "rebounds" column reads,
-  `conditions.py:388`, `AVG(t.totalRebounds)`) was deliberately left NULL on
-  every one of those rows, since nothing in the player box can rebuild it (see
-  the Vancouver entry above). Measured against the live warehouse (read-only,
-  before the fix is backfilled but the count does not depend on the backfill):
-  for the Grizzlies' own 1996 games (`team_id='29'`), the `blanks` count this
-  caveat uses would drop from 82 to 4 once the rebuild is loaded; league-wide
-  over the 28 affected team-seasons in 1996 and 2000, the drop is 137 to 20.
-  So a "rebounds ... are missing" sentence that used to cover 82 Grizzlies
-  games will cover 4, understating by 78 - correct for assists/3PM/FG%, which
-  really are no longer missing, but wrong for rebounds specifically, the first
-  word the sentence names.
-- **Source:** DATA.md, "Vancouver 1996 is an empty TEAM box, not an empty
-  player box"; "The team `totalRebounds` column stops including team rebounds
-  in 2022" (why `totalRebounds` cannot be rebuilt at all, in any era).
-- **User sees:** a team rebounds split or average over a span touching 1996
-  Vancouver (or one of its 25 1996 opponents, or the 2000 ORL/NO game) that
-  silently averages a NULL `totalRebounds` into the shown figure over 78 more
-  games than the caveat admits, once the load-time fix above is backfilled.
-  Before the backfill, the caveat is accurate (blanks really is 82) - this is
-  a *consequence* of the Vancouver fix landing, not a bug that exists yet in
-  the live warehouse.
-- **Next step:** give `_player_splits_team`'s caveat a second, column-specific
-  test - count `totalRebounds IS NULL` separately from `fieldGoalsAttempted IS
-  NULL` and word the sentence around whichever columns are actually short,
-  the way `_box_missing`/`_empty_box_scores` already separate "no box score at
-  all" from "box score present but a stat is NULL" elsewhere. Out of this
-  fix's scope (`query/templates/splits.py` and `query/conditions.py`, not
-  touched here - `conditions.py` is another agent's concurrent work).
-- **Priority:** P2 (misleading - the averaged number is right, the caveat that
-  is supposed to flag its gap is not, once the fix above is backfilled).
-
 ### A game log over empty box scores says the games do not exist
 - **Found:** 2026-09-14, measuring what the empty 2013-18 box scores actually
   break
@@ -1245,6 +1116,38 @@ found.
 - **GitHub:** #77
 
 ## P4: tooling, docs, low impact
+
+### The team-splits caveat uses one bit to stand for several columns
+- **Found:** 2026-09-17, fixing "Vancouver 1996 has an empty TEAM box, not an
+  empty player box" (#67).
+  **Rewritten the same day, after both fixes landed: the P2 it was filed as
+  does not exist.** It was written against `_TEAM_LINE`'s rebounds column
+  reading `AVG(t.totalRebounds)`, and that column now reads
+  `AVG(t.offensiveRebounds + t.defensiveRebounds)` - which the rebuild fills -
+  so the caveat does not understate anything. Two concurrent changes, each
+  sound alone, and the risk was in the pair.
+- **Evidence:** `_player_splits_team` (`query/templates/splits.py`) says
+  "Rebounds, assists, 3-pointers and FG% are missing from N of those games'
+  box scores" from a single count of `fieldGoalsAttempted IS NULL` - one bit
+  standing in for "this row has nothing", covering four columns that could in
+  principle be short in different games. Measured against the rebuilt
+  warehouse (2026-09-17, after the `data load`): for the Grizzlies' own 1996
+  games the `fieldGoalsAttempted IS NULL` count and the
+  `offensiveRebounds`/`defensiveRebounds` NULL count are **both 4** of 82, and
+  league-wide over 1996 and 2000 both are **20** - they agree exactly, because
+  this fault fills every rebuildable column together or none of them.
+  `totalRebounds` is still NULL on all 82, and nothing user-facing reads it:
+  the only remaining `totalRebounds` reads are on `player_season_stats`
+  (`query/metrics.py`), where a player's rebounds carry no team bucket.
+- **User sees:** nothing today - verified, not assumed.
+- **Next step:** none required. If a future repair ever fills one of those
+  four columns without the others, this caveat will be wrong and silent, so
+  the column-specific test is worth writing then: count each column's NULLs
+  separately and word the sentence around whichever are actually short, the
+  way `_box_missing`/`_empty_box_scores` already separate "no box score at
+  all" from "box score present but a stat is NULL".
+- **Source:** DATA.md, "Vancouver 1996 is an empty TEAM box, not an empty
+  player box"
 
 ### A single-game-high list cut at a tie picks the players at random
 - **Found:** 2026-09-17, by the templates complexity refactor's golden
