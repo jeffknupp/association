@@ -788,6 +788,39 @@ those were found.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #95
 
+### `opponent` can hold garbage nothing else in the slots explains, and blocks an otherwise-answerable question
+- **Found:** 2026-09-18, entity-resolution pass over the StatMuse replay set
+- **Evidence:** two shapes, neither a name-matching problem:
+  - "bane game log without anthony black and franz wagner this season" arrives
+    with `opponent='Anthony Black, Franz Wagner'` - a comma-joined restatement
+    of the *same two names* already correctly in `without=['anthony black',
+    'franz wagner']`. `entities.scope_from_question` has no rule for an
+    `opponent` that duplicates `without`; it is left in place, fails to
+    resolve as a team ("no team matching 'Anthony Black, Franz Wagner'"), and
+    the whole question falls through even though every piece of scoping it
+    actually needs is already sitting in `without`.
+  - "Clippers ats record last 15 games at home" arrives with `team='Los
+    Angeles Clippers'` (correct) and `opponent='home'` beside `venue='home'` -
+    the same fact written twice, once as a bogus opponent. No `vs`/`against`
+    phrase exists for `_scope_from_question_opponent` to correct it with, so it
+    is left alone and fails to resolve as a team ("no team matching 'home'").
+    This second one is not a clean fix even if `opponent` is dropped: "ats"
+    means against-the-spread, which nothing in the warehouse stores, so the
+    question is unanswerable on the stat alone regardless.
+- **User sees:** a fall-through to the agent for the first (which the agent
+  might still get right by reading `without` itself); the second would still
+  need a separate refusal for the unsupported "ats" stat even if `opponent`
+  were fixed.
+- **Next step:** in `entities.py`, drop an `opponent` that (a) does not
+  resolve as a team via `_team_named`, and (b) either duplicates names already
+  present in `without`, or is literally the venue word already in `venue`
+  ("home"/"away"). Not attempted here: the payoff on the second case is
+  capped by the separate "ats" gap, and the first needs a decision about
+  whether dropping `opponent` outright is safe versus trying to fold it back
+  into `without` (already correct) - a judgment call better made alongside
+  whichever template's `HONORED_SCOPING` actually reads these two rows.
+- **Source:** ours, not ESPN's.
+
 ### A quarter or half is answered for a player, and for nobody else
 - **Found:** 2026-09-16 auditing the feed; **the player half shipped the same
   day** as `period_split`
@@ -1053,6 +1086,27 @@ those were found.
   reason - `HONORED_SCOPING` is documented to mean "actually filters by it and
   says so," and a refusal is neither.
 - **GitHub:** not yet filed
+### A team is the real subject of a question routed to a player-only template
+- **Found:** 2026-09-18, entity-resolution pass over the StatMuse replay set
+  (`fastpath_after_rows_graded.jsonl`)
+- **Evidence:** two of the 261 questions name a team where a player belongs,
+  and no amount of slot repair fixes them, because the template itself has no
+  team-shaped answer: "cavaliers 3 pointers every game" routes to
+  `shot_distance` with `player='Cavaliers'` - a per-player shot-distance
+  template, with nothing that reports a team's makes-per-game; "rebounds
+  allowed per team" routes to `team_stat` with `team='any_team'` - the
+  question wants every team ranked, which is `team_leaderboard`'s shape, not
+  `team_stat`'s single-team one. Moving the text into a `team` slot changes
+  nothing: `entities.py` can name the entity correctly, but `check_scope`/the
+  handler still has no column or shape to answer from. ("oklahoma city thunder
+  all-time triple doubles vs west" looked like a third instance but is not -
+  "vs west" is Western Conference scoping, which is #25's gap, not this one.)
+- **User sees:** a fall-through to the slow agent for both.
+- **Next step:** not an `entities.py` fix. Either teach the router to route a
+  bare team subject with no player words to a team-shaped intent
+  (`team_stat`/`team_leaderboard`), or add the missing shapes (a team's
+  per-game shot-distance breakdown; `team_leaderboard` ranking every team by a
+  counting stat with no `stat` narrowed to one metric already listed).
 
 ### Conference and division are in the standings we fetch, and the parser drops them
 - **Found:** 2026-09-11, template work (agent B); **cause corrected 2026-09-15**
@@ -1211,6 +1265,64 @@ those were found.
   three clears `MAX_CLARIFY_CANDIDATES=5` many times over, so the conclusion is
   unaffected - but "23+" should be replaced with one of these, named.
 - **GitHub:** #33
+
+### The surname backoff in `suggest_players` can confidently name a different real player
+- **Found:** 2026-09-18, entity-resolution pass over the StatMuse replay set
+- **Evidence:** "Grady dick last 10 games" (the real player is "Gradey Dick")
+  routed to `game_log` with `player='Grady Dickinson'` - the given name
+  correct-ish, the surname fabricated. `suggest_players`' surname-only pass
+  (`entities.py`, pass 1) drops back to the last token, finds exactly one
+  player whose surname is "Dickinson" - Hunter Dickinson, a real but wholly
+  unrelated player - and returns him without ever checking the given name.
+  That is not a bug in isolation: the same "ignore the given name once the
+  surname is exact and unique" rule is what makes "Jemel Embiid" recover Joel
+  Embiid (`test_a_fabricated_given_name_falls_back_to_the_surname`), and
+  tightening it to also check "Grady" against "Hunter" would break that
+  measured, tested fix - Damerau-Levenshtein("jemel","joel") is 2, above
+  `_edit_budget(5)=1`, so a stricter cross-check rejects the case the pass
+  exists for. The two cases are the same shape (router invents a surname) with
+  opposite right answers, and nothing in the text tells them apart.
+- **User sees:** "did you mean Hunter Dickinson?" - a confident, wrong "did you
+  mean", worse than falling through, because it reads as an answer.
+- **Next step:** needs a real design, not a patch: something that weighs a
+  *second* signal before trusting the surname-only match - e.g. only trusting
+  it when the given-name token independently near-matches nobody else's given
+  name in the same surname group (Hunter is not close to Grady, but Joel is
+  fabricated-close to Jemel) - measured against the corpus before shipping,
+  the way `PLAYER_NICKNAMES` and the prominence tiebreak above it were.
+- **Source:** ours (a matching heuristic), not ESPN's.
+
+### A pre-1994 legend gets "no player matching", not the coverage-floor refusal
+- **Found:** 2026-09-18, entity-resolution pass over the StatMuse replay set
+- **Evidence:** "kareem stats vs bob lanier" routes to `player_matchup` with
+  `players=['Kareem Abdul-Jabbar', 'Bob Lanier']`; both retired before the
+  warehouse's 1993-94 floor and neither is in `players` at all (`SELECT ...
+  FROM players WHERE display_name ILIKE '%abdul-jabbar%'` and `'%lanier%'`
+  each return zero rows, checked 2026-09-18 against
+  `/home/jeff/code/association/nba.duckdb`) - this is DATA.md's documented
+  fact ("Coverage floors": "Kareem Abdul-Jabbar, Larry Bird and Julius Erving
+  are not in `players` at all"), not a name-matching bug: no amount of
+  suggestion or nickname repair can find a row that does not exist.
+  `suggest_players` correctly returns nothing for both names. The refusal that
+  reaches the user is the generic `no_match` sentence, "no player matching
+  'Kareem Abdul-Jabbar'", which reads exactly like a typo problem - the same
+  false-cause shape as the Maxey example in `AGENTS.md`, one step earlier: the
+  question is not asking about a player our matching failed to find, it is
+  asking about a player who played before the warehouse's discovery mechanism
+  (box scores from 1994) could ever have found him.
+- **User sees:** a fall-through that names the wrong cause; a person reading
+  "no player matching" goes to check their spelling, not learn that pre-1994
+  legends are out of reach entirely.
+- **Next step:** not fixable in `entities.py` - there is no near-spelling
+  distance from "no such row" to "the era is too early". Best done where
+  `check_coverage`/`no_match` meet a `PLAYER_INTENTS` template: when
+  `find_players`/`suggest_players` both come back empty for a name that is
+  otherwise well-formed (no digits, no obvious typo signal), consider whether
+  a coverage-floor sentence ("ESPN's box scores start in 1994; ... may have
+  played earlier than that") is more honest than "no player matching".
+  Speculative until measured against how many other empty-`players`-match
+  cases are actually pre-1994 legends versus genuine typos.
+- **Source:** DATA.md, "Coverage floors" (`player_season_stats` section).
 
 ### The web page keeps no history, so closing the tab loses every answer
 - **Found:** 2026-09-14, requested

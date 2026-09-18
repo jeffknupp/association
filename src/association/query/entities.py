@@ -77,6 +77,8 @@ PLAYER_NICKNAMES = {
     "king james": "LeBron James",
     "the king": "LeBron James",
     "ant": "Anthony Edwards",
+    "ant man": "Anthony Edwards",
+    "ant-man": "Anthony Edwards",
     "jrue": "Jrue Holiday",
     "trae": "Trae Young",
     "zion": "Zion Williamson",
@@ -97,6 +99,14 @@ PLAYER_NICKNAMES = {
     "the greek freak": "Giannis Antetokounmpo",
     "greek freak": "Giannis Antetokounmpo",
     "joker": "Nikola Jokic",
+    "og": "OG Anunoby",
+    # "Rui" is Hachimura's real given name, the same shape as "luka" and
+    # "kobe" above - and the warehouse also holds a "Rui Betancourt" who
+    # shares the token, which is exactly why this entry matters: unresolved,
+    # "rui" fell to find_players' alphabetical ordering and answered about
+    # Betancourt. The curated lookup is checked before that ordering ever
+    # runs, so it settles the one case a plain search could not.
+    "rui": "Rui Hachimura",
     # Players whose careers reach back toward the warehouse's 1993-94 floor.
     # These are the ones the router gets wrong rather than merely misses: it
     # answered "The Answer" with Klay Thompson and "The Glove" with Jayson
@@ -759,21 +769,44 @@ def _scope_from_question_only_player(con: duckdb.DuckDBPyConnection, question: s
     return named[0] if len(named) == 1 else None
 
 
-def _scope_from_question_player_in_team_slot(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], notes: list[str]) -> bool:
-    """Move a player's name out of ``team`` and into ``player``. Returns whether it did."""
+def _scope_from_question_player_in_team_slot(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], notes: list[str]) -> bool:
+    """Move a player's name out of ``team`` and into ``player``. Returns whether it did.
+
+    Two ways a player ends up there. Measured: "Podziemski game log without
+    curry" arrived as team='Podziemski', player='Curry' - the subject in the
+    team slot and the absent teammate in the player slot - which
+    :func:`find_players` settles outright, since "Podziemski" alone names one
+    person.
+
+    The other is a router that kept only a bare fragment of a name the
+    question spells in full: "Will Riley last 5 game s" arrived as
+    team='Riley', and "Riley" alone is three players - Eric, Minix and Will -
+    so :func:`find_players` cannot settle it. :func:`players_named_in` can,
+    the same way it settles a dropped or invented player elsewhere in this
+    module: a whole name, not a guess. Gated on the fragment actually
+    sharing a word with what it finds, so a garbled `team` next to some
+    OTHER player named later in a long question cannot borrow that name -
+    the same discipline :func:`override_invented_players` applies to a name
+    the router invented outright.
+    """
     team_text = slots.get("team")
-    if isinstance(team_text, str) and team_text.strip():
-        # A player's name in `team`. Measured: "Podziemski game log without
-        # curry" arrived as team='Podziemski', player='Curry' - the subject in
-        # the team slot and the absent teammate in the player slot.
-        as_player = find_players(con, team_text)
-        held, without = slots.get("player"), teammate_names(slots.get("without"))
-        if len(as_player) == 1 and (not held or (isinstance(held, str) and any(held.casefold() == name.casefold() for name in without))):
-            slots.pop("team", None)
-            slots["player"] = as_player[0].name
-            notes.append(f"{team_text!r} is a player, not a team; the subject is {as_player[0].name!r}")
-            return True
-    return False
+    if not (isinstance(team_text, str) and team_text.strip()):
+        return False
+    as_player = find_players(con, team_text)
+    held, without = slots.get("player"), teammate_names(slots.get("without"))
+    name: str | None = None
+    if len(as_player) == 1 and (not held or (isinstance(held, str) and any(held.casefold() == n.casefold() for n in without))):
+        name = as_player[0].name
+    elif not held:
+        found = _scope_from_question_only_player(con, question)
+        if found is not None and _shares_word(found, team_text):
+            name = found
+    if name is None:
+        return False
+    slots.pop("team", None)
+    slots["player"] = name
+    notes.append(f"{team_text!r} is a player, not a team; the subject is {name!r}")
+    return True
 
 
 def _scope_from_question_displaced_player(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], notes: list[str], team: Entity, versus: Entity | None) -> Entity | None:
@@ -913,7 +946,7 @@ def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: di
     team = _team_named(con, slots.get("team"), season)
 
     if reads_player and team is None:
-        has_player = _scope_from_question_player_in_team_slot(con, slots, notes) or has_player
+        has_player = _scope_from_question_player_in_team_slot(con, question, slots, notes) or has_player
 
     if team is not None and not has_player and reads_player:
         team = _scope_from_question_displaced_player(con, question, slots, notes, team, versus)
@@ -1064,16 +1097,39 @@ def suggest_players(con: duckdb.DuckDBPyConnection, text: str) -> list[Entity]:
     ``MAX_CLARIFY_CANDIDATES`` of them. A long list is not a suggestion: it
     means the name was too common to narrow anything ("Smith" is within one
     edit of 25 players), and the question is better off falling through than
-    reading out a directory.
+    reading out a directory. Pass 1 finding too many no longer ends the
+    search, though - it falls through to pass 2, which is stricter (every
+    token has to be close, not just the surname) and can still land on one
+    real match: six Harpers share the surname alone, and only Dylan is also
+    close on the given name "Dylon" typed instead.
+
+    A name that resolves to a real team outright is never suggested, however
+    close the edit distance: "Hawks" is one edit from Spencer Hawes, and
+    offering him is a wrong answer to a question about a team, not a near
+    miss on a player - the same false-cause shape :func:`no_match` exists to
+    avoid elsewhere.
 
     Returns:
         Closest first, at most ``MAX_CLARIFY_CANDIDATES`` of them; empty when
         nothing is close enough to be worth naming.
 
     .. versionadded:: 2.1.0
+    .. versionchanged:: 4.3.0
+       Falls through to the near-spelling pass when the surname alone matches
+       too many players, and never suggests a name that is really a team's.
     """
     tokens = [t for t in text.split() if t]
     if not tokens:
+        return []
+
+    if _team_named(con, text) is not None:
+        # A team name is not a near miss on a player. "Hawks" is one edit
+        # from Spencer Hawes, and "Most reb by a hawk player history"
+        # answered "did you mean Spencer Hawes?" instead of naming the real
+        # cause: the question is about a team, and this template cannot
+        # answer that - the same false-cause shape the Maxey refusal note
+        # above warns about, one step earlier. The caller already has `text`
+        # to explain that with; guessing a person here can only mislead it.
         return []
 
     if len(tokens) > 1 and len(tokens[-1]) > 2:
@@ -1083,8 +1139,15 @@ def suggest_players(con: duckdb.DuckDBPyConnection, text: str) -> list[Entity]:
         # "Nobody At All" off to "All" otherwise suggests Bo Wall.
         start = re.compile(_WORD_START + re.escape(tokens[-1]), re.IGNORECASE)
         kept = [player for player in find_players(con, tokens[-1]) if start.search(player.name)]
-        if kept:
-            return kept if len(kept) <= MAX_CLARIFY_CANDIDATES else []
+        if kept and len(kept) <= MAX_CLARIFY_CANDIDATES:
+            return kept
+        # Otherwise more than MAX_CLARIFY_CANDIDATES share the surname alone,
+        # or none do - either way this pass answers nothing on its own, and
+        # falls through to the near-spelling pass below rather than giving up.
+        # That pass is stricter (every token has to be close, not just the
+        # last one), which is exactly what a common surname needs: "Dylon
+        # Harper" backs off to 6 Harpers here - too many to suggest - but only
+        # one of them, Dylan, is also close on the given name.
 
     gaps = ", ".join(f"{_NEAREST_WORD} AS gap{i}" for i in range(len(tokens)))
     where = " AND ".join(f"gap{i} <= ?" for i in range(len(tokens)))
