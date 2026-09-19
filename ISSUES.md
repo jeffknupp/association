@@ -239,6 +239,34 @@ those were found.
 - **GitHub:** none yet
 - **GitHub:** #142
 
+### `game_log` answers a team's log when the question named a player, because the `team` branch comes first
+- **Found:** 2026-09-18, the algebra spike's golden comparison
+  (`~/association-research/algebra-spike/stage2/README.md`) - the three rows
+  the compiler and the template disagreed on
+- **Evidence:** `query/templates/games.py:270` - `if slots.get("team"):`
+  returns `_team_game_log` before `player` is read. Three feed questions
+  arrive with both slots filled, in three different ways, and all three get
+  a team's games: "kobe bryant's stats vs rockets in the 2009 playoffs ts%
+  each game" (`team` = his own Lakers; answered "Los Angeles Lakers vs the
+  Houston Rockets, most recent game of the 2009 postseason", where Kobe's
+  own line for that Game 7 - 14 points, 7 rebounds, 5 assists on 2009-05-17
+  - is in `player_game_log`); "Payton Prichard stats vs 76ers at home
+  including playoffs game log" (`team` = an invented "Phoenix Suns";
+  answered "The Phoenix Suns played 240 games ... none of them vs the
+  Philadelphia 76ers at home", where Pritchard has 7 such games); "steph
+  curry vs 76ers last 4 games" (`team` = the opponent, "Philadelphia 76ers",
+  filed under the wrong slot; answered the 76ers' last 4 games). The
+  baseline grades all three `wrong`.
+- **User sees:** a fluent log of the wrong subject - a team where a player
+  was named.
+- **Next step:** when `player` is present, the log is the player's. Then read
+  `team` against him: his own team narrows nothing, another team is his
+  opponent (the Curry shape - and the reroute in `_route_matchup_against_team`
+  already treats a team beside a player as the opponent), and a team that
+  resolves to nothing is dropped. Refuse only when a second team is genuinely
+  ambiguous with an `opponent` already present.
+- **GitHub:** none yet
+
 ## P2: misleading or incomplete
 
 ### Season 2021's regular-season BPI snapshot is a day-one projection
