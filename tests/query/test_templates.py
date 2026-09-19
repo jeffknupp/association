@@ -40,6 +40,15 @@ def con(tmp_path: Path) -> TemplateContext:
     rows += [("3", season, 3, 40, 1)] * 9
     rows += [("2", season - 1, 2, 40, 1)] * 7  # previous season, excluded by default
     c.executemany("INSERT INTO player_box_stats (athlete_id, season, season_type, points, rebounds) VALUES (?,?,?,?,?)", rows)
+    # The relation every box-score template reads through (query/player_games.py)
+    # joins `games` on (event_id, season) and reads `player_name` off the log, as
+    # the real view does. A view mirroring the warehouse's shape - an id per row,
+    # a game per id - keeps a fixture that only wrote the stored table honest.
+    c.execute(
+        "CREATE VIEW player_game_log AS SELECT pbs.* REPLACE (COALESCE(pbs.event_id, 'e' || pbs.rowid) AS event_id), p.display_name AS player_name, "
+        "NULL::VARCHAR AS game_date, NULL::VARCHAR AS opponent_abbr FROM player_box_stats pbs LEFT JOIN players p ON p.athlete_id = pbs.athlete_id"
+    )
+    c.execute("CREATE VIEW games AS SELECT DISTINCT event_id, season, season_type FROM player_game_log")
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
@@ -127,6 +136,11 @@ def currys(tmp_path: Path) -> TemplateContext:
     rows += [("7", season - 1, 2, 32)] * 2  # only Stephen played
     rows += [("7", season - 2, 2, 12)] * 4 + [("8", season - 2, 2, 30)]  # both played, only Seth reached 30
     c.executemany("INSERT INTO player_box_stats (athlete_id, season, season_type, points) VALUES (?,?,?,?)", rows)
+    c.execute(
+        "CREATE VIEW player_game_log AS SELECT pbs.* REPLACE (COALESCE(pbs.event_id, 'e' || pbs.rowid) AS event_id), p.display_name AS player_name, "
+        "NULL::VARCHAR AS game_date, NULL::VARCHAR AS opponent_abbr FROM player_box_stats pbs LEFT JOIN players p ON p.athlete_id = pbs.athlete_id"
+    )
+    c.execute("CREATE VIEW games AS SELECT DISTINCT event_id, season, season_type FROM player_game_log")
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
@@ -210,6 +224,7 @@ def rebuilt_counts(tmp_path: Path) -> TemplateContext:
         "INSERT INTO player_game_log VALUES (?,'99',?,2,NULL,?,?,?,?,?,?,FALSE)",
         [("e5", s, "2026-01-14T00:30Z", "SAC", 60, 2, 33, False), ("e6", s, "2026-01-16T00:30Z", "UTA", 55, 2, 30, False)],
     )
+    c.execute("CREATE VIEW games AS SELECT DISTINCT event_id, season, season_type FROM player_game_log")
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
@@ -1273,7 +1288,7 @@ def sgh_ctx(tmp_path: Path) -> TemplateContext:
     # ESPN leaves, which single_game_high must not read as a game played.
     c.execute(
         "CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER, season_type INTEGER, player_name VARCHAR, "
-        "game_date VARCHAR, opponent_abbr VARCHAR, assists INTEGER, points INTEGER, minutes INTEGER)"
+        "game_date VARCHAR, opponent_abbr VARCHAR, assists INTEGER, points INTEGER, minutes INTEGER, event_id VARCHAR, did_not_play BOOLEAN DEFAULT FALSE)"
     )
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute("INSERT INTO players VALUES ('1','Ryan Nembhard'),('2','Nikola Jokic')")
@@ -1281,15 +1296,16 @@ def sgh_ctx(tmp_path: Path) -> TemplateContext:
     c.execute("CREATE TABLE player_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, athlete_id VARCHAR, minutes INTEGER, did_not_play BOOLEAN)")
     s = current_season()
     c.executemany(
-        "INSERT INTO player_game_log VALUES (?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO player_game_log VALUES (?,?,?,?,?,?,?,?,?,?,FALSE)",
         [
-            ("1", s, 2, "Ryan Nembhard", "2026-04-13T00:30Z", "CHI", 23, 8, 30),
-            ("2", s, 2, "Nikola Jokic", "2026-03-26T02:00Z", "DAL", 19, 30, 34),
-            ("2", s, 2, "Nikola Jokic", "2026-01-02T02:00Z", "UTA", 11, 40, 36),
-            ("1", s, 3, "Ryan Nembhard", "2026-05-01T00:30Z", "BOS", 30, 5, 31),
-            ("2", s - 1, 2, "Nikola Jokic", "2025-03-26T02:00Z", "DAL", 25, 30, 33),
+            ("1", s, 2, "Ryan Nembhard", "2026-04-13T00:30Z", "CHI", 23, 8, 30, "e1"),
+            ("2", s, 2, "Nikola Jokic", "2026-03-26T02:00Z", "DAL", 19, 30, 34, "e2"),
+            ("2", s, 2, "Nikola Jokic", "2026-01-02T02:00Z", "UTA", 11, 40, 36, "e3"),
+            ("1", s, 3, "Ryan Nembhard", "2026-05-01T00:30Z", "BOS", 30, 5, 31, "e4"),
+            ("2", s - 1, 2, "Nikola Jokic", "2025-03-26T02:00Z", "DAL", 25, 30, 33, "e5"),
         ],
     )
+    c.execute("CREATE VIEW games AS SELECT DISTINCT event_id, season, season_type FROM player_game_log")
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
@@ -1339,7 +1355,7 @@ def test_single_game_high_ambiguous_player_asks(sgh_ctx: TemplateContext) -> Non
     # narrowed to the players with a row where the answer is read from, and
     # with Jokic alone in this season's log, "Nikola" is answered about him.
     sgh_ctx.con.execute("INSERT INTO players VALUES ('3','Nikola Jovic')")
-    sgh_ctx.con.execute("INSERT INTO player_game_log VALUES ('3',?,2,'Nikola Jovic','2026-02-01T00:30Z','BOS',4,12,26)", [current_season()])
+    sgh_ctx.con.execute("INSERT INTO player_game_log VALUES ('3',?,2,'Nikola Jovic','2026-02-01T00:30Z','BOS',4,12,26,'e9',FALSE)", [current_season()])
     assert "did you mean" in (single_game_high(sgh_ctx, {"stat": "assists", "player": "Nikola"}).answer or "")
 
 
@@ -1372,6 +1388,7 @@ def rebuilt_ctx(tmp_path: Path) -> TemplateContext:
             (s, "2026-01-11T00:30Z", "PHX", 12, 6, None, True, "e4"),
         ],
     )
+    c.execute("CREATE VIEW games AS SELECT DISTINCT event_id, season, season_type FROM player_game_log")
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
@@ -1468,7 +1485,7 @@ def test_single_game_high_defaulted_season_redirects_to_a_retired_players_range(
     refusal that reads as though he never played at all (issue #18)."""
     s, past = current_season(), current_season() - 16
     sgh_ctx.con.execute("INSERT INTO players VALUES ('3','Old Timer')")
-    sgh_ctx.con.execute("INSERT INTO player_game_log VALUES ('3',?,2,'Old Timer','2010-04-12T00:30Z','BOS',5,20,32)", [past])
+    sgh_ctx.con.execute("INSERT INTO player_game_log VALUES ('3',?,2,'Old Timer','2010-04-12T00:30Z','BOS',5,20,32,'e8',FALSE)", [past])
     answer = single_game_high(sgh_ctx, {"stat": "points", "player": "Old Timer"}).answer or ""
     assert answer == (f"Old Timer has no {s} regular season games in the warehouse. He last appears in {past}. The warehouse holds his {past} regular season; name one, or ask for his career.")
 
@@ -1478,7 +1495,7 @@ def test_single_game_high_a_named_season_keeps_the_plain_refusal(sgh_ctx: Templa
     redirect there would answer a season nobody asked about."""
     past = current_season() - 16
     sgh_ctx.con.execute("INSERT INTO players VALUES ('3','Old Timer')")
-    sgh_ctx.con.execute("INSERT INTO player_game_log VALUES ('3',?,2,'Old Timer','2010-04-12T00:30Z','BOS',5,20,32)", [past])
+    sgh_ctx.con.execute("INSERT INTO player_game_log VALUES ('3',?,2,'Old Timer','2010-04-12T00:30Z','BOS',5,20,32,'e8',FALSE)", [past])
     answer = single_game_high(sgh_ctx, {"stat": "points", "player": "Old Timer", "season": 1999}).answer or ""
     assert answer == "Old Timer has no 1999 regular season games in the warehouse."
 
@@ -1489,8 +1506,8 @@ def _all_box_scores_empty(ctx: TemplateContext, name: str) -> None:
     s = current_season()
     ctx.con.execute("INSERT INTO players VALUES ('9',?)", [name])
     ctx.con.executemany(
-        "INSERT INTO player_game_log VALUES ('9',?,2,?,?,'ORL',0,0,NULL)",
-        [(s, name, "2026-01-05T00:30Z"), (s, name, "2026-01-08T00:30Z")],
+        "INSERT INTO player_game_log VALUES ('9',?,2,?,?,'ORL',0,0,NULL,?,FALSE)",
+        [(s, name, "2026-01-05T00:30Z", "x1"), (s, name, "2026-01-08T00:30Z", "x2")],
     )
     ctx.con.executemany("INSERT INTO player_box_stats VALUES (?,?,2,'9',NULL,FALSE)", [("x1", s), ("x2", s)])
 

@@ -15,6 +15,19 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+
+- **One definition of "a player's games."** `query/player_games.py` is the
+  relation every box-score template reads through: the season-keyed join to
+  `games`, the phantom-1993 exclusion, the did-not-play and empty-line guard,
+  the rebuilt-line opt-in and the teammate tenure rule live there once, with
+  three skeleton readers (rows, one aggregate, aggregates per group) that
+  `game_log`, `player_stat`, `threshold_count` and `single_game_high` now
+  compose instead of writing their own SQL. A pure refactor, proved by a
+  golden comparison: all 195 recorded slot sets across the five player-games
+  templates return byte-identical answers and data before and after. Test
+  fixtures that fed the stored box table alone now mirror the warehouse's
+  shape (a `games` row per event), which is what let the relation's join
+  reach them.
 - **A question that names one half of the starter/bench split now filters by
   it, in every template that narrows a player's games.** "Jrue holiday last 50
   games as a starter" was refused, because `SPLIT_WORDS` records the *category*

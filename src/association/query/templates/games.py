@@ -20,11 +20,11 @@ from association.nba.season import eastern_date as _eastern_date
 from ..conditions import _PLAYER_GAME_TABLES, _cell, _matchup_line, _meetings, _names, _player_games, _Scope, _table, _totals, _unseen_meetings, box_source
 from ..entities import Entity, find_players, resolve_team, teammate_names
 from ..leaderboard import resolve_metric
+from ..player_games import rows_sql
 from ..shotchart import SHOT_AVAILABILITY, SHOT_VALUE_SQL, UNSEPARABLE_SHOT_VALUES
 from .common import (
     _BOX_SCORES,
     _GAME_LOGS,
-    _PLAYER_GAMES,
     HISTORY_COLUMNS,
     PLAYER_STAT_COLUMNS,
     REBUILT_STATS,
@@ -601,13 +601,15 @@ def _player_game_log_notes(con: duckdb.DuckDBPyConnection, player: Entity, span:
 def _player_game_log(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: _Narrowed, extras: tuple[str, ...], *, limit: int, asked: int | None, ascending: bool) -> TemplateResult:
     """The listing, and the per-game averages over exactly the rows in it."""
     headers, needed, rebuilt = _player_game_log_columns(con, extras)
-    where, params = narrowed.clauses(rebuilt=rebuilt)
-    rows = con.execute(
-        f"SELECT pgl.game_date, pgl.season, pgl.opponent_abbr, g.home_team_id = pgl.team_id, g.winner_team_id, pgl.team_id, "
-        f"{'pgl.reconstructed' if rebuilt else 'FALSE'}, "
-        f"{', '.join(f'pgl.{_LOG_COLUMNS[h]}' for h in needed)} {_PLAYER_GAMES} WHERE {where} ORDER BY pgl.game_date {'ASC' if ascending else 'DESC'} LIMIT ?",
-        [*params, limit],
-    ).fetchall()
+    sql, params = rows_sql(
+        narrowed,
+        f"pgl.game_date, pgl.season, pgl.opponent_abbr, g.home_team_id = pgl.team_id, g.winner_team_id, pgl.team_id, "
+        f"{'pgl.reconstructed' if rebuilt else 'FALSE'}, {', '.join(f'pgl.{_LOG_COLUMNS[h]}' for h in needed)}",
+        order=f"pgl.game_date {'ASC' if ascending else 'DESC'}",
+        limit=limit,
+        rebuilt=rebuilt,
+    )
+    rows = con.execute(sql, params).fetchall()
     scope: dict[str, Any] = {
         "player": player.name,
         "season": span.season,

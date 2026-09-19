@@ -18,10 +18,10 @@ from association.nba.season import eastern_date as _eastern_date
 from ..entities import Availability, Entity
 from ..leaderboard import SEASON_TOTAL_OF, LeaderboardError, not_a_postseason_copy, resolve_metric, run_career_leaderboard, run_leaderboard
 from ..metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS
+from ..player_games import Narrowed, aggregate_sql, grouped_sql, league, rows_sql
 from .common import (
     _BOX_SCORES,
     _GAME_LOGS,
-    _PLAYER_GAMES,
     HISTORY_COLUMNS,
     PLAYER_STAT_COLUMNS,
     REBUILT_STATS,
@@ -328,43 +328,28 @@ def _threshold_count_player(con: duckdb.DuckDBPyConnection, text: Any, season: i
 def _threshold_count_rows(
     con: duckdb.DuckDBPyConnection, column: str, threshold: int, season: int | None, season_type: int, limit: int, player_id: str | None, *, from_rebuilt: bool
 ) -> list[tuple[Any, ...]]:
-    """(name, qualifying games, rebuilt games among them) per player, most first."""
-    if from_rebuilt:
-        scope, params = _box_scope("l", season, season_type)
-        # The same opt-in guard single_game_high uses. An empty line carries 0
-        # rather than NULL, so it could never clear a threshold of 1 or more
-        # and this branch can only ADD qualifying games, never drop one -
-        # checked against the warehouse, not only argued. Stating the guard
-        # anyway keeps the intent readable instead of resting the count's
-        # correctness on that coincidence.
-        # player_name IS NOT NULL keeps the stored branch's INNER JOIN
-        # semantics: the log LEFT JOINs `players`, so a box score for an
-        # athlete missing from that table would otherwise be counted under a
-        # NULL name and reported as a nameless leader.
-        where = [scope, f"l.{column} >= ?", "(l.minutes IS NOT NULL OR l.reconstructed)", "l.player_name IS NOT NULL"]
-        params.append(threshold)
-        if player_id is not None:
-            where.append("l.athlete_id = ?")
-            params.append(player_id)
-        params.append(limit)
-        return con.execute(
-            f"SELECT l.player_name, COUNT(*) AS n, COUNT(*) FILTER (WHERE l.reconstructed) AS rebuilt FROM player_game_log l "
-            f"WHERE {' AND '.join(where)} GROUP BY l.athlete_id, l.player_name ORDER BY 2 DESC, 1 LIMIT ?",
-            params,
-        ).fetchall()
-    scope, params = _box_scope("pbs", season, season_type)
-    where = [scope, f"pbs.{column} >= ?"]
-    params.append(threshold)
+    """(name, qualifying games, rebuilt games among them) per player, most first.
+
+    Read through the ``player_game`` relation, so the season floor, the phantom
+    and the played guard are the relation's. The guard changes no count: an
+    empty or did-not-play line carries 0, which never clears a threshold of 1
+    or more - checked against the warehouse before the relation took over, and
+    again by the golden comparison after. ``player_name IS NOT NULL`` keeps
+    the old INNER JOIN semantics: the log LEFT JOINs ``players``, so a box
+    score for an athlete missing from that table would otherwise be counted
+    under a NULL name and reported as a nameless leader.
+    """
+    span = _span_of("career" if season is None else None, season, season_type, "player_game_log")
+    season_clause, season_params = span.clause("pgl.season")
+    narrowed = league(season_clause, season_params, season_type)
     if player_id is not None:
-        where.append("pbs.athlete_id = ?")
-        params.append(player_id)
-    params.append(limit)
+        narrowed.narrow("pgl.athlete_id = ?", player_id)
+    narrowed.narrow_measure(column, ">=", threshold)
+    narrowed.narrow("pgl.player_name IS NOT NULL")
+    rebuilt_count = "COUNT(*) FILTER (WHERE pgl.reconstructed) AS rebuilt" if from_rebuilt else "0 AS rebuilt"
     # Grouped by athlete_id, not by name: two players can share one.
-    return con.execute(
-        f"SELECT p.display_name, COUNT(*) AS games, 0 AS rebuilt FROM player_box_stats pbs JOIN players p ON p.athlete_id = pbs.athlete_id "
-        f"WHERE {' AND '.join(where)} GROUP BY pbs.athlete_id, p.display_name ORDER BY 2 DESC, 1 LIMIT ?",
-        params,
-    ).fetchall()
+    sql, params = grouped_sql(narrowed, "pgl.athlete_id, pgl.player_name", ["pgl.player_name", "COUNT(*) AS n", rebuilt_count], order="2 DESC, 1", limit=limit, rebuilt=from_rebuilt)
+    return con.execute(sql, params).fetchall()
 
 
 def _threshold_count_rebuilt_note(rows: list[tuple[Any, ...]], named: bool) -> str:
@@ -1141,8 +1126,8 @@ def _box_score_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span:
         selects += [f"SUM(pgl.{shooting[0]})", f"SUM(pgl.{shooting[1]})"]
     if rebuilt:
         selects.append("SUM(CASE WHEN pgl.reconstructed THEN 1 ELSE 0 END)")
-    where, params = narrowed.clauses(rebuilt=rebuilt)
-    row = con.execute(f"SELECT {', '.join(selects)} {_PLAYER_GAMES} WHERE {where}", params).fetchone()
+    sql, params = aggregate_sql(narrowed, selects, rebuilt=rebuilt)
+    row = con.execute(sql, params).fetchone()
     filters = narrowed.filters()
     scope: dict[str, Any] = {
         "season": span.season,
@@ -1262,13 +1247,16 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     scoped = _single_game_high_scope(ctx, column, season, season_type, slots.get("player"))
     if isinstance(scoped, TemplateResult):
         return scoped
-    where, params, named_player, from_rebuilt = scoped
+    narrowed, named_player, from_rebuilt = scoped
 
-    rows = ctx.con.execute(
-        f"SELECT l.player_name, l.{column}, l.game_date, l.opponent_abbr, {'l.reconstructed' if from_rebuilt else 'FALSE'} "
-        f"FROM player_game_log l WHERE {' AND '.join(where)} ORDER BY l.{column} DESC, l.game_date LIMIT ?",
-        [*params, limit],
-    ).fetchall()
+    sql, params = rows_sql(
+        narrowed,
+        f"pgl.player_name, pgl.{column}, pgl.game_date, pgl.opponent_abbr, {'pgl.reconstructed' if from_rebuilt else 'FALSE'}",
+        order=f"pgl.{column} DESC, pgl.game_date",
+        limit=limit,
+        rebuilt=from_rebuilt,
+    )
+    rows = ctx.con.execute(sql, params).fetchall()
 
     label = STAT_LABELS.get(stat or "", stat or "")
     span = _game_span(ctx.con, season, season_type, named_player)
@@ -1297,25 +1285,26 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     )
 
 
-def _single_game_high_scope(ctx: TemplateContext, column: str, season: int | None, season_type: int, player_text: Any) -> tuple[list[str], list[Any], Entity | None, bool] | TemplateResult:
-    """The WHERE clause and params for the qualifying rows, whether a rebuilt
+def _single_game_high_scope(ctx: TemplateContext, column: str, season: int | None, season_type: int, player_text: Any) -> tuple[Narrowed, Entity | None, bool] | TemplateResult:
+    """The relation read for the qualifying rows, whether a rebuilt
     (play-by-play) line may stand in for a missing box score line, and the
-    named player if the question asked about one - unset means "the league"."""
-    scope, params = _box_scope("l", season, season_type)
-    # A line with no minutes is a game with NO BOX SCORE, not a game he played
-    # and did nothing in. Those lines carry 0 rather than NULL, so they survive
-    # the NULL check beside this one - and where a whole team-season is empty
-    # (every Chicago and New Orleans season from 2013 to 2018), a zero then
-    # wins the maximum outright: "Anthony Davis's highest point total in a
-    # single game in the 2015 regular season was 0, on 2014-10-28 vs ORL" -
-    # fluent, dated, and false. This is the same line _played() draws in
-    # `conditions`, which is why streaks and splits were never affected by it.
-    # A rebuilt line may answer this, but only for a stat a rebuild gets right
-    # (REBUILT_STATS) - and only where the warehouse actually carries the flag,
-    # since an older one has no such column. Without both, the guard is the
-    # plain one and a rebuilt line stays invisible, exactly as before.
+    named player if the question asked about one - unset means "the league".
+
+    The played guard is the relation's, and it matters here more than
+    anywhere: a line with no minutes is a game with NO BOX SCORE, not a game
+    he played and did nothing in. Those lines carry 0 rather than NULL, and
+    where a whole team-season is empty (every Chicago and New Orleans season
+    from 2013 to 2018) a zero then wins the maximum outright - "Anthony
+    Davis's highest point total in a single game in the 2015 regular season
+    was 0, on 2014-10-28 vs ORL" - fluent, dated, and false. A rebuilt line
+    may answer, but only for a stat a rebuild gets right (REBUILT_STATS) and
+    only where the warehouse carries the flag.
+    """
+    span = _span_of("career" if season is None else None, season, season_type, "player_game_log")
+    season_clause, season_params = span.clause("pgl.season")
+    narrowed = league(season_clause, season_params, season_type)
     from_rebuilt = column in REBUILT_STATS and _log_carries_rebuilt(ctx.con)
-    where = [scope, f"l.{column} IS NOT NULL", "(l.minutes IS NOT NULL OR l.reconstructed)" if from_rebuilt else "l.minutes IS NOT NULL"]
+    narrowed.narrow(f"pgl.{column} IS NOT NULL")
     named_player: Entity | None = None
     # The player slot is optional here: unset means "the league".
     if isinstance(player_text, str) and player_text.strip():
@@ -1323,9 +1312,8 @@ def _single_game_high_scope(ctx: TemplateContext, column: str, season: int | Non
         if isinstance(resolved, TemplateResult):
             return resolved
         named_player = resolved
-        where.append("l.athlete_id = ?")
-        params.append(resolved.id)
-    return where, params, named_player, from_rebuilt
+        narrowed.narrow("pgl.athlete_id = ?", resolved.id)
+    return narrowed, named_player, from_rebuilt
 
 
 def _single_game_high_redirect(

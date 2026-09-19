@@ -16,10 +16,25 @@ from association.nba.coverage import COVERAGE, REGULAR_SEASON, caveat, unavailab
 from association.nba.season import current_season
 
 from ..answer import Artifact
-from ..conditions import _PLAYER_GAME_TABLES, _TEAM_GAME_TABLES, BoxSource, _game_scope, _Scope, box_source
+from ..conditions import _PLAYER_GAME_TABLES, _TEAM_GAME_TABLES, _game_scope, _Scope, box_source
 from ..entities import Ambiguous, Availability, Entity, clarification, find_players, resolve_player, resolve_team, suggest_players, suggestion, teammate_names
 from ..leaderboard import resolve_metric
 from ..metrics import LEADERBOARD_METRICS
+from ..player_games import (  # noqa: F401 - the relation's names, re-exported for the templates and tests that read them here
+    _OPEN_END,
+    _OPEN_START,
+    _PLAYER_GAMES,
+    _RECORDED,
+    _RECORDED_OR_REBUILT,
+    REBUILT_STATS,
+    STARTER_SIDES,
+    Narrowed,
+    _joined,
+    _log_carries_rebuilt,
+    _teammate_played,
+    _teammate_stints,
+)
+from ..player_games import _tenure_clause as _relation_tenure_clause
 from ..team_metrics import TEAM_METRICS, resolve_team_metric
 
 # Slot value -> real player_box_stats column. A whitelist, not a passthrough:
@@ -658,13 +673,6 @@ def _count_games(count: int) -> str:
     return f"{count:,} game{'' if count == 1 else 's'}"
 
 
-def _joined(names: list[str], word: str = "and") -> str:
-    """ "A", "A and B", "A, B and C" - a list of names as a sentence holds it."""
-    if len(names) <= 1:
-        return names[0] if names else ""
-    return f"{', '.join(names[:-1])} {word} {names[-1]}"
-
-
 @dataclass(frozen=True)
 class _Span:
     """The seasons an answer covers: one (``season``), or a whole career
@@ -739,181 +747,13 @@ def _span_of(span: Any, season: Any, season_type: int, table: str) -> _Span:
     return _Span(None, season_type, coverage.floor(season_type).season, coverage.phantom)
 
 
-# A player-game ESPN lists as played but records no minutes for. Every such row
-# in the warehouse carries no stats either (checked, 1994-2026), and they are of
-# two kinds. In 2006-2012 they are ~10,000 a season of appearances nobody made,
-# which ESPN's own games-played counts mostly leave out (dropping them makes 378
-# of 445 players' 2009 counts agree, against 30). In 2013-2018 they are whole
-# team box scores ESPN left empty - ~13% of team-games, which is why summing
-# those seasons' box scores gives 87% of the season totals. Averaged in, either
-# kind reads as a game of zeros, so they are left out and the answer says how
-# many.
-_RECORDED = "pgl.minutes IS NOT NULL"
-
-
-#: The stats a rebuilt box line may be read for, and the reason the list is
-#: short.
-#:
-#: Where ESPN serves an empty box score, ``player_box_stats_filled`` carries a
-#: line rebuilt from play-by-play (see
-#: :mod:`association.fetch.repairs.reconstructed_box`). Measured per player-game against
-#: the 22,646 games of the 2015 regular season whose real box score survived,
-#: the mean absolute error of a rebuilt figure is:
-#:
-#: ===================== ========= ==============
-#: Stat                  Exact     Mean abs error
-#: ===================== ========= ==============
-#: ``freeThrowsMade``    100.0%    0.0003
-#: ``blocks``            99.8%     0.002
-#: ``rebounds``          99.6%     0.004
-#: ``assists``           99.6%     0.004
-#: ``fieldGoalsMade``    99.6%     0.005
-#: ``steals``            99.1%     0.009
-#: ``points``            98.3%     0.021
-#: ``turnovers``         92.5%     0.080
-#: ``fouls``             83.3%     0.181
-#: ===================== ========= ==============
-#:
-#: ``turnovers`` and ``fouls`` are left out: an order of magnitude worse than
-#: the rest, and a foul is wrong in one game in six. The rest are wrong by
-#: hundredths of a point per game, which is why this is a PER-GAME list only.
-#:
-#: **A rebuilt SEASON total is a different matter and is not read anywhere.**
-#: A season is exact only when the net error over every game is zero, so it
-#: lands exactly right about half the time - and the error scales with games
-#: played: over the Chicago and New Orleans player-seasons, a total that is
-#: right averages 31.6 games and one that is wrong averages 55.6. 2016 is worse
-#: still (18.9% exact, mean -16.8 points) because 180 of its scoring plays carry
-#: ``type = 'Not Available'``.
-#:
-#: .. versionadded:: 2.2.0
-REBUILT_STATS: frozenset[str] = frozenset({"points", "rebounds", "assists", "steals", "blocks", "fieldGoalsMade", "freeThrowsMade"})
-
-
-# A rebuilt line has NULL minutes - play-by-play cannot recover them - so
-# `_RECORDED` hides it from every reader by default. This is the opt-in.
-_RECORDED_OR_REBUILT = "(pgl.minutes IS NOT NULL OR pgl.reconstructed)"
-
-
-def _log_carries_rebuilt(con: duckdb.DuckDBPyConnection) -> bool:
-    """Whether ``player_game_log`` has the ``reconstructed`` flag.
-
-    Checked rather than assumed, for the reason `AGENTS.md` records under "A
-    warehouse built before a view change is not detected": the column arrives
-    with a `data load`, and a query written as though it were always there
-    raises a Binder error against any older warehouse. Fixtures that build a
-    minimal log get the same answer, and keep their old behavior.
-    """
-    try:
-        return any(row[0] == "reconstructed" for row in con.execute("DESCRIBE player_game_log").fetchall())
-    except duckdb.CatalogException:
-        return False
-
-
-# One join serves venue and result both: games.home_team_id agrees with
-# team_box_stats.home_away on every row (checked, all 87,008 as of the warehouse
-# this was last verified against - the count grows with every pull). Keyed on
-# season too, since the phantom 1993 shares its event ids with 1994.
-_PLAYER_GAMES = "FROM player_game_log pgl JOIN games g ON g.event_id = pgl.event_id AND g.season = pgl.season"
-
-
-def _teammate_played(box: BoxSource) -> str:
-    """SQL for "this teammate played that game", over the given box source.
-
-    A game rebuilt from play-by-play has no minutes, so against the stored
-    table every teammate in a rebuilt game reads as absent and the game counts
-    as one played "without" him. Measured before this took a source: "Anthony
-    Davis without Eric Gordon, 2015" listed games Gordon played in - he played
-    48 of Davis's 68 that season.
-
-    .. versionadded:: 2.2.0
-    """
-    appeared = "(m.minutes IS NOT NULL OR m.reconstructed)" if box.rebuilt else "m.minutes IS NOT NULL"
-    return f"EXISTS (SELECT 1 FROM {box.table} m WHERE m.athlete_id = ? AND m.event_id = pgl.event_id AND m.season = pgl.season AND NOT m.did_not_play AND {appeared})"
-
-
-# An open end of a stint, as a string that sorts before or after any date.
-_OPEN_START, _OPEN_END = "0000", "9999"
-
-
-@dataclass
-class _Narrowed:
-    """One player's games in a span, and whatever the question narrowed them
-    by. Every clause applies to ``_PLAYER_GAMES``; the base ones (player, season
-    type, span, played) are kept apart from the rest so an empty answer can say
-    which narrowing emptied it."""
-
-    base: list[str]
-    base_params: list[Any]
-    extra: list[str] = field(default_factory=list)
-    extra_params: list[Any] = field(default_factory=list)
-    opponent: Entity | None = None
-    venue: str | None = None
-    #: True for a log of starts, False for one off the bench, None when the
-    #: question named neither half.
-    started: bool | None = None
-    # Every teammate the question named, with that teammate's tenure clause
-    # beside it. All of them at once: a game is "without" them only when none
-    # of them played it, so a dropped name would answer a wider question.
-    without: list[Entity] = field(default_factory=list)
-    tenure: list[tuple[str, list[Any]]] = field(default_factory=list)
-    date: str | None = None
-
-    def clauses(self, *, narrowed: bool = True, recorded: bool = True, rebuilt: bool = False) -> tuple[str, list[Any]]:
-        """The WHERE body and its parameters - without the narrowing when
-        ``narrowed`` is false, and over the empty lines when ``recorded`` is.
-
-        ``rebuilt`` widens what counts as a game he played to include a line
-        rebuilt from play-by-play. The NEGATION uses the same widened guard, so
-        "games not counted" stays the complement of "games counted" - otherwise
-        a rebuilt game would be both listed and reported as skipped.
-        """
-        guard = _RECORDED_OR_REBUILT if rebuilt else _RECORDED
-        where = [*self.base, guard if recorded else f"NOT ({guard})"]
-        params = list(self.base_params)
-        if narrowed:
-            where += self.extra
-            params += self.extra_params
-        return " AND ".join(where), params
-
-    def filters(self, *, dated: bool = True) -> str:
-        """What the games were narrowed to, as it follows a name: ``" vs the
-        Detroit Pistons at home"``."""
-        parts = []
-        if self.opponent is not None:
-            parts.append(f"vs the {self.opponent.name}")
-        if self.venue:
-            parts.append("at home" if self.venue == "home" else "on the road")
-        if self.started is not None:
-            # Said outright, like every other narrowing here. A log of 50
-            # starts headed only "last 50 games" is the silent narrowing this
-            # module exists to stop - it reads as his last 50 games played.
-            parts.append("as a starter" if self.started else "off the bench")
-        if self.without:
-            parts.append(f"without {_joined([mate.name for mate in self.without])}")
-        if self.date and dated:
-            parts.append(f"on {self.date}")
-        return "".join(f" {part}" for part in parts)
-
-
 def _checked_venue(venue: Any) -> str:
     if venue not in ("home", "away"):
         raise TemplateUnsupported(f"no venue called {venue!r}")
     return str(venue)
 
 
-#: The two halves of the starter/bench split, as `router._split_side` narrows
-#: them when a question names one. ``starter_bench`` itself is NOT here: that is
-#: the category, and a question naming both halves is asking for a splits table
-#: rather than a filtered set of games.
-STARTER_SIDES: dict[str, bool] = {"starter": True, "bench": False}
-"""Which value of ``player_game_log.starter`` each named half of the split means.
-
-.. versionadded:: 4.3.0
-"""
-
-
-def _narrow_player_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, *, opponent: Any, venue: Any, without: Any, split: Any = None) -> _Narrowed | TemplateResult:
+def _narrow_player_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, *, opponent: Any, venue: Any, without: Any, split: Any = None) -> Narrowed | TemplateResult:
     """``player``'s games in ``span``, narrowed to an opponent, a venue, a
     teammate's absence and a starter/bench half where the question named them.
     A name that needs a clarifying question comes back as the TemplateResult
@@ -929,7 +769,7 @@ def _narrow_player_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _
        Honors one half of the starter/bench split (``split``).
     """
     season_clause, season_params = span.clause("pgl.season")
-    narrowed = _Narrowed(
+    narrowed = Narrowed(
         base=["pgl.athlete_id = ?", "pgl.season_type = ?", season_clause, "NOT pgl.did_not_play"],
         base_params=[player.id, span.season_type, *season_params],
     )
@@ -961,69 +801,12 @@ def _narrow_player_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _
             return mate
         if any(mate.id == held.id for held in narrowed.without):
             continue  # the same man named twice narrows nothing
-        tenure, tenure_params = _tenure_clause(con, mate, span)
+        tenure, tenure_params = _relation_tenure_clause(con, mate, span.season)
         narrowed.without.append(mate)
         narrowed.tenure.append((tenure, tenure_params))
         narrowed.extra += [tenure, f"NOT {_teammate_played(box_source(con))}"]
         narrowed.extra_params += [*tenure_params, mate.id]
     return narrowed
-
-
-def _teammate_stints(con: duckdb.DuckDBPyConnection, athlete_id: str) -> list[tuple[int, str, str, str]]:
-    """When a player was on each team: ``(season, team_id, start, end)``, with
-    ``start``/``end`` compared against ``games.date``.
-
-    There is no roster table, so this is read off his own box-score rows, and
-    the one fact that makes that hard is that an injured player mostly has NO
-    row: Stephen Curry's 2026 is 43 rows, none of them did-not-play, for an
-    82-game Warriors season. So a stint runs from his first row for a team to
-    his last, and then:
-
-    - it is open at the start of the season when he ended the previous one on
-      that team (or has no earlier rows at all) - LeBron James's first 2026 row
-      is 2025-11-19, and the Lakers' 14 games before it were played without
-      him;
-    - it is open at the end when no later row that season is for another team,
-      so an injury that ends a season still counts.
-
-    A mid-season arrival from another team is not extended backwards: Seth
-    Curry's first 2026 Warriors row is 2025-12-03, and their October games were
-    not played "without" somebody who was in Charlotte's plans. The gap between
-    a traded player's last game for one team and his first for the next belongs
-    to neither, which undercounts rather than guesses."""
-    phantom = COVERAGE["player_game_log"].phantom
-    excluded = f" AND season NOT IN ({', '.join('?' for _ in phantom)})" if phantom else ""
-    rows = con.execute(
-        f"SELECT season, team_id, MIN(game_date), MAX(game_date) FROM player_game_log WHERE athlete_id = ?{excluded} GROUP BY season, team_id ORDER BY season, MIN(game_date)",
-        [athlete_id, *phantom],
-    ).fetchall()
-    by_season: dict[int, list[tuple[str, str, str]]] = {}
-    for season, team_id, first, last in rows:
-        by_season.setdefault(int(season), []).append((str(team_id), str(first), str(last)))
-    stints: list[tuple[int, str, str, str]] = []
-    carried: str | None = None  # the team he ended the previous season on
-    for season in sorted(by_season):
-        spells = by_season[season]
-        final = max(range(len(spells)), key=lambda i: spells[i][2])
-        for index, (team_id, first, last) in enumerate(spells):
-            start = _OPEN_START if index == 0 and carried in (None, team_id) else first
-            end = _OPEN_END if index == final else last
-            stints.append((season, team_id, start, end))
-        carried = spells[final][0]
-    return stints
-
-
-def _tenure_clause(con: duckdb.DuckDBPyConnection, mate: Entity, span: _Span) -> tuple[str, list[Any]]:
-    """SQL keeping the games ``pgl`` played on a team ``mate`` was on at the
-    time - see _stints for how "was on" is read."""
-    stints = [s for s in _teammate_stints(con, mate.id) if span.season is None or s[0] == span.season]
-    if not stints:
-        return "FALSE", []
-    rows = ", ".join("(?, ?, ?, ?)" for _ in stints)
-    return (
-        f"EXISTS (SELECT 1 FROM (VALUES {rows}) AS stint(season, team_id, start_date, end_date) "
-        "WHERE stint.season = pgl.season AND stint.team_id = pgl.team_id AND pgl.game_date BETWEEN stint.start_date AND stint.end_date)"
-    ), [value for stint in stints for value in stint]
 
 
 def _teammates_among(con: duckdb.DuckDBPyConnection, candidates: list[Entity], player: Entity, span: _Span) -> list[Entity]:
@@ -1110,7 +893,7 @@ def _defaulted_season_note(season_range: tuple[int, int] | None, kind: str, *, c
     return f" He last appears in {last}. The warehouse holds his {span}; name one{tail}"
 
 
-def _no_narrowed_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: _Narrowed, *, rebuilt: bool = False) -> str:
+def _no_narrowed_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: Narrowed, *, rebuilt: bool = False) -> str:
     """Why a narrowed question found no games, naming the fact that is really
     missing - his games in that span, the teammate, the match, or an empty box
     score. They are different sentences, and "X has no games" said of a player
@@ -1164,7 +947,7 @@ def _no_narrowed_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _Sp
     return f"{player.name} played {_count_games(total)} {during}, none of them{narrowed.filters()}."
 
 
-def _box_score_notes(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: _Narrowed, *, career_note: bool = True, rebuilt: bool = False, rebuilt_shown: int = 0) -> list[str]:
+def _box_score_notes(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: Narrowed, *, career_note: bool = True, rebuilt: bool = False, rebuilt_shown: int = 0) -> list[str]:
     """What a box-score answer has to say about itself: what "without" was
     taken to mean, the empty lines left out, the figures that were rebuilt
     rather than fetched, and - unless ``career_note`` is off, as it is for one
@@ -1246,3 +1029,7 @@ def _no_games(con: duckdb.DuckDBPyConnection, player: Entity, scope: _Scope, tea
     else:
         message = f"{player.name} has no games{for_team} {_where_in(scope)} in the warehouse."
     return TemplateResult(data={"player": player.name, "team": team.name if team else None, "span": scope.label(), "games": 0}, answer=message)
+
+
+#: The relation's clause builder under the name the templates and tests knew it by.
+_Narrowed = Narrowed
