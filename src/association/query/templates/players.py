@@ -18,7 +18,7 @@ from association.nba.season import eastern_date as _eastern_date
 from ..entities import Availability, Entity
 from ..leaderboard import SEASON_TOTAL_OF, LeaderboardError, not_a_postseason_copy, resolve_metric, run_career_leaderboard, run_leaderboard
 from ..metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS
-from ..player_games import Narrowed, aggregate_sql, grouped_sql, league, rows_sql
+from ..player_games import Narrowed, aggregate_sql, grouped_sql, league, rows_sql, scope_without_guard
 from .common import (
     _BOX_SCORES,
     _GAME_LOGS,
@@ -84,18 +84,6 @@ def _season_label(season: int) -> str:
     return f"{season - 1}-{season % 100:02d}"
 
 
-def _box_scope(alias: str, season: int | None, season_type: int) -> tuple[str, list[Any]]:
-    """The WHERE clause for one season of box scores, or for a career of them.
-
-    A career starts at the box scores' floor, and that floor is also what keeps
-    1993 out: ESPN answers season=1993 with the same games as 1994 (coverage's
-    phantom), so a career counted from 1993 counts every 1993-94 game twice -
-    26,350 duplicate player-games."""
-    if season is None:
-        return f"{alias}.season >= ? AND {alias}.season_type = ?", [COVERAGE["player_box_stats"].first_season, season_type]
-    return f"{alias}.season = ? AND {alias}.season_type = ?", [season, season_type]
-
-
 @dataclass(frozen=True)
 class _GameSpan:
     """How an answer built from box scores names the games it covers."""
@@ -154,7 +142,7 @@ def _rebuilt_in_scope(con: duckdb.DuckDBPyConnection, season: int | None, season
     """
     if not _log_carries_rebuilt(con):
         return 0
-    scope, params = _box_scope("l", season, season_type)
+    scope, params = scope_without_guard("l", season, season_type)
     where = f"{scope} AND l.reconstructed"
     if athlete_id is not None:
         where += " AND l.athlete_id = ?"
@@ -181,7 +169,7 @@ def _empty_box_scores(con: duckdb.DuckDBPyConnection, season: int | None, season
     """
     if covered_by_rebuild and _log_carries_rebuilt(con):
         # What is still unseen: no minutes AND no rebuild to stand in for them.
-        scope, params = _box_scope("l", season, season_type)
+        scope, params = scope_without_guard("l", season, season_type)
         if athlete_id is None:
             sql = (
                 f"SELECT COUNT(*), MIN(season), MAX(season) FROM (SELECT l.season FROM player_game_log l WHERE {scope} "
@@ -196,7 +184,7 @@ def _empty_box_scores(con: duckdb.DuckDBPyConnection, season: int | None, season
         row = con.execute(sql, params).fetchone()
         return (int(row[0]), row[1], row[2]) if row else (0, None, None)
 
-    scope, params = _box_scope("b", season, season_type)
+    scope, params = scope_without_guard("b", season, season_type)
     empty = f"SELECT b.event_id, b.season FROM player_box_stats b WHERE {scope} GROUP BY b.event_id, b.season HAVING MAX(b.minutes) IS NULL"
     if athlete_id is None:
         sql = f"SELECT COUNT(*), MIN(season), MAX(season) FROM ({empty})"

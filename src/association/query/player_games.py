@@ -17,6 +17,16 @@ record, applied on every read:
 - **a teammate's absence** is measured inside the teammate's own tenure on
   the team (:func:`_tenure_clause`), never over games he was somewhere else.
 
+One kind of read deliberately steps outside the guard: counting the games it
+drops. An answer built from box scores says how many games it could not see
+(the empty 2013-18 Bulls and Pelicans box scores, a rebuilt line held back
+for a stat the rebuild gets wrong), and that count has to include exactly the
+rows the guard excludes. :func:`scope_without_guard` is the span clause for
+those reads, and its name is the reminder. The team-level counterpart - a
+team-game with no box score at all, inside a spell a player was on the team -
+is a read of ``team_box_stats``, not of this relation, and lives beside the
+other team reads in :mod:`association.query.conditions` (``_box_missing``).
+
 Narrowing composes: an opponent, a venue, a starter/bench half, a teammate's
 absence, a threshold on a stat, a month - each is one more clause over the
 same rows, so a new one reaches every template that reads the relation at
@@ -47,6 +57,12 @@ from .entities import Entity
 # those seasons' box scores gives 87% of the season totals. Averaged in, either
 # kind reads as a game of zeros, so they are left out and the answer says how
 # many.
+FLOOR: int = COVERAGE["player_box_stats"].first_season
+"""The first season with box scores (1994); a career of them starts here.
+
+.. versionadded:: 4.3.0
+"""
+
 _RECORDED = "pgl.minutes IS NOT NULL"
 
 
@@ -303,6 +319,21 @@ def paired_rows_sql(narrowed: Narrowed, other_id: str, select: str, *, teammates
     if order:
         sql += f" ORDER BY {order}"
     return sql, [other_id, *params]
+
+
+def scope_without_guard(alias: str, season: int | None, season_type: int) -> tuple[str, list[Any]]:
+    """The WHERE clause for one season of box scores, or for a career of them,
+    with NO played guard - for counting the rows the guard drops, never for
+    answering from them.
+
+    A career starts at the box scores' floor, and that floor is also what keeps
+    1993 out: ESPN answers season=1993 with the same games as 1994 (coverage's
+    phantom), so a career counted from 1993 counts every 1993-94 game twice -
+    26,350 duplicate player-games.
+    """
+    if season is None:
+        return f"{alias}.season >= ? AND {alias}.season_type = ?", [FLOOR, season_type]
+    return f"{alias}.season = ? AND {alias}.season_type = ?", [season, season_type]
 
 
 def _teammate_stints(con: duckdb.DuckDBPyConnection, athlete_id: str) -> list[tuple[int, str, str, str]]:

@@ -16,6 +16,12 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **The unseen-games counters have one home.** `player_games.scope_without_guard`
+  is the span clause for the reads that count what the played guard drops
+  (`_empty_box_scores`, `_rebuilt_in_scope`), replacing `templates.players._box_scope`;
+  the relation's module docstring says why those reads omit the guard and
+  where the team-level counterpart lives. With this, "a player's games" is
+  defined once (closes #149).
 - **The last player-games read is on the relation.** `conditions._player_games`
   (behind `streak`, `player_splits`, `record_when` and `with_without`) now
   derives its join, its played guard and its rebuilt-line blanking from
