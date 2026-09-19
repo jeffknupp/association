@@ -285,28 +285,34 @@ def _player_games(scope: _Scope, player: str = "player", extra: str = "", box: B
     """One row per game a player played, with his team's result and side.
 
     ``player`` names the bound parameter holding his id, so two of these can
-    sit in one query; an empty one reads every player's games.
+    sit in one query; an empty one reads every player's games. Rows are
+    aliased ``pgl`` inside, so an ``extra`` clause names its columns that way.
 
-    The columns in :data:`UNGATED_ON_REBUILD` are blanked on a rebuilt row
-    rather than read: the view substitutes more than the rebuild was measured
-    for, and reading those here would ungate figures every other reader
-    refuses. Blanked, they behave like `minutes` - the average is taken over
-    the games that carry them, and a wholly rebuilt season prints nothing
-    rather than a wrong number.
+    This is the player-games relation (:mod:`association.query.player_games`)
+    read with named parameters: the same join, keyed on ``season`` as well as
+    ``event_id``; the same played guard; the same blanking of the columns a
+    rebuilt line cannot be trusted for (:func:`association.query.player_games.column`).
+    It used to join ``real_games`` and ``team_box_stats`` on its own - measured
+    on the 2026-09-19 warehouse, no played box-score row sits on a game
+    ``real_games`` drops, so the two reads agreed by fact; now they agree by
+    construction. The side and the scores come from ``games`` directly.
     """
-    who = f" AND pbs.athlete_id = ${player}" if player else ""
+    from .player_games import _RECORDED, _RECORDED_OR_REBUILT, column
+
+    who = f" AND pgl.athlete_id = ${player}" if player else ""
     # SELECT * REPLACE keeps every other column, and its position.
     ungated = [c for c in UNGATED_ON_REBUILD if c in box.columns]
-    replacements = ", ".join(f"CASE WHEN pbs.reconstructed THEN NULL ELSE pbs.{c} END AS {c}" for c in ungated)
+    replacements = ", ".join(column("pgl", c, box) for c in ungated)
     blanked = f" REPLACE ({replacements})" if box.rebuilt and ungated else ""
+    guard = _RECORDED_OR_REBUILT if box.rebuilt else _RECORDED
     return f"""
-        SELECT pbs.*{blanked}, g.date AS stamp, {_eastern_day("g.date")} AS day, g.winner_team_id = pbs.team_id AS won, tbs.home_away,
-               CASE WHEN tbs.home_away = 'home' THEN g.home_score ELSE g.away_score END AS team_score,
-               CASE WHEN tbs.home_away = 'home' THEN g.away_score ELSE g.home_score END AS opponent_score
-        FROM {box.table} pbs
-        JOIN real_games g ON g.event_id = pbs.event_id AND g.season = pbs.season
-        JOIN team_box_stats tbs ON tbs.event_id = pbs.event_id AND tbs.team_id = pbs.team_id AND tbs.season = pbs.season
-        WHERE {_played("pbs", box)} AND {scope.where("pbs")}{who}{extra}"""
+        SELECT pgl.*{blanked}, g.date AS stamp, {_eastern_day("g.date")} AS day, g.winner_team_id = pgl.team_id AS won,
+               CASE WHEN g.home_team_id = pgl.team_id THEN 'home' ELSE 'away' END AS home_away,
+               CASE WHEN g.home_team_id = pgl.team_id THEN g.home_score ELSE g.away_score END AS team_score,
+               CASE WHEN g.home_team_id = pgl.team_id THEN g.away_score ELSE g.home_score END AS opponent_score
+        FROM player_game_log pgl
+        JOIN games g ON g.event_id = pgl.event_id AND g.season = pgl.season
+        WHERE NOT pgl.did_not_play AND {guard} AND {scope.where("pgl")}{who}{extra}"""
 
 
 def _box_missing(scope: _Scope, box: BoxSource = RAW_BOX) -> str:

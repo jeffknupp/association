@@ -176,19 +176,19 @@ def player_splits(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult
     return _player_splits_answer(con, found, split)
 
 
-def _player_splits_narrow_sql(venue: str | None, opponent: Entity | None) -> tuple[str, dict[str, Any]]:
+def _player_splits_narrow_sql(venue: str | None, opponent: Entity | None, *, team_read: bool = False) -> tuple[str, dict[str, Any]]:
     """Extra ``WHERE`` SQL and its params narrowing to a venue and/or an
-    opponent - shared by a player's own games and a team's, since
-    ``conditions._player_games`` and ``conditions._team_games`` both alias
-    ``team_box_stats`` ``tbs`` and ``real_games`` ``g`` the same way, and both
-    already join them unconditionally."""
+    opponent. A player's games are the relation's rows (``pgl`` joined to
+    ``games`` ``g``), which carry the opponent and the side; a team's games
+    (``conditions._team_games``) still alias ``team_box_stats`` ``tbs``, so
+    ``team_read`` picks that spelling."""
     extra = ""
     params: dict[str, Any] = {}
     if venue is not None:
-        extra += " AND tbs.home_away = $venue"
+        extra += " AND tbs.home_away = $venue" if team_read else " AND (CASE WHEN g.home_team_id = pgl.team_id THEN 'home' ELSE 'away' END) = $venue"
         params["venue"] = venue
     if opponent is not None:
-        extra += " AND (CASE WHEN tbs.home_away = 'home' THEN g.away_team_id ELSE g.home_team_id END) = $opponent"
+        extra += " AND (CASE WHEN tbs.home_away = 'home' THEN g.away_team_id ELSE g.home_team_id END) = $opponent" if team_read else " AND pgl.opponent_team_id = $opponent"
         params["opponent"] = opponent.id
     return extra, params
 
@@ -269,7 +269,7 @@ def _player_splits_player(
     params: dict[str, Any] = {**scope.params(), "player": player.id, **narrow_params}
     if team is not None:
         params["team"] = team.id
-    base = _player_games(scope, extra=(" AND pbs.team_id = $team" if team else "") + narrow_sql, box=box_source(con))
+    base = _player_games(scope, extra=(" AND pgl.team_id = $team" if team else "") + narrow_sql, box=box_source(con))
     games, first, last = _totals(con, base, params)
     if not games:
         return _no_games(con, player, scope, team)
@@ -291,7 +291,7 @@ def _player_splits_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], s
     misfiled = _misfiled_postseason(scope)
     if misfiled is not None:
         return misfiled
-    narrow_sql, narrow_params = _player_splits_narrow_sql(venue, opponent)
+    narrow_sql, narrow_params = _player_splits_narrow_sql(venue, opponent, team_read=True)
     params = {**scope.params(), "team": team.id, **narrow_params}
     base = _team_games(scope, " AND tbs.team_id = $team" + narrow_sql)
     games, first, last = _totals(con, base, params)
@@ -627,7 +627,7 @@ def _record_when_query(
     params: dict[str, Any] = {**scope.params(), "player": player.id}
     if team is not None:
         params["team"] = team.id
-    base = _player_games(scope, extra=" AND pbs.team_id = $team" if team else "", box=box_source(con))
+    base = _player_games(scope, extra=" AND pgl.team_id = $team" if team else "", box=box_source(con))
     found = con.execute(
         f"WITH p AS ({base}) SELECT p.{column} >= $threshold, COUNT(*), COUNT(*) FILTER (WHERE p.won), AVG(p.team_score - p.opponent_score), "
         "MIN(p.season), MAX(p.season), list(DISTINCT p.team_id) FROM p GROUP BY 1",
@@ -757,7 +757,7 @@ def _streak_player(
     params: dict[str, Any] = {**scope.params(), "player": player.id}
     if team is not None:
         params["team"] = team.id
-    base = _player_games(scope, extra=" AND pbs.team_id = $team" if team else "", box=box_source(con))
+    base = _player_games(scope, extra=" AND pgl.team_id = $team" if team else "", box=box_source(con))
     games, first, last = _totals(con, base, params)
     if not games:
         return _no_games(con, player, scope, team)

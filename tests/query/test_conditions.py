@@ -203,6 +203,15 @@ def rebuilt_league(league: TemplateContext) -> TemplateContext:
                  CASE WHEN {rebuilt} THEN 99 ELSE pbs.fieldGoalsAttempted END AS fieldGoalsAttempted),
                {rebuilt} AS reconstructed
         FROM player_box_stats pbs""")
+    # The log view the relation reads is built over the FILLED table in the
+    # warehouse (fetch/warehouse.py picks player_box_stats_filled when it exists),
+    # so this fixture's must be too, or a rebuilt row is invisible to the read.
+    c.execute("DROP VIEW player_game_log")
+    c.execute(
+        "CREATE VIEW player_game_log AS SELECT pbs.*, p.display_name AS player_name, g.date AS game_date, t.abbreviation AS team_abbr, o.abbreviation AS opponent_abbr "
+        "FROM player_box_stats_filled pbs LEFT JOIN players p ON p.athlete_id = pbs.athlete_id LEFT JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season "
+        "LEFT JOIN teams t ON t.team_id = pbs.team_id LEFT JOIN teams o ON o.team_id = pbs.opponent_team_id"
+    )
     return league
 
 

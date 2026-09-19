@@ -16,6 +16,18 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **The last player-games read is on the relation.** `conditions._player_games`
+  (behind `streak`, `player_splits`, `record_when` and `with_without`) now
+  derives its join, its played guard and its rebuilt-line blanking from
+  `query/player_games.py` instead of its own join to `real_games` and
+  `team_box_stats` - the side and the scores come from `games` directly.
+  Measured first: on the 2026-09-19 warehouse no played box-score row sits on
+  a game `real_games` drops (43,504 games, 43,353 real), so the two reads
+  agreed by fact; now they agree by construction. `player_splits`' venue and
+  opponent narrowing names the relation's columns for a player's games and
+  keeps the team-box spelling for a team's. Pure refactor: all 11 recorded
+  cases across those four templates and all 195 across the five player-games
+  templates are byte-identical before and after.
 - **The pair relation.** `player_games.paired_rows_sql` reads the games two
   players both played, on opposite teams or the same, as two reads of the
   player-games relation joined on the event - both under the played guard,
