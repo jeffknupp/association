@@ -228,6 +228,11 @@ CASES: list[tuple[str, str, dict]] = [
     # downstream restored it: the answer was the league's high, to a question
     # about one man. Read from the question's grammar - see _subject_named_in.
     ("most points curry scored in a game this season", "single_game_high", {"stat": "points", "player": "curry"}),
+    # #138: the same drop, for threshold_count. "how many times has embiid
+    # fouled out?" arrived with no player at all and answered the league's
+    # leader in 6+-foul games (Karl-Anthony Towns) to a question about Joel
+    # Embiid, who has 0 such games in the 2026 season it defaulted to.
+    ("how many times has embiid fouled out?", "threshold_count", {"stat": "fouls", "threshold": 6, "player": "embiid"}),
     ("who has the most threes this season", "leaderboard", {"stat": "threePointFieldGoalsMade"}),
     ("career points leaders", "leaderboard", {"span": "career"}),
     ("Knicks home record this season", "team_record", {"venue": "home"}),

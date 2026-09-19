@@ -2585,6 +2585,53 @@ def pg_ctx(tmp_path: Path) -> TemplateContext:
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
+def test_game_log_drops_the_players_own_team(pg_ctx: TemplateContext) -> None:
+    """#147: `game_log` took its `team` branch before it read `player`, so a
+    `team` slot beside a named player answered the TEAM's log instead of his -
+    here, his own team, which narrows nothing and is dropped."""
+    with_team = game_log(pg_ctx, {"player": "Brandin Podziemski", "team": "Golden State Warriors"})
+    without_team = game_log(pg_ctx, {"player": "Brandin Podziemski"})
+    assert with_team.data["games"] == without_team.data["games"]
+    assert with_team.answer == without_team.answer
+
+
+def test_game_log_promotes_a_different_team_to_opponent(pg_ctx: TemplateContext) -> None:
+    """The Curry shape from #147: "steph curry vs 76ers last 4 games" put the
+    76ers in `team` rather than `opponent`, and used to answer the 76ers' own
+    games instead of Curry's games against them."""
+    as_team = game_log(pg_ctx, {"player": "Brandin Podziemski", "team": "Detroit Pistons"})
+    as_opponent = game_log(pg_ctx, {"player": "Brandin Podziemski", "opponent": "Detroit Pistons"})
+    assert as_team.data["games"] == as_opponent.data["games"]
+    assert [g["opponent"] for g in as_team.data["games"]] == ["DET", "DET"]
+
+
+def test_game_log_drops_a_team_that_resolves_to_nothing(pg_ctx: TemplateContext) -> None:
+    """#147: Payton Pritchard's question arrived with an invented "Phoenix
+    Suns" in `team`. A name nothing resolves to is dropped, not refused -
+    exactly like an invented player name."""
+    with_bad_team = game_log(pg_ctx, {"player": "Brandin Podziemski", "team": "Not A Real Team"})
+    without_team = game_log(pg_ctx, {"player": "Brandin Podziemski"})
+    assert with_bad_team.data["games"] == without_team.data["games"]
+
+
+def test_game_log_own_team_beside_a_real_opponent_keeps_the_opponent(pg_ctx: TemplateContext) -> None:
+    """#147, the Kobe Bryant shape: `team` held his own Lakers and `opponent`
+    already held the Rockets - his own team narrows nothing, so the real
+    opponent stands."""
+    result = game_log(pg_ctx, {"player": "Brandin Podziemski", "team": "Golden State Warriors", "opponent": "Detroit Pistons"})
+    assert [g["opponent"] for g in result.data["games"]] == ["DET", "DET"]
+
+
+def test_game_log_an_opponent_already_named_wins_over_a_disagreeing_team(pg_ctx: TemplateContext) -> None:
+    """A `team` beside an already-named `opponent` is dropped rather than
+    reconciled or refused: measured on the filed corpus row, "Phoenix Suns" is
+    a real, resolvable team, so comparing it against an already-correct
+    "Philadelphia 76ers" opponent and refusing on the mismatch answered
+    nothing for a question that names both a player and his opponent."""
+    result = game_log(pg_ctx, {"player": "Brandin Podziemski", "team": "Boston Celtics", "opponent": "Detroit Pistons"})
+    assert [g["opponent"] for g in result.data["games"]] == ["DET", "DET"]
+
+
 def test_game_log_lists_only_the_games_against_the_named_opponent(pg_ctx: TemplateContext) -> None:
     """Before the contract commit, "jaylen brown last 8 games vs pistons" listed
     the Celtics' last eight games against anybody."""

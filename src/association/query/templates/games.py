@@ -18,7 +18,7 @@ from association.nba.season import current_season, eastern_day_utc_range
 from association.nba.season import eastern_date as _eastern_date
 
 from ..conditions import _PLAYER_GAME_TABLES, _cell, _matchup_line, _meetings, _names, _player_games, _Scope, _table, _totals, _unseen_meetings, box_source
-from ..entities import Entity, find_players, teammate_names
+from ..entities import Entity, find_players, resolve_team, teammate_names
 from ..leaderboard import resolve_metric
 from ..shotchart import SHOT_AVAILABILITY, SHOT_VALUE_SQL, UNSEPARABLE_SHOT_VALUES
 from .common import (
@@ -247,6 +247,14 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        missing - "No 2026 regular season games found for Tim Hardaway" now
        also says he last appears in 2003 and names his 1995-2003 range. A
        season the question named outright keeps the plain refusal.
+
+    .. versionchanged:: 4.3.0
+       A ``team`` slot no longer wins outright over a named ``player`` (#147).
+       With a player present, his own team narrows nothing and is dropped, a
+       different team becomes his opponent, and a name nothing resolves to is
+       dropped - an ``opponent`` already named wins over all three, since a
+       ``team`` slot beside it is the noise the router routinely fills next to
+       an already-correct opponent.
     """
     con = ctx.con
     season_type = slots.get("season_type") or 2
@@ -267,8 +275,9 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     season = None if date else slots.get("season")
     span = "career" if date else span
 
-    if slots.get("team"):
-        team = _resolved_team(con, slots.get("team"), season=_slot_season(slots))
+    team_text = slots.get("team")
+    if team_text and not slots.get("player"):
+        team = _resolved_team(con, team_text, season=_slot_season(slots))
         if isinstance(team, TemplateResult):
             return team
         if without:
@@ -285,6 +294,14 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     player = _resolved_player(con, slots.get("player"), "game_log needs a team or a player", available=_GAME_LOGS, season=scope.season, through=_career_end(scope.season))
     if isinstance(player, TemplateResult):
         return player
+    if team_text:
+        # A `team` beside a named `player` used to win outright at the check
+        # above and answer the TEAM's log instead of his - see AGENTS.md,
+        # "game_log answers a team's log when the question named a player"
+        # (#147). Read it against him instead of the league: his own team
+        # narrows nothing, a different one is his opponent, and a name
+        # nothing resolves to is dropped exactly like an invented player name.
+        opponent = _team_slot_for_player(con, player, team_text, season=_slot_season(slots), opponent=opponent)
     extras = _log_extras(slots.get("stat"))
     narrowed = _narrow_player_games(con, player, scope, opponent=opponent, venue=venue, without=without, split=slots.get("split"))
     if isinstance(narrowed, TemplateResult):
@@ -295,6 +312,51 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         narrowed.extra_params += [start, end]
         narrowed.date = date
     return _player_game_log(con, player, scope, narrowed, extras, limit=limit, asked=asked, ascending=ascending)
+
+
+def _played_for(con: duckdb.DuckDBPyConnection, player: Entity, team: Entity) -> bool:
+    """Whether ``player`` has ever suited up for ``team``, anywhere in
+    ``player_game_log``.
+
+    The only question this answers is "is this team the SUBJECT, not the
+    opponent" - so it deliberately looks across his whole career rather than
+    the season in scope: a team slot naming a season he was not on it is still
+    not an opponent, and treating it as one would file a real former team as
+    though the two had played each other.
+    """
+    row = con.execute("SELECT 1 FROM player_game_log WHERE athlete_id = ? AND team_id = ? LIMIT 1", [player.id, team.id]).fetchone()
+    return row is not None
+
+
+def _team_slot_for_player(con: duckdb.DuckDBPyConnection, player: Entity, team_text: str, *, season: int | None, opponent: Any) -> Any:
+    """What a ``team`` slot means once ``player`` is named - see #147.
+
+    An ``opponent`` already named wins outright: a ``team`` slot beside it is
+    the same noise the router routinely fills alongside an already-correct
+    opponent, not a second fact to reconcile - measured on the filed corpus
+    rows, it is Payton Pritchard's invented "Phoenix Suns" beside a correct
+    "Philadelphia 76ers" opponent, and Kobe Bryant's own "Los Angeles Lakers"
+    beside a correct "Houston Rockets" one. Comparing the two and refusing
+    when they disagreed was tried first and was wrong for exactly this shape:
+    "Phoenix Suns" is a real, resolvable team, so a naive conflict check
+    refused Pritchard's question rather than answering it.
+
+    With no ``opponent`` already named, his own team narrows nothing, so it is
+    dropped; a different, real team is his opponent (the Curry shape); and a
+    name nothing resolves to - the router inventing a team the way it
+    sometimes invents a player, see AGENTS.md's "the router invents names" -
+    or an ambiguous one, is dropped rather than guessed at or asked about: the
+    player, not the team, is what the question is about.
+    """
+    if isinstance(opponent, str) and opponent.strip():
+        return opponent
+    match resolve_team(con, team_text, season):
+        case Entity() as team:
+            return opponent if _played_for(con, player, team) else team_text
+        case _:
+            # NotFound or Ambiguous - dropped either way, since `opponent` is
+            # not set here for either to fill.
+            return opponent
 
 
 def _scope(count: int, ascending: bool, date: str | None) -> str:

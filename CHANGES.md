@@ -232,6 +232,29 @@ had no published version to be compatible with.
   a rendering bug in any of the new renderers falls back to it rather than
   losing the answer, the same guard the existing seven already relied on.
   `tests/web/test_renderers.py`'s contract test now covers all 20.
+- **`game_log` no longer answers a team's log when the question named a
+  player** (#147). `game_log` took its `team` branch before it read `player`,
+  so a `team` slot beside a named player won outright: "kobe bryant's stats
+  vs rockets in the 2009 playoffs" answered the Lakers' own game instead of
+  Kobe's, "Payton Prichard stats vs 76ers" answered an invented "Phoenix
+  Suns"'s games (none) instead of Pritchard's 7, and "steph curry vs 76ers
+  last 4 games" answered the 76ers' own last 4 games instead of Curry's
+  against them. With a player named, his own team now narrows nothing and is
+  dropped, a different team becomes his opponent (the Curry shape), and a
+  team nothing resolves to is dropped exactly like an invented player name -
+  but an `opponent` already named wins over all three, since a `team` slot
+  beside it is the same noise the router routinely fills next to an
+  already-correct opponent, not a second fact to reconcile.
+- **A `threshold_count` question no longer answers the league's ranking when
+  it names a player the model dropped** (#138). "how many times has embiid
+  fouled out?" arrived with no `player` slot and answered "Karl-Anthony Towns
+  had the most games with 6+ fouls" - a question about Joel Embiid, who has 0
+  such games in the 2026 season it defaulted to and 9 in his regular-season
+  career. The subject is now restored from the question's own grammar the way
+  `single_game_high` already restores one for "most points curry scored in a
+  game" - a name before a scoring verb or "fouled out", or carrying a
+  possessive - so a genuine league question ("most 30+ point games this
+  season") still stays league-wide.
 
 ## 4.2.0 - 2026-09-18
 - **A NetPoints name ESPN spells with a generational suffix, or hyphenates

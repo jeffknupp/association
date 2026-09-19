@@ -137,29 +137,34 @@ to this section, re-read the P2s against the P1 definition: that is how both of
 those were found.
 - **GitHub:** #114
 
-### A count of one player's games becomes the league's ranking when the router drops the player
-- **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
-- **Evidence:** "how many times has embiid fouled out?" routes to
-  `threshold_count` with `{"stat": "fouls", "threshold": 6, "limit": 1,
-  "season": 2026, "season_type": 2}` and no `player` slot, although the
-  question names one. `threshold_count` ranks the league, so the answer was
-  "Karl-Anthony Towns had the most games with 6+ fouls in the 2026 regular
-  season, with 7." Measured on `player_game_log`: Joel Embiid has 9
-  regular-season games with 6+ fouls (2017-2024, plus 2 in the postseason) and
-  0 in 2026. `_route_subject_slots` restores a dropped subject from the
-  question's grammar for `single_game_high` only (`router.py:1252`), and
-  `threshold_count` has no one-player shape - `HONORED_SCOPING` gives it `span`
-  alone.
-- **User sees:** a fluent answer about a different player, with the one asked
-  about nowhere in it - the failure shape this file ranks worst.
-- **Next step:** restore the subject for `threshold_count` the way
-  `_route_subject_slots` does for `single_game_high`, then either answer one
-  player's count when a `player` is present (the same filter without the
-  ranking, and the season default needs saying: 0 in 2026 is a true answer
-  that reads like a wrong one) or refuse. Never rank the league for a question
-  that names a player.
+### A `threshold_count` player named without a scoring verb still drops, and answers the league instead
+- **Found:** 2026-09-19, fixing #138 (the "fouled out" shape of this same bug)
+- **Evidence:** `router.py`'s `_route_subject_slots` now restores a
+  `threshold_count` question's subject from the question's grammar - a name
+  before a scoring verb or "fouled out", or carrying a possessive - the same
+  way it already does for `single_game_high`. That does not cover "jamal
+  murray games with 2 threes including playoffs", which names Murray with
+  neither shape: routed (`/home/jeff/association-research/algebra-spike/baseline/replay_rerouted_8bd7380.jsonl`)
+  to `threshold_count` with `{"stat": "threePointFieldGoalsMade", "threshold":
+  2, "season_type": 3, "season": 2026}` and no `player` at all. Measured
+  directly against `TEMPLATES["threshold_count"]` on those exact slots and the
+  real warehouse: "Julian Champagnie had the most games with 2+ 3-pointers in
+  the 2026 postseason, with 19. Next: Devin Vassell (17), Donovan Mitchell
+  (16), OG Anunoby (14), Jalen Brunson (13)" - Murray is nowhere in it, though
+  he has 58 postseason games and 426 career games (regular and post combined)
+  with 2+ three-pointers made.
+- **User sees:** a fluent answer naming five other players, with the one asked
+  about missing entirely - the same failure shape as #138, just a different
+  grammar the fix does not reach.
+- **Next step:** `_subject_named_in`'s grammar (a scoring verb, "fouled out",
+  or a possessive) does not cover "NAME games with ...", which is how several
+  corpus `threshold_count` questions name their subject ("Sga games with under
+  14 fta", "bam adebayo career games..."). Extending the pattern risks
+  matching a non-name word before "games" the way the module's own comment
+  warns against ("game" is Jaron Blossomgame); measure candidate patterns
+  against the full routing corpus before adding one, the way `_subject_named_in`
+  itself was measured for `single_game_high`.
 - **GitHub:** none yet
-- **GitHub:** #138
 
 ### A second threshold in the same question is dropped, and the leader of the broader question is named
 - **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
@@ -238,35 +243,6 @@ those were found.
   player-stat-declines-limit rule already points.
 - **GitHub:** none yet
 - **GitHub:** #142
-
-### `game_log` answers a team's log when the question named a player, because the `team` branch comes first
-- **Found:** 2026-09-18, the algebra spike's golden comparison
-  (`~/association-research/algebra-spike/stage2/README.md`) - the three rows
-  the compiler and the template disagreed on
-- **Evidence:** `query/templates/games.py:270` - `if slots.get("team"):`
-  returns `_team_game_log` before `player` is read. Three feed questions
-  arrive with both slots filled, in three different ways, and all three get
-  a team's games: "kobe bryant's stats vs rockets in the 2009 playoffs ts%
-  each game" (`team` = his own Lakers; answered "Los Angeles Lakers vs the
-  Houston Rockets, most recent game of the 2009 postseason", where Kobe's
-  own line for that Game 7 - 14 points, 7 rebounds, 5 assists on 2009-05-17
-  - is in `player_game_log`); "Payton Prichard stats vs 76ers at home
-  including playoffs game log" (`team` = an invented "Phoenix Suns";
-  answered "The Phoenix Suns played 240 games ... none of them vs the
-  Philadelphia 76ers at home", where Pritchard has 7 such games); "steph
-  curry vs 76ers last 4 games" (`team` = the opponent, "Philadelphia 76ers",
-  filed under the wrong slot; answered the 76ers' last 4 games). The
-  baseline grades all three `wrong`.
-- **User sees:** a fluent log of the wrong subject - a team where a player
-  was named.
-- **Next step:** when `player` is present, the log is the player's. Then read
-  `team` against him: his own team narrows nothing, another team is his
-  opponent (the Curry shape - and the reroute in `_route_matchup_against_team`
-  already treats a team beside a player as the opponent), and a team that
-  resolves to nothing is dropped. Refuse only when a second team is genuinely
-  ambiguous with an `opponent` already present.
-- **GitHub:** none yet
-- **GitHub:** #147
 
 ## P2: misleading or incomplete
 

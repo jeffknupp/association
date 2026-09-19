@@ -372,25 +372,30 @@ def _validate_venue(question: str) -> str | None:
 # is a worked example of single_game_high in ROUTER_PROMPT.
 _CAREER_HIGH = re.compile(r"\bcareer[- ]highs?\b", re.IGNORECASE)
 
-# The subject of a single-game high, when the model drops it. Measured live:
-# "most points curry scored in a game this season" comes back as
-# single_game_high with NO player slot, and the answer is the league's high -
-# Bam Adebayo's - to a question about one man. The player slot is optional
-# there (an empty one means "the league"), so nothing downstream restores it,
-# and players_named_in cannot: "curry" is six players and it refuses to guess.
+# The subject of a single-game high or a threshold count, when the model
+# drops it. Measured live: "most points curry scored in a game this season"
+# comes back as single_game_high with NO player slot, and the answer is the
+# league's high - Bam Adebayo's - to a question about one man; "how many times
+# has embiid fouled out?" comes back as threshold_count with no player slot
+# either, and the answer is the league's leader in 6+-foul games - Karl-
+# Anthony Towns - to a question about Joel Embiid (#138). Both slots are
+# optional (an empty one means "the league"), so nothing downstream restores
+# either, and players_named_in cannot: "curry" is six players and it refuses
+# to guess.
 #
 # So the subject is read from the GRAMMAR rather than from a word list. A word
 # scan cannot work here: "best" is Travis Best, "game" is Jaron Blossomgame,
 # "high" is Haywood Highsmith and "single" is four players, so scanning would
 # hijack "the highest scoring game by a player this year". A name before a
-# scoring verb, or carrying a possessive, is a subject; the question words are
-# excluded because "who scored the most" names nobody.
+# scoring verb or "fouled out", or carrying a possessive, is a subject; the
+# question words are excluded because "who scored the most" names nobody.
 _SUBJECT_WORDS = frozenset({"who", "what", "which", "that", "he", "she", "they", "it", "player", "anyone", "someone", "nobody", "team", "one", "the", "and", "any"})
-_SUBJECT_OF_HIGH = re.compile(r"\b([A-Za-z][A-Za-z.'\-]{2,})(?:'s\b|\s+(?:scored|scores|score|dropped|put\s+up|hung|shot))", re.IGNORECASE)
+_SUBJECT_OF_HIGH = re.compile(r"\b([A-Za-z][A-Za-z.'\-]{2,})(?:'s\b|\s+(?:scored|scores|score|dropped|put\s+up|hung|shot|foul(?:ed|s|ing)?\s+out))", re.IGNORECASE)
 
 
 def _subject_named_in(question: str) -> str | None:
-    """The word a single-game-high question makes its subject, or None.
+    """The word a single-game-high or threshold-count question makes its
+    subject, or None.
 
     Returns the question's own word, not a resolved player: resolution decides
     whether it names somebody, and asks when it is ambiguous. "curry" then
@@ -1236,7 +1241,8 @@ def _route_team_slots(intent: str, slots: dict[str, Any], question: str) -> None
 
 
 def _route_subject_slots(intent: str, slots: dict[str, Any], question: str) -> None:
-    """The last meetings with an opponent across seasons, and a single-game high's missing subject."""
+    """The last meetings with an opponent across seasons, and a single-game
+    high's or a threshold count's missing subject."""
     # "last 8 games vs pistons" with no season named means the last eight
     # meetings, wherever they fall - answered from the current season alone it
     # found four and said so. A season the question names still wins.
@@ -1249,10 +1255,14 @@ def _route_subject_slots(intent: str, slots: dict[str, Any], question: str) -> N
     ):
         slots["span"] = "career"
         slots.pop("season", None)
-    if intent == "single_game_high" and not slots.get("player") and not slots.get("players"):
+    if intent in ("single_game_high", "threshold_count") and not slots.get("player") and not slots.get("players"):
         # An optional slot the model dropped, restored from the question's own
         # grammar - see _subject_named_in. Only where the template reads one
-        # player: a leaderboard with no player IS the league's ranking.
+        # player: a leaderboard with no player IS the league's ranking, and so
+        # is a threshold_count with no player - restoring the subject only
+        # where the question's own grammar names one (#138) never turns a
+        # genuine league question into one about somebody it only appears to
+        # name.
         subject = _subject_named_in(question)
         if subject is not None:
             slots["player"] = subject

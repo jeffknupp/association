@@ -1114,6 +1114,32 @@ def test_a_single_game_high_keeps_the_player_the_question_names() -> None:
     assert possessive.slots["player"] == "curry"
 
 
+def test_a_threshold_count_keeps_the_player_the_question_names() -> None:
+    """#138: "how many times has embiid fouled out?" came back as
+    threshold_count with no player at all, and the answer was the league's
+    leader in 6+-foul games (Karl-Anthony Towns) to a question about Joel
+    Embiid, who has 0 such games in the 2026 season it defaulted to. Fouling
+    out is code-assigned to threshold_count regardless of what the model
+    said (see test_fouling_out_is_normalized_to_six_fouls), so the reply
+    below need not even get the intent right."""
+    got = _ask("how many times has embiid fouled out?", '{"intent":"other"}')
+    assert got.intent == "threshold_count"
+    assert got.slots["player"] == "embiid"
+    assert got.slots["stat"] == "fouls"
+    assert got.slots["threshold"] == 6
+
+
+def test_a_threshold_counts_own_player_is_not_overwritten() -> None:
+    got = _ask("how many times has embiid fouled out?", '{"intent":"threshold_count","player":"Joel Embiid","stat":"fouls","threshold":6}')
+    assert got.slots["player"] == "Joel Embiid"
+
+
+def test_a_league_wide_threshold_count_stays_league_wide() -> None:
+    """The other half: a threshold_count naming nobody must not gain a player."""
+    got = _ask("most games with 30+ points this season", '{"intent":"threshold_count","stat":"points","threshold":30}')
+    assert "player" not in got.slots
+
+
 def test_a_league_wide_single_game_high_stays_league_wide() -> None:
     """The other half: a question naming nobody must not gain a player. "best"
     is Travis Best, "game" is Jaron Blossomgame and "high" is Haywood
