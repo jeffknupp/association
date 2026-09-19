@@ -1150,6 +1150,65 @@ def test_a_league_wide_threshold_count_stays_league_wide() -> None:
     assert "player" not in got.slots
 
 
+def test_a_threshold_count_named_by_games_with_keeps_its_subject() -> None:
+    """#148: a threshold_count player named via "NAME games with ..." - no
+    scoring verb, no possessive - still dropped after #138's fix, and the
+    answer was the league's ranking to a question naming a real player.
+    "jamal murray games with 2 threes including playoffs" routed to
+    threshold_count with no player at all and answered "Julian Champagnie had
+    the most games with 2+ 3-pointers in the 2026 postseason, with 19" -
+    Murray, who has 58 postseason games and 426 career games with 2+
+    three-pointers made, was nowhere in it. The full two-word name is kept
+    (not just "murray"), because the bare surname is five players who all
+    have a 2026 box score (Collin Murray-Boyles, Dejounte, Jamal, Keegan,
+    Kris) and would only trade the league-ranking bug for a needless
+    clarifying question."""
+    got = _ask(
+        "jamal murray games with 2 threes including playoffs",
+        '{"intent":"threshold_count","stat":"threePointFieldGoalsMade","threshold":2,"season_type":3,"season":2026}',
+    )
+    assert got.slots["player"] == "jamal murray"
+
+
+def test_a_threshold_count_named_by_a_bare_surname_before_games_with() -> None:
+    """ "Sga games with under 14 fta in his whole career" names its subject the
+    same ungrammatical way, but with a single-token nickname rather than a
+    first and last name - there is no preceding word to fold in, and none
+    should be invented."""
+    got = _ask("Sga games with under 14 fta in his whole career", '{"intent":"threshold_count","stat":"freeThrowsAttempted","threshold":14}')
+    assert got.slots["player"] == "Sga"
+
+
+def test_games_with_does_not_capture_a_modifier_as_the_subject() -> None:
+    """ "most games with 30+ points this season" must not read "most" as a
+    name, and "bam adebayo career games in the month of march" has no verb or
+    possessive either, but "career" sits directly before "games" and is not a
+    name - the question is left unrestored rather than guessed at, the same
+    discipline as the rest of this function."""
+    assert "player" not in _ask("most games with 30+ points this season", '{"intent":"threshold_count","stat":"points","threshold":30}').slots
+    got = _ask("bam adebayo career games in the month of march", '{"intent":"other"}')
+    assert "player" not in got.slots
+
+
+def test_a_threshold_count_named_by_a_point_games_phrase() -> None:
+    """The other corpus-adjacent shape named in #148's next step: a number and
+    a stat word standing in for "games with", as in "murray 30 point games"
+    or "murray games of 20+ rebounds" - neither has a scoring verb or a
+    possessive."""
+    assert _ask("murray 30 point games this season", '{"intent":"threshold_count","stat":"points","threshold":30}').slots["player"] == "murray"
+    assert _ask("murray games of 20+ rebounds", '{"intent":"threshold_count","stat":"rebounds","threshold":20}').slots["player"] == "murray"
+
+
+def test_a_possessive_before_games_of_is_not_swallowed_whole() -> None:
+    """The name-capture group used to be greedy, which let "murray's games of
+    20+ rebounds" consume the whole "murray's" - apostrophe and all - into the
+    captured word once a "games of" alternative sat in the same pattern as the
+    possessive branch. The two grammars are now separate, so the possessive is
+    read by `_SUBJECT_OF_HIGH`'s own `'s` branch exactly as it always was."""
+    got = _ask("murray's games of 20+ rebounds", '{"intent":"threshold_count","stat":"rebounds","threshold":20}')
+    assert got.slots["player"] == "murray"
+
+
 def test_a_league_wide_single_game_high_stays_league_wide() -> None:
     """The other half: a question naming nobody must not gain a player. "best"
     is Travis Best, "game" is Jaron Blossomgame and "high" is Haywood
