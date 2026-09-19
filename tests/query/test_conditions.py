@@ -155,6 +155,12 @@ def league(tmp_path: Path) -> TemplateContext:
     _game(c, "e7", f"{S - 1}-12-01T01:00Z", LAL, BOS, 115, 105, [_played(TATUM, BOS, 31), _played(BROWN, BOS, 12), _played(LEBRON, LAL, 33), _blank(JOURNEYMAN, LAL)])
     # The shared filtered list every query here reads; e6 is dropped by it.
     real_games.build_table(c, {"games", "teams", "player_box_stats"})
+    # The log view the player-games relation reads, in the warehouse's shape.
+    c.execute(
+        "CREATE VIEW player_game_log AS SELECT pbs.*, p.display_name AS player_name, g.date AS game_date, t.abbreviation AS team_abbr, o.abbreviation AS opponent_abbr "
+        "FROM player_box_stats pbs LEFT JOIN players p ON p.athlete_id = pbs.athlete_id LEFT JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season "
+        "LEFT JOIN teams t ON t.team_id = pbs.team_id LEFT JOIN teams o ON o.team_id = pbs.opponent_team_id"
+    )
     return TemplateContext(con=c, out_dir=tmp_path)
 
 

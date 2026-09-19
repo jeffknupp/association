@@ -35,7 +35,7 @@ import duckdb
 
 from association.nba.coverage import COVERAGE
 
-from .conditions import BoxSource
+from .conditions import UNGATED_ON_REBUILD, BoxSource
 from .entities import Entity
 
 # A player-game ESPN lists as played but records no minutes for. Every such row
@@ -274,6 +274,35 @@ STARTER_SIDES: dict[str, bool] = {"starter": True, "bench": False}
 
 .. versionadded:: 4.3.0
 """
+
+
+def column(alias: str, name: str, box: BoxSource) -> str:
+    """A box-score column as a reader may trust it: blanked on a rebuilt row
+    when it is one the rebuild fills but was never measured for
+    (:data:`association.query.conditions.UNGATED_ON_REBUILD`), so an average is
+    taken over the games that carry the figure rather than over a wrong one."""
+    if box.rebuilt and name in UNGATED_ON_REBUILD and name in box.columns:
+        return f"CASE WHEN {alias}.reconstructed THEN NULL ELSE {alias}.{name} END AS {name}"
+    return f"{alias}.{name}"
+
+
+def paired_rows_sql(narrowed: Narrowed, other_id: str, select: str, *, teammates: bool = False, order: str | None = "g.date DESC, pgl.event_id", rebuilt: bool = False) -> tuple[str, list[Any]]:
+    """The pair relation: games the narrowed player and ``other`` both played,
+    on opposite teams - or the same, with ``teammates`` - with the other's line
+    readable as ``other.<column>``. A matchup is this and nothing more: two
+    reads of the relation joined on the event, both under the played guard,
+    which is why "never met" can be true of two men who shared a floor for
+    years (their games are teammates' games, not meetings)."""
+    where, params = narrowed.clauses(rebuilt=rebuilt)
+    appeared = "(other.minutes IS NOT NULL OR other.reconstructed)" if rebuilt else "other.minutes IS NOT NULL"
+    side = "other.team_id = pgl.team_id" if teammates else "other.team_id <> pgl.team_id"
+    sql = (
+        f"SELECT {select} {_PLAYER_GAMES} JOIN player_game_log other ON other.event_id = pgl.event_id AND other.season = pgl.season "
+        f"AND other.athlete_id = ? AND {side} AND NOT other.did_not_play AND {appeared} WHERE {where}"
+    )
+    if order:
+        sql += f" ORDER BY {order}"
+    return sql, [other_id, *params]
 
 
 def _teammate_stints(con: duckdb.DuckDBPyConnection, athlete_id: str) -> list[tuple[int, str, str, str]]:

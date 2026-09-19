@@ -16,6 +16,14 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **The pair relation.** `player_games.paired_rows_sql` reads the games two
+  players both played, on opposite teams or the same, as two reads of the
+  player-games relation joined on the event - both under the played guard,
+  with the rebuilt-line blanking applied by `player_games.column`. `player_matchup`'s
+  meetings now come from it instead of `conditions._meetings`' own join to
+  `real_games` and `team_box_stats`. Pure refactor: all 17 recorded matchup
+  cases (195 cases across the five player-games templates) are byte-identical
+  before and after.
 - **One definition of "a player's games."** `query/player_games.py` is the
   relation every box-score template reads through: the season-keyed join to
   `games`, the phantom-1993 exclusion, the did-not-play and empty-line guard,

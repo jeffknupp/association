@@ -207,6 +207,14 @@ class _Scope:
         excluded = f" AND {alias}.season NOT IN ({', '.join(str(int(p)) for p in self.phantoms)})" if self.phantoms else ""
         return f"{alias}.season >= $first AND {alias}.season_type = $season_type{excluded}"
 
+    def clause(self, alias: str) -> tuple[str, list[Any]]:
+        """:meth:`where` with positional parameters, for a reader that composes
+        clauses the way :class:`association.query.player_games.Narrowed` does."""
+        if self.season is not None:
+            return f"{alias}.season = ? AND {alias}.season_type = ?", [self.season, self.season_type]
+        excluded = f" AND {alias}.season NOT IN ({', '.join(str(int(p)) for p in self.phantoms)})" if self.phantoms else ""
+        return f"{alias}.season >= ? AND {alias}.season_type = ?{excluded}", [self.first, self.season_type]
+
     def params(self) -> dict[str, Any]:
         """The values :meth:`where` binds - exactly its names, because DuckDB rejects an unused one."""
         if self.season is not None:
@@ -700,25 +708,35 @@ def _longest_runs(
 def _meetings(con: duckdb.DuckDBPyConnection, scope: _Scope, a: str, b: str) -> tuple[list[dict[str, Any]], int]:
     """Games both players played on opposite teams, most recent first, and how
     many games they both played as teammates - the reason "never met" can be
-    true of two players who shared a floor for years."""
+    true of two players who shared a floor for years.
+
+    Read through the pair relation (:func:`association.query.player_games.paired_rows_sql`),
+    so the season floor, the phantom, the played guard and the rebuilt-line
+    blanking are the relation's, not restated here.
+    """
+    from .player_games import Narrowed, column, paired_rows_sql
+
     box = box_source(con)
-    params = {**scope.params(), "a": a, "b": b}
-    columns = "minutes, points, rebounds, assists, fieldGoalsMade, fieldGoalsAttempted"
-    rows = con.execute(
-        f"""
-        WITH a AS ({_player_games(scope, "a", box=box)}), b AS ({_player_games(scope, "b", box=box)})
-        SELECT a.day, a.won, a.team_score, a.opponent_score, a.team_id, b.team_id,
-               {", ".join(f"a.{c}" for c in columns.split(", "))}, {", ".join(f"b.{c}" for c in columns.split(", "))}, a.season
-        FROM a JOIN b ON b.event_id = a.event_id AND b.season = a.season AND b.team_id <> a.team_id
-        ORDER BY a.day DESC, a.stamp DESC""",
-        params,
-    ).fetchall()
-    together = con.execute(
-        f"WITH a AS ({_player_games(scope, 'a', box=box)}), b AS ({_player_games(scope, 'b', box=box)}) "
-        "SELECT COUNT(*) FROM a JOIN b ON b.event_id = a.event_id AND b.season = a.season AND b.team_id = a.team_id",
-        params,
-    ).fetchone()
-    stats = [c.strip() for c in columns.split(",")]
+    clause, params = scope.clause("pgl")
+    narrowed = Narrowed(base=["pgl.athlete_id = ?", clause, "NOT pgl.did_not_play"], base_params=[a, *params])
+    stats = ["minutes", "points", "rebounds", "assists", "fieldGoalsMade", "fieldGoalsAttempted"]
+    select = ", ".join(
+        [
+            f"{_eastern_day('g.date')} AS day",
+            "g.winner_team_id = pgl.team_id AS won",
+            "CASE WHEN g.home_team_id = pgl.team_id THEN g.home_score ELSE g.away_score END AS team_score",
+            "CASE WHEN g.home_team_id = pgl.team_id THEN g.away_score ELSE g.home_score END AS opponent_score",
+            "pgl.team_id",
+            "other.team_id",
+            *(column("pgl", s, box) for s in stats),
+            *(column("other", s, box).replace(f" AS {s}", f" AS other_{s}") for s in stats),
+            "pgl.season",
+        ]
+    )
+    sql, sql_params = paired_rows_sql(narrowed, b, select, rebuilt=box.rebuilt)
+    rows = con.execute(sql, sql_params).fetchall()
+    count_sql, count_params = paired_rows_sql(narrowed, b, "COUNT(*)", teammates=True, order=None, rebuilt=box.rebuilt)
+    together = con.execute(count_sql, count_params).fetchone()
     meetings = [
         {
             "day": row[0],
