@@ -137,6 +137,103 @@ to this section, re-read the P2s against the P1 definition: that is how both of
 those were found.
 - **GitHub:** #114
 
+### A count of one player's games becomes the league's ranking when the router drops the player
+- **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
+- **Evidence:** "how many times has embiid fouled out?" routes to
+  `threshold_count` with `{"stat": "fouls", "threshold": 6, "limit": 1,
+  "season": 2026, "season_type": 2}` and no `player` slot, although the
+  question names one. `threshold_count` ranks the league, so the answer was
+  "Karl-Anthony Towns had the most games with 6+ fouls in the 2026 regular
+  season, with 7." Measured on `player_game_log`: Joel Embiid has 9
+  regular-season games with 6+ fouls (2017-2024, plus 2 in the postseason) and
+  0 in 2026. `_route_subject_slots` restores a dropped subject from the
+  question's grammar for `single_game_high` only (`router.py:1252`), and
+  `threshold_count` has no one-player shape - `HONORED_SCOPING` gives it `span`
+  alone.
+- **User sees:** a fluent answer about a different player, with the one asked
+  about nowhere in it - the failure shape this file ranks worst.
+- **Next step:** restore the subject for `threshold_count` the way
+  `_route_subject_slots` does for `single_game_high`, then either answer one
+  player's count when a `player` is present (the same filter without the
+  ranking, and the season default needs saying: 0 in 2026 is a true answer
+  that reads like a wrong one) or refuse. Never rank the league for a question
+  that names a player.
+- **GitHub:** none yet
+
+### A second threshold in the same question is dropped, and the leader of the broader question is named
+- **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
+- **Evidence:** "who had the most 30+ point 10+ rebound games this year?"
+  routes to `threshold_count` with `{"stat": "points", "threshold": 30,
+  "fields": ["rebounds"], "season": 2026, "season_type": 2}` - the second
+  condition survives only as a `fields` entry, which the template ignores -
+  and answers "Luka Doncic had the most games with 30+ points in the 2026
+  regular season, with 44." Measured on `player_game_log`, 2026 regular
+  season, points >= 30 AND rebounds >= 10: Nikola Jokic 20, Luka Doncic 16,
+  Victor Wembanyama 15. `ROUTER_SCHEMA` carries one `threshold`, and
+  `_threshold_from_text` reads one `N+ <stat>` pair.
+- **User sees:** the wrong leader, stated with the wrong count, for a question
+  that named both conditions plainly.
+- **Next step:** read every `N+ <stat>` pair out of the question in
+  `_route_threshold`; with more than one, either filter `threshold_count` on
+  all of them (one more `AND` per pair over the same rows) or refuse. Refusing
+  beats ranking.
+- **GitHub:** none yet
+
+### "past two seasons" becomes a limit of two games
+- **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
+- **Evidence:** "show tyrese maxey's games against boston in the past two
+  seasons" routes to `game_log` with `{"player": "Tyrese Maxey", "teams":
+  ["Boston"], "limit": 2, "season_type": 2, "span": "career"}` and answers
+  "Tyrese Maxey vs the Boston Celtics, last 2 games of his career", both from
+  2026. Measured on `player_game_log` (games played, regular season): 3 vs BOS
+  in 2025 and 4 in 2026, so seven games were asked for. This is #124's cousin
+  ("knicks record by month 2024 2025" drops the second of two named seasons),
+  but here the range is relative, and it is not dropped - it is turned into a
+  game count. `_validate_range` reads "since YYYY" and a decade, nothing
+  relative.
+- **User sees:** two games labeled "last 2 games of his career" where seven
+  were asked for.
+- **Next step:** read "past/last N seasons" in `_validate_range` into a season
+  span the way `since` is read, and drop a `limit` whose count word modifies
+  "seasons" rather than "games" in `_route_filter_slots`.
+- **GitHub:** none yet
+
+### "all playoff games" draws one postseason
+- **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
+- **Evidence:** "show a shot chart for steph curry in all playoff games"
+  routes to `shot_chart` with `{"player": "Stephen Curry", "season_type": 3,
+  "season": 2025}` and draws the 2025 postseason alone (62/130). Measured on
+  `shot_chart`: Curry has postseason shots in ten seasons, 2013-2019 and
+  2022, 2023, 2025 (273, 158, 554, 420, 426, 351, 588, 569, 369, 158).
+  `_validate_span` matches "career" / "all-time" / "ever" / "in history", not
+  "all playoff games", so the season defaulted to the latest with data;
+  `HONORED_SCOPING["shot_chart"]` is `{"order"}`, so even a `span` the router
+  emitted would be refused rather than drawn.
+- **User sees:** one postseason presented as all of them, with nothing in the
+  answer saying so.
+- **Next step:** "all <season-type> games" / "every playoff game" into
+  `span: career` in `_validate_span`; then have `shot_chart` honor `span`
+  (one fewer `WHERE season =`) or refuse it with the seasons it could draw.
+- **GitHub:** none yet
+
+### "his last game" on `player_stat` answers the season average
+- **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
+- **Evidence:** "show maxey's stats for his last postseason game this season"
+  routes to `player_stat` with `{"player": "Maxey", "season_type": 3,
+  "season": 2026}` - no `order`, no `limit` - and answers "Tyrese Maxey
+  averaged 23.7 points, 4 rebounds and 5.9 assists per game in 11 games in the
+  2026 postseason." Measured on `player_game_log`: his last 2026 postseason
+  game was 2026-05-10, 17 points, 2 rebounds, 4 assists. Nothing in `route()`
+  reads "his last game" / "most recent game"; `game_log` honors `order` and
+  `limit` and answers exactly this with `limit: 1`, and `player_stat` already
+  declines a `limit` as a `game_log` question (`_LIMIT_REFUSING_INTENTS`).
+- **User sees:** a season line where one game was asked for.
+- **Next step:** read "his/her/their last game", "most recent game", "latest
+  game" into `order: recent, limit: 1` in `_route_side_and_order`, and reroute
+  `player_stat` to `game_log` when a limit arrives, the way the existing
+  player-stat-declines-limit rule already points.
+- **GitHub:** none yet
+
 ## P2: misleading or incomplete
 
 ### Season 2021's regular-season BPI snapshot is a day-one projection
@@ -1099,45 +1196,6 @@ those were found.
   player's line through `_narrow_player_games`.
 - **GitHub:** #34
 
-### `split="starter_bench"` reaches `game_log`/`period_split` with no direction, so it stays refused
-- **Found:** 2026-09-18, fixing `player_matchup`'s and `head_to_head`'s
-  `check_scope` refusals in `query/templates/games.py`
-- **Evidence:** `router.SPLIT_WORDS["starter_bench"]` matches either
-  "starter"/"starting"/"starts" OR "bench"/"reserve" in one pattern, and
-  `router.py:1079` (`slots["split"] = splits[0]`) records only the category
-  name, "starter_bench" - never which word actually matched. `player_splits`
-  is built around that: with `split="starter_bench"` it shows BOTH groups
-  side by side (`_player_splits_answer`, `query/templates/splits.py`), which
-  is a legitimate way to honor a directionless slot. `game_log` and
-  `period_split` cannot do the same thing usefully - "Jrue holiday last 50
-  games as a starter" wants exactly his starts filtered in, not his last 50
-  games (both starts and bench appearances) with a column added - and
-  `TemplateContext` carries no raw question text for either template to
-  recover which word was actually used the way `router._validate_venue`
-  recovers "home" vs "away" for `venue`. `player_box_stats.starter` (boolean)
-  exists and would support the filter once the direction reaches it.
-  Five reasonable feed queries hit this: "Jrue holiday last 50 games as a
-  starter", "kyle kuzma last 50 games as a starter", "taurean prince game log
-  as a starter" (`game_log`), "zach collins first quarter stats last 5 games
-  as a starter log", "barlow stats in the second half this season while
-  starting vs pacers" (`period_split`).
-- **User sees:** a fall-through to the slow agent for all five, rather than a
-  filtered log or a refusal.
-- **Next step:** two options, and the first is cheaper. (a) Read the
-  direction from the question text the same way `_validate_venue` does for
-  `venue`, into a new slot (e.g. `slots["starter"] = True/False`) in
-  `router.py`, then filter `game_log`/`period_split` on
-  `player_box_stats.starter`. (b) Extend `game_log` to show both groups the
-  way `player_splits` does, narrowed and counted separately - more work, and
-  answers a broader question than the one asked ("his last 50 games, split by
-  starter/bench" rather than "his last 50 starts") unless very carefully
-  worded. Not attempted here: guessing the direction (assuming "starter_bench"
-  always means "starter", since every measured example says so) was
-  considered and rejected - a "bench" question asked the same way would get a
-  fluently wrong answer, the failure mode this project ranks worst.
-- **GitHub:** not yet filed
-- **GitHub:** #119
-
 ### A weekday or holiday `situation` narrowing falls through to the slow agent instead of a fast refusal
 - **Found:** 2026-09-18, reading `/home/jeff/association-research/statmuse-2026-09/query_set_audit.md`
   while judging `game_log`'s `situation` refusals
@@ -1779,6 +1837,70 @@ those were found.
 - **Source:** ours (a matching heuristic), not ESPN's.
 - **GitHub:** not yet filed
 - **GitHub:** #131
+
+### The "only one of them matches anybody in the warehouse" note fires for a player who is in it
+- **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
+- **Evidence:** "show a fingerprint for maxey vs jaylen brown in 2026" routes
+  to `fingerprint` with `{"player": "Maxey", "stat": "double_double", "side":
+  "total", "fields": ["points", "rebounds"], "season": 2026, "season_type": 2}`
+  - the second name dropped - and the answer is one polygon for Tyrese Maxey
+  plus the note "the question compares two players, but only one of them
+  matches anybody in the warehouse - check the spelling of the other."
+  Measured: `players` holds Jaylen Brown and `net_points_player_fingerprint`
+  has his 2026 row. `restore_dropped_players` did not put him back, and
+  `compared_but_unmatched` then reported the leftover name as a warehouse
+  miss. "fingerprint maxey vs jaylen brown 2026" gets the same note beside a
+  refusal on a spurious `date: "2026-01-01"` slot the router invented.
+  Neither replay harness reproduces the note - it is appended in `agent.py`,
+  after the stage the harnesses mirror - so a replay grades both rows correct.
+- **User sees:** a refusal-shaped claim naming the wrong cause, about a player
+  the warehouse holds - the mirror-image shape `AGENTS.md` describes under
+  "a refusal that names the wrong cause".
+- **Next step:** before `compared_but_unmatched` fires, resolve the leftover
+  span against the roster; if it resolves, draw the second polygon or say the
+  name was dropped, and never say he is not in the warehouse. Then find why
+  `restore_dropped_players` missed a two-word name that `find_players`
+  resolves ("brown" alone is ten players; "jaylen brown" is one).
+- **GitHub:** none yet
+
+## P3: refusal or gap
+
+### `record_when` loses the player the question names, and the fall-through burns 583 seconds for nothing
+- **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
+- **Evidence:** "what was the sixers record when maxey scored 15+ points?"
+  routes to `record_when` with `{"stat": "points", "threshold": 15, "team":
+  "Philadelphia 76ers", "season": 2026, "season_type": 2}` and no `player`;
+  the template raised "record_when needs a player", the agent ran for 583s and
+  produced no answer ("I wasn't able to get a working query after a few
+  attempts"). Measured on `player_game_log` joined to `real_games`: the 76ers
+  were 36-29 in the 65 2026 regular-season games where Tyrese Maxey scored
+  15+. `scripts/check_routing.py`'s "Sixers record when Embiid scores 30
+  points this season" passes, so the intent is fine and the name is what was
+  lost.
+- **User sees:** nothing, after nearly ten minutes.
+- **Next step:** read the player out of the "when <name> scored" grammar the
+  way `_route_subject_slots` does for `single_game_high`, and when
+  `record_when` still has no player, refuse at once (the agent has no better
+  source for this) rather than falling through.
+- **GitHub:** none yet
+
+### One game of a playoff series ("game 4") has no template, and the agent gives up on it
+- **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
+- **Evidence:** "show maxey's stats for game 4 against the knicks this
+  postseason" routes to `game_log` with `situation: "game 4"`, `season_type:
+  3`, `span: "career"`; `check_scope` refuses `situation`, the agent gets it
+  and ends with "Gave up after too many tool-call iterations" after 369s. The
+  feed has the same shape ("Ayton stats in game 4 playoff games", a
+  `check_scope` refusal since #84's second pass). `games` has no series or
+  game-number column, but a series' games are the games between two teams in
+  one postseason ordered by date, so "game N" is computable from what the
+  warehouse holds.
+- **User sees:** nothing, after six minutes.
+- **Next step:** cheapest first: refuse fast, as #507 argues for a named
+  round, since the agent has no better source. The real fix is a `game_n`
+  reading in `_SITUATION`'s place that `game_log` honors as "the Nth game by
+  date between these two teams in this postseason".
+- **GitHub:** none yet
 
 ## P4: tooling, docs, low impact
 
