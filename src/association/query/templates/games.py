@@ -290,7 +290,7 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     # season only once _span_of reads it - and passed through as it was, it
     # narrowed "curry's last 5 games" over every season and asked about all six
     # Currys again.
-    scope = _span_of(span, season, season_type, "player_game_log")
+    scope = _span_of(span, season, season_type, "player_game_log", since=slots.get("since"))
     player = _resolved_player(con, slots.get("player"), "game_log needs a team or a player", available=_GAME_LOGS, season=scope.season, through=_career_end(scope.season))
     if isinstance(player, TemplateResult):
         return player
@@ -1302,7 +1302,7 @@ def player_matchup(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
         # box-score row narrows, and nothing here answers which side a name
         # belongs to.
         raise TemplateUnsupported("player_matchup cannot narrow a two-player matchup by a teammate's absence")
-    scope = _condition_scope(slots.get("season"), slots.get("span"), slots.get("season_type"), _PLAYER_GAME_TABLES)
+    scope = _condition_scope(slots.get("season"), slots.get("span"), slots.get("season_type"), _PLAYER_GAME_TABLES, since=slots.get("since"))
     resolved = _player_matchup_resolve(con, texts, scope)
     if isinstance(resolved, TemplateResult):
         return resolved

@@ -2918,9 +2918,21 @@ def test_player_stat_answers_a_shooting_percentage_with_its_makes_and_attempts(p
     assert "83.3% on free throws (5 of 6) in 2 games vs the Detroit Pistons" in against
 
 
-def test_player_stat_refuses_a_limit_rather_than_answering_the_season(pg_ctx: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
-        player_stat(pg_ctx, {"player": "Brandin Podziemski", "limit": 10})
+def test_player_stat_over_the_last_n_games_is_the_log_with_its_averages(pg_ctx: TemplateContext) -> None:
+    """The product decision: "stats over his last N games" is a log of those
+    games with averages beneath, never the season line - so player_stat hands
+    the question to game_log rather than refusing it or answering the season."""
+    result = player_stat(pg_ctx, {"player": "Brandin Podziemski", "limit": 2})
+    assert len(result.data["games"]) == 2
+    assert "averages" in result.data
+    assert "last 2 games" in result.answer
+
+
+def test_check_scope_lets_player_stat_honor_since_and_order(pg_ctx: TemplateContext) -> None:
+    from association.query.templates.common import check_scope
+
+    check_scope("player_stat", {"player": "Brandin Podziemski", "since": 2024})
+    check_scope("player_stat", {"player": "Brandin Podziemski", "order": "recent", "limit": 3})
 
 
 def test_player_stat_names_the_real_cause_when_nothing_matches(pg_ctx: TemplateContext) -> None:

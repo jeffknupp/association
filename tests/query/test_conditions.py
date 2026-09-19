@@ -530,6 +530,24 @@ def test_teammates_never_met_and_the_answer_says_why(league: TemplateContext) ->
     assert answer.endswith("they were teammates in all 3 games they both played.")
 
 
+def test_a_matchup_since_a_season_reaches_back_that_far_and_no_further(league: TemplateContext) -> None:
+    """``since`` is a scope on the relation: every season from the one named,
+    where the default is this season alone. LeBron and Tatum met twice last
+    season and twice this one with both playing."""
+    this_season = player_matchup(league, _slots(players=["LeBron James", "Jayson Tatum"])).data["meetings"]
+    since_last = player_matchup(league, _slots(players=["LeBron James", "Jayson Tatum"], since=S - 1)).data["meetings"]
+    assert (this_season, since_last) == (2, 4)
+
+
+def test_a_log_since_a_season_reaches_back_that_far(league: TemplateContext) -> None:
+    from association.query.templates import game_log
+
+    this_season = game_log(league, _slots(player="Jayson Tatum", limit=50)).data["games"]
+    since_last = game_log(league, _slots(player="Jayson Tatum", limit=50, since=S - 1)).data["games"]
+    assert len(since_last) > len(this_season)
+    assert {g["season"] for g in since_last} == {S - 1, S}
+
+
 def test_a_matchup_needs_two_different_players(league: TemplateContext) -> None:
     with pytest.raises(TemplateUnsupported):
         player_matchup(league, _slots(players=["Jayson Tatum"]))

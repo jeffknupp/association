@@ -864,17 +864,20 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     # box scores like the other three - the season line has no such column.
     split_side = slots.get("split") if slots.get("split") in STARTER_SIDES else None
     from_box_scores = bool(opponent or venue or without or split_side)
-    span = _span_of(slots.get("span"), slots.get("season"), season_type, "player_game_log" if from_box_scores else "player_season_stats_deduped")
+    if slots.get("limit") or slots.get("order"):
+        # "Jokic averages last 10 games" answered with his season line would be
+        # the substitution this module exists to stop. game_log lists exactly
+        # the games asked about and averages them beneath - the shape the
+        # question has, so it is handed there rather than refused.
+        from .games import game_log
+
+        return game_log(ctx, slots)
+    from_box_scores = from_box_scores or bool(slots.get("since"))
+    span = _span_of(slots.get("span"), slots.get("season"), season_type, "player_game_log" if from_box_scores else "player_season_stats_deduped", since=slots.get("since"))
     lines = _GAME_LOGS if from_box_scores else _SEASON_LINES
     player = _resolved_player(con, slots.get("player"), "player_stat needs a player name", available=lines, season=span.season, through=_career_end(span.season))
     if isinstance(player, TemplateResult):
         return player
-    if slots.get("limit"):
-        # "Jokic averages last 10 games" answered with his season line would be
-        # the substitution this module exists to stop; game_log averages
-        # exactly the games it lists.
-        raise TemplateUnsupported("a player's numbers over a limited set of games is a game_log question")
-
     stat = slots.get("stat")
     # Before the ESPN-served columns, because these carry their own table, their
     # own floor and their own career arithmetic - and because _wanted_stats

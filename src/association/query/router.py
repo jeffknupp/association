@@ -855,7 +855,7 @@ _LIMIT_REFUSING_INTENTS: frozenset[str] = frozenset({"player_stat"})
 # than filler: "last 5 games", "his one game", "top 10".
 _COUNT_WORDS = re.compile(r"\b(?:\d+|one|two|three|four|five|ten|last|first|top|only)\b", re.IGNORECASE)
 
-ORDER_INTENTS: frozenset[str] = frozenset({"fingerprint", "game_log", "player_netpoints", "shot_chart", "shot_distance"})
+ORDER_INTENTS: frozenset[str] = frozenset({"fingerprint", "game_log", "player_netpoints", "player_stat", "shot_chart", "shot_distance"})
 """Intents whose template honors ``order``, so filling it from the question can
 only make the answer match what was asked.
 

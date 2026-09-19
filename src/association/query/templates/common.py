@@ -110,10 +110,10 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # `split` only for a NAMED half of the starter/bench split - a question
     # naming both halves is a player_splits question, and check_scope still
     # refuses it here, because `route()` leaves the category in place then.
-    "game_log": frozenset({"order", "date", "opponent", "venue", "span", "without", "split"}),
+    "game_log": frozenset({"order", "date", "opponent", "venue", "span", "without", "split", "since"}),
     # The three that narrow games are answered from box scores rather than the
     # season line; a career is summed from the season table.
-    "player_stat": frozenset({"opponent", "venue", "span", "without", "split"}),
+    "player_stat": frozenset({"opponent", "venue", "span", "without", "split", "since", "order"}),
     "player_history": frozenset({"span"}),
     # It always read `opponent`; listed now that `opponent` is a scoping slot.
     "team_quarter_points": frozenset({"opponent"}),
@@ -157,7 +157,7 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # versionchanged note on player_matchup itself. A genuine two-player
     # matchup with either left over refuses it from inside the template,
     # since check_scope cannot tell the two shapes apart from the slots alone.
-    "player_matchup": frozenset({"span", "opponent", "without"}),
+    "player_matchup": frozenset({"span", "opponent", "without", "since"}),
     "streak": frozenset({"span"}),
     # The home/road split, the record against one team, and every season at
     # once - "Knicks home record" was answered with their overall 53-29.
@@ -694,6 +694,10 @@ class _Span:
     first: int = 0
     phantom: tuple[int, ...] = ()
     defaulted: bool = False
+    #: The season a "since" question starts from - a career cut at the front,
+    #: so the answer says "since 2022" and skips the box-score-floor note that
+    #: a whole career carries (the question asked for no earlier season).
+    since: int | None = None
 
     @property
     def career(self) -> bool:
@@ -727,13 +731,26 @@ class _Span:
         ``"over his career (2019-2026 regular seasons)"``."""
         if self.season is not None:
             return f"in the {_period(self.season, self.season_type)}"
+        if self.since is not None:
+            return f"since {self.since} ({self.years(first, last)})"
         return f"over {whose} ({self.years(first, last)})"
 
 
-def _span_of(span: Any, season: Any, season_type: int, table: str) -> _Span:
+def _span_of(span: Any, season: Any, season_type: int, table: str, since: Any = None) -> _Span:
     """The seasons a question covers. ``table`` sets how far back a career
     reaches - box scores from 1994, the season line from 1977 - since a career
-    is only as long as the table it is summed from."""
+    is only as long as the table it is summed from. ``since`` (a season) is a
+    career that starts there instead: every season from it on, the phantom
+    still excluded, and never earlier than the table reaches.
+
+    .. versionchanged:: 4.3.0
+       Honors ``since``.
+    """
+    if isinstance(since, int) and since and not isinstance(since, bool):
+        if isinstance(season, int) and season:
+            raise TemplateUnsupported(f"since {since} and the {season} season at once")
+        coverage = COVERAGE[table]
+        return _Span(None, season_type, max(since, coverage.floor(season_type).season), coverage.phantom, since=since)
     if not span:
         named = isinstance(season, int) and bool(season)
         return _Span(season if named else current_season(), season_type, defaulted=not named)
@@ -970,7 +987,7 @@ def _box_score_notes(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span
     empty = row[0] if row else 0
     if empty:
         notes.append(f"Not counted: {empty} game{'s' if empty != 1 else ''} in this span whose box score lists him with no minutes and no stats.")
-    if span.career and career_note:
+    if span.career and career_note and span.since is None:
         row = con.execute(
             "SELECT MIN(season) FROM player_season_stats_deduped WHERE athlete_id = ? AND season_type = ? AND gamesPlayed > 0",
             [player.id, span.season_type],
@@ -986,12 +1003,20 @@ def _ordinal(n: int) -> str:
     return f"{n}{suffix}"
 
 
-def _condition_scope(season: Any, span: Any, season_type: Any, tables: tuple[str, ...]) -> _Scope:
+def _condition_scope(season: Any, span: Any, season_type: Any, tables: tuple[str, ...], since: Any = None) -> _Scope:
     """The games a question covers. No season means the current one - except
     for a career, where it means every season on record, which is what the
     word asked for. A season the question named beats "career": the router keeps
-    a named year alongside it, and "career ... in 2015" is asking about 2015."""
+    a named year alongside it, and "career ... in 2015" is asking about 2015.
+    ``since`` is every season from that one on.
+
+    .. versionchanged:: 4.3.0
+       Honors ``since``.
+    """
     kind = season_type if season_type in (2, 3) else 2
+    if isinstance(since, int) and since and not isinstance(since, bool):
+        scope = _game_scope(None, kind, tables)
+        return _Scope(None, kind, max(since, scope.first), scope.phantoms)
     if isinstance(season, int) and not isinstance(season, bool):
         return _game_scope(season, kind, tables)
     return _game_scope(None if span == "career" else current_season(), kind, tables)

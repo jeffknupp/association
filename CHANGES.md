@@ -16,6 +16,23 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **`since` is a scope the relation honors.** "jokic vs cade since 2022"
+  answers their 7 meetings across 2022-2026 instead of this season's one:
+  `_span_of` and `_condition_scope` take `since` and build a span from that
+  season on (the phantom still excluded, never earlier than the table
+  reaches), `game_log`, `player_stat` and `player_matchup` declare it in
+  `HONORED_SCOPING`, and a since-span's answer says "since 2022" rather than
+  "over his career". Defined once on the relation's span builders, so any
+  template on the relation gets it by declaring it.
+- **A player's numbers over the last N games are the log with its averages.**
+  `player_stat` with a `limit` or an `order` hands the question to `game_log`
+  instead of refusing it - the product decision that "stats over his last N
+  games" is a per-game log with averages beneath, never the season line.
+  `player_stat` declares `order`. Note the dependency this creates: a filler
+  `limit` the router emits on a question that named no count is dropped in
+  `route()` (`_LIMIT_REFUSING_INTENTS`); the template now trusts the slot it
+  is given, so that rule is what stands between "westbrook stats as a
+  starter" and a one-game log.
 - **The unseen-games counters have one home.** `player_games.scope_without_guard`
   is the span clause for the reads that count what the played guard drops
   (`_empty_box_scores`, `_rebuilt_in_scope`), replacing `templates.players._box_scope`;
