@@ -607,7 +607,14 @@ those were found.
 - **GitHub:** #73
 
 ### A named playoff round falls through to the agent, which has no better source
-- **Found:** 2026-09-11, repo audit
+- **Found:** 2026-09-11, repo audit; **re-measured 2026-09-18** over the
+  2,285-question large StatMuse set (`~/association-research/statmuse-2026-09-large/`):
+  **124 of 2,285 (5.4%) mention the Finals in some form**, and a read of a
+  sample says nearly all need the round `games` does not carry (Finals-only
+  lookups, Finals game logs, "who won the Finals", Finals MVP). The set's own
+  capability classifier flags 3 of the 124, because "needs a round" is not in
+  its checklist - so this entry's share of real traffic is well above what its
+  worked example suggested.
 - **Evidence:** `check_scope` raises on `round`, and `agent.py` then hands the
   question to the SQL agent, although `games` has no series or round column.
   This is the "nothing does better here" case where `check_coverage` returns a
@@ -1909,6 +1916,33 @@ those were found.
   date between these two teams in this postseason".
 - **GitHub:** none yet
 - **GitHub:** #145
+
+### An award or All-Star question has no table to refuse from, so the agent is free to invent one
+- **Found:** 2026-09-18, the algebra spike's attack pass over the large
+  StatMuse set (`~/association-research/algebra-spike/stage1/attack_report.md`)
+- **Evidence:** 11 of 2,285 real questions ask for an honor outright - "nba
+  mvps in 1980's", "how many times has bam adebayo been selected to
+  all-defensive team", "most all star appearances for a nets player",
+  "players with 5 or more nba all stars and 5 or more all nba teams since
+  2000" - and no table holds a selection or a vote share (DATA.md, "No award,
+  All-Star or All-NBA selection anywhere"). Nothing catches the shape: no
+  coverage floor (there is no table to put one on), no keyword refusal the way
+  `coach` has one in `CODE_ASSIGNED_INTENTS`, and `TABLELESS_INTENTS` has no
+  entry for it. Not re-verified end to end - running the router is out of
+  scope for a read-only pass - but the path is the one `check_coverage`'s own
+  reasoning describes: a question with nothing to find reaches the agent,
+  which fills the silence from its own weights, as it did for the "Ronaldo
+  Lopes" fingerprint recorded above.
+- **User sees:** after 30-120 seconds, a confident list of MVPs or All-Star
+  counts the warehouse cannot have produced, with nothing marking it as
+  invented.
+- **Next step:** cheapest first - a code-assigned `award` intent that refuses
+  on the words (MVP, All-Star, All-NBA, All-Defensive, Rookie of the Year,
+  Sixth Man, Defensive Player of the Year), exactly the `coach` mechanism.
+  Then probe whether ESPN's core API serves an honors collection at all,
+  with the live check the coach entry used, before anyone writes "ESPN does
+  not publish awards".
+- **GitHub:** none yet
 
 ## P4: tooling, docs, low impact
 

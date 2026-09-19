@@ -546,6 +546,27 @@ the parser throws the grouping away. The birth-date half stands.
   fetch, and the parser drops them" (#25) and "Shapes deferred for lack of data
   or logic" (#32).
 
+### No award, All-Star or All-NBA selection anywhere, and `teams.is_all_star` is a franchise flag
+
+- **What ESPN does (as far as the pull reads):** no endpoint the pull reads
+  serves an MVP, Rookie of the Year, Sixth Man, Defensive Player of the Year,
+  All-NBA, All-Defensive or All-Star *selection* for a player-season, nor a
+  vote share. Checked column by column on 2026-09-18 against `players`,
+  `net_points_player`, `player_season_stats`, `player_season_advanced_stats`,
+  `team_season_stats`, `standings` and `teams`: the only column with "all
+  star" in its name is `teams.is_all_star`.
+- **`teams.is_all_star`** (`fetch/parse.py:109`, `team.get("isAllStar")`) is
+  a *franchise* flag, not a player selection - it marks the placeholder
+  conference All-Star "teams" the athlete gamelog files All-Star games under
+  (see "The athlete gamelog ... counts All-Star games", below). It is false on
+  all 30 rows of the warehouse's `teams` table and nothing on the query side
+  reads it.
+- **Whether ESPN publishes honors at all through some other collection has
+  not been checked** - this records that nothing fetched holds them, not that
+  nothing exists upstream. The coach entry above is the model for that probe.
+- **What we do about it:** ISSUES.md, "An award or All-Star question has no
+  table to refuse from".
+
 ### ESPN publishes coaches, and the collection that looks league-wide is not historical
 
 **Probed live 2026-09-17**, to settle a question that had been asserted both
