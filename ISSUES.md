@@ -165,6 +165,7 @@ those were found.
   against the full routing corpus before adding one, the way `_subject_named_in`
   itself was measured for `single_game_high`.
 - **GitHub:** none yet
+- **GitHub:** #148
 
 ### A second threshold in the same question is dropped, and the leader of the broader question is named
 - **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
@@ -1980,6 +1981,7 @@ those were found.
   intents). The unseen-games counters stay separate by design; give them one
   home beside the relation and say why they omit the guard.
 - **GitHub:** none yet
+- **GitHub:** #149
 
 ### Season scoping is not composed, which is why `since` is a project and not a filter
 - **Found:** 2026-09-18, looking for the next compositional-scoping win after
