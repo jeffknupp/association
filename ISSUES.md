@@ -266,6 +266,7 @@ those were found.
   resolves to nothing is dropped. Refuse only when a second team is genuinely
   ambiguous with an `opponent` already present.
 - **GitHub:** none yet
+- **GitHub:** #147
 
 ## P2: misleading or incomplete
 
