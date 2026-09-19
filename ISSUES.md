@@ -1952,6 +1952,35 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
+### "A player's games" is still defined twice more, and the two remaining readers already disagree with the relation
+- **Found:** 2026-09-19, carving `query/player_games.py` out of
+  `templates/common.py` (the algebra spike's step 2)
+- **Evidence:** `game_log`, `player_stat`, `threshold_count` and
+  `single_game_high` now read through the relation, and its rules are stated
+  once. Two other readers of the same rows remain: `conditions._player_games`
+  (`query/conditions.py:276` - `player_matchup`, `streak`, `player_splits`,
+  `record_when`, `with_without`) joins `real_games` where the relation joins
+  `games` keyed on `season` with the phantom excluded by name, and blanks the
+  `UNGATED_ON_REBUILD` columns on a rebuilt row where the relation never reads
+  them; and the unseen-games counters (`templates/players._box_scope`,
+  `_empty_box_scores`, `_rebuilt_in_scope`) read *without* the played guard,
+  on purpose, to count what the guard drops. On the built warehouse the two
+  joins agree for every box-score row (`real_games` drops only placeholder
+  events with no box score), so no answer differs today - the finding is
+  that nothing keeps it so.
+- **User sees:** nothing today. The risk is the one `AGENTS.md` records under
+  "One concept, one definition": a rule fixed in one reader and not the other.
+- **Next step:** port `conditions._player_games` onto the relation. The
+  blocker is real: `player_matchup` needs BOTH players' lines from one event
+  (the summary averages both), which is a self-join - the `player_pair_game`
+  relation the spike's attack pass named. Build it as a second relation over
+  the first, then `streak`/`splits`/`record_when`/`with_without` follow on
+  the first alone. Prove each by the same golden comparison
+  (`~/association-research/algebra-spike/step2/snapshot.py`, extended to those
+  intents). The unseen-games counters stay separate by design; give them one
+  home beside the relation and say why they omit the guard.
+- **GitHub:** none yet
+
 ### Season scoping is not composed, which is why `since` is a project and not a filter
 - **Found:** 2026-09-18, looking for the next compositional-scoping win after
   the starter/bench filter landed
