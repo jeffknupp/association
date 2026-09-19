@@ -159,6 +159,7 @@ those were found.
   that reads like a wrong one) or refuse. Never rank the league for a question
   that names a player.
 - **GitHub:** none yet
+- **GitHub:** #138
 
 ### A second threshold in the same question is dropped, and the leader of the broader question is named
 - **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
@@ -178,6 +179,7 @@ those were found.
   all of them (one more `AND` per pair over the same rows) or refuse. Refusing
   beats ranking.
 - **GitHub:** none yet
+- **GitHub:** #139
 
 ### "past two seasons" becomes a limit of two games
 - **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
@@ -197,6 +199,7 @@ those were found.
   span the way `since` is read, and drop a `limit` whose count word modifies
   "seasons" rather than "games" in `_route_filter_slots`.
 - **GitHub:** none yet
+- **GitHub:** #140
 
 ### "all playoff games" draws one postseason
 - **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
@@ -215,6 +218,7 @@ those were found.
   `span: career` in `_validate_span`; then have `shot_chart` honor `span`
   (one fewer `WHERE season =`) or refuse it with the seasons it could draw.
 - **GitHub:** none yet
+- **GitHub:** #141
 
 ### "his last game" on `player_stat` answers the season average
 - **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
@@ -233,6 +237,7 @@ those were found.
   `player_stat` to `game_log` when a limit arrives, the way the existing
   player-stat-declines-limit rule already points.
 - **GitHub:** none yet
+- **GitHub:** #142
 
 ## P2: misleading or incomplete
 
@@ -1862,6 +1867,7 @@ those were found.
   `restore_dropped_players` missed a two-word name that `find_players`
   resolves ("brown" alone is ten players; "jaylen brown" is one).
 - **GitHub:** none yet
+- **GitHub:** #143
 
 ## P3: refusal or gap
 
@@ -1883,6 +1889,7 @@ those were found.
   `record_when` still has no player, refuse at once (the agent has no better
   source for this) rather than falling through.
 - **GitHub:** none yet
+- **GitHub:** #144
 
 ### One game of a playoff series ("game 4") has no template, and the agent gives up on it
 - **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
@@ -1901,6 +1908,7 @@ those were found.
   reading in `_SITUATION`'s place that `game_log` honors as "the Nth game by
   date between these two teams in this postseason".
 - **GitHub:** none yet
+- **GitHub:** #145
 
 ## P4: tooling, docs, low impact
 
