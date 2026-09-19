@@ -392,20 +392,106 @@ _CAREER_HIGH = re.compile(r"\bcareer[- ]highs?\b", re.IGNORECASE)
 _SUBJECT_WORDS = frozenset({"who", "what", "which", "that", "he", "she", "they", "it", "player", "anyone", "someone", "nobody", "team", "one", "the", "and", "any"})
 _SUBJECT_OF_HIGH = re.compile(r"\b([A-Za-z][A-Za-z.'\-]{2,})(?:'s\b|\s+(?:scored|scores|score|dropped|put\s+up|hung|shot|foul(?:ed|s|ing)?\s+out))", re.IGNORECASE)
 
+# None of the above covers a threshold_count named with no verb at all (#148):
+# "jamal murray games with 2 threes including playoffs" fell through
+# unrestored, the same shape as "Sga games with under 14 fta in his whole
+# career", and (by number instead of "with") a form like "murray 30 point
+# games" or "murray games of 20+ rebounds" - none of which puts a scoring verb
+# or a possessive anywhere near the name. So a second grammar is tried after
+# the first, anchored on "games" itself rather than a verb: a name directly
+# before "games with"/"games of", or before "<N>[+] <stat> games". It also
+# captures ONE more word immediately before that name, to catch a first name -
+# "jamal murray games with" resolves uniquely where a bare "murray" is five
+# players (Collin Murray-Boyles, Dejounte, Jamal, Keegan, Kris all have a 2026
+# box score) and would only trade the league-ranking bug for an unnecessary
+# clarifying question. The extra word is kept only when it is not itself one
+# of the stopwords below - "which players have games with 30+ points" must not
+# read "players have" as a name.
+#
+# Measured against the full routing corpus
+# (`/home/jeff/association-research/statmuse-2026-09/feed_queries.txt`), this
+# grammar matches exactly the two real cases above and nothing else -
+# "last 10 games of scottie barnes" does not match because the word before
+# "games" there is "10", not a letter, and "bam adebayo career games in the
+# month of march" does not match because "career" sits directly before
+# "games" and is a stopword, not a name (there is no verb-based grammar this
+# shape fits either, so it is left unrestored rather than guessed at). The
+# extra stopwords below ("career", "has", "many", "postseason", ...) are what
+# make that refusal-by-omission work: without them, "bam adebayo career games"
+# would read "career" as the player and "how many 40+ points games does
+# lebron james have" would read "many" - both a refusal naming the wrong
+# cause (AGENTS.md, "the same bug has a mirror image"), not a name the
+# question ever offered as the subject. This grammar is kept separate from
+# `_SUBJECT_OF_HIGH` rather than folded into it: a shared pattern let a
+# trailing possessive ("murray's games of...") get swallowed whole into the
+# captured word before the new "games of" alternative even got a chance to
+# apply, since the possessive's own `'s\b` branch was no longer the only way
+# to succeed. Kept apart, `_SUBJECT_OF_HIGH` matches "murray" via its own
+# `'s\b` branch exactly as it always did, and this grammar is never reached
+# for that question at all.
+_COUNT_SUBJECT_WORDS = _SUBJECT_WORDS | frozenset(
+    {
+        "players",
+        "has",
+        "have",
+        "having",
+        "his",
+        "her",
+        "their",
+        "its",
+        "these",
+        "those",
+        "some",
+        "many",
+        "how",
+        "much",
+        "several",
+        "few",
+        "most",
+        "all",
+        "career",
+        "season",
+        "postseason",
+        "playoff",
+        "playoffs",
+        "regular",
+        "such",
+        "no",
+        "every",
+        "each",
+    }
+)
+_COUNT_STAT_WORD = r"(?:point|pt|rebound|reb|assist|ast|steal|stl|block|blk|three)"
+_SUBJECT_OF_COUNT = re.compile(
+    r"\b(?:([A-Za-z][A-Za-z.'\-]*)\s+)?([A-Za-z][A-Za-z.'\-]{2,})\s+(?:"
+    r"games?\s+with\b"
+    r"|games?\s+of\b"
+    r"|\d+\+?\s*[- ]?\s*" + _COUNT_STAT_WORD + r"s?\s+games?\b"
+    r")",
+    re.IGNORECASE,
+)
+
 
 def _subject_named_in(question: str) -> str | None:
-    """The word a single-game-high or threshold-count question makes its
-    subject, or None.
+    """The word (or two) a single-game-high or threshold-count question makes
+    its subject, or None.
 
-    Returns the question's own word, not a resolved player: resolution decides
-    whether it names somebody, and asks when it is ambiguous. "curry" then
-    answers "did you mean Seth Curry or Stephen Curry?", which is the question
-    asked - where the league's high is not.
+    Returns the question's own words, not a resolved player: resolution
+    decides whether they name somebody, and asks when it is ambiguous.
+    "curry" then answers "did you mean Seth Curry or Stephen Curry?", which is
+    the question asked - where the league's high is not.
     """
     for match in _SUBJECT_OF_HIGH.finditer(question):
         word = match.group(1)
         if word.casefold() not in _SUBJECT_WORDS:
             return word
+    for match in _SUBJECT_OF_COUNT.finditer(question):
+        lead, word = match.group(1), match.group(2)
+        if word.casefold() in _COUNT_SUBJECT_WORDS:
+            continue
+        if lead is not None and lead.casefold() not in _COUNT_SUBJECT_WORDS:
+            return f"{lead} {word}"
+        return word
     return None
 
 

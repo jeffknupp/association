@@ -268,6 +268,24 @@ had no published version to be compatible with.
   game" - a name before a scoring verb or "fouled out", or carrying a
   possessive - so a genuine league question ("most 30+ point games this
   season") still stays league-wide.
+- **A `threshold_count` player named with no verb at all is restored too**
+  (#148), the shape #138's fix did not reach. "jamal murray games with 2
+  threes including playoffs" arrived with no `player` slot and answered
+  "Julian Champagnie had the most games with 2+ 3-pointers in the 2026
+  postseason, with 19" - Murray, who has 58 postseason games and 426 career
+  games with 2+ three-pointers made, was nowhere in it. A second grammar,
+  read after the first, restores a name directly before "games with"/"games
+  of" or before "`<N>[+] <stat>` games" - "Sga games with under 14 fta" and
+  "murray 30 point games" name a subject the same ungrammatical way. It also
+  keeps one extra word immediately before the name, to catch a first name:
+  "jamal murray" resolves to one person where a bare "murray" is five players
+  who all have a 2026 box score (Collin Murray-Boyles, Dejounte, Jamal,
+  Keegan, Kris) and would only trade the league-ranking bug for a needless
+  clarifying question. Kept as a separate pattern from the first grammar
+  rather than folded in, because sharing one regex let a trailing possessive
+  ("murray's games of ...") get swallowed whole - apostrophe and all - into
+  the captured word once a "games of" ending sat in the same alternation as
+  the possessive branch.
 
 ## 4.2.0 - 2026-09-18
 - **A NetPoints name ESPN spells with a generational suffix, or hyphenates

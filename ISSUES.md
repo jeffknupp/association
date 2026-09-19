@@ -137,36 +137,6 @@ to this section, re-read the P2s against the P1 definition: that is how both of
 those were found.
 - **GitHub:** #114
 
-### A `threshold_count` player named without a scoring verb still drops, and answers the league instead
-- **Found:** 2026-09-19, fixing #138 (the "fouled out" shape of this same bug)
-- **Evidence:** `router.py`'s `_route_subject_slots` now restores a
-  `threshold_count` question's subject from the question's grammar - a name
-  before a scoring verb or "fouled out", or carrying a possessive - the same
-  way it already does for `single_game_high`. That does not cover "jamal
-  murray games with 2 threes including playoffs", which names Murray with
-  neither shape: routed (`/home/jeff/association-research/algebra-spike/baseline/replay_rerouted_8bd7380.jsonl`)
-  to `threshold_count` with `{"stat": "threePointFieldGoalsMade", "threshold":
-  2, "season_type": 3, "season": 2026}` and no `player` at all. Measured
-  directly against `TEMPLATES["threshold_count"]` on those exact slots and the
-  real warehouse: "Julian Champagnie had the most games with 2+ 3-pointers in
-  the 2026 postseason, with 19. Next: Devin Vassell (17), Donovan Mitchell
-  (16), OG Anunoby (14), Jalen Brunson (13)" - Murray is nowhere in it, though
-  he has 58 postseason games and 426 career games (regular and post combined)
-  with 2+ three-pointers made.
-- **User sees:** a fluent answer naming five other players, with the one asked
-  about missing entirely - the same failure shape as #138, just a different
-  grammar the fix does not reach.
-- **Next step:** `_subject_named_in`'s grammar (a scoring verb, "fouled out",
-  or a possessive) does not cover "NAME games with ...", which is how several
-  corpus `threshold_count` questions name their subject ("Sga games with under
-  14 fta", "bam adebayo career games..."). Extending the pattern risks
-  matching a non-name word before "games" the way the module's own comment
-  warns against ("game" is Jaron Blossomgame); measure candidate patterns
-  against the full routing corpus before adding one, the way `_subject_named_in`
-  itself was measured for `single_game_high`.
-- **GitHub:** none yet
-- **GitHub:** #148
-
 ### A second threshold in the same question is dropped, and the leader of the broader question is named
 - **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
 - **Evidence:** "who had the most 30+ point 10+ rebound games this year?"
@@ -1950,6 +1920,39 @@ those were found.
   not publish awards".
 - **GitHub:** none yet
 - **GitHub:** #146
+
+### `_subject_named_in`'s original grammar reads a bare noun as a subject on four corpus questions
+- **Found:** 2026-09-19, measuring #148's new "games with"/"games of"/point-games
+  grammar against the whole routing corpus - the pre-existing `scored`/`score`/
+  possessive grammar was measured alongside it for a baseline, not touched
+- **Evidence:** `_SUBJECT_OF_HIGH` in `router.py` (`_SUBJECT_WORDS`'s
+  exclusion list) already predates #148 and was not changed by it. Run over
+  `/home/jeff/association-research/statmuse-2026-09/feed_queries.txt` (261
+  lines), it returns a word on 8 of them; 4 are real player surnames
+  (`mcdaniel`, `bryant`, `adam`) correctly matched, but 4 are not names at
+  all: `"2024 nba stephen curry double double per game scored on fridays"` ->
+  `"game"` (via `"game scored"`), `"game score nba leader"` -> `"game"` (via
+  `"game score"`), `"Total points scored by the toronto raptord in the last
+  10 games"` -> `"points"`, `"pacers score"` -> `"pacers"`. Not reproduced
+  against a live router - running one is out of scope here and restricted to
+  one agent at a time - so whether any of these four actually reach
+  `single_game_high`/`threshold_count` with no `player` slot (the only path
+  that reads `_subject_named_in` at all) is unmeasured.
+- **User sees:** if one of these routes there with no player, `_resolved_player`
+  is asked to resolve "game", "points" or "pacers" as a player name - almost
+  certainly a "no player found" refusal that names the wrong cause (AGENTS.md,
+  "the same bug has a mirror image"), for a question that was never about a
+  player at all. The two "points scored" lines are plainly team/box-score
+  questions ("the toronto raptord", "the wizards"), which argues they route
+  elsewhere and this is dormant, but that is exactly the kind of confident
+  guess this file exists to replace with a measurement.
+- **Next step:** run these four (plus the second `"points scored"` line,
+  `"least points scored by the wizards in the first half this season"`)
+  through the real router once someone can, and if any reaches
+  `single_game_high`/`threshold_count` with no player, add "game", "games",
+  "score", "points" and team-name words to `_SUBJECT_WORDS` the way #148 added
+  its own stopwords to `_COUNT_SUBJECT_WORDS`.
+- **GitHub:** none yet
 
 ## P4: tooling, docs, low impact
 

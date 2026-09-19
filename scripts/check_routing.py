@@ -233,6 +233,14 @@ CASES: list[tuple[str, str, dict]] = [
     # leader in 6+-foul games (Karl-Anthony Towns) to a question about Joel
     # Embiid, who has 0 such games in the 2026 season it defaulted to.
     ("how many times has embiid fouled out?", "threshold_count", {"stat": "fouls", "threshold": 6, "player": "embiid"}),
+    # #148: the same drop again, for a threshold_count named with no verb at
+    # all - "NAME games with ...". "jamal murray games with 2 threes including
+    # playoffs" arrived with no player and answered the league's leader in
+    # 2+-three-pointer games (Julian Champagnie), to a question about Murray,
+    # who has 58 postseason games and 426 career games with 2+ threes made.
+    # The full name is kept, not just "murray": the bare surname is five
+    # players who all have a 2026 box score.
+    ("jamal murray games with 2 threes including playoffs", "threshold_count", {"stat": "threePointFieldGoalsMade", "threshold": 2, "player": "jamal murray"}),
     ("who has the most threes this season", "leaderboard", {"stat": "threePointFieldGoalsMade"}),
     ("career points leaders", "leaderboard", {"span": "career"}),
     ("Knicks home record this season", "team_record", {"venue": "home"}),
