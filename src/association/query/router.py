@@ -855,7 +855,14 @@ _LIMIT_REFUSING_INTENTS: frozenset[str] = frozenset({"player_stat"})
 # than filler: "last 5 games", "his one game", "top 10".
 _COUNT_WORDS = re.compile(r"\b(?:\d+|one|two|three|four|five|ten|last|first|top|only)\b", re.IGNORECASE)
 
-ORDER_INTENTS: frozenset[str] = frozenset({"fingerprint", "game_log", "player_netpoints", "player_stat", "shot_chart", "shot_distance"})
+#: Intents that honor ``order`` only beside a real ``limit`` - a single game at
+#: one end of the span - because filling ``order`` alone would hand "his last
+#: game" to a log of his last ten. Read by :func:`_route_side_and_order` with
+#: :data:`_SINGLE_GAME`; the pair is what makes "last game" one game.
+_ORDER_ON_A_SINGLE_GAME: frozenset[str] = frozenset({"player_stat"})
+_SINGLE_GAME = re.compile(r"\b(?:his|her|their|the)\s+(last|first|latest|previous|most\s+recent|final|opening|earliest)\s+(?:\w+\s+){0,2}?game\b(?!s)", re.IGNORECASE)
+
+ORDER_INTENTS: frozenset[str] = frozenset({"fingerprint", "game_log", "player_netpoints", "shot_chart", "shot_distance"})
 """Intents whose template honors ``order``, so filling it from the question can
 only make the answer match what was asked.
 
@@ -1278,7 +1285,17 @@ def _route_side_and_order(intent: str, slots: dict[str, Any], question: str) -> 
             slots["side"] = side
     # Only for the templates that honor it - see ORDER_INTENTS for why adding
     # it anywhere else would cost an answer rather than sharpen one.
-    if intent in ORDER_INTENTS:
+    if intent in _ORDER_ON_A_SINGLE_GAME and (single := _SINGLE_GAME.search(question)):
+        # "his last game", "her first game of the season": one game at one end
+        # of the span, which player_stat answers by handing the question to
+        # game_log. Both slots are set together - an order without the limit
+        # would list ten games where one was asked for, and the model emits
+        # neither reliably here (it was 0 for 3 on "his last game"). A filler
+        # order on a question naming no such game still falls to the branch
+        # below and is dropped.
+        slots["order"] = "first" if single.group(1).lower() in ("first", "opening", "earliest") else "recent"
+        slots["limit"] = 1
+    elif intent in ORDER_INTENTS:
         order = _validate_order(slots, question)
         if order is None:
             # Only a value the schema cannot emit ever gets dropped here; a

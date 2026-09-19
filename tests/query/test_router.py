@@ -458,12 +458,18 @@ def test_a_bogus_model_order_is_not_trusted_as_a_phrasing_this_missed() -> None:
     assert got.slots.get("order") != "sideways"
 
 
-def test_the_order_is_only_added_where_a_template_honors_it() -> None:
-    """check_scope REFUSES a scoping slot the template cannot honor, so adding
-    `order` to a player_stat question would not sharpen the answer - it would
-    cost one, by sending a question that works today to the agent instead."""
+def test_a_single_game_asked_of_player_stat_carries_its_order_and_a_limit_of_one() -> None:
+    """ "his last game" is one game at one end of the span: player_stat hands it
+    to game_log, which needs BOTH slots - an order alone would list his last
+    ten. The model emits neither reliably here, so route() sets the pair from
+    the question's own words (#142)."""
     got = _asking('{"intent":"player_stat","stat":"points","player":"Stephen Curry"}', "how many points did curry score in his last game")
-    assert "order" not in got.slots
+    assert (got.slots.get("order"), got.slots.get("limit")) == ("recent", 1)
+    first = _asking('{"intent":"player_stat","stat":"points","player":"Stephen Curry"}', "curry's stats in his first game of 2026")
+    assert (first.slots.get("order"), first.slots.get("limit")) == ("first", 1)
+    # "last N games" is a count, not a single game: the count stays and this rule keeps out of it.
+    many = _asking('{"intent":"player_stat","stat":"points","player":"Stephen Curry","limit":5}', "curry stats in his last 5 games")
+    assert many.slots.get("limit") == 5
 
 
 def test_the_order_values_match_the_router_schema() -> None:
@@ -477,9 +483,13 @@ def test_the_order_intents_are_the_ones_that_honor_order() -> None:
     does not import the templates. An intent honoring `order` and missing here
     keeps the bug this fixed; one listed here that does not honor it turns
     into a fall-through."""
+    from association.query.router import _ORDER_ON_A_SINGLE_GAME
     from association.query.templates.common import HONORED_SCOPING
 
-    assert frozenset(intent for intent, honored in HONORED_SCOPING.items() if "order" in honored) == ORDER_INTENTS
+    # player_stat honors an order only beside a limit of one (a single game
+    # handed to game_log), so route() sets the pair together for it rather
+    # than filling order alone - see _ORDER_ON_A_SINGLE_GAME.
+    assert frozenset(intent for intent, honored in HONORED_SCOPING.items() if "order" in honored) == ORDER_INTENTS | _ORDER_ON_A_SINGLE_GAME
 
 
 # ---------------- scoping read from the question text ----------------

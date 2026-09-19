@@ -226,27 +226,6 @@ those were found.
 - **GitHub:** none yet
 - **GitHub:** #141
 
-### "his last game" on `player_stat` answers the season average
-- **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
-- **Evidence:** "show maxey's stats for his last postseason game this season"
-  routes to `player_stat` with `{"player": "Maxey", "season_type": 3,
-  "season": 2026}` - no `order`, no `limit` - and answers "Tyrese Maxey
-  averaged 23.7 points, 4 rebounds and 5.9 assists per game in 11 games in the
-  2026 postseason." Measured on `player_game_log`: his last 2026 postseason
-  game was 2026-05-10, 17 points, 2 rebounds, 4 assists. Nothing in `route()`
-  reads "his last game" / "most recent game"; `game_log` honors `order` and
-  `limit` and answers exactly this with `limit: 1`, and `player_stat` already
-  declines a `limit` as a `game_log` question (`_LIMIT_REFUSING_INTENTS`).
-- **User sees:** a season line where one game was asked for.
-- **Next step:** read "his/her/their last game", "most recent game", "latest
-  game" into `order: recent, limit: 1` in `_route_side_and_order`, and reroute
-  `player_stat` to `game_log` when a limit arrives, the way the existing
-  player-stat-declines-limit rule already points.
-- **GitHub:** none yet
-- **GitHub:** #142
-
-## P2: misleading or incomplete
-
 ### Season 2021's regular-season BPI snapshot is a day-one projection
 - **Found:** 2026-09-15, reviewing `4ef119f`; **re-ranked P3 -> P2 on 2026-09-16** - a preseason projection presented as a season's index, with no caveat
 - **Evidence:** all 30 of season 2021's rows are stamped 2020-12-22 - opening

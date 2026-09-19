@@ -16,6 +16,13 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **"his last game" is one game.** A `player_stat` question naming a single
+  game at one end of the span ("his last game", "her first game of 2026")
+  gets `order` and `limit: 1` set together in `route()` from the question's
+  own words, and `player_stat` hands it to `game_log`; "show maxey's stats for
+  his last postseason game" answers that game rather than his postseason
+  average. A filler `order` on a question naming no such game is still
+  dropped, as before (closes #142).
 - **`since` is a scope the relation honors.** "jokic vs cade since 2022"
   answers their 7 meetings across 2022-2026 instead of this season's one:
   `_span_of` and `_condition_scope` take `since` and build a span from that
