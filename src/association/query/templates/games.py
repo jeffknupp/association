@@ -21,7 +21,7 @@ from ..conditions import _PLAYER_GAME_TABLES, _cell, _matchup_line, _meetings, _
 from ..entities import Entity, find_players, resolve_team, teammate_names
 from ..leaderboard import resolve_metric
 from ..metrics import PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
-from ..player_games import rows_sql
+from ..player_games import _joined, rows_sql
 from ..shotchart import SHOT_AVAILABILITY, SHOT_VALUE_SQL, UNSEPARABLE_SHOT_VALUES
 from .common import (
     _BOX_SCORES,
@@ -1117,15 +1117,14 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         return opponent
 
     venue, started = _period_split_narrowing(slots.get("venue"), slots.get("split"))
-    rows = _period_split_rows(con, player, season, season_type, periods, venue, opponent, started)
+    narrowed_rows = _period_split_rows(con, player, season, season_type, periods, venue, opponent, slots.get("split"), slots.get("without"))
+    if isinstance(narrowed_rows, TemplateResult):
+        return narrowed_rows
+    rows, narrowed_mates = narrowed_rows
 
     scope = _period(season, season_type)
     vs = f" against the {opponent.name}" if opponent else ""
-    at = f" at {'home' if venue == 'home' else 'away'}" if venue else ""
-    # Said in the answer, like every other narrowing: a total over his starts
-    # headed as though it covered every game is the silent narrowing
-    # `check_scope` exists to stop.
-    at += "" if started is None else (" as a starter" if started else " off the bench")
+    at = _period_split_narrowing_said(venue, started, narrowed_mates)
     games = [{"date": _eastern_date(d), "opponent": name, "home_away": side, "points": int(pts or 0)} for d, side, name, pts in rows]
     data: dict[str, Any] = {
         "player": player.name,
@@ -1144,7 +1143,7 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     total = sum(g["points"] for g in games)
     average = total / len(games)
     data |= {"total": total, "average": average}
-    header = _period_split_header(player, period_label, scope, vs, at, total, average, games, slots)
+    header = _period_split_header(player, period_label, scope, vs, at, total, average, games, slots, slots.get("order"))
     return TemplateResult(data=data, answer=header + _period_split_caveat(season, agreement))
 
 
@@ -1283,6 +1282,19 @@ def _period_split_refusal(season: int, agreement: float | None) -> TemplateResul
     return None
 
 
+def _period_split_narrowing_said(venue: str | None, started: bool | None, mates: list[str]) -> str:
+    """What the answer says it narrowed to, after the player and the period.
+
+    Said in the answer, like every other narrowing here: a total over his
+    starts, or over the games a teammate missed, headed as though it covered
+    every game is the silent narrowing ``check_scope`` exists to stop.
+    """
+    said = f" at {'home' if venue == 'home' else 'away'}" if venue else ""
+    said += "" if started is None else (" as a starter" if started else " off the bench")
+    said += f" without {_joined(mates)}" if mates else ""
+    return said
+
+
 def _period_split_narrowing(venue: Any, split: Any) -> tuple[str | None, bool | None]:
     """The venue and the starter/bench half this question narrows to.
 
@@ -1297,68 +1309,91 @@ def _period_split_narrowing(venue: Any, split: Any) -> tuple[str | None, bool | 
 
 
 def _period_split_rows(
-    con: duckdb.DuckDBPyConnection, player: Entity, season: int, season_type: int, periods: tuple[int, ...], venue: str | None, opponent: Entity | None, started: bool | None = None
-) -> list[tuple[Any, ...]]:
+    con: duckdb.DuckDBPyConnection,
+    player: Entity,
+    season: int,
+    season_type: int,
+    periods: tuple[int, ...],
+    venue: str | None,
+    opponent: Entity | None,
+    split: Any = None,
+    without: Any = None,
+) -> tuple[list[tuple[Any, ...]], list[str]] | TemplateResult:
     """A player's per-game point total in the wanted periods, one row a game.
 
-    The games are the ones he PLAYED, with zero where he did not score in the
-    period - not the games that have a made shot. The first version counted
-    only the latter, so every scoreless quarter left the denominator: "RJ
-    Barrett ... over 46 games, averaging 5.4" was a player with 57 games and
-    a true 4.4. The sum was right, which is exactly why it read as correct.
+    The games come from the ``player_game`` relation
+    (:func:`common._narrow_player_games`), which is the one definition of "a
+    player's games" - the season-keyed join, the did-not-play and empty-line
+    guard, the teammate tenure rule - so a narrowing added there reaches this
+    template too. That is how ``without`` arrived: "scottie barnes stats 2nd
+    half log without rj" was refused for a slot no period template honored,
+    while the relation had answered exactly that narrowing for four other
+    templates since the port.
 
-    A played game counts only where the shot table covers that game at all.
-    2003's shots cover 986 of its games, and a game with no located shots
-    would otherwise contribute a confident zero.
+    Two rules on top of the relation, both about the denominator:
 
-    SHOT_VALUE_SQL names `shot_chart`'s columns bare, and `season` is a column
-    of `games` too - so the value is summed in a CTE over `shot_chart` alone,
-    where those names can only mean one thing.
+    - The games are the ones he PLAYED, with zero where he did not score in
+      the period - not the games that have a made shot. The first version
+      counted only the latter, so every scoreless quarter left the
+      denominator: "RJ Barrett ... over 46 games, averaging 5.4" was a player
+      with 57 games and a true 4.4. The sum was right, which is exactly why it
+      read as correct.
+    - A played game counts only where the shot table covers that game at all.
+      2003's shots cover 986 of its games, and a game with no located shots
+      would otherwise contribute a confident zero.
+
+    SHOT_VALUE_SQL names ``shot_chart``'s columns bare, and ``season`` is a
+    column of ``games`` too - so the value is summed in a CTE over
+    ``shot_chart`` alone, where those names can only mean one thing.
+
+    Returns the rows and the teammates whose absence narrowed them (for the
+    answer to name), or the clarifying question the relation asks when a
+    teammate's name matches more than one player.
+
+    .. versionchanged:: 4.4.0
+       Reads the relation rather than its own copy of the played-game guard,
+       and honors ``without`` through it.
     """
-    box = box_source(con)
-    appeared = "(b.minutes IS NOT NULL OR b.reconstructed)" if box.rebuilt else "b.minutes IS NOT NULL"
-    marks = ", ".join("?" for _ in periods)
-    params: list[Any] = [player.id, season, season_type, *periods, player.id, season, season_type]
-    where: list[str] = []
-    if venue is not None:
-        where.append("(CASE WHEN g.home_team_id = b.team_id THEN 'home' ELSE 'away' END) = ?")
-        params.append(venue)
+    span = _span_of(None, season, season_type, "player_game_log")
+    narrowed = _narrow_player_games(con, player, span, opponent=None, venue=venue, without=without, split=split)
+    if isinstance(narrowed, TemplateResult):
+        return narrowed
     if opponent is not None:
-        where.append("(CASE WHEN g.home_team_id = b.team_id THEN g.away_team_id ELSE g.home_team_id END) = ?")
-        params.append(opponent.id)
-    if started is not None:
-        # The box table this already joins carries `starter`, so one half of
-        # the split is a clause here rather than a new source - see
-        # `common.STARTER_SIDES` and `router._split_side` for why only a NAMED
-        # half filters.
-        where.append("b.starter = ?")
-        params.append(started)
-    return con.execute(
+        # Resolved by the caller, which needs the name for the answer, so the
+        # id is applied here rather than resolving the same text twice.
+        narrowed.opponent = opponent
+        narrowed.narrow("pgl.opponent_team_id = ?", opponent.id)
+    rebuilt = box_source(con).rebuilt
+    played_sql, played_params = rows_sql(
+        narrowed,
+        "pgl.event_id AS event_id, g.date AS date, CASE WHEN g.home_team_id = pgl.team_id THEN 'home' ELSE 'away' END AS side, "
+        f"(SELECT {season_name_sql('t.team_id', 'g.season', 't.display_name')} FROM teams t WHERE t.team_id = pgl.opponent_team_id) AS opponent",
+        order="g.date",
+        rebuilt=rebuilt,
+    )
+    marks = ", ".join("?" for _ in periods)
+    rows = con.execute(
         f"""
-        WITH scored AS (
+        WITH played AS ({played_sql}),
+        scored AS (
             SELECT event_id, SUM({SHOT_VALUE_SQL}) AS points
             FROM shot_chart
             WHERE athlete_id = ? AND made AND season = ? AND season_type = ? AND period IN ({marks})
             GROUP BY 1
-        )
-        SELECT g.date,
-               CASE WHEN g.home_team_id = b.team_id THEN 'home' ELSE 'away' END AS side,
-               {season_name_sql("t.team_id", "g.season", "t.display_name")},
-               COALESCE(s.points, 0)
-        FROM {box.table} b
-        JOIN games g ON g.event_id = b.event_id AND g.season = b.season
-        LEFT JOIN scored s ON s.event_id = b.event_id
-        LEFT JOIN teams t ON t.team_id = CASE WHEN g.home_team_id = b.team_id THEN g.away_team_id ELSE g.home_team_id END
-        WHERE b.athlete_id = ? AND b.season = ? AND b.season_type = ? AND NOT b.did_not_play AND {appeared}
-          AND EXISTS (SELECT 1 FROM shot_chart x WHERE x.event_id = b.event_id)
-          {"".join(" AND " + w for w in where)}
-        ORDER BY g.date
+        ),
+        covered AS (SELECT DISTINCT event_id FROM shot_chart WHERE season = ? AND season_type = ?)
+        SELECT p.date, p.side, p.opponent, COALESCE(s.points, 0)
+        FROM played p
+        JOIN covered c ON c.event_id = p.event_id
+        LEFT JOIN scored s ON s.event_id = p.event_id
+        ORDER BY p.date
         """,
-        params,
+        [*played_params, player.id, season, season_type, *periods, season, season_type],
     ).fetchall()
+    return rows, [mate.name for mate in narrowed.without]
 
 
-def _period_split_header(player: Entity, period_label: str, scope: str, vs: str, at: str, total: int, average: float, games: list[dict[str, Any]], slots: dict[str, Any]) -> str:
+def _period_split_header(player: Entity, period_label: str, scope: str, vs: str, at: str, total: int, average: float, games: list[dict[str, Any]], slots: dict[str, Any], order: Any = None) -> str:
     """The headline sentence: one game's own wording when there is only one,
     the recent-games log appended when ``per_game`` asked for it, or the
     plain season average otherwise."""
@@ -1374,9 +1409,14 @@ def _period_split_header(player: Entity, period_label: str, scope: str, vs: str,
         # answers the season; the rows are the most recent games, capped like
         # game_log's, and the line says so rather than letting a ten-row table
         # read as the whole season.
-        shown = games[-_clamp_limit(slots.get("limit"), default=DEFAULT_GAME_LOG_LIMIT) :]
-        rows_out = [f"  {g['date']}  {'vs' if g['home_away'] == 'home' else '@ '} {g['opponent'] or '?':<24} {g['points']:>3}" for g in reversed(shown)]
-        label = "every game" if len(shown) == len(games) else f"the {len(shown)} most recent"
+        # `order` picks the END of the season the rows come from, the way it
+        # does for game_log. Without reading it, "his first 5 games" showed
+        # his last five - a different five games, with nothing saying so.
+        count = _clamp_limit(slots.get("limit"), default=DEFAULT_GAME_LOG_LIMIT)
+        earliest = order == "first"
+        shown = games[:count] if earliest else games[-count:]
+        rows_out = [f"  {g['date']}  {'vs' if g['home_away'] == 'home' else '@ '} {g['opponent'] or '?':<24} {g['points']:>3}" for g in (shown if earliest else reversed(shown))]
+        label = "every game" if len(shown) == len(games) else f"the {len(shown)} {'earliest' if earliest else 'most recent'}"
         header += f"\n  {period_label} points, {label}:\n" + "\n".join(rows_out)
     return header
 

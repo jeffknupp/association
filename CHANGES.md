@@ -64,6 +64,20 @@ had no published version to be compatible with.
   chart drew a game a year off; a single game named with no year and no
   season words now means the current season, which is the default every
   template already applies (#153).
+- **A quarter or a half is narrowed by the relation, so it honors a
+  teammate's absence and an order.** `period_split` kept its own copy of the
+  played-game guard, so "scottie barnes stats 2nd half log without rj" was
+  refused for a slot no period template honored while the relation had been
+  answering exactly that narrowing for four other templates since the port.
+  Its rows come from `_narrow_player_games` now: `without` composes there
+  (with the teammate tenure rule and the clarifying question that comes with
+  it), and `order` picks which end of the season the log's rows come from
+  rather than always the most recent. The answer names the absent teammates,
+  as every other narrowing here is named. Proved a pure refactor over 20
+  recorded period questions - every answer byte-identical, and the comparison
+  watched to fail on a one-token change. Measured: Barnes played 80 games in
+  2026 and RJ Barrett played 55 of them, so his second half without him
+  covers the 25 the template reports.
 - **A quarter or a half can be ranked, not just looked up.** "who has the
   highest average 1st quarter points this season?" and "knicks 1st quarter
   scoring leaders playoffs" reached `other` and fell through to the agent:

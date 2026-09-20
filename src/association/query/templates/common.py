@@ -132,7 +132,10 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # A period is not a scoping slot - it IS the question - so only the two
     # filters on WHICH games count are listed.
     # `split` only for a NAMED half, like game_log and player_stat.
-    "period_split": frozenset({"opponent", "venue", "split"}),
+    # `without` and `order` arrived with the relation: the games are the
+    # relation's now, so a teammate's absence composes here exactly as it does
+    # for game_log, and `order` picks which end of the log the rows come from.
+    "period_split": frozenset({"opponent", "venue", "split", "without", "order"}),
     # The opponent IS the second team of a head-to-head. `venue` narrows to
     # the first-named team's home or road games, and `date` replaces the
     # season with one calendar day - both filters on `real_games`, the same

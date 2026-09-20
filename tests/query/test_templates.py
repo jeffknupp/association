@@ -3736,6 +3736,20 @@ def period_ctx(tmp_path: Path) -> TemplateContext:
     c.execute("INSERT INTO games VALUES ('e04',2004,2,'2003-11-05T00:30Z','9','13',110,100,'9')")
     c.execute("INSERT INTO player_box_stats VALUES ('e04',2004,2,'9','1',FALSE,30)")
     c.execute("INSERT INTO shot_chart VALUES ('1',2004,2,'e04','9',1,'10:00',TRUE,'Jump Shot',25,26,3,'26-foot three point jumper')")
+    # A teammate who plays e1-e3 and sits e4-e5, so "without him" is two games.
+    c.execute("INSERT INTO players VALUES ('2','Klay Thompson')")
+    for event in ("e1", "e2", "e3"):
+        c.execute("INSERT INTO player_box_stats VALUES (?,?,2,'9','2',FALSE,28)", [event, SEASON])
+    # The relation reads the warehouse's log view, not the stored table, so the
+    # fixture mirrors its shape: the opponent, the start flag and the game's
+    # date are columns there and derived here.
+    c.execute(
+        "CREATE VIEW player_game_log AS SELECT pbs.*, "
+        "CASE WHEN g.home_team_id = pbs.team_id THEN g.away_team_id ELSE g.home_team_id END AS opponent_team_id, "
+        "TRUE AS starter, g.date AS game_date, p.display_name AS player_name "
+        "FROM player_box_stats pbs JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season "
+        "LEFT JOIN players p ON p.athlete_id = pbs.athlete_id"
+    )
     return TemplateContext(con=c, out_dir=tmp_path / "out")
 
 
@@ -3823,10 +3837,13 @@ def test_the_scoping_slots_this_template_filters_on_are_declared_honored() -> No
     The other direction matters too: a slot listed here that the SQL ignores
     would silently answer a broader question, which is the shape this whole
     module exists to prevent."""
-    for slot in ("opponent", "venue"):
+    for slot in ("opponent", "venue", "without", "order"):
         check_scope("period_split", {"player": "Stephen Curry", "period": 1, slot: "home"})
+    # A slot it still does not filter on. `date` names one calendar day, which
+    # this has no clause for, so a question carrying one must refuse rather
+    # than be answered over the whole season.
     with pytest.raises(TemplateUnsupported):
-        check_scope("period_split", {"player": "Stephen Curry", "period": 1, "without": "Draymond Green"})
+        check_scope("period_split", {"player": "Stephen Curry", "period": 1, "date": "2026-01-02"})
 
 
 def test_a_log_lists_the_games_and_keeps_the_season_in_the_header(period_ctx: TemplateContext) -> None:
@@ -3977,3 +3994,44 @@ def test_a_period_ranking_nobody_qualifies_for_says_so(period_rank_ctx: Template
     result = period_leaderboard(period_rank_ctx, {"period": 1, "season": SEASON, "season_type": 2})
     assert result.data["leaders"] == []
     assert "played the 20 games needed to rank" in (result.answer or "")
+
+
+def test_a_period_is_narrowed_by_a_teammates_absence(period_ctx: TemplateContext) -> None:
+    """ "scottie barnes stats 2nd half log without rj" was refused for a slot
+    no period template honored, while the relation had been answering exactly
+    that narrowing for four other templates since the port. Klay plays e1-e3
+    and sits e4-e5, so without him Curry has two games - and the header says
+    so, because a half answered over the games a teammate missed and headed as
+    though it covered every game is the silent narrowing check_scope exists to
+    stop."""
+    result = period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "without": ["Klay Thompson"]})
+    assert result.data["games_played"] == 2
+    assert "over 2 games" in (result.answer or "") and "without Klay Thompson" in (result.answer or "")
+    # Every game, for contrast: five, since e6 is a game he did not play.
+    whole = period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2})
+    assert whole.data["games_played"] == 5 and "without" not in (whole.answer or "")
+
+
+def test_a_period_log_takes_the_end_of_the_season_the_question_asked_for(period_ctx: TemplateContext) -> None:
+    """`order` picks which end the rows come from, as it does for game_log.
+    Before it was honored, "his first 5 games" showed his last five - a
+    different five games, with nothing saying so."""
+    recent = period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "per_game": True, "limit": 2, "order": "recent"})
+    first = period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "per_game": True, "limit": 2, "order": "first"})
+    recent_dates = [line.split()[0] for line in (recent.answer or "").splitlines() if line.strip()[:4].isdigit()]
+    first_dates = [line.split()[0] for line in (first.answer or "").splitlines() if line.strip()[:4].isdigit()]
+    assert len(recent_dates) == 2 and len(first_dates) == 2
+    assert first_dates == sorted(first_dates) and recent_dates == sorted(recent_dates, reverse=True)
+    assert first_dates[0] < recent_dates[-1]
+    assert "the 2 earliest" in (first.answer or "") and "the 2 most recent" in (recent.answer or "")
+    # The header still answers the whole season either way.
+    assert "over 5 games" in (first.answer or "") and "over 5 games" in (recent.answer or "")
+
+
+def test_a_period_without_a_teammate_nothing_resolves_refuses_rather_than_dropping_him(period_ctx: TemplateContext) -> None:
+    """A name the roster does not hold falls through, exactly as it does for
+    every other template on the relation. What must not happen is the name
+    being dropped and the period totaled over every game, which would answer
+    a wider question than was asked with nothing saying so."""
+    with pytest.raises(TemplateUnsupported, match="no player matching"):
+        period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "without": ["Nobody At All"]})

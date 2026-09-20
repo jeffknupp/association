@@ -1274,7 +1274,7 @@ def _names_one_game(question: str) -> bool:
     return _SINGLE_GAME.search(question) is not None or any(pattern.search(question) for pattern in ORDER_WORDS.values())
 
 
-ORDER_INTENTS: frozenset[str] = frozenset({"fingerprint", "game_log", "player_netpoints", "shot_chart", "shot_distance"})
+ORDER_INTENTS: frozenset[str] = frozenset({"fingerprint", "game_log", "period_split", "player_netpoints", "shot_chart", "shot_distance"})
 """Intents whose template honors ``order``, so filling it from the question can
 only make the answer match what was asked.
 
