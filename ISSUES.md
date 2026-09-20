@@ -1915,6 +1915,7 @@ those were found.
   `teams` is the signal (`entities._scope_from_question_team_in_players`
   already does the mirror-image move for a team in `players`).
 - **GitHub:** none yet
+- **GitHub:** #163
 
 ### A position group as the subject has no template, and six corpus questions want one
 - **Found:** 2026-09-20, tallying what still falls through after the
@@ -2087,6 +2088,7 @@ those were found.
   key the two share maps to the same stat. The test is cheap and catches the
   drift that matters; the move is the real fix.
 - **GitHub:** none yet
+- **GitHub:** #164
 
 ### A subject read from a possessive is one word, so a question carrying the full name asks which player
 - **Found:** 2026-09-20, fixing #144 (`record_when` losing the player it names)
@@ -2120,6 +2122,7 @@ those were found.
   Prove it with the offline `reroute_recorded.py` replay over all 261 - the
   bar is no other row moving.
 - **GitHub:** none yet
+- **GitHub:** #165
 
 ### "Points by quarter" asks for all four at once, and every template answers one
 - **Found:** 2026-09-20, finishing the quarters-and-halves work
