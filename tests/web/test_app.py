@@ -556,3 +556,21 @@ def test_importing_the_api_layer_loads_no_model_client() -> None:
     probe = "import sys, association.web.app; print('ollama' in sys.modules)"
     result = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=True)
     assert result.stdout.strip() == "False"
+
+
+def test_a_disabled_fallthrough_is_a_501_that_says_why(tmp_path: Path) -> None:
+    """Development only (--disable-fallthrough): a question no template answers
+    is refused with the reason rather than spending minutes on the agent - on
+    the plain endpoint as a status, on the stream as its error event."""
+    from association.query.answer import FallthroughDisabled
+
+    class Refusing(StubAnswerer):
+        def ask(self, question: str, label: str, trace: Callable[[str], None] = lambda line: None) -> Answer:
+            raise FallthroughDisabled("no template answered this question and fall-through to the agent is disabled: intent 'other' has no template yet")
+
+    with _client(Refusing(), tmp_path) as client:
+        response = client.post("/api/ask", json={"question": "q"})
+        assert response.status_code == 501 and "no template yet" in response.json()["detail"]
+        with client.stream("GET", "/api/ask/stream", params={"question": "q"}) as stream:
+            events = _events(stream.iter_lines())
+    assert [name for name, _ in events] == ["error"] and "no template yet" in events[0][1]["message"]

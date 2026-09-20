@@ -134,6 +134,12 @@ def _parse_season_types(spec: str) -> list[int]:
     return sorted({int(x.strip()) for x in spec.split(",") if x.strip()})
 
 
+DISABLE_FALLTHROUGH_HELP = (
+    "DEVELOPMENT ONLY. When no template can answer a question, return an error saying why instead of handing it to the "
+    "SQL-writing agent, which iterates for minutes and rarely gets it right. For testing the fast path, not for answering questions."
+)
+
+
 def _query_engine_options(f: F) -> F:
     f = click.option("--model", default=DEFAULT_MODEL, show_default=True, help="Ollama model for the fall-through agent.")(f)
     f = click.option(
@@ -150,6 +156,7 @@ def _query_engine_options(f: F) -> F:
         is_flag=True,
         help="Skip the intent router and answer every question with the full tool-calling agent. For comparing the two paths while more question shapes are ported to templates.",
     )(f)
+    f = click.option("--disable-fallthrough", is_flag=True, help=DISABLE_FALLTHROUGH_HELP)(f)
     return click.option(
         "--think",
         is_flag=True,
@@ -304,17 +311,23 @@ def data_check(seasons: str | None, season_types: str | None, data_dir: str, rat
 @cli.command("query")
 @click.argument("question")
 @_query_engine_options
-def query(question: str, model: str, router_model: str, db_path: str, out_dir: str, verbose: bool, think: bool, no_fast_path: bool) -> None:
+def query(question: str, model: str, router_model: str, db_path: str, out_dir: str, verbose: bool, think: bool, no_fast_path: bool, disable_fallthrough: bool) -> None:
     """Ask one natural-language question about the local data."""
     import shlex
     import sys
 
     from association.query.agent import Agent
+    from association.query.answer import FallthroughDisabled
 
-    agent = Agent(model, db_path, Path(out_dir), verbose=verbose, think=think, fast_path=not no_fast_path, router_model=router_model)
+    if no_fast_path and disable_fallthrough:
+        raise click.UsageError("--no-fast-path sends every question to the agent and --disable-fallthrough refuses to; pick one.")
+    agent = Agent(model, db_path, Path(out_dir), verbose=verbose, think=think, fast_path=not no_fast_path, router_model=router_model, fallthrough=not disable_fallthrough)
     # Agent.ask no longer reads sys.argv - a caller says what the request was,
     # and for this caller that really is the command line.
-    click.echo(agent.ask(question, label=shlex.join(sys.argv)).text)
+    try:
+        click.echo(agent.ask(question, label=shlex.join(sys.argv)).text)
+    except FallthroughDisabled as exc:
+        raise click.ClickException(str(exc)) from None
 
 
 @cli.command("web")
@@ -324,14 +337,15 @@ def query(question: str, model: str, router_model: str, db_path: str, out_dir: s
 @click.option("--router-model", default=DEFAULT_ROUTER_MODEL, show_default=True, help="Ollama model for the intent router.")
 @click.option("--db-path", default=DEFAULT_DB_PATH, show_default=True, help="DuckDB warehouse file.")
 @click.option("--out-dir", default=DEFAULT_OUT_DIR, show_default=True, help="Directory for rendered charts.")
-def web(port: int, host: str, model: str, router_model: str, db_path: str, out_dir: str) -> None:
+@click.option("--disable-fallthrough", is_flag=True, help=DISABLE_FALLTHROUGH_HELP)
+def web(port: int, host: str, model: str, router_model: str, db_path: str, out_dir: str, disable_fallthrough: bool) -> None:
     """Serve a local web interface for asking questions, until interrupted.
 
     Needs the `web` extra: pip install 'association[web]'
     """
     from association.web.serve import serve
 
-    serve(host, port, db_path, Path(out_dir), model=model, router_model=router_model)
+    serve(host, port, db_path, Path(out_dir), model=model, router_model=router_model, fallthrough=not disable_fallthrough)
 
 
 def main() -> None:

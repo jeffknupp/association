@@ -420,3 +420,11 @@ expected, not a fault.
 
 ``--no-fast-path`` forces every question through the agent, which is useful for
 comparing the two paths but slow.
+
+``--disable-fallthrough`` does the opposite, and is for development only: when
+no template can answer a question, ``query`` prints why the fast path gave it up
+and exits with an error, and ``web`` answers with an error, instead of handing
+the question to the agent. The agent iterates on SQL for minutes at a time and
+rarely gets it right, so testing the templates through the web interface is
+unusable while it runs. Both commands take the flag; it cannot be combined with
+``--no-fast-path``.

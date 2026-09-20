@@ -31,6 +31,24 @@ answer's reliability, so it is carried out rather than inferred.
 .. versionadded:: 2.0.0
 """
 
+
+class FallthroughDisabled(RuntimeError):
+    """A question the templates could not answer, refused instead of handed to
+    the agent because the caller asked for that (``--disable-fallthrough``).
+
+    For development only. The agent iterates on SQL for minutes at a time and
+    is unlikely to get it right, so a person testing the fast path in the web
+    interface would otherwise wait on it while ollama pegs the CPU. The
+    message says why the fast path gave the question up: no usable
+    classification, an intent with no template, or a template's own refusal.
+
+    Lives here rather than beside the agent so the web API can catch it
+    without importing a model client.
+
+    .. versionadded:: 4.4.0
+    """
+
+
 ARTIFACT_KINDS: frozenset[str] = frozenset({"shot_chart", "fingerprint"})
 """Every value :attr:`Artifact.kind` can take.
 

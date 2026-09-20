@@ -36,6 +36,16 @@ fi
 # wrong whether or not this particular commit touched the changelog, and the
 # next release is what it breaks.
 headings="$(grep -c '^## Unreleased$' CHANGES.md || true)"
+# And a MISSING heading, when src/ changed, means the entry for this change
+# landed inside the last release's section: the first commit after a release
+# did exactly that on 2026-09-20, and the release notes on GitHub then
+# disagreed with the file. Zero headings is fine only for a commit that
+# changes no source.
+if echo "${staged}" | grep -q '^src/' && [[ "${headings}" -eq 0 ]]; then
+    echo "error: src/ changed but CHANGES.md has no '## Unreleased' heading - add one above your entry." >&2
+    echo "       Without it the entry sits inside the last release's section." >&2
+    exit 1
+fi
 if [[ "${headings}" -gt 1 ]]; then
     echo "error: CHANGES.md has ${headings} '## Unreleased' headings, expected at most one." >&2
     echo "       Two branches each added one and git merged both without a conflict." >&2

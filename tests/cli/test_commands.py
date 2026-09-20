@@ -153,7 +153,7 @@ def test_query_dispatches_with_question(monkeypatch: pytest.MonkeyPatch) -> None
     captured: dict[str, Any] = {}
 
     class FakeAgent:
-        def __init__(self, model: str, db_path: str, out_dir: object, verbose: bool, think: bool, fast_path: bool, router_model: str) -> None:
+        def __init__(self, model: str, db_path: str, out_dir: object, verbose: bool, think: bool, fast_path: bool, router_model: str, fallthrough: bool = True) -> None:
             captured["model"] = model
 
         def ask(self, question: str, label: str = "") -> Answer:
@@ -182,11 +182,12 @@ def test_query_passes_the_engine_options_through(monkeypatch: pytest.MonkeyPatch
     captured: dict[str, Any] = {}
 
     class FakeAgent:
-        def __init__(self, model: str, db_path: str, out_dir: object, verbose: bool, think: bool, fast_path: bool, router_model: str) -> None:
+        def __init__(self, model: str, db_path: str, out_dir: object, verbose: bool, think: bool, fast_path: bool, router_model: str, fallthrough: bool = True) -> None:
             captured["model"] = model
             captured["think"] = think
             captured["fast_path"] = fast_path
             captured["router_model"] = router_model
+            captured["fallthrough"] = fallthrough
 
         def ask(self, question: str, label: str = "") -> Answer:
             return _answer("the answer")
@@ -198,9 +199,33 @@ def test_query_passes_the_engine_options_through(monkeypatch: pytest.MonkeyPatch
     assert captured["think"] is True
     assert captured["model"] == "qwen3:8b"
     assert captured["fast_path"] is True
-    # Routing and SQL generation run on different models by design.
+    assert captured["fallthrough"] is True
+
     assert captured["router_model"] == "qwen2.5:3b"
     assert captured["model"] != captured["router_model"]
+
+
+def test_disable_fallthrough_reaches_the_agent_and_its_refusal_is_an_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Development only: the flag turns a would-be fall-through into a
+    non-zero exit that says why, and cannot be combined with --no-fast-path."""
+    from association.query.answer import FallthroughDisabled
+
+    captured: dict[str, Any] = {}
+
+    class FakeAgent:
+        def __init__(self, model: str, db_path: str, out_dir: object, verbose: bool, think: bool, fast_path: bool, router_model: str, fallthrough: bool = True) -> None:
+            captured["fallthrough"] = fallthrough
+
+        def ask(self, question: str, label: str = "") -> Answer:
+            raise FallthroughDisabled("no template answered this question and fall-through to the agent is disabled: intent 'other' has no template yet")
+
+    monkeypatch.setattr("association.query.agent.Agent", FakeAgent)
+    result = CliRunner().invoke(query, ["--disable-fallthrough", "who had the most triple-doubles"])
+    assert captured["fallthrough"] is False
+    assert result.exit_code == 1 and "no template yet" in result.output
+    both = CliRunner().invoke(query, ["--disable-fallthrough", "--no-fast-path", "q"])
+    assert both.exit_code == 2 and "pick one" in both.output
+    # Routing and SQL generation run on different models by design.
 
 
 def test_version_flag_reports_the_packaged_version() -> None:

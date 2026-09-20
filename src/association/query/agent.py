@@ -12,7 +12,7 @@ from typing import Any
 
 import ollama
 
-from .answer import Answer, AnsweredBy, Artifact, Timing
+from .answer import Answer, AnsweredBy, Artifact, FallthroughDisabled, Timing
 from .entities import compared_but_unmatched, misread_players, override_invented_players, override_nicknames, restore_dropped_players, scope_from_question, undo_name_completion
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .keepalive import KEEP_ALIVE
@@ -61,6 +61,11 @@ class Agent:
        Takes a ``trace`` callback for its live output, defaulting to stderr, so
        a caller that is not a terminal can collect it. :meth:`ask` returns an
        :class:`association.query.answer.Answer` rather than the answer text.
+
+    .. versionchanged:: 4.4.0
+       Takes ``fallthrough``: False raises
+       :class:`association.query.answer.FallthroughDisabled` where the agent
+       would have been asked, for development.
     """
 
     def __init__(
@@ -74,6 +79,7 @@ class Agent:
         fast_path: bool = True,
         router_model: str = DEFAULT_ROUTER_MODEL,
         trace: Callable[[str], None] = echo_to_stderr,
+        fallthrough: bool = True,
     ):
         self.model = model
         self.router_model = router_model
@@ -81,6 +87,11 @@ class Agent:
         self.think = think
         self.history_dir = history_dir
         self.fast_path = fast_path
+        #: False refuses a question the fast path gives up on, with the reason,
+        #: instead of handing it to the agent (:class:`FallthroughDisabled`).
+        self.fallthrough = fallthrough
+        #: Why the fast path gave the last question up, or None if it did not.
+        self.fell_through: str | None = None
         self.trace = trace
         self.last_question: str | None = None
         self.toolbox: Toolbox = Toolbox(db_path, out_dir)
@@ -242,13 +253,16 @@ class Agent:
         `answer` text, because that text is only one of the things the template
         produced - see TemplateResult.data, which nothing could reach before
         2.0."""
+        self.fell_through = None
         if not self.fast_path:
+            self.fell_through = "the fast path is off (--no-fast-path)"
             return None
         t0 = time.monotonic()
         routed = route(self.router_model, question, previous_question=self.last_question)
         history.record_model_call(time.monotonic() - t0)
         if routed is None:
             history.log("  -> (router) no usable classification, falling through to the agent")
+            self.fell_through = "the router returned no usable classification"
             return None
         # Before anything reads a slot: the router rewrites nicknames, and
         # rewrites some of them to the wrong player. See entities.override_nicknames.
@@ -257,6 +271,7 @@ class Agent:
         handler = TEMPLATES.get(routed.intent)
         history.log(f"  -> (router) intent={routed.intent!r} slots={routed.slots}" + ("" if handler else " - not ported yet, falling through"))
         if handler is None:
+            self.fell_through = f"intent {routed.intent!r} has no template yet"
             return None
         # A fingerprint draws as many polygons as it is given, and the router
         # drops the second name often enough that "compare fingerprints for
@@ -316,6 +331,7 @@ class Agent:
                     result.answer = f"{result.answer} Note: the question compares two players, but only one of them matches anybody in the warehouse - check the spelling of the other."
         except TemplateUnsupported as exc:
             history.log(f"  -> (template) {exc} - falling through to the agent")
+            self.fell_through = f"{routed.intent}: {exc}"
             return None
         history.record_tool_call(f"template {routed.intent}", time.monotonic() - t0)
         # No second model call, ever: templates phrase their own answers. See
@@ -484,6 +500,11 @@ class Agent:
             self.last_question = question
             return self._answer(question, history, templated.answer, "fast", intent=intent, data=templated.data, artifacts=templated.artifacts)
 
+        if not self.fallthrough:
+            # Development only - see FallthroughDisabled. Refused here, before
+            # the agent's prompt is built, so no model call is spent on it.
+            history.log("  -> (fallthrough) disabled; refusing rather than asking the agent")
+            raise FallthroughDisabled(f"no template answered this question and fall-through to the agent is disabled: {self.fell_through}")
         self.last_question = question
         # Only the entries this question needs, rather than all 13 - see
         # prompt.select_knowledge. Swapping the system message costs one

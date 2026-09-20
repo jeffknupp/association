@@ -14,7 +14,21 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
-## 4.3.0 - 2026-09-19
+## Unreleased
+
+- **`--disable-fallthrough` on `query` and `web`, for development.** When no
+  template can answer a question, the command returns an error saying why the
+  fast path gave it up (no usable classification, an intent with no template,
+  or the template's own refusal) instead of handing the question to the
+  SQL-writing agent, which iterates for minutes at a time and rarely gets it
+  right - "what was the sixers record this season when maxey scored 20+
+  points?" spent twelve minutes of a pegged CPU on five wrong attempts. The
+  CLI prints the reason and exits non-zero; `POST /api/ask` answers 501 with
+  it; the stream sends it as its `error` event. `Agent` and `serve` take a
+  `fallthrough` argument, and `FallthroughDisabled` lives in `query.answer`
+  so the web layer can catch it without a model client. The changelog hook
+  now also requires an `## Unreleased` heading whenever `src/` changes: the
+  entry below landed inside the 4.3.0 section the day after that release.
 - **A team the router put in a player's place stays where it belongs.** Four
   fluent wrong answers from one entity stage: "karl towns stats vs netslast 5
   games" restored Towns but dropped the Nets, answering his last five games

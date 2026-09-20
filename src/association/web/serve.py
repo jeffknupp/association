@@ -60,6 +60,7 @@ def serve(
     model: str,
     router_model: str,
     history_dir: Path = DEFAULT_HISTORY_DIR,
+    fallthrough: bool = True,
 ) -> None:
     """Run the web interface until interrupted.
 
@@ -68,6 +69,11 @@ def serve(
             is missing from the installed package.
 
     .. versionadded:: 2.0.0
+
+    .. versionchanged:: 4.4.0
+       Takes ``fallthrough``; False answers a question no template can with
+       an error instead of the agent (``--disable-fallthrough``, development
+       only).
     """
     try:
         import uvicorn
@@ -84,7 +90,7 @@ def serve(
     # is where it goes. AgentRunner swaps in the requesting stream's sink for
     # the duration of each question, so the default here is only what happens
     # to lines nobody asked for.
-    agent = Agent(model, db_path, out_dir, verbose=True, history_dir=history_dir, router_model=router_model, trace=discard)
+    agent = Agent(model, db_path, out_dir, verbose=True, history_dir=history_dir, router_model=router_model, trace=discard, fallthrough=fallthrough)
     runner = AgentRunner(agent)
     app = create_app(runner, db_path=db_path, out_dir=out_dir, model=model, router_model=router_model)
 

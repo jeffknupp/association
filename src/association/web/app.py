@@ -27,7 +27,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from ..nba.coverage import COVERAGE
-from ..query.answer import Answer
+from ..query.answer import Answer, FallthroughDisabled
 from ..query.toolbox import connect_read_only
 from .runner import Answerer
 
@@ -442,8 +442,16 @@ def create_app(answerer: Answerer, db_path: str, out_dir: Path, model: str, rout
 
     @app.post("/api/ask")
     def ask(request: AskRequest) -> AnswerResponse:
-        """Answer one question, waiting for any question ahead of it."""
-        return as_response(answerer.ask(request.question, label=f"POST /api/ask {request.question!r}"))
+        """Answer one question, waiting for any question ahead of it.
+
+        With fall-through disabled (``--disable-fallthrough``, development
+        only), a question no template answers is a 501 whose detail says why
+        the fast path gave it up, rather than minutes of the agent.
+        """
+        try:
+            return as_response(answerer.ask(request.question, label=f"POST /api/ask {request.question!r}"))
+        except FallthroughDisabled as exc:
+            raise HTTPException(status_code=501, detail=str(exc)) from None
 
     @app.get("/api/artifacts/{name}")
     def artifact(name: str) -> FileResponse:

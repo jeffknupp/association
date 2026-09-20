@@ -386,6 +386,51 @@ def test_fast_path_is_skipped_entirely_when_disabled(monkeypatch: pytest.MonkeyP
     assert not called
 
 
+def test_with_fallthrough_disabled_a_question_no_template_answers_is_an_error_naming_why(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Development only: the agent iterates on SQL for minutes and rarely gets
+    it right, so a person testing the fast path is told why it gave up
+    instead. No model call is spent past the router."""
+    from association.query.answer import FallthroughDisabled
+    from association.query.router import Route
+    from association.query.templates import TemplateResult, TemplateUnsupported
+
+    def chat_must_not_run(**kw: Any) -> None:
+        raise AssertionError("the agent must not be asked")
+
+    monkeypatch.setattr(ollama, "chat", chat_must_not_run)
+    import duckdb
+
+    # The entity stages between the router and a template read these tables.
+    db_path = tmp_path / "test.duckdb"
+    con = duckdb.connect(str(db_path))
+    con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    con.execute("CREATE TABLE teams (team_id VARCHAR, display_name VARCHAR, abbreviation VARCHAR)")
+    con.close()
+    agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history", fallthrough=False)
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="other", slots={}))
+    with pytest.raises(FallthroughDisabled, match="intent 'other' has no template yet"):
+        agent.ask("who had the most triple-doubles?")
+
+    def refusing(ctx: Any, slots: dict[str, Any]) -> TemplateResult:
+        raise TemplateUnsupported("record_when needs a known stat and a positive threshold, got 'wins'/20")
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="record_when", slots={"team": "Philadelphia 76ers"}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"record_when": refusing})
+    with pytest.raises(FallthroughDisabled, match="record_when: record_when needs a known stat"):
+        agent.ask("sixers record when maxey scored 20+ points")
+    assert agent.fell_through == "record_when: record_when needs a known stat and a positive threshold, got 'wins'/20"
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: None)
+    with pytest.raises(FallthroughDisabled, match="no usable classification"):
+        agent.ask("q")
+
+    # A question a template answers is unaffected.
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="record_when", slots={}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"record_when": lambda ctx, slots: TemplateResult(data={}, answer="answered")})
+    assert agent.ask("q").text == "answered" and agent.fell_through is None
+
+
 def test_unported_intent_falls_through_to_the_agent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """A shape with no template yet must reach the old path unchanged - that is
     what makes porting one shape at a time safe."""
