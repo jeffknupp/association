@@ -957,6 +957,45 @@ _BEST_WORST_RECORD = re.compile(r"\b(?:best|worst)\s+records?\b", re.IGNORECASE)
 _PSEUDO_TEAM = re.compile(r"(?:the\s+)?(?:all[-_ ]?nba|nba|league|all[-_ ]?teams?|teams?|every\s+team|worst|best)", re.IGNORECASE)
 
 
+# A NetPoints rate asked for by any of its names. In this data the only
+# adjusted form of NetPoints is the per-100-possessions rate, so "adjusted"
+# has exactly one honest reading; the model reaches for the season total
+# whatever the question says ("top 10 in defensive netpoints / 100
+# possessions" came back as netpoints_defense, and the two lists disagree
+# from the second name down - Holmgren is 2nd by season total and outside
+# the top three per 100). "/ 90" is a rate nothing here holds, and refuses
+# (#152).
+_RATE_WORDS = re.compile(r"\badjusted\b|\bper\s+(?:100\s+)?poss?ess?ions?\b|\bper\s+100\b|/\s*100\b", re.IGNORECASE)
+_PER_90 = re.compile(r"\bper\s+90\b|/\s*90\b", re.IGNORECASE)
+_NETPOINTS_PER_100: dict[str, str] = {
+    "netpoints": "netpoints_per_100",
+    "netpoints_total": "netpoints_per_100",
+    "netpoints_offense": "netpoints_offense_per_100",
+    "netpoints_defense": "netpoints_defense_per_100",
+}
+
+
+def _route_rate(intent: str, slots: dict[str, Any], question: str) -> None:
+    """A per-possession rate the question asks a ranking for - see _RATE_WORDS.
+    Switches a NetPoints metric to its per-100 variant; any other metric, or a
+    per-90 rate, gets a ``rate`` slot no template honors, so check_scope
+    refuses rather than ranking the wrong unit."""
+    if intent != "leaderboard":
+        return
+    per_90 = _PER_90.search(question)
+    if per_90 is not None:
+        slots["rate"] = per_90.group(0).casefold()
+        return
+    rate = _RATE_WORDS.search(question)
+    if rate is None:
+        return
+    stat = slots.get("stat")
+    if isinstance(stat, str) and stat in _NETPOINTS_PER_100:
+        slots["stat"] = _NETPOINTS_PER_100[stat]
+    elif not (isinstance(stat, str) and stat.endswith("_per_100")):
+        slots["rate"] = rate.group(0).casefold()
+
+
 def _team_metric_in(question: str) -> str | None:
     """The longest team-metric alias the question names ("defensive rating"),
     or None. The model invents team stats ("usage_pct_defense" for "lowest
@@ -1559,6 +1598,7 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     _route_line_stat(raw["intent"], slots, question, rerouted_to_line)
     _route_game_score(raw["intent"], slots, question)
     _route_team_slots(raw["intent"], slots, question)
+    _route_rate(raw["intent"], slots, question)
     _route_subject_slots(raw["intent"], slots, question)
     _route_side_and_order(raw["intent"], slots, question)
     return Route(intent=raw["intent"], slots=slots)

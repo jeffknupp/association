@@ -134,6 +134,19 @@ before that commit needs re-checking against the current warehouse.
   "Jabari smith defensive rebounds vs lakers last 5 games" arrives with
   `stat: 'rebounds'` - the enum has no defensive rebounds, so the log would
   show total rebounds under a question that asked for one kind.
+  Two more from the 2026-09-20 web session (build `178c21f-dirty`, 45
+  questions): "show me sga's 2pt percentage for the past 5 years" arrives as
+  `player_history` with `stat: 'fieldGoalPct'` and answers overall FG% by
+  season (55.3, 51.9, 53.5, 51.0, 45.3) under a question that asked for
+  2-point percentage (60.2, 57.1, 57.6, 53.3, 51.4 from the season table's
+  makes and attempts less the threes) - seven of the session's questions,
+  for two players, all answered this way, and the three where the router
+  kept `twoPointFieldGoalPct` refused instead. And "who lead the league in
+  avg 3 point distance" arrives as `leaderboard` with
+  `stat: 'threePointFieldGoalPct'` and names Luke Kennard's 47.8%; the same
+  question with "shot distance" arrived with a filler `player: 'player'`
+  and was refused for naming a player it does not mention - the wrong
+  cause, since no distance leaderboard exists to answer it.
 
 The 391 date-only games printed a day early (#76), 2008's team rebound columns
 (#74) and the swapped 1990 Finals Game 5 were fixed on 2026-09-16. Before adding
@@ -152,6 +165,13 @@ those were found.
   season, points >= 30 AND rebounds >= 10: Nikola Jokic 20, Luka Doncic 16,
   Victor Wembanyama 15. `ROUTER_SCHEMA` carries one `threshold`, and
   `_threshold_from_text` reads one `N+ <stat>` pair.
+- **Also, 2026-09-20 (web session, build `178c21f-dirty`):** the same drop
+  on a named player's count. "How many 20+ point 5+ assist games did luka
+  have?" answers 441 games of 20+ points in his career; with 5+ assists it
+  is 397. "...this season" answers 60 where it is 54. "How many games did
+  luka have with 20+ points and 5+ assists?" - the second condition after
+  "and", not before "games" - drops it the same way. Three phrasings, three
+  fluent wrong counts.
 - **User sees:** the wrong leader, stated with the wrong count, for a question
   that named both conditions plainly.
 - **Next step:** read every `N+ <stat>` pair out of the question in
@@ -160,6 +180,35 @@ those were found.
   beats ranking.
 - **GitHub:** none yet
 - **GitHub:** #139
+
+### A shot chart asked for one season or one game draws the other
+- **Found:** 2026-09-20, grading the 45-question web session (build
+  `178c21f-dirty`)
+- **Evidence:** two shapes, both silent. "show a shot chart of steph curry's
+  last regular season game" routes to `shot_chart` with `{"order":
+  "recent", "limit": 1, "season": 2025}` and draws event 401705764, played
+  2025-04-13; his last regular-season game is 2026-04-13 (event 401811054).
+  The router read "last regular season" as the season before this one, and
+  `shot_chart` honors `order` but takes the `season` slot as given.
+  "show a shot chart of steph curry's 2025 season for 3 point shots" routes
+  with `{"order": "recent", "shot_value": 3, "season": 2025}` and draws ONE
+  game (7/12) where the question asked for the season: a filler `order`
+  the question never implied ("2025 season" names no end of a span) narrows
+  it to the most recent game, and the answer line does not say so. The
+  same `order` validation that keeps a filler `order` off `game_log`
+  (`_validate_order` / `ORDER_WORDS`) admits it here because `shot_chart`
+  is in `ORDER_INTENTS` and the model's value is a valid one.
+- **User sees:** a chart of the wrong game, or of one game where a season was
+  asked, titled "season 2025, regular season, game 401705764" - which does
+  not tell them either.
+- **Next step:** for `shot_chart` (and `fingerprint`, which shares the
+  single-game shape), keep a model `order` only where the question names a
+  game at one end of the span (`_SINGLE_GAME` / `ORDER_WORDS`) - the rule
+  `player_stat` already applies; and read "last regular season game" as the
+  most recent game of the current season, not as season 2025. Add both
+  questions to `scripts/check_routing.py`.
+- **GitHub:** none yet
+- **GitHub:** #153
 
 ### "past two seasons" becomes a limit of two games
 - **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
@@ -867,6 +916,7 @@ those were found.
   the daily files by date to see whether a game is missing, doubled or filed
   under another `season_type`. Then record what `t_poss`, `o_poss` and `d_poss`
   measure in `DATA.md`.
+- **GitHub:** #154
 
 ### `shot_chart`'s empty refusal never names the season, even when one was asked for
 - **Found:** 2026-09-18, fixing #18 (the retired-player default-season bug)
@@ -1900,7 +1950,72 @@ those were found.
 - **GitHub:** none yet
 - **GitHub:** #150
 
+### A single-game shot chart names its game by event id, on the page and in the answer
+- **Found:** 2026-09-20, grading the 45-question web session (build
+  `178c21f-dirty`); noted by Jeff
+- **Evidence:** `shotchart.py:309-310` builds the plot's subtitle as
+  ``f"game {event_id}"`` ("season 2025, regular season, game 401705764 -
+  10/20 (50.0%) shown"), and `_render_for_player_message` names only the
+  player, the split and the file path
+  (`shotchart_stephen_curry_401705764.html`). Neither says which game was
+  drawn: not the date, the opponent or the score, all of which `games`
+  holds for that event id. A reader of "steph curry's last regular season
+  game" (the entry above) had no way to see from the page that it was a
+  2025 game.
+- **User sees:** a chart they cannot place - and, when the wrong game was
+  drawn, no way to notice.
+- **Next step:** describe the game as "2025-04-13 vs POR, W 118-104" in the
+  subtitle and in the answer line, keeping the event id only in the
+  filename; the same for a single-game fingerprint ("first game 2026"),
+  which shares the shape.
+- **Priority note:** P2 - the shots drawn are right; the label is what
+  misleads.
+- **GitHub:** none yet
+- **GitHub:** #155
+
 ## P3: refusal or gap
+
+### "record with both X and Y" routes to `record_when` and is refused four ways
+- **Found:** 2026-09-20, grading the 45-question web session (build
+  `178c21f-dirty`)
+- **Evidence:** "show me the 76ers record when both Embiid and Paul George
+  played", "show me PHI record with Embiid and Paul George", "PHI record when
+  Embiid and Paul George play" and "PHI record when Embiid with Paul George"
+  all route to `record_when` with a `stat` of `wins` / `win_percentage` /
+  none and no threshold, and `_record_when_stat` refuses each ("needs a
+  known stat and a positive threshold"). The question is `with_without`'s -
+  a team's record in the games named players played - which honors `with`
+  for one teammate; whether it takes two together is the second half of the
+  gap.
+- **User sees:** four refusals of an answerable question, whichever way it is
+  phrased.
+- **Next step:** in `_route_team_and_player_intents`, send a `record_when`
+  that names players after "with" / "when X and Y played" and carries no
+  `N+ <stat>` threshold to `with_without` with the names in `with_player`;
+  then let `with_without` take every name the question gives, the way
+  `without` already does ("without Tatum and Brown" is the games neither
+  played).
+- **GitHub:** none yet
+- **GitHub:** #156
+
+### "sga vs tyrese maxey fingerprint" is refused over an `opponent` the router invented
+- **Found:** 2026-09-20, grading the 45-question web session (build
+  `178c21f-dirty`)
+- **Evidence:** routes to `fingerprint` with `{"player": "Shai
+  Gilgeous-Alexander", "opponent": "Tyrese Maxey", "side": "total"}`;
+  `restore_dropped_players` correctly rebuilds the pair ("the question names
+  more players than the router returned"), and then `check_scope` refuses
+  the leftover `opponent` slot, so the pair is never drawn. "compare sga and
+  tyrese maxey fingerprint" - the same question with "compare" - draws both.
+- **User sees:** a refusal for a question the system answers under other
+  words.
+- **Next step:** when `restore_dropped_players` puts a name from `opponent`
+  into `players`, drop `opponent` (a player is not a scoping team), or have
+  `scope_from_question` treat an `opponent` that resolves to a player and not
+  a team as the router's mis-slot and clear it.
+- **GitHub:** none yet
+- **GitHub:** #157
+
 
 ### `record_when` loses the player the question names, and the fall-through burns 583 seconds for nothing
 - **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)

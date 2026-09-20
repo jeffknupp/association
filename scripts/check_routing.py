@@ -50,6 +50,13 @@ CASES: list[tuple[str, str, dict]] = [
     ("Most games with 15+ assists in 2024?", "threshold_count", {"stat": "assists", "threshold": 15, "season": 2024}),
     # No limit asserted: 10 is already the template's default.
     ("Who were the top 10 in netpoints/100 possesions?", "leaderboard", {"stat": "netpoints_per_100"}),  # codespell:ignore possesions - the misspelling is the test: users type it
+    # #152: the rate by any of its names, on each side of the ball. The model
+    # reaches for the season total; route() switches it to the per-100 variant.
+    ("who were the top 10 in defensive netpoints / 100 possesions?", "leaderboard", {"stat": "netpoints_defense_per_100"}),  # codespell:ignore possesions - as typed
+    ("who were the top 10 in adjusted defensive netpoints", "leaderboard", {"stat": "netpoints_defense_per_100"}),
+    ("who were the top 10 players in offensive netpoints per 100 possessions", "leaderboard", {"stat": "netpoints_offense_per_100"}),
+    ("who led the league in adjusted netpoints?", "leaderboard", {"stat": "netpoints_per_100"}),
+    ("who were the top 10 in defensive netpoints / 90", "leaderboard", {"rate": "/ 90"}),
     # A single-game maximum is NOT a season ranking. Confirmed live: with no
     # such intent, "who had the most assists in a single game" was answered
     # "Nikola Jokic led the league in assists per game, at 10.7" in 1.76s -

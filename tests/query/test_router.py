@@ -859,6 +859,39 @@ def test_this_postseason_names_the_current_season() -> None:
     assert "span" not in got.slots and got.slots.get("game_n") == 4
 
 
+@pytest.mark.parametrize(
+    ("question", "model_stat", "want"),
+    [
+        ("who were the top 10 in defensive netpoints / 100 possesions?", "netpoints_defense", "netpoints_defense_per_100"),  # codespell:ignore possesions - as typed
+        ("who were the top 10 in adjusted defensive netpoints", "netpoints_defense", "netpoints_defense_per_100"),
+        ("who were the top 10 players in offensive netpoints per 100 possessions", "netpoints_offense", "netpoints_offense_per_100"),
+        ("who led the league in adjusted netpoints?", "netpoints", "netpoints_per_100"),
+        ("who led the league in netpoints adjusted per possesion", "netpoints_per_100", "netpoints_per_100"),  # codespell:ignore possesion - as typed
+    ],
+)
+def test_a_netpoints_rate_asked_by_any_name_is_the_per_100_metric(question: str, model_stat: str, want: str) -> None:
+    """#152: five web-session questions ranked season totals under a question
+    that asked for the rate. The only adjusted NetPoints in the data is the
+    per-100 rate, so "adjusted" reads as it."""
+    got = _ask(question, f'{{"intent":"leaderboard","stat":"{model_stat}","limit":10}}')
+    assert got.slots["stat"] == want and "rate" not in got.slots
+
+
+def test_a_rate_no_metric_holds_is_refused_rather_than_ranked_by_the_wrong_unit() -> None:
+    """ "/ 90" has no column; "points per 100 possessions" has no per-100 form.
+    Both get a `rate` slot no template honors, so check_scope refuses."""
+    from association.query.templates import TemplateUnsupported, check_scope
+
+    per_90 = _ask("who were the top 10 in defensive netpoints / 90", '{"intent":"leaderboard","stat":"netpoints_defense","limit":10}')
+    assert per_90.slots["stat"] == "netpoints_defense" and per_90.slots["rate"] == "/ 90"
+    with pytest.raises(TemplateUnsupported, match="rate"):
+        check_scope("leaderboard", per_90.slots)
+    points = _ask("points per 100 possessions leaders", '{"intent":"leaderboard","stat":"points"}')
+    assert points.slots["stat"] == "points" and points.slots["rate"] == "per 100 possessions"
+    plain = _ask("who led the league in defensive netpoints", '{"intent":"leaderboard","stat":"netpoints_defense"}')
+    assert plain.slots["stat"] == "netpoints_defense" and "rate" not in plain.slots
+
+
 def test_an_unscoped_count_by_a_named_player_reads_as_his_career() -> None:
     """Product decision, 2026-09-19: "how many times has embiid fouled out?"
     is 0 this season and 9 in his career, and only the second is the question.

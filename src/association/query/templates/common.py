@@ -106,7 +106,10 @@ SEASON_TYPE_NAMES = {1: "preseason", 2: "regular season", 3: "postseason"}
 # `real_games`; the relation finds it, and a regular-season question refuses.
 # `season_n` ("his 18th season") is one season named by its place in a career;
 # `settle_ordinal_season` turns it into a year once the player is resolved.
-SCOPING_SLOTS = frozenset({"order", "date", "opponent", "venue", "span", "without", "round", "split", "since", "below", "above", "game_n", "season_n", "situation"})
+# `rate` is a per-possession rate asked of a metric that has no such form
+# ("points per 100 possessions", "netpoints / 90"): set by the router only
+# where it could not switch the metric itself, and honored by nothing.
+SCOPING_SLOTS = frozenset({"order", "date", "opponent", "venue", "span", "without", "round", "split", "since", "below", "above", "game_n", "season_n", "situation", "rate"})
 
 
 # What each template actually honors. Anything not listed here honors none.

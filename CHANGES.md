@@ -16,6 +16,16 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **A NetPoints rate asked for by any name is ranked as the rate.** "top 10
+  in defensive netpoints / 100 possessions", "adjusted defensive netpoints",
+  "offensive netpoints per 100 possessions" and "adjusted netpoints" all
+  ranked season totals - a different list (Wembanyama, Holmgren, Queta by
+  total; Wembanyama, Hartenstein, Capela per 100). `route()` now reads
+  "adjusted", "per 100 possessions", "per possession" and "/ 100" and
+  switches a NetPoints metric to its per-100 variant; a metric with no such
+  form ("points per 100 possessions") and a per-90 rate get a `rate` slot no
+  template honors, so the question is refused rather than ranked by the
+  wrong unit (#152).
 - **`--disable-fallthrough` on `query` and `web`, for development.** When no
   template can answer a question, the command returns an error saying why the
   fast path gave it up (no usable classification, an intent with no template,
