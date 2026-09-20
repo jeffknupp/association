@@ -1940,39 +1940,6 @@ those were found.
   no such source and stay refused.
 - **GitHub:** #161
 
-### `record_when` loses the player the question names, and the fall-through burns 583 seconds for nothing
-- **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
-- **Evidence:** "what was the sixers record when maxey scored 15+ points?"
-  routes to `record_when` with `{"stat": "points", "threshold": 15, "team":
-  "Philadelphia 76ers", "season": 2026, "season_type": 2}` and no `player`;
-  the template raised "record_when needs a player", the agent ran for 583s and
-  produced no answer ("I wasn't able to get a working query after a few
-  attempts"). Measured on `player_game_log` joined to `real_games`: the 76ers
-  were 36-29 in the 65 2026 regular-season games where Tyrese Maxey scored
-  15+. `scripts/check_routing.py`'s "Sixers record when Embiid scores 30
-  points this season" passes, so the intent is fine and the name is what was
-  lost.
-- **The name is fixed; what remains is the player-less case.** `record_when`
-  joined `_SUBJECT_RESTORED_INTENTS`, so the name is read out of the "when
-  <name> scored" grammar `_SUBJECT_OF_HIGH` already held, and the question
-  above now answers 36-29 over the 65 games - the figure measured by hand
-  here - in the offline web-session replay.
-- **What was deliberately not done:** the entry also proposed refusing at once
-  when `record_when` still has no player, on the grounds that "the agent has
-  no better source for this". That is true of the question above and false of
-  the shape that actually reaches it now: "what was the celtics record when
-  they scored 120 points" is a question about the TEAM's own scoring, it names
-  no player by any grammar, and the agent can plausibly answer it from
-  `team_box_stats` without the player join it failed at. So it still falls
-  through rather than being refused.
-- **User sees:** for a team-threshold record question, the slow agent, and
-  possibly nothing after it.
-- **Next step:** decide whether a team's own threshold is `record_when`'s
-  question at all. If it is, it wants a team branch reading `team_box_stats`;
-  if it is not, the refusal belongs here and should name the team threshold as
-  the thing it cannot do, not the missing player.
-- **GitHub:** #144
-
 ### An award or All-Star question has no table to refuse from, so the agent is free to invent one
 - **Found:** 2026-09-18, the algebra spike's attack pass over the large
   StatMuse set (`~/association-research/algebra-spike/stage1/attack_report.md`)

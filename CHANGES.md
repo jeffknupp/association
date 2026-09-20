@@ -99,8 +99,25 @@ had no published version to be compatible with.
   not for the other two: a `record_when` with no player is not a league
   question but an unanswerable one. The question now answers 36-29 over the 65
   games Tyrese Maxey scored 15+, matching the figure measured by hand on
-  `player_game_log`; a record question about a team's own scoring ("when they
-  scored 120 points") still gains no player and still falls through (#144).
+  `player_game_log`.
+- **`record_when` answers a team's own threshold, with no player named at
+  all.** "what was the celtics record when they scored 120 points" names no
+  player by any grammar, so the template raised "record_when needs a player" -
+  the wrong cause for a question that was never about a player - and fell
+  through to the agent. `record_when` now reads a `team` slot with no
+  `player` as the TEAM's own threshold: `points` is read straight off
+  `real_games`' own score rather than a `team_box_stats` row, so it needs no
+  box score at all and is immune to the empty 2013-2018 Chicago/New Orleans
+  team boxes; every other whitelisted stat (`rebounds`, `assists`, `steals`,
+  `blocks`, `threePointFieldGoalsMade`, `fieldGoalsMade`, `freeThrowsMade`,
+  `fouls`) reads `team_box_stats` and says how many of the team's games it
+  could not see there. `turnovers` and `minutes` are refused by name -
+  `team_box_stats`' two turnover columns disagree with each other at the game
+  level in a way this project has not verified, and a team has no minutes
+  total. Measured on the 2026-09-20 warehouse: the Celtics were 27-0 scoring
+  120+ and 29-26 under it in the 2026 regular season. `record_when` also
+  leaves `PLAYER_REQUIRED_INTENTS`, since it can now answer with no player
+  restored at all where a team is named (#144).
 - **A single-game shot chart or fingerprint names the game, not just its id.**
   A single-game shot chart's subtitle read `f"game {event_id}"` (e.g. "game
   401705764"), and its answer named only the player and the made/attempted
