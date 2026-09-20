@@ -618,14 +618,41 @@ def test_a_team_turnovers_threshold_reads_totalturnovers() -> None:
     assert _record_when_team_stat("turnovers", 15) == ("tbs.totalTurnovers", 15)
 
 
-def test_record_when_left_player_required_intents_once_it_had_a_team_branch() -> None:
-    """PLAYER_REQUIRED_INTENTS restores a name the router dropped, on the
-    theory the template cannot answer at all without one. That stopped being
-    true for record_when once it grew a team branch (ISSUES.md #144), so
-    forcing a restore would risk narrowing a genuine team question."""
+def test_a_named_player_beats_the_team_branch_end_to_end(league: TemplateContext) -> None:
+    """The two branches meeting, which is what the pair of changes could break.
+    A question naming a player is about HIM even where the subject grammar does
+    not fire, and one naming nobody is about the team. Run through
+    `scope_from_question` exactly as the pipeline runs it."""
+    from association.query.entities import scope_from_question
+    from association.query.templates.common import PLAYER_INTENTS, PLAYER_REQUIRED_INTENTS
+
+    def answered(question: str, **slots: Any) -> str:
+        given = _slots(**slots)
+        scope_from_question(league.con, question, given, reads_player="record_when" in PLAYER_INTENTS, needs_player="record_when" in PLAYER_REQUIRED_INTENTS)
+        return (record_when(league, given).answer or "").splitlines()[0]
+
+    named = answered("celtics record with 20+ points from jayson tatum", stat="points", threshold=20, team="Boston Celtics")
+    assert "Jayson Tatum had 20+ points" in named
+    team = answered("celtics record when they scored 100 points", stat="points", threshold=100, team="Boston Celtics")
+    assert "when they had 100+ points" in team
+
+
+def test_record_when_still_restores_a_player_the_question_names() -> None:
+    """`record_when` stays in PLAYER_REQUIRED_INTENTS even with a team branch,
+    and the team branch is why it is safe rather than why it should leave.
+
+    Dropping it was measured and reverted. `_scope_from_question_restore_player`
+    restores only where the question names EXACTLY ONE player, so "what was the
+    celtics record when they scored 120 points" - which names none - reaches the
+    team branch either way. What the removal cost was the other side: "76ers
+    record with 20+ points from tyrese maxey" names him plainly, the subject
+    grammar does not fire on that wording, and without the restore it was
+    answered "Philadelphia 76ers record when THEY had 20+ points" - a fluent
+    answer to a different question, which is the failure shape this project
+    keeps producing."""
     from association.query.templates.common import PLAYER_REQUIRED_INTENTS
 
-    assert "record_when" not in PLAYER_REQUIRED_INTENTS
+    assert "record_when" in PLAYER_REQUIRED_INTENTS
 
 
 # ---------------- player_matchup ----------------

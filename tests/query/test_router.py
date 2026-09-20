@@ -1566,11 +1566,11 @@ def test_a_subject_keeps_the_first_name_the_question_gave_it(subtests: Any) -> N
 
 
 def test_a_record_when_about_a_team_gains_no_player() -> None:
-    """The other half, and why restoring here is safe: a record question whose
-    threshold is the TEAM's own scoring names no player, and must not acquire
-    one. It keeps falling through, where the agent can still read
-    `team_box_stats` - see the ISSUES.md entry for what was deliberately not
-    done."""
+    """The other half, and why restoring a player here is safe: a record
+    question whose threshold is the TEAM's own scoring names no player, and
+    must not acquire one. It is answered by `record_when`'s team branch now
+    (the Celtics were 27-0 when they scored 120+ in 2026), so the two readings
+    have to stay apart at this stage rather than downstream."""
     got = _ask(
         "what was the celtics record when they scored 120 points",
         '{"intent":"record_when","stat":"points","threshold":120,"team":"Boston Celtics","season_ref":"current"}',

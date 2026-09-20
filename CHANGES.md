@@ -111,13 +111,15 @@ had no published version to be compatible with.
   team boxes; every other whitelisted stat (`rebounds`, `assists`, `steals`,
   `blocks`, `threePointFieldGoalsMade`, `fieldGoalsMade`, `freeThrowsMade`,
   `fouls`) reads `team_box_stats` and says how many of the team's games it
-  could not see there. `turnovers` and `minutes` are refused by name -
-  `team_box_stats`' two turnover columns disagree with each other at the game
-  level in a way this project has not verified, and a team has no minutes
-  total. Measured on the 2026-09-20 warehouse: the Celtics were 27-0 scoring
-  120+ and 29-26 under it in the 2026 regular season. `record_when` also
-  leaves `PLAYER_REQUIRED_INTENTS`, since it can now answer with no player
-  restored at all where a team is named (#144).
+  could not see there. `turnovers` reads `totalTurnovers`, which `DATA.md`
+  establishes as ESPN's correct figure in every era; only `minutes` is refused
+  by name, because a team has no minutes total. Measured on the 2026-09-20
+  warehouse: the Celtics were 27-0 scoring 120+ and 29-26 under it in the 2026
+  regular season. `record_when` stays in `PLAYER_REQUIRED_INTENTS`: a question
+  naming exactly one player still restores him, which is what keeps "76ers
+  record with 20+ points from tyrese maxey" - a wording the subject grammar
+  does not fire on - from being answered as the 76ers' own scoring, while a
+  question naming nobody reaches the team branch either way (#144).
 - **A single-game shot chart or fingerprint names the game, not just its id.**
   A single-game shot chart's subtitle read `f"game {event_id}"` (e.g. "game
   401705764"), and its answer named only the player and the made/attempted

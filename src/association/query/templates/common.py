@@ -336,7 +336,7 @@ PLAYER_INTENTS: frozenset[str] = frozenset(
 """
 
 
-PLAYER_REQUIRED_INTENTS: frozenset[str] = frozenset({"period_split"})
+PLAYER_REQUIRED_INTENTS: frozenset[str] = frozenset({"record_when", "period_split"})
 """Intents whose template cannot answer at all without a player, so a player the
 router left out is worth restoring from the question.
 
