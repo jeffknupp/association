@@ -1986,42 +1986,29 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
-### Season scoping is not composed, which is why `since` is a project and not a filter
+### `since` reaches the metric templates only by a second season-scoping path
 - **Found:** 2026-09-18, looking for the next compositional-scoping win after
-  the starter/bench filter landed
-- **Evidence:** `since` and `until` are set by `route()` and read by **nothing**
-  - they appear only in `SCOPING_SLOTS` (`templates/common.py:87`), so every
-  template refuses them. Four corpus questions want them, across four
-  templates: `nba team with least playoff wins since 2022` (team_leaderboard),
-  `most steals by bucks players 2010s` (leaderboard), `jokic vs cade since 2022`
-  (player_matchup), and a threshold_count row.
-
-  The obvious seam is `_Span.clause()`, which already emits either `season = ?`
-  or `season >= first` with the phantom excluded, and a range would slot
-  straight in. **But only `player_matchup` builds a `_Span`.** `leaderboard`
-  runs its own metric SQL through `run_leaderboard`/`run_career_leaderboard`,
-  `team_leaderboard` reads `slots.get("season")` directly
-  (`templates/teams.py:234-237`), and `threshold_count` uses `_box_scope`.
-  There are at least three separate season-handling paths and `_Span` is only
-  one of them.
-- **Contrast with what worked:** the starter/bench filter reached two templates
-  from one change because `_narrow_player_games` was already the shared seam for
-  narrowing a player's games - `opponent`, `venue` and `without` all compose
-  there. **Player-game narrowing is compositional; season scoping is not.** That
-  is the real difference between a cheap win and a refactor, and it is worth
-  knowing before estimating the next slot.
-- **User sees:** four reasonable questions fall through, and any question with a
-  season range will keep doing so.
-- **Next step:** do not implement `since` per template - that is four
-  implementations of one idea and exactly the rules-engine growth the
-  compositional work exists to stop. Unify season scoping behind `_Span` first
-  (or behind whatever replaces it), then `since` is one clause like the
-  starter/bench one was. Size that properly before starting: it touches the
-  leaderboard SQL builders, which are the most heavily qualified code in the
-  query path (`scales_with_schedule`, the postseason floors, the career
-  aggregates).
+  the starter/bench filter landed; **narrowed 2026-09-19** when `since` landed
+  on the relation
+- **Evidence:** `since` is composed once now: `_span_of` and `_condition_scope`
+  build a span from that season on, and `game_log`, `player_stat` and
+  `player_matchup` honor it by declaring it (`HONORED_SCOPING`,
+  `templates/common.py`) - "jokic vs cade since 2022" answers their 7 meetings.
+  What is left is the templates that do not sit on the player-games relation
+  and read `slots.get("season")` into their own metric SQL: `leaderboard`
+  ("most steals by bucks players 2010s", `run_leaderboard`) and
+  `team_leaderboard` ("nba team with least playoff wins since 2022",
+  `templates/teams.py`). Both still refuse `since`, and `until` is set beside
+  `since` in `route()` but is in neither `HONORED_SCOPING` nor `SCOPING_SLOTS`
+  (see #23). So the "three separate season-handling paths" this entry first
+  counted are two: the relation's span, and the metric templates' own.
+- **User sees:** the two leaderboard questions fall through; every other
+  `since` question answers.
+- **Next step:** give `run_leaderboard` / `run_career_leaderboard` and
+  `team_leaderboard` a span argument built by `_span_of` rather than a bare
+  season, so a range reaches them the way it reaches the relation, and add
+  `until` to `SCOPING_SLOTS` in the same change.
 - **GitHub:** #137
-
 
 ### A team word only names a player when a second word of that player's name is present
 - **Found:** 2026-09-18, after a per-question candidate enum regressed on team

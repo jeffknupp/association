@@ -40,10 +40,14 @@ against the warehouse rather than assumed:
   no winner (268 team-games in 1999-2002, 252 of them on the same Eastern date
   as that team's real game), rows naming a team id that is in no franchise, and
   phantoms that carry a winner but no box score. Counted, a placeholder is a
-  loss and a phantom is a result nobody played. Every query here reads
-  ``real_games`` instead - the one filtered list, built at load time by
+  loss and a phantom is a result nobody played. Every team-side query here
+  reads ``real_games`` instead - the one filtered list, built at load time by
   :mod:`association.fetch.repairs.real_games` and shared with ``head_to_head`` and
-  ``team_metrics`` - rather than filtering for itself. This module used to
+  ``team_metrics`` - rather than filtering for itself. The player-side read is
+  the shared relation (:mod:`association.query.player_games`), which joins
+  ``games`` under its played-game guard; measured, no played box-score row
+  sits on a game ``real_games`` drops, so the two agree by construction (see
+  ``_player_games``). This module used to
   apply ``winner_team_id IS NOT NULL`` and nothing else, which caught the
   placeholders and no other kind.
 

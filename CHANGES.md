@@ -16,6 +16,11 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **The docs describe the shared relation.** The architecture page, the
+  templates package docstring, the README and the usage guide now say that the
+  box-score templates compose `query/player_games` rather than each writing
+  its own SQL, and their examples of narrowings no template honors no longer
+  name "under 14 FTA" and "since 2020", which both answer now.
 - **"his last game" is one game.** A `player_stat` question naming a single
   game at one end of the span ("his last game", "her first game of 2026")
   gets `order` and `limit: 1` set together in `route()` from the question's

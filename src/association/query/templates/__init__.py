@@ -1,9 +1,11 @@
 """Deterministic query templates: the second half of the router/template split
 described in router.py.
 
-Given an intent and its slots, these build and run the SQL themselves, so every
-correctness rule lives in code rather than as prose the model re-derives per
-query. Only intents present in TEMPLATES are handled; anything else - including
+Given an intent and its slots, these build and run the SQL themselves - the
+box-score templates by composing the one relation in
+:mod:`association.query.player_games`, the rest directly - so every correctness
+rule lives in code rather than as prose the model re-derives per query. Only
+intents present in TEMPLATES are handled; anything else - including
 a recognized intent whose slots don't validate - falls through to the agent
 untouched.
 

@@ -217,6 +217,18 @@ routing check (``scripts/check_routing.py``) and StatMuse's query feed.
   team's record when a player reaches a number ("Sixers record when Embiid
   scores 30 points this season"), two players' meetings ("lebron vs kawhi head
   to head") and streaks ("lakers longest winning streak this season").
+* **Games kept under or over a line on a stat**: "Sga games with under 14 fta
+  in his whole career", "paul reed gamelog with 25 minutes". The words after
+  the number name the stat; a word the warehouse has no column for is refused
+  rather than guessed at.
+* **One game of a playoff series, and a season by its place in a career**:
+  "maxey's stats for game 4 against the knicks this postseason" (the fourth
+  game by date between the two teams), "how many 40+ point games does lebron
+  have in his 18th season" (settled to a year once the player is known).
+* **A player's numbers against one team** end with the meetings behind the
+  average, newest first, so "in 1 game" shows the game. A count with no season
+  named ("how many times has embiid fouled out") reads as his career, and the
+  answer says so; "his last 5 games" is answered as a log with its averages.
 * **Teams**: a record ("What was the Lakers record last season?"), home or road
   ("Knicks home record this season"), against one team ("Lakers vs Celtics
   record this season"), a season's numbers ("Knicks pace this season"),
@@ -235,9 +247,9 @@ Some questions are not answered by a template:
   charts only go back to 2002 - shots are derived from play-by-play, which ESPN
   does not have before 2002." :doc:`data-sources` lists where each kind of data
   starts.
-* **A narrowing no template honors**, such as "under 14 FTA", back-to-backs,
-  "in the Finals" or "since 2020", goes to the agent rather than being answered
-  for everything.
+* **A narrowing no template honors**, such as back-to-backs, "in the Finals"
+  or "since returning from injury", goes to the agent rather than being
+  answered for everything.
 * **A conference** named as the subject ("who leads the east") is refused,
   because nothing in the warehouse records which teams are in one. Asked as a
   filter ("Celtics record in the eastern conference", "Western Conference

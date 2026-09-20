@@ -80,7 +80,8 @@ more slowly.
 The templates cover the shapes real NBA stat questions take, measured against
 StatMuse's live query feed. For example:
 
-- **Against one opponent**: "jaylen brown last 8 games vs pistons", "evan mobley avg against bucks"
+- **Against one opponent**: "jaylen brown last 8 games vs pistons", "evan mobley avg against bucks" (the averages, then the meetings behind them)
+- **Games kept under or over a line, one game of a series, a season by its place in a career**: "Sga games with under 14 fta", "paul reed gamelog with 25 minutes", "maxey's stats for game 4 against the knicks", "how many 40+ point games does lebron have in his 18th season"
 - **Splits**: "Nikola Jokic home and away splits", "Joe Ingles stats when starting vs coming off the bench"
 - **With or without a teammate**: "Celtics record without Tatum"
 - **A record under a condition**: "Sixers record when Embiid scores 30 points"
@@ -90,9 +91,9 @@ StatMuse's live query feed. For example:
 - **Careers**: "career points leaders", "Jokic career averages"
 - **Team rankings, lines and outlook**: "which team scores the most points per game", "Knicks home record", "what are the celtics playoff odds"
 
-A question that narrows to something no template can honor, such as "under 14 FTA", "on
-back-to-backs" or "in the Finals", is not answered for everything instead: it goes to the
-slower agent, which writes its own SQL. A question about a season a table does not reach,
+A question that narrows to something no template can honor, such as "on back-to-backs",
+"in the Finals" or "since returning from injury", is not answered for everything instead:
+it goes to the slower agent, which writes its own SQL. A question about a season a table does not reach,
 such as a 1996 shot chart, is refused, and the answer says why.
 
 Some questions render a chart instead of text:

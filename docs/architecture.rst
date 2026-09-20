@@ -103,8 +103,15 @@ prompted. Its prompt carries no schema and no SQL, which keeps it small enough
 to stay in the KV cache — typically one model call of 1–2 seconds.
 
 **Templates** (:mod:`association.query.templates`) do the deterministic half.
-Each owns one question shape and builds its own SQL, with every correctness
-rule in code rather than in prose: season defaults, traded-player dedup,
+Each owns one question shape. The ones that read a player's box scores - game
+logs, per-game averages, threshold counts, single-game highs, matchups, streaks,
+splits, a record with or without a teammate - compose one shared relation,
+:mod:`association.query.player_games`, rather than writing their own joins, so
+the season-keyed join, the phantom season, the played-game guard and the
+rebuilt-line rule are defined once and a new narrowing (an opponent, a venue, a
+line on a stat, one game of a series) reaches every one of them at once. The
+rest build their SQL directly. Either way every correctness rule is in code
+rather than in prose: season defaults, traded-player dedup,
 minimum-sample floors, the home/away perspective flip, the string
 ``season_type`` that NetPoints uses, the season each table's data starts in
 (:mod:`association.nba.coverage`), and dating a game by its US Eastern day rather
