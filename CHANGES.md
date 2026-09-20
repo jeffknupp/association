@@ -16,6 +16,19 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **A record "when X scored N" keeps X.** "what was the sixers record when
+  maxey scored 15+ points?" routed to `record_when` with the team, the stat
+  and the threshold all correct and no `player` at all, so the template raised
+  "record_when needs a player", the question fell through, and the agent spent
+  583 seconds producing nothing. The name was already sitting in the grammar
+  `_SUBJECT_OF_HIGH` reads ("maxey scored"); `record_when` was simply never
+  asked, so it joins `single_game_high` and `threshold_count` in
+  `_SUBJECT_RESTORED_INTENTS`. Restoring can only help here, where it could
+  not for the other two: a `record_when` with no player is not a league
+  question but an unanswerable one. The question now answers 36-29 over the 65
+  games Tyrese Maxey scored 15+, matching the figure measured by hand on
+  `player_game_log`; a record question about a team's own scoring ("when they
+  scored 120 points") still gains no player and still falls through (#144).
 - **A team written with its space left out is still the team.**
   "trailblazers stats last 10 games 3 point average 1st quarter" arrived with
   `team='Portland Trail Blazers'` correctly routed and then lost it:

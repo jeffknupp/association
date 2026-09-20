@@ -2001,12 +2001,25 @@ those were found.
   15+. `scripts/check_routing.py`'s "Sixers record when Embiid scores 30
   points this season" passes, so the intent is fine and the name is what was
   lost.
-- **User sees:** nothing, after nearly ten minutes.
-- **Next step:** read the player out of the "when <name> scored" grammar the
-  way `_route_subject_slots` does for `single_game_high`, and when
-  `record_when` still has no player, refuse at once (the agent has no better
-  source for this) rather than falling through.
-- **GitHub:** none yet
+- **The name is fixed; what remains is the player-less case.** `record_when`
+  joined `_SUBJECT_RESTORED_INTENTS`, so the name is read out of the "when
+  <name> scored" grammar `_SUBJECT_OF_HIGH` already held, and the question
+  above now answers 36-29 over the 65 games - the figure measured by hand
+  here - in the offline web-session replay.
+- **What was deliberately not done:** the entry also proposed refusing at once
+  when `record_when` still has no player, on the grounds that "the agent has
+  no better source for this". That is true of the question above and false of
+  the shape that actually reaches it now: "what was the celtics record when
+  they scored 120 points" is a question about the TEAM's own scoring, it names
+  no player by any grammar, and the agent can plausibly answer it from
+  `team_box_stats` without the player join it failed at. So it still falls
+  through rather than being refused.
+- **User sees:** for a team-threshold record question, the slow agent, and
+  possibly nothing after it.
+- **Next step:** decide whether a team's own threshold is `record_when`'s
+  question at all. If it is, it wants a team branch reading `team_box_stats`;
+  if it is not, the refusal belongs here and should name the team threshold as
+  the thing it cannot do, not the missing player.
 - **GitHub:** #144
 
 ### An award or All-Star question has no table to refuse from, so the agent is free to invent one
@@ -2072,6 +2085,30 @@ those were found.
 - **GitHub:** #151
 
 ## P4: tooling, docs, low impact
+
+### A subject read from a possessive is one word, so a question carrying the full name asks which player
+- **Found:** 2026-09-20, fixing #144 (`record_when` losing the player it names)
+- **Evidence:** `_SUBJECT_OF_HIGH` captures ONE word before a scoring verb or a
+  possessive, while the later `_SUBJECT_OF_COUNT`/`_SUBJECT_OF_HAVE` grammars
+  capture an optional leading word as well. Run over all 261 corpus questions,
+  three of them yield a one-word subject that resolves ambiguously although
+  the question carries the full name: "Jaden mcdaniel's vs trail blazer last 5
+  games" gives `mcdaniel` (4 candidates), "kobe bryant's stats vs rockets in
+  the 2009 playoffs ts% each game" gives `bryant` (Bryant Reeves, Bryant
+  Stith, Carter Bryant, Elijah Bryant - not Kobe), and "steve adam's vs kings
+  last 10 games" gives `adam` (4 candidates). All three are the possessive
+  branch, and all three would resolve uniquely with the leading word attached.
+- **User sees:** a clarifying question listing players the question did not
+  name, where it named one plainly. Only where the router also dropped the
+  player slot, which is why this is P4 rather than higher - none of the three
+  is known to reach this path today.
+- **Next step:** give `_SUBJECT_OF_HIGH` the same optional leading-word group
+  the count grammars have, keeping it a SEPARATE pattern. Read the comment
+  above `_COUNT_SUBJECT_WORDS` first: folding the two patterns together once
+  let a trailing possessive be swallowed whole, so this is an edit to watch.
+  Prove it with the offline `reroute_recorded.py` replay over all 261 - the
+  bar is no other row moving.
+- **GitHub:** none yet
 
 ### "Points by quarter" asks for all four at once, and every template answers one
 - **Found:** 2026-09-20, finishing the quarters-and-halves work

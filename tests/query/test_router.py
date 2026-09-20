@@ -1441,6 +1441,35 @@ def test_a_threshold_count_keeps_the_player_the_question_names() -> None:
     assert got.slots["threshold"] == 6
 
 
+def test_a_record_when_keeps_the_player_the_question_names() -> None:
+    """#144: "what was the sixers record when maxey scored 15+ points?" routed
+    with the team, the stat and the threshold all correct and no `player` at
+    all, so the template raised "record_when needs a player" and the agent
+    spent 583 seconds failing to write the join. The name was already in the
+    grammar `_SUBJECT_OF_HIGH` reads - "maxey scored" - and `record_when` was
+    simply never asked. Measured on the warehouse, the answer it now reaches
+    is 36-29 in the 65 games Tyrese Maxey scored 15+."""
+    got = _ask(
+        "what was the sixers record when maxey scored 15+ points?",
+        '{"intent":"record_when","stat":"points","threshold":15,"team":"Philadelphia 76ers","season_ref":"current"}',
+    )
+    assert got.slots["player"] == "maxey"
+    assert got.slots["threshold"] == 15
+
+
+def test_a_record_when_about_a_team_gains_no_player() -> None:
+    """The other half, and why restoring here is safe: a record question whose
+    threshold is the TEAM's own scoring names no player, and must not acquire
+    one. It keeps falling through, where the agent can still read
+    `team_box_stats` - see the ISSUES.md entry for what was deliberately not
+    done."""
+    got = _ask(
+        "what was the celtics record when they scored 120 points",
+        '{"intent":"record_when","stat":"points","threshold":120,"team":"Boston Celtics","season_ref":"current"}',
+    )
+    assert "player" not in got.slots
+
+
 def test_a_threshold_counts_own_player_is_not_overwritten() -> None:
     got = _ask("how many times has embiid fouled out?", '{"intent":"threshold_count","player":"Joel Embiid","stat":"fouls","threshold":6}')
     assert got.slots["player"] == "Joel Embiid"

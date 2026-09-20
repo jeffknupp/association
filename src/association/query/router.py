@@ -1759,6 +1759,23 @@ def _route_team_slots(intent: str, slots: dict[str, Any], question: str) -> None
 _HOW_MANY = re.compile(r"\bhow\s+many\b", re.IGNORECASE)
 
 
+# The intents whose missing subject is read back out of the question's grammar.
+# `record_when` joined them for a question that cost 583 seconds and produced
+# nothing: "what was the sixers record when maxey scored 15+ points?" routed
+# correctly, with the team, the stat and the threshold all right and no
+# `player` at all, so the template raised "record_when needs a player" and the
+# agent spent nearly ten minutes failing to write the join. The name was
+# already sitting in the grammar `_SUBJECT_OF_HIGH` reads ("maxey scored"); it
+# was simply never asked for here.
+#
+# Nothing about this widens what counts as a subject. Note the difference from
+# the other two: a `record_when` with no player is not a league question but an
+# unanswerable one (it is in `PLAYER_REQUIRED_INTENTS`), so restoring the
+# subject can only turn a refusal into an answer, never a league ranking into
+# one man's.
+_SUBJECT_RESTORED_INTENTS = ("single_game_high", "threshold_count", "record_when")
+
+
 def _route_subject_slots(intent: str, slots: dict[str, Any], question: str) -> None:
     """The last meetings with an opponent across seasons, and a single-game
     high's or a threshold count's missing subject."""
@@ -1774,7 +1791,7 @@ def _route_subject_slots(intent: str, slots: dict[str, Any], question: str) -> N
     ):
         slots["span"] = "career"
         slots.pop("season", None)
-    if intent in ("single_game_high", "threshold_count") and not slots.get("player") and not slots.get("players"):
+    if intent in _SUBJECT_RESTORED_INTENTS and not slots.get("player") and not slots.get("players"):
         # An optional slot the model dropped, restored from the question's own
         # grammar - see _subject_named_in. Only where the template reads one
         # player: a leaderboard with no player IS the league's ranking, and so
