@@ -180,6 +180,9 @@ class Narrowed:
     without: list[Entity] = field(default_factory=list)
     tenure: list[tuple[str, list[Any]]] = field(default_factory=list)
     date: str | None = None
+    #: Each box-score line the games were kept under or over, as the answer
+    #: says it: ``"under 14 free throw attempts"``.
+    measures: list[str] = field(default_factory=list)
 
     def clauses(self, *, narrowed: bool = True, recorded: bool = True, rebuilt: bool = False) -> tuple[str, list[Any]]:
         """The WHERE body and its parameters - without the narrowing when
@@ -213,6 +216,8 @@ class Narrowed:
             parts.append("as a starter" if self.started else "off the bench")
         if self.without:
             parts.append(f"without {_joined([mate.name for mate in self.without])}")
+        if self.measures:
+            parts.append(f"with {_joined(self.measures)}")
         if self.date and dated:
             parts.append(f"on {self.date}")
         return "".join(f" {part}" for part in parts)
@@ -222,13 +227,17 @@ class Narrowed:
         self.extra.append(clause)
         self.extra_params.extend(params)
 
-    def narrow_measure(self, column: str, op: str, value: Any) -> None:
+    def narrow_measure(self, column: str, op: str, value: Any, label: str | None = None) -> None:
         """A threshold on a box-score column: ``points >= 30``. ``op`` is one of
         :data:`MEASURE_OPS`; the column is a name from this module's own lists,
-        never text from a question."""
+        never text from a question. A ``label`` is how the answer says it
+        (``"under 14 free throw attempts"``); a threshold the caller words for
+        itself passes none."""
         if op not in MEASURE_OPS:  # ops are written in code, so this is a programming error, not a refusal
             raise ValueError(f"no comparison called {op!r}")
         self.narrow(f"pgl.{column} {MEASURE_OPS[op]} ?", value)
+        if label:
+            self.measures.append(label)
 
 
 #: The comparisons :meth:`Narrowed.narrow_measure` accepts, mapped to SQL.

@@ -641,8 +641,26 @@ RANK_WORDS: tuple[tuple[str, re.Pattern[str]], ...] = (
 
 # A comparison BELOW a number. No slot says "under", so without this "games
 # with under 14 FTA" reached threshold_count as 14 and was answered as 14 or
-# MORE - the inverse question. A scoping slot no template honors.
-_BELOW = re.compile(r"\b(?:under|fewer\s+than|less\s+than|below|at\s+most|no\s+more\s+than)\s+\d+", re.IGNORECASE)
+# MORE - the inverse question. The words after the number are kept: they name
+# the stat, and the model's own `stat` beside them is the nearest one it knows
+# ("fta" arrived as freeThrowsMade), so the phrase is the only honest carrier.
+# `templates.common.measure_filters` reads it and refuses a word it cannot map.
+# The words kept after the number stop at a connective or the next comparison,
+# so "under 14 fta in his whole career" carries "under 14 fta" and "less than
+# 15 fga and with less than 35 minutes" is two phrases, not one.
+_BELOW = re.compile(
+    r"\b(?:under|fewer\s+than|less\s+than|below|at\s+most|no\s+more\s+than)\s+\d+%?(?:\s+(?!(?:and|or|with|in|for|vs|against|on|at|under|fewer|less|below|no|over|more)\b)[a-z][a-z-]*){0,3}"
+    r"|\b\d+\+?\s*(?:minutes|mins?)\s+or\s+less\b",
+    re.IGNORECASE,
+)
+
+# A comparison AT OR ABOVE a number, on minutes: "with 25 minutes", "20+
+# mins", "30 minutes or more". Read out of `_SITUATION` (where "paul reed
+# gamelog with 25 minutes" refused) into a slot the relation can filter on.
+# Deliberately only minutes: "30+ points" is the model's own `threshold`, and
+# the templates that read one (threshold_count, record_when) already carry it.
+# Not the "35 minutes" inside "less than 35 minutes", which is `_BELOW`'s.
+_ABOVE = re.compile(r"\b(?:with\s+(?:at\s+least\s+)?)?(?<!than\s)(?<!under\s)(?<!below\s)\d+\+?\s*(?:minutes|mins?)\b(?!\s+or\s+less)(?:\s+(?:or\s+more|played))?", re.IGNORECASE)
 
 # Situations a game can be in that no template filters on: the second night of a
 # back-to-back, overtime, a calendar month, a conference or division, the
@@ -679,9 +697,9 @@ _SITUATION = re.compile(
     # season's triple-double leaders - `players` holds no birth date at all
     # (DATA.md), so this one cannot be answered even in principle.
     r"\b(?:before|after|by)\s+(?:turning|age)\s+\d+\b|\bat\s+age\s+\d+\b|\b\d+\s+years?\s+old\b|"
-    # A minutes condition on which games count: "paul reed gamelog with 25
-    # minutes" returned his most recent game.
-    r"\bwith\s+\d+\+?\s*(?:minutes|mins?)\b|\b\d+\+?\s*(?:minutes|mins?)\s+(?:or\s+more|or\s+less|played)\b|"
+    # A minutes condition used to be here ("paul reed gamelog with 25 minutes"
+    # returned his most recent game); it is `_ABOVE` / `_BELOW` now, slots the
+    # relation filters on.
     # A window defined by an event rather than a date.
     r"\bsince\s+(?:returning|coming\s+back|his\s+return|the\s+all[- ]star\s+break)\b|\bsince\s+(?:his\s+)?injury\b|\bafter\s+returning\b|"
     # A calendar day is NOT here: `_validate_date` resolves it to a real date
@@ -938,10 +956,21 @@ _LIMIT_REFUSING_INTENTS: frozenset[str] = frozenset({"player_stat"})
 
 
 # A number of games named in the question, which makes a `limit` real rather
-# than filler: "last 5 games", "his one game", "top 10".
+# than filler: "last 5 games", "his one game", "top 10". Read with the lines on
+# a box-score stat taken out first (_names_a_count): the 25 in "gamelog with
+# 25 minutes" counts minutes, not games.
 # A year is not a count: "Portis vs bulls 2019-20 to 2023-24" names no number
 # of games, so a four-digit number and either half of a "2019-20" are left out.
 _COUNT_WORDS = re.compile(r"\b(?:(?<![\d-])\d{1,3}(?![\d-])|one|two|three|four|five|ten|last|first|top|only)\b", re.IGNORECASE)
+
+
+def _names_a_count(question: str) -> bool:
+    """Whether the question names a number of games, once the numbers that
+    belong to a line on a box-score stat ("under 14 fta", "with 25 minutes")
+    are set aside."""
+    stripped = _ABOVE.sub(" ", _BELOW.sub(" ", question))
+    return _COUNT_WORDS.search(stripped) is not None
+
 
 #: Intents that honor ``order`` only beside a real ``limit`` - a single game at
 #: one end of the span - because filling ``order`` alone would hand "his last
@@ -1232,9 +1261,15 @@ def _route_filter_slots(slots: dict[str, Any], question: str) -> tuple[str | Non
     without = _names_after(_WITHOUT, question)
     if without:
         slots["without"] = without
-    below = _BELOW.search(question)
-    if below is not None:
-        slots["below"] = below.group(0).casefold()
+    # Every one, not the first: "less than 15 fga and with less than 35
+    # minutes" is two filters, and honoring one of them answers a wider
+    # question than was asked. A phrase the relation cannot read refuses there.
+    below = [m.group(0).casefold() for m in _BELOW.finditer(question)]
+    if below:
+        slots["below"] = below
+    above = [m.group(0).casefold() for m in _ABOVE.finditer(question)]
+    if above:
+        slots["above"] = above
     situation = _SITUATION.search(question)
     if situation is not None:
         slots["situation"] = situation.group(0).casefold()
@@ -1401,7 +1436,21 @@ def _route_side_and_order(intent: str, slots: dict[str, Any], question: str) -> 
         slots.pop("order", None)
         if slots.get("limit") == 1:
             slots.pop("limit", None)
-    if intent in _LIMIT_REFUSING_INTENTS and isinstance(slots.get("limit"), int) and not slots.get("order") and not _COUNT_WORDS.search(question):
+    _drop_filler_limit(intent, slots, question)
+
+
+def _drop_filler_limit(intent: str, slots: dict[str, Any], question: str) -> None:
+    """A ``limit`` the model filled on a question that names no number of games."""
+    if intent == "game_log" and slots.get("limit") == 1 and _LOG_WORDS.search(question) and not _names_a_count(question) and not _SINGLE_GAME.search(question):
+        # A log asked for by name (_LOG_WORDS: "gamelog", "by game"), with a
+        # limit of one the question never set: "paul reed gamelog with 25
+        # minutes" arrived with order='recent', limit=1 and answered his most
+        # recent game where his log was asked. A model `order` on game_log is
+        # kept whatever the patterns miss (_validate_order), so the limit is
+        # the only thing to drop; a real single game ("his last game") or a
+        # count ("last 5 games") keeps it.
+        slots.pop("limit", None)
+    if intent in _LIMIT_REFUSING_INTENTS and isinstance(slots.get("limit"), int) and not slots.get("order") and not _names_a_count(question):
         # The same filler, arriving WITHOUT an `order` to carry it in.
         # "westbrook stats as a starter for kings" came back with limit=1 and
         # side='total' on a question that narrows to no number of games at all.

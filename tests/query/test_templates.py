@@ -58,6 +58,51 @@ def test_answers_the_question_the_agent_kept_getting_wrong(con: TemplateContext)
     assert {"player": "Luka Doncic", "games": 4} in result.data["leaders"]
 
 
+def test_a_line_below_a_number_counts_the_games_under_it_on_the_stat_the_words_name(con: TemplateContext) -> None:
+    """ "Sga games with under 14 fta" arrived as threshold 14 on freeThrowsMade -
+    the model's nearest stat - and was answered as 14 or MORE free throws made.
+    The phrase carries the count's own number, so it IS the count, misread:
+    its direction and its column win. Luka has 4 games of 35 and 3 of 12."""
+    result = threshold_count(con, {"stat": "rebounds", "threshold": 20, "player": "Luka Doncic", "below": ["under 20 points"]})
+    assert result.data["leaders"] == [{"player": "Luka Doncic", "games": 3}]
+    assert "games with under 20 points" in (result.answer or "") and "20+" not in (result.answer or "")
+    # A phrase with ANOTHER number is a second line beside the count.
+    both = threshold_count(con, {"stat": "points", "threshold": 30, "player": "Luka Doncic", "below": ["under 10 rebounds"]})
+    assert both.data["leaders"] == [{"player": "Luka Doncic", "games": 4}]
+    assert "30+ points and under 10 rebounds" in (both.answer or "")
+
+
+def test_a_line_whose_words_name_no_stat_refuses_rather_than_filtering_on_a_guess(con: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported, match="names no box-score stat"):
+        threshold_count(con, {"stat": "points", "threshold": 30, "below": ["under 30 gizmos"]})
+    with pytest.raises(TemplateUnsupported, match="names no box-score stat"):
+        player_stat(con, {"player": "Luka Doncic", "stat": "points", "below": ["under 30 gizmos"]})
+
+
+def test_a_game_log_keeps_only_the_games_under_a_line_on_the_stat_the_words_name(pg_ctx: TemplateContext) -> None:
+    """ "mikal bridges game log with less than 15 fga" used to refuse (the
+    model's `threshold` beside it) or list every game. Podziemski's three
+    played games this season have 3, 4 and 2 free throw attempts."""
+    result = game_log(pg_ctx, {"player": "Brandin Podziemski", "below": ["under 4 fta"]})
+    assert [g["date"][5:] for g in result.data["games"]] == ["01-10", "11-01"]
+    assert "with under 4 free throw attempts" in (result.answer or "")
+    two = game_log(pg_ctx, {"player": "Brandin Podziemski", "below": ["under 4 fta", "less than 12 points"]})
+    assert [g["date"][5:] for g in two.data["games"]] == ["11-01"]
+    assert "under 4 free throw attempts and under 12 points" in (two.answer or "")
+    with pytest.raises(TemplateUnsupported, match="PLAYER's games"):
+        game_log(pg_ctx, {"team": "Golden State Warriors", "above": ["with 20 minutes"]})
+
+
+def test_player_stat_averages_over_exactly_the_games_under_a_line(con: TemplateContext) -> None:
+    """A line on a box-score column narrows the games the way an opponent
+    does, so the average is read from box scores and says what it kept."""
+    result = player_stat(con, {"player": "Luka Doncic", "stat": "points", "below": ["under 20 points"]})
+    assert result.data["stats"]["gamesPlayed"] == 3 and result.data["stats"]["avgPoints"] == 12
+    assert result.data["measures"] == ["under 20 points"] and "with under 20 points" in (result.answer or "")
+    floor = player_stat(con, {"player": "Luka Doncic", "stat": "points", "above": ["with 30 minutes"]})
+    assert floor.data["stats"]["gamesPlayed"] == 7  # every fixture game is 30 minutes
+
+
 def test_defaults_to_the_current_season(con: TemplateContext) -> None:
     # The old path lost this rule to prompt truncation and answered for 2024.
     result = threshold_count(con, {"stat": "points", "threshold": 30})

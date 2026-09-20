@@ -29,6 +29,7 @@ from .common import (
     STARTER_SIDES,
     STAT_LABELS,
     THRESHOLD_STAT_COLUMNS,
+    MeasureFilter,
     TemplateContext,
     TemplateResult,
     TemplateUnsupported,
@@ -48,6 +49,8 @@ from .common import (
     _Span,
     _span_of,
     _table_cell,
+    measure_filters,
+    narrow_measures,
 )
 
 DEFAULT_LEADERBOARD_LIMIT = 10
@@ -232,6 +235,7 @@ def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResu
     con = ctx.con
     stat = slots.get("stat")
     column, threshold = _threshold_count_ask(stat, slots.get("threshold"))
+    lines, counted, scope_text = _threshold_count_lines(stat, threshold, slots.get("below"), slots.get("above"))
 
     career = _career_span("threshold_count", slots.get("span"), slots.get("season"))
     season = None if career else (slots.get("season") or current_season())
@@ -249,10 +253,9 @@ def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResu
     # an older one has no such column, and a fixture may have no log at all.
     # Without both, the read is the stored table and no count moves.
     from_rebuilt = column in REBUILT_STATS and _log_carries_rebuilt(con)
-    rows = _threshold_count_rows(con, column, threshold, season, season_type, limit, player_id, from_rebuilt=from_rebuilt)
+    rows = _threshold_count_rows(con, column, counted, season, season_type, limit, player_id, from_rebuilt=from_rebuilt, lines=lines)
 
     label = STAT_LABELS.get(stat or "", stat or "")
-    scope_text = f"{threshold}+ {label}s"
     span = _game_span(con, season, season_type, player)
     # covered_by_rebuild: the games this answer could not see are only the ones
     # the rebuild could not reach either. Counting the rest would disclaim the
@@ -313,8 +316,36 @@ def _threshold_count_player(con: duckdb.DuckDBPyConnection, text: Any, season: i
     return None
 
 
+def _threshold_count_lines(stat: Any, threshold: int, below: Any, above: Any) -> tuple[list[MeasureFilter], int | None, str]:
+    """The lines a count keeps games under or over, the model's own threshold
+    if it is still one of them (None when a phrase carries it), and the
+    wording of all of them: "30+ points and under 5 turnovers".
+
+    "Sga games with under 14 fta" arrived as ``stat: freeThrowsMade,
+    threshold: 14, below: ["under 14 fta"]`` - the model read the phrase as a
+    count of 14 or more, on the nearest stat it knows. A phrase carrying the
+    count's own number IS that count, misread: the phrase wins, since it holds
+    the direction and the column the model lost. A phrase with another number
+    is a second line beside the count ("30+ points and under 5 turnovers").
+    """
+    lines = measure_filters(below, above)
+    counted = None if any(line.value == threshold for line in lines) else threshold
+    label = STAT_LABELS.get(stat or "", stat or "")
+    scope_text = " and ".join(([f"{threshold}+ {label}s"] if counted else []) + [line.label for line in lines])
+    return lines, counted, scope_text
+
+
 def _threshold_count_rows(
-    con: duckdb.DuckDBPyConnection, column: str, threshold: int, season: int | None, season_type: int, limit: int, player_id: str | None, *, from_rebuilt: bool
+    con: duckdb.DuckDBPyConnection,
+    column: str,
+    threshold: int | None,
+    season: int | None,
+    season_type: int,
+    limit: int,
+    player_id: str | None,
+    *,
+    from_rebuilt: bool,
+    lines: list[MeasureFilter] | None = None,
 ) -> list[tuple[Any, ...]]:
     """(name, qualifying games, rebuilt games among them) per player, most first.
 
@@ -332,7 +363,9 @@ def _threshold_count_rows(
     narrowed = league(season_clause, season_params, season_type)
     if player_id is not None:
         narrowed.narrow("pgl.athlete_id = ?", player_id)
-    narrowed.narrow_measure(column, ">=", threshold)
+    if threshold is not None:
+        narrowed.narrow_measure(column, ">=", threshold)
+    narrow_measures(narrowed, lines or [])
     narrowed.narrow("pgl.player_name IS NOT NULL")
     rebuilt_count = "COUNT(*) FILTER (WHERE pgl.reconstructed) AS rebuilt" if from_rebuilt else "0 AS rebuilt"
     # Grouped by athlete_id, not by name: two players can share one.
@@ -872,7 +905,10 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         from .games import game_log
 
         return game_log(ctx, slots)
-    from_box_scores = from_box_scores or bool(slots.get("since"))
+    # A line on a box-score column ("under 14 fta") narrows the games too, and
+    # a phrase that names no column refuses here, before any name is resolved.
+    measures = measure_filters(slots.get("below"), slots.get("above"))
+    from_box_scores = from_box_scores or bool(slots.get("since")) or bool(measures)
     span = _span_of(slots.get("span"), slots.get("season"), season_type, "player_game_log" if from_box_scores else "player_season_stats_deduped", since=slots.get("since"))
     lines = _GAME_LOGS if from_box_scores else _SEASON_LINES
     player = _resolved_player(con, slots.get("player"), "player_stat needs a player name", available=lines, season=span.season, through=_career_end(span.season))
@@ -894,6 +930,7 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         narrowed = _narrow_player_games(con, player, span, opponent=opponent, venue=venue, without=without, split=split_side)
         if isinstance(narrowed, TemplateResult):
             return narrowed
+        narrow_measures(narrowed, measures)
         return _box_score_player_stat(con, player, span, narrowed, wanted, shooting)
     if span.career:
         return _career_player_stat(con, player, span, wanted, shooting)
@@ -1127,6 +1164,7 @@ def _box_score_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span:
         "venue": narrowed.venue,
         "without": [mate.name for mate in narrowed.without],
         "started": narrowed.started,
+        "measures": list(narrowed.measures),
     }
     if row is None or not row[0]:
         message = _no_narrowed_games(con, player, span, narrowed, rebuilt=rebuilt)

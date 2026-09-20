@@ -1076,33 +1076,37 @@ those were found.
 - **Source:** the wrong answers are ours, not ESPN's; no DATA.md entry.
 - **GitHub:** #84
 
-### Four question filters are recognized but no template answers them
+### Three question filters are recognized but no template answers them
 - **Found:** 2026-09-11, template work and final corpus run
 - **Evidence:** `SCOPING_SLOTS` against `HONORED_SCOPING` (`query/templates/common.py`):
-  - `since`/`until`: "most 3 pointers made since 2020";
-  - `below`: "Sga games with under 14 fta";
-  - `situation`: "Celtics record on back to backs", overtime, by month;
+  - `since`/`until`: "most 3 pointers made since 2020" - `since` is honored
+    by `game_log`, `player_stat` and `player_matchup` since 2026-09-19 (the
+    relation's span builders read it); `leaderboard`, `team_leaderboard` and
+    `threshold_count` still refuse it, and `until` is set beside `since`
+    (`router.py`) but is in neither `HONORED_SCOPING` nor `SCOPING_SLOTS`, so
+    `check_scope` cannot see it. Harmless while every template honoring
+    `since` reads a span with no end; it becomes a silent wrong answer the day
+    one honors `since` without reading `until`. Add `until` to
+    `SCOPING_SLOTS` before, or with, that.
+  - `situation`: "Celtics record on back to backs", overtime, a conference, a
+    weekday, a holiday, an age, "since returning" - still refused everywhere.
+    Two of its shapes have left it: a minutes floor ("with 25 minutes", "20+
+    mins") is the `above` slot now, and "by month" is `split=month`.
   - `round`: "tatum stats in the 2024 finals".
-  
-  All are derivable from existing tables. Of 45 real questions, 6 still fall
-  through (`fastpath_r3.jsonl`), and three of those are these filters.
-- **User sees:** every such question goes to the slow agent.
-- **Next step:** first `since` for `leaderboard`/`threshold_count`, reusing the
-  career-span code. Then `situation` for `team_record`: back-to-backs need the
-  Eastern date (`season.eastern_date`).
-- **Re-checked 2026-09-15:** still four unhonored slots (`below`, `round`,
-  `since`, `situation`), but "by month" has left this entry - it is
-  `split=month` and `player_splits` answers it for a player or a team.
-- **Re-checked 2026-09-16, and a fifth slot is missing from the same list.**
-  `until` is set at `router.py:1269` alongside `since`, but is in neither
-  `HONORED_SCOPING` nor `SCOPING_SLOTS` (`query/templates/common.py`) - so `check_scope`
-  cannot see it to refuse it. Harmless today, because `until` is only ever set
-  together with `since` and no template honors `since`, so the question is
-  refused over `since` first. It becomes a silent wrong answer the day a
-  template honors `since` without reading `until`: add `until` to
-  `SCOPING_SLOTS` before, or with, the first `since`. The stale
-  refusal counts against `fastpath_r3.jsonl` are replaced by the current
-  fall-through counts by slot: `situation` 20, `since` 4, `below` 2, `round` 1.
+
+  `below` ("Sga games with under 14 fta") left this list on 2026-09-19:
+  `game_log`, `player_stat` and `threshold_count` honor it and `above` through
+  `measure_filters`, which reads the column from the phrase's own words and
+  refuses a word it cannot map.
+- **User sees:** every such question goes to the slow agent. Fall-through
+  counts by slot over the 261-row corpus on `ebf0d9e`'s successor:
+  `situation` 15, `since` 3, `round` 1 (`replay_rerouted_b4c.jsonl`, the
+  refusal's own list of slots).
+- **Next step:** `situation` for `team_record`: back-to-backs need the
+  Eastern date (`season.eastern_date`); a weekday is the same date. Then
+  `since` for `leaderboard`/`threshold_count`, which read their own season
+  scope rather than a `_Span` - unify that first (see "Player-game narrowing
+  is compositional; season scoping is not", below).
 - **GitHub:** #23
 
 ### Two players against one team has no template

@@ -30,6 +30,7 @@ from .common import (
     REBUILT_STATS,
     STARTER_SIDES,
     THRESHOLD_STAT_COLUMNS,
+    MeasureFilter,
     TemplateContext,
     TemplateResult,
     TemplateUnsupported,
@@ -53,6 +54,8 @@ from .common import (
     _Span,
     _span_of,
     _where_in,
+    measure_filters,
+    narrow_measures,
 )
 
 
@@ -264,11 +267,7 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     raw_date = slots.get("date")
     date = raw_date if isinstance(raw_date, str) and _ISO_DATE.match(raw_date) else None
     opponent, venue, span, without = slots.get("opponent"), slots.get("venue"), slots.get("span"), slots.get("without")
-    if slots.get("threshold") is not None:
-        # "mikal bridges game log with less than 15 fga" would list his last
-        # ten games whatever they held; keeping only the games past a line is a
-        # filter this template does not have.
-        raise TemplateUnsupported("game_log cannot keep only the games past a threshold")
+    measures = _game_log_lines(slots.get("below"), slots.get("above"), slots.get("threshold"))
     # A date names its game outright, so it replaces the season rather than
     # being filtered inside it: the router's season is usually its "current"
     # default, and a date from last season looked for in this one finds nothing.
@@ -280,8 +279,7 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         team = _resolved_team(con, team_text, season=_slot_season(slots))
         if isinstance(team, TemplateResult):
             return team
-        if without:
-            raise TemplateUnsupported("a team's games without one of its players is a with_without question")
+        _team_game_log_refusals(without, measures)
         scope = _span_of(span, season, season_type, "games")
         return _team_game_log(con, team, scope, opponent=opponent, venue=venue, date=date, limit=limit, ascending=ascending)
 
@@ -306,12 +304,40 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     narrowed = _narrow_player_games(con, player, scope, opponent=opponent, venue=venue, without=without, split=slots.get("split"))
     if isinstance(narrowed, TemplateResult):
         return narrowed
+    narrow_measures(narrowed, measures)
     if date:
         start, end = _eastern_day(date)
         narrowed.extra.append("g.date >= ? AND g.date < ?")
         narrowed.extra_params += [start, end]
         narrowed.date = date
     return _player_game_log(con, player, scope, narrowed, extras, limit=limit, asked=asked, ascending=ascending)
+
+
+def _game_log_lines(below: Any, above: Any, threshold: Any) -> list[MeasureFilter]:
+    """The lines a log keeps games under or over - "with less than 15 fga and
+    with less than 35 minutes", every one, on the same rows the other
+    narrowings filter. A phrase naming no column refuses here, like a slot
+    nothing honors."""
+    measures = measure_filters(below, above)
+    if threshold is not None and not any(line.value == threshold for line in measures):
+        # A `threshold` the model set beside no phrase of the question's:
+        # "games with 30+ points" would list his last ten games whatever they
+        # held, and keeping only the games past that line is a filter this
+        # template does not read. One carrying a phrase's own number is that
+        # phrase, misread ("less than 15 fga" arrived as threshold 15), and the
+        # phrase answers it.
+        raise TemplateUnsupported("game_log cannot keep only the games past a threshold")
+    return measures
+
+
+def _team_game_log_refusals(without: Any, measures: list[MeasureFilter]) -> None:
+    """What a team's log cannot narrow by: a teammate's absence is
+    with_without's question, and a line on a box-score stat keeps a PLAYER's
+    games - a team's log has no such column."""
+    if without:
+        raise TemplateUnsupported("a team's games without one of its players is a with_without question")
+    if measures:
+        raise TemplateUnsupported("a line on a box-score stat keeps a PLAYER's games; a team's log has no such column")
 
 
 def _played_for(con: duckdb.DuckDBPyConnection, player: Entity, team: Entity) -> bool:

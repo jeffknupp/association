@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -96,10 +97,12 @@ SEASON_TYPE_NAMES = {1: "preseason", 2: "regular season", 3: "postseason"}
 # honored by no template at all: nothing in the warehouse records one. `split`
 # and `since` (a range of seasons) are read for every intent for the same reason:
 # a template that is not about splits or ranges answered them with one season.
-# `below` ("under 14 FTA") and `situation` (back-to-backs, overtime, a month, a
-# conference) are refused by every template: nothing narrows to either yet, and
-# answering without them answered the inverse or the whole season.
-SCOPING_SLOTS = frozenset({"order", "date", "opponent", "venue", "span", "without", "round", "split", "since", "below", "situation"})
+# `below` ("under 14 FTA") and `above` ("with 25 minutes") are lines a game's
+# box score is kept under or over - `measure_filters` reads them onto the
+# relation for the templates listed with them. `situation` (back-to-backs,
+# overtime, a conference) is refused by every template: nothing narrows to it
+# yet, and answering without it answered the whole season.
+SCOPING_SLOTS = frozenset({"order", "date", "opponent", "venue", "span", "without", "round", "split", "since", "below", "above", "situation"})
 
 
 # What each template actually honors. Anything not listed here honors none.
@@ -110,10 +113,12 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # `split` only for a NAMED half of the starter/bench split - a question
     # naming both halves is a player_splits question, and check_scope still
     # refuses it here, because `route()` leaves the category in place then.
-    "game_log": frozenset({"order", "date", "opponent", "venue", "span", "without", "split", "since"}),
+    # `below` and `above` are lines on a box-score column ("under 14 fta",
+    # "with 25 minutes"): filters on the same rows, through measure_filters.
+    "game_log": frozenset({"order", "date", "opponent", "venue", "span", "without", "split", "since", "below", "above"}),
     # The three that narrow games are answered from box scores rather than the
     # season line; a career is summed from the season table.
-    "player_stat": frozenset({"opponent", "venue", "span", "without", "split", "since", "order"}),
+    "player_stat": frozenset({"opponent", "venue", "span", "without", "split", "since", "order", "below", "above"}),
     "player_history": frozenset({"span"}),
     # It always read `opponent`; listed now that `opponent` is a scoping slot.
     "team_quarter_points": frozenset({"opponent"}),
@@ -141,7 +146,10 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # from the per-team season rows, and a career count or high from every box
     # score since 1993-94. Each answer names the pool, since neither is all-time.
     "leaderboard": frozenset({"span"}),
-    "threshold_count": frozenset({"span"}),
+    # A count is already a line on a column; `below` is the same line the
+    # other way ("games with under 14 fta"), and a phrase carrying the count's
+    # own number IS the count, misread - see _threshold_count_lines.
+    "threshold_count": frozenset({"span", "below", "above"}),
     "single_game_high": frozenset({"span"}),
     # A career is every season on record rather than the current one; see
     # _condition_scope. `without` is the teammate with_without divides by, and
@@ -443,6 +451,156 @@ def coverage_caveat(intent: str, slots: dict[str, Any]) -> str | None:
 #: Templates that honor one NAMED half of the starter/bench split and refuse
 #: the bare category, which asks for a table they do not produce.
 _SPLIT_SIDE_ONLY = frozenset({"game_log", "player_stat", "period_split"})
+
+
+#: What a question calls a box-score column, for a line it asks games to be
+#: kept under or over. Keys are the question's words after the number,
+#: casefolded; values are `player_game_log` columns and never question text.
+MEASURE_WORDS: dict[str, str] = {
+    "points": "points",
+    "point": "points",
+    "pts": "points",
+    "rebounds": "rebounds",
+    "rebound": "rebounds",
+    "reb": "rebounds",
+    "rebs": "rebounds",
+    "boards": "rebounds",
+    "assists": "assists",
+    "assist": "assists",
+    "ast": "assists",
+    "asts": "assists",
+    "steals": "steals",
+    "steal": "steals",
+    "stl": "steals",
+    "blocks": "blocks",
+    "block": "blocks",
+    "blk": "blocks",
+    "turnovers": "turnovers",
+    "turnover": "turnovers",
+    "tov": "turnovers",
+    "to": "turnovers",
+    "fouls": "fouls",
+    "foul": "fouls",
+    "pf": "fouls",
+    "minutes": "minutes",
+    "minute": "minutes",
+    "mins": "minutes",
+    "min": "minutes",
+    "fga": "fieldGoalsAttempted",
+    "field goal attempts": "fieldGoalsAttempted",
+    "shots": "fieldGoalsAttempted",
+    "shot attempts": "fieldGoalsAttempted",
+    "fgm": "fieldGoalsMade",
+    "field goals": "fieldGoalsMade",
+    "field goals made": "fieldGoalsMade",
+    "fta": "freeThrowsAttempted",
+    "free throw attempts": "freeThrowsAttempted",
+    "free throws attempted": "freeThrowsAttempted",
+    "ftm": "freeThrowsMade",
+    "free throws": "freeThrowsMade",
+    "free throws made": "freeThrowsMade",
+    "3pa": "threePointFieldGoalsAttempted",
+    "three point attempts": "threePointFieldGoalsAttempted",
+    "threes attempted": "threePointFieldGoalsAttempted",
+    "3pm": "threePointFieldGoalsMade",
+    "3s": "threePointFieldGoalsMade",
+    "threes": "threePointFieldGoalsMade",
+    "3 pointers": "threePointFieldGoalsMade",
+    "three pointers": "threePointFieldGoalsMade",
+    "threes made": "threePointFieldGoalsMade",
+    "oreb": "offensiveRebounds",
+    "offensive rebounds": "offensiveRebounds",
+    "dreb": "defensiveRebounds",
+    "defensive rebounds": "defensiveRebounds",
+}
+"""``{"fta": "freeThrowsAttempted", ...}`` - the question's word for a box-score column.
+
+.. versionadded:: 4.3.0
+"""
+
+#: How the answer names each column a game was kept under or over.
+_MEASURE_LABELS: dict[str, str] = {
+    "fieldGoalsAttempted": "field goal attempts",
+    "fieldGoalsMade": "field goals made",
+    "freeThrowsAttempted": "free throw attempts",
+    "freeThrowsMade": "free throws made",
+    "threePointFieldGoalsAttempted": "3-point attempts",
+    "threePointFieldGoalsMade": "3-pointers",
+    "offensiveRebounds": "offensive rebounds",
+    "defensiveRebounds": "defensive rebounds",
+}
+
+# The number and the words after it in a `below` / `above` phrase. The
+# leading words ("under", "at most", "with") say which way the line faces.
+_MEASURE_PHRASE = re.compile(r"^(?P<lead>.*?)\b(?P<n>\d+)\+?%?\s*(?P<words>.*)$")
+_AT_MOST = ("at most", "no more than")
+_STRICTLY_BELOW = ("under", "fewer than", "less than", "below")
+
+
+@dataclass(frozen=True)
+class MeasureFilter:
+    """One line a question keeps games under or over: the box-score column,
+    the comparison (a key of :data:`association.query.player_games.MEASURE_OPS`),
+    the number, and how the answer says it.
+
+    .. versionadded:: 4.3.0
+    """
+
+    column: str
+    op: str
+    value: int
+    label: str
+
+
+def _measure_column(words: str) -> str | None:
+    """The column the words after a number name - the longest run of them
+    that is in MEASURE_WORDS, so "free throw attempts in his career" reads the
+    first three words and ignores the rest."""
+    tokens = words.casefold().replace("-", " ").split()
+    for width in (3, 2, 1):
+        candidate = " ".join(tokens[:width])
+        if candidate in MEASURE_WORDS:
+            return MEASURE_WORDS[candidate]
+    return None
+
+
+def measure_filters(below: Any, above: Any) -> list[MeasureFilter]:
+    """The lines a question keeps games under (the ``below`` slot) or over
+    (``above``), read from the phrases ``route()`` kept - "under 14 fta",
+    "with 25 minutes" - as filters on the ``player_game`` relation.
+
+    The model's own ``stat`` is not consulted: beside "under 14 fta" it said
+    ``freeThrowsMade``, the nearest name it knows, so the phrase is the only
+    honest carrier of which column was meant. A phrase whose words name no
+    column refuses (:class:`TemplateUnsupported`) rather than filtering on a
+    guess - the same rule ``check_scope`` applies to a slot nothing honors.
+
+    .. versionadded:: 4.3.0
+    """
+    filters: list[MeasureFilter] = []
+    for key, phrases, default_op in (("below", below, "<"), ("above", above, ">=")):
+        for phrase in [phrases] if isinstance(phrases, str) else (phrases or []):
+            match = _MEASURE_PHRASE.match(str(phrase).strip())
+            column = _measure_column(match.group("words")) if match else None
+            if match is None or column is None:
+                raise TemplateUnsupported(f"{phrase!r} names no box-score stat a game can be kept {'under' if key == 'below' else 'over'}")
+            lead, words = match.group("lead").strip().casefold(), match.group("words").casefold()
+            op = default_op
+            if key == "below" and (lead.startswith(_AT_MOST) or " or less" in words):
+                op = "<="
+            elif key == "below" and not lead.startswith(_STRICTLY_BELOW):
+                op = "<"
+            value = int(match.group("n"))
+            how = {"<": "under", "<=": "at most", ">=": "at least", ">": "over"}[op]
+            filters.append(MeasureFilter(column, op, value, f"{how} {value} {_MEASURE_LABELS.get(column, column)}"))
+    return filters
+
+
+def narrow_measures(narrowed: Narrowed, filters: list[MeasureFilter]) -> None:
+    """Apply :func:`measure_filters`' lines to a relation read, each with its
+    label so the answer names what it kept."""
+    for line in filters:
+        narrowed.narrow_measure(line.column, line.op, line.value, line.label)
 
 
 def check_scope(intent: str, slots: dict[str, Any]) -> None:

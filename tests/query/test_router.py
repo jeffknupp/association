@@ -765,6 +765,46 @@ def test_a_comparison_below_a_number_is_a_scoping_slot(question: str) -> None:
     assert "below" in _ask(question, '{"intent":"threshold_count","stat":"points","threshold":14}').slots
 
 
+def test_a_comparison_below_a_number_keeps_the_words_that_name_the_stat() -> None:
+    """The model's `stat` beside "under 14 fta" was freeThrowsMade - the nearest
+    name it knows - so the phrase, words and all, is what the templates read
+    the column from. Every phrase, not the first: two lines are two filters."""
+    got = _ask("Sga games with under 14 fta in his whole career", '{"intent":"threshold_count","stat":"freeThrowsMade","threshold":14}')
+    assert got.slots["below"] == ["under 14 fta"]
+    two = _ask("mikal bridges game log with less than 15 fga and with less than 35 minutes", '{"intent":"game_log","player":"Mikal Bridges"}')
+    assert two.slots["below"] == ["less than 15 fga", "less than 35 minutes"]
+    assert "above" not in two.slots  # the "35 minutes" inside "less than 35 minutes" is not a floor
+    cap = _ask("curry games with 30 minutes or less", '{"intent":"game_log","player":"Stephen Curry"}')
+    assert cap.slots["below"] == ["30 minutes or less"] and "above" not in cap.slots and "situation" not in cap.slots
+
+
+def test_a_limit_of_one_beside_a_log_asked_for_by_name_is_filler() -> None:
+    """ "paul reed gamelog with 25 minutes" arrived with order='recent',
+    limit=1 and answered his most recent game where his log was asked. The
+    order is kept (a model order on game_log always is); the limit goes."""
+    got = _asking('{"intent":"game_log","player":"Paul Reed","order":"recent","limit":1}', "paul reed gamelog with 25 minutes")
+    assert "limit" not in got.slots
+    kept = _asking('{"intent":"game_log","player":"Paul Reed","order":"recent","limit":1}', "paul reed's last game")
+    assert kept.slots.get("limit") == 1
+    counted = _asking('{"intent":"game_log","player":"Paul Reed","order":"recent","limit":1}', "paul reed game log last 1 games")
+    assert counted.slots.get("limit") == 1
+
+
+@pytest.mark.parametrize(
+    ("question", "want"),
+    [
+        ("paul reed gamelog with 25 minutes", ["with 25 minutes"]),
+        ("forwards with 20+ mins vs gsw log", ["with 20+ mins"]),
+        ("curry stats in games with at least 30 minutes played", ["with at least 30 minutes played"]),
+    ],
+)
+def test_a_minutes_floor_is_a_line_the_relation_filters_on(question: str, want: list[str]) -> None:
+    """These used to be `situation`, which every template refuses; a minutes
+    floor is a line on a box-score column, and the log answers it."""
+    got = _ask(question, '{"intent":"game_log","player":"Paul Reed"}')
+    assert got.slots.get("above") == want and "situation" not in got.slots
+
+
 @pytest.mark.parametrize(
     "question",
     ["Celtics record on back to backs", "Lakers record in overtime this season", "76ers record in october", "Knicks record vs the east", "best record since the all-star break"],
@@ -786,8 +826,6 @@ def test_a_situation_no_template_filters_on_is_a_scoping_slot(question: str) -> 
         "anthony davis stats on christmas",
         "most triple doubles before turning 27",
         "lebron ppg as an 18 year old",
-        "paul reed gamelog with 25 minutes",
-        "forwards with 20+ mins vs gsw log",
         "paolo banchero since returning from injury",
     ],
 )

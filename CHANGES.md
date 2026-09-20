@@ -23,6 +23,20 @@ had no published version to be compatible with.
   his last postseason game" answers that game rather than his postseason
   average. A filler `order` on a question naming no such game is still
   dropped, as before (closes #142).
+- **A line on a box-score stat keeps a player's games.** "Sga games with
+  under 14 fta in his whole career" used to be refused (`below` was a slot no
+  template honored) and, before that, answered as 14 or MORE free throws
+  made - the model's nearest stat, the other way round. `route()` now keeps
+  the words after the number ("under 14 fta", as a list, one per phrase) and a
+  new `above` slot carries a minutes floor ("with 25 minutes", "20+ mins",
+  formerly a refused `situation`); `templates.common.measure_filters` reads
+  them onto the `player_game` relation (`MEASURE_WORDS`: "fta", "fga",
+  "mins", "threes", ... to a column) and refuses a word it cannot map rather
+  than filtering on a guess. `game_log`, `player_stat` and `threshold_count`
+  honor both, and the answer says what it kept ("with under 14 free throw
+  attempts"). A `threshold_count` phrase carrying the count's own number is
+  that count misread, so the phrase wins; one with another number is a second
+  line beside it. A team's log refuses a line, since it has no such column.
 - **`ISSUES.md` keeps one heading per priority tier, and a gate says so.**
   `scripts/check_issues_md.sh` (pre-commit and CI) requires exactly one
   `## P1:` .. `## P4:` heading, in order. An edit deleting the last entry of
