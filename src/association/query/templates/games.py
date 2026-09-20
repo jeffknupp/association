@@ -928,6 +928,7 @@ def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> Template
         # A named player's quarter or half is period_split's job, not this
         # template's - see the docstring.
         raise TemplateUnsupported("team_quarter_points cannot answer for a named player")
+    _team_quarter_points_check_stat(slots.get("stat"))
 
     resolved = _team_quarter_points_teams(con, slots.get("team"), slots.get("opponent"), _slot_season(slots))
     if isinstance(resolved, TemplateResult):
@@ -940,6 +941,29 @@ def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> Template
 
     period_str = _period(season, season_type)
     return _team_quarter_points_answer(team, opponent, games, periods=periods, period_label=period_label, period_str=period_str, rank=slots.get("rank"))
+
+
+def _team_quarter_points_check_stat(stat: Any) -> None:
+    """Refuse a question asking for a per-quarter figure this cannot read.
+
+    The linescores hold one number per period - the score - so points is the
+    only stat there is here, and a question naming another one is a different
+    question. It went unnoticed while "trailblazers stats last 10 games 3
+    point average 1st quarter" was refused for naming no team at all; with the
+    team restored, the same question would have been answered with the
+    Blazers' first-quarter POINTS, which is the fluent wrong answer this
+    project keeps producing rather than the refusal it deserves.
+
+    Falls through rather than refusing outright, because the agent does have
+    something to read for this one: ``shot_chart`` carries ``team_id``,
+    ``period`` and the shot's value, which is how ``period_split`` counts a
+    player's. Answering threes per quarter from it, under the same per-season
+    accuracy gating, is issue #161 and not this function.
+    """
+    if stat is None:
+        return
+    if resolve_metric(stat) not in ("avg_points", "total_points"):
+        raise TemplateUnsupported(f"team_quarter_points reads the linescore, which holds only points, not {stat!r}")
 
 
 def _team_quarter_points_teams(con: duckdb.DuckDBPyConnection, team_text: Any, opponent_text: Any, season: int | None) -> tuple[Entity, Entity | None] | TemplateResult:

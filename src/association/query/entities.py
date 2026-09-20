@@ -1016,6 +1016,45 @@ def _nickname_match(con: duckdb.DuckDBPyConnection, text: str, season: int | Non
     return None
 
 
+def _run_together(name: str) -> set[str]:
+    """Every spelling of ``name`` with a space left out: "trailblazers",
+    "portlandtrail" and "portlandtrailblazers" for Portland Trail Blazers.
+
+    Whole words in the order the name holds them, so this adds spellings OF
+    the name and never a different one - "blazerstrail" is not among them, and
+    neither is a fragment of a word.
+    """
+    words = [word.casefold() for word in _words(name)]
+    return {"".join(words[start:end]) for start in range(len(words)) for end in range(start + 2, len(words) + 1)}
+
+
+def _run_together_team(con: duckdb.DuckDBPyConnection, text: str, season: int | None) -> Entity | None:
+    """The one team ``text`` names with a space left out, or None.
+
+    "trailblazers stats last 10 games" is how people write the only NBA team
+    whose nickname is two words, and nothing literal reaches it: ``teams``
+    holds "Portland Trail Blazers" and the question's single token equals no
+    word of it. Seven of the thirty names are exposed this way - the six
+    two-word cities as well, "goldenstate" and "newyork" among them - and
+    every one of them resolved to nothing.
+
+    Still never a guess, and it needs no length floor to stay that way: the
+    letters have to EQUAL a whole run of the name's own words, so "la" and
+    "new" match nothing here however short they are, and a run-together form
+    two teams shared would resolve to neither.
+    """
+    key = "".join(_words(text)).casefold()
+    try:
+        rows = con.execute("SELECT team_id, display_name FROM teams").fetchall()
+    except duckdb.CatalogException:
+        # A partial warehouse with no `teams`; see `_team_named`.
+        return None
+    found = [row for row in rows if key in _run_together(row[1])]
+    if len(found) != 1:
+        return None
+    return Entity(id=str(found[0][0]), name=_named_for_season(str(found[0][0]), found[0][1], season))
+
+
 # "vs", "versus", "against" or "v" and whatever follows. Whether what follows is
 # a team is decided against the teams table, not here: "lebron vs kawhi" is two
 # players and must stay a comparison.
@@ -1047,7 +1086,11 @@ def _team_named(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = 
         return None
     if len(rows) == 1:
         return Entity(id=str(rows[0][0]), name=rows[0][1])
-    return _by_nickname(con, text, season) if not rows else None
+    if rows:
+        # Two matched, which is the ambiguity this refuses to guess at.
+        return None
+    nicknamed = _by_nickname(con, text, season)
+    return nicknamed if nicknamed is not None else _run_together_team(con, text, season)
 
 
 def _team_after_versus(con: duckdb.DuckDBPyConnection, question: str, season: int | None = None) -> Entity | None:
@@ -1073,6 +1116,10 @@ def _team_grounded(con: duckdb.DuckDBPyConnection, question: str, team: Entity) 
     asked = {word.casefold() for word in _words(question)}
     carried = {word.casefold() for word in _words(row[1])} | {str(row[0]).casefold()}
     carried |= {nickname for nickname, name in _TEAM_NICKNAMES.items() if name == row[1]}
+    # A name written with a space left out is a trace of the team as plainly as
+    # its own words are: "trailblazers stats last 10 games" was dropped as a
+    # team the question never mentioned, and refused for naming no team at all.
+    carried |= _run_together(row[1])
     if carried & asked:
         return True
     # A clipped word is a trace too: "cav vs celtic last 10games" names both
@@ -1753,7 +1800,7 @@ def find_teams(con: duckdb.DuckDBPyConnection, text: str, season: int | None = N
     # ambiguous - no team is abbreviated that - and both Los Angeles teams sit
     # at rank 1 together.
     if not rows:
-        nicknamed = _by_nickname(con, text, season)
+        nicknamed = _by_nickname(con, text, season) or _run_together_team(con, text, season)
         return [nicknamed] if nicknamed is not None else []
     best = max((r[2] for r in rows), default=0)
     return [Entity(id=str(r[0]), name=_named_for_season(str(r[0]), r[1], season)) for r in rows if r[2] == best]

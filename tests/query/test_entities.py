@@ -852,7 +852,8 @@ def scope_con() -> duckdb.DuckDBPyConnection:
     c.execute("CREATE TABLE teams (team_id VARCHAR, display_name VARCHAR, abbreviation VARCHAR)")
     c.execute(
         "INSERT INTO teams VALUES ('2','Boston Celtics','BOS'),('8','Detroit Pistons','DET'),('13','Los Angeles Lakers','LAL'),"
-        "('12','LA Clippers','LAC'),('20','Philadelphia 76ers','PHI'),('18','New York Knicks','NY'),('17','Brooklyn Nets','BKN'),('19','Orlando Magic','ORL'),('21','Phoenix Suns','PHX')"
+        "('12','LA Clippers','LAC'),('20','Philadelphia 76ers','PHI'),('18','New York Knicks','NY'),('17','Brooklyn Nets','BKN'),('19','Orlando Magic','ORL'),('21','Phoenix Suns','PHX'),"
+        "('22','Portland Trail Blazers','POR'),('9','Golden State Warriors','GS')"
     )
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute(
@@ -1000,6 +1001,39 @@ def test_a_team_nickname_grounds_the_team_slot(scope_con: duckdb.DuckDBPyConnect
     slots: dict[str, Any] = {"team": "Philadelphia 76ers"}
     assert scope_from_question(scope_con, "Top 5 scorers on the sixers", slots, reads_player=True) == []
     assert slots == {"team": "Philadelphia 76ers"}
+
+
+def test_a_team_written_without_its_space_still_names_the_team(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """ "trailblazers stats last 10 games 3 point average 1st quarter" lost its
+    team: the grounding check asks whether the question holds a WORD of the
+    name, and the single token matches none of {portland, trail, blazers}, so
+    a team the question opens with was dropped as one it never mentioned. The
+    team's own name with a space left out is a trace of it like any other."""
+    slots: dict[str, Any] = {"team": "Portland Trail Blazers", "period": 1}
+    # reads_player as the pipeline passes it: team_quarter_points is in
+    # PLAYER_INTENTS, and it is that path which drops an ungrounded team.
+    assert scope_from_question(scope_con, "trailblazers stats last 10 games 3 point average 1st quarter", slots, reads_player=True) == []
+    assert slots == {"team": "Portland Trail Blazers", "period": 1}
+
+
+def test_a_run_together_name_reaches_the_team_it_spells(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """The nickname is only the visible half: six of the thirty teams have a
+    two-word CITY, and "goldenstate" resolved to nothing either - so a
+    question setting a subject against one lost the opponent outright."""
+    slots: dict[str, Any] = {"player": "Jaylen Brown"}
+    scope_from_question(scope_con, "jaylen brown last 10 games vs goldenstate", slots, reads_player=True)
+    assert slots["opponent"] == "Golden State Warriors"
+    for spelling in ("trailblazers", "portlandtrailblazers", "goldenstate", "newyork", "laclippers"):
+        assert isinstance(resolve_team(scope_con, spelling), Entity), spelling
+
+
+def test_part_of_a_team_name_run_together_still_names_no_team(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """The letters have to equal a whole run of the name's own words, in its
+    own order. A fragment is the substring guess `_team_named` exists to
+    refuse. "la" is two teams; the rest are the name's words reordered, or one
+    of them cut short."""
+    for spelling in ("la", "blazerstrail", "yorknew", "trailblaze", "portlandblazers"):
+        assert not isinstance(resolve_team(scope_con, spelling), Entity), spelling
 
 
 def test_a_team_nickname_names_an_opponent(scope_con: duckdb.DuckDBPyConnection) -> None:

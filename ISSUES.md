@@ -174,41 +174,6 @@ those were found.
 
 ## P2: misleading or incomplete
 
-### A team named by a run-together nickname is dropped, and the answer says the question named no team
-- **Found:** 2026-09-20, re-measuring the period questions after the
-  quarters-and-halves work
-- **Evidence:** "trailblazers stats last 10 games 3 point average 1st quarter"
-  routes correctly to `team_quarter_points` with `team='Portland Trail
-  Blazers'`, and `entities.scope_from_question` then drops it - the trace line
-  is `'Portland Trail Blazers' is not in the question, and the question names
-  no player; dropped` - so the template refuses with `no team named`
-  (`templates/common.py:772`) about a question whose first word is the team.
-  The cause is `entities._team_grounded`, which asks whether the question
-  holds a WORD of the team's name, its abbreviation or a curated nickname:
-  the name's words are {portland, trail, blazers} and the question's word is
-  the single token "trailblazers", which equals none of them. The clipped-word
-  fallback added the same day does not reach it either, since it tests whether
-  a carried name starts with a question word and "blazers" does not start with
-  "trailblazers".
-- **This is a regression from `178c21f`**, which made a team the question does
-  not appear to name get dropped even when no player is found. Before that the
-  team survived and the question fell through to the agent; now it is refused
-  with a false reason, which the priority definitions rank worse.
-- **Population:** 10 of the 261 corpus questions use a run-together nickname
-  ("trailblazers", "sixers", "mavs", "blazers"), 9 of them reasonable. Only
-  this one is affected today, because the other nine name the team after "vs"
-  or "against", where `_team_after_versus` resolves it through `_team_named`
-  rather than `_team_grounded`. The exposure is any question whose SUBJECT is
-  a team written that way.
-- **User sees:** "no team named" for a question that names one plainly.
-- **Next step:** ground a team by its run-together name too - compare the
-  question's words against the team's name with spaces removed, and against
-  the last word of it ("blazers"), in `_team_grounded`. Check `_TEAM_NICKNAMES`
-  for the same shape while there. Then re-run the 10 rows above, which is
-  cheap: the offline `reroute_recorded.py` replay covers all of them.
-- **GitHub:** none yet
-- **GitHub:** #158
-
 ### Season 2021's regular-season BPI snapshot is a day-one projection
 - **Found:** 2026-09-15, reviewing `4ef119f`; **re-ranked P3 -> P2 on 2026-09-16** - a preseason projection presented as a season's index, with no caveat
 - **Evidence:** all 30 of season 2021's rows are stamped 2020-12-22 - opening
@@ -2005,19 +1970,23 @@ those were found.
   reads `games.home_linescores`/`away_linescores`, which hold one total per
   period and nothing else, so it can answer points and only points; the
   player-side `period_split` refuses every other stat for its own reason (only
-  points are in `shot_chart`). Neither refusal names this: the question is
-  currently refused for a different cause entirely (the team-nickname entry
-  above).
-- **User sees:** nothing useful, and once the nickname bug is fixed it would
-  get a points answer to a three-point question unless this is handled.
+  points are in `shot_chart`).
+- **Half of this is now closed.** Restoring the team the run-together nickname
+  had lost would have handed this question a POINTS answer to a three-point
+  question - measured, "The Portland Trail Blazers scored 2428 total points in
+  the 1st quarter ... averaging 29.6 per game" - so
+  `_team_quarter_points_check_stat` now refuses a `stat` that does not resolve
+  to points, naming the linescore as the limit. It raises
+  `TemplateUnsupported` rather than refusing outright, which keeps today's
+  behavior for these questions exactly: they fall through.
+- **User sees:** the agent, slowly, for any team per-quarter question about
+  something other than points. No longer a wrong answer.
 - **Next step:** a team's per-quarter THREE-POINT figures are derivable -
   `shot_chart` carries `team_id`, `period` and the shot's value through
   `SHOT_VALUE_SQL`, which is how `period_split` already counts a player's -
-  so the honest options are to answer threes per quarter from that table with
-  the same per-season accuracy gating `PERIOD_RECONCILIATION` applies, or to
-  refuse naming the linescore as the limit. Refusing beats a points answer to
-  a three-point question.
-- **GitHub:** none yet
+  so answer threes per quarter from that table under the same per-season
+  accuracy gating `PERIOD_RECONCILIATION` applies. Rebounds and assists have
+  no such source and stay refused.
 - **GitHub:** #161
 
 ### `record_when` loses the player the question names, and the fall-through burns 583 seconds for nothing

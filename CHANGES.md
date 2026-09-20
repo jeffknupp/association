@@ -16,6 +16,33 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **A team written with its space left out is still the team.**
+  "trailblazers stats last 10 games 3 point average 1st quarter" arrived with
+  `team='Portland Trail Blazers'` correctly routed and then lost it:
+  `entities._team_grounded` asks whether the question holds a WORD of the
+  name, and the single token "trailblazers" equals none of {portland, trail,
+  blazers}, so a team the question opens with was dropped as one it never
+  mentioned - a regression from `178c21f`, which made an ungrounded team go
+  even where no player was found. The nickname was only the visible half: six
+  of the thirty teams have a two-word city, and `_team_named` resolved none of
+  the seven run-together spellings, so `_team_after_versus` lost "vs
+  goldenstate" and "vs newyork" outright as well. `_run_together` now derives
+  the spellings of a name with a space taken out, and grounding, `_team_named`
+  and `find_teams` all read them. It stays a lookup and never a guess: the
+  letters must equal a whole run of the name's own words in its own order, so
+  "la" and "trailblaze" still name no team, and all 44 forms of the 30 teams
+  resolve to exactly the team they spell with no collisions. Measured over the
+  261-question corpus: no answer changes, and the one question this reaches
+  keeps its team instead of handing the agent a question with no team in it
+  (#158).
+- **A team's quarter is refused for a stat the linescore does not hold.**
+  Restoring that team would have answered the same question's "3 point average
+  1st quarter" with the Blazers' first-quarter POINTS - the fluent wrong
+  answer this architecture exists to prevent - because `team_quarter_points`
+  reads `home_linescores`/`away_linescores`, which hold one number per period
+  and nothing else. A `stat` that does not resolve to points now raises,
+  naming the linescore as the limit, so these questions fall through as they
+  did before rather than being answered about something else (part of #161).
 - **"All playoff games" draws every postseason, not just one presented as
   all of them.** "show a shot chart for steph curry in all playoff games"
   routed to a single defaulted season (2025) and drew it - 62 of 130 shots -

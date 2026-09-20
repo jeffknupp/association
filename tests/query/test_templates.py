@@ -1913,6 +1913,24 @@ def test_team_quarter_points_refuses_a_named_player(tq_con: TemplateContext) -> 
         team_quarter_points(tq_con, {"team": "Knicks", "period": 4, "player": "Jalen Brunson"})
 
 
+def test_team_quarter_points_refuses_a_stat_the_linescore_does_not_hold(tq_con: TemplateContext) -> None:
+    """A linescore holds one number per period - the score - so a question
+    asking for a team's three-point or rebounding average by quarter is a
+    different question, and answering it with POINTS is the fluent wrong
+    answer this project keeps producing. It was invisible while "trailblazers
+    stats last 10 games 3 point average 1st quarter" was refused for naming no
+    team at all; restoring the team is what exposed it."""
+    for stat in ("threePointFieldGoalsMade", "rebounds", "assists"):
+        with pytest.raises(TemplateUnsupported, match="linescore"):
+            team_quarter_points(tq_con, {"team": "Knicks", "period": 1, "season": current_season(), "stat": stat})
+    # Points is the one it does hold, under either spelling, and no stat at
+    # all still means the score.
+    allowed: tuple[str | None, ...] = ("points", "avg_points", None)
+    for held in allowed:
+        result = team_quarter_points(tq_con, {"team": "Knicks", "period": 1, "season": current_season(), "stat": held})
+        assert result.data["total"] == 60
+
+
 def test_team_quarter_points_refuses_a_missing_period(tq_con: TemplateContext) -> None:
     with pytest.raises(TemplateUnsupported):
         team_quarter_points(tq_con, {"team": "Knicks"})
