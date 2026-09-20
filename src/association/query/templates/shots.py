@@ -30,7 +30,7 @@ def _scoping_game(con: duckdb.DuckDBPyConnection, athlete_id: str, season: int, 
     ).fetchone()
 
 
-def _career_shot_scope(intent: str, slots: dict[str, Any]) -> tuple[bool, int | None]:
+def _career_shot_scope(intent: str, span: Any, raw_season: Any, order: Any) -> tuple[bool, int | None]:
     """Whether this question is a ``span`` "career" one, and what ``season``
     should be from here on - None for a career, the named or defaulted one
     otherwise. Shared by :func:`shot_chart` and :func:`shot_distance` (#141).
@@ -44,11 +44,10 @@ def _career_shot_scope(intent: str, slots: dict[str, Any]) -> tuple[bool, int | 
       one season, where a career asks for every one of them, and nothing
       here decides which was meant.
     """
-    raw_season = slots.get("season")
-    career = slots.get("span") == "career"
+    career = span == "career"
     if career and isinstance(raw_season, int) and raw_season:
         raise TemplateUnsupported(f"a career span and the {raw_season} season at once")
-    if career and slots.get("order") in ("recent", "first"):
+    if career and order in ("recent", "first"):
         raise TemplateUnsupported(f"{intent} cannot combine a career span with a single game's order")
     season = None if career else (raw_season or current_season())
     return career, season
@@ -164,7 +163,10 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     #
     # Settled before the name is resolved, because the season is what narrows
     # an ambiguous name to the players who could have taken these shots.
-    career, season = _career_shot_scope("shot_chart", slots)
+    # Each slot read here rather than inside the helper, so the template's own
+    # source names every scoping slot it claims to honor - which is what
+    # test_every_template_honoring_a_scope_slot_actually_reads_it checks.
+    career, season = _career_shot_scope("shot_chart", slots.get("span"), slots.get("season"), slots.get("order"))
     defaulted = not career and not (isinstance(slots.get("season"), int) and slots.get("season"))
     season_type = slots.get("season_type") or 2
 
@@ -325,7 +327,7 @@ def shot_distance(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult
        multi-season sum - see ISSUES.md.
     """
     con = ctx.con
-    career, season = _career_shot_scope("shot_distance", slots)
+    career, season = _career_shot_scope("shot_distance", slots.get("span"), slots.get("season"), slots.get("order"))
     player = _resolved_player(con, slots.get("player"), "shot_distance needs a player name", available=SHOT_AVAILABILITY, season=season)
     if isinstance(player, TemplateResult):
         return player
