@@ -203,7 +203,7 @@ def override_nicknames(question: str, slots: dict[str, Any]) -> list[tuple[str, 
 
     .. versionadded:: 2.1.0
     """
-    names = nicknames_in(question)
+    names = [name for name in nicknames_in(question) if name not in _players_other_slots_hold(slots)]
     if not names:
         return []
 
@@ -225,6 +225,27 @@ def override_nicknames(question: str, slots: dict[str, Any]) -> list[tuple[str, 
         slots["player"] = names[0]
         changed.append((was, names[0]))
     return changed
+
+
+def _players_other_slots_hold(slots: dict[str, Any]) -> set[str]:
+    """The players named by every slot but the subject's, as the nickname
+    table reads them - "giannis" in ``without`` is Giannis Antetokounmpo.
+
+    A nickname the router has already put somewhere else is spoken for, and
+    not the subject: "myles turner bucks stats without giannis last 10" routed
+    to ``player='Myles Turner', without=['giannis']``, and the override, seeing
+    exactly one nickname in the question, rewrote the subject to Giannis - who
+    then could not play without himself. The question named its subject in
+    full; the nickname was the teammate.
+    """
+    held: set[str] = set()
+    for key, value in slots.items():
+        if key in ("player", "players"):
+            continue
+        for item in value if isinstance(value, list) else [value]:
+            if isinstance(item, str):
+                held.add(PLAYER_NICKNAMES.get(item.casefold(), item))
+    return held
 
 
 # Words of a name or a question, split on anything that is not a letter so

@@ -391,6 +391,22 @@ def test_override_does_nothing_without_a_nickname() -> None:
     assert slots["player"] == "Jaylen Brown"
 
 
+def test_a_nickname_another_slot_already_holds_is_not_the_subject() -> None:
+    """ "myles turner bucks stats without giannis last 10" routed to
+    player='Myles Turner', without=['giannis'], and the one nickname in the
+    question rewrote the subject to Giannis - who could not play without
+    himself. The nickname is spoken for by the slot the router put it in."""
+    slots = {"player": "Myles Turner", "team": "Bucks", "without": ["giannis"]}
+    assert override_nicknames("myles turner bucks stats without giannis last 10", slots) == []
+    assert slots["player"] == "Myles Turner"
+    # Spelled out by the router rather than left as the nickname: still spoken for.
+    resolved = {"player": "Myles Turner", "without": ["Giannis Antetokounmpo"]}
+    assert override_nicknames("myles turner stats without giannis", resolved) == []
+    # With nothing else claiming it, the nickname still corrects the subject.
+    alone = {"player": "Jayson Tatum"}
+    assert override_nicknames("how many points does giannis average", alone) == [("Jayson Tatum", "Giannis Antetokounmpo")]
+
+
 # ---------------- names the question does not support ----------------
 
 

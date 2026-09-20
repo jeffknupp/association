@@ -87,6 +87,11 @@ jobs:
       - name: Docstring coverage
         run: scripts/check_docstrings.py
 
+      - name: ISSUES.md priority headings
+        # One heading per tier, in order: sync_issues.py labels by section,
+        # and a deleted heading silently re-files every entry under it.
+        run: scripts/check_issues_md.sh
+
       - name: Tests
         run: uv run pytest -q
 

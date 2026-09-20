@@ -23,6 +23,25 @@ had no published version to be compatible with.
   his last postseason game" answers that game rather than his postseason
   average. A filler `order` on a question naming no such game is still
   dropped, as before (closes #142).
+- **`ISSUES.md` keeps one heading per priority tier, and a gate says so.**
+  `scripts/check_issues_md.sh` (pre-commit and CI) requires exactly one
+  `## P1:` .. `## P4:` heading, in order. An edit deleting the last entry of
+  the P1 section had swallowed the `## P2` heading with it (898ef66), so every
+  P2 read as a P1 and `sync_issues.py` would have labeled a new one that way;
+  #127 had the P3 heading missing for days before that. Restored here.
+- **A filler `limit` on `player_stat` is dropped whatever its size.** Now
+  that a limited `player_stat` is answered as a log, a count the question never
+  named would answer a different question: "Portis vs bulls 2019-20 to
+  2023-24" arrived with `limit: 5` and became a three-game log where his
+  averages were asked for. `route()` drops any limit on `player_stat` that no
+  count word supports, not only a 1; a year is not a count, and neither half
+  of "2019-20" is. "last 5 games" and "top 10" keep theirs.
+- **A nickname another slot holds is not the subject.** "myles turner bucks
+  stats without giannis last 10" routed with `without: ['giannis']`, and the
+  nickname override, seeing exactly one nickname in the question, rewrote the
+  subject to Giannis - who then could not play without himself.
+  `override_nicknames` now leaves alone a nickname the router already put in
+  another slot; the question answers with Turner's last 10 games without him.
 - **`since` is a scope the relation honors.** "jokic vs cade since 2022"
   answers their 7 meetings across 2022-2026 instead of this season's one:
   `_span_of` and `_condition_scope` take `since` and build a span from that

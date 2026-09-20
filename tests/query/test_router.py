@@ -472,6 +472,21 @@ def test_a_single_game_asked_of_player_stat_carries_its_order_and_a_limit_of_one
     assert many.slots.get("limit") == 5
 
 
+def test_a_filler_limit_on_player_stat_goes_whatever_its_size_when_the_question_names_no_count() -> None:
+    """A limit on player_stat now hands the question to game_log, so a filler
+    one no longer costs the answer - it answers a different question. "Portis
+    vs bulls 2019-20 to 2023-24" arrived with limit=5 and became a three-game
+    log where his averages were asked for. A year is not a count of games, and
+    neither half of "2019-20" is."""
+    got = _asking('{"intent":"player_stat","stat":"points","player":"Bobby Portis","limit":5}', "Portis vs bulls 2019-20 to 2023-24")
+    assert "limit" not in got.slots
+    real = _asking('{"intent":"player_stat","stat":"points","player":"Bobby Portis","limit":5}', "Portis vs bulls last 5 games")
+    assert real.slots.get("limit") == 5
+    # A count in another intent is that intent's business, not this rule's.
+    top = _asking('{"intent":"leaderboard","stat":"points","limit":5}', "who led the league in scoring in 2024")
+    assert top.slots.get("limit") == 5
+
+
 def test_the_order_values_match_the_router_schema() -> None:
     """Same shape as the side check above: a value here the schema cannot emit
     would be unreachable, and one it emits that is missing here gets dropped."""

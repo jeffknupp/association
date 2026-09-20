@@ -26,6 +26,12 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: issues-md
+        name: ISSUES.md priority headings
+        entry: scripts/check_issues_md.sh
+        language: system
+        pass_filenames: false
+        always_run: true
       - id: mypy-src
         name: mypy (src)
         entry: .venv/bin/mypy src

@@ -939,7 +939,9 @@ _LIMIT_REFUSING_INTENTS: frozenset[str] = frozenset({"player_stat"})
 
 # A number of games named in the question, which makes a `limit` real rather
 # than filler: "last 5 games", "his one game", "top 10".
-_COUNT_WORDS = re.compile(r"\b(?:\d+|one|two|three|four|five|ten|last|first|top|only)\b", re.IGNORECASE)
+# A year is not a count: "Portis vs bulls 2019-20 to 2023-24" names no number
+# of games, so a four-digit number and either half of a "2019-20" are left out.
+_COUNT_WORDS = re.compile(r"\b(?:(?<![\d-])\d{1,3}(?![\d-])|one|two|three|four|five|ten|last|first|top|only)\b", re.IGNORECASE)
 
 #: Intents that honor ``order`` only beside a real ``limit`` - a single game at
 #: one end of the span - because filling ``order`` alone would hand "his last
@@ -1399,17 +1401,17 @@ def _route_side_and_order(intent: str, slots: dict[str, Any], question: str) -> 
         slots.pop("order", None)
         if slots.get("limit") == 1:
             slots.pop("limit", None)
-    elif intent in _LIMIT_REFUSING_INTENTS and slots.get("limit") == 1 and not slots.get("order"):
+    if intent in _LIMIT_REFUSING_INTENTS and isinstance(slots.get("limit"), int) and not slots.get("order") and not _COUNT_WORDS.search(question):
         # The same filler, arriving WITHOUT an `order` to carry it in.
         # "westbrook stats as a starter for kings" came back with limit=1 and
-        # side='total' on a question that narrows to no number of games at all,
-        # and `player_stat` refuses any limit (a player's numbers over his last
-        # N games is a game_log question) - so the filler cost the answer. A
-        # real one still stands: a question that names a count keeps it,
-        # because the decoder only reaches for 1 when it has nothing to put
-        # there.
-        if not _COUNT_WORDS.search(question):
-            slots.pop("limit", None)
+        # side='total' on a question that narrows to no number of games at all.
+        # A limit on `player_stat` hands the question to game_log (a player's
+        # numbers over his last N games IS a log), so a filler one no longer
+        # costs the answer - it answers a different question: "Portis vs bulls
+        # 2019-20 to 2023-24" arrived with limit=5 and became a three-game log
+        # where his averages were asked for. Any count the question does not
+        # name goes, not only a 1; a real one ("last 5 games", "top 10") stays.
+        slots.pop("limit", None)
 
 
 def route(model: str, question: str, previous_question: str | None = None) -> Route | None:

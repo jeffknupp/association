@@ -130,6 +130,10 @@ before that commit needs re-checking against the current warehouse.
 - **Note:** the same substitution is worth checking for every stat name the
   router does not know. "ats okc" and "players with the highest scoring triple
   doubles" are graded `wrong metric` in the same corpus.
+  Another, found 2026-09-19 re-scoring the corpus after the B4 port:
+  "Jabari smith defensive rebounds vs lakers last 5 games" arrives with
+  `stat: 'rebounds'` - the enum has no defensive rebounds, so the log would
+  show total rebounds under a question that asked for one kind.
 
 The 391 date-only games printed a day early (#76), 2008's team rebound columns
 (#74) and the swapped 1990 Finals Game 5 were fixed on 2026-09-16. Before adding
@@ -195,6 +199,8 @@ those were found.
   (one fewer `WHERE season =`) or refuse it with the seasons it could draw.
 - **GitHub:** none yet
 - **GitHub:** #141
+
+## P2: misleading or incomplete
 
 ### Season 2021's regular-season BPI snapshot is a day-one projection
 - **Found:** 2026-09-15, reviewing `4ef119f`; **re-ranked P3 -> P2 on 2026-09-16** - a preseason projection presented as a season's index, with no caveat
@@ -1831,6 +1837,37 @@ those were found.
 - **GitHub:** none yet
 - **GitHub:** #143
 
+### A son's name without its suffix is an exact match on the father, who has no games to show
+- **Found:** 2026-09-19, re-scoring the corpus yardstick after the B4 port
+  (`player_stat` with a real `limit` now hands the question to `game_log`)
+- **Evidence:** "Jabari smith defensive rebounds vs lakers last 5 games"
+  answers "No 2026 regular season games found for Jabari Smith." The warehouse
+  holds two: Jabari Smith (athlete 793, last box row 2005) and Jabari Smith
+  Jr. (4432639, Houston, 2023-2026). `resolve_player` treats a name matched
+  exactly as not narrowable - the Gary Payton rule in its docstring, so a
+  question naming the father in full is about him - and "Jabari Smith" IS the
+  father's exact name. Nobody types the "Jr.", so the son is unreachable
+  without it: `find_players(con, "Jabari Smith")` returns both, `_exact` picks
+  793, and the log reads an empty season. Same shape for every father/son pair
+  where the father's name is the son's minus a suffix (Gary Payton II, Tim
+  Hardaway Jr., Larry Nance Jr., Kelly Oubre Jr., Jaren Jackson Jr., Michael
+  Porter Jr., Marvin Bagley III, Kevin Porter Jr., Wendell Carter Jr., Kenyon
+  Martin Jr.).
+- **User sees:** a refusal naming the wrong cause - a real 2026 player, asked
+  about by the name everyone uses, reads as having played no games this season.
+- **Next step:** not the narrowing rule itself (the Gary Payton case is right:
+  "Gary Payton" in full with no season is the father). The seam is what
+  "exact" means when the only other candidate differs by a generational
+  suffix and the exact match has no row in the season the answer would be read
+  from: that is the one shape where the exact name is genuinely ambiguous, and
+  the honest move is the same as elsewhere in `resolve_player` - ask, naming
+  both with their years, rather than answer for either. Measure on the corpus
+  which father/son pairs it touches before changing anything.
+- **Priority note:** P2 - the numbers are not wrong, but the sentence sends the
+  reader to look for a data gap that does not exist.
+- **GitHub:** none yet
+- **GitHub:** #150
+
 ## P3: refusal or gap
 
 ### `record_when` loses the player the question names, and the fall-through burns 583 seconds for nothing
@@ -1932,6 +1969,7 @@ those were found.
   "score", "points" and team-name words to `_SUBJECT_WORDS` the way #148 added
   its own stopwords to `_COUNT_SUBJECT_WORDS`.
 - **GitHub:** none yet
+- **GitHub:** #151
 
 ## P4: tooling, docs, low impact
 
