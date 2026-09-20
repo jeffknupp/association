@@ -322,6 +322,11 @@ CASES: list[tuple[str, str, dict]] = [
     # for override_invented_players to misread.
     ("who lead the league in avg 3 point distance", "leaderboard", {"stat": "shot_distance"}),
     ("who lead the league in shot distance for 3 point shots", "leaderboard", {"stat": "shot_distance"}),
+    # #156: a record "when X and Y played" is with_without's question - the
+    # games they were all in beside the ones they were not - and record_when
+    # needs a number to divide by, which none of these names.
+    ("show me the 76ers record when both Embiid and Paul George played", "with_without", {"with_player": ["Embiid", "Paul George"]}),
+    ("PHI record when Embiid with Paul George", "with_without", {"with_player": ["Embiid", "Paul George"]}),
 ]
 
 

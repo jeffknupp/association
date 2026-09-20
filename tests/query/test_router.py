@@ -1784,3 +1784,29 @@ def test_a_relative_window_is_a_season_count_where_the_limit_already_counts_seas
     # Every other intent still reads the window as a span.
     log = _asking('{"intent":"game_log","player":"Tyrese Maxey","limit":2,"season_type":2}', "maxey's games against boston in the past two seasons")
     assert log.slots.get("since") == current_season() - 1 and "limit" not in log.slots
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "show me the 76ers record when both Embiid and Paul George played",
+        "show me PHI record with Embiid and Paul George",
+        "PHI record when Embiid and Paul George play",
+        "PHI record when Embiid with Paul George",
+    ],
+)
+def test_a_record_when_two_players_played_is_a_with_without_question(question: str) -> None:
+    """#156: four phrasings in one web session, four refusals - record_when
+    divides a season by a NUMBER a player reached, and none of these names
+    one. Both players are read, including from either side of "A with B",
+    where reading only the far side answered about Paul George alone."""
+    got = _ask(question, '{"intent":"record_when","stat":"wins","team":"Philadelphia 76ers","season":2026}')
+    assert got.intent == "with_without"
+    assert got.slots.get("with_player") == ["Embiid", "Paul George"]
+
+
+def test_a_record_when_a_player_reaches_a_number_keeps_its_intent() -> None:
+    """The control: a threshold is what record_when divides by, so a question
+    that names one is untouched however the players are worded."""
+    got = _ask("Sixers record when Embiid scores 30 points this season", '{"intent":"record_when","stat":"points","threshold":30,"team":"Philadelphia 76ers","season":2026}')
+    assert got.intent == "record_when" and got.slots["threshold"] == 30 and "with_player" not in got.slots

@@ -631,6 +631,31 @@ _NAME_JOINERS = frozenset({"and", "or", "nor", "&", "+", ","})
 _NAME_PHRASE = r"[A-Za-z][A-Za-z.'\-]*(?:[\s,&+]+[A-Za-z][A-Za-z.'\-]*){0,8}"
 _WITHOUT = re.compile(rf"\bwithout\s+({_NAME_PHRASE})", re.IGNORECASE)
 _WITH = re.compile(rf"\bwith\s+({_NAME_PHRASE})", re.IGNORECASE)
+
+# "when both Embiid and Paul George played", "when Embiid and Paul George
+# play". The same question as "record WITH X", written the other way, and
+# `record_when` is where the model files all of them: four phrasings of it in
+# one 2026-09-20 web session were refused because record_when needs a stat and
+# a threshold and this names neither (#156). Anchored on a playing verb so
+# "record when Embiid SCORES 30 points" - a real record_when question - cannot
+# match it.
+_WHEN_PLAYED = re.compile(rf"\bwhen\s+(?:both\s+)?({_NAME_PHRASE}?)\s+(?:are\s+playing|is\s+playing|were\s+playing|play|plays|played|suit\s+up|suited\s+up)\b", re.IGNORECASE)
+
+# "record when Embiid with Paul George" names one player on each side of the
+# "with", and reading only the side after it answered about Paul George alone
+# - the silent narrowing this module exists to stop. Rewritten to the "with A
+# and B" form the reader below already handles, rather than parsed twice.
+_WHEN_WITH = re.compile(rf"\bwhen\s+(?:both\s+)?({_NAME_PHRASE}?)\s+with\s+({_NAME_PHRASE})", re.IGNORECASE)
+
+
+def _played_together(question: str) -> list[str]:
+    """Every player a record question says played TOGETHER, in order - "with A
+    and B", "when both A and B played", "when A with B". Empty when it names
+    none, which leaves the question where the model put it."""
+    rewritten = _WHEN_WITH.sub(lambda m: f"with {m.group(1)} and {m.group(2)}", question)
+    return _names_after(_WITH, rewritten) or _names_after(_WHEN_PLAYED, question)
+
+
 _NAME_TOKENS = re.compile(r"[A-Za-z][A-Za-z.'\-]*|[,&+]")
 
 # As many words as the old single-name pattern allowed, now per name rather
@@ -1493,6 +1518,18 @@ def _route_threshold(raw: dict[str, Any], slots: dict[str, Any], question: str) 
         threshold = _threshold_from_text(question)
         if threshold is not None:
             slots["threshold"] = threshold
+    if raw["intent"] == "record_when" and not isinstance(slots.get("threshold"), int):
+        # A record "when X and Y played" is a with_without question - the
+        # games they were all in, beside the ones they were not - and not a
+        # record_when one, which divides a season by a NUMBER a player
+        # reached. With no threshold there is no number to divide by, and
+        # record_when refused all four phrasings the web session asked (#156).
+        # A question that does name a threshold keeps its intent, so "Sixers
+        # record when Embiid scores 30 points" is untouched.
+        together = _played_together(question)
+        if together:
+            raw["intent"] = "with_without"
+            slots["with_player"] = together
     if raw["intent"] == "threshold_count" and not isinstance(slots.get("threshold"), int):
         # A count of games needs a threshold. Without one, "who has the most
         # threes" is a season ranking - measured, it arrived here with none and
@@ -1628,7 +1665,11 @@ def _route_intent_slots(intent: str, slots: dict[str, Any], question: str, witho
     # Intent-specific: each means nothing to any other template, so each is
     # only added where one reads it - the same rule `side` follows below.
     if intent == "with_without":
-        with_player = _names_after(_WITH, question)
+        # The same reader the record_when reroute uses (#156), so the two
+        # cannot disagree about who the question named: reading "with" alone
+        # here overwrote ['Embiid', 'Paul George'] with ['Paul George'] on
+        # "PHI record when Embiid with Paul George".
+        with_player = _played_together(question)
         if with_player and not without:
             slots["with_player"] = with_player
     if intent == "player_splits" and slots.get("split") == "home_away":

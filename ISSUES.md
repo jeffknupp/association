@@ -1935,29 +1935,6 @@ those were found.
 
 ## P3: refusal or gap
 
-### "record with both X and Y" routes to `record_when` and is refused four ways
-- **Found:** 2026-09-20, grading the 45-question web session (build
-  `178c21f-dirty`)
-- **Evidence:** "show me the 76ers record when both Embiid and Paul George
-  played", "show me PHI record with Embiid and Paul George", "PHI record when
-  Embiid and Paul George play" and "PHI record when Embiid with Paul George"
-  all route to `record_when` with a `stat` of `wins` / `win_percentage` /
-  none and no threshold, and `_record_when_stat` refuses each ("needs a
-  known stat and a positive threshold"). The question is `with_without`'s -
-  a team's record in the games named players played - which honors `with`
-  for one teammate; whether it takes two together is the second half of the
-  gap.
-- **User sees:** four refusals of an answerable question, whichever way it is
-  phrased.
-- **Next step:** in `_route_team_and_player_intents`, send a `record_when`
-  that names players after "with" / "when X and Y played" and carries no
-  `N+ <stat>` threshold to `with_without` with the names in `with_player`;
-  then let `with_without` take every name the question gives, the way
-  `without` already does ("without Tatum and Brown" is the games neither
-  played).
-- **GitHub:** none yet
-- **GitHub:** #156
-
 ### `record_when` loses the player the question names, and the fall-through burns 583 seconds for nothing
 - **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
 - **Evidence:** "what was the sixers record when maxey scored 15+ points?"

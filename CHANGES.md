@@ -64,6 +64,17 @@ had no published version to be compatible with.
   chart drew a game a year off; a single game named with no year and no
   season words now means the current season, which is the default every
   template already applies (#153).
+- **"Record when X and Y played" is answered, not refused four ways.** All
+  four phrasings a web session asked - "when both Embiid and Paul George
+  played", "with Embiid and Paul George", "when Embiid and Paul George play",
+  "when Embiid with Paul George" - routed to `record_when`, which divides a
+  season by a NUMBER a player reached and so refused every one for want of a
+  stat and a threshold. A thresholdless `record_when` that names players who
+  played together is `with_without`'s question, which already divides by two
+  teammates at once, and it now goes there: the 76ers were 13-11 in the 24
+  games Embiid and George both played. Both sides of "when A with B" are
+  read, since taking only the far side answered about George alone. A
+  question that does name a threshold keeps its intent (#156).
 - **A fingerprint pair is no longer refused over the router's own mis-slot.**
   "sga vs tyrese maxey fingerprint" put Maxey in `opponent`; the pair was
   correctly rebuilt into `players` and then `check_scope` refused the
