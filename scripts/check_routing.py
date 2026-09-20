@@ -280,6 +280,16 @@ CASES: list[tuple[str, str, dict]] = [
     # asserted with no slots, because a coach question carries none.
     ("nick nurse coaching record all-time nba in december on the road", "coach", {}),
     ("who coached the bulls in 1996", "coach", {}),
+    # #140: "past two seasons" put its "two" in `limit` instead of reading a
+    # season span, and "show tyrese maxey's games against boston in the past
+    # two seasons" answered his last 2 games of his CAREER (span="career") -
+    # 2 games where 7 were asked for (3 vs BOS in 2025, 4 in 2026, measured on
+    # player_game_log). `since` now reaches the window on its own; `limit` is
+    # not asserted here because it must be ABSENT, which this checker's
+    # subset comparison cannot express - see
+    # test_a_past_n_seasons_count_word_does_not_become_a_limit in
+    # tests/query/test_router.py for that half.
+    ("show tyrese maxey's games against boston in the past two seasons", "game_log", {"player": "Tyrese Maxey", "opponent": "Boston Celtics", "since": current_season() - 1}),
 ]
 
 

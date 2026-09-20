@@ -714,6 +714,52 @@ def test_a_range_of_seasons_replaces_the_one_the_model_picked(question: str, sin
         assert "season" not in got.slots
 
 
+@pytest.mark.parametrize(
+    ("phrase", "count"),
+    [
+        ("past two seasons", 2),
+        ("past 3 seasons", 3),
+        ("last two years", 2),
+        ("last 5 years", 5),
+    ],
+)
+def test_a_relative_season_count_becomes_a_since_span(phrase: str, count: int) -> None:
+    """ "past N seasons" / "last N years" is a relative window counted back
+    from NOW, not the absolute "since YYYY" or a decade name above - and not
+    a count of games either (#140, below). `since` alone reaches exactly the
+    window asked for: nothing is played after "now", so no `until` is needed
+    to stop it at the current season."""
+    got = _ask(f"jayson tatum's games against the knicks in the {phrase}", '{"intent":"game_log","player":"Jayson Tatum"}')
+    assert got.slots.get("since") == current_season() - count + 1
+    assert "until" not in got.slots
+
+
+def test_a_past_n_seasons_count_word_does_not_become_a_limit() -> None:
+    """The measured failure, verbatim (#140): "show tyrese maxey's games
+    against boston in the past two seasons" routed with the model's own
+    limit=2 - the "two" belongs to "seasons", not to a count of games - and
+    answered his last 2 games of his CAREER where seven were asked for.
+    Measured on player_game_log (games played, regular season): Maxey has 3
+    games against Boston in 2025 and 4 in 2026, seven total - exactly what
+    `since=2025` (current season 2026) reaches with no games left out."""
+    got = _ask(
+        "show tyrese maxey's games against boston in the past two seasons",
+        '{"intent":"game_log","player":"Tyrese Maxey","teams":["Boston"],"limit":2,"season_type":"regular"}',
+    )
+    assert "limit" not in got.slots
+    assert got.slots.get("since") == current_season() - 1
+    assert "span" not in got.slots
+
+
+def test_a_real_games_count_survives_beside_a_past_n_seasons_phrase() -> None:
+    """Only the count word that modifies "seasons"/"years" is filler - a
+    separate, real count of games ("last 5 games") is not this rule's
+    business and keeps its limit."""
+    got = _ask("tatum's last 5 games in the past two seasons", '{"intent":"game_log","player":"Jayson Tatum","limit":5}')
+    assert got.slots.get("limit") == 5
+    assert got.slots.get("since") == current_season() - 1
+
+
 def test_a_record_asked_as_a_count_goes_to_record_when() -> None:
     """Measured: answered with the league's 30-point-game counts, Embiid dropped."""
     got = _ask("Sixers record when Embiid scores 30 points this season", '{"intent":"threshold_count","stat":"points","threshold":30}')

@@ -16,6 +16,16 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **"past two seasons" reads as a season span, not a games count.** The
+  router's own `limit` is where a relative season count landed instead:
+  "show tyrese maxey's games against boston in the past two seasons" arrived
+  with `limit=2` and `span="career"`, and answered his last 2 games of his
+  CAREER where 7 were asked for (3 against Boston in 2025 and 4 in 2026,
+  measured on `player_game_log`). `route()` now reads "past/last N
+  seasons"/"...years" into `since` (current season minus N plus one, no
+  `until` needed since nothing is played after "now"), and drops a `limit`
+  whose only count word belongs to that phrase rather than to a real number
+  of games ("last 5 games in the past two seasons" keeps its `limit`) (#140).
 - **Both conditions of a two-condition count are answered.** `ROUTER_SCHEMA`
   carries one `threshold`, so a second condition survived only as a `fields`
   entry the template ignores: "who had the most 30+ point 10+ rebound games
