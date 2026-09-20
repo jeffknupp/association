@@ -1873,29 +1873,6 @@ those were found.
 - **GitHub:** none yet
 - **GitHub:** #150
 
-### A single-game shot chart names its game by event id, on the page and in the answer
-- **Found:** 2026-09-20, grading the 45-question web session (build
-  `178c21f-dirty`); noted by Jeff
-- **Evidence:** `shotchart.py:309-310` builds the plot's subtitle as
-  ``f"game {event_id}"`` ("season 2025, regular season, game 401705764 -
-  10/20 (50.0%) shown"), and `_render_for_player_message` names only the
-  player, the split and the file path
-  (`shotchart_stephen_curry_401705764.html`). Neither says which game was
-  drawn: not the date, the opponent or the score, all of which `games`
-  holds for that event id. A reader of "steph curry's last regular season
-  game" (the entry above) had no way to see from the page that it was a
-  2025 game.
-- **User sees:** a chart they cannot place - and, when the wrong game was
-  drawn, no way to notice.
-- **Next step:** describe the game as "2025-04-13 vs POR, W 118-104" in the
-  subtitle and in the answer line, keeping the event id only in the
-  filename; the same for a single-game fingerprint ("first game 2026"),
-  which shares the shape.
-- **Priority note:** P2 - the shots drawn are right; the label is what
-  misleads.
-- **GitHub:** none yet
-- **GitHub:** #155
-
 ### A career-span `shot_distance` drops an unseparable season and loses the derived-season caveat, silently
 - **Found:** 2026-09-20, fixing #141 (`shot_chart`/`shot_distance` honoring a
   career `span`)

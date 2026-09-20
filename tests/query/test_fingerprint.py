@@ -457,6 +457,43 @@ def game_con() -> duckdb.DuckDBPyConnection:
     return c
 
 
+@pytest.fixture
+def game_con_with_result(game_con: duckdb.DuckDBPyConnection) -> duckdb.DuckDBPyConnection:
+    """`game_con`, plus enough of `games` and a `player_game_log` for
+    :func:`association.query.game_label.game_label` to describe player 1's
+    most recent game (g2, 2026-03-05): Golden State beat Portland 118-104."""
+    game_con.execute("ALTER TABLE games ADD COLUMN home_team_id VARCHAR")
+    game_con.execute("ALTER TABLE games ADD COLUMN away_team_id VARCHAR")
+    game_con.execute("ALTER TABLE games ADD COLUMN home_score INTEGER")
+    game_con.execute("ALTER TABLE games ADD COLUMN away_score INTEGER")
+    game_con.execute("ALTER TABLE games ADD COLUMN winner_team_id VARCHAR")
+    game_con.execute("UPDATE games SET home_team_id = '9', away_team_id = '20', home_score = 118, away_score = 104, winner_team_id = '9' WHERE event_id = 'g2'")
+    game_con.execute("CREATE TABLE player_game_log (athlete_id VARCHAR, event_id VARCHAR, season INTEGER, team_id VARCHAR, opponent_abbr VARCHAR, game_date VARCHAR)")
+    game_con.execute("INSERT INTO player_game_log VALUES ('1', 'g2', 2026, '9', 'POR', '2026-03-05')")
+    return game_con
+
+
+def test_a_single_game_fingerprint_names_the_game_not_just_its_date(game_con_with_result: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
+    """ISSUES.md #155: the same shape as the shot chart's bare event id, one
+    step narrower - a bare date named WHICH game but not what happened in it.
+    The subtitle and the message now read the opponent and result too."""
+    result = render_for_players(game_con_with_result, tmp_path, [Entity(id="1", name="A")], [], 2026, order="recent")
+
+    assert "2026-03-05 vs POR, W 118-104" in result.message
+    path = _drawn(result)
+    assert "2026-03-05 vs POR, W 118-104" in path.read_text()
+
+
+def test_a_single_game_fingerprint_falls_back_to_the_bare_date(game_con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
+    """`game_con` alone has no `player_game_log`/full `games` row, the shape a
+    warehouse built before this existed or a minimal fixture takes - the
+    subtitle keeps naming the date rather than crashing or going blank."""
+    result = render_for_players(game_con, tmp_path, [Entity(id="1", name="A")], [], 2026, order="recent")
+
+    assert "2026-03-05" in result.message
+    assert " vs " not in result.message
+
+
 def test_a_game_fingerprint_draws_the_game_the_order_asked_for(game_con: duckdb.DuckDBPyConnection) -> None:
     recent, _, games = load_game_fingerprints(game_con, [Entity(id="1", name="A")], 2026, order="recent")
     first, _, first_games = load_game_fingerprints(game_con, [Entity(id="1", name="A")], 2026, order="first")

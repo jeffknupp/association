@@ -61,6 +61,13 @@ def db_path(tmp_path: Path) -> str:
         "('1', 2026, '9', 55, 1900.0, 50.0, -5.0, 3.0), "  # Curry
         "('2', 2026, '9', 30, 800.0, 10.0, -2.0, 1.0)"  # Klay
     )
+    # Event 100 (the one render_shot_chart tests scope to with event_id="100")
+    # named as a real game, so a single-game chart can name it by date,
+    # opponent and result rather than by its bare id - ISSUES.md #155.
+    con.execute("CREATE TABLE games (event_id VARCHAR, season INTEGER, home_team_id VARCHAR, away_team_id VARCHAR, home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR)")
+    con.execute("INSERT INTO games VALUES ('100', 2026, '9', '20', 120, 110, '9')")
+    con.execute("CREATE TABLE player_game_log (athlete_id VARCHAR, event_id VARCHAR, season INTEGER, team_id VARCHAR, opponent_abbr VARCHAR, game_date VARCHAR)")
+    con.execute("INSERT INTO player_game_log VALUES ('1', '100', 2026, '9', 'ATL', '2026-01-02T00:30Z')")
     con.close()
     return str(path)
 
@@ -309,6 +316,24 @@ def test_render_shot_chart_writes_html_file(toolbox: Toolbox, tmp_path: Path) ->
     files = list((tmp_path / "out").glob("*.html"))
     assert len(files) == 1
     assert "<svg" in files[0].read_text()
+
+
+def test_render_shot_chart_names_the_game_not_just_its_id(toolbox: Toolbox, tmp_path: Path) -> None:
+    """ISSUES.md #155: a single-game chart used to name the game only by its
+    event id, on the page and in the answer - "game 100" said nothing about
+    which game that was. It now reads the date, opponent and result off
+    `games`/`player_game_log`, both in the message and in the page itself."""
+    result = toolbox.render_shot_chart(player_name="Curry", event_id="100")
+    assert "2026-01-01 vs ATL, W 120-110" in result
+    assert "game 100" not in result
+
+    files = list((tmp_path / "out").glob("shotchart_stephen_curry_100.html"))
+    assert len(files) == 1
+    html = files[0].read_text()
+    assert "2026-01-01 vs ATL, W 120-110" in html
+    # The filename keeps the bare event id - only the reader-facing text names
+    # the game in full.
+    assert "shotchart_stephen_curry_100.html" in str(files[0])
 
 
 def test_double_and_triple_doubles_are_registered_metrics() -> None:
