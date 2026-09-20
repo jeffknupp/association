@@ -149,6 +149,14 @@ optional_dependencies_dev_groups = ["dev", "docs"]
 # docs/conf.py is the docs extra's own code: importing that extra is the point
 # there, not a dev dependency leaking into the package.
 DEP004 = ["packaging", "sphinx_autodoc_typehints"]
+# scripts/check_web_ui.py drives the page in a real browser and is run as
+# `uv run --with playwright python scripts/check_web_ui.py`, which supplies the
+# package for that one command. Declaring it in the `dev` extra would be false:
+# nothing needed to develop here or to run the gates imports it, and every
+# `uv sync --extra dev` would pull a package (and, to be useful, a ~150MB
+# browser) for a check that is deliberately not a gate. See that script's
+# docstring for why it is not one.
+DEP001 = ["playwright"]
 
 [tool.codespell]
 # en-GB_to_en-US enforces the American spelling AGENTS.md asks for; British

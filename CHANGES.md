@@ -16,6 +16,23 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **The web page recalls earlier questions, and every question can be copied.**
+  ArrowUp steps back through the questions asked on the page and ArrowDown
+  forward again, the way a terminal does: it holds at the oldest rather than
+  wrapping, stepping past the newest restores the half-written question it
+  interrupted, and a repeat of the question just asked is not a second entry.
+  It is only history when the caret is on the first line (ArrowDown, the
+  last), so a question typed across two lines still moves the caret between
+  them; typing anything restarts recall from the newest, because someone who
+  browsed to the oldest entry and then typed something fresh otherwise found
+  ArrowUp doing nothing at all. Every question balloon now carries a copy
+  button for its own text, using `navigator.clipboard` where the page is a
+  secure context and falling back to a selection-based copy where it is not -
+  `association web` prints a loopback URL, which IS one, but the same server
+  answers on a LAN address over plain http, where the API is simply undefined.
+  A failed copy says so rather than looking like nothing happened. The
+  questions live in memory only, so a reload clears them, like the answers
+  above them (ISSUES.md #69).
 - **A player's record against one team is his games, not two franchises
   meeting.** "Embiid career record vs boston" and "Show Embiid's career record
   against Boston" both routed to `head_to_head`, which counts every

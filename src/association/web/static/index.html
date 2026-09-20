@@ -22,6 +22,9 @@
     --user-ink: #ffffff;
     --fast: #2f7d4f;
     --agent: #b06a1f;
+    /* Something the reader asked for did not happen. Distinct from --agent,
+       which says which path answered and is not a fault. */
+    --warn: #b3261e;
     --trace-bg: #f0f0ec;
   }
   @media (prefers-color-scheme: dark) {
@@ -37,6 +40,7 @@
       --user-ink: #f2f8ff;
       --fast: #7fd07a;
       --agent: #f0a05c;
+      --warn: #f2938c;
       --trace-bg: #17171c;
     }
   }
@@ -101,6 +105,30 @@
     width: fit-content;
     white-space: pre-wrap;
   }
+  /* The balloon and its copy button. The button sits OUTSIDE the balloon so
+     the question's own text keeps `white-space: pre-wrap` over a plain text
+     node - a question typed across two lines has to render as it was typed. */
+  .q-row { display: flex; align-items: flex-start; justify-content: flex-end; gap: 6px; }
+  .q-row .q { margin-left: 0; }
+  .copy {
+    flex: none;
+    margin-top: 6px;
+    padding: 4px;
+    line-height: 0;
+    background: none;
+    border: none;
+    border-radius: 6px;
+    color: var(--muted);
+    cursor: pointer;
+    opacity: 0.45;
+    transition: opacity 0.12s, color 0.12s;
+  }
+  .copy:hover, .copy:focus-visible { opacity: 1; color: var(--ink); background: var(--panel); }
+  .copy svg { width: 15px; height: 15px; display: block; }
+  /* Said, not only shown: the icon alone cannot report that the copy failed,
+     which on a page reached over http by IP is the likely case. */
+  .copy.done { opacity: 1; color: var(--accent); }
+  .copy.failed { opacity: 1; color: var(--warn); }
   .a {
     margin-top: 12px;
     background: var(--panel);
@@ -364,12 +392,82 @@
     b.addEventListener("click", () => { input.value = b.textContent; ask(); });
   });
 
-  input.addEventListener("input", () => {
+  function resizeInput() {
     input.style.height = "auto";
     input.style.height = Math.min(input.scrollHeight, 160) + "px";
+  }
+  input.addEventListener("input", () => {
+    resizeInput();
+    // Typing is composing a new question, so the next ArrowUp starts from the
+    // newest again rather than from wherever a previous recall left off.
+    // Measured in a browser: without this, someone who browsed back to the
+    // oldest question, then cleared the box and typed something fresh, found
+    // ArrowUp doing nothing at all - it was still parked at the oldest.
+    // setInput() assigns `value` directly, which fires no "input" event, so a
+    // recall does not reset its own cursor here.
+    recallAt = null;
   });
+
+  // ---- question history, as a terminal keeps it ---------------------------
+  //
+  // The questions asked on this page, oldest first, with a cursor into them.
+  // `asked` is only appended to by ask(), so the examples buttons and a typed
+  // question land in it the same way.
+  //
+  // In memory, and so lost on reload - the page keeps no history of answers
+  // either (ISSUES.md #69), and putting only the questions in localStorage
+  // would leave a reader with a recall list that no longer matches anything
+  // on screen.
+  const asked = [];
+  // null means "editing a new question"; otherwise an index into `asked`.
+  let recallAt = null;
+  // What was typed before stepping back, restored on stepping past the newest
+  // entry - the same thing a shell does with a half-written line.
+  let draft = "";
+
+  function setInput(text) {
+    input.value = text;
+    resizeInput();
+    // Caret at the end, so the recalled question is ready to edit or send.
+    input.setSelectionRange(text.length, text.length);
+  }
+
+  // ArrowUp is only history when the caret is on the FIRST line, and
+  // ArrowDown only on the last: a question typed across two lines still moves
+  // the caret between them, which is what the key does everywhere else.
+  function caretOnFirstLine() {
+    return input.selectionStart === input.selectionEnd && input.value.lastIndexOf("\n", input.selectionStart - 1) === -1;
+  }
+  function caretOnLastLine() {
+    return input.selectionStart === input.selectionEnd && input.value.indexOf("\n", input.selectionStart) === -1;
+  }
+
+  // Returns whether it handled the key, so an unhandled one still moves the
+  // caret rather than being swallowed.
+  function recall(step) {
+    if (!asked.length) return false;
+    if (recallAt === null) {
+      if (step > 0) return false;  // nothing newer than what is being typed
+      draft = input.value;
+      recallAt = asked.length - 1;
+    } else if (recallAt + step < 0) {
+      return true;  // already at the oldest; hold there rather than wrapping
+    } else if (recallAt + step >= asked.length) {
+      recallAt = null;
+      setInput(draft);
+      return true;
+    } else {
+      recallAt += step;
+    }
+    setInput(asked[recallAt]);
+    return true;
+  }
+
   input.addEventListener("keydown", e => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); return; }
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.key === "ArrowUp" && caretOnFirstLine() && recall(-1)) { e.preventDefault(); return; }
+    if (e.key === "ArrowDown" && caretOnLastLine() && recall(1)) e.preventDefault();
   });
   form.addEventListener("submit", e => { e.preventDefault(); ask(); });
 
@@ -953,6 +1051,63 @@
 
   function scroll() { document.querySelector("main").scrollTop = thread.scrollHeight; }
 
+  // ---- copying a question back out ---------------------------------------
+
+  const COPY_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<rect x="9" y="9" width="11" height="11" rx="2"></rect>' +
+    '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+
+  function writeToClipboard(text) {
+    // navigator.clipboard exists only in a secure context. `association web`
+    // prints a 127.0.0.1 URL, which IS one - but the same server answers on a
+    // LAN address over plain http, where the API is simply undefined, so the
+    // older selection-based copy stays as the fallback rather than the page
+    // silently doing nothing.
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+    return new Promise((resolve, reject) => {
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.top = "-1000px";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      let ok = false;
+      try { ok = document.execCommand("copy"); } catch (err) { ok = false; }
+      area.remove();
+      if (ok) resolve(); else reject(new Error("copy was refused"));
+    });
+  }
+
+  function copyButton(text) {
+    const button = el("button", "copy");
+    button.type = "button";  // inside no form today, but it must never submit one
+    button.innerHTML = COPY_ICON;
+    button.title = "Copy this question";
+    button.setAttribute("aria-label", "Copy this question");
+    button.addEventListener("click", () => {
+      writeToClipboard(text).then(
+        () => mark(button, "done", "Copied"),
+        () => mark(button, "failed", "Could not copy - select the text instead"),
+      );
+    });
+    return button;
+  }
+
+  function mark(button, cls, label) {
+    button.classList.remove("done", "failed");
+    button.classList.add(cls);
+    button.title = label;
+    button.setAttribute("aria-label", label);
+    window.setTimeout(() => {
+      button.classList.remove(cls);
+      button.title = "Copy this question";
+      button.setAttribute("aria-label", "Copy this question");
+    }, 1400);
+  }
+
   function disclosure(summary, text, cls) {
     const details = el("details", cls ? null : "text");
     details.appendChild(el("summary", null, summary));
@@ -964,12 +1119,20 @@
     const question = input.value.trim();
     if (!question || send.disabled) return;
     if (empty) empty.remove();
+    // Recorded before the box is cleared. A repeat of the question just asked
+    // is not a second entry, the way a shell drops a duplicate line.
+    if (asked[asked.length - 1] !== question) asked.push(question);
+    recallAt = null;
+    draft = "";
     input.value = "";
     input.style.height = "auto";
     send.disabled = true;
 
     const turn = el("div", "turn");
-    turn.appendChild(el("div", "q", question));
+    const row = el("div", "q-row");
+    row.appendChild(copyButton(question));
+    row.appendChild(el("div", "q", question));
+    turn.appendChild(row);
     const answer = el("div", "a");
     // The trace is the answer until there is one. A fall-through to the agent
     // can take two minutes, and a spinner for that long is indistinguishable

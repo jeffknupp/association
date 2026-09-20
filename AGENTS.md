@@ -685,6 +685,20 @@ everything about it is constrained by things measured elsewhere in this file.
   script and a test asserts they still do not; if one ever needs to, the frame
   stops working and that test says why. `allow-same-origin` is load-bearing
   separately - it is how the page reads the chart's height to size the frame.
+- **The page's JavaScript has one behavioral check, and it is not a gate.**
+  pytest can only read `static/index.html` as text: `test_renderers.py` parses
+  the renderer table out of it and syntax-checks the script with
+  `node --check`. Anything that is a key event, a caret position or a
+  clipboard needs a browser, so `scripts/check_web_ui.py` drives the real page
+  in Chromium with real key presses - `uv run --with playwright python
+  scripts/check_web_ui.py`. It is deliberately outside the gates: playwright
+  is not in the `dev` extra (deptry has a per-rule ignore saying why), its
+  browser is a large download, and the gates here run offline in seconds. Run
+  it when you touch the page's script, the way `check_coverage.py` is run
+  after editing a floor. It needs no ollama, no warehouse and no network - the
+  API is stubbed in the page - and it serves `static/` over a loopback address
+  rather than a `file://` URL, because `navigator.clipboard` exists only in a
+  secure context.
 - **Print the URL with `flush=True`.** stdout is block-buffered when it is not
   a terminal, and with an ephemeral port that URL is the only way to find the
   server at all.
