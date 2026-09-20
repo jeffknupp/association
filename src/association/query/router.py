@@ -291,6 +291,37 @@ def _validate_range(question: str) -> tuple[int, int | None] | None:
     return None
 
 
+# "past two seasons", "last 3 years": a relative window counted back from NOW,
+# not a games count and not a season named outright. Read into `since` alone
+# (never `until`) because "past N seasons" already ends at the current one -
+# _span_of's `since` branch reaches every season from there through whatever
+# the table holds, which is exactly "now" since nothing is played later. #140:
+# "show tyrese maxey's games against boston in the past two seasons" put the
+# "two" in `limit` instead (see _PAST_N_SEASONS_COUNT_WORDS in _names_a_count)
+# and answered his last 2 games of his CAREER, not his last two SEASONS - 7
+# games measured on player_game_log (3 in 2025, 4 in 2026).
+_PAST_N_SEASONS_COUNT_WORDS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+}  # fmt: skip
+_PAST_N_SEASONS = re.compile(
+    r"\b(?:past|last)\s+(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:seasons?|years?)\b",
+    re.IGNORECASE,
+)
+
+
+def _validate_relative_season_span(question: str) -> int | None:
+    """The first season "past/last N seasons" (or "...years") reaches, counted
+    back from the current one - "past two seasons" from season 2026 is 2025
+    and 2026, so `since=2025` alone already names exactly those two."""
+    match = _PAST_N_SEASONS.search(question)
+    if match is None:
+        return None
+    word = match.group(1).lower()
+    count = _PAST_N_SEASONS_COUNT_WORDS.get(word) or int(word)
+    return current_season() - count + 1
+
+
 def _validate_season_type(question: str) -> int:
     """The season type the question asks about: the postseason only when it
     says so. The model's own slot is not consulted - see _PLAYOFF_WORDS."""
@@ -1063,9 +1094,10 @@ _COUNT_WORDS = re.compile(r"\b(?:(?<![\d-])\d{1,3}(?![\d-])|one|two|three|four|f
 
 def _names_a_count(question: str) -> bool:
     """Whether the question names a number of games, once the numbers that
-    belong to a line on a box-score stat ("under 14 fta", "with 25 minutes")
-    or to a game of a series ("game 4") are set aside."""
-    stripped = _GAME_N.sub(" ", _ABOVE.sub(" ", _BELOW.sub(" ", question)))
+    belong to a line on a box-score stat ("under 14 fta", "with 25 minutes"),
+    to a game of a series ("game 4"), or to a count of SEASONS rather than
+    games ("past two seasons" - see _PAST_N_SEASONS) are set aside."""
+    stripped = _GAME_N.sub(" ", _ABOVE.sub(" ", _BELOW.sub(" ", _PAST_N_SEASONS.sub(" ", question))))
     return _COUNT_WORDS.search(stripped) is not None
 
 
@@ -1437,6 +1469,25 @@ def _route_calendar_slots(slots: dict[str, Any], question: str, span: str | None
         if seasons[1] is not None:
             slots["until"] = seasons[1]
         slots.pop("season", None)
+    else:
+        # "past two seasons" / "last 3 years": a relative window, not the
+        # absolute one "since YYYY" or a decade name - see
+        # _validate_relative_season_span. No `until`: the window already ends
+        # at "now", the same place `since` alone reaches.
+        relative_since = _validate_relative_season_span(question)
+        if relative_since is not None:
+            slots["since"] = relative_since
+            slots.pop("season", None)
+            if isinstance(slots.get("limit"), int) and not _names_a_count(question):
+                # The model's own count word landed on `limit` instead of the
+                # season count it actually modifies (#140): "...in the past
+                # two seasons" arrived with limit=2 and, from that alone,
+                # answered his last 2 games of his career. `_names_a_count`
+                # already looks past _PAST_N_SEASONS's own number here, so
+                # this only fires when nothing ELSE in the question names a
+                # real count of games ("last 5 games in the past two seasons"
+                # keeps its limit).
+                slots.pop("limit", None)
     # A split is read for every intent, not only player_splits: it is a scoping
     # slot, so the template that answers one honors it and every other refuses.
     # Measured: "Joe Ingles stats when starting vs coming off the bench" was

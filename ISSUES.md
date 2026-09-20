@@ -154,26 +154,6 @@ to this section, re-read the P2s against the P1 definition: that is how both of
 those were found.
 - **GitHub:** #114
 
-### "past two seasons" becomes a limit of two games
-- **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
-- **Evidence:** "show tyrese maxey's games against boston in the past two
-  seasons" routes to `game_log` with `{"player": "Tyrese Maxey", "teams":
-  ["Boston"], "limit": 2, "season_type": 2, "span": "career"}` and answers
-  "Tyrese Maxey vs the Boston Celtics, last 2 games of his career", both from
-  2026. Measured on `player_game_log` (games played, regular season): 3 vs BOS
-  in 2025 and 4 in 2026, so seven games were asked for. This is #124's cousin
-  ("knicks record by month 2024 2025" drops the second of two named seasons),
-  but here the range is relative, and it is not dropped - it is turned into a
-  game count. `_validate_range` reads "since YYYY" and a decade, nothing
-  relative.
-- **User sees:** two games labeled "last 2 games of his career" where seven
-  were asked for.
-- **Next step:** read "past/last N seasons" in `_validate_range` into a season
-  span the way `since` is read, and drop a `limit` whose count word modifies
-  "seasons" rather than "games" in `_route_filter_slots`.
-- **GitHub:** none yet
-- **GitHub:** #140
-
 ### "all playoff games" draws one postseason
 - **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
 - **Evidence:** "show a shot chart for steph curry in all playoff games"
