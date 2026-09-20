@@ -1152,6 +1152,88 @@ def test_shot_chart_defaults_an_unspecified_season_to_the_current_one(sc_ctx: Te
     assert "1/2 made" in answer and str(current_season()) in answer
 
 
+# ---------------- shot_chart / shot_distance: `span` "career" (#141) ----------------
+#
+# "show a shot chart for steph curry in all playoff games" routed to a single
+# defaulted season and drew it as though it were every postseason. These
+# exercise the fix: HONORED_SCOPING now lets `span` reach the template, and
+# `_career_shot_note` is what keeps drawing every season from becoming the
+# same silent-narrowing bug pointed the other way (a career drawn with no
+# mention that it IS a career, or - worse - drawn with seasons quietly missing).
+
+
+def _add_career_table(con: duckdb.DuckDBPyConnection, rows: list[tuple[str, int, int, int]]) -> None:
+    """The slice of `player_season_stats_deduped` `_career_shot_span` reads -
+    just enough columns to say where a player's own career sits against the
+    2002 shot floor, independent of `shot_chart` itself."""
+    con.execute("CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER, gamesPlayed INTEGER)")
+    con.executemany("INSERT INTO player_season_stats_deduped VALUES (?,?,?,?)", rows)
+
+
+def test_shot_chart_honors_a_career_span(sc_ctx: TemplateContext) -> None:
+    """Draws every regular season on record, not only the one the season slot
+    would have defaulted to - the fixture's two current-season shots AND a
+    2019 one, 2/3 made where a single season drew 1/2."""
+    _add_career_table(sc_ctx.con, [("1", 2019, 2, 70), ("1", current_season(), 2, 60)])
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',2019,2,'e9',1,'5:00',TRUE,'Jump Shot',10,10,2,'makes 18-foot jumper')")
+    answer = shot_chart(sc_ctx, {"player": "Stephen Curry", "season_type": 2, "span": "career"}).answer or ""
+    assert "2/3 made" in answer
+    assert f"Covers his whole regular season career on record (2019-{current_season()})." in answer
+
+
+def test_shot_chart_career_span_names_a_career_entirely_before_the_floor(sc_ctx: TemplateContext) -> None:
+    """A career that ends before shots begin has nothing to draw, and the
+    answer says why - not a plain "No shots found ... with the given
+    filters", which would blame a filter that was never given and read as
+    though the warehouse held nothing of his at all."""
+    _add_career_table(sc_ctx.con, [("1", 1997, 3, 20), ("1", 1998, 3, 15)])
+    answer = shot_chart(sc_ctx, {"player": "Stephen Curry", "season_type": 3, "span": "career"}).answer or ""
+    assert answer == "No shots found for Stephen Curry with the given filters. Stephen Curry's postseason career (1997-1998) ends before shot data begins, in 2002, so none of it can be shown."
+
+
+def test_shot_chart_career_span_names_the_seasons_the_floor_leaves_out(sc_ctx: TemplateContext) -> None:
+    """A career that straddles 2002 draws what it can and names what it
+    can't, the same discipline a defaulted single season's redirect uses."""
+    _add_career_table(sc_ctx.con, [("1", 1999, 2, 50), ("1", current_season(), 2, 60)])
+    answer = shot_chart(sc_ctx, {"player": "Stephen Curry", "season_type": 2, "span": "career"}).answer or ""
+    assert "Shot data begins with the 2002 season, so his 1999-2001 regular seasons are not shown." in answer
+
+
+def test_shot_chart_refuses_a_career_span_with_a_named_season(sc_ctx: TemplateContext) -> None:
+    """ "Career" and a named year at once answer different questions - the same
+    conflict `_span_of` raises on elsewhere."""
+    _add_career_table(sc_ctx.con, [("1", current_season(), 2, 60)])
+    with pytest.raises(TemplateUnsupported, match="career span and the 2020 season"):
+        shot_chart(sc_ctx, {"player": "Stephen Curry", "season": 2020, "span": "career"})
+
+
+def test_shot_chart_refuses_a_career_span_with_an_order(sc_ctx: TemplateContext) -> None:
+    """ "His last game" picks one game inside one season; a career asks for
+    every one of them. Falls through rather than silently picking one."""
+    _add_career_table(sc_ctx.con, [("1", current_season(), 2, 60)])
+    with pytest.raises(TemplateUnsupported, match="career span"):
+        shot_chart(sc_ctx, {"player": "Stephen Curry", "span": "career", "order": "recent"})
+
+
+def test_shot_distance_honors_a_career_span(sc_ctx: TemplateContext) -> None:
+    """Averages across every season on record instead of only the latest,
+    the same shape as shot_chart."""
+    _add_career_table(sc_ctx.con, [("1", 2019, 2, 70), ("1", current_season(), 2, 60)])
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',2019,2,'e9',1,'5:00',TRUE,'Jump Shot',10,10,2,'makes 18-foot jumper')")
+    answer = shot_distance(sc_ctx, {"player": "Stephen Curry", "season_type": 2, "span": "career"}).answer or ""
+    assert "over 3 attempts" in answer
+    assert f"Covers his whole regular season career on record (2019-{current_season()})." in answer
+
+
+def test_shot_distance_career_span_names_a_career_entirely_before_the_floor(sc_ctx: TemplateContext) -> None:
+    _add_career_table(sc_ctx.con, [("1", 1997, 3, 20), ("1", 1998, 3, 15)])
+    answer = shot_distance(sc_ctx, {"player": "Stephen Curry", "season_type": 3, "span": "career"}).answer or ""
+    assert answer == (
+        "No shots with recorded coordinates for Stephen Curry in the career postseason. Stephen Curry's postseason career (1997-1998) ends before "
+        "shot data begins, in 2002, so none of it can be shown."
+    )
+
+
 # ---------------- player_compare ----------------
 
 

@@ -138,8 +138,13 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # season with one calendar day - both filters on `real_games`, the same
     # table the plain answer already reads.
     "head_to_head": frozenset({"opponent", "venue", "date"}),
-    "shot_chart": frozenset({"order"}),
-    "shot_distance": frozenset({"order"}),
+    # `span` "career" is honored by drawing (or averaging) every season of the
+    # requested season type rather than the latest with data - see
+    # shots._career_shot_span. Before this, "all playoff games" carried no
+    # span at all (no word of _SPAN_WORDS is in it) and a `span` the router
+    # itself might emit would have been refused here rather than drawn (#141).
+    "shot_chart": frozenset({"order", "span"}),
+    "shot_distance": frozenset({"order", "span"}),
     "player_netpoints": frozenset({"order"}),
     # `order` is honored by DRAWING that game, from the long per-game table.
     # `date` is still honored by refusing: the router gives a calendar date
@@ -234,8 +239,13 @@ TEMPLATE_SOURCES: dict[str, tuple[str, ...]] = {
     # picks between them - a team question refused with "Player game logs only
     # go back to..." names the wrong thing.
     "game_log": ("games", "team_box_stats", "player_game_log", "player_box_stats", "player_season_stats_deduped"),
-    "shot_chart": ("shot_chart",),
-    "shot_distance": ("shot_chart",),
+    # player_season_stats_deduped is read only on a career span, to say
+    # whether the 2002 shot floor clips a career that started earlier
+    # (shots._career_shot_span). Its own floor (1977) is earlier than
+    # shot_chart's, so declaring it here changes no refusal - shot_chart's
+    # 2002 still wins as the narrower of the two.
+    "shot_chart": ("shot_chart", "player_season_stats_deduped"),
+    "shot_distance": ("shot_chart", "player_season_stats_deduped"),
     "fingerprint": ("net_points_player_fingerprint", "net_points_player_game_fingerprint"),
     # A team's splits and streaks read only the team tables; _sources_for
     # picks between the two per question.
