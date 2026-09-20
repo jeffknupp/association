@@ -295,6 +295,46 @@ def test_the_fast_path_replaces_a_player_the_question_never_named(monkeypatch: p
     assert seen == ["Shai Gilgeous-Alexander", "Joel Embiid"]
 
 
+def test_a_rerouted_intent_runs_the_template_it_was_rerouted_to(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A player's record against a team arrives as head_to_head and is rewritten
+    to with_without (ISSUES.md #163). This pins that the HANDLER moves with the
+    intent, which is the half that shipped broken: the handler was resolved
+    from the router's intent before the rewrite, so "Embiid career record vs
+    boston" logged `head_to_head -> with_without` and then ran head_to_head,
+    which refused for wanting two team names. Every offline replay passed,
+    because the replay script looks the handler up afterwards and the real
+    pipeline looked it up before - so only a test on this path can catch it."""
+    from association.query.router import Route
+    from association.query.templates.common import TemplateResult, TemplateUnsupported
+
+    ran: list[str] = []
+
+    def head_to_head(ctx: Any, slots: dict[str, Any]) -> TemplateResult:
+        ran.append("head_to_head")
+        raise TemplateUnsupported("head_to_head needs two team names")
+
+    def with_without(ctx: Any, slots: dict[str, Any]) -> TemplateResult:
+        ran.append("with_without")
+        return TemplateResult(data={}, answer="templated")
+
+    import duckdb
+
+    db_path = tmp_path / "test.duckdb"
+    con = duckdb.connect(str(db_path))
+    con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    con.execute("INSERT INTO players VALUES ('1', 'Joel Embiid')")
+    con.execute("CREATE TABLE teams (team_id VARCHAR, display_name VARCHAR, abbreviation VARCHAR)")
+    con.execute("INSERT INTO teams VALUES ('2', 'Boston Celtics', 'BOS')")
+    con.close()
+    agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history")
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="head_to_head", slots={"teams": ["Joel Embiid", "Boston Celtics"], "span": "career"}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"head_to_head": head_to_head, "with_without": with_without})
+    answer = agent.ask("Embiid career record vs boston")
+    assert ran == ["with_without"]
+    assert "templated" in (answer.text or "")
+
+
 def test_a_player_the_question_cannot_account_for_is_refused_not_passed_on(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Falling through here was measured and is worse: given one of these the
     agent spent 55 seconds writing a confident fingerprint, percentages

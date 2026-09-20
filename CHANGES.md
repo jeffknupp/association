@@ -31,7 +31,11 @@ had no published version to be compatible with.
   a record over one opponent's games headed as though it covered every game is
   the silent narrowing that module exists to stop. Measured: 76ers 13-15 in
   the 28 regular-season games Embiid played against Boston, 3-8 in the 11 he
-  missed (#163).
+  missed. The handler is re-resolved with the intent: it shipped once without
+  that, so the trace read `head_to_head -> with_without` and head_to_head ran
+  anyway and refused for wanting two team names, which every offline replay
+  passed because the replay script resolves the handler after the rewrite and
+  the pipeline resolved it before (#163).
 - **One definition of what a question calls a box-score column.** `route()`
   reads the stat beside a threshold ("20+ points") and `templates/common.py`
   reads the same phrases onto columns ("under 14 fta"), and each kept its own

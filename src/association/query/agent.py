@@ -304,6 +304,11 @@ class Agent:
         if rerouted is not None:
             history.log(f"  -> (scope) {routed.intent!r} -> {rerouted!r} (a player's record against a team, not two teams meeting)")
             routed.intent = rerouted
+            # The handler goes with the intent. Resolving it above and not here
+            # is how this shipped broken the first time: the intent said
+            # with_without, the trace said with_without, and head_to_head ran
+            # and refused for wanting two team names.
+            handler = TEMPLATES[routed.intent]
         # Before the name checks below, because this is where a team the
         # router mistook for a player leaves `players`, and a player it dropped
         # in favor of his team comes back. See entities.scope_from_question.
