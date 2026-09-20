@@ -331,10 +331,13 @@ class Agent:
                 if note:
                     result.answer = f"{result.answer} {note}"
                 # A "vs" question that produced one polygon answered half of
-                # itself. The missing name cannot be recovered - see
-                # entities.compared_but_unmatched - so it is stated instead.
-                if routed.intent == "fingerprint" and compared_but_unmatched(question, self._named_in(routed.slots)):
-                    result.answer = f"{result.answer} Note: the question compares two players, but only one of them matches anybody in the warehouse - check the spelling of the other."
+                # itself. entities.compared_but_unmatched tells a name nothing
+                # can repair from one restore_dropped_players simply missed -
+                # see its docstring - and phrases each case correctly.
+                if routed.intent == "fingerprint":
+                    unmatched_note = compared_but_unmatched(self.toolbox.con, question, self._named_in(routed.slots))
+                    if unmatched_note:
+                        result.answer = f"{result.answer} {unmatched_note}"
         except TemplateUnsupported as exc:
             history.log(f"  -> (template) {exc} - falling through to the agent")
             self.fell_through = f"{routed.intent}: {exc}"
