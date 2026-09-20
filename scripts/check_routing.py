@@ -61,6 +61,9 @@ CASES: list[tuple[str, str, dict]] = [
     # season game" came back as the season before this one.
     ("show a shot chart of steph curry's 2025 season for 3 point shots", "shot_chart", {"player": "Stephen Curry", "season": 2025, "shot_value": 3}),
     ("show a shot chart of steph curry's last regular season game", "shot_chart", {"player": "Stephen Curry", "order": "recent"}),
+    # #139: both conditions, as lines on box-score columns.
+    ("who had the most 30+ point 10+ rebound games this year?", "threshold_count", {"stat": "points", "threshold": 30, "above": ["30+ point", "10+ rebound"]}),
+    ("How many 20+ point 5+ assist games did luka have?", "threshold_count", {"player": "Luka Doncic", "above": ["20+ point", "5+ assist"]}),
     # A single-game maximum is NOT a season ranking. Confirmed live: with no
     # such intent, "who had the most assists in a single game" was answered
     # "Nikola Jokic led the league in assists per game, at 10.7" in 1.76s -

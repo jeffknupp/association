@@ -906,6 +906,33 @@ def test_one_game_at_the_end_of_a_span_is_this_season_unless_the_question_says_o
     assert worded.slots.get("season") == 2025
 
 
+@pytest.mark.parametrize(
+    ("question", "want"),
+    [
+        ("who had the most 30+ point 10+ rebound games this year?", ["30+ point", "10+ rebound"]),
+        ("How many 20+ point 5+ assist games did luka have?", ["20+ point", "5+ assist"]),
+        ("How many games did luka have with 20+ points and 5+ assists?", ["20+ points", "5+ assists"]),
+    ],
+)
+def test_both_conditions_of_a_two_condition_count_are_read(question: str, want: list[str]) -> None:
+    """#139: ROUTER_SCHEMA carries one `threshold`, so the second condition
+    survived only as a `fields` entry the template ignores - "the most 30+
+    point 10+ rebound games" answered the 30+ point leader."""
+    got = _ask(question, '{"intent":"threshold_count","stat":"points","threshold":20,"fields":["rebounds"]}')
+    assert got.slots.get("above") == want
+
+
+def test_one_condition_is_left_to_the_threshold_slot_exactly_as_before() -> None:
+    """Nothing changes for the questions that work today: a single "30+
+    points" is the model's own threshold, and a count word with no plus
+    ("top 10 rebound leaders") is not a condition at all - reading it as one
+    would refuse a leaderboard question that answers."""
+    one = _ask("who had the most 30+ point games this season?", '{"intent":"threshold_count","stat":"points","threshold":30}')
+    assert "above" not in one.slots and one.slots["threshold"] == 30
+    ranked = _ask("top 10 rebound leaders this season", '{"intent":"leaderboard","stat":"rebounds","limit":10}')
+    assert "above" not in ranked.slots
+
+
 def test_a_rate_no_metric_holds_is_refused_rather_than_ranked_by_the_wrong_unit() -> None:
     """ "/ 90" has no column; "points per 100 possessions" has no per-100 form.
     Both get a `rate` slot no template honors, so check_scope refuses."""

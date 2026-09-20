@@ -16,6 +16,18 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **Both conditions of a two-condition count are answered.** `ROUTER_SCHEMA`
+  carries one `threshold`, so a second condition survived only as a `fields`
+  entry the template ignores: "who had the most 30+ point 10+ rebound games
+  this year?" answered the 30+ point leader (Luka Doncic, 44) where the pair
+  is Nikola Jokic with 20, and "How many 20+ point 5+ assist games did luka
+  have?" answered 441 against 397. `route()` now reads every "N+ <stat>" the
+  question states and, where it states more than one, carries them all as
+  lines on box-score columns - the filters the relation already composes - so
+  `threshold_count`, `game_log` and `player_stat` keep only the games that
+  clear every one. A single condition is still the model's own `threshold`,
+  untouched, and the "+" is required, so "top 10 rebound leaders" is a
+  ranking and not a condition (#139).
 - **A chart is not narrowed to one game the question never named.** On
   `shot_chart`, `shot_distance`, `player_netpoints` and `fingerprint` an
   `order` resolves to a single event id, where `game_log` only sorts, so a

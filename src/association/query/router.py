@@ -793,6 +793,22 @@ _SHOT_WORDS = re.compile(r"\bshots?\b|\bthrees\b|\b3s\b|\b(?:3|three)[- ]?pointe
 _THRESHOLD = re.compile(r"\b(\d{1,3})\s*(?:\+|plus|or\s+more)?\s*(points?|pts|rebounds?|boards|assists?|steals?|blocks?|turnovers?|threes|3s)\b", re.IGNORECASE)
 _THRESHOLD_INTENTS = frozenset({"threshold_count", "record_when", "streak"})
 
+# Every condition a question states as "N+ <stat>", in order. ROUTER_SCHEMA
+# carries ONE `threshold`, so a second condition survived only as a `fields`
+# entry the template ignores: "who had the most 30+ point 10+ rebound games
+# this year?" answered "Luka Doncic ... 30+ points, with 44" where the pair is
+# Jokic with 20, and "How many 20+ point 5+ assist games did luka have?"
+# answered 441 against 397 (#139). Read as lines on box-score columns, which
+# the relation already filters on, rather than as a second threshold slot.
+#
+# The "+" (or "plus" / "or more") is required, unlike `_THRESHOLD`: without it
+# "top 10 rebound leaders" reads as a condition and a leaderboard question
+# that answers today would start refusing.
+_THRESHOLD_PAIR = re.compile(
+    r"\b(\d{1,3})\s*(?:\+|plus|or\s+more)\s*(points?|pts|rebounds?|rebs?|boards|assists?|asts?|steals?|stl|blocks?|blk|turnovers?|threes|3s)\b",
+    re.IGNORECASE,
+)
+
 # Rate stats the prompt never lists as a player `stat`, so the model reaches for
 # the nearest one it knows. Measured: "kevin durant true shooting percentage
 # career" came back as stat='threePointFieldGoalPct' and was answered with his
@@ -1368,6 +1384,15 @@ def _route_filter_slots(slots: dict[str, Any], question: str) -> tuple[str | Non
     if below:
         slots["below"] = below
     above = [m.group(0).casefold() for m in _ABOVE.finditer(question)]
+    # Only where the question states more than one: a single "30+ points" is
+    # the model's own `threshold` and every template that reads one already
+    # carries it, so nothing changes for the questions that work today. With
+    # two, BOTH become lines - threshold_count reads a line carrying its own
+    # threshold's number as that threshold, misread, and filters on all of
+    # them (see _threshold_count_lines).
+    pairs = [m.group(0).casefold() for m in _THRESHOLD_PAIR.finditer(question)]
+    if len(pairs) > 1:
+        above += pairs
     if above:
         slots["above"] = above
     situation = _SITUATION.search(question)

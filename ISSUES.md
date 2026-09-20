@@ -154,33 +154,6 @@ to this section, re-read the P2s against the P1 definition: that is how both of
 those were found.
 - **GitHub:** #114
 
-### A second threshold in the same question is dropped, and the leader of the broader question is named
-- **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
-- **Evidence:** "who had the most 30+ point 10+ rebound games this year?"
-  routes to `threshold_count` with `{"stat": "points", "threshold": 30,
-  "fields": ["rebounds"], "season": 2026, "season_type": 2}` - the second
-  condition survives only as a `fields` entry, which the template ignores -
-  and answers "Luka Doncic had the most games with 30+ points in the 2026
-  regular season, with 44." Measured on `player_game_log`, 2026 regular
-  season, points >= 30 AND rebounds >= 10: Nikola Jokic 20, Luka Doncic 16,
-  Victor Wembanyama 15. `ROUTER_SCHEMA` carries one `threshold`, and
-  `_threshold_from_text` reads one `N+ <stat>` pair.
-- **Also, 2026-09-20 (web session, build `178c21f-dirty`):** the same drop
-  on a named player's count. "How many 20+ point 5+ assist games did luka
-  have?" answers 441 games of 20+ points in his career; with 5+ assists it
-  is 397. "...this season" answers 60 where it is 54. "How many games did
-  luka have with 20+ points and 5+ assists?" - the second condition after
-  "and", not before "games" - drops it the same way. Three phrasings, three
-  fluent wrong counts.
-- **User sees:** the wrong leader, stated with the wrong count, for a question
-  that named both conditions plainly.
-- **Next step:** read every `N+ <stat>` pair out of the question in
-  `_route_threshold`; with more than one, either filter `threshold_count` on
-  all of them (one more `AND` per pair over the same rows) or refuse. Refusing
-  beats ranking.
-- **GitHub:** none yet
-- **GitHub:** #139
-
 ### "past two seasons" becomes a limit of two games
 - **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
 - **Evidence:** "show tyrese maxey's games against boston in the past two
