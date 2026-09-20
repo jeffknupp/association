@@ -304,6 +304,10 @@ _PAST_N_SEASONS_COUNT_WORDS = {
     "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
     "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
 }  # fmt: skip
+#: Intents whose ``limit`` counts SEASONS rather than games, so a relative
+#: window ("the past 5 years") is that count and not a `since` span.
+_LIMIT_COUNTS_SEASONS: frozenset[str] = frozenset({"player_history"})
+
 _PAST_N_SEASONS = re.compile(
     r"\b(?:past|last)\s+(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:seasons?|years?)\b",
     re.IGNORECASE,
@@ -1539,7 +1543,48 @@ def _route_filter_slots(slots: dict[str, Any], question: str) -> tuple[str | Non
     return span, without
 
 
-def _route_calendar_slots(slots: dict[str, Any], question: str, span: str | None) -> None:
+def _route_season_range(intent: str, slots: dict[str, Any], question: str) -> None:
+    """The seasons a question spans when it names a range rather than one
+    year: "since 2020", "the 2010s", "the past two seasons"."""
+    # Measured: "most 3 pointers made since 2020" became season=2020 and was
+    # answered as "the most games with 0+ 3-pointers in the 2020 regular season".
+    seasons = _validate_range(question)
+    if seasons is not None:
+        slots["since"] = seasons[0]
+        if seasons[1] is not None:
+            slots["until"] = seasons[1]
+        slots.pop("season", None)
+    else:
+        # "past two seasons" / "last 3 years": a relative window, not the
+        # absolute one "since YYYY" or a decade name - see
+        # _validate_relative_season_span. No `until`: the window already ends
+        # at "now", the same place `since` alone reaches.
+        relative_since = _validate_relative_season_span(question)
+        if relative_since is not None and intent in _LIMIT_COUNTS_SEASONS:
+            # A history's `limit` counts SEASONS, not games, so "the past 5
+            # years" IS that limit and needs no span. Setting `since` here
+            # instead would hand the template a slot it does not honor, and
+            # "show me sga's 2pt percentage for the past 5 years" - which the
+            # question below answers - would refuse. Found on the merged tree:
+            # #140 (this rule) and #114 (the stat) were each sound alone.
+            slots["limit"] = current_season() - relative_since + 1
+            slots.pop("season", None)
+        elif relative_since is not None:
+            slots["since"] = relative_since
+            slots.pop("season", None)
+            if isinstance(slots.get("limit"), int) and not _names_a_count(question):
+                # The model's own count word landed on `limit` instead of the
+                # season count it actually modifies (#140): "...in the past
+                # two seasons" arrived with limit=2 and, from that alone,
+                # answered his last 2 games of his career. `_names_a_count`
+                # already looks past _PAST_N_SEASONS's own number here, so
+                # this only fires when nothing ELSE in the question names a
+                # real count of games ("last 5 games in the past two seasons"
+                # keeps its limit).
+                slots.pop("limit", None)
+
+
+def _route_calendar_slots(intent: str, slots: dict[str, Any], question: str, span: str | None) -> None:
     """A calendar day, a playoff round, a range of seasons and a split."""
     # After `span`, which pops the season on a career question. The season that
     # fixes the year is the one a template would use - `slots.get("season") or
@@ -1567,33 +1612,7 @@ def _route_calendar_slots(slots: dict[str, Any], question: str, span: str | None
         slots["season_n"] = int(ordinal_season.group(1))
         if season_from_text(question) is None:
             slots.pop("season", None)
-    # Measured: "most 3 pointers made since 2020" became season=2020 and was
-    # answered as "the most games with 0+ 3-pointers in the 2020 regular season".
-    seasons = _validate_range(question)
-    if seasons is not None:
-        slots["since"] = seasons[0]
-        if seasons[1] is not None:
-            slots["until"] = seasons[1]
-        slots.pop("season", None)
-    else:
-        # "past two seasons" / "last 3 years": a relative window, not the
-        # absolute one "since YYYY" or a decade name - see
-        # _validate_relative_season_span. No `until`: the window already ends
-        # at "now", the same place `since` alone reaches.
-        relative_since = _validate_relative_season_span(question)
-        if relative_since is not None:
-            slots["since"] = relative_since
-            slots.pop("season", None)
-            if isinstance(slots.get("limit"), int) and not _names_a_count(question):
-                # The model's own count word landed on `limit` instead of the
-                # season count it actually modifies (#140): "...in the past
-                # two seasons" arrived with limit=2 and, from that alone,
-                # answered his last 2 games of his career. `_names_a_count`
-                # already looks past _PAST_N_SEASONS's own number here, so
-                # this only fires when nothing ELSE in the question names a
-                # real count of games ("last 5 games in the past two seasons"
-                # keeps its limit).
-                slots.pop("limit", None)
+    _route_season_range(intent, slots, question)
     # A split is read for every intent, not only player_splits: it is a scoping
     # slot, so the template that answers one honors it and every other refuses.
     # Measured: "Joe Ingles stats when starting vs coming off the bench" was
@@ -1807,7 +1826,7 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     slots = _route_season_slots(raw, question)
     _route_threshold(raw, slots, question)
     span, without = _route_filter_slots(slots, question)
-    _route_calendar_slots(slots, question, span)
+    _route_calendar_slots(raw["intent"], slots, question, span)
     _route_intent_slots(raw["intent"], slots, question, without)
     _route_line_stat(raw["intent"], slots, question, rerouted_to_line)
     _route_game_score(raw["intent"], slots, question)

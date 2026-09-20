@@ -1772,3 +1772,15 @@ def test_shot_distance_sentinel_is_left_alone_outside_leaderboard() -> None:
     got = _ask("what is curry's average shot distance this season", '{"intent":"shot_distance","player":"Stephen Curry"}')
     assert got.slots.get("stat") != "shot_distance"
     assert got.slots.get("player") == "Stephen Curry"
+
+
+def test_a_relative_window_is_a_season_count_where_the_limit_already_counts_seasons() -> None:
+    """Found on the merged tree, where #140 (past N seasons -> `since`) and
+    #114 (2pt percentage) met: a history's `limit` counts SEASONS, so "the
+    past 5 years" is that limit. Handing it `since` instead gave the template
+    a slot it does not honor and refused a question that answers."""
+    got = _asking('{"intent":"player_history","stat":"fieldGoalPct","player":"Shai Gilgeous-Alexander","limit":5,"season_type":2}', "show me sga's 2pt percentage for the past 5 years")
+    assert got.slots.get("limit") == 5 and "since" not in got.slots and got.slots["stat"] == "twoPointFieldGoalPct"
+    # Every other intent still reads the window as a span.
+    log = _asking('{"intent":"game_log","player":"Tyrese Maxey","limit":2,"season_type":2}', "maxey's games against boston in the past two seasons")
+    assert log.slots.get("since") == current_season() - 1 and "limit" not in log.slots

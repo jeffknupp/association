@@ -20,7 +20,7 @@ had no published version to be compatible with.
   all of them.** "show a shot chart for steph curry in all playoff games"
   routed to a single defaulted season (2025) and drew it - 62 of 130 shots -
   with nothing in the answer saying it was one postseason out of the ten
-  Curry has (2013-2019, 2022, 2023, 2025; 3,866 located shots). None of
+  Curry has (2013-2019, 2022, 2023, 2025; 3,866 postseason shot rows on record, 3,494 of them carrying coordinates). None of
   `_SPAN_WORDS` ("career", "all-time", "ever", "in/of history") is in "all
   playoff games", so `_validate_span` now also reads "all"/"every
   <season-type> game(s)" (anchored so "all-star" cannot fire it) into `span`
