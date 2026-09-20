@@ -64,6 +64,17 @@ had no published version to be compatible with.
   chart drew a game a year off; a single game named with no year and no
   season words now means the current season, which is the default every
   template already applies (#153).
+- **A team's half is answered, and "most points in a half" is one game.**
+  "Detroit Pistons most points in a first half this season" and "least points
+  scored by the wizards in the first half this season" fell through: a team's
+  half had no template, because the model maps "first half" onto period 1 and
+  that is wrong for a team the same way it is for a player. The linescore
+  already holds both quarters, so `team_quarter_points` sums them - it takes
+  the `half` slot through the same `_period_scope` the player side uses - and
+  a question asking for the most or the fewest gets that single game rather
+  than the season's average, with every game named when two tie. Measured:
+  the Pistons scored 81 in a first half against Indiana on 2026-04-12, their
+  most, and the Wizards 37 against Chicago on 2026-04-07, their fewest.
 - **A quarter or a half is narrowed by the relation, so it honors a
   teammate's absence and an order.** `period_split` kept its own copy of the
   played-game guard, so "scottie barnes stats 2nd half log without rj" was

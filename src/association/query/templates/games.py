@@ -923,9 +923,7 @@ def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> Template
     .. versionadded:: 1.1.0
     """
     con = ctx.con
-    period = slots.get("period")
-    if not isinstance(period, int) or not 1 <= period <= 10:
-        raise TemplateUnsupported(f"team_quarter_points needs an integer period 1-10, got {period!r}")
+    periods, period_label = _period_scope(slots, "team_quarter_points")
     if isinstance(slots.get("player"), str) and slots["player"].strip():
         # A named player's quarter or half is period_split's job, not this
         # template's - see the docstring.
@@ -938,11 +936,10 @@ def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> Template
 
     season = slots.get("season") or current_season()
     season_type = slots.get("season_type") or 2
-    games = _team_quarter_points_games(con, team, opponent, season, season_type, period)
+    games = _team_quarter_points_games(con, team, opponent, season, season_type, periods)
 
-    period_label = _period_label(period)
     period_str = _period(season, season_type)
-    return _team_quarter_points_answer(team, opponent, games, period=period, period_label=period_label, period_str=period_str)
+    return _team_quarter_points_answer(team, opponent, games, periods=periods, period_label=period_label, period_str=period_str, rank=slots.get("rank"))
 
 
 def _team_quarter_points_teams(con: duckdb.DuckDBPyConnection, team_text: Any, opponent_text: Any, season: int | None) -> tuple[Entity, Entity | None] | TemplateResult:
@@ -962,9 +959,14 @@ def _team_quarter_points_teams(con: duckdb.DuckDBPyConnection, team_text: Any, o
     return team, opponent
 
 
-def _team_quarter_points_games(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity | None, season: int, season_type: int, period: int) -> list[dict[str, Any]]:
+def _team_quarter_points_games(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity | None, season: int, season_type: int, periods: tuple[int, ...]) -> list[dict[str, Any]]:
     """Each qualifying game's date, opponent and points in the asked-for
-    period - None where the game never reached it, not zero."""
+    periods - None where the game never reached any of them, not zero.
+
+    A half is the two quarters it holds, summed from the same official
+    linescore one quarter is read from, so "most points in a first half" is
+    answered by addition rather than by a second source.
+    """
     season_clause, season_params = _season_games(season, season_type, "g")
     where = ["tbs.team_id = ?", season_clause, "tbs.season_type = ?"]
     params: list[Any] = [team.id, *season_params, season_type]
@@ -975,14 +977,18 @@ def _team_quarter_points_games(con: duckdb.DuckDBPyConnection, team: Entity, opp
     games = []
     for date, own_linescores, opp_name in rows:
         scores = _linescores(own_linescores)
-        points = scores[period - 1] if period - 1 < len(scores) else None
+        reached = [scores[n - 1] for n in periods if n - 1 < len(scores)]
+        points = sum(reached) if reached else None
         games.append({"date": _eastern_date(date), "opponent": opp_name, "points": points})
     return games
 
 
-def _team_quarter_points_answer(team: Entity, opponent: Entity | None, games: list[dict[str, Any]], *, period: int, period_label: str, period_str: str) -> TemplateResult:
-    """The no-games refusal, the none-reached-that-period refusal, or the
-    normal per-game breakdown and total."""
+def _team_quarter_points_answer(
+    team: Entity, opponent: Entity | None, games: list[dict[str, Any]], *, periods: tuple[int, ...], period_label: str, period_str: str, rank: Any = None
+) -> TemplateResult:
+    """The no-games refusal, the none-reached-that-period refusal, the single
+    game a "most/least" question asks for, or the normal per-game breakdown
+    and total."""
     vs = f" against the {opponent.name}" if opponent else ""
     opponent_name = opponent.name if opponent else None
     if not games:
@@ -996,7 +1002,18 @@ def _team_quarter_points_answer(team: Entity, opponent: Entity | None, games: li
         return TemplateResult(data={"team": team.name, "opponent": opponent_name, "games": games}, answer=answer)
 
     total = sum(g["points"] for g in played)
-    data = {"team": team.name, "opponent": opponent_name, "period": period, "games": played, "total": total}
+    data = {"team": team.name, "opponent": opponent_name, "period": periods[0] if len(periods) == 1 else None, "period_label": period_label, "games": played, "total": total}
+    if rank in ("most", "fewest"):
+        # "Detroit Pistons most points in a first half this season" asks for
+        # ONE game, not the season's average - a single-game extreme, the
+        # team counterpart of single_game_high. Ties are named together
+        # rather than resolved by whichever row sorted first.
+        best = max(g["points"] for g in played) if rank == "most" else min(g["points"] for g in played)
+        tied = [g for g in played if g["points"] == best]
+        how = "most" if rank == "most" else "fewest"
+        where = " and ".join(f"vs the {g['opponent']} on {g['date']}" for g in tied)
+        answer = f"The {team.name} scored {best} in the {period_label} {where}, their {how} in the {period_str}{vs}."
+        return TemplateResult(data={**data, "rank": rank, "extreme": best, "extreme_games": tied}, answer=answer)
     return TemplateResult(data=data, answer=_phrase_team_quarter_points(team.name, opponent_name, period_label, period_str, played, total))
 
 

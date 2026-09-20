@@ -4035,3 +4035,56 @@ def test_a_period_without_a_teammate_nothing_resolves_refuses_rather_than_droppi
     a wider question than was asked with nothing saying so."""
     with pytest.raises(TemplateUnsupported, match="no player matching"):
         period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "without": ["Nobody At All"]})
+
+
+def test_a_teams_half_is_the_two_quarters_of_its_own_linescore(tq_con: TemplateContext) -> None:
+    """A team's half had no template and fell through, because the model maps
+    "first half" onto period 1 - wrong for a team the same way it is for a
+    player. The linescore already holds both quarters, so it is addition, not
+    a second source. The Knicks' second halves here are 28+29, 28+28 and
+    36+30: 179 across three games."""
+    result = team_quarter_points(tq_con, {"team": "Knicks", "half": 2, "season": current_season(), "season_type": 2})
+    assert result.data["total"] == 179
+    assert [g["points"] for g in result.data["games"]] == [57, 56, 66]
+    assert "2nd half" in (result.answer or "")
+
+
+def test_a_teams_most_in_a_half_is_one_game_not_the_average(tq_con: TemplateContext) -> None:
+    """ "Detroit Pistons most points in a first half this season" asks for ONE
+    game. The Knicks' first halves are 30+25, 20+20 and 10+32, so the most is
+    55 against Boston and the fewest 40, and the answer names the game rather
+    than a season average nobody asked for."""
+    most = team_quarter_points(tq_con, {"team": "Knicks", "half": 1, "season": current_season(), "season_type": 2, "rank": "most"})
+    assert most.data["extreme"] == 55
+    assert "scored 55 in the 1st half vs the Boston Celtics on 2026-04-10" in (most.answer or "")
+    assert "their most" in (most.answer or "")
+    fewest = team_quarter_points(tq_con, {"team": "Knicks", "half": 1, "season": current_season(), "season_type": 2, "rank": "fewest"})
+    assert fewest.data["extreme"] == 40 and "their fewest" in (fewest.answer or "")
+    # Without a rank it is still the season's scoring, as it always was.
+    plain = team_quarter_points(tq_con, {"team": "Knicks", "half": 1, "season": current_season(), "season_type": 2})
+    assert "extreme" not in plain.data and plain.data["total"] == 137
+
+
+def test_a_teams_quarter_is_unchanged_by_halves_arriving(tq_con: TemplateContext) -> None:
+    """The quarter path is what it was: one period of the linescore, read by
+    number rather than summed."""
+    result = team_quarter_points(tq_con, {"team": "Knicks", "period": 1, "season": current_season(), "season_type": 2})
+    assert [g["points"] for g in result.data["games"]] == [30, 20, 10]
+    assert result.data["period"] == 1
+
+
+def test_a_tied_extreme_names_every_game_that_reached_it() -> None:
+    """Two games at the same high are both the answer. Resolving the tie by
+    whichever row sorted first would report one game as though it stood
+    alone."""
+    from association.query.entities import Entity
+    from association.query.templates.games import _team_quarter_points_answer
+
+    games = [
+        {"date": "2026-01-02", "opponent": "Boston Celtics", "points": 60},
+        {"date": "2026-01-09", "opponent": "Chicago Bulls", "points": 60},
+        {"date": "2026-01-16", "opponent": "Miami Heat", "points": 41},
+    ]
+    result = _team_quarter_points_answer(Entity(id="18", name="New York Knicks"), None, games, periods=(1, 2), period_label="1st half", period_str="2026 regular season", rank="most")
+    assert result.data["extreme"] == 60 and len(result.data["extreme_games"]) == 2
+    assert "vs the Boston Celtics on 2026-01-02 and vs the Chicago Bulls on 2026-01-09" in (result.answer or "")

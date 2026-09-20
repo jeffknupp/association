@@ -702,12 +702,30 @@ def test_abbreviated_quarters_and_halves_are_recognized(question: str, want: dic
     assert all(got.slots.get(k) == v for k, v in want.items()), got.slots
 
 
-def test_a_team_half_is_not_a_quarter_either() -> None:
-    """A team's half has no template: `team_quarter_points` reads one period of
-    the linescore and `period_split` answers about a player. Naming no player,
-    this keeps falling through rather than being answered for either."""
-    assert _ask("Celtics 2nd half scoring this season", '{"intent":"team_quarter_points","team":"Boston Celtics","period":2}').intent == "other"
+def test_a_team_half_is_the_two_quarters_of_its_own_linescore() -> None:
+    """A team's half used to have no template and fall through: the model maps
+    "first half" onto period 1, which is wrong for a team the same way it is
+    for a player. It is team_quarter_points' now, summing the two quarters the
+    linescore already holds - and the `half` slot, not the model's `period`,
+    is what says which two."""
+    got = _ask("Celtics 2nd half scoring this season", '{"intent":"team_quarter_points","team":"Boston Celtics","period":2}')
+    assert got.intent == "team_quarter_points" and got.slots.get("half") == 2
     assert _ask("76ers 4th qtr points vs boston", '{"intent":"team_quarter_points","team":"Philadelphia 76ers","period":4}').intent == "team_quarter_points"
+    # A half with no team and no player still has no subject, so it falls through.
+    assert _ask("2nd half scoring this season", '{"intent":"team_quarter_points"}').intent == "other"
+
+
+def test_a_team_asked_for_its_most_or_fewest_carries_that_rank() -> None:
+    """ "Detroit Pistons most points in a first half this season" asks for ONE
+    game, not the season's average. The rank words route() already reads for
+    team_leaderboard say which end, and the template answers that game."""
+    most = _ask("Detroit Pistons most points in a first half this season", '{"intent":"team_quarter_points","team":"Detroit Pistons","period":1,"season":2026}')
+    assert most.intent == "team_quarter_points" and most.slots.get("half") == 1 and most.slots.get("rank") == "most"
+    least = _ask("least points scored by the wizards in the first half this season", '{"intent":"team_quarter_points","team":"Washington Wizards","period":1,"season":2026}')
+    assert least.slots.get("rank") == "fewest"
+    # A plain half question carries no rank, so it still averages.
+    plain = _ask("Celtics 2nd half scoring this season", '{"intent":"team_quarter_points","team":"Boston Celtics","period":2}')
+    assert "rank" not in plain.slots
 
 
 @pytest.mark.parametrize(

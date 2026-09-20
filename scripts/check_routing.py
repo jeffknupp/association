@@ -332,6 +332,10 @@ CASES: list[tuple[str, str, dict]] = [
     # and the agent before it existed.
     ("who has the highest average 1st quarter points this season?", "period_leaderboard", {"period": 1}),
     ("knicks 1st quarter scoring leaders playoffs", "period_leaderboard", {"period": 1}),
+    # A TEAM's half, which used to fall through: the model maps "first half"
+    # onto period 1, and the linescore holds both quarters.
+    ("Detroit Pistons most points in a first half this season", "team_quarter_points", {"half": 1, "rank": "most"}),
+    ("Celtics 2nd half scoring this season", "team_quarter_points", {"half": 2}),
 ]
 
 

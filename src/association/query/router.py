@@ -1424,6 +1424,14 @@ def _route_period_intents(raw: dict[str, Any], question: str) -> None:
             raw |= asked
             if not _named_a_stat(question):
                 raw.pop("stat", None)
+        elif asked is not None and not named_player and isinstance(raw.get("team"), str) and raw["team"].strip():
+            # A TEAM's half. A team's QUARTER never reaches here - the
+            # exemption above keeps it on its own template - but a half always
+            # does, because the model maps "first half" onto period 1 and that
+            # is wrong for a team the same way it is for a player. The
+            # linescore holds both quarters, so the template sums them.
+            raw["intent"] = "team_quarter_points"
+            raw |= asked
         elif asked is not None and named_player:
             raw["intent"] = "period_split"
             raw |= asked
@@ -1696,7 +1704,9 @@ def _route_intent_slots(intent: str, slots: dict[str, Any], question: str, witho
             slots["with_player"] = with_player
     if intent == "player_splits" and slots.get("split") == "home_away":
         slots.pop("venue", None)  # a split over venues is not a filter to one
-    if intent == "team_leaderboard":
+    if intent in ("team_leaderboard", "team_quarter_points"):
+        # For team_quarter_points this is what makes "most points in a first
+        # half" one game rather than the season's average - see its answer.
         rank = next((name for name, pattern in RANK_WORDS if pattern.search(question)), None)
         if rank is not None:
             slots["rank"] = rank
