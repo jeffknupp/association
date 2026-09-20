@@ -295,6 +295,29 @@ def test_the_fast_path_replaces_a_player_the_question_never_named(monkeypatch: p
     assert seen == ["Shai Gilgeous-Alexander", "Joel Embiid"]
 
 
+def test_a_router_that_could_not_be_asked_falls_through_saying_why(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The rule is unchanged - a router failure costs a round trip, never an
+    answer - so this still falls through. What it must not do is report it as
+    the model having said something unusable: reported from a laptop without
+    the router model pulled, where every question came back "the router
+    returned no usable classification" and nothing pointed at ollama."""
+    from association.query.history import RunHistory
+    from association.query.router import RouterUnavailable
+
+    agent = _agent(tmp_path)
+
+    def unavailable(*a: Any, **k: Any) -> None:
+        raise RouterUnavailable("ollama could not serve the router model 'qwen2.5:3b': not found")
+
+    monkeypatch.setattr("association.query.agent.route", unavailable)
+    # The fast path alone: _ask_inner would go on to the real agent, and this
+    # suite reaches no ollama.
+    assert agent._try_fast_path("who leads the league in assists?", RunHistory(False, tmp_path / ".history")) is None
+    assert agent.fell_through is not None
+    assert "router model 'qwen2.5:3b'" in agent.fell_through
+    assert "no usable classification" not in agent.fell_through
+
+
 def test_a_rerouted_intent_runs_the_template_it_was_rerouted_to(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """A player's record against a team arrives as head_to_head and is rewritten
     to with_without (ISSUES.md #163). This pins that the HANDLER moves with the

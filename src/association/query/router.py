@@ -172,6 +172,19 @@ def _period_asked(question: str) -> dict[str, int] | None:
     return {"period": int(quarter.group("qn") or quarter.group("nq"))}
 
 
+class RouterUnavailable(RuntimeError):
+    """The router model could not be asked at all - ollama is down, or cannot
+    serve that model.
+
+    Distinct from :func:`route` returning None, which means the model answered
+    with something unusable. Both fall through to the agent, and neither is
+    fatal; what differs is the sentence the reader gets, and with
+    ``--disable-fallthrough`` that sentence is the entire error.
+
+    .. versionadded:: 4.4.0
+    """
+
+
 @dataclass
 class Route:
     """`slots` holds only values that survived validation - a dropped slot is
@@ -1479,7 +1492,18 @@ def _route_ask_model(model: str, question: str, previous_question: str | None) -
             options={"num_ctx": ROUTER_NUM_CTX, "temperature": 0},
         )
         raw = json.loads(response.message.content or "{}")
-    except (ollama.ResponseError, json.JSONDecodeError, ConnectionError):
+    except ConnectionError as exc:
+        # Not "no usable classification": the model was never asked. Saying so
+        # sends the reader to ollama rather than to their own question - with
+        # --disable-fallthrough this sentence IS the whole error, and every
+        # question gets it, which reads like the question was the problem.
+        raise RouterUnavailable(f"ollama is not answering, so the router model {model!r} could not be asked") from exc
+    except ollama.ResponseError as exc:
+        # A model that is not pulled, a server out of memory, a load already
+        # in flight. Each is about the server, and none is about the question.
+        raise RouterUnavailable(f"ollama could not serve the router model {model!r}: {exc}") from exc
+    except json.JSONDecodeError:
+        # This one IS the model replying with something unusable.
         return None
     if not isinstance(raw, dict) or not isinstance(raw.get("intent"), str):
         return None

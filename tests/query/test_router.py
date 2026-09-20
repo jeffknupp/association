@@ -11,7 +11,7 @@ from ollama import ChatResponse, Message
 
 from association.nba.season import current_season
 from association.query.prompt import estimate_tokens
-from association.query.router import CODE_ASSIGNED_INTENTS, ORDER_INTENTS, ORDER_WORDS, SIDE_VALUES, Route, route
+from association.query.router import CODE_ASSIGNED_INTENTS, ORDER_INTENTS, ORDER_WORDS, SIDE_VALUES, Route, RouterUnavailable, route
 from association.query.router_prompt import ROUTER_NUM_CTX, ROUTER_PROMPT, ROUTER_PROMPT_TOKEN_BUDGET, ROUTER_SCHEMA
 from association.query.templates import TEMPLATES, TemplateContext
 
@@ -88,9 +88,20 @@ def test_missing_intent_returns_none_to_fall_through() -> None:
     assert _route('{"stat":"points"}') is None
 
 
-def test_unreachable_model_returns_none_rather_than_raising() -> None:
-    with patch("association.query.router.ollama.chat", side_effect=ollama.ResponseError("down")):
-        assert route("m", "q") is None
+def test_an_unreachable_model_raises_rather_than_reading_as_a_bad_reply() -> None:
+    """This asserted `route()` returns None for an unreachable model, on the
+    rule that a router failure costs a round trip and never an answer. That
+    rule still holds, one level up: `Agent._ask_inner` catches this and falls
+    through exactly as it did - see
+    test_a_router_that_could_not_be_asked_falls_through_saying_why.
+
+    What changed is the sentence. Returning None here made "ollama cannot
+    serve this model" indistinguishable from "the model replied with
+    nonsense", and the caller reported the second: every question on a laptop
+    without the router model pulled came back "the router returned no usable
+    classification", which reads as a fault in the question."""
+    with patch("association.query.router.ollama.chat", side_effect=ollama.ResponseError("down")), pytest.raises(RouterUnavailable):
+        route("m", "q")
 
 
 def test_previous_question_is_passed_as_context_for_repl_followups() -> None:
@@ -394,6 +405,27 @@ def _asking(payload: str, question: str) -> Route:
         got = route("m", question)
     assert got is not None
     return got
+
+
+def test_a_router_that_could_not_be_asked_says_so_rather_than_blaming_the_question() -> None:
+    """Reported from a laptop where the router model was not pulled: EVERY
+    question came back "the router returned no usable classification", which
+    reads as a fault in the question and sent the reader to look at it. The
+    model was never asked at all. With --disable-fallthrough that sentence is
+    the whole error, so it has to name the server and the model.
+
+    Only an unusable REPLY is still "no usable classification" - that one is
+    about what the model said, and route() keeps returning None for it so the
+    question still falls through."""
+    import json as _json
+
+    missing = ollama.ResponseError("model 'qwen2.5:3b' not found")
+    with patch("association.query.router.ollama.chat", side_effect=missing), pytest.raises(RouterUnavailable, match=re.escape("could not serve the router model 'qwen2.5:3b'")):
+        route("qwen2.5:3b", "who leads the league in assists?")
+    with patch("association.query.router.ollama.chat", side_effect=ConnectionError("refused")), pytest.raises(RouterUnavailable, match="ollama is not answering"):
+        route("qwen2.5:3b", "who leads the league in assists?")
+    with patch("association.query.router.ollama.chat", side_effect=_json.JSONDecodeError("bad", "", 0)):
+        assert route("qwen2.5:3b", "who leads the league in assists?") is None
 
 
 def test_question_text_beats_a_dropped_order_slot() -> None:

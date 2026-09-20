@@ -34,7 +34,7 @@ from association.cli.paths import default_db_path
 from association.nba.season import current_season
 from association.query.entities import override_invented_players, override_nicknames, restore_dropped_players, scope_from_question
 from association.query.models import DEFAULT_ROUTER_MODEL
-from association.query.router import route
+from association.query.router import RouterUnavailable, route
 from association.query.templates import TEMPLATES
 from association.query.templates.common import PLAYER_INTENTS, PLAYER_REQUIRED_INTENTS
 
@@ -399,4 +399,11 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except RouterUnavailable as exc:
+        # Every case would fail the same way and none of them would be about
+        # routing, so say it once. Caught here rather than around the call in
+        # main() to keep that function under the complexity gate.
+        print(f"cannot run: {exc}")
+        sys.exit(1)

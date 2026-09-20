@@ -16,6 +16,20 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **A router that could not be asked says so, instead of blaming the
+  question.** `route()` collapsed three different failures into one: ollama
+  unreachable, ollama unable to serve the router model, and the model replying
+  with something unparsable all returned None, and the caller reported "the
+  router returned no usable classification". Only the third is that. Reported
+  from a laptop where the router model was not pulled: every question came
+  back with that sentence, which reads as a fault in the question and points
+  nowhere near ollama - and under `--disable-fallthrough` it is the entire
+  error. The first two now raise `RouterUnavailable`, naming the model and the
+  server ("ollama could not serve the router model 'qwen2.5:3b': model not
+  found"). The rule that a router failure costs a round trip and never an
+  answer is unchanged: `Agent._ask_inner` catches it and falls through exactly
+  as before, and `scripts/check_routing.py` says it once and stops rather than
+  reporting every case as a routing failure.
 - **The web page recalls earlier questions, and every question can be copied.**
   ArrowUp steps back through the questions asked on the page and ArrowDown
   forward again, the way a terminal does: it holds at the oldest rather than

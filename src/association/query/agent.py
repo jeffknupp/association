@@ -27,7 +27,7 @@ from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .keepalive import KEEP_ALIVE
 from .models import AGENT_BUDGET_SECONDS, DEFAULT_ROUTER_MODEL
 from .prompt import AGENT_NUM_CTX, TOOLS, build_system_prompt
-from .router import route
+from .router import RouterUnavailable, route
 from .templates import TEMPLATES
 from .templates.common import PLAYER_INTENTS, PLAYER_REQUIRED_INTENTS, TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, check_scope, coverage_caveat
 from .toolbox import Toolbox
@@ -273,7 +273,16 @@ class Agent:
             self.fell_through = "the fast path is off (--no-fast-path)"
             return None
         t0 = time.monotonic()
-        routed = route(self.router_model, question, previous_question=self.last_question)
+        try:
+            routed = route(self.router_model, question, previous_question=self.last_question)
+        except RouterUnavailable as exc:
+            # The fast path is gone for this question, but so is the agent's
+            # own model, most likely - falling through is still right, and the
+            # reason has to name the server rather than the question.
+            history.record_model_call(time.monotonic() - t0)
+            history.log(f"  -> (router) {exc}, falling through to the agent")
+            self.fell_through = str(exc)
+            return None
         history.record_model_call(time.monotonic() - t0)
         if routed is None:
             history.log("  -> (router) no usable classification, falling through to the agent")
