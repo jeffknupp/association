@@ -14,8 +14,7 @@ grow continuously.
 Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
-## Unreleased
-
+## 4.3.0 - 2026-09-19
 - **The docs describe the shared relation.** The architecture page, the
   templates package docstring, the README and the usage guide now say that the
   box-score templates compose `query/player_games` rather than each writing
