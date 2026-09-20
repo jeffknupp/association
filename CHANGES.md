@@ -16,6 +16,22 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **A player's record against one team is his games, not two franchises
+  meeting.** "Embiid career record vs boston" and "Show Embiid's career record
+  against Boston" both routed to `head_to_head`, which counts every
+  76ers-Celtics meeting including the ones he sat out - and both fell through
+  before reaching that wrong reading. They arrive two ways, with the player in
+  the `teams` list and with him replaced by his own team and named only in the
+  question, and `entities.player_record_against_a_team` turns both into
+  `with_without`, whose split is exactly "the games he played against the ones
+  he missed". The router cannot make that call itself: whether a name in
+  `teams` is a player or a franchise is a fact about the warehouse, not about
+  the words. `with_without` now honors `opponent` to go with it, narrowing
+  both rows of the split together and naming the opponent in the title, since
+  a record over one opponent's games headed as though it covered every game is
+  the silent narrowing that module exists to stop. Measured: 76ers 13-15 in
+  the 28 regular-season games Embiid played against Boston, 3-8 in the 11 he
+  missed (#163).
 - **One definition of what a question calls a box-score column.** `route()`
   reads the stat beside a threshold ("20+ points") and `templates/common.py`
   reads the same phrases onto columns ("under 14 fta"), and each kept its own

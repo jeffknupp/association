@@ -179,7 +179,10 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # or road split for a player is answerable the same way a team's already
     # is (see team_record below).
     "player_splits": frozenset({"span", "split", "venue", "opponent"}),
-    "with_without": frozenset({"span", "without"}),
+    # `opponent` narrows BOTH rows of the split to one opponent's games, and
+    # the title says so - "Embiid career record vs boston" is his record in the
+    # games his team played Boston, not overall (#163).
+    "with_without": frozenset({"span", "without", "opponent"}),
     "record_when": frozenset({"span"}),
     # `opponent` and `without` are honored only for the one-name-and-a-team
     # shape that is really a player-vs-team question in disguise - see the

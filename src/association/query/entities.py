@@ -1935,3 +1935,73 @@ def resolve_team(con: duckdb.DuckDBPyConnection, text: str, season: int | None =
        Takes the ``season`` a team name is read for.
     """
     return _resolve(find_teams(con, text, season), text, ("name", "id"))
+
+
+# "record" is the whole signal that a head_to_head naming a player is a
+# question about that player's games rather than about two franchises.
+_RECORD_ASKED = re.compile(r"\brecords?\b", re.IGNORECASE)
+
+
+def _player_record_subject(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], opponent: Entity) -> str | None:
+    """The player a record-against-a-team question is about, or None.
+
+    Two shapes, both measured (``ISSUES.md`` #163). The router either files
+    the player in ``teams`` beside the real opponent - "Embiid career record
+    vs boston" arrives as ``teams: ['Joel Embiid', 'Boston Celtics']`` - or
+    replaces him with his own team, leaving two real franchises and the
+    player's name only in the question: "Show Embiid's career record against
+    Boston" arrives as ``teams: ['Philadelphia 76ers', 'Boston Celtics']``.
+    """
+    listed = slots.get("teams")
+    for name in listed if isinstance(listed, list) else []:
+        # A name in the TEAM list that names no team and does name exactly one
+        # player. `_team_named` first, so "Boston" stays a team.
+        if isinstance(name, str) and name.strip() and _team_named(con, name) is None and len(find_players(con, name)) == 1:
+            return name
+    named = _scope_from_question_only_player(con, question)
+    # `_scope_from_question_only_player` already drops a name held only by a
+    # word that names a team, which is what keeps "boston" from naming Brandon
+    # Boston Jr. here; this also refuses the opponent's own name outright.
+    return named if named is not None and not _shares_word(named, opponent.name) else None
+
+
+def player_record_against_a_team(con: duckdb.DuckDBPyConnection, question: str, intent: str, slots: dict[str, Any]) -> str | None:
+    """The intent a "PLAYER's record against TEAM" question really wants, or None.
+
+    ``head_to_head`` is two franchises meeting, and the router sends a
+    player's record against one of them there as well - which is a different
+    question, since it counts every meeting including the ones he sat out.
+    Both of the shapes it arrives in are described in
+    :func:`_player_record_subject`, and both fell through (``ISSUES.md``
+    #163): 76ers 13-15 in the 28 regular-season games Joel Embiid played
+    against Boston, against a 76ers-Celtics record covering far more.
+
+    ``with_without`` is what answers it - a team's record in the games one
+    player played against the ones he missed, narrowed to one opponent - so
+    the slots are rewritten for it and the new intent returned. The subject
+    goes in ``without`` because that is the slot the template splits BY; it
+    infers his team itself, which is why none is passed.
+
+    Returns None for every other question, including a real head-to-head, so
+    a question that works today cannot move.
+
+    .. versionadded:: 4.4.0
+    """
+    if intent != "head_to_head" or not _RECORD_ASKED.search(question):
+        return None
+    season = slots.get("season") if isinstance(slots.get("season"), int) else None
+    opponent = _team_after_versus(con, question, season)
+    if opponent is None:
+        return None
+    player = _player_record_subject(con, question, slots, opponent)
+    if player is None:
+        return None
+    # Only the slots that still mean the same thing for the new intent. The
+    # team slots are exactly what must not survive: they are the reading being
+    # replaced.
+    kept = {key: value for key, value in slots.items() if key in ("season", "season_type", "span", "venue")}
+    slots.clear()
+    slots.update(kept)
+    slots["without"] = [player]
+    slots["opponent"] = opponent.name
+    return "with_without"

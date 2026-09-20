@@ -1887,36 +1887,6 @@ those were found.
 
 ## P3: refusal or gap
 
-### A player's record against one team has no template, and the router files him as a team
-- **Found:** 2026-09-20, replaying the 45-question web session (build
-  `178c21f-dirty`) against current code - the last two of its questions that
-  still fail
-- **Evidence:** "Embiid career record vs boston" routes to `head_to_head` with
-  `teams: ['Joel Embiid', 'Boston Celtics']` - a PLAYER in the team list - and
-  "Show Embiid's career record against Boston" routes to the same intent with
-  `teams: ['Philadelphia 76ers', 'Boston Celtics']`, the player replaced by
-  his team, which is a different question (every 76ers-Celtics meeting,
-  including the ones he sat). Both fall through on `span` first
-  (`head_to_head cannot honor ['span']`), so neither wrong reading is reached,
-  and the agent answers neither.
-  **The warehouse holds it**: 76ers 13-15 in the 28 regular-season games Embiid
-  played against Boston, over `player_game_log` joined to `real_games`.
-  `with_without` is the shape that fits - it already answers "Philadelphia
-  76ers with and without Joel Embiid, 2015-2026 regular seasons: played
-  490, 319-171" - but it does NOT honor `opponent` (`HONORED_SCOPING`
-  lists only `span` and `without`), so narrowing to one opponent is refused
-  rather than silently widened, which is `check_scope` working as intended.
-- **User sees:** the slow agent, for a question asked twice in one session.
-- **Next step:** two halves, and the template half is the smaller one -
-  `with_without` reads the player-games relation, which already narrows by
-  opponent, so honoring `opponent` is mostly declaring it and passing it
-  through. The routing half is the real work: "PLAYER record vs TEAM" has to
-  stop becoming a team-vs-team `head_to_head`, and a player's name sitting in
-  `teams` is the signal (`entities._scope_from_question_team_in_players`
-  already does the mirror-image move for a team in `players`).
-- **GitHub:** none yet
-- **GitHub:** #163
-
 ### A position group as the subject has no template, and six corpus questions want one
 - **Found:** 2026-09-20, tallying what still falls through after the
   quarters-and-halves work

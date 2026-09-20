@@ -396,6 +396,33 @@ def test_with_and_without_is_counted_inside_his_time_on_the_team(league: Templat
     assert result.answer.splitlines()[2].startswith("Jayson Tatum out")  # a "without" question leads with it
 
 
+def test_with_and_without_narrows_to_one_opponent_and_says_so(league: TemplateContext) -> None:
+    """#163: "Embiid career record vs boston" is his team's record in the games
+    it played BOSTON, and there was no way to ask it - `opponent` was honored
+    by nothing here, so the question fell through.
+
+    Against the Lakers the Celtics played e1 (W, Tatum), e2 (L, Tatum DNP) and
+    e7 (L, Tatum); e5 has no box score and is on neither side. So with Tatum
+    1-1 and without him 0-1, where the unnarrowed split is 2-1 and 1-1. The
+    opponent is in the TITLE, because a record over one opponent's games headed
+    as though it covered every game is the silent narrowing this module exists
+    to stop."""
+    result = with_without(league, _slots(team="Boston Celtics", without="Tatum", opponent="Lakers"))
+    groups = {g["teammate_played"]: g for g in result.data["groups"]}
+    assert (groups[True]["wins"], groups[True]["losses"]) == (1, 1)
+    assert (groups[False]["wins"], groups[False]["losses"]) == (0, 1)
+    assert "vs the Los Angeles Lakers" in result.answer
+    # The other opponent is a different pool, not the same numbers.
+    sixers = with_without(league, _slots(team="Boston Celtics", without="Tatum", opponent="76ers"))
+    by_played = {g["teammate_played"]: g for g in sixers.data["groups"]}
+    assert (by_played[True]["wins"], by_played[True]["losses"]) == (1, 0)
+    assert (by_played[False]["wins"], by_played[False]["losses"]) == (1, 0)
+    # And naming none is the whole season, exactly as before.
+    every = with_without(league, _slots(team="Boston Celtics", without="Tatum"))
+    assert "vs the" not in every.answer
+    assert {g["teammate_played"]: (g["wins"], g["losses"]) for g in every.data["groups"]} == {True: (2, 1), False: (1, 1)}
+
+
 def test_without_two_teammates_counts_only_the_games_neither_played(league: TemplateContext) -> None:
     """The measured bug: "Celtics record without Tatum and Brown" dropped the
     second name and answered about Tatum alone (1-1 here). With Brown sitting

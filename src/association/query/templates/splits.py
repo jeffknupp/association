@@ -372,14 +372,21 @@ def with_without(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     if not windows:
         return _with_without_empty_windows(team, subject, mates, named, all_of)
 
-    games, unknown = _with_without_games(con, scope, windows, [m.id for m in mates], subject.id if subject else None)
+    # The opponent the question named, if any: "Embiid career record vs boston"
+    # is his record in the games his team played BOSTON, not overall. Narrowing
+    # is honest here because both rows narrow together - the split is still
+    # played against missed, over the same pool (#163).
+    against = _optional_team(con, slots.get("opponent"), season=_slot_season(slots))
+    if isinstance(against, TemplateResult):
+        return against
+    games, unknown = _with_without_games(con, scope, windows, [m.id for m in mates], subject.id if subject else None, against.id if against else None)
     team_names = _names(con, "teams", "team_id", {w.team_id for w in windows})
     spell_text = "; ".join(f"{_with_without_stint_team(w, team_names)} {w.first} to {w.last}" for w in windows)
     if not games:
         return _with_without_empty_games(subject, mates, named, all_of, scope, spell_text, unknown)
 
     groups, rows, team_order = _with_without_rows(games, team_names, asked_without, len(mates), subject, all_of, any_of)
-    return _with_without_answer(scope, games, team_names, team_order, windows, subject, mates, named, all_of, asked_without, unknown, groups, rows)
+    return _with_without_answer(scope, games, team_names, team_order, windows, subject, mates, named, all_of, asked_without, unknown, groups, rows, against)
 
 
 def _with_without_infer_teammate(team: Entity | None, texts: list[str]) -> tuple[list[str], list[str]]:
@@ -527,13 +534,14 @@ def _with_without_answer(
     unknown: int,
     groups: list[dict[str, Any]],
     rows: list[tuple[str, list[str]]],
+    against: Entity | None = None,
 ) -> TemplateResult:
     """The table and the notes under it: title, counted span, what "played"
     means for one teammate against two, and the caveats for games with no box
     score and, with a player subject, what the extra columns are."""
     label = scope.label(min(g["season"] for g in games), max(g["season"] for g in games))
     counted_teams = ", ".join(team_names[t] for t in team_order)
-    title, headers, whose = _with_without_heading(subject, mates, named, all_of, counted_teams, label)
+    title, headers, whose = _with_without_heading(subject, mates, named, all_of, counted_teams, label, against)
     used = [w for w in windows if any(g["team_id"] == w.team_id and w.first <= g["day"] <= w.last for g in games)]
     spell_text = "; ".join(f"{team_names[w.team_id]} {w.first} to {w.last}" if len(team_order) > 1 else f"{w.first} to {w.last}" for w in used)
     notes = _with_without_notes(whose, spell_text, mates, asked_without, all_of, unknown, subject)
@@ -543,15 +551,20 @@ def _with_without_answer(
     return TemplateResult(data=data, answer=answer)
 
 
-def _with_without_heading(subject: Entity | None, mates: list[Entity], named: list[str], all_of: str, counted_teams: str, label: str) -> tuple[str, list[str], str]:
+def _with_without_heading(subject: Entity | None, mates: list[Entity], named: list[str], all_of: str, counted_teams: str, label: str, against: Entity | None = None) -> tuple[str, list[str], str]:
     """The table's title and headers, and the phrase naming whose time together
-    is counted - with a player subject's own columns added to the headers."""
+    is counted - with a player subject's own columns added to the headers.
+
+    An opponent the question named goes in the TITLE, never only in the slots:
+    a record over one opponent's games, headed as though it covered every
+    game, is the silent narrowing this module exists to stop."""
     headers = ["G", "W-L", "Win%", "Margin"]
+    versus = f" vs the {against.name}" if against is not None else ""
     if subject is None:
-        title = f"{counted_teams} with and without {all_of}, {label}:"
+        title = f"{counted_teams} with and without {all_of}{versus}, {label}:"
         whose = f"{all_of}'s time with the team" if len(mates) == 1 else f"the time {all_of} were on the team together"
         return title, headers, whose
-    title = f"{subject.name} with and without {all_of} ({counted_teams}), {label}:"
+    title = f"{subject.name} with and without {all_of} ({counted_teams}){versus}, {label}:"
     whose = f"the time {subject.name} and {all_of} were both on the team" if len(mates) == 1 else f"the time {_joined([subject.name, *named])} were on the team together"
     headers += ["Played", "MIN", "PTS", "REB", "AST", "FG%"]
     return title, headers, whose

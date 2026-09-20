@@ -588,7 +588,9 @@ def _within(windows: Sequence[_Stint], team_id: str, day: date) -> bool:
     return any(w.team_id == team_id and w.first <= day <= w.last for w in windows)
 
 
-def _with_without_games(con: duckdb.DuckDBPyConnection, scope: _Scope, windows: Sequence[_Stint], mates: Sequence[str], subject: str | None) -> tuple[list[dict[str, Any]], int]:
+def _with_without_games(
+    con: duckdb.DuckDBPyConnection, scope: _Scope, windows: Sequence[_Stint], mates: Sequence[str], subject: str | None, opponent: str | None = None
+) -> tuple[list[dict[str, Any]], int]:
     """Every game a window's team played inside that window, marked with HOW
     MANY of the named teammates played it, and the subject's line where he did
     - and, separately, how many games inside the windows have no box score,
@@ -605,14 +607,22 @@ def _with_without_games(con: duckdb.DuckDBPyConnection, scope: _Scope, windows: 
     return one row per teammate who played rather than one row per game.
     """
     teams = sorted({w.team_id for w in windows})
+    # One opponent, where the question named one ("Embiid's record against
+    # Boston"). `team_box_stats` carries the other side's id on the team's own
+    # row, so this narrows the same rows the window filter already reads - no
+    # second join, and the games that drop out drop out of BOTH groups, which
+    # is what keeps the split honest.
+    against = " AND tbs.opponent_team_id = $opponent" if opponent is not None else ""
     box = box_source(con)
     played_by = f"LEFT JOIN {box.table} s ON s.event_id = t.event_id AND s.season = t.season AND s.team_id = t.team_id AND s.athlete_id = $subject AND {_played('s', box)}"
     params: dict[str, Any] = {**scope.params(), "teams": teams, "mates": list(mates)}
     if subject is not None:
         params["subject"] = subject
+    if opponent is not None:
+        params["opponent"] = opponent
     rows = con.execute(
         f"""
-        WITH t AS ({_team_games(scope, " AND list_contains($teams, tbs.team_id)")})
+        WITH t AS ({_team_games(scope, " AND list_contains($teams, tbs.team_id)" + against)})
         SELECT t.team_id, t.season, t.day, t.won, t.team_score - t.opponent_score,
                (SELECT COUNT(*) FROM {box.table} m
                  WHERE m.event_id = t.event_id AND m.season = t.season AND m.team_id = t.team_id AND list_contains($mates, m.athlete_id) AND {_played("m", box)}) AS mates_played,

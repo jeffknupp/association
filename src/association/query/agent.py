@@ -13,7 +13,16 @@ from typing import Any
 import ollama
 
 from .answer import Answer, AnsweredBy, Artifact, FallthroughDisabled, Timing
-from .entities import compared_but_unmatched, misread_players, override_invented_players, override_nicknames, restore_dropped_players, scope_from_question, undo_name_completion
+from .entities import (
+    compared_but_unmatched,
+    misread_players,
+    override_invented_players,
+    override_nicknames,
+    player_record_against_a_team,
+    restore_dropped_players,
+    scope_from_question,
+    undo_name_completion,
+)
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .keepalive import KEEP_ALIVE
 from .models import AGENT_BUDGET_SECONDS, DEFAULT_ROUTER_MODEL
@@ -287,6 +296,14 @@ class Agent:
             restored = restore_dropped_players(self.toolbox.con, question, routed.slots)
             if restored is not None:
                 history.log(f"  -> (player) {restored[0]!r} -> {restored[1]!r} (the question names more players than the router returned)")
+        # Before scope_from_question, so the slots are read for the intent the
+        # question actually asks. The router cannot make this call itself: it
+        # has no warehouse, and whether a name in `teams` is a player or a
+        # franchise is a fact about the warehouse, not about the words.
+        rerouted = player_record_against_a_team(self.toolbox.con, question, routed.intent, routed.slots)
+        if rerouted is not None:
+            history.log(f"  -> (scope) {routed.intent!r} -> {rerouted!r} (a player's record against a team, not two teams meeting)")
+            routed.intent = rerouted
         # Before the name checks below, because this is where a team the
         # router mistook for a player leaves `players`, and a player it dropped
         # in favor of his team comes back. See entities.scope_from_question.
