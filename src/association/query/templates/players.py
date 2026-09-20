@@ -892,11 +892,9 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     # from, are what narrow an ambiguous name to the players who could be the
     # answer - a career keeps Dell Curry, this season does not.
     season_type = slots.get("season_type") or 2
-    opponent, venue, without = slots.get("opponent"), slots.get("venue"), slots.get("without")
-    # A named half of the starter/bench split narrows the GAMES, so it reads
-    # box scores like the other three - the season line has no such column.
-    split_side = slots.get("split") if slots.get("split") in STARTER_SIDES else None
-    from_box_scores = bool(opponent or venue or without or split_side)
+    opponent, venue, without, split_side, measures, game_n, from_box_scores = _player_stat_narrowings(
+        slots.get("opponent"), slots.get("venue"), slots.get("without"), slots.get("split"), slots.get("below"), slots.get("above"), slots.get("game_n"), slots.get("since")
+    )
     if slots.get("limit") or slots.get("order"):
         # "Jokic averages last 10 games" answered with his season line would be
         # the substitution this module exists to stop. game_log lists exactly
@@ -905,10 +903,6 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         from .games import game_log
 
         return game_log(ctx, slots)
-    # A line on a box-score column ("under 14 fta") narrows the games too, and
-    # a phrase that names no column refuses here, before any name is resolved.
-    measures = measure_filters(slots.get("below"), slots.get("above"))
-    from_box_scores = from_box_scores or bool(slots.get("since")) or bool(measures)
     span = _span_of(slots.get("span"), slots.get("season"), season_type, "player_game_log" if from_box_scores else "player_season_stats_deduped", since=slots.get("since"))
     lines = _GAME_LOGS if from_box_scores else _SEASON_LINES
     player = _resolved_player(con, slots.get("player"), "player_stat needs a player name", available=lines, season=span.season, through=_career_end(span.season))
@@ -927,7 +921,7 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     wanted = [] if shooting else _wanted_stats(slots)
 
     if from_box_scores:
-        narrowed = _narrow_player_games(con, player, span, opponent=opponent, venue=venue, without=without, split=split_side)
+        narrowed = _narrow_player_games(con, player, span, opponent=opponent, venue=venue, without=without, split=split_side, game_n=game_n)
         if isinstance(narrowed, TemplateResult):
             return narrowed
         narrow_measures(narrowed, measures)
@@ -936,6 +930,20 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         return _career_player_stat(con, player, span, wanted, shooting)
 
     return _season_player_stat(con, player, span, season_type, wanted, shooting)
+
+
+def _player_stat_narrowings(opponent: Any, venue: Any, without: Any, split: Any, below: Any, above: Any, game_n: Any, since: Any) -> tuple[Any, Any, Any, str | None, list[MeasureFilter], Any, bool]:
+    """Every way the question narrowed the games, and whether that sends the
+    read to box scores: the opponent, venue and absent teammates; a named half
+    of the starter/bench split (it narrows the GAMES, so it reads box scores
+    like the other three - the season line has no such column); a line on a
+    box-score column ("under 14 fta", refused here if it names no column,
+    before any name is resolved); a game of each playoff series; a range of
+    seasons."""
+    split_side = split if split in STARTER_SIDES else None
+    measures = measure_filters(below, above)
+    from_box_scores = bool(opponent or venue or without or split_side or since or measures or game_n)
+    return opponent, venue, without, split_side, measures, game_n, from_box_scores
 
 
 def _season_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, season_type: int, wanted: list[str], shooting: tuple[str, str, str, str] | None) -> TemplateResult:
@@ -1165,6 +1173,7 @@ def _box_score_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span:
         "without": [mate.name for mate in narrowed.without],
         "started": narrowed.started,
         "measures": list(narrowed.measures),
+        "series_game": narrowed.series_game,
     }
     if row is None or not row[0]:
         message = _no_narrowed_games(con, player, span, narrowed, rebuilt=rebuilt)

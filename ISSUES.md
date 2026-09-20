@@ -1894,25 +1894,6 @@ those were found.
 - **GitHub:** none yet
 - **GitHub:** #144
 
-### One game of a playoff series ("game 4") has no template, and the agent gives up on it
-- **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
-- **Evidence:** "show maxey's stats for game 4 against the knicks this
-  postseason" routes to `game_log` with `situation: "game 4"`, `season_type:
-  3`, `span: "career"`; `check_scope` refuses `situation`, the agent gets it
-  and ends with "Gave up after too many tool-call iterations" after 369s. The
-  feed has the same shape ("Ayton stats in game 4 playoff games", a
-  `check_scope` refusal since #84's second pass). `games` has no series or
-  game-number column, but a series' games are the games between two teams in
-  one postseason ordered by date, so "game N" is computable from what the
-  warehouse holds.
-- **User sees:** nothing, after six minutes.
-- **Next step:** cheapest first: refuse fast, as #507 argues for a named
-  round, since the agent has no better source. The real fix is a `game_n`
-  reading in `_SITUATION`'s place that `game_log` honors as "the Nth game by
-  date between these two teams in this postseason".
-- **GitHub:** none yet
-- **GitHub:** #145
-
 ### An award or All-Star question has no table to refuse from, so the agent is free to invent one
 - **Found:** 2026-09-18, the algebra spike's attack pass over the large
   StatMuse set (`~/association-research/algebra-spike/stage1/attack_report.md`)

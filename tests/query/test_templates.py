@@ -79,6 +79,23 @@ def test_a_line_whose_words_name_no_stat_refuses_rather_than_filtering_on_a_gues
         player_stat(con, {"player": "Luka Doncic", "stat": "points", "below": ["under 30 gizmos"]})
 
 
+def test_one_game_of_each_playoff_series_is_numbered_by_date_over_the_series_own_games(pg_ctx: TemplateContext) -> None:
+    """ "Ayton stats in game 4 playoff games": the nth game by date between two
+    teams in one postseason. Podziemski's series vs Detroit was inserted with
+    game 2 first, so a count by insertion order would name the wrong game."""
+    third = game_log(pg_ctx, {"player": "Brandin Podziemski", "season_type": 3, "game_n": 3})
+    assert [(g["date"][5:], g["points"]) for g in third.data["games"]] == [("04-24", 30)]
+    assert "in game 3 of each series" in (third.answer or "")
+    second = player_stat(pg_ctx, {"player": "Brandin Podziemski", "stat": "points", "season_type": 3, "game_n": 2})
+    assert second.data["stats"]["gamesPlayed"] == 2 and second.data["stats"]["avgPoints"] == 17.5 and second.data["series_game"] == 2
+    one_series = game_log(pg_ctx, {"player": "Brandin Podziemski", "season_type": 3, "game_n": 2, "opponent": "Detroit Pistons"})
+    assert [g["points"] for g in one_series.data["games"]] == [20] and "in game 2 of the series" in (one_series.answer or "")
+    with pytest.raises(TemplateUnsupported, match="playoff series"):
+        game_log(pg_ctx, {"player": "Brandin Podziemski", "game_n": 3})
+    with pytest.raises(TemplateUnsupported, match="team's log"):
+        game_log(pg_ctx, {"team": "Golden State Warriors", "season_type": 3, "game_n": 3})
+
+
 def test_a_game_log_keeps_only_the_games_under_a_line_on_the_stat_the_words_name(pg_ctx: TemplateContext) -> None:
     """ "mikal bridges game log with less than 15 fga" used to refuse (the
     model's `threshold` beside it) or list every game. Podziemski's three
@@ -2541,14 +2558,27 @@ _BOX_COLUMNS = (
 
 
 def _box(
-    event: str, season: int, team: str, opponent: str, athlete: str, *, dnp: bool = False, minutes: int | None = 30, pts: int = 0, reb: int = 0, ast: int = 0, ftm: int = 0, fta: int = 0
+    event: str,
+    season: int,
+    team: str,
+    opponent: str,
+    athlete: str,
+    *,
+    dnp: bool = False,
+    minutes: int | None = 30,
+    pts: int = 0,
+    reb: int = 0,
+    ast: int = 0,
+    ftm: int = 0,
+    fta: int = 0,
+    season_type: int = 2,
 ) -> tuple[Any, ...]:
     """One player_box_stats row. ``minutes=None`` is the empty line ESPN leaves
     (listed as played, no minutes, every stat zero); ``dnp`` is a did-not-play
     entry, whose stats are NULL."""
     if dnp:
-        return (event, season, 2, team, opponent, athlete, True, *([None] * 17))
-    return (event, season, 2, team, opponent, athlete, False, minutes, pts, reb, ast, 1, 0, 2, 3, 0, pts // 2, pts, 0, 0, ftm, fta, 0, 0)
+        return (event, season, season_type, team, opponent, athlete, True, *([None] * 17))
+    return (event, season, season_type, team, opponent, athlete, False, minutes, pts, reb, ast, 1, 0, 2, 3, 0, pts // 2, pts, 0, 0, ftm, fta, 0, 0)
 
 
 @pytest.fixture
@@ -2600,6 +2630,19 @@ def pg_ctx(tmp_path: Path) -> TemplateContext:
             ("e8", 1993, "1995-03-20T00:30Z", "3", "5", 90, 100, "5"),
         ],
     )
+    # A postseason in miniature: a three-game series vs Detroit (p1-p3, dated
+    # out of insertion order so the numbering is by date) and a two-game one vs
+    # the Lakers (p4-p5). Podziemski plays every one of them.
+    c.executemany(
+        "INSERT INTO games VALUES (?, ?, 3, ?, ?, ?, ?, ?, ?)",
+        [
+            ("p2", s, f"{s}-04-22T00:30Z", "3", "1", 90, 100, "1"),
+            ("p1", s, f"{s}-04-20T00:30Z", "1", "3", 100, 90, "1"),
+            ("p3", s, f"{s}-04-25T00:30Z", "1", "3", 100, 90, "1"),
+            ("p4", s, f"{s}-05-03T00:30Z", "4", "1", 100, 90, "4"),
+            ("p5", s, f"{s}-05-05T00:30Z", "1", "4", 100, 90, "1"),
+        ],
+    )
     c.execute(f"CREATE TABLE player_box_stats ({_BOX_COLUMNS})")
     c.executemany(
         f"INSERT INTO player_box_stats VALUES ({', '.join('?' for _ in range(24))})",
@@ -2623,6 +2666,11 @@ def pg_ctx(tmp_path: Path) -> TemplateContext:
             _box("e7", s - 1, "2", "3", "13", pts=30),
             _box("e8", 1995, "5", "3", "20", minutes=40, pts=40),
             _box("e8", 1993, "5", "3", "20", minutes=40, pts=40),
+            _box("p1", s, "1", "3", "10", pts=10, season_type=3),
+            _box("p2", s, "1", "3", "10", pts=20, season_type=3),
+            _box("p3", s, "1", "3", "10", pts=30, season_type=3),
+            _box("p4", s, "1", "4", "10", pts=5, season_type=3),
+            _box("p5", s, "1", "4", "10", pts=15, season_type=3),
         ],
     )
     # The warehouse's own view, joins and all - keyed on season as well as
@@ -2644,6 +2692,7 @@ def pg_ctx(tmp_path: Path) -> TemplateContext:
             ("20", 1990, 82, 33.6, 2753, 6.9, 565, 6.3, 519, 39.0, 92, 245),
         ],
     )
+    real_games.build_table(c, {"games", "teams"})
     return TemplateContext(con=c, out_dir=tmp_path)
 
 

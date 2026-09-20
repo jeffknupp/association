@@ -248,7 +248,14 @@ _PLAYOFF_WORDS = re.compile(r"\b(?:playoffs?|post-?season|finals|elimination|gam
 # game number, so no template can narrow to one: "tatum stats in the 2024 finals"
 # was answered with his whole 2024 postseason, 19 games where the Finals were 5.
 # A scoping slot, so every template refuses it rather than widening the question.
-_ROUND_WORDS = re.compile(r"\bfinals\b|\b(?:first|second)\s+round\b|\bsemi-?finals?\b|\bgame\s+(?:7|seven)s?\b", re.IGNORECASE)
+_ROUND_WORDS = re.compile(r"\bfinals\b|\b(?:first|second)\s+round\b|\bsemi-?finals?\b", re.IGNORECASE)
+
+# One game of a playoff series, by number: "game 4", "game 7s". Read as a
+# number rather than left in `situation` (where "Ayton stats in game 4 playoff
+# games" refused), because the relation can find it - the nth game by date
+# between two teams in one postseason (player_games.Narrowed.narrow_series_game).
+# "game 7" used to be a `round`; it is a game like the others.
+_GAME_N = re.compile(r"\bgame\s+([1-7])s?\b", re.IGNORECASE)
 
 
 # A range of seasons rather than one. "since 2020" is every season from the one
@@ -709,10 +716,8 @@ _SITUATION = re.compile(
     # Octobers and so fixes no year. Both refuse.
     r"\b(?:since|after|before|from|through|until)\s+(?:the\s+)?(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}"
     r"(?:st|nd|rd|th)?\b|"  # codespell:ignore nd - an ordinal suffix
-    # One game of a playoff series. `round` already carries "game 7", which is
-    # a round in everything but name; 1-6 are not. "Ayton stats in game 4
-    # playoff games" answered with his whole postseason, all 10 games.
-    r"\bgame\s+[1-6]\b|"
+    # One game of a playoff series ("game 4") used to be here; it is `_GAME_N`
+    # now, a slot the relation honors.
     # A season named by ordinal. Resolving it needs a debut year, and the model
     # does not resolve it - it reads the ordinal as a year: "his 18th season"
     # came back as season 2018, with LeBron dropped entirely, and the answer was
@@ -967,8 +972,8 @@ _COUNT_WORDS = re.compile(r"\b(?:(?<![\d-])\d{1,3}(?![\d-])|one|two|three|four|f
 def _names_a_count(question: str) -> bool:
     """Whether the question names a number of games, once the numbers that
     belong to a line on a box-score stat ("under 14 fta", "with 25 minutes")
-    are set aside."""
-    stripped = _ABOVE.sub(" ", _BELOW.sub(" ", question))
+    or to a game of a series ("game 4") are set aside."""
+    stripped = _GAME_N.sub(" ", _ABOVE.sub(" ", _BELOW.sub(" ", question)))
     return _COUNT_WORDS.search(stripped) is not None
 
 
@@ -1296,6 +1301,9 @@ def _route_calendar_slots(slots: dict[str, Any], question: str, span: str | None
     playoff_round = _ROUND_WORDS.search(question)
     if playoff_round is not None:
         slots["round"] = playoff_round.group(0).casefold()
+    series_game = _GAME_N.search(question)
+    if series_game is not None:
+        slots["game_n"] = int(series_game.group(1))
     # Measured: "most 3 pointers made since 2020" became season=2020 and was
     # answered as "the most games with 0+ 3-pointers in the 2020 regular season".
     seasons = _validate_range(question)

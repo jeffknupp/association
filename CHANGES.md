@@ -23,6 +23,17 @@ had no published version to be compatible with.
   his last postseason game" answers that game rather than his postseason
   average. A filler `order` on a question naming no such game is still
   dropped, as before (closes #142).
+- **"Game 4" is one game of each playoff series.** "Ayton stats in game 4
+  playoff games" answered with his whole postseason, then refused as a
+  `situation`, and "show maxey's stats for game 4 against the knicks" sent
+  the agent into a six-minute loop (#145). `route()` reads "game N" (1-7,
+  "game 7s" included - it is no longer a `round`) into a `game_n` slot;
+  the relation numbers every postseason game within its series by date over
+  `real_games` (the series' own games, so a game he sat out still counts
+  toward the number) and keeps the Nth. `game_log` and `player_stat` honor
+  it, saying "in game 4 of the series" with an opponent and "of each series"
+  without; a regular-season question refuses, since nothing there is game 4,
+  and a team's log refuses it for now.
 - **A line on a box-score stat keeps a player's games.** "Sga games with
   under 14 fta in his whole career" used to be refused (`below` was a slot no
   template honored) and, before that, answered as 14 or MORE free throws

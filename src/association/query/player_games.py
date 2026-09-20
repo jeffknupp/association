@@ -183,6 +183,8 @@ class Narrowed:
     #: Each box-score line the games were kept under or over, as the answer
     #: says it: ``"under 14 free throw attempts"``.
     measures: list[str] = field(default_factory=list)
+    #: The game of a playoff series the question named ("game 4"), or None.
+    series_game: int | None = None
 
     def clauses(self, *, narrowed: bool = True, recorded: bool = True, rebuilt: bool = False) -> tuple[str, list[Any]]:
         """The WHERE body and its parameters - without the narrowing when
@@ -218,6 +220,10 @@ class Narrowed:
             parts.append(f"without {_joined([mate.name for mate in self.without])}")
         if self.measures:
             parts.append(f"with {_joined(self.measures)}")
+        if self.series_game is not None:
+            # "of the series" only where one series is in view: an opponent
+            # names it. Across a postseason it is game 4 of each series.
+            parts.append(f"in game {self.series_game} of {'the' if self.opponent is not None else 'each'} series")
         if self.date and dated:
             parts.append(f"on {self.date}")
         return "".join(f" {part}" for part in parts)
@@ -239,6 +245,22 @@ class Narrowed:
         if label:
             self.measures.append(label)
 
+    def narrow_series_game(self, n: int) -> None:
+        """Only the ``n``th game of each playoff series: the games between the
+        same two teams in one postseason, numbered by date over ``real_games``
+        - the series' own games, so a game he sat out still counts toward the
+        number, and his ``n``th game played is not mistaken for game ``n``."""
+        self.narrow(f"pgl.event_id IN (SELECT event_id FROM ({_SERIES_GAMES}) WHERE game_of_series = ?)", n)
+        self.series_game = n
+
+
+# Every postseason game numbered within its series. A series is the games two
+# teams play each other in one postseason; ``real_games`` rather than ``games``
+# so a placeholder or a duplicated event does not shift the count.
+_SERIES_GAMES = (
+    "SELECT s.event_id, ROW_NUMBER() OVER (PARTITION BY s.season, LEAST(s.home_team_id, s.away_team_id), GREATEST(s.home_team_id, s.away_team_id) ORDER BY s.date, s.event_id) AS game_of_series "
+    "FROM real_games s WHERE s.season_type = 3"
+)
 
 #: The comparisons :meth:`Narrowed.narrow_measure` accepts, mapped to SQL.
 MEASURE_OPS: dict[str, str] = {">=": ">=", ">": ">", "<=": "<=", "<": "<", "=": "="}

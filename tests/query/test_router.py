@@ -681,7 +681,7 @@ def test_a_team_half_is_not_a_quarter_either() -> None:
     ("question", "playoff_round"),
     [
         ("tatum stats in the 2024 finals", "finals"),
-        ("Chris Paul playoff game 7 record", "game 7"),
+        ("Chris Paul playoff game 7 record", None),  # "game 7" is a game of a series (game_n), not a round
         ("jokic stats in the second round", "second round"),
         ("tatum stats in the 2024 playoffs", None),  # the whole postseason is answerable
     ],
@@ -846,17 +846,29 @@ def test_a_narrowing_the_schema_has_no_slot_for_still_reaches_check_scope(questi
 @pytest.mark.parametrize(
     "question",
     [
-        "Ayton stats in game 4 playoff games",  # -> his whole 10-game postseason
         "how many 40+ points games does lebron james have in his 18th season?",
         "Most points in 15th season played",
     ],
 )
 def test_the_narrowings_the_first_pass_missed_also_reach_check_scope(question: str) -> None:
-    """One game of a playoff series, and a season named by ordinal. Neither can
-    be resolved - `round` carries "game 7" and nothing carries games 1-6, and
-    an ordinal season needs a debut year the model does not supply (it read
-    "his 18th season" as the year 2018) - so both refuse."""
+    """A season named by ordinal cannot be resolved - it needs a debut year the
+    model does not supply (it read "his 18th season" as the year 2018) - so it
+    refuses. (One game of a playoff series used to be here too; it is `game_n`
+    now, and the relation finds it.)"""
     assert "situation" in _ask(question, '{"intent":"player_stat","player":"Deandre Ayton"}').slots
+
+
+@pytest.mark.parametrize(("question", "n"), [("Ayton stats in game 4 playoff games", 4), ("show maxey's stats for game 4 against the knicks this postseason", 4), ("lebron in game 7s", 7)])
+def test_one_game_of_a_playoff_series_is_a_number_the_relation_finds(question: str, n: int) -> None:
+    """ "Ayton stats in game 4 playoff games" answered with his whole 10-game
+    postseason, then refused as a `situation`. It is the nth game by date
+    between two teams in one postseason, which `real_games` can number; "game
+    7" is no longer a `round` either - it is a game like the others."""
+    got = _ask(question, '{"intent":"player_stat","player":"Deandre Ayton","season_type":3}')
+    assert got.slots.get("game_n") == n and "situation" not in got.slots and "round" not in got.slots
+    # The 4 in "game 4" is not a count of games: a filler limit beside it still goes.
+    filler = _asking('{"intent":"player_stat","player":"Deandre Ayton","season_type":3,"limit":5}', "Ayton stats in game 4 playoff games")
+    assert "limit" not in filler.slots
 
 
 @pytest.mark.parametrize(

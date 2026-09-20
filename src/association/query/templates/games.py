@@ -279,7 +279,7 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         team = _resolved_team(con, team_text, season=_slot_season(slots))
         if isinstance(team, TemplateResult):
             return team
-        _team_game_log_refusals(without, measures)
+        _team_game_log_refusals(without, measures, slots.get("game_n"))
         scope = _span_of(span, season, season_type, "games")
         return _team_game_log(con, team, scope, opponent=opponent, venue=venue, date=date, limit=limit, ascending=ascending)
 
@@ -301,7 +301,7 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         # nothing resolves to is dropped exactly like an invented player name.
         opponent = _team_slot_for_player(con, player, team_text, season=_slot_season(slots), opponent=opponent)
     extras = _log_extras(slots.get("stat"))
-    narrowed = _narrow_player_games(con, player, scope, opponent=opponent, venue=venue, without=without, split=slots.get("split"))
+    narrowed = _narrow_player_games(con, player, scope, opponent=opponent, venue=venue, without=without, split=slots.get("split"), game_n=slots.get("game_n"))
     if isinstance(narrowed, TemplateResult):
         return narrowed
     narrow_measures(narrowed, measures)
@@ -330,14 +330,17 @@ def _game_log_lines(below: Any, above: Any, threshold: Any) -> list[MeasureFilte
     return measures
 
 
-def _team_game_log_refusals(without: Any, measures: list[MeasureFilter]) -> None:
+def _team_game_log_refusals(without: Any, measures: list[MeasureFilter], game_n: Any) -> None:
     """What a team's log cannot narrow by: a teammate's absence is
-    with_without's question, and a line on a box-score stat keeps a PLAYER's
-    games - a team's log has no such column."""
+    with_without's question, a line on a box-score stat keeps a PLAYER's
+    games - a team's log has no such column - and a game of a series is
+    numbered on the player relation only, so far."""
     if without:
         raise TemplateUnsupported("a team's games without one of its players is a with_without question")
     if measures:
         raise TemplateUnsupported("a line on a box-score stat keeps a PLAYER's games; a team's log has no such column")
+    if game_n:
+        raise TemplateUnsupported("a team's log does not number the games of a series yet")
 
 
 def _played_for(con: duckdb.DuckDBPyConnection, player: Entity, team: Entity) -> bool:

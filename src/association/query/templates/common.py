@@ -102,7 +102,9 @@ SEASON_TYPE_NAMES = {1: "preseason", 2: "regular season", 3: "postseason"}
 # relation for the templates listed with them. `situation` (back-to-backs,
 # overtime, a conference) is refused by every template: nothing narrows to it
 # yet, and answering without it answered the whole season.
-SCOPING_SLOTS = frozenset({"order", "date", "opponent", "venue", "span", "without", "round", "split", "since", "below", "above", "situation"})
+# `game_n` ("game 4") is one game of each playoff series, numbered by date over
+# `real_games`; the relation finds it, and a regular-season question refuses.
+SCOPING_SLOTS = frozenset({"order", "date", "opponent", "venue", "span", "without", "round", "split", "since", "below", "above", "game_n", "situation"})
 
 
 # What each template actually honors. Anything not listed here honors none.
@@ -115,10 +117,10 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # refuses it here, because `route()` leaves the category in place then.
     # `below` and `above` are lines on a box-score column ("under 14 fta",
     # "with 25 minutes"): filters on the same rows, through measure_filters.
-    "game_log": frozenset({"order", "date", "opponent", "venue", "span", "without", "split", "since", "below", "above"}),
+    "game_log": frozenset({"order", "date", "opponent", "venue", "span", "without", "split", "since", "below", "above", "game_n"}),
     # The three that narrow games are answered from box scores rather than the
     # season line; a career is summed from the season table.
-    "player_stat": frozenset({"opponent", "venue", "span", "without", "split", "since", "order", "below", "above"}),
+    "player_stat": frozenset({"opponent", "venue", "span", "without", "split", "since", "order", "below", "above", "game_n"}),
     "player_history": frozenset({"span"}),
     # It always read `opponent`; listed now that `opponent` is a scoping slot.
     "team_quarter_points": frozenset({"opponent"}),
@@ -928,7 +930,7 @@ def _checked_venue(venue: Any) -> str:
     return str(venue)
 
 
-def _narrow_player_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, *, opponent: Any, venue: Any, without: Any, split: Any = None) -> Narrowed | TemplateResult:
+def _narrow_player_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, *, opponent: Any, venue: Any, without: Any, split: Any = None, game_n: Any = None) -> Narrowed | TemplateResult:
     """``player``'s games in ``span``, narrowed to an opponent, a venue, a
     teammate's absence and a starter/bench half where the question named them.
     A name that needs a clarifying question comes back as the TemplateResult
@@ -941,8 +943,12 @@ def _narrow_player_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _
     change.
 
     .. versionchanged:: 4.3.0
-       Honors one half of the starter/bench split (``split``).
+       Honors one half of the starter/bench split (``split``), and one game of
+       each playoff series (``game_n``).
     """
+    if game_n and span.season_type != 3:
+        # A series has games 1-7; a regular season has nothing "game 4" names.
+        raise TemplateUnsupported(f"game {game_n} names a game of a playoff series, and this is a {span.kind} question")
     season_clause, season_params = span.clause("pgl.season")
     narrowed = Narrowed(
         base=["pgl.athlete_id = ?", "pgl.season_type = ?", season_clause, "NOT pgl.did_not_play"],
@@ -981,6 +987,8 @@ def _narrow_player_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _
         narrowed.tenure.append((tenure, tenure_params))
         narrowed.extra += [tenure, f"NOT {_teammate_played(box_source(con))}"]
         narrowed.extra_params += [*tenure_params, mate.id]
+    if game_n:
+        narrowed.narrow_series_game(int(game_n))
     return narrowed
 
 
