@@ -1965,6 +1965,42 @@ def test_player_stat_supports_the_shooting_stats_the_router_emits(ps_con: Templa
     assert "4.4 3-pointers" in answer and "282 in total" in answer
 
 
+def test_player_stat_answers_two_point_percentage_for_a_season_and_a_career(ps_con: TemplateContext) -> None:
+    """ISSUES.md #114: no stored 2-point percentage column exists in either
+    table (checked against the warehouse), so SHOOTING_STATS' entry for it is
+    an expression - makes and attempts less the threes - rather than a bare
+    column name, unlike its two siblings. Proven here for both the season
+    lookup and the career sum, which read the season table two different ways
+    (`_season_row`'s plain SELECT and `_career_player_stat`'s per-season SUM)."""
+    for col in ("fieldGoalsMade", "fieldGoalsAttempted", "threePointFieldGoalsMade", "threePointFieldGoalsAttempted"):
+        ps_con.con.execute(f"ALTER TABLE player_season_stats_deduped ADD COLUMN {col} INTEGER")
+    ps_con.con.execute("UPDATE player_season_stats_deduped SET fieldGoalsMade=700, fieldGoalsAttempted=1300, threePointFieldGoalsMade=200, threePointFieldGoalsAttempted=500 WHERE athlete_id='1'")
+    season = player_stat(ps_con, {"player": "Luka Doncic", "stat": "twoPointFieldGoalPct"}).answer
+    assert season == f"Luka Doncic shot 62.5% on 2-pointers (500 of 800) in 64 games in the {current_season()} regular season."
+
+    # A second season, so the career sum is a total over games, not an
+    # average of the two seasons' percentages - (500+200)/(800+400) = 58.3%,
+    # not the mean of 62.5% and 50.0%.
+    ps_con.con.execute(
+        "INSERT INTO player_season_stats_deduped (athlete_id, season, season_type, gamesPlayed, avgPoints, "
+        "fieldGoalsMade, fieldGoalsAttempted, threePointFieldGoalsMade, threePointFieldGoalsAttempted) "
+        "VALUES ('1', ?, 2, 50, 20.0, 300, 600, 100, 200)",
+        [current_season() - 1],
+    )
+    career = player_stat(ps_con, {"player": "Luka Doncic", "stat": "twoPointFieldGoalPct", "span": "career"}).answer or ""
+    assert "58.3% on 2-pointers (700 of 1,200)" in career
+
+
+def test_player_stat_answers_two_point_percentage_narrowed_to_box_scores(pg_ctx: TemplateContext) -> None:
+    """The box-score-narrowed path joins `games` and qualifies every shooting
+    column with the `pgl.` alias - blindly prepending it to this stat's
+    expression would read "pgl.(fieldGoalsMade - threePointFieldGoalsMade)",
+    which is not valid SQL. Podziemski's two games vs Detroit (e2: 10-for-20,
+    e3: 7-for-15, both all twos in this fixture) sum to 17 of 35 = 48.6%."""
+    answer = player_stat(pg_ctx, {"player": "Brandin Podziemski", "stat": "twoPointFieldGoalPct", "opponent": "Detroit Pistons"}).answer or ""
+    assert "48.6% on 2-pointers (17 of 35) in 2 games vs the Detroit Pistons" in answer
+
+
 # ---------------- shot_distance ----------------
 
 
@@ -2143,12 +2179,43 @@ def test_player_history_asks_on_an_ambiguous_player(ps_con: TemplateContext) -> 
     assert "did you mean" in (player_history(ps_con, {"player": "Curry", "stat": "points"}).answer or "")
 
 
+def test_player_history_answers_two_point_percentage_computed_not_stored(ps_con: TemplateContext) -> None:
+    """ISSUES.md #114: there is no stored 2-point percentage column (checked
+    against the warehouse - only fieldGoalPct and threePointFieldGoalPct
+    exist), so it has to be computed from field goals less the threes, the
+    same makes-and-attempts discipline every other percentage here follows.
+    "show me sga's 2pt percentage for the past 5 years" used to arrive with
+    stat='fieldGoalPct' and answer OVERALL shooting instead."""
+    for col in ("fieldGoalsMade", "fieldGoalsAttempted", "threePointFieldGoalsMade", "threePointFieldGoalsAttempted"):
+        ps_con.con.execute(f"ALTER TABLE player_season_stats_deduped ADD COLUMN {col} INTEGER")
+    ps_con.con.execute("UPDATE player_season_stats_deduped SET fieldGoalsMade=700, fieldGoalsAttempted=1300, threePointFieldGoalsMade=200, threePointFieldGoalsAttempted=500 WHERE athlete_id='1'")
+    answer = player_history(ps_con, {"player": "Luka Doncic", "stat": "twoPointFieldGoalPct"}).answer or ""
+    assert "2PT%" in answer and "2PM" in answer and "2PA" in answer
+    # (700-200)/(1300-500) = 500/800 = 62.5% - not fieldGoalPct's own 700/1300 = 53.8%.
+    assert "62.5" in answer and "500" in answer and "800" in answer
+    assert "53.8" not in answer
+
+
 def test_leaderboard_refuses_when_a_player_is_named(lb_con: TemplateContext) -> None:
     """A leaderboard ranks the league or a team, never one named person.
     Confirmed live: it answered a question about Klay Thompson with the
     league's true-shooting leaders, Klay silently dropped."""
     with pytest.raises(TemplateUnsupported):
         leaderboard(lb_con, {"stat": "points", "player": "Klay Thompson"})
+
+
+def test_leaderboard_refuses_a_shot_distance_ranking_naming_the_real_cause(lb_con: TemplateContext) -> None:
+    """ISSUES.md #114: "who lead the league in avg 3 point distance" used to
+    resolve to the nearest real metric (threePointFieldGoalPct) and answer a
+    PERCENTAGE; its "shot distance" sibling used to arrive with a filler
+    `player: "player"` and get refused for naming a player the question does
+    not mention - the wrong cause. router._route_leaderboard_shot_distance
+    sets a sentinel `stat` this checks BEFORE resolve_metric and before the
+    named-player refusal above, so a lingering filler player slot (left here
+    on purpose, to prove the ordering) cannot produce either wrong-cause
+    refusal first."""
+    result = leaderboard(lb_con, {"stat": "shot_distance", "player": "player"})
+    assert result.answer == "No leaderboard ranks shot distance across the league - ask about one named player's average shot distance instead."
 
 
 # ---------------- player_netpoints ----------------

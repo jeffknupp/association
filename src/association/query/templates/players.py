@@ -467,8 +467,28 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        saying whose. ``rate`` "total" ranks a season total rather than a
        per-game average. Every stat name the router is taught now maps to a
        metric, and a qualifier, when one applies, is named in the answer.
+
+    .. versionchanged:: 4.4.0
+       Refuses a shot-distance ranking naming the real cause - no leaderboard
+       metric ranks distance - rather than resolving `stat` to the nearest
+       real one (`threePointFieldGoalPct`, answered as a percentage) or
+       falling through to a refusal about a filler `player` slot instead
+       (ISSUES.md #114).
     """
     con = ctx.con
+    if slots.get("stat") == "shot_distance":
+        # router._route_leaderboard_shot_distance's sentinel - see the
+        # comment there. Checked before resolve_metric and before the named-
+        # player refusal just below, on purpose: "who lead the league in avg
+        # 3 point distance" used to resolve `stat` to the nearest real metric
+        # and answer a PERCENTAGE, and its "shot distance" sibling used to
+        # arrive with a filler player slot ("player": "player") that
+        # override_invented_players (agent.py) refused first, for naming a
+        # player the question does not mention - honest-sounding, and the
+        # wrong cause, since no leaderboard metric exists either way. Neither
+        # check below gets a chance to name the wrong cause now.
+        message = "No leaderboard ranks shot distance across the league - ask about one named player's average shot distance instead."
+        return TemplateResult(data={"message": message}, answer=message)
     career = _career_span("leaderboard", slots.get("span"), slots.get("season"))
     metric = resolve_metric(slots.get("stat"), career=career)
     if metric is None:
@@ -792,16 +812,31 @@ def _rounded(value: Any) -> float | None:
 # The three shooting percentages, as (made column, attempted column, how the
 # sentence says it, what the shots are called). The column names are the same
 # in the season table and in the box scores, so every span reads them alike.
+#
+# `twoPointFieldGoalPct` is the exception to "column names": neither table
+# stores a 2-point make or attempt count, so its two entries are SQL
+# expressions (fieldGoalsMade less the three-point make/attempt columns) that
+# every reader below embeds the same way it would a bare column - the season
+# and career paths splice them into a SELECT list unqualified, which is all
+# either needs (see `_season_row`, `_career_player_stat`). Only the box-score
+# path joins a second table and qualifies columns with its alias
+# (`_box_score_player_stat`'s `_pgl_qualified`), which is why that one function
+# cannot just prepend "pgl." blindly the way it does for the other two.
 SHOOTING_STATS: dict[str, tuple[str, str, str, str]] = {
     "fieldGoalPct": ("fieldGoalsMade", "fieldGoalsAttempted", "from the field", "field goals"),
     "threePointFieldGoalPct": ("threePointFieldGoalsMade", "threePointFieldGoalsAttempted", "on 3-pointers", "3-pointers"),
     "freeThrowPct": ("freeThrowsMade", "freeThrowsAttempted", "on free throws", "free throws"),
+    "twoPointFieldGoalPct": ("(fieldGoalsMade - threePointFieldGoalsMade)", "(fieldGoalsAttempted - threePointFieldGoalsAttempted)", "on 2-pointers", "2-pointers"),
 }
 """Shooting percentages ``player_stat`` answers, always with the makes and
 attempts behind them - computed from those, never read from a stored
 percentage, so a season, a career and a set of games are all the same sum.
 
 .. versionadded:: 2.1.0
+.. versionchanged:: 4.4.0
+   Added ``twoPointFieldGoalPct``, computed from field goals less the
+   three-point columns rather than read from a stored column - ESPN's season
+   table has no 2-point make/attempt count of its own.
 """
 
 
@@ -1184,6 +1219,22 @@ def _box_score_stat_rebuilt(con: duckdb.DuckDBPyConnection, wanted: list[str], s
     return bool(wanted) and shooting is None and all(stat in REBUILT_STATS for stat in wanted) and _log_carries_rebuilt(con)
 
 
+def _pgl_qualified(column: str) -> str:
+    """A ``SHOOTING_STATS`` column, qualified with ``player_game_log``'s alias
+    where that is safe.
+
+    Every entry but ``twoPointFieldGoalPct`` is a bare column name, and this
+    query joins a second table (``games``), so those need the alias to bind to
+    the right one. ``twoPointFieldGoalPct`` is an expression over two such
+    columns instead - "pgl.(fieldGoalsMade - threePointFieldGoalsMade)" is not
+    valid SQL - and it needs no alias to be unambiguous: `games` carries no
+    shooting columns at all (checked against the warehouse), so the bare names
+    inside the expression cannot resolve against the wrong table. Told apart by
+    a space, which no bare identifier contains and every expression here does.
+    """
+    return column if " " in column else f"pgl.{column}"
+
+
 def _box_score_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: _Narrowed, wanted: list[str], shooting: tuple[str, str, str, str] | None) -> TemplateResult:
     """Averages over exactly the games a question narrowed to. The box-score
     column for each stat is the stat's own name (``points``, ``fouls``...), so
@@ -1202,7 +1253,7 @@ def _box_score_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span:
     for stat in wanted:
         selects += [f"AVG(pgl.{stat})", f"SUM(pgl.{stat})"]
     if shooting:
-        selects += [f"SUM(pgl.{shooting[0]})", f"SUM(pgl.{shooting[1]})"]
+        selects += [f"SUM({_pgl_qualified(shooting[0])})", f"SUM({_pgl_qualified(shooting[1])})"]
     if rebuilt:
         selects.append("SUM(CASE WHEN pgl.reconstructed THEN 1 ELSE 0 END)")
     sql, params = aggregate_sql(narrowed, selects, rebuilt=rebuilt)

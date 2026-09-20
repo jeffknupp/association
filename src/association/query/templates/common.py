@@ -829,6 +829,23 @@ HISTORY_COLUMNS: dict[str, tuple[str, list[tuple[str, str]]]] = {
     "threePointFieldGoalPct": ("3PT%", [("threePointFieldGoalPct", "3PT%"), ("threePointFieldGoalsMade", "3PM"), ("threePointFieldGoalsAttempted", "3PA")]),
     "fieldGoalPct": ("FG%", [("fieldGoalPct", "FG%"), ("fieldGoalsMade", "FGM"), ("fieldGoalsAttempted", "FGA")]),
     "freeThrowPct": ("FT%", [("freeThrowPct", "FT%"), ("freeThrowsMade", "FTM"), ("freeThrowsAttempted", "FTA")]),
+    # No stored 2-point percentage column (checked against the warehouse: only
+    # fieldGoalPct and threePointFieldGoalPct exist) - ESPN's season table has
+    # a total and a 3-point split, not a 2-point one. Computed the same way a
+    # career figure is elsewhere in this module: makes and attempts less the
+    # threes, never the stored FG% read as though it meant this (ISSUES.md
+    # #114 - "2pt percentage" used to arrive as fieldGoalPct and answer OVERALL
+    # shooting, 55.3% for a season whose real 2-point split is 60.2%).
+    # NULLIF guards a season with no 2-point attempts at all (every shot a
+    # three) rather than dividing by zero.
+    "twoPointFieldGoalPct": (
+        "2PT%",
+        [
+            ("100.0 * (fieldGoalsMade - threePointFieldGoalsMade) / NULLIF(fieldGoalsAttempted - threePointFieldGoalsAttempted, 0)", "2PT%"),
+            ("(fieldGoalsMade - threePointFieldGoalsMade)", "2PM"),
+            ("(fieldGoalsAttempted - threePointFieldGoalsAttempted)", "2PA"),
+        ],
+    ),
     "points": ("points per game", [("avgPoints", "PPG")]),
     "rebounds": ("rebounds per game", [("avgRebounds", "RPG")]),
     "assists": ("assists per game", [("avgAssists", "APG")]),

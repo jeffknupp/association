@@ -1657,3 +1657,118 @@ def test_the_coach_refusal_names_the_source_rather_than_blaming_it() -> None:
     assert "No table here holds a coach" in answer
     assert "ESPN does publish coaches" in answer
     assert "Player and team questions are unaffected" in answer
+
+
+# ---------------- 2-point percentage is not answered as overall FG% (ISSUES.md #114) ----------------
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "show me sga's 2pt percentage for the past 5 years",
+        "lebron's 2-pt percentage over the last 10 years",
+        "what is embiid's 2 point percentage this season",
+        "kevin durant's two point percentage career",
+        "sga 2p pct",
+        "sga 2pt pct",
+        "sga 2-point field goal percentage",
+    ],
+)
+def test_two_point_percentage_overrides_the_models_guess(question: str) -> None:
+    """Measured (2026-09-20 web session, build 178c21f-dirty): "show me sga's
+    2pt percentage for the past 5 years" arrived at player_history with
+    stat='fieldGoalPct' and answered OVERALL shooting (55.3, 51.9, 53.5, 51.0,
+    45.3) under a question that asked for the 2-point split (60.2, 57.1, 57.6,
+    53.3, 51.4 - measured against player_season_stats_deduped, makes and
+    attempts less the threes). `stat` has no enum in ROUTER_SCHEMA, so the
+    model sometimes gets "twoPointFieldGoalPct" right on its own (3 of 10
+    times in that session) and sometimes substitutes the nearest one
+    ROUTER_PROMPT actually teaches - fieldGoalPct here - which this overrides
+    either way, the same discipline _route_game_score uses."""
+    got = _ask(question, '{"intent":"player_history","stat":"fieldGoalPct"}')
+    assert got.slots["stat"] == "twoPointFieldGoalPct"
+
+
+def test_two_point_percentage_also_overrides_on_player_stat() -> None:
+    got = _ask("sga 2pt percentage this season", '{"intent":"player_stat","player":"Shai Gilgeous-Alexander","stat":"fieldGoalPct"}')
+    assert got.slots["stat"] == "twoPointFieldGoalPct"
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "sga's 3 point percentage this season",  # NOT two-point - three
+        "sga's field goal percentage this season",  # plain FG%, no "2"/"two"
+        "sga's effective field goal percentage this season",  # efg_pct, unrelated
+        "sga scored 20 points in the 2nd quarter",  # "2nd" is not "2 point"
+        "sga's 42 point game",  # a threshold, not a shooting split
+    ],
+)
+def test_two_point_percentage_pattern_does_not_fire_on_near_misses(question: str) -> None:
+    got = _ask(question, '{"intent":"player_history","stat":"fieldGoalPct"}')
+    assert got.slots["stat"] != "twoPointFieldGoalPct"
+
+
+def test_two_point_percentage_is_left_alone_outside_its_two_intents() -> None:
+    """player_compare reads a player's stat line through PLAYER_STAT_COLUMNS,
+    never SHOOTING_STATS - a "twoPointFieldGoalPct" value there would be
+    silently unreadable, the same reason game_score is scoped away from it."""
+    got = _ask("compare sga and embiid on 2pt percentage", '{"intent":"player_compare","players":["Shai Gilgeous-Alexander","Joel Embiid"],"stat":"fieldGoalPct"}')
+    assert got.slots.get("stat") != "twoPointFieldGoalPct"
+
+
+def test_a_question_actually_about_field_goal_percentage_still_emits_it() -> None:
+    """The guard has to leave the ordinary case alone, not just avoid the
+    near-miss ones above - the model's own correct answer is not overridden
+    when the question never says "2"/"two"."""
+    got = _ask("sga's field goal percentage this season", '{"intent":"player_history","stat":"fieldGoalPct"}')
+    assert got.slots["stat"] == "fieldGoalPct"
+
+
+# ---------------- a leaderboard refuses a distance ranking naming the real cause (ISSUES.md #114) ----------------
+
+
+def test_leaderboard_shot_distance_gets_the_sentinel_stat_and_drops_any_player() -> None:
+    """Measured: "who lead the league in avg 3 point distance" arrived with
+    stat='threePointFieldGoalPct' (the nearest real metric) and answered Luke
+    Kennard's 3-point PERCENTAGE, 47.8% - a real, fluently wrong number. `stat`
+    is overridden to a sentinel `templates.players.leaderboard` refuses on by
+    name, and any `player` the router filled is dropped with it - `leaderboard`
+    never reads one for real, and a filler value ("player": "player") would
+    otherwise reach override_invented_players first and refuse for the wrong
+    cause."""
+    got = _ask("who lead the league in avg 3 point distance", '{"intent":"leaderboard","stat":"threePointFieldGoalPct"}')
+    assert got.slots["stat"] == "shot_distance"
+    assert "player" not in got.slots
+
+
+def test_leaderboard_shot_distance_also_fires_on_the_filler_player_shape() -> None:
+    """Measured: "who lead the league in shot distance for 3 point shots"
+    arrived with a filler `player: "player"` and no stat naming a real metric,
+    and was refused for naming a player the question does not mention - the
+    wrong cause, since no distance leaderboard exists either way."""
+    got = _ask("who lead the league in shot distance for 3 point shots", '{"intent":"leaderboard","player":"player"}')
+    assert got.slots["stat"] == "shot_distance"
+    assert "player" not in got.slots
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "who led the league in scoring",
+        "who lead the league in 3 point percentage",
+        "how far away does wembanyama shoot from",  # a real player_stat/team_record shape, not this intent
+    ],
+)
+def test_leaderboard_shot_distance_pattern_does_not_fire_on_ordinary_leaderboards(question: str) -> None:
+    got = _ask(question, '{"intent":"leaderboard","stat":"points","player":"filler"}')
+    assert got.slots.get("stat") != "shot_distance"
+
+
+def test_shot_distance_sentinel_is_left_alone_outside_leaderboard() -> None:
+    """The `shot_distance` INTENT is a real template about one named player
+    (templates/shots.py) - this sentinel is a different thing, scoped to
+    `leaderboard` only, and must never touch that intent's own player slot."""
+    got = _ask("what is curry's average shot distance this season", '{"intent":"shot_distance","player":"Stephen Curry"}')
+    assert got.slots.get("stat") != "shot_distance"
+    assert got.slots.get("player") == "Stephen Curry"
