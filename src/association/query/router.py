@@ -892,8 +892,43 @@ _THRESHOLD_INTENTS = frozenset({"threshold_count", "record_when", "streak"})
 # The "+" (or "plus" / "or more") is required, unlike `_THRESHOLD`: without it
 # "top 10 rebound leaders" reads as a condition and a leaderboard question
 # that answers today would start refusing.
+# What each of those words counts, and the regex's own alternation is BUILT
+# from the keys rather than written out beside them - the two used to be a
+# hand-kept list and a map that could disagree about a word with nothing to
+# notice. Longest first, so "rebounds" is not matched as "reb" with a stray
+# "ounds" left over.
+#
+# This is the router's copy of a vocabulary `templates/common.py` also holds
+# (`MEASURE_WORDS`, which reads the same phrases onto box-score columns). They
+# are deliberately separate: `router.py` imports nothing from `templates`, so
+# that the stage before the templates cannot be made to depend on them. See
+# ISSUES.md for the entry tracking the pair.
+_THRESHOLD_WORDS: dict[str, str] = {
+    "points": "points",
+    "point": "points",
+    "pts": "points",
+    "rebounds": "rebounds",
+    "rebound": "rebounds",
+    "rebs": "rebounds",
+    "reb": "rebounds",
+    "boards": "rebounds",
+    "assists": "assists",
+    "assist": "assists",
+    "asts": "assists",
+    "ast": "assists",
+    "steals": "steals",
+    "steal": "steals",
+    "stl": "steals",
+    "blocks": "blocks",
+    "block": "blocks",
+    "blk": "blocks",
+    "turnovers": "turnovers",
+    "turnover": "turnovers",
+    "threes": "threePointFieldGoalsMade",
+    "3s": "threePointFieldGoalsMade",
+}
 _THRESHOLD_PAIR = re.compile(
-    r"\b(\d{1,3})\s*(?:\+|plus|or\s+more)\s*(points?|pts|rebounds?|rebs?|boards|assists?|asts?|steals?|stl|blocks?|blk|turnovers?|threes|3s)\b",
+    r"\b(\d{1,3})\s*(?:\+|plus|or\s+more)\s*(" + "|".join(sorted((re.escape(w) for w in _THRESHOLD_WORDS), key=len, reverse=True)) + r")\b",
     re.IGNORECASE,
 )
 
@@ -1759,6 +1794,36 @@ def _route_team_slots(intent: str, slots: dict[str, Any], question: str) -> None
 _HOW_MANY = re.compile(r"\bhow\s+many\b", re.IGNORECASE)
 
 
+def _route_record_when_threshold(intent: str, slots: dict[str, Any], question: str) -> None:
+    """Read a ``record_when`` question's threshold off its own words.
+
+    Measured live (web session, build ``178c21f-dirty``): "what was the sixers
+    record this season when tyrese maxey had 20+ points?" came back with
+    ``stat='wins'``. The word "record" is what the model had to file under
+    ``stat``, which is required and whose enum has no entry for a won-lost
+    record, so the nearest value it knows won - and the template refused with
+    "record_when needs a known stat and a positive threshold, got 'wins'/20"
+    about a question that states its stat plainly. `stat` is the shape
+    ISSUES.md #114 is about, arriving through the required slot again.
+
+    "20+ points" is one fact, so the pair is read as one: a question stating
+    exactly one of them sets both halves, and its own words beat the model's
+    guess. Two of them ("20+ points and 5+ assists") name a shape
+    ``record_when`` has no second threshold for, so they are left alone to
+    refuse rather than silently answering about whichever half won.
+
+    ``ROUTER_PROMPT`` and ``ROUTER_SCHEMA`` are untouched, so this can move no
+    other question's routing.
+    """
+    if intent != "record_when":
+        return
+    pairs = list(_THRESHOLD_PAIR.finditer(question))
+    if len(pairs) != 1:
+        return
+    slots["stat"] = _THRESHOLD_WORDS[pairs[0].group(2).casefold()]
+    slots["threshold"] = int(pairs[0].group(1))
+
+
 # The intents whose missing subject is read back out of the question's grammar.
 # `record_when` joined them for a question that cost 583 seconds and produced
 # nothing: "what was the sixers record when maxey scored 15+ points?" routed
@@ -1925,5 +1990,6 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     _route_team_slots(raw["intent"], slots, question)
     _route_rate(raw["intent"], slots, question)
     _route_subject_slots(raw["intent"], slots, question)
+    _route_record_when_threshold(raw["intent"], slots, question)
     _route_side_and_order(raw["intent"], slots, question)
     return Route(intent=raw["intent"], slots=slots)

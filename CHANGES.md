@@ -16,6 +16,21 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **A record "when X had 20+ points" reads its own threshold.** Measured live
+  in the 2026-09-20 web session: "what was the sixers record this season when
+  tyrese maxey had 20+ points?" came back with `stat='wins'` - "record" is
+  what the model had to file under `stat`, which is required and whose enum
+  has no won-lost record, so the nearest value it knew won - and the template
+  refused with "record_when needs a known stat and a positive threshold, got
+  'wins'/20" about a question that states its stat plainly. `route()` now
+  reads "20+ points" as the one fact it is and sets both halves for
+  `record_when`, the question's own words beating the model's guess; a
+  question stating two thresholds is left alone to refuse, since there is no
+  second threshold slot to put one in. The threshold vocabulary and the
+  pattern that matches it are now one definition - the alternation is built
+  from `_THRESHOLD_WORDS` - and the rebuilt pattern was proved to match
+  identically over 317 strings. `ROUTER_PROMPT` and `ROUTER_SCHEMA` are
+  untouched (#114).
 - **A record "when X scored N" keeps X.** "what was the sixers record when
   maxey scored 15+ points?" routed to `record_when` with the team, the stat
   and the threshold all correct and no `player` at all, so the template raised

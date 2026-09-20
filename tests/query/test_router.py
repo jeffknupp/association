@@ -1457,6 +1457,54 @@ def test_a_record_when_keeps_the_player_the_question_names() -> None:
     assert got.slots["threshold"] == 15
 
 
+def test_a_record_when_reads_its_threshold_off_the_question() -> None:
+    """Measured live (web session, build `178c21f-dirty`): "what was the sixers
+    record this season when tyrese maxey had 20+ points?" came back with
+    stat='wins' - "record" is what the model had to file under the required
+    `stat`, whose enum has no won-lost record, so the nearest value it knew
+    won - and the template refused with "needs a known stat and a positive
+    threshold, got 'wins'/20" about a question that states its stat plainly.
+    "20+ points" is one fact and sets both halves."""
+    got = _ask(
+        "what was the sixers record this season when tyrese maxey had 20+ points?",
+        '{"intent":"record_when","stat":"wins","team":"Philadelphia 76ers","threshold":20,"season_ref":"current"}',
+    )
+    assert got.slots["stat"] == "points"
+    assert got.slots["threshold"] == 20
+    boards = _ask(
+        "sixers record when maxey had 12+ boards",
+        '{"intent":"record_when","stat":"wins","team":"Philadelphia 76ers","threshold":12,"season_ref":"current"}',
+    )
+    assert boards.slots["stat"] == "rebounds"
+
+
+def test_two_thresholds_leave_a_record_when_alone() -> None:
+    """`record_when` carries ONE threshold, so a question stating two names a
+    shape it cannot answer. Picking whichever half the regex found first would
+    answer a narrower question than was asked; left alone, it refuses."""
+    got = _ask(
+        "sixers record when maxey had 20+ points and 5+ assists",
+        '{"intent":"record_when","stat":"wins","team":"Philadelphia 76ers","threshold":20,"season_ref":"current"}',
+    )
+    assert got.slots["stat"] == "wins"
+
+
+def test_the_threshold_pair_words_and_their_pattern_cannot_drift() -> None:
+    """The alternation is built from `_THRESHOLD_WORDS`, so every word the map
+    knows is a word the pattern matches, and every word it matches has a
+    meaning. They were a hand-kept list and a map before, which could disagree
+    about a word with nothing to notice."""
+    from association.query.router import _THRESHOLD_PAIR, _THRESHOLD_WORDS
+
+    for word, means in _THRESHOLD_WORDS.items():
+        match = _THRESHOLD_PAIR.search(f"games with 20+ {word} this season")
+        assert match is not None, word
+        assert match.group(2).casefold() == word
+        assert _THRESHOLD_WORDS[match.group(2).casefold()] == means
+    # A "+" is still required - "top 10 rebound leaders" is not a condition.
+    assert _THRESHOLD_PAIR.search("top 10 rebound leaders") is None
+
+
 def test_a_record_when_about_a_team_gains_no_player() -> None:
     """The other half, and why restoring here is safe: a record question whose
     threshold is the TEAM's own scoring names no player, and must not acquire

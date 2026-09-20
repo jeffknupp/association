@@ -2086,6 +2086,28 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
+### The threshold-word vocabulary exists twice, in the router and in the templates
+- **Found:** 2026-09-20, fixing the `record_when` threshold from the web session
+- **Evidence:** `router._THRESHOLD_WORDS` (22 spellings) and
+  `templates/common.py::MEASURE_WORDS` (30) both map "pts"/"boards"/"rebs" and
+  the rest onto the same canonical stat names. They are separate on purpose -
+  `router.py` imports nothing from `templates`, so that the stage before the
+  templates cannot be made to depend on them, and importing
+  `templates.common` would execute the whole templates package at router
+  import time - but nothing checks that they agree. `MEASURE_WORDS` knows
+  "tov", "to" and "pf"; `_THRESHOLD_WORDS` does not, and knows "threes"/"3s",
+  which `MEASURE_WORDS` does not.
+- **User sees:** nothing today. The risk is the one AGENTS.md describes under
+  "One concept, one definition": a word added to one copy and not the other,
+  so the same phrase means a stat in one stage and nothing in the next.
+  `scripts/check_duplicate_names.py` cannot see this - the names differ.
+- **Next step:** either move the shared spellings to one module both may
+  import (`nba/` is the layer that exists for what two packages both need,
+  though this is a query-side concept), or add a test asserting that every
+  key the two share maps to the same stat. The test is cheap and catches the
+  drift that matters; the move is the real fix.
+- **GitHub:** none yet
+
 ### A subject read from a possessive is one word, so a question carrying the full name asks which player
 - **Found:** 2026-09-20, fixing #144 (`record_when` losing the player it names)
 - **Evidence:** `_SUBJECT_OF_HIGH` captures ONE word before a scoring verb or a
@@ -2102,8 +2124,17 @@ those were found.
   name, where it named one plainly. Only where the router also dropped the
   player slot, which is why this is P4 rather than higher - none of the three
   is known to reach this path today.
+- **A second gap in the same grammar**, found 2026-09-20 fixing the
+  `record_when` threshold: a subject before a bare "had"/"has" is not read at
+  all. `_SUBJECT_OF_HIGH` lists scoring verbs and `_SUBJECT_OF_HAVE` requires
+  a leading "does/did/has/have", so "sixers record when maxey had 10+
+  rebounds" reaches `record_when` with no player and falls through, while the
+  same question with "scored" answers. The web-session question that prompted
+  the fix only works because it writes "tyrese maxey" in full, which
+  `players_named_in` resolves without any grammar.
 - **Next step:** give `_SUBJECT_OF_HIGH` the same optional leading-word group
-  the count grammars have, keeping it a SEPARATE pattern. Read the comment
+  the count grammars have, keeping it a SEPARATE pattern, and consider a bare
+  "had"/"has" before a threshold as a subject position. Read the comment
   above `_COUNT_SUBJECT_WORDS` first: folding the two patterns together once
   let a trailing possessive be swallowed whole, so this is an edit to watch.
   Prove it with the offline `reroute_recorded.py` replay over all 261 - the
