@@ -877,6 +877,35 @@ def test_a_netpoints_rate_asked_by_any_name_is_the_per_100_metric(question: str,
     assert got.slots["stat"] == want and "rate" not in got.slots
 
 
+def test_a_filler_order_does_not_narrow_a_chart_to_one_game() -> None:
+    """#153: on shot_chart, shot_distance, player_netpoints and fingerprint an
+    `order` resolves to ONE game, where game_log only sorts - so a filler one
+    costs the season. "a shot chart of steph curry's 2025 season for 3 point
+    shots" drew a single game, 7 of 12."""
+    got = _asking('{"intent":"shot_chart","player":"Stephen Curry","order":"recent","shot_value":3,"season":2025}', "show a shot chart of steph curry's 2025 season for 3 point shots")
+    assert "order" not in got.slots and got.slots.get("season") == 2025
+    # A game the question does name keeps it, however it is phrased.
+    named = _asking('{"intent":"shot_chart","player":"Stephen Curry","order":"recent"}', "curry's shot chart for his last home game")
+    assert named.slots.get("order") == "recent"
+    # game_log is unaffected: there an order sorts a list rather than picking a game.
+    log = _asking('{"intent":"game_log","player":"Stephen Curry","order":"recent"}', "curry game log for 2025")
+    assert log.slots.get("order") == "recent"
+
+
+def test_one_game_at_the_end_of_a_span_is_this_season_unless_the_question_says_otherwise() -> None:
+    """#153: "steph curry's last regular season game" came back as season
+    2025 - the model read "last regular season" as the season before this one
+    - and the chart drew a game a year off."""
+    got = _asking('{"intent":"shot_chart","player":"Stephen Curry","order":"recent","limit":1,"season":2025}', "show a shot chart of steph curry's last regular season game")
+    assert "season" not in got.slots and got.slots.get("order") == "recent"
+    # A year the question states wins.
+    stated = _asking('{"intent":"shot_chart","player":"Stephen Curry","order":"recent","season":2025}', "steph curry's last game of 2025")
+    assert stated.slots.get("season") == 2025
+    # And so does "last season".
+    worded = _asking('{"intent":"shot_chart","player":"Stephen Curry","order":"recent","season":2025}', "steph curry's last game of last season")
+    assert worded.slots.get("season") == 2025
+
+
 def test_a_rate_no_metric_holds_is_refused_rather_than_ranked_by_the_wrong_unit() -> None:
     """ "/ 90" has no column; "points per 100 possessions" has no per-100 form.
     Both get a `rate` slot no template honors, so check_scope refuses."""

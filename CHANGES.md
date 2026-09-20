@@ -16,6 +16,17 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **A chart is not narrowed to one game the question never named.** On
+  `shot_chart`, `shot_distance`, `player_netpoints` and `fingerprint` an
+  `order` resolves to a single event id, where `game_log` only sorts, so a
+  filler one costs a whole season: "a shot chart of steph curry's 2025 season
+  for 3 point shots" drew one game, 7 of 12. `route()` now keeps an `order`
+  on those four only where the question names a game at one end of the span.
+  And "steph curry's last regular season game" came back as season 2025 - the
+  model read "last regular season" as the season before this one, and the
+  chart drew a game a year off; a single game named with no year and no
+  season words now means the current season, which is the default every
+  template already applies (#153).
 - **A NetPoints rate asked for by any name is ranked as the rate.** "top 10
   in defensive netpoints / 100 possessions", "adjusted defensive netpoints",
   "offensive netpoints per 100 possessions" and "adjusted netpoints" all

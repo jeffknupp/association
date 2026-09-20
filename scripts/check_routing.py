@@ -57,6 +57,10 @@ CASES: list[tuple[str, str, dict]] = [
     ("who were the top 10 players in offensive netpoints per 100 possessions", "leaderboard", {"stat": "netpoints_offense_per_100"}),
     ("who led the league in adjusted netpoints?", "leaderboard", {"stat": "netpoints_per_100"}),
     ("who were the top 10 in defensive netpoints / 90", "leaderboard", {"rate": "/ 90"}),
+    # #153: a filler `order` narrows a chart to one game, and "last regular
+    # season game" came back as the season before this one.
+    ("show a shot chart of steph curry's 2025 season for 3 point shots", "shot_chart", {"player": "Stephen Curry", "season": 2025, "shot_value": 3}),
+    ("show a shot chart of steph curry's last regular season game", "shot_chart", {"player": "Stephen Curry", "order": "recent"}),
     # A single-game maximum is NOT a season ranking. Confirmed live: with no
     # such intent, "who had the most assists in a single game" was answered
     # "Nikola Jokic led the league in assists per game, at 10.7" in 1.76s -

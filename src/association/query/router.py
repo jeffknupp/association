@@ -1058,7 +1058,26 @@ def _names_a_count(question: str) -> bool:
 #: game" to a log of his last ten. Read by :func:`_route_side_and_order` with
 #: :data:`_SINGLE_GAME`; the pair is what makes "last game" one game.
 _ORDER_ON_A_SINGLE_GAME: frozenset[str] = frozenset({"player_stat"})
-_SINGLE_GAME = re.compile(r"\b(?:his|her|their|the)\s+(last|first|latest|previous|most\s+recent|final|opening|earliest)\s+(?:\w+\s+){0,2}?game\b(?!s)", re.IGNORECASE)
+# A possessive names the subject as often as a pronoun does - "steph curry's
+# last regular season game" - and without it that question kept a season the
+# model misread (#153).
+_SINGLE_GAME = re.compile(r"\b(?:his|her|their|the|\w+'s)\s+(last|first|latest|previous|most\s+recent|final|opening|earliest)\s+(?:\w+\s+){0,2}?game\b(?!s)", re.IGNORECASE)
+
+#: Intents where ``order`` narrows to ONE game rather than ordering a list:
+#: shot_chart, shot_distance, player_netpoints and fingerprint each resolve it
+#: to a single event id, where game_log only sorts. So a filler ``order``
+#: costs a whole season here - "a shot chart of steph curry's 2025 season for
+#: 3 point shots" drew one game, 7 of 12, where 2025 held hundreds (#153) -
+#: and the question has to name a game at one end of the span for it to stand.
+_ORDER_IS_ONE_GAME: frozenset[str] = frozenset({"shot_chart", "shot_distance", "player_netpoints", "fingerprint"})
+
+
+def _names_one_game(question: str) -> bool:
+    """Whether the question itself asks for a game at one end of the span -
+    "his last game", "first 5 games" - rather than leaving ``order`` to the
+    model's own reading."""
+    return _SINGLE_GAME.search(question) is not None or any(pattern.search(question) for pattern in ORDER_WORDS.values())
+
 
 ORDER_INTENTS: frozenset[str] = frozenset({"fingerprint", "game_log", "player_netpoints", "shot_chart", "shot_distance"})
 """Intents whose template honors ``order``, so filling it from the question can
@@ -1529,6 +1548,10 @@ def _route_side_and_order(intent: str, slots: dict[str, Any], question: str) -> 
         slots["limit"] = 1
     elif intent in ORDER_INTENTS:
         order = _validate_order(slots, question)
+        if order is not None and intent in _ORDER_IS_ONE_GAME and not _names_one_game(question):
+            # A model `order` on an intent where it means ONE game, on a
+            # question naming no such game: filler that costs the season.
+            order = None
         if order is None:
             # Only a value the schema cannot emit ever gets dropped here; a
             # valid one the patterns did not recognize is kept - see
@@ -1559,6 +1582,15 @@ def _drop_filler_limit(intent: str, slots: dict[str, Any], question: str) -> Non
         # the only thing to drop; a real single game ("his last game") or a
         # count ("last 5 games") keeps it.
         slots.pop("limit", None)
+    if _SINGLE_GAME.search(question) and season_from_text(question) is None and not _SEASON_WORDS.search(question) and isinstance(slots.get("season"), int) and slots["season"] != current_season():
+        # "show a shot chart of steph curry's last regular season game" came
+        # back as season 2025: the model read "last regular season" as the
+        # season before this one, and the chart drew a game a year off (#153).
+        # A question naming one game at one end of the span, with no year and
+        # no season words of its own, means the current season - the default
+        # every template already applies. A year the question states, and
+        # "last season", both still win.
+        slots.pop("season", None)
     if intent in _LIMIT_REFUSING_INTENTS and isinstance(slots.get("limit"), int) and not slots.get("order") and not _names_a_count(question):
         # The same filler, arriving WITHOUT an `order` to carry it in.
         # "westbrook stats as a starter for kings" came back with limit=1 and
