@@ -174,6 +174,41 @@ those were found.
 
 ## P2: misleading or incomplete
 
+### A team named by a run-together nickname is dropped, and the answer says the question named no team
+- **Found:** 2026-09-20, re-measuring the period questions after the
+  quarters-and-halves work
+- **Evidence:** "trailblazers stats last 10 games 3 point average 1st quarter"
+  routes correctly to `team_quarter_points` with `team='Portland Trail
+  Blazers'`, and `entities.scope_from_question` then drops it - the trace line
+  is `'Portland Trail Blazers' is not in the question, and the question names
+  no player; dropped` - so the template refuses with `no team named`
+  (`templates/common.py:772`) about a question whose first word is the team.
+  The cause is `entities._team_grounded`, which asks whether the question
+  holds a WORD of the team's name, its abbreviation or a curated nickname:
+  the name's words are {portland, trail, blazers} and the question's word is
+  the single token "trailblazers", which equals none of them. The clipped-word
+  fallback added the same day does not reach it either, since it tests whether
+  a carried name starts with a question word and "blazers" does not start with
+  "trailblazers".
+- **This is a regression from `178c21f`**, which made a team the question does
+  not appear to name get dropped even when no player is found. Before that the
+  team survived and the question fell through to the agent; now it is refused
+  with a false reason, which the priority definitions rank worse.
+- **Population:** 10 of the 261 corpus questions use a run-together nickname
+  ("trailblazers", "sixers", "mavs", "blazers"), 9 of them reasonable. Only
+  this one is affected today, because the other nine name the team after "vs"
+  or "against", where `_team_after_versus` resolves it through `_team_named`
+  rather than `_team_grounded`. The exposure is any question whose SUBJECT is
+  a team written that way.
+- **User sees:** "no team named" for a question that names one plainly.
+- **Next step:** ground a team by its run-together name too - compare the
+  question's words against the team's name with spaces removed, and against
+  the last word of it ("blazers"), in `_team_grounded`. Check `_TEAM_NICKNAMES`
+  for the same shape while there. Then re-run the 10 rows above, which is
+  cheap: the offline `reroute_recorded.py` replay covers all of them.
+- **GitHub:** none yet
+- **GitHub:** #158
+
 ### Season 2021's regular-season BPI snapshot is a day-one projection
 - **Found:** 2026-09-15, reviewing `4ef119f`; **re-ranked P3 -> P2 on 2026-09-16** - a preseason projection presented as a season's index, with no caveat
 - **Evidence:** all 30 of season 2021's rows are stamped 2020-12-22 - opening
@@ -1932,8 +1967,58 @@ those were found.
 - **Priority note:** P2 - the number given is correct over what it actually
   summed; the gap is what it does not say.
 - **GitHub:** none yet
+- **GitHub:** #159
 
 ## P3: refusal or gap
+
+### A position group as the subject has no template, and six corpus questions want one
+- **Found:** 2026-09-20, tallying what still falls through after the
+  quarters-and-halves work
+- **Evidence:** six reasonable corpus questions make a position the subject -
+  "Centers stats game log vs kings", "stating centers vs phoenix suns log",
+  "stating centers vs suns", "forwards with 20+ mins vs gsw log", "each center
+  1q pts log vs nugget", "highest 3 point percentage in a season. by a
+  shooting guard with at least 400 attempts". None is answered: the router
+  files the position in `team` or `opponent` or drops it, and the templates
+  then refuse for want of a player ("game_log needs a team or a player") or
+  answer the opponent's own log. **The warehouse can answer them**: `players`
+  carries `position_abbr` for all 3,101 rows - G 862, F 724, C 502, SG 254,
+  PF 252, SF 247, PG 237, NA 22 - so "centers" is a filter on the subject the
+  same way a team is.
+- **User sees:** a refusal, or the opposing team's log, for a question that
+  names its subject as clearly as a player's name would.
+- **Next step:** read a position word from the question in `route()` (a
+  code-assigned slot, so `ROUTER_PROMPT` is untouched) into a `position` slot,
+  and let the player-games relation filter on it the way it filters an
+  opponent - the ranking these questions mostly want is `period_leaderboard`'s
+  or `leaderboard`'s shape with the pool narrowed, not a new template per
+  question. Note the two-letter values are ESPN's own and not a hierarchy: a
+  question about "guards" means G, SG and PG together, and getting that wrong
+  silently answers a narrower question.
+- **GitHub:** none yet
+- **GitHub:** #160
+
+### A team's per-quarter average of anything but points has no source
+- **Found:** 2026-09-20, finishing the quarters-and-halves work
+- **Evidence:** "trailblazers stats last 10 games 3 point average 1st quarter"
+  asks for a team's first-quarter three-point average. `team_quarter_points`
+  reads `games.home_linescores`/`away_linescores`, which hold one total per
+  period and nothing else, so it can answer points and only points; the
+  player-side `period_split` refuses every other stat for its own reason (only
+  points are in `shot_chart`). Neither refusal names this: the question is
+  currently refused for a different cause entirely (the team-nickname entry
+  above).
+- **User sees:** nothing useful, and once the nickname bug is fixed it would
+  get a points answer to a three-point question unless this is handled.
+- **Next step:** a team's per-quarter THREE-POINT figures are derivable -
+  `shot_chart` carries `team_id`, `period` and the shot's value through
+  `SHOT_VALUE_SQL`, which is how `period_split` already counts a player's -
+  so the honest options are to answer threes per quarter from that table with
+  the same per-season accuracy gating `PERIOD_RECONCILIATION` applies, or to
+  refuse naming the linescore as the limit. Refusing beats a points answer to
+  a three-point question.
+- **GitHub:** none yet
+- **GitHub:** #161
 
 ### `record_when` loses the player the question names, and the fall-through burns 583 seconds for nothing
 - **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
@@ -2018,6 +2103,27 @@ those were found.
 - **GitHub:** #151
 
 ## P4: tooling, docs, low impact
+
+### "Points by quarter" asks for all four at once, and every template answers one
+- **Found:** 2026-09-20, finishing the quarters-and-halves work
+- **Evidence:** "nba playerspoints by quarter average" reaches `other` and
+  falls through. `router._period_asked` returns a single period or a single
+  half, and both period templates take exactly one of those, so a question
+  asking for the breakdown across all four quarters has nothing to route to -
+  `_AGENT_ONLY` matches "by quarter" and sends it to `other` for want of a
+  legible single period.
+- **User sees:** the slow agent, for a question the shot table can answer four
+  times over.
+- **Next step:** low priority - one corpus question, and it is malformed
+  ("playerspoints"). If it is picked up, the shape is `period_leaderboard`'s
+  query grouped by period rather than filtered to one, and the answer is a
+  four-column table; decide first whether it means the league's average by
+  quarter or one player's, which the question does not say.
+- **Priority note:** filed P4 rather than P3 because a single malformed
+  question is the whole evidence, and the shape is a table nobody has asked
+  for twice.
+- **GitHub:** none yet
+- **GitHub:** #162
 
 ### `since` reaches the metric templates only by a second season-scoping path
 - **Found:** 2026-09-18, looking for the next compositional-scoping win after
