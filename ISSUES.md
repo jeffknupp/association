@@ -60,12 +60,22 @@ before that commit needs re-checking against the current warehouse.
 - **User sees:** a 2.5-minute wait that usually produces nothing, and when it
   does produce something it is wrong five times out of six. The fast path
   answers the same class of question correctly 48.8% of the time in 2-6s.
-- **Next step:** decide whether the fall-through survives in its current form.
-  It is inconsistent with `check_coverage`'s own stated reasoning - refusing
-  because "the agent would query the same empty tables, more slowly, and is
-  then free to fill the silence from its own weights" - which is exactly what
-  it was measured doing. Gating it to the question shapes it can actually serve,
-  or replacing it with a refusal that names the shape, both beat the status quo.
+- **Bounded 2026-09-20, not yet resolved.** The wait is now capped:
+  `Agent` takes `budget_seconds` (default 120, `--agent-budget`, 0 to remove
+  it), checked before each model call so the first always runs, and giving up
+  names why the templates declined the question rather than saying "Gave up
+  after too many tool-call iterations". That removes the 17-minute case and
+  the silent 4-minute one, and it is why this entry is no longer about the
+  wait.
+- **What remains is the product decision**, which is the user's: whether the
+  fall-through runs at all by default. The measurement argues it should not -
+  1 correct in 23, and `check_coverage`'s own stated reasoning ("the agent
+  would query the same empty tables, more slowly, and is then free to fill
+  the silence from its own weights") describes exactly what it was measured
+  doing. Against that, `--disable-fallthrough` was deliberately scoped as
+  development-only when it was added, which says the path is wanted in
+  production. Until that is settled, the honest options are unchanged:
+  default it off with an opt-in flag, or gate it to shapes it can serve.
 - **GitHub:** #129
 
 ### Three fabricated agent answers, each verified false against the warehouse
@@ -123,10 +133,13 @@ before that commit needs re-checking against the current warehouse.
   points scored by the wizards", and the "scored" boundary case), a question
   genuinely about points, and that the value is left alone outside
   `leaderboard`/`player_stat`; both the intent-spelling table and the regex
-  anchor were perturbed with `scripts/perturb.py` and CAUGHT. **Still open:**
-  re-running `scripts/check_routing.py` and the full `fastpath_feed.py` replay
-  against ollama, which this agent was told not to run - the dispatching
-  session is running that confirming measurement separately.
+  anchor were perturbed with `scripts/perturb.py` and CAUGHT.
+  **The confirming measurement ran on 2026-09-20** against the live router
+  (`scripts/check_routing.py`, 104 cases, qwen2.5:3b): 104 routed as expected,
+  including the five cases added for the 2-point-percentage and shot-distance
+  fixes below. The `fastpath_feed.py` replay over all 261 is still not re-run
+  against ollama; the offline `reroute_recorded.py` replay stands in for it and
+  reports no corpus row moved.
 - **Note:** the same substitution is worth checking for every stat name the
   router does not know. "ats okc" and "players with the highest scoring triple
   doubles" are graded `wrong metric` in the same corpus.

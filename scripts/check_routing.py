@@ -40,7 +40,13 @@ from association.query.templates.common import PLAYER_INTENTS, PLAYER_REQUIRED_I
 
 # (question, expected intent, expected slots). A list-valued expectation is a
 # SUBSET check: dropping a field the user asked for is a bug, while the router
-# throwing in an extra one is only noise. Add "known_gap": True to a case the
+# throwing in an extra one is only noise. A frozenset-valued one accepts ANY of
+# its spellings, for a slot whose value the model may write either way without
+# changing the answer - AGENTS.md's rule that a case asserts what changes the
+# answer, never the encoding the model happened to pick. Measured: "how many
+# times has embiid fouled out?" arrives with player='Joel Embiid' when the
+# model fills it and 'embiid' when _subject_named_in restores it from the
+# question, and both resolve to the same person. Add "known_gap": True to a case the
 # router reliably gets wrong in a way that is visible rather than silent - it
 # is reported but not counted as a failure, so a real regression still stands
 # out.
@@ -251,7 +257,7 @@ CASES: list[tuple[str, str, dict]] = [
     # fouled out?" arrived with no player at all and answered the league's
     # leader in 6+-foul games (Karl-Anthony Towns) to a question about Joel
     # Embiid, who has 0 such games in the 2026 season it defaulted to.
-    ("how many times has embiid fouled out?", "threshold_count", {"stat": "fouls", "threshold": 6, "player": "embiid"}),
+    ("how many times has embiid fouled out?", "threshold_count", {"stat": "fouls", "threshold": 6, "player": frozenset({"embiid", "Joel Embiid"})}),
     # #148: the same drop again, for a threshold_count named with no verb at
     # all - "NAME games with ...". "jamal murray games with 2 threes including
     # playoffs" arrived with no player and answered the league's leader in
@@ -355,7 +361,13 @@ def main() -> int:
             if key == "known_gap":
                 continue
             actual = got.slots.get(key)
-            missed = not set(want) <= set(actual or []) if isinstance(want, list) else actual != want
+            if isinstance(want, list):
+                missed = not set(want) <= set(actual or [])
+            elif isinstance(want, frozenset):
+                # Any of these spellings is right - see the CASES header.
+                missed = actual not in want
+            else:
+                missed = actual != want
             if missed:
                 wrong[key] = (want, actual)
         ok = got.intent == want_intent and not wrong
