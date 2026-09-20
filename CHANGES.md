@@ -39,6 +39,15 @@ had no published version to be compatible with.
   chart drew a game a year off; a single game named with no year and no
   season words now means the current season, which is the default every
   template already applies (#153).
+- **A fingerprint pair is no longer refused over the router's own mis-slot.**
+  "sga vs tyrese maxey fingerprint" put Maxey in `opponent`; the pair was
+  correctly rebuilt into `players` and then `check_scope` refused the
+  leftover slot, so a question the system answers under other words
+  ("compare sga and tyrese maxey fingerprint") had no answer at all. An
+  `opponent` that names no team and names a player the slots already ask
+  about is dropped. One that names a player nobody asked about stays, so a
+  template that cannot honor it still refuses rather than widening to every
+  opponent (#157).
 - **The fall-through agent gives up on a clock, and says what it could not
   answer.** An iteration cap never bounded the wait, because the cost is per
   model call: measured over 24 questions, every finished run spent nearly all

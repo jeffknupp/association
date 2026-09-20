@@ -1942,25 +1942,6 @@ those were found.
 - **GitHub:** none yet
 - **GitHub:** #156
 
-### "sga vs tyrese maxey fingerprint" is refused over an `opponent` the router invented
-- **Found:** 2026-09-20, grading the 45-question web session (build
-  `178c21f-dirty`)
-- **Evidence:** routes to `fingerprint` with `{"player": "Shai
-  Gilgeous-Alexander", "opponent": "Tyrese Maxey", "side": "total"}`;
-  `restore_dropped_players` correctly rebuilds the pair ("the question names
-  more players than the router returned"), and then `check_scope` refuses
-  the leftover `opponent` slot, so the pair is never drawn. "compare sga and
-  tyrese maxey fingerprint" - the same question with "compare" - draws both.
-- **User sees:** a refusal for a question the system answers under other
-  words.
-- **Next step:** when `restore_dropped_players` puts a name from `opponent`
-  into `players`, drop `opponent` (a player is not a scoping team), or have
-  `scope_from_question` treat an `opponent` that resolves to a player and not
-  a team as the router's mis-slot and clear it.
-- **GitHub:** none yet
-- **GitHub:** #157
-
-
 ### `record_when` loses the player the question names, and the fall-through burns 583 seconds for nothing
 - **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
 - **Evidence:** "what was the sixers record when maxey scored 15+ points?"

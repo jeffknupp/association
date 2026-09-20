@@ -1325,7 +1325,33 @@ def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: di
         _scope_from_question_drop_opposing_team(slots, notes, team)
 
     _scope_from_question_opponent(con, question, slots, notes, versus, season, carries_player=reads_player and has_player)
+    _scope_from_question_opponent_is_a_subject(con, slots, notes)
     return notes
+
+
+def _scope_from_question_opponent_is_a_subject(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], notes: list[str]) -> None:
+    """Drop an ``opponent`` that names a player the slots already ask about.
+
+    "sga vs tyrese maxey fingerprint" put Maxey in ``opponent``;
+    :func:`restore_dropped_players` then correctly rebuilt the pair, and
+    ``check_scope`` refused the leftover slot, so a question the system
+    answers under other words ("compare sga and tyrese maxey fingerprint")
+    had no answer at all.
+
+    Narrow on purpose. The slot goes only when it names no team AND the
+    person it names is already a subject - the router filing one of the
+    question's own players twice, which narrows nothing. An ``opponent`` that
+    names a player the slots do NOT carry is left exactly where it is, so a
+    template that cannot honor it still refuses rather than silently widening
+    to every opponent, which is the trade this module exists to make.
+    """
+    held = slots.get("opponent")
+    if not (isinstance(held, str) and held.strip()) or _team_named(con, held) is not None:
+        return
+    subjects = [name for name in [slots.get("player"), *(slots.get("players") or [])] if isinstance(name, str) and name.strip()]
+    if any(_shares_word(subject, held) for subject in subjects):
+        slots.pop("opponent", None)
+        notes.append(f"opponent {held!r} is a player the question already asks about, not a team")
 
 
 def teammate_names(value: Any) -> list[str]:

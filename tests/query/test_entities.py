@@ -906,6 +906,28 @@ def test_a_team_the_question_never_names_goes_even_when_nobody_is_named(scope_co
     assert slots == {"opponent": "Phoenix Suns"}
 
 
+def test_an_opponent_that_names_one_of_the_questions_own_players_is_dropped(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """ "sga vs tyrese maxey fingerprint" put Maxey in `opponent`; the pair was
+    rebuilt into `players` and then check_scope refused the leftover slot, so
+    a question the system answers under other words had no answer at all."""
+    slots: dict[str, Any] = {"players": ["Stephen Curry", "Jaylen Brown"], "opponent": "Jaylen Brown", "side": "total"}
+    scope_from_question(scope_con, "curry vs jaylen brown fingerprint", slots, reads_player=True)
+    assert slots == {"players": ["Stephen Curry", "Jaylen Brown"], "side": "total"}
+
+
+def test_an_opponent_naming_a_player_nobody_asked_about_is_left_to_be_refused(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """Narrow on purpose: the slot goes only when the person it names is
+    already a subject. Otherwise a template that cannot honor it must still
+    refuse, rather than silently widening to every opponent."""
+    slots: dict[str, Any] = {"player": "Stephen Curry", "opponent": "Kawhi Leonard"}
+    scope_from_question(scope_con, "curry fingerprint", slots, reads_player=True)
+    assert slots["opponent"] == "Kawhi Leonard"
+    # A real team in `opponent` is untouched, whoever the subject is.
+    team: dict[str, Any] = {"player": "Stephen Curry", "opponent": "Boston Celtics"}
+    scope_from_question(scope_con, "curry vs the celtics", team, reads_player=True)
+    assert team["opponent"] == "Boston Celtics"
+
+
 def test_a_name_typed_with_accents_still_names_its_player(scope_con: duckdb.DuckDBPyConnection) -> None:
     """The warehouse spells every name in plain letters; "luka dončić last 15
     games vs. magic" matched nobody and answered the Lakers' log."""
