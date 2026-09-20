@@ -843,6 +843,39 @@ def test_a_narrowing_the_schema_has_no_slot_for_still_reaches_check_scope(questi
     assert "situation" in _ask(question, '{"intent":"player_stat","player":"LeBron James"}').slots
 
 
+def test_a_stat_name_before_a_second_line_is_not_a_subject() -> None:
+    """ "who had the most 30+ point 10+ rebound games this year?" read "point"
+    as the player of "point 10+ rebound games" and answered for Sir'Dominic
+    Pointer. A stat's own name is never the subject."""
+    got = _ask("who had the most 30+ point 10+ rebound games this year?", '{"intent":"threshold_count","stat":"points","threshold":30,"season":2026}')
+    assert "player" not in got.slots
+
+
+def test_this_postseason_names_the_current_season() -> None:
+    """ "maxey's stats for game 4 against the knicks this postseason" carried a
+    filler limit, and the last-meetings rule read the missing season word as
+    "wherever they fall" - a career, which asked which Maxey."""
+    got = _ask("show maxey's stats for game 4 against the knicks this postseason", '{"intent":"game_log","player":"Maxey","order":"recent","limit":1,"season_type":3}')
+    assert "span" not in got.slots and got.slots.get("game_n") == 4
+
+
+def test_an_unscoped_count_by_a_named_player_reads_as_his_career() -> None:
+    """Product decision, 2026-09-19: "how many times has embiid fouled out?"
+    is 0 this season and 9 in his career, and only the second is the question.
+    A season the question names still wins, and so does an ordinal one."""
+    got = _ask("how many times has embiid fouled out?", '{"intent":"threshold_count","stat":"fouls","threshold":6,"season":2026}')
+    assert got.slots.get("player") == "embiid" and got.slots.get("span") == "career" and "season" not in got.slots
+    this = _ask("how many 30 point games does jokic have this season", '{"intent":"threshold_count","stat":"points","threshold":30,"season":2026}')
+    assert "span" not in this.slots and this.slots.get("season") == 2026
+    year = _ask("how many 30 point games did jokic have in 2024", '{"intent":"threshold_count","stat":"points","threshold":30,"season":2024}')
+    assert "span" not in year.slots and year.slots.get("season") == 2024
+    ordinal = _ask("how many 40+ points games does lebron james have in his 18th season?", '{"intent":"threshold_count","stat":"points","threshold":40,"season":2018}')
+    assert "span" not in ordinal.slots and ordinal.slots.get("season_n") == 18
+    # A league-wide count keeps the default season: nobody's career to read.
+    league = _ask("how many 50 point games were there", '{"intent":"threshold_count","stat":"points","threshold":50,"season":2026}')
+    assert "span" not in league.slots
+
+
 @pytest.mark.parametrize(
     ("question", "want"),
     [

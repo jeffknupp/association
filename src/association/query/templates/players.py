@@ -1239,7 +1239,66 @@ def _box_score_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span:
         result = TemplateResult(data={"player": player.name, **scope, "seasons": [first, last], "stats": values}, answer=answer)
     if notes:
         result.answer = " ".join([result.answer, *notes])
+    if narrowed.opponent is not None:
+        # "stats vs X" is the averages, the count, and the meetings behind
+        # them - see _recent_meetings.
+        recent, lines = _recent_meetings(con, narrowed, rebuilt=rebuilt, total=int(games))
+        result.data["recent"] = recent
+        result.answer = "\n".join([result.answer, *lines])
     return result
+
+
+#: How many of the meetings behind an average against one opponent are listed.
+RECENT_MEETINGS = 5
+
+
+def _recent_meetings(con: duckdb.DuckDBPyConnection, narrowed: _Narrowed, *, rebuilt: bool, total: int) -> tuple[list[dict[str, Any]], list[str]]:
+    """The most recent games behind an average against one opponent, newest
+    first, as data and as the lines that end the answer.
+
+    Product decision (2026-09-19): "stats vs X" is the averages over every
+    meeting in scope, the game count, and a short footer of the meetings
+    themselves - which is what makes "in 1 game" honest, and what a reader
+    asking "vs X" is usually after. A per-game log is still ``game_log``'s,
+    for a question that says log, each game or last N.
+    """
+    sql, params = rows_sql(
+        narrowed,
+        "pgl.game_date, pgl.season, pgl.opponent_abbr, g.home_team_id = pgl.team_id, g.winner_team_id, pgl.team_id, pgl.points, pgl.rebounds, pgl.assists",
+        order="pgl.game_date DESC",
+        limit=RECENT_MEETINGS,
+        rebuilt=rebuilt,
+    )
+    rows = con.execute(sql, params).fetchall()
+    recent = [
+        {
+            "date": _eastern_date(date),
+            "season": season,
+            "opponent": opponent,
+            "home_away": "home" if home else "away",
+            "result": None if winner is None else ("W" if winner == team_id else "L"),
+            "points": points,
+            "rebounds": rebounds,
+            "assists": assists,
+        }
+        for date, season, opponent, home, winner, team_id, points, rebounds, assists in rows
+    ]
+    shown = len(recent)
+    if total > shown:
+        title = f"Most recent {shown} of the {total} meetings:"
+    elif shown == 1:
+        title = "The only meeting:"
+    else:
+        title = f"All {shown} meetings:"
+    lines = [title] + [
+        f"  {g['date']}  {'vs' if g['home_away'] == 'home' else '@'} {g['opponent']}  {g['result'] or '-'}  {_count(g['points'])} PTS, {_count(g['rebounds'])} REB, {_count(g['assists'])} AST"
+        for g in recent
+    ]
+    return recent, lines
+
+
+def _count(value: Any) -> str:
+    return "-" if value is None else str(int(value))
 
 
 def _shooting_result(name: str, scope: dict[str, Any], values: dict[str, Any], shooting: tuple[str, str, str, str], *, when: str, games_note: str = "") -> TemplateResult:

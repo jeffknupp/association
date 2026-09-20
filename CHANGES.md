@@ -23,6 +23,25 @@ had no published version to be compatible with.
   his last postseason game" answers that game rather than his postseason
   average. A filler `order` on a question naming no such game is still
   dropped, as before (closes #142).
+- **An unscoped count by a named player reads as his career.** Product
+  decision (2026-09-19): "how many times has embiid fouled out?" is 0 this
+  season and 9 in his career, and only the second is the question. `route()`
+  sends a `threshold_count` "how many" question with a player and no season
+  in sight to his career; a season the question names ("this season", a
+  year, "his 18th season") still wins, and a league-wide count keeps the
+  default season. The answer names the scope it used, as it always did.
+- **"Stats vs X" ends with the meetings behind the average.** Product
+  decision (2026-09-19): averages over every meeting in scope, the game
+  count, and a short footer of the meetings themselves, newest first
+  (`RECENT_MEETINGS`, 5) - date, venue, result, points, rebounds, assists.
+  "Jayson tatum stats per game vs sas" now says "in 1 game" and shows the
+  only meeting beneath it. A per-game log is still `game_log`'s, for a
+  question that says log, each game or last N.
+- **"This postseason" names the current season**, like "this season" does:
+  "maxey's stats for game 4 against the knicks this postseason" used to read
+  as a career question and ask which Maxey. And a stat's own name is never a
+  count's subject: "the most 30+ point 10+ rebound games" read "point" as a
+  player and answered for Sir'Dominic Pointer.
 - **"His 18th season" is a season, settled once the player is known.** "how
   many 40+ points games does lebron james have in his 18th season?" arrived
   as season 2018 - the ordinal read as a year - with LeBron dropped, and was

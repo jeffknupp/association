@@ -79,6 +79,25 @@ def test_a_line_whose_words_name_no_stat_refuses_rather_than_filtering_on_a_gues
         player_stat(con, {"player": "Luka Doncic", "stat": "points", "below": ["under 30 gizmos"]})
 
 
+def test_stats_against_one_opponent_end_with_the_meetings_behind_the_average(pg_ctx: TemplateContext) -> None:
+    """Product decision, 2026-09-19: "stats vs X" is the averages, the count,
+    and a short footer of the meetings themselves, newest first - what makes
+    "in 1 game" honest. Podziemski met Detroit twice this season: at Detroit
+    in December (20, a win) and at home in January (15, a loss)."""
+    result = player_stat(pg_ctx, {"player": "Brandin Podziemski", "stat": "points", "opponent": "Detroit Pistons"})
+    assert result.data["stats"]["gamesPlayed"] == 2 and result.data["stats"]["avgPoints"] == 17.5
+    assert [(g["date"][5:], g["home_away"], g["result"], g["points"]) for g in result.data["recent"]] == [("01-10", "home", "L", 15), ("12-01", "away", "W", 20)]
+    answer = result.answer or ""
+    assert "averaged 17.5 points per game in 2 games vs the Detroit Pistons" in answer
+    assert answer.endswith("All 2 meetings:\n  " + f"{current_season()}-01-10  vs DET  L  15 PTS, 4 REB, 6 AST\n  {current_season() - 1}-12-01  @ DET  W  20 PTS, 7 REB, 5 AST")
+    # One meeting is "the only meeting", which is what makes "in 1 game" honest.
+    one = player_stat(pg_ctx, {"player": "Brandin Podziemski", "stat": "points", "opponent": "Boston Celtics"})
+    assert "in 1 game vs the Boston Celtics" in (one.answer or "") and "The only meeting:" in (one.answer or "")
+    # No opponent, no footer: a venue alone is not a "vs X" question.
+    home = player_stat(pg_ctx, {"player": "Brandin Podziemski", "stat": "points", "venue": "home"})
+    assert "recent" not in home.data and "meetings" not in (home.answer or "")
+
+
 def test_a_season_named_by_its_place_in_a_career_settles_to_that_year_once_the_player_is_known(pg_ctx: TemplateContext) -> None:
     """ "how many 40+ points games does lebron james have in his 18th season?"
     arrived as season 2018 - the ordinal read as a year. Podziemski's two
@@ -2990,7 +3009,8 @@ def test_player_stat_averages_the_games_against_an_opponent(pg_ctx: TemplateCont
     """ "evan mobley avg against bucks" refused before this - and before the
     refusal, it was answered with his whole season."""
     result = player_stat(pg_ctx, {"player": "Brandin Podziemski", "opponent": "Detroit Pistons", "stat": "points"})
-    assert result.answer == f"Brandin Podziemski averaged 17.5 points per game in 2 games vs the Detroit Pistons in the {current_season()} regular season. That is 35 in total."
+    # The footer of meetings that follows is the product decision tested below.
+    assert (result.answer or "").startswith(f"Brandin Podziemski averaged 17.5 points per game in 2 games vs the Detroit Pistons in the {current_season()} regular season. That is 35 in total.")
 
 
 def test_player_stat_honors_venue_and_a_teammates_absence(pg_ctx: TemplateContext) -> None:

@@ -446,6 +446,30 @@ _SUBJECT_OF_HIGH = re.compile(r"\b([A-Za-z][A-Za-z.'\-]{2,})(?:'s\b|\s+(?:scored
 # for that question at all.
 _COUNT_SUBJECT_WORDS = _SUBJECT_WORDS | frozenset(
     {
+        # A stat's own name sits before "10+ rebound games" in "the most 30+
+        # point 10+ rebound games", where it is the first line's noun, not a
+        # subject: read as one, "point" resolved to Sir'Dominic Pointer.
+        "point",
+        "points",
+        "pt",
+        "pts",
+        "rebound",
+        "rebounds",
+        "reb",
+        "rebs",
+        "assist",
+        "assists",
+        "ast",
+        "steal",
+        "steals",
+        "stl",
+        "block",
+        "blocks",
+        "blk",
+        "three",
+        "threes",
+        "double",
+        "triple",
         "players",
         "has",
         "have",
@@ -518,7 +542,10 @@ def _subject_named_in(question: str) -> str | None:
 
 
 _SPAN_WORDS = re.compile(r"\b(?:career|all[- ]time|ever|(?:in|of)\s+(?:nba\s+)?history|of\s+all\s+time)\b", re.IGNORECASE)
-_SEASON_WORDS = re.compile(r"\b(?:this|last|next)\s+(?:season|year)\b", re.IGNORECASE)
+# "this postseason" names the current season as surely as "this season" does:
+# without it, "maxey's stats for game 4 against the knicks this postseason"
+# read as a career question and asked which Maxey.
+_SEASON_WORDS = re.compile(r"\b(?:this|last|next)\s+(?:season|year|postseason|playoffs)\b", re.IGNORECASE)
 
 
 def _validate_span(question: str) -> str | None:
@@ -1393,6 +1420,13 @@ def _route_team_slots(intent: str, slots: dict[str, Any], question: str) -> None
         slots.pop("stat", None)
 
 
+# A count asked of one player with no season in sight: "how many times has
+# embiid fouled out?" is 0 this season and 9 in his career, and only the second
+# is the question. Product decision (2026-09-19): an unscoped count by a named
+# player reads as his career, and the answer names the scope it used.
+_HOW_MANY = re.compile(r"\bhow\s+many\b", re.IGNORECASE)
+
+
 def _route_subject_slots(intent: str, slots: dict[str, Any], question: str) -> None:
     """The last meetings with an opponent across seasons, and a single-game
     high's or a threshold count's missing subject."""
@@ -1419,6 +1453,19 @@ def _route_subject_slots(intent: str, slots: dict[str, Any], question: str) -> N
         subject = _subject_named_in(question)
         if subject is not None:
             slots["player"] = subject
+    if (
+        intent == "threshold_count"
+        and slots.get("player")
+        and _HOW_MANY.search(question)
+        and not slots.get("span")
+        and not slots.get("season_n")
+        and season_from_text(question) is None
+        and not _SEASON_WORDS.search(question)
+    ):
+        # See _HOW_MANY. A season the question names, this one included,
+        # still wins; so does an ordinal season, settled later.
+        slots["span"] = "career"
+        slots.pop("season", None)
 
 
 def _route_side_and_order(intent: str, slots: dict[str, Any], question: str) -> None:
