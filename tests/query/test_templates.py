@@ -13,7 +13,7 @@ from association.query import shotchart
 from association.query.entities import MAX_CANDIDATES
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, TemplateContext, TemplateUnsupported, check_scope
-from association.query.templates.games import _rebuilt_readable, game_log, head_to_head, period_split, player_matchup, team_quarter_points
+from association.query.templates.games import _rebuilt_readable, game_log, head_to_head, period_leaderboard, period_split, player_matchup, team_quarter_points
 from association.query.templates.netpoints import fingerprint, player_netpoints
 from association.query.templates.players import SHOOTING_STATS, _box_score_stat_rebuilt, leaderboard, player_compare, player_history, player_stat, single_game_high, threshold_count
 from association.query.templates.shots import shot_chart, shot_distance
@@ -3851,3 +3851,129 @@ def test_a_team_log_names_each_opponent_as_it_was_that_season(gl_con: TemplateCo
     real_games.build_table(c, {"games", "teams"})
     games = game_log(gl_con, {"team": "Knicks", "season": 2005}).data["games"]
     assert [g["opponent"] for g in games] == ["New Jersey Nets"]
+
+
+@pytest.fixture
+def period_rank_ctx(tmp_path: Path) -> TemplateContext:
+    """Three players over six postseason games, built to exercise the three
+    things a per-game period ranking gets wrong.
+
+    Nobody's shots carry a usable label: every made shot is 26 feet from the
+    rim at (25, 0) with ``points_attempted = 0``, ESPN's "unlabeled". Scored
+    off the label each is worth nothing; scored off its position each is a
+    three, which is what ``SHOT_VALUE_SQL`` reads.
+
+    - **Ace** plays all six and scores one first-quarter three in five of
+      them - 15 points over 6 games, 2.5 a game. The sixth is a first quarter
+      he played and did not score in, which is a real zero and must stay in
+      the denominator.
+    - **Role** plays all six and scores one first-quarter three in two of
+      them: 6 points, 1.0 a game.
+    - **Cameo** plays twice and scores a three in each: 6 points at 3.0 a
+      game, the best average here and below the postseason minimum of five
+      games, so he must not rank at all.
+
+    The postseason is used so the qualifier is
+    :data:`association.query.metrics.PER_GAME_MIN_POSTSEASON_GAMES` (5) rather
+    than the 20 a regular season needs, which keeps the fixture readable.
+    """
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    c.execute(
+        "CREATE TABLE games (event_id VARCHAR, season BIGINT, season_type BIGINT, date VARCHAR, home_team_id VARCHAR, away_team_id VARCHAR, "
+        "home_score BIGINT, away_score BIGINT, winner_team_id VARCHAR)"
+    )
+    c.execute("CREATE TABLE player_box_stats (event_id VARCHAR, season BIGINT, season_type BIGINT, team_id VARCHAR, athlete_id VARCHAR, did_not_play BOOLEAN, minutes BIGINT)")
+    c.execute(
+        "CREATE TABLE shot_chart (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, team_id VARCHAR, "
+        "period INTEGER, clock VARCHAR, made BOOLEAN, shot_type VARCHAR, coordinate_x INTEGER, coordinate_y INTEGER, points_attempted INTEGER, description VARCHAR)"
+    )
+    c.execute("INSERT INTO players VALUES ('1','Ace Scorer'),('2','Role Player'),('3','Cameo Sub')")
+    c.execute("INSERT INTO teams VALUES ('9','GS','Golden State Warriors'),('13','LAL','Los Angeles Lakers')")
+    events = [f"p{n}" for n in range(1, 7)]
+    for n, event in enumerate(events, start=1):
+        c.execute("INSERT INTO games VALUES (?,?,3,?,'9','13',110,100,'9')", [event, SEASON, f"{SEASON}-05-0{n}T00:30Z"])
+    for event in events:
+        c.execute("INSERT INTO player_box_stats VALUES (?,?,3,'9','1',FALSE,30)", [event, SEASON])
+        c.execute("INSERT INTO player_box_stats VALUES (?,?,3,'9','2',FALSE,24)", [event, SEASON])
+    for event in events[:2]:
+        c.execute("INSERT INTO player_box_stats VALUES (?,?,3,'9','3',FALSE,8)", [event, SEASON])
+
+    def shot(athlete: str, event: str, period: int) -> None:
+        c.execute(
+            "INSERT INTO shot_chart VALUES (?,?,3,?,'9',?,'5:00',TRUE,'Jump Shot',25,26,0,'makes 26-foot jump shot')",
+            [athlete, SEASON, event, period],
+        )
+
+    for event in events[:5]:  # Ace: a first-quarter three in five of six
+        shot("1", event, 1)
+    shot("1", events[5], 2)  # and a second-quarter one in the sixth, so he played a scoreless first quarter
+    for event in events[:2]:  # Role: two
+        shot("2", event, 1)
+    for event in events[:2]:  # Cameo: two, in his only two games
+        shot("3", event, 1)
+    return TemplateContext(con=c, out_dir=tmp_path)
+
+
+def test_a_period_ranking_averages_over_games_played_not_games_scored_in(period_rank_ctx: TemplateContext) -> None:
+    """The mistake period_split records, in the ranking: counting only the
+    games with a made shot in the period drops every scoreless quarter and
+    lifts the average. Ace scored in five of six first quarters, so his
+    average is 15/6 = 2.5, not 15/5 = 3.0."""
+    result = period_leaderboard(period_rank_ctx, {"period": 1, "season": SEASON, "season_type": 3})
+    leaders = result.data["leaders"]
+    assert [row["player"] for row in leaders] == ["Ace Scorer", "Role Player"]
+    assert leaders[0] == {"player": "Ace Scorer", "games": 6, "points": 15, "average": 2.5}
+    assert leaders[1]["average"] == 1.0
+    assert "led the league in 1st quarter points per game" in (result.answer or "")
+
+
+def test_a_period_ranking_states_and_applies_its_games_qualifier(period_rank_ctx: TemplateContext) -> None:
+    """Cameo averages 3.0, the best here, over two games. A per-game ranking
+    without a minimum is whoever played once and scored, so he is out - and
+    the answer says which minimum it used rather than leaving a reader to
+    wonder why he is missing."""
+    result = period_leaderboard(period_rank_ctx, {"period": 1, "season": SEASON, "season_type": 3})
+    assert "Cameo Sub" not in str(result.data["leaders"])
+    assert result.data["minimum_games"] == 5
+    assert "(minimum 5 games)" in (result.answer or "")
+
+
+def test_a_period_ranking_reads_the_shots_value_from_its_position(period_rank_ctx: TemplateContext) -> None:
+    """Every shot here is unlabeled (`points_attempted = 0`) and 26 feet out.
+    Read off the label these are worth nothing; read through SHOT_VALUE_SQL
+    each is a three, which is the difference between 76.8% and 99.95%
+    agreement with ESPN's own quarter scores."""
+    result = period_leaderboard(period_rank_ctx, {"period": 1, "season": SEASON, "season_type": 3})
+    assert result.data["leaders"][0]["points"] == 15  # five threes, not five zeros
+
+
+def test_a_period_ranking_narrowed_to_a_team_says_so(period_rank_ctx: TemplateContext) -> None:
+    result = period_leaderboard(period_rank_ctx, {"period": 1, "season": SEASON, "season_type": 3, "team": "Golden State Warriors"})
+    assert "led the Golden State Warriors in 1st quarter points per game" in (result.answer or "")
+    assert result.data["team"] == "Golden State Warriors"
+
+
+def test_a_period_ranking_covers_a_half_as_well_as_a_quarter(period_rank_ctx: TemplateContext) -> None:
+    """Ace's six threes are five in the first quarter and one in the second,
+    so a first-half ranking sees all six: 18 points over 6 games."""
+    result = period_leaderboard(period_rank_ctx, {"half": 1, "season": SEASON, "season_type": 3})
+    assert result.data["leaders"][0] == {"player": "Ace Scorer", "games": 6, "points": 18, "average": 3.0}
+    assert "1st half points per game" in (result.answer or "")
+
+
+def test_a_period_ranking_refuses_a_stat_it_cannot_rank(period_rank_ctx: TemplateContext) -> None:
+    """Only points are in shot_chart. Rebounds per quarter would have to be
+    derived from plays, at a fidelity period_split already refuses over."""
+    with pytest.raises(TemplateUnsupported, match="ranks points only"):
+        period_leaderboard(period_rank_ctx, {"period": 1, "season": SEASON, "season_type": 3, "stat": "rebounds"})
+
+
+def test_a_period_ranking_nobody_qualifies_for_says_so(period_rank_ctx: TemplateContext) -> None:
+    """A regular season needs 20 games and this fixture has six postseason
+    ones, so the honest answer names the qualifier rather than reading as
+    though nobody scored."""
+    result = period_leaderboard(period_rank_ctx, {"period": 1, "season": SEASON, "season_type": 2})
+    assert result.data["leaders"] == []
+    assert "played the 20 games needed to rank" in (result.answer or "")

@@ -235,6 +235,8 @@ TEMPLATE_SOURCES: dict[str, tuple[str, ...]] = {
     # start in the same year, because a season whose plays are complete can
     # still be missing the located shots this reads.
     "period_split": ("shot_chart", "games"),
+    # Same two, plus the box table the denominator (games PLAYED) comes from.
+    "period_leaderboard": ("shot_chart", "games", "player_box_stats"),
     # A player's log and a team's come from different tables, and _sources_for
     # picks between them - a team question refused with "Player game logs only
     # go back to..." names the wrong thing.

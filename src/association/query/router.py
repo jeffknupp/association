@@ -78,6 +78,18 @@ _AGENT_ONLY = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+(?:
 # and game_log answered with his whole last game.
 _HALF_WORDS = re.compile(r"\b(?:first|second|1st|2nd)\s+half\b|\b[12]h\b|\bhalftime\b", re.IGNORECASE)
 
+# A quarter or half question that ranks PLAYERS rather than asking about one:
+# "who has the highest average 1st quarter points this season?", "knicks 1st
+# quarter scoring leaders playoffs". Before `period_leaderboard` existed these
+# reached `other` and fell through, because the override below sends a period
+# question with no named player there and had nothing else to send it to.
+#
+# This wins over the team exemption, and has to: the Knicks question routes to
+# team_quarter_points with the team filled and no player, which is exactly the
+# shape the exemption protects - and answering it would give the TEAM's first
+# quarter where its players' were asked for.
+_PERIOD_LEADERS = re.compile(r"\bleaders?\b|\bwho\b|\bwhich\s+player\b|\bleading\s+scorers?\b", re.IGNORECASE)
+
 
 # A TEAM's quarter score (no player named) is exempted below: linescores answer
 # it exactly, via templates.team_quarter_points. A PLAYER's quarter or half is
@@ -103,7 +115,7 @@ def _is_team_quarter_points(raw: dict[str, Any]) -> bool:
 # the word cannot collide with a subject.
 _COACH_WORDS = re.compile(r"\bcoach(?:es|ed|ing|es'|'s)?\b|\bhead\s+coach\b", re.IGNORECASE)
 
-CODE_ASSIGNED_INTENTS: frozenset[str] = frozenset({"coach", "period_split"})
+CODE_ASSIGNED_INTENTS: frozenset[str] = frozenset({"coach", "period_split", "period_leaderboard"})
 """Intents no model can emit, because :func:`route` assigns them from the
 question's own text.
 
@@ -1390,7 +1402,8 @@ def _route_period_intents(raw: dict[str, Any], question: str) -> None:
         raw["intent"] = "threshold_count"
         raw["stat"] = "fouls"
         raw["threshold"] = FOUL_OUT_THRESHOLD
-    if (_AGENT_ONLY.search(low) and not _is_team_quarter_points(raw)) or _HALF_WORDS.search(low):
+    ranks_players = _PERIOD_LEADERS.search(low) is not None
+    if (_AGENT_ONLY.search(low) and (ranks_players or not _is_team_quarter_points(raw))) or _HALF_WORDS.search(low):
         # A named player's quarter or half now HAS a template, so the override
         # sends it there instead of to the agent - but only when the question
         # names one and the period is legible, since `period_split` answers
@@ -1402,7 +1415,16 @@ def _route_period_intents(raw: dict[str, Any], question: str) -> None:
         # NO player", so it can never be true here where a player is named. The
         # team's own quarter is already exempted by the outer condition.
         named_player = isinstance(raw.get("player"), str) and raw["player"].strip()
-        if asked is not None and named_player:
+        if asked is not None and not named_player and ranks_players:
+            # Players ranked by a quarter or a half - templates.games
+            # .period_leaderboard. A team may still be named ("knicks 1st
+            # quarter scoring leaders"), where it narrows the ranking to that
+            # team's players rather than becoming the subject.
+            raw["intent"] = "period_leaderboard"
+            raw |= asked
+            if not _named_a_stat(question):
+                raw.pop("stat", None)
+        elif asked is not None and named_player:
             raw["intent"] = "period_split"
             raw |= asked
             # `stat` is the one REQUIRED slot, so the model fills it whether or

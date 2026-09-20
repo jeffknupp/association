@@ -327,6 +327,11 @@ CASES: list[tuple[str, str, dict]] = [
     # needs a number to divide by, which none of these names.
     ("show me the 76ers record when both Embiid and Paul George played", "with_without", {"with_player": ["Embiid", "Paul George"]}),
     ("PHI record when Embiid with Paul George", "with_without", {"with_player": ["Embiid", "Paul George"]}),
+    # A quarter or half that ranks PLAYERS is period_leaderboard, not the
+    # team's own quarter and not a fall-through: both of these reached `other`
+    # and the agent before it existed.
+    ("who has the highest average 1st quarter points this season?", "period_leaderboard", {"period": 1}),
+    ("knicks 1st quarter scoring leaders playoffs", "period_leaderboard", {"period": 1}),
 ]
 
 

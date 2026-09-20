@@ -1552,10 +1552,33 @@ def test_a_teams_quarter_is_still_the_teams_template() -> None:
 
 
 def test_a_quarter_question_naming_no_player_is_not_period_split() -> None:
-    """`period_split` answers about a player and nothing else. A quarter
-    question with no player - "knicks 1st quarter scoring leaders" - has no
-    subject it can take, so it keeps falling through."""
-    assert _ask("knicks 1st quarter scoring leaders playoffs", '{"intent":"leaderboard","team":"New York Knicks"}').intent == "other"
+    """`period_split` answers about a player and nothing else, so a quarter
+    question with no player has no subject it can take. It is no longer a
+    fall-through either: one that ranks players is period_leaderboard's."""
+    got = _ask("knicks 1st quarter scoring leaders playoffs", '{"intent":"leaderboard","team":"New York Knicks"}')
+    assert got.intent == "period_leaderboard" and got.slots["period"] == 1
+    # A quarter question that ranks nobody and names nobody still falls through.
+    assert _ask("1st quarter scoring this season", '{"intent":"leaderboard"}').intent == "other"
+
+
+def test_a_quarter_ranking_beats_the_teams_own_quarter_template() -> None:
+    """The Knicks question routes to team_quarter_points with the team filled
+    and no player - exactly the shape the team exemption protects - and
+    answering it there gives the TEAM's first quarter where its players' were
+    asked for. The ranking words win, and the team narrows the ranking."""
+    payload = '{"intent":"team_quarter_points","team":"New York Knicks","period":1}'
+    got = _ask("knicks 1st quarter scoring leaders playoffs", payload)
+    assert got.intent == "period_leaderboard" and got.slots.get("team") == "New York Knicks"
+    # Without the ranking words it is still the team's own quarter.
+    plain = _ask("How many points did the Knicks score in the 1st quarter this season?", payload)
+    assert plain.intent == "team_quarter_points"
+
+
+def test_a_period_ranking_with_a_player_named_is_still_that_players_split() -> None:
+    """One named player is period_split's question however it is worded - the
+    ranking reader must not take a question about one man."""
+    got = _ask("who scored the most in the 1st quarter, jokic or embiid", '{"intent":"player_stat","player":"Nikola Jokic"}')
+    assert got.intent == "period_split"
 
 
 @pytest.mark.parametrize(

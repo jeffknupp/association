@@ -64,6 +64,22 @@ had no published version to be compatible with.
   chart drew a game a year off; a single game named with no year and no
   season words now means the current season, which is the default every
   template already applies (#153).
+- **A quarter or a half can be ranked, not just looked up.** "who has the
+  highest average 1st quarter points this season?" and "knicks 1st quarter
+  scoring leaders playoffs" reached `other` and fell through to the agent:
+  the router sends a period question with no named player there, and there
+  was nothing else to send it to. `period_leaderboard` ranks players by their
+  points in one quarter or half, reading the same source `period_split` reads
+  the same way - the value of each made shot through `SHOT_VALUE_SQL`, never
+  the play's prose - with that template's season accuracy gating unchanged.
+  The denominator is games PLAYED, so a scoreless quarter counts as the zero
+  it is; a per-game average needs the qualifier every other per-game ranking
+  here applies (20 games, five in the postseason) and the answer names it; a
+  named team narrows the ranking to that team's players rather than becoming
+  the subject, and the ranking words win over the team's own quarter template
+  so "knicks ... leaders" is not answered with the Knicks' first-quarter
+  total. Measured: Luka Doncic led the league at 12.0 first-quarter points
+  over 64 games in 2026.
 - **"Record when X and Y played" is answered, not refused four ways.** All
   four phrasings a web session asked - "when both Embiid and Paul George
   played", "with Embiid and Paul George", "when Embiid and Paul George play",
