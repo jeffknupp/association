@@ -261,6 +261,12 @@ TEMPLATE_SOURCES: dict[str, tuple[str, ...]] = {
     # picks between the two per question.
     "player_splits": _PLAYER_GAME_TABLES,
     "with_without": _PLAYER_GAME_TABLES,
+    # The fallback for a player question; _sources_for picks the team tables
+    # instead for a team's own threshold (no `player` slot) - declaring
+    # player_box_stats there too would refuse a team's 1989-1993 postseason
+    # question in player box scores' words, the wrong cause, since that table
+    # sets no postseason_first_season override and so floors at 1994 like its
+    # regular season (team_box_stats and games both floor postseasons at 1989).
     "record_when": _PLAYER_GAME_TABLES,
     "player_matchup": _PLAYER_GAME_TABLES,
     "streak": _PLAYER_GAME_TABLES,
@@ -326,7 +332,7 @@ PLAYER_INTENTS: frozenset[str] = frozenset(
 """
 
 
-PLAYER_REQUIRED_INTENTS: frozenset[str] = frozenset({"record_when", "period_split"})
+PLAYER_REQUIRED_INTENTS: frozenset[str] = frozenset({"period_split"})
 """Intents whose template cannot answer at all without a player, so a player the
 router left out is worth restoring from the question.
 
@@ -334,6 +340,15 @@ Deliberately not every intent that reads one: where the player is optional -
 ``threshold_count``, ``single_game_high`` - an empty slot means "the league", and
 filling it would turn a league question into a question about somebody the
 question may only appear to name ("best" is Travis Best).
+
+``record_when`` left this set once it grew a team branch (ISSUES.md #144): a
+threshold on a TEAM's own scoring is a real, player-less question now, not an
+unanswerable one, so restoring a stray name found elsewhere in the question
+onto it would risk narrowing a team question into a player's. The player half
+still restores a name the router dropped - through ``router.py``'s own
+``_SUBJECT_RESTORED_INTENTS``, which reads the "X scored" grammar at routing
+time, before this set is ever consulted - so nothing here was relied on for
+that case in the first place.
 
 .. versionadded:: 2.1.0
 """
@@ -389,6 +404,8 @@ def _sources_for(intent: str, slots: dict[str, Any]) -> tuple[str, ...]:
         return _sources_for_player_stat(slots)
     if intent in ("player_splits", "streak"):
         return _sources_for_splits_or_streak(intent, slots)
+    if intent == "record_when":
+        return _sources_for_record_when(slots)
     if intent == "team_record":
         return _sources_for_team_record(slots)
     if intent == "team_leaderboard":
@@ -402,6 +419,15 @@ def _sources_for_game_log(slots: dict[str, Any]) -> tuple[str, ...]:
     """A player's log reads the box scores; a team's, the team tables."""
     named_player = isinstance(slots.get("player"), str) and slots["player"].strip()
     return _PLAYER_BOX_SOURCES if named_player else ("games", "team_box_stats")
+
+
+def _sources_for_record_when(slots: dict[str, Any]) -> tuple[str, ...]:
+    """A named player's threshold reads the player tables; a team's own
+    threshold (no ``player`` slot) reads only the team tables - the same split
+    _sources_for_splits_or_streak makes, and for the same reason: a team
+    question refused in player box scores' words names the wrong cause."""
+    named_player = isinstance(slots.get("player"), str) and slots["player"].strip()
+    return _PLAYER_GAME_TABLES if named_player else _TEAM_GAME_TABLES
 
 
 def _sources_for_splits_or_streak(intent: str, slots: dict[str, Any]) -> tuple[str, ...]:

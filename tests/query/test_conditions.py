@@ -512,6 +512,95 @@ def test_record_when_refuses_what_it_cannot_whitelist(league: TemplateContext) -
             record_when(league, _slots(player="Jayson Tatum", **slots))
 
 
+# ---------------- record_when, the team branch (ISSUES.md #144) ----------------
+#
+# The Celtics' six real games this season (e6 is a 0-0 placeholder with no
+# winner, dropped by real_games): e1 110 W, e2 100 L, e3 120 W, e4 99 W,
+# e5 101 W (team_box_stats NULL for both sides), e7 105 L. 4-2 overall.
+
+
+def test_a_team_only_threshold_divides_the_teams_own_games(league: TemplateContext) -> None:
+    """No player named at all - "what was the celtics record when they scored
+    120 points" (ISSUES.md #144). Reached (>=105): e1 110 W, e3 120 W, e7 105 L
+    (2-1). Fell short (<105): e2 100 L, e4 99 W, e5 101 W (2-1) - e5 included,
+    since points reads the game's own score and needs no team_box_stats row."""
+    result = record_when(league, _slots(team="Boston Celtics", stat="points", threshold=105))
+    assert (result.data["reached"]["wins"], result.data["reached"]["losses"]) == (2, 1)
+    assert (result.data["fell_short"]["wins"], result.data["fell_short"]["losses"]) == (2, 1)
+    assert result.answer.startswith(f"Boston Celtics record when they had 105+ points, {S} regular season:")
+    assert "player" not in result.data
+
+
+def test_a_team_only_threshold_needs_no_player(league: TemplateContext) -> None:
+    """The router's own recorded output for this shape carries no `player`
+    slot at all (tests/query/test_router.py,
+    test_a_record_when_about_a_team_gains_no_player) - confirming record_when
+    itself accepts that shape rather than raising "record_when needs a
+    player", the wrong cause for a question that never named anybody."""
+    result = record_when(league, _slots(team="Boston Celtics", stat="points", threshold=100))
+    assert result.data["team"] == "Boston Celtics"
+
+
+def test_a_bare_threshold_names_the_real_missing_thing(league: TemplateContext) -> None:
+    """Neither a player nor a team - unanswerable, and the refusal says so
+    rather than naming only the player half (the mirror-image bug AGENTS.md
+    warns about: a wrong cause reads as honest)."""
+    with pytest.raises(TemplateUnsupported, match="record_when needs a player or a team"):
+        record_when(league, _slots(stat="points", threshold=100))
+
+
+def test_a_team_rebounds_threshold_reads_oreb_plus_dreb_not_totalrebounds(league: TemplateContext) -> None:
+    """The fixture's totalRebounds (40) is deliberately not
+    offensiveRebounds + defensiveRebounds (35) - see `_game`'s own comment.
+    36 is between them: reading the stale totalRebounds column would put
+    every game in the reached bucket; reading oreb+dreb (what _TEAM_LINE
+    already trusts, AGENTS.md) puts every game in fell_short instead."""
+    result = record_when(league, _slots(team="Boston Celtics", stat="rebounds", threshold=36))
+    assert result.data["reached"]["games"] == 0
+    assert result.data["fell_short"]["games"] == 5, "the 5 games with a team_box_stats row; e5's is NULL"
+
+
+def test_a_team_non_points_threshold_excludes_the_empty_box_game(league: TemplateContext) -> None:
+    """e5's team_box_stats row is NULL for both sides (the 2013-2018
+    Chicago/New Orleans shape, AGENTS.md "Whole team-seasons of box scores
+    are empty") - unlike `points`, `assists` cannot read it, so it is in
+    neither row and the answer says one game is missing."""
+    result = record_when(league, _slots(team="Boston Celtics", stat="assists", threshold=15))
+    assert result.data["reached"]["games"] == 5
+    assert result.data["fell_short"]["games"] == 0
+    assert "1 of their games in that span have no assists figure on record" in result.answer
+
+
+def test_a_team_threshold_refuses_a_stat_with_no_team_figure(league: TemplateContext) -> None:
+    """minutes is a real record_when stat for a PLAYER, but a team has no
+    minutes total - the refusal names that, not "record_when needs a
+    player" (the wrong cause: a team WAS named)."""
+    with pytest.raises(TemplateUnsupported, match="record_when has no team figure for minutes"):
+        record_when(league, _slots(team="Boston Celtics", stat="minutes", threshold=240))
+
+
+def test_a_team_turnovers_threshold_reads_totalturnovers() -> None:
+    """DATA.md ("The team box `turnovers` column is zero before 2013")
+    establishes `totalTurnovers` as ESPN's right team-turnover figure in
+    every era, and the bare `turnovers` column as a different number (the
+    player-box sum, repaired in at load time) - not a stricter reading of
+    the same fact. record_when's team branch reads the former."""
+    from association.query.templates.splits import _RECORD_WHEN_TEAM_STAT_COLUMNS, _record_when_team_stat
+
+    assert _RECORD_WHEN_TEAM_STAT_COLUMNS["turnovers"] == "tbs.totalTurnovers"
+    assert _record_when_team_stat("turnovers", 15) == ("tbs.totalTurnovers", 15)
+
+
+def test_record_when_left_player_required_intents_once_it_had_a_team_branch() -> None:
+    """PLAYER_REQUIRED_INTENTS restores a name the router dropped, on the
+    theory the template cannot answer at all without one. That stopped being
+    true for record_when once it grew a team branch (ISSUES.md #144), so
+    forcing a restore would risk narrowing a genuine team question."""
+    from association.query.templates.common import PLAYER_REQUIRED_INTENTS
+
+    assert "record_when" not in PLAYER_REQUIRED_INTENTS
+
+
 # ---------------- player_matchup ----------------
 
 

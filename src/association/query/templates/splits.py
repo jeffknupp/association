@@ -578,19 +578,28 @@ def _with_without_notes(whose: str, spell_text: str, mates: list[Entity], asked_
 
 
 def record_when(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
-    """A team's record in the games a named player reached a stat threshold,
-    beside its record in the games he fell short of it.
+    """A team's record above and below a stat threshold, beside its record the
+    other side of it.
 
     "Sixers record when Embiid scores 30" - a count of wins and losses that
     ``threshold_count`` cannot give, since it counts games and not results. The
     stat is whitelisted like everywhere else, and both rows are always shown:
-    the question is a comparison even when it names only one side. Only games
-    he played count. The team is his team in each game, so a traded player's
-    record follows him; a named ``team`` narrows it to that one.
+    the question is a comparison even when it names only one side.
+
+    With a ``player`` slot, the threshold is HIS: only games he played count,
+    and the team is his team in each one, so a traded player's record follows
+    him; a named ``team`` narrows it to that one. With no player at all - "what
+    was the celtics record when they scored 120 points" (ISSUES.md #144) - the
+    threshold is the TEAM's own, read straight from the team named in ``team``.
+    A question naming neither refuses saying so, not with the player-only
+    "record_when needs a player" message that would name the wrong cause for a
+    team question with nobody to resolve.
 
     .. versionadded:: 2.1.0
     """
     con = ctx.con
+    if not slots.get("player"):
+        return _record_when_team_answer(con, slots)
     stat = slots.get("stat")
     column, threshold = _record_when_stat(stat, slots.get("threshold"))
     scope = _condition_scope(slots.get("season"), slots.get("span"), slots.get("season_type"), _PLAYER_GAME_TABLES)
@@ -669,6 +678,182 @@ def _record_when_answer(
     answer = f"{table}\nOver the {every['games']} games he played; a game he missed is in neither row.{scope.floor_note(min(r[4] for r in found))}{caveat}"
     data = {"player": player.name, "teams": teams, "stat": stat, "threshold": threshold, "span": label, "reached": reached, "fell_short": short}
     return TemplateResult(data=data, answer=answer)
+
+
+# Team-level columns record_when's team branch can read, over team_box_stats
+# aliased `tbs`. Not every player stat THRESHOLD_STAT_COLUMNS whitelists has a
+# team counterpart:
+# - `points` is handled separately (see _record_when_team_query): it reads the
+#   game's OWN score off real_games directly rather than a team_box_stats row,
+#   so it needs no box row at all and is immune to the empty 2013-2018
+#   Chicago/New Orleans team boxes (AGENTS.md, "Whole team-seasons of box
+#   scores are empty" - measured on the 2026-09-20 warehouse, 3,610 NULL rows
+#   shared by every other team_box_stats column here).
+# - `rebounds` reads offensiveRebounds + defensiveRebounds, not totalRebounds -
+#   the same substitution _TEAM_LINE makes and for the same reason (AGENTS.md,
+#   "The team totalRebounds column stops including team rebounds in 2022").
+# - `turnovers` reads `totalTurnovers`, not the bare `turnovers` column: DATA.md
+#   ("The team box `turnovers` column is zero before 2013") establishes that
+#   `totalTurnovers` is ESPN's right figure in every era, and that the
+#   warehouse's `turnovers` is a DIFFERENT number - the player-box turnover sum,
+#   repaired in at load time - so the two are not interchangeable and the
+#   smaller of them is not a stricter reading of the same fact. 2018 is short
+#   here: 2,134 of that regular season's rows and 146 of its postseason carry a
+#   real box score with `totalTurnovers` specifically NULL (measured on the
+#   2026-09-20 warehouse), on top of the empty-box seasons every other column
+#   shares - caught the same way, by `_record_when_team_unseen`'s caveat count.
+# - `minutes` is refused, by _record_when_team_stat: a team has no minutes total.
+_RECORD_WHEN_TEAM_STAT_COLUMNS: dict[str, str] = {
+    "points": "points",
+    "rebounds": "tbs.offensiveRebounds + tbs.defensiveRebounds",
+    "assists": "tbs.assists",
+    "steals": "tbs.steals",
+    "blocks": "tbs.blocks",
+    "turnovers": "tbs.totalTurnovers",
+    "threePointFieldGoalsMade": "tbs.threePointFieldGoalsMade",
+    "fieldGoalsMade": "tbs.fieldGoalsMade",
+    "freeThrowsMade": "tbs.freeThrowsMade",
+    "fouls": "tbs.fouls",
+}
+
+
+def _record_when_team_stat(stat: Any, threshold: Any) -> tuple[str, int]:
+    """The SQL a team's threshold reads, and the threshold narrowed to
+    ``int`` - or the refusal, which names the real cause rather than
+    record_when's player-only "needs a player" message (AGENTS.md, "the same
+    bug has a mirror image"): an unrecognized stat or bad threshold reads the
+    same as the player branch's own refusal, and a stat that is only ever a
+    PLAYER's (a team has no minutes total) says so by name."""
+    if not isinstance(threshold, int) or isinstance(threshold, bool) or threshold < 1:
+        raise TemplateUnsupported(f"record_when needs a known stat and a positive threshold, got {stat!r}/{threshold!r}")
+    if not isinstance(stat, str) or stat not in THRESHOLD_STAT_COLUMNS:
+        raise TemplateUnsupported(f"record_when needs a known stat and a positive threshold, got {stat!r}/{threshold!r}")
+    column = _RECORD_WHEN_TEAM_STAT_COLUMNS.get(stat)
+    if column is None:
+        # The only whitelisted player stat left with no team mapping above.
+        raise TemplateUnsupported(f"record_when has no team figure for {STAT_LABELS.get(stat, stat)}s - a team has no minutes total")
+    return column, threshold
+
+
+def _record_when_team_unseen(con: duckdb.DuckDBPyConnection, scope: _Scope, team: Entity, column: str) -> int:
+    """How many of the team's own games in this scope have a team_box_stats
+    row but no usable value for this stat - the games a non-points threshold
+    cannot see (AGENTS.md, "Whole team-seasons of box scores are empty").
+    Counted straight off team_box_stats with the same predicate
+    _record_when_team_query excludes rows on, rather than through
+    conditions._box_missing, which answers a different question (no PLAYER
+    appeared in the game at all, not this one team column)."""
+    params = {**scope.params(), "team": team.id}
+    row = con.execute(f"SELECT COUNT(*) FROM team_box_stats tbs WHERE tbs.team_id = $team AND {scope.where('tbs')} AND ({column}) IS NULL", params).fetchone()
+    return int(row[0]) if row else 0
+
+
+def _record_when_team_unseen_note(count: int, unit: str) -> str:
+    """The team counterpart to conditions._unseen_note: how many of the
+    team's games in this span carry no usable figure for this stat at all, so
+    they sit in neither row. Not shown for `points`, which reads the game's
+    own score and always has one."""
+    if not count:
+        return ""
+    return f" {count} of their games in that span have no {unit} figure on record, so they are in neither row."
+
+
+def _record_when_team_no_games(con: duckdb.DuckDBPyConnection, scope: _Scope, team: Entity, stat: Any) -> TemplateResult:
+    """Nothing to report for a team's own threshold - naming which fact is
+    missing, the discipline templates.common._no_games applies for a player:
+    a season the team actually played, answered "no games", would be the
+    false-cause answer AGENTS.md warns against - and for a non-points stat the
+    missing fact can be the STAT rather than the games themselves (the empty
+    2013-2018 team boxes, see _RECORD_WHEN_TEAM_STAT_COLUMNS)."""
+    params = {**scope.params(), "team": team.id}
+    total = con.execute(f"SELECT COUNT(*) FROM real_games g WHERE (g.home_team_id = $team OR g.away_team_id = $team) AND {scope.where('g')}", params).fetchone()
+    games = int(total[0]) if total else 0
+    unit = f"{STAT_LABELS.get(stat or '', stat or '')}s"
+    if games and stat != "points":
+        which = "it" if games == 1 else "any of them"
+        message = f"The warehouse has {games} game{'' if games == 1 else 's'} with a result for the {team.name} {_where_in(scope)}, but no {unit} figure on record for {which}."
+    else:
+        message = f"The warehouse has no games with a result for the {team.name} {_where_in(scope)}."
+    return TemplateResult(data={"team": team.name, "span": scope.label(), "games": 0}, answer=message)
+
+
+def _record_when_team_query(con: duckdb.DuckDBPyConnection, scope: _Scope, team: Entity, stat: Any, column: str, threshold: int) -> list[Any] | TemplateResult:
+    """The team's own games grouped by whether IT reached the threshold - the
+    team counterpart to _record_when_query, with no player to key on.
+
+    `points` is read straight off real_games, home/away resolved from the
+    team id rather than team_box_stats' `home_away` (see
+    _RECORD_WHEN_TEAM_STAT_COLUMNS for why). Every other stat joins
+    team_box_stats and excludes a game with no value there - the same "team's
+    own row decides which side it was on" join conditions._team_games uses,
+    since a home/away-only join silently returns half the games - and
+    _record_when_team_unseen counts the excluded games back for the caveat.
+    """
+    params: dict[str, Any] = {**scope.params(), "team": team.id}
+    if stat == "points":
+        base = f"""
+            SELECT g.event_id, g.season,
+                   CASE WHEN g.home_team_id = $team THEN g.home_score ELSE g.away_score END AS stat_value,
+                   CASE WHEN g.home_team_id = $team THEN g.home_score ELSE g.away_score END AS team_score,
+                   CASE WHEN g.home_team_id = $team THEN g.away_score ELSE g.home_score END AS opponent_score,
+                   g.winner_team_id = $team AS won
+            FROM real_games g
+            WHERE (g.home_team_id = $team OR g.away_team_id = $team) AND {scope.where("g")}"""
+    else:
+        base = f"""
+            SELECT tbs.event_id, tbs.season, {column} AS stat_value,
+                   CASE WHEN tbs.home_away = 'home' THEN g.home_score ELSE g.away_score END AS team_score,
+                   CASE WHEN tbs.home_away = 'home' THEN g.away_score ELSE g.home_score END AS opponent_score,
+                   g.winner_team_id = tbs.team_id AS won
+            FROM team_box_stats tbs JOIN real_games g ON g.event_id = tbs.event_id AND g.season = tbs.season
+            WHERE tbs.team_id = $team AND {scope.where("tbs")} AND ({column}) IS NOT NULL"""
+    found = con.execute(
+        f"WITH t AS ({base}) SELECT t.stat_value >= $threshold, COUNT(*), COUNT(*) FILTER (WHERE t.won), AVG(t.team_score - t.opponent_score), MIN(t.season), MAX(t.season) FROM t GROUP BY 1",
+        {**params, "threshold": threshold},
+    ).fetchall()
+    return found if found else _record_when_team_no_games(con, scope, team, stat)
+
+
+def _record_when_team_answer_table(con: duckdb.DuckDBPyConnection, scope: _Scope, team: Entity, stat: Any, column: str, threshold: int, found: list[Any]) -> TemplateResult:
+    """The two-row table for a team's own record above/below its threshold -
+    the team counterpart to _record_when_answer, with no player to key on and
+    a team pronoun in place of a player's."""
+    by_hit = {bool(row[0]): row for row in found}
+    unit = f"{STAT_LABELS.get(stat or '', stat or '')}s"
+    reached, short, every = _record_when_group(by_hit, True), _record_when_group(by_hit, False), _record_when_group(by_hit, None)
+    label = scope.label(min(r[4] for r in found), max(r[5] for r in found))
+    title = f"{team.name} record when they had {threshold}+ {unit}, {label}:"
+    rows = [(f"{threshold}+ {unit}", reached), (f"under {threshold} {unit}", short), ("all their games", every)]
+    table = _table(title, ["G", "W-L", "Win%", "Margin"], [(name, [str(g["games"]), f"{g['wins']}-{g['losses']}", _win_pct(g["wins"], g["games"]), _margin(g["avg_margin"])]) for name, g in rows])
+    caveat = "" if stat == "points" else _record_when_team_unseen_note(_record_when_team_unseen(con, scope, team, column), unit)
+    answer = f"{table}\nOver the {every['games']} games with a result.{scope.floor_note(min(r[4] for r in found))}{caveat}"
+    data = {"team": team.name, "stat": stat, "threshold": threshold, "span": label, "reached": reached, "fell_short": short}
+    return TemplateResult(data=data, answer=answer)
+
+
+def _record_when_team_answer(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> TemplateResult:
+    """The team half of ``record_when``: a record above/below a threshold of
+    the TEAM's own scoring or another box-score stat, reached when the
+    question names no player at all ("what was the celtics record when they
+    scored 120 points" - ISSUES.md #144). A question naming neither a player
+    nor a team is unanswerable and refuses saying so - not with the
+    player-only "record_when needs a player" message, which would name the
+    wrong cause for a team question with nobody to resolve."""
+    team = _optional_team(con, slots.get("team"), season=_slot_season(slots))
+    if isinstance(team, TemplateResult):
+        return team
+    if team is None:
+        raise TemplateUnsupported("record_when needs a player or a team")
+    stat = slots.get("stat")
+    column, threshold = _record_when_team_stat(stat, slots.get("threshold"))
+    scope = _condition_scope(slots.get("season"), slots.get("span"), slots.get("season_type"), _TEAM_GAME_TABLES)
+    misfiled = _misfiled_postseason(scope)
+    if misfiled is not None:
+        return misfiled
+    query = _record_when_team_query(con, scope, team, stat, column, threshold)
+    if isinstance(query, TemplateResult):
+        return query
+    return _record_when_team_answer_table(con, scope, team, stat, column, threshold, query)
 
 
 def streak(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:

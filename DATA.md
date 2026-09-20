@@ -728,9 +728,35 @@ the useful half of this entry is what is wrong with it.
   `team_metrics` recomputes possessions as FGA - OREB + TOV + 0.44 x FTA using
   the turnover column that is right in each era, rather than trusting ESPN's
   own `possessions`.
+
+  **Re-measured 2026-09-20, against the same warehouse `record_when`'s team
+  branch reads (ISSUES.md #144):** the backfill has run - `turnovers` averages
+  14.75/game in 1998 and 13.49 in 2010, not the stored 0/0.002 this entry's
+  evidence quotes, so "awaiting a backfill load" below is stale and the fix is
+  complete in both places.
+
+  **`totalTurnovers` is NULL, not repaired, for the whole 2018 regular season
+  and its postseason** (2,134 of 2,134 non-empty regular-season rows, 146 of
+  146 postseason) - the same season "2018 team box scores have values under
+  the wrong column names" (closed GitHub issue #8) covers. That fix remapped
+  `assists`, `steals`, `blocks` and `fouls` back to their real values
+  (measured: 22.98/7.72/4.83/19.99 a game in the 2018 regular season, matching
+  #8's own "real 19.99" for fouls) but left `totalTurnovers` NULL rather than
+  serve the wrong figure #8 recorded (1.18/game, matching the player-box sum
+  in 1 row of 2,134) - the conservative choice, and the right one, since
+  nothing here can rebuild a team's own turnovers from player rows the way
+  `team_box_repair` does for the pre-2013 seasons (a team-credited turnover
+  belongs to no player to sum from). Template code reading `totalTurnovers`
+  (`record_when`'s team branch) already treats a NULL as "not seen" rather
+  than zero, so this needs no further fix - noted here so the next column that
+  reads `totalTurnovers` does not read the 2018 NULL as "the Warriors forced
+  zero turnovers all season." A much smaller, unexplained version of the same
+  gap sits outside 2018: 115 rows in the 1996 regular season and 2 in 2000
+  have `totalTurnovers` NULL beside a populated `assists`, not investigated
+  further since it is three orders of magnitude smaller and already caveated
+  the same way.
 - **Tracked in:** ISSUES.md, "2018 team box scores have values under the wrong
-  column names" (#8), which covers the pre-2013 turnovers under its second
-  bullet — fixed in code, awaiting a backfill load.
+  column names" (#8, closed) - fixed in code and backfilled.
 
 ### ESPN's `possessions` counts every turnover twice before 2013
 
