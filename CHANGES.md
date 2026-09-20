@@ -16,6 +16,20 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **A ranking asked for in a unit nothing is stored in is refused, by name.**
+  "who were the top 10 in defensive netpoints / 90" fell through to the agent:
+  `rate` was in no template's `HONORED_SCOPING`, so `check_scope` raised - a
+  sentence that reads as a refusal in the trace and is not one, since the
+  question then reached an agent with no per-90 anything to read and nothing
+  to stop it filling the silence. `leaderboard` now declares `rate` and
+  answers it: a season total where the metric has one, and otherwise a
+  refusal naming the metric's real forms ("No leaderboard ranks netpoints
+  defense per 90 minutes - the warehouse stores it only per game or per 100
+  possessions"), which is computed from the metric rather than listed
+  generically so it cannot offer a form that does not exist. The same
+  omission had made `leaderboard`'s existing `rate == "total"` branch
+  unreachable through the pipeline, so "most points this season" as a season
+  total is answerable for the first time (#152).
 - **A record "when X had 20+ points" reads its own threshold.** Measured live
   in the 2026-09-20 web session: "what was the sixers record this season when
   tyrese maxey had 20+ points?" came back with `stat='wins'` - "record" is

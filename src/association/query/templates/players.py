@@ -454,6 +454,38 @@ def _signed_cell(value: Any) -> str:
     return "-" if value is None else f"{value:+.2f}"
 
 
+def _leaderboard_no_such_rate(rate: Any, metric: str) -> TemplateResult:
+    """Refuse a ranking in a unit the metric has no form of, saying so.
+
+    `route()` sets `rate` only where it could NOT switch the metric itself: a
+    NetPoints question asking for per-100 becomes the per-100 metric and no
+    `rate` slot survives, so a `rate` arriving here always means the unit does
+    not exist for what was asked. "who were the top 10 in defensive netpoints
+    / 90" is the measured case - per 90 minutes is a football unit, and
+    nothing in the warehouse is stored in it.
+
+    Refusing beats the fall-through this used to get. `check_scope` raised
+    instead, which reads as a refusal in the trace and is not one: the
+    question went to the agent, which has no per-90 anything to read and is
+    then free to fill the silence from its own weights. Naming the unit also
+    names what IS available, so the reader can ask again.
+    """
+    # Name the forms THIS metric actually has, not a generic list: saying
+    # "per 100 possessions" while refusing a per-100 request would be the
+    # refusal-with-the-wrong-cause shape all over again, and only the three
+    # NetPoints metrics have a per-100 sibling.
+    forms = ["as a season total" if metric.startswith("total_") else "per game"]
+    if metric in SEASON_TOTAL_OF:
+        forms.append("as a season total")
+    # `netpoints_total`'s per-100 sibling is `netpoints_per_100`, not
+    # `netpoints_total_per_100`, so the suffix comes off before looking.
+    if f"{metric.removeprefix('avg_').removesuffix('_total')}_per_100" in LEADERBOARD_METRICS:
+        forms.append("per 100 possessions")
+    asked = "per 90 minutes" if "90" in str(rate) else str(rate).replace("_", " ")
+    message = f"No leaderboard ranks {metric.replace('_', ' ')} {asked} - the warehouse stores it only {' or '.join(forms)}."
+    return TemplateResult(data={"message": message}, answer=message)
+
+
 def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """ "Top N players by X" for the metrics in LEADERBOARD_METRICS.
 
@@ -493,10 +525,13 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     metric = resolve_metric(slots.get("stat"), career=career)
     if metric is None:
         raise TemplateUnsupported(f"no leaderboard metric for stat {slots.get('stat')!r}")
-    if slots.get("rate") == "total":
+    rate = slots.get("rate")
+    if rate == "total":
         # `stat` names a category, never which of its two readings; "most
         # points this season" is a total and "leads in points" a per-game rate.
         metric = SEASON_TOTAL_OF.get(metric, metric)
+    elif rate is not None:
+        return _leaderboard_no_such_rate(rate, metric)
     if isinstance(slots.get("player"), str) and slots["player"].strip():
         # A leaderboard ranks the league or a team, never one named person.
         # Confirmed live: "Klay Thompson's 3pt percentage over the past 4

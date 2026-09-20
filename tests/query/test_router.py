@@ -1032,13 +1032,21 @@ def test_one_condition_is_left_to_the_threshold_slot_exactly_as_before() -> None
 
 def test_a_rate_no_metric_holds_is_refused_rather_than_ranked_by_the_wrong_unit() -> None:
     """ "/ 90" has no column; "points per 100 possessions" has no per-100 form.
-    Both get a `rate` slot no template honors, so check_scope refuses."""
-    from association.query.templates import TemplateUnsupported, check_scope
+    Both get a `rate` slot, and the metric is never quietly switched to one the
+    warehouse does hold.
+
+    The slot used to be honored by nothing, so `check_scope` raised and the
+    question fell through to an agent with no per-90 anything to read.
+    `leaderboard` declares it now and refuses in the metric's own name - see
+    test_leaderboard_refuses_a_unit_the_metric_has_no_form_of, which owns that
+    half. What belongs here is that the router still states the unit rather
+    than dropping it, because a dropped `rate` is a per-90 question answered
+    per game with nothing saying so."""
+    from association.query.templates import check_scope
 
     per_90 = _ask("who were the top 10 in defensive netpoints / 90", '{"intent":"leaderboard","stat":"netpoints_defense","limit":10}')
     assert per_90.slots["stat"] == "netpoints_defense" and per_90.slots["rate"] == "/ 90"
-    with pytest.raises(TemplateUnsupported, match="rate"):
-        check_scope("leaderboard", per_90.slots)
+    check_scope("leaderboard", per_90.slots)  # reaches the template now, which refuses by name
     points = _ask("points per 100 possessions leaders", '{"intent":"leaderboard","stat":"points"}')
     assert points.slots["stat"] == "points" and points.slots["rate"] == "per 100 possessions"
     plain = _ask("who led the league in defensive netpoints", '{"intent":"leaderboard","stat":"netpoints_defense"}')

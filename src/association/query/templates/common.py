@@ -160,7 +160,12 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # `span` "career" is honored by summing every season: a career leaderboard
     # from the per-team season rows, and a career count or high from every box
     # score since 1993-94. Each answer names the pool, since neither is all-time.
-    "leaderboard": frozenset({"span"}),
+    # `rate` is honored by ANSWERING it where the metric has that form (a
+    # season total) and by refusing, in the metric's own name, where it does
+    # not ("/ 90"). It was unlisted, so check_scope raised before the template
+    # ran: the per-90 question fell through to an agent with nothing to read,
+    # and the `rate == "total"` branch below was unreachable in the pipeline.
+    "leaderboard": frozenset({"span", "rate"}),
     # A count is already a line on a column; `below` is the same line the
     # other way ("games with under 14 fta"), and a phrase carrying the count's
     # own number IS the count, misread - see _threshold_count_lines.

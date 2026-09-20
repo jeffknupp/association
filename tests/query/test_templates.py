@@ -417,11 +417,14 @@ def lb_con(tmp_path: Path) -> TemplateContext:
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
-    c.execute("CREATE TABLE player_season_stats (athlete_id VARCHAR, team_id VARCHAR, season INTEGER, season_type INTEGER, gamesPlayed INTEGER, avgPoints DOUBLE)")
+    c.execute("CREATE TABLE player_season_stats (athlete_id VARCHAR, team_id VARCHAR, season INTEGER, season_type INTEGER, gamesPlayed INTEGER, avgPoints DOUBLE, points INTEGER)")
     c.execute("INSERT INTO players VALUES ('1','Luka Doncic'),('2','Stephen Curry')")
     c.execute("INSERT INTO teams VALUES ('9','GS','Golden State Warriors'),('6','DAL','Dallas Mavericks')")
     s = current_season()
-    c.execute("INSERT INTO player_season_stats VALUES ('1','6',?,2,70,33.5),('2','9',?,2,68,27.1),('2','9',?,3,10,31.0)", [s, s, s])
+    # `points` is the season TOTAL beside the per-game average, which is what
+    # `rate: "total"` ranks by - 33.5 x 70 and 27.1 x 68, rounded as ESPN
+    # stores them.
+    c.execute("INSERT INTO player_season_stats VALUES ('1','6',?,2,70,33.5,2345),('2','9',?,2,68,27.1,1843),('2','9',?,3,10,31.0,310)", [s, s, s])
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
@@ -450,6 +453,37 @@ def test_leaderboard_unmapped_stat_falls_through_rather_than_fuzzy_matching(lb_c
     # scored highest is the substitution failure this design exists to prevent.
     with pytest.raises(TemplateUnsupported):
         leaderboard(lb_con, {"stat": "clutchness"})
+
+
+def test_leaderboard_refuses_a_unit_the_metric_has_no_form_of(lb_con: TemplateContext) -> None:
+    """ "who were the top 10 in defensive netpoints / 90" fell through: `rate`
+    was in no template's HONORED_SCOPING, so check_scope raised - which reads
+    as a refusal in the trace and is not one. The question reached an agent
+    with no per-90 anything to read, free to fill the silence from its own
+    weights. It is a refusal now, and it names the metric's real forms rather
+    than a generic list, which would be the wrong-cause refusal again."""
+    # Through check_scope, which is what raised before: calling the template
+    # directly would pass whether or not `rate` is declared honored.
+    slots = {"stat": "points", "rate": "/ 90"}
+    check_scope("leaderboard", dict(slots))
+    result = leaderboard(lb_con, slots)
+    assert "per 90 minutes" in (result.answer or "")
+    assert "per game" in (result.answer or "") and "season total" in (result.answer or "")
+    # Points has no per-100 form, so the refusal must not offer one.
+    assert "per 100" not in (result.answer or "")
+    assert "leaders" not in result.data
+
+
+def test_leaderboard_reads_a_season_total_now_that_rate_reaches_it(lb_con: TemplateContext) -> None:
+    """The other half of the same omission: `leaderboard` already had a
+    `rate == "total"` branch, and check_scope refused before it could ever
+    run, so "most points this season" as a TOTAL was unreachable through the
+    pipeline."""
+    slots = {"stat": "points", "rate": "total"}
+    check_scope("leaderboard", dict(slots))
+    result = leaderboard(lb_con, slots)
+    assert "total points" in (result.answer or "")
+    assert result.data["leaders"][0]["display_name"] == "Luka Doncic"
 
 
 def test_leaderboard_ambiguous_team_falls_through_rather_than_picking_one(lb_con: TemplateContext) -> None:
