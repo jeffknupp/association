@@ -578,15 +578,31 @@ _SPAN_WORDS = re.compile(r"\b(?:career|all[- ]time|ever|(?:in|of)\s+(?:nba\s+)?h
 # read as a career question and asked which Maxey.
 _SEASON_WORDS = re.compile(r"\b(?:this|last|next)\s+(?:season|year|postseason|playoffs)\b", re.IGNORECASE)
 
+# "all playoff games" / "every playoff game" / "all his playoff games" (#141):
+# none of _SPAN_WORDS' words appear in them, so "show a shot chart for steph
+# curry in all playoff games" carried no span at all and the season defaulted
+# to the latest with data - one postseason drawn and presented as all of them,
+# with nothing in the answer saying so. Anchored on a season-TYPE word
+# ("playoff", "postseason", "preseason", "regular season") immediately after
+# "all"/"every" (and an optional possessive) so it cannot fire on "all star" -
+# "star" is not one of them - or on an unrelated "all ... games" ("all the
+# games Curry played in March").
+_SPAN_ALL_GAMES_WORDS = re.compile(r"\b(?:all|every)\b(?:\s+(?:his|her|their))?\s+(?:playoff|post-?season|pre-?season|regular[- ]season)\s+games?\b", re.IGNORECASE)
+
 
 def _validate_span(question: str) -> str | None:
     """ "career" when the question asks about more than one season's worth of
     games at once. Measured before this existed: "career points leaders" and
-    "Jokic career averages" were both answered with one season, fluently."""
+    "Jokic career averages" were both answered with one season, fluently.
+
+    .. versionchanged:: 4.4.0
+       Reads "all playoff games" and its variants too - see
+       :data:`_SPAN_ALL_GAMES_WORDS` (#141).
+    """
     text = question
     if _CAREER_HIGH.search(text) and (season_from_text(question) is not None or _SEASON_WORDS.search(text)):
         text = _CAREER_HIGH.sub(" ", text)
-    return "career" if _SPAN_WORDS.search(text) else None
+    return "career" if _SPAN_WORDS.search(text) or _SPAN_ALL_GAMES_WORDS.search(text) else None
 
 
 # The words that end a teammate's name in "without X this season" and the like.

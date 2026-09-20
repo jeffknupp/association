@@ -563,6 +563,39 @@ def test_a_named_year_survives_a_career_word() -> None:
     assert got.slots["span"] == "career" and got.slots["season"] == 2024
 
 
+def test_all_season_type_games_reads_as_a_career_span() -> None:
+    """The measured bug, verbatim (#141): "show a shot chart for steph curry
+    in all playoff games" routed to season 2025 - none of _SPAN_WORDS
+    ("career", "all-time", "ever", "in/of history") is in it - and drew one
+    postseason presented as all of them, with nothing saying so."""
+    got = _ask(
+        "show a shot chart for steph curry in all playoff games",
+        '{"intent":"shot_chart","player":"Stephen Curry","season_type":3,"season":2025}',
+    )
+    assert got.slots["span"] == "career" and "season" not in got.slots
+    every = _ask(
+        "show a shot chart for steph curry in every playoff game",
+        '{"intent":"shot_chart","player":"Stephen Curry","season_type":3,"season":2025}',
+    )
+    assert every.slots["span"] == "career"
+    his = _ask(
+        "show a shot chart for steph curry in all his playoff games",
+        '{"intent":"shot_chart","player":"Stephen Curry","season_type":3,"season":2025}',
+    )
+    assert his.slots["span"] == "career"
+
+
+def test_all_season_type_games_does_not_fire_on_all_star() -> None:
+    """The anchor is a season-TYPE word directly after "all"/"every" - "star"
+    is not one, so an All-Star question keeps its own season rather than
+    becoming a career (a false positive here would draw every All-Star Game
+    on record for a question about one)."""
+    game = _ask("curry's shot chart for the all-star game", '{"intent":"shot_chart","player":"Stephen Curry"}')
+    assert "span" not in game.slots
+    games = _ask("curry's shot distance in all star games this season", '{"intent":"shot_distance","player":"Stephen Curry"}')
+    assert "span" not in games.slots
+
+
 @pytest.mark.parametrize(
     ("question", "without"),
     [

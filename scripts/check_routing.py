@@ -61,6 +61,11 @@ CASES: list[tuple[str, str, dict]] = [
     # season game" came back as the season before this one.
     ("show a shot chart of steph curry's 2025 season for 3 point shots", "shot_chart", {"player": "Stephen Curry", "season": 2025, "shot_value": 3}),
     ("show a shot chart of steph curry's last regular season game", "shot_chart", {"player": "Stephen Curry", "order": "recent"}),
+    # #141: "all playoff games" carried no span at all - none of the "career" /
+    # "all-time" / "ever" / "in history" words is in it - so the season
+    # defaulted to the latest with data and one postseason was drawn and
+    # presented as all of them, with nothing saying so.
+    ("show a shot chart for steph curry in all playoff games", "shot_chart", {"player": "Stephen Curry", "season_type": 3, "span": "career"}),
     # #139: both conditions, as lines on box-score columns.
     ("who had the most 30+ point 10+ rebound games this year?", "threshold_count", {"stat": "points", "threshold": 30, "above": ["30+ point", "10+ rebound"]}),
     ("How many 20+ point 5+ assist games did luka have?", "threshold_count", {"player": "Luka Doncic", "above": ["20+ point", "5+ assist"]}),

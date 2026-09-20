@@ -154,24 +154,6 @@ to this section, re-read the P2s against the P1 definition: that is how both of
 those were found.
 - **GitHub:** #114
 
-### "all playoff games" draws one postseason
-- **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
-- **Evidence:** "show a shot chart for steph curry in all playoff games"
-  routes to `shot_chart` with `{"player": "Stephen Curry", "season_type": 3,
-  "season": 2025}` and draws the 2025 postseason alone (62/130). Measured on
-  `shot_chart`: Curry has postseason shots in ten seasons, 2013-2019 and
-  2022, 2023, 2025 (273, 158, 554, 420, 426, 351, 588, 569, 369, 158).
-  `_validate_span` matches "career" / "all-time" / "ever" / "in history", not
-  "all playoff games", so the season defaulted to the latest with data;
-  `HONORED_SCOPING["shot_chart"]` is `{"order"}`, so even a `span` the router
-  emitted would be refused rather than drawn.
-- **User sees:** one postseason presented as all of them, with nothing in the
-  answer saying so.
-- **Next step:** "all <season-type> games" / "every playoff game" into
-  `span: career` in `_validate_span`; then have `shot_chart` honor `span`
-  (one fewer `WHERE season =`) or refuse it with the seasons it could draw.
-- **GitHub:** none yet
-- **GitHub:** #141
 
 ## P2: misleading or incomplete
 
@@ -1896,6 +1878,43 @@ those were found.
   misleads.
 - **GitHub:** none yet
 - **GitHub:** #155
+
+### A career-span `shot_distance` drops an unseparable season and loses the derived-season caveat, silently
+- **Found:** 2026-09-20, fixing #141 (`shot_chart`/`shot_distance` honoring a
+  career `span`)
+- **Evidence:** one named season already refuses a `shot_value`-filtered
+  distance in `UNSEPARABLE_SHOT_VALUES` (2002) and notes a
+  `DERIVED_SHOT_VALUES` one (2003, 2022) - `templates/shots.py`'s
+  `shot_distance`, both checks keyed on `season`. A career span (`span:
+  "career"`) leaves `season` `None`, so neither check ever fires: 2002's rows
+  are silently excluded from the `{SHOT_VALUE_SQL} = ?` filter (their value is
+  NULL there, by design - see `shotchart.SHOT_VALUE_SQL`) with nothing saying
+  so, and a 2003/2022 season folded into the sum carries none of the "read
+  from the description" caveat a single-season query gives it. Measured
+  against `/home/jeff/code/association/nba.duckdb`: Kobe Bryant's career
+  three-point postseason shot distance (`shot_distance(ctx, {"player": "Kobe
+  Bryant", "season_type": 3, "span": "career", "shot_value": 3})`) answers
+  "26.2 feet, over 717 attempts" and correctly notes his 1997-2001 postseasons
+  are pre-floor and not shown - but says nothing about 2002's 557 postseason
+  shot_chart rows, none of which can contribute to that 717 (all NULL under
+  the value filter), or about 2003's 421, which DO contribute but without the
+  derived-value note a lone `season=2003` query gives
+  ("ESPN did not label 2003's shots as twos or threes, so they are read from
+  the description..."). `shot_chart` (the plot, not the average) does not have
+  this gap - `shotchart._render_for_player_notes` already aggregates both
+  notes as a set over every season a multi-season draw actually kept.
+- **User sees:** a career average with no shot_value filter reads fine; one
+  WITH a filter (threes, twos) whose career overlaps 2002 or 2003 gets a
+  number that is short of the truth (2002 silently thinned) or unexplained
+  (2003 unlabeled by caveat), with no sign either happened.
+- **Next step:** in `shot_distance`'s career branch, collect the distinct
+  seasons actually kept by the query (a `season` column is already selectable
+  alongside the aggregate) and build the same two notes
+  `shotchart._render_for_player_notes` does, or factor that helper out for
+  both callers to share.
+- **Priority note:** P2 - the number given is correct over what it actually
+  summed; the gap is what it does not say.
+- **GitHub:** none yet
 
 ## P3: refusal or gap
 

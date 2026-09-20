@@ -16,6 +16,21 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **"All playoff games" draws every postseason, not just one presented as
+  all of them.** "show a shot chart for steph curry in all playoff games"
+  routed to a single defaulted season (2025) and drew it - 62 of 130 shots -
+  with nothing in the answer saying it was one postseason out of the ten
+  Curry has (2013-2019, 2022, 2023, 2025; 3,866 located shots). None of
+  `_SPAN_WORDS` ("career", "all-time", "ever", "in/of history") is in "all
+  playoff games", so `_validate_span` now also reads "all"/"every
+  <season-type> game(s)" (anchored so "all-star" cannot fire it) into `span`
+  "career", and `shot_chart`/`shot_distance` now honor it - drawing (or
+  averaging) every season of the season type asked for, 1,387/3,055 makes
+  across Curry's whole postseason, and saying so. A career whose own start
+  predates the 2002 shot floor (`COVERAGE["shot_chart"]`) says which seasons
+  are missing rather than reading as though nothing were on record at all,
+  or, where the whole career is before it (measured: Michael Jordan's
+  1985-1998 postseasons), why nothing can be drawn (#141).
 - **"past two seasons" reads as a season span, not a games count.** The
   router's own `limit` is where a relative season count landed instead:
   "show tyrese maxey's games against boston in the past two seasons" arrived
