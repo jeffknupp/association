@@ -1816,32 +1816,6 @@ those were found.
 - **GitHub:** not yet filed
 - **GitHub:** #131
 
-### The "only one of them matches anybody in the warehouse" note fires for a player who is in it
-- **Found:** 2026-09-18, grading the 19 web-session questions (build `8bd7380`)
-- **Evidence:** "show a fingerprint for maxey vs jaylen brown in 2026" routes
-  to `fingerprint` with `{"player": "Maxey", "stat": "double_double", "side":
-  "total", "fields": ["points", "rebounds"], "season": 2026, "season_type": 2}`
-  - the second name dropped - and the answer is one polygon for Tyrese Maxey
-  plus the note "the question compares two players, but only one of them
-  matches anybody in the warehouse - check the spelling of the other."
-  Measured: `players` holds Jaylen Brown and `net_points_player_fingerprint`
-  has his 2026 row. `restore_dropped_players` did not put him back, and
-  `compared_but_unmatched` then reported the leftover name as a warehouse
-  miss. "fingerprint maxey vs jaylen brown 2026" gets the same note beside a
-  refusal on a spurious `date: "2026-01-01"` slot the router invented.
-  Neither replay harness reproduces the note - it is appended in `agent.py`,
-  after the stage the harnesses mirror - so a replay grades both rows correct.
-- **User sees:** a refusal-shaped claim naming the wrong cause, about a player
-  the warehouse holds - the mirror-image shape `AGENTS.md` describes under
-  "a refusal that names the wrong cause".
-- **Next step:** before `compared_but_unmatched` fires, resolve the leftover
-  span against the roster; if it resolves, draw the second polygon or say the
-  name was dropped, and never say he is not in the warehouse. Then find why
-  `restore_dropped_players` missed a two-word name that `find_players`
-  resolves ("brown" alone is ten players; "jaylen brown" is one).
-- **GitHub:** none yet
-- **GitHub:** #143
-
 ### A son's name without its suffix is an exact match on the father, who has no games to show
 - **Found:** 2026-09-19, re-scoring the corpus yardstick after the B4 port
   (`player_stat` with a real `limit` now hands the question to `game_log`)

@@ -73,6 +73,24 @@ had no published version to be compatible with.
   placeholder event, an unposted score, or a warehouse without
   `player_game_log`) falls back to the old bare-id/bare-date text rather than
   raising or printing "None vs None" (#155).
+- **A fingerprint "vs" note stopped naming a player it holds as one it does
+  not.** "show a fingerprint for maxey vs jaylen brown in 2026" answered a
+  single polygon for Tyrese Maxey plus "only one of them matches anybody in
+  the warehouse - check the spelling of the other" - false: `players` holds
+  Jaylen Brown and `net_points_player_fingerprint` has his 2026 row.
+  `entities.restore_dropped_players` compared `players_named_in`'s COUNT
+  against the held slots' count, and "Maxey" alone names two players
+  (Tyrese and Marlon), so `players_named_in`'s own strictness dropped it from
+  its list - leaving one name on each side of the comparison and reading as
+  "nothing to restore" even though the two single names were two different
+  people. It now compares by CONTENT: a held name with any trace in the
+  question (`entities._grounded`) is kept, and whatever the question names
+  beyond that is added rather than used to replace the whole list.
+  `entities.compared_but_unmatched` is now a second, independent guard against
+  the same false claim - it takes a connection and resolves the leftover name
+  against the roster before saying anything, so a resolvable name gets "was
+  not included in this answer" and only a genuine non-match still gets the
+  spelling note (#143).
 - **A team written with its space left out is still the team.**
   "trailblazers stats last 10 games 3 point average 1st quarter" arrived with
   `team='Portland Trail Blazers'` correctly routed and then lost it:

@@ -688,6 +688,21 @@ def restore_dropped_players(con: duckdb.DuckDBPyConnection, question: str, slots
         player the question names.
 
     .. versionadded:: 2.1.0
+    .. versionchanged:: 4.4.0
+       Compares NAMES rather than counts. "show a fingerprint for maxey vs
+       jaylen brown in 2026" held one name (``"Maxey"``) and
+       :func:`players_named_in` found one too (``"Jaylen Brown"``) - equal
+       counts read as nothing to restore, while the two names are different
+       people. "Maxey" alone is ambiguous - ``players`` holds both Tyrese
+       Maxey and Marlon Maxey - so :func:`players_named_in`'s own strictness
+       (a span counts only when it names EXACTLY one player) drops it, and
+       the surviving count no longer means what the count comparison
+       assumed. Now a held name is kept only when :func:`_grounded` finds a
+       trace of it in the question at all - the same test
+       :func:`override_invented_players` uses for a router invention - and
+       whatever :func:`players_named_in` finds that shares no word with a
+       kept name is added rather than used to replace the whole list, so an
+       already-correct name is never swapped for a mere spelling of itself.
     """
     if not _COMPARISON.search(question):
         return None
@@ -695,11 +710,21 @@ def restore_dropped_players(con: duckdb.DuckDBPyConnection, question: str, slots
     listed = slots.get("players")
     raw = listed if isinstance(listed, list) else [slots.get("player")]
     held = [name for name in raw if isinstance(name, str) and name.strip()]
-    if len(named) <= len(held):
+    # A held name the question shows no trace of at all is the router's own
+    # invention (the same shape override_invented_players guards against) and
+    # is dropped rather than kept; `named`, read straight from the question,
+    # can replace it outright. A held name WITH a trace is kept, even where
+    # players_named_in itself could not confirm it (an ambiguous bare
+    # surname), so restoring one dropped player never costs another his
+    # already-correct slot.
+    kept = [name for name in held if _grounded(con, question, name)]
+    spare = [name for name in named if not any(_shares_word(name, k) for k in kept)]
+    restored = kept + spare
+    if not restored or restored == held:
         return None
-    slots["players"] = named
+    slots["players"] = restored
     slots.pop("player", None)
-    return " and ".join(held) or "nobody", " and ".join(named)
+    return " and ".join(held) or "nobody", " and ".join(restored)
 
 
 # The question saying it compares things at all. Restoring a dropped player
@@ -716,9 +741,9 @@ _COMPARISON = re.compile(r"\b(?:vs\.?|versus|compare[ds]?|comparing|comparison)\
 _VERSUS = re.compile(r"\b(?:vs\.?|versus)\b", re.IGNORECASE)
 
 
-def compared_but_unmatched(question: str, held: list[str]) -> bool:
-    """Whether the question pits players against each other and only one of
-    them could be matched to the warehouse.
+def compared_but_unmatched(con: duckdb.DuckDBPyConnection, question: str, held: list[str]) -> str | None:
+    """The caveat for a "vs" fingerprint question that drew only one polygon,
+    or None where none applies.
 
     A misspelling nothing can repair - "generate fingerprints for embiid vs
     jolic" drew Joel Embiid alone, because "jolic" matches no player and is not
@@ -726,15 +751,32 @@ def compared_but_unmatched(question: str, held: list[str]) -> bool:
     rejected: a near-spelling search over a question's leftover words finds a
     spurious player in 29 of 51 corpus questions ("season" is one edit from
     Tari Eason, "most" from Quinten Post), and it does not find Nikola Jokic
-    here either.
+    here either. That case still gets the spelling note.
 
-    So the second player stays lost, and the answer says so. That is the whole
-    point: one polygon where two were asked for is the project's oldest failure
-    shape, and it is only a failure while nothing mentions it.
+    But one polygon on a "vs" question has a second cause that is not a
+    misspelling at all: "show a fingerprint for maxey vs jaylen brown in 2026"
+    said "only one of them matches anybody in the warehouse - check the
+    spelling of the other" about Jaylen Brown, whom ``players`` holds and
+    ``net_points_player_fingerprint`` has a 2026 row for - he was simply never
+    carried into the answer. That is the mirror-image bug AGENTS.md calls out
+    under "a refusal that names the wrong cause", so before blaming a
+    spelling, the leftover name is resolved against the roster the same way
+    :func:`restore_dropped_players` itself resolves one - and where it
+    resolves, the sentence says the player was dropped, never that he is
+    missing from the warehouse.
 
     .. versionadded:: 2.1.0
+    .. versionchanged:: 4.4.0
+       Takes ``con`` and returns the caveat text (or ``None``) rather than a
+       bool, so a name that resolves against the roster gets a true sentence
+       instead of being folded into the same claim as one that does not.
     """
-    return len(held) < 2 and bool(_VERSUS.search(question))
+    if len(held) >= 2 or not _VERSUS.search(question):
+        return None
+    dropped = [name for name in players_named_in(con, question) if not any(_shares_word(name, k) for k in held)]
+    if dropped:
+        return f"Note: the question also names {' and '.join(dropped)}, who was not included in this answer."
+    return "Note: the question compares two players, but only one of them matches anybody in the warehouse - check the spelling of the other."
 
 
 def misread_players(names: list[str]) -> str:
