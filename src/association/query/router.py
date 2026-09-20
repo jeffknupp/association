@@ -874,6 +874,96 @@ def _route_game_score(intent: str, slots: dict[str, Any], question: str) -> None
     slots["stat"] = _GAME_SCORE_STAT_BY_INTENT[intent]
 
 
+# Two-point field-goal percentage (ISSUES.md #114). ROUTER_SCHEMA leaves
+# `stat` an open string with no enum - see the comment on that field - so the
+# model CAN emit "twoPointFieldGoalPct" verbatim, and measured over the
+# 2026-09-20 web session it did 3 times out of 10. The other 7 it substituted
+# the nearest stat ROUTER_PROMPT actually teaches ("threePointFieldGoalPct,
+# fieldGoalPct, freeThrowPct"), which is fieldGoalPct here, and answered
+# overall shooting where 2-point shooting was asked - the same substitution
+# _ADVANCED_STAT_WORDS exists to stop for ts_pct/efg_pct/usage_pct. Read from
+# the question rather than taught to the prompt, for the same reason every
+# other entry in this file gives: a prompt edit moves slots on unrelated
+# questions and needs ollama to measure; a regex costs nothing and cannot.
+#
+# "2pt", "2-pt", "2 point", "two point" and "2p", each read against
+# percentage/pct/% (optionally with "field goal(s)" in between, the way the
+# router's own worked examples phrase the other two percentages) - and
+# nothing shorter, so "3 point percentage" and a plain "field goal
+# percentage" are never swept in: neither alternative can start matching
+# without a literal "2" or "two" immediately before the pt/point token, and
+# "20 point" (a threshold, not a shooting split) fails the same way - the "0"
+# sits where "pt"/"point" must start.
+_TWO_POINT_PCT = re.compile(
+    r"\b(?:2[- ]?pts?|2p|2[- ]?points?|two[- ]?points?)\b(?:\s+field\s*goals?)?\s*(?:%|pct\.?|percent(?:age)?)\b",
+    re.IGNORECASE,
+)
+_TWO_POINT_PCT_INTENTS = frozenset({"player_history", "player_stat"})
+
+
+def _route_two_point_pct(intent: str, slots: dict[str, Any], question: str) -> None:
+    """2-point field-goal percentage, read from the question text - see
+    :data:`_TWO_POINT_PCT`.
+
+    Overrides whatever the model guessed, the same discipline
+    :func:`_route_game_score` uses and for the same reason: "2pt" and
+    "percentage" are both words ``_named_a_stat`` already reads as naming a
+    stat, so a wrong guess (typically ``fieldGoalPct``) would otherwise
+    survive untouched. Scoped to the two templates that can look the stat up
+    (``player_history``'s ``HISTORY_COLUMNS`` and ``player_stat``'s
+    ``SHOOTING_STATS``, both in ``templates/players.py``) - the same
+    discipline ``_GAME_SCORE_STAT_BY_INTENT`` follows for game score, so a
+    value lands only where something reads it.
+
+    .. versionadded:: 4.4.0
+    """
+    if intent not in _TWO_POINT_PCT_INTENTS or not _TWO_POINT_PCT.search(question):
+        return
+    slots["stat"] = "twoPointFieldGoalPct"
+
+
+# A leaderboard ranking of shot distance (ISSUES.md #114). No such metric
+# exists and none is planned - a shot's distance has no leaderboard-shaped
+# rate the way a percentage or a per-game average does. Measured: "who lead
+# the league in avg 3 point distance" arrived at `leaderboard` with the
+# nearest real metric the model knew (threePointFieldGoalPct) and answered
+# Luke Kennard's 3-point PERCENTAGE, 47.8% - a real, fluently wrong number.
+# The sibling phrasing with no metric word in it ("...in shot distance for 3
+# point shots") arrived with a filler `player: "player"` instead, which
+# override_invented_players (agent.py) then refused for naming a player the
+# question does not mention - honest-sounding, and also the wrong cause,
+# since no leaderboard could answer either question anyway.
+_LEADERBOARD_SHOT_DISTANCE = re.compile(
+    r"\bshot\s+distance\b|\b(?:3|three)[- ]?points?\s+distance\b|\bdistance\s+for\s+(?:3|three)[- ]?points?\b",
+    re.IGNORECASE,
+)
+
+
+def _route_leaderboard_shot_distance(intent: str, slots: dict[str, Any], question: str) -> None:
+    """No leaderboard ranks shot distance - see :data:`_LEADERBOARD_SHOT_DISTANCE`.
+
+    Sets `stat` to the sentinel ``"shot_distance"`` - not a real metric name,
+    an explicit string `templates.players.leaderboard` checks for by value
+    (the two modules agree on the literal rather than sharing a symbol, the
+    same way `_GAME_SCORE_STAT_BY_INTENT`'s spellings are agreed rather than
+    imported) - so the template can refuse naming the real cause instead of
+    resolving to the nearest real metric.
+
+    Also drops any `player` the router filled, filler or real: `leaderboard`
+    never reads one for real (a named player is refused separately), and a
+    filler value here ("player": "player" on a question that names nobody)
+    would otherwise reach `override_invented_players` first and refuse for
+    the WRONG cause - "read as a question about player, who the question does
+    not mention" - before this refusal, the right one, ever runs.
+
+    .. versionadded:: 4.4.0
+    """
+    if intent != "leaderboard" or not _LEADERBOARD_SHOT_DISTANCE.search(question):
+        return
+    slots["stat"] = "shot_distance"
+    slots.pop("player", None)
+
+
 # A game log asked for by name. Measured: "luka ft log" routed to player_stat
 # and was answered with a season average.
 _LOG_WORDS = re.compile(r"\b(?:game\s*logs?|gamelogs?|logs?)\b|\b(?:each|every|by)\s+game\b", re.IGNORECASE)
@@ -1654,6 +1744,8 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     _route_intent_slots(raw["intent"], slots, question, without)
     _route_line_stat(raw["intent"], slots, question, rerouted_to_line)
     _route_game_score(raw["intent"], slots, question)
+    _route_two_point_pct(raw["intent"], slots, question)
+    _route_leaderboard_shot_distance(raw["intent"], slots, question)
     _route_team_slots(raw["intent"], slots, question)
     _route_rate(raw["intent"], slots, question)
     _route_subject_slots(raw["intent"], slots, question)

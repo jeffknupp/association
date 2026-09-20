@@ -478,6 +478,33 @@ had no published version to be compatible with.
   ("murray's games of ...") get swallowed whole - apostrophe and all - into
   the captured word once a "games of" ending sat in the same alternation as
   the possessive branch.
+- **2-point percentage is answered as 2-point percentage, not overall
+  shooting.** `stat` has no enum in `ROUTER_SCHEMA`, so "show me sga's 2pt
+  percentage for the past 5 years" arrived at `player_history` with
+  `stat='fieldGoalPct'` and answered overall FG% by season (55.3, 51.9, 53.5,
+  51.0, 45.3) where the real 2-point split is 60.2, 57.1, 57.6, 53.3, 51.4 -
+  measured against `player_season_stats_deduped`, seven of one session's 45
+  questions answered this way. There is no stored 2-point make/attempt
+  column, so `route()` now reads "2pt", "2-pt", "2 point", "two point" and
+  "2p" against percentage/pct/% and sets `stat` to `twoPointFieldGoalPct`,
+  which `player_history` and `player_stat` (season, career and box-score-
+  narrowed) now compute from field goals less the three-point columns, always
+  with the makes and attempts behind the percentage like every other shooting
+  stat here.
+- **A leaderboard refuses a shot-distance ranking, naming the real cause.**
+  No leaderboard metric ranks shot distance, and none is planned. "who lead
+  the league in avg 3 point distance" arrived at `leaderboard` with the
+  nearest real metric the model knew (`threePointFieldGoalPct`) and answered
+  Luke Kennard's 3-point PERCENTAGE, 47.8% - a real, fluently wrong number;
+  its "shot distance" sibling with no metric word in it arrived with a filler
+  `player: "player"` instead and was refused for naming a player the
+  question does not mention - honest-sounding, and also the wrong cause,
+  since no leaderboard could answer either question anyway. `route()` now
+  reads "shot distance" / "3 point distance" / "distance for 3 point [shots]"
+  on `leaderboard` questions into a sentinel `stat` and drops any `player`
+  slot beside it, and `leaderboard` refuses on that sentinel before either
+  wrong-cause path can run, pointing at `shot_distance` for one named player
+  instead (#114).
 
 ## 4.2.0 - 2026-09-18
 - **A NetPoints name ESPN spells with a generational suffix, or hyphenates

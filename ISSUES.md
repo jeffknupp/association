@@ -135,18 +135,22 @@ before that commit needs re-checking against the current warehouse.
   `stat: 'rebounds'` - the enum has no defensive rebounds, so the log would
   show total rebounds under a question that asked for one kind.
   Two more from the 2026-09-20 web session (build `178c21f-dirty`, 45
-  questions): "show me sga's 2pt percentage for the past 5 years" arrives as
-  `player_history` with `stat: 'fieldGoalPct'` and answers overall FG% by
-  season (55.3, 51.9, 53.5, 51.0, 45.3) under a question that asked for
-  2-point percentage (60.2, 57.1, 57.6, 53.3, 51.4 from the season table's
-  makes and attempts less the threes) - seven of the session's questions,
-  for two players, all answered this way, and the three where the router
-  kept `twoPointFieldGoalPct` refused instead. And "who lead the league in
-  avg 3 point distance" arrives as `leaderboard` with
-  `stat: 'threePointFieldGoalPct'` and names Luke Kennard's 47.8%; the same
-  question with "shot distance" arrived with a filler `player: 'player'`
-  and was refused for naming a player it does not mention - the wrong
-  cause, since no distance leaderboard exists to answer it.
+  questions), **fixed 2026-09-20** (see `CHANGES.md`): "show me sga's 2pt
+  percentage for the past 5 years" arrived as `player_history` with
+  `stat: 'fieldGoalPct'` and answered overall FG% by season where 2-point
+  percentage was asked for - `route()` now reads "2pt"/"2-pt"/"2 point"/"two
+  point"/"2p" against percentage/pct/% and sets `stat` to
+  `twoPointFieldGoalPct`, which `player_history` and `player_stat` now
+  compute from field goals less the three-point columns (there is no stored
+  2-point make/attempt column). And "who lead the league in avg 3 point
+  distance" arrived as `leaderboard` with `stat: 'threePointFieldGoalPct'`
+  and named Luke Kennard's 47.8%, while the "shot distance" phrasing arrived
+  with a filler `player: 'player'` and was refused for naming a player it
+  does not mention - `route()` now reads "shot distance"/"3 point
+  distance"/"distance for 3 point" on `leaderboard` questions into a
+  sentinel `stat` and drops the filler player, and `leaderboard` refuses on
+  the sentinel, naming the real cause and pointing at `shot_distance` for one
+  named player, before either wrong-cause path can run.
 
 The 391 date-only games printed a day early (#76), 2008's team rebound columns
 (#74) and the swapped 1990 Finals Game 5 were fixed on 2026-09-16. Before adding

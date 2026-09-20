@@ -280,6 +280,27 @@ CASES: list[tuple[str, str, dict]] = [
     # asserted with no slots, because a coach question carries none.
     ("nick nurse coaching record all-time nba in december on the road", "coach", {}),
     ("who coached the bulls in 1996", "coach", {}),
+    # ISSUES.md #114: `stat` has no enum in ROUTER_SCHEMA, so a 2-point
+    # percentage question routinely arrived at fieldGoalPct (the nearest stat
+    # ROUTER_PROMPT actually teaches) and answered OVERALL shooting instead.
+    # route() overrides it from the question text regardless of what the
+    # model guessed.
+    ("show me sga's 2pt percentage for the past 5 years", "player_history", {"stat": "twoPointFieldGoalPct"}),
+    ("lebron's 2-pt percentage over the last 10 years", "player_history", {"stat": "twoPointFieldGoalPct"}),
+    ("sga 2pt percentage this season", "player_stat", {"stat": "twoPointFieldGoalPct"}),
+    # A plain field-goal or a 3-point question is left alone - only "2"/"two"
+    # beside "pt"/"point" triggers the override.
+    ("sga's field goal percentage this season", "player_stat", {"stat": "fieldGoalPct"}),
+    # ISSUES.md #114: "who lead the league in avg 3 point distance" resolved
+    # `stat` to the nearest real metric (threePointFieldGoalPct) and answered
+    # a PERCENTAGE; the "shot distance" phrasing arrived with a filler
+    # `player` slot and was refused for naming a player the question does not
+    # mention - the wrong cause, since no leaderboard metric ranks distance
+    # either way. Both now carry the sentinel `stat` `leaderboard`
+    # (templates/players.py) refuses on by name, with no `player` slot left
+    # for override_invented_players to misread.
+    ("who lead the league in avg 3 point distance", "leaderboard", {"stat": "shot_distance"}),
+    ("who lead the league in shot distance for 3 point shots", "leaderboard", {"stat": "shot_distance"}),
 ]
 
 
