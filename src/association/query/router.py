@@ -29,6 +29,7 @@ import ollama
 from association.nba.season import current_season
 
 from .keepalive import KEEP_ALIVE
+from .measures import MEASURE_WORDS
 from .router_prompt import ROUTER_NUM_CTX, ROUTER_PROMPT, ROUTER_SCHEMA
 from .season_text import MIN_SEASON, season_from_text
 from .team_metrics import STAT_ALIASES
@@ -452,7 +453,28 @@ _CAREER_HIGH = re.compile(r"\bcareer[- ]highs?\b", re.IGNORECASE)
 # scoring verb or "fouled out", or carrying a possessive, is a subject; the
 # question words are excluded because "who scored the most" names nobody.
 _SUBJECT_WORDS = frozenset({"who", "what", "which", "that", "he", "she", "they", "it", "player", "anyone", "someone", "nobody", "team", "one", "the", "and", "any"})
-_SUBJECT_OF_HIGH = re.compile(r"\b([A-Za-z][A-Za-z.'\-]{2,})(?:'s\b|\s+(?:scored|scores|score|dropped|put\s+up|hung|shot|foul(?:ed|s|ing)?\s+out))", re.IGNORECASE)
+#
+# The leading word is optional and captured, the way the count grammars below
+# capture one, because a one-word subject is a clarifying question where the
+# question wrote the name out: measured over all 261 corpus questions, three
+# possessives ("kobe bryant's", "Jaden mcdaniel's", "steve adam's") gave a
+# bare surname matching four players each, and "bryant" does not even include
+# Kobe. Which word may lead is decided in `_subject_named_in` rather than here,
+# against `_COUNT_SUBJECT_WORDS` - the richer list, and the one that matters:
+# without it "most points curry scored" would read "points curry" as the name.
+#
+# "had"/"has" is a subject position too, and a bare one - `_SUBJECT_OF_HAVE`
+# below requires a leading "does/did/has/have", so "sixers record when maxey
+# had 10+ rebounds" named nobody while the same question with "scored"
+# answered. It is deliberately NOT in the alternation above: the words there
+# are all scoring verbs and a possessive, where "had" is ordinary enough that
+# it is only a subject position when a threshold follows it, which is what the
+# lookahead asserts.
+_SUBJECT_OF_HIGH = re.compile(
+    r"\b(?:([A-Za-z][A-Za-z.'\-]*)\s+)?([A-Za-z][A-Za-z.'\-]{2,})"
+    r"(?:'s\b|\s+(?:scored|scores|score|dropped|put\s+up|hung|shot|foul(?:ed|s|ing)?\s+out)|\s+ha[ds]\s+(?=\d))",
+    re.IGNORECASE,
+)
 
 # None of the above covers a threshold_count named with no verb at all (#148):
 # "jamal murray games with 2 threes including playoffs" fell through
@@ -545,6 +567,52 @@ _COUNT_SUBJECT_WORDS = _SUBJECT_WORDS | frozenset(
         "no",
         "every",
         "each",
+        # Function words that can sit directly before a name and are not part
+        # of it. These matter for the LEADING word `_SUBJECT_OF_HIGH` now
+        # captures: "sixers record when maxey had 10+ rebounds" read "when
+        # maxey" as the name. Rejecting them as a name in their own right is
+        # right too - "with" is the word AGENTS.md records reading as Jeff
+        # Withey - and it can only make the count grammars more conservative,
+        # which is the safe direction for a guess about a person.
+        "when",
+        "while",
+        "if",
+        "with",
+        "without",
+        "vs",
+        "versus",
+        "against",
+        "did",
+        "does",
+        "do",
+        "was",
+        "were",
+        "is",
+        "are",
+        "for",
+        "by",
+        "from",
+        "in",
+        "on",
+        "at",
+        "to",
+        "of",
+        "after",
+        "before",
+        "during",
+        "than",
+        "then",
+        "but",
+        "or",
+        "per",
+        "game",
+        "games",
+        "total",
+        "least",
+        "best",
+        "worst",
+        "highest",
+        "lowest",
     }
 )
 _COUNT_STAT_WORD = r"(?:point|pt|rebound|reb|assist|ast|steal|stl|block|blk|three)"
@@ -574,9 +642,22 @@ def _subject_named_in(question: str) -> str | None:
     the question asked - where the league's high is not.
     """
     for match in _SUBJECT_OF_HIGH.finditer(question):
-        word = match.group(1)
-        if word.casefold() not in _SUBJECT_WORDS:
-            return word
+        lead, word = match.group(1), match.group(2)
+        # The richer list here too, not just for the lead. On the narrow one,
+        # "Total points scored by the toronto raptors" returned the subject
+        # "points" and "least points scored by the wizards" the same - a stat's
+        # own noun read as a person, which is the trap `_COUNT_SUBJECT_WORDS`
+        # was written for. Measured over the 261-question corpus, this loses no
+        # real name and drops three pieces of junk.
+        if word.casefold() in _COUNT_SUBJECT_WORDS:
+            continue
+        # A first name where the question gave one: "kobe bryant's" reaches
+        # Kobe, where a bare "bryant" is four other players and none of them
+        # him. Gated on the richer stopword list, so "most points curry
+        # scored" still reads "curry" and never "points curry".
+        if lead is not None and lead.casefold() not in _COUNT_SUBJECT_WORDS:
+            return f"{lead} {word}"
+        return word
     for pattern in (_SUBJECT_OF_COUNT, _SUBJECT_OF_HAVE):
         for match in pattern.finditer(question):
             lead, word = match.group(1), match.group(2)
@@ -892,41 +973,30 @@ _THRESHOLD_INTENTS = frozenset({"threshold_count", "record_when", "streak"})
 # The "+" (or "plus" / "or more") is required, unlike `_THRESHOLD`: without it
 # "top 10 rebound leaders" reads as a condition and a leaderboard question
 # that answers today would start refusing.
-# What each of those words counts, and the regex's own alternation is BUILT
-# from the keys rather than written out beside them - the two used to be a
-# hand-kept list and a map that could disagree about a word with nothing to
-# notice. Longest first, so "rebounds" is not matched as "reb" with a stray
-# "ounds" left over.
+# Which SPELLINGS this grammar accepts beside a threshold, with the regex's own
+# alternation built from them (longest first, so "rebounds" is not matched as
+# "reb" with a stray "ounds" left over). What each one MEANS is not decided
+# here: it is read from `MEASURE_WORDS`, the one definition of what a question
+# calls a box-score column, which `templates/common.py` reads too.
 #
-# This is the router's copy of a vocabulary `templates/common.py` also holds
-# (`MEASURE_WORDS`, which reads the same phrases onto box-score columns). They
-# are deliberately separate: `router.py` imports nothing from `templates`, so
-# that the stage before the templates cannot be made to depend on them. See
-# ISSUES.md for the entry tracking the pair.
-_THRESHOLD_WORDS: dict[str, str] = {
-    "points": "points",
-    "point": "points",
-    "pts": "points",
-    "rebounds": "rebounds",
-    "rebound": "rebounds",
-    "rebs": "rebounds",
-    "reb": "rebounds",
-    "boards": "rebounds",
-    "assists": "assists",
-    "assist": "assists",
-    "asts": "assists",
-    "ast": "assists",
-    "steals": "steals",
-    "steal": "steals",
-    "stl": "steals",
-    "blocks": "blocks",
-    "block": "blocks",
-    "blk": "blocks",
-    "turnovers": "turnovers",
-    "turnover": "turnovers",
-    "threes": "threePointFieldGoalsMade",
-    "3s": "threePointFieldGoalsMade",
-}
+# `router.py` imports nothing from `templates` on purpose - the stage before
+# the templates must not be made to depend on them - which is why this used to
+# be a second hand-kept copy that nothing checked for agreement (ISSUES.md
+# #164). `association.query.measures` is a leaf module with no imports of its
+# own, so reading it costs the router nothing and cannot cycle.
+#
+# A spelling dropped from MEASURE_WORDS raises KeyError at import rather than
+# silently narrowing what this grammar understands.
+_THRESHOLD_SPELLINGS = (
+    "points", "point", "pts",
+    "rebounds", "rebound", "rebs", "reb", "boards",
+    "assists", "assist", "asts", "ast",
+    "steals", "steal", "stl",
+    "blocks", "block", "blk",
+    "turnovers", "turnover",
+    "threes", "3s",
+)  # fmt: skip
+_THRESHOLD_WORDS: dict[str, str] = {word: MEASURE_WORDS[word] for word in _THRESHOLD_SPELLINGS}
 _THRESHOLD_PAIR = re.compile(
     r"\b(\d{1,3})\s*(?:\+|plus|or\s+more)\s*(" + "|".join(sorted((re.escape(w) for w in _THRESHOLD_WORDS), key=len, reverse=True)) + r")\b",
     re.IGNORECASE,

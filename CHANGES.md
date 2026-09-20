@@ -16,6 +16,33 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **One definition of what a question calls a box-score column.** `route()`
+  reads the stat beside a threshold ("20+ points") and `templates/common.py`
+  reads the same phrases onto columns ("under 14 fta"), and each kept its own
+  copy of the vocabulary, because `router.py` imports nothing from
+  `templates` on purpose. Nothing checked that they agreed, and
+  `check_duplicate_names.py` could not - the two names differ. Both now read
+  `association.query.measures.MEASURE_WORDS`, a leaf module with no imports of
+  its own; the router names only which SPELLINGS its threshold grammar
+  accepts, and takes what each means from there, so a spelling dropped from
+  the shared map raises at import rather than silently narrowing the grammar.
+  The rebuilt pattern was re-proved identical over the same 317 strings (#164).
+- **A subject keeps the first name the question gave it.** The grammar that
+  reads a dropped subject back out of a question captured ONE word, so a
+  possessive gave a bare surname: measured over the 261-question corpus,
+  "kobe bryant's stats vs rockets" named `bryant` - Bryant Reeves, Bryant
+  Stith, Carter Bryant and Elijah Bryant, and not Kobe - and "Jaden
+  mcdaniel's" and "steve adam's" did the same. It captures an optional
+  leading word now, as the count grammars already did, gated on the same
+  stopword list so "most points curry scored" still reads `curry` and never
+  `points curry`. A bare "had"/"has" before a number is a subject position
+  too ("sixers record when maxey had 10+ rebounds" named nobody, while the
+  same question with "scored" answered), and the stopword list gained the
+  function words that can sit before a name, which is what kept "when maxey"
+  from being read as one. Net over the corpus: three full names recovered and
+  four pieces of junk dropped, "game score nba leader" - which named a player
+  called "game" - among them. No corpus question's routing or answer changes
+  (#165).
 - **A ranking asked for in a unit nothing is stored in is refused, by name.**
   "who were the top 10 in defensive netpoints / 90" fell through to the agent:
   `rate` was in no template's `HONORED_SCOPING`, so `check_scope` raised - a

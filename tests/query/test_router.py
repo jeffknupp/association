@@ -1497,6 +1497,26 @@ def test_two_thresholds_leave_a_record_when_alone() -> None:
     assert got.slots["stat"] == "wins"
 
 
+def test_the_router_and_the_templates_agree_on_what_a_stat_word_means() -> None:
+    """#164: the router kept its own copy of the vocabulary
+    `templates/common.py` reads, and nothing checked that they agreed - the
+    shape AGENTS.md calls "one concept, one definition", which
+    `check_duplicate_names.py` cannot see because the two names differ.
+
+    There is one definition now (`query/measures.py`), and the router derives
+    its map from it, so a spelling dropped there raises at import rather than
+    silently narrowing what the threshold grammar understands. This pins that
+    the derivation stays a derivation."""
+    from association.query.measures import MEASURE_WORDS
+    from association.query.router import _THRESHOLD_SPELLINGS, _THRESHOLD_WORDS
+    from association.query.templates.common import MEASURE_WORDS as TEMPLATES_MEASURE_WORDS
+
+    assert TEMPLATES_MEASURE_WORDS is MEASURE_WORDS
+    assert set(_THRESHOLD_WORDS) == set(_THRESHOLD_SPELLINGS)
+    for word, means in _THRESHOLD_WORDS.items():
+        assert MEASURE_WORDS[word] == means, word
+
+
 def test_the_threshold_pair_words_and_their_pattern_cannot_drift() -> None:
     """The alternation is built from `_THRESHOLD_WORDS`, so every word the map
     knows is a word the pattern matches, and every word it matches has a
@@ -1511,6 +1531,38 @@ def test_the_threshold_pair_words_and_their_pattern_cannot_drift() -> None:
         assert _THRESHOLD_WORDS[match.group(2).casefold()] == means
     # A "+" is still required - "top 10 rebound leaders" is not a condition.
     assert _THRESHOLD_PAIR.search("top 10 rebound leaders") is None
+
+
+def test_a_subject_keeps_the_first_name_the_question_gave_it(subtests: Any) -> None:
+    """#165: `_SUBJECT_OF_HIGH` captured ONE word, so a possessive gave a bare
+    surname. Measured over the 261-question corpus, three questions wrote the
+    name out and got a clarification listing players they never mentioned -
+    "bryant" is Bryant Reeves, Bryant Stith, Carter Bryant and Elijah Bryant,
+    and not Kobe. The count grammars already captured a leading word; this one
+    does now, gated on the same richer stopword list so "most points curry
+    scored" still reads "curry" and never "points curry"."""
+    from association.query.router import _subject_named_in
+
+    for question, want in (
+        ("kobe bryant's stats vs rockets in the 2009 playoffs ts% each game", "kobe bryant"),
+        ("Jaden mcdaniel's vs trail blazer last 5 games", "Jaden mcdaniel"),
+        ("steve adam's vs kings last 10 games", "steve adam"),
+        ("most points curry scored in a game this season", "curry"),
+        ("curry's highest scoring game this season", "curry"),
+        # A bare "had"/"has" is a subject position only when a threshold
+        # follows: "sixers record when maxey had 10+ rebounds" named nobody,
+        # while the same question with "scored" answered.
+        ("sixers record when maxey had 10+ rebounds", "maxey"),
+        ("warriors record when curry has 30+ points", "curry"),
+        # "when" is not part of the name, and a stat's own noun is not a
+        # person: these three returned "when maxey", "points" and "game".
+        ("Total points scored by the toronto raptors in the last 10 games", None),
+        ("least points scored by the wizards in the first half this season", None),
+        ("game score nba leader", None),
+        ("who scored the most points this season", None),
+    ):
+        with subtests.test(question=question):
+            assert _subject_named_in(question) == want
 
 
 def test_a_record_when_about_a_team_gains_no_player() -> None:

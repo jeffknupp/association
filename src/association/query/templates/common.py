@@ -20,6 +20,7 @@ from ..answer import Artifact
 from ..conditions import _PLAYER_GAME_TABLES, _TEAM_GAME_TABLES, _game_scope, _Scope, box_source
 from ..entities import Ambiguous, Availability, Entity, clarification, find_players, resolve_player, resolve_team, suggest_players, suggestion, teammate_names
 from ..leaderboard import resolve_metric
+from ..measures import MEASURE_WORDS
 from ..metrics import LEADERBOARD_METRICS
 from ..player_games import (  # noqa: F401 - the relation's names, re-exported for the templates and tests that read them here
     _OPEN_END,
@@ -480,66 +481,6 @@ def coverage_caveat(intent: str, slots: dict[str, Any]) -> str | None:
 _SPLIT_SIDE_ONLY = frozenset({"game_log", "player_stat", "period_split"})
 
 
-#: What a question calls a box-score column, for a line it asks games to be
-#: kept under or over. Keys are the question's words after the number,
-#: casefolded; values are `player_game_log` columns and never question text.
-MEASURE_WORDS: dict[str, str] = {
-    "points": "points",
-    "point": "points",
-    "pts": "points",
-    "rebounds": "rebounds",
-    "rebound": "rebounds",
-    "reb": "rebounds",
-    "rebs": "rebounds",
-    "boards": "rebounds",
-    "assists": "assists",
-    "assist": "assists",
-    "ast": "assists",
-    "asts": "assists",
-    "steals": "steals",
-    "steal": "steals",
-    "stl": "steals",
-    "blocks": "blocks",
-    "block": "blocks",
-    "blk": "blocks",
-    "turnovers": "turnovers",
-    "turnover": "turnovers",
-    "tov": "turnovers",
-    "to": "turnovers",
-    "fouls": "fouls",
-    "foul": "fouls",
-    "pf": "fouls",
-    "minutes": "minutes",
-    "minute": "minutes",
-    "mins": "minutes",
-    "min": "minutes",
-    "fga": "fieldGoalsAttempted",
-    "field goal attempts": "fieldGoalsAttempted",
-    "shots": "fieldGoalsAttempted",
-    "shot attempts": "fieldGoalsAttempted",
-    "fgm": "fieldGoalsMade",
-    "field goals": "fieldGoalsMade",
-    "field goals made": "fieldGoalsMade",
-    "fta": "freeThrowsAttempted",
-    "free throw attempts": "freeThrowsAttempted",
-    "free throws attempted": "freeThrowsAttempted",
-    "ftm": "freeThrowsMade",
-    "free throws": "freeThrowsMade",
-    "free throws made": "freeThrowsMade",
-    "3pa": "threePointFieldGoalsAttempted",
-    "three point attempts": "threePointFieldGoalsAttempted",
-    "threes attempted": "threePointFieldGoalsAttempted",
-    "3pm": "threePointFieldGoalsMade",
-    "3s": "threePointFieldGoalsMade",
-    "threes": "threePointFieldGoalsMade",
-    "3 pointers": "threePointFieldGoalsMade",
-    "three pointers": "threePointFieldGoalsMade",
-    "threes made": "threePointFieldGoalsMade",
-    "oreb": "offensiveRebounds",
-    "offensive rebounds": "offensiveRebounds",
-    "dreb": "defensiveRebounds",
-    "defensive rebounds": "defensiveRebounds",
-}
 """``{"fta": "freeThrowsAttempted", ...}`` - the question's word for a box-score column.
 
 .. versionadded:: 4.3.0
