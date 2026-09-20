@@ -39,6 +39,7 @@ from association.nba.season import current_season, eastern_date
 
 from .answer import Artifact, RenderResult
 from .entities import Ambiguous, Availability, Entity, clarification, no_match
+from .game_label import game_label
 from .radar import VALUE_ZERO_FRACTION, Axis, Cell, Series, render_fingerprint_html
 
 
@@ -486,10 +487,21 @@ class GamePlayed:
     """Which game a per-game fingerprint was drawn for.
 
     .. versionadded:: 2.1.0
+
+    .. versionchanged:: 4.4.0
+       Added ``label``, the game described by date, opponent and result
+       ("2025-04-13 vs POR, W 118-104") where
+       :func:`association.query.game_label.game_label` can build it - see
+       `ISSUES.md` #155. ``date`` alone named the game with no opponent or
+       result, and is kept for the caller that reads it plainly.
     """
 
     event_id: str
     date: str
+    #: The full sentence, or None where the warehouse cannot support it (see
+    #: :func:`association.query.game_label.game_label`) - callers fall back to
+    #: ``date`` alone in that case.
+    label: str | None = None
 
 
 def _skill_expression(skill: Skill) -> str:
@@ -696,7 +708,10 @@ def _game_for(con: duckdb.DuckDBPyConnection, athlete_id: str, season: int, seas
         f"GROUP BY f.event_id, gm.date ORDER BY gm.date {'ASC' if order == 'first' else 'DESC'} LIMIT 1",
         [athlete_id, season, season_type],
     ).fetchone()
-    return None if row is None else GamePlayed(event_id=str(row[0]), date=eastern_date(row[1]))
+    if row is None:
+        return None
+    event_id = str(row[0])
+    return GamePlayed(event_id=event_id, date=eastern_date(row[1]), label=game_label(con, athlete_id, event_id))
 
 
 def _radius(value: float, percentile: float, scale: str, league: LeagueScale) -> float:
@@ -824,16 +839,20 @@ def _table(fingerprints: list[PlayerFingerprint], scale: str, unit: Unit = PER_1
 def _when_drawn(fingerprints: list[PlayerFingerprint], games: dict[str, GamePlayed], season: int) -> str:
     """What the plot covers, for the subtitle and the message.
 
-    A single game is named by its date rather than by "one game", since the
-    whole point of the scoping is that a reader can tell which. Two players
-    compared on their own last games were not playing each other, so both dates
-    are named - saying "2026-04-13" over a plot half of which is a different
+    A single game is named by date, opponent and result ("2025-04-13 vs POR, W
+    118-104") rather than by "one game" or the bare date, since the whole point
+    of the scoping is that a reader can tell which game it was - see
+    `ISSUES.md` #155. Falls back to the date alone where
+    :func:`association.query.game_label.game_label` cannot describe the game
+    (a fixture, or a warehouse missing ``player_game_log``/``games``). Two
+    players compared on their own last games were not playing each other, so
+    both are named - saying only one over a plot half of which is a different
     night is the caption version of answering a question nobody asked.
     """
     if not games:
         return f"{season} season"
-    dates = sorted({game.date for game in games.values()})
-    return dates[0] if len(dates) == 1 else " and ".join(dates)
+    described = sorted({game.label or game.date for game in games.values()})
+    return described[0] if len(described) == 1 else " and ".join(described)
 
 
 def _render_for_players_load(
@@ -977,6 +996,13 @@ def render_for_players(
        Returns a :class:`association.query.answer.RenderResult` rather than a
        ``(message, path)`` tuple, the same shape
        :func:`association.query.shotchart.render_for_player` now returns.
+
+    .. versionchanged:: 4.4.0
+       A single-game plot (``order`` given) names the game by its opponent and
+       result as well as its date - "2025-04-13 vs POR, W 118-104" - in the
+       subtitle and the message, where
+       :func:`association.query.game_label.game_label` can describe it. See
+       `ISSUES.md` #155.
     """
     fingerprints, league, games, unit = _render_for_players_load(con, players, season, view, scale, min_minutes, season_type, order, ambiguous)
     # A player with no row in this season's fingerprint file is dropped by

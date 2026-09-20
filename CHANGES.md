@@ -58,6 +58,21 @@ had no published version to be compatible with.
   games Tyrese Maxey scored 15+, matching the figure measured by hand on
   `player_game_log`; a record question about a team's own scoring ("when they
   scored 120 points") still gains no player and still falls through (#144).
+- **A single-game shot chart or fingerprint names the game, not just its id.**
+  A single-game shot chart's subtitle read `f"game {event_id}"` (e.g. "game
+  401705764"), and its answer named only the player and the made/attempted
+  split - neither said which game had been drawn, not the date, the opponent
+  or the result, though `games` holds all three. The single-game fingerprint
+  shared half the shape: it already named the date but not the opponent or
+  result. Both now read "2026-01-25 @ MIN, W 111-85" in the subtitle and the
+  answer - "vs" for a home game and "@" for a road one, as every other log
+  here writes it, via the new `association.query.game_label.game_label` - one
+  definition read by both renderers, so they cannot drift into two
+  descriptions of the same game. The filename keeps the bare event id; only
+  the reader-facing text changed. A game with no usable box-score row (a
+  placeholder event, an unposted score, or a warehouse without
+  `player_game_log`) falls back to the old bare-id/bare-date text rather than
+  raising or printing "None vs None" (#155).
 - **A team written with its space left out is still the team.**
   "trailblazers stats last 10 games 3 point average 1st quarter" arrived with
   `team='Portland Trail Blazers'` correctly routed and then lost it:

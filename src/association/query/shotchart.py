@@ -15,6 +15,7 @@ import duckdb
 from .answer import Artifact, RenderResult
 from .court import BEYOND_THE_ARC_SQL, HAS_POSITION_SQL, render_court_html
 from .entities import MAX_CANDIDATES, Ambiguous, Availability, Entity, clarification, find_players, narrow_to_available, no_match
+from .game_label import game_label
 
 UNSEPARABLE_SHOT_VALUES: dict[int, str] = {
     2002: (
@@ -294,20 +295,27 @@ def _render_for_player_subtitle(
     season: int | None,
     season_type: int | None,
     event_id: str | None,
+    game: str | None,
     period: int | None,
     shot_value: int | None,
     made_only: bool | None,
     made: int,
     total: int,
 ) -> str:
-    """The plot's subtitle: which filters scoped it, plus the made/attempted split."""
+    """The plot's subtitle: which filters scoped it, plus the made/attempted split.
+
+    A single game is named by ``game`` - "2025-04-13 vs POR, W 118-104" - where
+    :func:`association.query.game_label.game_label` could describe it, and by
+    its bare event id otherwise. See `ISSUES.md` #155: the event id alone told
+    a reader nothing about which game was drawn.
+    """
     subtitle_parts = []
     if season is not None:
         subtitle_parts.append(f"season {season}")
     if season_type is not None:
         subtitle_parts.append({1: "preseason", 2: "regular season", 3: "postseason"}.get(season_type, str(season_type)))
     if event_id is not None:
-        subtitle_parts.append(f"game {event_id}")
+        subtitle_parts.append(game or f"game {event_id}")
     if period is not None:
         subtitle_parts.append({1: "Q1", 2: "Q2", 3: "Q3", 4: "Q4"}.get(period, f"OT{period - 4}"))
     if shot_value is not None:
@@ -346,10 +354,12 @@ def _render_for_player_filename(
     return f"shotchart_{safe_name}" + (f"_{scope}" if scope else "") + ".html"
 
 
-def _render_for_player_message(resolved_name: str, made: int, total: int, out_path: Path, ambiguous: list[str], notes: list[str]) -> str:
-    """The success message: the made/attempted split, then every note - the
+def _render_for_player_message(resolved_name: str, game: str | None, made: int, total: int, out_path: Path, ambiguous: list[str], notes: list[str]) -> str:
+    """The success message: which game was drawn (for a single-game chart, see
+    `ISSUES.md` #155), the made/attempted split, then every note - the
     runners-up that also matched, and any shot_value caveat."""
-    msg = f"Rendered shot chart for {resolved_name} ({made}/{total} made, {made / total:.1%}) to {out_path}"
+    who = f"{resolved_name} ({game})" if game else resolved_name
+    msg = f"Rendered shot chart for {who} ({made}/{total} made, {made / total:.1%}) to {out_path}"
     if ambiguous:
         msg += f". Note: other players also matched: {ambiguous}"
     for note in notes:
@@ -400,6 +410,13 @@ def render_for_player(
        because a free throw has no position worth drawing, and free throws no
        longer reach an unfiltered chart - from 2002 to 2018 they carry a fixed
        position under the rim and were drawn there as shots.
+
+    .. versionchanged:: 4.4.0
+       A single-game chart (``event_id`` given) names the game by its date,
+       opponent and result - "2025-04-13 vs POR, W 118-104" - in the subtitle
+       and the message, where :func:`association.query.game_label.game_label`
+       can describe it, rather than by its bare event id. `ISSUES.md` #155:
+       neither the page nor the answer previously said which game was drawn.
     """
     athlete_id, resolved_name = player.id, player.name
 
@@ -429,7 +446,10 @@ def render_for_player(
     made = sum(1 for s in shots if s[2])
     total = len(shots)
     title = resolved_name
-    subtitle = _render_for_player_subtitle(season, season_type, event_id, period, shot_value, made_only, made, total)
+    # Only a single-game chart has one game to name - a season or career chart
+    # covers many, and naming one of them would misdescribe the rest.
+    game = game_label(con, athlete_id, event_id) if event_id is not None else None
+    subtitle = _render_for_player_subtitle(season, season_type, event_id, game, period, shot_value, made_only, made, total)
 
     html = render_court_html(title, subtitle, shots)
     fname = _render_for_player_filename(resolved_name, season, season_type, event_id, period, shot_value, made_only)
@@ -440,5 +460,5 @@ def render_for_player(
     out_path = out_dir / fname
     out_path.write_text(html)
 
-    msg = _render_for_player_message(resolved_name, made, total, out_path, ambiguous, notes)
+    msg = _render_for_player_message(resolved_name, game, made, total, out_path, ambiguous, notes)
     return RenderResult(msg, Artifact("shot_chart", out_path))
