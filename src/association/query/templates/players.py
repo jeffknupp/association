@@ -51,6 +51,8 @@ from .common import (
     _table_cell,
     measure_filters,
     narrow_measures,
+    ordinal_word,
+    settle_ordinal_season,
 )
 
 DEFAULT_LEADERBOARD_LIMIT = 10
@@ -99,7 +101,7 @@ class _GameSpan:
     league_note: bool = False  # a league-wide career, which is not all-time
 
 
-def _game_span(con: duckdb.DuckDBPyConnection, season: int | None, season_type: int, player: Entity | None) -> _GameSpan:
+def _game_span(con: duckdb.DuckDBPyConnection, season: int | None, season_type: int, player: Entity | None, *, ordinal: int | None = None) -> _GameSpan:
     """Name what a box-score answer covers - and, for a named player's career,
     whether the box scores hold it at all.
 
@@ -111,6 +113,9 @@ def _game_span(con: duckdb.DuckDBPyConnection, season: int | None, season_type: 
     kind = SEASON_TYPE_NAMES.get(season_type, "regular season")
     floor = COVERAGE["player_box_stats"].first_season
     since = _season_label(floor)
+    if season is not None and ordinal is not None:
+        period = _period(season, season_type)
+        return _GameSpan(when=f"in his {ordinal_word(ordinal)} season ({period})", caption=f"{ordinal_word(ordinal)} season, {period}", games=f"{period} games", since=since)
     if season is not None:
         period = _period(season, season_type)
         return _GameSpan(when=f"in the {period}", caption=period, games=f"{period} games", since=since)
@@ -242,9 +247,10 @@ def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResu
     season_type = slots.get("season_type") or 2
     limit = _clamp_limit(slots.get("limit"))
 
-    player = _threshold_count_player(con, slots.get("player"), season)
-    if isinstance(player, TemplateResult):
-        return player
+    subject = _threshold_count_subject(con, slots.get("player"), slots.get("season_n"), season, season_type)
+    if isinstance(subject, TemplateResult):
+        return subject
+    player, season, ordinal_n = subject
     player_id = player.id if player else None
     player_name = player.name if player else None
 
@@ -256,7 +262,7 @@ def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResu
     rows = _threshold_count_rows(con, column, counted, season, season_type, limit, player_id, from_rebuilt=from_rebuilt, lines=lines)
 
     label = STAT_LABELS.get(stat or "", stat or "")
-    span = _game_span(con, season, season_type, player)
+    span = _game_span(con, season, season_type, player, ordinal=ordinal_n)
     # covered_by_rebuild: the games this answer could not see are only the ones
     # the rebuild could not reach either. Counting the rest would disclaim the
     # very games the count was built from.
@@ -314,6 +320,27 @@ def _threshold_count_player(con: duckdb.DuckDBPyConnection, text: Any, season: i
     if isinstance(text, str) and text.strip():
         return _resolved_player(con, text, available=_BOX_SCORES, season=season, through=_career_end(season))
     return None
+
+
+def _threshold_count_subject(con: duckdb.DuckDBPyConnection, text: Any, season_n: Any, season: int | None, season_type: int) -> tuple[Entity | None, int | None, int | None] | TemplateResult:
+    """The player a count is about (None for the league), the season it
+    covers, and the ordinal that named that season, if one did.
+
+    An ordinal season ("his 18th season") is settled once he is known, so the
+    name is narrowed over his career rather than by the current year. A
+    league-wide count has no career to count seasons in, so "most points in
+    15th season played" refuses rather than answering for some year."""
+    player = _threshold_count_player(con, text, None if season_n else season)
+    if isinstance(player, TemplateResult):
+        return player
+    if not season_n:
+        return player, season, None
+    if player is None:
+        raise TemplateUnsupported(f"the {ordinal_word(int(season_n))} season is a place in one player's career, and no player was named")
+    settled = settle_ordinal_season(con, player, season_n, _Span(None, season_type))
+    if isinstance(settled, TemplateResult):
+        return settled
+    return player, settled.season, settled.ordinal
 
 
 def _threshold_count_lines(stat: Any, threshold: int, below: Any, above: Any) -> tuple[list[MeasureFilter], int | None, str]:
@@ -405,7 +432,8 @@ def _phrase_threshold_count(rows: list[tuple[Any, ...]], scope: str, when: str, 
     label = f"games with {scope}"
     if player is not None:
         games = rows[0][1] if rows else 0
-        return f"{player} had {games} {label} {when}." if games else f"{player} had no {label} {when}."
+        one = f"game with {scope}"  # "had 1 game", not "1 games"
+        return f"{player} had {games} {one if games == 1 else label} {when}." if games else f"{player} had no {label} {when}."
     if not rows:
         return f"No player had a game with {scope} {when}."
 
@@ -903,11 +931,24 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         from .games import game_log
 
         return game_log(ctx, slots)
-    span = _span_of(slots.get("span"), slots.get("season"), season_type, "player_game_log" if from_box_scores else "player_season_stats_deduped", since=slots.get("since"))
+    # An ordinal season ("his 18th season") is settled once he is known; until
+    # then the span is his career, which narrows the name over every season.
+    season_n = slots.get("season_n")
+    span = _span_of(
+        "career" if season_n else slots.get("span"),
+        None if season_n else slots.get("season"),
+        season_type,
+        "player_game_log" if from_box_scores else "player_season_stats_deduped",
+        since=slots.get("since"),
+    )
     lines = _GAME_LOGS if from_box_scores else _SEASON_LINES
     player = _resolved_player(con, slots.get("player"), "player_stat needs a player name", available=lines, season=span.season, through=_career_end(span.season))
     if isinstance(player, TemplateResult):
         return player
+    settled = settle_ordinal_season(con, player, season_n, span)
+    if isinstance(settled, TemplateResult):
+        return settled
+    span = settled
     stat = slots.get("stat")
     # Before the ESPN-served columns, because these carry their own table, their
     # own floor and their own career arithmetic - and because _wanted_stats
@@ -982,11 +1023,13 @@ def _season_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span: _S
             answer=answer,
         )
     values = dict(zip(columns, row, strict=True))
+    # The span words the season - "in the 2025 regular season", or "in his 1st
+    # season (2025 regular season)" when the question named it by ordinal.
     if shooting:
-        return _shooting_result(player.name, {"season": season}, values, shooting, when=f"in the {period}")
+        return _shooting_result(player.name, {"season": season, "season_n": span.ordinal}, values, shooting, when=span.during())
     return TemplateResult(
-        data={"player": player.name, "season": season, "stats": values},
-        answer=_phrase_player_stat(player.name, period, values, wanted),
+        data={"player": player.name, "season": season, "season_n": span.ordinal, "stats": values},
+        answer=_phrase_player_stat(player.name, period, values, wanted, when=span.during()),
     )
 
 

@@ -840,6 +840,34 @@ those were found.
 - **Source:** DATA.md, "NetPoints publishes a display name, not a player id"
 - **GitHub:** #113
 
+### A player's 2026 NetPoints games do not sum to his season line, and the two possession columns are different units
+- **Found:** 2026-09-19, while explaining Paul Reed's 2026 NetPoints rank by hand
+- **Evidence:** read-only against `/home/jeff/code/association/nba.duckdb` at
+  `f5c917f`. Population: the 375 players with 500+ minutes in
+  `net_points_player` (season 2026, `'Regular Season'`) who also have a 2026
+  fingerprint row. Summing `net_points_player_game.t_net_pts` (season 2026,
+  `season_type = 2`) and comparing with `net_points_player.overall`: 124 of 375
+  differ by more than 1 net point, 35 by more than 5, the largest by 15.9
+  (Shai Gilgeous-Alexander, 452.5 summed against 468.3; Victor Wembanyama 250.5
+  against 263.9; OG Anunoby 66.9 against 53.8). 17 of the 375 also disagree on
+  the games count (Wembanyama: 65 game rows, 64 in the season file). Not
+  established which side is off: a game matched to the wrong event, the NBA Cup
+  final counted on one side only (see the NBA Cup entry above), or the season
+  file revised after the daily files were pulled. Separately,
+  `net_points_player_game.t_poss` is not the season file's `total_poss`: the
+  per-player ratio of summed `t_poss` to `total_poss` has median 0.38 (range
+  0.27 to 0.57), so it reads as possessions the player was involved in, not
+  possessions on the floor. Neither unit is written down anywhere.
+- **User sees:** nothing today. A per-100 rate built from the game table with
+  `t_poss` as the denominator would come out about 2.6 times the season file's
+  `overall_per_100_poss` (Paul Reed: 10.0 against 4.51), and a season total
+  built by summing games disagrees with the season line for a third of the
+  qualified players.
+- **Next step:** for the five largest gaps, diff the player's game rows against
+  the daily files by date to see whether a game is missing, doubled or filed
+  under another `season_type`. Then record what `t_poss`, `o_poss` and `d_poss`
+  measure in `DATA.md`.
+
 ### `shot_chart`'s empty refusal never names the season, even when one was asked for
 - **Found:** 2026-09-18, fixing #18 (the retired-player default-season bug)
 - **Evidence:** `shotchart.render_for_player`'s empty branch

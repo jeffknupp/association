@@ -23,6 +23,21 @@ had no published version to be compatible with.
   his last postseason game" answers that game rather than his postseason
   average. A filler `order` on a question naming no such game is still
   dropped, as before (closes #142).
+- **"His 18th season" is a season, settled once the player is known.** "how
+  many 40+ points games does lebron james have in his 18th season?" arrived
+  as season 2018 - the ordinal read as a year - with LeBron dropped, and was
+  answered as the 2018 league leaderboard; then it refused as a `situation`.
+  `route()` keeps the ordinal as `season_n` and drops a year the question
+  itself never named; `game_log`, `player_stat` and `threshold_count` resolve
+  the player over his career first and then settle the ordinal against his
+  regular seasons on record (`templates.common.settle_ordinal_season`),
+  answering "in his 18th season (2021 regular season)". A player with fewer
+  seasons than the ordinal is told how many he has rather than answered for
+  his last one, and a league-wide count ("most points in 15th season played")
+  refuses: the ordinal is a place in one player's career.
+  The same question's subject, dropped by the model, is restored from a third
+  grammar ("does lebron james have", beside #148's two), so it answers his one
+  40-point game of 2020-21 rather than falling through.
 - **"Game 4" is one game of each playoff series.** "Ayton stats in game 4
   playoff games" answered with his whole postseason, then refused as a
   `situation`, and "show maxey's stats for game 4 against the knicks" sent

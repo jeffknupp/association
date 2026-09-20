@@ -104,7 +104,9 @@ SEASON_TYPE_NAMES = {1: "preseason", 2: "regular season", 3: "postseason"}
 # yet, and answering without it answered the whole season.
 # `game_n` ("game 4") is one game of each playoff series, numbered by date over
 # `real_games`; the relation finds it, and a regular-season question refuses.
-SCOPING_SLOTS = frozenset({"order", "date", "opponent", "venue", "span", "without", "round", "split", "since", "below", "above", "game_n", "situation"})
+# `season_n` ("his 18th season") is one season named by its place in a career;
+# `settle_ordinal_season` turns it into a year once the player is resolved.
+SCOPING_SLOTS = frozenset({"order", "date", "opponent", "venue", "span", "without", "round", "split", "since", "below", "above", "game_n", "season_n", "situation"})
 
 
 # What each template actually honors. Anything not listed here honors none.
@@ -117,10 +119,10 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # refuses it here, because `route()` leaves the category in place then.
     # `below` and `above` are lines on a box-score column ("under 14 fta",
     # "with 25 minutes"): filters on the same rows, through measure_filters.
-    "game_log": frozenset({"order", "date", "opponent", "venue", "span", "without", "split", "since", "below", "above", "game_n"}),
+    "game_log": frozenset({"order", "date", "opponent", "venue", "span", "without", "split", "since", "below", "above", "game_n", "season_n"}),
     # The three that narrow games are answered from box scores rather than the
     # season line; a career is summed from the season table.
-    "player_stat": frozenset({"opponent", "venue", "span", "without", "split", "since", "order", "below", "above", "game_n"}),
+    "player_stat": frozenset({"opponent", "venue", "span", "without", "split", "since", "order", "below", "above", "game_n", "season_n"}),
     "player_history": frozenset({"span"}),
     # It always read `opponent`; listed now that `opponent` is a scoping slot.
     "team_quarter_points": frozenset({"opponent"}),
@@ -151,7 +153,7 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # A count is already a line on a column; `below` is the same line the
     # other way ("games with under 14 fta"), and a phrase carrying the count's
     # own number IS the count, misread - see _threshold_count_lines.
-    "threshold_count": frozenset({"span", "below", "above"}),
+    "threshold_count": frozenset({"span", "below", "above", "season_n"}),
     "single_game_high": frozenset({"span"}),
     # A career is every season on record rather than the current one; see
     # _condition_scope. `without` is the teammate with_without divides by, and
@@ -858,6 +860,9 @@ class _Span:
     #: so the answer says "since 2022" and skips the box-score-floor note that
     #: a whole career carries (the question asked for no earlier season).
     since: int | None = None
+    #: Which season of his career this one is, when the question named it that
+    #: way ("his 18th season") - so the answer says so beside the year.
+    ordinal: int | None = None
 
     @property
     def career(self) -> bool:
@@ -889,6 +894,8 @@ class _Span:
     def during(self, first: Any = None, last: Any = None, whose: str = "his career") -> str:
         """The span as it ends a sentence: ``"in the 2026 regular season"`` or
         ``"over his career (2019-2026 regular seasons)"``."""
+        if self.season is not None and self.ordinal is not None:
+            return f"in his {ordinal_word(self.ordinal)} season ({_period(self.season, self.season_type)})"
         if self.season is not None:
             return f"in the {_period(self.season, self.season_type)}"
         if self.since is not None:
@@ -922,6 +929,38 @@ def _span_of(span: Any, season: Any, season_type: int, table: str, since: Any = 
         raise TemplateUnsupported(f"a career span and the {season} season at once")
     coverage = COVERAGE[table]
     return _Span(None, season_type, coverage.floor(season_type).season, coverage.phantom)
+
+
+def ordinal_word(n: int) -> str:
+    """``1`` -> ``"1st"``, ``12`` -> ``"12th"``, ``23`` -> ``"23rd"``."""
+    suffix = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")  # codespell:ignore nd - an ordinal suffix
+    return f"{n}{suffix}"
+
+
+def settle_ordinal_season(con: duckdb.DuckDBPyConnection, player: Entity, season_n: Any, span: _Span) -> _Span | TemplateResult:
+    """The span a question naming a season by its place in ``player``'s career
+    ("his 18th season") actually covers: that year, with the ordinal kept so
+    the answer names both. Unchanged when no ordinal was named.
+
+    A career's seasons are its regular seasons on the per-player season table
+    (which reaches back to 1976-77, before any box score), counted from his
+    first, so a postseason question about "his 18th season" is that year's
+    postseason. A player with fewer seasons than the ordinal gets a refusal
+    naming how many he has, rather than his last one or the current year.
+
+    .. versionadded:: 4.3.0
+    """
+    if not season_n:
+        return span
+    seasons = [
+        int(row[0]) for row in con.execute("SELECT DISTINCT season FROM player_season_stats_deduped WHERE athlete_id = ? AND season_type = ? ORDER BY season", [player.id, REGULAR_SEASON]).fetchall()
+    ]
+    n = int(season_n)
+    if n < 1 or n > len(seasons):
+        have = f"{len(seasons)} seasons on record ({seasons[0]}-{seasons[-1]})" if seasons else "no season on record"
+        message = f"{player.name} has {have}, so there is no {ordinal_word(n)} season to answer for."
+        return TemplateResult(data={"player": player.name, "message": message}, answer=message)
+    return _Span(seasons[n - 1], span.season_type, ordinal=n)
 
 
 def _checked_venue(venue: Any) -> str:

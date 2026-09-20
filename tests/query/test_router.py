@@ -844,18 +844,36 @@ def test_a_narrowing_the_schema_has_no_slot_for_still_reaches_check_scope(questi
 
 
 @pytest.mark.parametrize(
-    "question",
+    ("question", "want"),
     [
-        "how many 40+ points games does lebron james have in his 18th season?",
-        "Most points in 15th season played",
+        ("how many 40+ points games does lebron james have in his 18th season?", "lebron james"),
+        ("how many 30 point games does jokic have", "jokic"),
+        ("how many games with 5+ blocks has wemby had", "wemby"),
+        ("how many 50 point games does anyone have this season", None),
     ],
 )
-def test_the_narrowings_the_first_pass_missed_also_reach_check_scope(question: str) -> None:
-    """A season named by ordinal cannot be resolved - it needs a debut year the
-    model does not supply (it read "his 18th season" as the year 2018) - so it
-    refuses. (One game of a playoff series used to be here too; it is `game_n`
-    now, and the relation finds it.)"""
-    assert "situation" in _ask(question, '{"intent":"player_stat","player":"Deandre Ayton"}').slots
+def test_a_count_whose_subject_sits_between_does_and_have_is_restored(question: str, want: str | None) -> None:
+    """The model dropped LeBron from the first of these and answered the 2018
+    league leaderboard. #148's grammars read "X games with" and "X 30-point
+    games"; the subject here sits between an auxiliary and "have"."""
+    from association.query.router import _subject_named_in
+
+    assert _subject_named_in(question) == want
+    got = _ask(question, '{"intent":"threshold_count","stat":"points","threshold":40}')
+    assert got.slots.get("player") == want
+
+
+@pytest.mark.parametrize(("question", "n"), [("how many 40+ points games does lebron james have in his 18th season?", 18), ("Most points in 15th season played", 15), ("jokic's 3rd season", 3)])
+def test_a_season_named_by_its_place_in_a_career_is_an_ordinal_the_templates_settle(question: str, n: int) -> None:
+    """The model reads the ordinal as a year: "his 18th season" came back as
+    season 2018, with LeBron dropped entirely, and the answer was the 2018
+    league leaderboard. The ordinal is kept as `season_n` and the misread year
+    goes; which year it is needs the player, so the templates settle it."""
+    got = _ask(question, '{"intent":"threshold_count","stat":"points","threshold":40,"player":"LeBron James","season":2018}')
+    assert got.slots.get("season_n") == n and "season" not in got.slots and "situation" not in got.slots
+    # A year the question names itself stays beside the ordinal (the template refuses the pair).
+    named = _ask("lebron's 18th season in 2021", '{"intent":"player_stat","player":"LeBron James","season":2021}')
+    assert named.slots.get("season_n") == 18 and named.slots.get("season") == 2021
 
 
 @pytest.mark.parametrize(("question", "n"), [("Ayton stats in game 4 playoff games", 4), ("show maxey's stats for game 4 against the knicks this postseason", 4), ("lebron in game 7s", 7)])

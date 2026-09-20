@@ -257,6 +257,14 @@ _ROUND_WORDS = re.compile(r"\bfinals\b|\b(?:first|second)\s+round\b|\bsemi-?fina
 # "game 7" used to be a `round`; it is a game like the others.
 _GAME_N = re.compile(r"\bgame\s+([1-7])s?\b", re.IGNORECASE)
 
+# A season named by ordinal: "his 18th season", "15th season played". The model
+# reads the ordinal as a year - "his 18th season" came back as season 2018,
+# with LeBron dropped entirely, and the answer was the 2018 league leaderboard
+# - so a year the question itself does not name goes with it. Which year the
+# ordinal IS needs the player, so the templates settle it after resolving him
+# (templates.common.settle_ordinal_season).
+_SEASON_N = re.compile(r"\b(\d{1,2})(?:st|nd|rd|th)\s+season\b", re.IGNORECASE)  # codespell:ignore nd - an ordinal suffix
+
 
 # A range of seasons rather than one. "since 2020" is every season from the one
 # ending in 2020; a decade ("the 2010s") is the seasons ending in it. Stated this
@@ -479,6 +487,12 @@ _SUBJECT_OF_COUNT = re.compile(
 )
 
 
+# "how many 40+ point games does lebron james have": the subject sits between
+# an auxiliary and "have", nowhere near the count. The model dropped LeBron
+# from exactly this question (#148's shape, in a third grammar).
+_SUBJECT_OF_HAVE = re.compile(r"\b(?:does|did|has|have)\s+(?:([A-Za-z][A-Za-z.'\-]*)\s+)?([A-Za-z][A-Za-z.'\-]{2,})\s+(?:have|had|got|gotten|recorded|posted)\b", re.IGNORECASE)
+
+
 def _subject_named_in(question: str) -> str | None:
     """The word (or two) a single-game-high or threshold-count question makes
     its subject, or None.
@@ -492,13 +506,14 @@ def _subject_named_in(question: str) -> str | None:
         word = match.group(1)
         if word.casefold() not in _SUBJECT_WORDS:
             return word
-    for match in _SUBJECT_OF_COUNT.finditer(question):
-        lead, word = match.group(1), match.group(2)
-        if word.casefold() in _COUNT_SUBJECT_WORDS:
-            continue
-        if lead is not None and lead.casefold() not in _COUNT_SUBJECT_WORDS:
-            return f"{lead} {word}"
-        return word
+    for pattern in (_SUBJECT_OF_COUNT, _SUBJECT_OF_HAVE):
+        for match in pattern.finditer(question):
+            lead, word = match.group(1), match.group(2)
+            if word.casefold() in _COUNT_SUBJECT_WORDS:
+                continue
+            if lead is not None and lead.casefold() not in _COUNT_SUBJECT_WORDS:
+                return f"{lead} {word}"
+            return word
     return None
 
 
@@ -715,14 +730,9 @@ _SITUATION = re.compile(
     # by "since March 1", and a date in a career question, which spans twenty
     # Octobers and so fixes no year. Both refuse.
     r"\b(?:since|after|before|from|through|until)\s+(?:the\s+)?(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}"
-    r"(?:st|nd|rd|th)?\b|"  # codespell:ignore nd - an ordinal suffix
-    # One game of a playoff series ("game 4") used to be here; it is `_GAME_N`
-    # now, a slot the relation honors.
-    # A season named by ordinal. Resolving it needs a debut year, and the model
-    # does not resolve it - it reads the ordinal as a year: "his 18th season"
-    # came back as season 2018, with LeBron dropped entirely, and the answer was
-    # the 2018 league leaderboard.
-    r"\b\d+(?:st|nd|rd|th)\s+season\b",  # codespell:ignore nd - an ordinal suffix
+    r"(?:st|nd|rd|th)?\b",  # codespell:ignore nd - an ordinal suffix
+    # A season named by ordinal ("his 18th season") used to be here; it is
+    # `_SEASON_N` now, settled to a year once the player is known.
     re.IGNORECASE,
 )
 
@@ -1304,6 +1314,11 @@ def _route_calendar_slots(slots: dict[str, Any], question: str, span: str | None
     series_game = _GAME_N.search(question)
     if series_game is not None:
         slots["game_n"] = int(series_game.group(1))
+    ordinal_season = _SEASON_N.search(question)
+    if ordinal_season is not None:
+        slots["season_n"] = int(ordinal_season.group(1))
+        if season_from_text(question) is None:
+            slots.pop("season", None)
     # Measured: "most 3 pointers made since 2020" became season=2020 and was
     # answered as "the most games with 0+ 3-pointers in the 2020 regular season".
     seasons = _validate_range(question)

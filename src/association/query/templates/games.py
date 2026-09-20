@@ -56,6 +56,7 @@ from .common import (
     _where_in,
     measure_filters,
     narrow_measures,
+    settle_ordinal_season,
 )
 
 
@@ -288,10 +289,17 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     # season only once _span_of reads it - and passed through as it was, it
     # narrowed "curry's last 5 games" over every season and asked about all six
     # Currys again.
-    scope = _span_of(span, season, season_type, "player_game_log", since=slots.get("since"))
+    # An ordinal season ("his 18th season") is settled once he is known; until
+    # then the span is his career, which narrows the name over every season.
+    season_n = slots.get("season_n")
+    scope = _span_of("career" if season_n else span, None if season_n else season, season_type, "player_game_log", since=slots.get("since"))
     player = _resolved_player(con, slots.get("player"), "game_log needs a team or a player", available=_GAME_LOGS, season=scope.season, through=_career_end(scope.season))
     if isinstance(player, TemplateResult):
         return player
+    settled = settle_ordinal_season(con, player, season_n, scope)
+    if isinstance(settled, TemplateResult):
+        return settled
+    scope = settled
     if team_text:
         # A `team` beside a named `player` used to win outright at the check
         # above and answer the TEAM's log instead of his - see AGENTS.md,

@@ -79,6 +79,26 @@ def test_a_line_whose_words_name_no_stat_refuses_rather_than_filtering_on_a_gues
         player_stat(con, {"player": "Luka Doncic", "stat": "points", "below": ["under 30 gizmos"]})
 
 
+def test_a_season_named_by_its_place_in_a_career_settles_to_that_year_once_the_player_is_known(pg_ctx: TemplateContext) -> None:
+    """ "how many 40+ points games does lebron james have in his 18th season?"
+    arrived as season 2018 - the ordinal read as a year. Podziemski's two
+    seasons on record are last season and this one, so his 1st is last
+    season, his 2nd is this one, and he has no 3rd."""
+    s = current_season()
+    first = player_stat(pg_ctx, {"player": "Brandin Podziemski", "stat": "points", "season_n": 1})
+    assert first.data["season"] == s - 1 and first.data["stats"]["avgPoints"] == 8.0
+    assert "in his 1st season (" in (first.answer or "")
+    second = threshold_count(pg_ctx, {"stat": "points", "threshold": 20, "player": "Brandin Podziemski", "season_n": 2})
+    assert second.data["season"] == s and second.data["leaders"] == [{"player": "Brandin Podziemski", "games": 1}]
+    assert "had 1 game with 20+ points in his 2nd season (" in (second.answer or "")
+    log = game_log(pg_ctx, {"player": "Brandin Podziemski", "season_n": 1})
+    assert [g["season"] for g in log.data["games"]] == [s - 1]
+    none = game_log(pg_ctx, {"player": "Brandin Podziemski", "season_n": 3})
+    assert "has 2 seasons on record" in (none.answer or "") and "no 3rd season" in (none.answer or "")
+    with pytest.raises(TemplateUnsupported, match="no player was named"):
+        threshold_count(pg_ctx, {"stat": "points", "threshold": 40, "season_n": 15})
+
+
 def test_one_game_of_each_playoff_series_is_numbered_by_date_over_the_series_own_games(pg_ctx: TemplateContext) -> None:
     """ "Ayton stats in game 4 playoff games": the nth game by date between two
     teams in one postseason. Podziemski's series vs Detroit was inserted with
