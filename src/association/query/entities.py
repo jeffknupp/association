@@ -24,6 +24,7 @@ wrong name means no plot gets drawn."""
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Any
 
@@ -248,10 +249,18 @@ def _players_other_slots_hold(slots: dict[str, Any]) -> set[str]:
     return held
 
 
+def _fold(text: str) -> str:
+    """``"dončić"`` -> ``"doncic"``: the warehouse spells every name in plain
+    letters, and a question typed with the accents matched nothing - "luka
+    dončić last 15 games vs. magic" lost Luka and answered the Lakers' log."""
+    return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+
+
 # Words of a name or a question, split on anything that is not a letter so
 # "Gilgeous-Alexander" is two words and "Jokic's" is "Jokic" and a stray "s".
+# Accents are folded first (_fold), so "dončić" is the one word "doncic".
 def _words(text: str) -> list[str]:
-    return [w for w in re.split(r"[^A-Za-z]+", text) if w]
+    return [w for w in re.split(r"[^A-Za-z]+", _fold(text)) if w]
 
 
 def _initials(name: str) -> str:
@@ -1064,12 +1073,20 @@ def _team_grounded(con: duckdb.DuckDBPyConnection, question: str, team: Entity) 
     asked = {word.casefold() for word in _words(question)}
     carried = {word.casefold() for word in _words(row[1])} | {str(row[0]).casefold()}
     carried |= {nickname for nickname, name in _TEAM_NICKNAMES.items() if name == row[1]}
-    return bool(carried & asked)
+    if carried & asked:
+        return True
+    # A clipped word is a trace too: "cav vs celtic last 10games" names both
+    # teams, and the router's expansion of "cav" to the Cavaliers is its job,
+    # not an invention. Three letters, so "la" and "no" ground nothing.
+    return any(len(word) >= 3 and any(name.startswith(word) for name in carried) for word in asked)
 
 
 def _scope_from_question_only_player(con: duckdb.DuckDBPyConnection, question: str) -> str | None:
-    """The one player the question names, or None if it names none or several."""
-    named = players_named_in(con, question)
+    """The one player the question names, or None if it names none or several.
+    A name held only by a word that names a team the question is about does
+    not count: "luka dončić last 15 games vs. magic" names Luka, not Luka and
+    Magic Johnson."""
+    named = [name for name in players_named_in(con, question) if not _named_only_by_a_team_word(con, question, name)]
     return named[0] if len(named) == 1 else None
 
 
@@ -1113,20 +1130,64 @@ def _scope_from_question_player_in_team_slot(con: duckdb.DuckDBPyConnection, que
     return True
 
 
-def _scope_from_question_displaced_player(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], notes: list[str], team: Entity, versus: Entity | None) -> Entity | None:
-    """Put back the player a team in ``team`` displaced. Returns the team still in the slot, or None once it has gone."""
-    # The team in `team` is the opponent, or a team the question never
-    # mentioned (the router's guess at the player's own): either way the
-    # player it displaced is the subject.
+def _scope_from_question_displaced_player(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], slot_notes: list[str], team: Entity, versus: Entity | None) -> Entity | None:
+    """Put back the player a team in ``team`` displaced, and put the team
+    where it belongs. Returns the team still in the slot, or None once it has gone.
+
+    The team in ``team`` is the opponent (the team after "vs"), or a team the
+    question never mentioned (the router's guess at the player's own). Either
+    way the player it displaced is the subject, and:
+
+    - the opponent stays an opponent. "karl towns stats vs netslast 5 games"
+      arrived as ``team='Brooklyn Nets'`` - the router's reading of a garbled
+      "vs nets" - and dropping the team with the player restored answered his
+      last five games against anybody, with nothing saying the Nets had gone.
+    - a word that names a team the question is about is not a player. "magic
+      vs nets last 10" named Magic Johnson by its one word "magic", and the
+      Magic's log became his. With nobody named, "X vs Y" is a team's log
+      against another, and the two are put back in order.
+    - a team the question never names goes even when nobody was found:
+      "stating centers vs phoenix suns log" arrived as the Lakers, whose log
+      it then was. A subject the question does not name is for the template
+      to refuse, not for the router's guess to supply.
+    """
     displaced = versus is not None and team.id == versus.id
-    if displaced or not _team_grounded(con, question, team):
-        player = _scope_from_question_only_player(con, question)
-        if player is not None:
-            slots.pop("team", None)
-            slots["player"] = player
-            notes.append(f"{team.name!r} was {'the opponent' if displaced else 'not in the question'}; the subject is {player!r}")
-            return None
-    return team
+    if not displaced and _team_grounded(con, question, team):
+        return team
+    player = _scope_from_question_only_player(con, question)
+    if player is not None and _named_only_by_a_team_word(con, question, player):
+        player = None
+    slots.pop("team", None)
+    if player is not None:
+        slots["player"] = player
+        slot_notes.append(f"{team.name!r} was {'the opponent' if displaced else 'not in the question'}; the subject is {player!r}")
+        if displaced or (versus is None and "opponent" not in slots and _AGAINST.search(question)):
+            # The team the question plays against - resolved from the text,
+            # or the router's reading of a word nothing here resolves.
+            slots["opponent"] = team.name
+        return None
+    before = _team_named(con, slots.get("opponent")) if displaced else None
+    if before is not None and before.id != team.id and _team_grounded(con, question, before):
+        # "magic vs nets": the router filed the sides backwards. The team
+        # before "vs" is the subject, the one after it the opponent.
+        slots["team"], slots["opponent"] = before.name, team.name
+        slot_notes.append(f"{before.name!r} is the subject and {team.name!r} the opponent, as the question orders them")
+        return before
+    if displaced:
+        slots.setdefault("opponent", team.name)
+        slot_notes.append(f"{team.name!r} is the team the question plays against; the question names no subject")
+    else:
+        slot_notes.append(f"{team.name!r} is not in the question, and the question names no player; dropped")
+    return None
+
+
+def _named_only_by_a_team_word(con: duckdb.DuckDBPyConnection, question: str, player: str) -> bool:
+    """Whether every word of ``player``'s name the question holds also names a
+    team - "magic" in "magic vs nets" is the Orlando Magic, not Magic Johnson,
+    and "boston" is the Celtics before it is Brandon Boston Jr."""
+    asked = {w.casefold() for w in _words(question)}
+    supporting = [w for w in _words(player) if w.casefold() in asked]
+    return bool(supporting) and all(_team_named(con, w) is not None for w in supporting)
 
 
 def _scope_from_question_team_in_players(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], notes: list[str], versus: Entity | None, season: int | None) -> None:
@@ -1598,7 +1659,7 @@ def find_players(con: duckdb.DuckDBPyConnection, text: str, limit: int | None = 
     # Matched against the WHOLE query, never as a substring, so "book" resolves
     # to Devin Booker while "notebook" is untouched - and "Ant" stops matching
     # every player with "ant" in their name (Durant, Anthony, Antetokounmpo).
-    text = PLAYER_NICKNAMES.get(text.strip().casefold(), text)
+    text = PLAYER_NICKNAMES.get(text.strip().casefold(), _fold(text))
     tokens = [t for t in text.split() if t]
     if not tokens:
         return []

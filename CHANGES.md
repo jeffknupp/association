@@ -15,6 +15,19 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## 4.3.0 - 2026-09-19
+- **A team the router put in a player's place stays where it belongs.** Four
+  fluent wrong answers from one entity stage: "karl towns stats vs netslast 5
+  games" restored Towns but dropped the Nets, answering his last five games
+  against anybody; "magic vs nets last 10" named Magic Johnson by the one
+  word "magic" and gave him the Magic's log; "Jersmi grant last 5 games vs
+  the suns" and "stating centers vs phoenix suns log" answered the Suns' and
+  the Lakers' logs, teams the question names only as the opponent or not at
+  all. Now the opponent stays the opponent, a word that names a team the
+  question is about is not a player, an "X vs Y" with nobody named is X's
+  log against Y, and an invented team goes even when nobody is named - so
+  the template refuses for want of a subject rather than answering for the
+  wrong one. And a name typed with accents ("luka dončić") is folded to the
+  plain letters the warehouse spells it in before it is matched.
 - **The docs describe the shared relation.** The architecture page, the
   templates package docstring, the README and the usage guide now say that the
   box-score templates compose `query/player_games` rather than each writing

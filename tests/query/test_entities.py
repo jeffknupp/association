@@ -852,10 +852,13 @@ def scope_con() -> duckdb.DuckDBPyConnection:
     c.execute("CREATE TABLE teams (team_id VARCHAR, display_name VARCHAR, abbreviation VARCHAR)")
     c.execute(
         "INSERT INTO teams VALUES ('2','Boston Celtics','BOS'),('8','Detroit Pistons','DET'),('13','Los Angeles Lakers','LAL'),"
-        "('12','LA Clippers','LAC'),('20','Philadelphia 76ers','PHI'),('18','New York Knicks','NY')"
+        "('12','LA Clippers','LAC'),('20','Philadelphia 76ers','PHI'),('18','New York Knicks','NY'),('17','Brooklyn Nets','BKN'),('19','Orlando Magic','ORL'),('21','Phoenix Suns','PHX')"
     )
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
-    c.execute("INSERT INTO players VALUES ('1','Jaylen Brown'),('2','Luka Doncic'),('3','Stephen Curry'),('4','Seth Curry'),('5','Brandon Boston Jr.'),('6','Kawhi Leonard'),('7','LeBron James')")
+    c.execute(
+        "INSERT INTO players VALUES ('1','Jaylen Brown'),('2','Luka Doncic'),('3','Stephen Curry'),('4','Seth Curry'),('5','Brandon Boston Jr.'),('6','Kawhi Leonard'),('7','LeBron James'),"
+        "('8','Magic Johnson'),('9','Karl-Anthony Towns')"
+    )
     return c
 
 
@@ -866,6 +869,50 @@ def test_a_player_the_router_swapped_for_his_own_team_comes_back(scope_con: duck
     notes = scope_from_question(scope_con, "jaylen brown last 8 games vs pistons", slots, reads_player=True)
     assert slots == {"player": "Jaylen Brown", "opponent": "Detroit Pistons", "limit": 8}
     assert len(notes) == 2
+
+
+def test_the_routers_team_stays_the_opponent_when_the_player_it_displaced_comes_back(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """ "karl towns stats vs netslast 5 games": the router read the garbled
+    "vs nets" as team='Brooklyn Nets' and dropped Towns. Restoring him and
+    dropping the team answered his last five games against anybody."""
+    slots: dict[str, Any] = {"team": "Brooklyn Nets", "limit": 5}
+    scope_from_question(scope_con, "karl towns stats vs netslast 5 games", slots, reads_player=True)
+    assert slots == {"player": "Karl-Anthony Towns", "opponent": "Brooklyn Nets", "limit": 5}
+
+
+def test_a_word_that_names_a_team_the_question_is_about_is_not_a_player(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """ "magic vs nets last 10" named Magic Johnson by its one word "magic" and
+    the Magic's log became his. Nobody is named, so it is a team's log against
+    another - and the router had the two sides backwards."""
+    slots: dict[str, Any] = {"team": "Brooklyn Nets", "opponent": "Orlando Magic", "limit": 10}
+    scope_from_question(scope_con, "magic vs nets last 10", slots, reads_player=True)
+    assert slots == {"team": "Orlando Magic", "opponent": "Brooklyn Nets", "limit": 10}
+
+
+def test_an_opponent_alone_leaves_no_subject_rather_than_the_opponents_log(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """ "Jersmi grant last 5 games vs the suns": the player is a typo nothing
+    resolves, the router filed the Suns as the team, and the answer was the
+    Suns' last five games. The Suns are the opponent; the subject is missing,
+    which is the template's to refuse."""
+    slots: dict[str, Any] = {"team": "Phoenix Suns", "limit": 5}
+    scope_from_question(scope_con, "Jersmi grant last 5 games vs the suns", slots, reads_player=True)
+    assert slots == {"opponent": "Phoenix Suns", "limit": 5}
+
+
+def test_a_team_the_question_never_names_goes_even_when_nobody_is_named(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """ "stating centers vs phoenix suns log" arrived as the Lakers, whose log it then was."""
+    slots: dict[str, Any] = {"team": "Los Angeles Lakers", "opponent": "Phoenix Suns"}
+    scope_from_question(scope_con, "stating centers vs phoenix suns log", slots, reads_player=True)
+    assert slots == {"opponent": "Phoenix Suns"}
+
+
+def test_a_name_typed_with_accents_still_names_its_player(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """The warehouse spells every name in plain letters; "luka dončić last 15
+    games vs. magic" matched nobody and answered the Lakers' log."""
+    slots: dict[str, Any] = {"team": "Los Angeles Lakers", "opponent": "Orlando Magic", "limit": 15}
+    scope_from_question(scope_con, "luka dončić last 15 games vs. magic", slots, reads_player=True)
+    assert slots == {"player": "Luka Doncic", "opponent": "Orlando Magic", "limit": 15}
+    assert [p.name for p in find_players(scope_con, "dončić")] == ["Luka Doncic"]
 
 
 def test_an_opponent_in_the_team_slot_becomes_the_opponent(scope_con: duckdb.DuckDBPyConnection) -> None:
