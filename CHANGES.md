@@ -39,6 +39,23 @@ had no published version to be compatible with.
   chart drew a game a year off; a single game named with no year and no
   season words now means the current season, which is the default every
   template already applies (#153).
+- **The fall-through agent gives up on a clock, and says what it could not
+  answer.** An iteration cap never bounded the wait, because the cost is per
+  model call: measured over 24 questions, every finished run spent nearly all
+  its wall time inside 1-4 calls, **14 of the 24 never finished at all**, and
+  one ran past 17 minutes before being killed by hand. `Agent` now takes
+  `budget_seconds` (default 120, `--agent-budget` on `query` and `web`, 0 to
+  remove the bound), checked before each call so the first always runs. When
+  it gives up - on the clock or on the tool-call cap - it now names why the
+  templates declined the question instead of saying "Gave up after too many
+  tool-call iterations", which told a reader nothing about their own
+  question (#129).
+- **A faster check to iterate against.** `scripts/check_fast.sh` runs every
+  gate except the Sphinx build plus every test except the one marked `slow`,
+  in parallel: ~39s against ~106s for the full check, which itself drops from
+  ~180s now that `pytest -n auto` (pytest-xdist, new in the `dev` extra) runs
+  in CI and locally. The one `slow` test is the Eastern-date agreement check,
+  57s of the suite's 80s; it still runs in CI and in every full local run.
 - **A NetPoints rate asked for by any name is ranked as the rate.** "top 10
   in defensive netpoints / 100 possessions", "adjusted defensive netpoints",
   "offensive netpoints per 100 possessions" and "adjusted netpoints" all

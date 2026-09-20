@@ -18,7 +18,7 @@ from association.cli.paths import default_data_dir, default_db_path
 
 # query.models holds no heavy imports, so this does not pull ollama or duckdb
 # into CLI startup - unlike the Agent import, which stays lazy below.
-from association.query.models import DEFAULT_MODEL, DEFAULT_ROUTER_MODEL
+from association.query.models import AGENT_BUDGET_SECONDS, DEFAULT_MODEL, DEFAULT_ROUTER_MODEL
 
 log: logging.Logger = logging.getLogger("association.cli")
 
@@ -134,6 +134,11 @@ def _parse_season_types(spec: str) -> list[int]:
     return sorted({int(x.strip()) for x in spec.split(",") if x.strip()})
 
 
+AGENT_BUDGET_HELP = (
+    "Wall-clock seconds the fall-through agent may spend on one question before it gives up and says so. Measured, 14 of 24 "
+    "questions never finished and one ran past 17 minutes, so this bounds the wait rather than the tool calls. 0 removes the bound."
+)
+
 DISABLE_FALLTHROUGH_HELP = (
     "DEVELOPMENT ONLY. When no template can answer a question, return an error saying why instead of handing it to the "
     "SQL-writing agent, which iterates for minutes and rarely gets it right. For testing the fast path, not for answering questions."
@@ -157,6 +162,7 @@ def _query_engine_options(f: F) -> F:
         help="Skip the intent router and answer every question with the full tool-calling agent. For comparing the two paths while more question shapes are ported to templates.",
     )(f)
     f = click.option("--disable-fallthrough", is_flag=True, help=DISABLE_FALLTHROUGH_HELP)(f)
+    f = click.option("--agent-budget", type=float, default=AGENT_BUDGET_SECONDS, show_default=True, help=AGENT_BUDGET_HELP)(f)
     return click.option(
         "--think",
         is_flag=True,
@@ -311,7 +317,7 @@ def data_check(seasons: str | None, season_types: str | None, data_dir: str, rat
 @cli.command("query")
 @click.argument("question")
 @_query_engine_options
-def query(question: str, model: str, router_model: str, db_path: str, out_dir: str, verbose: bool, think: bool, no_fast_path: bool, disable_fallthrough: bool) -> None:
+def query(question: str, model: str, router_model: str, db_path: str, out_dir: str, verbose: bool, think: bool, no_fast_path: bool, disable_fallthrough: bool, agent_budget: float) -> None:
     """Ask one natural-language question about the local data."""
     import shlex
     import sys
@@ -321,7 +327,7 @@ def query(question: str, model: str, router_model: str, db_path: str, out_dir: s
 
     if no_fast_path and disable_fallthrough:
         raise click.UsageError("--no-fast-path sends every question to the agent and --disable-fallthrough refuses to; pick one.")
-    agent = Agent(model, db_path, Path(out_dir), verbose=verbose, think=think, fast_path=not no_fast_path, router_model=router_model, fallthrough=not disable_fallthrough)
+    agent = Agent(model, db_path, Path(out_dir), verbose=verbose, think=think, fast_path=not no_fast_path, router_model=router_model, fallthrough=not disable_fallthrough, budget_seconds=agent_budget)
     # Agent.ask no longer reads sys.argv - a caller says what the request was,
     # and for this caller that really is the command line.
     try:
@@ -338,14 +344,15 @@ def query(question: str, model: str, router_model: str, db_path: str, out_dir: s
 @click.option("--db-path", default=DEFAULT_DB_PATH, show_default=True, help="DuckDB warehouse file.")
 @click.option("--out-dir", default=DEFAULT_OUT_DIR, show_default=True, help="Directory for rendered charts.")
 @click.option("--disable-fallthrough", is_flag=True, help=DISABLE_FALLTHROUGH_HELP)
-def web(port: int, host: str, model: str, router_model: str, db_path: str, out_dir: str, disable_fallthrough: bool) -> None:
+@click.option("--agent-budget", type=float, default=AGENT_BUDGET_SECONDS, show_default=True, help=AGENT_BUDGET_HELP)
+def web(port: int, host: str, model: str, router_model: str, db_path: str, out_dir: str, disable_fallthrough: bool, agent_budget: float) -> None:
     """Serve a local web interface for asking questions, until interrupted.
 
     Needs the `web` extra: pip install 'association[web]'
     """
     from association.web.serve import serve
 
-    serve(host, port, db_path, Path(out_dir), model=model, router_model=router_model, fallthrough=not disable_fallthrough)
+    serve(host, port, db_path, Path(out_dir), model=model, router_model=router_model, fallthrough=not disable_fallthrough, budget_seconds=agent_budget)
 
 
 def main() -> None:

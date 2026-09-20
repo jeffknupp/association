@@ -21,8 +21,29 @@ we do about it. Read `DATA.md` before trusting a column.
 
 ```bash
 uv run pre-commit run --all-files   # all sixteen gates
-uv run pytest -q                    # fully offline: no network, no ollama
+uv run pytest -q -n auto            # fully offline: no network, no ollama
 ```
+
+**While iterating, run `scripts/check_fast.sh` instead** - every gate except
+the Sphinx build, plus every test except the one marked `slow`, in parallel.
+Measured on 8 cores with three agents competing for them:
+
+| command | time |
+| --- | --- |
+| `scripts/check_fast.sh` | 39s |
+| the hooks it runs (all but Sphinx) | 7s |
+| `uv run pre-commit run --all-files` | 26s (19s of it Sphinx) |
+| `uv run pytest -q` | 156s |
+| `uv run pytest -q -n auto` | 80s |
+| `uv run pytest -q -n auto -m "not slow"` | 30s |
+
+So the full check above costs about 106s and the iteration check about 39s.
+The fast one leaves out exactly two things, and its own header says so: the
+docs build, which is the gate that catches a malformed docstring, and the
+`slow` marker, which today is one test (the Eastern-date agreement check, 57s
+of the suite's 80s). A commit touching a docstring or that rule runs the full
+check. Nothing else may be skipped, and `slow` is not a way to make a failing
+test quiet - every marked test still runs in CI and in the full local run.
 
 **A fresh worktree needs syncing before either command works at all.**
 `uv run` creates the venv on first use but does not install the `dev`, `docs`

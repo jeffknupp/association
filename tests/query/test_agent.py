@@ -1,6 +1,7 @@
 """Regression tests for the SQL-as-prose safety net, the thinking-model
 context-growth fix in Agent.ask, and the router fast path's fall-through."""
 
+import time
 from pathlib import Path
 from typing import Any
 
@@ -8,7 +9,7 @@ import ollama
 import pytest
 from ollama import ChatResponse, Message
 
-from association.query.agent import MAX_AUTO_SQL_RECOVERIES, MAX_ERROR_RECOVERIES, MAX_HISTORY_MESSAGES, Agent, _extract_unrun_sql
+from association.query.agent import MAX_AUTO_SQL_RECOVERIES, MAX_ERROR_RECOVERIES, MAX_HISTORY_MESSAGES, MAX_TOOL_ITERATIONS, Agent, _extract_unrun_sql
 
 
 def test_extract_sql_from_fenced_sql_block() -> None:
@@ -703,3 +704,65 @@ def test_resetting_a_conversation_leaves_nothing_of_the_last_one(tmp_path: Path)
     assert [m["role"] for m in agent.messages] == ["system"]
     assert agent.last_question is None
     assert agent._turn_starts == []
+
+
+# ---------------- the fall-through agent's budget (#129) ----------------
+
+
+def _always_tool_calls(calls: list[int], *, sleep: float = 0.0) -> Any:
+    """A chat that never finishes: it asks for the same tool every turn, which
+    is what a run that never converges looks like from the loop's side."""
+    tool_call = Message.ToolCall(function=Message.ToolCall.Function(name="describe_table", arguments={"table_name": "players"}))
+
+    def fake_chat(**kwargs: Any) -> ChatResponse:
+        calls.append(1)
+        if sleep:
+            time.sleep(sleep)
+        return ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="", tool_calls=[tool_call]))
+
+    return fake_chat
+
+
+def test_the_agent_gives_up_on_a_wall_clock_budget_rather_than_on_tool_calls(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """#129: an iteration cap does not bound the wait, because the cost is per
+    model call - measured, 14 of 24 questions never finished and one ran past
+    17 minutes. The budget is checked before each call, so the first one
+    always runs and a run that has spent its budget stops there."""
+    calls: list[int] = []
+    monkeypatch.setattr(ollama, "chat", _always_tool_calls(calls, sleep=0.02))
+    agent = _agent(tmp_path, fast_path=False, budget_seconds=0.01)
+    answer = agent.ask("q")
+    assert "gave up" in answer.text and "did not reach an answer within" in answer.text
+    # Far short of the iteration cap: the budget stopped it, not the cap.
+    assert 1 <= len(calls) < MAX_TOOL_ITERATIONS
+
+
+def test_a_budget_of_zero_leaves_the_iteration_cap_in_charge(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """0 removes the bound, which is what a caller who wants the old behavior
+    passes. The cap then ends the run, and says so in its own words."""
+    calls: list[int] = []
+    monkeypatch.setattr(ollama, "chat", _always_tool_calls(calls))
+    answer = _agent(tmp_path, fast_path=False, budget_seconds=0).ask("q")
+    assert len(calls) == MAX_TOOL_ITERATIONS
+    assert f"it made {MAX_TOOL_ITERATIONS} tool calls without reaching one" in answer.text
+
+
+def test_giving_up_names_what_the_fast_path_could_not_answer(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """ "Gave up after too many tool-call iterations" told a reader nothing
+    about their own question. The reason the templates declined it says which
+    part of the question has no answer here yet."""
+    import duckdb
+
+    from association.query.router import Route
+
+    db_path = tmp_path / "gaveup.duckdb"
+    con = duckdb.connect(str(db_path))
+    con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    con.execute("CREATE TABLE teams (team_id VARCHAR, display_name VARCHAR, abbreviation VARCHAR)")
+    con.close()
+    calls: list[int] = []
+    monkeypatch.setattr(ollama, "chat", _always_tool_calls(calls))
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="other", slots={}))
+    agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history", budget_seconds=0)
+    answer = agent.ask("who had the most triple-doubles?")
+    assert "No template answered it either: intent 'other' has no template yet" in answer.text

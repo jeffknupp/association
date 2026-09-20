@@ -16,7 +16,7 @@ from .answer import Answer, AnsweredBy, Artifact, FallthroughDisabled, Timing
 from .entities import compared_but_unmatched, misread_players, override_invented_players, override_nicknames, restore_dropped_players, scope_from_question, undo_name_completion
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .keepalive import KEEP_ALIVE
-from .models import DEFAULT_ROUTER_MODEL
+from .models import AGENT_BUDGET_SECONDS, DEFAULT_ROUTER_MODEL
 from .prompt import AGENT_NUM_CTX, TOOLS, build_system_prompt
 from .router import route
 from .templates import TEMPLATES
@@ -65,7 +65,9 @@ class Agent:
     .. versionchanged:: 4.4.0
        Takes ``fallthrough``: False raises
        :class:`association.query.answer.FallthroughDisabled` where the agent
-       would have been asked, for development.
+       would have been asked, for development. Takes ``budget_seconds``,
+       the wall clock the fall-through agent may spend before it gives up
+       and says what the fast path could not answer.
     """
 
     def __init__(
@@ -80,6 +82,7 @@ class Agent:
         router_model: str = DEFAULT_ROUTER_MODEL,
         trace: Callable[[str], None] = echo_to_stderr,
         fallthrough: bool = True,
+        budget_seconds: float = AGENT_BUDGET_SECONDS,
     ):
         self.model = model
         self.router_model = router_model
@@ -92,6 +95,9 @@ class Agent:
         self.fallthrough = fallthrough
         #: Why the fast path gave the last question up, or None if it did not.
         self.fell_through: str | None = None
+        #: Wall-clock seconds the fall-through agent may spend - see
+        #: :data:`AGENT_BUDGET_SECONDS`. 0 removes the bound.
+        self.budget_seconds = budget_seconds
         self.trace = trace
         self.last_question: str | None = None
         self.toolbox: Toolbox = Toolbox(db_path, out_dir)
@@ -506,6 +512,7 @@ class Agent:
             history.log("  -> (fallthrough) disabled; refusing rather than asking the agent")
             raise FallthroughDisabled(f"no template answered this question and fall-through to the agent is disabled: {self.fell_through}")
         self.last_question = question
+        started = time.monotonic()
         # Only the entries this question needs, rather than all 13 - see
         # prompt.select_knowledge. Swapping the system message costs one
         # cache miss on this question's FIRST iteration; the prefix is then
@@ -520,6 +527,11 @@ class Agent:
         pending_error_tool: str | None = None
 
         for _ in range(MAX_TOOL_ITERATIONS):
+            # Before the call, not after: the check is what bounds the wait,
+            # and a call already in flight cannot be taken back (ollama's
+            # client is blocking and takes no cancellation token).
+            if self.budget_seconds > 0 and time.monotonic() - started >= self.budget_seconds:
+                return self._gave_up(question, history, f"it did not reach an answer within {self.budget_seconds:.0f}s")
             msg = self._ask_inner_chat(history)
 
             if not msg.tool_calls:
@@ -530,5 +542,19 @@ class Agent:
 
             pending_error, pending_error_tool = self._ask_inner_dispatch_calls(history, msg.tool_calls)
 
+        return self._gave_up(question, history, f"it made {MAX_TOOL_ITERATIONS} tool calls without reaching one")
+
+    def _gave_up(self, question: str, history: RunHistory, why: str) -> Answer:
+        """The answer when the fall-through agent runs out of budget or of
+        tool calls: what it did, and what the fast path could not answer.
+
+        Naming the shape is the point. "Gave up after too many tool-call
+        iterations" told a reader nothing about their own question, while the
+        reason the templates declined it - an intent with no template, a
+        scoping slot none honors - says which part of the question has no
+        answer here yet (#129).
+        """
         self._trim_history()
-        return self._answer(question, history, "Gave up after too many tool-call iterations.", "agent")
+        reason = f" No template answered it either: {self.fell_through}." if self.fell_through else ""
+        history.log(f"  -> (agent) gave up: {why}")
+        return self._answer(question, history, f"The SQL-writing agent gave up: {why}.{reason}", "agent")

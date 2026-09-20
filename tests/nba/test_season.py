@@ -44,9 +44,15 @@ def _stamps() -> list[str]:
     return stamps
 
 
+@pytest.mark.slow
 def test_the_sql_rule_and_the_python_rule_agree_on_every_day() -> None:
     """A query that filters on one and an answer that prints the other must
-    never put a game on two different days."""
+    never put a game on two different days.
+
+    Marked slow because it is: every day from 1976 to 2039 through DuckDB and
+    through Python, 57s of the suite's 80s (measured 2026-09-20). It is left
+    out of `scripts/check_fast.sh` and runs in every full check.
+    """
     con = duckdb.connect()
     con.execute("CREATE TABLE t (date VARCHAR)")
     con.executemany("INSERT INTO t VALUES (?)", [(s,) for s in _stamps()])

@@ -93,7 +93,10 @@ jobs:
         run: scripts/check_issues_md.sh
 
       - name: Tests
-        run: uv run pytest -q
+        # -n auto: the suite is 1,589 mostly-tiny tests and one that takes 57s
+        # on its own, so the runner's cores cut it from 156s to 80s. Local and
+        # CI run the same line, as everything here does.
+        run: uv run pytest -q -n auto
 
       - name: Docs build
         # -W: a broken cross-reference or a module missing from the API tree
