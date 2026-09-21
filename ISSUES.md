@@ -89,41 +89,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours, not ESPN's.
 - **GitHub:** none yet
 
-### The router invents a `date` or a `season` the question never states
-- **Found:** 2026-09-16, issues audit and the "Bam adebeyo jan 19" investigation
-- **Evidence:** "2024 nba stephen curry double double per game scored on
-  fridays" arrived with `date="2024-12-15"`, and "Best NBA record since January
-  31st" with `date="2023-01-31"`. Separately, 12 of the 261 feed queries name
-  no year and arrive with a non-current `season` from the model (2025 four
-  times, 2023 three times); `_validate_season` accepts any year in range when
-  the question names none, which is how "jan 19" became 2023-01-19. None of the
-  12 is graded correct - they fall through, are wrong, or are unclear.
-- **User sees:** nothing wrong today on `date`, because both examples are
-  refused. But a model-invented `date` on `game_log` or `fingerprint` answers a
-  game nobody asked about, and an invented `season` narrows any question to a
-  year nobody named.
-- **Next step:** in `route()`, keep a model-supplied `date` only when
-  `_CALENDAR_DATE` finds one in the question, and a model-supplied `season`
-  only when the question names a year or a relative season - the rule
-  `override_invented_players` applies to names.
-- **Re-ranked P2 -> P1, 2026-09-21, on a live run of Jeff's own questions**
-  (`~/association-research/yardstick-v2/live_31b2ec6.jsonl`, build
-  `v4.3.0-39-g31b2ec6-dirty`, real `Agent`, fall-through off). "User sees:
-  nothing wrong today" is no longer true. Three of the ten question families
-  whose wordings disagree with each other are this entry:
-  "show me stats for sixers when maxey scored 20+ points" arrived with
-  `season=2023` (nothing in the text but "20+") and answered "Tyrese Maxey
-  averaged 20.3 points per game in 60 games in the 2023 regular season";
-  "what was steph curry's avg 3pt shot distance" arrived with `season=2022`
-  and answered 2022's 27.5 feet, while two other wordings of the same question
-  answered 2026's 27.6; and "fingerprint maxey vs jaylen brown 2026" arrived
-  with `date='2026-01-01'` and was refused with "not yet for a particular
-  date" - a refusal naming a cause the question never supplied, while "show a
-  fingerprint for maxey vs jaylen brown in 2026" drew the pair. The first two
-  are fluent wrong answers.
-- **Source:** ours, not ESPN's.
-- **GitHub:** #95
-
 ### The agent fall-through answers 1 question in 23, and does not finish 61% of the time
 - **Found:** 2026-09-18, the first measurement of the agent path in this project
 - **Evidence:** 24 questions stratified across the four fall-through causes, run
@@ -284,6 +249,14 @@ those were found.
 - **Next step:** teach `_validate_season`'s text read "YY-YY" and "YY/YY"
   (consecutive years only, so "10-12" stays a score). `route()` only; hash the
   prompt constants to prove nothing else can move.
+- **Re-measured 2026-09-21, after #95's fix landed.** The symptom changed, not
+  the gap: "23-24" still is not read as a year, so a bare model `season` for
+  it is dropped rather than kept (#95 no longer trusts a `season` int with
+  nothing in the text to back it), and the leaderboard now answers the
+  *current* season (2026) instead of the year before the one asked (2023) -
+  still wrong, for the same underlying reason (`_validate_season` cannot read
+  "23-24"), just a different wrong year. The fix above is unchanged and still
+  open.
 
 ### A thresholdless `threshold_count` is rewritten to `leaderboard` before the subject is restored
 - **Found:** 2026-09-21, a Sonnet agent replaying the 172 distinct
@@ -318,10 +291,51 @@ those were found.
 - **User sees:** a one-row table, titled with the year, so the narrowing is
   visible - which is why this is P2 and not P1.
 - **Next step:** related to the invented-season entry (#95) but not fixed by
-  it: dropping a `season` the text does not state would turn this into the
-  five-season default, still three seasons short. "since he joined", "since
-  his rookie year", "over his career" on `player_history` want `span=career`
-  read from the question's own words in `route()`.
+  it: "since he joined", "since his rookie year", "over his career" on
+  `player_history` want `span=career` read from the question's own words in
+  `route()`.
+- **Re-measured 2026-09-21, after #95's fix landed** (`route()` on this
+  commit, recorded slots from `live_31b2ec6.jsonl` pushed back through it with
+  the model stubbed): `season` now drops (nothing in the text names 2019) and
+  `limit=10` survives, so `player_history` reads `latest = current_season()`
+  (2026) with a 10-season window - Luka has played 8, so this particular
+  question now gets all of them, by coincidence rather than by fix. The
+  prediction below this entry's evidence ("the five-season default") was
+  wrong: `limit` was 10 in the recording, not absent, and `player_history`'s
+  own default (`DEFAULT_HISTORY_SEASONS`) is 4, not 5. Left open: a player
+  with a career longer than the model's `limit` (or a recording with no
+  `limit` at all, which reads a real 4-season default) still gets a short
+  answer with nothing saying so - #95 removed the ONE-season floor this entry
+  was filed against, not the general gap.
+- **Source:** ours, not ESPN's.
+- **GitHub:** none yet
+
+### "His best season" is answered with a season nobody determined
+- **Found:** 2026-09-21, working #95 (the invented-season entry above) -
+  found in passing while checking `~/association-research/yardstick-v2/live_namerule.jsonl`
+  for every row carrying a `season` the question's text does not state.
+- **Evidence:** "plot jokic's fingerprint from his best season" routed to
+  `fingerprint` with `season=2022` and rendered "Rendered NetPoints
+  fingerprint (total) for Nikola Jokic (2022 season, percentile scale)" - a
+  real season, with no code anywhere that determines which of Jokic's seasons
+  was actually his best by any stat. Nothing in `route()` reads "best
+  season"/"his best"/"career year" as a request to look one up; the model
+  supplied 2022 on its own, the same way it supplies an invented `season` for
+  any other unstated year (#95's shape exactly, just with a superlative
+  standing in for a year). Re-measured on this commit, after #95's fix: the
+  bare `season` now drops (nothing in the text names a year), so the same
+  question renders the CURRENT season instead - also not necessarily his best,
+  just a different unexamined guess.
+- **User sees:** a fingerprint titled with a real season, so the narrowing is
+  visible (same reasoning the "since he joined the league" entry above is P2
+  and not P1) - but the season shown answers a different question than "his
+  best", with nothing saying so.
+- **Next step:** either read "best season"/"his best year"/"career year" as a
+  request `route()` can recognize (`CODE_ASSIGNED_INTENTS` is not the right
+  mechanism - this is a slot value, not an intent) and resolve deterministically
+  against a stat (which stat "best" means is itself unstated and would need a
+  default), or refuse the shape rather than silently substituting a season -
+  in the spirit of "prefer refusing to guessing" (`AGENTS.md`).
 - **Source:** ours, not ESPN's.
 - **GitHub:** none yet
 

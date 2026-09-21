@@ -31,7 +31,7 @@ from association.nba.season import current_season
 from .keepalive import KEEP_ALIVE
 from .measures import MEASURE_WORDS
 from .router_prompt import ROUTER_NUM_CTX, ROUTER_PROMPT, ROUTER_SCHEMA
-from .season_text import MIN_SEASON, season_from_text
+from .season_text import season_from_text
 from .team_metrics import STAT_ALIASES
 
 # The model picks a word; the numeric season_type every table uses is looked up
@@ -198,20 +198,30 @@ def _validate_season(slots: dict[str, Any], question: str = "") -> int | None:
     """Resolve the season the code's way, not the model's. season_ref is
     deliberately an enum the model can only pick from, because relative-date
     arithmetic ("last season") is arithmetic, not language - it belongs here,
-    next to current_season(), not in a prompt."""
+    next to current_season(), not in a prompt.
+
+    .. versionchanged:: 4.4.0
+       A bare ``season`` integer the model supplied is no longer trusted on
+       its own - only kept when :func:`~association.query.season_text.season_from_text`
+       finds a year (or a relative reference like "last season") IN THE
+       QUESTION. ROUTER_PROMPT already only asks the model to set ``season``
+       when the question names one (its own worked examples all have the year
+       in the question text); a value that survives with nothing in the
+       question to back it is the model inventing one, not reading one - #95.
+       Measured live: "show me stats for sixers when maxey scored 20+ points"
+       arrived with season=2023 (nothing in the text but "20+") and answered a
+       real player's real average for a season nobody asked about; "what was
+       steph curry's avg 3pt shot distance" arrived with season=2022 while two
+       other wordings of the identical question answered the current season.
+       `season_ref` is untouched - it is a two-value enum the model can only
+       set to "previous"/"current", not a free year, and ROUTER_PROMPT already
+       instructs "current" for anything that does not say "last season".
+    """
     # The question text first: it is the source, and the model drops this slot
     # often enough that deferring to it silently answered for the wrong season.
     from_text = season_from_text(question)
     if from_text is not None:
         return from_text
-    season = slots.get("season")
-    # MIN_SEASON is the league's first season, not a data floor (coverage.py
-    # refuses those, with the reason), and a season can legitimately be next
-    # year's during the autumn rollover. Anything outside is a model slip -
-    # confirmed live: "last season" once produced season=20222023 - so it is
-    # dropped rather than passed to SQL as a filter that silently matches nothing.
-    if isinstance(season, int) and MIN_SEASON <= season <= current_season() + 1:
-        return season
     ref = slots.get("season_ref")
     if ref == "previous":
         return current_season() - 1
@@ -1794,9 +1804,18 @@ def _route_calendar_slots(intent: str, slots: dict[str, Any], question: str, spa
     calendar_day = _validate_date(question, fixing_season)
     if calendar_day is not None:
         slots["date"] = calendar_day
-    elif _CALENDAR_DATE.search(question) and "situation" not in slots:
-        # A date that named itself but could not be pinned to one day.
-        slots["situation"] = _CALENDAR_DATE.search(question).group(0).casefold()  # type: ignore[union-attr]
+    else:
+        # A model-supplied `date` with no calendar day anywhere in the
+        # question is the date half of #95: "fingerprint maxey vs jaylen
+        # brown 2026" arrived with date='2026-01-01' and was refused ("not
+        # yet for a particular date") for a cause the question never gave -
+        # the model invented the date the same way it invents a season (see
+        # _validate_season). Dropped so the normal (whole-season) default
+        # applies, unconditionally - `date` is set nowhere else in this module.
+        slots.pop("date", None)
+        if _CALENDAR_DATE.search(question) and "situation" not in slots:
+            # A date that named itself but could not be pinned to one day.
+            slots["situation"] = _CALENDAR_DATE.search(question).group(0).casefold()  # type: ignore[union-attr]
     playoff_round = _ROUND_WORDS.search(question)
     if playoff_round is not None:
         slots["round"] = playoff_round.group(0).casefold()
