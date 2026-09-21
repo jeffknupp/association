@@ -16,6 +16,19 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **The steps that settle a player and his games are written once (step 3,
+  C1).** `game_log` and `player_stat` each wrote out the same sequence - settle
+  the span, resolve the name against it, settle an ordinal season once he is
+  known, then narrow his games by opponent, venue, an absent teammate, a
+  starter/bench half, a playoff-series game, lines on box-score columns and a
+  date - and a fix to one had to be found and repeated in the other.
+  `templates.common.scoped_player` and `scoped_games` are those steps, read
+  from the slots in one place, so a narrowing the relation learns reaches every
+  template built on them. No answer changes: proved by a golden comparison of
+  460 recorded and constructed slot sets across the ten templates that read a
+  player's games (answer text, data and refusals identical), with the
+  comparison watched to fail when one slot was dropped from the shared
+  function (14 cases moved).
 - **The router no longer invents a `season` or a `date` the question never
   states.** A bare `season` integer or `date` from the model used to be
   trusted on its own whenever the question named no year or day - measured

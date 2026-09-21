@@ -57,8 +57,8 @@ from .common import (
     _span_of,
     _where_in,
     measure_filters,
-    narrow_measures,
-    settle_ordinal_season,
+    scoped_games,
+    scoped_player,
 )
 
 
@@ -275,7 +275,7 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     raw_date = slots.get("date")
     date = raw_date if isinstance(raw_date, str) and _ISO_DATE.match(raw_date) else None
     opponent, venue, span, without = slots.get("opponent"), slots.get("venue"), slots.get("span"), slots.get("without")
-    split, game_n, season_n, since = slots.get("split"), slots.get("game_n"), slots.get("season_n"), slots.get("since")
+    game_n = slots.get("game_n")
     measures = _game_log_lines(slots.get("below"), slots.get("above"), slots.get("threshold"))
     # A date names its game outright, so it replaces the season rather than
     # being filtered inside it: the router's season is usually its "current"
@@ -309,27 +309,7 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
             mixed=mixed,
         )
     return _game_log_player(
-        con,
-        slots.get("player"),
-        team_text,
-        slot_season=slot_season,
-        span=span,
-        season=season,
-        season_type=season_type,
-        opponent=opponent,
-        venue=venue,
-        without=without,
-        measures=measures,
-        split=split,
-        game_n=game_n,
-        season_n=season_n,
-        since=since,
-        stat=slots.get("stat"),
-        date=date,
-        limit=limit,
-        ascending=ascending,
-        mixed=mixed,
-        asked=asked,
+        con, slots, team_text, slot_season=slot_season, span=span, season=season, opponent=opponent, measures=measures, date=date, limit=limit, ascending=ascending, mixed=mixed, asked=asked
     )
 
 
@@ -374,22 +354,14 @@ def _game_log_team(
 
 def _game_log_player(
     con: duckdb.DuckDBPyConnection,
-    player_text: Any,
+    slots: dict[str, Any],
     team_text: str | None,
     *,
     slot_season: int | None,
     span: Any,
     season: int | None,
-    season_type: int,
     opponent: Any,
-    venue: Any,
-    without: Any,
     measures: list[MeasureFilter],
-    split: Any,
-    game_n: Any,
-    season_n: Any,
-    since: Any,
-    stat: Any,
     date: str | None,
     limit: int,
     ascending: bool,
@@ -408,17 +380,11 @@ def _game_log_player(
     # narrows the name. `season` here is the raw slot - None means the current
     # season only once _span_of reads it - and passed through as it was, it
     # narrowed "curry's last 5 games" over every season and asked about all six
-    # Currys again.
-    # An ordinal season ("his 18th season") is settled once he is known; until
-    # then the span is his career, which narrows the name over every season.
-    scope = _span_of("career" if season_n else span, None if season_n else season, season_type, "player_game_log", since=since)
-    player = _resolved_player(con, player_text, "game_log needs a team or a player", available=_GAME_LOGS, season=scope.season, through=_career_end(scope.season))
-    if isinstance(player, TemplateResult):
-        return player
-    settled = settle_ordinal_season(con, player, season_n, scope)
-    if isinstance(settled, TemplateResult):
-        return settled
-    scope = settled
+    # Currys again. The order those steps run in lives in scoped_player.
+    subject = scoped_player(con, slots, "game_log needs a team or a player", table="player_game_log", available=_GAME_LOGS, span=span, season=season)
+    if isinstance(subject, TemplateResult):
+        return subject
+    player, scope = subject
     if team_text:
         # A `team` beside a named `player` used to win outright at the check
         # above and answer the TEAM's log instead of his - see AGENTS.md,
@@ -427,20 +393,14 @@ def _game_log_player(
         # narrows nothing, a different one is his opponent, and a name
         # nothing resolves to is dropped exactly like an invented player name.
         opponent = _team_slot_for_player(con, player, team_text, season=slot_season, opponent=opponent)
-    extras = _log_extras(stat)
+    extras = _log_extras(slots.get("stat"))
     if mixed:
         if scope.season is None:
             raise TemplateUnsupported("a career span has no single season to read both season types within")
-        return _player_game_log_mixed(con, player, scope.season, opponent=opponent, venue=venue, without=without, split=split, measures=measures, extras=extras, limit=limit, asked=asked)
-    narrowed = _narrow_player_games(con, player, scope, opponent=opponent, venue=venue, without=without, split=split, game_n=game_n)
+        return _player_game_log_mixed(con, player, scope.season, slots, opponent=opponent, measures=measures, extras=extras, limit=limit, asked=asked)
+    narrowed = scoped_games(con, player, scope, slots, opponent=opponent, measures=measures, date=date)
     if isinstance(narrowed, TemplateResult):
         return narrowed
-    narrow_measures(narrowed, measures)
-    if date:
-        start, end = _eastern_day(date)
-        narrowed.extra.append("g.date >= ? AND g.date < ?")
-        narrowed.extra_params += [start, end]
-        narrowed.date = date
     return _player_game_log(con, player, scope, narrowed, extras, limit=limit, asked=asked, ascending=ascending)
 
 
@@ -933,11 +893,9 @@ def _player_game_log_mixed(
     con: duckdb.DuckDBPyConnection,
     player: Entity,
     season: int,
+    slots: dict[str, Any],
     *,
     opponent: Any,
-    venue: Any,
-    without: Any,
-    split: Any,
     measures: list[MeasureFilter],
     extras: tuple[str, ...],
     limit: int,
@@ -960,10 +918,9 @@ def _player_game_log_mixed(
     per_type: dict[int, tuple[_Span, _Narrowed]] = {}
     for season_type in (2, 3):
         type_scope = _Span(season, season_type)
-        narrowed = _narrow_player_games(con, player, type_scope, opponent=opponent, venue=venue, without=without, split=split)
+        narrowed = scoped_games(con, player, type_scope, slots, opponent=opponent, measures=measures)
         if isinstance(narrowed, TemplateResult):
             return narrowed
-        narrow_measures(narrowed, measures)
         per_type[season_type] = (type_scope, narrowed)
     headers, needed, rebuilt = _player_game_log_columns(con, extras)
     select = _player_game_log_select(needed, rebuilt)

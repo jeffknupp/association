@@ -40,7 +40,6 @@ from .common import (
     _defaulted_season_note,
     _format_value,
     _log_carries_rebuilt,
-    _narrow_player_games,
     _Narrowed,
     _no_narrowed_games,
     _period,
@@ -52,6 +51,8 @@ from .common import (
     measure_filters,
     narrow_measures,
     ordinal_word,
+    scoped_games,
+    scoped_player,
     settle_ordinal_season,
 )
 
@@ -990,9 +991,9 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     # from, are what narrow an ambiguous name to the players who could be the
     # answer - a career keeps Dell Curry, this season does not.
     season_type = slots.get("season_type") or 2
-    opponent, venue, without, split_side, measures, game_n, from_box_scores = _player_stat_narrowings(
-        slots.get("opponent"), slots.get("venue"), slots.get("without"), slots.get("split"), slots.get("below"), slots.get("above"), slots.get("game_n"), slots.get("since")
-    )
+    # Refused here, before any name is resolved, if a line names no column.
+    measures = measure_filters(slots.get("below"), slots.get("above"))
+    from_box_scores = _player_stat_reads_box_scores(slots, measures)
     if slots.get("limit") or slots.get("order"):
         # "Jokic averages last 10 games" answered with his season line would be
         # the substitution this module exists to stop. game_log lists exactly
@@ -1001,24 +1002,19 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         from .games import game_log
 
         return game_log(ctx, slots)
-    # An ordinal season ("his 18th season") is settled once he is known; until
-    # then the span is his career, which narrows the name over every season.
-    season_n = slots.get("season_n")
-    span = _span_of(
-        "career" if season_n else slots.get("span"),
-        None if season_n else slots.get("season"),
-        season_type,
-        "player_game_log" if from_box_scores else "player_season_stats_deduped",
-        since=slots.get("since"),
+    # The order those steps have to run in lives in scoped_player, with why.
+    subject = scoped_player(
+        con,
+        slots,
+        "player_stat needs a player name",
+        table="player_game_log" if from_box_scores else "player_season_stats_deduped",
+        available=_GAME_LOGS if from_box_scores else _SEASON_LINES,
+        span=slots.get("span"),
+        season=slots.get("season"),
     )
-    lines = _GAME_LOGS if from_box_scores else _SEASON_LINES
-    player = _resolved_player(con, slots.get("player"), "player_stat needs a player name", available=lines, season=span.season, through=_career_end(span.season))
-    if isinstance(player, TemplateResult):
-        return player
-    settled = settle_ordinal_season(con, player, season_n, span)
-    if isinstance(settled, TemplateResult):
-        return settled
-    span = settled
+    if isinstance(subject, TemplateResult):
+        return subject
+    player, span = subject
     stat = slots.get("stat")
     # Before the ESPN-served columns, because these carry their own table, their
     # own floor and their own career arithmetic - and because _wanted_stats
@@ -1032,10 +1028,9 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     wanted = [] if shooting else _wanted_stats(slots)
 
     if from_box_scores:
-        narrowed = _narrow_player_games(con, player, span, opponent=opponent, venue=venue, without=without, split=split_side, game_n=game_n)
+        narrowed = scoped_games(con, player, span, slots, opponent=slots.get("opponent"), measures=measures)
         if isinstance(narrowed, TemplateResult):
             return narrowed
-        narrow_measures(narrowed, measures)
         return _box_score_player_stat(con, player, span, narrowed, wanted, shooting)
     if span.career:
         return _career_player_stat(con, player, span, wanted, shooting)
@@ -1043,18 +1038,15 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     return _season_player_stat(con, player, span, season_type, wanted, shooting)
 
 
-def _player_stat_narrowings(opponent: Any, venue: Any, without: Any, split: Any, below: Any, above: Any, game_n: Any, since: Any) -> tuple[Any, Any, Any, str | None, list[MeasureFilter], Any, bool]:
-    """Every way the question narrowed the games, and whether that sends the
-    read to box scores: the opponent, venue and absent teammates; a named half
-    of the starter/bench split (it narrows the GAMES, so it reads box scores
-    like the other three - the season line has no such column); a line on a
-    box-score column ("under 14 fta", refused here if it names no column,
-    before any name is resolved); a game of each playoff series; a range of
-    seasons."""
-    split_side = split if split in STARTER_SIDES else None
-    measures = measure_filters(below, above)
-    from_box_scores = bool(opponent or venue or without or split_side or since or measures or game_n)
-    return opponent, venue, without, split_side, measures, game_n, from_box_scores
+def _player_stat_reads_box_scores(slots: dict[str, Any], measures: list[MeasureFilter]) -> bool:
+    """Whether ANY narrowing sends the read to box scores rather than the
+    season line: the opponent, venue and absent teammates; a named half of the
+    starter/bench split (it narrows the GAMES - the season line has no such
+    column); a line on a box-score column ("under 14 fta"); a game of each
+    playoff series; a range of seasons. The narrowings themselves are applied
+    by common.scoped_games."""
+    split_side = slots.get("split") if slots.get("split") in STARTER_SIDES else None
+    return any((slots.get("opponent"), slots.get("venue"), slots.get("without"), split_side, slots.get("since"), measures, slots.get("game_n")))
 
 
 def _season_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, season_type: int, wanted: list[str], shooting: tuple[str, str, str, str] | None) -> TemplateResult:

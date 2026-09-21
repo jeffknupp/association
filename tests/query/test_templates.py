@@ -1,6 +1,7 @@
 """Tests for the deterministic threshold_count template - including the exact
 question that failed three times through the tool-calling agent."""
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -1490,19 +1491,44 @@ def test_player_compare_asks_rather_than_guessing_an_ambiguous_name(ps_con: Temp
     assert "did you mean Seth Curry or Stephen Curry?" in answer
 
 
+def _source_a_template_reads_slots_in(handler: Any) -> str:
+    """A template's source, plus the shared scoping steps it hands its slots
+    to. Since step 3 a template on the player-games relation no longer reads
+    ``venue`` or ``without`` itself: common.scoped_player and scoped_games read
+    them, once, for every template that calls them - so "does this template
+    read the slot" has to follow that call. It follows ONLY a call the template
+    actually makes: one that neither reads a slot nor calls the step that does
+    still fails, which is the drift these guards exist for."""
+    import inspect
+
+    from association.query.templates import common
+
+    source = inspect.getsource(handler)
+    # One level of the template's own named steps: game_log is split into
+    # _game_log_team and _game_log_player to stay inside the complexity gate,
+    # and it is the player half that hands the slots on.
+    module = inspect.getmodule(handler)
+    for step in sorted(set(re.findall(r"\b(_[a-z][a-z0-9_]*)\(", source))):
+        if inspect.isfunction(getattr(module, step, None)):
+            source += inspect.getsource(getattr(module, step))
+    for shared in ("scoped_player", "scoped_games"):
+        if f"{shared}(" in source:
+            source += inspect.getsource(getattr(common, shared))
+    return source
+
+
 def test_no_template_outside_player_intents_reads_a_player_slot() -> None:
     """PLAYER_INTENTS decides whether a name the question does not support is
     refused or ignored, so a template drifting into reading a player slot
     without being listed would answer about somebody the question never named.
     Read out of the source rather than trusted, the way TEMPLATE_SOURCES is
     checked against TEMPLATES."""
-    import inspect
 
     from association.query.templates import TEMPLATES
     from association.query.templates.common import PLAYER_INTENTS
 
     for intent, handler in TEMPLATES.items():
-        source = inspect.getsource(handler)
+        source = _source_a_template_reads_slots_in(handler)
         reads = 'slots.get("player' in source or 'slots["player' in source
         assert reads == (intent in PLAYER_INTENTS), f"{intent} reads a player slot: {reads}, listed: {intent in PLAYER_INTENTS}"
 
@@ -2679,12 +2705,11 @@ def test_scope_guard_ignores_absent_or_empty_slots() -> None:
 
 def test_every_template_honoring_a_scope_slot_actually_reads_it() -> None:
     # Guards against the list drifting from the code it describes.
-    import inspect
 
     from association.query import templates as module
 
     for intent, honored in HONORED_SCOPING.items():
-        source = inspect.getsource(module.TEMPLATES[intent])
+        source = _source_a_template_reads_slots_in(module.TEMPLATES[intent])
         for slot in honored:
             assert f'"{slot}"' in source, f"{intent} claims to honor {slot} but never reads it"
 
