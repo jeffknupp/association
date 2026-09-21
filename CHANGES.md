@@ -16,6 +16,20 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **The router no longer invents a `season` or a `date` the question never
+  states.** A bare `season` integer or `date` from the model used to be
+  trusted on its own whenever the question named no year or day - measured
+  live, "show me stats for sixers when maxey scored 20+ points" arrived with
+  season=2023 (nothing in the text but "20+") and answered a real player's
+  real average for a season nobody asked about, and "fingerprint maxey vs
+  jaylen brown 2026" arrived with date='2026-01-01' and was refused ("not yet
+  for a particular date") for a cause the question never gave. Both are now
+  kept only when the question itself supports them - `_validate_season` still
+  reads a year or "last season" from the text first, and now drops a leftover
+  model guess rather than trusting it; `_route_calendar_slots` drops a
+  model-supplied `date` unless a real calendar day is in the question. A year
+  or day the text does name (`season_ref`, "last season", an ordinal season,
+  a stated year, a stated calendar day) is unaffected. Fixes #95.
 - **A name the question leaves open means whoever still plays, and the answer
   says so.** A name several players share used to ask "which one?" whenever
   more than one of them had a row in the seasons the answer could read - so

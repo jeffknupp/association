@@ -53,9 +53,20 @@ def test_unknown_season_type_falls_back_to_regular_season() -> None:
     assert _routed('{"intent":"leaderboard","season_type":"summer league"}').slots["season_type"] == 2
 
 
-def test_explicit_season_year_is_kept() -> None:
+def test_a_bare_season_with_no_textual_support_is_dropped() -> None:
+    """Superseded 2026-09-21 (#95): a model-supplied `season` integer used to
+    be kept on the strength of the integer alone, whether or not the question
+    named a year. Measured live: "show me stats for sixers when maxey scored
+    20+ points" arrived with season=2023 - nothing in the text but "20+" - and
+    answered a real player's real average for a season nobody asked about.
+    ROUTER_PROMPT only ever asks the model to set `season` when the question
+    names one (its own worked examples all have the year in the question
+    text), so a value that survives with nothing in the text to back it is the
+    model inventing one, not reading one - see
+    test_question_text_beats_a_wrong_season_slot for the case where the text
+    DOES name a year."""
     got = _route('{"intent":"threshold_count","season":2024}')
-    assert got is not None and got.slots["season"] == 2024
+    assert got is not None and "season" not in got.slots
 
 
 def test_nonsense_season_is_dropped_not_passed_to_sql() -> None:
@@ -78,6 +89,79 @@ def test_season_ref_never_leaks_through_as_a_slot() -> None:
 def test_bad_season_falls_back_to_season_ref() -> None:
     got = _route('{"intent":"threshold_count","season":20222023,"season_ref":"previous"}')
     assert got is not None and got.slots["season"] == current_season() - 1
+
+
+# #95, "the router invents a date or a season the question never states":
+# three live examples, pinned by the router's own recorded slots
+# (~/association-research/yardstick-v2/live_namerule.jsonl).
+def test_router_no_longer_invents_a_season_for_a_bare_threshold_question() -> None:
+    """Live: "show me stats for sixers when maxey scored 20+ points" arrived
+    with season=2023 - nothing in the text but "20+" - and answered "Tyrese
+    Maxey averaged 20.3 points per game ... in the 2023 regular season", a
+    fluent wrong answer to a question that never named a year."""
+    got = _ask(
+        "show me stats for sixers when maxey scored 20+ points",
+        '{"intent":"player_stat","stat":"points","player":"Maxey","season":2023,"season_type":2}',
+    )
+    assert "season" not in got.slots
+
+
+def test_router_no_longer_invents_a_season_for_shot_distance() -> None:
+    """Live: "what was steph curry's avg 3pt shot distance" arrived with
+    season=2022, while two other wordings of the identical question answered
+    2026 - the disagreement across phrasings was the tell that the value was
+    invented rather than read."""
+    got = _ask(
+        "what was steph curry's avg 3pt shot distance",
+        '{"intent":"shot_distance","stat":"points","player":"Stephen Curry","season":2022,"shot_value":3,"season_type":2}',
+    )
+    assert "season" not in got.slots
+
+
+def test_router_no_longer_invents_a_date_for_a_season_named_fingerprint() -> None:
+    """Live: "fingerprint maxey vs jaylen brown 2026" arrived with
+    date='2026-01-01' and was refused ("not yet for a particular date") for a
+    cause the question never gave - no day is named anywhere in it. The year
+    IS named ("2026"), so `season` is kept; only the invented `date` drops."""
+    got = _ask(
+        "fingerprint maxey vs jaylen brown 2026",
+        '{"intent":"fingerprint","stat":"maxey","player":"Maxey","side":"total","date":"2026-01-01","fields":["points","rebounds","assists","steals"],"season":2026,"season_type":2}',
+    )
+    assert "date" not in got.slots and got.slots.get("season") == 2026
+
+
+def test_a_model_invented_date_with_no_calendar_day_in_the_question_is_dropped() -> None:
+    """The date half of #95, on a garbage value rather than a plausible one:
+    the recorded corpus row for "jamal murray career games on Tuesdays" carries
+    date='TUESDAY' from the model, which is not a calendar day at all. Nothing
+    in `_CALENDAR_DATE` matches the question, so the value is dropped exactly
+    as a real-looking invented date is - see
+    test_router_no_longer_invents_a_date_for_a_season_named_fingerprint for
+    that case."""
+    got = _ask("jamal murray career games on Tuesdays", '{"intent":"game_log","player":"Jamal Murray","date":"TUESDAY"}')
+    assert "date" not in got.slots
+
+
+def test_season_keep_cases_are_unaffected_by_the_invented_season_fix() -> None:
+    """#95 changes only the branch that trusted a BARE model `season` int with
+    nothing in the question to back it. These keep working exactly as before:
+    a year the text names, "last season" (the model's own `season_ref`,
+    resolved in code rather than read as text - see _validate_season), and an
+    ordinal ("his 18th season", settled downstream by season_n once the player
+    is known)."""
+    # A year the question itself names.
+    named = _ask("who led the league in 2024?", '{"intent":"leaderboard","season":2019}')
+    assert named.slots["season"] == 2024
+    # "last season".
+    with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"leaderboard","stat":"ts_pct","season_ref":"previous"}')):
+        last = route("m", "Best true shooting percentage last season?")
+    assert last is not None and last.slots["season"] == current_season() - 1
+    # An ordinal season: the misread year drops, season_n survives.
+    ordinal = _ask(
+        "how many 40+ points games does lebron james have in his 18th season?",
+        '{"intent":"threshold_count","stat":"points","threshold":40,"player":"LeBron James","season":2018}',
+    )
+    assert ordinal.slots.get("season_n") == 18 and "season" not in ordinal.slots
 
 
 def test_unparseable_reply_returns_none_to_fall_through() -> None:
@@ -135,9 +219,22 @@ def test_schema_requires_stat_so_the_decoder_emits_it() -> None:
 
 def test_explicit_year_still_wins_over_a_required_season_ref() -> None:
     """`season_ref` is required so the model always makes a relative-season
-    decision; a named year must still override it."""
+    decision; a year the QUESTION names must still override it. Rewritten
+    2026-09-21 (#95) to actually name one - the original passed question="q"
+    and pinned the bare `season` slot winning, which is the bug this entry
+    fixes; see test_a_bare_season_with_no_textual_support_is_dropped."""
+    got = _ask("who led the league in points in 2024", '{"intent":"leaderboard","stat":"points","season":2024,"season_ref":"current"}')
+    assert got.slots["season"] == 2024
+
+
+def test_season_ref_wins_when_the_question_names_no_year_at_all() -> None:
+    """The mirror case, added alongside the #95 fix: with nothing in the text,
+    the enum-bounded `season_ref` is still trusted - the model can only set it
+    to "previous"/"current", never a free year, and ROUTER_PROMPT already
+    instructs "current" for anything that does not say "last season" - but the
+    bare `season` integer beside it is not."""
     got = _route('{"intent":"leaderboard","stat":"points","season":2024,"season_ref":"current"}')
-    assert got is not None and got.slots["season"] == 2024
+    assert got is not None and got.slots["season"] == current_season()
 
 
 def test_schema_requires_only_the_slot_that_pays_for_itself() -> None:
@@ -201,11 +298,17 @@ def test_question_text_beats_a_wrong_season_slot() -> None:
     assert got is not None and got.slots["season"] == 2024
 
 
-def test_the_model_slot_still_applies_when_the_text_names_no_season() -> None:
-    """Phrasings the parser has never seen must route as well as before."""
+def test_the_model_slot_no_longer_applies_when_the_text_names_no_season() -> None:
+    """Superseded 2026-09-21 (#95). This used to pin the opposite: "phrasings
+    the parser has never seen must route as well as before", trusting the
+    model's raw `season` whenever nothing in the text named one. Measured,
+    that is the invented-season bug itself - "his rookie year" names no year
+    in the text, exactly the shape of "show me stats for sixers when maxey
+    scored 20+ points" (season=2023 from nothing but "20+"). The model's guess
+    now drops and the template's own current-season default applies."""
     with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"leaderboard","season":2021}')):
         got = route("m", "who led in his rookie year?")
-    assert got is not None and got.slots["season"] == 2021
+    assert got is not None and "season" not in got.slots
 
 
 def _fingerprint(payload: str, question: str) -> Route:
@@ -1448,9 +1551,15 @@ def test_a_per_game_abbreviation_names_a_stat() -> None:
     assert got.slots["stat"] == "points"
 
 
-def test_a_model_season_before_1990_is_kept() -> None:
-    """The model's `season` slot had the same 1990 floor as the text, so a 1980 it filled in was dropped."""
-    got = _ask("who led the league in scoring back then", '{"intent":"leaderboard","stat":"points","season":1980}')
+def test_a_season_before_1990_named_in_the_question_is_kept() -> None:
+    """MIN_SEASON is 1947, not 1990 (season_text.py) - a year this low must
+    still survive when the QUESTION names it. Rewritten 2026-09-21 (#95): this
+    used to pin the same floor for a BARE model `season` int on a question
+    ("who led the league in scoring back then") that names no year at all -
+    which is the invented-season bug this entry fixes, not the floor. See
+    test_the_model_slot_no_longer_applies_when_the_text_names_no_season for
+    that half."""
+    got = _ask("who led the league in scoring in 1980", '{"intent":"leaderboard","stat":"points"}')
     assert got.slots["season"] == 1980
 
 
