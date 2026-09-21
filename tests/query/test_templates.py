@@ -10,7 +10,7 @@ import pytest
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.query import shotchart
-from association.query.entities import MAX_CANDIDATES
+from association.query.entities import MAX_CANDIDATES, Availability, Entity, collect_name_readings, resolve_player
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, TemplateContext, TemplateUnsupported, check_scope
 from association.query.templates.games import _rebuilt_readable, game_log, head_to_head, period_leaderboard, period_split, player_matchup, team_quarter_points
@@ -791,29 +791,57 @@ def test_narrowing_that_eliminates_everybody_still_asks_about_everybody(curry_ct
     assert result.data["candidates"] == ["Dell Curry", "Eddy Curry", "JamesOn Curry", "Michael Curry", "Seth Curry", "Stephen Curry"]
 
 
-def test_a_name_given_in_full_is_never_narrowed_away(curry_ctx: TemplateContext) -> None:
-    """ "Gary Payton" also matches Gary Payton II, and only the son has a line
-    this season - as in the warehouse, where the father's last is 2007. A
-    question naming the father in full is about him, and its answer is that he
-    has no numbers, not his son's line because the son is the Payton who does.
-
-    Not "Dell Curry": that name matches one player, so it never reaches the
-    exact-match rule this is about - and a perturbation removing the rule
+def _paytons(ctx: TemplateContext) -> None:
+    """ "Gary Payton" is one player's whole name and also matches Gary Payton
+    II; only the son has a line this season - as in the warehouse, where the
+    father's last is 2007. Not "Dell Curry": that name matches one player, so it
+    never reaches the exact-match rule - and a perturbation removing the rule
     passed against it."""
-    curry_ctx.con.execute("INSERT INTO players VALUES ('7','Gary Payton'),('8','Gary Payton II')")
-    curry_ctx.con.execute("INSERT INTO player_season_stats_deduped VALUES ('7',2007,2,70,5.0,350,2.0,3.0,210),('8',?,2,60,7.0,420,3.0,2.0,120)", [current_season()])
-    answer = player_stat(curry_ctx, {"player": "Gary Payton", "season": current_season()}).answer
-    assert answer == f"Gary Payton has no {current_season()} regular season numbers in the warehouse."
+    ctx.con.execute("INSERT INTO players VALUES ('7','Gary Payton'),('8','Gary Payton II')")
+    ctx.con.execute("INSERT INTO player_season_stats_deduped VALUES ('7',2007,2,70,5.0,350,2.0,3.0,210),('8',?,2,60,7.0,420,3.0,2.0,120)", [current_season()])
 
 
-def test_a_history_narrows_over_every_season_it_could_read(curry_ctx: TemplateContext) -> None:
-    """A history anchored at 2005 reads each player's last seasons up to 2005,
-    wherever they fall, so only a player with nothing that early is out: Seth,
-    Stephen and JamesOn. Narrowing to 2005 alone would also drop Dell and
-    Michael, whose histories through 2005 are real answers - Eddy, who played
-    in it, is only named first."""
-    result = player_history(curry_ctx, {"player": "Curry", "stat": "points", "season": 2005})
-    assert result.data["candidates"] == ["Eddy Curry", "Dell Curry", "Michael Curry"]
+def test_a_name_given_in_full_is_its_owner_wherever_he_has_numbers(curry_ctx: TemplateContext) -> None:
+    """The father's name in full, in a season he played and over a career, is
+    the father - the son being the Payton who plays now changes nothing."""
+    _paytons(curry_ctx)
+    assert player_stat(curry_ctx, {"player": "Gary Payton", "season": 2007}).answer.startswith("Gary Payton averaged 5 points")
+    career = resolve_player(curry_ctx.con, "Gary Payton", Availability("player_season_stats_deduped"), None, current_season())
+    assert isinstance(career, Entity) and career.name == "Gary Payton"
+
+
+def test_a_name_given_in_full_yields_to_the_one_namesake_with_numbers(curry_ctx: TemplateContext) -> None:
+    """This used to answer "Gary Payton has no 2026 regular season numbers" -
+    true, and about the wrong man when the question was the son's (the filed
+    case was "Jabari Smith", the retired father's exact name, where the son is
+    "Jabari Smith Jr."). The father cannot be the answer to a question about
+    this season and exactly one namesake can, so it is him, and the reading is
+    said with the way back to the father."""
+    _paytons(curry_ctx)
+    with collect_name_readings() as readings:
+        answer = player_stat(curry_ctx, {"player": "Gary Payton", "season": current_season()}).answer
+    assert answer.startswith("Gary Payton II averaged 7 points")
+    s = current_season()
+    assert readings == [f"('Gary Payton' was read as Gary Payton II, the only match who played in {s - 1}-{s % 100:02d}. Gary Payton also matches - name a season he played to ask about him.)"]
+
+
+def test_a_name_left_open_is_whoever_played_the_last_season_of_the_span(curry_ctx: TemplateContext) -> None:
+    """A history through 2005 reads each Curry's seasons up to 2005, so Dell and
+    Michael could answer it too - and it used to ask which of the three. Eddy is
+    the only one who played in 2005, so it is his, said with the others named:
+    a default is allowed where it is visible and can be corrected."""
+    with collect_name_readings() as readings:
+        result = player_history(curry_ctx, {"player": "Curry", "stat": "points", "season": 2005})
+    assert result.answer.startswith("Eddy Curry, points per game by regular season")
+    assert readings == [
+        "('Curry' was read as Eddy Curry, the only match who played in 2004-05. Dell Curry and Michael Curry also match - use the full name, or name a season they played, to ask about one of them.)"
+    ]
+
+
+def test_a_reading_is_collected_only_where_somebody_is_listening(curry_ctx: TemplateContext) -> None:
+    """Outside collect_name_readings the resolution is the same and nothing is
+    kept - a template called directly has nowhere to put the sentence."""
+    assert player_history(curry_ctx, {"player": "Curry", "stat": "points", "season": 2005}).answer.startswith("Eddy Curry")
 
 
 def test_a_history_names_whoever_reached_its_last_season_first(curry_ctx: TemplateContext) -> None:

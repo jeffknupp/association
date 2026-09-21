@@ -25,6 +25,9 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 
@@ -809,9 +812,10 @@ def undo_name_completion(con: duckdb.DuckDBPyConnection, question: str, slots: d
     Brown']``. Tatum is one player and that completion is free; "brown" is ten,
     and the router choosing Jaylen is exactly the prominence tiebreak measured
     and rejected above :data:`PLAYER_NICKNAMES` - arriving through the model's
-    guess instead of through code, where nothing downstream can see it. A bare
-    surname is the canonical thing this project asks about, and it stopped
-    asking as soon as the router started completing it.
+    guess instead of through code, where nothing downstream can see it. Which
+    Brown is meant is for :func:`resolve_player` to settle - by who still
+    plays, said in the answer, or by asking when more than one does - and it
+    never got the chance once the router started completing the name.
 
     So a name the question carries only PART of is cut back to that part, and
     normal resolution decides: ``find_players`` applies the nickname table
@@ -1857,6 +1861,55 @@ def _resolve(candidates: list[Entity], text: str, exact_keys: tuple[str, ...]) -
     return exact if exact is not None else Ambiguous(query=text, candidates=[c.name for c in candidates])
 
 
+_NAME_READINGS: ContextVar[list[str] | None] = ContextVar("association_name_readings", default=None)
+
+
+@contextmanager
+def collect_name_readings() -> Iterator[list[str]]:
+    """Collect, for one question, every sentence saying how an open name was
+    read - see :func:`resolve_player`.
+
+    A default is only allowed where it is visible and correctable, so a name
+    settled by "who played most recently" has to reach the answer as words: who
+    it was read as, who else matched, and what to type to get the other one.
+    The reading happens several calls below the template, in 27 call sites that
+    take a bare connection, so it is collected here rather than threaded
+    through every signature - a ``ContextVar`` and not a module global because
+    the web server and the tests run questions on more than one thread. Outside
+    this context nothing is collected and resolution behaves the same.
+
+    .. versionadded:: 4.4.0
+    """
+    notes: list[str] = []
+    token = _NAME_READINGS.set(notes)
+    try:
+        yield notes
+    finally:
+        _NAME_READINGS.reset(token)
+
+
+def _note_name_reading(text: str, chosen: Entity, others: list[Entity], season: int, *, named_in_full: bool) -> None:
+    """Say how ``text`` was read, where somebody is listening. The second
+    sentence is the point: it names the wording that reaches the other player,
+    because a default nobody can correct is the one case this is not allowed."""
+    notes = _NAME_READINGS.get()
+    if notes is None:
+        return
+    shown = [c.name for c in others[:MAX_CLARIFY_CANDIDATES]]
+    extra = len(others) - len(shown)
+    also = _joined_names(shown) + ("" if extra <= 0 else f" and {extra} more")
+    verb = "matches" if len(others) == 1 else "match"
+    whom, they = ("him", "he") if len(others) == 1 else ("one of them", "they")
+    how = f"name a season {they} played" if named_in_full else f"use the full name, or name a season {they} played,"
+    note = f"({text!r} was read as {chosen.name}, the only match who played in {season - 1}-{season % 100:02d}. {also} also {verb} - {how} to ask about {whom}.)"
+    if note not in notes:
+        notes.append(note)
+
+
+def _joined_names(names: list[str]) -> str:
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + f" and {names[-1]}"
+
+
 def resolve_player(
     con: duckdb.DuckDBPyConnection,
     text: str,
@@ -1884,31 +1937,55 @@ def resolve_player(
     - Every match is narrowed, not :func:`find_players`' first
       ``MAX_CANDIDATES``. Narrow that page and "the only Johnson with a row"
       means the only one among the first ten of 47, alphabetically.
-    - A name matched exactly is not narrowed at all. "Gary Payton" also
-      matches Gary Payton II, the only one of them with a 2026 row; a
-      question naming the father in full is about him, and its answer is
-      that he has no numbers - not his son's line.
+    - A name matched exactly is that player while he has a row in the seasons
+      asked about. "Gary Payton career points" is the father's. Only when he
+      has none and exactly one namesake does is it the namesake, said in the
+      answer - see :func:`_named_in_full`.
     - When narrowing eliminates everybody, everybody is asked about, exactly
       as before. No answer to "which one?" has data then either, and picking
       one because the season is empty would be the guess this refuses.
 
-    Whoever played in the season the answer is about is listed first and
-    counted in ``Ambiguous.active``, which :func:`clarification` never cuts.
-    For one season that is every survivor. For a span it is the players who
-    reached its last season: a history through 2026 still has Dell Curry's
-    seasons to answer with, so he stays, but Seth and Stephen are named ahead
-    of him rather than cut behind "1 other also matches". That is an order,
-    not a choice - everybody who survives is still asked about.
+    **A name the question leaves open means whoever still plays.** With no
+    season asked about, the survivors are narrowed once more, to the last
+    season of the span (now, for a career): one left is the answer. "Maxey" is
+    Tyrese, not Marlon, who last played in 1994; "show maxey's games against
+    boston in the past two seasons" asked which of them was meant. This is a
+    default, and the rule for a default is that it is **visible and
+    correctable**: :func:`collect_name_readings` carries a sentence to the
+    answer saying who the name was read as, who else matched, and what to type
+    to reach him. Measured on the warehouse: of 391 surnames two or more
+    players share, 124 have exactly one who played in 2026 and stop asking, and
+    in 67 of those a retired namesake has more games on record ("wade" is Dean
+    Wade, "pippen" is Scotty Pippen Jr.) - which is why the sentence is not
+    optional. It is still not the prominence tiebreak: two namesakes who both
+    played ("brown", "curry") are asked about, and nothing ranks them.
+
+    Where two or more survive, whoever played in the season the answer is
+    about is listed first and counted in ``Ambiguous.active``, which
+    :func:`clarification` never cuts, so Seth and Stephen are named ahead of
+    Dell rather than cut behind "1 other also matches".
 
     .. versionchanged:: 2.1.0
        Takes ``available``, ``season`` and ``through``, and narrows an
        ambiguous name by them before asking.
+
+    .. versionchanged:: 4.4.0
+       With no season asked about, one namesake who played in the latest
+       season is the answer rather than a question, and a name given in full
+       yields to the one namesake with data where its owner has none. Both are
+       reported through :func:`collect_name_readings`.
     """
     if not available:
         return _resolve(find_players(con, text), text, ("name",))
     everyone = find_players(con, text, limit=None)
-    if len(everyone) < 2 or _exact(everyone, text) is not None:
+    if len(everyone) < 2:
         return _resolve(everyone, text, ("name",))
+    # The season a name left open is settled by: the one asked about, else the
+    # last season of the span, else now.
+    latest = season if season is not None else through if through is not None else current_season()
+    named = _exact(everyone, text)
+    if named is not None:
+        return _named_in_full(con, text, named, everyone, available, season, through, latest)
     narrowed = narrow_to_available(con, everyone, available, season, through)
     if len(narrowed) == 1:
         return narrowed[0]
@@ -1916,15 +1993,46 @@ def resolve_player(
         # Nobody left is the old question over the old list - the same first
         # page find_players returns - rather than every Williams on record.
         return Ambiguous(query=text, candidates=[c.name for c in everyone[:MAX_CANDIDATES]])
-    if season is not None:
-        current = narrowed
-    elif through is not None:
-        current = narrow_to_available(con, narrowed, available, through)
-    else:
-        current = []
-    named = {c.id for c in current}
-    ordered = current + [c for c in narrowed if c.id not in named]
+    current = narrowed if season is not None else narrow_to_available(con, narrowed, available, latest)
+    if season is None and len(current) == 1:
+        # One of them still plays. "Maxey" is Tyrese and not Marlon, who last
+        # played in 1994 - said in the answer, with the way to reach Marlon.
+        _note_name_reading(text, current[0], [c for c in narrowed if c.id != current[0].id], latest, named_in_full=False)
+        return current[0]
+    in_season = {c.id for c in current}
+    ordered = current + [c for c in narrowed if c.id not in in_season]
     return Ambiguous(query=text, candidates=[c.name for c in ordered], active=len(current))
+
+
+def _named_in_full(
+    con: duckdb.DuckDBPyConnection,
+    text: str,
+    named: Entity,
+    everyone: list[Entity],
+    available: Availability | tuple[Availability, ...],
+    season: int | None,
+    through: int | None,
+    latest: int,
+) -> Resolution:
+    """A name that is somebody's whole name is that player - unless he has
+    nothing in the seasons asked about and exactly one namesake does.
+
+    "Jabari Smith" is the retired father's exact name and the son is "Jabari
+    Smith Jr.", so the son's log answered "no 2026 games" - a true sentence
+    about the wrong man, and the refusal naming the wrong cause this project
+    ranks beside a wrong answer. Same elimination as everywhere else here: the
+    father cannot be the answer to a question about 2026, one player can, and
+    the answer says so and says how to ask about the father. With two namesakes
+    who could be, or none, the name means what it says, as it always did:
+    "Gary Payton career points" is the father's, because he has a career.
+    """
+    if narrow_to_available(con, [named], available, season, through):
+        return named
+    could_be = [c for c in narrow_to_available(con, everyone, available, season, through) if c.id != named.id]
+    if len(could_be) != 1:
+        return named
+    _note_name_reading(text, could_be[0], [named], latest, named_in_full=True)
+    return could_be[0]
 
 
 def resolve_team(con: duckdb.DuckDBPyConnection, text: str, season: int | None = None) -> Resolution:

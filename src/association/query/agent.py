@@ -14,6 +14,7 @@ import ollama
 
 from .answer import Answer, AnsweredBy, Artifact, FallthroughDisabled, Timing
 from .entities import (
+    collect_name_readings,
     compared_but_unmatched,
     misread_players,
     override_invented_players,
@@ -355,7 +356,7 @@ class Agent:
                 history.log(f"  -> (coverage) {refused}")
                 result = TemplateResult(data={"message": refused, "season": routed.slots.get("season")}, answer=refused)
             else:
-                result = handler(TemplateContext(con=self.toolbox.con, out_dir=self.toolbox.out_dir), routed.slots)
+                result = self._run_template(handler, routed.slots, history)
                 # A season that IS covered but only partly says so, rather than
                 # reporting half a year as a whole one.
                 note = coverage_caveat(routed.intent, routed.slots)
@@ -377,6 +378,21 @@ class Agent:
         # No second model call, ever: templates phrase their own answers. See
         # TemplateResult for why that is both faster and safer than narrating.
         return routed.intent, result
+
+    def _run_template(self, handler: Callable[[TemplateContext, dict[str, Any]], TemplateResult], slots: dict[str, Any], history: RunHistory) -> TemplateResult:
+        """The template's answer, with how it read any name the question left
+        open. "maxey" is Tyrese because he is the only Maxey who still plays -
+        a default, and a default is allowed only where it is visible and can be
+        corrected, so the sentence naming who else matched and what to type for
+        him is part of the answer (entities.collect_name_readings)."""
+        with collect_name_readings() as readings:
+            result = handler(TemplateContext(con=self.toolbox.con, out_dir=self.toolbox.out_dir), slots)
+        for reading in readings:
+            history.log(f"  -> (player) {reading}")
+            result.answer = f"{result.answer} {reading}"
+        if readings:
+            result.data["name_readings"] = list(readings)
+        return result
 
     def _ask_inner_chat(self, history: RunHistory) -> ollama.Message:
         """One model turn: call ollama, log any thinking, and append the raw

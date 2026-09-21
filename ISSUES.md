@@ -46,6 +46,41 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### The router invents a `date` or a `season` the question never states
+- **Found:** 2026-09-16, issues audit and the "Bam adebeyo jan 19" investigation
+- **Evidence:** "2024 nba stephen curry double double per game scored on
+  fridays" arrived with `date="2024-12-15"`, and "Best NBA record since January
+  31st" with `date="2023-01-31"`. Separately, 12 of the 261 feed queries name
+  no year and arrive with a non-current `season` from the model (2025 four
+  times, 2023 three times); `_validate_season` accepts any year in range when
+  the question names none, which is how "jan 19" became 2023-01-19. None of the
+  12 is graded correct - they fall through, are wrong, or are unclear.
+- **User sees:** nothing wrong today on `date`, because both examples are
+  refused. But a model-invented `date` on `game_log` or `fingerprint` answers a
+  game nobody asked about, and an invented `season` narrows any question to a
+  year nobody named.
+- **Next step:** in `route()`, keep a model-supplied `date` only when
+  `_CALENDAR_DATE` finds one in the question, and a model-supplied `season`
+  only when the question names a year or a relative season - the rule
+  `override_invented_players` applies to names.
+- **Re-ranked P2 -> P1, 2026-09-21, on a live run of Jeff's own questions**
+  (`~/association-research/yardstick-v2/live_31b2ec6.jsonl`, build
+  `v4.3.0-39-g31b2ec6-dirty`, real `Agent`, fall-through off). "User sees:
+  nothing wrong today" is no longer true. Three of the ten question families
+  whose wordings disagree with each other are this entry:
+  "show me stats for sixers when maxey scored 20+ points" arrived with
+  `season=2023` (nothing in the text but "20+") and answered "Tyrese Maxey
+  averaged 20.3 points per game in 60 games in the 2023 regular season";
+  "what was steph curry's avg 3pt shot distance" arrived with `season=2022`
+  and answered 2022's 27.5 feet, while two other wordings of the same question
+  answered 2026's 27.6; and "fingerprint maxey vs jaylen brown 2026" arrived
+  with `date='2026-01-01'` and was refused with "not yet for a particular
+  date" - a refusal naming a cause the question never supplied, while "show a
+  fingerprint for maxey vs jaylen brown in 2026" drew the pair. The first two
+  are fluent wrong answers.
+- **Source:** ours, not ESPN's.
+- **GitHub:** #95
+
 ### The agent fall-through answers 1 question in 23, and does not finish 61% of the time
 - **Found:** 2026-09-18, the first measurement of the agent path in this project
 - **Evidence:** 24 questions stratified across the four fall-through causes, run
@@ -172,7 +207,80 @@ those were found.
 - **GitHub:** #114
 
 
+### `single_game_high` ignores a named team, and answers the league's high for the default season
+- **Found:** 2026-09-21, live fast-path sample `~/association-research/statmuse-2026-09-large/live_sample200_2026-09-21/` (200 seeded-random reasonable StatMuse questions through the live router and templates on master `31b2ec6`, main checkout's `nba.duckdb`)
+- **Evidence:** 3 of 200 sampled questions, all answered fluently and wrong.
+  "most points in a game in cavs history", "most points in a game by a knicks
+  playter" and "most points in a game in pistons history power forward" each
+  route to `single_game_high` with `team` set and no season, and each answers
+  "Bam Adebayo had the most points in a single game in the 2026 regular season:
+  83". Reproduced offline by calling the template with
+  `{'stat': 'points', 'team': 'Cleveland Cavaliers', 'season_type': 2}`.
+  `HONORED_SCOPING["single_game_high"]` is `{"span"}` and `team` is not a
+  scoping slot, so nothing refuses it - the `limit`/`stat` shape of #125 on a
+  third slot. The corpus row "kawhi most threes in a game" is the same bug with
+  the player dropped instead (answers Curry and Trey Murphy).
+  5 of 1,972 reasonable large-set questions match the narrow regex
+  `in a game.*(history|by a \w+ player)`; 65 (3.3%) say history/all-time/franchise.
+- **User sees:** another team's player, another season, no caveat.
+- **Next step:** honor `team` on the relation (`player_games` already carries
+  the team), read "history"/"all-time" as `span: career`, and refuse a
+  subject the template was given and cannot use. We hold the data.
+
+### A two-digit season ("23-24") is answered for the wrong year
+- **Found:** 2026-09-21, same live sample
+- **Evidence:** "points per game leaders for the 23-24 nba season" answers the
+  2023 season (Embiid 33.1). Rerouted offline with the model stubbed:
+  "2023-24" gives `season: 2024`, "23-24" keeps the model's `2023` -
+  `_validate_season` reads the four-digit form from the text and not the
+  two-digit one. 15 of 1,972 reasonable large-set questions use the form
+  (`(?<![\d-])\d{2}-\d{2}(?![\d-])`, which also catches "02-03 to 06-07"
+  ranges and "23/24" is not counted); the corpus has "nba leaders in plus minus
+  in 25-26".
+- **User sees:** the right shape for the season before the one asked.
+- **Next step:** teach `_validate_season`'s text read "YY-YY" and "YY/YY"
+  (consecutive years only, so "10-12" stays a score). `route()` only; hash the
+  prompt constants to prove nothing else can move.
+
+### A thresholdless `threshold_count` is rewritten to `leaderboard` before the subject is restored
+- **Found:** 2026-09-21, a Sonnet agent replaying the 172 distinct
+  `.history/*.log` web-session questions offline through `31b2ec6`
+- **Evidence:** "how many games did embid play" answers "Tyrese Maxey led the
+  league in minutes per game in the 2026 regular season, at 38.0". The agent's
+  trace: `_route_threshold` (`router.py`, ~1672) rewrites to `leaderboard`
+  without checking for a subject, and runs before `_route_subject_slots`, which
+  excludes `leaderboard` from `_SUBJECT_RESTORED_INTENTS`; `_SUBJECT_OF_HAVE`
+  has no "play/played" verb either. **Lead re-check:** with a `player` slot
+  present the rewrite keeps it (`leaderboard` then refuses a named player), so
+  the wrong answer needs the router to have dropped the player as well.
+  1 of 172 web-session questions; population in the large set unmeasured (it
+  depends on the model's slots, not on a regex). The live sample has 4
+  `threshold_count` fall-throughs on `threshold: 0` for "most X" questions
+  ("luka stats most turnovers"), the refusing side of the same rewrite.
+- **User sees:** a league leaderboard in a stat nobody asked about.
+- **Next step:** guard the rewrite on the question naming no player
+  (`players_named_in`), and send a named player's "how many games" to
+  `player_stat`.
+
 ## P2: misleading or incomplete
+
+### "Since he joined the league" becomes one season, the year he joined
+- **Found:** 2026-09-21, yardstick-v2 live run (`live_31b2ec6.jsonl`)
+- **Evidence:** "Show me luka's avg assists in each year since he joined the
+  league" routed to `player_history` with `season=2019, limit=10` and answered
+  "Luka Doncic, assists per game by regular season, 2019" - one row, where
+  eight seasons were asked for. The model did the arithmetic (he joined in
+  2018-19) and spent it on `season` where the question means `since`. The
+  sibling wording "year over year" answers 2022-2026, the five-season default.
+- **User sees:** a one-row table, titled with the year, so the narrowing is
+  visible - which is why this is P2 and not P1.
+- **Next step:** related to the invented-season entry (#95) but not fixed by
+  it: dropping a `season` the text does not state would turn this into the
+  five-season default, still three seasons short. "since he joined", "since
+  his rookie year", "over his career" on `player_history` want `span=career`
+  read from the question's own words in `route()`.
+- **Source:** ours, not ESPN's.
+- **GitHub:** none yet
 
 ### Season 2021's regular-season BPI snapshot is a day-one projection
 - **Found:** 2026-09-15, reviewing `4ef119f`; **re-ranked P3 -> P2 on 2026-09-16** - a preseason projection presented as a season's index, with no caveat
@@ -557,6 +665,17 @@ those were found.
 - **Next step:** return a refusal naming the missing round data, the way
   `_conference_refusal` does. Deriving rounds from series order is a separate
   P3 job.
+- **Re-measured 2026-09-21: the largest single fall-through cause in a live
+  sample, and the Finals are derivable.** 10 of 200 seeded-random reasonable
+  large-set questions fell through on `round` (all ten say "finals": "michael
+  jordan career finals stats", "how many 40 point finals games does kobe
+  have"); 124 of the 1,972 reasonable questions (6.3%) name a round. The
+  Finals need no round column: the series holding each calendar year's last
+  postseason game in `real_games` is 4-7 games for 36 of 38 years (2001 shows 1
+  game - DATA.md's missing 2001 playoffs - and 1994 shows 14, the phantom-1993
+  duplicates, so key on `season` too). Prefer answering the Finals and refusing
+  the other rounds to refusing all of them. Evidence:
+  `~/association-research/statmuse-2026-09-large/live_sample200_2026-09-21/`.
 - **GitHub:** #10
 
 ### The NBA Cup final is counted as a regular-season game in most answers
@@ -895,26 +1014,6 @@ those were found.
   untouched and still falls through.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #94
-
-### The router invents a `date` or a `season` the question never states
-- **Found:** 2026-09-16, issues audit and the "Bam adebeyo jan 19" investigation
-- **Evidence:** "2024 nba stephen curry double double per game scored on
-  fridays" arrived with `date="2024-12-15"`, and "Best NBA record since January
-  31st" with `date="2023-01-31"`. Separately, 12 of the 261 feed queries name
-  no year and arrive with a non-current `season` from the model (2025 four
-  times, 2023 three times); `_validate_season` accepts any year in range when
-  the question names none, which is how "jan 19" became 2023-01-19. None of the
-  12 is graded correct - they fall through, are wrong, or are unclear.
-- **User sees:** nothing wrong today on `date`, because both examples are
-  refused. But a model-invented `date` on `game_log` or `fingerprint` answers a
-  game nobody asked about, and an invented `season` narrows any question to a
-  year nobody named.
-- **Next step:** in `route()`, keep a model-supplied `date` only when
-  `_CALENDAR_DATE` finds one in the question, and a model-supplied `season`
-  only when the question names a year or a relative season - the rule
-  `override_invented_players` applies to names.
-- **Source:** ours, not ESPN's.
-- **GitHub:** #95
 
 ### `opponent` can hold garbage nothing else in the slots explains, and blocks an otherwise-answerable question
 - **Found:** 2026-09-18, entity-resolution pass over the StatMuse replay set
@@ -1816,37 +1915,6 @@ those were found.
 - **GitHub:** not yet filed
 - **GitHub:** #131
 
-### A son's name without its suffix is an exact match on the father, who has no games to show
-- **Found:** 2026-09-19, re-scoring the corpus yardstick after the B4 port
-  (`player_stat` with a real `limit` now hands the question to `game_log`)
-- **Evidence:** "Jabari smith defensive rebounds vs lakers last 5 games"
-  answers "No 2026 regular season games found for Jabari Smith." The warehouse
-  holds two: Jabari Smith (athlete 793, last box row 2005) and Jabari Smith
-  Jr. (4432639, Houston, 2023-2026). `resolve_player` treats a name matched
-  exactly as not narrowable - the Gary Payton rule in its docstring, so a
-  question naming the father in full is about him - and "Jabari Smith" IS the
-  father's exact name. Nobody types the "Jr.", so the son is unreachable
-  without it: `find_players(con, "Jabari Smith")` returns both, `_exact` picks
-  793, and the log reads an empty season. Same shape for every father/son pair
-  where the father's name is the son's minus a suffix (Gary Payton II, Tim
-  Hardaway Jr., Larry Nance Jr., Kelly Oubre Jr., Jaren Jackson Jr., Michael
-  Porter Jr., Marvin Bagley III, Kevin Porter Jr., Wendell Carter Jr., Kenyon
-  Martin Jr.).
-- **User sees:** a refusal naming the wrong cause - a real 2026 player, asked
-  about by the name everyone uses, reads as having played no games this season.
-- **Next step:** not the narrowing rule itself (the Gary Payton case is right:
-  "Gary Payton" in full with no season is the father). The seam is what
-  "exact" means when the only other candidate differs by a generational
-  suffix and the exact match has no row in the season the answer would be read
-  from: that is the one shape where the exact name is genuinely ambiguous, and
-  the honest move is the same as elsewhere in `resolve_player` - ask, naming
-  both with their years, rather than answer for either. Measure on the corpus
-  which father/son pairs it touches before changing anything.
-- **Priority note:** P2 - the numbers are not wrong, but the sentence sends the
-  reader to look for a data gap that does not exist.
-- **GitHub:** none yet
-- **GitHub:** #150
-
 ### A career-span `shot_distance` drops an unseparable season and loses the derived-season caveat, silently
 - **Found:** 2026-09-20, fixing #141 (`shot_chart`/`shot_distance` honoring a
   career `span`)
@@ -1884,6 +1952,102 @@ those were found.
   summed; the gap is what it does not say.
 - **GitHub:** none yet
 - **GitHub:** #159
+
+### "76ers" is not a word, so every "vs 76ers" question loses its opponent
+- **Found:** 2026-09-21, reading today's corpus fall-throughs
+- **Evidence:** `entities._words` splits on `[^A-Za-z]+`, so
+  `_words("myles turner vs 76ers last 5 games")` is
+  `['myles', 'turner', 'vs', 'ers', 'last', 'games']` and `_team_after_versus`
+  returns None, while `_team_named("76ers")` resolves team 20 fine. The same
+  slot shape with "nyk" works ("tim hardaway vs nyk"). 22 of 1,972 reasonable
+  large-set questions say "76ers", 12 of 2,285 after vs/against.
+- **User sees:** "game_log needs a team or a player" - a fall-through - for the
+  one franchise whose name starts with a digit.
+- **Next step:** keep digits inside a word in `_words` (or fold "76ers" to
+  "sixers" in `_fold`), then re-run the entity golden comparison: `_words`
+  feeds `players_named_in`, where a stray number must not start naming people.
+
+### A second player in `opponent` is never moved to `players`
+- **Found:** 2026-09-21, live sample; also corpus "jay huff game log vs Embiid"
+- **Evidence:** "giannis stats against jokic" routes to `player_matchup` with
+  `player: 'Giannis Antetokounmpo', opponent: 'Nikola Jokic'`.
+  `players_named_in` finds both; `scope_from_question` changes nothing; the
+  template says "no team matching 'Nikola Jokic'" and falls through.
+- **User sees:** the slow agent, for the most ordinary two-player question.
+- **Next step:** in the entity stage, an `opponent` that names no team and IS a
+  player the question names joins `players`. Eliminates, never chooses.
+
+### A name written without its periods matches nobody ("Pj washington")
+- **Found:** 2026-09-21, live sample
+- **Evidence:** `find_players(con, "Pj Washington")` is empty;
+  `find_players(con, "P.J. Washington")` finds athlete 4278078.
+  `players_named_in` also finds nobody in "Pj washington vs pacers game by
+  game". 22 of 1,972 reasonable large-set questions use an initial-pair name
+  (`\b(pj|cj|tj|aj|rj|kj|dj|og|jj)\b`); some ("CJ McCollum") are stored
+  without periods and work.
+- **User sees:** "no player matching 'Pj Washington'", then the agent.
+- **Next step:** fold periods out of both sides in `find_players` the way
+  accents already are (178c21f).
+
+### A retired player with no season named is refused instead of answered over his career
+- **Found:** 2026-09-21, live sample - 4 of 200: "Allen Iverson playoffs vs
+  raptors", "dwight howard vs Marc gasol", "Yao Ming playoffs stats with the
+  Houston rockets", "kawhi last 10 playoff games"
+- **Evidence:** the season defaults to 2026 and the answer is "No 2026
+  postseason games found for Allen Iverson. He last appears in 2009 ... name
+  one, or ask for his career." Honest, and #18's deliberate choice - but the
+  question named no season, so 2026 is ours, not the user's.
+- **User sees:** a refusal that tells them how to re-ask.
+- **Next step:** a product decision first: when the question states no season
+  (`_validate_season` found none in the text) and the player has no row in the
+  default, answer `span: career` and say so. Re-score the corpus either way.
+
+### The name check refuses a possessive typo it used to answer ("embids")
+- **Found:** 2026-09-21, the web-session replay (agent), confirmed by the lead
+- **Evidence:** "show me embids 3pt percentage over the last 5 years" answered
+  on the 2026-09-09 build; on `31b2ec6`
+  `override_invented_players` returns `invented=['Joel Embiid']`: "embids" is
+  two edits from "embiid" against `_edit_budget`'s one for a six-letter word.
+- **User sees:** "This was read as a question about Joel Embiid, who the
+  question does not mention".
+- **Next step:** strip a trailing possessive "s" before measuring, rather than
+  widening the budget - #131 measured what a wider budget costs.
+
+### A subject `game_log` was not given is not restored from the question
+- **Found:** 2026-09-21, live sample
+- **Evidence:** "Luka doncic last 5 away hames" routes to `game_log` with no
+  `player`; `players_named_in` returns `['Luka Doncic']`, `scope_from_question`
+  changes nothing, and the template raises "game_log needs a team or a player".
+  Not traced further. 7 corpus rows and 3 sample rows end on that message; most
+  of the others are names nobody typed correctly, which nothing can restore.
+- **User sees:** a fall-through.
+- **Next step:** find why `_scope_from_question_restore_player` does not fire
+  when neither `player` nor `team` is set.
+
+### A leaderboard "and the team they play for" request silently drops team
+- **Found:** 2026-09-21, yardstick-v2 key-building (A_netpoints_shots slice,
+  `live_31b2ec6.jsonl`)
+- **Evidence:** "show the top 50 in total adjusted netpoints and the team they
+  play for" and "who are the top 50 in total adjusted netpoints with the team
+  they play for" both route to `leaderboard` with `stat=netpoints_per_100,
+  limit=50`; the first arrives with `fields=['steals','rebounds','assists']`
+  (none of which the question asked for), the second with no `fields` at all.
+  Neither answer names a team anywhere. The cause is structural, not a router
+  miss: `EXTRA_FIELD_COLUMNS` (`query/metrics.py`) is a fixed whitelist of
+  `points/rebounds/assists/steals/blocks/minutes` sourced from
+  `player_season_stats`, and has no team entry at all - there is no slot value
+  that could have produced one. The ranking itself and every value in it (SGA
+  9.91 down to Stephon Castle 2.04) checks out exactly against
+  `net_points_player`.
+- **User sees:** a fluent, numerically correct top-50 list with the explicitly
+  requested "team" column simply absent, no caveat that it could not be added.
+- **Next step:** add a `team` entry to `EXTRA_FIELD_COLUMNS` (join
+  `player_season_stats.team_id` -> `teams.abbreviation` the same way the other
+  five extra fields already join), or have the leaderboard template say
+  explicitly that team is not an available field when asked for one that is
+  not in the whitelist.
+- **Source:** ours, not ESPN's.
+- **GitHub:** none yet
 
 ## P3: refusal or gap
 
@@ -1966,6 +2130,14 @@ those were found.
   with the live check the coach entry used, before anyone writes "ESPN does
   not publish awards".
 - **GitHub:** none yet
+- **Re-measured 2026-09-21: this is a wrong answer on the fast path, not only
+  an agent risk.** In the live sample (same directory as #10's note) "nba mvps
+  in 2010's" answered "Nene led the league in true shooting % in the 2010
+  regular season" and "1999 sixth man of the year" answered the 1999 minutes
+  leader - `stat` is required, so the decoder spends the award on it. 2 of 200
+  wrong, 3 more fell through; 27 of 1,972 reasonable large-set questions name
+  an award (regex also catches "since the all star break"). P1 by the file's
+  own definition.
 - **GitHub:** #146
 
 ### `_subject_named_in`'s original grammar reads a bare noun as a subject on four corpus questions
@@ -2003,6 +2175,30 @@ those were found.
 - **GitHub:** #151
 
 ## P4: tooling, docs, low impact
+
+### No template counts triple-doubles for one named player, or splits them by venue
+- **Found:** 2026-09-21, a Sonnet agent clustering the 261-question corpus
+  into shapes for the yardstick review; it read the comment and checked the
+  replay.
+- **Evidence:** "luka td3s home" is `outcome=fell_through` in
+  `~/association-research/algebra-spike/baseline/replay_rerouted_tp.jsonl`.
+  `query/router.py:60-68` (the comment above `_AGENT_ONLY`) already says why:
+  triple-doubles exist only as a season leaderboard metric
+  (`metrics.triple_doubles`, off `player_season_stats`), nothing counts them
+  for ONE player, and that table has no venue dimension to split by. The gap
+  lived only in that comment. It is a template gap, not a data gap -
+  `player_box_stats` holds what a per-game derivation needs.
+- **User sees:** the slow agent. It used to be worse: `td3s` was read as
+  `shot_value=3` and answered fluently as his scoring average at home, which
+  `_AGENT_ONLY` now prevents.
+- **Next step:** if picked up, a triple-double is a derived per-game flag on
+  the player-games relation (three of PTS/REB/AST/STL/BLK at 10+), after which
+  `threshold_count` counts it and every scoping slot the relation honors -
+  venue included - applies for free. That is the step 3 plan's argument in
+  miniature, so do it after C2 rather than as a one-off in one template.
+- **Priority note:** P4 - one corpus question, and it falls through rather
+  than answering wrongly.
+- **GitHub:** none yet
 
 ### "Points by quarter" asks for all four at once, and every template answers one
 - **Found:** 2026-09-20, finishing the quarters-and-halves work
@@ -2277,6 +2473,10 @@ those were found.
   No corpus row currently shows a `player_matchup` two-player question naming
   a specific `stat`, so this is unmeasured rather than confirmed-wrong - worth
   folding into the audit this entry already calls for.
+- **Third instance, 2026-09-21 (web-session replay):** "Create a shot chart
+  for steph curry's last two games of the regular season" draws the whole 2026
+  season (374/803); `shot_chart` resolves `order` to one event and has no
+  notion of `limit` > 1. See also the `single_game_high`/`team` entry under P1.
 - **GitHub:** #125
 
 

@@ -290,8 +290,8 @@ about what happens next, and the third is the one that was got wrong first:
   tatum or brown" routed to `Jaylen Brown`, and "brown" is ten players - that
   completion is the prominence tiebreak measured and rejected above
   `PLAYER_NICKNAMES`, arriving through the model's guess where nothing
-  downstream can see it. A bare surname is the canonical thing this project
-  asks about, and it stopped asking the moment the router began completing it.
+  downstream can see it. The model choosing between ten Browns is still a
+  guess nothing can see, so the completion is still undone.
   `undo_name_completion` cuts those back and lets normal resolution decide;
   `find_players` applies the nickname table first, so a shorthand the curated
   list holds ("luka", "steph curry") still resolves rather than asking.
@@ -358,6 +358,37 @@ it). Two things keep it honest: it never substitutes, it only asks, and a
 suggestion naming more than `MAX_CLARIFY_CANDIDATES` players is dropped
 entirely, because a name near 25 players narrowed nothing and reading out a
 directory is not a suggestion.
+
+**A reasonable default beats a question, where the default is visible and can
+be corrected.** Jeff's rule, 2026-09-21, and it supersedes the older stance
+here that a bare surname always asks: *"A default that chooses reasonably but
+happens to be wrong is better than no answer as long as it can be easily
+corrected. If the query returns Dean Wade and I have no way to refer to Dwyane
+Wade, that's the only time there's an issue."* Two conditions, both required:
+the answer **displays the value it used**, and there is **a wording that
+reaches the alternative** - which the answer states. A silent default is still
+this project's worst failure shape; this is about defaults that say what they
+did.
+
+The first application is names. With no season asked about, a name several
+players share means the one who played the last season of the span - "Maxey" is
+Tyrese, and "show maxey's games against boston in the past two seasons" no
+longer asks about Marlon, who retired in 1994 (`entities.resolve_player`). A
+name given in full yields the same way when its owner has nothing in the seasons
+asked about and exactly one namesake does: "Jabari Smith" for 2026 is Jabari
+Smith Jr., where it used to answer "no 2026 games" about the father
+(`_named_in_full`). Both say so in the answer - "('maxey' was read as Tyrese
+Maxey, the only match who played in 2025-26. Marlon Maxey also matches - use the
+full name, or name a season he played, to ask about him.)" - carried by
+`entities.collect_name_readings` and attached in `agent.py`, so a template called
+directly does not show it. The sentence is not optional: of 391 surnames two or
+more players share, 124 now resolve, and in 67 of those a retired namesake has
+more games on record than the active one ("wade" is Dean Wade, "pippen" is
+Scotty Pippen Jr.). It is still elimination and not the prominence tiebreak:
+two namesakes who both played ("brown", "curry") are asked about, and nothing
+ranks them. Before extending the rule to another open slot, check both
+conditions - a default with no wording that reaches the alternative is the case
+that is not allowed.
 
 **A best match is only safe where a wrong one is visible.** Charts resolved
 names best-match on the reasoning that the plot is titled with the name that

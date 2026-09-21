@@ -437,6 +437,29 @@ def test_the_fast_path_asks_about_a_surname_the_router_completed(monkeypatch: py
     assert seen == ["Brown"]
 
 
+def test_the_fast_path_says_how_it_read_a_name_the_question_left_open(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The reading reaches the ANSWER, which is the whole condition the default
+    is allowed under: "maxey" is Tyrese because he is the only Maxey who still
+    plays, and somebody who meant Marlon has to be told what to type instead.
+    Templates are called with a bare connection in 27 places, so the sentence
+    travels by entities.collect_name_readings and is attached here - removing
+    that block leaves a right answer about a player nobody said was chosen."""
+    from association.query.entities import Entity, _note_name_reading
+    from association.query.router import Route
+    from association.query.templates.common import TemplateResult
+
+    def reads_a_name(ctx: Any, slots: dict[str, Any]) -> TemplateResult:
+        _note_name_reading("maxey", Entity("1", "Tyrese Maxey"), [Entity("0", "Marlon Maxey")], 2026, named_in_full=False)
+        return TemplateResult(data={}, answer="Tyrese Maxey averaged 28.0 points.")
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="player_stat", slots={"player": "maxey"}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": reads_a_name})
+    answer = _agent_with_players(tmp_path, "Marlon Maxey", "Tyrese Maxey").ask("how many points does maxey average?")
+    reading = "('maxey' was read as Tyrese Maxey, the only match who played in 2025-26. Marlon Maxey also matches - use the full name, or name a season he played, to ask about him.)"
+    assert answer.text == f"Tyrese Maxey averaged 28.0 points. {reading}"
+    assert answer.data == {"name_readings": [reading]}
+
+
 def test_fast_path_is_skipped_entirely_when_disabled(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     called = False
 

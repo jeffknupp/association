@@ -16,6 +16,25 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **A name the question leaves open means whoever still plays, and the answer
+  says so.** A name several players share used to ask "which one?" whenever
+  more than one of them had a row in the seasons the answer could read - so
+  "show maxey's games against boston in the past two seasons" asked about
+  Marlon Maxey, who retired in 1994. With no season asked about, the one
+  namesake who played the last season of the span is now the answer, and two
+  who both played ("brown", "curry") are asked about exactly as before. A name
+  given in full yields the same way where its owner has nothing in the seasons
+  asked about and exactly one namesake does: "Jabari Smith" for 2026 is Jabari
+  Smith Jr., where it answered "no 2026 games" about his father. This is a
+  default, so it is said: the answer ends "('maxey' was read as Tyrese Maxey,
+  the only match who played in 2025-26. Marlon Maxey also matches - use the
+  full name, or name a season he played, to ask about him.)", and the same
+  sentences are in `Answer.data["name_readings"]`. Measured on the warehouse,
+  124 of the 391 surnames two or more players share stop asking, and in 67 of
+  them a retired namesake has more games on record than the active player
+  ("wade" is Dean Wade, "pippen" is Scotty Pippen Jr.) - which is why the
+  sentence, with the wording that reaches the other player, is part of the
+  change rather than a nicety. New: `entities.collect_name_readings`.
 - **A router that could not be asked says so, instead of blaming the
   question.** `route()` collapsed three different failures into one: ollama
   unreachable, ollama unable to serve the router model, and the model replying
