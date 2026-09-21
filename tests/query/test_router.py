@@ -667,6 +667,89 @@ def test_the_postseason_comes_from_the_question_not_the_model() -> None:
 
 
 @pytest.mark.parametrize(
+    "question",
+    [
+        "Show me the Knicks last 5 games",
+        "what did Nikola Jokic do in his last 5 games?",
+        "Rui last ten games",
+        "Total points scored by the toronto raptord in the last 10 games",
+    ],
+)
+def test_a_last_n_games_question_naming_no_season_type_reads_both(question: str) -> None:
+    """ISSUES.md, "'Last N games' means the last N regular-season games, even
+    when playoff games came after": each of these answered the last N of the
+    REGULAR season though the team or player went on to play in the
+    postseason. `game_log` reads the signal set here to read both season
+    types and merge them by date instead of silently defaulting to the
+    regular season the way `_validate_season_type` does everywhere else."""
+    got = _ask(question, '{"intent":"game_log","player":"Nikola Jokic","team":"Knicks","order":"recent","limit":5}')
+    assert got.slots["season_type_unstated"] is True
+    # season_type is still set - the template's fallback default, unused once
+    # the signal is read, and every OTHER template that might see it ignores
+    # season_type_unstated entirely (see check_scope's HONORED_SCOPING test).
+    assert got.slots["season_type"] == 2
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Knicks last 5 regular season games",
+        "Knicks last 5 regular-season games",
+        "Knicks last 5 playoff games",
+        "Knicks last 5 postseason games",
+        "Knicks last 5 games in the finals",
+    ],
+)
+def test_a_last_n_games_question_naming_its_season_type_is_not_widened(question: str) -> None:
+    """The correction the default has to leave standing: saying "regular
+    season" or "playoffs" outright must keep meaning only that."""
+    got = _ask(question, '{"intent":"game_log","team":"Knicks","order":"recent","limit":5}')
+    assert "season_type_unstated" not in got.slots
+
+
+def test_a_last_n_games_signal_requires_a_real_limit_and_the_recent_order() -> None:
+    from association.query.router import _route_game_log_recent_span
+
+    # No `order` at all: an ordinary game_log question with a limit, not "last
+    # N games" - e.g. "top 5" is `order` absent, `limit` present.
+    no_order: dict[str, Any] = {"limit": 5}
+    _route_game_log_recent_span("game_log", no_order, "Knicks top 5 wins this season")
+    assert "season_type_unstated" not in no_order
+    # `order="first"` is "his first N games", the opposite end of the season -
+    # a real question, but not the one this signal is for.
+    first: dict[str, Any] = {"order": "first", "limit": 5}
+    _route_game_log_recent_span("game_log", first, "Knicks first 5 games")
+    assert "season_type_unstated" not in first
+    # No real limit at all.
+    no_limit: dict[str, Any] = {"order": "recent"}
+    _route_game_log_recent_span("game_log", no_limit, "Knicks last games")
+    assert "season_type_unstated" not in no_limit
+    # A non-game_log intent never sees it, whatever else is set.
+    other_intent: dict[str, Any] = {"order": "recent", "limit": 5}
+    _route_game_log_recent_span("player_stat", other_intent, "Knicks last 5 games")
+    assert "season_type_unstated" not in other_intent
+
+
+@pytest.mark.parametrize(
+    "extra_slots",
+    [
+        {"game_n": 4},  # one game of a KNOWN playoff series
+        {"span": "career"},  # a career has no single year to mix two types within
+        {"since": 2020},  # a range of seasons
+        {"date": "2026-04-12"},  # one calendar day already finds its own game
+    ],
+)
+def test_a_last_n_games_signal_defers_to_a_narrower_slot_already_set(extra_slots: dict[str, Any]) -> None:
+    """Each of these already fixes which games are meant more precisely than
+    "last N" does, so none of them widen to both season types."""
+    from association.query.router import _route_game_log_recent_span
+
+    slots: dict[str, Any] = {"order": "recent", "limit": 5, **extra_slots}
+    _route_game_log_recent_span("game_log", slots, "Knicks last 5 games")
+    assert "season_type_unstated" not in slots
+
+
+@pytest.mark.parametrize(
     ("question", "venue"),
     [
         ("Knicks home record this season", "home"),

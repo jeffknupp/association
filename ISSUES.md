@@ -46,33 +46,6 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
-### "Last N games" means the last N regular-season games, even when playoff games came after
-- **Found:** 2026-09-21, yardstick-v2: a blind answer key (written from the
-  question text and the warehouse alone, no sight of the code) graded against a
-  live run of build 50c1faa (`~/association-research/yardstick-v2/blind/`).
-- **Evidence:** five of the yardstick's questions ask for the most recent games
-  with no season type, and all five answer the last N of the REGULAR season
-  though the team or player played on: "Show me the Knicks last 5 games" lists
-  games ending 2026-04-12 where their last five were the 2026 Finals (through
-  2026-06-14); "what were the Lakers last 5 games?" (actual: the OKC series);
-  "what did Nikola Jokic do in his last 5 games?" (actual: Minnesota, playoffs);
-  "Rui last ten games"; "Total points scored by the toronto raptord in the last
-  10 games" (1,198 regular-season points listed game by game against the 1,130
-  of their true last ten, and no total given). `_validate_season_type` returns
-  the postseason only when the question says so, which is right for an average
-  and wrong for "most recent".
-- **User sees:** a fluent log, headed "last 5 games of the 2026 regular
-  season" - so the scope IS displayed, which keeps it short of silent. But the
-  default is not the reasonable one, and no wording tried reaches "his last 5
-  games, whatever they were".
-- **Next step:** for `order=recent` with a `limit` and no season-type word in
-  the question, read both season types and take the newest N by date, saying in
-  the heading what the N span ("last 5 games, 2026 playoffs"). "Last 5 regular
-  season games" and "last 5 playoff games" then remain the corrections. Three
-  of the five are Jeff's own questions.
-- **Source:** ours, not ESPN's.
-- **GitHub:** none yet
-
 ### A team and a role named together are both dropped: "lebron stats as a starter for Miami" answers this season's Lakers line
 - **Found:** 2026-09-21, yardstick-v2 blind key against build 50c1faa. The
   question is Jeff's own, from his review notes.
@@ -2107,6 +2080,27 @@ those were found.
 - **GitHub:** none yet
 
 ## P3: refusal or gap
+
+### "Total points scored ... in the last N games" lists the games but never sums them
+- **Found:** 2026-09-21, while fixing "'Last N games' means the last N
+  regular-season games..." (removed above). One of that entry's five
+  questions, "Total points scored by the toronto raptord in the last 10
+  games", routes to `game_log`, which now finds the right ten games (the fix
+  above) but still only lists each game's score - `_team_game_log_games`'s
+  `data` carries no summed total, only `wins`/`losses`/`games`. Measured
+  against the real warehouse, `nba.duckdb` (read-only): the Raptors' true last
+  10 games (2026-04-09 through 2026-05-03, three regular-season and seven
+  postseason) sum to 1,150 points, and the answer states none of them - a
+  reader has to add the ten scores themselves.
+- **User sees:** a correct, complete game-by-game listing with no total,
+  though "total" is the word the question used.
+- **Next step:** `game_log` (or a `total: true`/`stat` reading on it) could sum
+  the listed games' scores when the question asks for a total - `_named_a_stat`
+  already reads "total" as naming a stat for other intents. Unrelated to the
+  season-type mixing fix beside it: this is about what the answer states, not
+  which games it found.
+- **Source:** ours, not ESPN's.
+- **GitHub:** none yet
 
 ### No league ranking by shot distance, and the refusal reads as if the data could not do it
 - **Found:** 2026-09-21, yardstick-v2 blind key against build 50c1faa.

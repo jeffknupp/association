@@ -110,7 +110,14 @@ SEASON_TYPE_NAMES = {1: "preseason", 2: "regular season", 3: "postseason"}
 # `rate` is a per-possession rate asked of a metric that has no such form
 # ("points per 100 possessions", "netpoints / 90"): set by the router only
 # where it could not switch the metric itself, and honored by nothing.
-SCOPING_SLOTS = frozenset({"order", "date", "opponent", "venue", "span", "without", "round", "split", "since", "below", "above", "game_n", "season_n", "situation", "rate"})
+# `season_type_unstated` is not a narrowing at all but its opposite - a
+# "last N games" question naming no season type at all
+# (`router._route_game_log_recent_span`) - and it is listed here for the same
+# reason `situation` is: the discipline that a new slot is declared by the
+# templates that honor it and refused by the rest applies whether the slot
+# widens or narrows. Only `game_log` can ever see it - the router sets it for
+# no other intent - so it is refused everywhere else only in principle.
+SCOPING_SLOTS = frozenset({"order", "date", "opponent", "venue", "span", "without", "round", "split", "since", "below", "above", "game_n", "season_n", "situation", "rate", "season_type_unstated"})
 
 
 # What each template actually honors. Anything not listed here honors none.
@@ -123,7 +130,10 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # refuses it here, because `route()` leaves the category in place then.
     # `below` and `above` are lines on a box-score column ("under 14 fta",
     # "with 25 minutes"): filters on the same rows, through measure_filters.
-    "game_log": frozenset({"order", "date", "opponent", "venue", "span", "without", "split", "since", "below", "above", "game_n", "season_n"}),
+    # `season_type_unstated` is honored by reading both season types for a
+    # "last N games" question and merging them by date - see
+    # router._route_game_log_recent_span and game_log's own handling of it.
+    "game_log": frozenset({"order", "date", "opponent", "venue", "span", "without", "split", "since", "below", "above", "game_n", "season_n", "season_type_unstated"}),
     # The three that narrow games are answered from box scores rather than the
     # season line; a career is summed from the season table.
     "player_stat": frozenset({"opponent", "venue", "span", "without", "split", "since", "order", "below", "above", "game_n", "season_n"}),
