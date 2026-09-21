@@ -16,6 +16,19 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **"Last N games" with no season type named now reads both types.** A "most
+  recent games" question that never says "playoffs" or "regular season" used
+  to default to the regular season alone, silently - "Show me the Knicks last
+  5 games" listed games through April even after the team's season carried on
+  into the postseason, and "what did Nikola Jokic do in his last 5 games?"
+  left out the playoff games it should have named. `game_log` now reads both
+  season types for that shape and merges them by date, and says in the
+  heading what it found: "last 5 games of the 2026 postseason" where every
+  kept game is one type, "last 6 games (1 regular season and 5 postseason)"
+  where they are not. "Last 5 regular season games" and "last 5 playoff
+  games" are unchanged - saying the type outright is how the default is
+  corrected. Read from the question in `router._route_game_log_recent_span`,
+  the same way `side` and `coach` are, so no other question's routing moves.
 - **A name the question leaves open means whoever still plays, and the answer
   says so.** A name several players share used to ask "which one?" whenever
   more than one of them had a row in the seasons the answer could read - so

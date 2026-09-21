@@ -1062,6 +1062,102 @@ def test_team_record_refuses_a_limited_set_rather_than_reporting_the_full_season
         team_record(gl_con, {"team": "Knicks", "limit": 10})
 
 
+def _add_knicks_postseason(gl_con: TemplateContext) -> None:
+    """Two postseason games after `gl_con`'s two regular-season ones, so a
+    "last N games" question has real games of both types to mix - the shape
+    ISSUES.md's "'Last N games' means the last N regular-season games, even
+    when playoff games came after" is about."""
+    s = current_season()
+    gl_con.con.execute(
+        "INSERT INTO games VALUES ('p1',?,3,'2026-04-20T22:00Z','18','2',101,90,'18'),('p2',?,3,'2026-04-22T22:00Z','2','18',99,105,'18')",
+        [s, s],
+    )
+    gl_con.con.execute("INSERT INTO team_box_stats VALUES ('p1',?,3,'18','2','home'),('p2',?,3,'18','2','away')", [s, s])
+    real_games.build_table(gl_con.con, {"games", "teams"})
+
+
+def test_a_teams_last_n_games_with_no_season_type_named_reads_both(gl_con: TemplateContext) -> None:
+    """ "Show me the Knicks last 5 games" (ISSUES.md): the real last three are
+    both playoff games newer than the regular-season ones, so the default
+    game_log used before this fix - the regular season alone - would have
+    left them both out."""
+    _add_knicks_postseason(gl_con)
+    result = game_log(gl_con, {"team": "Knicks", "order": "recent", "limit": 3, "season_type_unstated": True})
+    games = result.data["games"]
+    assert [g["date"] for g in games] == ["2026-04-22", "2026-04-20", "2026-04-12"]
+    assert [g["season"] for g in games] == [2026, 2026, 2026]  # a postseason game's own calendar year
+    answer = result.answer or ""
+    # The default it used is visible, not silent - the whole point of the fix.
+    assert "last 3 games (1 regular season and 2 postseason)" in answer
+    assert result.data["wins"] == 2 and result.data["losses"] == 1
+
+
+def test_a_teams_last_n_games_naming_its_season_type_is_unchanged(gl_con: TemplateContext) -> None:
+    """The correction: saying "playoff games" or "regular season games"
+    outright still means only that - the shape this fix must not touch."""
+    _add_knicks_postseason(gl_con)
+    playoffs = game_log(gl_con, {"team": "Knicks", "order": "recent", "limit": 5, "season_type": 3})
+    assert [g["date"] for g in playoffs.data["games"]] == ["2026-04-22", "2026-04-20"]
+    assert "of the 2026 postseason" in (playoffs.answer or "")
+    regular = game_log(gl_con, {"team": "Knicks", "order": "recent", "limit": 5, "season_type": 2})
+    assert [g["date"] for g in regular.data["games"]] == ["2026-04-12", "2026-04-10"]
+    assert "of the 2026 regular season" in (regular.answer or "")
+
+
+def test_a_teams_last_n_games_all_one_type_reads_exactly_as_before(gl_con: TemplateContext) -> None:
+    """When the last N happen to be all one type - most teams and players
+    never reach the postseason at all - the header reads exactly as it always
+    did, not "1 regular season" repeated N times."""
+    result = game_log(gl_con, {"team": "Knicks", "order": "recent", "limit": 2, "season_type_unstated": True})
+    assert [g["date"] for g in result.data["games"]] == ["2026-04-12", "2026-04-10"]
+    assert "last 2 games of the 2026 regular season" in (result.answer or "")
+
+
+def test_a_teams_last_n_games_with_no_games_at_all_says_so_without_blaming_a_type(gl_con: TemplateContext) -> None:
+    gl_con.con.execute("INSERT INTO teams VALUES ('99','LAC','LA Clippers')")
+    result = game_log(gl_con, {"team": "LA Clippers", "order": "recent", "limit": 5, "season_type_unstated": True})
+    assert result.data["games"] == []
+    assert "No 2026 games found for the LA Clippers" in (result.answer or "")
+
+
+def test_a_players_last_n_games_with_no_season_type_named_reads_both(pg_ctx: TemplateContext) -> None:
+    """The player-log counterpart, over `pg_ctx`'s season: Podziemski's five
+    newest games this season are all postseason (p5 down to p1), and his
+    sixth-newest is the regular-season e3 - so a limit of 6 mixes the two
+    types and a limit of 5 stays uniform, the same distinction the team test
+    above checks."""
+    s = current_season()
+    # Eastern dates, not the UTC ones in the fixture's own table: each 00:30Z
+    # tip is 8:30pm the previous evening Eastern (see AGENTS.md on
+    # `eastern_date` - a fixed offset gets this hour wrong, which is exactly
+    # why every conversion here goes through the real one).
+    uniform = game_log(pg_ctx, {"player": "Brandin Podziemski", "order": "recent", "limit": 5, "season_type_unstated": True})
+    assert [g["date"][5:] for g in uniform.data["games"]] == ["05-04", "05-02", "04-24", "04-21", "04-19"]
+    assert f"last 5 games of the {s} postseason" in (uniform.answer or "")
+    mixed = game_log(pg_ctx, {"player": "Brandin Podziemski", "order": "recent", "limit": 6, "season_type_unstated": True})
+    assert [g["date"][5:] for g in mixed.data["games"]] == ["05-04", "05-02", "04-24", "04-21", "04-19", "01-10"]
+    assert "last 6 games (1 regular season and 5 postseason)" in (mixed.answer or "")
+    # His per-game average is over exactly the 6 rows shown, playoffs and
+    # regular season points combined - not silently the regular season alone.
+    assert mixed.data["averages"]["points"] == pytest.approx((10 + 20 + 30 + 5 + 15 + 15) / 6)
+
+
+def test_a_players_last_n_games_keeps_its_other_narrowings_under_both_types(pg_ctx: TemplateContext) -> None:
+    """`opponent` still narrows a mixed-type log - Podziemski's games against
+    Detroit span both season types (e2, e3 regular season; p1-p3 postseason),
+    so "last 3 games vs Detroit" with no season type stated finds the three
+    newest of either type against them, not just the regular-season two."""
+    result = game_log(pg_ctx, {"player": "Brandin Podziemski", "order": "recent", "limit": 3, "season_type_unstated": True, "opponent": "Detroit Pistons"})
+    assert [g["date"][5:] for g in result.data["games"]] == ["04-24", "04-21", "04-19"]
+    assert "vs the Detroit Pistons" in (result.answer or "")
+
+
+def test_a_players_last_n_games_with_no_games_this_season_says_so(pg_ctx: TemplateContext) -> None:
+    result = game_log(pg_ctx, {"player": "Brandin Podziemski", "order": "recent", "limit": 5, "season_type_unstated": True, "season": 1990})
+    assert result.data["games"] == []
+    assert "no games recorded in the 1990 season" in (result.answer or "")
+
+
 # ---------------- shot_chart ----------------
 
 
@@ -2563,6 +2659,17 @@ def test_scope_guard_allows_templates_that_honor_the_slot() -> None:
     check_scope("shot_chart", {"order": "recent"})
     check_scope("shot_distance", {"order": "first"})
     check_scope("player_netpoints", {"order": "recent"})
+
+
+def test_scope_guard_lets_only_game_log_honor_season_type_unstated() -> None:
+    """`season_type_unstated` is set only for `game_log`
+    (router._route_game_log_recent_span), but the discipline is the same as
+    every other scoping slot: a template that cannot honor it refuses rather
+    than silently ignoring it."""
+    check_scope("game_log", {"order": "recent", "limit": 5, "season_type_unstated": True})
+    for intent in ("player_stat", "leaderboard", "threshold_count", "single_game_high"):
+        with pytest.raises(TemplateUnsupported, match="different span"):
+            check_scope(intent, {"season_type_unstated": True})
 
 
 def test_scope_guard_ignores_absent_or_empty_slots() -> None:

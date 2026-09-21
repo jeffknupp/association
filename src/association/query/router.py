@@ -269,6 +269,12 @@ def _validate_side(slots: dict[str, Any], question: str) -> str | None:
 # out on purpose - "title odds" is a regular-season projection.
 _PLAYOFF_WORDS = re.compile(r"\b(?:playoffs?|post-?season|finals|elimination|game\s+(?:7|seven))\b", re.IGNORECASE)
 
+# The regular season, named outright - the one further word
+# `_route_game_log_recent_span` needs beside `_PLAYOFF_WORDS`: a "last N games"
+# question that says "regular season" has stated its type as plainly as one
+# that says "playoffs", and must keep meaning only that.
+_REGULAR_SEASON_WORDS = re.compile(r"\bregular[- ]season\b", re.IGNORECASE)
+
 
 # One round or game of the postseason. No table carries a round or a series
 # game number, so no template can narrow to one: "tatum stats in the 2024 finals"
@@ -2054,6 +2060,42 @@ def _drop_filler_limit(intent: str, slots: dict[str, Any], question: str) -> Non
         slots.pop("limit", None)
 
 
+def _route_game_log_recent_span(intent: str, slots: dict[str, Any], question: str) -> None:
+    """A "last N games" question naming no season type: a signal for
+    ``game_log`` to read both season types and take the newest N by date,
+    rather than silently defaulting to the regular season the way
+    ``_validate_season_type`` already does everywhere else - see ISSUES.md,
+    ``"Last N games" means the last N regular-season games...``. "Show me the
+    Knicks last 5 games" used to list games through 2026-04-12 while their
+    real last five were the 2026 Finals, played weeks later.
+
+    The template sees only slots, not the question, so the signal has to be
+    set here - the same discipline ``side`` and ``coach`` follow. Only for
+    ``game_log``, and only for the shape the issue names: ``order`` is
+    ``"recent"`` beside a real ``limit`` (the pair `_route_side_and_order`
+    already settled, filler dropped), and nothing already fixes which games
+    are meant - ``game_n`` (one game of a KNOWN playoff series), ``span``
+    (a career has no single year to mix two types within), ``since`` (a
+    range of seasons) and ``date`` (one calendar day already finds its own
+    game, whatever type it was) are each a narrower question than "last N",
+    so none of them widen here.
+
+    ``ROUTER_PROMPT`` and ``ROUTER_SCHEMA`` are untouched, so this can move no
+    other question's routing.
+
+    .. versionadded:: 4.4.0
+    """
+    if intent != "game_log" or slots.get("order") != "recent":
+        return
+    if not isinstance(slots.get("limit"), int) or slots["limit"] < 1:
+        return
+    if slots.get("game_n") or slots.get("span") or slots.get("since") or slots.get("date"):
+        return
+    if _PLAYOFF_WORDS.search(question) or _REGULAR_SEASON_WORDS.search(question):
+        return
+    slots["season_type_unstated"] = True
+
+
 def route(model: str, question: str, previous_question: str | None = None) -> Route | None:
     """Classify one question. Returns None if the model is unreachable or
     replies with something unparsable - the caller falls through to the full
@@ -2086,4 +2128,5 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     _route_subject_slots(raw["intent"], slots, question)
     _route_record_when_threshold(raw["intent"], slots, question)
     _route_side_and_order(raw["intent"], slots, question)
+    _route_game_log_recent_span(raw["intent"], slots, question)
     return Route(intent=raw["intent"], slots=slots)

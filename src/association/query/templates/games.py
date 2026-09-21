@@ -29,6 +29,7 @@ from .common import (
     HISTORY_COLUMNS,
     PLAYER_STAT_COLUMNS,
     REBUILT_STATS,
+    SEASON_TYPE_NAMES,
     STARTER_SIDES,
     THRESHOLD_STAT_COLUMNS,
     MeasureFilter,
@@ -260,6 +261,11 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        dropped - an ``opponent`` already named wins over all three, since a
        ``team`` slot beside it is the noise the router routinely fills next to
        an already-correct opponent.
+    .. versionchanged:: 4.4.0
+       A "last N games" question naming no season type reads both and merges
+       them by date, saying in the heading what it found - see
+       ``router._route_game_log_recent_span`` and ``_game_log_team``'s and
+       ``_game_log_player``'s own ``mixed`` handling.
     """
     con = ctx.con
     season_type = slots.get("season_type") or 2
@@ -269,22 +275,135 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     raw_date = slots.get("date")
     date = raw_date if isinstance(raw_date, str) and _ISO_DATE.match(raw_date) else None
     opponent, venue, span, without = slots.get("opponent"), slots.get("venue"), slots.get("span"), slots.get("without")
+    split, game_n, season_n, since = slots.get("split"), slots.get("game_n"), slots.get("season_n"), slots.get("since")
     measures = _game_log_lines(slots.get("below"), slots.get("above"), slots.get("threshold"))
     # A date names its game outright, so it replaces the season rather than
     # being filtered inside it: the router's season is usually its "current"
     # default, and a date from last season looked for in this one finds nothing.
     season = None if date else slots.get("season")
     span = "career" if date else span
+    # "Last N games" naming no season type: router._route_game_log_recent_span
+    # only ever sets this beside `order="recent"` and a real `limit`, with no
+    # `date`, `span`, `since` or `game_n` - guaranteed there, checked again
+    # here rather than trusted blindly.
+    mixed = bool(slots.get("season_type_unstated")) and not date and not span and not game_n
+    slot_season = _slot_season(slots)
 
     team_text = slots.get("team")
     if team_text and not slots.get("player"):
-        team = _resolved_team(con, team_text, season=_slot_season(slots))
-        if isinstance(team, TemplateResult):
-            return team
-        _team_game_log_refusals(without, measures, slots.get("game_n"))
-        scope = _span_of(span, season, season_type, "games")
-        return _team_game_log(con, team, scope, opponent=opponent, venue=venue, date=date, limit=limit, ascending=ascending)
+        return _game_log_team(
+            con,
+            team_text,
+            slot_season=slot_season,
+            span=span,
+            season=season,
+            season_type=season_type,
+            opponent=opponent,
+            venue=venue,
+            without=without,
+            measures=measures,
+            game_n=game_n,
+            date=date,
+            limit=limit,
+            ascending=ascending,
+            mixed=mixed,
+        )
+    return _game_log_player(
+        con,
+        slots.get("player"),
+        team_text,
+        slot_season=slot_season,
+        span=span,
+        season=season,
+        season_type=season_type,
+        opponent=opponent,
+        venue=venue,
+        without=without,
+        measures=measures,
+        split=split,
+        game_n=game_n,
+        season_n=season_n,
+        since=since,
+        stat=slots.get("stat"),
+        date=date,
+        limit=limit,
+        ascending=ascending,
+        mixed=mixed,
+        asked=asked,
+    )
 
+
+def _game_log_team(
+    con: duckdb.DuckDBPyConnection,
+    team_text: str,
+    *,
+    slot_season: int | None,
+    span: Any,
+    season: int | None,
+    season_type: int,
+    opponent: Any,
+    venue: Any,
+    without: Any,
+    measures: list[MeasureFilter],
+    game_n: Any,
+    date: str | None,
+    limit: int,
+    ascending: bool,
+    mixed: bool,
+) -> TemplateResult:
+    """The team half of :func:`game_log`: resolve the team, refuse what a
+    team's log cannot narrow by, and read either one season type or both.
+
+    .. versionadded:: 4.4.0
+       Split out of ``game_log`` when reading both season types pushed its
+       complexity over the xenon C limit (AGENTS.md, "the way the templates
+       and ``route()`` took").
+    """
+    team = _resolved_team(con, team_text, season=slot_season)
+    if isinstance(team, TemplateResult):
+        return team
+    _team_game_log_refusals(without, measures, game_n)
+    if mixed:
+        resolved_season = _span_of(span, season, 2, "games").season
+        if resolved_season is None:
+            raise TemplateUnsupported("a career span has no single season to read both season types within")
+        return _team_game_log_mixed(con, team, resolved_season, opponent=opponent, venue=venue, limit=limit)
+    scope = _span_of(span, season, season_type, "games")
+    return _team_game_log(con, team, scope, opponent=opponent, venue=venue, date=date, limit=limit, ascending=ascending)
+
+
+def _game_log_player(
+    con: duckdb.DuckDBPyConnection,
+    player_text: Any,
+    team_text: str | None,
+    *,
+    slot_season: int | None,
+    span: Any,
+    season: int | None,
+    season_type: int,
+    opponent: Any,
+    venue: Any,
+    without: Any,
+    measures: list[MeasureFilter],
+    split: Any,
+    game_n: Any,
+    season_n: Any,
+    since: Any,
+    stat: Any,
+    date: str | None,
+    limit: int,
+    ascending: bool,
+    mixed: bool,
+    asked: int | None,
+) -> TemplateResult:
+    """The player half of :func:`game_log`: settle his name (an ordinal season
+    and a ``team`` slot beside him included), then read either one season
+    type or both - the same split :func:`_game_log_team` makes.
+
+    .. versionadded:: 4.4.0
+       Split out of ``game_log`` alongside ``_game_log_team``, for the same
+       reason.
+    """
     # The span is settled before the name is resolved, because it is what
     # narrows the name. `season` here is the raw slot - None means the current
     # season only once _span_of reads it - and passed through as it was, it
@@ -292,9 +411,8 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     # Currys again.
     # An ordinal season ("his 18th season") is settled once he is known; until
     # then the span is his career, which narrows the name over every season.
-    season_n = slots.get("season_n")
-    scope = _span_of("career" if season_n else span, None if season_n else season, season_type, "player_game_log", since=slots.get("since"))
-    player = _resolved_player(con, slots.get("player"), "game_log needs a team or a player", available=_GAME_LOGS, season=scope.season, through=_career_end(scope.season))
+    scope = _span_of("career" if season_n else span, None if season_n else season, season_type, "player_game_log", since=since)
+    player = _resolved_player(con, player_text, "game_log needs a team or a player", available=_GAME_LOGS, season=scope.season, through=_career_end(scope.season))
     if isinstance(player, TemplateResult):
         return player
     settled = settle_ordinal_season(con, player, season_n, scope)
@@ -308,9 +426,13 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         # (#147). Read it against him instead of the league: his own team
         # narrows nothing, a different one is his opponent, and a name
         # nothing resolves to is dropped exactly like an invented player name.
-        opponent = _team_slot_for_player(con, player, team_text, season=_slot_season(slots), opponent=opponent)
-    extras = _log_extras(slots.get("stat"))
-    narrowed = _narrow_player_games(con, player, scope, opponent=opponent, venue=venue, without=without, split=slots.get("split"), game_n=slots.get("game_n"))
+        opponent = _team_slot_for_player(con, player, team_text, season=slot_season, opponent=opponent)
+    extras = _log_extras(stat)
+    if mixed:
+        if scope.season is None:
+            raise TemplateUnsupported("a career span has no single season to read both season types within")
+        return _player_game_log_mixed(con, player, scope.season, opponent=opponent, venue=venue, without=without, split=split, measures=measures, extras=extras, limit=limit, asked=asked)
+    narrowed = _narrow_player_games(con, player, scope, opponent=opponent, venue=venue, without=without, split=split, game_n=game_n)
     if isinstance(narrowed, TemplateResult):
         return narrowed
     narrow_measures(narrowed, measures)
@@ -405,6 +527,46 @@ def _scope(count: int, ascending: bool, date: str | None) -> str:
     return f"first {count} games" if ascending else f"last {count} games"
 
 
+def _game_log_merge_season_types(rows_by_type: dict[int, list[tuple[Any, ...]]], *, limit: int, ascending: bool) -> tuple[list[tuple[Any, ...]], dict[int, int]]:
+    """A "last N games" answer with no season type named reads both types
+    separately (each a normal, single-type query) and merges here - see
+    ``router._route_game_log_recent_span``. Every row's first column is its
+    date, which is how a player's and a team's rows both sort; kept newest (or
+    oldest, for ``ascending``) first, down to ``limit`` overall.
+
+    Returns the merged rows and how many of the kept ones came from each
+    season type - the count a "reasonable default" has to show, per
+    AGENTS.md: a user who gets 3 playoff games and 2 regular-season ones has
+    to be told that split, not just handed 5 rows headed "last 5 games".
+
+    .. versionadded:: 4.4.0
+    """
+    tagged = [(row, season_type) for season_type, rows in rows_by_type.items() for row in rows]
+    tagged.sort(key=lambda item: item[0][0], reverse=not ascending)
+    kept = tagged[:limit]
+    counts: dict[int, int] = {}
+    for _, season_type in kept:
+        counts[season_type] = counts.get(season_type, 0) + 1
+    return [row for row, _ in kept], counts
+
+
+def _game_log_mixed_where(season: int, counts: dict[int, int]) -> str:
+    """The clause a mixed-type "last N games" header adds after the count of
+    games - "of the 2026 postseason" where every kept game is one type (the
+    common case: most teams and players never reach the postseason at all, so
+    this reads exactly as it always did), or "(2 regular season and 3
+    postseason)" where they are not, naming the default game_log actually
+    used the way AGENTS.md's "a reasonable default beats a question" requires.
+
+    .. versionadded:: 4.4.0
+    """
+    if len(counts) == 1:
+        (season_type,) = counts
+        return f" of the {_period(season, season_type)}"
+    parts = [f"{count} {SEASON_TYPE_NAMES[season_type]}" for season_type, count in sorted(counts.items())]
+    return f" ({_joined(parts)})"
+
+
 # The season a team's game belongs to, by the project's convention: a
 # postseason by the calendar year it was played in, since ESPN labels every
 # season before 1993-94 by the year it started (see _season_games).
@@ -469,10 +631,18 @@ def _team_game_log_none(con: duckdb.DuckDBPyConnection, team: Entity, span: _Spa
     return TemplateResult(data={"team": team.name, "games": []}, answer=answer)
 
 
-def _team_game_log_rows(team: Entity, span: _Span, rows: list[tuple[Any, ...]], *, narrowed: str, date: str | None, ascending: bool) -> TemplateResult:
-    """The games listing, and the wins/losses record tallied over exactly the
-    rows being shown rather than recounted from it later - that recount is
-    where a wins/losses total gets inverted."""
+def _team_game_log_games(rows: list[tuple[Any, ...]]) -> tuple[list[dict[str, Any]], int, int, str, list[str]]:
+    """Each fetched row turned into a display game, the wins/losses record
+    tallied over exactly the rows being shown rather than recounted from it
+    later - that recount is where a wins/losses total gets inverted - and the
+    listing's own lines. Shared by the single-season-type log and the "last N
+    games" mixed one (:func:`_team_game_log_mixed`), which both fetch the same
+    seven columns and differ only in how they build the header.
+
+    .. versionchanged:: 4.4.0
+       Split out of ``_team_game_log_rows`` so a mixed-type answer can reuse
+       it.
+    """
     games = [
         {"date": _eastern_date(r[0]), "home_away": r[1], "opponent": r[2], "team_score": r[3], "opponent_score": r[4], "won": None if r[5] is None else r[5] == r[6], "season": r[7]} for r in rows
     ]
@@ -480,6 +650,14 @@ def _team_game_log_rows(team: Entity, span: _Span, rows: list[tuple[Any, ...]], 
     losses = sum(1 for g in games if g["won"] is False)
     unknown = len(games) - wins - losses
     record = f"{wins}-{losses}" + (f", {unknown} with no recorded result" if unknown else "")
+    mark = {True: "W", False: "L", None: "?"}
+    lines = [f"  {g['date']}  {mark[g['won']]} {g['team_score']}-{g['opponent_score']}  {'vs' if g['home_away'] == 'home' else 'at'} {g['opponent']}" for g in games]
+    return games, wins, losses, record, lines
+
+
+def _team_game_log_rows(team: Entity, span: _Span, rows: list[tuple[Any, ...]], *, narrowed: str, date: str | None, ascending: bool) -> TemplateResult:
+    """The games listing, headed by the single season type ``span`` names."""
+    games, wins, losses, record, lines = _team_game_log_games(rows)
     seasons = [g["season"] for g in games]
     if span.season is not None:
         where = f" of the {_period(span.season, span.season_type)}"
@@ -487,16 +665,21 @@ def _team_game_log_rows(team: Entity, span: _Span, rows: list[tuple[Any, ...]], 
         years = span.years(min(seasons), max(seasons))
         where = f" ({years})" if date else f" (all-time, {years})"
     header = f"{team.name}{narrowed}, {_scope(len(games), ascending, date)}{where} ({record}):"
-    mark = {True: "W", False: "L", None: "?"}
-    lines = [f"  {g['date']}  {mark[g['won']]} {g['team_score']}-{g['opponent_score']}  {'vs' if g['home_away'] == 'home' else 'at'} {g['opponent']}" for g in games]
     return TemplateResult(data={"team": team.name, "wins": wins, "losses": losses, "games": games}, answer="\n".join([header, *lines]))
+
+
+def _team_season_clause(span: _Span) -> tuple[str, list[Any]]:
+    """``tbs.season``/``g.date`` clause for one season and season type - the
+    postseason keyed on the calendar year it was played in
+    (:func:`_postseason_scope`, never by label - see ``_season_games``), the
+    regular season on the season column directly."""
+    return _postseason_scope(span) if span.season_type == 3 else span.clause("tbs.season")
 
 
 def _team_game_log(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, *, opponent: Any, venue: Any, date: str | None, limit: int, ascending: bool) -> TemplateResult:
     """A team's games in ``span``, narrowed to an opponent, a venue and a date
     where the question named them."""
-    # A postseason by the calendar year it was played in - see _season_games.
-    clause, params = _postseason_scope(span) if span.season_type == 3 else span.clause("tbs.season")
+    clause, params = _team_season_clause(span)
     base, base_params = ["tbs.team_id = ?", "tbs.season_type = ?", clause], [team.id, span.season_type, *params]
     filtered = _team_game_log_filters(con, team, span, opponent=opponent, venue=venue, date=date)
     if isinstance(filtered, TemplateResult):
@@ -510,6 +693,44 @@ def _team_game_log(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, *,
         # Which fact is missing: the team's games in that span, or the match.
         return _team_game_log_none(con, team, span, base, base_params, narrowed=narrowed, date=date)
     return _team_game_log_rows(team, span, rows, narrowed=narrowed, date=date, ascending=ascending)
+
+
+def _team_game_log_mixed(con: duckdb.DuckDBPyConnection, team: Entity, season: int, *, opponent: Any, venue: Any, limit: int) -> TemplateResult:
+    """A team's "last N games" with no season type named: both types, read
+    separately and merged by date - see ``router._route_game_log_recent_span``
+    and :func:`_game_log_merge_season_types`. ``without``, a date and a game of
+    a series are the team log's other narrowings, and none of them reach
+    here: ``without`` already refuses outright for a team
+    (:func:`_team_game_log_refusals`), a date fixes one game regardless of its
+    type (excluded from the router's signal), and a series game number is the
+    player relation's alone - so only an opponent and a venue are left to
+    compose.
+
+    .. versionadded:: 4.4.0
+    """
+    rows_by_type: dict[int, list[tuple[Any, ...]]] = {}
+    narrowed = ""
+    for season_type in (2, 3):
+        type_span = _Span(season, season_type)
+        clause, params = _team_season_clause(type_span)
+        base, base_params = ["tbs.team_id = ?", "tbs.season_type = ?", clause], [team.id, season_type, *params]
+        filtered = _team_game_log_filters(con, team, type_span, opponent=opponent, venue=venue, date=None)
+        if isinstance(filtered, TemplateResult):
+            return filtered
+        extra, extra_params, narrowed = filtered
+        rows_by_type[season_type] = con.execute(
+            f"{_TEAM_GAMES_SQL} WHERE {' AND '.join(base + extra)} ORDER BY g.date DESC LIMIT ?",
+            [*base_params, *extra_params, limit],
+        ).fetchall()
+    rows, counts = _game_log_merge_season_types(rows_by_type, limit=limit, ascending=False)
+    if not rows:
+        # Both types came back empty, so the missing fact really is "no games
+        # in this span" - the same sentence a single-type refusal gives, with
+        # no season type to (wrongly) blame it on.
+        return TemplateResult(data={"team": team.name, "games": []}, answer=f"No {season} games found for the {team.name}{narrowed}.")
+    games, wins, losses, record, lines = _team_game_log_games(rows)
+    header = f"{team.name}{narrowed}, {_scope(len(games), False, None)}{_game_log_mixed_where(season, counts)} ({record}):"
+    return TemplateResult(data={"team": team.name, "wins": wins, "losses": losses, "games": games}, answer="\n".join([header, *lines]))
 
 
 def _pct(made: Any, attempted: Any) -> float | None:
@@ -636,13 +857,23 @@ def _player_game_log_notes(con: duckdb.DuckDBPyConnection, player: Entity, span:
     return notes
 
 
+def _player_game_log_select(needed: list[str], rebuilt: bool) -> str:
+    """The columns a player log's row fetch selects, shared by the
+    single-season-type log and the mixed "last N games" one
+    (:func:`_player_game_log_mixed`), which run this same SELECT once per
+    season type."""
+    return (
+        f"pgl.game_date, pgl.season, pgl.opponent_abbr, g.home_team_id = pgl.team_id, g.winner_team_id, pgl.team_id, "
+        f"{'pgl.reconstructed' if rebuilt else 'FALSE'}, {', '.join(f'pgl.{_LOG_COLUMNS[h]}' for h in needed)}"
+    )
+
+
 def _player_game_log(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: _Narrowed, extras: tuple[str, ...], *, limit: int, asked: int | None, ascending: bool) -> TemplateResult:
     """The listing, and the per-game averages over exactly the rows in it."""
     headers, needed, rebuilt = _player_game_log_columns(con, extras)
     sql, params = rows_sql(
         narrowed,
-        f"pgl.game_date, pgl.season, pgl.opponent_abbr, g.home_team_id = pgl.team_id, g.winner_team_id, pgl.team_id, "
-        f"{'pgl.reconstructed' if rebuilt else 'FALSE'}, {', '.join(f'pgl.{_LOG_COLUMNS[h]}' for h in needed)}",
+        _player_game_log_select(needed, rebuilt),
         order=f"pgl.game_date {'ASC' if ascending else 'DESC'}",
         limit=limit,
         rebuilt=rebuilt,
@@ -665,6 +896,103 @@ def _player_game_log(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span
     header = _player_game_log_header(player, span, narrowed, games, ascending=ascending)
     table = _player_game_log_table(headers, games, averages)
     notes = _player_game_log_notes(con, player, span, narrowed, games, asked=asked, rebuilt=rebuilt)
+    return TemplateResult(
+        data={**scope, "columns": headers, "games": games, "averages": averages},
+        answer="\n".join([header, *table, *notes]),
+    )
+
+
+def _player_game_log_mixed_notes(
+    con: duckdb.DuckDBPyConnection, player: Entity, per_type: dict[int, tuple[_Span, _Narrowed]], games: list[dict[str, Any]], *, asked: int | None, rebuilt: bool
+) -> list[str]:
+    """The truncation and box-score notes for a mixed-type log - the same ones
+    :func:`_player_game_log_notes` gives a single-type one, read once per
+    season type (each type's own empty-box-score count is its own query) and
+    de-duplicated, since a rebuilt-line note or a ``without`` note reads
+    identically whichever type it came from and would otherwise print twice.
+
+    .. versionadded:: 4.4.0
+    """
+    count = len(games)
+    notes: list[str] = []
+    if asked and count < asked:
+        _, narrowed = per_type[2]
+        notes.append(f"Only {count} game{'s' if count != 1 else ''}{narrowed.filters()} found across the regular season and postseason.")
+    rebuilt_shown = sum(1 for g in games if g["reconstructed"])
+    seen: set[str] = set()
+    for season_type in sorted(per_type):
+        span, narrowed = per_type[season_type]
+        for note in _box_score_notes(con, player, span, narrowed, career_note=False, rebuilt=rebuilt, rebuilt_shown=rebuilt_shown):
+            if note not in seen:
+                seen.add(note)
+                notes.append(note)
+    return notes
+
+
+def _player_game_log_mixed(
+    con: duckdb.DuckDBPyConnection,
+    player: Entity,
+    season: int,
+    *,
+    opponent: Any,
+    venue: Any,
+    without: Any,
+    split: Any,
+    measures: list[MeasureFilter],
+    extras: tuple[str, ...],
+    limit: int,
+    asked: int | None,
+) -> TemplateResult:
+    """A player's "last N games" with no season type named: both types, read
+    separately and merged by date - the player-log counterpart of
+    :func:`_team_game_log_mixed`, for the shape ISSUES.md's "'Last N games'
+    means the last N regular-season games..." names ("what did Nikola Jokic do
+    in his last 5 games?", answered through the 2026 Finals rather than
+    stopping at his last regular-season game). Every other narrowing
+    (``opponent``, ``venue``, ``without``, ``split``, a line on a box-score
+    stat) resolves the same under either type, since none of them depend on
+    which type a game falls in - so each is composed exactly as
+    :func:`_narrow_player_games` already does for a single type, once per
+    type, rather than taught a new "either type" mode of its own.
+
+    .. versionadded:: 4.4.0
+    """
+    per_type: dict[int, tuple[_Span, _Narrowed]] = {}
+    for season_type in (2, 3):
+        type_scope = _Span(season, season_type)
+        narrowed = _narrow_player_games(con, player, type_scope, opponent=opponent, venue=venue, without=without, split=split)
+        if isinstance(narrowed, TemplateResult):
+            return narrowed
+        narrow_measures(narrowed, measures)
+        per_type[season_type] = (type_scope, narrowed)
+    headers, needed, rebuilt = _player_game_log_columns(con, extras)
+    select = _player_game_log_select(needed, rebuilt)
+    rows_by_type: dict[int, list[tuple[Any, ...]]] = {}
+    for season_type, (_, narrowed) in per_type.items():
+        sql, params = rows_sql(narrowed, select, order="pgl.game_date DESC", limit=limit, rebuilt=rebuilt)
+        rows_by_type[season_type] = con.execute(sql, params).fetchall()
+    rows, counts = _game_log_merge_season_types(rows_by_type, limit=limit, ascending=False)
+    _, narrowed_2 = per_type[2]
+    narrowed_text = narrowed_2.filters(dated=False)
+    scope: dict[str, Any] = {
+        "player": player.name,
+        "season": season,
+        "span": None,
+        "opponent": narrowed_2.opponent.name if narrowed_2.opponent else None,
+        "venue": narrowed_2.venue,
+        "without": [mate.name for mate in narrowed_2.without],
+    }
+    if not rows:
+        # Both types came back empty, so the missing fact really is "no games
+        # this season" - the same sentence a single-type refusal gives, with
+        # no season type to (wrongly) blame it on.
+        message = f"{player.name} has no games recorded in the {season} season{narrowed_text}."
+        return TemplateResult(data={**scope, "games": [], "message": message}, answer=message)
+    games, raws = _player_game_log_rows(rows, needed, headers)
+    averages = _player_game_log_averages(headers, raws)
+    header = f"{player.name}{narrowed_text}, {_scope(len(games), False, None)}{_game_log_mixed_where(season, counts)}:"
+    table = _player_game_log_table(headers, games, averages)
+    notes = _player_game_log_mixed_notes(con, player, per_type, games, asked=asked, rebuilt=rebuilt)
     return TemplateResult(
         data={**scope, "columns": headers, "games": games, "averages": averages},
         answer="\n".join([header, *table, *notes]),
