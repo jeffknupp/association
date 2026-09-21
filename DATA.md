@@ -929,6 +929,16 @@ the useful half of this entry is what is wrong with it.
   ISSUES.md #93's note that both comments now give the re-measured 436/7,941
   and 340/7,845 figures); the dedup itself needed no further action either way.
 
+### `disqualifications` in the season table undercounts foul-outs
+ESPN's career endpoint carries a `disqualifications` total per season, and it
+does not agree with its own box scores. Victor Wembanyama (athlete 5104157):
+`SELECT season, season_type, count(*) FROM player_box_stats WHERE athlete_id =
+'5104157' AND fouls >= 6 GROUP BY 1, 2` returns one game in 2024 and two in the
+2026 regular season - three foul-outs - while
+`player_season_stats.disqualifications` is 1 for 2024 and 0 for 2025 and 2026.
+Measured 2026-09-21 on one player; how widely the column is short is not yet
+measured. Count foul-outs from the box score.
+
 ### Traded players' combined season rows disagree with their own stints
 
 - **What ESPN does:** returns a combined (team-less) season line for a traded

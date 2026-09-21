@@ -46,6 +46,49 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### "Last N games" means the last N regular-season games, even when playoff games came after
+- **Found:** 2026-09-21, yardstick-v2: a blind answer key (written from the
+  question text and the warehouse alone, no sight of the code) graded against a
+  live run of build 50c1faa (`~/association-research/yardstick-v2/blind/`).
+- **Evidence:** five of the yardstick's questions ask for the most recent games
+  with no season type, and all five answer the last N of the REGULAR season
+  though the team or player played on: "Show me the Knicks last 5 games" lists
+  games ending 2026-04-12 where their last five were the 2026 Finals (through
+  2026-06-14); "what were the Lakers last 5 games?" (actual: the OKC series);
+  "what did Nikola Jokic do in his last 5 games?" (actual: Minnesota, playoffs);
+  "Rui last ten games"; "Total points scored by the toronto raptord in the last
+  10 games" (1,198 regular-season points listed game by game against the 1,130
+  of their true last ten, and no total given). `_validate_season_type` returns
+  the postseason only when the question says so, which is right for an average
+  and wrong for "most recent".
+- **User sees:** a fluent log, headed "last 5 games of the 2026 regular
+  season" - so the scope IS displayed, which keeps it short of silent. But the
+  default is not the reasonable one, and no wording tried reaches "his last 5
+  games, whatever they were".
+- **Next step:** for `order=recent` with a `limit` and no season-type word in
+  the question, read both season types and take the newest N by date, saying in
+  the heading what the N span ("last 5 games, 2026 playoffs"). "Last 5 regular
+  season games" and "last 5 playoff games" then remain the corrections. Three
+  of the five are Jeff's own questions.
+- **Source:** ours, not ESPN's.
+- **GitHub:** none yet
+
+### A team and a role named together are both dropped: "lebron stats as a starter for Miami" answers this season's Lakers line
+- **Found:** 2026-09-21, yardstick-v2 blind key against build 50c1faa. The
+  question is Jeff's own, from his review notes.
+- **Evidence:** answered "20.9 / 6.1 / 7.2 in 60 games in the 2026 regular
+  season". The key: 26.9 / 7.8 / 6.5 over 381 starts for Miami, 2010-11 to
+  2013-14. Neither "as a starter" nor "for Miami" reached the answer, and the
+  season defaulted to the current one.
+- **User sees:** a fluent line about the wrong team, era and role, with nothing
+  saying two conditions were set aside.
+- **Next step:** a team named beside a player with no season is a span - the
+  seasons he played for that team - on the player-games relation, and
+  `split=starter` is already honored by `game_log`/`player_stat`; check why it
+  did not arrive. Until then `check_scope` should refuse rather than drop.
+- **Source:** ours, not ESPN's.
+- **GitHub:** none yet
+
 ### The router invents a `date` or a `season` the question never states
 - **Found:** 2026-09-16, issues audit and the "Bam adebeyo jan 19" investigation
 - **Evidence:** "2024 nba stephen curry double double per game scored on
@@ -2050,6 +2093,37 @@ those were found.
 - **GitHub:** none yet
 
 ## P3: refusal or gap
+
+### No league ranking by shot distance, and the refusal reads as if the data could not do it
+- **Found:** 2026-09-21, yardstick-v2 blind key against build 50c1faa.
+- **Evidence:** "who lead the league in avg 3 point distance?" and "who lead
+  the league in shot distance for 3 point shots?" (both Jeff's) answer "No
+  leaderboard ranks shot distance across the league." The blind keyer computed
+  one from `shot_chart`: Kristaps Porzingis, 27.37 ft, with a 100-attempt floor
+  and end-of-period heaves excluded - and measured why both are needed (one
+  81-foot heave tops the unfiltered list; Sengun is 29.62 ft with heaves and
+  26.65 without, on the same 141 shots).
+- **User sees:** a refusal that is true of the templates and reads as a claim
+  about the data.
+- **Next step:** a `shot_distance` ranking with a stated attempts floor and a
+  stated heave rule, reading `SHOT_VALUE_SQL`. Reword the refusal meanwhile:
+  "shot distance is answered for one player, not ranked across the league yet".
+- **Source:** ours, not ESPN's.
+- **GitHub:** none yet
+
+### Foul-out counts: check which column they read - the season table undercounts
+- **Found:** 2026-09-21, yardstick-v2 blind keyer P5; re-measured by the lead.
+- **Evidence:** see `DATA.md`, "`disqualifications` in the season table
+  undercounts foul-outs". Victor Wembanyama has 3 box-score games with 6 fouls
+  (one in 2024, two in the 2026 regular season) and
+  `player_season_stats.disqualifications` sums to 1.
+- **User sees:** nothing confirmed wrong yet - "How many times has webanyama
+  fouled out of a game" asks for a clarification of the typo in the run.
+- **Next step:** confirm `threshold_count`'s "fouled out" reads
+  `player_box_stats.fouls >= 6` and not the season column, with a test pinning
+  Wembanyama's 3.
+- **Source:** ESPN's; see DATA.md.
+- **GitHub:** none yet
 
 ### A position group as the subject has no template, and six corpus questions want one
 - **Found:** 2026-09-20, tallying what still falls through after the
