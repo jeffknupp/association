@@ -32,6 +32,30 @@ had no published version to be compatible with.
   future "his average over his last 5 vs Boston" averages the five Boston
   games; no template sets it yet (`player_stat` still hands "last N" to
   `game_log`, by decision).
+  `record_when` and `streak` now claim every cell `RELATION_SCOPING` declares
+  for the six templates on the player-games relation (`opponent`, `venue`,
+  `without`, a named half of the starter/bench `split`, `game_n`, `since`,
+  `season_n`, `below`, `above`) rather than the bare `span` they honored
+  before, and both read every one of them through the shared steps they
+  already settled through (`condition_player`), the way `HONORED_SCOPING`
+  claims them. `condition_player` takes a `measures` parameter (default none,
+  existing callers unchanged) so a `below`/`above` line built with
+  `measure_filters` in the template body narrows the pool the same way an
+  opponent or a venue does - `record_when`'s own threshold stays the split,
+  and a measure line narrows what it is read over ("20+ points AND 5+
+  assists"). Both answers now say what they narrowed to via
+  `Narrowed.filters()` in the title, and `since`/`season_n` get the same
+  phrasing `game_log`/`player_stat` give them ("since 2022 (...)", "in his
+  18th season (...)") through a new `_condition_span_label`, since
+  `record_when` and `streak` build their heading off the relation's own
+  `_Scope` rather than the `_Span` `condition_player` resolves internally.
+  `streak`'s run is read over the narrowed games, so "longest run of 20+
+  point games vs Boston" is a run over his Boston games only, and the answer
+  says so. The team branch of `record_when` and the team/league branches of
+  `streak` settle no player, so none of these cells reach them yet;
+  `_condition_needs_player_refusal` refuses one by name there rather than
+  silently answering as though it had been applied (ISSUES.md has the
+  follow-up).
 - **The steps that settle a player and his games are written once (step 3,
   C1).** `game_log` and `player_stat` each wrote out the same sequence - settle
   the span, resolve the name against it, settle an ordinal season once he is

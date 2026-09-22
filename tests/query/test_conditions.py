@@ -34,6 +34,10 @@ from association.query.templates.splits import SPLIT_KINDS, player_splits, recor
 S = current_season()
 BOS, LAL, PHI = "2", "13", "20"
 TATUM, BROWN, LEBRON, EMBIID, JOURNEYMAN = "10", "11", "20", "30", "40"
+# Postseason-only, for `game_n`: kept off Tatum/Brown/Embiid so a series added
+# there does not stretch a stint `with_without`'s own tests assert an exact
+# end date for (test_a_game_before_he_arrived_is_not_a_game_without_him).
+PLAYOFF_GUY = "90"
 
 # (athlete, team, minutes, points, starter, did_not_play). Every other stat is
 # fixed: 5 rebounds, 3 assists, one 3-pointer, and points//2 of points made.
@@ -65,16 +69,17 @@ def _game(
     season: int = S,
     winner: str | None = "auto",
     team_box: bool = True,
+    season_type: int = 2,
 ) -> None:
     decided = (home if home_score > away_score else away) if winner == "auto" else winner
-    c.execute("INSERT INTO games VALUES (?,?,?,?,?,?,?,?,?)", [event, season, 2, date, home, away, home_score, away_score, decided])
+    c.execute("INSERT INTO games VALUES (?,?,?,?,?,?,?,?,?)", [event, season, season_type, date, home, away, home_score, away_score, decided])
     for team, opponent, side in ((home, away, "home"), (away, home, "away")):
         # totalRebounds (40) is deliberately NOT offensiveRebounds +
         # defensiveRebounds (12 + 23 = 35) - the way a real pre-2022 row
         # differs, with a few rebounds ESPN credits to no player. Reading the
         # stale column would show 40.0; see test_conditions.py's rebounds test.
         stats = [40, 12, 23, 20, 10, 40, 85] if team_box else [None] * 7
-        c.execute("INSERT INTO team_box_stats VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", [event, season, 2, team, opponent, side, *stats])
+        c.execute("INSERT INTO team_box_stats VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", [event, season, season_type, team, opponent, side, *stats])
     for athlete, team, minutes, points, starter, dnp in lines:
         opponent = away if team == home else home
         c.execute(
@@ -82,7 +87,7 @@ def _game(
             [
                 event,
                 season,
-                2,
+                season_type,
                 team,
                 opponent,
                 athlete,
@@ -123,8 +128,8 @@ def league(tmp_path: Path) -> TemplateContext:
         "threePointFieldGoalsMade BIGINT, fieldGoalsMade BIGINT, fieldGoalsAttempted BIGINT, freeThrowsMade BIGINT, fouls BIGINT)"
     )
     c.execute(
-        "INSERT INTO players VALUES (?, 'Jayson Tatum'), (?, 'Jaylen Brown'), (?, 'LeBron James'), (?, 'Joel Embiid'), (?, 'Journeyman Guy')",
-        [TATUM, BROWN, LEBRON, EMBIID, JOURNEYMAN],
+        "INSERT INTO players VALUES (?, 'Jayson Tatum'), (?, 'Jaylen Brown'), (?, 'LeBron James'), (?, 'Joel Embiid'), (?, 'Journeyman Guy'), (?, 'Playoff Guy')",
+        [TATUM, BROWN, LEBRON, EMBIID, JOURNEYMAN, PLAYOFF_GUY],
     )
     c.execute("INSERT INTO teams VALUES (?, 'BOS', 'Boston Celtics'), (?, 'LAL', 'Los Angeles Lakers'), (?, 'PHI', 'Philadelphia 76ers')", [BOS, LAL, PHI])
 
@@ -153,8 +158,16 @@ def league(tmp_path: Path) -> TemplateContext:
     # 8pm Eastern on November 30th. Journeyman has the NULL-minutes shape
     # beside teammates who played: a game he did not play.
     _game(c, "e7", f"{S - 1}-12-01T01:00Z", LAL, BOS, 115, 105, [_played(TATUM, BOS, 31), _played(BROWN, BOS, 12), _played(LEBRON, LAL, 33), _blank(JOURNEYMAN, LAL)])
+    # A two-game postseason series vs Philadelphia, for `game_n`: p1 first by
+    # date, p2 second - numbered over real_games, not insertion order.
+    _game(c, "p1", f"{S}-04-20T23:30Z", BOS, PHI, 100, 90, [_played(PLAYOFF_GUY, BOS, 22), _played(EMBIID, PHI, 18)], season_type=3)
+    _game(c, "p2", f"{S}-04-23T23:30Z", PHI, BOS, 95, 105, [_played(PLAYOFF_GUY, BOS, 26), _played(EMBIID, PHI, 20)], season_type=3)
     # The shared filtered list every query here reads; e6 is dropped by it.
     real_games.build_table(c, {"games", "teams", "player_box_stats"})
+    # For `season_n`: Tatum's two regular seasons on record, last season and
+    # this one - settle_ordinal_season (common.py) reads only these columns.
+    c.execute("CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER)")
+    c.execute("INSERT INTO player_season_stats_deduped VALUES (?, ?, 2), (?, ?, 2)", [TATUM, last, TATUM, S])
     # The log view the player-games relation reads, in the warehouse's shape.
     c.execute(
         "CREATE VIEW player_game_log AS SELECT pbs.*, p.display_name AS player_name, g.date AS game_date, t.abbreviation AS team_abbr, o.abbreviation AS opponent_abbr "
@@ -539,6 +552,101 @@ def test_record_when_refuses_what_it_cannot_whitelist(league: TemplateContext) -
             record_when(league, _slots(player="Jayson Tatum", **slots))
 
 
+# ---------------- record_when, the relation's cells (step 3, C2) ----------------
+#
+# Tatum's played games this season with a recorded box score: e1 (home, vs
+# LAL, 30, W), e4 (away, vs PHI, off the bench, 35, W), e7 (away, vs LAL, 31,
+# L) - e2 is a DNP, e3 has no row, e5's box score is blank.
+
+
+def test_record_when_narrows_by_venue_and_says_so(league: TemplateContext) -> None:
+    """Only e1 is a home game; e4 and e7 are on the road."""
+    result = record_when(league, _slots(player="Jayson Tatum", stat="points", threshold=25, venue="home"))
+    assert (result.data["reached"]["games"], result.data["fell_short"]["games"]) == (1, 0)
+    assert result.answer.startswith(f"Boston Celtics record when Jayson Tatum had 25+ points at home, {S} regular season:")
+
+
+def test_record_when_narrows_by_opponent_and_says_so(league: TemplateContext) -> None:
+    """Tatum vs the 76ers, across both seasons on record: e0b (last season,
+    20, L), e0c (last season, 25, W), e4 (this season, 35, W)."""
+    result = record_when(league, _slots(player="Jayson Tatum", stat="points", threshold=25, opponent="Philadelphia 76ers", span="career"))
+    assert (result.data["reached"]["games"], result.data["reached"]["wins"]) == (2, 2)
+    assert (result.data["fell_short"]["games"], result.data["fell_short"]["losses"]) == (1, 1)
+    assert "vs the Philadelphia 76ers" in result.answer
+
+
+def test_record_when_narrows_by_a_teammates_absence_and_says_so(league: TemplateContext) -> None:
+    """Brown's only box score in Tatum's rookie (last) season is e0z, a game
+    Tatum is not even in - so every one of Tatum's last-season games is
+    "without" him: e0b (20, L), e0c (25, W), e0a (30, W), e0d (28, W)."""
+    result = record_when(league, _slots(player="Jayson Tatum", stat="points", threshold=28, without="Jaylen Brown", season=S - 1))
+    assert (result.data["reached"]["games"], result.data["reached"]["wins"], result.data["reached"]["losses"]) == (2, 2, 0)
+    assert (result.data["fell_short"]["games"], result.data["fell_short"]["wins"], result.data["fell_short"]["losses"]) == (2, 1, 1)
+    assert "without Jaylen Brown" in result.answer
+
+
+def test_record_when_narrows_by_a_named_half_of_the_split_and_says_so(league: TemplateContext) -> None:
+    """Tatum comes off the bench only once: e4, 35 points, a win."""
+    result = record_when(league, _slots(player="Jayson Tatum", stat="points", threshold=30, split="bench"))
+    assert (result.data["reached"]["games"], result.data["fell_short"]["games"]) == (1, 0)
+    assert "off the bench" in result.answer
+
+
+def test_record_when_narrows_by_one_game_of_a_playoff_series_and_says_so(league: TemplateContext) -> None:
+    """p1 and p2 are a two-game series vs Philadelphia; game 2 is p2 (26 points, by date, not insertion order)."""
+    result = record_when(league, _slots(player="Playoff Guy", stat="points", threshold=25, season_type=3, game_n=2))
+    assert (result.data["reached"]["games"], result.data["fell_short"]["games"]) == (1, 0)
+    assert "game 2 of each series" in result.answer
+
+
+def test_record_when_honors_since_and_says_so(league: TemplateContext) -> None:
+    """Since last season: every one of Tatum's played games on record, both
+    seasons - e0b (20, L), e0c (25, W), e0a (30, W), e0d (28, W), e1 (30, W),
+    e4 (35, W), e7 (31, W)."""
+    result = record_when(league, _slots(player="Jayson Tatum", stat="points", threshold=25, since=S - 1))
+    assert (result.data["reached"]["games"], result.data["fell_short"]["games"]) == (6, 1)
+    assert result.answer.startswith(f"Boston Celtics record when Jayson Tatum had 25+ points, since {S - 1} ({S - 1}-{S} regular seasons):")
+
+
+def test_record_when_settles_season_n_and_says_so(league: TemplateContext) -> None:
+    """Tatum's 1st season on record (player_season_stats_deduped) is last
+    season: e0b (20, L), e0c (25, W), e0a (30, W), e0d (28, W)."""
+    result = record_when(league, _slots(player="Jayson Tatum", stat="points", threshold=25, season_n=1))
+    assert result.data["span"].startswith(f"in his 1st season ({S - 1}")
+    assert (result.data["reached"]["games"], result.data["fell_short"]["games"]) == (3, 1)
+    assert "in his 1st season (" in result.answer
+
+
+def test_record_when_narrows_by_a_box_score_line_and_says_so(league: TemplateContext) -> None:
+    """Every played row in this fixture carries exactly 3 assists (`Line`'s own
+    comment), so a line every game already satisfies changes no number but
+    does say so in the title - proof the filter reaches the query rather than
+    being silently ignored, without needing engineered variance."""
+    with_line = record_when(league, _slots(player="Jayson Tatum", stat="points", threshold=25, above=["at least 3 assists"]))
+    without_line = record_when(league, _slots(player="Jayson Tatum", stat="points", threshold=25))
+    assert with_line.data["reached"] == without_line.data["reached"] and with_line.data["fell_short"] == without_line.data["fell_short"]
+    assert "with at least 3 assists" in with_line.answer
+
+
+def test_record_when_a_box_score_line_narrows_to_no_games(league: TemplateContext) -> None:
+    """A line no played row meets admits none at all - the same fixture's
+    fixed 3 assists, asked for under. Confirmed: the refusal this reaches is
+    `common._no_games`'s box-score-count branch, which says "did not play in
+    any of them" - true of games with no box score, false here, since Tatum
+    played several; ISSUES.md records the finding."""
+    empty = record_when(league, _slots(player="Jayson Tatum", stat="points", threshold=25, below=["under 3 assists"]))
+    assert empty.data["games"] == 0
+    assert "did not play in any of them" in empty.answer
+
+
+def test_record_when_cannot_honor_a_relation_cell_without_a_player(league: TemplateContext) -> None:
+    """The team branch settles no player, so it cannot narrow by a teammate's
+    absence, a venue, or anything else only condition_player reads - refusing
+    by name rather than silently answering the whole team's record."""
+    with pytest.raises(TemplateUnsupported, match=r"record_when cannot honor \['venue'\]"):
+        record_when(league, _slots(team="Boston Celtics", stat="points", threshold=100, venue="home"))
+
+
 # ---------------- record_when, the team branch (ISSUES.md #144) ----------------
 #
 # The Celtics' six real games this season (e6 is a 0-0 placeholder with no
@@ -755,6 +863,93 @@ def test_a_stat_without_a_threshold_is_not_read_as_a_winning_streak(league: Temp
 
 def test_the_models_word_for_a_winning_streak_is_not_a_stat(league: TemplateContext) -> None:
     assert streak(league, _slots(team="Boston Celtics", stat="wins", kind="win")).data["streaks"][0]["length"] == 3
+
+
+# ---------------- streak, the relation's cells (step 3, C2) ----------------
+#
+# The same career run as test_a_players_run_skips_missed_games_and_stops_at_unknown_ones
+# (25+ points: e0c, e0a, e0d, e1, e4 - a run of 5, broken by e5's missing box
+# score before e7) is the baseline these narrow further.
+
+
+def test_streak_narrows_by_venue_and_says_so(league: TemplateContext) -> None:
+    """Tatum's home games only: e0c, e0a, e0d, e1 - e4 and e7 are on the road,
+    and dropping them shortens the career run below the unnarrowed 5."""
+    result = streak(league, _slots(player="Jayson Tatum", stat="points", threshold=25, span="career", venue="home"))
+    assert result.data["streaks"][0]["length"] == 4
+    assert "at home" in result.answer
+
+
+def test_streak_narrows_by_opponent_and_says_so(league: TemplateContext) -> None:
+    """Tatum vs the Lakers only: e0a, e0d, e1 (25+ each) then e7, with e5 -
+    a missing box score, unaffected by the opponent narrowing since the
+    "unseen" read is not filtered by it - sitting between e1 and e7 and
+    ending the run there. A run of 3, not the unnarrowed 5: dropping e4 (vs
+    Philadelphia) from the sequence shortens it further still."""
+    result = streak(league, _slots(player="Jayson Tatum", stat="points", threshold=25, span="career", opponent="Los Angeles Lakers"))
+    assert result.data["streaks"][0]["length"] == 3
+    assert "vs the Los Angeles Lakers" in result.answer
+
+
+def test_streak_narrows_by_a_teammates_absence_and_says_so(league: TemplateContext) -> None:
+    """Brown's only last-season box score is a game Tatum is not even in, so
+    every one of Tatum's last-season games is "without" him - the Celtics'
+    longest winning run in games Tatum played that season, without Brown, is
+    e0c/e0a/e0d (e0b is a loss first)."""
+    result = streak(league, _slots(player="Jayson Tatum", kind="win", without="Jaylen Brown", season=S - 1))
+    assert result.data["streaks"][0]["length"] == 3
+    assert "without Jaylen Brown" in result.answer
+
+
+def test_streak_narrows_by_a_named_half_of_the_split_and_says_so(league: TemplateContext) -> None:
+    """Tatum's only bench game is e4, a win - a run of exactly one."""
+    result = streak(league, _slots(player="Jayson Tatum", kind="win", split="bench"))
+    assert result.data["streaks"][0]["length"] == 1
+    assert "off the bench" in result.answer
+
+
+def test_streak_honors_since_and_says_so(league: TemplateContext) -> None:
+    """Since this season alone (S), Tatum's recorded-points games are e1, e4,
+    e7 - e5 sits between e4 and e7 with no box score, so it is a run of 2
+    (e1, e4), not 3."""
+    result = streak(league, _slots(player="Jayson Tatum", stat="points", threshold=25, since=S))
+    assert result.data["streaks"][0]["length"] == 2
+    assert result.answer.startswith(f"Jayson Tatum's longest run of consecutive games with 25+ points, since {S} ({S} regular season):")
+
+
+def test_streak_settles_season_n_and_says_so(league: TemplateContext) -> None:
+    """His 2nd season on record is this one (S) - the same games as the
+    `since` case above, addressed by ordinal instead."""
+    result = streak(league, _slots(player="Jayson Tatum", stat="points", threshold=25, season_n=2))
+    assert result.data["streaks"][0]["length"] == 2
+    assert "in his 2nd season (" in result.answer
+
+
+def test_streak_narrows_by_one_game_of_a_playoff_series_and_says_so(league: TemplateContext) -> None:
+    """Playoff Guy's game 2 of his one series is p2 alone - a run of exactly
+    one game either way, but scoped to that game and said so."""
+    result = streak(league, _slots(player="Playoff Guy", stat="points", threshold=25, season_type=3, game_n=2))
+    assert result.data["streaks"][0]["length"] == 1
+    assert "game 2 of each series" in result.answer
+
+
+def test_streak_narrows_by_a_box_score_line_and_says_so(league: TemplateContext) -> None:
+    """Every played row in this fixture carries exactly 3 assists, so a line
+    every game already satisfies changes no run but does say so."""
+    with_line = streak(league, _slots(player="Jayson Tatum", stat="points", threshold=25, span="career", above=["at least 3 assists"]))
+    without_line = streak(league, _slots(player="Jayson Tatum", stat="points", threshold=25, span="career"))
+    assert with_line.data["streaks"][0]["length"] == without_line.data["streaks"][0]["length"]
+    assert "with at least 3 assists" in with_line.answer
+
+
+def test_streak_cannot_honor_a_relation_cell_without_a_player(league: TemplateContext) -> None:
+    """Team and league streaks settle no player, so neither can narrow by a
+    span starting point or an ordinal season - only condition_player reads
+    them, and neither branch calls it."""
+    with pytest.raises(TemplateUnsupported, match=r"streak cannot honor \['since'\]"):
+        streak(league, _slots(team="Boston Celtics", kind="win", since=S - 1))
+    with pytest.raises(TemplateUnsupported, match=r"streak cannot honor \['season_n'\]"):
+        streak(league, _slots(kind="win", season_n=1))
 
 
 # ---------------- what the checks around the templates see ----------------

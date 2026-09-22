@@ -1164,7 +1164,9 @@ def scoped_games(
     return narrowed
 
 
-def condition_player(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], missing: str, scope: _Scope, *, team: Entity | None = None) -> tuple[Entity, Narrowed] | TemplateResult:
+def condition_player(
+    con: duckdb.DuckDBPyConnection, slots: dict[str, Any], missing: str, scope: _Scope, *, team: Entity | None = None, measures: list[MeasureFilter] | None = None
+) -> tuple[Entity, Narrowed] | TemplateResult:
     """The player a condition template is about, and his games in ``scope``
     under the question's row-level narrowings - for the templates that group a
     player's games by a condition (splits, a record above a threshold, a
@@ -1174,7 +1176,11 @@ def condition_player(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], miss
     ``scope`` is the template's own ``_Scope``, kept because it reads "career
     ... in 2015" as 2015 where ``_span_of`` refuses the pair - the one place
     the two readers of a player's games disagreed, and not this refactor's to
-    settle. ``team`` narrows to the games he played for that team.
+    settle. ``team`` narrows to the games he played for that team. ``measures``
+    is the lines a caller has already read off ``below``/``above`` with
+    :func:`measure_filters` - built in the template body, before any name is
+    resolved, the same way :func:`player_stat` does it - and defaults to none
+    so a caller that does not pass any keeps reading every game in scope.
 
     .. versionadded:: 4.4.0
     """
@@ -1182,7 +1188,7 @@ def condition_player(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], miss
     if isinstance(subject, TemplateResult):
         return subject
     player, span = subject
-    narrowed = scoped_games(con, player, span, slots, opponent=slots.get("opponent"), measures=[])
+    narrowed = scoped_games(con, player, span, slots, opponent=slots.get("opponent"), measures=measures or [])
     if isinstance(narrowed, TemplateResult):
         return narrowed
     if team is not None:
