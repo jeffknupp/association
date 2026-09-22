@@ -32,7 +32,15 @@ had no published version to be compatible with.
   460 recorded and constructed slot sets across the ten templates that read a
   player's games (answer text, data and refusals identical), with the
   comparison watched to fail when one slot was dropped from the shared
-  function (14 cases moved).
+  function (14 cases moved). `period_split` is now on the same two steps -
+  `_period_split_rows` reads `scoped_games` for its narrowing rather than its
+  own call to `_narrow_player_games`, and `period_split` itself reads
+  `scoped_player` for the name and the "current or named" season it already
+  read one way - with the opponent still resolved eagerly through
+  `_optional_team` beforehand, since the answer needs its name whether or not
+  any games end up narrowed to it. Proved by the same golden comparison
+  (460/460 identical), watched to fail when `without` was dropped from the
+  narrowing (6 cases moved).
 - **The router no longer invents a `season` or a `date` the question never
   states.** A bare `season` integer or `date` from the model used to be
   trusted on its own whenever the question named no year or day - measured
