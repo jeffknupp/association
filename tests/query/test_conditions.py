@@ -653,11 +653,14 @@ def test_record_when_a_box_score_line_narrows_to_no_games(league: TemplateContex
 
 
 def test_record_when_cannot_honor_a_relation_cell_without_a_player(league: TemplateContext) -> None:
-    """The team branch settles no player, so it cannot narrow by a teammate's
-    absence, a venue, or anything else only condition_player reads - refusing
-    by name rather than silently answering the whole team's record."""
-    with pytest.raises(TemplateUnsupported, match=r"record_when cannot honor \['venue'\]"):
-        record_when(league, _slots(team="Boston Celtics", stat="points", threshold=100, venue="home"))
+    """The team branch settles no player, so it still cannot narrow by a
+    teammate's absence, a since-span or anything else only condition_player
+    reads - refusing by name rather than silently answering the whole team's
+    record. ``opponent`` and ``venue`` are NOT in this list any more (step 3,
+    C4: see test_an_opponent_narrows_a_team_only_threshold_too and
+    test_a_venue_narrows_a_team_only_threshold_too below)."""
+    with pytest.raises(TemplateUnsupported, match=r"record_when cannot honor \['since'\]"):
+        record_when(league, _slots(team="Boston Celtics", stat="points", threshold=100, since=S - 1))
 
 
 # ---------------- record_when, the team branch (ISSUES.md #144) ----------------
@@ -725,6 +728,55 @@ def test_a_team_threshold_refuses_a_stat_with_no_team_figure(league: TemplateCon
     player" (the wrong cause: a team WAS named)."""
     with pytest.raises(TemplateUnsupported, match="record_when has no team figure for minutes"):
         record_when(league, _slots(team="Boston Celtics", stat="minutes", threshold=240))
+
+
+def test_an_opponent_narrows_a_team_only_threshold_too(league: TemplateContext) -> None:
+    """Step 3, C4: the Celtics' four games against the Lakers this season are
+    e1 110 W (home), e2 100 L (away), e5 101 W (home), e7 105 L (away).
+    Narrowed to LAL and a 105-point threshold: reached (>=105) is e1 (W) and
+    e7 (L), 1-1; fell short is e2 (L) and e5 (W), 1-1 - the other two games
+    (both vs Philadelphia) excluded from both rows."""
+    result = record_when(league, _slots(team="Boston Celtics", stat="points", threshold=105, opponent="Los Angeles Lakers"))
+    assert (result.data["reached"]["wins"], result.data["reached"]["losses"]) == (1, 1)
+    assert (result.data["fell_short"]["wins"], result.data["fell_short"]["losses"]) == (1, 1)
+    assert result.data["reached"]["games"] == 2 and result.data["fell_short"]["games"] == 2
+    assert "vs the Los Angeles Lakers" in result.answer
+
+
+def test_a_venue_narrows_a_team_only_threshold_too(league: TemplateContext) -> None:
+    """The Celtics' three home games this season are e1 110 W, e3 120 W, e5
+    101 W - all wins, so at a 105-point threshold reached is 2-0 (e1, e3) and
+    fell short is 1-0 (e5), with none of their three road games counted."""
+    result = record_when(league, _slots(team="Boston Celtics", stat="points", threshold=105, venue="home"))
+    assert (result.data["reached"]["games"], result.data["reached"]["wins"]) == (2, 2)
+    assert (result.data["fell_short"]["games"], result.data["fell_short"]["wins"]) == (1, 1)
+    assert "at home" in result.answer
+
+
+def test_a_team_only_threshold_says_which_fact_is_missing_for_a_narrowing_with_no_games(old_postseason_and_cup_final: TemplateContext) -> None:
+    """``old1`` (1991 postseason) is the Celtics' only playoff game on record
+    for that span, and it was against the Lakers - narrowed to the 76ers
+    instead, the pool is empty, and which fact is missing is the MATCH, not
+    the span: "played 1 games ... none of them vs the Philadelphia 76ers",
+    not the false "no games in the 1991 postseason" (`_condition_team_no_games`,
+    step 3, C4)."""
+    result = record_when(old_postseason_and_cup_final, _slots(team="Boston Celtics", stat="points", threshold=10, season=1991, season_type=3, opponent="Philadelphia 76ers"))
+    assert result.data["games"] == 0
+    assert "played 1 game" in result.answer and "none of them vs the Philadelphia 76ers" in result.answer
+    assert "no games with a result" not in result.answer
+
+
+def test_a_streaks_opponent_and_venue_narrow_a_teams_own_run_too(league: TemplateContext) -> None:
+    """Step 3, C4: narrowed to home games only, the Celtics won all three
+    (e1, e3, e5) - their whole home slate, in order - so the streak is 3, not
+    the 1-game runs their overall 4-2 record (interrupted by two road losses)
+    would otherwise show at this same threshold-free "wins" question."""
+    home = streak(league, _slots(team="Boston Celtics", kind="win", venue="home"))
+    assert home.data["streaks"][0]["length"] == 3
+    assert "at home" in (home.answer or "")
+    against_phi = streak(league, _slots(team="Boston Celtics", kind="win", opponent="Philadelphia 76ers"))
+    assert against_phi.data["streaks"][0]["length"] == 2  # e3, e4 - both wins
+    assert "vs the Philadelphia 76ers" in (against_phi.answer or "")
 
 
 def test_a_team_turnovers_threshold_reads_totalturnovers() -> None:
@@ -1009,13 +1061,60 @@ def test_a_span_of_seasons_starts_where_seasons_are_named_for_their_end() -> Non
     assert scope.first == 1994 and "NOT IN (1993)" in scope.where("t")
 
 
+@pytest.fixture
+def old_postseason_and_cup_final(league: TemplateContext) -> TemplateContext:
+    """``league``, plus a postseason game labeled 1990 but played in 1991 -
+    the wrong-year ESPN label ``team_games.py``'s calendar-year read corrects
+    (step 3, C4) - and a neutral-site Las Vegas game, the NBA Cup final: a
+    real game that counts in no standings but IS a real game the two teams
+    played (``team_games.py``: "the NBA Cup final is flagged rather than
+    dropped")."""
+    c = league.con
+    _game(c, "old1", "1991-05-01T23:30Z", BOS, LAL, 100, 90, [_played(TATUM, BOS, 22)], season=1990, season_type=3)
+    _game(c, "cup", f"{S - 1}-12-14T01:30Z", BOS, LAL, 97, 95, [_played(TATUM, BOS, 24), _played(LEBRON, LAL, 30)], neutral_site=True, venue_city="Las Vegas")
+    real_games.build_table(c, {"games", "teams", "player_box_stats"})
+    return league
+
+
 @pytest.mark.parametrize("season", [1990, 1993])
-def test_a_playoff_season_filed_under_its_first_year_is_refused(league: TemplateContext, season: int) -> None:
-    """The warehouse's "1990" postseason is April to June 1991. Answered as
-    asked, "Bulls 1990 playoffs" describes the wrong year under the right label."""
+def test_a_playoff_season_label_no_longer_refuses_and_finds_nothing_with_no_matching_games(league: TemplateContext, season: int) -> None:
+    """Before step 3, C4 this refused, naming the wrong year under the ESPN
+    label (``_misfiled_postseason``). Now the label is not read at all - the
+    postseason is selected by the calendar year the games were actually
+    played in (``team_games.py``) - so asking under the OLD label finds
+    nothing, when nothing was actually played in that calendar year, rather
+    than a claim about which year the label really means."""
     for template, slots in ((streak, {"team": "Boston Celtics", "kind": "win"}), (streak, {"kind": "win"}), (player_splits, {"team": "Boston Celtics"})):
-        answer = template(league, {**slots, "season": season, "season_type": 3}).answer
-        assert f"its {season} postseason is the {season + 1} playoffs" in answer
+        answer = template(league, {**slots, "season": season, "season_type": 3}).answer or ""
+        assert "postseason is the" not in answer  # the old misfiled-label refusal
+        assert "no games" in answer.lower() or "no team has a game" in answer.lower()
+
+
+def test_a_postseason_labeled_1990_is_read_as_the_1991_playoffs_by_calendar_year(old_postseason_and_cup_final: TemplateContext) -> None:
+    """``old1`` is labeled season 1990 but was played 1991-05-01 - the
+    Celtics' only playoff win on record for that stretch. Asking for the 1990
+    LABEL finds nothing (nothing was played in calendar year 1990); asking
+    for 1991, the year it was actually played, finds it - for all three team
+    branches this step ports (step 3, C4)."""
+    for template, slots in (
+        (streak, {"team": "Boston Celtics", "kind": "win"}),
+        (player_splits, {"team": "Boston Celtics"}),
+        (record_when, {"team": "Boston Celtics", "stat": "points", "threshold": 50}),
+    ):
+        empty = template(old_postseason_and_cup_final, {**slots, "season": 1990, "season_type": 3})
+        assert empty.data.get("games") == 0, f"{template.__name__} found a game under the 1990 LABEL, which is really 1991"
+        found = template(old_postseason_and_cup_final, {**slots, "season": 1991, "season_type": 3})
+        assert found.data.get("games") != 0, f"{template.__name__} found no game under 1991, the calendar year old1 was actually played"
+
+
+def test_a_teams_games_over_a_span_holding_the_cup_final_count_it(old_postseason_and_cup_final: TemplateContext) -> None:
+    """The Celtics played 7 regular-season games this season with the Cup
+    final (``cup``) added to the 6 ``league`` already holds - a plain game
+    list or split is not a win-loss RECORD, so it does not exclude the cup
+    final the way ``team_record`` does (``team_games.py``: "a plain game
+    list or head-to-head count should not [exclude it]")."""
+    result = player_splits(old_postseason_and_cup_final, _slots(team="Boston Celtics", split="wins_losses"))
+    assert result.data["games"] == 7
 
 
 def test_a_player_listed_once_is_told_so_in_the_singular(league: TemplateContext) -> None:

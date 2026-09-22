@@ -120,37 +120,6 @@ def _misfiled_postseason(scope: _Scope) -> TemplateResult | None:
     return TemplateResult(data={"message": message, "season": scope.season}, answer=message)
 
 
-def _team_misfiled_postseason(span: _Span) -> TemplateResult | None:
-    """:func:`_misfiled_postseason`'s check, over a ``_Span`` instead of a
-    ``_Scope`` - kept ONLY for the pure-refactor commit that ports
-    ``_player_splits_team``/``_record_when_team_answer``/``_streak_team``/the
-    league win-loss streak onto the team-games relation without yet changing
-    what they answer: the relation reads a postseason by calendar year, which
-    makes this refusal obsolete, and the very next commit deletes every call
-    to this function along with it (CHANGES.md has the moved cases)."""
-    if span.season_type != 3 or span.season is None or span.season >= 1994:
-        return None
-    message = (
-        f"The warehouse files playoff games from before 1993-94 under the year the season began - its {span.season} postseason is the "
-        f"{span.season + 1} playoffs - so an answer for {span.season} would be about the wrong year."
-    )
-    return TemplateResult(data={"message": message, "season": span.season}, answer=message)
-
-
-def _team_scope_interim_floor(span: _Span) -> _Span:
-    """INTERIM ONLY, for the same pure-refactor commit
-    :func:`_team_misfiled_postseason` is: clamps a postseason CAREER span's
-    floor back to 1994, matching ``conditions._game_scope``'s old
-    ``max(_FIRST_END_YEAR_SEASON, ...)`` - ``_span_of``'s own career branch
-    has no such clamp, so without this a career-wide team postseason question
-    would already reach back to 1989 in this commit, which is the next
-    commit's behavior change to make, not this one's. Removed in the same
-    commit that removes :func:`_team_misfiled_postseason`."""
-    if span.season is None and span.season_type == 3 and span.first < 1994:
-        return replace(span, first=1994)
-    return span
-
-
 def _condition_span_label(scope: _Scope, slots: dict[str, Any], first: Any, last: Any) -> str:
     """The season(s) a condition answer covers, in words: "since 2022
     (2022-2026 regular seasons)" or "in his 18th season (2021 regular
@@ -187,9 +156,18 @@ def _condition_span_label(scope: _Scope, slots: dict[str, Any], first: Any, last
 # player branch needs), so a team-only or league-wide question setting one of
 # these would otherwise be silently answered as though it had been applied.
 # Refusing here, by name, is the same discipline `_player_splits_team` already
-# applies to a bare `starter_bench` split - see ISSUES.md for the follow-up
-# (a team's own venue/opponent narrowing is a real, unimplemented shape).
-_CONDITION_PLAYER_ONLY_CELLS: tuple[str, ...] = ("opponent", "venue", "without", "split", "since", "season_n", "below", "above", "game_n")
+# applies to a bare `starter_bench` split.
+#
+# `opponent` and `venue` are NOT here (step 3, C4): both branches now read the
+# team-games relation through `common.team_games`, the same shared narrowing
+# `team_record` reads, so a team's own opponent/venue narrowing is a real,
+# implemented shape rather than a refusal (ISSUES.md, "record_when's team
+# branch and streak's team/league branches refuse the relation's cells rather
+# than reading them" - rewritten to match). `streak`'s LEAGUE branch (no team
+# named either) still cannot narrow to a single opponent or venue - a
+# league-wide streak has no one team's home/road split or rival to read - so
+# `_streak_league_needs_named_subject` refuses those two there specifically.
+_CONDITION_PLAYER_ONLY_CELLS: tuple[str, ...] = ("without", "split", "since", "season_n", "below", "above", "game_n")
 
 
 def _condition_needs_player_refusal(intent: str, slots: dict[str, Any]) -> None:
@@ -198,6 +176,17 @@ def _condition_needs_player_refusal(intent: str, slots: dict[str, Any]) -> None:
     claimed = sorted(cell for cell in _CONDITION_PLAYER_ONLY_CELLS if slots.get(cell))
     if claimed:
         raise TemplateUnsupported(f"{intent} cannot honor {claimed} without a named player - only his own games can be narrowed that way")
+
+
+def _streak_league_needs_named_subject(slots: dict[str, Any]) -> None:
+    """Raise if a league-wide streak (nobody named at all) set ``opponent`` or
+    ``venue`` - cells only a named team's or player's games can be narrowed by.
+    A league-wide streak has no single subject for either to narrow against,
+    unlike ``_streak_team`` (a real team, now on the relation) or
+    ``_streak_player`` (``condition_player`` reads both)."""
+    claimed = sorted(cell for cell in ("opponent", "venue") if slots.get(cell))
+    if claimed:
+        raise TemplateUnsupported(f"streak cannot honor {claimed} without a named team or player - the league-wide streak has no single subject to narrow")
 
 
 def _team_span_label(span: _Span, first: Any = None, last: Any = None) -> str:
@@ -541,20 +530,18 @@ def _player_splits_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], s
 
     .. versionchanged:: 4.4.0
        Ported off ``conditions._team_games`` onto the team-games relation
-       (step 3, C4) - a pure refactor, proved by golden comparison; what it
-       answers is unchanged (:func:`_team_misfiled_postseason` keeps the
-       pre-1994 postseason refusal exactly as it was under the old
-       definition, for now - a following commit removes it).
+       (step 3, C4): a postseason before 1993-94 is now selected by the
+       calendar year it was played in, not ESPN's own-year label, so the
+       pre-1994 refusal that used to run here no longer applies, and a career
+       span now reaches its real 1989 floor instead of stopping at 1994 - see
+       CHANGES.md for the moved cases.
     """
     if split == "starter_bench" or split in _STARTER_BENCH_SIDES:
         # "Bench scoring" is a sum over a team's players - a different
         # question from any this template answers. True of one named half as
         # much as of the category.
         raise TemplateUnsupported("a team has no starter/bench split of its own")
-    scope = _team_scope_interim_floor(_span_of(span, slots.get("season"), slots.get("season_type") or 2, "games", since=slots.get("since")))
-    misfiled = _team_misfiled_postseason(scope)
-    if misfiled is not None:
-        return misfiled
+    scope = _span_of(span, slots.get("season"), slots.get("season_type") or 2, "games", since=slots.get("since"))
     narrowed = team_games(con, team, scope, slots, opponent=opponent)
     if isinstance(narrowed, TemplateResult):
         return narrowed
@@ -1160,12 +1147,14 @@ def _record_when_team_answer(con: duckdb.DuckDBPyConnection, slots: dict[str, An
     wrong cause for a team question with nobody to resolve.
 
     .. versionchanged:: 4.4.0
-       Ported onto the team-games relation, through :func:`common.team_games`
-       the way ``team_record`` reads it (step 3, C4) - a pure refactor, proved
-       by golden comparison; what it answers is unchanged
-       (:func:`_team_misfiled_postseason` keeps the pre-1994 postseason
-       refusal exactly as it was under the old definition, for now - a
-       following commit removes it and wires ``opponent``/``venue`` through).
+       Honors ``opponent`` and ``venue`` (step 3, C4), reading the team-games
+       relation through :func:`common.team_games` the way ``team_record``
+       does, and says the narrowing in the heading via
+       :meth:`~association.query.team_games.TeamNarrowed.filters`. A
+       postseason before 1993-94 is now selected by the calendar year it was
+       played in rather than ESPN's own-year label, so the pre-1994 refusal
+       that used to run here no longer applies - see CHANGES.md for the moved
+       cases.
     """
     _condition_needs_player_refusal("record_when", slots)
     team = _optional_team(con, slots.get("team"), season=_slot_season(slots))
@@ -1175,10 +1164,7 @@ def _record_when_team_answer(con: duckdb.DuckDBPyConnection, slots: dict[str, An
         raise TemplateUnsupported("record_when needs a player or a team")
     stat = slots.get("stat")
     column, threshold = _record_when_team_stat(stat, slots.get("threshold"))
-    span = _team_scope_interim_floor(_span_of(slots.get("span"), slots.get("season"), slots.get("season_type") or 2, "games"))
-    misfiled = _team_misfiled_postseason(span)
-    if misfiled is not None:
-        return misfiled
+    span = _span_of(slots.get("span"), slots.get("season"), slots.get("season_type") or 2, "games")
     narrowed = team_games(con, team, span, slots, opponent=slots.get("opponent"))
     if isinstance(narrowed, TemplateResult):
         return narrowed
@@ -1220,9 +1206,12 @@ def streak(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        ``split``, ``game_n``, ``since``, ``season_n``, ``below`` and ``above``
        - the run is read over the games those narrow to, so "longest run of
        20+ point games vs Boston" is a run over his Boston games only, and the
-       answer says so beside the run. The team and league branches (no player
-       named) still cannot honor them; a question setting one there refuses,
-       naming which, rather than silently narrowing nothing (ISSUES.md).
+       answer says so beside the run. A named team's own run (no player) now
+       honors ``opponent`` and ``venue`` too (step 3, C4), reading the
+       team-games relation the way ``team_record`` does; the league branch
+       (nobody named at all) still cannot narrow to a single opponent or
+       venue, and refuses naming which rather than silently narrowing
+       nothing (ISSUES.md).
     """
     con = ctx.con
     want_win = slots.get("kind") != "loss"
@@ -1245,7 +1234,9 @@ def streak(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     if team is not None:
         return _streak_team(con, slots, span, team, by_stat, want_win, result, hit, condition, slots.get("opponent"))
 
-    # Nobody named: the league's longest, each team-season or player once.
+    # Nobody named: the league's longest, each team-season or player once -
+    # and no single team or player for `opponent`/`venue` to narrow against.
+    _streak_league_needs_named_subject(slots)
     return _streak_league(con, slots, span, by_stat, column, stat, threshold, unit, want_win, result, hit, condition)
 
 
@@ -1344,23 +1335,19 @@ def _streak_team(
     condition: dict[str, Any],
     opponent: Any,
 ) -> TemplateResult:
-    """A named team's longest run of wins or losses in a season.
+    """A named team's longest run of wins or losses in a season, narrowed to
+    an opponent and/or a venue where the question named them.
 
     .. versionchanged:: 4.4.0
-       Ported off ``conditions._team_games`` onto the team-games relation,
-       through :func:`common.team_games` (step 3, C4) - a pure refactor,
-       proved by golden comparison; what it answers is unchanged
-       (:func:`_team_misfiled_postseason` keeps the pre-1994 postseason
-       refusal exactly as it was under the old definition, for now - a
-       following commit removes it and wires ``opponent``/``venue`` through,
-       which this signature already carries a parameter for).
+       Honors ``opponent`` and ``venue`` (step 3, C4), reading the team-games
+       relation through :func:`common.team_games`. A postseason before
+       1993-94 is now selected by the calendar year it was played in rather
+       than ESPN's own-year label, so the pre-1994 refusal that used to run
+       here no longer applies - see CHANGES.md for the moved cases.
     """
     if by_stat:
         raise TemplateUnsupported("a team's streak is of wins or losses, not of a stat")
-    scope = _team_scope_interim_floor(_span_of(span, slots.get("season"), slots.get("season_type") or 2, "games"))
-    misfiled = _team_misfiled_postseason(scope)
-    if misfiled is not None:
-        return misfiled
+    scope = _span_of(span, slots.get("season"), slots.get("season_type") or 2, "games")
     narrowed = team_games(con, team, scope, slots, opponent=opponent)
     if isinstance(narrowed, TemplateResult):
         return narrowed
@@ -1459,11 +1446,10 @@ def _streak_league_stat_branch(
 def _streak_league_team_branch(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], span: Any, result: str, hit: str, condition: dict[str, Any], limit: int) -> _StreakLeagueFound | TemplateResult:
     """The win-loss half of :func:`_streak_league`: each team's longest run
     in a season, one per team-season - settles its span as a ``_Span`` and
-    reads the team-games relation (step 3, C4)."""
-    team_span = _team_scope_interim_floor(_span_of(span, slots.get("season"), slots.get("season_type") or 2, "games"))
-    misfiled = _team_misfiled_postseason(team_span)
-    if misfiled is not None:
-        return misfiled
+    reads the team-games relation (step 3, C4): a postseason before 1993-94
+    is selected by the calendar year it was played in, not ESPN's own-year
+    label, and a career span reaches its real 1989 floor rather than 1994."""
+    team_span = _span_of(span, slots.get("season"), slots.get("season_type") or 2, "games")
     base, params, runs, what, who, rule = _streak_league_by_result(con, team_span, result, hit, condition, limit)
     _, first, last = _team_season_range(con, base, params, team_span)
     return runs, what, who, rule, _team_span_label(team_span, first, last), _team_where_in(team_span)
