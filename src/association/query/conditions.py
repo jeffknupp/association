@@ -69,6 +69,8 @@ import duckdb
 from association.nba.coverage import COVERAGE
 from association.nba.season import eastern_date_sql
 
+from .team_games import TeamNarrowed, games_subquery, named
+
 Params = dict[str, Any] | list[Any]
 """What a reader binds to its query: named parameters, or the positional list a
 :class:`association.query.player_games.Narrowed` composes.
@@ -613,6 +615,57 @@ def _within(windows: Sequence[_Stint], team_id: str, day: date) -> bool:
     return any(w.team_id == team_id and w.first <= day <= w.last for w in windows)
 
 
+def _with_without_team_span_clause(scope: _Scope) -> tuple[str, list[Any]]:
+    """``team_games``' season clause for :func:`_with_without_games`'s window
+    read, over ``tg.season`` / ``tg.eastern_date``
+    (:data:`association.query.team_games.TEAM_GAMES_SQL`) - the same rule
+    :func:`association.query.templates.common._team_span_clause` applies for
+    every other team-relation reader. A postseason is selected by the
+    CALENDAR YEAR it was played in, from the relation's own Eastern date,
+    never by ESPN's pre-1993-94 label (`AGENTS.md`, "Select a postseason by
+    the calendar year"; :mod:`association.query.team_games`'s module
+    docstring has the finding this corrects).
+
+    Not a call to ``_team_span_clause`` itself: this module's docstring says
+    nothing here imports ``templates``, so the one clause it needs is kept as
+    a private copy rather than a shared import, the same trade-off
+    :class:`association.query.team_games.TeamNarrowed` makes against
+    subclassing :class:`association.query.player_games.Narrowed`.
+    """
+    if scope.season_type == 3:
+        if scope.season is not None:
+            return "year(tg.eastern_date) = ?", [scope.season]
+        return "year(tg.eastern_date) >= ?", [scope.first]
+    if scope.season is not None:
+        return "tg.season = ?", [scope.season]
+    excluded = f" AND tg.season NOT IN ({', '.join(str(int(p)) for p in scope.phantoms)})" if scope.phantoms else ""
+    return f"tg.season >= ?{excluded}", [scope.first]
+
+
+def _with_without_team_games(scope: _Scope, teams: Sequence[str]) -> TeamNarrowed:
+    """The narrowed ``team_games`` relation for :func:`_with_without_games`'s
+    window read: every team a window names at once (``list_contains`` rather
+    than one id, because a player's stints can span more than one team inside
+    the scope), across the season(s) ``scope`` covers.
+
+    Replaces the old read over ``team_box_stats`` scoped by
+    :meth:`_Scope.where` - the season-LABEL definition
+    :mod:`association.query.team_games`'s module docstring names as the wrong
+    one - with the relation's own (:data:`association.query.team_games.TEAM_GAMES_SQL`).
+    Measured on the 2026-09-22 warehouse, every 1994+ row of the two sources
+    agrees exactly (team, season, event_id, won, both scores) - the old read
+    already joined ``real_games``, the same source the relation is built
+    from, and no game in it lacks a ``team_box_stats`` row to join. The
+    correction this port makes reachable in principle is the pre-1993-94
+    postseason label; ``with_without``'s own coverage floor
+    (``TEMPLATE_SOURCES["with_without"]`` = ``_PLAYER_GAME_TABLES``, capped at
+    1994 by ``_game_scope``) refuses every question that would exercise it,
+    so no answer moves.
+    """
+    clause, params = _with_without_team_span_clause(scope)
+    return TeamNarrowed(base=["list_contains(?, tg.team_id)", "tg.season_type = ?", clause], base_params=[list(teams), scope.season_type, *params])
+
+
 def _with_without_games(
     con: duckdb.DuckDBPyConnection, scope: _Scope, windows: Sequence[_Stint], mates: Sequence[str], subject: str | None, opponent: str | None = None
 ) -> tuple[list[dict[str, Any]], int]:
@@ -630,25 +683,33 @@ def _with_without_games(
     Counted in a correlated subquery rather than a join per teammate: a join
     would have to be repeated per name, and a single join over a list would
     return one row per teammate who played rather than one row per game.
+
+    .. versionchanged:: 4.4.0
+       Reads the ``team_games`` relation (:func:`_with_without_team_games`)
+       instead of ``_team_games(scope, ...)`` - step 3, C4. ``named`` turns
+       the relation's own positional clauses into the ``$t*`` names this
+       binds beside its own ``$mates``/``$subject``/``$opponent`` (DuckDB will
+       not mix ``?`` and ``$name`` in one statement).
     """
     teams = sorted({w.team_id for w in windows})
-    # One opponent, where the question named one ("Embiid's record against
-    # Boston"). `team_box_stats` carries the other side's id on the team's own
-    # row, so this narrows the same rows the window filter already reads - no
-    # second join, and the games that drop out drop out of BOTH groups, which
-    # is what keeps the split honest.
-    against = " AND tbs.opponent_team_id = $opponent" if opponent is not None else ""
+    narrowed = _with_without_team_games(scope, teams)
+    if opponent is not None:
+        # One opponent, where the question named one ("Embiid's record
+        # against Boston"). The relation carries the other side's id on the
+        # team's own row, so this narrows the same rows the window filter
+        # already reads - no second join, and the games that drop out drop
+        # out of BOTH groups, which is what keeps the split honest.
+        narrowed.narrow("tg.opponent_id = ?", opponent)
+    base_sql, base_params = named(*games_subquery(narrowed))
     box = box_source(con)
     played_by = f"LEFT JOIN {box.table} s ON s.event_id = t.event_id AND s.season = t.season AND s.team_id = t.team_id AND s.athlete_id = $subject AND {_played('s', box)}"
-    params: dict[str, Any] = {**scope.params(), "teams": teams, "mates": list(mates)}
+    params: dict[str, Any] = {**base_params, "mates": list(mates)}
     if subject is not None:
         params["subject"] = subject
-    if opponent is not None:
-        params["opponent"] = opponent
     rows = con.execute(
         f"""
-        WITH t AS ({_team_games(scope, " AND list_contains($teams, tbs.team_id)" + against)})
-        SELECT t.team_id, t.season, t.day, t.won, t.team_score - t.opponent_score,
+        WITH t AS ({base_sql})
+        SELECT t.team_id, t.season, t.eastern_date, t.won, t.team_score - t.opponent_score,
                (SELECT COUNT(*) FROM {box.table} m
                  WHERE m.event_id = t.event_id AND m.season = t.season AND m.team_id = t.team_id AND list_contains($mates, m.athlete_id) AND {_played("m", box)}) AS mates_played,
                {"s.athlete_id IS NOT NULL" if subject else "FALSE"} AS subject_played,
