@@ -211,9 +211,25 @@ class Narrowed:
             params += self.extra_params
         return " AND ".join(where), params
 
-    def filters(self, *, dated: bool = True) -> str:
+    def filters(self, *, dated: bool = True, windowed: bool = False) -> str:
         """What the games were narrowed to, as it follows a name: ``" vs the
-        Detroit Pistons at home"``."""
+        Detroit Pistons at home"``.
+
+        ``windowed`` is opt-in and defaults off: ``.window`` is set by
+        :func:`association.query.templates.common.scoped_games` for every
+        caller whose slots carry ``order``/``limit`` - including ``game_log``
+        and ``player_stat``, which read it for their OWN row-fetching
+        (:func:`rows_sql` never consults ``.window``) and already say "last N
+        games" their own way. Including the phrase here unconditionally would
+        say it a second time in theirs. Only a caller that reads its rows
+        through :func:`games_subquery`/:func:`aggregate_sql`/:func:`grouped_sql`
+        - where ``.window`` is what actually cut the rows - has a reason to
+        ask for it (step 3, C5's ``shot_chart``/``shot_distance``).
+
+        .. versionchanged:: 4.4.0
+           Takes ``windowed`` (default ``False``); the window phrase moved
+           behind it.
+        """
         parts = []
         if self.opponent is not None:
             parts.append(f"vs the {self.opponent.name}")
@@ -234,7 +250,7 @@ class Narrowed:
             parts.append(f"in game {self.series_game} of {'the' if self.opponent is not None else 'each'} series")
         if self.date and dated:
             parts.append(f"on {self.date}")
-        if self.window is not None:
+        if self.window is not None and windowed:
             order, n = self.window
             parts.append(f"over his {'last' if order == 'recent' else 'first'} {n} game{'s' if n != 1 else ''}")
         return "".join(f" {part}" for part in parts)
@@ -338,8 +354,18 @@ def games_subquery(narrowed: Narrowed, box: BoxSource) -> tuple[str, list[Any]]:
     rebuilt line cannot be trusted for, exactly as that reader does.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.4.0
+       Honors :attr:`Narrowed.window` (step 3, C5), through the same
+       :func:`_windowed` reader :func:`aggregate_sql`/:func:`grouped_sql`
+       already use - a window is cut, with the played guard already applied,
+       before this subquery's own columns are computed on top of it. A no-op
+       for every caller that never sets ``window`` (``player_splits``,
+       ``streak``, ``with_without``, ``record_when``): ``_windowed`` returns
+       the identical ``FROM ... WHERE`` this function built by hand when
+       ``window`` is ``None``.
     """
-    where, params = narrowed.clauses(rebuilt=box.rebuilt)
+    source, params = _windowed(narrowed, rebuilt=box.rebuilt)
     ungated = [c for c in UNGATED_ON_REBUILD if c in box.columns]
     replacements = ", ".join(column("pgl", c, box) for c in ungated)
     blanked = f" REPLACE ({replacements})" if box.rebuilt and ungated else ""
@@ -348,7 +374,7 @@ def games_subquery(narrowed: Narrowed, box: BoxSource) -> tuple[str, list[Any]]:
                CASE WHEN g.home_team_id = pgl.team_id THEN 'home' ELSE 'away' END AS home_away,
                CASE WHEN g.home_team_id = pgl.team_id THEN g.home_score ELSE g.away_score END AS team_score,
                CASE WHEN g.home_team_id = pgl.team_id THEN g.away_score ELSE g.home_score END AS opponent_score
-        {_PLAYER_GAMES} WHERE {where}"""
+        {source}"""
     return sql, params
 
 

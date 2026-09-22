@@ -1182,6 +1182,26 @@ def sc_ctx(tmp_path: Path) -> TemplateContext:
         "CREATE TABLE shot_chart (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, "
         "period INTEGER, clock VARCHAR, made BOOLEAN, shot_type VARCHAR, coordinate_x INTEGER, coordinate_y INTEGER, points_attempted INTEGER, description VARCHAR)"
     )
+    # Empty by default - a shot_chart question with no narrowing at all never
+    # reaches the relation (step 3, C5's `_shots_has_narrowing`), so most
+    # tests here need neither table. The handful that narrow by `order`
+    # INSERT into these directly rather than declaring their own copy, since
+    # `player_game_log`/`games` now have to carry the columns the relation's
+    # played guard and window read (`minutes`, `did_not_play`, `starter`,
+    # `opponent_team_id`, `games.date`). `opponent_abbr` is NULL by
+    # construction here (no `teams` table), which is what makes
+    # `game_label` return None and a single-game chart fall back to naming
+    # its bare event id, exactly as it did before this existed.
+    c.execute(
+        "CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, team_id VARCHAR, opponent_team_id VARCHAR, "
+        "starter BOOLEAN, did_not_play BOOLEAN, minutes INTEGER, game_date VARCHAR, opponent_abbr VARCHAR)"
+    )
+    c.execute(
+        "CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR, home_team_id VARCHAR, away_team_id VARCHAR, "
+        "home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR)"
+    )
+    c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO teams VALUES ('9','GS','Golden State Warriors'),('13','LAL','Los Angeles Lakers')")
     c.execute("INSERT INTO players VALUES ('1','Stephen Curry')")
     # Two labeled threes from the top of the arc, 26 feet from the rim at
     # (25, 0) - a real three's position, so the label and the line agree.
@@ -1275,14 +1295,25 @@ def test_a_scoped_chart_uses_the_same_player_it_looked_the_game_up_for(tmp_path:
         "CREATE TABLE shot_chart (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, "
         "period INTEGER, clock VARCHAR, made BOOLEAN, shot_type VARCHAR, coordinate_x INTEGER, coordinate_y INTEGER, points_attempted INTEGER, description VARCHAR)"
     )
-    c.execute("CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, game_date VARCHAR)")
+    c.execute(
+        "CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, team_id VARCHAR, opponent_team_id VARCHAR, "
+        "starter BOOLEAN, did_not_play BOOLEAN, minutes INTEGER, game_date VARCHAR, opponent_abbr VARCHAR)"
+    )
+    c.execute(
+        "CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR, home_team_id VARCHAR, away_team_id VARCHAR, "
+        "home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR)"
+    )
     # Two players both matching "Curry", each with their own game. Seth's game
     # is the LATER one, so an unnarrowed "most recent Curry game" would scope to
     # it - and only Stephen has a shot this season, so the chart must be his.
     c.execute("INSERT INTO players VALUES ('1','Seth Curry'), ('2','Stephen Curry')")
     c.executemany(
-        "INSERT INTO player_game_log VALUES (?,?,2,?,?)",
-        [("1", current_season(), "seth_game", "2026-01-03"), ("2", current_season(), "steph_game", "2026-01-02")],
+        "INSERT INTO player_game_log VALUES (?,?,2,?,'9','13',TRUE,FALSE,30,?,NULL)",
+        [("1", current_season(), "seth_game", "2026-01-03T23:00Z"), ("2", current_season(), "steph_game", "2026-01-02T23:00Z")],
+    )
+    c.executemany(
+        "INSERT INTO games VALUES (?,?,2,?,'9','13',110,100,'9')",
+        [("seth_game", current_season(), "2026-01-03T23:00Z"), ("steph_game", current_season(), "2026-01-02T23:00Z")],
     )
     c.executemany(
         "INSERT INTO shot_chart VALUES (?,?,2,?,1,'10:00',true,'Jump Shot',25,26,3,'26-foot three point jumper')",
@@ -2584,14 +2615,24 @@ def test_overlapping_play_types_are_kept_out_of_the_summing_column(np_ctx: Templ
     assert "do not add up" in answer and "rim" in answer.split("Play-type detail")[1]
 
 
+def _sc_ctx_add_games(sc_ctx: TemplateContext, rows: list[tuple[str, str]]) -> None:
+    """Two player_game_log/games rows per ``(event_id, tip)`` pair, for the
+    order-scoping tests below - Curry starts, plays, on team 9 vs team 13,
+    which is all the relation's played guard and window need."""
+    sc_ctx.con.executemany(
+        "INSERT INTO player_game_log VALUES ('1',?,2,?,'9','13',TRUE,FALSE,30,?,NULL)",
+        [(current_season(), event, tip) for event, tip in rows],
+    )
+    sc_ctx.con.executemany(
+        "INSERT INTO games VALUES (?,?,2,?,'9','13',110,100,'9')",
+        [(event, current_season(), tip) for event, tip in rows],
+    )
+
+
 def test_shot_chart_scopes_to_a_single_game_when_order_is_set(sc_ctx: TemplateContext) -> None:
     """Confirmed live: "a shot chart of Curry's last regular season game"
     charted the whole season - 803 attempts instead of that game's 14."""
-    sc_ctx.con.execute("CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, game_date VARCHAR)")
-    sc_ctx.con.execute(
-        "INSERT INTO player_game_log VALUES ('1',?,2,'e1','2026-01-01T00:00Z'),('1',?,2,'eLast','2026-04-13T00:30Z')",
-        [current_season(), current_season()],
-    )
+    _sc_ctx_add_games(sc_ctx, [("e1", "2026-01-01T00:00Z"), ("eLast", "2026-04-13T00:30Z")])
     sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'eLast',1,'2:00',TRUE,'Jump Shot',25,26,3,'26-foot three point jumper')", [current_season()])
     answer = shot_chart(sc_ctx, {"player": "Stephen Curry", "order": "recent"}).answer or ""
     assert "1/1 made" in answer  # only the one shot from the last game
@@ -2599,11 +2640,7 @@ def test_shot_chart_scopes_to_a_single_game_when_order_is_set(sc_ctx: TemplateCo
 
 
 def test_shot_chart_order_first_picks_the_earliest_game(sc_ctx: TemplateContext) -> None:
-    sc_ctx.con.execute("CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, game_date VARCHAR)")
-    sc_ctx.con.execute(
-        "INSERT INTO player_game_log VALUES ('1',?,2,'e1','2026-01-01T00:00Z'),('1',?,2,'eLast','2026-04-13T00:30Z')",
-        [current_season(), current_season()],
-    )
+    _sc_ctx_add_games(sc_ctx, [("e1", "2026-01-01T00:00Z"), ("eLast", "2026-04-13T00:30Z")])
     assert "e1" in (shot_chart(sc_ctx, {"player": "Stephen Curry", "order": "first"}).answer or "")
 
 
@@ -2729,10 +2766,8 @@ def test_every_template_honoring_a_scope_slot_actually_reads_it() -> None:
 
 
 def test_shot_distance_scopes_to_one_game(sc_ctx: TemplateContext) -> None:
-    sc_ctx.con.execute("CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, game_date VARCHAR)")
-    sc_ctx.con.execute("INSERT INTO player_game_log VALUES ('1',?,2,'e1','2026-04-13T00:30Z')", [current_season()])
     # A second game whose shots must NOT be counted.
-    sc_ctx.con.execute("INSERT INTO player_game_log VALUES ('1',?,2,'e2','2026-01-01T00:00Z')", [current_season()])
+    _sc_ctx_add_games(sc_ctx, [("e1", "2026-04-13T00:30Z"), ("e2", "2026-01-01T00:00Z")])
     sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e2',1,'2:00',TRUE,'Jump Shot',25,40,3,'40-foot three point jumper')", [current_season()])
     answer = shot_distance(sc_ctx, {"player": "Stephen Curry", "order": "recent"}).answer or ""
     # e1 tips at 2026-04-13T00:30Z - 8:30pm Eastern on the 12th, the day it was
@@ -2917,10 +2952,10 @@ def test_templates_that_write_nothing_report_no_artifacts(lb_con: TemplateContex
 @pytest.mark.parametrize(
     ("intent", "slots"),
     [
-        # game_log answers the real queries behind these now ("jaylen brown last
-        # 8 games vs pistons", "Podziemski game log without curry"), so the
+        # game_log and shot_distance answer the real queries behind these now
+        # ("jaylen brown last 8 games vs pistons", "Jaylen Brown's average
+        # shot distance against the Detroit Pistons" - step 3, C5), so the
         # refusal is checked on templates that still cannot narrow that way.
-        ("shot_distance", {"player": "Jaylen Brown", "opponent": "Detroit Pistons"}),
         ("player_netpoints", {"player": "Brandin Podziemski", "without": "curry"}),
         ("player_history", {"player": "Nikola Jokic", "stat": "points", "opponent": "Boston Celtics"}),
     ],
@@ -2936,6 +2971,26 @@ def test_scope_guard_lets_through_what_the_player_templates_now_honor() -> None:
     check_scope("game_log", {"player": "Jaylen Brown", "opponent": "Detroit Pistons", "venue": "home", "span": "career", "without": "x", "order": "recent"})
     check_scope("player_stat", {"player": "Evan Mobley", "opponent": "Milwaukee Bucks", "venue": "away", "span": "career", "without": "x"})
     check_scope("player_history", {"player": "Nikola Jokic", "span": "career"})
+    check_scope("shot_distance", {"player": "Jaylen Brown", "opponent": "Detroit Pistons"})
+
+
+def test_shot_distance_narrows_by_opponent_and_names_it_in_the_answer(sc_ctx: TemplateContext) -> None:
+    """`shot_distance` used to refuse `opponent` outright - the real query
+    behind it was "Jaylen Brown's average shot distance against the Detroit
+    Pistons". Ported onto the relation (step 3, C5), it now narrows to it and
+    says so, rather than averaging every opponent."""
+    _sc_ctx_add_games(sc_ctx, [("eLakers", "2026-01-01T00:00Z")])
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'eLakers',1,'2:00',TRUE,'Jump Shot',25,40,3,'40-foot three point jumper')", [current_season()])
+    # A second game, against a different opponent, whose shot must NOT count.
+    sc_ctx.con.executemany(
+        "INSERT INTO player_game_log VALUES ('1',?,2,'eOther','9','99',TRUE,FALSE,30,?,NULL)",
+        [(current_season(), "2026-02-01T00:00Z")],
+    )
+    sc_ctx.con.execute("INSERT INTO games VALUES ('eOther',?,2,'2026-02-01T00:00Z','9','99',110,100,'9')", [current_season()])
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'eOther',1,'2:00',TRUE,'Jump Shot',25,26,3,'26-foot three point jumper')", [current_season()])
+    answer = shot_distance(sc_ctx, {"player": "Stephen Curry", "opponent": "Los Angeles Lakers"}).answer or ""
+    assert "Los Angeles Lakers" in answer
+    assert "over 1 attempts" in answer  # eLakers alone, not eOther's shot
 
 
 def test_team_quarter_points_still_honors_the_opponent_it_always_read() -> None:
@@ -3441,7 +3496,13 @@ def test_the_relation_window_is_cut_after_the_row_filters(pg_ctx: TemplateContex
     games, avg, first = row
     # His Detroit games are e5 (8, s-1), e2 (20) and e3 (15): the newest two are e2 and e3.
     assert (games, avg) == (2, 17.5) and first.startswith(f"{s - 1}-12-02")
-    assert narrowed.filters().endswith(" vs the Detroit Pistons over his last 2 games")
+    # `windowed=True`: step 3, C5 made `scoped_games` set `.window` from
+    # EVERY caller's slots that carry `order`/`limit` - including `game_log`,
+    # which already says "last N games" its own way and would double it up -
+    # so the phrase is opt-in, for the templates (`shot_chart`/`shot_distance`)
+    # that read their rows through `.window` in the first place.
+    assert narrowed.filters(windowed=True).endswith(" vs the Detroit Pistons over his last 2 games")
+    assert narrowed.filters().endswith(" vs the Detroit Pistons")  # the default stays silent about it
     narrowed.window = ("first", 1)
     sql, params = aggregate_sql(narrowed, ["COUNT(*)", "AVG(pgl.points)"])
     assert pg_ctx.con.execute(sql, params).fetchone() == (1, 8.0)
