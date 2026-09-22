@@ -16,6 +16,21 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **The team-games relation grows a window and one game of a series (step 3,
+  C4b, part 1).** `TeamNarrowed` (`query/team_games.py`) gets the two cells
+  C4 left off, mirroring `player_games.Narrowed`: `window` (the newest or
+  oldest N of the narrowed games, cut after every other filter - `_windowed`,
+  and `rows_sql`/`aggregate_sql`/`games_subquery` now read through it; unset,
+  every one of them emits the exact SQL string it did before, so this is a
+  pure refactor - confirmed by the full offline suite passing unmoved) and
+  `series_game` (one game of each playoff series, numbered over `real_games`
+  by `_TEAM_SERIES_GAMES`, the team relation's own copy of the player
+  relation's `_SERIES_GAMES`). `TeamNarrowed.filters` gets `opponent=`/`date=`
+  toggles for a caller that already names either its own way - infrastructure
+  only here; nothing yet sets either new cell, so no template's answer
+  changes. Wiring them into `team_games`/`scoped_team` and the templates that
+  read them is a separate commit.
+
 - **A one-game streak is "1 game", not "1 games".** `streak`'s headline, for
   a named subject and league-wide alike, pluralized by hand; a team's streak
   narrowed to one opponent (new in C4 below) is the first common way to
