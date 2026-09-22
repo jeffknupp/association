@@ -108,9 +108,34 @@ logs, per-game averages, threshold counts, single-game highs, matchups, streaks,
 splits, a record with or without a teammate - compose one shared relation,
 :mod:`association.query.player_games`, rather than writing their own joins, so
 the season-keyed join, the phantom season, the played-game guard and the
-rebuilt-line rule are defined once and a new narrowing (an opponent, a venue, a
-line on a stat, one game of a series) reaches every one of them at once. The
-rest build their SQL directly. Either way every correctness rule is in code
+rebuilt-line rule are defined once. A team's games are the same shape over
+:mod:`association.query.team_games`, which is where a postseason is selected by
+the calendar year it was played in and the NBA Cup final is kept out of a
+regular-season record - facts that used to be written three times and were
+wrong in two of them.
+
+What a relation *narrows by* is a property of the relation, not of each
+template. A template settles its subject through
+:func:`association.query.templates.common.scoped_player` (or ``scoped_team``)
+and its games through :func:`association.query.templates.common.scoped_games`
+(or ``team_games``), and the narrowing - an opponent, a venue, a teammate's
+absence, one game of each series, a line on a box-score column, one Eastern
+date, a span or a first season, and the newest or oldest *N* as a window cut
+after every other filter - is applied there, once. The slots a relation honors
+are declared once too (:data:`association.query.templates.common.RELATION_SCOPING`),
+and a template that cannot honor one of them says why, per cell
+(:data:`association.query.templates.common.RELATION_SCOPING_EXCLUDED`) - a reason
+about the answer, never about the code. Two tests read the templates' source
+to keep it that way: none of them may declare a scoping set of its own, and
+none of them, nor a private step it reaches, may narrow the relation by hand.
+Before this, twelve slots were honored on one template and one on another,
+over the same relation, and each new slot had to be taught to every template
+in turn.
+
+What a template still owns is its skeleton (rows, one aggregate, a grouped
+table or a streak), its measure and its sentence. The templates that read
+season lines or NetPoints rather than games build their SQL directly. Either
+way every correctness rule is in code
 rather than in prose: season defaults, traded-player dedup,
 minimum-sample floors, the home/away perspective flip, the string
 ``season_type`` that NetPoints uses, the season each table's data starts in
@@ -243,8 +268,10 @@ that:
 * Templates refuse a named stat they cannot provide rather than falling back to
   a default (a default is only safe where the user named nothing).
 * Templates declare which scope slots they honor
-  (:func:`association.query.templates.check_scope`); a question scoped to
-  particular games falls through rather than being answered for a season.
+  (:func:`association.query.templates.check_scope`) - the ones on a relation
+  through the relation's single declaration, the rest each for themselves - and
+  a question scoped to particular games falls through rather than being
+  answered for a season.
 * A question about a season a table cannot reach is refused, with the reason
   (:func:`association.query.templates.check_coverage`). The refusal is returned
   as the answer rather than raised, because the agent would query the same

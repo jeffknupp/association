@@ -242,6 +242,24 @@ scoping slots it honors and raise on the rest, instead of silently ignoring
 `order` or `date` and returning a whole-season answer to a single-game
 question.
 
+**A template on a relation does not declare, or apply, scoping of its own.**
+The player-games relation (`query/player_games.py`) and the team-games relation
+(`query/team_games.py`) each carry the narrowing once - opponent, venue, date,
+span, since, without, split, game_n, season_n, below/above, and order+limit as
+a window cut after every other filter - applied in the shared steps
+(`scoped_player`/`scoped_games`, `scoped_team`/`team_games`,
+`condition_player`) and declared once (`RELATION_SCOPING`, with a reasoned
+per-cell `RELATION_SCOPING_EXCLUDED`; `HONORED_SCOPING` entries for those
+templates are `_relation_scoping(intent)`). Two source-reading tests in
+`tests/query/test_templates.py` enforce it, and they were watched to fail: a
+template on the relation that lists its own frozenset, or that writes
+`pgl.opponent_team_id = ?` or `g.date >= ? AND g.date < ?` anywhere it reaches,
+fails the suite. So a new scoping dimension is one clause on `Narrowed` plus a
+warehouse-verified test per template it turns on - never a slot taught to one
+template at a time, which is how twelve slots ended up honored on `game_log`
+and one on `single_game_high` over the same relation. An exclusion's reason is
+about the answer ("one game is not a run"), never about the code ("not wired").
+
 When adding a template, prefer refusing to guessing. `resolve_*` in
 `query/entities.py` never guesses between candidate players; `leaderboard`
 rejects a named `player`; `team_record` rejects `limit`.
