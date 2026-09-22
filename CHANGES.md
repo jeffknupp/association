@@ -24,7 +24,11 @@ had no published version to be compatible with.
   date - and a fix to one had to be found and repeated in the other.
   `templates.common.scoped_player` and `scoped_games` are those steps, read
   from the slots in one place, so a narrowing the relation learns reaches every
-  template built on them. No answer changes: proved by a golden comparison of
+  template built on them. `player_splits` and `record_when` follow through
+  `condition_player`, which settles the player the same way and hands his
+  games to those templates as the relation renders them
+  (`player_games.games_subquery`) - the second reader of a player's games,
+  `conditions._player_games`, now has one caller fewer per port. No answer changes: proved by a golden comparison of
   460 recorded and constructed slot sets across the ten templates that read a
   player's games (answer text, data and refusals identical), with the
   comparison watched to fail when one slot was dropped from the shared

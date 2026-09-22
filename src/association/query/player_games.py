@@ -44,6 +44,7 @@ from typing import Any
 import duckdb
 
 from association.nba.coverage import COVERAGE
+from association.nba.season import eastern_date_sql
 
 from .conditions import UNGATED_ON_REBUILD, BoxSource
 from .entities import Entity
@@ -292,6 +293,33 @@ def aggregate_sql(narrowed: Narrowed, selects: list[str], *, rebuilt: bool = Fal
     """One row of aggregates over the narrowed games: averages, totals, a count, a record."""
     where, params = narrowed.clauses(rebuilt=rebuilt)
     return f"SELECT {', '.join(selects)} {_PLAYER_GAMES} WHERE {where}", params
+
+
+def games_subquery(narrowed: Narrowed, box: BoxSource) -> tuple[str, list[Any]]:
+    """The narrowed games as a subquery with the result columns the condition
+    readers wrap: ``won``, ``home_away``, ``team_score``, ``opponent_score``,
+    the Eastern ``day`` and the raw ``stamp`` beside every ``pgl`` column.
+
+    This is what :func:`association.query.conditions._player_games` renders
+    for the templates that group a player's games by a condition (splits, a
+    record above a threshold, a streak, with/without) - the same relation, the
+    same guard, positional parameters instead of named ones so a
+    :class:`Narrowed` can feed it. ``SELECT * REPLACE`` blanks the columns a
+    rebuilt line cannot be trusted for, exactly as that reader does.
+
+    .. versionadded:: 4.4.0
+    """
+    where, params = narrowed.clauses(rebuilt=box.rebuilt)
+    ungated = [c for c in UNGATED_ON_REBUILD if c in box.columns]
+    replacements = ", ".join(column("pgl", c, box) for c in ungated)
+    blanked = f" REPLACE ({replacements})" if box.rebuilt and ungated else ""
+    sql = f"""
+        SELECT pgl.*{blanked}, g.date AS stamp, {eastern_date_sql("g.date")} AS day, g.winner_team_id = pgl.team_id AS won,
+               CASE WHEN g.home_team_id = pgl.team_id THEN 'home' ELSE 'away' END AS home_away,
+               CASE WHEN g.home_team_id = pgl.team_id THEN g.home_score ELSE g.away_score END AS team_score,
+               CASE WHEN g.home_team_id = pgl.team_id THEN g.away_score ELSE g.home_score END AS opponent_score
+        {_PLAYER_GAMES} WHERE {where}"""
+    return sql, params
 
 
 def grouped_sql(

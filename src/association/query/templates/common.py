@@ -1131,6 +1131,32 @@ def scoped_games(
     return narrowed
 
 
+def condition_player(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], missing: str, scope: _Scope, *, team: Entity | None = None) -> tuple[Entity, Narrowed] | TemplateResult:
+    """The player a condition template is about, and his games in ``scope``
+    under the question's row-level narrowings - for the templates that group a
+    player's games by a condition (splits, a record above a threshold, a
+    streak, with/without) and read them as a subquery
+    (:func:`association.query.player_games.games_subquery`).
+
+    ``scope`` is the template's own ``_Scope``, kept because it reads "career
+    ... in 2015" as 2015 where ``_span_of`` refuses the pair - the one place
+    the two readers of a player's games disagreed, and not this refactor's to
+    settle. ``team`` narrows to the games he played for that team.
+
+    .. versionadded:: 4.4.0
+    """
+    subject = scoped_player(con, slots, missing, table="player_game_log", available=_BOX_SCORES, span=None if scope.season else "career", season=scope.season)
+    if isinstance(subject, TemplateResult):
+        return subject
+    player, span = subject
+    narrowed = scoped_games(con, player, span, slots, opponent=slots.get("opponent"), measures=[])
+    if isinstance(narrowed, TemplateResult):
+        return narrowed
+    if team is not None:
+        narrowed.narrow("pgl.team_id = ?", team.id)
+    return player, narrowed
+
+
 def _teammates_among(con: duckdb.DuckDBPyConnection, candidates: list[Entity], player: Entity, span: _Span) -> list[Entity]:
     """The candidates who were on one of ``player``'s teams in a season of
     ``span``. Elimination, never preference - the same move as

@@ -20,6 +20,7 @@ from ..conditions import (
     _SPLIT_TITLES,
     _TEAM_GAME_TABLES,
     _TEAM_LINE,
+    Params,
     _box_missing,
     _cell,
     _longest_runs,
@@ -44,6 +45,7 @@ from ..conditions import (
     box_source,
 )
 from ..entities import Entity, teammate_names
+from ..player_games import Narrowed, games_subquery
 from .common import (
     _BOX_SCORES,
     STAT_LABELS,
@@ -61,6 +63,7 @@ from .common import (
     _resolved_player,
     _slot_season,
     _where_in,
+    condition_player,
 )
 
 
@@ -245,7 +248,7 @@ class _SplitSubject:
 
     scope: _Scope
     base: str
-    params: dict[str, Any]
+    params: Params
     games: int
     first: int | None
     last: int | None
@@ -260,24 +263,32 @@ class _SplitSubject:
 def _player_splits_player(
     con: duckdb.DuckDBPyConnection, name: str, slots: dict[str, Any], span: Any, team: Entity | None, venue: str | None, opponent: Entity | None
 ) -> _SplitSubject | TemplateResult:
-    """A named player's own games, optionally narrowed to one team, one venue and/or one opponent."""
+    """A named player's own games, optionally narrowed to one team, one venue and/or one opponent.
+
+    .. versionchanged:: 4.4.0
+       Settles the player and narrows his games through the shared steps
+       (``condition_player``), reading the rows as the relation
+       renders them (``games_subquery``); the split itself is unchanged.
+    """
     scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), _PLAYER_GAME_TABLES)
-    player = _resolved_player(con, name, available=_BOX_SCORES, season=scope.season, through=_career_end(scope.season))
-    if isinstance(player, TemplateResult):
-        return player
-    narrow_sql, narrow_params = _player_splits_narrow_sql(venue, opponent)
-    params: dict[str, Any] = {**scope.params(), "player": player.id, **narrow_params}
-    if team is not None:
-        params["team"] = team.id
-    base = _player_games(scope, extra=(" AND pgl.team_id = $team" if team else "") + narrow_sql, box=box_source(con))
-    games, first, last = _totals(con, base, params)
+    # The opponent was resolved above (a clarification about it comes before
+    # one about the player, as it always did); the shared step resolves a
+    # name, and an exact name resolves back to the same team.
+    found = condition_player(
+        con, {**slots, "player": name, "venue": venue, "opponent": opponent.name if opponent else None, "without": None, "split": None}, "player_splits needs a player", scope, team=team
+    )
+    if isinstance(found, TemplateResult):
+        return found
+    player, narrowed = found
+    base, base_params = games_subquery(narrowed, box_source(con))
+    games, first, last = _totals(con, base, base_params)
     if not games:
         return _no_games(con, player, scope, team)
-    subject = player.name + (f" for the {team.name}" if team else "") + _player_splits_narrow_phrase(venue, opponent)
+    subject_text = player.name + (f" for the {team.name}" if team else "") + _player_splits_narrow_phrase(venue, opponent)
     alias, line, counted = "p", _PLAYER_LINE, f"{games} game{'s' if games != 1 else ''} he played"
     data: dict[str, Any] = {"player": player.name, "team": team.name if team else None, "venue": venue, "opponent": opponent.name if opponent else None}
-    caveat = _unseen_note(_unseen(con, scope, base, params, box_source(con)))
-    return _SplitSubject(scope, base, params, games, first, last, subject, alias, line, counted, data, caveat)
+    caveat = _unseen_note(_unseen(con, scope, base, base_params, box_source(con)))
+    return _SplitSubject(scope, base, base_params, games, first, last, subject_text, alias, line, counted, data, caveat)
 
 
 def _player_splits_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], span: Any, team: Entity, split: Any, venue: str | None, opponent: Entity | None) -> _SplitSubject | TemplateResult:
@@ -616,14 +627,19 @@ def record_when(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     stat = slots.get("stat")
     column, threshold = _record_when_stat(stat, slots.get("threshold"))
     scope = _condition_scope(slots.get("season"), slots.get("span"), slots.get("season_type"), _PLAYER_GAME_TABLES)
-    player = _resolved_player(con, slots.get("player"), "record_when needs a player", available=_BOX_SCORES, season=scope.season, through=_career_end(scope.season))
-    if isinstance(player, TemplateResult):
-        return player
+    # The player before the team, as it always was: a clarification about
+    # him comes before one about the team.
+    subject = condition_player(con, slots, "record_when needs a player", scope)
+    if isinstance(subject, TemplateResult):
+        return subject
+    player, narrowed = subject
     team = _optional_team(con, slots.get("team"), season=_slot_season(slots))
     if isinstance(team, TemplateResult):
         return team
+    if team is not None:
+        narrowed.narrow("pgl.team_id = ?", team.id)
 
-    query = _record_when_query(con, scope, player, team, column, threshold)
+    query = _record_when_query(con, scope, player, team, column, threshold, narrowed)
     if isinstance(query, TemplateResult):
         return query
     found, names, base, params = query
@@ -641,19 +657,16 @@ def _record_when_stat(stat: Any, threshold: Any) -> tuple[str, int]:
 
 
 def _record_when_query(
-    con: duckdb.DuckDBPyConnection, scope: _Scope, player: Entity, team: Entity | None, column: str, threshold: int
-) -> tuple[list[Any], dict[str, str], str, dict[str, Any]] | TemplateResult:
+    con: duckdb.DuckDBPyConnection, scope: _Scope, player: Entity, team: Entity | None, column: str, threshold: int, narrowed: Narrowed
+) -> tuple[list[Any], dict[str, str], str, Params] | TemplateResult:
     """The player's games grouped by whether he reached the threshold, and the
     team names for whichever teams he suited up for in them - or the refusal
     for a player with no games in scope at all."""
-    params: dict[str, Any] = {**scope.params(), "player": player.id}
-    if team is not None:
-        params["team"] = team.id
-    base = _player_games(scope, extra=" AND pgl.team_id = $team" if team else "", box=box_source(con))
+    base, params = games_subquery(narrowed, box_source(con))
     found = con.execute(
-        f"WITH p AS ({base}) SELECT p.{column} >= $threshold, COUNT(*), COUNT(*) FILTER (WHERE p.won), AVG(p.team_score - p.opponent_score), "
+        f"WITH p AS ({base}) SELECT p.{column} >= ?, COUNT(*), COUNT(*) FILTER (WHERE p.won), AVG(p.team_score - p.opponent_score), "
         "MIN(p.season), MAX(p.season), list(DISTINCT p.team_id) FROM p GROUP BY 1",
-        {**params, "threshold": threshold},
+        [*params, threshold],
     ).fetchall()
     if not found:
         return _no_games(con, player, scope, team)
@@ -673,9 +686,7 @@ def _record_when_group(by_hit: dict[bool, Any], hit: bool | None) -> dict[str, A
     return {"games": games, "wins": wins, "losses": games - wins, "avg_margin": margin}
 
 
-def _record_when_answer(
-    con: duckdb.DuckDBPyConnection, scope: _Scope, player: Entity, stat: Any, threshold: int, found: list[Any], names: dict[str, str], base: str, params: dict[str, Any]
-) -> TemplateResult:
+def _record_when_answer(con: duckdb.DuckDBPyConnection, scope: _Scope, player: Entity, stat: Any, threshold: int, found: list[Any], names: dict[str, str], base: str, params: Params) -> TemplateResult:
     """The two-row table - reached the threshold, fell short - and the caveats
     beside it: games with no box score, and the coverage floor."""
     by_hit = {bool(row[0]): row for row in found}

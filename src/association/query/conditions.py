@@ -69,6 +69,13 @@ import duckdb
 from association.nba.coverage import COVERAGE
 from association.nba.season import eastern_date_sql
 
+Params = dict[str, Any] | list[Any]
+"""What a reader binds to its query: named parameters, or the positional list a
+:class:`association.query.player_games.Narrowed` composes.
+
+.. versionadded:: 4.4.0
+"""
+
 _SEASON_TYPE_WORDS = {2: "regular season", 3: "postseason"}
 
 # The first season the warehouse names for the year it ends, as season.py
@@ -319,7 +326,7 @@ def _player_games(scope: _Scope, player: str = "player", extra: str = "", box: B
         WHERE NOT pgl.did_not_play AND {guard} AND {scope.where("pgl")}{who}{extra}"""
 
 
-def _box_missing(scope: _Scope, box: BoxSource = RAW_BOX) -> str:
+def _box_missing(scope: _Scope, box: BoxSource = RAW_BOX, *, where: str | None = None) -> str:
     """Team-games with a result but no box score: not one player row for that
     team in that game carries minutes. See the module docstring for why these
     are unknown rather than games everybody missed.
@@ -330,11 +337,15 @@ def _box_missing(scope: _Scope, box: BoxSource = RAW_BOX) -> str:
     elsewhere: 68 games reported beside "no box score for 82 of his team's
     games". Over the filled view the unknown count falls from 3,308 team-games
     to 1,260, and what is left is the pre-1993 era the rebuild cannot reach.
+
+    ``where`` replaces the scope's named-parameter clause with one written for
+    positional parameters, for a caller whose played-games query binds ``?``
+    (:func:`_unseen` over a relation read) - DuckDB will not mix the two.
     """
     return f"""
         SELECT tbs.team_id, tbs.opponent_team_id, tbs.season, tbs.event_id, g.date AS stamp, {_eastern_day("g.date")} AS day
         FROM team_box_stats tbs JOIN real_games g ON g.event_id = tbs.event_id AND g.season = tbs.season
-        WHERE {scope.where("tbs")}
+        WHERE {where or scope.where("tbs")}
           AND NOT EXISTS (
               SELECT 1 FROM {box.table} q WHERE q.event_id = tbs.event_id AND q.team_id = tbs.team_id AND q.season = tbs.season AND {_appeared("q", box)}
           )"""
@@ -357,16 +368,30 @@ def _spans(played: str) -> str:
     return f"SELECT athlete_id, team_id, season, MIN(day) AS first_day, MAX(day) AS last_day FROM ({played}) GROUP BY ALL"
 
 
-def _unseen(con: duckdb.DuckDBPyConnection, scope: _Scope, played: str, params: dict[str, Any], box: BoxSource = RAW_BOX) -> int:
+def _unseen(con: duckdb.DuckDBPyConnection, scope: _Scope, played: str, params: Params, box: BoxSource = RAW_BOX) -> int:
     """How many games with no box score fall inside the spells a player was
     playing for a team - games he may well have played, which no count built
     from box scores can include. A lower bound: a missing box before his first
-    game of a season, or after his last, is not counted."""
+    game of a season, or after his last, is not counted.
+
+    ``params`` positional (a list) means ``played`` came from the relation
+    (:func:`association.query.player_games.games_subquery`); the missing-box
+    query then binds the scope positionally too, after ``played``'s own.
+
+    .. versionchanged:: 4.4.0
+       Takes positional parameters as well as named ones.
+    """
+    missing, bound = _box_missing(scope, box), params
+    if isinstance(params, list):
+        # Positional parameters bind in the order the `?`s appear, and the
+        # missing-box subquery is written before the played one below.
+        where, scope_params = scope.clause("tbs")
+        missing, bound = _box_missing(scope, box, where=where), [*scope_params, *params]
     row = con.execute(
         f"""
-        SELECT COUNT(DISTINCT m.event_id) FROM ({_box_missing(scope, box)}) m
+        SELECT COUNT(DISTINCT m.event_id) FROM ({missing}) m
         JOIN ({_spans(played)}) s ON s.team_id = m.team_id AND s.season = m.season AND m.day BETWEEN s.first_day AND s.last_day""",
-        params,
+        bound,
     ).fetchone()
     return int(row[0]) if row else 0
 
@@ -444,7 +469,7 @@ def _season_month_order(month: int) -> int:
     return (month + 2) % 12
 
 
-def _split_rows(con: duckdb.DuckDBPyConnection, base: str, params: dict[str, Any], alias: str, line: Sequence[tuple[str, str, str]], split: str) -> list[dict[str, Any]]:
+def _split_rows(con: duckdb.DuckDBPyConnection, base: str, params: Params, alias: str, line: Sequence[tuple[str, str, str]], split: str) -> list[dict[str, Any]]:
     """Games, record and averages in each group of one split, in reading order."""
     group = _SPLIT_SQL[split].format(a=alias)
     measures = ", ".join(sql for _, _, sql in line)
@@ -468,7 +493,7 @@ def _split_rows(con: duckdb.DuckDBPyConnection, base: str, params: dict[str, Any
     return rows
 
 
-def _totals(con: duckdb.DuckDBPyConnection, base: str, params: dict[str, Any]) -> tuple[int, int | None, int | None]:
+def _totals(con: duckdb.DuckDBPyConnection, base: str, params: Params) -> tuple[int, int | None, int | None]:
     """How many games a base query holds, and the first and last season among them."""
     row = con.execute(f"SELECT COUNT(*), MIN(season), MAX(season) FROM ({base})", params).fetchone()
     return (int(row[0]), row[1], row[2]) if row else (0, None, None)
