@@ -256,6 +256,9 @@ those were found.
 ### `game_log`'s venue narrowing counts a neutral-site game as home or away; `team_record`'s does not
 - **Found:** 2026-09-22, step 3 C4 (the team-games relation), while porting
   `game_log`'s team half and `head_to_head` onto `query/team_games.py`.
+  Widened 2026-09-22, step 3 C4 (`player_splits`/`record_when`/`streak`'s
+  team branches ported onto the same relation): all three read the same
+  `common.team_games` venue clause, so they carry the identical gap.
 - **Evidence:** `game_log` narrows a team's venue with `tg.side = ?` alone
   (`templates/common.py: team_games`, carried over unchanged from the old
   `_team_game_log_filters`'s `tbs.home_away = ?`); `team_record`'s own venue
@@ -274,14 +277,25 @@ those were found.
   `_team_game_log_filters` read `team_box_stats.home_away`, which ESPN sets
   to a real side for a neutral-site game too - so the gap already existed
   in the pre-C4 code, just under a different name.
+  Now measured on `player_splits` and `streak` too, same warehouse:
+  `player_splits(team="New York Knicks", venue="home", season=2026)` shows
+  "31-10" at home (41 games) against `team_record`'s cup-final-excluded
+  "30-10" (40 games) for the same team-season; `streak(team="New York
+  Knicks", kind="win", venue="home", season=2026, season_type=2)` reports a
+  matched streak running "2025-11-14 to 2025-12-16" - 2025-12-16 is the Cup
+  final's own Eastern date, inside a counted "home" winning streak.
 - **User sees:** "Knicks last 10 home games" (or any team's) silently
   includes a game played at a neutral site, with nothing in the answer
-  saying so - the numbers are real, but the label ("home") is not.
+  saying so - the numbers are real, but the label ("home") is not. Now also:
+  a team's home/away splits (`player_splits`), a home-only threshold record
+  (`record_when`) or a home winning streak (`streak`) can each include one
+  neutral-site game a season, same silent label.
 - **Next step:** decide the one rule (exclude a neutral-site game from
-  `game_log`'s venue narrowing the way the record functions already do, or
+  `team_games`'s venue narrowing the way the record functions already do, or
   narrow it and say so in the answer) and apply it in `templates/common.py:
-  team_games`, which both `game_log`'s team half and `head_to_head` already
-  read through - one change reaches both. Not fixed here: this carve-out is
+  team_games`, which `game_log`'s team half, `head_to_head`, and now
+  `player_splits`/`record_when`/`streak`'s team branches all read through -
+  one change reaches all five. Not fixed here: this carve-out is
   a proven pure refactor, and picking a rule is a behavior change with its
   own golden re-score.
 - **Source:** ours, not ESPN's - `team_box_stats.home_away` and
