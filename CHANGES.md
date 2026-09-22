@@ -16,6 +16,22 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **Scoping is declared once, on the player-games relation (step 3, C2).**
+  The six templates that settle a player and narrow his games through the
+  shared steps - `game_log`, `player_stat`, `period_split`, `player_splits`,
+  `record_when`, `streak` - declared what they honored one list at a time,
+  and the lists had drifted: twelve slots on one, one on another, on the same
+  relation. `RELATION_SCOPING` is the one declaration, and
+  `RELATION_SCOPING_EXCLUDED` names the few cells a template refuses with the
+  reason ("one game is not a run"). `player_stat` now honors `date` - one
+  game, read as that night's line ("had 33 points, 3 rebounds and 6 assists on
+  2026-03-01"), found by its Eastern date and refused, naming the date, when
+  he had no game. The relation gained the window C0 ruled as its one
+  skeleton-specific rule: `Narrowed.window` is the newest or oldest N of the
+  narrowed games, cut after every row filter and before an aggregate, so a
+  future "his average over his last 5 vs Boston" averages the five Boston
+  games; no template sets it yet (`player_stat` still hands "last N" to
+  `game_log`, by decision).
 - **The steps that settle a player and his games are written once (step 3,
   C1).** `game_log` and `player_stat` each wrote out the same sequence - settle
   the span, resolve the name against it, settle an ordinal season once he is

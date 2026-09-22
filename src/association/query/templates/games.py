@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import re
 from datetime import datetime
 from typing import Any, cast
 
@@ -26,6 +25,7 @@ from ..shotchart import SHOT_AVAILABILITY, SHOT_VALUE_SQL, UNSEPARABLE_SHOT_VALU
 from .common import (
     _BOX_SCORES,
     _GAME_LOGS,
+    _ISO_DATE,
     HISTORY_COLUMNS,
     PLAYER_STAT_COLUMNS,
     REBUILT_STATS,
@@ -96,9 +96,6 @@ def _rebuilt_readable(con: duckdb.DuckDBPyConnection, needed: list[str]) -> bool
 
 
 DEFAULT_GAME_LOG_LIMIT = 10
-
-
-_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 # games is home/away-oriented, not team-perspective: joining team_id to only

@@ -117,6 +117,10 @@ SEASON_TYPE_NAMES = {1: "preseason", 2: "regular season", 3: "postseason"}
 # templates that honor it and refused by the rest applies whether the slot
 # widens or narrows. Only `game_log` can ever see it - the router sets it for
 # no other intent - so it is refused everywhere else only in principle.
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+"""A ``date`` slot worth reading: the router's calendar form, ``YYYY-MM-DD``."""
+
+
 SCOPING_SLOTS = frozenset({"order", "date", "opponent", "venue", "span", "without", "round", "split", "since", "below", "above", "game_n", "season_n", "situation", "rate", "season_type_unstated"})
 
 
