@@ -251,38 +251,123 @@ those were found.
   (`players_named_in`), and send a named player's "how many games" to
   `player_stat`.
 
-## P2: misleading or incomplete
-
-### The router's slots depend on which llama-server load answered: 29 of 277 questions routed differently on one load, 26 of them back on the next
-- **Found:** 2026-09-22, measuring step 3 C4 on the yardstick-v2 live run
-  (`~/association-research/yardstick-v2/live_c4_badinstance.jsonl` against
-  `live_c2.jsonl`).
-- **Evidence:** same model (`qwen2.5:3b`, digest `357c53fb`, pulled two weeks
-  earlier), same ollama 0.33.3 binary, same `ROUTER_PROMPT` (sha256
-  `543be141...` at both `0d735f7` and `83cc18b`), temperature 0. A llama-server
-  loaded right after a wedged one was unloaded (`keep_alive: 0`, load average
-  10 at the time) routed 29 of the 277 questions differently from the run the
-  day before: 9 intent flips ("Diabate career high assists" `single_game_high`
-  -> `threshold_count` with `threshold: 0`, "Jrue holiday last 50 games as a
-  starter" `game_log` -> `player_splits`, "Detroit Pistons most points in a
-  first half" `team_quarter_points` -> `other`, "jamal murray first 20 games"
-  `order: first` -> `recent`), the rest `limit`/`fields`/`season` flips. Routing
-  those 29 through the c2 tree on the same server gave the same 29 answers
-  (code ruled out); unloading and reloading once more sent 26 of the 29 back
-  to the day-before routing. Cost on that one load: 7 primary yardstick
-  questions correct -> wrong or fell through, 1 the other way.
-- **User sees:** the same question answered differently - or refused - after
-  ollama restarts or evicts the model, with no code change and nothing in the
-  answer saying so. `scripts/check_routing.py` cannot tell this from a prompt
-  regression.
-- **Next step:** measure whether it is the load-time thread count (ollama sizes
-  it from the cores it sees free) or batch size by pinning `OLLAMA_NUM_THREADS`
-  / `num_thread` in the router options and reloading under load; if pinning
-  holds the routing still, set it in `query/models.py` and say so in
-  `docs/architecture.rst`. Until then, compare yardstick runs only within one
-  server load, and re-check any moved row with a reload before grading it.
-- **Source:** ours (the model's argmax on near-ties, not the prompt).
+### Two callers sharing one ollama instance corrupt each other's router output; ambient CPU load alone does not
+- **Found:** 2026-09-22, investigating the "router's slots depend on which
+  llama-server load answered" finding below (moved here, re-measured, and
+  re-diagnosed - the original entry's hypothesis was wrong about the
+  mechanism). Measured on this machine, ollama 0.33.3, CPU-only, 8 cores,
+  16 GB, `qwen2.5:3b` digest `357c53fb`, `ROUTER_PROMPT`/`ROUTER_SCHEMA`
+  unchanged throughout (confirmed by `git diff` on `router_prompt.py` before
+  and after: empty), temperature 0, against
+  `~/association-research/yardstick-v2/repro/moved_c4.json` (the 29 questions
+  the original finding flagged) and a baseline extracted from that day's full
+  live run (`live_c2.jsonl`).
+- **Evidence:** two separate hypotheses were tested and only one reproduces.
+  **(1) Reload/load-time CPU load, alone, does not move routing.** 5 solo
+  unload+reload cycles on a quiet machine, then 5 more with the machine
+  driven to load average ~9-30 by `python3 -c 'while True: pass'` busy loops
+  (never the repo's test suite) running at each reload: all 10 cycles landed
+  on the *identical* 29/29 routing, letter for letter, differing from the
+  day-before baseline in exactly the same 3 (of 29) minor slot encodings every
+  time (e.g. `{'season': 2026}` vs `{'limit': 1}` on "who leads the league in
+  points per game?" - both resolve to the same answer, the kind of encoding
+  difference `AGENTS.md` already says not to grade). This 3-of-29 pattern is
+  byte-identical to the historic `reroute_c4_reload2.jsonl` (the "mostly
+  recovered" second reload from the original investigation), meaning every
+  solo reload done today - 10 of them, spanning a 3x range of load average -
+  landed in the same "good" regime the original investigation only reached
+  after two reloads. The `llama-server` launch line was identical across all
+  10 (`-b 512 -ub 512 --flash-attn auto -np 1`, no batch or cache-type
+  change); the only variation seen was an explicit `-t 8` present on some
+  loads and absent on others (`ps`/`/proc/<pid>/cmdline`), uncorrelated with
+  which of the two regimes came up. Pinning `num_thread` in the router's
+  ollama `options` (tested directly in `router.py`, reverted - see below) made
+  no difference either, consistent with thread count not being the lever.
+  **(2) Two callers hitting the same ollama instance concurrently corrupts
+  one of them, reproducibly.** Running two independent `reroute.py`
+  processes against the 29 questions at the same moment (each doing its own
+  `ollama stop` + first request, simulating two agents or a CLI-plus-web-server
+  both asking questions right after an idle-unload) reproduced 18 of 29
+  flipped - not the stable 3 - three times out of three trials, with the
+  *identical* 18 questions flipping each time (diffed byte-for-byte across
+  trials) regardless of which of the two processes "won". Unlike the stable 3,
+  these are real intent-level wrong answers: "Bam adebeyo jan 19" (`player_stat`
+  with `date: '2026-01-19'`) becomes `game_log` with `order: recent, limit: 1`
+  - the most recent game, not the one asked about; "Centers stats game log vs
+  kings" turns `team: 'Kings'` into the fabricated `'Los Angeles Kings'`;
+  "vj edgecombe three points made per game after making one three in first
+  quarter" drops from `period_split` to `other`, falling through where it
+  used to answer. Pinning `num_thread` (tested the same way) did not prevent
+  this either - unsurprising once the trigger is understood: this is not a
+  thread-sizing question. `llama-server` runs `-np 1` (one parallel decode
+  slot); two independent HTTP clients issuing `ollama.chat` calls against one
+  slot at the same moment is exactly the condition `scripts/check_routing.py`'s
+  docstring already warns about ("two concurrent runs... put ollama into a
+  reload loop that wedges it for minutes") - what is new here is that the
+  failure mode is not only a multi-minute wedge, it is silent, fluent, wrong
+  routing with no error and no slowdown severe enough to notice.
+- **User sees:** the same question answered differently, or a different
+  question answered fluently, whenever something else is also asking ollama a
+  question at the same moment - most plausibly what happened on 2026-09-22
+  during the original bad-instance capture (another process on the machine,
+  not simply "load average 10" as originally guessed).
+- **Not fixed by anything tried here.** `num_thread`/`num_batch`/`seed`
+  pinning is a load-time option and this is a request-concurrency problem;
+  no `router.py` change was made (temporary test edit reverted, confirmed by
+  empty `git diff`). The actual guard already exists at the process level -
+  `AgentRunner`'s lock serializes calls *within one process*
+  (`docs`/`AGENTS.md`, "The server answers one question at a time") - but
+  nothing serializes *across* processes: two `association web` instances, or
+  a CLI invocation racing a running web server, both talking to the same
+  ollama, would hit this.
+- **Next step:** decide whether cross-process serialization is worth adding
+  (a lock file or a documented "run one instance" rule already implicit in
+  `check_routing.py`'s docstring but not enforced anywhere outside that
+  script), and extend the same docstring's warning to say what the failure
+  looks like now that it has been measured (silent wrong routing, not only a
+  wedge). Compare yardstick runs only when nothing else was asking ollama
+  anything at the same time, not merely "within one server load" as the
+  original entry said - a load-time comparison does not catch this.
+- **Source:** ours (a single-slot ollama instance under two concurrent
+  callers), not the prompt, and not ambient CPU load.
 - **GitHub:** none yet
+
+### "How many points did Jokic score in the 3rd quarter against Boston?" now routes to `team_quarter_points` instead of refusing
+- **Found:** 2026-09-22, the single end-of-task `scripts/check_routing.py` run
+  for the investigation above (no code changed on this branch - `git diff`
+  against master is empty - so this is master's current behavior, not
+  something introduced here).
+- **Evidence:** `scripts/check_routing.py` line 123 pins this question to
+  `other` specifically because it is a PLAYER's quarter, not a team's -
+  `team_quarter_points` reads `games.home_linescores`/`away_linescores` and
+  has no player column, so routing a player question there answers (or tries
+  to answer) the wrong thing entirely. This run got `intent: wanted 'other',
+  got 'team_quarter_points'` - one of 2 failures in 110 cases (108/110).
+  The other failure (`team_quarter_points` for "Celtics 2nd half scoring this
+  season") is the already-documented, still-open "A TEAM's half" gap above
+  ("A quarter or half is answered for a player, and for nobody else").
+- **Not independently reproduced** - the task this run was part of forbids a
+  second `check_routing.py` run in the same session (it is the shared
+  regression net; running it twice back-to-back risks the reload-loop wedge
+  its own docstring warns about), so this is a single observation, not yet
+  confirmed as a standing regression. It is suspicious in context: the
+  investigation above found the router's near-tie argmax can land differently
+  between server loads even with no concurrent access (see the "stable 3 of
+  29" minor-slot pattern there) - this could be the same phenomenon
+  surfacing as a full intent flip on a different, unrelated question, rather
+  than a real regression in `route()`.
+- **User sees:** if this is not a one-off, a player's quarter question would
+  try to answer using a team template with no player column - likely a wrong
+  or nonsensical answer, not a clean refusal.
+- **Next step:** re-run `scripts/check_routing.py` alone (next available
+  slot) to see whether this reproduces. If it does, check whether the router
+  is now supplying a `team` slot ("Boston") without a `player` slot for this
+  phrasing - `_route_coach_intent`-style code-assigned logic, not a prompt
+  edit, is the fix if so, per `AGENTS.md`'s "Working on the query path".
+- **Source:** ours (routing), unconfirmed as reproducible.
+- **GitHub:** none yet
+
+## P2: misleading or incomplete
 
 ### `game_log`'s venue narrowing counts a neutral-site game as home or away; `team_record`'s does not
 - **Found:** 2026-09-22, step 3 C4 (the team-games relation), while porting
