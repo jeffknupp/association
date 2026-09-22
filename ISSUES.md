@@ -60,7 +60,6 @@ before that commit needs re-checking against the current warehouse.
   `split=starter` is already honored by `game_log`/`player_stat`; check why it
   did not arrive. Until then `check_scope` should refuse rather than drop.
 - **Source:** ours, not ESPN's.
-- **GitHub:** none yet
 - **GitHub:** #166
 
 ### The agent fall-through answers 1 question in 23, and does not finish 61% of the time
@@ -291,7 +290,6 @@ those were found.
   phrasing - `_route_coach_intent`-style code-assigned logic, not a prompt
   edit, is the fix if so, per `AGENTS.md`'s "Working on the query path".
 - **Source:** ours (routing), reproduced twice.
-- **GitHub:** none yet
 - **GitHub:** #170
 
 ## P2: misleading or incomplete
@@ -399,9 +397,7 @@ those were found.
   `override_invented_players`, a slot the question does not support. Prove
   the prompt unchanged by hash; add the case to `scripts/check_routing.py`.
 - **Source:** ours (router post-processing).
-- **GitHub:** none yet
 
-- **GitHub:** none yet
 - **GitHub:** #172
 
 
@@ -487,7 +483,6 @@ those were found.
   answer with nothing saying so - #95 removed the ONE-season floor this entry
   was filed against, not the general gap.
 - **Source:** ours, not ESPN's.
-- **GitHub:** none yet
 - **GitHub:** #174
 
 ### "His best season" is answered with a season nobody determined
@@ -517,7 +512,6 @@ those were found.
   default), or refuse the shape rather than silently substituting a season -
   in the spirit of "prefer refusing to guessing" (`AGENTS.md`).
 - **Source:** ours, not ESPN's.
-- **GitHub:** none yet
 - **GitHub:** #175
 
 ### Season 2021's regular-season BPI snapshot is a day-one projection
@@ -2069,7 +2063,6 @@ those were found.
   of the question text the way `CODE_ASSIGNED_INTENTS` does for other slots,
   and either one needs `scripts/check_routing.py` run after, per
   `router_prompt.py`'s own rules.
-- **GitHub:** none yet
 - **GitHub:** #124
 
 ### Two more router typo'd names resolve to a safe clarification rather than a direct answer, and a stricter fix was measured and reverted
@@ -2162,7 +2155,6 @@ those were found.
   both callers to share.
 - **Priority note:** P2 - the number given is correct over what it actually
   summed; the gap is what it does not say.
-- **GitHub:** none yet
 - **GitHub:** #159
 
 ### "76ers" is not a word, so every "vs 76ers" question loses its opponent
@@ -2265,7 +2257,6 @@ those were found.
   explicitly that team is not an available field when asked for one that is
   not in the whitelist.
 - **Source:** ours, not ESPN's.
-- **GitHub:** none yet
 - **GitHub:** #182
 
 ### `_no_games`'s "did not play" is also the wrong cause when a real narrowing empties the pool
@@ -2307,7 +2298,6 @@ those were found.
   narrowed zero, the same two-fact split `_no_narrowed_games` already makes
   for game_log/player_stat.
 - **Source:** ours, not ESPN's.
-- **GitHub:** none yet
 - **GitHub:** #183
 
 ## P3: refusal or gap
@@ -2333,7 +2323,6 @@ those were found.
   over every meeting in the span. Then delete the four exclusions. Each cell
   gets a warehouse-verified fixture test.
 - **Source:** ours.
-- **GitHub:** none yet
 - **GitHub:** #184
 
 ### `period_leaderboard` stays off the player-games relation
@@ -2467,7 +2456,6 @@ those were found.
   from `_span_of`. C1 kept each as it was so the refactor could be proved
   pure.
 - **Source:** ours, not ESPN's.
-- **GitHub:** none yet
 - **GitHub:** #187
 
 ### "Total points scored ... in the last N games" lists the games but never sums them
@@ -2489,7 +2477,6 @@ those were found.
   season-type mixing fix beside it: this is about what the answer states, not
   which games it found.
 - **Source:** ours, not ESPN's.
-- **GitHub:** none yet
 - **GitHub:** #188
 
 ### No league ranking by shot distance, and the refusal reads as if the data could not do it
@@ -2507,7 +2494,6 @@ those were found.
   stated heave rule, reading `SHOT_VALUE_SQL`. Reword the refusal meanwhile:
   "shot distance is answered for one player, not ranked across the league yet".
 - **Source:** ours, not ESPN's.
-- **GitHub:** none yet
 - **GitHub:** #189
 
 ### Foul-out counts: check which column they read - the season table undercounts
@@ -2522,7 +2508,6 @@ those were found.
   `player_box_stats.fouls >= 6` and not the season column, with a test pinning
   Wembanyama's 3.
 - **Source:** ESPN's; see DATA.md.
-- **GitHub:** none yet
 - **GitHub:** #190
 
 ### A position group as the subject has no template, and six corpus questions want one
@@ -2549,7 +2534,6 @@ those were found.
   question. Note the two-letter values are ESPN's own and not a hierarchy: a
   question about "guards" means G, SG and PG together, and getting that wrong
   silently answers a narrower question.
-- **GitHub:** none yet
 - **GitHub:** #160
 
 ### A team's per-quarter average of anything but points has no source
@@ -2603,7 +2587,6 @@ those were found.
   Then probe whether ESPN's core API serves an honors collection at all,
   with the live check the coach entry used, before anyone writes "ESPN does
   not publish awards".
-- **GitHub:** none yet
 - **Re-measured 2026-09-21: this is a wrong answer on the fast path, not only
   an agent risk.** In the live sample (same directory as #10's note) "nba mvps
   in 2010's" answered "Nene led the league in true shooting % in the 2010
@@ -2645,7 +2628,6 @@ those were found.
   `single_game_high`/`threshold_count` with no player, add "game", "games",
   "score", "points" and team-name words to `_SUBJECT_WORDS` the way #148 added
   its own stopwords to `_COUNT_SUBJECT_WORDS`.
-- **GitHub:** none yet
 - **GitHub:** #151
 
 ### `record_when`'s team branch and `streak`'s team/league branches still refuse `without`/`split`/`season_n`/`below`/`above` (and `streak` alone still refuses `game_n`)
@@ -2693,7 +2675,6 @@ those were found.
   all and should likely stay refused; `season_n` likewise (a team has no
   "18th season" the way a player does).
 - **Source:** ours, not ESPN's.
-- **GitHub:** none yet
 - **GitHub:** #191
 
 ### A `since` span before the 2002 shot floor gets no caveat that shots are clipped
@@ -2720,7 +2701,6 @@ those were found.
   of always comparing against the player's own first season, so a `since`
   read gets the same "seasons left out" sentence a plain career already does.
 - **Source:** ours, not ESPN's.
-- **GitHub:** none yet
 - **GitHub:** #192
 
 ## P4: tooling, docs, low impact
@@ -2757,7 +2737,6 @@ those were found.
   be doing in parallel on the same file.
 - **Priority note:** P4 - no wrong answer today, a maintenance risk if the
   next two ports each add their own copy instead of reading this one first.
-- **GitHub:** none yet
 - **GitHub:** #193
 
 ### No template counts triple-doubles for one named player, or splits them by venue
@@ -2782,7 +2761,6 @@ those were found.
   miniature, so do it after C2 rather than as a one-off in one template.
 - **Priority note:** P4 - one corpus question, and it falls through rather
   than answering wrongly.
-- **GitHub:** none yet
 - **GitHub:** #194
 
 ### "Points by quarter" asks for all four at once, and every template answers one
@@ -2803,7 +2781,6 @@ those were found.
 - **Priority note:** filed P4 rather than P3 because a single malformed
   question is the whole evidence, and the shape is a table nobody has asked
   for twice.
-- **GitHub:** none yet
 - **GitHub:** #162
 
 ### `since` reaches the metric templates only by a second season-scoping path
