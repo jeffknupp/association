@@ -1160,7 +1160,9 @@ def scoped_games(
     return narrowed
 
 
-def condition_player(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], missing: str, scope: _Scope, *, team: Entity | None = None) -> tuple[Entity, Narrowed] | TemplateResult:
+def condition_player(
+    con: duckdb.DuckDBPyConnection, slots: dict[str, Any], missing: str, scope: _Scope, *, team: Entity | None = None, measures: list[MeasureFilter] | None = None
+) -> tuple[Entity, Narrowed] | TemplateResult:
     """The player a condition template is about, and his games in ``scope``
     under the question's row-level narrowings - for the templates that group a
     player's games by a condition (splits, a record above a threshold, a
@@ -1170,7 +1172,11 @@ def condition_player(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], miss
     ``scope`` is the template's own ``_Scope``, kept because it reads "career
     ... in 2015" as 2015 where ``_span_of`` refuses the pair - the one place
     the two readers of a player's games disagreed, and not this refactor's to
-    settle. ``team`` narrows to the games he played for that team.
+    settle. ``team`` narrows to the games he played for that team. ``measures``
+    is :func:`measure_filters`' own lines on a box-score column ("under 14
+    fta") - built by the caller, which decides what a bare ``threshold`` means
+    before any name is resolved, exactly as :func:`scoped_games` already takes
+    it from templates that call that step directly.
 
     .. versionadded:: 4.4.0
     """
@@ -1178,7 +1184,7 @@ def condition_player(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], miss
     if isinstance(subject, TemplateResult):
         return subject
     player, span = subject
-    narrowed = scoped_games(con, player, span, slots, opponent=slots.get("opponent"), measures=[])
+    narrowed = scoped_games(con, player, span, slots, opponent=slots.get("opponent"), measures=measures or [])
     if isinstance(narrowed, TemplateResult):
         return narrowed
     if team is not None:
@@ -1368,13 +1374,23 @@ def _condition_scope(season: Any, span: Any, season_type: Any, tables: tuple[str
     for a career, where it means every season on record, which is what the
     word asked for. A season the question named beats "career": the router keeps
     a named year alongside it, and "career ... in 2015" is asking about 2015.
-    ``since`` is every season from that one on.
+    ``since`` is every season from that one on - and, like ``_span_of``'s own
+    pairing of the two, conflicts with a named ``season`` rather than silently
+    picking one: a caller that let both through here would resolve "since 2022
+    and 2020 at once" as though only "since 2022" had been asked, with nothing
+    saying the named year was dropped.
 
     .. versionchanged:: 4.3.0
        Honors ``since``.
+
+    .. versionchanged:: 4.4.0
+       Refuses ``since`` alongside a named ``season`` instead of silently
+       preferring ``since``.
     """
     kind = season_type if season_type in (2, 3) else 2
     if isinstance(since, int) and since and not isinstance(since, bool):
+        if isinstance(season, int) and season and not isinstance(season, bool):
+            raise TemplateUnsupported(f"since {since} and the {season} season at once")
         scope = _game_scope(None, kind, tables)
         return _Scope(None, kind, max(since, scope.first), scope.phantoms)
     if isinstance(season, int) and not isinstance(season, bool):

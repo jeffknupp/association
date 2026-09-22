@@ -367,6 +367,17 @@ def test_a_team_has_no_starter_split(league: TemplateContext) -> None:
         player_splits(league, _slots(team="Boston Celtics", split="starter_bench"))
 
 
+def test_a_team_subject_refuses_without_rather_than_silently_dropping_it(league: TemplateContext) -> None:
+    """`_player_splits_team` reads the team tables directly and has no
+    teammate-absence filter (ISSUES.md, "player_splits cannot honor a
+    teammate's absence ... when the subject is a team") - "Celtics splits
+    without Tatum" used to answer the Celtics' whole season, identical to
+    leaving `without` out and with nothing saying so. Refused now, the same
+    way a starter/bench split already is for a team."""
+    with pytest.raises(TemplateUnsupported, match="without"):
+        player_splits(league, _slots(team="Boston Celtics", without="Jayson Tatum"))
+
+
 def test_an_unknown_split_is_refused(league: TemplateContext) -> None:
     with pytest.raises(TemplateUnsupported):
         player_splits(league, _slots(player="Jayson Tatum", split="by_weekday"))
@@ -852,10 +863,14 @@ def test_a_matchup_log_abbreviates_each_team_for_the_season_of_the_meeting(old_f
 def test_a_venue_narrows_a_players_games(league: TemplateContext) -> None:
     """Tatum's three games this season are e1 (home), e4 and e7 (away); a
     venue narrows the games the splits are computed over, not just which
-    row of the home/away split is shown."""
+    row of the home/away split is shown.
+
+    The heading names it through ``Narrowed.filters()`` (step 3, C2) rather
+    than a phrase this template composed for itself, the way every other
+    template on the relation already does - "at home", not "(at home)"."""
     result = player_splits(league, _slots(player="Jayson Tatum", venue="home"))
     assert result.data["games"] == 1
-    assert "(at home)" in (result.answer or "")
+    assert "Jayson Tatum at home," in (result.answer or "")
     rows = _rows(result, "home_away")
     assert (rows["home"]["games"], rows["away"]["games"]) == (1, 0)
 
@@ -865,14 +880,17 @@ def test_an_opponent_narrows_a_players_games(league: TemplateContext) -> None:
     road (31)."""
     result = player_splits(league, _slots(player="Jayson Tatum", opponent="Los Angeles Lakers"))
     assert result.data["games"] == 2
-    assert "(vs the Los Angeles Lakers)" in (result.answer or "")
+    assert "Jayson Tatum vs the Los Angeles Lakers," in (result.answer or "")
 
 
 def test_venue_and_opponent_narrow_together(league: TemplateContext) -> None:
-    """Only e7 - Tatum's road game against the Lakers - matches both."""
+    """Only e7 - Tatum's road game against the Lakers - matches both.
+    ``Narrowed.filters()`` names the opponent before the venue - "vs the
+    Lakers on the road", not "on the road vs the Lakers" - the order every
+    template reading it already uses (player_stat, game_log)."""
     result = player_splits(league, _slots(player="Jayson Tatum", venue="away", opponent="Los Angeles Lakers"))
     assert result.data["games"] == 1
-    assert "(on the road vs the Los Angeles Lakers)" in (result.answer or "")
+    assert "vs the Los Angeles Lakers on the road" in (result.answer or "")
     assert "1 game he played" in (result.answer or ""), "not '1 games' - the pluralization a venue/opponent narrowing exposes"
 
 
@@ -913,3 +931,125 @@ def test_a_bare_limit_of_one_is_not_refused(league: TemplateContext) -> None:
     since the games a venue narrows to are shown in full either way."""
     result = player_splits(league, _slots(player="Jayson Tatum", venue="home", limit=1))
     assert result.data["games"] == 1
+
+
+# ---------------- player_splits: step 3, C2 - the relation's own cells ----------------
+
+
+def test_without_narrows_a_players_splits(league: TemplateContext) -> None:
+    """Previously `_player_splits_player` handed `condition_player` a copy of
+    `slots` with `"without": None` - so this narrowing reached check_scope's
+    declaration and nothing else. Over his career Brown played every one of
+    Tatum's three games this season, but none of his four last season (he
+    appears without Tatum only in e0z) - so "without Brown" leaves exactly
+    those four, and the answer names it."""
+    result = player_splits(league, _slots(player="Jayson Tatum", span="career", without="Jaylen Brown", split="home_away"))
+    assert result.data["games"] == 4
+    assert result.data["without"] == ["Jaylen Brown"]
+    assert "without Jaylen Brown" in (result.answer or "")
+    rows = _rows(result, "home_away")
+    assert (rows["home"]["games"], rows["away"]["games"]) == (3, 1)  # e0c, e0a, e0d home; e0b away
+
+
+def test_since_narrows_to_a_range_of_seasons(league: TemplateContext) -> None:
+    """A third, older season Tatum played is outside the `since` window, so
+    "since {S-1}" differs from both the plain current-season default (3
+    games) and a full career that would also count the older one (8)."""
+    c = league.con
+    _game(c, "e00", f"{S - 2}-11-01T00:30Z", BOS, PHI, 100, 90, [_played(TATUM, BOS, 22)], season=S - 2)
+    real_games.build_table(c, {"games", "teams", "player_box_stats"})
+    result = player_splits(league, _slots(player="Jayson Tatum", since=S - 1))
+    assert result.data["games"] == 7  # e0b, e0c, e0a, e0d (S-1) + e1, e4, e7 (S) - not e00 (S-2)
+    assert result.data["span"] == f"{S - 1}-{S} regular seasons"
+
+
+def test_since_and_a_named_season_conflict(league: TemplateContext) -> None:
+    """`_condition_scope` used to take the `since` branch unconditionally,
+    silently dropping a `season` slot named alongside it - the same pairing
+    `_span_of` already refuses for game_log and player_stat."""
+    with pytest.raises(TemplateUnsupported):
+        player_splits(league, _slots(player="Jayson Tatum", since=S - 1, season=S))
+
+
+def test_game_n_narrows_to_one_game_of_each_series(league: TemplateContext) -> None:
+    """A three-game series vs Philadelphia; game_n=2 is p2, which Tatum's
+    Celtics won 105-95 on the road (25 points)."""
+    c = league.con
+    for event, date, home, away, home_score, away_score, points in (
+        ("p1", f"{S}-04-20T23:30Z", BOS, PHI, 100, 90, 20),
+        ("p2", f"{S}-04-22T23:30Z", PHI, BOS, 95, 105, 25),
+        ("p3", f"{S}-04-24T23:30Z", BOS, PHI, 110, 100, 30),
+    ):
+        c.execute("INSERT INTO games VALUES (?,?,3,?,?,?,?,?,?)", [event, S, date, home, away, home_score, away_score, home if home_score > away_score else away])
+        for team, opponent, side in ((home, away, "home"), (away, home, "away")):
+            c.execute("INSERT INTO team_box_stats VALUES (?,?,3,?,?,?,40,12,23,20,10,40,85)", [event, S, team, opponent, side])
+        c.execute(
+            "INSERT INTO player_box_stats VALUES (?,?,3,?,?,?,TRUE,FALSE,30,?,5,3,0,0,0,1,?,?,0,0)",
+            [event, S, BOS, PHI, TATUM, points, points // 2, points],
+        )
+    real_games.build_table(c, {"games", "teams", "player_box_stats"})
+    result = player_splits(league, _slots(player="Jayson Tatum", season_type=3, game_n=2))
+    assert result.data["games"] == 1
+    assert result.data["series_game"] == 2
+    assert "game 2 of each series" in (result.answer or "")
+    rows = _rows(result, "wins_losses")
+    assert (rows["wins"]["games"], rows["losses"]["games"]) == (1, 0)
+
+
+def test_a_named_half_of_starter_bench_narrows_the_games(league: TemplateContext) -> None:
+    """ "as a starter" is a request to FILTER - the value `_split_side` reads
+    out of the question for game_log and the other filtering templates - not
+    a request for the starter/bench table over every game. Tatum started e1
+    (30) and e7 (31) and came off the bench in e4 (35); split="starter"
+    narrows to the two he started, while the CATEGORY shown is still the same
+    two-row table it always was, folded back from the half the question
+    named (previously this always raised: "starter"/"bench" were not in
+    SPLIT_KINDS, so the fold-back in `_player_splits_answer` was dead code)."""
+    result = player_splits(league, _slots(player="Jayson Tatum", split="starter"))
+    assert result.data["games"] == 2
+    assert result.data["started"] is True
+    assert "as a starter" in (result.answer or "")
+    rows = _rows(result, "starter_bench")
+    assert rows["starter"]["games"] == 2
+    assert rows["bench"]["games"] == 0
+    assert rows["starter"]["points"] == pytest.approx(30.5)
+
+
+def test_season_n_settles_to_the_year_once_the_player_is_known(league: TemplateContext) -> None:
+    """His 1st season (season_n=1) is last season (S-1, 4 games) - a
+    different year from the "now" this template defaults to, so the label
+    the answer names has to follow the ordinal the relation settled rather
+    than the `_Scope` built (as "now") before the player was known."""
+    c = league.con
+    c.execute("CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER)")
+    c.executemany("INSERT INTO player_season_stats_deduped VALUES (?,?,2)", [(TATUM, S - 1), (TATUM, S)])
+    first = player_splits(league, _slots(player="Jayson Tatum", season_n=1))
+    assert first.data["games"] == 4  # e0b, e0c, e0a, e0d
+    assert first.data["span"] == f"{S - 1} regular season"
+    # His 2nd season is this one, where the plain "no season named" default already lands.
+    second = player_splits(league, _slots(player="Jayson Tatum", season_n=2))
+    assert second.data["games"] == player_splits(league, _slots(player="Jayson Tatum")).data["games"] == 3
+
+
+def test_a_season_n_past_his_career_is_refused_by_name(league: TemplateContext) -> None:
+    c = league.con
+    c.execute("CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER)")
+    c.executemany("INSERT INTO player_season_stats_deduped VALUES (?,?,2)", [(TATUM, S - 1), (TATUM, S)])
+    answer = player_splits(league, _slots(player="Jayson Tatum", season_n=5)).answer or ""
+    assert "2 seasons on record" in answer
+
+
+def test_above_and_below_narrow_which_games_the_splits_cover(league: TemplateContext) -> None:
+    """Tatum's three counted games this season score 30, 35 and 31 points
+    (e1, e4, e7); "at least 32" keeps e4 alone, "under 32" keeps the other
+    two - refused here, before any name is resolved, if the line names no
+    column at all (:func:`association.query.templates.common.measure_filters`)."""
+    high = player_splits(league, _slots(player="Jayson Tatum", above="32 points"))
+    assert high.data["games"] == 1
+    assert high.data["measures"] == ["at least 32 points"]
+    assert "at least 32 points" in (high.answer or "")
+    low = player_splits(league, _slots(player="Jayson Tatum", below="32 points"))
+    assert low.data["games"] == 2
+    assert "under 32 points" in (low.answer or "")
+    with pytest.raises(TemplateUnsupported):
+        player_splits(league, _slots(player="Jayson Tatum", above="20 vibes"))

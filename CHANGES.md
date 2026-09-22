@@ -16,6 +16,37 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **Scoping is declared once, on the player-games relation (step 3, C2).**
+  `player_splits` and `period_split` now claim every slot
+  `templates.common.RELATION_SCOPING` declares (minus a per-template
+  exclusion in `RELATION_SCOPING_EXCLUDED`, each with its own reason) rather
+  than a hand-picked subset, and each newly claimed slot now actually narrows
+  the answer rather than being silently dropped:
+  - `player_splits` used to hand `condition_player` a copy of `slots` with
+    `"without": None` and `"split": None` - so "Embiid splits without
+    Harden" and "Tatum's numbers as a starter" reached `check_scope`'s
+    declaration and nothing else. `without`, one game of a playoff series
+    (`game_n`), a range or ordinal season (`since`/`season_n`) and a line on
+    a box-score column (`below`/`above`) now reach the relation, and a named
+    half of the starter/bench split (`split` as `"starter"`/`"bench"`) now
+    narrows the games while the CATEGORY shown stays the one it always was -
+    both groups side by side, folded back from the half the question named
+    (previously this always raised, since "starter"/"bench" are not in
+    `SPLIT_KINDS`). The heading now names every narrowing through
+    `Narrowed.filters()`, the same phrase every other template on the
+    relation renders, rather than a `venue`/`opponent`-only phrase this
+    template composed for itself ("at home", not "(at home)"; the opponent
+    before the venue, not after).
+  - `period_split` now honors `below`/`above` the same way: a line on a
+    box-score column narrows which of the player's games are summed for the
+    quarter or half, through `common.measure_filters` and `scoped_games`
+    rather than a hard-coded `measures=[]`.
+  - `common.condition_player` takes an optional `measures` parameter (default
+    `None` -> `[]`, so its other two callers are unchanged) to reach
+    `scoped_games`'s own; `common._condition_scope` now refuses `since`
+    alongside a named `season` instead of silently preferring `since` and
+    dropping the year, the same pairing `_span_of` already refused for
+    `game_log` and `player_stat`.
 - **The steps that settle a player and his games are written once (step 3,
   C1).** `game_log` and `player_stat` each wrote out the same sequence - settle
   the span, resolve the name against it, settle an ordinal season once he is
