@@ -275,25 +275,6 @@ def _game_scope(season: int | None, season_type: int, tables: Iterable[str]) -> 
     return _Scope(season, season_type, first, phantoms)
 
 
-def _team_games(scope: _Scope, extra: str = "") -> str:
-    """One row per team per game with a result, from that team's side of it.
-
-    ``games`` is home/away-oriented and joining a team to only one side of it
-    silently returns half its games, so the team's own row in team_box_stats
-    decides which side it was on - the same join ``game_log`` uses.
-
-    Selects ``offensiveRebounds``/``defensiveRebounds`` rather than
-    ``totalRebounds`` - see :data:`_TEAM_LINE`'s rebounds entry for why."""
-    return f"""
-        SELECT tbs.team_id, tbs.season, tbs.event_id, g.date AS stamp, {_eastern_day("g.date")} AS day, tbs.home_away,
-               g.winner_team_id = tbs.team_id AS won,
-               CASE WHEN tbs.home_away = 'home' THEN g.home_score ELSE g.away_score END AS team_score,
-               CASE WHEN tbs.home_away = 'home' THEN g.away_score ELSE g.home_score END AS opponent_score,
-               tbs.offensiveRebounds, tbs.defensiveRebounds, tbs.assists, tbs.threePointFieldGoalsMade, tbs.fieldGoalsMade, tbs.fieldGoalsAttempted
-        FROM team_box_stats tbs JOIN real_games g ON g.event_id = tbs.event_id AND g.season = tbs.season
-        WHERE {scope.where("tbs")}{extra}"""
-
-
 def _player_games(scope: _Scope, player: str = "player", extra: str = "", box: BoxSource = RAW_BOX) -> str:
     """One row per game a player played, with his team's result and side.
 

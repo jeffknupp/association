@@ -256,6 +256,9 @@ those were found.
 ### `game_log`'s venue narrowing counts a neutral-site game as home or away; `team_record`'s does not
 - **Found:** 2026-09-22, step 3 C4 (the team-games relation), while porting
   `game_log`'s team half and `head_to_head` onto `query/team_games.py`.
+  Widened 2026-09-22, step 3 C4 (`player_splits`/`record_when`/`streak`'s
+  team branches ported onto the same relation): all three read the same
+  `common.team_games` venue clause, so they carry the identical gap.
 - **Evidence:** `game_log` narrows a team's venue with `tg.side = ?` alone
   (`templates/common.py: team_games`, carried over unchanged from the old
   `_team_game_log_filters`'s `tbs.home_away = ?`); `team_record`'s own venue
@@ -274,14 +277,25 @@ those were found.
   `_team_game_log_filters` read `team_box_stats.home_away`, which ESPN sets
   to a real side for a neutral-site game too - so the gap already existed
   in the pre-C4 code, just under a different name.
+  Now measured on `player_splits` and `streak` too, same warehouse:
+  `player_splits(team="New York Knicks", venue="home", season=2026)` shows
+  "31-10" at home (41 games) against `team_record`'s cup-final-excluded
+  "30-10" (40 games) for the same team-season; `streak(team="New York
+  Knicks", kind="win", venue="home", season=2026, season_type=2)` reports a
+  matched streak running "2025-11-14 to 2025-12-16" - 2025-12-16 is the Cup
+  final's own Eastern date, inside a counted "home" winning streak.
 - **User sees:** "Knicks last 10 home games" (or any team's) silently
   includes a game played at a neutral site, with nothing in the answer
-  saying so - the numbers are real, but the label ("home") is not.
+  saying so - the numbers are real, but the label ("home") is not. Now also:
+  a team's home/away splits (`player_splits`), a home-only threshold record
+  (`record_when`) or a home winning streak (`streak`) can each include one
+  neutral-site game a season, same silent label.
 - **Next step:** decide the one rule (exclude a neutral-site game from
-  `game_log`'s venue narrowing the way the record functions already do, or
+  `team_games`'s venue narrowing the way the record functions already do, or
   narrow it and say so in the answer) and apply it in `templates/common.py:
-  team_games`, which both `game_log`'s team half and `head_to_head` already
-  read through - one change reaches both. Not fixed here: this carve-out is
+  team_games`, which `game_log`'s team half, `head_to_head`, and now
+  `player_splits`/`record_when`/`streak`'s team branches all read through -
+  one change reaches all five. Not fixed here: this carve-out is
   a proven pure refactor, and picking a rule is a behavior change with its
   own golden re-score.
 - **Source:** ours, not ESPN's - `team_box_stats.home_away` and
@@ -2134,8 +2148,13 @@ those were found.
 ### `player_splits` cannot honor a teammate's absence, a box-score line, a playoff-series game or an ordinal season when the subject is a team, not a player
 - **Found:** 2026-09-22, step 3 C2 work on `player_splits`/`period_split`
   (out of that task's scope - the fix landed only for the PLAYER subject,
-  through `common.condition_player`; `_player_splits_team`, which reads the
-  team tables directly, was never touched).
+  through `common.condition_player`; `_player_splits_team` was never
+  touched). Still open after step 3, C4 ported `_player_splits_team` onto
+  the team-games relation (`common.team_games`/`TeamNarrowed`): that port
+  gave the team branch `opponent`/`venue` for `record_when`/`streak` too
+  (see "record_when's team branch and streak's team/league branches..."
+  below) but did not add any of these four - the gap below is unchanged,
+  only the code it points at moved.
 - **Evidence:** `templates/common.py`'s `HONORED_SCOPING["player_splits"]`
   declares `without`, `below`/`above`, `game_n` and `season_n` for the intent
   as a whole, with no distinction between a named-player question and a
@@ -2161,14 +2180,16 @@ those were found.
 - **Next step:** teach `_player_splits_team` the four narrowings for real -
   `without` is the one with the clearest path, the same teammate-absence
   filter `with_without` already has for a team subject
-  (`_with_without_games`, `conditions.py`): narrow `_team_games`'s base query
-  to the games a named player did not appear in, the same
-  tenure-and-played-guard shape `_narrow_player_games`'s `without` loop uses
-  for a player subject, and say so in the heading via
-  `_player_splits_narrow_phrase`. `game_n` (one game of each series, by team)
-  and `below`/`above` (a line on `team_box_stats`, aliased `tbs` rather than
-  `pgl`) are narrower asks with no relation to lean on; `season_n` has no
-  team equivalent at all and should likely stay refused.
+  (`_with_without_games`, `conditions.py`): add a teammate-absence clause to
+  the `TeamNarrowed` `common.team_games` already builds (`TeamNarrowed.narrow`,
+  `query/team_games.py`) - the same tenure-and-played-guard shape
+  `_narrow_player_games`'s `without` loop uses for a player subject - and say
+  so in the heading via `TeamNarrowed.filters()`, which already carries
+  opponent/venue for this same function. `game_n` (one game of each series,
+  by team) and `below`/`above` (a line on `team_box_stats`, joined the way
+  `record_when`'s team branch now does it - see `_TEAM_RECORD_WHEN_JOIN`,
+  `splits.py`) are narrower asks with no relation to lean on; `season_n` has
+  no team equivalent at all and should likely stay refused.
 - **Source:** ours, not ESPN's.
 
 ### "Career ... in 2015" is 2015 on the condition templates and a refusal on the others
@@ -2366,36 +2387,49 @@ those were found.
 - **GitHub:** none yet
 - **GitHub:** #151
 
-### `record_when`'s team branch and `streak`'s team/league branches refuse the relation's cells rather than reading them
+### `record_when`'s team branch and `streak`'s team/league branches still refuse `since`/`season_n`/`without`/`split`/`game_n`/`below`/`above`
 - **Found:** 2026-09-22, step 3 C2 (record_when and streak read the relation's
-  full narrowing set).
+  full narrowing set). Narrowed 2026-09-22, step 3 C4 (`record_when`'s and
+  `streak`'s team branches ported onto the team-games relation): `opponent`
+  and `venue` are wired now and this entry no longer covers them - see below.
 - **Evidence:** `HONORED_SCOPING["record_when"]` and `["streak"]`
   (`templates/common.py`) claim the whole relation set (`opponent`, `venue`,
   `without`, `split`, `game_n`, `since`, `season_n`, `below`, `above`) for the
   WHOLE intent, not just the player branch - `check_scope` cannot tell the
   branches apart from the slots alone, since it runs before the template does.
-  Only the player branch (`condition_player`) actually reads any of them: a
-  team-only `record_when` ("Celtics record when they scored 120, at home") or
-  a team/league `streak` ("Lakers' longest home winning streak", "most 40-point
-  games in a row with 10+ assists, nobody named") has real, plausible shapes
-  for several of these cells - venue and opponent especially - and none of
-  them are wired for `_record_when_team_query`, `_streak_team` or
-  `_streak_league`. Rather than let `check_scope`'s promise go silently
-  unfulfilled, `splits._condition_needs_player_refusal` refuses any of the nine
-  cells by name on those branches (`TemplateUnsupported`, not a wrong or
-  narrower answer) - the honest choice given the size of wiring all of them
-  onto three more code paths, but it is a real gap: a team's own home/road
-  record above a threshold, or its longest streak against one opponent, is a
-  question StatMuse answers today and this project currently refuses.
-- **User sees:** a refusal ("record_when cannot honor ['venue'] without a
-  named player...") for a team-only or league-wide question naming a venue,
-  an opponent, a since-span, or a box-score line - rather than an answer.
-- **Next step:** wire `venue`/`opponent` onto `_record_when_team_query` and
-  `_streak_team` first (`splits._player_splits_narrow_sql` already builds the
-  matching `team_box_stats`-aliased SQL for `player_splits`' own team branch
-  and can likely be reused directly); `since`/`season_n`/`without`/`split`/
-  `game_n`/`below`/`above` need more thought for a team or a league-wide
-  subject before they are worth wiring.
+  Only the player branch (`condition_player`) reads the remaining seven: a
+  team-only `record_when` ("Celtics record when they scored 120, since 2022")
+  or a team/league `streak` ("most 40-point games in a row with 10+ assists,
+  nobody named") has plausible shapes for some of them, and none are wired
+  for `_record_when_team_answer`, `_streak_team` or `_streak_league`.
+  `splits._condition_needs_player_refusal` refuses these seven by name on
+  those branches (`TemplateUnsupported`, not a wrong or narrower answer) -
+  honest, but still a real gap for the ones with a plausible team-only or
+  league-wide reading (`since`, `below`/`above`, `game_n`).
+  `opponent`/`venue` are now read through `common.team_games` the way
+  `team_record` reads them, for both `_record_when_team_answer` and
+  `_streak_team` - see CHANGES.md ("A team's postseason before 1993-94...")
+  for the numbers: e.g. `record_when(team="Boston Celtics", stat="points",
+  threshold=110, opponent="New York Knicks", season=2026, season_type=2)`
+  now answers "1-0 at 110+, 0-3 under, 1-3 overall" instead of refusing.
+  `streak`'s LEAGUE branch (nobody named at all) still refuses `opponent`/
+  `venue` by name (`_streak_league_needs_named_subject`, `splits.py`) - a
+  league-wide streak has no one team's rival or home/road split to read, so
+  that refusal is not a gap the way the team branch's was.
+- **User sees:** a refusal ("record_when cannot honor ['since'] without a
+  named player...") for a team-only or league-wide question naming a
+  since-span, a teammate's absence, a box-score line, a starter/bench half or
+  a series game - rather than an answer. A venue or an opponent now gets a
+  real answer instead (fixed).
+- **Next step:** `since` (a team's own record over a span of seasons) is the
+  next clearest shape - `_span_of`'s `since` branch already exists and both
+  ported team branches call it for the ordinary span, so the change is
+  reading `slots.get("since")` the way `_player_splits_team` already does,
+  not a new mechanism. `below`/`above` (a line on `team_box_stats`) and
+  `game_n` (one game of each series, by team) need more thought; `without`
+  and `split` have no team-scale reading at all and should likely stay
+  refused; `season_n` likewise (a team has no "18th season" the way a player
+  does).
 - **Source:** ours, not ESPN's.
 - **GitHub:** none yet
 

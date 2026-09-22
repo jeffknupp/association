@@ -40,8 +40,6 @@ had no published version to be compatible with.
   six team-facing intents, `constructed_cases.jsonl` extended with 1988-1993
   postseasons and 2023-2026 regular seasons) - identical before and after,
   confirmed to fail under a one-token perturbation of the shared narrowing.
-  `conditions._team_games` and its remaining callers (`player_splits`,
-  `streak`'s team branches) are next agents' work, per the step's own README.
   `with_without`'s window read (`conditions._with_without_games`) is now on
   the relation too: `_with_without_team_games` builds a `TeamNarrowed` over
   every team a player's windows touch at once (`list_contains`, since a
@@ -60,6 +58,86 @@ had no published version to be compatible with.
   the step's own directory) and a one-token perturbation of the new
   `list_contains` clause, which the same harness caught (22 `with_without`
   cases moved).
+  `player_splits`, `record_when` and `streak`'s TEAM branches (the callers
+  `conditions._team_games` was left for) are now on the relation too:
+  `_player_splits_team`, `_record_when_team_answer` and `_streak_team`
+  (`templates/splits.py`), plus the league-wide win-loss streak
+  (`_streak_league_by_result`), read `common.team_games`/`TeamNarrowed`
+  instead of the label-scoped `_team_games`. This port is proved a pure
+  refactor separately (golden comparison over the same 103 team-condition
+  cases, held at the OLD `_team_games` behavior for it by two interim-only
+  functions, `_team_misfiled_postseason` and `_team_scope_interim_floor` -
+  101 of 103 identical, the remaining two a formatting-only change:
+  `player_splits`' team-only opponent/venue phrase now reads
+  `TeamNarrowed.filters()`'s "vs the X"/"at home" rather than the old
+  hand-built "(vs the X)"/"(at home)", the same wording every other template
+  on either relation already uses). With `with_without`'s
+  windows ported in the same step (above), `conditions._team_games` has
+  no callers left and is deleted; the last of the three
+  definitions is gone.
+
+- **A team's postseason before 1993-94 is read by the calendar year it was
+  played in, for `player_splits`, `record_when` and `streak`'s team
+  branches, and `streak`'s league-wide win-loss run.** The interim guards
+  from the refactor above (`_team_misfiled_postseason`,
+  `_team_scope_interim_floor`) are deleted, letting the team-games relation's
+  own calendar-year read (already correct for `team_record`/`team_leaderboard`/
+  `game_log`/`head_to_head`) reach these four for the first time. Two
+  behavior changes, both DATA.md-documented ESPN faults these branches used
+  to get wrong or refuse over instead of answering:
+  - **A single named postseason before 1993-94 used to be refused outright**
+    ("The warehouse files playoff games from before 1993-94 under the year
+    the season began..."); it now answers with the real games played that
+    calendar year. Measured against the 2026-09-22 warehouse: `streak(team="Los
+    Angeles Lakers", kind="win", season=1989, season_type=3)` used to refuse
+    and now answers "The Los Angeles Lakers' longest winning streak, 1989
+    postseason: 11 games, 1989-04-27 to 1989-05-28" (their real run to that
+    year's Finals); `record_when(team="Chicago Bulls", stat="points",
+    threshold=100, season=1991, season_type=3)` now answers "12-0 at 100+,
+    3-2 under, 15-2 overall" over their real 17-game 1991 title run, where it
+    used to refuse. 20 constructed cases over the 1989-1992 postseasons
+    exercise this (`constructed_cases.jsonl`; DATA.md, "ESPN files every
+    season before 1993-94 under the year it STARTED").
+  - **A team's CAREER-wide postseason span used to stop at 1994 even though
+    the team tables reach back to 1988-89.** `conditions._game_scope` forced
+    every span (not just a single named season) to `max(1994, floor)`,
+    because there was no calendar-year read available to trust for the
+    earlier years; the relation's own floor is 1989 (`nba/coverage.py`,
+    `postseason_first_season`) and this is the first team-condition template
+    to read it for a career. Measured: `player_splits(team="Detroit
+    Pistons", span="career", season_type=3)` moves from "1996-2026
+    postseasons (174 games)" to "1989-2026 postseasons (231 games)" - the
+    Pistons' 1988-89 and 1989-90 championship runs (57 games) were simply
+    absent from a "whole career" answer before.
+
+  `player_splits`' team branch already had a working `opponent`/`venue`
+  narrowing (4.3.0); `record_when`'s and `streak`'s team branches gain it
+  here, reading it the way `team_record` does and saying the narrowing in
+  the heading via `TeamNarrowed.filters()` - closing the ISSUES.md entry
+  ("record_when's team branch and streak's team/league branches refuse the
+  relation's cells rather than reading them") for these two cells; `since`,
+  `season_n`, `without`, `split`, `game_n`, `below` and `above` are still
+  refused for a team-only or league-wide question, and that entry is
+  rewritten to say so. `streak`'s league-wide branch (nobody named at all)
+  still refuses `opponent`/`venue` by name
+  (`_streak_league_needs_named_subject`) - a league-wide streak has no
+  single team's rival or home/road split to read. Measured against the
+  2026-09-22 warehouse: `record_when(team="Boston Celtics", stat="points",
+  threshold=110, opponent="New York Knicks", season=2026, season_type=2)`
+  answers "1-0 at 110+, 0-3 under, 1-3 overall" over their 4 meetings (used
+  to refuse); `streak(team="Boston Celtics", kind="win", venue="home",
+  season=2026, season_type=2)` answers a 6-game home winning streak, still
+  open (used to refuse).
+
+  Golden comparison over the same corpus this step's refactor commit used:
+  81 of 103 cases identical (unaffected by any of this), 20 changed - the
+  constructed 1988-1993-postseason and opponent/venue cases this commit adds
+  meaning to; none of the pre-existing 81 moved. `_condition_team_no_games`
+  (added in the refactor commit, unchanged here) is what makes a team with
+  real games in a span but none matching a named opponent/venue get that
+  sentence now that the narrowing can apply at all, rather than the old
+  single-tier "no games in this span" a bare zero-row result used to print
+  regardless of which fact was actually missing.
 - **The scoping matrix cannot grow back (step 3, C3).** Two tests read the
   templates' source: the six on the player-games relation must declare
   exactly `RELATION_SCOPING` less a reasoned exclusion, and none of them, nor
