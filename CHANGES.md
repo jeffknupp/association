@@ -16,6 +16,32 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **A team's games are defined once (step 3, C4).** "A team's games" was
+  defined three times, and two of them disagreed with the third:
+  `team_metrics.TEAM_GAMES_SQL` selects a postseason by the CALENDAR YEAR it
+  was played in and excludes the NBA Cup final from a regular-season record,
+  which `templates/games.py`'s own hand-written team-log query already got
+  right but restated separately, and which `conditions._team_games` (read by
+  `player_splits`/`streak`'s team branches and by `with_without`, not touched
+  here) still gets wrong - answering the wrong year for every postseason
+  1988-1993 and counting the Cup final as a regular-season game. The correct
+  definition now lives once, in `query/team_games.py`
+  (`TeamNarrowed`, mirroring `player_games.Narrowed`, with the same four
+  readers - `rows_sql`, `aggregate_sql`, `games_subquery`, `named` - over
+  `TEAM_GAMES_SQL`'s relation, moved here from `team_metrics`, which
+  re-exports it), and two shared steps on `templates/common.py`
+  (`scoped_team`, `team_games`) settle a team's name and span the way
+  `scoped_player`/`scoped_games` already do for a player.
+  `game_log`'s team half and `head_to_head` (`templates/games.py`) and
+  `team_record`/`team_leaderboard`'s own `TEAM_GAMES_SQL` reads
+  (`templates/teams.py`) are ported onto it; `games._TEAM_GAMES_SQL` is
+  deleted. Proved a pure refactor by golden comparison over 550 cases
+  (`~/association-research/algebra-spike/step3`, `INTENTS` extended to the
+  six team-facing intents, `constructed_cases.jsonl` extended with 1988-1993
+  postseasons and 2023-2026 regular seasons) - identical before and after,
+  confirmed to fail under a one-token perturbation of the shared narrowing.
+  `conditions._team_games` and its callers are next agents' work, per the
+  step's own README.
 - **The scoping matrix cannot grow back (step 3, C3).** Two tests read the
   templates' source: the six on the player-games relation must declare
   exactly `RELATION_SCOPING` less a reasoned exclusion, and none of them, nor

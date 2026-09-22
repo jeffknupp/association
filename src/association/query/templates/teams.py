@@ -17,6 +17,9 @@ from association.nba.season import current_season
 
 from ..conditions import _MONTH_NAMES, _season_month_order, _table
 from ..entities import Entity
+from ..team_games import TeamNarrowed
+from ..team_games import games_subquery as team_games_subquery
+from ..team_games import rows_sql as team_rows_sql
 from ..team_metrics import (
     DEFAULT_TEAM_LINE,
     FIRST_FULL_REGULAR_SEASON,
@@ -490,6 +493,17 @@ def _standings_career_venue(con: duckdb.DuckDBPyConnection, team: Entity, venue:
     return TemplateResult(data=data, answer=f"{answer} {gap}" if gap else answer)
 
 
+def _record_narrowed(team: Entity, season: int | None, season_type: int) -> TeamNarrowed:
+    """``team``'s games for a win-loss RECORD tally, over
+    :class:`association.query.team_games.TeamNarrowed`:
+    :func:`association.query.team_metrics.games_scope`'s own clause (which
+    excludes the NBA Cup final from a regular season) plus the team filter -
+    the shared base every ``team_record``/``team_leaderboard`` read against
+    :data:`association.query.team_metrics.TEAM_GAMES_SQL` builds on."""
+    scope, params = games_scope(season_type, season)
+    return TeamNarrowed(base=["tg.team_id = ?", scope], base_params=[team.id, *params], team=team)
+
+
 def _game_list_gaps(con: duckdb.DuckDBPyConnection, team: Entity, season_type: int, season: int | None) -> str | None:
     """Seasons where the games tallied for a team do not number its games in
     team_season_stats - the check that makes a tally from ``games`` safe to
@@ -497,18 +511,18 @@ def _game_list_gaps(con: duckdb.DuckDBPyConnection, team: Entity, season_type: i
     and 10 of their 16 games, and 1995 holds a Miami playoff game in a season
     Miami did not make the playoffs. Only seasons from 1994, where the totals
     exist, can be checked."""
-    scope, params = games_scope(season_type, season)
+    subquery, sub_params = team_games_subquery(_record_narrowed(team, season, season_type))
     by_season = "year(eastern_date)" if season_type == 3 else "season"
     season_filter = "" if season is None else "AND ts.season = ?"
     rows = con.execute(
-        f"""{TEAM_GAMES_SQL},
-tallied AS (SELECT {by_season} AS season, count(*) AS games FROM team_games WHERE {scope} AND team_id = ? GROUP BY 1),
+        f"""
+WITH tallied AS (SELECT {by_season} AS season, count(*) AS games FROM ({subquery}) t GROUP BY 1),
 totals AS (SELECT ts.season, ts.gamesPlayed AS games FROM team_season_stats ts WHERE ts.team_id = ? AND ts.season_type = ? {season_filter})
 SELECT coalesce(l.season, t.season) AS season, coalesce(l.games, 0), coalesce(t.games, 0)
 FROM tallied l FULL OUTER JOIN totals t ON t.season = l.season
 WHERE coalesce(l.season, t.season) >= ? AND coalesce(l.games, 0) <> coalesce(t.games, 0)
 ORDER BY 1""",
-        [*params, team.id, team.id, season_type, *([season] if season is not None else []), FIRST_FULL_REGULAR_SEASON],
+        [*sub_params, team.id, season_type, *([season] if season is not None else []), FIRST_FULL_REGULAR_SEASON],
     ).fetchall()
     if not rows:
         return None
@@ -589,20 +603,14 @@ def _games_record(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity
 def _games_record_games(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity | None, season: int | None, season_type: int, month: int | None = None) -> list[dict[str, Any]]:
     """The team's games in scope, against ``opponent`` and/or in ``month`` if
     named, oldest first."""
-    scope, params = games_scope(season_type, season)
-    where = [scope, "tg.team_id = ?"]
-    params = [*params, team.id]
+    narrowed = _record_narrowed(team, season, season_type)
     if opponent is not None:
-        where.append("tg.opponent_id = ?")
-        params.append(opponent.id)
+        narrowed.narrow("tg.opponent_id = ?", opponent.id)
     if month is not None:
-        where.append("month(tg.eastern_date) = ?")
-        params.append(month)
-    rows = con.execute(
-        f"{TEAM_GAMES_SQL} SELECT tg.eastern_date, tg.side, tg.neutral, tg.team_score, tg.opponent_score, tg.won, {season_name_sql('o.team_id', 'tg.season', 'o.display_name')} "
-        f"FROM team_games tg JOIN teams o ON o.team_id = tg.opponent_id WHERE {' AND '.join(where)} ORDER BY tg.eastern_date",
-        params,
-    ).fetchall()
+        narrowed.narrow("month(tg.eastern_date) = ?", month)
+    select = f"tg.eastern_date, tg.side, tg.neutral, tg.team_score, tg.opponent_score, tg.won, {season_name_sql('o.team_id', 'tg.season', 'o.display_name')}"
+    sql, params = team_rows_sql(narrowed, select, order="tg.eastern_date", join=" JOIN teams o ON o.team_id = tg.opponent_id")
+    rows = con.execute(sql, params).fetchall()
     return [{"date": str(r[0]), "venue": "neutral" if r[2] else r[1], "team_score": r[3], "opponent_score": r[4], "won": bool(r[5]), "opponent": r[6]} for r in rows]
 
 
@@ -694,13 +702,17 @@ def _games_record_split(games: list[dict[str, Any]]) -> str:
 def _games_record_cup_final(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity, season: int | None) -> tuple[str, list[dict[str, Any]]]:
     """Any NBA Cup final the two teams met in, as sentences and as data."""
     # The NBA Cup final is a regular-season game that counts in no
-    # standings, so it is not in the record above - but it is a meeting,
-    # and leaving it out without a word would read as a missing game.
-    cup_scope = "season_type = 2 AND cup_final" + ("" if season is None else " AND season = ?")
-    cup = con.execute(
-        f"{TEAM_GAMES_SQL} SELECT eastern_date, team_score, opponent_score, won FROM team_games WHERE {cup_scope} AND team_id = ? AND opponent_id = ? ORDER BY 1",
-        [*([season] if season is not None else []), team.id, opponent.id],
-    ).fetchall()
+    # standings, so it is not in the record above (_record_narrowed's
+    # games_scope excludes it) - but it is a meeting, and leaving it out
+    # without a word would read as a missing game. Narrowed by hand rather
+    # than through _record_narrowed, since this asks for exactly the game
+    # that clause excludes.
+    narrowed = TeamNarrowed(base=["tg.team_id = ?", "tg.season_type = 2", "tg.cup_final"], base_params=[team.id], team=team)
+    narrowed.narrow("tg.opponent_id = ?", opponent.id)
+    if season is not None:
+        narrowed.narrow("tg.season = ?", season)
+    sql, params = team_rows_sql(narrowed, "tg.eastern_date, tg.team_score, tg.opponent_score, tg.won", order="tg.eastern_date")
+    cup = con.execute(sql, params).fetchall()
     text = "".join(f"\n  They also met in the NBA Cup final on {date}, which counts in no standings: {'won' if won else 'lost'} {own}-{theirs}." for date, own, theirs, won in cup)
     return text, [{"date": str(d), "won": bool(won), "team_score": own, "opponent_score": theirs} for d, own, theirs, won in cup]
 

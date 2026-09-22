@@ -944,14 +944,14 @@ def gl_con(tmp_path: Path) -> TemplateContext:
     c.execute("CREATE TABLE standings (team_id VARCHAR, season INTEGER, wins DOUBLE, losses DOUBLE, winPercent DOUBLE, streak DOUBLE, playoffSeed DOUBLE)")
     c.execute(
         "CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR, "
-        "home_team_id VARCHAR, away_team_id VARCHAR, home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR)"
+        "home_team_id VARCHAR, away_team_id VARCHAR, home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR, neutral_site BOOLEAN, venue_city VARCHAR)"
     )
     c.execute("CREATE TABLE team_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, opponent_team_id VARCHAR, home_away VARCHAR)")
     c.execute("INSERT INTO teams VALUES ('18','NY','New York Knicks'),('2','BOS','Boston Celtics')")
     s = current_season()
     c.execute("INSERT INTO standings VALUES ('18',?,53.0,29.0,0.646,3.0,4.0)", [s])
     c.execute(
-        "INSERT INTO games VALUES ('e1',?,2,'2026-04-10T22:00Z','18','2',112,95,'18'),('e2',?,2,'2026-04-12T22:00Z','2','18',110,96,'2')",
+        "INSERT INTO games VALUES ('e1',?,2,'2026-04-10T22:00Z','18','2',112,95,'18',false,'New York'),('e2',?,2,'2026-04-12T22:00Z','2','18',110,96,'2',false,'Boston')",
         [s, s],
     )
     c.execute("INSERT INTO team_box_stats VALUES ('e1',?,2,'18','2','home'),('e2',?,2,'18','2','away')", [s, s])
@@ -961,7 +961,10 @@ def gl_con(tmp_path: Path) -> TemplateContext:
     # is stored as both 230104006 and 400222658). BOTH carry team_box_stats
     # rows, because every `games` row does - which is why joining that table
     # filtered out neither of them.
-    c.execute("INSERT INTO games VALUES ('e3',?,2,'2026-04-14T17:00Z','18','2',0,0,NULL),('e1b',?,2,'2026-04-10T23:00Z','18','2',112,95,'18')", [s, s])
+    c.execute(
+        "INSERT INTO games VALUES ('e3',?,2,'2026-04-14T17:00Z','18','2',0,0,NULL,false,'New York'),('e1b',?,2,'2026-04-10T23:00Z','18','2',112,95,'18',false,'New York')",
+        [s, s],
+    )
     c.execute("INSERT INTO team_box_stats VALUES ('e3',?,2,'18','2','home'),('e1b',?,2,'18','2','home')", [s, s])
     real_games.build_table(c, {"games", "teams"})
     return TemplateContext(con=c, out_dir=tmp_path)
@@ -1070,7 +1073,7 @@ def _add_knicks_postseason(gl_con: TemplateContext) -> None:
     when playoff games came after" is about."""
     s = current_season()
     gl_con.con.execute(
-        "INSERT INTO games VALUES ('p1',?,3,'2026-04-20T22:00Z','18','2',101,90,'18'),('p2',?,3,'2026-04-22T22:00Z','2','18',99,105,'18')",
+        "INSERT INTO games VALUES ('p1',?,3,'2026-04-20T22:00Z','18','2',101,90,'18',false,'New York'),('p2',?,3,'2026-04-22T22:00Z','2','18',99,105,'18',false,'Boston')",
         [s, s],
     )
     gl_con.con.execute("INSERT INTO team_box_stats VALUES ('p1',?,3,'18','2','home'),('p2',?,3,'18','2','away')", [s, s])
@@ -1957,7 +1960,7 @@ def test_head_to_head_reports_no_meetings_honestly(gl_con: TemplateContext) -> N
 def test_head_to_head_defaults_to_the_current_season(gl_con: TemplateContext) -> None:
     """Not all-time: answering a different span than every other template,
     silently, is the substitution this design exists to prevent."""
-    gl_con.con.execute("INSERT INTO games VALUES ('e9',?,2,'2020-01-01T00:00Z','18','2',100,90,'18')", [current_season() - 3])
+    gl_con.con.execute("INSERT INTO games VALUES ('e9',?,2,'2020-01-01T00:00Z','18','2',100,90,'18',false,'New York')", [current_season() - 3])
     result = head_to_head(gl_con, {"teams": ["Knicks", "Celtics"]})
     assert result.data["games"] == 2
     assert f"{current_season()} regular season" in (result.answer or "")
@@ -3831,7 +3834,7 @@ def test_team_game_log_career_says_all_time(gl_con: TemplateContext) -> None:
 def test_team_game_log_is_not_doubled_by_a_phantom_season(gl_con: TemplateContext) -> None:
     """The phantom 1993 shares every event id with 1994, and a join on event_id
     alone listed each of those games twice - 164 rows for the Celtics' 82."""
-    gl_con.con.execute("INSERT INTO games VALUES ('e1',?,2,'2026-04-10T22:00Z','18','2',112,95,'18')", [current_season() - 1])
+    gl_con.con.execute("INSERT INTO games VALUES ('e1',?,2,'2026-04-10T22:00Z','18','2',112,95,'18',false,'New York')", [current_season() - 1])
     # Rebuilt, or the new row never reaches the list the log reads and this
     # asserts 2 without having exercised the season-keyed join at all. The two
     # rows are in different seasons, so `real_games` keeps both - collapsing a
@@ -3867,15 +3870,15 @@ def playoff_ctx(tmp_path: Path) -> TemplateContext:
     c.execute("INSERT INTO teams VALUES ('4','Chicago Bulls','CHI'),('13','Los Angeles Lakers','LAL')")
     c.execute(
         "CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR, home_team_id VARCHAR, away_team_id VARCHAR, "
-        "home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR, home_linescores VARCHAR, away_linescores VARCHAR)"
+        "home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR, home_linescores VARCHAR, away_linescores VARCHAR, neutral_site BOOLEAN, venue_city VARCHAR)"
     )
     rows = [
-        ("f1", 1990, 3, "1991-06-03T01:00Z", "4", "13", 91, 93, "13", "20,25,20,26", "25,20,24,24"),
-        ("f2", 1990, 3, "1991-06-13T01:00Z", "13", "4", 101, 108, "4", "25,25,25,26", "27,27,27,27"),
-        ("x1", 1993, 3, "1994-05-01T01:00Z", "4", "13", 100, 90, "4", "25,25,25,25", "20,20,25,25"),
-        ("x1", 1994, 3, "1994-05-01T01:00Z", "4", "13", 100, 90, "4", "25,25,25,25", "20,20,25,25"),
+        ("f1", 1990, 3, "1991-06-03T01:00Z", "4", "13", 91, 93, "13", "20,25,20,26", "25,20,24,24", False, "Chicago"),
+        ("f2", 1990, 3, "1991-06-13T01:00Z", "13", "4", 101, 108, "4", "25,25,25,26", "27,27,27,27", False, "Los Angeles"),
+        ("x1", 1993, 3, "1994-05-01T01:00Z", "4", "13", 100, 90, "4", "25,25,25,25", "20,20,25,25", False, "Chicago"),
+        ("x1", 1994, 3, "1994-05-01T01:00Z", "4", "13", 100, 90, "4", "25,25,25,25", "20,20,25,25", False, "Chicago"),
     ]
-    c.executemany("INSERT INTO games VALUES (?,?,?,?,?,?,?,?,?,?,?)", rows)
+    c.executemany("INSERT INTO games VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
     c.execute("CREATE TABLE team_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, opponent_team_id VARCHAR, home_away VARCHAR)")
     boxes: list[tuple[Any, ...]] = []
     for event, season, season_type, _date, home, away, *_rest in rows:
@@ -4121,7 +4124,7 @@ def test_a_team_log_names_each_opponent_as_it_was_that_season(gl_con: TemplateCo
     Nets" eight years before the team moved."""
     c = gl_con.con
     c.execute("INSERT INTO teams VALUES ('17','BKN','Brooklyn Nets')")
-    c.execute("INSERT INTO games VALUES ('n05',2005,2,'2005-01-10T00:30Z','18','17',100,90,'18')")
+    c.execute("INSERT INTO games VALUES ('n05',2005,2,'2005-01-10T00:30Z','18','17',100,90,'18',false,'New York')")
     c.execute("INSERT INTO team_box_stats VALUES ('n05',2005,2,'18','17','home')")
     real_games.build_table(c, {"games", "teams"})
     games = game_log(gl_con, {"team": "Knicks", "season": 2005}).data["games"]
@@ -4400,37 +4403,61 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
     so a slot the relation learns reaches every template at once. A direct
     call to the narrowing function, or a hand-written clause on an opponent,
     venue, starter or date column, is a template teaching itself one slot -
-    which is the O(templates x slots) matrix this step removed."""
+    which is the O(templates x slots) matrix this step removed.
+
+    .. versionchanged:: 4.4.0
+       Also forbids a hand-written clause on the TEAM relation's own opponent,
+       venue and date columns (``tg.opponent_id``, ``tg.side``,
+       ``tg.eastern_date``) - step 3, C4 gave game_log's team half the same
+       shared narrowing (``common.scoped_team`` / ``common.team_games``) the
+       player half already had, and ``_source_with_private_steps`` now walks
+       into it instead of stopping short.
+    """
 
     from association.query.templates import TEMPLATES
 
-    forbidden = ("_narrow_player_games(", "pgl.opponent_team_id = ?", "g.home_team_id = pgl.team_id) = ?", "pgl.starter = ?", "g.date >= ? AND g.date < ?")
+    forbidden = (
+        "_narrow_player_games(",
+        "pgl.opponent_team_id = ?",
+        "g.home_team_id = pgl.team_id) = ?",
+        "pgl.starter = ?",
+        "g.date >= ? AND g.date < ?",
+        "tg.opponent_id = ?",
+        "tg.side = ?",
+        "tg.eastern_date = ?",
+    )
     for intent in ("game_log", "player_stat", "period_split", "player_splits", "record_when", "streak"):
-        # The template and the private steps it calls, transitively - game_log's
-        # narrowing would live in _game_log_player, not in game_log itself. Not
-        # the whole module: games.py also holds the TEAM readers, which narrow
-        # their own relation until step 3, C4.
+        # The template and the private steps it calls, transitively -
+        # game_log's player narrowing lives in _game_log_player and its team
+        # narrowing in _game_log_team, neither in game_log itself.
         source = _source_with_private_steps(TEMPLATES[intent])
         for token in forbidden:
-            assert token not in source, f"{intent} narrows the relation itself ({token!r}); use scoped_games"
+            assert token not in source, f"{intent} narrows the relation itself ({token!r}); use scoped_games / team_games"
 
 
 def _source_with_private_steps(handler: Any) -> str:
     """A template's source plus every private function of its module it
-    reaches, transitively."""
+    reaches, transitively.
+
+    .. versionchanged:: 4.4.0
+       game_log's TEAM half (``_game_log_team``, ``_team_game_log``,
+       ``_team_game_log_mixed``) is no longer stopped at: step 3, C4 gave it
+       shared steps of its own (``common.scoped_team``, ``common.team_games``),
+       so it is walked exactly like the player half. The walker still stops on
+       its own at ``team_games`` and ``scoped_team`` themselves, and at every
+       other shared step - the regex below only follows a name that STARTS
+       WITH an underscore, and none of the shared narrowing steps do, by
+       design (see their own module docstrings).
+    """
     import inspect
     import re as _re
 
     module = inspect.getmodule(handler)
     assert module is not None
-    # game_log's TEAM half reads the team-games relation, which narrows itself
-    # until step 3, C4 gives it shared steps of its own. Stopped at, not
-    # followed; delete this with C4.
-    team_half = {"_game_log_team", "_team_game_log", "_team_game_log_mixed"}
     seen, todo, out = set(), [handler], []
     while todo:
         fn = todo.pop()
-        if fn in seen or not inspect.isfunction(fn) or fn.__name__ in team_half:
+        if fn in seen or not inspect.isfunction(fn):
             continue
         seen.add(fn)
         src = inspect.getsource(fn)

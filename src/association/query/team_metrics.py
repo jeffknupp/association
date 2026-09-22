@@ -59,7 +59,8 @@ from typing import Any
 import duckdb
 
 from association.nba.franchises import season_name_sql
-from association.nba.season import eastern_date_sql
+
+from .team_games import TEAM_GAMES_SQL
 
 
 @dataclass(frozen=True)
@@ -268,72 +269,17 @@ def resolve_team_metric(stat: object) -> str | None:
     return STAT_ALIASES.get(normalize_stat(stat))
 
 
-# One row per team per game, from that team's side, over every game that was
-# actually played - built from `real_games` alone, because it is the only table
-# holding who won and it needs no second table to say which side a team was on.
-#
-# `real_games` (fetch/repairs/real_games.py) is the shared filtered list, and it is
-# where the 0-0 placeholders, the rows naming a team id no franchise has, and
-# the same-day duplicates now go. This used to do two of those three for
-# itself: it dropped rows with no winner and same-day duplicates, and kept
-# every phantom that carried a winner - which is how the 1995 Finals game filed
-# as MIA-ORL gave Orlando an 11th playoff loss and Miami a postseason it never
-# played. Building it here meant `conditions` and `head_to_head` each had to
-# reach the same conclusion separately, and neither did.
-#
-# What is left here is the ONE thing `real_games` deliberately does not do:
-# collapse season 1993, which is a full copy of 1994 under a second label (see
-# coverage.COVERAGE). That is a phantom SEASON rather than a phantom row, its
-# two copies differ only in the `season` column, and a postseason is selected
-# by the year it was PLAYED, so nothing else would drop the second copy. The
-# 1994 label is the one kept.
-#
-# The NBA Cup final is FLAGGED rather than dropped: it is a
-#   season_type 2 game that counts in no standings and no team season totals
-#   (the 2026 Knicks' 82 games and 9,549 points in both leave out their 124 in
-#   the final), so a regular-season record must skip it, but a record against
-#   the team they beat in it should still mention it. It is identified as the
-#   last neutral-site regular-season game in Las Vegas each season, which
-#   picks out exactly the two teams per season (2024-2026) that `games` holds
-#   83 regular-season games for and standings 82.
-#
-# A game's date is its US Eastern date - games.date is a UTC timestamp, read
-# through season.eastern_date_sql, which follows daylight time.
-TEAM_GAMES_SQL = f"""
-WITH cup_finals AS (
-    SELECT arg_max(event_id, date) AS event_id
-    FROM real_games
-    WHERE season_type = 2 AND neutral_site AND venue_city = 'Las Vegas'
-    GROUP BY season
-),
-listed AS (
-    SELECT g.event_id, g.season, g.season_type, g.home_team_id, g.away_team_id, g.home_score, g.away_score, g.winner_team_id,
-           coalesce(g.neutral_site, false) AS neutral,
-           {eastern_date_sql("g.date")} AS eastern_date,
-           g.event_id IN (SELECT event_id FROM cup_finals) AS cup_final
-    FROM real_games g
-),
-played AS (
-    SELECT * FROM listed
-    QUALIFY row_number() OVER (PARTITION BY season_type, home_team_id, away_team_id, eastern_date ORDER BY season DESC, event_id) = 1
-),
-team_games AS (
-    SELECT season, season_type, eastern_date, event_id, cup_final, neutral, home_team_id AS team_id, away_team_id AS opponent_id, 'home' AS side,
-           home_score AS team_score, away_score AS opponent_score, winner_team_id = home_team_id AS won
-    FROM played
-    UNION ALL
-    SELECT season, season_type, eastern_date, event_id, cup_final, neutral, away_team_id AS team_id, home_team_id AS opponent_id, 'away' AS side,
-           away_score AS team_score, home_score AS opponent_score, winner_team_id = away_team_id AS won
-    FROM played
-)
-"""
-"""A ``WITH`` clause defining ``team_games``: one row per team per played
-game, with ``season``, ``season_type``, ``eastern_date``, ``event_id``,
-``cup_final``, ``neutral``, ``team_id``, ``opponent_id``, ``side`` (home/away),
-``team_score``, ``opponent_score`` and ``won``.
-
-.. versionadded:: 2.1.0
-"""
+# TEAM_GAMES_SQL - the WITH clause defining `team_games`, one row per team per
+# played game - now lives in association.query.team_games (the relation
+# module: TeamNarrowed and the readers built over it) and is imported back
+# under this same name, since every module here that reads it wrote
+# `team_metrics.TEAM_GAMES_SQL` before the move and none of them needed to
+# change. See that module's docstring for what the relation guarantees (the
+# phantom 1993 season cannot double a game, a postseason is selected by the
+# calendar year it was played in) and what it deliberately still leaves
+# undecided (whether the NBA Cup final counts - :func:`games_scope` below
+# excludes it from a regular-season RECORD; a plain game list or count does
+# not, since the final is a real game the two teams played).
 
 FIRST_FULL_REGULAR_SEASON = 1994
 """The first season ``games`` holds every regular-season game of. Before it,
