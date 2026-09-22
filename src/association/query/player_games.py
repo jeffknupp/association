@@ -322,6 +322,24 @@ def games_subquery(narrowed: Narrowed, box: BoxSource) -> tuple[str, list[Any]]:
     return sql, params
 
 
+def named(sql: str, params: list[Any], prefix: str = "r") -> tuple[str, dict[str, Any]]:
+    """``sql`` with each positional ``?`` renamed ``$<prefix><n>``, and the
+    parameters as that dict - for a reader that nests the same subquery more
+    than once, or binds names of its own beside it. A ``?`` can appear only
+    once in a statement; a name can be reused, and DuckDB will not mix the two
+    in one statement. Only the relation's own SQL is rewritten, never a value.
+
+    .. versionadded:: 4.4.0
+    """
+    parts = sql.split("?")
+    if len(parts) - 1 != len(params):
+        raise ValueError(f"{len(parts) - 1} placeholders for {len(params)} parameters")
+    out = parts[0]
+    for i, part in enumerate(parts[1:]):
+        out += f"${prefix}{i}" + part
+    return out, {f"{prefix}{i}": v for i, v in enumerate(params)}
+
+
 def grouped_sql(
     narrowed: Narrowed, group_by: str, selects: list[str], *, having: str | None = None, order: str | None = None, limit: int | None = None, rebuilt: bool = False
 ) -> tuple[str, list[Any]]:

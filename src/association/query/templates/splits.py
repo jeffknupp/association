@@ -45,7 +45,7 @@ from ..conditions import (
     box_source,
 )
 from ..entities import Entity, teammate_names
-from ..player_games import Narrowed, games_subquery
+from ..player_games import Narrowed, games_subquery, named
 from .common import (
     _BOX_SCORES,
     STAT_LABELS,
@@ -960,22 +960,25 @@ def _streak_player(
 ) -> TemplateResult:
     """A named player's longest run of games meeting the condition."""
     scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), _PLAYER_GAME_TABLES)
-    player = _resolved_player(con, name, available=_BOX_SCORES, season=scope.season, through=_career_end(scope.season))
-    if isinstance(player, TemplateResult):
-        return player
-    params: dict[str, Any] = {**scope.params(), "player": player.id}
-    if team is not None:
-        params["team"] = team.id
-    base = _player_games(scope, extra=" AND pgl.team_id = $team" if team else "", box=box_source(con))
+    subject = condition_player(con, {**slots, "player": name}, "streak needs a player", scope, team=team)
+    if isinstance(subject, TemplateResult):
+        return subject
+    player, narrowed = subject
+    # Named parameters here: the played subquery is nested twice in the
+    # streak rows (once for the games, once for the spells they span) beside
+    # the scope's own $season/$first, and the condition binds $threshold.
+    base, params = named(*games_subquery(narrowed, box_source(con)))
     games, first, last = _totals(con, base, params)
     if not games:
         return _no_games(con, player, scope, team)
     rows_sql = _player_streak_rows(scope, base, f"p.{column}" if by_stat else "NULL", box_source(con))
-    runs = _longest_runs(con, rows_sql, {**params, **condition}, ("athlete_id",), hit, 3, best_per_partition=False)
+    # The scope's own names bind only where the rows SQL uses them (the
+    # missing-box half); DuckDB rejects a name a statement never reads.
+    runs = _longest_runs(con, rows_sql, {**params, **scope.params(), **condition}, ("athlete_id",), hit, 3, best_per_partition=False)
     label = scope.label(first, last)
     what = f"consecutive games with {threshold}+ {unit}" if by_stat else f"{result} in games he played"
     rule = "Only games he played count: a game he missed neither extends the run nor ends it" + (", and a run carries on from one season into the next." if scope.season is None else ".")
-    rule += _UNSEEN_ENDS_RUN if _unseen(con, scope, base, params, box_source(con)) else ""
+    rule += _UNSEEN_ENDS_RUN if _unseen(con, scope, base, {**params, **scope.params()}, box_source(con)) else ""
     if not runs:
         never = f"never had a game with {threshold}+ {unit}" if by_stat else f"never {'won' if want_win else 'lost'} a game he played"
         return TemplateResult(data={"player": player.name, "span": label, "streaks": []}, answer=f"{player.name} {never} in the {label}.")

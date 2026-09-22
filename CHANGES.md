@@ -28,7 +28,9 @@ had no published version to be compatible with.
   `condition_player`, which settles the player the same way and hands his
   games to those templates as the relation renders them
   (`player_games.games_subquery`) - the second reader of a player's games,
-  `conditions._player_games`, now has one caller fewer per port. No answer changes: proved by a golden comparison of
+  `conditions._player_games`, now has one caller fewer per port. `streak`
+  follows through the same step (`player_games.named` renders the relation
+  with named parameters, for a reader that nests the same subquery twice). No answer changes: proved by a golden comparison of
   460 recorded and constructed slot sets across the ten templates that read a
   player's games (answer text, data and refusals identical), with the
   comparison watched to fail when one slot was dropped from the shared
