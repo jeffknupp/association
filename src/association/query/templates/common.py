@@ -135,6 +135,11 @@ SCOPING_SLOTS = frozenset({"order", "date", "opponent", "venue", "span", "withou
 # N of the narrowed games - which the relation cuts after every row filter and
 # before whatever the template does with the rows, so "30-point games in his
 # last 10" counts inside the ten (step 3, C0's one skeleton-specific rule).
+# `scoped_games` sets it (`_relation_window`, below): a NAMED `order` wins
+# outright, and a bare `limit` with no `order` still means the newest N - the
+# router's own traces for "Create a shot chart for Steph Curry's last two
+# games of the regular season" never emit `order` at all, only `limit`, so a
+# rule gated on `order` alone would never reach that question (step 3, C5).
 #
 # This replaced six per-template lists that had drifted: game_log honored
 # twelve of these, single_game_high one, on the same relation - a slot taught
@@ -274,13 +279,18 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # `span`, `order` and `game_n` are not here - unchanged from before step 3,
     # C4b, which only renamed the declaration, through the shared helper.
     "head_to_head": _team_relation_scoping("head_to_head"),
-    # `span` "career" is honored by drawing (or averaging) every season of the
-    # requested season type rather than the latest with data - see
-    # shots._career_shot_span. Before this, "all playoff games" carried no
-    # span at all (no word of _SPAN_WORDS is in it) and a `span` the router
-    # itself might emit would have been refused here rather than drawn (#141).
-    "shot_chart": frozenset({"order", "span"}),
-    "shot_distance": frozenset({"order", "span"}),
+    # A shot read that takes its games from the relation by event id (step 3,
+    # C5), the same shape as period_split: every relation slot is answerable -
+    # `span` "career" by drawing (or averaging) every season on record rather
+    # than the latest with data (shots._career_shot_note); `order` now honors
+    # `limit` as a window of games rather than always exactly one
+    # (common._relation_window / the relation's own windowed read), which is
+    # what fixes "his last two games" having drawn the whole season. No cell
+    # is excluded - unlike period_split, a shot read has no reason a venue, an
+    # opponent, a date or a box-score line on the games it draws from cannot
+    # narrow it.
+    "shot_chart": _relation_scoping("shot_chart"),
+    "shot_distance": _relation_scoping("shot_distance"),
     "player_netpoints": frozenset({"order"}),
     # `order` is honored by DRAWING that game, from the long per-game table.
     # `date` is still honored by refusing: the router gives a calendar date
@@ -646,7 +656,7 @@ def coverage_caveat(intent: str, slots: dict[str, Any]) -> str | None:
 
 #: Templates that honor one NAMED half of the starter/bench split and refuse
 #: the bare category, which asks for a table they do not produce.
-_SPLIT_SIDE_ONLY = frozenset({"game_log", "player_stat", "period_split"})
+_SPLIT_SIDE_ONLY = frozenset({"game_log", "player_stat", "period_split", "shot_chart", "shot_distance"})
 
 
 """``{"fta": "freeThrowsAttempted", ...}`` - the question's word for a box-score column.
@@ -1223,6 +1233,33 @@ def scoped_player(
     return player, settled
 
 
+def _relation_window(slots: dict[str, Any]) -> tuple[str, int] | None:
+    """The WINDOW :func:`scoped_games` cuts the narrowed games to - the
+    newest or oldest N, after every other filter
+    (:attr:`association.query.player_games.Narrowed.window`) - or ``None``
+    where neither slot narrows anything.
+
+    A named ``order`` wins outright. Absent one, a ``limit`` alone still
+    means "his last N games": measured against the router's own traces for
+    "Create a shot chart for Steph Curry's last two games of the regular
+    season" (step 3, C5's finding) - four separate runs, three different
+    builds, all emit ``{'limit': 2, ...}`` with no ``order`` at all, so a rule
+    gated on ``order`` alone would never reach the real question. No template
+    on the relation has any other use for a bare ``limit`` - it ranks nothing
+    here, only `leaderboard` does that, over a different table - so there is
+    no other reading for one to collide with.
+
+    .. versionadded:: 4.4.0
+    """
+    order = slots.get("order")
+    if order not in ("recent", "first"):
+        limit = slots.get("limit")
+        if not (isinstance(limit, int) and not isinstance(limit, bool) and limit >= 1):
+            return None
+        order = "recent"
+    return order, _clamp_limit(slots.get("limit"), default=1)
+
+
 def scoped_games(
     con: duckdb.DuckDBPyConnection,
     player: Entity,
@@ -1235,7 +1272,8 @@ def scoped_games(
 ) -> Narrowed | TemplateResult:
     """``player``'s games in ``span`` under every row-level narrowing the
     question carries: opponent, venue, an absent teammate, a starter/bench
-    half, a game of each playoff series, lines on box-score columns, one date.
+    half, a game of each playoff series, lines on box-score columns, one date,
+    and a window (``order``/``limit``) cut after all of the above.
 
     Each is a filter over the same rows, so each means the same thing whatever
     the template then does with the rows - list them, average them, count them.
@@ -1252,6 +1290,19 @@ def scoped_games(
     name is resolved.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.4.0
+       Sets :attr:`Narrowed.window` from ``order``/``limit`` (step 3, C5) -
+       see :func:`_relation_window`. A no-op for a caller that reads its rows
+       through :func:`association.query.player_games.rows_sql` directly
+       (``game_log``, ``player_stat``, ``period_split``): that reader takes
+       its own ``order``/``limit`` arguments and never consults ``.window``,
+       so setting it here changes nothing for them. Only a reader built on
+       :func:`association.query.player_games.aggregate_sql`,
+       :func:`~association.query.player_games.grouped_sql` or
+       :func:`~association.query.player_games.games_subquery` - all three
+       already honor it - is affected, and only when the question's own
+       slots set a window.
     """
     narrowed = _narrow_player_games(con, player, span, opponent=opponent, venue=slots.get("venue"), without=slots.get("without"), split=slots.get("split"), game_n=slots.get("game_n"))
     if isinstance(narrowed, TemplateResult):
@@ -1262,6 +1313,7 @@ def scoped_games(
         narrowed.extra.append("g.date >= ? AND g.date < ?")
         narrowed.extra_params += [start, end]
         narrowed.date = date
+    narrowed.window = _relation_window(slots)
     return narrowed
 
 

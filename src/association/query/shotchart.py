@@ -243,12 +243,19 @@ def _render_for_player_where(
     season: int | None,
     season_type: int | None,
     event_id: str | None,
+    event_ids: tuple[str, ...] | None,
     period: int | None,
     shot_value: int | None,
     made_only: bool | None,
 ) -> tuple[list[str], list[Any]]:
     """The WHERE clause and its params, in the order ``render_for_player``
-    applies its filters."""
+    applies its filters.
+
+    .. versionchanged:: 4.4.0
+       Takes ``event_ids`` - a set of games (a player's narrowed or windowed
+       games, from :mod:`association.query.templates.shots`) beside the
+       single ``event_id`` this already took.
+    """
     where = ["athlete_id = ?", HAS_POSITION_SQL]
     filter_params: list[Any] = [athlete_id]
     if season is not None:
@@ -260,6 +267,10 @@ def _render_for_player_where(
     if event_id is not None:
         where.append("event_id = ?")
         filter_params.append(event_id)
+    elif event_ids is not None:
+        marks = ", ".join("?" for _ in event_ids)
+        where.append(f"event_id IN ({marks})")
+        filter_params.extend(event_ids)
     if period is not None:
         where.append("period = ?")
         filter_params.append(period)
@@ -296,6 +307,8 @@ def _render_for_player_subtitle(
     season_type: int | None,
     event_id: str | None,
     game: str | None,
+    event_ids: tuple[str, ...] | None,
+    window: str | None,
     period: int | None,
     shot_value: int | None,
     made_only: bool | None,
@@ -308,6 +321,11 @@ def _render_for_player_subtitle(
     :func:`association.query.game_label.game_label` could describe it, and by
     its bare event id otherwise. See `ISSUES.md` #155: the event id alone told
     a reader nothing about which game was drawn.
+
+    .. versionchanged:: 4.4.0
+       A multi-game window (``event_ids``, ``window``) is named by ``window`` -
+       "last 2 games (2026-04-10 to 2026-04-13)" - the phrase
+       :mod:`association.query.templates.shots` built from the narrowing.
     """
     subtitle_parts = []
     if season is not None:
@@ -316,6 +334,8 @@ def _render_for_player_subtitle(
         subtitle_parts.append({1: "preseason", 2: "regular season", 3: "postseason"}.get(season_type, str(season_type)))
     if event_id is not None:
         subtitle_parts.append(game or f"game {event_id}")
+    elif event_ids is not None and window:
+        subtitle_parts.append(window)
     if period is not None:
         subtitle_parts.append({1: "Q1", 2: "Q2", 3: "Q3", 4: "Q4"}.get(period, f"OT{period - 4}"))
     if shot_value is not None:
@@ -332,11 +352,17 @@ def _render_for_player_filename(
     season: int | None,
     season_type: int | None,
     event_id: str | None,
+    event_ids: tuple[str, ...] | None,
     period: int | None,
     shot_value: int | None,
     made_only: bool | None,
 ) -> str:
-    """The HTML file's name: the player, and every filter that scoped the chart."""
+    """The HTML file's name: the player, and every filter that scoped the chart.
+
+    .. versionchanged:: 4.4.0
+       A multi-game window (``event_ids``) names its size and its two ends -
+       not every id, which could run to :data:`association.query.templates.common.MAX_LIMIT`.
+    """
     safe_name = "".join(c if c.isalnum() else "_" for c in resolved_name.lower())
     scope = "_".join(
         filter(
@@ -345,6 +371,7 @@ def _render_for_player_filename(
                 str(season) if season else None,
                 str(season_type) if season_type else None,
                 event_id,
+                f"{len(event_ids)}g_{event_ids[0]}_{event_ids[-1]}" if event_ids else None,
                 f"p{period}" if period else None,
                 f"{shot_value}pt" if shot_value else None,
                 ("makes" if made_only else "misses") if made_only is not None else None,
@@ -354,11 +381,19 @@ def _render_for_player_filename(
     return f"shotchart_{safe_name}" + (f"_{scope}" if scope else "") + ".html"
 
 
-def _render_for_player_message(resolved_name: str, game: str | None, made: int, total: int, out_path: Path, ambiguous: list[str], notes: list[str]) -> str:
-    """The success message: which game was drawn (for a single-game chart, see
-    `ISSUES.md` #155), the made/attempted split, then every note - the
-    runners-up that also matched, and any shot_value caveat."""
-    who = f"{resolved_name} ({game})" if game else resolved_name
+def _render_for_player_message(
+    resolved_name: str, game: str | None, event_ids: tuple[str, ...] | None, window: str | None, made: int, total: int, out_path: Path, ambiguous: list[str], notes: list[str]
+) -> str:
+    """The success message: which game (or window of games) was drawn (for a
+    single-game chart, see `ISSUES.md` #155), the made/attempted split, then
+    every note - the runners-up that also matched, and any shot_value caveat.
+
+    .. versionchanged:: 4.4.0
+       Names a multi-game window (``event_ids``, ``window``) the same way a
+       single game is named.
+    """
+    context = game or (window if event_ids else None)
+    who = f"{resolved_name} ({context})" if context else resolved_name
     msg = f"Rendered shot chart for {who} ({made}/{total} made, {made / total:.1%}) to {out_path}"
     if ambiguous:
         msg += f". Note: other players also matched: {ambiguous}"
@@ -375,6 +410,8 @@ def render_for_player(
     season: int | None = None,
     season_type: int | None = None,
     event_id: str | None = None,
+    event_ids: tuple[str, ...] | None = None,
+    window: str | None = None,
     period: int | None = None,
     shot_value: int | None = None,
     made_only: bool | None = None,
@@ -384,7 +421,14 @@ def render_for_player(
     Free throws are excluded, and so is any shot with no recorded position -
     see :data:`association.query.court.HAS_POSITION_SQL`. Passing ``event_id``
     scopes the chart to a single game and makes ``season`` and ``season_type``
-    redundant.
+    redundant; passing ``event_ids`` does the same for a SET of games - a
+    player's narrowed or windowed games from
+    :mod:`association.query.templates.shots` (step 3, C5) - with ``window``
+    the phrase naming what they are ("last 2 games (2026-04-10 to
+    2026-04-13)"), shown the way a single game's own label is. An empty
+    ``event_ids`` answers "no shots found" without querying - the caller's
+    narrowing matched no games at all, which is a fact about the games, not
+    about the shots.
 
     Returns:
         A :class:`association.query.answer.RenderResult`: the message naming
@@ -417,13 +461,26 @@ def render_for_player(
        and the message, where :func:`association.query.game_label.game_label`
        can describe it, rather than by its bare event id. `ISSUES.md` #155:
        neither the page nor the answer previously said which game was drawn.
+
+    .. versionchanged:: 4.4.0
+       Takes ``event_ids`` and ``window`` for a chart scoped to a SET of
+       games rather than one - step 3, C5. An unnarrowed chart is unaffected.
     """
     athlete_id, resolved_name = player.id, player.name
 
-    # event_id already uniquely identifies one game - season/season_type would be
-    # redundant at best and, if the model guesses either one wrong, silently zero
-    # out real results. Ignore them whenever a specific game is requested.
-    if event_id is not None:
+    if event_ids is not None and not event_ids:
+        # The caller's narrowing (an opponent, a window, a line on a
+        # box-score column) matched no games at all - a fact about which
+        # games he played, not about which shots he took, but the same
+        # message either way: there is nothing here for the agent to find
+        # either.
+        return RenderResult(f"No shots found for {resolved_name} with the given filters.", None)
+
+    # event_id/event_ids already uniquely identify the games - season/season_type
+    # would be redundant at best and, if the model guesses either one wrong,
+    # silently zero out real results. Ignore them whenever specific games are
+    # requested.
+    if event_id is not None or event_ids is not None:
         season = None
         season_type = None
 
@@ -431,7 +488,7 @@ def render_for_player(
     if refusal is not None:
         return RenderResult(refusal, None)
 
-    where, filter_params = _render_for_player_where(athlete_id, season, season_type, event_id, period, shot_value, made_only)
+    where, filter_params = _render_for_player_where(athlete_id, season, season_type, event_id, event_ids, period, shot_value, made_only)
 
     sql = f"SELECT coordinate_x, coordinate_y, made, shot_type, period, clock, event_id, season, {SHOT_VALUE_SQL} FROM shot_chart WHERE {' AND '.join(where)}"
     rows = con.execute(sql, filter_params).fetchall()
@@ -449,10 +506,10 @@ def render_for_player(
     # Only a single-game chart has one game to name - a season or career chart
     # covers many, and naming one of them would misdescribe the rest.
     game = game_label(con, athlete_id, event_id) if event_id is not None else None
-    subtitle = _render_for_player_subtitle(season, season_type, event_id, game, period, shot_value, made_only, made, total)
+    subtitle = _render_for_player_subtitle(season, season_type, event_id, game, event_ids, window, period, shot_value, made_only, made, total)
 
     html = render_court_html(title, subtitle, shots)
-    fname = _render_for_player_filename(resolved_name, season, season_type, event_id, period, shot_value, made_only)
+    fname = _render_for_player_filename(resolved_name, season, season_type, event_id, event_ids, period, shot_value, made_only)
     # Toolbox creates out_dir in its constructor, but this function is also
     # called straight from a template with whatever directory it was given -
     # it must not depend on someone else having made it first.
@@ -460,5 +517,5 @@ def render_for_player(
     out_path = out_dir / fname
     out_path.write_text(html)
 
-    msg = _render_for_player_message(resolved_name, game, made, total, out_path, ambiguous, notes)
+    msg = _render_for_player_message(resolved_name, game, event_ids, window, made, total, out_path, ambiguous, notes)
     return RenderResult(msg, Artifact("shot_chart", out_path))

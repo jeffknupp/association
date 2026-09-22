@@ -16,6 +16,83 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **Shots are read through the player-games relation, and the window belongs
+  to the relation now, not to any one template (step 3, C5).** `shot_chart`
+  and `shot_distance` (`templates/shots.py`) used to narrow by hand:
+  `_scoping_game` picked one game for `order` from `player_game_log` with its
+  own `ORDER BY`/`LIMIT 1`, `_shot_distance_where` wrote
+  `athlete_id = ? AND season = ? AND season_type = ?` itself, and
+  `shotchart.render_for_player` took a single `event_id` - so `order` meant
+  "one game" rather than a window, and `opponent`, `venue`, `date`,
+  `without`, `split`, `since`, `game_n`, `below`/`above` all refused.
+
+  Both templates now settle their player and span the way every other
+  relation template does - `shot_distance` through `common.scoped_player`;
+  `shot_chart` through its own `_shot_chart_settle_player`, which keeps
+  `shotchart.resolve_chart_player`'s best-match handling (a chart of the
+  wrong Curry is obvious on sight) rather than `scoped_player`'s strict
+  refusal between candidates - and read their games through
+  `common.scoped_games`/`player_games.games_subquery` (`named` to bind it),
+  the same relation reader every other per-game template on it uses.
+  `HONORED_SCOPING` for both is now the full relation set with no
+  exclusions - an opponent, a venue, a teammate's absence, a starter/bench
+  half, one game of a series, a line on a box-score column, one Eastern date
+  and `since` all narrow which games are drawn or averaged, where they used
+  to refuse.
+
+  **The window itself moved to the relation.** `player_games.Narrowed.window`
+  ("the newest/oldest N of the narrowed games, cut after every other filter")
+  existed already but nothing set it; `common.scoped_games` now sets it from
+  `order`/`limit` (`common._relation_window`), and `player_games.games_subquery`
+  now honors it (routed through the existing `_windowed` reader
+  `aggregate_sql`/`grouped_sql` already used) - a no-op for its other callers
+  (`player_splits`, `streak`, `with_without`, `record_when`), which never set
+  a window, so `_windowed` returns the identical unwindowed read it always
+  built. `Narrowed.filters()` grows an opt-in `windowed` parameter (default
+  `False`): `.window` is now set from every caller's slots that carry
+  `order`/`limit` - including `game_log` and `period_split`, which already
+  say "last N games" their own way (`rows_sql`, unaffected, never reads
+  `.window`) - so including the phrase unconditionally would have said it
+  twice in theirs. Only `shot_chart`/`shot_distance` pass `windowed=True`.
+
+  The headline fix: "Create a shot chart for Steph Curry's last two games of
+  the regular season" used to draw the whole season (374/803 attempts)
+  because `limit` was never read once `order` had scoped to a single game; it
+  now draws the two games (10/22 attempts, "in the 2026 regular season over
+  his last 2 games"). The router's own traces for this exact question,
+  checked across four separate runs and three builds, never emit an `order`
+  slot at all - only `limit` - so `common._relation_window` reads a bare
+  `limit` as "recent" (documented in its own docstring, since nothing on the
+  relation has any other use for one - it ranks nothing), which is what
+  actually reaches the real question rather than only the `order`+`limit`
+  shape the finding was first written up as.
+
+  Measured by golden comparison over `INTENTS=game_log,player_stat,period_split,shot_chart,shot_distance`
+  (323 cases: the recorded StatMuse/yardstick-v2 corpus for all five intents,
+  plus `constructed_cases_c5_shots.jsonl`): `game_log` (144), `player_stat`
+  (101) and `period_split` (40) are 100% identical before/after, confirming
+  the window's new home does not change any of their answers. Of the 15
+  shot_distance and 23 shot_chart cases, 12 real answer changes - each a slot
+  that used to refuse now answering, or "last two games" now drawing two
+  instead of the season; the rest tempdir-path noise. Confirmed by a
+  one-token perturbation of `_windowed`'s sort direction (`player_games.py`),
+  caught by the harness in exactly the 7 cases that read a window through it
+  and nowhere else. New `tests/query/test_shot_scoping.py` pins a
+  warehouse-verified fixture case for every newly-honored cell.
+
+  Fixed in passing: `_career_shot_note` was gated on `span.career` alone, so
+  a `since`-bounded read ("since 2024") claimed to "cover his whole career on
+  record" against the player's real, unbounded range - now gated on
+  `span.career and span.since is None`.
+
+  `tests/query/test_templates.py`'s `test_scope_guard_refuses_what_the_question_text_narrowed_to`
+  dropped its `shot_distance` case (it asserted the old refusal, which this
+  step replaces with the capability) and `test_scope_guard_lets_through_what_the_player_templates_now_honor`
+  and a new `test_shot_distance_narrows_by_opponent_and_names_it_in_the_answer`
+  gained it back the other way - confirming an opponent narrows the average
+  and is named in the answer, rather than only that `check_scope` lets it
+  through.
+
 - **`period_split` honors `game_n`, as it always claimed to.** Its shot read
   handed `scoped_games` a dict built on the spot - venue, without, split -
   instead of the question's slots, so "game 1 of each series" and the whole

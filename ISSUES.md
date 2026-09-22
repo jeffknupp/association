@@ -2574,6 +2574,63 @@ those were found.
 - **Source:** ours, not ESPN's.
 - **GitHub:** none yet
 
+### A bare `limit` means "the newest N" on the player relation but not the team one
+- **Found:** 2026-09-22, step 3, C5 (shots read through the player-games
+  relation), rebasing onto step 3, C4b (merged concurrently, the team-games
+  relation's own window).
+- **Evidence:** `templates/common._relation_window` (the player relation's
+  window reader, called from `scoped_games`) reads a bare `limit` - with no
+  `order` slot at all - as "recent": measured against the router's own traces
+  for "Create a shot chart for Steph Curry's last two games of the regular
+  season", which emit `{'limit': 2, ...}` with no `order` in four separate
+  runs across three builds. `templates.common.team_games` (the team relation's
+  own window, added by the parallel C4b branch and merged after this finding
+  was first written) sets `narrowed.window` only when `slots.get("order") in
+  ("recent", "first")` - a bare `limit` alone does nothing there. The two
+  relations now disagree about what "the last 2 games" means when the router
+  drops `order`, which - per the measurement above - it demonstrably does for
+  at least one real, recorded phrasing.
+- **User sees:** "Knicks' team quarter scoring, last 2 games" could silently
+  answer the whole season if the router omits `order` for a team question the
+  same way it does for a shot one - not confirmed against a real team-facing
+  trace in this session, only inferred from the shot-question evidence above
+  and the two readers' now-diverged source.
+- **Next step:** measure whether the router ever drops `order` on a
+  team-facing "last N games" question the way it does for shots (a handful of
+  live traces would settle it); if it does, either `team_games` grows the same
+  bare-limit reading `_relation_window` has, or `_relation_window` is factored
+  out so both relations share one definition instead of two independently
+  drifting ones - the second is the `AGENTS.md` "one concept, one definition"
+  shape.
+- **Source:** ours, not ESPN's.
+- **GitHub:** none yet
+
+### A `since` span before the 2002 shot floor gets no caveat that shots are clipped
+- **Found:** 2026-09-22, step 3, C5.
+- **Evidence:** `templates/shots.py`'s `_shot_chart_message`/`shot_distance`
+  gate `_career_shot_note` on `span.career and span.since is None` - added in
+  this step to fix a real bug (a `since`-bounded read was claiming to "cover
+  his whole career on record" against his UNBOUNDED range, which is false of
+  a bounded one). The fix is correct for what it removes, but nothing replaced
+  it: `_career_shot_note`'s other job - saying when the 2002 shot floor clips
+  part of what was asked for - is exactly as relevant to "since 1998" (which
+  the floor DOES clip) as to a plain career, and now says nothing for either
+  case reached through `since`. `_shots_has_narrowing` still routes `since`
+  through `common.scoped_games`, whose own season clause is bounded by
+  `table="player_game_log"`'s floor (1994), not `shot_chart`'s (2002), so the
+  read itself stays numerically correct (the semi-join to `shot_chart` drops
+  the pre-2002 games on its own) - only the caveat is missing.
+- **User sees:** "chart Curry's shots since 1998" silently draws only
+  2002-on with no note that 1998-2001 are missing, the same silent-narrowing
+  shape `AGENTS.md` names as this project's worst failure mode, though here
+  the NUMBER is still right - only the caveat is gone.
+- **Next step:** extend `_career_shot_note` (or a sibling) to take the actual
+  requested floor (`span.since` when set, else the real career start) instead
+  of always comparing against the player's own first season, so a `since`
+  read gets the same "seasons left out" sentence a plain career already does.
+- **Source:** ours, not ESPN's.
+- **GitHub:** none yet
+
 ## P4: tooling, docs, low impact
 
 ### The team-games postseason span clause is duplicated by a module boundary, not by drift
