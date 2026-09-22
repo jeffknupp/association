@@ -10,6 +10,7 @@ import pytest
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
+from association.nba.season import eastern_date as _eastern_date_of
 from association.query import shotchart
 from association.query.entities import MAX_CANDIDATES, Availability, Entity, collect_name_readings, resolve_player
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
@@ -4097,14 +4098,22 @@ def test_the_scoping_slots_this_template_filters_on_are_declared_honored() -> No
 
     The other direction matters too: a slot listed here that the SQL ignores
     would silently answer a broader question, which is the shape this whole
-    module exists to prevent."""
-    for slot in ("opponent", "venue", "without", "order"):
+    module exists to prevent.
+
+    .. versionchanged:: 4.4.0
+       ``date`` moved from refused to honored (step 3, C5): its games come
+       from :func:`common.scoped_games` like every other narrowing here, so it
+       needs no clause of its own. ``span`` and ``since`` moved the other way
+       - see the next assertion.
+    """
+    for slot in ("opponent", "venue", "without", "order", "date"):
         check_scope("period_split", {"player": "Stephen Curry", "period": 1, slot: "home"})
-    # A slot it still does not filter on. `date` names one calendar day, which
-    # this has no clause for, so a question carrying one must refuse rather
-    # than be answered over the whole season.
-    with pytest.raises(TemplateUnsupported):
-        check_scope("period_split", {"player": "Stephen Curry", "period": 1, "date": "2026-01-02"})
+    # Two slots it still does not filter on, for the same reason: the accuracy
+    # caveat (PERIOD_RECONCILIATION) is measured per season, and this reads
+    # only one - see RELATION_SCOPING_EXCLUDED["period_split"].
+    for slot, value in (("span", "career"), ("since", 2023)):
+        with pytest.raises(TemplateUnsupported):
+            check_scope("period_split", {"player": "Stephen Curry", "period": 1, slot: value})
 
 
 def test_a_log_lists_the_games_and_keeps_the_season_in_the_header(period_ctx: TemplateContext) -> None:
@@ -4116,6 +4125,77 @@ def test_a_log_lists_the_games_and_keeps_the_season_in_the_header(period_ctx: Te
     assert "over 5 games" in answer
     assert "1st quarter points, every game:" in answer
     assert len([line for line in answer.splitlines() if line.strip()[:4].isdigit()]) == 5
+
+
+def test_a_date_narrows_to_that_one_game(period_ctx: TemplateContext) -> None:
+    """Step 3, C5: `date` now reaches this template through `scoped_games`,
+    the same as every other narrowing here, instead of being refused. e1 is
+    the only game on its own Eastern date (a team plays at most one game a
+    day), so the answer is the one-game header rather than a season total -
+    and, since the season slot is deliberately NOT passed (a date replaces
+    it, the same override `game_log` makes), the season named in that header
+    has to come from the game itself.
+
+    Checked against the real warehouse first: LeBron James on 2025-11-18
+    (2nd quarter, no season slot given) answers "... scored 7 points in the
+    2nd quarter vs the Utah Jazz on 2025-11-18 (2026 regular season)" -
+    matching a direct, unscoped read of that one game's shots.
+    """
+    e1_date = _eastern_date_of(f"{SEASON - 1}-11-01T00:30Z")
+    result = period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "date": e1_date})
+    assert result.data["total"] == 6, "e1's two made first-quarter threes, not the 12 points across e1/e2/e4"
+    assert result.data["games_played"] == 1
+    assert result.data["season"] == SEASON, "read off the game itself, not defaulted separately"
+    assert f"vs the Los Angeles Lakers on {e1_date}" in (result.answer or "")
+
+
+def test_a_date_with_no_game_says_which_date_was_empty(period_ctx: TemplateContext) -> None:
+    """The "no games found" refusal names the date, the same way every other
+    narrowing here is said in the answer - a silent date would read as a
+    season with nothing on record, which is a different (false) claim."""
+    answer = period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "date": "2019-07-04"}).answer or ""
+    assert "on 2019-07-04" in answer
+
+
+def test_a_date_in_a_badly_reconciled_season_is_refused_for_that_season(period_ctx: TemplateContext) -> None:
+    """The accuracy refusal is read off the game a date finds, not assumed
+    from a season slot the router usually defaults to "now" - so a date from
+    2004 (labeled `PERIOD_RECONCILIATION`) is caveated even with no season
+    named at all."""
+    answer = period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "date": "2003-11-04"}).answer or ""
+    assert "96% of the time" in answer
+
+
+def test_a_career_span_is_refused_for_the_reconciliation_caveat_it_cannot_apply(period_ctx: TemplateContext) -> None:
+    """`span` "career" moved from silently honored (and silently WRONG - see
+    the SQL fix below) to explicitly excluded: `PERIOD_RECONCILIATION` is
+    measured per season, and summing points across a career would need to
+    apply it once per season summed in, which this does not do. The refusal
+    is at the routing layer (`check_scope`, via `RELATION_SCOPING_EXCLUDED`),
+    the same as every other excluded cell here - see
+    `test_the_scoping_slots_this_template_filters_on_are_declared_honored`.
+    """
+    with pytest.raises(TemplateUnsupported, match="different span"):
+        check_scope("period_split", {"player": "Stephen Curry", "period": 1, "span": "career"})
+
+
+def test_a_career_read_sums_every_season_now_the_shot_join_needs_no_season_param(period_ctx: TemplateContext) -> None:
+    """The bug the join-based rewrite fixes, called directly (check_scope is
+    what actually refuses `span` "career" in the pipeline - see the test
+    above): before, `span.season` was `None` for a career, and the shot
+    query bound it as a literal SQL parameter - `season = NULL` matches
+    nothing, so this answered "No {current season} games found for Stephen
+    Curry", a false-cause refusal about a player the fixture holds two
+    seasons of games for. Measured against the real warehouse too: LeBron
+    James's career 1st-quarter read went from that same false "no games"
+    refusal to a real sum (11,112 points over 1,622 games) once the shot CTEs
+    joined to the relation's own selected games instead of a literal
+    ``season = ?``/``season_type = ?`` pair.
+    """
+    result = period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "span": "career"})
+    assert result.data.get("season") is None or "message" not in result.data, "the old bug: a false 'no games' refusal for a player with games on record"
+    assert result.data["total"] == 15, "e1(6) + e2(3) + e4(3) across SEASON, plus e04(3) in 2004"
+    assert result.data["games_played"] == 6, "e1,e2,e3,e4,e5 (SEASON) and e04 (2004); e6 a DNP, e7 uncovered by the shot table"
 
 
 def test_a_team_log_names_each_opponent_as_it_was_that_season(gl_con: TemplateContext) -> None:
@@ -4379,16 +4459,44 @@ def test_a_tied_extreme_names_every_game_that_reached_it() -> None:
 # ---------------- step 3, C3: the scoping matrix cannot grow back ----------------
 
 
+def _c5_shots_ported() -> bool:
+    """Whether the parallel "shots" half of step 3, C5 (README_c5.md) has
+    landed on this tree - checked at run time rather than assumed, since the
+    two halves are built on separate branches and merge independently.
+    ``_scoping_game`` is the unported implementation's own marker: it is one
+    of the four helpers that README names as going away once ``shot_chart``
+    and ``shot_distance`` read the relation
+    (``_scoping_game``, ``_shot_chart_event_id``, ``_shot_distance_order_scope``,
+    ``_shot_distance_where``), so its absence is a reliable single-point
+    signal for "the port has landed" without hand-parsing source."""
+    from association.query.templates import shots as shots_module
+
+    return not hasattr(shots_module, "_scoping_game")
+
+
 def test_templates_on_the_relation_declare_no_scoping_of_their_own() -> None:
     """Step 3, C3. Six templates settle their player and narrow his games
     through the shared steps, and what they honor is declared ONCE
     (RELATION_SCOPING), less an exclusion with a written reason. A template
     that declared its own list would be the first cell of the matrix growing
     back - so its HONORED_SCOPING entry has to be exactly the relation's minus
-    its exclusions, and every exclusion has to carry a reason."""
+    its exclusions, and every exclusion has to carry a reason.
+
+    .. versionchanged:: 4.4.0
+       Covers ``shot_chart``/``shot_distance`` (step 3, C5) once the parallel
+       "shots" branch that ports them has merged - see :func:`_c5_shots_ported`.
+       ``extra=set()`` matches what that branch's own README commits to
+       (``HONORED_SCOPING["shot_chart"] = _relation_scoping("shot_chart")``),
+       and ``RELATION_SCOPING_EXCLUDED`` is read live below, so this does not
+       need to guess which cells that branch ends up excluding or why - only
+       that the two facts still balance the same equation every other
+       relation template does.
+    """
     from association.query.templates.common import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 
     on_the_relation = {"game_log": {"season_type_unstated"}, "player_stat": set(), "period_split": set(), "player_splits": set(), "record_when": set(), "streak": set()}
+    if _c5_shots_ported():
+        on_the_relation |= {"shot_chart": set(), "shot_distance": set()}
     for intent, extra in on_the_relation.items():
         excluded = RELATION_SCOPING_EXCLUDED.get(intent, {})
         for slot, reason in excluded.items():
@@ -4412,6 +4520,19 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
        shared narrowing (``common.scoped_team`` / ``common.team_games``) the
        player half already had, and ``_source_with_private_steps`` now walks
        into it instead of stopping short.
+
+    .. versionchanged:: 4.4.0
+       Forbids hand-narrowing a shot read to one game (``event_id = ?``) or to
+       one player-season on the shot table (``athlete_id = ? AND season = ?``)
+       - the shape ``shots._scoping_game`` and ``shots._shot_distance_where``
+       wrote before step 3, C5's "shots" half ported ``shot_chart`` and
+       ``shot_distance`` onto the relation. In a separate list and a separate
+       loop, scoped to those two templates' own source only (and only once
+       that parallel branch has landed - :func:`_c5_shots_ported`, so the
+       merge needs no second edit here): folded into the ``forbidden`` tuple
+       above, ``"athlete_id = ? AND season = ?"`` false-positived on
+       ``players._season_row``, an unrelated read of the SEASON-LINE table
+       that happens to share the same three-column WHERE shape by coincidence.
     """
 
     from association.query.templates import TEMPLATES
@@ -4433,6 +4554,13 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
         source = _source_with_private_steps(TEMPLATES[intent])
         for token in forbidden:
             assert token not in source, f"{intent} narrows the relation itself ({token!r}); use scoped_games / team_games"
+
+    if _c5_shots_ported():
+        shot_forbidden = ("event_id = ?", "athlete_id = ? AND season = ?")
+        for intent in ("shot_chart", "shot_distance"):
+            source = _source_with_private_steps(TEMPLATES[intent])
+            for token in shot_forbidden:
+                assert token not in source, f"{intent} narrows the relation itself ({token!r}); use scoped_games / team_games"
 
 
 def _source_with_private_steps(handler: Any) -> str:

@@ -1297,6 +1297,50 @@ def _period_scope(slots: dict[str, Any], intent: str = "period_split") -> tuple[
     raise TemplateUnsupported(f"{intent} needs a period 1-10 or a half 1-2, got period={slots.get('period')!r} half={half!r}")
 
 
+def _period_split_date(slots: dict[str, Any]) -> str | None:
+    """The ``date`` slot as ``YYYY-MM-DD``, or ``None`` for anything else -
+    split out of :func:`period_split` to keep it inside the complexity gate.
+
+    .. versionadded:: 4.4.0
+    """
+    raw_date = slots.get("date")
+    return raw_date if isinstance(raw_date, str) and _ISO_DATE.match(raw_date) else None
+
+
+def _period_split_reconciliation_refusal(season: int) -> TemplateResult | None:
+    """:func:`_period_split_refusal` for ``season``, over
+    :data:`PERIOD_RECONCILIATION` - the one line :func:`period_split` runs
+    twice: once up front for a named season (before any name is resolved,
+    same as always), and again, only with a ``date``, once the game it names
+    is found and its real season known.
+
+    .. versionadded:: 4.4.0
+    """
+    return _period_split_refusal(season, PERIOD_RECONCILIATION.get(season))
+
+
+def _period_split_subject(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], date: str | None) -> tuple[Entity, _Span] | TemplateResult:
+    """The player a period question is about, and the seasons it covers -
+    split out of :func:`period_split` to keep it inside the complexity gate.
+
+    Resolved against the shot table, not the box-score or season-line
+    availabilities :func:`common.scoped_player`'s other callers use - a
+    player with shots on record for this period is a different (narrower)
+    question from one with a game log, and ``scoped_player`` takes
+    ``available`` as a parameter for exactly this reason. With a ``date``,
+    the span is read over his whole career (the same override ``game_log``
+    and ``player_stat`` make) so an ambiguous name is narrowed by "has he
+    ever played" rather than by a season the date may not even belong to; a
+    bare "career" ``span`` with no date is refused above this, over the shot
+    table's own row (``RELATION_SCOPING_EXCLUDED``).
+
+    .. versionadded:: 4.4.0
+    """
+    return scoped_player(
+        con, slots, "no player named", table="player_game_log", available=SHOT_AVAILABILITY, span="career" if date else slots.get("span"), season=None if date else slots.get("season")
+    )
+
+
 def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """A named player's points in ONE quarter or half, per game and averaged.
 
@@ -1338,6 +1382,22 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        summed for the period, through :func:`common.measure_filters` and
        :func:`common.scoped_games`, the same as every other template on the
        relation.
+
+    .. versionchanged:: 4.4.0
+       Honors ``date`` (step 3, C5) - one calendar day names its own game the
+       same way it does in :func:`game_log`, so the season used for the
+       reconciliation caveat is read off THAT game rather than guessed from a
+       season slot the router usually defaults to "now": a date from a past
+       season looked for inside the current one used to find nothing.
+       ``span`` "career" is refused instead of silently answering "no games" -
+       see :data:`common.RELATION_SCOPING_EXCLUDED` - because the accuracy
+       caveat this template exists to attach is a property of one season, not
+       of a sum across many. ``since`` is refused for the same reason, found
+       measuring this one: it was already honored (``scoped_player`` reads it
+       directly off the full ``slots`` dict), and it pulled the right games
+       back to the named season - 257 rather than 60 for ``since=2023`` -
+       while still heading them "the 2026 regular season", one of the years
+       actually summed and not the range.
     """
     con = ctx.con
     periods, period_label = _period_scope(slots)
@@ -1348,23 +1408,14 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     # the same discipline player_stat's own measures follow.
     measures = measure_filters(slots.get("below"), slots.get("above"))
 
-    season = slots.get("season") or current_season()
-    season_type = slots.get("season_type") or 2
-    agreement = PERIOD_RECONCILIATION.get(season)
-    refusal = _period_split_refusal(season, agreement)
-    if refusal is not None:
-        return refusal
+    date = _period_split_date(slots)
+    season, season_type = slots.get("season") or current_season(), slots.get("season_type") or 2
+    if date is None:
+        refusal = _period_split_reconciliation_refusal(season)
+        if refusal is not None:
+            return refusal
 
-    # Resolved against the shot table, not the box-score or season-line
-    # availabilities `scoped_player`'s other callers use - a player with shots
-    # on record for this period is a different (narrower) question from one
-    # with a game log, and `scoped_player` takes `available` as a parameter for
-    # exactly this reason. `span` is never "career" here - it is not among the
-    # slots `period_split` declares in HONORED_SCOPING, so `check_scope` has
-    # already refused one before this runs - which is what makes the span
-    # `scoped_player` settles the same "current or named" season this read
-    # before it, byte for byte.
-    subject = scoped_player(con, slots, "no player named", table="player_game_log", available=SHOT_AVAILABILITY, span=slots.get("span"), season=slots.get("season"))
+    subject = _period_split_subject(con, slots, date)
     if isinstance(subject, TemplateResult):
         return subject
     player, span = subject
@@ -1374,15 +1425,24 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         return opponent
 
     venue, started = _period_split_narrowing(slots.get("venue"), slots.get("split"))
-    narrowed_rows = _period_split_rows(con, player, span, periods, venue, opponent, slots.get("split"), slots.get("without"), measures)
+    narrowed_rows = _period_split_rows(con, player, span, periods, venue, opponent, slots.get("split"), slots.get("without"), measures, date)
     if isinstance(narrowed_rows, TemplateResult):
         return narrowed_rows
     rows, narrowed_mates, narrowed_measures = narrowed_rows
 
+    if date is not None and rows:
+        # The season a date's game actually falls in, read off the row itself
+        # rather than the slot: an explicit year in the question ("... on
+        # november 11 2019") can name a date the season slot disagrees with.
+        season = int(rows[0][1])
+        refusal = _period_split_reconciliation_refusal(season)
+        if refusal is not None:
+            return refusal
+
     scope = _period(season, season_type)
     vs = f" against the {opponent.name}" if opponent else ""
-    at = _period_split_narrowing_said(venue, started, narrowed_mates, narrowed_measures)
-    games = [{"date": _eastern_date(d), "opponent": name, "home_away": side, "points": int(pts or 0)} for d, side, name, pts in rows]
+    at = _period_split_narrowing_said(venue, started, narrowed_mates, narrowed_measures, date)
+    games = [{"date": _eastern_date(d), "opponent": name, "home_away": side, "points": int(pts or 0)} for d, _game_season, side, name, pts in rows]
     data: dict[str, Any] = {
         "player": player.name,
         "period": period_label,
@@ -1402,7 +1462,7 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     average = total / len(games)
     data |= {"total": total, "average": average}
     header = _period_split_header(player, period_label, scope, vs, at, total, average, games, slots, slots.get("order"))
-    return TemplateResult(data=data, answer=header + _period_split_caveat(season, agreement))
+    return TemplateResult(data=data, answer=header + _period_split_caveat(season, PERIOD_RECONCILIATION.get(season)))
 
 
 def period_leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
@@ -1433,6 +1493,34 @@ def period_leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateR
     once and scored eight - the same qualifier every other per-game ranking
     here applies (:data:`association.query.metrics.PER_GAME_MIN_GAMES`, five
     in the postseason), and the answer says which it used.
+
+    **Assessed, and NOT ported to the relation, for step 3, C5.** This is a
+    no-player read of ``player_game_log`` - the same shape ``threshold_count``
+    and ``single_game_high`` left off the relation in C1
+    (:func:`association.query.player_games.league` already gives one: a
+    ``Narrowed`` with no ``athlete_id`` clause) - so it was assessed rather
+    than assumed portable. Two separate reasons killed it, not one:
+
+    - ``opponent``/``venue``/``date`` would need a NEW no-player narrowing
+      step: :func:`common._narrow_player_games` (what :func:`common.scoped_games`
+      calls) hardcodes ``pgl.athlete_id = ?`` into its base clause, so it
+      cannot build a league-wide ``Narrowed`` at all, and this module may not
+      add one to ``common.py`` (that file's edits here are declarations only -
+      see ``README_c5.md``).
+    - ``since``/``span`` reopen, at league scale, the exact bug ``span``
+      "career" was just excluded above for ONE player:
+      :data:`PERIOD_RECONCILIATION` measures accuracy per SEASON, and a
+      leaderboard ranged over several would need that caveat applied once per
+      season summed into each player's total, or the range refused outright -
+      neither of which this function does, and porting the READ alone would
+      let a badly-reconciled season (2016, 76.5%) drag rankings with no
+      caveat naming it, the exact false-cause shape `AGENTS.md` warns against.
+      ``date`` has its own, narrower problem even alone: it narrows to ONE
+      game, and :data:`association.query.metrics.PER_GAME_MIN_GAMES` (the
+      qualifier directly above) would then disqualify every player at once.
+
+    Filed as a gap rather than fixed - see ``ISSUES.md`` ("period_leaderboard
+    stays off the player-games relation").
 
     .. versionadded:: 4.4.0
     """
@@ -1540,7 +1628,7 @@ def _period_split_refusal(season: int, agreement: float | None) -> TemplateResul
     return None
 
 
-def _period_split_narrowing_said(venue: str | None, started: bool | None, mates: list[str], measures: list[str] | None = None) -> str:
+def _period_split_narrowing_said(venue: str | None, started: bool | None, mates: list[str], measures: list[str] | None = None, date: str | None = None) -> str:
     """What the answer says it narrowed to, after the player and the period.
 
     Said in the answer, like every other narrowing here: a total over his
@@ -1551,11 +1639,17 @@ def _period_split_narrowing_said(venue: str | None, started: bool | None, mates:
        Names a line on a box-score column (``below``/``above``,
        :data:`common.MeasureFilter`), the same way :meth:`Narrowed.filters`
        says one - "with under 5 turnovers".
+
+    .. versionchanged:: 4.4.0
+       Names a single ``date`` (step 3, C5) - reached only by the "no games
+       found" refusal, since a real game already says its own date in
+       :func:`_period_split_header`'s one-game branch.
     """
     said = f" at {'home' if venue == 'home' else 'away'}" if venue else ""
     said += "" if started is None else (" as a starter" if started else " off the bench")
     said += f" without {_joined(mates)}" if mates else ""
     said += f" with {_joined(measures)}" if measures else ""
+    said += f" on {date}" if date else ""
     return said
 
 
@@ -1582,6 +1676,7 @@ def _period_split_rows(
     split: Any = None,
     without: Any = None,
     measures: list[MeasureFilter] | None = None,
+    date: str | None = None,
 ) -> tuple[list[tuple[Any, ...]], list[str], list[str]] | TemplateResult:
     """A player's per-game point total in the wanted periods, one row a game.
 
@@ -1617,13 +1712,16 @@ def _period_split_rows(
     ``played`` by ``event_id`` alone, never by a literal ``season``/
     ``season_type`` pair: those bare names can only mean ``shot_chart``'s own
     columns as long as nothing else in scope shares them, which is also what
-    lets this run for a career-wide ``played`` set (many seasons) without
-    special-casing it.
+    lets this run for a career-wide ``played`` set (many seasons) or a single
+    date (``span.season`` is unset either way) without special-casing one.
 
-    Returns the rows, the teammates whose absence narrowed them, and the
-    box-score lines they were kept under or over as the answer says them (for
-    the answer to name), or the clarifying question the relation asks when a
-    teammate's name matches more than one player.
+    Returns the rows - each carrying the game's own ``season`` beside its
+    date, so a caller with a ``date`` rather than a named season can read the
+    season the game actually falls in off the row instead of guessing - the
+    teammates whose absence narrowed them, and the box-score lines they were
+    kept under or over as the answer says them (for the answer to name), or
+    the clarifying question the relation asks when a teammate's name matches
+    more than one player.
 
     .. versionchanged:: 4.4.0
        Reads the relation rather than its own copy of the played-game guard,
@@ -1641,26 +1739,23 @@ def _period_split_rows(
        every other template on the relation.
 
     .. versionchanged:: 4.4.0
-       The shot-value CTEs join to ``played`` by ``event_id`` rather than
-       filtering ``shot_chart`` by a literal ``season``/``season_type`` pair
-       taken from ``span.season`` (step 3, C5) - that literal pair is
-       ``NULL`` for a career ``span`` (``span.season`` is unset), and bound as
-       SQL it silently matched nothing rather than raising: a career question
-       for a player with games on record answered "no games found", the same
-       false-cause shape `AGENTS.md` warns about elsewhere. Joining by the
-       games the relation already selected removes the literal pair entirely,
-       so a multi-season ``played`` set needs no special-casing - this is
-       pure refactor for every question already reachable through a single
-       named season, and a bug fix for ``span`` "career", which was already
-       declared honored (:data:`common.HONORED_SCOPING`) before this.
+       Honors ``date`` (step 3, C5), and the shot-value CTEs join to
+       ``played`` by ``event_id`` rather than filtering ``shot_chart`` by a
+       literal ``season``/``season_type`` - that literal pair came from
+       ``span``, which is unset (``None``) for a date or a career, and bound
+       as SQL ``NULL`` it silently matched nothing rather than raising: a
+       career question answered "no games found" for a player with thousands
+       on record, the same false-cause shape `AGENTS.md` warns about
+       elsewhere. Joining by the games the relation already selected removes
+       the literal pair entirely, so it needs no fixing up for either shape.
     """
-    narrowed = scoped_games(con, player, span, {"venue": venue, "without": without, "split": split}, opponent=opponent, measures=measures or [])
+    narrowed = scoped_games(con, player, span, {"venue": venue, "without": without, "split": split}, opponent=opponent, measures=measures or [], date=date)
     if isinstance(narrowed, TemplateResult):
         return narrowed
     rebuilt = box_source(con).rebuilt
     played_sql, played_params = rows_sql(
         narrowed,
-        "pgl.event_id AS event_id, g.date AS date, CASE WHEN g.home_team_id = pgl.team_id THEN 'home' ELSE 'away' END AS side, "
+        "pgl.event_id AS event_id, g.date AS date, pgl.season AS game_season, CASE WHEN g.home_team_id = pgl.team_id THEN 'home' ELSE 'away' END AS side, "
         f"(SELECT {season_name_sql('t.team_id', 'g.season', 't.display_name')} FROM teams t WHERE t.team_id = pgl.opponent_team_id) AS opponent",
         order="g.date",
         rebuilt=rebuilt,
@@ -1677,7 +1772,7 @@ def _period_split_rows(
             GROUP BY 1
         ),
         covered AS (SELECT DISTINCT sc.event_id FROM shot_chart sc JOIN played p ON p.event_id = sc.event_id)
-        SELECT p.date, p.side, p.opponent, COALESCE(s.points, 0)
+        SELECT p.date, p.game_season, p.side, p.opponent, COALESCE(s.points, 0)
         FROM played p
         JOIN covered c ON c.event_id = p.event_id
         LEFT JOIN scored s ON s.event_id = p.event_id

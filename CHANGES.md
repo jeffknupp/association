@@ -31,6 +31,30 @@ had no published version to be compatible with.
   corpora - see the next entry), and a genuine fix for the career case,
   which the next entry's own reasoning then refuses to answer for a
   different reason.
+- **`period_split` honors `date`, and refuses `span`/`since` for a reason
+  worth stating outright (step 3, C5, part 2).** One calendar day narrows to
+  its own game the same way it does for `game_log`, through
+  `common.scoped_games`, and the answer says the date - the season used for
+  the reconciliation caveat is read off that game rather than guessed from a
+  season slot the router usually defaults to "now". `span` "career" and
+  `since` are refused rather than answered, even though part 1's join fix
+  would answer them correctly now too: `PERIOD_RECONCILIATION`, the
+  per-quarter accuracy caveat this template exists to attach, is measured per
+  season, and a range mixes seasons of different reliability under one
+  caveat (or none), with the header still naming a single season regardless
+  - measured, `since=2023` pulled the correct 257 games back to 2023 while
+  still heading them "the 2026 regular season". `period_leaderboard`'s own
+  no-player read of the relation was assessed and NOT ported - documented in
+  its docstring and filed in `ISSUES.md` ("`period_leaderboard` stays off
+  the player-games relation"): `opponent`/`venue`/`date` would need a new
+  no-player narrowing step this module may not add to `common.py`, and
+  `since`/`span` reopen the identical per-season reconciliation problem just
+  fixed above. The two `step 3, C3` gates
+  (`test_templates_on_the_relation_declare_no_scoping_of_their_own`,
+  `test_templates_on_the_relation_do_not_narrow_it_themselves`) now cover
+  `shot_chart`/`shot_distance` once the parallel branch porting them has
+  merged, detected at run time (`_c5_shots_ported`) rather than needing a
+  second edit here.
 - **A one-game streak is "1 game", not "1 games".** `streak`'s headline, for
   a named subject and league-wide alike, pluralized by hand; a team's streak
   narrowed to one opponent (new in C4 below) is the first common way to
