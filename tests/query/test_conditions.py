@@ -1167,20 +1167,25 @@ def test_since_and_a_named_season_conflict(league: TemplateContext) -> None:
 
 
 def test_game_n_narrows_to_one_game_of_each_series(league: TemplateContext) -> None:
-    """A three-game series vs Philadelphia; game_n=2 is p2, which Tatum's
+    """A three-game series vs the Lakers; game_n=2 is q2, which Tatum's
     Celtics won 105-95 on the road (25 points)."""
     c = league.con
     for event, date, home, away, home_score, away_score, points in (
-        ("p1", f"{S}-04-20T23:30Z", BOS, PHI, 100, 90, 20),
-        ("p2", f"{S}-04-22T23:30Z", PHI, BOS, 95, 105, 25),
-        ("p3", f"{S}-04-24T23:30Z", BOS, PHI, 110, 100, 30),
+        # q1-q3, not p1-p3: the fixture already holds a p1/p2 series (PLAYOFF_GUY's),
+        # and a second insert under the same ids would list game 2 twice.
+        # And vs the Lakers, not Philadelphia: the fixture's p1/p2 are a
+        # BOS-PHI series in the same postseason, and a series is numbered
+        # per opponent pair - game 2 of BOS-PHI would be its p2.
+        ("q1", f"{S}-05-20T23:30Z", BOS, LAL, 100, 90, 20),
+        ("q2", f"{S}-05-22T23:30Z", LAL, BOS, 95, 105, 25),
+        ("q3", f"{S}-05-24T23:30Z", BOS, LAL, 110, 100, 30),
     ):
         c.execute("INSERT INTO games VALUES (?,?,3,?,?,?,?,?,?)", [event, S, date, home, away, home_score, away_score, home if home_score > away_score else away])
         for team, opponent, side in ((home, away, "home"), (away, home, "away")):
             c.execute("INSERT INTO team_box_stats VALUES (?,?,3,?,?,?,40,12,23,20,10,40,85)", [event, S, team, opponent, side])
         c.execute(
             "INSERT INTO player_box_stats VALUES (?,?,3,?,?,?,TRUE,FALSE,30,?,5,3,0,0,0,1,?,?,0,0)",
-            [event, S, BOS, PHI, TATUM, points, points // 2, points],
+            [event, S, BOS, LAL, TATUM, points, points // 2, points],
         )
     real_games.build_table(c, {"games", "teams", "player_box_stats"})
     result = player_splits(league, _slots(player="Jayson Tatum", season_type=3, game_n=2))
@@ -1215,9 +1220,7 @@ def test_season_n_settles_to_the_year_once_the_player_is_known(league: TemplateC
     different year from the "now" this template defaults to, so the label
     the answer names has to follow the ordinal the relation settled rather
     than the `_Scope` built (as "now") before the player was known."""
-    c = league.con
-    c.execute("CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER)")
-    c.executemany("INSERT INTO player_season_stats_deduped VALUES (?,?,2)", [(TATUM, S - 1), (TATUM, S)])
+    # The league fixture already holds Tatum's two seasons on record.
     first = player_splits(league, _slots(player="Jayson Tatum", season_n=1))
     assert first.data["games"] == 4  # e0b, e0c, e0a, e0d
     assert first.data["span"] == f"{S - 1} regular season"
@@ -1227,9 +1230,7 @@ def test_season_n_settles_to_the_year_once_the_player_is_known(league: TemplateC
 
 
 def test_a_season_n_past_his_career_is_refused_by_name(league: TemplateContext) -> None:
-    c = league.con
-    c.execute("CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER)")
-    c.executemany("INSERT INTO player_season_stats_deduped VALUES (?,?,2)", [(TATUM, S - 1), (TATUM, S)])
+    # The league fixture already holds Tatum's two seasons on record.
     answer = player_splits(league, _slots(player="Jayson Tatum", season_n=5)).answer or ""
     assert "2 seasons on record" in answer
 

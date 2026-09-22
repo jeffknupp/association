@@ -3401,7 +3401,9 @@ def test_the_relation_window_is_cut_after_the_row_filters(pg_ctx: TemplateContex
     assert not isinstance(narrowed, TemplateResult)
     narrowed.window = ("recent", 2)
     sql, params = aggregate_sql(narrowed, ["COUNT(*)", "AVG(pgl.points)", "MIN(g.date)"])
-    games, avg, first = pg_ctx.con.execute(sql, params).fetchone()
+    row = pg_ctx.con.execute(sql, params).fetchone()
+    assert row is not None
+    games, avg, first = row
     # His Detroit games are e5 (8, s-1), e2 (20) and e3 (15): the newest two are e2 and e3.
     assert (games, avg) == (2, 17.5) and first.startswith(f"{s - 1}-12-02")
     assert narrowed.filters().endswith(" vs the Detroit Pistons over his last 2 games")
