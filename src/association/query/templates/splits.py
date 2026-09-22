@@ -376,7 +376,7 @@ def _player_splits_player(
             **slots,
             "player": name,
             "venue": venue,
-            "opponent": opponent.name if opponent else None,
+            "opponent": opponent,
             "without": slots.get("without"),
             "split": slots.get("split"),
             "since": slots.get("since"),

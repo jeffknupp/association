@@ -1047,7 +1047,11 @@ def _narrow_player_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _
         base_params=[player.id, span.season_type, *season_params],
     )
     if opponent:
-        team = _resolved_team(con, opponent, season=span.season)
+        # A caller that has already resolved the team (it needs the name for
+        # its answer before the games are read) passes the Entity; text is
+        # resolved here, so a clarification about the team comes back as the
+        # answer either way.
+        team = opponent if isinstance(opponent, Entity) else _resolved_team(con, opponent, season=span.season)
         if isinstance(team, TemplateResult):
             return team
         narrowed.opponent = team
@@ -1146,9 +1150,10 @@ def scoped_games(
     that the template has not claimed.
 
     ``opponent`` is passed because ``game_log`` may have rewritten it (a
-    ``team`` beside a named player is his opponent), and ``measures`` because
-    each template decides what a bare ``threshold`` means before any name is
-    resolved.
+    ``team`` beside a named player is his opponent) and a template that needs
+    the team's name before the read passes it already resolved; ``measures``
+    because each template decides what a bare ``threshold`` means before any
+    name is resolved.
 
     .. versionadded:: 4.4.0
     """

@@ -1721,14 +1721,9 @@ def _period_split_rows(
        which of the player's games are summed for the period, the same as
        every other template on the relation.
     """
-    narrowed = scoped_games(con, player, span, {"venue": venue, "without": without, "split": split}, opponent=None, measures=measures or [])
+    narrowed = scoped_games(con, player, span, {"venue": venue, "without": without, "split": split}, opponent=opponent, measures=measures or [])
     if isinstance(narrowed, TemplateResult):
         return narrowed
-    if opponent is not None:
-        # Resolved by the caller, which needs the name for the answer, so the
-        # id is applied here rather than resolving the same text twice.
-        narrowed.opponent = opponent
-        narrowed.narrow("pgl.opponent_team_id = ?", opponent.id)
     rebuilt = box_source(con).rebuilt
     played_sql, played_params = rows_sql(
         narrowed,

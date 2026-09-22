@@ -16,6 +16,14 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **The scoping matrix cannot grow back (step 3, C3).** Two tests read the
+  templates' source: the six on the player-games relation must declare
+  exactly `RELATION_SCOPING` less a reasoned exclusion, and none of them, nor
+  any private step it reaches, may narrow the relation itself - no call to
+  the narrowing function, no hand-written clause on an opponent, venue,
+  starter or date column. Both watched to fail. `scoped_games` takes an
+  already-resolved opponent as well as a name, which removed the two places a
+  template applied the opponent's id by hand around it.
 - **Scoping is declared once, on the player-games relation (step 3, C2).**
   The six templates that settle a player and narrow his games through the
   shared steps - `game_log`, `player_stat`, `period_split`, `player_splits`,

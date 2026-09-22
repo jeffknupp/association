@@ -4371,3 +4371,72 @@ def test_a_tied_extreme_names_every_game_that_reached_it() -> None:
     result = _team_quarter_points_answer(Entity(id="18", name="New York Knicks"), None, games, periods=(1, 2), period_label="1st half", period_str="2026 regular season", rank="most")
     assert result.data["extreme"] == 60 and len(result.data["extreme_games"]) == 2
     assert "vs the Boston Celtics on 2026-01-02 and vs the Chicago Bulls on 2026-01-09" in (result.answer or "")
+
+
+# ---------------- step 3, C3: the scoping matrix cannot grow back ----------------
+
+
+def test_templates_on_the_relation_declare_no_scoping_of_their_own() -> None:
+    """Step 3, C3. Six templates settle their player and narrow his games
+    through the shared steps, and what they honor is declared ONCE
+    (RELATION_SCOPING), less an exclusion with a written reason. A template
+    that declared its own list would be the first cell of the matrix growing
+    back - so its HONORED_SCOPING entry has to be exactly the relation's minus
+    its exclusions, and every exclusion has to carry a reason."""
+    from association.query.templates.common import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
+
+    on_the_relation = {"game_log": {"season_type_unstated"}, "player_stat": set(), "period_split": set(), "player_splits": set(), "record_when": set(), "streak": set()}
+    for intent, extra in on_the_relation.items():
+        excluded = RELATION_SCOPING_EXCLUDED.get(intent, {})
+        for slot, reason in excluded.items():
+            assert slot in RELATION_SCOPING and reason.strip(), f"{intent} excludes {slot!r} without a reason"
+        assert HONORED_SCOPING[intent] == (RELATION_SCOPING | extra) - set(excluded), f"{intent} declares scoping of its own"
+
+
+def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
+    """The other half of C3: a template on the relation reads its scoping
+    slots only to label the answer or to decide what a bare threshold means.
+    The NARROWING - the clause on the relation's rows - is the shared step's,
+    so a slot the relation learns reaches every template at once. A direct
+    call to the narrowing function, or a hand-written clause on an opponent,
+    venue, starter or date column, is a template teaching itself one slot -
+    which is the O(templates x slots) matrix this step removed."""
+
+    from association.query.templates import TEMPLATES
+
+    forbidden = ("_narrow_player_games(", "pgl.opponent_team_id = ?", "g.home_team_id = pgl.team_id) = ?", "pgl.starter = ?", "g.date >= ? AND g.date < ?")
+    for intent in ("game_log", "player_stat", "period_split", "player_splits", "record_when", "streak"):
+        # The template and the private steps it calls, transitively - game_log's
+        # narrowing would live in _game_log_player, not in game_log itself. Not
+        # the whole module: games.py also holds the TEAM readers, which narrow
+        # their own relation until step 3, C4.
+        source = _source_with_private_steps(TEMPLATES[intent])
+        for token in forbidden:
+            assert token not in source, f"{intent} narrows the relation itself ({token!r}); use scoped_games"
+
+
+def _source_with_private_steps(handler: Any) -> str:
+    """A template's source plus every private function of its module it
+    reaches, transitively."""
+    import inspect
+    import re as _re
+
+    module = inspect.getmodule(handler)
+    assert module is not None
+    # game_log's TEAM half reads the team-games relation, which narrows itself
+    # until step 3, C4 gives it shared steps of its own. Stopped at, not
+    # followed; delete this with C4.
+    team_half = {"_game_log_team", "_team_game_log", "_team_game_log_mixed"}
+    seen, todo, out = set(), [handler], []
+    while todo:
+        fn = todo.pop()
+        if fn in seen or not inspect.isfunction(fn) or fn.__name__ in team_half:
+            continue
+        seen.add(fn)
+        src = inspect.getsource(fn)
+        out.append(src)
+        for name in set(_re.findall(r"\b(_[a-z][a-z0-9_]*)\(", src)):
+            step = getattr(module, name, None)
+            if step is not None:
+                todo.append(step)
+    return "\n".join(out)
