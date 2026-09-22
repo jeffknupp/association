@@ -1425,10 +1425,10 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         return opponent
 
     venue, started = _period_split_narrowing(slots.get("venue"), slots.get("split"))
-    narrowed_rows = _period_split_rows(con, player, span, periods, venue, opponent, slots.get("split"), slots.get("without"), measures, date)
+    narrowed_rows = _period_split_rows(con, player, span, periods, slots, opponent, measures, date)
     if isinstance(narrowed_rows, TemplateResult):
         return narrowed_rows
-    rows, narrowed_mates, narrowed_measures = narrowed_rows
+    rows, narrowed_mates, narrowed_measures, series_game = narrowed_rows
 
     if date is not None and rows:
         # The season a date's game actually falls in, read off the row itself
@@ -1441,7 +1441,7 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
 
     scope = _period(season, season_type)
     vs = f" against the {opponent.name}" if opponent else ""
-    at = _period_split_narrowing_said(venue, started, narrowed_mates, narrowed_measures, date)
+    at = _period_split_narrowing_said(venue, started, narrowed_mates, narrowed_measures, date, series_game=series_game, one_series=opponent is not None)
     games = [{"date": _eastern_date(d), "opponent": name, "home_away": side, "points": int(pts or 0)} for d, _game_season, side, name, pts in rows]
     data: dict[str, Any] = {
         "player": player.name,
@@ -1628,7 +1628,9 @@ def _period_split_refusal(season: int, agreement: float | None) -> TemplateResul
     return None
 
 
-def _period_split_narrowing_said(venue: str | None, started: bool | None, mates: list[str], measures: list[str] | None = None, date: str | None = None) -> str:
+def _period_split_narrowing_said(
+    venue: str | None, started: bool | None, mates: list[str], measures: list[str] | None = None, date: str | None = None, *, series_game: int | None = None, one_series: bool = False
+) -> str:
     """What the answer says it narrowed to, after the player and the period.
 
     Said in the answer, like every other narrowing here: a total over his
@@ -1650,6 +1652,9 @@ def _period_split_narrowing_said(venue: str | None, started: bool | None, mates:
     said += f" without {_joined(mates)}" if mates else ""
     said += f" with {_joined(measures)}" if measures else ""
     said += f" on {date}" if date else ""
+    # The same words Narrowed.filters() uses: one opponent makes it "the"
+    # series, a whole postseason "each".
+    said += f" in game {series_game} of {'the' if one_series else 'each'} series" if series_game is not None else ""
     return said
 
 
@@ -1671,13 +1676,11 @@ def _period_split_rows(
     player: Entity,
     span: _Span,
     periods: tuple[int, ...],
-    venue: str | None,
+    slots: dict[str, Any],
     opponent: Entity | None,
-    split: Any = None,
-    without: Any = None,
     measures: list[MeasureFilter] | None = None,
     date: str | None = None,
-) -> tuple[list[tuple[Any, ...]], list[str], list[str]] | TemplateResult:
+) -> tuple[list[tuple[Any, ...]], list[str], list[str], int | None] | TemplateResult:
     """A player's per-game point total in the wanted periods, one row a game.
 
     The games come from :func:`common.scoped_games`, the one narrowing every
@@ -1749,7 +1752,10 @@ def _period_split_rows(
        elsewhere. Joining by the games the relation already selected removes
        the literal pair entirely, so it needs no fixing up for either shape.
     """
-    narrowed = scoped_games(con, player, span, {"venue": venue, "without": without, "split": split}, opponent=opponent, measures=measures or [], date=date)
+    # The question's own slots, whole - not a dict built here. A dict built
+    # here carried venue, without and split and nothing else, so `game_n` was
+    # declared honored and never reached the relation (ISSUES.md, closed).
+    narrowed = scoped_games(con, player, span, slots, opponent=opponent, measures=measures or [], date=date)
     if isinstance(narrowed, TemplateResult):
         return narrowed
     rebuilt = box_source(con).rebuilt
@@ -1780,7 +1786,7 @@ def _period_split_rows(
         """,
         [*played_params, player.id, *periods],
     ).fetchall()
-    return rows, [mate.name for mate in narrowed.without], list(narrowed.measures)
+    return rows, [mate.name for mate in narrowed.without], list(narrowed.measures), narrowed.series_game
 
 
 def _period_split_header(player: Entity, period_label: str, scope: str, vs: str, at: str, total: int, average: float, games: list[dict[str, Any]], slots: dict[str, Any], order: Any = None) -> str:

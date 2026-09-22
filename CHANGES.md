@@ -16,6 +16,15 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **`period_split` honors `game_n`, as it always claimed to.** Its shot read
+  handed `scoped_games` a dict built on the spot - venue, without, split -
+  instead of the question's slots, so "game 1 of each series" and the whole
+  postseason answered identically (LeBron James, 2018 postseason: 207 points
+  over 22 games either way). The relation now gets the slots whole, and the
+  source gate that stops a template narrowing the relation by hand also
+  refuses a hand-built dict handed to `scoped_games`/`condition_player` -
+  watched to fail on the old line. Found by the C5 period agent and filed;
+  fixed at the merge.
 - **`period_split`'s per-quarter shot read no longer needs a literal season
   to run (step 3, C5, part 1).** `_period_split_rows` summed `shot_chart`
   over `season = ?`/`season_type = ?`, taken from the already-settled

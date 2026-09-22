@@ -3098,8 +3098,31 @@ def pg_ctx(tmp_path: Path) -> TemplateContext:
             ("20", 1990, 82, 33.6, 2753, 6.9, 565, 6.3, 519, 39.0, 92, 245),
         ],
     )
+    # Podziemski's postseason shots, for period_split's game_n cell: one
+    # labeled three in the first quarter of p1, p2 and p3, two in p5, none in
+    # p4 - so the shot table covers four of his five playoff games, and game 2
+    # of each series (p2 and p5) holds 3 + 6 of the 15 points.
+    c.execute(
+        "CREATE TABLE shot_chart (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, team_id VARCHAR, "
+        "period INTEGER, clock VARCHAR, made BOOLEAN, shot_type VARCHAR, coordinate_x INTEGER, coordinate_y INTEGER, points_attempted INTEGER, description VARCHAR)"
+    )
+    for event, n in (("p1", 1), ("p2", 1), ("p3", 1), ("p5", 2)):
+        for _ in range(n):
+            c.execute("INSERT INTO shot_chart VALUES ('10',?,3,?,'1',1,'10:00',TRUE,'Jump Shot',25,26,3,'26-foot three point jumper')", [s, event])
     real_games.build_table(c, {"games", "teams"})
     return TemplateContext(con=c, out_dir=tmp_path)
+
+
+def test_period_split_reads_one_game_of_each_series(pg_ctx: TemplateContext) -> None:
+    """`game_n` reaches period_split through the relation like every other
+    slot. It was declared honored and never applied: `_period_split_rows`
+    handed `scoped_games` a dict it built itself, with no `game_n` key, so
+    "game 1 of each series" and the whole postseason answered identically."""
+    whole = period_split(pg_ctx, {"player": "Brandin Podziemski", "period": 1, "season_type": 3})
+    assert whole.data["games_played"] == 4 and whole.data["total"] == 15
+    second = period_split(pg_ctx, {"player": "Brandin Podziemski", "period": 1, "season_type": 3, "game_n": 2})
+    assert second.data["games_played"] == 2 and second.data["total"] == 9, second.answer
+    assert "game 2 of each series" in (second.answer or "")
 
 
 def test_game_log_drops_the_players_own_team(pg_ctx: TemplateContext) -> None:
@@ -4554,6 +4577,15 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
         source = _source_with_private_steps(TEMPLATES[intent])
         for token in forbidden:
             assert token not in source, f"{intent} narrows the relation itself ({token!r}); use scoped_games / team_games"
+        # The quieter way to narrow by hand: hand the shared step a dict BUILT
+        # here instead of the question's slots. period_split did exactly that -
+        # `{"venue": venue, "without": without, "split": split}` - so `game_n`
+        # never reached the relation while HONORED_SCOPING said it did, and
+        # the token check above saw nothing, because no clause was written.
+        # The slots dict is the relation's input; a template passes it whole.
+        # `team_games` joins this check with step 3, C4b, whose port of the
+        # team half is where its `{"venue": venue}` callers are rewritten.
+        assert not re.search(r'(scoped_games|condition_player)\([^\n]*\{"', source), f"{intent} hands the shared step a hand-built dict; pass the question's slots"
 
     if _c5_shots_ported():
         shot_forbidden = ("event_id = ?", "athlete_id = ? AND season = ?")

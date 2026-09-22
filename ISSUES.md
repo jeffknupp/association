@@ -251,41 +251,6 @@ those were found.
   (`players_named_in`), and send a named player's "how many games" to
   `player_stat`.
 
-### `period_split` declares `game_n` honored and silently answers the whole span instead
-- **Found:** 2026-09-22, step 3 C5 work on `period_split`'s `date` cell (out
-  of that task's scope - found while checking whether every slot
-  `HONORED_SCOPING["period_split"]` claims is actually wired, the same
-  question the `date` exclusion turned out to answer "no" for).
-- **Evidence:** `templates/games.py`'s `_period_split_rows` builds the dict it
-  hands to `common.scoped_games` by hand - `{"venue": venue, "without":
-  without, "split": split}` - which has no `"game_n"` key, so
-  `scoped_games`'s own `_narrow_player_games(..., game_n=slots.get("game_n"))`
-  always reads `None` regardless of what the question asked. The
-  `HONORED_SCOPING` gate (`test_every_template_honoring_a_scope_slot_actually_reads_it`)
-  passes anyway: it checks that the literal string `"game_n"` appears
-  somewhere in `period_split`'s combined source, and it does - inside
-  `scoped_games`'s OWN body, appended because `period_split` calls
-  `scoped_games` at all, regardless of whether the dict it passes actually
-  carries the key. Measured read-only against
-  `/home/jeff/code/association/nba.duckdb`: `period_split(ctx, {"player":
-  "LeBron James", "period": 1, "season": 2018, "season_type": 3})` and the
-  same call with `"game_n": 1` added both answer "LeBron James scored 207
-  points in the 1st quarter over 22 games of the 2018 postseason, averaging
-  9.4." - byte-for-byte identical; `game_n=1` narrowed nothing.
-- **User sees:** "Embiid's 1st quarter points in game 1 of each series, 2018
-  playoffs" answered with his whole 22-game postseason average, fluently, with
-  nothing saying `game_n` was dropped - the router-invents/router-drops shape
-  `AGENTS.md` warns about, but for a scoping slot rather than a name.
-- **Next step:** either give `_period_split_rows` the actual `slots` dict (the
-  way `player_stat`/`game_log` pass it to `scoped_games` whole) instead of a
-  hand-picked subset, or add `"game_n": slots.get("game_n")` - wherever the
-  fix lands, add a case to `test_every_template_honoring_a_scope_slot_actually_reads_it`'s
-  own suite that calls the template (not just greps its source) with `game_n`
-  set, the way the two new date/career tests here do, so a hand-picked dict
-  missing a key cannot pass silently again. Worth checking whether the same
-  gap exists for any other template whose caller builds a narrowed dict by
-  hand rather than forwarding `slots` (not checked here - out of scope for C5).
-
 ## P2: misleading or incomplete
 
 ### The router's slots depend on which llama-server load answered: 29 of 277 questions routed differently on one load, 26 of them back on the next
