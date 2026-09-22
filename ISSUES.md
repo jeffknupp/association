@@ -251,6 +251,41 @@ those were found.
   (`players_named_in`), and send a named player's "how many games" to
   `player_stat`.
 
+### `period_split` declares `game_n` honored and silently answers the whole span instead
+- **Found:** 2026-09-22, step 3 C5 work on `period_split`'s `date` cell (out
+  of that task's scope - found while checking whether every slot
+  `HONORED_SCOPING["period_split"]` claims is actually wired, the same
+  question the `date` exclusion turned out to answer "no" for).
+- **Evidence:** `templates/games.py`'s `_period_split_rows` builds the dict it
+  hands to `common.scoped_games` by hand - `{"venue": venue, "without":
+  without, "split": split}` - which has no `"game_n"` key, so
+  `scoped_games`'s own `_narrow_player_games(..., game_n=slots.get("game_n"))`
+  always reads `None` regardless of what the question asked. The
+  `HONORED_SCOPING` gate (`test_every_template_honoring_a_scope_slot_actually_reads_it`)
+  passes anyway: it checks that the literal string `"game_n"` appears
+  somewhere in `period_split`'s combined source, and it does - inside
+  `scoped_games`'s OWN body, appended because `period_split` calls
+  `scoped_games` at all, regardless of whether the dict it passes actually
+  carries the key. Measured read-only against
+  `/home/jeff/code/association/nba.duckdb`: `period_split(ctx, {"player":
+  "LeBron James", "period": 1, "season": 2018, "season_type": 3})` and the
+  same call with `"game_n": 1` added both answer "LeBron James scored 207
+  points in the 1st quarter over 22 games of the 2018 postseason, averaging
+  9.4." - byte-for-byte identical; `game_n=1` narrowed nothing.
+- **User sees:** "Embiid's 1st quarter points in game 1 of each series, 2018
+  playoffs" answered with his whole 22-game postseason average, fluently, with
+  nothing saying `game_n` was dropped - the router-invents/router-drops shape
+  `AGENTS.md` warns about, but for a scoping slot rather than a name.
+- **Next step:** either give `_period_split_rows` the actual `slots` dict (the
+  way `player_stat`/`game_log` pass it to `scoped_games` whole) instead of a
+  hand-picked subset, or add `"game_n": slots.get("game_n")` - wherever the
+  fix lands, add a case to `test_every_template_honoring_a_scope_slot_actually_reads_it`'s
+  own suite that calls the template (not just greps its source) with `game_n`
+  set, the way the two new date/career tests here do, so a hand-picked dict
+  missing a key cannot pass silently again. Worth checking whether the same
+  gap exists for any other template whose caller builds a narrowed dict by
+  hand rather than forwarding `slots` (not checked here - out of scope for C5).
+
 ## P2: misleading or incomplete
 
 ### The router's slots depend on which llama-server load answered: 29 of 277 questions routed differently on one load, 26 of them back on the next
@@ -2175,6 +2210,51 @@ those were found.
 - **GitHub:** none yet
 
 ## P3: refusal or gap
+
+### `period_leaderboard` stays off the player-games relation
+- **Found:** 2026-09-22, step 3 C5's own second task: assess whether a
+  no-player read of the relation (`player_games.league()`) would let
+  `period_leaderboard` honor `opponent`/`venue`/`since`/`span`/`date` for a
+  league-wide or team-wide ranking, the way `period_split` now does for one
+  player. Assessed and not ported - documented in the template's own
+  docstring (`templates/games.py: period_leaderboard`), per the README's
+  instruction to write down why rather than guess at a port.
+- **Evidence:** two separate blockers, not one:
+  - `opponent`/`venue`/`date` would need a NEW no-player narrowing step:
+    `common._narrow_player_games` (what `common.scoped_games` calls)
+    hardcodes `pgl.athlete_id = ?` into its base clause, so it cannot build a
+    league-wide `Narrowed` at all today - `player_games.league()` gives the
+    bare relation, but nothing turns an opponent/venue/date slot into a
+    clause on it without a player to resolve `without`/tenure against, which
+    is exactly the piece C1 left off the relation for `threshold_count` and
+    `single_game_high`'s own no-player modes.
+  - `since`/`span` reopen, at league scale, the identical bug just found and
+    fixed for `period_split`'s own `span`/`since` in this same commit
+    (`RELATION_SCOPING_EXCLUDED["period_split"]`, `templates/common.py`) -
+    both were previously silently wrong the same way (a career/`since` sum
+    that answered real games but headed them with the wrong single season),
+    not merely refused, and are refused now rather than shipped like that
+    again: `PERIOD_RECONCILIATION`
+    is measured per season, so a leaderboard ranged over several seasons would
+    need that caveat applied once per season summed into each player's total,
+    or the range refused outright - porting the READ alone would let a
+    badly-reconciled season (2016, 76.5%) drag rankings with no caveat naming
+    it. `date` has a narrower problem even alone: it narrows to ONE game, and
+    `PER_GAME_MIN_GAMES` (the qualifier a per-game leaderboard needs, or the
+    leader is whoever played once and scored eight) would then disqualify
+    every player at once.
+- **User sees:** "who led the league in 1st quarter scoring against the
+  Celtics this season" and the like still refuse (falls through to the agent,
+  which per `AGENTS.md` has nothing better to read here either - no other
+  source has per-quarter box scores) rather than answering a narrower,
+  real question.
+- **Next step:** the `opponent`/`venue` half looks buildable without the
+  `since`/`span`/`date` half's problems - a no-player `_narrow_player_games`
+  variant (or a generalization that makes `player` optional) that skips
+  `without`/tenure entirely, plus `opponent`/`venue`/`team` clauses copied from
+  the existing pattern, single-season only. Worth a dedicated pass rather than
+  folding into a future step 3 task, since it is new capability (a behavior
+  change with its own golden cases), not a pure port.
 
 ### `player_splits` cannot honor a teammate's absence, a box-score line, a playoff-series game or an ordinal season when the subject is a team, not a player
 - **Found:** 2026-09-22, step 3 C2 work on `player_splits`/`period_split`

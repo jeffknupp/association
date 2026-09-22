@@ -157,9 +157,20 @@ RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
     # that game_log answers.
     "player_splits": {"date": "one game has nothing to split", "order": "a limited number of recent games is game_log's question"},
     "record_when": {"date": "one game has no record", "order": "a record over the last N games is game_log's question"},
-    # A period question with a date is that game's quarter, which the shot
-    # read does not scope by date yet.
-    "period_split": {"date": "the shot read is not scoped to one date yet"},
+    # A period question's accuracy caveat (PERIOD_RECONCILIATION) is measured
+    # per SEASON against ESPN's own linescores - summing across several would
+    # mix seasons of different reliability under one caveat, or none, and the
+    # header names ONE season regardless (`_period`), which would be wrong for
+    # a range too: measured, `since=2023` (honored before this exclusion,
+    # since scoped_player reads it directly off the full slots dict) pulled
+    # the correct 257 games back to 2023 but still headed them "the 2026
+    # regular season". `date` is no longer here: it narrows to one game (and
+    # so one season) through `scoped_games`, the same as every other template
+    # on the relation.
+    "period_split": {
+        "span": "the accuracy caveat is measured per season, not across a career",
+        "since": "the accuracy caveat is measured per season, and the header names one season - both wrong for a range",
+    },
 }
 """Per template, the relation's slots it refuses, and why.
 
