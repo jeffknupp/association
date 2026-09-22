@@ -13,7 +13,7 @@ from association.nba.season import current_season
 from association.query import shotchart
 from association.query.entities import MAX_CANDIDATES, Availability, Entity, collect_name_readings, resolve_player
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
-from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, TemplateContext, TemplateUnsupported, check_scope
+from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, TemplateContext, TemplateResult, TemplateUnsupported, check_scope
 from association.query.templates.games import _rebuilt_readable, game_log, head_to_head, period_leaderboard, period_split, player_matchup, team_quarter_points
 from association.query.templates.netpoints import fingerprint, player_netpoints
 from association.query.templates.players import SHOOTING_STATS, _box_score_stat_rebuilt, leaderboard, player_compare, player_history, player_stat, single_game_high, threshold_count
@@ -1511,7 +1511,7 @@ def _source_a_template_reads_slots_in(handler: Any) -> str:
     for step in sorted(set(re.findall(r"\b(_[a-z][a-z0-9_]*)\(", source))):
         if inspect.isfunction(getattr(module, step, None)):
             source += inspect.getsource(getattr(module, step))
-    for shared in ("scoped_player", "scoped_games"):
+    for shared in ("scoped_player", "scoped_games", "condition_player"):
         if f"{shared}(" in source:
             source += inspect.getsource(getattr(common, shared))
     return source
@@ -2674,7 +2674,9 @@ def test_scope_guard_blocks_a_template_that_would_ignore_a_game_scope() -> None:
         ("threshold_count", {"date": "2026-04-12"}),
         ("team_record", {"order": "recent"}),
         ("leaderboard", {"order": "first"}),
-        ("player_stat", {"date": "2026-04-12"}),
+        # player_stat honored `date` from step 3, C2 on; a template with no
+        # relation behind it still refuses one.
+        ("player_history", {"date": "2026-04-12"}),
     ]:
         with pytest.raises(TemplateUnsupported, match="different span"):
             check_scope(intent, slots)
@@ -3364,6 +3366,50 @@ def test_a_career_and_a_named_season_at_once_is_refused(pg_ctx: TemplateContext,
 def test_game_log_refuses_a_threshold_rather_than_ignoring_it(pg_ctx: TemplateContext) -> None:
     with pytest.raises(TemplateUnsupported):
         game_log(pg_ctx, {"player": "Brandin Podziemski", "stat": "fieldGoalsAttempted", "threshold": 15})
+
+
+def test_player_stat_on_one_date_is_that_games_line(pg_ctx: TemplateContext) -> None:
+    """A date is one game (step 3, C2: the relation's `date` reaches
+    player_stat as it always reached game_log). e2 tipped {s-1}-12-02T00:30Z,
+    which is the evening of December 1 Eastern - the UTC day would find
+    nothing - and one game is a line, not an average, with no season total
+    appended and the career span the date replaced left unsaid."""
+    s = current_season()
+    result = player_stat(pg_ctx, {"player": "Brandin Podziemski", "date": f"{s - 1}-12-01"})
+    assert result.answer == f"Brandin Podziemski had 20 points, 7 rebounds and 5 assists on {s - 1}-12-01."
+    assert result.data["date"] == f"{s - 1}-12-01" and result.data["stats"]["gamesPlayed"] == 1
+    # The router's season is usually its "current" default: a date in the
+    # previous season is still found.
+    last = player_stat(pg_ctx, {"player": "Brandin Podziemski", "stat": "points", "date": f"{s - 1}-02-28", "season": s})
+    assert last.answer == f"Brandin Podziemski had 8 points on {s - 1}-02-28."
+    none = player_stat(pg_ctx, {"player": "Brandin Podziemski", "date": f"{s}-07-04"})
+    assert none.answer.startswith(f"No regular season game on {s}-07-04 found for Brandin Podziemski")
+
+
+def test_the_relation_window_is_cut_after_the_row_filters(pg_ctx: TemplateContext) -> None:
+    """ "His average over his last 2 games vs Detroit" averages the last two
+    DETROIT games, not the last two games of which some were vs Detroit. C0's
+    one skeleton-specific rule: the window is cut after every row filter and
+    before the aggregate. Read straight off the relation, since no template
+    sets a window yet (player_stat hands "last N" to game_log by decision)."""
+    from association.query.player_games import aggregate_sql
+    from association.query.templates.common import _narrow_player_games, _span_of
+
+    s = current_season()
+    span = _span_of("career", None, 2, "player_game_log")
+    narrowed = _narrow_player_games(pg_ctx.con, Entity("10", "Brandin Podziemski"), span, opponent="Detroit Pistons", venue=None, without=None)
+    assert not isinstance(narrowed, TemplateResult)
+    narrowed.window = ("recent", 2)
+    sql, params = aggregate_sql(narrowed, ["COUNT(*)", "AVG(pgl.points)", "MIN(g.date)"])
+    row = pg_ctx.con.execute(sql, params).fetchone()
+    assert row is not None
+    games, avg, first = row
+    # His Detroit games are e5 (8, s-1), e2 (20) and e3 (15): the newest two are e2 and e3.
+    assert (games, avg) == (2, 17.5) and first.startswith(f"{s - 1}-12-02")
+    assert narrowed.filters().endswith(" vs the Detroit Pistons over his last 2 games")
+    narrowed.window = ("first", 1)
+    sql, params = aggregate_sql(narrowed, ["COUNT(*)", "AVG(pgl.points)"])
+    assert pg_ctx.con.execute(sql, params).fetchone() == (1, 8.0)
 
 
 def test_player_stat_averages_the_games_against_an_opponent(pg_ctx: TemplateContext) -> None:
@@ -4222,6 +4268,31 @@ def test_a_period_is_narrowed_by_a_teammates_absence(period_ctx: TemplateContext
     # Every game, for contrast: five, since e6 is a game he did not play.
     whole = period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2})
     assert whole.data["games_played"] == 5 and "without" not in (whole.answer or "")
+
+
+def test_a_period_is_narrowed_by_a_line_on_a_box_score_column(period_ctx: TemplateContext) -> None:
+    """A line on a box-score column narrows which of the player's games the
+    period sum covers, the same as every other template on the relation
+    (step 3, C2) - previously `_period_split_rows` hard-coded `measures=[]`
+    into its own call to `common.scoped_games`, so `below`/`above` reached
+    `check_scope`'s declaration and nothing past it. e2 (30 total points) and
+    e4 (25) are the only games at or above 24 here; each holds one
+    first-quarter three (3 points) - 6 over 2 games, where the whole season
+    (5 games) totals 12."""
+    c = period_ctx.con
+    c.execute("ALTER TABLE player_box_stats ADD COLUMN points INTEGER")
+    for event, points in (("e1", 10), ("e2", 30), ("e3", 20), ("e4", 25), ("e5", 15)):
+        c.execute("UPDATE player_box_stats SET points = ? WHERE event_id = ? AND athlete_id = '1'", [points, event])
+    high = period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "above": "24 points"})
+    assert high.data["games_played"] == 2
+    assert high.data["total"] == 6
+    assert high.data["measures"] == ["at least 24 points"]
+    assert "with at least 24 points" in (high.answer or "")
+    low = period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "below": "24 points"})
+    assert low.data["games_played"] == 3
+    assert "with under 24 points" in (low.answer or "")
+    with pytest.raises(TemplateUnsupported):
+        period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "above": "24 vibes"})
 
 
 def test_a_period_log_takes_the_end_of_the_season_the_question_asked_for(period_ctx: TemplateContext) -> None:

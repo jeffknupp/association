@@ -22,6 +22,7 @@ from ..player_games import Narrowed, aggregate_sql, grouped_sql, league, rows_sq
 from .common import (
     _BOX_SCORES,
     _GAME_LOGS,
+    _ISO_DATE,
     HISTORY_COLUMNS,
     PLAYER_STAT_COLUMNS,
     REBUILT_STATS,
@@ -1030,7 +1031,14 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     season_type = slots.get("season_type") or 2
     # Refused here, before any name is resolved, if a line names no column.
     measures = measure_filters(slots.get("below"), slots.get("above"))
-    from_box_scores = _player_stat_reads_box_scores(slots, measures)
+    # One date is one game, read from the box score of that game - the same
+    # narrowing game_log honors, so "how did maxey do on 2026-03-01" is that
+    # night's line. A date replaces the season: the router's season is usually
+    # its "current" default, and a date from last season looked for in this
+    # one finds nothing.
+    raw_date = slots.get("date")
+    date = raw_date if isinstance(raw_date, str) and _ISO_DATE.match(raw_date) else None
+    from_box_scores = _player_stat_reads_box_scores(slots, measures) or bool(date)
     if slots.get("limit") or slots.get("order"):
         # "Jokic averages last 10 games" answered with his season line would be
         # the substitution this module exists to stop. game_log lists exactly
@@ -1046,8 +1054,8 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         "player_stat needs a player name",
         table="player_game_log" if from_box_scores else "player_season_stats_deduped",
         available=_GAME_LOGS if from_box_scores else _SEASON_LINES,
-        span=slots.get("span"),
-        season=slots.get("season"),
+        span="career" if date else slots.get("span"),
+        season=None if date else slots.get("season"),
     )
     if isinstance(subject, TemplateResult):
         return subject
@@ -1065,7 +1073,7 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     wanted = [] if shooting else _wanted_stats(slots)
 
     if from_box_scores:
-        narrowed = scoped_games(con, player, span, slots, opponent=slots.get("opponent"), measures=measures)
+        narrowed = scoped_games(con, player, span, slots, opponent=slots.get("opponent"), measures=measures, date=date)
         if isinstance(narrowed, TemplateResult):
             return narrowed
         return _box_score_player_stat(con, player, span, narrowed, wanted, shooting)
@@ -1322,9 +1330,10 @@ def _box_score_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span:
         selects.append("SUM(CASE WHEN pgl.reconstructed THEN 1 ELSE 0 END)")
     sql, params = aggregate_sql(narrowed, selects, rebuilt=rebuilt)
     row = con.execute(sql, params).fetchone()
-    filters = narrowed.filters()
+    filters = narrowed.filters(dated=False)
     scope: dict[str, Any] = {
         "season": span.season,
+        "date": narrowed.date,
         "span": "career" if span.career else None,
         "opponent": narrowed.opponent.name if narrowed.opponent else None,
         "venue": narrowed.venue,
@@ -1338,7 +1347,10 @@ def _box_score_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span:
         return TemplateResult(data={"player": player.name, **scope, "games": 0, "stats": {}}, answer=message)
     games, first, last = row[:3]
     rebuilt_shown = int(row[-1]) if rebuilt and row[-1] is not None else 0
-    when = span.during(first, last)
+    # One date is one game, and its "span" is the day: the career span the
+    # date replaced (see player_stat) is how the game was FOUND, not what the
+    # answer is about, so it is not said.
+    when = f"on {narrowed.date}" if narrowed.date else span.during(first, last)
     notes = _box_score_notes(con, player, span, narrowed, rebuilt=rebuilt, rebuilt_shown=rebuilt_shown)
     values: dict[str, Any] = {"gamesPlayed": int(games)}
     if shooting:
@@ -1445,6 +1457,10 @@ def _phrase_player_stat(name: str, period: str, values: dict[str, Any], wanted: 
     if not parts:
         return f"{name} has no {period} numbers in the warehouse."
     body = ", ".join(parts[:-1]) + f" and {parts[-1]}" if len(parts) > 1 else parts[0]
+    if games == 1 and when and when.startswith("on "):
+        # One game on one date is a line, not an average: "had 33 points, 3
+        # rebounds and 6 assists on 2026-03-01", and no total to add.
+        return f"{name} had {body}{games_note} {when}."
     played = f" in {_count_games(games)}{games_note}" if games else games_note
     sentence = f"{name} averaged {body} per game{played} {when or f'in the {period}'}."
     # The season total goes in its own clause rather than inline, and only when

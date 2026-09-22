@@ -186,6 +186,13 @@ class Narrowed:
     measures: list[str] = field(default_factory=list)
     #: The game of a playoff series the question named ("game 4"), or None.
     series_game: int | None = None
+    #: The window: the newest (``"recent"``) or oldest (``"first"``) N of the
+    #: narrowed games, or None for all of them. Cut AFTER every row filter and
+    #: BEFORE whatever a reader does with the rows, so "30-point games in his
+    #: last 10" counts inside the ten and "his average over his last 5 vs
+    #: Boston" averages the five Boston games - step 3's one rule that is
+    #: about the skeleton rather than the rows.
+    window: tuple[str, int] | None = None
 
     def clauses(self, *, narrowed: bool = True, recorded: bool = True, rebuilt: bool = False) -> tuple[str, list[Any]]:
         """The WHERE body and its parameters - without the narrowing when
@@ -227,6 +234,9 @@ class Narrowed:
             parts.append(f"in game {self.series_game} of {'the' if self.opponent is not None else 'each'} series")
         if self.date and dated:
             parts.append(f"on {self.date}")
+        if self.window is not None:
+            order, n = self.window
+            parts.append(f"over his {'last' if order == 'recent' else 'first'} {n} game{'s' if n != 1 else ''}")
         return "".join(f" {part}" for part in parts)
 
     def narrow(self, clause: str, *params: Any) -> None:
@@ -289,10 +299,30 @@ def rows_sql(narrowed: Narrowed, select: str, *, order: str, limit: int | None =
     return sql, params
 
 
-def aggregate_sql(narrowed: Narrowed, selects: list[str], *, rebuilt: bool = False) -> tuple[str, list[Any]]:
-    """One row of aggregates over the narrowed games: averages, totals, a count, a record."""
+def _windowed(narrowed: Narrowed, *, rebuilt: bool) -> tuple[str, list[Any]]:
+    """The FROM ... WHERE of a read: the relation under every row filter, and
+    under the window too when one is set - as a subquery cut to the newest or
+    oldest N by date, aliased so ``pgl.`` and ``g.`` still name the columns a
+    reader wrote against."""
     where, params = narrowed.clauses(rebuilt=rebuilt)
-    return f"SELECT {', '.join(selects)} {_PLAYER_GAMES} WHERE {where}", params
+    if narrowed.window is None:
+        return f"{_PLAYER_GAMES} WHERE {where}", params
+    order, n = narrowed.window
+    direction = "DESC" if order == "recent" else "ASC"
+    inner = f"SELECT pgl.* {_PLAYER_GAMES} WHERE {where} ORDER BY g.date {direction}, pgl.event_id LIMIT {int(n)}"
+    # Re-expose the game columns under their alias so a reader's `g.` works.
+    return f"FROM ({inner}) pgl JOIN games g ON g.event_id = pgl.event_id AND g.season = pgl.season", params
+
+
+def aggregate_sql(narrowed: Narrowed, selects: list[str], *, rebuilt: bool = False) -> tuple[str, list[Any]]:
+    """One row of aggregates over the narrowed games: averages, totals, a count,
+    a record - over the window, where one is set.
+
+    .. versionchanged:: 4.4.0
+       Honors :attr:`Narrowed.window`.
+    """
+    source, params = _windowed(narrowed, rebuilt=rebuilt)
+    return f"SELECT {', '.join(selects)} {source}", params
 
 
 def games_subquery(narrowed: Narrowed, box: BoxSource) -> tuple[str, list[Any]]:
@@ -347,8 +377,8 @@ def grouped_sql(
     A ``limit`` here is applied after grouping (the top N groups), never to
     the rows: "top 20 by average" and "the last 20 games, averaged" are
     different questions and only the second is a row window."""
-    where, params = narrowed.clauses(rebuilt=rebuilt)
-    sql = f"SELECT {', '.join(selects)} {_PLAYER_GAMES} WHERE {where} GROUP BY {group_by}"
+    source, params = _windowed(narrowed, rebuilt=rebuilt)
+    sql = f"SELECT {', '.join(selects)} {source} GROUP BY {group_by}"
     if having:
         sql += f" HAVING {having}"
     if order:

@@ -16,6 +16,76 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **Scoping is declared once, on the player-games relation (step 3, C2).**
+  The six templates that settle a player and narrow his games through the
+  shared steps - `game_log`, `player_stat`, `period_split`, `player_splits`,
+  `record_when`, `streak` - declared what they honored one list at a time,
+  and the lists had drifted: twelve slots on one, one on another, on the same
+  relation. `RELATION_SCOPING` is the one declaration, and
+  `RELATION_SCOPING_EXCLUDED` names the few cells a template refuses with the
+  reason ("one game is not a run"). `player_stat` now honors `date` - one
+  game, read as that night's line ("had 33 points, 3 rebounds and 6 assists on
+  2026-03-01"), found by its Eastern date and refused, naming the date, when
+  he had no game. The relation gained the window C0 ruled as its one
+  skeleton-specific rule: `Narrowed.window` is the newest or oldest N of the
+  narrowed games, cut after every row filter and before an aggregate, so a
+  future "his average over his last 5 vs Boston" averages the five Boston
+  games; no template sets it yet (`player_stat` still hands "last N" to
+  `game_log`, by decision).
+  `record_when` and `streak` now claim every cell `RELATION_SCOPING` declares
+  for the six templates on the player-games relation (`opponent`, `venue`,
+  `without`, a named half of the starter/bench `split`, `game_n`, `since`,
+  `season_n`, `below`, `above`) rather than the bare `span` they honored
+  before, and both read every one of them through the shared steps they
+  already settled through (`condition_player`), the way `HONORED_SCOPING`
+  claims them. `condition_player` takes a `measures` parameter (default none,
+  existing callers unchanged) so a `below`/`above` line built with
+  `measure_filters` in the template body narrows the pool the same way an
+  opponent or a venue does - `record_when`'s own threshold stays the split,
+  and a measure line narrows what it is read over ("20+ points AND 5+
+  assists"). Both answers now say what they narrowed to via
+  `Narrowed.filters()` in the title, and `since`/`season_n` get the same
+  phrasing `game_log`/`player_stat` give them ("since 2022 (...)", "in his
+  18th season (...)") through a new `_condition_span_label`, since
+  `record_when` and `streak` build their heading off the relation's own
+  `_Scope` rather than the `_Span` `condition_player` resolves internally.
+  `streak`'s run is read over the narrowed games, so "longest run of 20+
+  point games vs Boston" is a run over his Boston games only, and the answer
+  says so. The team branch of `record_when` and the team/league branches of
+  `streak` settle no player, so none of these cells reach them yet;
+  `_condition_needs_player_refusal` refuses one by name there rather than
+  silently answering as though it had been applied (ISSUES.md has the
+  follow-up).
+  `player_splits` and `period_split` now claim every slot
+  `templates.common.RELATION_SCOPING` declares (minus a per-template
+  exclusion in `RELATION_SCOPING_EXCLUDED`, each with its own reason) rather
+  than a hand-picked subset, and each newly claimed slot now actually narrows
+  the answer rather than being silently dropped:
+  - `player_splits` used to hand `condition_player` a copy of `slots` with
+    `"without": None` and `"split": None` - so "Embiid splits without
+    Harden" and "Tatum's numbers as a starter" reached `check_scope`'s
+    declaration and nothing else. `without`, one game of a playoff series
+    (`game_n`), a range or ordinal season (`since`/`season_n`) and a line on
+    a box-score column (`below`/`above`) now reach the relation, and a named
+    half of the starter/bench split (`split` as `"starter"`/`"bench"`) now
+    narrows the games while the CATEGORY shown stays the one it always was -
+    both groups side by side, folded back from the half the question named
+    (previously this always raised, since "starter"/"bench" are not in
+    `SPLIT_KINDS`). The heading now names every narrowing through
+    `Narrowed.filters()`, the same phrase every other template on the
+    relation renders, rather than a `venue`/`opponent`-only phrase this
+    template composed for itself ("at home", not "(at home)"; the opponent
+    before the venue, not after).
+  - `period_split` now honors `below`/`above` the same way: a line on a
+    box-score column narrows which of the player's games are summed for the
+    quarter or half, through `common.measure_filters` and `scoped_games`
+    rather than a hard-coded `measures=[]`.
+  - `common.condition_player` takes an optional `measures` parameter (default
+    `None` -> `[]`, so its other two callers are unchanged) to reach
+    `scoped_games`'s own; `common._condition_scope` now refuses `since`
+    alongside a named `season` instead of silently preferring `since` and
+    dropping the year, the same pairing `_span_of` already refused for
+    `game_log` and `player_stat`.
 - **The steps that settle a player and his games are written once (step 3,
   C1).** `game_log` and `player_stat` each wrote out the same sequence - settle
   the span, resolve the name against it, settle an ordinal season once he is

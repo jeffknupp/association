@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import re
 from datetime import datetime
 from typing import Any, cast
 
@@ -26,6 +25,7 @@ from ..shotchart import SHOT_AVAILABILITY, SHOT_VALUE_SQL, UNSEPARABLE_SHOT_VALU
 from .common import (
     _BOX_SCORES,
     _GAME_LOGS,
+    _ISO_DATE,
     HISTORY_COLUMNS,
     PLAYER_STAT_COLUMNS,
     REBUILT_STATS,
@@ -96,9 +96,6 @@ def _rebuilt_readable(con: duckdb.DuckDBPyConnection, needed: list[str]) -> bool
 
 
 DEFAULT_GAME_LOG_LIMIT = 10
-
-
-_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 # games is home/away-oriented, not team-perspective: joining team_id to only
@@ -1419,12 +1416,22 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     source.
 
     .. versionadded:: 2.2.0
+
+    .. versionchanged:: 4.4.0
+       Honors ``below``/``above`` (step 3, C2) - a line on a box-score column
+       ("with under 25 minutes") narrows which of the player's games are
+       summed for the period, through :func:`common.measure_filters` and
+       :func:`common.scoped_games`, the same as every other template on the
+       relation.
     """
     con = ctx.con
     periods, period_label = _period_scope(slots)
     stat = slots.get("stat")
     if isinstance(stat, str) and stat.strip() and stat not in ("points", "all"):
         raise TemplateUnsupported(f"period_split answers points only, not {stat!r} - no other stat is recorded per period")
+    # Refused here, before any name is resolved, if a line names no column -
+    # the same discipline player_stat's own measures follow.
+    measures = measure_filters(slots.get("below"), slots.get("above"))
 
     season = slots.get("season") or current_season()
     season_type = slots.get("season_type") or 2
@@ -1452,14 +1459,14 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         return opponent
 
     venue, started = _period_split_narrowing(slots.get("venue"), slots.get("split"))
-    narrowed_rows = _period_split_rows(con, player, span, periods, venue, opponent, slots.get("split"), slots.get("without"))
+    narrowed_rows = _period_split_rows(con, player, span, periods, venue, opponent, slots.get("split"), slots.get("without"), measures)
     if isinstance(narrowed_rows, TemplateResult):
         return narrowed_rows
-    rows, narrowed_mates = narrowed_rows
+    rows, narrowed_mates, narrowed_measures = narrowed_rows
 
     scope = _period(season, season_type)
     vs = f" against the {opponent.name}" if opponent else ""
-    at = _period_split_narrowing_said(venue, started, narrowed_mates)
+    at = _period_split_narrowing_said(venue, started, narrowed_mates, narrowed_measures)
     games = [{"date": _eastern_date(d), "opponent": name, "home_away": side, "points": int(pts or 0)} for d, side, name, pts in rows]
     data: dict[str, Any] = {
         "player": player.name,
@@ -1468,6 +1475,7 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         "opponent": opponent.name if opponent else None,
         "venue": venue,
         "started": started,
+        "measures": narrowed_measures,
         "games": games,
         "games_played": len(games),
     }
@@ -1617,16 +1625,22 @@ def _period_split_refusal(season: int, agreement: float | None) -> TemplateResul
     return None
 
 
-def _period_split_narrowing_said(venue: str | None, started: bool | None, mates: list[str]) -> str:
+def _period_split_narrowing_said(venue: str | None, started: bool | None, mates: list[str], measures: list[str] | None = None) -> str:
     """What the answer says it narrowed to, after the player and the period.
 
     Said in the answer, like every other narrowing here: a total over his
     starts, or over the games a teammate missed, headed as though it covered
     every game is the silent narrowing ``check_scope`` exists to stop.
+
+    .. versionchanged:: 4.4.0
+       Names a line on a box-score column (``below``/``above``,
+       :data:`common.MeasureFilter`), the same way :meth:`Narrowed.filters`
+       says one - "with under 5 turnovers".
     """
     said = f" at {'home' if venue == 'home' else 'away'}" if venue else ""
     said += "" if started is None else (" as a starter" if started else " off the bench")
     said += f" without {_joined(mates)}" if mates else ""
+    said += f" with {_joined(measures)}" if measures else ""
     return said
 
 
@@ -1652,7 +1666,8 @@ def _period_split_rows(
     opponent: Entity | None,
     split: Any = None,
     without: Any = None,
-) -> tuple[list[tuple[Any, ...]], list[str]] | TemplateResult:
+    measures: list[MeasureFilter] | None = None,
+) -> tuple[list[tuple[Any, ...]], list[str], list[str]] | TemplateResult:
     """A player's per-game point total in the wanted periods, one row a game.
 
     The games come from :func:`common.scoped_games`, the one narrowing every
@@ -1686,8 +1701,9 @@ def _period_split_rows(
     column of ``games`` too - so the value is summed in a CTE over
     ``shot_chart`` alone, where those names can only mean one thing.
 
-    Returns the rows and the teammates whose absence narrowed them (for the
-    answer to name), or the clarifying question the relation asks when a
+    Returns the rows, the teammates whose absence narrowed them, and the
+    box-score lines they were kept under or over as the answer says them (for
+    the answer to name), or the clarifying question the relation asks when a
     teammate's name matches more than one player.
 
     .. versionchanged:: 4.4.0
@@ -1699,8 +1715,13 @@ def _period_split_rows(
        than a direct call to :func:`common._narrow_player_games` (step 3, C1).
        Takes the already-settled ``span`` its caller now holds rather than a
        bare ``season``/``season_type`` pair.
+
+    .. versionchanged:: 4.4.0
+       Honors ``measures`` (step 3, C2) - a line on a box-score column narrows
+       which of the player's games are summed for the period, the same as
+       every other template on the relation.
     """
-    narrowed = scoped_games(con, player, span, {"venue": venue, "without": without, "split": split}, opponent=None, measures=[])
+    narrowed = scoped_games(con, player, span, {"venue": venue, "without": without, "split": split}, opponent=None, measures=measures or [])
     if isinstance(narrowed, TemplateResult):
         return narrowed
     if opponent is not None:
@@ -1735,7 +1756,7 @@ def _period_split_rows(
         """,
         [*played_params, player.id, span.season, span.season_type, *periods, span.season, span.season_type],
     ).fetchall()
-    return rows, [mate.name for mate in narrowed.without]
+    return rows, [mate.name for mate in narrowed.without], list(narrowed.measures)
 
 
 def _period_split_header(player: Entity, period_label: str, scope: str, vs: str, at: str, total: int, average: float, games: list[dict[str, Any]], slots: dict[str, Any], order: Any = None) -> str:
