@@ -253,6 +253,41 @@ those were found.
 
 ## P2: misleading or incomplete
 
+### `game_log`'s venue narrowing counts a neutral-site game as home or away; `team_record`'s does not
+- **Found:** 2026-09-22, step 3 C4 (the team-games relation), while porting
+  `game_log`'s team half and `head_to_head` onto `query/team_games.py`.
+- **Evidence:** `game_log` narrows a team's venue with `tg.side = ?` alone
+  (`templates/common.py: team_games`, carried over unchanged from the old
+  `_team_game_log_filters`'s `tbs.home_away = ?`); `team_record`'s own venue
+  split treats a neutral-site game as neither home nor away
+  (`templates/teams.py: _games_record_games`'s `"neutral" if r[2] else r[1]`,
+  and `team_leaderboard`'s `_venue_records`, `tg.side = ? AND NOT tg.neutral`).
+  Measured against the 2026-09-22 warehouse: `game_log(team="New York
+  Knicks", venue="home", season=2026)` lists the 2025-12-16 NBA Cup final (a
+  neutral-site Las Vegas game the Knicks were the designated home side of) as
+  one of their "home" games, while `team_record(team="New York Knicks",
+  season=2026, venue="home")` answers "30-10 (.750) at home ... (1
+  neutral-site game counts as neither home nor away)" over the same season.
+  Confirmed pre-existing rather than introduced by C4's port: the golden
+  comparison (`~/association-research/algebra-spike/step3`) shows this
+  `game_log` case byte-identical before and after the port, and the old
+  `_team_game_log_filters` read `team_box_stats.home_away`, which ESPN sets
+  to a real side for a neutral-site game too - so the gap already existed
+  in the pre-C4 code, just under a different name.
+- **User sees:** "Knicks last 10 home games" (or any team's) silently
+  includes a game played at a neutral site, with nothing in the answer
+  saying so - the numbers are real, but the label ("home") is not.
+- **Next step:** decide the one rule (exclude a neutral-site game from
+  `game_log`'s venue narrowing the way the record functions already do, or
+  narrow it and say so in the answer) and apply it in `templates/common.py:
+  team_games`, which both `game_log`'s team half and `head_to_head` already
+  read through - one change reaches both. Not fixed here: this carve-out is
+  a proven pure refactor, and picking a rule is a behavior change with its
+  own golden re-score.
+- **Source:** ours, not ESPN's - `team_box_stats.home_away` and
+  `games.neutral_site` both correctly describe the game; the gap is which of
+  the two `game_log`'s venue narrowing reads.
+
 ### "Since he joined the league" becomes one season, the year he joined
 - **Found:** 2026-09-21, yardstick-v2 live run (`live_31b2ec6.jsonl`)
 - **Evidence:** "Show me luka's avg assists in each year since he joined the
