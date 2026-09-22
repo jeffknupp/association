@@ -779,6 +779,17 @@ def test_a_streaks_opponent_and_venue_narrow_a_teams_own_run_too(league: Templat
     assert "vs the Philadelphia 76ers" in (against_phi.answer or "")
 
 
+def test_a_league_wide_streak_still_refuses_venue_and_opponent(league: TemplateContext) -> None:
+    """Unlike a named team (just above), the league-wide streak (nobody
+    named at all) has no single team's rival or home/road split to read -
+    `_streak_league_needs_named_subject` refuses by name rather than
+    silently narrowing nothing or picking one team to mean."""
+    with pytest.raises(TemplateUnsupported, match=r"streak cannot honor \['venue'\] without a named team or player"):
+        streak(league, _slots(kind="win", venue="home"))
+    with pytest.raises(TemplateUnsupported, match=r"streak cannot honor \['opponent'\] without a named team or player"):
+        streak(league, _slots(kind="win", opponent="Boston Celtics"))
+
+
 def test_a_team_turnovers_threshold_reads_totalturnovers() -> None:
     """DATA.md ("The team box `turnovers` column is zero before 2013")
     establishes `totalTurnovers` as ESPN's right team-turnover figure in
