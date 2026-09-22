@@ -1496,7 +1496,7 @@ def _streak_league(
     top = [s for s in streaks if s["length"] == streaks[0]["length"]]
     # A tie is reported as a tie, the way threshold_count reports one.
     leaders = " and ".join(s["name"] for s in top)
-    headline = f"{leaders} {'shared' if len(top) > 1 else 'had'} the longest {what} of the {label}: {streaks[0]['length']} games."
+    headline = f"{leaders} {'shared' if len(top) > 1 else 'had'} the longest {what} of the {label}: {streaks[0]['length']} {'game' if streaks[0]['length'] == 1 else 'games'}."
     rows = [(s["name"], [str(s["length"]), s["from"], s["to"] + (" *" if s["open"] else "")]) for s in streaks]
     footnote = " * still going at the last game on record." if any(s["open"] for s in streaks) else ""
     answer = f"{headline}\n" + _table(f"Longest, {label}:", ["games", "from", "to"], rows) + f"\n{rule}{footnote}"
@@ -1515,7 +1515,8 @@ def _single_streak(subject: str, label: str, runs: list[dict[str, Any]], rule: s
     top = runs[0]
     ties = [r for r in runs[1:] if r["length"] == top["length"]]
     season = f" (the {top['first_season']} season)" if scope.season is None and top["first_season"] == top["last_season"] else ""
-    answer = f"{subject}, {label}: {top['length']} games, {top['first_day']} to {top['last_day']}{season}."
+    games = "game" if top["length"] == 1 else "games"
+    answer = f"{subject}, {label}: {top['length']} {games}, {top['first_day']} to {top['last_day']}{season}."
     if ties:
         answer += " Matched by " + ", ".join(f"{r['first_day']} to {r['last_day']}" for r in ties) + "."
     if top["open"] and (scope.season is None or scope.season == current_season()):

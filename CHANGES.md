@@ -16,6 +16,10 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **A one-game streak is "1 game", not "1 games".** `streak`'s headline, for
+  a named subject and league-wide alike, pluralized by hand; a team's streak
+  narrowed to one opponent (new in C4 below) is the first common way to
+  produce a run of one, so it showed.
 - **A team's games are defined once (step 3, C4).** "A team's games" was
   defined three times, and two of them disagreed with the third:
   `team_metrics.TEAM_GAMES_SQL` selects a postseason by the CALENDAR YEAR it
