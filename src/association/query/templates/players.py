@@ -75,7 +75,24 @@ def _career_span(intent: str, span: Any, season: Any) -> bool:
     in 2024" (that season), "career leaders since 2015" (a range) and "career
     points through 2010" (a cutoff) all arrive as the same two slots. Answering
     any of them as one of the others is the substitution this module exists to
-    prevent."""
+    prevent.
+
+    Deliberately not `_span_of` (`common.py`, step 3/C1): the wording differs
+    ("cannot honor span" vs. "no span called"; "cannot tell whether a career
+    span ... means" vs. "a career span and the ... season at once") and so does
+    an edge case - this raises on `season == 0` where `_span_of`'s `and season`
+    check would not. Swapping in `_span_of` here was measured (golden snapshot,
+    460 cases across `threshold_count` and `single_game_high`): the corpus does
+    not happen to exercise either divergent path today, so the diff came back
+    clean, but that proves only that these 460 cases do not ask a malformed
+    span - not that the messages agree. `threshold_count` and `single_game_high`
+    stay on their own validation for that reason: the ONE thing this function
+    could share with `scoped_player` (the "a good span turns into a `_Span`"
+    step) is already shared - both templates already build their `_Span` through
+    `_span_of` once a player and season are settled (`_threshold_count_rows`,
+    `_single_game_high_scope`) - so this pre-check is the only piece left
+    outside `common.py`, and it cannot move without changing what a malformed
+    question is told."""
     if not span:
         return False
     if span != "career":
@@ -330,7 +347,15 @@ def _threshold_count_subject(con: duckdb.DuckDBPyConnection, text: Any, season_n
     An ordinal season ("his 18th season") is settled once he is known, so the
     name is narrowed over his career rather than by the current year. A
     league-wide count has no career to count seasons in, so "most points in
-    15th season played" refuses rather than answering for some year."""
+    15th season played" refuses rather than answering for some year.
+
+    Not `common.scoped_player` (step 3/C1): that function's own `_resolved_player`
+    call raises when the question names nobody, which is right for every other
+    template on it but wrong here - "most games with 40+ points" with no player
+    named is the league leaderboard, not a refusal, and that optional-player
+    read has to happen before `settle_ordinal_season` can even be asked for
+    (see the raise two lines below). `settle_ordinal_season` itself IS shared -
+    once a player is known, this calls the same step `scoped_player` does."""
     player = _threshold_count_player(con, text, None if season_n else season)
     if isinstance(player, TemplateResult):
         return player
@@ -385,6 +410,18 @@ def _threshold_count_rows(
     the old INNER JOIN semantics: the log LEFT JOINs ``players``, so a box
     score for an athlete missing from that table would otherwise be counted
     under a NULL name and reported as a nameless leader.
+
+    Built on ``league()``, not ``common.scoped_games`` (step 3/C1): ``league()``
+    is the everyone-at-once read one optional ``athlete_id`` filter narrows to
+    one man, which is what a leaderboard needs and ``scoped_games`` cannot give
+    - it always takes a resolved :class:`~association.query.entities.Entity`,
+    never "nobody in particular". There is also nothing of ``scoped_games``'
+    own narrowing to gain: it exists for opponent, venue, an absent teammate, a
+    starter/bench half, a game of a series and a date, and
+    ``HONORED_SCOPING["threshold_count"]`` claims none of those - only
+    ``span``, ``below``, ``above`` and ``season_n``, all handled here already
+    (the first three through ``_span_of``/``measure_filters``, both shared;
+    the fourth through :func:`common.settle_ordinal_season`, also shared).
     """
     span = _span_of("career" if season is None else None, season, season_type, "player_game_log")
     season_clause, season_params = span.clause("pgl.season")
@@ -1517,6 +1554,13 @@ def _single_game_high_scope(ctx: TemplateContext, column: str, season: int | Non
     was 0, on 2014-10-28 vs ORL" - fluent, dated, and false. A rebuilt line
     may answer, but only for a stat a rebuild gets right (REBUILT_STATS) and
     only where the warehouse carries the flag.
+
+    Same reasoning as :func:`_threshold_count_rows` for staying on ``league()``
+    rather than ``common.scoped_games`` (step 3/C1): the player here is
+    optional (unset means "the league"), which ``scoped_games`` cannot express,
+    and ``HONORED_SCOPING["single_game_high"]`` is ``{"span"}`` alone - none of
+    ``scoped_games``' own narrowing (opponent, venue, an absent teammate, a
+    split, a series game, a date) applies, so there is nothing it would add.
     """
     span = _span_of("career" if season is None else None, season, season_type, "player_game_log")
     season_clause, season_params = span.clause("pgl.season")

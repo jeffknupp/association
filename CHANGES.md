@@ -29,6 +29,20 @@ had no published version to be compatible with.
   player's games (answer text, data and refusals identical), with the
   comparison watched to fail when one slot was dropped from the shared
   function (14 cases moved).
+  `threshold_count` and `single_game_high` were assessed against the same two
+  functions and left on their own machinery, documented in place rather than
+  forced: both have a league-wide mode with no player named, which
+  `scoped_player`'s name resolution cannot express, and both read from
+  `league()` - an everyone-at-once relation a single `athlete_id` filter
+  narrows to one man - rather than `scoped_games`, which always narrows one
+  already-resolved player's rows and offers filters (opponent, venue, an
+  absent teammate, a split, a series game, a date) neither template honors.
+  Their own season/career check (`_career_span`) also stays: it raises
+  different wording than `scoped_player`'s `_span_of` on a malformed span, and
+  on `season == 0` where `_span_of` would not, so swapping it in would be an
+  answer change even though today's 460-case corpus does not happen to reach
+  either path (confirmed by perturbing the messages and re-running the golden
+  comparison, which came back identical).
 - **The router no longer invents a `season` or a `date` the question never
   states.** A bare `season` integer or `date` from the model used to be
   trusted on its own whenever the question named no year or day - measured
