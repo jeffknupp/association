@@ -10,7 +10,7 @@ from typing import Any, cast
 
 import duckdb
 
-from association.nba.coverage import COVERAGE, POSTSEASON
+from association.nba.coverage import POSTSEASON
 from association.nba.franchises import season_name, season_name_sql
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date
@@ -22,6 +22,7 @@ from ..metrics import PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from ..player_games import _joined, rows_sql
 from ..shotchart import SHOT_AVAILABILITY, SHOT_VALUE_SQL, UNSEPARABLE_SHOT_VALUES
 from ..team_games import TEAM_GAMES_SQL, TeamNarrowed
+from ..team_games import games_subquery as team_games_subquery
 from ..team_games import rows_sql as team_rows_sql
 from .common import (
     _BOX_SCORES,
@@ -59,6 +60,7 @@ from .common import (
     measure_filters,
     scoped_games,
     scoped_player,
+    scoped_team,
     team_games,
 )
 
@@ -868,29 +870,6 @@ def _player_game_log_mixed(
     )
 
 
-def _season_games(season: int, season_type: int, alias: str) -> tuple[str, list[Any]]:
-    """SQL selecting one season's games from ``games`` (aliased ``alias``), and
-    its parameters.
-
-    A postseason is selected by the CALENDAR YEAR it was played in, never by
-    its label. ESPN labels every season before 1993-94 by the year it STARTED:
-    the postseason games labeled 1990 end on 1991-06-12, the 1991 Finals, so a
-    label match answered "the 1991 playoffs" with 1992's. Every postseason is
-    played inside the year its season is named for (the 2020 bubble ended in
-    October 2020), so the year is exact for all of them - the same choice
-    ``team_metrics.games_scope`` makes. The phantom 1993 label is excluded, since
-    its games are 1994's and would be counted twice.
-
-    A regular season keeps its label: every regular season a template can reach
-    (1994 on) is labeled by the year it ends.
-    """
-    if season_type == 3:
-        phantom = COVERAGE["games"].phantom
-        excluded = f" AND {alias}.season NOT IN ({', '.join('?' for _ in phantom)})" if phantom else ""
-        return f"CAST(substr({alias}.date, 1, 4) AS INTEGER) = ?{excluded}", [season, *phantom]
-    return f"{alias}.season = ?", [season]
-
-
 def _head_to_head_names(teams_slot: Any, team_slot: Any, opponent_slot: Any) -> list[str]:
     """The team names asked for, merged from `teams`, `team` and `opponent`.
 
@@ -1052,21 +1031,6 @@ def _head_to_head_narrowed_phrase(a: str, b: str, games: int, a_wins: int, b_win
     return f"{lead}; the {leader} won the series {trailing}."
 
 
-# The same team-perspective join game_log uses, so which side of a game was
-# "this team" is never re-derived from team_id comparisons.
-# home_linescores/away_linescores hold the official per-period score for that
-# side (index 0 = Q1 ... 4+ = OT1/OT2/...) - no plays table, no LAG(), no
-# --include-pbp, unlike the per-PLAYER version of this question.
-_TEAM_QUARTER_SQL = f"""
-SELECT g.date,
-       CASE WHEN tbs.home_away = 'home' THEN g.home_linescores ELSE g.away_linescores END AS own_linescores,
-       {season_name_sql("opp.team_id", "tbs.season", "opp.display_name")} AS opponent
-FROM team_box_stats tbs
-JOIN real_games g ON g.event_id = tbs.event_id AND g.season = tbs.season
-JOIN teams opp ON opp.team_id = tbs.opponent_team_id
-"""
-
-
 # Above this many games, a full per-game breakdown is unreadable rather than
 # informative - it only fires when no opponent narrows the season down (a
 # real head-to-head, regular season or playoffs, is never more than ~7 games).
@@ -1099,8 +1063,10 @@ def _period_label(period: int) -> str:
 
 
 def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
-    """A team's total points in ONE quarter/period, optionally narrowed to one
-    named opponent.
+    """A team's total points in ONE quarter/period, narrowed to an opponent,
+    a venue, one Eastern date, one game of each playoff series, a window of
+    its newest or oldest N games, or a career that starts partway through -
+    the full team-games relation.
 
     A PLAYER's quarter or half is answered by :func:`period_split`, not here -
     see its docstring for why the derivation this one used to say a player's
@@ -1117,6 +1083,22 @@ def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> Template
     prompt.
 
     .. versionadded:: 1.1.0
+
+    .. versionchanged:: 4.4.0
+       Reads its games from :mod:`association.query.team_games` (step 3, C4b)
+       through :func:`common.scoped_team`/:func:`common.team_games`, instead of
+       a hand-written join over ``team_box_stats``: "show sixers first quarter
+       scoring for their last 10 games" and "trailblazers stats last 10 games
+       3 point average 1st quarter" (ISSUES.md) both refused for want of
+       ``order``/``limit``, which the relation now supplies as a window cut
+       before the linescores are summed. ``venue``, ``date``, ``since``,
+       ``span`` and ``game_n`` are honored the same way, for free, and the
+       answer says which of them narrowed the games it counted. A side effect:
+       this no longer depends on ``team_box_stats`` at all (only on
+       ``real_games``' own linescores), so a season with a real game list but
+       an empty team box score - the empty 2013-2018 Chicago and New Orleans
+       seasons, AGENTS.md's "Whole team-seasons of box scores are empty" - is
+       no longer silently invisible to it; not measured further here.
     """
     con = ctx.con
     periods, period_label = _period_scope(slots, "team_quarter_points")
@@ -1126,17 +1108,53 @@ def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> Template
         raise TemplateUnsupported("team_quarter_points cannot answer for a named player")
     _team_quarter_points_check_stat(slots.get("stat"))
 
-    resolved = _team_quarter_points_teams(con, slots.get("team"), slots.get("opponent"), _slot_season(slots))
-    if isinstance(resolved, TemplateResult):
-        return resolved
-    team, opponent = resolved
+    raw_date = slots.get("date")
+    date = raw_date if isinstance(raw_date, str) and _ISO_DATE.match(raw_date) else None
+    settled = _team_quarter_points_team_and_span(con, slots, date)
+    if isinstance(settled, TemplateResult):
+        return settled
+    team, span = settled
+    # Named explicitly (rather than handing `slots` on whole) so every cell
+    # this template honors is visible in its own body, not only inside the
+    # shared step - `venue`, `game_n` and the `order`/`limit` window all
+    # narrow through `team_games` itself, which reads them off exactly these
+    # keys (see its own docstring).
+    narrowing = {"venue": slots.get("venue"), "game_n": slots.get("game_n"), "order": slots.get("order"), "limit": slots.get("limit")}
+    narrowed = team_games(con, team, span, narrowing, opponent=slots.get("opponent"), date=date)
+    if isinstance(narrowed, TemplateResult):
+        return narrowed
 
-    season = slots.get("season") or current_season()
-    season_type = slots.get("season_type") or 2
-    games = _team_quarter_points_games(con, team, opponent, season, season_type, periods)
+    games, first, last = _team_quarter_points_games(con, narrowed, periods)
+    period_str = _team_quarter_points_period_str(span, bool(narrowed.date), first, last)
+    return _team_quarter_points_answer(
+        team,
+        narrowed.opponent,
+        games,
+        periods=periods,
+        period_label=period_label,
+        period_str=period_str,
+        rank=slots.get("rank"),
+        extra=narrowed.filters(opponent=False),
+        dateless_extra=narrowed.filters(opponent=False, date=False),
+    )
 
-    period_str = _period(season, season_type)
-    return _team_quarter_points_answer(team, opponent, games, periods=periods, period_label=period_label, period_str=period_str, rank=slots.get("rank"))
+
+def _team_quarter_points_team_and_span(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], date: str | None) -> tuple[Entity, _Span] | TemplateResult:
+    """The team and the seasons its games come from - through
+    :func:`common.scoped_team`, the same order every other team template
+    settles them in, unless a ``date`` already names one game outright: the
+    router's season is usually its "current" default, and a date from a past
+    season looked for inside this one finds nothing, so a named date reads
+    every season on record instead - the same reasoning ``game_log`` and
+    ``head_to_head`` apply to a dated question. ``since`` is named explicitly,
+    for the same reason ``narrowing`` is built by hand in the caller."""
+    if date:
+        team = _resolved_team(con, slots.get("team"), season=_slot_season(slots))
+        if isinstance(team, TemplateResult):
+            return team
+        return team, _Span(None, slots.get("season_type") or 2)
+    scoped = {"team": slots.get("team"), "season": slots.get("season"), "season_type": slots.get("season_type"), "since": slots.get("since")}
+    return scoped_team(con, scoped, "team_quarter_points needs a team", span=slots.get("span"), season=slots.get("season"))
 
 
 def _team_quarter_points_check_stat(stat: Any) -> None:
@@ -1162,63 +1180,118 @@ def _team_quarter_points_check_stat(stat: Any) -> None:
         raise TemplateUnsupported(f"team_quarter_points reads the linescore, which holds only points, not {stat!r}")
 
 
-def _team_quarter_points_teams(con: duckdb.DuckDBPyConnection, team_text: Any, opponent_text: Any, season: int | None) -> tuple[Entity, Entity | None] | TemplateResult:
-    """The team and, if the question named one, the opponent - checked to be a
-    different team from the one asked about."""
-    team = _resolved_team(con, team_text, season=season)
-    if isinstance(team, TemplateResult):
-        return team
-    opponent: Entity | None = None
-    if isinstance(opponent_text, str) and opponent_text.strip():
-        resolved_opponent = _resolved_team(con, opponent_text, season=season)
-        if isinstance(resolved_opponent, TemplateResult):
-            return resolved_opponent
-        opponent = resolved_opponent
-        if opponent.id == team.id:
-            raise TemplateUnsupported("team_quarter_points opponent must differ from the team")
-    return team, opponent
-
-
-def _team_quarter_points_games(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity | None, season: int, season_type: int, periods: tuple[int, ...]) -> list[dict[str, Any]]:
+def _team_quarter_points_games(con: duckdb.DuckDBPyConnection, narrowed: TeamNarrowed, periods: tuple[int, ...]) -> tuple[list[dict[str, Any]], int | None, int | None]:
     """Each qualifying game's date, opponent and points in the asked-for
-    periods - None where the game never reached any of them, not zero.
+    periods - None where the game never reached any of them, not zero - read
+    from the relation's own rows, semi-joined to ``real_games`` for the
+    linescore itself, which the relation does not carry. The relation's own
+    ``eastern_date``/``side`` decide the date and which linescore is "this
+    team's" - no more ``team_box_stats`` join to say either.
 
     A half is the two quarters it holds, summed from the same official
     linescore one quarter is read from, so "most points in a first half" is
     answered by addition rather than by a second source.
+
+    Also returns the first and last season actually reached, the way
+    :func:`~association.query.templates.splits._team_season_range` does for
+    the condition templates' team branches - a postseason by the calendar
+    year it was played in, never the label - so a career or since-bounded
+    answer can say the real span its games came from.
     """
-    season_clause, season_params = _season_games(season, season_type, "g")
-    where = ["tbs.team_id = ?", season_clause, "tbs.season_type = ?"]
-    params: list[Any] = [team.id, *season_params, season_type]
-    if opponent is not None:
-        where.append("tbs.opponent_team_id = ?")
-        params.append(opponent.id)
-    rows = con.execute(f"{_TEAM_QUARTER_SQL} WHERE {' AND '.join(where)} ORDER BY g.date", params).fetchall()
-    games = []
-    for date, own_linescores, opp_name in rows:
+    # Every alias here is one `_TEAM_GAMES` does not already use anywhere
+    # inside itself (`tg`, `g`) - `base` is a COMPLETE statement
+    # (`team_games_subquery` embeds `_TEAM_GAMES`'s own `WITH` clause, whose
+    # `listed` CTE reads `FROM real_games g` and whose last CTE's own SELECT
+    # reads `FROM team_games tg`), and DuckDB does not keep an alias reused at
+    # an outer level of the same statement apart from an inner one already
+    # live several lines inside a nested `WITH` - reusing either name (tried
+    # both) resolved the CTE's OWN `g.neutral_site` against this query's outer
+    # join instead of its own local `real_games g`, and raised a
+    # BinderException nowhere near any line this function wrote. Every other
+    # reader of a `base` this shape wraps it under a name the base does not
+    # already use internally (`_record_when_team_base` uses `t`, not `tg`).
+    base, params = team_games_subquery(narrowed)
+    sql = f"""
+        SELECT qp.eastern_date,
+               CASE WHEN qp.side = 'home' THEN lg.home_linescores ELSE lg.away_linescores END AS own_linescores,
+               {season_name_sql("qp.opponent_id", "qp.season", "ot.display_name")} AS opponent,
+               CASE WHEN qp.season_type = 3 THEN year(qp.eastern_date) ELSE qp.season END AS season_year
+        FROM ({base}) qp
+        JOIN real_games lg ON lg.event_id = qp.event_id AND lg.season = qp.season
+        JOIN teams ot ON ot.team_id = qp.opponent_id
+        ORDER BY qp.eastern_date
+    """
+    rows = con.execute(sql, params).fetchall()
+    games: list[dict[str, Any]] = []
+    seasons: list[int] = []
+    for date, own_linescores, opp_name, season_year in rows:
         scores = _linescores(own_linescores)
         reached = [scores[n - 1] for n in periods if n - 1 < len(scores)]
         points = sum(reached) if reached else None
-        games.append({"date": _eastern_date(date), "opponent": opp_name, "points": points})
-    return games
+        games.append({"date": str(date), "opponent": opp_name, "points": points})
+        seasons.append(int(season_year))
+    return games, (min(seasons) if seasons else None), (max(seasons) if seasons else None)
+
+
+def _team_quarter_points_period_str(span: _Span, dated: bool, first: Any, last: Any) -> str:
+    """The span as a bare noun phrase - "2026 regular season", "since 2022
+    (2022-2026 regular seasons)" or "their career (1994-2026 regular
+    seasons)" - the way it always followed a name or a game count in this
+    template's answers, now extended past the one season it used to be.
+    Empty for a dated question: one Eastern date already says which game, and
+    a bare span here would say "(their career (...))" beside a date that has
+    already narrowed it to one."""
+    if dated:
+        return ""
+    if span.season is not None:
+        return _period(span.season, span.season_type)
+    years = span.years(first, last) if isinstance(first, int) and isinstance(last, int) else f"{span.kind}s"
+    return f"since {span.since} ({years})" if span.since is not None else f"their career ({years})"
 
 
 def _team_quarter_points_answer(
-    team: Entity, opponent: Entity | None, games: list[dict[str, Any]], *, periods: tuple[int, ...], period_label: str, period_str: str, rank: Any = None
+    team: Entity,
+    opponent: Entity | None,
+    games: list[dict[str, Any]],
+    *,
+    periods: tuple[int, ...],
+    period_label: str,
+    period_str: str,
+    rank: Any = None,
+    extra: str = "",
+    dateless_extra: str | None = None,
 ) -> TemplateResult:
     """The no-games refusal, the none-reached-that-period refusal, the single
     game a "most/least" question asks for, or the normal per-game breakdown
-    and total."""
+    and total.
+
+    ``extra`` is any narrowing beyond ``opponent``/``period_str`` the caller
+    already has as a phrase - a venue, a date, one game of a series, or a
+    window of recent games (:meth:`~association.query.team_games.TeamNarrowed.filters`,
+    opponent left out since this function already names it its own way) -
+    defaulted to nothing so a caller that resolved only a team and an
+    opponent, as this always could, need not pass it. ``dateless_extra`` is
+    the same phrase with a narrowed DATE left out too, for the one shape here
+    that already prints a game's date its own way (a single game, or the
+    tied-extreme sentence, both of which read a date off the game itself) -
+    defaulted to ``extra`` so a caller with no date to duplicate need not pass
+    it either.
+
+    .. versionchanged:: 4.4.0
+       Takes ``extra`` and ``dateless_extra`` (step 3, C4b).
+    """
+    if dateless_extra is None:
+        dateless_extra = extra
     vs = f" against the {opponent.name}" if opponent else ""
     opponent_name = opponent.name if opponent else None
     if not games:
-        answer = f"The warehouse has no {period_str} games for the {team.name}{vs}."
+        answer = f"The warehouse has no {period_str} games for the {team.name}{vs}{extra}."
         return TemplateResult(data={"team": team.name, "opponent": opponent_name, "games": []}, answer=answer)
 
     played = [g for g in games if g["points"] is not None]
     if not played:
         plural = "game" if len(games) == 1 else "games"
-        answer = f"None of the {team.name}'s {len(games)} {period_str} {plural}{vs} went to the {period_label}."
+        answer = f"None of the {team.name}'s {len(games)} {period_str} {plural}{vs}{extra} went to the {period_label}."
         return TemplateResult(data={"team": team.name, "opponent": opponent_name, "games": games}, answer=answer)
 
     total = sum(g["points"] for g in played)
@@ -1232,21 +1305,22 @@ def _team_quarter_points_answer(
         tied = [g for g in played if g["points"] == best]
         how = "most" if rank == "most" else "fewest"
         where = " and ".join(f"vs the {g['opponent']} on {g['date']}" for g in tied)
-        answer = f"The {team.name} scored {best} in the {period_label} {where}, their {how} in the {period_str}{vs}."
+        answer = f"The {team.name} scored {best} in the {period_label} {where}, their {how} in the {period_str}{vs}{dateless_extra}."
         return TemplateResult(data={**data, "rank": rank, "extreme": best, "extreme_games": tied}, answer=answer)
-    return TemplateResult(data=data, answer=_phrase_team_quarter_points(team.name, opponent_name, period_label, period_str, played, total))
+    return TemplateResult(data=data, answer=_phrase_team_quarter_points(team.name, opponent_name, period_label, period_str, extra, dateless_extra, played, total))
 
 
-def _phrase_team_quarter_points(team: str, opponent: str | None, period_label: str, period_str: str, games: list[dict[str, Any]], total: int) -> str:
+def _phrase_team_quarter_points(team: str, opponent: str | None, period_label: str, period_str: str, extra: str, dateless_extra: str, games: list[dict[str, Any]], total: int) -> str:
     if len(games) == 1:
         g = games[0]
-        return f"The {team} scored {g['points']} points in the {period_label} against the {g['opponent']} on {g['date']} ({period_str})."
+        paren = f" ({period_str})" if period_str else ""
+        return f"The {team} scored {g['points']} points in the {period_label} against the {g['opponent']} on {g['date']}{dateless_extra}{paren}."
     if len(games) > _QUARTER_BREAKDOWN_LIMIT:
         avg = total / len(games)
         vs = f" against the {opponent}" if opponent else ""
-        return f"The {team} scored {total} total points in the {period_label} across {len(games)} {period_str} games{vs}, averaging {avg:.1f} per game."
+        return f"The {team} scored {total} total points in the {period_label} across {len(games)} {period_str} games{vs}{extra}, averaging {avg:.1f} per game."
     header = f"The {team}, {period_label} scoring" + (f" against the {opponent}" if opponent else "")
-    header += f", {period_str} ({len(games)} games, {total} total):"
+    header += f"{extra}, {period_str} ({len(games)} games, {total} total):"
     lines = [f"  {g['date']}  {g['points']}  vs {g['opponent']}" for g in games]
     return "\n".join([header, *lines])
 

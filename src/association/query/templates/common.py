@@ -182,6 +182,78 @@ def _relation_scoping(intent: str, *extra: str) -> frozenset[str]:
     return frozenset((RELATION_SCOPING | set(extra)) - set(RELATION_SCOPING_EXCLUDED.get(intent, {})))
 
 
+# What the team-games relation narrows by, declared ONCE - the team
+# counterpart of RELATION_SCOPING. Every template that settles its team and
+# span through `scoped_team` and its games through `team_games` honors these:
+# an opponent, a venue, one Eastern date, a career that starts partway through
+# (`since`), one game of each playoff series (`game_n`), and a window of the
+# newest or oldest N of the narrowed games (`order`, with `limit`). `span`
+# ("career") is here too, even though it is settled by `scoped_team`/`_span_of`
+# rather than narrowed by `team_games` itself - the same shape RELATION_SCOPING
+# already keeps `season_n` in for the player relation, which `scoped_player`
+# settles the same way.
+#
+# `without` has a team meaning - the games a TEAMMATE missed - but that is
+# with_without's own question, not a team's plain games; `split`
+# (starter/bench) and `below`/`above` (a line on a box-score column) have no
+# shared team-scale reading yet (ISSUES.md, "record_when's team branch and
+# streak's team/league branches still refuse ..."), so none of the three is a
+# cell the relation itself carries. A template that wants one leans on
+# `TeamNarrowed.narrow` directly, the way `_record_when_team_base` already
+# joins `team_box_stats` for its own stat threshold.
+TEAM_RELATION_SCOPING = frozenset({"opponent", "venue", "date", "since", "span", "order", "game_n"})
+"""The scoping slots every template on the team-games relation honors.
+
+.. versionadded:: 4.4.0
+"""
+
+# The cells a template on the team relation does NOT honor, each with why. A
+# reason has to be about the template's answer, not its code - the same rule
+# RELATION_SCOPING_EXCLUDED follows.
+TEAM_RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
+    # A leaderboard ranks one season's (or one since-bounded span's) teams
+    # against each other; none of these four narrow that pool to a single
+    # game or a single opponent, and a career total across every season on
+    # record is not built.
+    "team_leaderboard": {
+        "opponent": "a leaderboard ranks every team; it has no reading for one named opponent",
+        "date": "a leaderboard ranks a season, not one day's games",
+        "span": "a leaderboard ranks one season's teams; a career total across every season is not built",
+        "order": "a leaderboard ranks a season, not a window of games",
+        "game_n": "a leaderboard ranks a season, not one game of a series",
+    },
+    # A record for one game is a single result, which game_log already answers
+    # directly, and a record over a limited number of recent games is the same
+    # substitution the player relation refuses for the same two cells. `since`
+    # and `game_n` are real, plausible readings ("Celtics record since 2022",
+    # "record in game 4 of each series") that nothing here answers yet.
+    "team_record": {
+        "date": "a record for one calendar date is a single game, which game_log already answers directly",
+        "order": "a record over a limited set of games is a game_log question",
+        "since": "team_record answers a season or a career (`span`), not a since-bounded range of seasons yet",
+        "game_n": "team_record does not narrow a record to one game of each series yet",
+    },
+    # head_to_head tallies every meeting in the span; none of these four pick
+    # out a subset of that tally, and each is a real, plausible reading
+    # ("head to head since 2022", "their last 10 meetings", "all-time
+    # head-to-head", "game 4 of their series") that nothing here answers yet.
+    "head_to_head": {
+        "since": "head_to_head answers one season or one date; a since-bounded span of seasons is not built",
+        "span": "head_to_head answers one season or one date; an all-time tally is not built",
+        "order": "head_to_head counts every meeting in the span; picking the last N of them is not built",
+        "game_n": "head_to_head counts every meeting; one numbered game of a series is not read here",
+    },
+}
+"""Per template, the team relation's slots it refuses, and why.
+
+.. versionadded:: 4.4.0
+"""
+
+
+def _team_relation_scoping(intent: str, *extra: str) -> frozenset[str]:
+    return frozenset((TEAM_RELATION_SCOPING | set(extra)) - set(TEAM_RELATION_SCOPING_EXCLUDED.get(intent, {})))
+
+
 # What each template actually honors. Anything not listed here honors none.
 HONORED_SCOPING: dict[str, frozenset[str]] = {
     # The six on the player-games relation: see RELATION_SCOPING.
@@ -193,10 +265,15 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # season line; a career is summed from the season table.
     "player_stat": _relation_scoping("player_stat"),
     "player_history": frozenset({"span"}),
-    # It always read `opponent`; listed now that `opponent` is a scoping slot.
-    "team_quarter_points": frozenset({"opponent"}),
+    # The team relation's whole set (step 3, C4b): its games now come from
+    # `team_games` (`opponent`, `venue`, `date`, `game_n`, the `order`/`limit`
+    # window) and its team and span from `scoped_team` (`since`, `span`).
+    "team_quarter_points": _team_relation_scoping("team_quarter_points"),
     "period_split": _relation_scoping("period_split"),
-    "head_to_head": frozenset({"opponent", "venue", "date"}),
+    # See TEAM_RELATION_SCOPING_EXCLUDED["head_to_head"] for why `since`,
+    # `span`, `order` and `game_n` are not here - unchanged from before step 3,
+    # C4b, which only renamed the declaration, through the shared helper.
+    "head_to_head": _team_relation_scoping("head_to_head"),
     # `span` "career" is honored by drawing (or averaging) every season of the
     # requested season type rather than the latest with data - see
     # shots._career_shot_span. Before this, "all playoff games" carried no
@@ -254,11 +331,18 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # does not touch the weekday/holiday/age/"since returning" narrowings that
     # stay refused). `split` is honored only as "month" - a record broken out
     # by calendar month, read from the same per-game date a month filter uses.
-    "team_record": frozenset({"venue", "opponent", "span", "situation", "split"}),
+    # See TEAM_RELATION_SCOPING_EXCLUDED["team_record"] for `date`/`order`/
+    # `since`/`game_n` - unchanged from before step 3, C4b, which only
+    # renamed the declaration, through the shared helper.
+    "team_record": _team_relation_scoping("team_record", "situation", "split"),
     # Honored for the record metrics, from the standings' own home/road
-    # strings; any other metric refuses it, since team season stats carry no
-    # venue split at all.
-    "team_leaderboard": frozenset({"venue"}),
+    # strings, or - for `since` - a tally of the relation's own wins and
+    # losses grouped by team (step 3, C4b); any other metric refuses `venue`,
+    # since team season stats carry no venue split at all, and every metric but
+    # a record one refuses `since`, since a season line has no way to sum
+    # across a span of seasons yet. See TEAM_RELATION_SCOPING_EXCLUDED
+    # ["team_leaderboard"] for the rest.
+    "team_leaderboard": _team_relation_scoping("team_leaderboard"),
 }
 
 
@@ -1229,11 +1313,13 @@ def scoped_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], missing: 
     with a reason to override them can).
 
     Returns ``(team, span)``, or the ``TemplateResult`` asking which team was
-    meant.
+    meant. Honors ``since`` the same way :func:`scoped_player` does for a
+    player - a career that starts partway through, rather than at the table's
+    own floor (step 3, C4b).
 
     .. versionadded:: 4.4.0
     """
-    scope = _span_of(span, season, slots.get("season_type") or 2, "games")
+    scope = _span_of(span, season, slots.get("season_type") or 2, "games", since=slots.get("since"))
     text = slots.get("team")
     if not isinstance(text, str) or not text.strip():
         raise TemplateUnsupported(missing)
@@ -1268,9 +1354,11 @@ def _team_span_clause(span: _Span) -> tuple[str, list[Any]]:
 
 
 def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, slots: dict[str, Any], *, opponent: Any, date: str | None = None) -> TeamNarrowed | TemplateResult:
-    """``team``'s games in ``span``, narrowed to an opponent, a venue and one
-    Eastern date where the question named them - the team counterpart of
-    :func:`scoped_games`, over :class:`association.query.team_games.TeamNarrowed`.
+    """``team``'s games in ``span``, narrowed to an opponent, a venue, one
+    Eastern date, one game of each playoff series (``game_n``) and a window of
+    the newest or oldest N (``order``/``limit``) where the question named
+    them - the team counterpart of :func:`scoped_games`, over
+    :class:`association.query.team_games.TeamNarrowed`.
 
     Every game the team actually played is included, the NBA Cup final among
     them: that exclusion is :func:`association.query.team_metrics.games_scope`'s,
@@ -1283,10 +1371,19 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, slots:
     before the games are read) passes the Entity, exactly as
     :func:`_narrow_player_games` does for a player's opponent; text is
     resolved here, so a clarification about the team comes back as the answer
-    either way. ``venue`` is read from ``slots`` because no caller has a
-    reason to resolve it first.
+    either way. ``venue``, ``game_n`` and ``order``/``limit`` are read from
+    ``slots`` because no caller has a reason to resolve any of them first - a
+    caller that must NOT honor one (``game_log``'s team half already lists its
+    own games with its own LIMIT; ``head_to_head`` counts every meeting rather
+    than a window of them) passes a slot dict without it, the same way both
+    already do for every cell but ``venue``.
 
-    .. versionadded:: 4.4.0
+    .. versionchanged:: 4.4.0
+       Honors ``game_n`` (step 3, C4b): one game of each playoff series,
+       numbered the way :func:`_narrow_player_games` numbers a player's own.
+       Honors ``order``/``limit`` (step 3, C4b) as a window - the newest or
+       oldest N of the narrowed games, cut after every other filter - via
+       :attr:`~association.query.team_games.TeamNarrowed.window`.
     """
     clause, params = _team_span_clause(span)
     narrowed = TeamNarrowed(base=["tg.team_id = ?", "tg.season_type = ?", clause], base_params=[team.id, span.season_type, *params], team=team)
@@ -1306,6 +1403,15 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, slots:
     if date:
         narrowed.narrow("tg.eastern_date = ?", date)
         narrowed.date = date
+    game_n = slots.get("game_n")
+    if game_n:
+        if span.season_type != 3:
+            # A series has games 1-7; a regular season has nothing "game 4" names.
+            raise TemplateUnsupported(f"game {game_n} names a game of a playoff series, and this is a {span.kind} question")
+        narrowed.narrow_series_game(int(game_n))
+    order = slots.get("order")
+    if order in ("recent", "first"):
+        narrowed.window = (order, _clamp_limit(slots.get("limit")))
     return narrowed
 
 

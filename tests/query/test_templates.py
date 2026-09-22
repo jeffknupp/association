@@ -982,16 +982,24 @@ def tq_con(tmp_path: Path) -> TemplateContext:
     c.execute(
         "CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR, "
         "home_team_id VARCHAR, away_team_id VARCHAR, home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR, "
-        "home_linescores VARCHAR, away_linescores VARCHAR)"
+        "home_linescores VARCHAR, away_linescores VARCHAR, neutral_site BOOLEAN, venue_city VARCHAR)"
     )
     c.execute("CREATE TABLE team_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, opponent_team_id VARCHAR, home_away VARCHAR)")
     c.execute("INSERT INTO teams VALUES ('18','NY','New York Knicks'),('2','BOS','Boston Celtics'),('5','LAL','Los Angeles Lakers')")
     s = current_season()
+    # `neutral_site`/`venue_city` are new columns (step 3, C4b): team_quarter_points
+    # now reads its games off query/team_games.py's relation, whose own
+    # `TEAM_GAMES_SQL` (`association.query.team_games._TEAM_GAMES`) reads both
+    # unconditionally (cup-final detection, the home/road split) - every other
+    # fixture that relation is read against already carries them
+    # (`tests/query/test_team_templates.py: team_ctx`, this file's own
+    # `playoff_ctx`); this one predates any reader of the relation reaching it.
+    # None of these three games is at a neutral site.
     c.execute(
         "INSERT INTO games VALUES "
-        "('e1',?,2,'2026-04-10T22:00Z','18','2',112,95,'18','30,25,28,29','20,25,25,25'),"
-        "('e2',?,2,'2026-04-12T22:00Z','2','18',110,96,'2','25,30,25,30','20,20,28,28'),"
-        "('e3',?,2,'2026-04-14T22:00Z','18','5',108,100,'18','10,32,36,30','25,25,25,25')",
+        "('e1',?,2,'2026-04-10T22:00Z','18','2',112,95,'18','30,25,28,29','20,25,25,25',false,'New York'),"
+        "('e2',?,2,'2026-04-12T22:00Z','2','18',110,96,'2','25,30,25,30','20,20,28,28',false,'Boston'),"
+        "('e3',?,2,'2026-04-14T22:00Z','18','5',108,100,'18','10,32,36,30','25,25,25,25',false,'New York')",
         [s, s, s],
     )
     c.execute(

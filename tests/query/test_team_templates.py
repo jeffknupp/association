@@ -20,6 +20,8 @@ from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.query.team_metrics import TEAM_METRICS, descending_for, resolve_team_metric
 from association.query.templates.common import TemplateContext, TemplateUnsupported, check_coverage, check_scope
+from association.query.templates.games import team_quarter_points
+from association.query.templates.splits import record_when, streak
 from association.query.templates.teams import team_leaderboard, team_outlook, team_record, team_stat
 
 S = current_season()
@@ -752,3 +754,204 @@ def test_a_default_limit_does_not_block_a_month_narrowing_or_split(team_ctx: Tem
     assert team_record(team_ctx, {"team": "Knicks", "split": "month", "limit": 12}).data["months"]
     with pytest.raises(TemplateUnsupported, match="game_log"):
         team_record(team_ctx, {"team": "Knicks", "limit": 12})
+
+
+# ---------------- team_leaderboard: `since` (step 3, C4b) ----------------
+
+
+def test_a_leaderboard_since_a_season_tallies_the_relation_across_seasons(team_ctx: TemplateContext) -> None:
+    """ "nba team with least playoff wins since 2022" (ISSUES.md) used to
+    refuse for want of `since`; the relation now tallies wins/losses across
+    the span itself, grouped by team. The fixture's Knicks-Celtics postseason
+    meetings since 1991: the 1991 Finals (labeled 1990 - "old1", Celtics
+    won), a 1994 game filed under two season labels and deduped to one
+    ("php", Knicks won), and this season's 3-1 Celtics series (p1-p4) -
+    Knicks 4-2, Celtics 2-4. Teams with no postseason games at all (San
+    Antonio, OKC, Washington) are not ranked, the same as a single-season
+    postseason ranking already leaves a non-participant out."""
+    result = team_leaderboard(team_ctx, {"stat": "record", "season_type": 3, "since": 1991})
+    assert "since 1991" in (result.answer or "")
+    teams = {t["team"]: t["display"] for t in result.data["teams"]}
+    assert teams == {"New York Knicks": "4-2 (.667)", "Boston Celtics": "2-4 (.333)"}
+
+
+def test_a_leaderboard_since_and_a_named_season_at_once_is_refused(team_ctx: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        team_leaderboard(team_ctx, {"stat": "record", "season_type": 3, "since": 1991, "season": S})
+
+
+def test_a_leaderboard_since_refuses_a_rate_metric(team_ctx: TemplateContext) -> None:
+    """A season line (team_season_stats) has no way to sum across a span of
+    seasons yet - refused by name, rather than answered for one season under
+    a since-shaped question that asked for a range."""
+    with pytest.raises(TemplateUnsupported, match="span of seasons"):
+        team_leaderboard(team_ctx, {"stat": "points", "since": 2020})
+
+
+def test_a_leaderboard_since_refuses_a_venue_split(team_ctx: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        team_leaderboard(team_ctx, {"stat": "record", "season_type": 3, "since": 1991, "venue": "home"})
+
+
+# ---------------- team_quarter_points: the team-games relation (step 3, C4b) ----------------
+
+
+@pytest.fixture
+def tqp_ctx(tmp_path: Path) -> TemplateContext:
+    """A fixture built for team_quarter_points' new cells: linescores across
+    four regular-season games (two home, two away, chronologically ordered
+    for an ``order``/``limit`` window), one earlier regular season for
+    ``since``, and a four-game Knicks-Celtics postseason series for
+    ``game_n``."""
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO teams VALUES ('18','NY','New York Knicks'),('2','BOS','Boston Celtics'),('5','LAL','Los Angeles Lakers')")
+    c.execute(
+        "CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR, "
+        "home_team_id VARCHAR, away_team_id VARCHAR, home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR, "
+        "home_linescores VARCHAR, away_linescores VARCHAR, neutral_site BOOLEAN, venue_city VARCHAR)"
+    )
+    rows: list[tuple[Any, ...]] = [
+        # Season S-1, for `since` - the earliest game, Knicks Q1 40.
+        ("d1", S - 1, 2, f"{S - 2}-11-01T22:00Z", "18", "2", 120, 90, "18", "40,30,25,25", "20,20,25,25", False, "New York"),
+        # Season S regular season, oldest to newest - e3/e4 are the "last 2".
+        ("e1", S, 2, f"{S - 1}-11-10T22:00Z", "18", "2", 112, 95, "18", "30,25,28,29", "20,25,25,25", False, "New York"),
+        ("e2", S, 2, f"{S - 1}-12-05T22:00Z", "5", "18", 100, 96, "5", "25,25,25,25", "20,20,28,28", False, "Los Angeles"),
+        ("e3", S, 2, f"{S}-01-15T22:00Z", "18", "5", 108, 100, "18", "25,28,27,28", "20,25,25,30", False, "New York"),
+        ("e4", S, 2, f"{S}-02-20T22:00Z", "2", "18", 110, 105, "2", "30,25,25,30", "15,30,30,30", False, "Boston"),
+        # Season S postseason: a 4-game Knicks-Celtics series, for `game_n`.
+        ("p1", S, 3, f"{S}-04-19T23:00Z", "18", "2", 100, 90, "18", "18,27,25,30", "20,20,25,25", False, "New York"),
+        ("p2", S, 3, f"{S}-04-21T23:00Z", "2", "18", 95, 101, "18", "20,25,25,25", "22,27,26,26", False, "Boston"),
+        ("p3", S, 3, f"{S}-04-24T23:00Z", "18", "2", 105, 95, "18", "19,28,29,29", "20,25,25,25", False, "New York"),
+        ("p4", S, 3, f"{S}-04-26T23:00Z", "2", "18", 100, 110, "18", "20,25,25,30", "21,30,30,29", False, "Boston"),
+    ]
+    c.executemany("INSERT INTO games VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+    real_games.build_table(c, {"games", "teams"})
+    return TemplateContext(con=c, out_dir=tmp_path)
+
+
+def test_a_quarter_points_window_reads_the_last_n_games(tqp_ctx: TemplateContext) -> None:
+    """ "show sixers first quarter scoring for their last 10 games" and
+    "trailblazers stats last 10 games 3 point average 1st quarter"
+    (ISSUES.md, live yardstick failures) both refused for want of `order`/
+    `limit` - the relation now cuts to the window before the linescores are
+    summed. The Knicks' last 2 regular-season games by date are e3 (Q1 25)
+    and e4 (Q1 15); e1 and e2 are older and must not be counted."""
+    result = team_quarter_points(tqp_ctx, {"team": "Knicks", "period": 1, "season": S, "order": "recent", "limit": 2})
+    assert [g["points"] for g in result.data["games"]] == [25, 15]
+    assert result.data["total"] == 40
+    assert "last 2 games" in (result.answer or "")
+
+
+def test_a_quarter_points_window_oldest_first(tqp_ctx: TemplateContext) -> None:
+    result = team_quarter_points(tqp_ctx, {"team": "Knicks", "period": 1, "season": S, "order": "first", "limit": 2})
+    assert [g["points"] for g in result.data["games"]] == [30, 20]
+    assert "first 2 games" in (result.answer or "")
+
+
+def test_a_quarter_points_venue_narrows_the_games(tqp_ctx: TemplateContext) -> None:
+    """The Knicks' two home games this season are e1 (Q1 30) and e3 (Q1 25);
+    e2 and e4, both on the road, must not be counted."""
+    result = team_quarter_points(tqp_ctx, {"team": "Knicks", "period": 1, "season": S, "venue": "home"})
+    assert [g["points"] for g in result.data["games"]] == [30, 25]
+    assert result.data["total"] == 55
+
+
+def test_a_quarter_points_date_reads_one_game(tqp_ctx: TemplateContext) -> None:
+    result = team_quarter_points(tqp_ctx, {"team": "Knicks", "period": 1, "date": f"{S}-01-15"})
+    assert result.data["games"] == [{"date": f"{S}-01-15", "opponent": "Los Angeles Lakers", "points": 25}]
+    assert f"{S}-01-15" in (result.answer or "")
+
+
+def test_a_quarter_points_game_n_reads_one_game_of_the_series(tqp_ctx: TemplateContext) -> None:
+    """Game 4 of the Knicks-Celtics postseason series is p4 - the Knicks'
+    road game, Q1 21 from their own (away) linescore."""
+    result = team_quarter_points(tqp_ctx, {"team": "Knicks", "period": 1, "season": S, "season_type": 3, "game_n": 4})
+    assert result.data["games"] == [{"date": f"{S}-04-26", "opponent": "Boston Celtics", "points": 21}]
+    assert "game 4" in (result.answer or "")
+
+
+def test_a_quarter_points_game_n_regular_season_is_refused(tqp_ctx: TemplateContext) -> None:
+    """A series has games 1-7; a regular season has nothing "game 4" names."""
+    with pytest.raises(TemplateUnsupported):
+        team_quarter_points(tqp_ctx, {"team": "Knicks", "period": 1, "season": S, "season_type": 2, "game_n": 4})
+
+
+def test_a_quarter_points_since_spans_more_than_one_season(tqp_ctx: TemplateContext) -> None:
+    """Every Knicks regular-season game on record since season S-1: d1 (Q1
+    40) plus the four season-S games (30, 20, 25, 15) - 130 total across 5
+    games, the postseason series left out since this asks for no season type
+    at all (the default is the regular season)."""
+    result = team_quarter_points(tqp_ctx, {"team": "Knicks", "period": 1, "since": S - 1})
+    assert len(result.data["games"]) == 5
+    assert result.data["total"] == 130
+    assert f"since {S - 1}" in (result.answer or "")
+
+
+def test_a_quarter_points_opponent_and_venue_compose(tqp_ctx: TemplateContext) -> None:
+    """Both narrowings apply together, as every other reader of the relation's
+    narrowing composes them: the Knicks' one home game against the Celtics
+    this season is e1 (Q1 30); e3 is a home game but against the Lakers."""
+    result = team_quarter_points(tqp_ctx, {"team": "Knicks", "opponent": "Celtics", "period": 1, "season": S, "venue": "home"})
+    assert [g["points"] for g in result.data["games"]] == [30]
+
+
+# ---------------- record_when's team branch: `since`/`game_n` (step 3, C4b) ----------------
+
+
+def test_record_when_team_since_tallies_across_seasons(team_ctx: TemplateContext) -> None:
+    """The Celtics' postseason scores since 1991 (old1, php, p1-p4): 100, 90,
+    100, 101, 95, 110. Four of the six reach a 100-point threshold (old1,
+    p1, p2, p4); that pool's own record is 2-2 (old1 W, p1 L, p2 W, p4 L).
+    The two under it, php and p3, are both losses. Refused before (ISSUES.md)
+    for want of `since` on the team branch."""
+    result = record_when(team_ctx, {"team": "Celtics", "stat": "points", "threshold": 100, "season_type": 3, "since": 1991})
+    assert result.data["reached"]["games"] == 4
+    assert (result.data["reached"]["wins"], result.data["reached"]["losses"]) == (2, 2)
+    assert result.data["fell_short"]["games"] == 2
+    assert (result.data["fell_short"]["wins"], result.data["fell_short"]["losses"]) == (0, 2)
+    assert "since 1991" in (result.data["span"] or "")
+
+
+def test_record_when_team_since_and_a_named_season_at_once_is_refused(team_ctx: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        record_when(team_ctx, {"team": "Celtics", "stat": "points", "threshold": 100, "season_type": 3, "since": 1991, "season": S})
+
+
+def test_record_when_team_game_n_narrows_to_one_game_of_the_series(team_ctx: TemplateContext) -> None:
+    """Game 4 of the Knicks-Celtics series is p4, where the Celtics scored
+    110 and lost - one game, reaching the threshold, in the loss column."""
+    result = record_when(team_ctx, {"team": "Celtics", "stat": "points", "threshold": 100, "season_type": 3, "season": S, "game_n": 4})
+    assert result.data["reached"]["games"] == 1
+    assert (result.data["reached"]["wins"], result.data["reached"]["losses"]) == (0, 1)
+    assert result.data["fell_short"]["games"] == 0
+
+
+def test_record_when_team_game_n_regular_season_is_refused(team_ctx: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        record_when(team_ctx, {"team": "Celtics", "stat": "points", "threshold": 100, "season_type": 2, "season": S, "game_n": 4})
+
+
+# ---------------- streak's team/league branches: `since` (step 3, C4b) ----------------
+
+
+def test_streak_team_since_searches_more_than_one_season(team_ctx: TemplateContext) -> None:
+    """A team's own streak still runs within ONE season even under `since`
+    (:func:`_longest_runs`'s own ``("team_id", "season")`` partition, the
+    record-book rule the docstring already states) - `since` widens which
+    SEASONS are searched, not whether a run crosses between them. The
+    Celtics' postseason since 1991: one win in the 1991 Finals (old1) and one
+    win in this year's series (p2), each alone in its own season, so the
+    longest run either season held is exactly 1 game."""
+    result = streak(team_ctx, {"team": "Celtics", "season_type": 3, "since": 1991})
+    assert result.data["streaks"][0]["length"] == 1
+    assert "since 1991" in (result.data["span"] or "")
+
+
+def test_streak_league_since_reads_every_teams_seasons_in_the_span(team_ctx: TemplateContext) -> None:
+    """The league-wide (no team, no player) win-streak branch, `since`-bounded:
+    the Knicks' 3-1 postseason series this year holds a 2-game win streak
+    (p1, then p3-p4 after the one loss) - the longest of anyone's since 1991."""
+    result = streak(team_ctx, {"season_type": 3, "since": 1991})
+    assert result.data["streaks"][0]["length"] == 2
+    assert "New York Knicks" in result.data["streaks"][0]["name"]

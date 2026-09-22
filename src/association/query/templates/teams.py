@@ -35,7 +35,21 @@ from ..team_metrics import (
     resolve_team_metric,
     season_table,
 )
-from .common import TemplateContext, TemplateResult, TemplateUnsupported, _clamp_limit, _format_value, _joined, _ordinal, _period, _resolved_team, _season_name, _slot_season
+from .common import (
+    TemplateContext,
+    TemplateResult,
+    TemplateUnsupported,
+    _clamp_limit,
+    _format_value,
+    _joined,
+    _ordinal,
+    _period,
+    _resolved_team,
+    _season_name,
+    _slot_season,
+    _span_of,
+    _team_span_clause,
+)
 
 # Conference and division words. The warehouse holds no membership for either:
 # no table maps a team to one, and standings carry only each team's record in
@@ -919,6 +933,11 @@ def team_leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     the players' scoring leaders.
 
     .. versionadded:: 2.1.0
+
+    .. versionchanged:: 4.4.0
+       Honors ``since`` for a record metric (step 3, C4b): "nba team with
+       least playoff wins since 2022" (ISSUES.md) - see
+       :func:`_team_leaderboard_values`.
     """
     con = ctx.con
     refused = _conference_refusal(slots)
@@ -929,9 +948,16 @@ def team_leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     if key is None:
         raise TemplateUnsupported(f"no team metric for stat {stat!r}")
     metric = TEAM_METRICS[key]
+    since = slots.get("since")
+    since = since if isinstance(since, int) and since and not isinstance(since, bool) else None
+    if since is not None and isinstance(slots.get("season"), int) and slots["season"]:
+        raise TemplateUnsupported(f"since {since} and the {slots['season']} season at once")
+    # `season` still settles to a real year even under `since` - unread by
+    # _team_leaderboard_values' since-bounded path, and here only for the
+    # named team's own-season name lookup below, which stays "now" either way.
     season = slots.get("season") or current_season()
     season_type = slots.get("season_type") or 2
-    period = _period(season, season_type)
+    period = f"seasons since {since}" if since is not None else _period(season, season_type)
     rank_word = slots.get("rank") if slots.get("rank") in ("most", "fewest", "best", "worst") else None
     descending = descending_for(metric, rank_word)
     limit = _clamp_limit(slots.get("limit"), default=DEFAULT_TEAM_LEADERBOARD_LIMIT)
@@ -941,7 +967,7 @@ def team_leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     if isinstance(named, TemplateResult):
         return named
 
-    values_or_result = _team_leaderboard_values(con, key, metric, season, season_type, venue, period)
+    values_or_result = _team_leaderboard_values(con, key, metric, season, season_type, venue, period, since=since)
     if isinstance(values_or_result, TemplateResult):
         return values_or_result
     values, display = values_or_result
@@ -949,11 +975,11 @@ def team_leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     title = f"{metric.label.capitalize()}{f' {VENUE_WORDS[venue]}' if venue else ''}, {period}"
     if not values:
         answer = f"The warehouse has no {period} numbers to rank teams by {metric.label}."
-        return TemplateResult(data={"question_shape": title, "season": season, "teams": []}, answer=answer)
+        return TemplateResult(data={"question_shape": title, "season": None if since is not None else season, "teams": []}, answer=answer)
 
     order = ranked(values, descending)
     end = _team_leaderboard_order_label(metric, key, rank_word, descending)
-    return _team_leaderboard_result(order, display, limit, named, title, season, end, key)
+    return _team_leaderboard_result(order, display, limit, named, title, None if since is not None else season, end, key)
 
 
 def _team_leaderboard_named(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> Entity | TemplateResult | None:
@@ -965,19 +991,59 @@ def _team_leaderboard_named(con: duckdb.DuckDBPyConnection, slots: dict[str, Any
     return None
 
 
+def _team_leaderboard_since_records(con: duckdb.DuckDBPyConnection, season_type: int, since: int) -> list[TeamRecord]:
+    """Every team's win-loss record across the postseasons or regular seasons
+    from ``since`` on, tallied straight off the team-games relation and
+    grouped by team - the record metrics' since-bounded counterpart to
+    :func:`team_metrics.record_table`, which only ever reads one season.
+
+    Named by the team's CURRENT display name rather than a per-season one
+    (:func:`association.nba.franchises.season_name_sql`): a total across many
+    seasons has no single season left to key a franchise name off, and every
+    "since" question measured asks about a span recent enough that the
+    current name is also the right one for all of it.
+
+    .. versionadded:: 4.4.0
+    """
+    span = _span_of(None, None, season_type, "games", since=since)
+    clause, params = _team_span_clause(span)
+    narrowed = TeamNarrowed(base=["tg.team_id IN (SELECT team_id FROM teams)", "tg.season_type = ?", clause], base_params=[season_type, *params])
+    base, sub_params = team_games_subquery(narrowed)
+    rows = con.execute(
+        f"SELECT t.display_name, count(*) FILTER (WHERE x.won) AS wins, count(*) FILTER (WHERE NOT x.won) AS losses FROM ({base}) x JOIN teams t ON t.team_id = x.team_id GROUP BY 1",
+        sub_params,
+    ).fetchall()
+    return [TeamRecord(team=name, wins=int(wins), losses=int(losses)) for name, wins, losses in rows]
+
+
 def _team_leaderboard_values(
-    con: duckdb.DuckDBPyConnection, key: str, metric: TeamMetric, season: int, season_type: int, venue: str | None, period: str
+    con: duckdb.DuckDBPyConnection, key: str, metric: TeamMetric, season: int, season_type: int, venue: str | None, period: str, since: int | None = None
 ) -> tuple[dict[str, float], dict[str, str]] | TemplateResult:
     """team_leaderboard's per-team values and their display strings: the
-    standings for a record metric (venue-split where asked), team_metrics
-    otherwise - each with its own early-refusal path."""
+    standings for a record metric (venue-split where asked, or a tally of the
+    relation across a ``since``-bounded span of seasons), team_metrics
+    otherwise - each with its own early-refusal path.
+
+    .. versionchanged:: 4.4.0
+       Honors ``since`` for a record metric (step 3, C4b) - "nba team with
+       least playoff wins since 2022" (ISSUES.md) used to refuse for want of
+       it. Every other metric still refuses it: a season line (team_metrics'
+       own numbers) has no way to sum across a span of seasons yet.
+    """
     if metric.expression is None:
-        records: list[TeamRecord] | str = _venue_records(con, season, season_type, venue) if venue else record_table(con, season, season_type)
+        if since:
+            if venue is not None:
+                raise TemplateUnsupported("a since-bounded record has no home/road split yet")
+            records: list[TeamRecord] | str = _team_leaderboard_since_records(con, season_type, since)
+        else:
+            records = _venue_records(con, season, season_type, venue) if venue else record_table(con, season, season_type)
         if isinstance(records, str):
             return TemplateResult(data={"message": records, "season": season}, answer=records)
         values = {r.team: (r.win_pct if key == "record" else 1 - r.win_pct) for r in records}
         display = {r.team: _tally(r.wins, r.losses) for r in records}
         return values, display
+    if since:
+        raise TemplateUnsupported(f"team season stats have no way to sum {metric.label} across a span of seasons yet")
     if venue is not None:
         # Team season stats have no home/road split; team_box_stats does,
         # and the agent can reach it.
@@ -1008,9 +1074,10 @@ def _team_leaderboard_order_label(metric: TeamMetric, key: str, rank_word: str |
     return end
 
 
-def _team_leaderboard_result(order: list[tuple[int, str, float]], display: dict[str, str], limit: int, named: Entity | None, title: str, season: int, end: str, key: str) -> TemplateResult:
+def _team_leaderboard_result(order: list[tuple[int, str, float]], display: dict[str, str], limit: int, named: Entity | None, title: str, season: int | None, end: str, key: str) -> TemplateResult:
     """team_leaderboard's final table: the ranked rows up to the limit, with a
-    named team's own row appended past it where it would otherwise be cut."""
+    named team's own row appended past it where it would otherwise be cut.
+    ``season`` is None for a since-bounded ranking, which spans more than one."""
     shown = order[:limit]
     extra = [row for row in order[limit:] if named is not None and row[1] == named.name]
     name_width = max(len(team) for _, team, _ in [*shown, *extra])

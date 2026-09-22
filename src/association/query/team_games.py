@@ -11,8 +11,9 @@ because they live in the relation instead of in each caller:
   ``played`` step keeps one row per ``(season_type, home_team_id,
   away_team_id, eastern_date)`` - the highest ``season`` label when two agree
   - so a caller never needs its own ``season NOT IN (1993, ...)`` guard the
-  way :func:`association.query.templates.games._season_games` used to write
-  one per call site;
+  way ``association.query.templates.games._season_games`` used to write one
+  per call site (removed, step 3, C4b: its one caller, ``team_quarter_points``,
+  now takes its games from this relation);
 - **a postseason is selected by the calendar year it was played in**, from
   the relation's own :data:`Eastern date <association.nba.season.eastern_date_sql>`
   rather than a raw UTC timestamp - never by ESPN's pre-1993-94 label, which
@@ -37,11 +38,23 @@ answer can say which narrowing emptied it, and the same four readers
 rule the player relation follows: this module takes ids the entity layer has
 already resolved, never a name.
 
-``association.query.conditions._team_games`` - read by ``player_splits`` and
-``streak``'s team branches, and by ``with_without``'s windows - is NOT this
-relation. It scopes by season LABEL rather than calendar year, which is the
-wrong-year fault this module's docstring above describes; porting its callers
-onto this relation is later work, not done here.
+The old ``conditions._team_games``, which scoped by season LABEL rather than
+calendar year (the wrong-year fault this module's docstring above describes),
+is gone: ``player_splits``, ``record_when`` and ``streak``'s team branches and
+``with_without``'s windows were ported onto this relation in step 3, C4, and
+``head_to_head`` and ``game_log``'s team half in the same step. Every reader of
+a team's games now goes through here.
+
+Step 3, C4b adds the cells a team's games can be narrowed to that C4 left off:
+:attr:`TeamNarrowed.window` (the newest or oldest N of the narrowed games, the
+team counterpart of :attr:`association.query.player_games.Narrowed.window`)
+and :attr:`TeamNarrowed.series_game` (one game of each playoff series, the
+team counterpart of :attr:`association.query.player_games.Narrowed.series_game`).
+A team's ``since`` (a career that starts partway through) needed no new cell
+here at all: :func:`association.query.templates.common._span_of` already
+reads it into the ``_Span`` a caller passes as ``team_games``'s own ``span``,
+so the relation's ``team_games`` CTE and :func:`association.query.templates.common._team_span_clause`
+narrow by it the same way they already narrow a career.
 
 .. versionadded:: 4.4.0
 """
@@ -153,6 +166,13 @@ class TeamNarrowed:
     venue: str | None = None
     #: The one Eastern date the games were narrowed to, as the answer says it.
     date: str | None = None
+    #: The game of a playoff series the question named ("game 4"), or None -
+    #: the team counterpart of :attr:`association.query.player_games.Narrowed.series_game`.
+    series_game: int | None = None
+    #: The window: the newest (``"recent"``) or oldest (``"first"``) N of the
+    #: narrowed games, or None for all of them - cut AFTER every row filter,
+    #: the team counterpart of :attr:`association.query.player_games.Narrowed.window`.
+    window: tuple[str, int] | None = None
 
     def clauses(self, *, narrowed: bool = True) -> tuple[str, list[Any]]:
         """The WHERE body and its parameters - without the narrowing when
@@ -165,22 +185,78 @@ class TeamNarrowed:
             params += self.extra_params
         return " AND ".join(where), params
 
-    def filters(self) -> str:
+    def filters(self, *, opponent: bool = True, date: bool = True) -> str:
         """What the games were narrowed to, as it follows a name: ``" vs the
-        Detroit Pistons at home"``."""
+        Detroit Pistons at home"``. ``opponent`` is False for a caller that
+        already names the opponent its own way (``team_quarter_points`` says
+        "against the Pistons", not "vs the Pistons") and wants the rest of the
+        narrowing without a second, differently-worded mention of it. ``date``
+        is False the same way, for a caller whose sentence already names the
+        one game's date its own way (a single-game answer that already prints
+        ``g['date']``) and would otherwise say it twice."""
         parts = []
-        if self.opponent is not None:
+        if self.opponent is not None and opponent:
             parts.append(f"vs the {self.opponent.name}")
         if self.venue:
             parts.append("at home" if self.venue == "home" else "on the road")
-        if self.date:
+        if self.series_game is not None:
+            # "of the series" only where one series is in view: an opponent
+            # names it. Across a postseason it is game 4 of each series.
+            parts.append(f"in game {self.series_game} of {'the' if self.opponent is not None else 'each'} series")
+        if self.date and date:
             parts.append(f"on {self.date}")
+        if self.window is not None:
+            order, n = self.window
+            parts.append(f"over their {'last' if order == 'recent' else 'first'} {n} game{'s' if n != 1 else ''}")
         return "".join(f" {part}" for part in parts)
 
     def narrow(self, clause: str, *params: Any) -> None:
         """One more clause over the same rows - how every narrowing composes."""
         self.extra.append(clause)
         self.extra_params.extend(params)
+
+    def narrow_series_game(self, n: int) -> None:
+        """Only the ``n``th game of each playoff series: the games between the
+        same two teams in one postseason, numbered by date over ``real_games``
+        - the team counterpart of :meth:`association.query.player_games.Narrowed.narrow_series_game`.
+
+        .. versionadded:: 4.4.0
+        """
+        self.narrow(f"tg.event_id IN (SELECT event_id FROM ({_TEAM_SERIES_GAMES}) WHERE game_of_series = ?)", n)
+        self.series_game = n
+
+
+# Every postseason game numbered within its series, over the two teams that
+# played it - the team relation's own copy of
+# :data:`association.query.player_games._SERIES_GAMES`. Kept separate rather
+# than imported, the same way :func:`named` is its own copy: the two relations
+# share no base class, on purpose, so a change to one's clause-composition
+# rules cannot silently reach the other.
+_TEAM_SERIES_GAMES = (
+    "SELECT s.event_id, ROW_NUMBER() OVER (PARTITION BY s.season, LEAST(s.home_team_id, s.away_team_id), GREATEST(s.home_team_id, s.away_team_id) ORDER BY s.date, s.event_id) AS game_of_series "
+    "FROM real_games s WHERE s.season_type = 3"
+)
+
+
+def _windowed(narrowed: TeamNarrowed, *, join: str = "") -> tuple[str, list[Any]]:
+    """The FROM ... WHERE of a read: the relation under every row filter, and
+    under the window too when one is set - as a subquery cut to the newest or
+    oldest N by Eastern date, aliased so ``tg.`` still names the columns a
+    reader wrote against. ``join`` is any extra table a caller's own SELECT
+    needs (see :func:`rows_sql`); it always follows ``tg`` - inside the window
+    it has nothing left to filter, since the window has already cut the rows.
+
+    The team counterpart of :func:`association.query.player_games._windowed`.
+
+    .. versionadded:: 4.4.0
+    """
+    where, params = narrowed.clauses()
+    if narrowed.window is None:
+        return f"FROM team_games tg{join} WHERE {where}", params
+    order, n = narrowed.window
+    direction = "DESC" if order == "recent" else "ASC"
+    inner = f"SELECT tg.* FROM team_games tg WHERE {where} ORDER BY tg.eastern_date {direction}, tg.event_id LIMIT {int(n)}"
+    return f"FROM ({inner}) tg{join}", params
 
 
 def rows_sql(narrowed: TeamNarrowed, select: str, *, order: str, limit: int | None = None, join: str = "") -> tuple[str, list[Any]]:
@@ -192,10 +268,11 @@ def rows_sql(narrowed: TeamNarrowed, select: str, *, order: str, limit: int | No
     opponent's own-season name (:func:`association.nba.franchises.season_name_sql`)
     - since the base FROM is always ``team_games tg`` alone.
 
-    .. versionadded:: 4.4.0
+    .. versionchanged:: 4.4.0
+       Honors :attr:`TeamNarrowed.window`.
     """
-    where, params = narrowed.clauses()
-    sql = f"{_TEAM_GAMES} SELECT {select} FROM team_games tg{join} WHERE {where} ORDER BY {order}"
+    source, params = _windowed(narrowed, join=join)
+    sql = f"{_TEAM_GAMES} SELECT {select} {source} ORDER BY {order}"
     if limit is not None:
         sql += f" LIMIT {int(limit)}"
     return sql, params
@@ -205,10 +282,11 @@ def aggregate_sql(narrowed: TeamNarrowed, selects: list[str], *, join: str = "")
     """One row of aggregates over the narrowed games: a count, a tally, a
     sum of points. See :func:`rows_sql` for ``join``.
 
-    .. versionadded:: 4.4.0
+    .. versionchanged:: 4.4.0
+       Honors :attr:`TeamNarrowed.window`.
     """
-    where, params = narrowed.clauses()
-    return f"{_TEAM_GAMES} SELECT {', '.join(selects)} FROM team_games tg{join} WHERE {where}", params
+    source, params = _windowed(narrowed, join=join)
+    return f"{_TEAM_GAMES} SELECT {', '.join(selects)} {source}", params
 
 
 def games_subquery(narrowed: TeamNarrowed, *, join: str = "") -> tuple[str, list[Any]]:
@@ -216,10 +294,11 @@ def games_subquery(narrowed: TeamNarrowed, *, join: str = "") -> tuple[str, list
     what a reader that groups a team's games by a condition (a split, a
     streak, a with/without window) wraps. See :func:`rows_sql` for ``join``.
 
-    .. versionadded:: 4.4.0
+    .. versionchanged:: 4.4.0
+       Honors :attr:`TeamNarrowed.window`.
     """
-    where, params = narrowed.clauses()
-    return f"{_TEAM_GAMES} SELECT tg.* FROM team_games tg{join} WHERE {where}", params
+    source, params = _windowed(narrowed, join=join)
+    return f"{_TEAM_GAMES} SELECT tg.* {source}", params
 
 
 def named(sql: str, params: list[Any], prefix: str = "r") -> tuple[str, dict[str, Any]]:
