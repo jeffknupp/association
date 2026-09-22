@@ -42,7 +42,6 @@ from .common import (
     _clamp_limit,
     _condition_scope,
     _log_carries_rebuilt,
-    _narrow_player_games,
     _Narrowed,
     _no_games,
     _no_narrowed_games,
@@ -1434,16 +1433,26 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     if refusal is not None:
         return refusal
 
-    player = _resolved_player(con, slots.get("player"), available=SHOT_AVAILABILITY, season=season)
-    if isinstance(player, TemplateResult):
-        return player
+    # Resolved against the shot table, not the box-score or season-line
+    # availabilities `scoped_player`'s other callers use - a player with shots
+    # on record for this period is a different (narrower) question from one
+    # with a game log, and `scoped_player` takes `available` as a parameter for
+    # exactly this reason. `span` is never "career" here - it is not among the
+    # slots `period_split` declares in HONORED_SCOPING, so `check_scope` has
+    # already refused one before this runs - which is what makes the span
+    # `scoped_player` settles the same "current or named" season this read
+    # before it, byte for byte.
+    subject = scoped_player(con, slots, "no player named", table="player_game_log", available=SHOT_AVAILABILITY, span=slots.get("span"), season=slots.get("season"))
+    if isinstance(subject, TemplateResult):
+        return subject
+    player, span = subject
 
     opponent = _optional_team(con, slots.get("opponent"), season=_slot_season(slots))
     if isinstance(opponent, TemplateResult):
         return opponent
 
     venue, started = _period_split_narrowing(slots.get("venue"), slots.get("split"))
-    narrowed_rows = _period_split_rows(con, player, season, season_type, periods, venue, opponent, slots.get("split"), slots.get("without"))
+    narrowed_rows = _period_split_rows(con, player, span, periods, venue, opponent, slots.get("split"), slots.get("without"))
     if isinstance(narrowed_rows, TemplateResult):
         return narrowed_rows
     rows, narrowed_mates = narrowed_rows
@@ -1637,8 +1646,7 @@ def _period_split_narrowing(venue: Any, split: Any) -> tuple[str | None, bool | 
 def _period_split_rows(
     con: duckdb.DuckDBPyConnection,
     player: Entity,
-    season: int,
-    season_type: int,
+    span: _Span,
     periods: tuple[int, ...],
     venue: str | None,
     opponent: Entity | None,
@@ -1647,14 +1655,20 @@ def _period_split_rows(
 ) -> tuple[list[tuple[Any, ...]], list[str]] | TemplateResult:
     """A player's per-game point total in the wanted periods, one row a game.
 
-    The games come from the ``player_game`` relation
-    (:func:`common._narrow_player_games`), which is the one definition of "a
-    player's games" - the season-keyed join, the did-not-play and empty-line
-    guard, the teammate tenure rule - so a narrowing added there reaches this
-    template too. That is how ``without`` arrived: "scottie barnes stats 2nd
-    half log without rj" was refused for a slot no period template honored,
-    while the relation had answered exactly that narrowing for four other
-    templates since the port.
+    The games come from :func:`common.scoped_games`, the one narrowing every
+    template that reads a player's games shares - the season-keyed join, the
+    did-not-play and empty-line guard, the teammate tenure rule - so a
+    narrowing added there reaches this template too. That is how ``without``
+    arrived: "scottie barnes stats 2nd half log without rj" was refused for a
+    slot no period template honored, while the relation had answered exactly
+    that narrowing for four other templates since the port.
+
+    ``opponent`` is applied by hand afterward rather than through
+    ``scoped_games``'s own ``opponent`` parameter: the caller resolves it
+    eagerly (:func:`period_split` needs the name for the answer whether or not
+    any games are narrowed to it), and ``scoped_games`` expects unresolved
+    text to look up itself, on the same pattern :func:`common._narrow_player_games`
+    always has.
 
     Two rules on top of the relation, both about the denominator:
 
@@ -1679,9 +1693,14 @@ def _period_split_rows(
     .. versionchanged:: 4.4.0
        Reads the relation rather than its own copy of the played-game guard,
        and honors ``without`` through it.
+
+    .. versionchanged:: 4.4.0
+       Reads ``player``'s games through :func:`common.scoped_games` rather
+       than a direct call to :func:`common._narrow_player_games` (step 3, C1).
+       Takes the already-settled ``span`` its caller now holds rather than a
+       bare ``season``/``season_type`` pair.
     """
-    span = _span_of(None, season, season_type, "player_game_log")
-    narrowed = _narrow_player_games(con, player, span, opponent=None, venue=venue, without=without, split=split)
+    narrowed = scoped_games(con, player, span, {"venue": venue, "without": without, "split": split}, opponent=None, measures=[])
     if isinstance(narrowed, TemplateResult):
         return narrowed
     if opponent is not None:
@@ -1714,7 +1733,7 @@ def _period_split_rows(
         LEFT JOIN scored s ON s.event_id = p.event_id
         ORDER BY p.date
         """,
-        [*played_params, player.id, season, season_type, *periods, season, season_type],
+        [*played_params, player.id, span.season, span.season_type, *periods, span.season, span.season_type],
     ).fetchall()
     return rows, [mate.name for mate in narrowed.without]
 
