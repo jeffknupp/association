@@ -74,6 +74,7 @@ from .common import (
     measure_filters,
     ordinal_word,
     team_games,
+    whole_span,
 )
 
 
@@ -580,6 +581,8 @@ def _player_splits_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], s
     narrowed = team_games(con, team, scope, slots, opponent=opponent)
     if isinstance(narrowed, TemplateResult):
         return narrowed
+    # A split, a record, a run: read over every game in the span (common.whole_span).
+    whole_span(narrowed)
     base, params = team_aggregate_sql(narrowed, list(_TEAM_SPLIT_SELECT), join=_TEAM_SPLIT_JOIN)
     games, first, last = _team_season_range(con, base, params, scope)
     if not games:
@@ -1210,6 +1213,8 @@ def _record_when_team_answer(con: duckdb.DuckDBPyConnection, slots: dict[str, An
     narrowed = team_games(con, team, span, slots, opponent=slots.get("opponent"))
     if isinstance(narrowed, TemplateResult):
         return narrowed
+    # A split, a record, a run: read over every game in the span (common.whole_span).
+    whole_span(narrowed)
     # The narrowed pool BEFORE any stat availability is checked, so a team
     # with real games in this span/narrowing but none carrying the stat
     # (`_record_when_team_no_stat`) is told apart from a team with no games
@@ -1408,6 +1413,8 @@ def _streak_team(
     narrowed = team_games(con, team, scope, slots, opponent=opponent)
     if isinstance(narrowed, TemplateResult):
         return narrowed
+    # A split, a record, a run: read over every game in the span (common.whole_span).
+    whole_span(narrowed)
     base, params = team_named(*team_aggregate_sql(narrowed, list(_TEAM_STREAK_SELECT)))
     games, first, last = _team_season_range(con, base, params, scope)
     if not games:

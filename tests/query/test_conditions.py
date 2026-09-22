@@ -1271,6 +1271,22 @@ def test_a_bare_limit_of_one_is_not_refused(league: TemplateContext) -> None:
     assert result.data["games"] == 1
 
 
+def test_a_bare_limit_never_windows_a_condition_template(league: TemplateContext) -> None:
+    """`scoped_games` reads a bare `limit` as "the newest N" for the templates
+    that honor a window (step 3, C5); a split, a record and a run exclude
+    `order` by declaration and are read over every game in the span, so the
+    router's filler `limit: 1` must not cut them to one game - it did, for
+    three recorded questions ("76ers record when Maxey scores 20+": 1-0 over
+    1 game instead of 35-28 over 63), until `common.whole_span`. The team
+    branches go through the same rule."""
+    whole = player_splits(league, _slots(player="Jayson Tatum"))
+    assert whole.data["games"] > 1
+    assert player_splits(league, _slots(player="Jayson Tatum", limit=1)).data["games"] == whole.data["games"]
+    team_whole = player_splits(league, _slots(team="Boston Celtics"))
+    assert team_whole.data["games"] > 1
+    assert player_splits(league, _slots(team="Boston Celtics", limit=1)).answer == team_whole.answer
+
+
 # ---------------- player_splits: step 3, C2 - the relation's own cells ----------------
 
 

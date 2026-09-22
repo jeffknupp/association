@@ -16,6 +16,19 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **The condition skeletons discard the relation's window; the team relation
+  reads a bare `limit` the way the player one does.** With C5 reading a bare
+  `limit` as "the newest N" in `scoped_games`, the router's filler `limit: 1`
+  on "76ers record when Maxey scores 20+" cut a 63-game record to one game -
+  caught by the step 3 golden set (3 of 323 recorded cases moved), not the
+  suite. `common.whole_span` says once what `RELATION_SCOPING_EXCLUDED`
+  already declares for `player_splits`, `record_when` and `streak` - a split,
+  a record or a run is read over every game in the span - and
+  `condition_player` and the three team branches apply it. `team_games` now
+  sets its window through the same `_relation_window` rule, so a team
+  question that drops `order` the way the router does for shots ("last 2
+  games" as a bare `limit`) is windowed rather than answered for the season;
+  closes the ISSUES.md entry that recorded the two relations disagreeing.
 - **Shots are read through the player-games relation, and the window belongs
   to the relation now, not to any one template (step 3, C5).** `shot_chart`
   and `shot_distance` (`templates/shots.py`) used to narrow by hand:

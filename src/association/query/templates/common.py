@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import duckdb
 
@@ -1233,6 +1233,9 @@ def scoped_player(
     return player, settled
 
 
+_NarrowedT = TypeVar("_NarrowedT", Narrowed, TeamNarrowed)
+
+
 def _relation_window(slots: dict[str, Any]) -> tuple[str, int] | None:
     """The WINDOW :func:`scoped_games` cuts the narrowed games to - the
     newest or oldest N, after every other filter
@@ -1346,7 +1349,25 @@ def condition_player(
         return narrowed
     if team is not None:
         narrowed.narrow("pgl.team_id = ?", team.id)
-    return player, narrowed
+    return player, whole_span(narrowed)
+
+
+def whole_span(narrowed: _NarrowedT) -> _NarrowedT:
+    """``narrowed`` with no window: the condition skeletons - a split, a
+    record, a run - are read over every game in the span, which is why each
+    of them excludes ``order`` in :data:`RELATION_SCOPING_EXCLUDED` ("a
+    limited number of recent games is game_log's question"). A bare ``limit``
+    is the router's filler on those questions (``limit: 1`` beside "76ers
+    record when Maxey scores 20+"), and :func:`_relation_window` reads a bare
+    limit as the newest N for the templates that DO honor a window - so the
+    skeleton that does not says so here, once, instead of the filler cutting a
+    63-game record to one game. Measured on the step 3 golden set: three
+    recorded questions did exactly that before this existed.
+
+    .. versionadded:: 4.4.0
+    """
+    narrowed.window = None
+    return narrowed
 
 
 def scoped_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], missing: str, *, span: Any, season: Any) -> tuple[Entity, _Span] | TemplateResult:
@@ -1461,9 +1482,9 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, slots:
             # A series has games 1-7; a regular season has nothing "game 4" names.
             raise TemplateUnsupported(f"game {game_n} names a game of a playoff series, and this is a {span.kind} question")
         narrowed.narrow_series_game(int(game_n))
-    order = slots.get("order")
-    if order in ("recent", "first"):
-        narrowed.window = (order, _clamp_limit(slots.get("limit")))
+    # The same window rule as the player relation's - a named order, or a
+    # bare limit read as the newest N (see _relation_window).
+    narrowed.window = _relation_window(slots)
     return narrowed
 
 

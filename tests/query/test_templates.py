@@ -2111,6 +2111,15 @@ def test_team_quarter_points_reads_each_games_own_side_of_linescores(tq_con: Tem
     assert len(result.data["games"]) == 3
 
 
+def test_team_quarter_points_reads_a_bare_limit_as_the_newest_games(tq_con: TemplateContext) -> None:
+    """The router drops `order` and keeps `limit` on "last N games" phrasings
+    (measured on the shot templates, four runs, three builds), so the team
+    relation reads a bare limit the way the player relation does - through
+    the one `_relation_window` rule - rather than answering the whole season."""
+    result = team_quarter_points(tq_con, {"team": "Knicks", "period": 1, "season": current_season(), "limit": 2})
+    assert len(result.data["games"]) == 2 and "last 2 games" in (result.answer or "")
+
+
 def test_team_quarter_points_filters_to_a_named_opponent(tq_con: TemplateContext) -> None:
     result = team_quarter_points(tq_con, {"team": "Knicks", "opponent": "Celtics", "period": 4, "season": current_season()})
     assert result.data["total"] == 57  # 29 (e1) + 28 (e2) - e3 (vs Lakers) excluded
