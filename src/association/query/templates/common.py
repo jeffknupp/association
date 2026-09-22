@@ -14,7 +14,7 @@ from typing import Any
 import duckdb
 
 from association.nba.coverage import COVERAGE, REGULAR_SEASON, caveat, unavailable
-from association.nba.season import current_season
+from association.nba.season import current_season, eastern_day_utc_range
 
 from ..answer import Artifact
 from ..conditions import _PLAYER_GAME_TABLES, _TEAM_GAME_TABLES, _game_scope, _Scope, box_source
@@ -1049,6 +1049,112 @@ def _narrow_player_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _
     if game_n:
         narrowed.narrow_series_game(int(game_n))
     return narrowed
+
+
+def scoped_player(
+    con: duckdb.DuckDBPyConnection,
+    slots: dict[str, Any],
+    missing: str,
+    *,
+    table: str,
+    available: Availability | tuple[Availability, ...],
+    span: Any,
+    season: Any,
+) -> tuple[Entity, _Span] | TemplateResult:
+    """The player a question is about and the seasons it covers, settled in the
+    one order that works - or the TemplateResult asking which player was meant.
+
+    The span comes first because it is what narrows an ambiguous name: a career
+    keeps Dell Curry and this season does not. An ordinal season ("his 18th
+    season") cannot be a year until he is known, so the name is narrowed over
+    his career and the ordinal settled after. Every template that reads a
+    player's games wrote these same steps out for itself; a fix to one - the
+    raw ``season`` slot, not a defaulted one, is what narrows the name - had to
+    be found and repeated in each.
+
+    ``span`` and ``season`` are passed rather than read, because a template may
+    have a reason to override them: a date names its own game, so ``game_log``
+    reads the career for it. ``since``, ``season_n`` and ``season_type`` are the
+    question's and are read here.
+
+    .. versionadded:: 4.4.0
+    """
+    season_n = slots.get("season_n")
+    scope = _span_of("career" if season_n else span, None if season_n else season, slots.get("season_type") or 2, table, since=slots.get("since"))
+    player = _resolved_player(con, slots.get("player"), missing, available=available, season=scope.season, through=_career_end(scope.season))
+    if isinstance(player, TemplateResult):
+        return player
+    settled = settle_ordinal_season(con, player, season_n, scope)
+    if isinstance(settled, TemplateResult):
+        return settled
+    return player, settled
+
+
+def scoped_games(
+    con: duckdb.DuckDBPyConnection,
+    player: Entity,
+    span: _Span,
+    slots: dict[str, Any],
+    *,
+    opponent: Any,
+    measures: list[MeasureFilter],
+    date: str | None = None,
+) -> Narrowed | TemplateResult:
+    """``player``'s games in ``span`` under every row-level narrowing the
+    question carries: opponent, venue, an absent teammate, a starter/bench
+    half, a game of each playoff series, lines on box-score columns, one date.
+
+    Each is a filter over the same rows, so each means the same thing whatever
+    the template then does with the rows - list them, average them, count them.
+    That is why they are read from ``slots`` HERE and not by each template: a
+    slot this does not read is one no template on the relation can honor, and a
+    slot it does read reaches all of them at once. ``check_scope`` has already
+    refused any the calling template does not declare, so nothing arrives here
+    that the template has not claimed.
+
+    ``opponent`` is passed because ``game_log`` may have rewritten it (a
+    ``team`` beside a named player is his opponent), and ``measures`` because
+    each template decides what a bare ``threshold`` means before any name is
+    resolved.
+
+    .. versionadded:: 4.4.0
+    """
+    narrowed = _narrow_player_games(con, player, span, opponent=opponent, venue=slots.get("venue"), without=slots.get("without"), split=slots.get("split"), game_n=slots.get("game_n"))
+    if isinstance(narrowed, TemplateResult):
+        return narrowed
+    narrow_measures(narrowed, measures)
+    if date:
+        start, end = eastern_day_utc_range(date)
+        narrowed.extra.append("g.date >= ? AND g.date < ?")
+        narrowed.extra_params += [start, end]
+        narrowed.date = date
+    return narrowed
+
+
+def condition_player(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], missing: str, scope: _Scope, *, team: Entity | None = None) -> tuple[Entity, Narrowed] | TemplateResult:
+    """The player a condition template is about, and his games in ``scope``
+    under the question's row-level narrowings - for the templates that group a
+    player's games by a condition (splits, a record above a threshold, a
+    streak, with/without) and read them as a subquery
+    (:func:`association.query.player_games.games_subquery`).
+
+    ``scope`` is the template's own ``_Scope``, kept because it reads "career
+    ... in 2015" as 2015 where ``_span_of`` refuses the pair - the one place
+    the two readers of a player's games disagreed, and not this refactor's to
+    settle. ``team`` narrows to the games he played for that team.
+
+    .. versionadded:: 4.4.0
+    """
+    subject = scoped_player(con, slots, missing, table="player_game_log", available=_BOX_SCORES, span=None if scope.season else "career", season=scope.season)
+    if isinstance(subject, TemplateResult):
+        return subject
+    player, span = subject
+    narrowed = scoped_games(con, player, span, slots, opponent=slots.get("opponent"), measures=[])
+    if isinstance(narrowed, TemplateResult):
+        return narrowed
+    if team is not None:
+        narrowed.narrow("pgl.team_id = ?", team.id)
+    return player, narrowed
 
 
 def _teammates_among(con: duckdb.DuckDBPyConnection, candidates: list[Entity], player: Entity, span: _Span) -> list[Entity]:

@@ -2081,6 +2081,26 @@ those were found.
 
 ## P3: refusal or gap
 
+### "Career ... in 2015" is 2015 on the condition templates and a refusal on the others
+- **Found:** 2026-09-21, step 3 C1 (folding the two readers of a player's
+  games into one).
+- **Evidence:** `templates.common._condition_scope` (player_splits,
+  record_when, streak, with_without) lets a named season beat `span=career`
+  - "the router keeps a named year alongside it, and 'career ... in 2015' is
+  asking about 2015" - while `_span_of` (game_log, player_stat,
+  threshold_count, single_game_high, period_split) raises "a career span and
+  the 2015 season at once" and the question falls through to the agent. Same
+  slots, opposite outcomes, by template.
+- **User sees:** on one intent an answer for 2015; on another, the slow agent.
+  Which one depends on the router's intent choice, not on the question.
+- **Next step:** one rule, in `scoped_player`, for both. The condition
+  templates' reading is the useful one (a named year is more specific than
+  "career"); decide it as a product decision in C2, then delete the branch
+  from `_span_of`. C1 kept each as it was so the refactor could be proved
+  pure.
+- **Source:** ours, not ESPN's.
+- **GitHub:** none yet
+
 ### "Total points scored ... in the last N games" lists the games but never sums them
 - **Found:** 2026-09-21, while fixing "'Last N games' means the last N
   regular-season games..." (removed above). One of that entry's five

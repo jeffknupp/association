@@ -40,7 +40,6 @@ from .common import (
     _defaulted_season_note,
     _format_value,
     _log_carries_rebuilt,
-    _narrow_player_games,
     _Narrowed,
     _no_narrowed_games,
     _period,
@@ -52,6 +51,8 @@ from .common import (
     measure_filters,
     narrow_measures,
     ordinal_word,
+    scoped_games,
+    scoped_player,
     settle_ordinal_season,
 )
 
@@ -74,7 +75,24 @@ def _career_span(intent: str, span: Any, season: Any) -> bool:
     in 2024" (that season), "career leaders since 2015" (a range) and "career
     points through 2010" (a cutoff) all arrive as the same two slots. Answering
     any of them as one of the others is the substitution this module exists to
-    prevent."""
+    prevent.
+
+    Deliberately not `_span_of` (`common.py`, step 3/C1): the wording differs
+    ("cannot honor span" vs. "no span called"; "cannot tell whether a career
+    span ... means" vs. "a career span and the ... season at once") and so does
+    an edge case - this raises on `season == 0` where `_span_of`'s `and season`
+    check would not. Swapping in `_span_of` here was measured (golden snapshot,
+    460 cases across `threshold_count` and `single_game_high`): the corpus does
+    not happen to exercise either divergent path today, so the diff came back
+    clean, but that proves only that these 460 cases do not ask a malformed
+    span - not that the messages agree. `threshold_count` and `single_game_high`
+    stay on their own validation for that reason: the ONE thing this function
+    could share with `scoped_player` (the "a good span turns into a `_Span`"
+    step) is already shared - both templates already build their `_Span` through
+    `_span_of` once a player and season are settled (`_threshold_count_rows`,
+    `_single_game_high_scope`) - so this pre-check is the only piece left
+    outside `common.py`, and it cannot move without changing what a malformed
+    question is told."""
     if not span:
         return False
     if span != "career":
@@ -329,7 +347,15 @@ def _threshold_count_subject(con: duckdb.DuckDBPyConnection, text: Any, season_n
     An ordinal season ("his 18th season") is settled once he is known, so the
     name is narrowed over his career rather than by the current year. A
     league-wide count has no career to count seasons in, so "most points in
-    15th season played" refuses rather than answering for some year."""
+    15th season played" refuses rather than answering for some year.
+
+    Not `common.scoped_player` (step 3/C1): that function's own `_resolved_player`
+    call raises when the question names nobody, which is right for every other
+    template on it but wrong here - "most games with 40+ points" with no player
+    named is the league leaderboard, not a refusal, and that optional-player
+    read has to happen before `settle_ordinal_season` can even be asked for
+    (see the raise two lines below). `settle_ordinal_season` itself IS shared -
+    once a player is known, this calls the same step `scoped_player` does."""
     player = _threshold_count_player(con, text, None if season_n else season)
     if isinstance(player, TemplateResult):
         return player
@@ -384,6 +410,18 @@ def _threshold_count_rows(
     the old INNER JOIN semantics: the log LEFT JOINs ``players``, so a box
     score for an athlete missing from that table would otherwise be counted
     under a NULL name and reported as a nameless leader.
+
+    Built on ``league()``, not ``common.scoped_games`` (step 3/C1): ``league()``
+    is the everyone-at-once read one optional ``athlete_id`` filter narrows to
+    one man, which is what a leaderboard needs and ``scoped_games`` cannot give
+    - it always takes a resolved :class:`~association.query.entities.Entity`,
+    never "nobody in particular". There is also nothing of ``scoped_games``'
+    own narrowing to gain: it exists for opponent, venue, an absent teammate, a
+    starter/bench half, a game of a series and a date, and
+    ``HONORED_SCOPING["threshold_count"]`` claims none of those - only
+    ``span``, ``below``, ``above`` and ``season_n``, all handled here already
+    (the first three through ``_span_of``/``measure_filters``, both shared;
+    the fourth through :func:`common.settle_ordinal_season`, also shared).
     """
     span = _span_of("career" if season is None else None, season, season_type, "player_game_log")
     season_clause, season_params = span.clause("pgl.season")
@@ -990,9 +1028,9 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     # from, are what narrow an ambiguous name to the players who could be the
     # answer - a career keeps Dell Curry, this season does not.
     season_type = slots.get("season_type") or 2
-    opponent, venue, without, split_side, measures, game_n, from_box_scores = _player_stat_narrowings(
-        slots.get("opponent"), slots.get("venue"), slots.get("without"), slots.get("split"), slots.get("below"), slots.get("above"), slots.get("game_n"), slots.get("since")
-    )
+    # Refused here, before any name is resolved, if a line names no column.
+    measures = measure_filters(slots.get("below"), slots.get("above"))
+    from_box_scores = _player_stat_reads_box_scores(slots, measures)
     if slots.get("limit") or slots.get("order"):
         # "Jokic averages last 10 games" answered with his season line would be
         # the substitution this module exists to stop. game_log lists exactly
@@ -1001,24 +1039,19 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         from .games import game_log
 
         return game_log(ctx, slots)
-    # An ordinal season ("his 18th season") is settled once he is known; until
-    # then the span is his career, which narrows the name over every season.
-    season_n = slots.get("season_n")
-    span = _span_of(
-        "career" if season_n else slots.get("span"),
-        None if season_n else slots.get("season"),
-        season_type,
-        "player_game_log" if from_box_scores else "player_season_stats_deduped",
-        since=slots.get("since"),
+    # The order those steps have to run in lives in scoped_player, with why.
+    subject = scoped_player(
+        con,
+        slots,
+        "player_stat needs a player name",
+        table="player_game_log" if from_box_scores else "player_season_stats_deduped",
+        available=_GAME_LOGS if from_box_scores else _SEASON_LINES,
+        span=slots.get("span"),
+        season=slots.get("season"),
     )
-    lines = _GAME_LOGS if from_box_scores else _SEASON_LINES
-    player = _resolved_player(con, slots.get("player"), "player_stat needs a player name", available=lines, season=span.season, through=_career_end(span.season))
-    if isinstance(player, TemplateResult):
-        return player
-    settled = settle_ordinal_season(con, player, season_n, span)
-    if isinstance(settled, TemplateResult):
-        return settled
-    span = settled
+    if isinstance(subject, TemplateResult):
+        return subject
+    player, span = subject
     stat = slots.get("stat")
     # Before the ESPN-served columns, because these carry their own table, their
     # own floor and their own career arithmetic - and because _wanted_stats
@@ -1032,10 +1065,9 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     wanted = [] if shooting else _wanted_stats(slots)
 
     if from_box_scores:
-        narrowed = _narrow_player_games(con, player, span, opponent=opponent, venue=venue, without=without, split=split_side, game_n=game_n)
+        narrowed = scoped_games(con, player, span, slots, opponent=slots.get("opponent"), measures=measures)
         if isinstance(narrowed, TemplateResult):
             return narrowed
-        narrow_measures(narrowed, measures)
         return _box_score_player_stat(con, player, span, narrowed, wanted, shooting)
     if span.career:
         return _career_player_stat(con, player, span, wanted, shooting)
@@ -1043,18 +1075,15 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     return _season_player_stat(con, player, span, season_type, wanted, shooting)
 
 
-def _player_stat_narrowings(opponent: Any, venue: Any, without: Any, split: Any, below: Any, above: Any, game_n: Any, since: Any) -> tuple[Any, Any, Any, str | None, list[MeasureFilter], Any, bool]:
-    """Every way the question narrowed the games, and whether that sends the
-    read to box scores: the opponent, venue and absent teammates; a named half
-    of the starter/bench split (it narrows the GAMES, so it reads box scores
-    like the other three - the season line has no such column); a line on a
-    box-score column ("under 14 fta", refused here if it names no column,
-    before any name is resolved); a game of each playoff series; a range of
-    seasons."""
-    split_side = split if split in STARTER_SIDES else None
-    measures = measure_filters(below, above)
-    from_box_scores = bool(opponent or venue or without or split_side or since or measures or game_n)
-    return opponent, venue, without, split_side, measures, game_n, from_box_scores
+def _player_stat_reads_box_scores(slots: dict[str, Any], measures: list[MeasureFilter]) -> bool:
+    """Whether ANY narrowing sends the read to box scores rather than the
+    season line: the opponent, venue and absent teammates; a named half of the
+    starter/bench split (it narrows the GAMES - the season line has no such
+    column); a line on a box-score column ("under 14 fta"); a game of each
+    playoff series; a range of seasons. The narrowings themselves are applied
+    by common.scoped_games."""
+    split_side = slots.get("split") if slots.get("split") in STARTER_SIDES else None
+    return any((slots.get("opponent"), slots.get("venue"), slots.get("without"), split_side, slots.get("since"), measures, slots.get("game_n")))
 
 
 def _season_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, season_type: int, wanted: list[str], shooting: tuple[str, str, str, str] | None) -> TemplateResult:
@@ -1525,6 +1554,13 @@ def _single_game_high_scope(ctx: TemplateContext, column: str, season: int | Non
     was 0, on 2014-10-28 vs ORL" - fluent, dated, and false. A rebuilt line
     may answer, but only for a stat a rebuild gets right (REBUILT_STATS) and
     only where the warehouse carries the flag.
+
+    Same reasoning as :func:`_threshold_count_rows` for staying on ``league()``
+    rather than ``common.scoped_games`` (step 3/C1): the player here is
+    optional (unset means "the league"), which ``scoped_games`` cannot express,
+    and ``HONORED_SCOPING["single_game_high"]`` is ``{"span"}`` alone - none of
+    ``scoped_games``' own narrowing (opponent, venue, an absent teammate, a
+    split, a series game, a date) applies, so there is nothing it would add.
     """
     span = _span_of("career" if season is None else None, season, season_type, "player_game_log")
     season_clause, season_params = span.clause("pgl.season")

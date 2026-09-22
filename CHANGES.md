@@ -16,6 +16,48 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **The steps that settle a player and his games are written once (step 3,
+  C1).** `game_log` and `player_stat` each wrote out the same sequence - settle
+  the span, resolve the name against it, settle an ordinal season once he is
+  known, then narrow his games by opponent, venue, an absent teammate, a
+  starter/bench half, a playoff-series game, lines on box-score columns and a
+  date - and a fix to one had to be found and repeated in the other.
+  `templates.common.scoped_player` and `scoped_games` are those steps, read
+  from the slots in one place, so a narrowing the relation learns reaches every
+  template built on them. `player_splits` and `record_when` follow through
+  `condition_player`, which settles the player the same way and hands his
+  games to those templates as the relation renders them
+  (`player_games.games_subquery`) - the second reader of a player's games,
+  `conditions._player_games`, now has one caller fewer per port. `streak`
+  follows through the same step (`player_games.named` renders the relation
+  with named parameters, for a reader that nests the same subquery twice). No answer changes: proved by a golden comparison of
+  460 recorded and constructed slot sets across the ten templates that read a
+  player's games (answer text, data and refusals identical), with the
+  comparison watched to fail when one slot was dropped from the shared
+  function (14 cases moved). `period_split` is now on the same two steps -
+  `_period_split_rows` reads `scoped_games` for its narrowing rather than its
+  own call to `_narrow_player_games`, and `period_split` itself reads
+  `scoped_player` for the name and the "current or named" season it already
+  read one way - with the opponent still resolved eagerly through
+  `_optional_team` beforehand, since the answer needs its name whether or not
+  any games end up narrowed to it. Proved by the same golden comparison
+  (460/460 identical), watched to fail when `without` was dropped from the
+  narrowing (6 cases moved).
+  function (14 cases moved).
+  `threshold_count` and `single_game_high` were assessed against the same two
+  functions and left on their own machinery, documented in place rather than
+  forced: both have a league-wide mode with no player named, which
+  `scoped_player`'s name resolution cannot express, and both read from
+  `league()` - an everyone-at-once relation a single `athlete_id` filter
+  narrows to one man - rather than `scoped_games`, which always narrows one
+  already-resolved player's rows and offers filters (opponent, venue, an
+  absent teammate, a split, a series game, a date) neither template honors.
+  Their own season/career check (`_career_span`) also stays: it raises
+  different wording than `scoped_player`'s `_span_of` on a malformed span, and
+  on `season == 0` where `_span_of` would not, so swapping it in would be an
+  answer change even though today's 460-case corpus does not happen to reach
+  either path (confirmed by perturbing the messages and re-running the golden
+  comparison, which came back identical).
 - **The router no longer invents a `season` or a `date` the question never
   states.** A bare `season` integer or `date` from the model used to be
   trusted on its own whenever the question named no year or day - measured
