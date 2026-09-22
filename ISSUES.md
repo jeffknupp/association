@@ -251,6 +251,46 @@ those were found.
   (`players_named_in`), and send a named player's "how many games" to
   `player_stat`.
 
+### "How many points did Jokic score in the 3rd quarter against Boston?" now routes to `team_quarter_points` instead of refusing
+- **Found:** 2026-09-22, the single end-of-task `scripts/check_routing.py` run
+  for the investigation above (no code changed on this branch - `git diff`
+  against master is empty - so this is master's current behavior, not
+  something introduced here).
+- **Evidence:** `scripts/check_routing.py` line 123 pins this question to
+  `other` specifically because it is a PLAYER's quarter, not a team's -
+  `team_quarter_points` reads `games.home_linescores`/`away_linescores` and
+  has no player column, so routing a player question there answers (or tries
+  to answer) the wrong thing entirely. This run got `intent: wanted 'other',
+  got 'team_quarter_points'` - one of 2 failures in 110 cases (108/110).
+  The other failure (`team_quarter_points` for "Celtics 2nd half scoring this
+  season") is the already-documented, still-open "A TEAM's half" gap above
+  ("A quarter or half is answered for a player, and for nobody else").
+- **Reproduced** at the merge, 2026-09-22: `scripts/check_routing.py` run
+  alone on master `8e5e098` (C4b and C5 merged) fails the same two cases,
+  108/110, this one `wanted 'other', got 'team_quarter_points'` again. It
+  is a standing regression, not a one-off. (Original note: the task this run
+  was part of forbade a second `check_routing.py` run in the same session (it is the shared
+  regression net; running it twice back-to-back risks the reload-loop wedge
+  its own docstring warns about), so this is a single observation, not yet
+  confirmed as a standing regression. It is suspicious in context: the
+  investigation above found the router's near-tie argmax can land differently
+  between server loads even with no concurrent access (see the "stable 3 of
+  29" minor-slot pattern there) - this could be the same phenomenon
+  surfacing as a full intent flip on a different, unrelated question, rather
+  than a real regression in `route()`.
+- **User sees:** if this is not a one-off, a player's quarter question would
+  try to answer using a team template with no player column - likely a wrong
+  or nonsensical answer, not a clean refusal.
+- **Next step:** re-run `scripts/check_routing.py` alone (next available
+  slot) to see whether this reproduces. If it does, check whether the router
+  is now supplying a `team` slot ("Boston") without a `player` slot for this
+  phrasing - `_route_coach_intent`-style code-assigned logic, not a prompt
+  edit, is the fix if so, per `AGENTS.md`'s "Working on the query path".
+- **Source:** ours (routing), reproduced twice.
+- **GitHub:** none yet
+
+## P2: misleading or incomplete
+
 ### Two callers sharing one ollama instance corrupt each other's router output; ambient CPU load alone does not
 - **Found:** 2026-09-22, investigating the "router's slots depend on which
   llama-server load answered" finding below (moved here, re-measured, and
@@ -330,43 +370,12 @@ those were found.
   original entry said - a load-time comparison does not catch this.
 - **Source:** ours (a single-slot ollama instance under two concurrent
   callers), not the prompt, and not ambient CPU load.
-
-### "How many points did Jokic score in the 3rd quarter against Boston?" now routes to `team_quarter_points` instead of refusing
-- **Found:** 2026-09-22, the single end-of-task `scripts/check_routing.py` run
-  for the investigation above (no code changed on this branch - `git diff`
-  against master is empty - so this is master's current behavior, not
-  something introduced here).
-- **Evidence:** `scripts/check_routing.py` line 123 pins this question to
-  `other` specifically because it is a PLAYER's quarter, not a team's -
-  `team_quarter_points` reads `games.home_linescores`/`away_linescores` and
-  has no player column, so routing a player question there answers (or tries
-  to answer) the wrong thing entirely. This run got `intent: wanted 'other',
-  got 'team_quarter_points'` - one of 2 failures in 110 cases (108/110).
-  The other failure (`team_quarter_points` for "Celtics 2nd half scoring this
-  season") is the already-documented, still-open "A TEAM's half" gap above
-  ("A quarter or half is answered for a player, and for nobody else").
-- **Not independently reproduced** - the task this run was part of forbids a
-  second `check_routing.py` run in the same session (it is the shared
-  regression net; running it twice back-to-back risks the reload-loop wedge
-  its own docstring warns about), so this is a single observation, not yet
-  confirmed as a standing regression. It is suspicious in context: the
-  investigation above found the router's near-tie argmax can land differently
-  between server loads even with no concurrent access (see the "stable 3 of
-  29" minor-slot pattern there) - this could be the same phenomenon
-  surfacing as a full intent flip on a different, unrelated question, rather
-  than a real regression in `route()`.
-- **User sees:** if this is not a one-off, a player's quarter question would
-  try to answer using a team template with no player column - likely a wrong
-  or nonsensical answer, not a clean refusal.
-- **Next step:** re-run `scripts/check_routing.py` alone (next available
-  slot) to see whether this reproduces. If it does, check whether the router
-  is now supplying a `team` slot ("Boston") without a `player` slot for this
-  phrasing - `_route_coach_intent`-style code-assigned logic, not a prompt
-  edit, is the fix if so, per `AGENTS.md`'s "Working on the query path".
-- **Source:** ours (routing), unconfirmed as reproducible.
-- **GitHub:** none yet
-
-## P2: misleading or incomplete
+- **Re-ranked P1 -> P2 at the merge (2026-09-22):** the web path cannot
+  trigger this - `web.runner.AgentRunner` holds one lock for the whole of
+  `ask`, for exactly the single-slot reason - so a web user never sees it.
+  It bites two CLI invocations at once and, above all, measurement runs:
+  the yardstick's 29-question "bad instance" was almost certainly this.
+  Rule for any live run: one caller, and confirm it with `pgrep` first.
 
 ### `team_leaderboard` refuses "no team matching 'least'" when the router files a ranking word as the team
 - **Found:** 2026-09-22, the C4b golden diff: "nba team with least playoff
