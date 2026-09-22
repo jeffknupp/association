@@ -2401,6 +2401,40 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
+### The team-games postseason span clause is duplicated by a module boundary, not by drift
+- **Found:** 2026-09-22, porting `with_without` onto `query/team_games.py`'s
+  relation (step 3, C4).
+- **Evidence:** `templates/common._team_span_clause` (the postseason-by-
+  calendar-year clause over `tg.eastern_date`/`tg.season`) now has a second
+  copy, `conditions._with_without_team_span_clause`
+  (`query/conditions.py`), four lines of identical logic under a different
+  name. Not drift - `conditions.py`'s own module docstring says "nothing here
+  imports `templates`, so the dependency runs one way", and `templates/common.py`
+  already imports FROM `conditions.py` (`_Scope`, `_game_scope`, `box_source`),
+  so the reverse import would cycle. `query/team_games.py` itself has no such
+  restriction (it imports only `.entities` and `nba.season`), so it is where a
+  shared clause builder could live without either module reaching into the
+  other. `scripts/check_duplicate_names.py` cannot see this: it is a duplicated
+  CONCEPT under two names, which is exactly the shape AGENTS.md ("One concept,
+  one definition") says the script is blind to.
+- **User sees:** nothing yet - both copies are correct and golden-identical
+  (`~/association-research/algebra-spike/step3`, 482 with_without-inclusive
+  cases). The risk is a future edit to one copy (a new season-type wrinkle,
+  say) landing only in the one the editor happened to be in.
+- **Next step:** `conditions._team_games(scope)` still has two more callers to
+  port onto the relation - `player_splits` and `streak`'s team branches
+  (README_c4.md's own next-agents note) - and each will face the same import
+  boundary. Once all three are ported, move the clause itself into
+  `query/team_games.py` as a small public function taking `(season, season_type,
+  first, phantoms)` rather than either module's own scope/span dataclass, and
+  have `templates.common._team_span_clause` and every `conditions.py` copy
+  delegate to it. Not done here: three call sites is still one branch's
+  decision to make, not a refactor to force mid-port on work another agent may
+  be doing in parallel on the same file.
+- **Priority note:** P4 - no wrong answer today, a maintenance risk if the
+  next two ports each add their own copy instead of reading this one first.
+- **GitHub:** none yet
+
 ### No template counts triple-doubles for one named player, or splits them by venue
 - **Found:** 2026-09-21, a Sonnet agent clustering the 261-question corpus
   into shapes for the yardstick review; it read the comment and checked the

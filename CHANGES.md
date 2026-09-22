@@ -22,9 +22,9 @@ had no published version to be compatible with.
   was played in and excludes the NBA Cup final from a regular-season record,
   which `templates/games.py`'s own hand-written team-log query already got
   right but restated separately, and which `conditions._team_games` (read by
-  `player_splits`/`streak`'s team branches and by `with_without`, not touched
-  here) still gets wrong - answering the wrong year for every postseason
-  1988-1993 and counting the Cup final as a regular-season game. The correct
+  `player_splits`/`streak`'s team branches and, until now, by `with_without`)
+  still gets wrong - answering the wrong year for every postseason 1988-1993
+  and counting the Cup final as a regular-season game. The correct
   definition now lives once, in `query/team_games.py`
   (`TeamNarrowed`, mirroring `player_games.Narrowed`, with the same four
   readers - `rows_sql`, `aggregate_sql`, `games_subquery`, `named` - over
@@ -40,8 +40,26 @@ had no published version to be compatible with.
   six team-facing intents, `constructed_cases.jsonl` extended with 1988-1993
   postseasons and 2023-2026 regular seasons) - identical before and after,
   confirmed to fail under a one-token perturbation of the shared narrowing.
-  `conditions._team_games` and its callers are next agents' work, per the
-  step's own README.
+  `conditions._team_games` and its remaining callers (`player_splits`,
+  `streak`'s team branches) are next agents' work, per the step's own README.
+  `with_without`'s window read (`conditions._with_without_games`) is now on
+  the relation too: `_with_without_team_games` builds a `TeamNarrowed` over
+  every team a player's windows touch at once (`list_contains`, since a
+  traded player's windows can span more than one team) and reads it through
+  `games_subquery`/`named`, since `conditions.py` cannot import `templates`
+  (its own module docstring) to reach `team_games`'s `_team_span_clause`
+  directly - `_with_without_team_span_clause` is a private copy of that one
+  clause instead. Measured on the 2026-09-22 warehouse, no `with_without`
+  answer moves: every 1994+ row the two sources produce agrees exactly (the
+  old read already joined `real_games`, and no game in it lacks a
+  `team_box_stats` row to join), and the postseason-label fault this
+  correction reaches is 1988-1993, which `with_without`'s own coverage floor
+  (capped at 1994 by `player_box_stats`) already refuses - so nothing it can
+  ask reaches the seasons where the two definitions disagree. Confirmed by a
+  golden comparison over the same 482 cases (`before1.json`/`after1.json` in
+  the step's own directory) and a one-token perturbation of the new
+  `list_contains` clause, which the same harness caught (22 `with_without`
+  cases moved).
 - **The scoping matrix cannot grow back (step 3, C3).** Two tests read the
   templates' source: the six on the player-games relation must declare
   exactly `RELATION_SCOPING` less a reasoned exclusion, and none of them, nor
