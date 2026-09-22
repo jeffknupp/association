@@ -1613,8 +1613,12 @@ def _period_split_rows(
       would otherwise contribute a confident zero.
 
     SHOT_VALUE_SQL names ``shot_chart``'s columns bare, and ``season`` is a
-    column of ``games`` too - so the value is summed in a CTE over
-    ``shot_chart`` alone, where those names can only mean one thing.
+    column of ``games`` too - so the value is summed in a CTE joined to
+    ``played`` by ``event_id`` alone, never by a literal ``season``/
+    ``season_type`` pair: those bare names can only mean ``shot_chart``'s own
+    columns as long as nothing else in scope shares them, which is also what
+    lets this run for a career-wide ``played`` set (many seasons) without
+    special-casing it.
 
     Returns the rows, the teammates whose absence narrowed them, and the
     box-score lines they were kept under or over as the answer says them (for
@@ -1635,6 +1639,20 @@ def _period_split_rows(
        Honors ``measures`` (step 3, C2) - a line on a box-score column narrows
        which of the player's games are summed for the period, the same as
        every other template on the relation.
+
+    .. versionchanged:: 4.4.0
+       The shot-value CTEs join to ``played`` by ``event_id`` rather than
+       filtering ``shot_chart`` by a literal ``season``/``season_type`` pair
+       taken from ``span.season`` (step 3, C5) - that literal pair is
+       ``NULL`` for a career ``span`` (``span.season`` is unset), and bound as
+       SQL it silently matched nothing rather than raising: a career question
+       for a player with games on record answered "no games found", the same
+       false-cause shape `AGENTS.md` warns about elsewhere. Joining by the
+       games the relation already selected removes the literal pair entirely,
+       so a multi-season ``played`` set needs no special-casing - this is
+       pure refactor for every question already reachable through a single
+       named season, and a bug fix for ``span`` "career", which was already
+       declared honored (:data:`common.HONORED_SCOPING`) before this.
     """
     narrowed = scoped_games(con, player, span, {"venue": venue, "without": without, "split": split}, opponent=opponent, measures=measures or [])
     if isinstance(narrowed, TemplateResult):
@@ -1652,19 +1670,20 @@ def _period_split_rows(
         f"""
         WITH played AS ({played_sql}),
         scored AS (
-            SELECT event_id, SUM({SHOT_VALUE_SQL}) AS points
-            FROM shot_chart
-            WHERE athlete_id = ? AND made AND season = ? AND season_type = ? AND period IN ({marks})
+            SELECT sc.event_id, SUM({SHOT_VALUE_SQL}) AS points
+            FROM shot_chart sc
+            JOIN played p ON p.event_id = sc.event_id
+            WHERE sc.athlete_id = ? AND sc.made AND sc.period IN ({marks})
             GROUP BY 1
         ),
-        covered AS (SELECT DISTINCT event_id FROM shot_chart WHERE season = ? AND season_type = ?)
+        covered AS (SELECT DISTINCT sc.event_id FROM shot_chart sc JOIN played p ON p.event_id = sc.event_id)
         SELECT p.date, p.side, p.opponent, COALESCE(s.points, 0)
         FROM played p
         JOIN covered c ON c.event_id = p.event_id
         LEFT JOIN scored s ON s.event_id = p.event_id
         ORDER BY p.date
         """,
-        [*played_params, player.id, span.season, span.season_type, *periods, span.season, span.season_type],
+        [*played_params, player.id, *periods],
     ).fetchall()
     return rows, [mate.name for mate in narrowed.without], list(narrowed.measures)
 

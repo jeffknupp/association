@@ -16,6 +16,21 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **`period_split`'s per-quarter shot read no longer needs a literal season
+  to run (step 3, C5, part 1).** `_period_split_rows` summed `shot_chart`
+  over `season = ?`/`season_type = ?`, taken from the already-settled
+  `span.season` - which is `None` for a career, and bound as SQL that matches
+  nothing. `span` "career" was already declared honored
+  (`HONORED_SCOPING["period_split"]`), so this was reachable, not
+  theoretical: a career question for a player with games on record answered
+  "no games found", the same false-cause shape `AGENTS.md` warns about
+  elsewhere. The shot-value CTEs now join to the relation's own selected
+  games by `event_id` instead, which needs no season parameter at all.
+  Pure refactor for every question already reachable through a single named
+  season (proved by a golden comparison over the recorded and constructed
+  corpora - see the next entry), and a genuine fix for the career case,
+  which the next entry's own reasoning then refuses to answer for a
+  different reason.
 - **A one-game streak is "1 game", not "1 games".** `streak`'s headline, for
   a named subject and league-wide alike, pluralized by hand; a team's streak
   narrowed to one opponent (new in C4 below) is the first common way to
