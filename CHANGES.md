@@ -42,6 +42,23 @@ had no published version to be compatible with.
   confirmed to fail under a one-token perturbation of the shared narrowing.
   `conditions._team_games` and its callers are next agents' work, per the
   step's own README.
+
+  `player_splits`, `record_when` and `streak`'s TEAM branches (the callers
+  `conditions._team_games` was left for) are now on the relation too:
+  `_player_splits_team`, `_record_when_team_answer` and `_streak_team`
+  (`templates/splits.py`), plus the league-wide win-loss streak
+  (`_streak_league_by_result`), read `common.team_games`/`TeamNarrowed`
+  instead of the label-scoped `_team_games`. This port is proved a pure
+  refactor separately (golden comparison over the same 103 team-condition
+  cases, held at the OLD `_team_games` behavior for it by two interim-only
+  functions, `_team_misfiled_postseason` and `_team_scope_interim_floor` -
+  101 of 103 identical, the remaining two a formatting-only change:
+  `player_splits`' team-only opponent/venue phrase now reads
+  `TeamNarrowed.filters()`'s "vs the X"/"at home" rather than the old
+  hand-built "(vs the X)"/"(at home)", the same wording every other template
+  on either relation already uses). `conditions._team_games` keeps one
+  caller, `with_without`'s windows (another agent's work in progress, step 3
+  C4) - not dead yet, so not deleted here.
 - **The scoping matrix cannot grow back (step 3, C3).** Two tests read the
   templates' source: the six on the player-games relation must declare
   exactly `RELATION_SCOPING` less a reasoned exclusion, and none of them, nor

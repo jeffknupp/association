@@ -18,7 +18,6 @@ from ..conditions import (
     _PLAYER_GAME_TABLES,
     _PLAYER_LINE,
     _SPLIT_TITLES,
-    _TEAM_GAME_TABLES,
     _TEAM_LINE,
     Params,
     _box_missing,
@@ -35,7 +34,6 @@ from ..conditions import (
     _split_rows,
     _stints,
     _table,
-    _team_games,
     _totals,
     _unseen,
     _unseen_note,
@@ -46,6 +44,10 @@ from ..conditions import (
 )
 from ..entities import Entity, teammate_names
 from ..player_games import Narrowed, games_subquery, named
+from ..team_games import TEAM_GAMES_SQL, TeamNarrowed
+from ..team_games import aggregate_sql as team_aggregate_sql
+from ..team_games import games_subquery as team_games_subquery
+from ..team_games import named as team_named
 from .common import (
     _BOX_SCORES,
     STAT_LABELS,
@@ -61,12 +63,17 @@ from .common import (
     _joined,
     _no_games,
     _optional_team,
+    _period,
     _resolved_player,
     _slot_season,
+    _Span,
+    _span_of,
+    _team_span_clause,
     _where_in,
     condition_player,
     measure_filters,
     ordinal_word,
+    team_games,
 )
 
 
@@ -111,6 +118,37 @@ def _misfiled_postseason(scope: _Scope) -> TemplateResult | None:
         f"{(scope.season or 0) + 1} playoffs - so an answer for {scope.season} would be about the wrong year."
     )
     return TemplateResult(data={"message": message, "season": scope.season}, answer=message)
+
+
+def _team_misfiled_postseason(span: _Span) -> TemplateResult | None:
+    """:func:`_misfiled_postseason`'s check, over a ``_Span`` instead of a
+    ``_Scope`` - kept ONLY for the pure-refactor commit that ports
+    ``_player_splits_team``/``_record_when_team_answer``/``_streak_team``/the
+    league win-loss streak onto the team-games relation without yet changing
+    what they answer: the relation reads a postseason by calendar year, which
+    makes this refusal obsolete, and the very next commit deletes every call
+    to this function along with it (CHANGES.md has the moved cases)."""
+    if span.season_type != 3 or span.season is None or span.season >= 1994:
+        return None
+    message = (
+        f"The warehouse files playoff games from before 1993-94 under the year the season began - its {span.season} postseason is the "
+        f"{span.season + 1} playoffs - so an answer for {span.season} would be about the wrong year."
+    )
+    return TemplateResult(data={"message": message, "season": span.season}, answer=message)
+
+
+def _team_scope_interim_floor(span: _Span) -> _Span:
+    """INTERIM ONLY, for the same pure-refactor commit
+    :func:`_team_misfiled_postseason` is: clamps a postseason CAREER span's
+    floor back to 1994, matching ``conditions._game_scope``'s old
+    ``max(_FIRST_END_YEAR_SEASON, ...)`` - ``_span_of``'s own career branch
+    has no such clamp, so without this a career-wide team postseason question
+    would already reach back to 1989 in this commit, which is the next
+    commit's behavior change to make, not this one's. Removed in the same
+    commit that removes :func:`_team_misfiled_postseason`."""
+    if span.season is None and span.season_type == 3 and span.first < 1994:
+        return replace(span, first=1994)
+    return span
 
 
 def _condition_span_label(scope: _Scope, slots: dict[str, Any], first: Any, last: Any) -> str:
@@ -160,6 +198,79 @@ def _condition_needs_player_refusal(intent: str, slots: dict[str, Any]) -> None:
     claimed = sorted(cell for cell in _CONDITION_PLAYER_ONLY_CELLS if slots.get(cell))
     if claimed:
         raise TemplateUnsupported(f"{intent} cannot honor {claimed} without a named player - only his own games can be narrowed that way")
+
+
+def _team_span_label(span: _Span, first: Any = None, last: Any = None) -> str:
+    """The team span in words - :meth:`conditions._Scope.label`'s shape, over
+    a :class:`~association.query.templates.common._Span` instead: one season,
+    or the seasons the rows actually came from. Shared by
+    :func:`_player_splits_team`, :func:`_record_when_team_answer` and
+    :func:`_streak_team`, the same way :func:`_condition_span_label` is shared
+    by the player branches."""
+    if span.season is not None:
+        return _period(span.season, span.season_type)
+    if isinstance(first, int) and isinstance(last, int):
+        return span.years(first, last)
+    return f"every {span.kind} on record ({span.first} onward)"
+
+
+def _team_span_floor_note(span: _Span, first: Any) -> str:
+    """:meth:`conditions._Scope.floor_note`'s shape, over a ``_Span``: a team
+    career's own box-score-floor caveat."""
+    if span.season is None and first == span.first:
+        return f" Box scores start with the {span.first} {span.kind}; anything earlier is not counted."
+    return ""
+
+
+def _team_where_in(span: _Span) -> str:
+    """:func:`common._where_in`'s shape, over a ``_Span``: "in the 2026
+    regular season", or "in any regular season on record" for a span with
+    nothing in it."""
+    return f"in the {_team_span_label(span)}" if span.season is not None else f"in any {span.kind} on record ({span.first} onward)"
+
+
+def _condition_team_no_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, narrowed: TeamNarrowed) -> TemplateResult:
+    """Nothing to report for a team's own games under a condition template
+    (:func:`_player_splits_team`, :func:`_record_when_team_answer`,
+    :func:`_streak_team`) - which fact is missing, the team's games in this
+    span at all or the match to an opponent/venue narrowing, the same
+    discipline :func:`~association.query.templates.games._team_game_log_none`
+    and :func:`common._no_games` already apply. Before ``opponent``/``venue``
+    reached these three branches (step 3, C4) there was only one tier to get
+    wrong; now a team with real games in a span but none against a named
+    opponent gets that sentence instead of the misleading "no games in this
+    span" it would have read as before opponent/venue could narrow anything
+    here at all."""
+    where, params = narrowed.clauses(narrowed=False)
+    season_col = "year(tg.eastern_date)" if span.season_type == 3 else "tg.season"
+    found = con.execute(f"{TEAM_GAMES_SQL} SELECT COUNT(*), MIN({season_col}), MAX({season_col}) FROM team_games tg WHERE {where}", params).fetchone()
+    total, first, last = found if found else (0, None, None)
+    label = _team_span_label(span, first, last)
+    if not total:
+        message = f"The warehouse has no games with a result for the {team.name} {_team_where_in(span)}."
+        return TemplateResult(data={"team": team.name, "span": label, "games": 0}, answer=message)
+    message = f"The {team.name} played {total:,} games {span.during(first, last, whose='all seasons on record')}, none of them{narrowed.filters()}."
+    return TemplateResult(data={"team": team.name, "span": label, "games": 0}, answer=message)
+
+
+def _team_season_range(con: duckdb.DuckDBPyConnection, base: str, params: Params, span: _Span) -> tuple[int, int | None, int | None]:
+    """:func:`conditions._totals`'s shape, over the team relation: for a
+    POSTSEASON, the seasons a range actually reaches are read from the
+    calendar year (``year(day)`` - every one of this module's team-branch
+    selects aliases ``tg.eastern_date`` to ``day``), not the ``season`` LABEL
+    column ``_totals`` reads. A pre-1994 postseason's label is the year ESPN
+    says the season STARTED, not the year it was played
+    (:mod:`association.query.team_games`), so a career-wide team streak or
+    split whose games reach back that far would otherwise print its label
+    year rather than the year it was actually played - the same fact
+    :func:`_condition_team_no_games` and
+    :func:`~association.query.templates.games._team_game_log_none` already
+    read this way. The regular season floor is 1994 either way, so the two
+    columns never disagree there, and this reads the label column the same
+    as ``_totals`` for it."""
+    season_col = "year(day)" if span.season_type == 3 else "season"
+    row = con.execute(f"SELECT COUNT(*), MIN({season_col}), MAX({season_col}) FROM ({base})", params).fetchone()
+    return (int(row[0]), row[1], row[2]) if row else (0, None, None)
 
 
 def player_splits(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
@@ -253,39 +364,10 @@ def player_splits(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult
             # - a real fix teaches `_player_splits_team` the same
             # teammate-absence filter `with_without` already has.
             raise TemplateUnsupported("player_splits cannot honor below/above, game_n, season_n or without for a team with no player named")
-        found = _player_splits_team(con, slots, span, team, split, venue, opponent)
+        found = _player_splits_team(con, slots, span, team, split, opponent)
     if isinstance(found, TemplateResult):
         return found
     return _player_splits_answer(con, found, split)
-
-
-def _player_splits_narrow_sql(venue: str | None, opponent: Entity | None, *, team_read: bool = False) -> tuple[str, dict[str, Any]]:
-    """Extra ``WHERE`` SQL and its params narrowing to a venue and/or an
-    opponent. A player's games are the relation's rows (``pgl`` joined to
-    ``games`` ``g``), which carry the opponent and the side; a team's games
-    (``conditions._team_games``) still alias ``team_box_stats`` ``tbs``, so
-    ``team_read`` picks that spelling."""
-    extra = ""
-    params: dict[str, Any] = {}
-    if venue is not None:
-        extra += " AND tbs.home_away = $venue" if team_read else " AND (CASE WHEN g.home_team_id = pgl.team_id THEN 'home' ELSE 'away' END) = $venue"
-        params["venue"] = venue
-    if opponent is not None:
-        extra += " AND (CASE WHEN tbs.home_away = 'home' THEN g.away_team_id ELSE g.home_team_id END) = $opponent" if team_read else " AND pgl.opponent_team_id = $opponent"
-        params["opponent"] = opponent.id
-    return extra, params
-
-
-def _player_splits_narrow_phrase(venue: str | None, opponent: Entity | None) -> str:
-    """ "(on the road vs the Denver Nuggets)" - what a venue and/or opponent
-    narrowing reads as after a subject's name, so honoring it is said in the
-    answer rather than left for the reader to assume."""
-    parts = []
-    if venue is not None:
-        parts.append("at home" if venue == "home" else "on the road")
-    if opponent is not None:
-        parts.append(f"vs the {opponent.name}")
-    return f" ({' '.join(parts)})" if parts else ""
 
 
 #: The two halves `route()` narrows ``starter_bench`` to when the question names
@@ -302,7 +384,7 @@ def _player_splits_answer(con: duckdb.DuckDBPyConnection, found: _SplitSubject, 
         split = "starter_bench"
     kinds = [split] if split else [k for k in SPLIT_KINDS if found.alias == "p" or k != "starter_bench"]
     splits = {kind: _split_rows(con, found.base, found.params, found.alias, found.line, kind) for kind in kinds}
-    label = found.scope.label(found.first, found.last)
+    label = found.label
     rows: list[tuple[str, list[str]]] = []
     for kind in kinds:
         if rows:
@@ -315,7 +397,7 @@ def _player_splits_answer(con: duckdb.DuckDBPyConnection, found: _SplitSubject, 
     if "month" in kinds:
         notes.append("Months go by the US Eastern date of the game.")
     answer = _table(f"{found.subject}, {what}, {label} ({found.counted}):", ["G", "W-L", *(h for _, h, _ in found.line)], rows)
-    notes += [note.strip() for note in (found.scope.floor_note(found.first), found.caveat) if note]
+    notes += [note.strip() for note in (found.floor_note, found.caveat) if note]
     answer += "\n" + " ".join(notes)
     return TemplateResult(data={**found.data, "span": label, "games": found.games, "splits": splits}, answer=answer.strip())
 
@@ -324,9 +406,19 @@ def _player_splits_answer(con: duckdb.DuckDBPyConnection, found: _SplitSubject, 
 class _SplitSubject:
     """What player_splits divides - a player's own games or a team's - with
     the SQL already scoped and the label pieces ready for the shared table
-    player_splits builds from either."""
+    player_splits builds from either.
 
-    scope: _Scope
+    .. versionchanged:: 4.4.0
+       Carries ``label``/``floor_note`` as plain strings rather than the
+       player branch's ``_Scope`` object: the team branch now settles its span
+       as a ``_Span`` (step 3, C4), which has neither ``.label()`` nor
+       ``.floor_note()`` - and this table only ever needed the two strings,
+       never the scope itself, so each branch computes them off whichever
+       object it holds and this stays free of both types.
+    """
+
+    label: str
+    floor_note: str
     base: str
     params: Params
     games: int
@@ -415,35 +507,69 @@ def _player_splits_player(
         "series_game": narrowed.series_game,
     }
     caveat = _unseen_note(_unseen(con, scope, base, base_params, box_source(con)))
-    return _SplitSubject(scope, base, base_params, games, first, last, subject_text, alias, line, counted, data, caveat)
+    return _SplitSubject(scope.label(first, last), scope.floor_note(first), base, base_params, games, first, last, subject_text, alias, line, counted, data, caveat)
 
 
-def _player_splits_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], span: Any, team: Entity, split: Any, venue: str | None, opponent: Entity | None) -> _SplitSubject | TemplateResult:
-    """A named team's own games, with no player named, optionally narrowed to one venue and/or one opponent."""
+#: A team's games under a condition template, over the relation
+#: (:data:`~association.query.team_games.TEAM_GAMES_SQL`) joined to
+#: ``team_box_stats`` for the box-score columns the relation itself does not
+#: carry (``_TEAM_LINE``'s rebounds/assists/threes/shooting) - ``won``,
+#: ``team_score`` and ``opponent_score`` are already the relation's own
+#: columns, under these same names, so they need no join and no alias here.
+_TEAM_SPLIT_JOIN = " JOIN team_box_stats tbs ON tbs.event_id = tg.event_id AND tbs.season = tg.season AND tbs.team_id = tg.team_id"
+_TEAM_SPLIT_SELECT: tuple[str, ...] = (
+    "tg.season",
+    "tg.eastern_date AS day",
+    "tg.side AS home_away",
+    "tg.won",
+    "tg.team_score",
+    "tg.opponent_score",
+    "tbs.offensiveRebounds",
+    "tbs.defensiveRebounds",
+    "tbs.assists",
+    "tbs.threePointFieldGoalsMade",
+    "tbs.fieldGoalsMade",
+    "tbs.fieldGoalsAttempted",
+)
+
+
+def _player_splits_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], span: Any, team: Entity, split: Any, opponent: Any) -> _SplitSubject | TemplateResult:
+    """A named team's own games, with no player named, narrowed to an
+    opponent and/or a venue the same way :func:`common.team_games` narrows
+    every other team-facing template - a hand-rolled clause of its own no
+    longer, since step 3, C4 put this branch on the team-games relation.
+
+    .. versionchanged:: 4.4.0
+       Ported off ``conditions._team_games`` onto the team-games relation
+       (step 3, C4) - a pure refactor, proved by golden comparison; what it
+       answers is unchanged (:func:`_team_misfiled_postseason` keeps the
+       pre-1994 postseason refusal exactly as it was under the old
+       definition, for now - a following commit removes it).
+    """
     if split == "starter_bench" or split in _STARTER_BENCH_SIDES:
         # "Bench scoring" is a sum over a team's players - a different
         # question from any this template answers. True of one named half as
         # much as of the category.
         raise TemplateUnsupported("a team has no starter/bench split of its own")
-    scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), _TEAM_GAME_TABLES, since=slots.get("since"))
-    misfiled = _misfiled_postseason(scope)
+    scope = _team_scope_interim_floor(_span_of(span, slots.get("season"), slots.get("season_type") or 2, "games", since=slots.get("since")))
+    misfiled = _team_misfiled_postseason(scope)
     if misfiled is not None:
         return misfiled
-    narrow_sql, narrow_params = _player_splits_narrow_sql(venue, opponent, team_read=True)
-    params = {**scope.params(), "team": team.id, **narrow_params}
-    base = _team_games(scope, " AND tbs.team_id = $team" + narrow_sql)
-    games, first, last = _totals(con, base, params)
+    narrowed = team_games(con, team, scope, slots, opponent=opponent)
+    if isinstance(narrowed, TemplateResult):
+        return narrowed
+    base, params = team_aggregate_sql(narrowed, list(_TEAM_SPLIT_SELECT), join=_TEAM_SPLIT_JOIN)
+    games, first, last = _team_season_range(con, base, params, scope)
     if not games:
-        message = f"The warehouse has no games with a result for the {team.name} {_where_in(scope)}."
-        return TemplateResult(data={"team": team.name, "span": scope.label(), "games": 0}, answer=message)
-    subject, alias, line, counted = f"The {team.name}" + _player_splits_narrow_phrase(venue, opponent), "t", _TEAM_LINE, f"{games} game{'s' if games != 1 else ''}"
-    data: dict[str, Any] = {"player": None, "team": team.name, "venue": venue, "opponent": opponent.name if opponent else None}
+        return _condition_team_no_games(con, team, scope, narrowed)
+    subject, alias, line, counted = f"The {team.name}" + narrowed.filters(), "t", _TEAM_LINE, f"{games} game{'s' if games != 1 else ''}"
+    data: dict[str, Any] = {"player": None, "team": team.name, "venue": narrowed.venue, "opponent": narrowed.opponent.name if narrowed.opponent else None}
     # The score of a game with no box score is still on record, but its
     # team box stats are NULL - averaged over the rest, and said so.
     blank = con.execute(f"SELECT COUNT(*) FILTER (WHERE fieldGoalsAttempted IS NULL) FROM ({base})", params).fetchone()
     blanks = int(blank[0]) if blank else 0
     caveat = f" Rebounds, assists, 3-pointers and FG% are missing from {blanks} of those games' box scores and are averaged over the rest." if blanks else ""
-    return _SplitSubject(scope, base, params, games, first, last, subject, alias, line, counted, data, caveat)
+    return _SplitSubject(_team_span_label(scope, first, last), _team_span_floor_note(scope, first), base, params, games, first, last, subject, alias, line, counted, data, caveat)
 
 
 def with_without(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
@@ -926,16 +1052,22 @@ def _record_when_team_stat(stat: Any, threshold: Any) -> tuple[str, int]:
     return column, threshold
 
 
-def _record_when_team_unseen(con: duckdb.DuckDBPyConnection, scope: _Scope, team: Entity, column: str) -> int:
-    """How many of the team's own games in this scope have a team_box_stats
-    row but no usable value for this stat - the games a non-points threshold
-    cannot see (AGENTS.md, "Whole team-seasons of box scores are empty").
-    Counted straight off team_box_stats with the same predicate
-    _record_when_team_query excludes rows on, rather than through
+#: The join record_when's team branch adds to the relation for every stat but
+#: `points` - the box-score columns `_RECORD_WHEN_TEAM_STAT_COLUMNS` names,
+#: none of which the relation itself carries.
+_TEAM_RECORD_WHEN_JOIN = " JOIN team_box_stats tbs ON tbs.event_id = tg.event_id AND tbs.season = tg.season AND tbs.team_id = tg.team_id"
+
+
+def _record_when_team_unseen(con: duckdb.DuckDBPyConnection, narrowed: TeamNarrowed, column: str) -> int:
+    """How many of the team's own games under ``narrowed`` have a
+    team_box_stats row but no usable value for this stat - the games a
+    non-points threshold cannot see (AGENTS.md, "Whole team-seasons of box
+    scores are empty"). Counted over the relation with the same join
+    :func:`_record_when_team_base` uses, rather than through
     conditions._box_missing, which answers a different question (no PLAYER
     appeared in the game at all, not this one team column)."""
-    params = {**scope.params(), "team": team.id}
-    row = con.execute(f"SELECT COUNT(*) FROM team_box_stats tbs WHERE tbs.team_id = $team AND {scope.where('tbs')} AND ({column}) IS NULL", params).fetchone()
+    sql, params = team_aggregate_sql(narrowed, ["COUNT(*)"], join=f"{_TEAM_RECORD_WHEN_JOIN} AND ({column}) IS NULL")
+    row = con.execute(sql, params).fetchone()
     return int(row[0]) if row else 0
 
 
@@ -949,75 +1081,71 @@ def _record_when_team_unseen_note(count: int, unit: str) -> str:
     return f" {count} of their games in that span have no {unit} figure on record, so they are in neither row."
 
 
-def _record_when_team_no_games(con: duckdb.DuckDBPyConnection, scope: _Scope, team: Entity, stat: Any) -> TemplateResult:
-    """Nothing to report for a team's own threshold - naming which fact is
-    missing, the discipline templates.common._no_games applies for a player:
-    a season the team actually played, answered "no games", would be the
-    false-cause answer AGENTS.md warns against - and for a non-points stat the
-    missing fact can be the STAT rather than the games themselves (the empty
-    2013-2018 team boxes, see _RECORD_WHEN_TEAM_STAT_COLUMNS)."""
-    params = {**scope.params(), "team": team.id}
-    total = con.execute(f"SELECT COUNT(*) FROM real_games g WHERE (g.home_team_id = $team OR g.away_team_id = $team) AND {scope.where('g')}", params).fetchone()
-    games = int(total[0]) if total else 0
+def _record_when_team_no_stat(team: Entity, span: _Span, narrowed: TeamNarrowed, stat: Any, games: int) -> TemplateResult:
+    """The team played ``games`` games under this narrowing, but not one of
+    them carries a usable figure for the stat at all - the empty 2013-2018
+    team boxes, reached through record_when's threshold rather than a plain
+    average. Distinct from :func:`_condition_team_no_games`, which fires when
+    there are no NARROWED games at all: this fires when there are, and every
+    one of them lacks the stat."""
     unit = f"{STAT_LABELS.get(stat or '', stat or '')}s"
-    if games and stat != "points":
-        which = "it" if games == 1 else "any of them"
-        message = f"The warehouse has {games} game{'' if games == 1 else 's'} with a result for the {team.name} {_where_in(scope)}, but no {unit} figure on record for {which}."
-    else:
-        message = f"The warehouse has no games with a result for the {team.name} {_where_in(scope)}."
-    return TemplateResult(data={"team": team.name, "span": scope.label(), "games": 0}, answer=message)
+    which = "it" if games == 1 else "any of them"
+    label = _team_span_label(span)
+    message = f"The warehouse has {games} game{'' if games == 1 else 's'} with a result for the {team.name}{narrowed.filters()} {_team_where_in(span)}, but no {unit} figure on record for {which}."
+    return TemplateResult(data={"team": team.name, "span": label, "games": 0}, answer=message)
 
 
-def _record_when_team_query(con: duckdb.DuckDBPyConnection, scope: _Scope, team: Entity, stat: Any, column: str, threshold: int) -> list[Any] | TemplateResult:
-    """The team's own games grouped by whether IT reached the threshold - the
-    team counterpart to _record_when_query, with no player to key on.
+def _record_when_team_base(narrowed: TeamNarrowed, stat: Any, column: str) -> tuple[str, dict[str, Any]]:
+    """The team's own games under ``narrowed``, each with its ``stat_value`` -
+    the team counterpart to :func:`_record_when_query`'s ``base``, over the
+    relation instead of a hand-rolled join.
 
-    `points` is read straight off real_games, home/away resolved from the
-    team id rather than team_box_stats' `home_away` (see
-    _RECORD_WHEN_TEAM_STAT_COLUMNS for why). Every other stat joins
-    team_box_stats and excludes a game with no value there - the same "team's
-    own row decides which side it was on" join conditions._team_games uses,
-    since a home/away-only join silently returns half the games - and
-    _record_when_team_unseen counts the excluded games back for the caveat.
-    """
-    params: dict[str, Any] = {**scope.params(), "team": team.id}
+    ``points`` is read straight off the relation's own score (see
+    :data:`_RECORD_WHEN_TEAM_STAT_COLUMNS`: it needs no box row at all, so it
+    is immune to the empty 2013-2018 Chicago/New Orleans team boxes). Every
+    other stat joins ``team_box_stats`` and excludes a game with no value
+    there right in the join, the same "team's own row decides which side it
+    was on" shape the old ``conditions._team_games``-based join used, since a
+    home/away-only join would silently return half the games -
+    :func:`_record_when_team_unseen` counts the excluded games back for the
+    caveat."""
     if stat == "points":
-        base = f"""
-            SELECT g.event_id, g.season,
-                   CASE WHEN g.home_team_id = $team THEN g.home_score ELSE g.away_score END AS stat_value,
-                   CASE WHEN g.home_team_id = $team THEN g.home_score ELSE g.away_score END AS team_score,
-                   CASE WHEN g.home_team_id = $team THEN g.away_score ELSE g.home_score END AS opponent_score,
-                   g.winner_team_id = $team AS won
-            FROM real_games g
-            WHERE (g.home_team_id = $team OR g.away_team_id = $team) AND {scope.where("g")}"""
+        select, join = ["tg.event_id", "tg.season", "tg.eastern_date AS day", "tg.team_score AS stat_value", "tg.team_score", "tg.opponent_score", "tg.won"], ""
     else:
-        base = f"""
-            SELECT tbs.event_id, tbs.season, {column} AS stat_value,
-                   CASE WHEN tbs.home_away = 'home' THEN g.home_score ELSE g.away_score END AS team_score,
-                   CASE WHEN tbs.home_away = 'home' THEN g.away_score ELSE g.home_score END AS opponent_score,
-                   g.winner_team_id = tbs.team_id AS won
-            FROM team_box_stats tbs JOIN real_games g ON g.event_id = tbs.event_id AND g.season = tbs.season
-            WHERE tbs.team_id = $team AND {scope.where("tbs")} AND ({column}) IS NOT NULL"""
-    found = con.execute(
-        f"WITH t AS ({base}) SELECT t.stat_value >= $threshold, COUNT(*), COUNT(*) FILTER (WHERE t.won), AVG(t.team_score - t.opponent_score), MIN(t.season), MAX(t.season) FROM t GROUP BY 1",
+        select = ["tg.event_id", "tg.season", "tg.eastern_date AS day", f"{column} AS stat_value", "tg.team_score", "tg.opponent_score", "tg.won"]
+        join = f"{_TEAM_RECORD_WHEN_JOIN} AND ({column}) IS NOT NULL"
+    return team_named(*team_aggregate_sql(narrowed, select, join=join))
+
+
+def _record_when_team_query(con: duckdb.DuckDBPyConnection, base: str, params: dict[str, Any], threshold: int, span: _Span) -> list[Any]:
+    """The team's own games under ``base``, grouped by whether the stat
+    reached ``threshold`` - the team counterpart to :func:`_record_when_query`'s
+    own grouping query.
+
+    The season range in each group's row reads the calendar year for a
+    postseason, not the ``season`` label - see :func:`_team_season_range`,
+    whose column choice this repeats inline because it runs inside one
+    grouped query rather than a separate totals read."""
+    season_col = "year(t.day)" if span.season_type == 3 else "t.season"
+    return con.execute(
+        f"WITH t AS ({base}) SELECT t.stat_value >= $threshold, COUNT(*), COUNT(*) FILTER (WHERE t.won), AVG(t.team_score - t.opponent_score), MIN({season_col}), MAX({season_col}) FROM t GROUP BY 1",
         {**params, "threshold": threshold},
     ).fetchall()
-    return found if found else _record_when_team_no_games(con, scope, team, stat)
 
 
-def _record_when_team_answer_table(con: duckdb.DuckDBPyConnection, scope: _Scope, team: Entity, stat: Any, column: str, threshold: int, found: list[Any]) -> TemplateResult:
+def _record_when_team_answer_table(con: duckdb.DuckDBPyConnection, span: _Span, team: Entity, narrowed: TeamNarrowed, stat: Any, column: str, threshold: int, found: list[Any]) -> TemplateResult:
     """The two-row table for a team's own record above/below its threshold -
     the team counterpart to _record_when_answer, with no player to key on and
     a team pronoun in place of a player's."""
     by_hit = {bool(row[0]): row for row in found}
     unit = f"{STAT_LABELS.get(stat or '', stat or '')}s"
     reached, short, every = _record_when_group(by_hit, True), _record_when_group(by_hit, False), _record_when_group(by_hit, None)
-    label = scope.label(min(r[4] for r in found), max(r[5] for r in found))
-    title = f"{team.name} record when they had {threshold}+ {unit}, {label}:"
+    label = _team_span_label(span, min(r[4] for r in found), max(r[5] for r in found))
+    title = f"{team.name} record when they had {threshold}+ {unit}{narrowed.filters()}, {label}:"
     rows = [(f"{threshold}+ {unit}", reached), (f"under {threshold} {unit}", short), ("all their games", every)]
     table = _table(title, ["G", "W-L", "Win%", "Margin"], [(name, [str(g["games"]), f"{g['wins']}-{g['losses']}", _win_pct(g["wins"], g["games"]), _margin(g["avg_margin"])]) for name, g in rows])
-    caveat = "" if stat == "points" else _record_when_team_unseen_note(_record_when_team_unseen(con, scope, team, column), unit)
-    answer = f"{table}\nOver the {every['games']} games with a result.{scope.floor_note(min(r[4] for r in found))}{caveat}"
+    caveat = "" if stat == "points" else _record_when_team_unseen_note(_record_when_team_unseen(con, narrowed, column), unit)
+    answer = f"{table}\nOver the {every['games']} games with a result.{_team_span_floor_note(span, min(r[4] for r in found))}{caveat}"
     data = {"team": team.name, "stat": stat, "threshold": threshold, "span": label, "reached": reached, "fell_short": short}
     return TemplateResult(data=data, answer=answer)
 
@@ -1029,7 +1157,16 @@ def _record_when_team_answer(con: duckdb.DuckDBPyConnection, slots: dict[str, An
     scored 120 points" - ISSUES.md #144). A question naming neither a player
     nor a team is unanswerable and refuses saying so - not with the
     player-only "record_when needs a player" message, which would name the
-    wrong cause for a team question with nobody to resolve."""
+    wrong cause for a team question with nobody to resolve.
+
+    .. versionchanged:: 4.4.0
+       Ported onto the team-games relation, through :func:`common.team_games`
+       the way ``team_record`` reads it (step 3, C4) - a pure refactor, proved
+       by golden comparison; what it answers is unchanged
+       (:func:`_team_misfiled_postseason` keeps the pre-1994 postseason
+       refusal exactly as it was under the old definition, for now - a
+       following commit removes it and wires ``opponent``/``venue`` through).
+    """
     _condition_needs_player_refusal("record_when", slots)
     team = _optional_team(con, slots.get("team"), season=_slot_season(slots))
     if isinstance(team, TemplateResult):
@@ -1038,14 +1175,25 @@ def _record_when_team_answer(con: duckdb.DuckDBPyConnection, slots: dict[str, An
         raise TemplateUnsupported("record_when needs a player or a team")
     stat = slots.get("stat")
     column, threshold = _record_when_team_stat(stat, slots.get("threshold"))
-    scope = _condition_scope(slots.get("season"), slots.get("span"), slots.get("season_type"), _TEAM_GAME_TABLES)
-    misfiled = _misfiled_postseason(scope)
+    span = _team_scope_interim_floor(_span_of(slots.get("span"), slots.get("season"), slots.get("season_type") or 2, "games"))
+    misfiled = _team_misfiled_postseason(span)
     if misfiled is not None:
         return misfiled
-    query = _record_when_team_query(con, scope, team, stat, column, threshold)
-    if isinstance(query, TemplateResult):
-        return query
-    return _record_when_team_answer_table(con, scope, team, stat, column, threshold, query)
+    narrowed = team_games(con, team, span, slots, opponent=slots.get("opponent"))
+    if isinstance(narrowed, TemplateResult):
+        return narrowed
+    # The narrowed pool BEFORE any stat availability is checked, so a team
+    # with real games in this span/narrowing but none carrying the stat
+    # (`_record_when_team_no_stat`) is told apart from a team with no games
+    # matching the narrowing at all (`_condition_team_no_games`).
+    matched, _, _ = _totals(con, *team_games_subquery(narrowed))
+    if not matched:
+        return _condition_team_no_games(con, team, span, narrowed)
+    base, params = _record_when_team_base(narrowed, stat, column)
+    found = _record_when_team_query(con, base, params, threshold, span)
+    if not found:
+        return _record_when_team_no_stat(team, span, narrowed, stat, matched)
+    return _record_when_team_answer_table(con, span, team, narrowed, stat, column, threshold, found)
 
 
 def streak(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
@@ -1095,7 +1243,7 @@ def streak(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
 
     _condition_needs_player_refusal("streak", slots)
     if team is not None:
-        return _streak_team(con, slots, span, team, by_stat, want_win, result, hit, condition)
+        return _streak_team(con, slots, span, team, by_stat, want_win, result, hit, condition, slots.get("opponent"))
 
     # Nobody named: the league's longest, each team-season or player once.
     return _streak_league(con, slots, span, by_stat, column, stat, threshold, unit, want_win, result, hit, condition)
@@ -1176,6 +1324,14 @@ def _streak_player(
     return _single_streak(subject_text, label, runs, rule, scope, {"player": player.name})
 
 
+#: A team's games for a streak, over the relation - `team_id`, `season`,
+#: `won` and an event ordering (`day`, a stand-in `stamp`, `event_id`) are all
+#: `_longest_runs` reads. The relation guarantees at most one row per team per
+#: Eastern date (`team_games.py`'s own docstring), so `day` doubling as
+#: `stamp` never actually breaks a tie - there is none to break.
+_TEAM_STREAK_SELECT: tuple[str, ...] = ("tg.team_id", "tg.season", "tg.event_id", "tg.eastern_date AS day", "tg.eastern_date AS stamp", "tg.won")
+
+
 def _streak_team(
     con: duckdb.DuckDBPyConnection,
     slots: dict[str, Any],
@@ -1186,25 +1342,38 @@ def _streak_team(
     result: str,
     hit: str,
     condition: dict[str, Any],
+    opponent: Any,
 ) -> TemplateResult:
-    """A named team's longest run of wins or losses in a season."""
+    """A named team's longest run of wins or losses in a season.
+
+    .. versionchanged:: 4.4.0
+       Ported off ``conditions._team_games`` onto the team-games relation,
+       through :func:`common.team_games` (step 3, C4) - a pure refactor,
+       proved by golden comparison; what it answers is unchanged
+       (:func:`_team_misfiled_postseason` keeps the pre-1994 postseason
+       refusal exactly as it was under the old definition, for now - a
+       following commit removes it and wires ``opponent``/``venue`` through,
+       which this signature already carries a parameter for).
+    """
     if by_stat:
         raise TemplateUnsupported("a team's streak is of wins or losses, not of a stat")
-    scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), _TEAM_GAME_TABLES)
-    misfiled = _misfiled_postseason(scope)
+    scope = _team_scope_interim_floor(_span_of(span, slots.get("season"), slots.get("season_type") or 2, "games"))
+    misfiled = _team_misfiled_postseason(scope)
     if misfiled is not None:
         return misfiled
-    params = {**scope.params(), "team": team.id}
-    base = _team_games(scope, " AND tbs.team_id = $team")
-    games, first, last = _totals(con, base, params)
-    label = scope.label(first, last)
+    narrowed = team_games(con, team, scope, slots, opponent=opponent)
+    if isinstance(narrowed, TemplateResult):
+        return narrowed
+    base, params = team_named(*team_aggregate_sql(narrowed, list(_TEAM_STREAK_SELECT)))
+    games, first, last = _team_season_range(con, base, params, scope)
     if not games:
-        return TemplateResult(data={"team": team.name, "streaks": []}, answer=f"The warehouse has no games with a result for the {team.name} {_where_in(scope)}.")
+        return _condition_team_no_games(con, team, scope, narrowed)
+    label = _team_span_label(scope, first, last)
     runs = _longest_runs(con, base, {**params, **condition}, ("team_id", "season"), hit, 3, best_per_partition=False)
     if not runs:
-        return TemplateResult(data={"team": team.name, "span": label, "streaks": []}, answer=f"The {team.name} did not {'win' if want_win else 'lose'} a game in the {label}.")
+        return TemplateResult(data={"team": team.name, "span": label, "streaks": []}, answer=f"The {team.name} did not {'win' if want_win else 'lose'} a game{narrowed.filters()} in the {label}.")
     return _single_streak(
-        f"The {team.name}' longest {result}" if team.name.endswith("s") else f"The {team.name}'s longest {result}",
+        (f"The {team.name}' longest {result}" if team.name.endswith("s") else f"The {team.name}'s longest {result}") + narrowed.filters(),
         label,
         runs,
         "Streaks are counted within one season.",
@@ -1226,20 +1395,78 @@ def _streak_league_by_stat(
     return base, runs, what, who, rule
 
 
-def _streak_league_by_result(con: duckdb.DuckDBPyConnection, scope: _Scope, result: str, hit: str, condition: dict[str, Any], limit: int) -> tuple[str, list[dict[str, Any]], str, list[str], str]:
-    """Each team's longest run of wins or losses in a season, one per team-season."""
+_StreakLeagueResult = tuple[str, Params, list[dict[str, Any]], str, list[str], str]
+"""``(base sql, params, runs, what-label, who-labels, rule note)`` -
+:func:`_streak_league_by_result`'s return shape, named so its signature fits
+the line-length gate. ``_streak_league_by_stat`` returns the same five
+pieces minus ``params`` (its own ``base`` binds the shared ``_Scope``'s own
+named parameters, read straight off ``scope.params()`` by its caller)."""
+
+
+def _streak_league_by_result(con: duckdb.DuckDBPyConnection, span: _Span, result: str, hit: str, condition: dict[str, Any], limit: int) -> _StreakLeagueResult:
+    """Each team's longest run of wins or losses in a season, one per
+    team-season - over the relation, with no single team to narrow to the
+    way :func:`common.team_games` always takes one, so the base clause is
+    built the same way it builds one, minus the ``team_id`` clause it always
+    adds.
+
+    .. versionchanged:: 4.4.0
+       Ported off ``conditions._team_games`` (step 3, C4): a postseason
+       before 1993-94 is now selected by the calendar year it was played in,
+       not ESPN's own-year label - see CHANGES.md for the moved cases.
+    """
+    clause, clause_params = _team_span_clause(span)
     # Teams the `teams` table does not hold are exhibition opponents that
-    # turn up in a few regular-season rows (1992-2000), not franchises.
-    base = _team_games(scope, " AND tbs.team_id IN (SELECT team_id FROM teams)")
-    runs = _longest_runs(con, base, {**scope.params(), **condition}, ("team_id", "season"), hit, limit, best_per_partition=True)
+    # turn up in a few regular-season rows (1992-2000), not franchises - the
+    # same guard `_team_games` used to apply inline.
+    narrowed = TeamNarrowed(base=["tg.team_id IN (SELECT team_id FROM teams)", "tg.season_type = ?", clause], base_params=[span.season_type, *clause_params])
+    base, params = team_named(*team_aggregate_sql(narrowed, list(_TEAM_STREAK_SELECT)))
+    runs = _longest_runs(con, base, {**params, **condition}, ("team_id", "season"), hit, limit, best_per_partition=True)
     names = _names(con, "teams", "team_id", [r["team_id"] for r in runs])
     what = result
     # Every run lies inside one season, so each is named as its team was
     # that season. This used to add "franchises are named as they are
     # today" to every all-seasons answer, which is what it was.
-    who = [season_name(r["team_id"], int(r["season"]), names[r["team_id"]]) + (f" ({r['season']})" if scope.season is None else "") for r in runs]
+    who = [season_name(r["team_id"], int(r["season"]), names[r["team_id"]]) + (f" ({r['season']})" if span.season is None else "") for r in runs]
     rule = "Each team's longest in a season, counted within that season."
-    return base, runs, what, who, rule
+    return base, params, runs, what, who, rule
+
+
+_StreakLeagueFound = tuple[list[dict[str, Any]], str, list[str], str, str, str]
+"""``(runs, what-label, who-labels, rule note, span label, "in the ..." phrase)`` -
+what :func:`_streak_league_stat_branch` and :func:`_streak_league_team_branch`
+each hand :func:`_streak_league` once their own span is settled and checked
+for the pre-1994 misfiled-postseason refusal."""
+
+
+def _streak_league_stat_branch(
+    con: duckdb.DuckDBPyConnection, slots: dict[str, Any], span: Any, column: str | None, threshold: Any, unit: str, hit: str, condition: dict[str, Any], limit: int
+) -> _StreakLeagueFound | TemplateResult:
+    """The by-stat half of :func:`_streak_league`: each player's longest run
+    meeting the threshold, one per player - unchanged by step 3, C4, still a
+    ``_Scope`` over the player relation's own tables."""
+    scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), _PLAYER_GAME_TABLES)
+    misfiled = _misfiled_postseason(scope)
+    if misfiled is not None:
+        return misfiled
+    base, runs, what, who, rule = _streak_league_by_stat(con, scope, column, threshold, unit, hit, condition, limit)
+    # The span searched, not the seasons the leaders' runs happen to fall in:
+    # "1997-2023" under a question about every season reads as a narrower search.
+    _, first, last = _totals(con, base, scope.params())
+    return runs, what, who, rule, scope.label(first, last), _where_in(scope)
+
+
+def _streak_league_team_branch(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], span: Any, result: str, hit: str, condition: dict[str, Any], limit: int) -> _StreakLeagueFound | TemplateResult:
+    """The win-loss half of :func:`_streak_league`: each team's longest run
+    in a season, one per team-season - settles its span as a ``_Span`` and
+    reads the team-games relation (step 3, C4)."""
+    team_span = _team_scope_interim_floor(_span_of(span, slots.get("season"), slots.get("season_type") or 2, "games"))
+    misfiled = _team_misfiled_postseason(team_span)
+    if misfiled is not None:
+        return misfiled
+    base, params, runs, what, who, rule = _streak_league_by_result(con, team_span, result, hit, condition, limit)
+    _, first, last = _team_season_range(con, base, params, team_span)
+    return runs, what, who, rule, _team_span_label(team_span, first, last), _team_where_in(team_span)
 
 
 def _streak_league(
@@ -1257,24 +1484,25 @@ def _streak_league(
     condition: dict[str, Any],
 ) -> TemplateResult:
     """The league's longest run with nobody named: one per player (a stat
-    streak) or one per team-season (a win/loss streak)."""
-    tables = _PLAYER_GAME_TABLES if by_stat else _TEAM_GAME_TABLES
-    scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), tables)
-    misfiled = _misfiled_postseason(scope)
-    if misfiled is not None:
-        return misfiled
+    streak) or one per team-season (a win/loss streak).
+
+    .. versionchanged:: 4.4.0
+       The team/win-loss branch (:func:`_streak_league_team_branch`) settles
+       its span as a ``_Span`` and reads the team-games relation (step 3,
+       C4); the player/stat branch (:func:`_streak_league_stat_branch`) is
+       unchanged, still a ``_Scope`` over the player relation's own tables -
+       the two readers of a player's and a team's games keep their own scope
+       objects, the same split ``condition_player``'s docstring already
+       carries for record_when/streak's player branches.
+    """
     limit = _clamp_limit(slots.get("limit"), _DEFAULT_STREAK_LIMIT)
-    if by_stat:
-        base, runs, what, who, rule = _streak_league_by_stat(con, scope, column, threshold, unit, hit, condition, limit)
-    else:
-        base, runs, what, who, rule = _streak_league_by_result(con, scope, result, hit, condition, limit)
-    # The span searched, not the seasons the leaders' runs happen to fall in:
-    # "1997-2023" under a question about every season reads as a narrower search.
-    _, first, last = _totals(con, base, scope.params())
-    label = scope.label(first, last)
+    found = _streak_league_stat_branch(con, slots, span, column, threshold, unit, hit, condition, limit) if by_stat else _streak_league_team_branch(con, slots, span, result, hit, condition, limit)
+    if isinstance(found, TemplateResult):
+        return found
+    runs, what, who, rule, label, where_in_text = found
     if not runs:
         nobody = f"No player had a game with {threshold}+ {unit}" if by_stat else "No team has a game with a result"
-        return TemplateResult(data={"span": label, "streaks": []}, answer=f"{nobody} {_where_in(scope)}.")
+        return TemplateResult(data={"span": label, "streaks": []}, answer=f"{nobody} {where_in_text}.")
     streaks = [
         {"name": n, "season": r["first_season"] if not by_stat else None, "length": r["length"], "from": str(r["first_day"]), "to": str(r["last_day"]), "open": bool(r["open"])}
         for n, r in zip(who, runs, strict=True)
@@ -1292,8 +1520,12 @@ def _streak_league(
     )
 
 
-def _single_streak(subject: str, label: str, runs: list[dict[str, Any]], rule: str, scope: _Scope, who: dict[str, Any]) -> TemplateResult:
-    """One named player's or team's longest run, with any run that ties it."""
+def _single_streak(subject: str, label: str, runs: list[dict[str, Any]], rule: str, scope: _Scope | _Span, who: dict[str, Any]) -> TemplateResult:
+    """One named player's or team's longest run, with any run that ties it.
+
+    ``scope`` is only ever read for ``.season`` here, which both the player
+    branch's ``_Scope`` and the team branch's ``_Span`` (step 3, C4) carry -
+    so this stays shared rather than forking into a per-branch copy."""
     top = runs[0]
     ties = [r for r in runs[1:] if r["length"] == top["length"]]
     season = f" (the {top['first_season']} season)" if scope.season is None and top["first_season"] == top["last_season"] else ""

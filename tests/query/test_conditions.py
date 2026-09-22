@@ -70,9 +70,11 @@ def _game(
     winner: str | None = "auto",
     team_box: bool = True,
     season_type: int = 2,
+    neutral_site: bool = False,
+    venue_city: str = "Boston",
 ) -> None:
     decided = (home if home_score > away_score else away) if winner == "auto" else winner
-    c.execute("INSERT INTO games VALUES (?,?,?,?,?,?,?,?,?)", [event, season, season_type, date, home, away, home_score, away_score, decided])
+    c.execute("INSERT INTO games VALUES (?,?,?,?,?,?,?,?,?,?,?)", [event, season, season_type, date, home, away, home_score, away_score, decided, neutral_site, venue_city])
     for team, opponent, side in ((home, away, "home"), (away, home, "away")):
         # totalRebounds (40) is deliberately NOT offensiveRebounds +
         # defensiveRebounds (12 + 23 = 35) - the way a real pre-2022 row
@@ -116,7 +118,7 @@ def league(tmp_path: Path) -> TemplateContext:
     c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
     c.execute(
         "CREATE TABLE games (event_id VARCHAR, season BIGINT, season_type BIGINT, date VARCHAR, home_team_id VARCHAR, away_team_id VARCHAR, "
-        "home_score BIGINT, away_score BIGINT, winner_team_id VARCHAR)"
+        "home_score BIGINT, away_score BIGINT, winner_team_id VARCHAR, neutral_site BOOLEAN, venue_city VARCHAR)"
     )
     c.execute(
         "CREATE TABLE team_box_stats (event_id VARCHAR, season BIGINT, season_type BIGINT, team_id VARCHAR, opponent_team_id VARCHAR, home_away VARCHAR, "
@@ -1180,7 +1182,7 @@ def test_game_n_narrows_to_one_game_of_each_series(league: TemplateContext) -> N
         ("q2", f"{S}-05-22T23:30Z", LAL, BOS, 95, 105, 25),
         ("q3", f"{S}-05-24T23:30Z", BOS, LAL, 110, 100, 30),
     ):
-        c.execute("INSERT INTO games VALUES (?,?,3,?,?,?,?,?,?)", [event, S, date, home, away, home_score, away_score, home if home_score > away_score else away])
+        c.execute("INSERT INTO games VALUES (?,?,3,?,?,?,?,?,?,FALSE,'Boston')", [event, S, date, home, away, home_score, away_score, home if home_score > away_score else away])
         for team, opponent, side in ((home, away, "home"), (away, home, "away")):
             c.execute("INSERT INTO team_box_stats VALUES (?,?,3,?,?,?,40,12,23,20,10,40,85)", [event, S, team, opponent, side])
         c.execute(
