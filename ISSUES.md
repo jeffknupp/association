@@ -61,6 +61,7 @@ before that commit needs re-checking against the current warehouse.
   did not arrive. Until then `check_scope` should refuse rather than drop.
 - **Source:** ours, not ESPN's.
 - **GitHub:** none yet
+- **GitHub:** #166
 
 ### The agent fall-through answers 1 question in 23, and does not finish 61% of the time
 - **Found:** 2026-09-18, the first measurement of the agent path in this project
@@ -207,6 +208,7 @@ those were found.
 - **Next step:** honor `team` on the relation (`player_games` already carries
   the team), read "history"/"all-time" as `span: career`, and refuse a
   subject the template was given and cannot use. We hold the data.
+- **GitHub:** #167
 
 ### A two-digit season ("23-24") is answered for the wrong year
 - **Found:** 2026-09-21, same live sample
@@ -230,6 +232,7 @@ those were found.
   still wrong, for the same underlying reason (`_validate_season` cannot read
   "23-24"), just a different wrong year. The fix above is unchanged and still
   open.
+- **GitHub:** #168
 
 ### A thresholdless `threshold_count` is rewritten to `leaderboard` before the subject is restored
 - **Found:** 2026-09-21, a Sonnet agent replaying the 172 distinct
@@ -250,6 +253,7 @@ those were found.
 - **Next step:** guard the rewrite on the question naming no player
   (`players_named_in`), and send a named player's "how many games" to
   `player_stat`.
+- **GitHub:** #169
 
 ### "How many points did Jokic score in the 3rd quarter against Boston?" now routes to `team_quarter_points` instead of refusing
 - **Found:** 2026-09-22, the single end-of-task `scripts/check_routing.py` run
@@ -288,6 +292,7 @@ those were found.
   edit, is the fix if so, per `AGENTS.md`'s "Working on the query path".
 - **Source:** ours (routing), reproduced twice.
 - **GitHub:** none yet
+- **GitHub:** #170
 
 ## P2: misleading or incomplete
 
@@ -376,6 +381,7 @@ those were found.
   It bites two CLI invocations at once and, above all, measurement runs:
   the yardstick's 29-question "bad instance" was almost certainly this.
   Rule for any live run: one caller, and confirm it with `pgrep` first.
+- **GitHub:** #171
 
 ### `team_leaderboard` refuses "no team matching 'least'" when the router files a ranking word as the team
 - **Found:** 2026-09-22, the C4b golden diff: "nba team with least playoff
@@ -396,6 +402,7 @@ those were found.
 - **GitHub:** none yet
 
 - **GitHub:** none yet
+- **GitHub:** #172
 
 
 ### `game_log`'s venue narrowing counts a neutral-site game as home or away; `team_record`'s does not
@@ -450,6 +457,7 @@ those were found.
 - **Source:** ours, not ESPN's - `team_box_stats.home_away` and
   `games.neutral_site` both correctly describe the game; the gap is which of
   the two `game_log`'s venue narrowing reads.
+- **GitHub:** #173
 
 ### "Since he joined the league" becomes one season, the year he joined
 - **Found:** 2026-09-21, yardstick-v2 live run (`live_31b2ec6.jsonl`)
@@ -480,6 +488,7 @@ those were found.
   was filed against, not the general gap.
 - **Source:** ours, not ESPN's.
 - **GitHub:** none yet
+- **GitHub:** #174
 
 ### "His best season" is answered with a season nobody determined
 - **Found:** 2026-09-21, working #95 (the invented-season entry above) -
@@ -509,6 +518,7 @@ those were found.
   in the spirit of "prefer refusing to guessing" (`AGENTS.md`).
 - **Source:** ours, not ESPN's.
 - **GitHub:** none yet
+- **GitHub:** #175
 
 ### Season 2021's regular-season BPI snapshot is a day-one projection
 - **Found:** 2026-09-15, reviewing `4ef119f`; **re-ranked P3 -> P2 on 2026-09-16** - a preseason projection presented as a season's index, with no caveat
@@ -2168,6 +2178,7 @@ those were found.
 - **Next step:** keep digits inside a word in `_words` (or fold "76ers" to
   "sixers" in `_fold`), then re-run the entity golden comparison: `_words`
   feeds `players_named_in`, where a stray number must not start naming people.
+- **GitHub:** #176
 
 ### A second player in `opponent` is never moved to `players`
 - **Found:** 2026-09-21, live sample; also corpus "jay huff game log vs Embiid"
@@ -2178,6 +2189,7 @@ those were found.
 - **User sees:** the slow agent, for the most ordinary two-player question.
 - **Next step:** in the entity stage, an `opponent` that names no team and IS a
   player the question names joins `players`. Eliminates, never chooses.
+- **GitHub:** #177
 
 ### A name written without its periods matches nobody ("Pj washington")
 - **Found:** 2026-09-21, live sample
@@ -2190,6 +2202,7 @@ those were found.
 - **User sees:** "no player matching 'Pj Washington'", then the agent.
 - **Next step:** fold periods out of both sides in `find_players` the way
   accents already are (178c21f).
+- **GitHub:** #178
 
 ### A retired player with no season named is refused instead of answered over his career
 - **Found:** 2026-09-21, live sample - 4 of 200: "Allen Iverson playoffs vs
@@ -2203,6 +2216,7 @@ those were found.
 - **Next step:** a product decision first: when the question states no season
   (`_validate_season` found none in the text) and the player has no row in the
   default, answer `span: career` and say so. Re-score the corpus either way.
+- **GitHub:** #179
 
 ### The name check refuses a possessive typo it used to answer ("embids")
 - **Found:** 2026-09-21, the web-session replay (agent), confirmed by the lead
@@ -2214,6 +2228,7 @@ those were found.
   question does not mention".
 - **Next step:** strip a trailing possessive "s" before measuring, rather than
   widening the budget - #131 measured what a wider budget costs.
+- **GitHub:** #180
 
 ### A subject `game_log` was not given is not restored from the question
 - **Found:** 2026-09-21, live sample
@@ -2225,6 +2240,7 @@ those were found.
 - **User sees:** a fall-through.
 - **Next step:** find why `_scope_from_question_restore_player` does not fire
   when neither `player` nor `team` is set.
+- **GitHub:** #181
 
 ### A leaderboard "and the team they play for" request silently drops team
 - **Found:** 2026-09-21, yardstick-v2 key-building (A_netpoints_shots slice,
@@ -2250,6 +2266,7 @@ those were found.
   not in the whitelist.
 - **Source:** ours, not ESPN's.
 - **GitHub:** none yet
+- **GitHub:** #182
 
 ### `_no_games`'s "did not play" is also the wrong cause when a real narrowing empties the pool
 - **Found:** 2026-09-22, step 3 C2 (record_when and streak read the relation's
@@ -2291,6 +2308,7 @@ those were found.
   for game_log/player_stat.
 - **Source:** ours, not ESPN's.
 - **GitHub:** none yet
+- **GitHub:** #183
 
 ## P3: refusal or gap
 
@@ -2316,6 +2334,7 @@ those were found.
   gets a warehouse-verified fixture test.
 - **Source:** ours.
 - **GitHub:** none yet
+- **GitHub:** #184
 
 ### `period_leaderboard` stays off the player-games relation
 - **Found:** 2026-09-22, step 3 C5's own second task: assess whether a
@@ -2361,6 +2380,7 @@ those were found.
   the existing pattern, single-season only. Worth a dedicated pass rather than
   folding into a future step 3 task, since it is new capability (a behavior
   change with its own golden cases), not a pure port.
+- **GitHub:** #185
 
 ### `player_splits` cannot honor a teammate's absence, a box-score line, a playoff-series game or an ordinal season when the subject is a team, not a player
 - **Found:** 2026-09-22, step 3 C2 work on `player_splits`/`period_split`
@@ -2427,6 +2447,7 @@ those were found.
   player relation; `season_n` has no team equivalent at all and should
   likely stay refused.
 - **Source:** ours, not ESPN's.
+- **GitHub:** #186
 
 ### "Career ... in 2015" is 2015 on the condition templates and a refusal on the others
 - **Found:** 2026-09-21, step 3 C1 (folding the two readers of a player's
@@ -2447,6 +2468,7 @@ those were found.
   pure.
 - **Source:** ours, not ESPN's.
 - **GitHub:** none yet
+- **GitHub:** #187
 
 ### "Total points scored ... in the last N games" lists the games but never sums them
 - **Found:** 2026-09-21, while fixing "'Last N games' means the last N
@@ -2468,6 +2490,7 @@ those were found.
   which games it found.
 - **Source:** ours, not ESPN's.
 - **GitHub:** none yet
+- **GitHub:** #188
 
 ### No league ranking by shot distance, and the refusal reads as if the data could not do it
 - **Found:** 2026-09-21, yardstick-v2 blind key against build 50c1faa.
@@ -2485,6 +2508,7 @@ those were found.
   "shot distance is answered for one player, not ranked across the league yet".
 - **Source:** ours, not ESPN's.
 - **GitHub:** none yet
+- **GitHub:** #189
 
 ### Foul-out counts: check which column they read - the season table undercounts
 - **Found:** 2026-09-21, yardstick-v2 blind keyer P5; re-measured by the lead.
@@ -2499,6 +2523,7 @@ those were found.
   Wembanyama's 3.
 - **Source:** ESPN's; see DATA.md.
 - **GitHub:** none yet
+- **GitHub:** #190
 
 ### A position group as the subject has no template, and six corpus questions want one
 - **Found:** 2026-09-20, tallying what still falls through after the
@@ -2669,6 +2694,7 @@ those were found.
   "18th season" the way a player does).
 - **Source:** ours, not ESPN's.
 - **GitHub:** none yet
+- **GitHub:** #191
 
 ### A `since` span before the 2002 shot floor gets no caveat that shots are clipped
 - **Found:** 2026-09-22, step 3, C5.
@@ -2695,6 +2721,7 @@ those were found.
   read gets the same "seasons left out" sentence a plain career already does.
 - **Source:** ours, not ESPN's.
 - **GitHub:** none yet
+- **GitHub:** #192
 
 ## P4: tooling, docs, low impact
 
@@ -2731,6 +2758,7 @@ those were found.
 - **Priority note:** P4 - no wrong answer today, a maintenance risk if the
   next two ports each add their own copy instead of reading this one first.
 - **GitHub:** none yet
+- **GitHub:** #193
 
 ### No template counts triple-doubles for one named player, or splits them by venue
 - **Found:** 2026-09-21, a Sonnet agent clustering the 261-question corpus
@@ -2755,6 +2783,7 @@ those were found.
 - **Priority note:** P4 - one corpus question, and it falls through rather
   than answering wrongly.
 - **GitHub:** none yet
+- **GitHub:** #194
 
 ### "Points by quarter" asks for all four at once, and every template answers one
 - **Found:** 2026-09-20, finishing the quarters-and-halves work
