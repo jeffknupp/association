@@ -2079,6 +2079,47 @@ those were found.
 - **Source:** ours, not ESPN's.
 - **GitHub:** none yet
 
+### `_no_games`'s "did not play" is also the wrong cause when a real narrowing empties the pool
+- **Found:** 2026-09-22, step 3 C2 (record_when and streak read the relation's
+  full narrowing set: `opponent`, `venue`, `without`, `split`, `game_n`,
+  `since`, `season_n`, `below`, `above`).
+- **Evidence:** `common._no_games` (called by `_record_when_query` and every
+  other template on the relation when the narrowed query returns zero rows)
+  counts a player's box-score rows over the WHOLE scope - ignoring whatever
+  narrowed the main query to nothing - and if that count is nonzero, says
+  "X was listed in N box scores ... but did not play in any of them." That
+  sentence is about whether he played at all, and a narrowing that legitimately
+  excludes every game he DID play (a venue, an opponent, a teammate's absence,
+  a box-score line) is a different fact entirely. Measured against
+  `/home/jeff/code/association/nba.duckdb`: `record_when(con, {"player": "Jayson
+  Tatum", "stat": "points", "threshold": 25, "below": ["under 3 assists"]})`
+  (against `tests/query/test_conditions.py`'s `league` fixture, where every
+  played row is fixed at 3 assists) returns "Jayson Tatum was listed in 5 box
+  scores in the 2026 regular season but did not play in any of them" - false;
+  he played 3 of those 5 games (e1, e4, e7), and the other two are a DNP and a
+  missing box score. The same shape is reachable through any narrowing that
+  empties the pool - an opponent he never scored a qualifying game against, a
+  venue, a teammate's absence - not only a `below`/`above` line, so this is a
+  more general form of #109 (which is specifically about the empty-2013-2018
+  box-score population): #109's fix (threading `box_source(con)` through
+  `_no_games`) does not touch this one, since the count there would still be
+  scope-wide rather than narrowing-aware.
+- **User sees:** a confident, false "did not play in any of them" for a player
+  who clearly did, on a question that only narrowed him out of the row set -
+  the exact false-cause shape AGENTS.md warns about ("check which fact is
+  actually missing").
+- **Next step:** `_no_games` needs to know whether the EMPTY result came from
+  him having no games at all in scope, or from a real narrowing (`Narrowed`)
+  excluding every one of them, and say which. The narrowed object is already
+  available at every call site (`record_when`, `player_splits`, `with_without`,
+  `streak`); the fix is likely a second count run without the narrowing
+  applied (the unnarrowed total already has a helper in
+  `_no_narrowed_games`/`Narrowed.clauses(narrowed=False)`) compared against the
+  narrowed zero, the same two-fact split `_no_narrowed_games` already makes
+  for game_log/player_stat.
+- **Source:** ours, not ESPN's.
+- **GitHub:** none yet
+
 ## P3: refusal or gap
 
 ### "Career ... in 2015" is 2015 on the condition templates and a refusal on the others
@@ -2275,6 +2316,39 @@ those were found.
   its own stopwords to `_COUNT_SUBJECT_WORDS`.
 - **GitHub:** none yet
 - **GitHub:** #151
+
+### `record_when`'s team branch and `streak`'s team/league branches refuse the relation's cells rather than reading them
+- **Found:** 2026-09-22, step 3 C2 (record_when and streak read the relation's
+  full narrowing set).
+- **Evidence:** `HONORED_SCOPING["record_when"]` and `["streak"]`
+  (`templates/common.py`) claim the whole relation set (`opponent`, `venue`,
+  `without`, `split`, `game_n`, `since`, `season_n`, `below`, `above`) for the
+  WHOLE intent, not just the player branch - `check_scope` cannot tell the
+  branches apart from the slots alone, since it runs before the template does.
+  Only the player branch (`condition_player`) actually reads any of them: a
+  team-only `record_when` ("Celtics record when they scored 120, at home") or
+  a team/league `streak` ("Lakers' longest home winning streak", "most 40-point
+  games in a row with 10+ assists, nobody named") has real, plausible shapes
+  for several of these cells - venue and opponent especially - and none of
+  them are wired for `_record_when_team_query`, `_streak_team` or
+  `_streak_league`. Rather than let `check_scope`'s promise go silently
+  unfulfilled, `splits._condition_needs_player_refusal` refuses any of the nine
+  cells by name on those branches (`TemplateUnsupported`, not a wrong or
+  narrower answer) - the honest choice given the size of wiring all of them
+  onto three more code paths, but it is a real gap: a team's own home/road
+  record above a threshold, or its longest streak against one opponent, is a
+  question StatMuse answers today and this project currently refuses.
+- **User sees:** a refusal ("record_when cannot honor ['venue'] without a
+  named player...") for a team-only or league-wide question naming a venue,
+  an opponent, a since-span, or a box-score line - rather than an answer.
+- **Next step:** wire `venue`/`opponent` onto `_record_when_team_query` and
+  `_streak_team` first (`splits._player_splits_narrow_sql` already builds the
+  matching `team_box_stats`-aliased SQL for `player_splits`' own team branch
+  and can likely be reused directly); `since`/`season_n`/`without`/`split`/
+  `game_n`/`below`/`above` need more thought for a team or a league-wide
+  subject before they are worth wiring.
+- **Source:** ours, not ESPN's.
+- **GitHub:** none yet
 
 ## P4: tooling, docs, low impact
 
