@@ -4268,6 +4268,31 @@ def test_a_period_is_narrowed_by_a_teammates_absence(period_ctx: TemplateContext
     assert whole.data["games_played"] == 5 and "without" not in (whole.answer or "")
 
 
+def test_a_period_is_narrowed_by_a_line_on_a_box_score_column(period_ctx: TemplateContext) -> None:
+    """A line on a box-score column narrows which of the player's games the
+    period sum covers, the same as every other template on the relation
+    (step 3, C2) - previously `_period_split_rows` hard-coded `measures=[]`
+    into its own call to `common.scoped_games`, so `below`/`above` reached
+    `check_scope`'s declaration and nothing past it. e2 (30 total points) and
+    e4 (25) are the only games at or above 24 here; each holds one
+    first-quarter three (3 points) - 6 over 2 games, where the whole season
+    (5 games) totals 12."""
+    c = period_ctx.con
+    c.execute("ALTER TABLE player_box_stats ADD COLUMN points INTEGER")
+    for event, points in (("e1", 10), ("e2", 30), ("e3", 20), ("e4", 25), ("e5", 15)):
+        c.execute("UPDATE player_box_stats SET points = ? WHERE event_id = ? AND athlete_id = '1'", [points, event])
+    high = period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "above": "24 points"})
+    assert high.data["games_played"] == 2
+    assert high.data["total"] == 6
+    assert high.data["measures"] == ["at least 24 points"]
+    assert "with at least 24 points" in (high.answer or "")
+    low = period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "below": "24 points"})
+    assert low.data["games_played"] == 3
+    assert "with under 24 points" in (low.answer or "")
+    with pytest.raises(TemplateUnsupported):
+        period_split(period_ctx, {"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "above": "24 vibes"})
+
+
 def test_a_period_log_takes_the_end_of_the_season_the_question_asked_for(period_ctx: TemplateContext) -> None:
     """`order` picks which end the rows come from, as it does for game_log.
     Before it was honored, "his first 5 games" showed his last five - a

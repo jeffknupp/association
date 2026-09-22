@@ -1378,13 +1378,23 @@ def _condition_scope(season: Any, span: Any, season_type: Any, tables: tuple[str
     for a career, where it means every season on record, which is what the
     word asked for. A season the question named beats "career": the router keeps
     a named year alongside it, and "career ... in 2015" is asking about 2015.
-    ``since`` is every season from that one on.
+    ``since`` is every season from that one on - and, like ``_span_of``'s own
+    pairing of the two, conflicts with a named ``season`` rather than silently
+    picking one: a caller that let both through here would resolve "since 2022
+    and 2020 at once" as though only "since 2022" had been asked, with nothing
+    saying the named year was dropped.
 
     .. versionchanged:: 4.3.0
        Honors ``since``.
+
+    .. versionchanged:: 4.4.0
+       Refuses ``since`` alongside a named ``season`` instead of silently
+       preferring ``since``.
     """
     kind = season_type if season_type in (2, 3) else 2
     if isinstance(since, int) and since and not isinstance(since, bool):
+        if isinstance(season, int) and season and not isinstance(season, bool):
+            raise TemplateUnsupported(f"since {since} and the {season} season at once")
         scope = _game_scope(None, kind, tables)
         return _Scope(None, kind, max(since, scope.first), scope.phantoms)
     if isinstance(season, int) and not isinstance(season, bool):
