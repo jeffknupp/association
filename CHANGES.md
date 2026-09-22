@@ -28,8 +28,125 @@ had no published version to be compatible with.
   relation's `_SERIES_GAMES`). `TeamNarrowed.filters` gets `opponent=`/`date=`
   toggles for a caller that already names either its own way - infrastructure
   only here; nothing yet sets either new cell, so no template's answer
-  changes. Wiring them into `team_games`/`scoped_team` and the templates that
-  read them is a separate commit.
+  changed there.
+
+- **Scoping is declared once on the team-games relation (step 3, C4b, part
+  2).** `team_record`, `team_leaderboard`, `head_to_head` and
+  `team_quarter_points` each still declared their own `HONORED_SCOPING`
+  frozenset even after C4 put them (and `player_splits`/`record_when`/
+  `streak`'s team branches) on `query/team_games.py`'s relation - the same
+  drift C3 removed for the player-games relation. `TEAM_RELATION_SCOPING`
+  (`opponent`, `venue`, `date`, `since`, `span`, `order`, `game_n`) is that
+  declaration for the team relation, `TEAM_RELATION_SCOPING_EXCLUDED` the
+  per-template reasoned exceptions, and `_team_relation_scoping(intent,
+  *extra)` builds a template's set the way `_relation_scoping` already does
+  for the player side. `team_record`'s and `head_to_head`'s new declarations
+  are byte-identical to their old hand-written frozensets (`{"venue",
+  "opponent", "span", "situation", "split"}` and `{"opponent", "venue",
+  "date"}`) - confirmed by `_team_relation_scoping(...)` equality, so this
+  part is a pure rename of the mechanism, not a behavior change. Two
+  source-reading gates in the new `tests/query/test_team_relation_scoping.py`
+  (kept apart from `tests/query/test_templates.py`, another agent's file
+  this round) mirror C3's: every declaration must equal
+  `_team_relation_scoping`'s own output, and `head_to_head`/
+  `team_quarter_points` (the two fully on `common.team_games`) may not write
+  the relation's own `tg.opponent_id = ?` / `tg.side = ?` /
+  `tg.eastern_date = ?` clauses themselves. `team_record` and
+  `team_leaderboard` still narrow an opponent and a postseason venue split
+  by hand (`_games_record_games`, `_venue_records`) - real, pre-existing
+  exemptions, each watched by its own test that asserts the hand-written
+  clause is STILL there, so a future port onto the shared step fails the
+  assertion instead of silently leaving a stale exemption in place.
+
+  Part 1's `TeamNarrowed.window`/`.series_game` are now wired in:
+  `common.team_games` reads `game_n` and `order`/`limit` off `slots` the
+  same way it already read `venue`, and `common.scoped_team` reads `since`
+  the way `scoped_player` already does - the team relation's own
+  `since`-bounded career was ALWAYS available through `_span_of`'s existing
+  `since` branch (used since 4.3.0's `_player_splits_team`); what was
+  missing was every OTHER team branch reading it and `_team_span_label`
+  saying so (below).
+
+  Three templates gain real capability from this, each closing part of an
+  ISSUES.md gap:
+  - **`team_quarter_points`** now settles its team and span through
+    `scoped_team` and reads every game through `common.team_games`, instead
+    of a hand-written join over `team_box_stats`/`real_games`. It honors
+    `opponent` (unchanged), `venue`, `date`, `since`, `span` ("career") and
+    `game_n` for the first time, and `order`/`limit` as a window cut before
+    the linescores are summed - closing "show sixers first quarter scoring
+    for their last 10 games" and "trailblazers stats last 10 games 3 point
+    average 1st quarter" (ISSUES.md, live yardstick-v2 failures), both of
+    which refused for want of `order`/`limit`. The answer now says every
+    narrowing that applied (`TeamNarrowed.filters()`), including the window
+    ("over their last 10 games"). The relation reads its games from
+    `real_games` rather than joining `team_box_stats`; measured against the
+    2026-09-22 warehouse this changes no coverage - `team_box_stats.home_away`
+    and `.opponent_team_id`, the two columns the old join actually needed,
+    are populated for every 2013-2018 Chicago/New Orleans game whose OTHER
+    box-score columns are empty (94/94, 87/87, ... rows; AGENTS.md, "Whole
+    team-seasons of box scores are empty"), so the old inner join already
+    included them and this port changes nothing there. The router's own
+    `ORDER_INTENTS` (`query/router.py`) gains this intent too - code-side
+    post-processing only, not a `ROUTER_PROMPT`/`ROUTER_SCHEMA` change, so no
+    other question's routing can have moved.
+  - **`team_leaderboard`** honors `since` for the two record metrics
+    (`record`, `losses`) - "nba team with least playoff wins since 2022"
+    (ISSUES.md) - tallied by `_team_leaderboard_since_records`, a grouped
+    query over the relation keyed by the team's CURRENT display name (a
+    multi-season total has no one season to key `season_name_sql` off).
+    Every other metric still refuses `since` by name: a season line
+    (`team_season_stats`) has no way to sum across a span of seasons yet.
+  - **`record_when`'s team branch and `streak`'s team and league-wide
+    win/loss branches honor `since`** - closing the last open part of
+    ISSUES.md's "record_when's team branch and streak's team/league branches
+    still refuse ..." entry for that cell (rewritten below to what remains).
+    `record_when`'s team branch also honors `game_n` (a threshold record
+    narrowed to one game of each series is a real, answerable shape);
+    `streak`'s team and league branches do not, and refuse it by name
+    (`_condition_needs_player_refusal("streak", slots, "game_n")`) - the
+    games `game_n` numbers are not consecutive to each other, so a run over
+    them would silently answer a run over a scattered subset rather than the
+    real games in between. `without`, `split`, `season_n`, `below` and
+    `above` remain refused for both intents' team-only or league-wide shape;
+    `_CONDITION_PLAYER_ONLY_CELLS` drops `since` and `game_n` now that they
+    are real answers, and gains an `*extra` parameter so the two intents no
+    longer have to share exactly one refused set.
+
+  `_team_span_label`/`_team_span_floor_note` (`templates/splits.py`, shared
+  by `_player_splits_team`, `_record_when_team_answer` and `_streak_team`)
+  read `span.since` for the first time - fixing a label bug that predates
+  this commit: a since-bounded team span is career-SHAPED (`span.season` is
+  None, same as a plain career), so `_player_splits_team`, which has called
+  `_span_of(..., since=...)` since C4, already rendered a since-bounded
+  answer with the same "every regular season on record (1994 onward)" label
+  a plain career gets, with nothing saying the question had named a starting
+  year at all; it now reads "since 2022 (2022-2026 regular seasons)" like
+  every other since-bounded answer in this project.
+
+  Golden comparison for the parts that touch runtime code already in use
+  (`common.team_games`, `scoped_team`): the new cells are all additive
+  (`since` defaults to not being read unless a caller passes it, and
+  `window`/`series_game` were already proven additive in part 1), so every
+  existing call site's generated SQL is unchanged for a question that does
+  not set them - confirmed by the full offline suite (`uv run pytest -q -n
+  auto`) passing unmoved. `team_quarter_points`'s rewrite is not a pure port
+  - its internal read changed shape entirely - so every pre-existing test
+  for it (`tests/query/test_templates.py`) is kept passing unchanged in
+  meaning, and new warehouse-shaped fixture tests cover each newly honored
+  cell (`tests/query/test_team_templates.py`, `tests/query/test_conditions.py`).
+  One necessary, minimal, additive fixture change: `tests/query/test_templates.py`'s
+  `tq_con` gained `neutral_site`/`venue_city` columns on its `games` table
+  (both `false`/a real city on every row, changing no existing assertion) -
+  `team_games`'s relation reads both unconditionally (cup-final detection,
+  the home/road split) and this fixture predates any reader of the relation
+  reaching it; every sibling fixture the relation is read against already
+  carries them. Perturbed and watched to fail: a token removed from
+  `TEAM_RELATION_SCOPING_EXCLUDED`'s reason, an extra cell added to a
+  declaration, and a hand-written `tg.opponent_id = ?` added inside
+  `team_quarter_points` were each caught by the new gates in
+  `test_team_relation_scoping.py`; the two "exemption" gates were confirmed
+  to fail when the narrowing they watch for is removed.
 
 - **A one-game streak is "1 game", not "1 games".** `streak`'s headline, for
   a named subject and league-wide alike, pluralized by hand; a team's streak

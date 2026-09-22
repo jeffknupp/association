@@ -654,13 +654,28 @@ def test_record_when_a_box_score_line_narrows_to_no_games(league: TemplateContex
 
 def test_record_when_cannot_honor_a_relation_cell_without_a_player(league: TemplateContext) -> None:
     """The team branch settles no player, so it still cannot narrow by a
-    teammate's absence, a since-span or anything else only condition_player
-    reads - refusing by name rather than silently answering the whole team's
-    record. ``opponent`` and ``venue`` are NOT in this list any more (step 3,
-    C4: see test_an_opponent_narrows_a_team_only_threshold_too and
-    test_a_venue_narrows_a_team_only_threshold_too below)."""
-    with pytest.raises(TemplateUnsupported, match=r"record_when cannot honor \['since'\]"):
-        record_when(league, _slots(team="Boston Celtics", stat="points", threshold=100, since=S - 1))
+    teammate's absence, a box-score line or anything else only
+    condition_player reads - refusing by name rather than silently answering
+    the whole team's record. ``opponent``/``venue`` (step 3, C4) and
+    ``since``/``game_n`` (step 3, C4b) are NOT in this list any more - see
+    test_an_opponent_narrows_a_team_only_threshold_too,
+    test_a_venue_narrows_a_team_only_threshold_too and
+    test_a_team_only_threshold_honors_since below."""
+    with pytest.raises(TemplateUnsupported, match=r"record_when cannot honor \['below'\]"):
+        record_when(league, _slots(team="Boston Celtics", stat="points", threshold=100, below=["under 3 assists"]))
+
+
+def test_a_team_only_threshold_honors_since(league: TemplateContext) -> None:
+    """``since`` (step 3, C4b): a team-only record now spans more than one
+    season instead of refusing - the fixture's Celtics have real games in
+    both `last` (e0z-e0d) and this season (e1-e7), and ``since=last`` reaches
+    both. The exact tally is covered by the dedicated ``since`` tests in
+    ``tests/query/test_team_templates.py``; this just confirms the shape
+    answers rather than refuses, and says the span in the heading."""
+    result = record_when(league, _slots(team="Boston Celtics", stat="points", threshold=100, since=S - 1))
+    assert result.data["team"] == "Boston Celtics"
+    assert result.data["reached"]["games"] + result.data["fell_short"]["games"] > 4
+    assert f"since {S - 1}" in (result.answer or "")
 
 
 # ---------------- record_when, the team branch (ISSUES.md #144) ----------------
@@ -1019,13 +1034,29 @@ def test_streak_narrows_by_a_box_score_line_and_says_so(league: TemplateContext)
 
 
 def test_streak_cannot_honor_a_relation_cell_without_a_player(league: TemplateContext) -> None:
-    """Team and league streaks settle no player, so neither can narrow by a
-    span starting point or an ordinal season - only condition_player reads
-    them, and neither branch calls it."""
-    with pytest.raises(TemplateUnsupported, match=r"streak cannot honor \['since'\]"):
-        streak(league, _slots(team="Boston Celtics", kind="win", since=S - 1))
+    """Team and league streaks settle no player, so neither can narrow by an
+    ordinal season - only condition_player reads that, and neither branch
+    calls it. ``since`` is NOT in this list any more (step 3, C4b) - see
+    test_a_team_streak_honors_since below."""
     with pytest.raises(TemplateUnsupported, match=r"streak cannot honor \['season_n'\]"):
         streak(league, _slots(kind="win", season_n=1))
+
+
+def test_a_team_streak_honors_since(league: TemplateContext) -> None:
+    """``since`` (step 3, C4b): searched across every season from it on
+    rather than only the current one - not across the boundary between them,
+    since a team's own run is still counted within one season
+    (``_longest_runs``' own ``("team_id", "season")`` partition, unchanged by
+    this). The fixture's Celtics have a 3-game win streak in BOTH `last`
+    (e0c, e0a, e0d) and this season (e3, e4, e5); with `since` bounded to the
+    current season alone (the default), only the second would be found. The
+    exact tally is covered by the dedicated ``since`` tests in
+    ``tests/query/test_team_templates.py``; this confirms the shape answers
+    rather than refuses, over the wider span."""
+    result = streak(league, _slots(team="Boston Celtics", kind="win", since=S - 1))
+    assert result.data["streaks"]
+    assert result.data["streaks"][0]["length"] == 3
+    assert f"since {S - 1}" in (result.answer or "")
 
 
 # ---------------- what the checks around the templates see ----------------

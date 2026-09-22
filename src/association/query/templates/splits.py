@@ -149,31 +149,49 @@ def _condition_span_label(scope: _Scope, slots: dict[str, Any], first: Any, last
 
 # The relation's cells record_when's team branch and streak's team/league
 # branches cannot honor: each needs a named PLAYER to settle a teammate's
-# absence, a starter/bench half, a career's ordinal season or start point, or
-# a line on a box-score column against - `condition_player` is what reads all
-# of them, and neither branch calls it. `HONORED_SCOPING` claims the whole
-# relation for both intents regardless of branch (the same declaration the
-# player branch needs), so a team-only or league-wide question setting one of
-# these would otherwise be silently answered as though it had been applied.
-# Refusing here, by name, is the same discipline `_player_splits_team` already
-# applies to a bare `starter_bench` split.
+# absence, a starter/bench half, or a line on a box-score column against -
+# `condition_player` is what reads all of them, and neither branch calls it.
+# `HONORED_SCOPING` claims the whole relation for both intents regardless of
+# branch (the same declaration the player branch needs), so a team-only or
+# league-wide question setting one of these would otherwise be silently
+# answered as though it had been applied. Refusing here, by name, is the same
+# discipline `_player_splits_team` already applies to a bare `starter_bench`
+# split.
 #
 # `opponent` and `venue` are NOT here (step 3, C4): both branches now read the
 # team-games relation through `common.team_games`, the same shared narrowing
 # `team_record` reads, so a team's own opponent/venue narrowing is a real,
-# implemented shape rather than a refusal (ISSUES.md, "record_when's team
-# branch and streak's team/league branches refuse the relation's cells rather
-# than reading them" - rewritten to match). `streak`'s LEAGUE branch (no team
+# implemented shape rather than a refusal. `since` is NOT here either (step 3,
+# C4b): `_span_of`'s own `since` branch already exists and both team branches
+# call it for the ordinary span, so honoring it needed no new mechanism (see
+# ISSUES.md, "record_when's team branch and streak's team/league branches
+# still refuse ..." - rewritten to match). `streak`'s LEAGUE branch (no team
 # named either) still cannot narrow to a single opponent or venue - a
 # league-wide streak has no one team's home/road split or rival to read - so
 # `_streak_league_needs_named_subject` refuses those two there specifically.
-_CONDITION_PLAYER_ONLY_CELLS: tuple[str, ...] = ("without", "split", "since", "season_n", "below", "above", "game_n")
+#
+# `game_n` is honored for `record_when`'s team branch (a threshold record can
+# meaningfully be narrowed to one game of each series - "Celtics record when
+# they scored 120+, game 4 of the series") but stays refused for `streak`'s
+# team and league branches, passed as `extra` at each of those two call sites:
+# a streak is a run of CONSECUTIVE games, and the games "game 4 of each
+# series" picks out are not consecutive to each other - a streak over them
+# would silently answer a run over a scattered, non-adjacent subset rather
+# than the real games in between.
+_CONDITION_PLAYER_ONLY_CELLS: tuple[str, ...] = ("without", "split", "season_n", "below", "above")
 
 
-def _condition_needs_player_refusal(intent: str, slots: dict[str, Any]) -> None:
+def _condition_needs_player_refusal(intent: str, slots: dict[str, Any], *extra: str) -> None:
     """Raise if a team-only or league-wide question set a relation cell that
-    needs a named player to honor - see :data:`_CONDITION_PLAYER_ONLY_CELLS`."""
-    claimed = sorted(cell for cell in _CONDITION_PLAYER_ONLY_CELLS if slots.get(cell))
+    needs a named player to honor - see :data:`_CONDITION_PLAYER_ONLY_CELLS`.
+    ``extra`` adds cells refused for this call site only (see ``streak``'s own
+    call, which passes ``"game_n"``).
+
+    .. versionchanged:: 4.4.0
+       Takes ``*extra`` (step 3, C4b), so the two intents' team branches no
+       longer have to agree on exactly the same refused set.
+    """
+    claimed = sorted(cell for cell in (*_CONDITION_PLAYER_ONLY_CELLS, *extra) if slots.get(cell))
     if claimed:
         raise TemplateUnsupported(f"{intent} cannot honor {claimed} without a named player - only his own games can be narrowed that way")
 
@@ -192,12 +210,24 @@ def _streak_league_needs_named_subject(slots: dict[str, Any]) -> None:
 def _team_span_label(span: _Span, first: Any = None, last: Any = None) -> str:
     """The team span in words - :meth:`conditions._Scope.label`'s shape, over
     a :class:`~association.query.templates.common._Span` instead: one season,
-    or the seasons the rows actually came from. Shared by
-    :func:`_player_splits_team`, :func:`_record_when_team_answer` and
+    a since-bounded range, or the seasons the rows actually came from. Shared
+    by :func:`_player_splits_team`, :func:`_record_when_team_answer` and
     :func:`_streak_team`, the same way :func:`_condition_span_label` is shared
-    by the player branches."""
+    by the player branches - and, like that function, has to check ``since``
+    itself rather than merely a career's own ``first``/``last``: a since-bounded
+    span is career-SHAPED (``span.season`` is None the same way a career's is),
+    so without this a "since 2022" record read exactly like "every season on
+    record" once its first and last rows were known.
+
+    .. versionchanged:: 4.4.0
+       Reads ``span.since`` (step 3, C4b) - before this, a since-bounded team
+       span rendered the same label as a plain career one, with nothing
+       saying the question had named a starting year at all.
+    """
     if span.season is not None:
         return _period(span.season, span.season_type)
+    if span.since is not None:
+        return f"since {span.since} ({span.years(first, last) if isinstance(first, int) and isinstance(last, int) else f'{span.kind}s'})"
     if isinstance(first, int) and isinstance(last, int):
         return span.years(first, last)
     return f"every {span.kind} on record ({span.first} onward)"
@@ -205,8 +235,13 @@ def _team_span_label(span: _Span, first: Any = None, last: Any = None) -> str:
 
 def _team_span_floor_note(span: _Span, first: Any) -> str:
     """:meth:`conditions._Scope.floor_note`'s shape, over a ``_Span``: a team
-    career's own box-score-floor caveat."""
-    if span.season is None and first == span.first:
+    career's own box-score-floor caveat - not shown for a since-bounded span
+    (``span.since is not None``), the same guard
+    :func:`~association.query.templates.common._box_score_notes` applies for a
+    player: the question named its own starting year, so a note that games
+    "start with" that year would read as though the WAREHOUSE, not the
+    question, put the floor there."""
+    if span.season is None and span.since is None and first == span.first:
         return f" Box scores start with the {span.first} {span.kind}; anything earlier is not counted."
     return ""
 
@@ -1155,6 +1190,13 @@ def _record_when_team_answer(con: duckdb.DuckDBPyConnection, slots: dict[str, An
        played in rather than ESPN's own-year label, so the pre-1994 refusal
        that used to run here no longer applies - see CHANGES.md for the moved
        cases.
+
+    .. versionchanged:: 4.4.0
+       Honors ``since`` (a team's own record over a range of seasons) and
+       ``game_n`` (one game of each playoff series) for the team branch (step
+       3, C4b) - both now real, answered shapes rather than the
+       player-only refusal :func:`_condition_needs_player_refusal` used to
+       give them (ISSUES.md).
     """
     _condition_needs_player_refusal("record_when", slots)
     team = _optional_team(con, slots.get("team"), season=_slot_season(slots))
@@ -1164,7 +1206,7 @@ def _record_when_team_answer(con: duckdb.DuckDBPyConnection, slots: dict[str, An
         raise TemplateUnsupported("record_when needs a player or a team")
     stat = slots.get("stat")
     column, threshold = _record_when_team_stat(stat, slots.get("threshold"))
-    span = _span_of(slots.get("span"), slots.get("season"), slots.get("season_type") or 2, "games")
+    span = _span_of(slots.get("span"), slots.get("season"), slots.get("season_type") or 2, "games", since=slots.get("since"))
     narrowed = team_games(con, team, span, slots, opponent=slots.get("opponent"))
     if isinstance(narrowed, TemplateResult):
         return narrowed
@@ -1212,6 +1254,14 @@ def streak(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        (nobody named at all) still cannot narrow to a single opponent or
        venue, and refuses naming which rather than silently narrowing
        nothing (ISSUES.md).
+
+    .. versionchanged:: 4.4.0
+       The team and league branches also honor ``since`` (step 3, C4b) - a
+       team's or the league's longest run since a given season, searched over
+       the same career-shaped span a bare career already reaches. ``game_n``
+       stays refused for both: the games it numbers are not consecutive to
+       each other, so a run over them would not be the run the question asked
+       for.
     """
     con = ctx.con
     want_win = slots.get("kind") != "loss"
@@ -1230,7 +1280,10 @@ def streak(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     if isinstance(name, str) and name.strip():
         return _streak_player(con, name, slots, span, team, by_stat, column, threshold, unit, want_win, result, hit, condition)
 
-    _condition_needs_player_refusal("streak", slots)
+    # `game_n` stays refused for the team and league branches (both reach
+    # this one call site) - see _CONDITION_PLAYER_ONLY_CELLS's comment: one
+    # numbered game of each series is not a run of CONSECUTIVE games.
+    _condition_needs_player_refusal("streak", slots, "game_n")
     if team is not None:
         return _streak_team(con, slots, span, team, by_stat, want_win, result, hit, condition, slots.get("opponent"))
 
@@ -1344,10 +1397,14 @@ def _streak_team(
        1993-94 is now selected by the calendar year it was played in rather
        than ESPN's own-year label, so the pre-1994 refusal that used to run
        here no longer applies - see CHANGES.md for the moved cases.
+
+    .. versionchanged:: 4.4.0
+       Honors ``since`` (step 3, C4b): a run since a given season, searched
+       the same career-shaped way a bare career already is.
     """
     if by_stat:
         raise TemplateUnsupported("a team's streak is of wins or losses, not of a stat")
-    scope = _span_of(span, slots.get("season"), slots.get("season_type") or 2, "games")
+    scope = _span_of(span, slots.get("season"), slots.get("season_type") or 2, "games", since=slots.get("since"))
     narrowed = team_games(con, team, scope, slots, opponent=opponent)
     if isinstance(narrowed, TemplateResult):
         return narrowed
@@ -1448,8 +1505,9 @@ def _streak_league_team_branch(con: duckdb.DuckDBPyConnection, slots: dict[str, 
     in a season, one per team-season - settles its span as a ``_Span`` and
     reads the team-games relation (step 3, C4): a postseason before 1993-94
     is selected by the calendar year it was played in, not ESPN's own-year
-    label, and a career span reaches its real 1989 floor rather than 1994."""
-    team_span = _span_of(span, slots.get("season"), slots.get("season_type") or 2, "games")
+    label, and a career span reaches its real 1989 floor rather than 1994.
+    Honors ``since`` the same way (step 3, C4b)."""
+    team_span = _span_of(span, slots.get("season"), slots.get("season_type") or 2, "games", since=slots.get("since"))
     base, params, runs, what, who, rule = _streak_league_by_result(con, team_span, result, hit, condition, limit)
     _, first, last = _team_season_range(con, base, params, team_span)
     return runs, what, who, rule, _team_span_label(team_span, first, last), _team_where_in(team_span)

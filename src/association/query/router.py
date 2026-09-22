@@ -1408,7 +1408,7 @@ def _names_one_game(question: str) -> bool:
     return _SINGLE_GAME.search(question) is not None or any(pattern.search(question) for pattern in ORDER_WORDS.values())
 
 
-ORDER_INTENTS: frozenset[str] = frozenset({"fingerprint", "game_log", "period_split", "player_netpoints", "shot_chart", "shot_distance"})
+ORDER_INTENTS: frozenset[str] = frozenset({"fingerprint", "game_log", "period_split", "player_netpoints", "shot_chart", "shot_distance", "team_quarter_points"})
 """Intents whose template honors ``order``, so filling it from the question can
 only make the answer match what was asked.
 
@@ -1421,6 +1421,16 @@ scoping slot the template cannot honor, so a question that answers today would
 start falling through to the agent instead.
 
 .. versionadded:: 2.1.0
+
+.. versionchanged:: 4.4.0
+   Added ``team_quarter_points`` (step 3, C4b): it now reads its games
+   through the team-games relation, which honors ``order``/``limit`` as a
+   window - "show sixers first quarter scoring for their last 10 games"
+   (ISSUES.md) needs this slot kept, not dropped, to reach the template with
+   the window it asked for. No change to :data:`ROUTER_PROMPT` or
+   :data:`ROUTER_SCHEMA`: this is code-side post-processing only
+   (:func:`_route_side_and_order`), the same as :func:`_validate_season` and
+   :func:`_validate_side` - so no other question's routing can have moved.
 """
 
 

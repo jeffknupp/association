@@ -42,13 +42,3 @@ handle_starttag
 handle_endtag
 handle_data
 attrs
-
-# association/query/templates/common.py: scoped_team, the team relation's
-# counterpart to scoped_player (step 3, C4). game_log's team half and
-# head_to_head narrow through team_games() directly, which does not need a
-# name resolved ahead of a span the way an ambiguous PLAYER name does, so
-# neither calls scoped_team yet - it is the contract the two ports that
-# follow C4 (player_splits/streak's team branches and with_without, currently
-# on conditions._team_games) are meant to settle their team and span through,
-# the same order scoped_player already establishes for a player.
-scoped_team
