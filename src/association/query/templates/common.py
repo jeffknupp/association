@@ -120,37 +120,66 @@ SEASON_TYPE_NAMES = {1: "preseason", 2: "regular season", 3: "postseason"}
 SCOPING_SLOTS = frozenset({"order", "date", "opponent", "venue", "span", "without", "round", "split", "since", "below", "above", "game_n", "season_n", "situation", "rate", "season_type_unstated"})
 
 
+# What the player-games relation narrows by, declared ONCE. Every template that
+# settles its player through `scoped_player` and his games through
+# `scoped_games` honors all of these, because the narrowing is done there and
+# not in the template: an opponent, a venue, a teammate's absence, a named half
+# of the starter/bench split, one game of each playoff series, a line on a
+# box-score column, one Eastern date, a span of seasons, a first season, an
+# ordinal season. `order` (with `limit`) is the window - the newest or oldest
+# N of the narrowed games - which the relation cuts after every row filter and
+# before whatever the template does with the rows, so "30-point games in his
+# last 10" counts inside the ten (step 3, C0's one skeleton-specific rule).
+#
+# This replaced six per-template lists that had drifted: game_log honored
+# twelve of these, single_game_high one, on the same relation - a slot taught
+# to one template at a time, which is the O(templates x slots) matrix the
+# algebra port exists to remove. A template on the relation that cannot honor
+# one of these says so in RELATION_SCOPING_EXCLUDED, with the reason.
+RELATION_SCOPING = frozenset({"order", "date", "opponent", "venue", "span", "without", "split", "since", "below", "above", "game_n", "season_n"})
+"""The scoping slots every template on the player-games relation honors.
+
+.. versionadded:: 4.4.0
+"""
+
+# The cells a template on the relation does NOT honor, each with why. A reason
+# has to be about the template's answer, not its code: a slot that merely was
+# not wired is not excluded, it is wired.
+RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
+    # A single date is one game, and one game is not a streak.
+    "streak": {"date": "one game is not a run", "order": "a run is read over every game in the span, not the last N"},
+    # A split is a division of a span into groups; "the last N" is a window
+    # that game_log answers.
+    "player_splits": {"date": "one game has nothing to split", "order": "a limited number of recent games is game_log's question"},
+    "record_when": {"date": "one game has no record", "order": "a record over the last N games is game_log's question"},
+    # A period question with a date is that game's quarter, which the shot
+    # read does not scope by date yet.
+    "period_split": {"date": "the shot read is not scoped to one date yet"},
+}
+"""Per template, the relation's slots it refuses, and why.
+
+.. versionadded:: 4.4.0
+"""
+
+
+def _relation_scoping(intent: str, *extra: str) -> frozenset[str]:
+    return frozenset((RELATION_SCOPING | set(extra)) - set(RELATION_SCOPING_EXCLUDED.get(intent, {})))
+
+
 # What each template actually honors. Anything not listed here honors none.
 HONORED_SCOPING: dict[str, frozenset[str]] = {
-    # Every one of them, for a player: opponent, venue and a teammate's absence
-    # are filters on the box-score rows, and a career is every season of them.
-    # A team's log refuses `without` itself - that is with_without's question.
-    # `split` only for a NAMED half of the starter/bench split - a question
-    # naming both halves is a player_splits question, and check_scope still
-    # refuses it here, because `route()` leaves the category in place then.
-    # `below` and `above` are lines on a box-score column ("under 14 fta",
-    # "with 25 minutes"): filters on the same rows, through measure_filters.
+    # The six on the player-games relation: see RELATION_SCOPING.
     # `season_type_unstated` is honored by reading both season types for a
     # "last N games" question and merging them by date - see
     # router._route_game_log_recent_span and game_log's own handling of it.
-    "game_log": frozenset({"order", "date", "opponent", "venue", "span", "without", "split", "since", "below", "above", "game_n", "season_n", "season_type_unstated"}),
+    "game_log": _relation_scoping("game_log", "season_type_unstated"),
     # The three that narrow games are answered from box scores rather than the
     # season line; a career is summed from the season table.
-    "player_stat": frozenset({"opponent", "venue", "span", "without", "split", "since", "order", "below", "above", "game_n", "season_n"}),
+    "player_stat": _relation_scoping("player_stat"),
     "player_history": frozenset({"span"}),
     # It always read `opponent`; listed now that `opponent` is a scoping slot.
     "team_quarter_points": frozenset({"opponent"}),
-    # A period is not a scoping slot - it IS the question - so only the two
-    # filters on WHICH games count are listed.
-    # `split` only for a NAMED half, like game_log and player_stat.
-    # `without` and `order` arrived with the relation: the games are the
-    # relation's now, so a teammate's absence composes here exactly as it does
-    # for game_log, and `order` picks which end of the log the rows come from.
-    "period_split": frozenset({"opponent", "venue", "split", "without", "order"}),
-    # The opponent IS the second team of a head-to-head. `venue` narrows to
-    # the first-named team's home or road games, and `date` replaces the
-    # season with one calendar day - both filters on `real_games`, the same
-    # table the plain answer already reads.
+    "period_split": _relation_scoping("period_split"),
     "head_to_head": frozenset({"opponent", "venue", "date"}),
     # `span` "career" is honored by drawing (or averaging) every season of the
     # requested season type rather than the latest with data - see
@@ -188,19 +217,19 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # are filters on the same box-score rows `team` already narrows - a home
     # or road split for a player is answerable the same way a team's already
     # is (see team_record below).
-    "player_splits": frozenset({"span", "split", "venue", "opponent"}),
+    "player_splits": _relation_scoping("player_splits"),
     # `opponent` narrows BOTH rows of the split to one opponent's games, and
     # the title says so - "Embiid career record vs boston" is his record in the
     # games his team played Boston, not overall (#163).
     "with_without": frozenset({"span", "without", "opponent"}),
-    "record_when": frozenset({"span"}),
+    "record_when": _relation_scoping("record_when"),
     # `opponent` and `without` are honored only for the one-name-and-a-team
     # shape that is really a player-vs-team question in disguise - see the
     # versionchanged note on player_matchup itself. A genuine two-player
     # matchup with either left over refuses it from inside the template,
     # since check_scope cannot tell the two shapes apart from the slots alone.
     "player_matchup": frozenset({"span", "opponent", "without", "since"}),
-    "streak": frozenset({"span"}),
+    "streak": _relation_scoping("streak"),
     # The home/road split, the record against one team, and every season at
     # once - "Knicks home record" was answered with their overall 53-29.
     # `situation` is honored only where it names a real calendar month

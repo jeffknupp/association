@@ -1511,7 +1511,7 @@ def _source_a_template_reads_slots_in(handler: Any) -> str:
     for step in sorted(set(re.findall(r"\b(_[a-z][a-z0-9_]*)\(", source))):
         if inspect.isfunction(getattr(module, step, None)):
             source += inspect.getsource(getattr(module, step))
-    for shared in ("scoped_player", "scoped_games"):
+    for shared in ("scoped_player", "scoped_games", "condition_player"):
         if f"{shared}(" in source:
             source += inspect.getsource(getattr(common, shared))
     return source
