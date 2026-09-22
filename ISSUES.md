@@ -253,6 +253,37 @@ those were found.
 
 ## P2: misleading or incomplete
 
+### The router's slots depend on which llama-server load answered: 29 of 277 questions routed differently on one load, 26 of them back on the next
+- **Found:** 2026-09-22, measuring step 3 C4 on the yardstick-v2 live run
+  (`~/association-research/yardstick-v2/live_c4_badinstance.jsonl` against
+  `live_c2.jsonl`).
+- **Evidence:** same model (`qwen2.5:3b`, digest `357c53fb`, pulled two weeks
+  earlier), same ollama 0.33.3 binary, same `ROUTER_PROMPT` (sha256
+  `543be141...` at both `0d735f7` and `83cc18b`), temperature 0. A llama-server
+  loaded right after a wedged one was unloaded (`keep_alive: 0`, load average
+  10 at the time) routed 29 of the 277 questions differently from the run the
+  day before: 9 intent flips ("Diabate career high assists" `single_game_high`
+  -> `threshold_count` with `threshold: 0`, "Jrue holiday last 50 games as a
+  starter" `game_log` -> `player_splits`, "Detroit Pistons most points in a
+  first half" `team_quarter_points` -> `other`, "jamal murray first 20 games"
+  `order: first` -> `recent`), the rest `limit`/`fields`/`season` flips. Routing
+  those 29 through the c2 tree on the same server gave the same 29 answers
+  (code ruled out); unloading and reloading once more sent 26 of the 29 back
+  to the day-before routing. Cost on that one load: 7 primary yardstick
+  questions correct -> wrong or fell through, 1 the other way.
+- **User sees:** the same question answered differently - or refused - after
+  ollama restarts or evicts the model, with no code change and nothing in the
+  answer saying so. `scripts/check_routing.py` cannot tell this from a prompt
+  regression.
+- **Next step:** measure whether it is the load-time thread count (ollama sizes
+  it from the cores it sees free) or batch size by pinning `OLLAMA_NUM_THREADS`
+  / `num_thread` in the router options and reloading under load; if pinning
+  holds the routing still, set it in `query/models.py` and say so in
+  `docs/architecture.rst`. Until then, compare yardstick runs only within one
+  server load, and re-check any moved row with a reload before grading it.
+- **Source:** ours (the model's argmax on near-ties, not the prompt).
+- **GitHub:** none yet
+
 ### `game_log`'s venue narrowing counts a neutral-site game as home or away; `team_record`'s does not
 - **Found:** 2026-09-22, step 3 C4 (the team-games relation), while porting
   `game_log`'s team half and `head_to_head` onto `query/team_games.py`.
