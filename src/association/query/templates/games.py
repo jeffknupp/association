@@ -6,14 +6,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any, cast
 
 import duckdb
 
 from association.nba.coverage import COVERAGE, POSTSEASON
 from association.nba.franchises import season_name, season_name_sql
-from association.nba.season import current_season, eastern_day_utc_range
+from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date
 
 from ..conditions import _PLAYER_GAME_TABLES, _cell, _matchup_line, _meetings, _names, _player_games, _Scope, _table, _totals, _unseen_meetings, box_source
@@ -22,6 +21,8 @@ from ..leaderboard import resolve_metric
 from ..metrics import PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from ..player_games import _joined, rows_sql
 from ..shotchart import SHOT_AVAILABILITY, SHOT_VALUE_SQL, UNSEPARABLE_SHOT_VALUES
+from ..team_games import TEAM_GAMES_SQL, TeamNarrowed
+from ..team_games import rows_sql as team_rows_sql
 from .common import (
     _BOX_SCORES,
     _GAME_LOGS,
@@ -58,20 +59,8 @@ from .common import (
     measure_filters,
     scoped_games,
     scoped_player,
+    team_games,
 )
-
-
-def _eastern_day(day: str) -> tuple[str, str]:
-    """The half-open range of ``games.date`` values that tip on the Eastern
-    date ``day``. Timestamps of one fixed shape compare correctly as strings.
-
-    ``LIKE 'YYYY-MM-DD%'`` matched the UTC date instead, so asking for a game on
-    the 15th found the one played the evening of the 14th, and missed its own
-    whenever it tipped after 7pm. The range follows daylight time
-    (:func:`association.nba.season.eastern_day_utc_range`), so a summer date-only
-    stamp - midnight Eastern, 04:00Z - is found on the day it names."""
-    datetime.strptime(day, "%Y-%m-%d")  # noqa: DTZ007 - the same ValueError on a malformed day as before; the value is discarded
-    return eastern_day_utc_range(day)
 
 
 def _rebuilt_readable(con: duckdb.DuckDBPyConnection, needed: list[str]) -> bool:
@@ -98,35 +87,22 @@ def _rebuilt_readable(con: duckdb.DuckDBPyConnection, needed: list[str]) -> bool
 DEFAULT_GAME_LOG_LIMIT = 10
 
 
-# games is home/away-oriented, not team-perspective: joining team_id to only
-# home_team_id silently returns that team's HOME games, with no error.
-# team_box_stats carries the team-perspective row (team_id, opponent_team_id,
-# home_away); who WON lives only on games.winner_team_id. team_score /
-# opponent_score are derived from home_away rather than read raw, since raw
-# home_score/away_score needs a per-row guess that goes backwards sometimes.
-#
-# Joined on season as well as event_id: the phantom 1993 shares every event id
-# with 1994, so a 1994 log keyed on event_id alone listed each game twice.
-#
-# Read from `real_games`, the one filtered list (fetch/repairs/real_games.py): this
-# join used to be over `games`, on the belief that joining team_box_stats
-# excluded the junk rows by itself. It does not - EVERY games row has a
-# team_box_stats row, phantoms and 0-0 placeholders included - so a 1999 or
-# 2000 Bulls log listed placeholder games. The winner is still returned raw
-# rather than compared, since a NULL there and a loss are different facts.
-_TEAM_GAMES_SQL = f"""
-SELECT g.date,
-       tbs.home_away,
-       {season_name_sql("opp.team_id", "tbs.season", "opp.display_name")} AS opponent,
-       CASE WHEN tbs.home_away = 'home' THEN g.home_score ELSE g.away_score END AS team_score,
-       CASE WHEN tbs.home_away = 'home' THEN g.away_score ELSE g.home_score END AS opponent_score,
-       g.winner_team_id,
-       tbs.team_id,
-       CASE WHEN tbs.season_type = 3 THEN CAST(substr(g.date, 1, 4) AS INTEGER) ELSE tbs.season END AS season
-FROM team_box_stats tbs
-JOIN real_games g ON g.event_id = tbs.event_id AND g.season = tbs.season
-JOIN teams opp ON opp.team_id = tbs.opponent_team_id
-"""
+# A team's game log now reads association.query.team_games' relation
+# (TEAM_GAMES_SQL's `team_games`) instead of its own join over team_box_stats
+# and real_games - see that module's docstring for what moving onto it buys
+# for free (the phantom 1993 season cannot double a game; a postseason is
+# selected by the calendar year it was played in, from the relation's own
+# Eastern date). `_TEAM_GAME_LOG_JOIN` is the one extra table a log's own
+# SELECT needs beyond `team_games tg` itself: the opponent's OWN-SEASON name,
+# which `team_games` does not carry (it has only `opponent_id`).
+_TEAM_GAME_LOG_JOIN = " JOIN teams o ON o.team_id = tg.opponent_id"
+
+_TEAM_GAME_LOG_SELECT = (
+    "tg.eastern_date, tg.side, "
+    f"{season_name_sql('o.team_id', 'tg.season', 'o.display_name')} AS opponent, "
+    "tg.team_score, tg.opponent_score, tg.won, "
+    "CASE WHEN tg.season_type = 3 THEN year(tg.eastern_date) ELSE tg.season END AS season"
+)
 
 
 # A player's log columns, by header -> player_game_log column. The four in
@@ -345,7 +321,10 @@ def _game_log_team(
             raise TemplateUnsupported("a career span has no single season to read both season types within")
         return _team_game_log_mixed(con, team, resolved_season, opponent=opponent, venue=venue, limit=limit)
     scope = _span_of(span, season, season_type, "games")
-    return _team_game_log(con, team, scope, opponent=opponent, venue=venue, date=date, limit=limit, ascending=ascending)
+    narrowed = team_games(con, team, scope, {"venue": venue}, opponent=opponent, date=date)
+    if isinstance(narrowed, TemplateResult):
+        return narrowed
+    return _team_game_log(con, team, scope, narrowed, limit=limit, ascending=ascending)
 
 
 def _game_log_player(
@@ -523,85 +502,42 @@ def _game_log_mixed_where(season: int, counts: dict[int, int]) -> str:
     return f" ({_joined(parts)})"
 
 
-# The season a team's game belongs to, by the project's convention: a
-# postseason by the calendar year it was played in, since ESPN labels every
-# season before 1993-94 by the year it started (see _season_games).
-_TEAM_SEASON = "CASE WHEN tbs.season_type = 3 THEN CAST(substr(g.date, 1, 4) AS INTEGER) ELSE tbs.season END"
-
-
-def _postseason_scope(span: _Span) -> tuple[str, list[Any]]:
-    """_Span.clause for a postseason over ``games`` (aliased ``g``): one
-    playoffs by the calendar year it was played in, or every playoffs from
-    ``span.first`` on - never by label, for the reason _season_games gives.
-    Labeled, a career of playoff games dropped the 1989 playoffs (stored as
-    1988) and printed the 1991 run as "1990"."""
-    if span.season is not None:
-        return _season_games(span.season, 3, "g")
-    phantom = COVERAGE["games"].phantom
-    excluded = f" AND g.season NOT IN ({', '.join('?' for _ in phantom)})" if phantom else ""
-    return f"CAST(substr(g.date, 1, 4) AS INTEGER) >= ?{excluded}", [span.first, *phantom]
-
-
-def _team_game_log_filters(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, *, opponent: Any, venue: Any, date: str | None) -> tuple[list[str], list[Any], str] | TemplateResult:
-    """The extra WHERE clauses for an opponent, a venue and a date where the
-    question named them, plus the narrowing phrase for the header and the
-    empty-result sentence. Returns a `TemplateResult` early if a named
-    opponent cannot be resolved, or is the team itself."""
-    extra: list[str] = []
-    extra_params: list[Any] = []
-    filters: list[str] = []
-    if opponent:
-        rival = _resolved_team(con, opponent, season=span.season)
-        if isinstance(rival, TemplateResult):
-            return rival
-        if rival.id == team.id:
-            raise TemplateUnsupported("a team cannot be its own opponent")
-        extra.append("tbs.opponent_team_id = ?")
-        extra_params.append(rival.id)
-        filters.append(f"vs the {rival.name}")
-    if venue:
-        checked = _checked_venue(venue)
-        extra.append("tbs.home_away = ?")
-        extra_params.append(checked)
-        filters.append("at home" if checked == "home" else "on the road")
-    if date:
-        start, end = _eastern_day(date)
-        extra.append("g.date >= ? AND g.date < ?")
-        extra_params += [start, end]
-    return extra, extra_params, "".join(f" {f}" for f in filters)
-
-
-def _team_game_log_none(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, base: list[str], base_params: list[Any], *, narrowed: str, date: str | None) -> TemplateResult:
+def _team_game_log_none(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, narrowed: TeamNarrowed) -> TemplateResult:
     """Which fact is missing when no row matched: the team's games in that
-    span, or the match - so the sentence names the right one."""
-    found = con.execute(
-        f"SELECT COUNT(*), MIN({_TEAM_SEASON}), MAX({_TEAM_SEASON}) FROM team_box_stats tbs JOIN real_games g ON g.event_id = tbs.event_id AND g.season = tbs.season WHERE {' AND '.join(base)}",
-        base_params,
-    ).fetchone()
+    span, or the match - so the sentence names the right one. Reads
+    ``narrowed`` WITHOUT its narrowing (:meth:`TeamNarrowed.clauses`,
+    ``narrowed=False``), the same discipline
+    ``common._no_narrowed_games`` uses for a player: the total is the span
+    alone, so the sentence can say "none of them" the narrowed way rather
+    than restating a count that already excludes them."""
+    where, params = narrowed.clauses(narrowed=False)
+    season_col = "year(tg.eastern_date)" if span.season_type == 3 else "tg.season"
+    found = con.execute(f"{TEAM_GAMES_SQL} SELECT COUNT(*), MIN({season_col}), MAX({season_col}) FROM team_games tg WHERE {where}", params).fetchone()
     total, first, last = found if found else (0, None, None)
     if not total:
-        where = _period(span.season, span.season_type) if span.season is not None else f"{span.kind}s on record"
-        return TemplateResult(data={"team": team.name, "games": []}, answer=f"No {where} games found for the {team.name}.")
-    on_date = f" on {date}" if date else ""
-    answer = f"The {team.name} played {total:,} games {span.during(first, last, whose='all seasons on record')}, none of them{narrowed}{on_date}."
+        where_period = _period(span.season, span.season_type) if span.season is not None else f"{span.kind}s on record"
+        return TemplateResult(data={"team": team.name, "games": []}, answer=f"No {where_period} games found for the {team.name}.")
+    on_date = f" on {narrowed.date}" if narrowed.date else ""
+    answer = f"The {team.name} played {total:,} games {span.during(first, last, whose='all seasons on record')}, none of them{narrowed.filters()}{on_date}."
     return TemplateResult(data={"team": team.name, "games": []}, answer=answer)
 
 
 def _team_game_log_games(rows: list[tuple[Any, ...]]) -> tuple[list[dict[str, Any]], int, int, str, list[str]]:
-    """Each fetched row turned into a display game, the wins/losses record
-    tallied over exactly the rows being shown rather than recounted from it
-    later - that recount is where a wins/losses total gets inverted - and the
-    listing's own lines. Shared by the single-season-type log and the "last N
-    games" mixed one (:func:`_team_game_log_mixed`), which both fetch the same
-    seven columns and differ only in how they build the header.
+    """Each fetched row (:data:`_TEAM_GAME_LOG_SELECT`'s seven columns) turned
+    into a display game, the wins/losses record tallied over exactly the rows
+    being shown rather than recounted from it later - that recount is where a
+    wins/losses total gets inverted - and the listing's own lines. Shared by
+    the single-season-type log and the "last N games" mixed one
+    (:func:`_team_game_log_mixed`), which differ only in how they build the
+    header.
 
     .. versionchanged:: 4.4.0
        Split out of ``_team_game_log_rows`` so a mixed-type answer can reuse
-       it.
+       it. Reads ``team_games.won`` (already a nullable boolean, computed once
+       in the relation) rather than comparing a raw ``winner_team_id`` to
+       ``team_id`` itself.
     """
-    games = [
-        {"date": _eastern_date(r[0]), "home_away": r[1], "opponent": r[2], "team_score": r[3], "opponent_score": r[4], "won": None if r[5] is None else r[5] == r[6], "season": r[7]} for r in rows
-    ]
+    games = [{"date": str(r[0]), "home_away": r[1], "opponent": r[2], "team_score": r[3], "opponent_score": r[4], "won": r[5], "season": r[6]} for r in rows]
     wins = sum(1 for g in games if g["won"] is True)
     losses = sum(1 for g in games if g["won"] is False)
     unknown = len(games) - wins - losses
@@ -624,31 +560,15 @@ def _team_game_log_rows(team: Entity, span: _Span, rows: list[tuple[Any, ...]], 
     return TemplateResult(data={"team": team.name, "wins": wins, "losses": losses, "games": games}, answer="\n".join([header, *lines]))
 
 
-def _team_season_clause(span: _Span) -> tuple[str, list[Any]]:
-    """``tbs.season``/``g.date`` clause for one season and season type - the
-    postseason keyed on the calendar year it was played in
-    (:func:`_postseason_scope`, never by label - see ``_season_games``), the
-    regular season on the season column directly."""
-    return _postseason_scope(span) if span.season_type == 3 else span.clause("tbs.season")
-
-
-def _team_game_log(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, *, opponent: Any, venue: Any, date: str | None, limit: int, ascending: bool) -> TemplateResult:
-    """A team's games in ``span``, narrowed to an opponent, a venue and a date
-    where the question named them."""
-    clause, params = _team_season_clause(span)
-    base, base_params = ["tbs.team_id = ?", "tbs.season_type = ?", clause], [team.id, span.season_type, *params]
-    filtered = _team_game_log_filters(con, team, span, opponent=opponent, venue=venue, date=date)
-    if isinstance(filtered, TemplateResult):
-        return filtered
-    extra, extra_params, narrowed = filtered
-    rows = con.execute(
-        f"{_TEAM_GAMES_SQL} WHERE {' AND '.join(base + extra)} ORDER BY g.date {'ASC' if ascending else 'DESC'} LIMIT ?",
-        [*base_params, *extra_params, limit],
-    ).fetchall()
+def _team_game_log(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, narrowed: TeamNarrowed, *, limit: int, ascending: bool) -> TemplateResult:
+    """A team's games in ``span``, narrowed as ``narrowed``
+    (:func:`association.query.templates.common.team_games`) already reflects."""
+    sql, params = team_rows_sql(narrowed, _TEAM_GAME_LOG_SELECT, order=f"tg.eastern_date {'ASC' if ascending else 'DESC'}", limit=limit, join=_TEAM_GAME_LOG_JOIN)
+    rows = con.execute(sql, params).fetchall()
     if not rows:
         # Which fact is missing: the team's games in that span, or the match.
-        return _team_game_log_none(con, team, span, base, base_params, narrowed=narrowed, date=date)
-    return _team_game_log_rows(team, span, rows, narrowed=narrowed, date=date, ascending=ascending)
+        return _team_game_log_none(con, team, span, narrowed)
+    return _team_game_log_rows(team, span, rows, narrowed=narrowed.filters(), date=narrowed.date, ascending=ascending)
 
 
 def _team_game_log_mixed(con: duckdb.DuckDBPyConnection, team: Entity, season: int, *, opponent: Any, venue: Any, limit: int) -> TemplateResult:
@@ -665,27 +585,23 @@ def _team_game_log_mixed(con: duckdb.DuckDBPyConnection, team: Entity, season: i
     .. versionadded:: 4.4.0
     """
     rows_by_type: dict[int, list[tuple[Any, ...]]] = {}
-    narrowed = ""
+    narrowed_text = ""
     for season_type in (2, 3):
         type_span = _Span(season, season_type)
-        clause, params = _team_season_clause(type_span)
-        base, base_params = ["tbs.team_id = ?", "tbs.season_type = ?", clause], [team.id, season_type, *params]
-        filtered = _team_game_log_filters(con, team, type_span, opponent=opponent, venue=venue, date=None)
-        if isinstance(filtered, TemplateResult):
-            return filtered
-        extra, extra_params, narrowed = filtered
-        rows_by_type[season_type] = con.execute(
-            f"{_TEAM_GAMES_SQL} WHERE {' AND '.join(base + extra)} ORDER BY g.date DESC LIMIT ?",
-            [*base_params, *extra_params, limit],
-        ).fetchall()
+        narrowed = team_games(con, team, type_span, {"venue": venue}, opponent=opponent)
+        if isinstance(narrowed, TemplateResult):
+            return narrowed
+        narrowed_text = narrowed.filters()
+        sql, params = team_rows_sql(narrowed, _TEAM_GAME_LOG_SELECT, order="tg.eastern_date DESC", limit=limit, join=_TEAM_GAME_LOG_JOIN)
+        rows_by_type[season_type] = con.execute(sql, params).fetchall()
     rows, counts = _game_log_merge_season_types(rows_by_type, limit=limit, ascending=False)
     if not rows:
         # Both types came back empty, so the missing fact really is "no games
         # in this span" - the same sentence a single-type refusal gives, with
         # no season type to (wrongly) blame it on.
-        return TemplateResult(data={"team": team.name, "games": []}, answer=f"No {season} games found for the {team.name}{narrowed}.")
+        return TemplateResult(data={"team": team.name, "games": []}, answer=f"No {season} games found for the {team.name}{narrowed_text}.")
     games, wins, losses, record, lines = _team_game_log_games(rows)
-    header = f"{team.name}{narrowed}, {_scope(len(games), False, None)}{_game_log_mixed_where(season, counts)} ({record}):"
+    header = f"{team.name}{narrowed_text}, {_scope(len(games), False, None)}{_game_log_mixed_where(season, counts)} ({record}):"
     return TemplateResult(data={"team": team.name, "wins": wins, "losses": losses, "games": games}, answer="\n".join([header, *lines]))
 
 
@@ -1013,45 +929,37 @@ def _head_to_head_teams(con: duckdb.DuckDBPyConnection, names: list[str], season
     return resolved[0], resolved[1]
 
 
-def _head_to_head_scope(a: Entity, b: Entity, venue: str | None, date: str | None, season_slot: Any, season_type: int) -> tuple[list[str], list[Any], int | None]:
-    """The WHERE clauses for the matchup itself, narrowed to ``venue`` and
-    ``date`` where the caller already read them from the question, plus the
-    season the clauses settled on (``None`` once ``date`` has replaced it).
+def _head_to_head_narrowed(
+    con: duckdb.DuckDBPyConnection, a: Entity, b: Entity, venue: str | None, date: str | None, season_slot: Any, season_type: int
+) -> tuple[TeamNarrowed | TemplateResult, int | None]:
+    """``a``'s games against ``b``, from ``a``'s own row of the team relation
+    (:func:`association.query.templates.common.team_games`) - which already
+    carries both home and away meetings without a venue named, since ``games``
+    is home/away-oriented rather than team-perspective and ``a``'s own row
+    always exists whichever side it played - and the season the narrowing
+    settled on (``None`` once ``date`` has replaced it).
 
     A date names its game outright, the same way it does in :func:`game_log`:
     the router's season is usually its "current" default, and a date from a
-    past season looked for inside this one finds nothing. A venue is always
-    read from ``a``'s side - the team named first, the same team
-    ``_head_to_head_names`` puts first for "Celtics vs Bulls" - so "Lakers vs
-    Mavs ... home games" narrows to the Lakers' home games, not the Mavericks'.
+    past season looked for inside this one finds nothing - so with a date
+    given, the span is UNBOUNDED (``_Span(None, season_type)``, whose
+    ``first`` defaults to 0) rather than "his career": a specific date needs
+    no floor at all, the same as the hand-written scope this replaces applied
+    none. A venue is always read from ``a``'s side - the team named first,
+    the same team ``_head_to_head_names`` puts first for "Celtics vs Bulls" -
+    so "Lakers vs Mavs ... home games" narrows to the Lakers' home games, not
+    the Mavericks'.
     """
-    if venue == "home":
-        matchup, matchup_params = "(g.home_team_id = ? AND g.away_team_id = ?)", [a.id, b.id]
-    elif venue == "away":
-        matchup, matchup_params = "(g.home_team_id = ? AND g.away_team_id = ?)", [b.id, a.id]
-    else:
-        # Both orderings, since `games` is home/away-oriented rather than
-        # team-perspective.
-        matchup = "((g.home_team_id = ? AND g.away_team_id = ?) OR (g.home_team_id = ? AND g.away_team_id = ?))"
-        matchup_params = [a.id, b.id, b.id, a.id]
-    where = [matchup, "g.season_type = ?"]
-    params: list[Any] = [*matchup_params, season_type]
     if date:
-        start, end = _eastern_day(date)
-        where.append("g.date >= ? AND g.date < ?")
-        params += [start, end]
-        return where, params, None
+        span = _Span(None, season_type)
+        return team_games(con, a, span, {"venue": venue}, opponent=b, date=date), None
     # No season named means the CURRENT one, as everywhere else. "All time" is
     # a defensible reading here, but silently answering a different span than
     # the rest of the system is the substitution this design exists to prevent.
-    # The answer names the season, so another one is a follow-up away. Kept
-    # parenthesized around the whole matchup - `A OR B AND season = ...`
-    # applies the season to one side only.
+    # The answer names the season, so another one is a follow-up away.
     season = season_slot or current_season()
-    season_clause, season_params = _season_games(season, season_type, "g")
-    where.append(season_clause)
-    params += season_params
-    return where, params, season
+    span = _Span(season, season_type)
+    return team_games(con, a, span, {"venue": venue}, opponent=b), season
 
 
 def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
@@ -1067,6 +975,13 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        Honors ``venue`` (narrowed to the first-named team's home or road
        games) and ``date`` (one calendar day, replacing the season the same
        way it does in :func:`game_log`) instead of refusing them.
+
+    .. versionchanged:: 4.4.0
+       Reads :mod:`association.query.team_games`'s relation
+       (:func:`association.query.templates.common.team_games`) instead of its
+       own hand-written scope over ``real_games`` - a pure port, the NBA Cup
+       final counted as a meeting either way, since a head-to-head count is
+       not the win-loss RECORD that excludes it.
     """
     con = ctx.con
     teams_slot = slots.get("teams")
@@ -1084,14 +999,14 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     raw_date = slots.get("date")
     date = raw_date if isinstance(raw_date, str) and _ISO_DATE.match(raw_date) else None
     venue = _checked_venue(slots["venue"]) if slots.get("venue") else None
-    where, params, season = _head_to_head_scope(a, b, venue, date, slots.get("season"), season_type)
-    rows = con.execute(
-        f"SELECT g.date, g.home_team_id, g.home_score, g.away_score, g.winner_team_id FROM real_games g WHERE {' AND '.join(where)} ORDER BY g.date",
-        params,
-    ).fetchall()
+    narrowed, season = _head_to_head_narrowed(con, a, b, venue, date, slots.get("season"), season_type)
+    if isinstance(narrowed, TemplateResult):
+        return narrowed
+    sql, params = team_rows_sql(narrowed, "tg.won", order="tg.eastern_date")
+    rows = con.execute(sql, params).fetchall()
 
-    a_wins = sum(1 for r in rows if r[4] == a.id)
-    b_wins = sum(1 for r in rows if r[4] == b.id)
+    a_wins = sum(1 for (won,) in rows if won)
+    b_wins = sum(1 for (won,) in rows if won is False)
     data = {"teams": [a.name, b.name], "games": len(rows), "wins": {a.name: a_wins, b.name: b_wins}, "venue": venue, "date": date}
     if venue or date:
         answer = _head_to_head_narrowed_phrase(a.name, b.name, len(rows), a_wins, b_wins, venue=venue, date=date, season=season, season_type=season_type)

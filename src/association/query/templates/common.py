@@ -37,6 +37,7 @@ from ..player_games import (  # noqa: F401 - the relation's names, re-exported f
     _teammate_stints,
 )
 from ..player_games import _tenure_clause as _relation_tenure_clause
+from ..team_games import TeamNarrowed
 from ..team_metrics import TEAM_METRICS, resolve_team_metric
 
 # Slot value -> real player_box_stats column. A whitelist, not a passthrough:
@@ -1199,6 +1200,102 @@ def condition_player(
     if team is not None:
         narrowed.narrow("pgl.team_id = ?", team.id)
     return player, narrowed
+
+
+def scoped_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], missing: str, *, span: Any, season: Any) -> tuple[Entity, _Span] | TemplateResult:
+    """The team a question is about and the seasons it covers - the team
+    counterpart of :func:`scoped_player`. A franchise's name is a fact about a
+    season (see :func:`_resolved_team`: "Hornets" is New Orleans in 2008 and
+    Charlotte in 2026), so the span is settled first and the team's name read
+    against the season it settles on - the same order ``scoped_player`` keeps,
+    even though a team's name (unlike an ambiguous player's) never needs the
+    span to disambiguate it.
+
+    Takes: ``con``; ``slots`` (read here for ``team`` and ``season_type``);
+    ``missing`` (the :class:`TemplateUnsupported` message when no team was
+    named); ``span`` and ``season`` (the raw ``span``/``season`` slot values -
+    passed rather than read, the same as ``scoped_player``'s own, so a caller
+    with a reason to override them can).
+
+    Returns ``(team, span)``, or the ``TemplateResult`` asking which team was
+    meant.
+
+    .. versionadded:: 4.4.0
+    """
+    scope = _span_of(span, season, slots.get("season_type") or 2, "games")
+    text = slots.get("team")
+    if not isinstance(text, str) or not text.strip():
+        raise TemplateUnsupported(missing)
+    team = _resolved_team(con, text, season=scope.season)
+    if isinstance(team, TemplateResult):
+        return team
+    return team, scope
+
+
+def _team_span_clause(span: _Span) -> tuple[str, list[Any]]:
+    """``tg.season``/``tg.eastern_date`` clause for a team's games in
+    ``span``, over :data:`association.query.team_games.TEAM_GAMES_SQL`'s
+    ``team_games``.
+
+    A postseason is selected by the CALENDAR YEAR it was played in, from the
+    relation's own Eastern date, never by ESPN's pre-1993-94 label
+    (`AGENTS.md`, "Select a postseason by the calendar year"). Unlike
+    ``association.query.templates.games._season_games``, this does not also
+    exclude the phantom 1993 label by hand: ``team_games``' own ``played`` CTE
+    already keeps one row per ``(season_type, home, away, eastern_date)``, so
+    a 1993 row that is really 1994's game has already been collapsed into it
+    before this clause ever runs, and asking for ``year(eastern_date) = 1994``
+    cannot double it.
+
+    Deliberately never excludes the NBA Cup final - see
+    :func:`team_games`."""
+    if span.season_type == 3:
+        if span.season is not None:
+            return "year(tg.eastern_date) = ?", [span.season]
+        return "year(tg.eastern_date) >= ?", [span.first]
+    return span.clause("tg.season")
+
+
+def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, slots: dict[str, Any], *, opponent: Any, date: str | None = None) -> TeamNarrowed | TemplateResult:
+    """``team``'s games in ``span``, narrowed to an opponent, a venue and one
+    Eastern date where the question named them - the team counterpart of
+    :func:`scoped_games`, over :class:`association.query.team_games.TeamNarrowed`.
+
+    Every game the team actually played is included, the NBA Cup final among
+    them: that exclusion is :func:`association.query.team_metrics.games_scope`'s,
+    for a win-loss RECORD, and a plain game list or count is not one - the
+    cup final is a real game the team played, the same reasoning
+    ``team_record``'s own cup-final mention already carries.
+
+    ``opponent`` is passed rather than read from ``slots`` because a caller
+    that has already resolved the team (it needs the name for its answer
+    before the games are read) passes the Entity, exactly as
+    :func:`_narrow_player_games` does for a player's opponent; text is
+    resolved here, so a clarification about the team comes back as the answer
+    either way. ``venue`` is read from ``slots`` because no caller has a
+    reason to resolve it first.
+
+    .. versionadded:: 4.4.0
+    """
+    clause, params = _team_span_clause(span)
+    narrowed = TeamNarrowed(base=["tg.team_id = ?", "tg.season_type = ?", clause], base_params=[team.id, span.season_type, *params], team=team)
+    if opponent:
+        rival = opponent if isinstance(opponent, Entity) else _resolved_team(con, opponent, season=span.season)
+        if isinstance(rival, TemplateResult):
+            return rival
+        if rival.id == team.id:
+            raise TemplateUnsupported("a team cannot be its own opponent")
+        narrowed.opponent = rival
+        narrowed.narrow("tg.opponent_id = ?", rival.id)
+    venue = slots.get("venue")
+    if venue:
+        checked = _checked_venue(venue)
+        narrowed.venue = checked
+        narrowed.narrow("tg.side = ?", checked)
+    if date:
+        narrowed.narrow("tg.eastern_date = ?", date)
+        narrowed.date = date
+    return narrowed
 
 
 def _teammates_among(con: duckdb.DuckDBPyConnection, candidates: list[Entity], player: Entity, span: _Span) -> list[Entity]:
