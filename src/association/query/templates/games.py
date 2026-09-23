@@ -941,6 +941,16 @@ def _head_to_head_narrowed(
     return team_games(con, a, span, {"venue": venue}, opponent=b), season
 
 
+def _head_to_head_since(since: Any) -> int | None:
+    """The validated ``since`` slot - the same int-or-None reading
+    ``team_record``'s own ``_team_record_since`` and ``team_leaderboard``
+    already give it.
+
+    .. versionadded:: 4.4.0
+    """
+    return since if isinstance(since, int) and since and not isinstance(since, bool) else None
+
+
 def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """ "How many times did the 76ers play Boston?" - games between two teams.
 
@@ -960,7 +970,12 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        (:func:`association.query.templates.common.team_games`) instead of its
        own hand-written scope over ``real_games`` - a pure port, the NBA Cup
        final counted as a meeting either way, since a head-to-head count is
-       not the win-loss RECORD that excludes it.
+       not the win-loss RECORD that excludes it. Also honors ``since`` (every
+       meeting since a season) and ``span`` "career" (every meeting on
+       record) - step 3, team cells: the same since-bounded or whole-career
+       ``_Span`` :func:`association.query.templates.teams.team_record` reads,
+       over every meeting in it rather than one season. Neither combines with
+       ``date``, which already names one game outright.
     """
     con = ctx.con
     teams_slot = slots.get("teams")
@@ -978,6 +993,15 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     raw_date = slots.get("date")
     date = raw_date if isinstance(raw_date, str) and _ISO_DATE.match(raw_date) else None
     venue = _checked_venue(slots["venue"]) if slots.get("venue") else None
+    since = _head_to_head_since(slots.get("since"))
+    career = slots.get("span") == "career"
+    if (since is not None or career) and date:
+        raise TemplateUnsupported("a date and a since-bounded or career span of meetings at once")
+    if since is not None and career:
+        raise TemplateUnsupported(f"since {since} and a career span of meetings at once")
+    if since is not None or career:
+        return _head_to_head_span_result(con, a, b, venue, season_type, since=since, career=career)
+
     narrowed, season = _head_to_head_narrowed(con, a, b, venue, date, slots.get("season"), season_type)
     if isinstance(narrowed, TemplateResult):
         return narrowed
@@ -997,6 +1021,39 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     return TemplateResult(data=data, answer=answer)
 
 
+def _head_to_head_span_result(con: duckdb.DuckDBPyConnection, a: Entity, b: Entity, venue: str | None, season_type: int, *, since: int | None, career: bool) -> TemplateResult:
+    """``head_to_head``'s answer for a since-bounded or whole-career span
+    (step 3, team cells): every meeting between ``a`` and ``b`` in the span,
+    tallied once - read through :func:`association.query.templates.common.team_games`
+    the same way the single-season path is, over the same since-bounded or
+    whole-career ``_Span`` :func:`association.query.templates.teams._record_narrowed`
+    reads for ``team_record``. The per-game season is read alongside the
+    result (``tg.season``, or ``year(tg.eastern_date)`` for a postseason,
+    where the label is not the year it was played in before 1994) so the
+    sentence can say which seasons the games actually came from, not only
+    what the question asked for.
+
+    .. versionadded:: 4.4.0
+    """
+    span = _span_of("career" if career else None, None, season_type, "games", since=since)
+    narrowed = team_games(con, a, span, {"venue": venue}, opponent=b)
+    if isinstance(narrowed, TemplateResult):
+        return narrowed
+    select = f"tg.won, {'year(tg.eastern_date)' if season_type == 3 else 'tg.season'}"
+    sql, params = team_rows_sql(narrowed, select, order="tg.eastern_date")
+    rows = con.execute(sql, params).fetchall()
+    a_wins = sum(1 for won, _ in rows if won)
+    b_wins = sum(1 for won, _ in rows if won is False)
+    years = [int(yr) for _, yr in rows]
+    first, last = (min(years), max(years)) if years else (None, None)
+    data = {"teams": [a.name, b.name], "games": len(rows), "wins": {a.name: a_wins, b.name: b_wins}, "venue": venue, "date": None, "since": since, "span": "career" if career else None}
+    if venue:
+        answer = _head_to_head_narrowed_phrase(a.name, b.name, len(rows), a_wins, b_wins, venue=venue, date=None, season=None, season_type=season_type, since=since, career=career)
+    else:
+        answer = _head_to_head_span_phrase(a.name, b.name, len(rows), a_wins, b_wins, span, first, last)
+    return TemplateResult(data=data, answer=answer)
+
+
 def _phrase_head_to_head(a: str, b: str, games: int, a_wins: int, b_wins: int, period: str) -> str:
     if games == 0:
         return f"The warehouse has no {period} games between the {a} and the {b}."
@@ -1006,6 +1063,31 @@ def _phrase_head_to_head(a: str, b: str, games: int, a_wins: int, b_wins: int, p
         return f"{lead}, splitting them {a_wins}-{b_wins}."
     leader, trailing = (a, f"{a_wins}-{b_wins}") if a_wins > b_wins else (b, f"{b_wins}-{a_wins}")
     return f"{lead}; the {leader} won the series {trailing}."
+
+
+def _head_to_head_span_phrase(a: str, b: str, games: int, a_wins: int, b_wins: int, span: _Span, first: int | None, last: int | None) -> str:
+    """The head-to-head sentence for a since-bounded or whole-career span
+    (step 3, team cells) - every meeting in the span, tallied once, the
+    counterpart of :func:`_phrase_head_to_head` for one season. ``first``/
+    ``last`` are the actual seasons the games came from (``None`` when there
+    are none), read off the rows themselves rather than the span's own
+    (possibly coverage-clamped) floor, so the parenthetical always says what
+    was actually found. Uses "lead the series" rather than "won the series"
+    for an unfinished, ongoing span - the single-season phrase's wording
+    reads as a settled result, which a since-bounded or career tally is not.
+
+    .. versionadded:: 4.4.0
+    """
+    if games == 0:
+        when = f"since {span.since}" if span.since is not None else "on record"
+        return f"The {a} and the {b} have not played each other {when}."
+    when = span.during(first, last, whose="the seasons on record")
+    times = "once" if games == 1 else f"{games} times"
+    lead = f"The {a} and the {b} have met {times} {when}"
+    if a_wins == b_wins:
+        return f"{lead}, splitting them {a_wins}-{b_wins}."
+    leader, trailing = (a, f"{a_wins}-{b_wins}") if a_wins > b_wins else (b, f"{b_wins}-{a_wins}")
+    return f"{lead}; the {leader} lead the all-time series {trailing}."
 
 
 def _head_to_head_narrowed_phrase(

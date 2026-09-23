@@ -16,17 +16,70 @@ had no published version to be compatible with.
 
 ## Unreleased
 
-- **`team_record`'s and `head_to_head`'s games-tallying helpers take an
-  optional since-bounded span and a playoff game number (step 3, team
-  cells).** Pure plumbing so far - `_record_narrowed`, `_games_record`,
-  `_games_record_games`, `_games_record_answer`, `_no_team_games`,
-  `_game_list_gaps` and `_games_record_cup_final` (`templates/teams.py`) and
-  `_head_to_head_narrowed_phrase` (`templates/games.py`) each grow a new,
-  default-preserving `since`/`game_n`/`career` parameter that no caller
-  passes a real value for yet, proved identical against the golden set
-  (`INTENTS=team_record,head_to_head`, 58/58 cases). Neither template reads
-  `since` or `game_n` from the question yet - that follows in a separate
-  commit, which is what actually closes the ISSUES.md entry.
+- **`team_record` honors `since` and `game_n`; `head_to_head` honors `since`
+  and `span` "career" (step 3, team cells).** Both used to exclude these
+  cells from `TEAM_RELATION_SCOPING_EXCLUDED` with a reason about the code
+  ("not built yet"), which the declaration's own rule forbids - closes the
+  ISSUES.md entry filed when C4b's `TeamNarrowed` grew `since` and
+  `series_game` but neither template read them. "Celtics record since 2022",
+  "Lakers record in game 1 of each series", "Celtics vs Knicks since 2020"
+  and "all-time Celtics vs Knicks" used to refuse and fall through to the
+  agent; they answer now.
+
+  `team_record`'s `since` reads the same since-bounded `_Span` a whole career
+  already does (`_record_narrowed`, extended to build it through
+  `common._span_of`/`common._team_span_clause` instead of
+  `team_metrics.games_scope`, which only ever means "one season" or "every
+  season"); `game_n` is the relation's own `TeamNarrowed.narrow_series_game`,
+  the same check `common.team_games` makes for every other team template (a
+  series has games 1-7, a regular season has nothing "game 4" names). Both
+  compose with an opponent, a venue and a calendar month exactly as a single
+  season already does, and the header says so - `game_n`'s "in game N of
+  the/each series" through `TeamNarrowed.filters(opponent=False)`, the same
+  idiom `team_quarter_points` uses, rather than a hand-written phrase of its
+  own. Neither combines with `split` "month" yet, which refuses rather than
+  silently answering the plain month split instead.
+
+  `head_to_head`'s `since`/`span` read through `common.team_games` the same
+  way its existing single-season path already does - new
+  `_head_to_head_span_result`, gated on `since`/`career` rather than folded
+  into the single-season branch, so that branch's own wording is untouched.
+  The answer names the actual seasons the games came from (`_Span.during`),
+  not only what was asked, and says "lead the all-time series" rather than
+  "won the series" for an unfinished, ongoing span - "won" reads as a settled
+  result, which a since-bounded or career tally is not. A stray player name
+  in `teams` (a `head_to_head` question about "Embiid's record", which the
+  router resolves to his team) used to refuse for the wrong reason (`span`
+  unhonored); it now reaches the real one - a team-shaped name that fails to
+  resolve says so, and a real team pair answers.
+
+  Golden-verified: `INTENTS=team_record,head_to_head` over the recorded
+  corpus plus `constructed_cases_team_cells.jsonl` (`~/association-research/algebra-spike/step3/`,
+  1989-1993 postseasons and since-bounded spans included) - 58 cases, 41
+  identical before/after and 17 changed, every one an unhandled-slot refusal
+  turning into an answer (or, for one recorded case naming a conference
+  situation alongside `span`, a refusal narrowing to its one real remaining
+  cause). One-token perturbation (disabling `_record_narrowed`'s `since`
+  branch) caught by the harness in 6 of the 8 `since`-bearing `team_record`
+  cases - the other two ask "since 1989", the postseason's own floor, so
+  removing the clamp admits no extra games and the two runs agree by
+  coincidence, not by the guard failing to matter; `head_to_head`'s own
+  `since`/`span` path does not call `_record_narrowed` at all, and none of
+  its cases moved, confirming the two templates' `since` handling are
+  genuinely separate code. Independently verified against the warehouse: the
+  Celtics' 2022-on regular-season record summed straight from `real_games`
+  (289-121) matches `team_record`'s own count exactly.
+
+  `tests/query/test_templates.py` gains a dedicated `team_cells_con` fixture
+  (three regular seasons and two playoff series, one from 1989) and one
+  warehouse-verified test per newly-honored cell: `since` alone, `since` with
+  an opponent, `since` with a venue, `since` with no games, `game_n` within
+  one named postseason, `game_n` combined with `since` across the 1989 floor,
+  `game_n` refusing a regular season, the three conflicts (`since`+season,
+  `since`+career, `since`+month split) for `team_record`; `since`, `span`
+  "career", `since` reaching the 1989 postseason floor, `since` with no
+  meetings, `since` with a venue, and the two conflicts (`since`+date,
+  `since`+career) for `head_to_head`.
 - **The condition skeletons discard the relation's window; the team relation
   reads a bare `limit` the way the player one does.** With C5 reading a bare
   `limit` as "the newest N" in `scoped_games`, the router's filler `limit: 1`

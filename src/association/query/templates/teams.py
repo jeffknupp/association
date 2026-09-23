@@ -209,19 +209,40 @@ def _team_record_month_and_split(split: Any, situation: Any, limit: Any) -> tupl
     return split, month
 
 
+def _team_record_since(since: Any, career: bool, season: int | None) -> int | None:
+    """The validated ``since`` slot, the same int-or-None reading
+    ``team_leaderboard`` already gives it, plus the two conflicts that are
+    ``team_record``'s own: ``since`` and a single named season are two
+    different spans (the same conflict ``span`` "career" already raises for a
+    season), and so are ``since`` and "career" - the same answer put two ways,
+    which is worth a refusal rather than a silent pick between them.
+
+    .. versionadded:: 4.4.0
+    """
+    if not (isinstance(since, int) and since and not isinstance(since, bool)):
+        return None
+    if season is not None:
+        raise TemplateUnsupported(f"since {since} and the {season} season at once")
+    if career:
+        raise TemplateUnsupported(f"since {since} and a career span at once")
+    return since
+
+
 def team_record(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """A team's win-loss record: for a season, at home or on the road, against
-    one team, in a postseason, in one calendar month, broken out by month, or
-    across every season the warehouse holds.
+    one team, in a postseason, since a season, in game N of each playoff
+    series, in one calendar month, broken out by month, or across every
+    season the warehouse holds.
 
     A season's record and its home/road split are read from standings, the
     authoritative source - its "Home" and "Road" strings agree with a tally of
     ``games`` for every team-season from 1994 to 2026 once each era's
     neutral-site rule is applied (through 2024 a neutral-site game counts for
     its designated home team; from 2025 it counts as neither). A record against
-    one team, in a postseason, in one named month or broken out by month has no
-    standings column, and is tallied from ``games`` instead - see
-    team_metrics.TEAM_GAMES_SQL for what that tally removes.
+    one team, in a postseason, since a season, in game N of each series, in one
+    named month or broken out by month has no standings column, and is tallied
+    from ``games`` instead - see team_metrics.TEAM_GAMES_SQL for what that
+    tally removes.
 
     Every answer names the span it covers, because "all-time" here is not the
     franchise's history: standings begin with 1987-88, and ``games`` holds every
@@ -236,6 +257,15 @@ def team_record(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        Honors ``situation`` where it names a real calendar month ("in
        october") and ``split`` where it is "month" (broken out by month) -
        every other value of either still falls through, the same as before.
+
+    .. versionchanged:: 4.4.0
+       Honors ``since`` (a since-bounded career, read the same way
+       :func:`_record_narrowed` reads a whole one) and ``game_n`` (one game of
+       each playoff series) instead of refusing both (step 3, team cells,
+       ISSUES.md). Neither combines with ``split`` "month" yet - a month split
+       already has no ``since``-bounded or one-game-of-a-series form, so that
+       combination refuses rather than silently answering the plain month
+       split.
     """
     con = ctx.con
     refused = _conference_refusal(slots)
@@ -255,14 +285,45 @@ def team_record(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     if career and season is not None:
         # "all-time ... in 2020" is either a slip or a range this cannot read.
         raise TemplateUnsupported("a career span and a single season at once")
+    since = _team_record_since(slots.get("since"), career, season)
+    game_n = slots.get("game_n")
+    if game_n and season_type != 3:
+        raise TemplateUnsupported(f"game {game_n} names a game of a playoff series, and this is a regular season question")
+    return _team_record_route(con, team, opponent, split, month, season_type, venue, career, season, since, game_n)
 
+
+def _team_record_route(
+    con: duckdb.DuckDBPyConnection,
+    team: Entity,
+    opponent: Entity | None,
+    split: str | None,
+    month: int | None,
+    season_type: int,
+    venue: str | None,
+    career: bool,
+    season: int | None,
+    since: int | None,
+    game_n: Any,
+) -> TemplateResult:
+    """``team_record``'s last step: which of the four answer shapes the
+    settled slots pick out - pulled out of ``team_record`` itself so that
+    function stays inside the complexity gate, the same move
+    ``_team_record_month_and_split`` already made for the month/situation
+    reading above it.
+
+    .. versionadded:: 4.4.0
+    """
     if split == "month":
+        if since is not None or game_n:
+            raise TemplateUnsupported("a month split has no since-bounded or one-game-of-a-series form yet")
         return _team_record_by_month(con, team, opponent, None if career else (season or current_season()), season_type, venue)
-    if opponent is None and season_type == 2 and month is None:
+    if since is not None:
+        return _games_record(con, team, opponent, None, season_type, venue, month, since=since, game_n=game_n)
+    if opponent is None and season_type == 2 and month is None and not game_n:
         if career:
             return _standings_career(con, team, venue)
         return _standings_season(con, team, season or current_season(), venue)
-    return _games_record(con, team, opponent, None if career else (season or current_season()), season_type, venue, month)
+    return _games_record(con, team, opponent, None if career else (season or current_season()), season_type, venue, month, game_n=game_n)
 
 
 def _team_record_teams(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], opponent_text: Any) -> tuple[Entity, Entity | None] | TemplateResult:

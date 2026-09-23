@@ -2302,29 +2302,6 @@ those were found.
 
 ## P3: refusal or gap
 
-### `team_record` refuses `since` and `game_n`, and `head_to_head` refuses `since` and `span`, with the relation able to narrow both
-- **Found:** 2026-09-22, merging step 3 C4b (`TEAM_RELATION_SCOPING`).
-- **Evidence:** `templates/common.py`, `TEAM_RELATION_SCOPING_EXCLUDED`:
-  `team_record` excludes `since` ("not a since-bounded range of seasons yet")
-  and `game_n` ("does not narrow a record to one game of each series yet");
-  `head_to_head` excludes `since` and `span` ("counts every meeting in the
-  span; not built yet"). Those are reasons about the code, which the
-  declaration's own rule forbids - a slot that merely is not wired is wired,
-  not excluded. The relation carries all four cells (`TeamNarrowed`: `since`
-  through `scoped_team`, `series_game`, and `span`); what is missing is the
-  two templates reading them and phrasing the span.
-- **User sees:** "Celtics record since 2022", "Lakers record in game 1 of
-  each series", "Celtics vs Knicks since 2020" and "all-time Celtics vs
-  Knicks" refuse and fall through to the agent (which answers 1 in 23).
-- **Next step:** in `team_record`, read the `_Span` `scoped_team` already
-  settles (a since-bounded span is the same shape as a career) and the
-  relation's `series_game`, and say both in the heading via
-  `TeamNarrowed.filters()`; in `head_to_head`, the same for `since`/`span`
-  over every meeting in the span. Then delete the four exclusions. Each cell
-  gets a warehouse-verified fixture test.
-- **Source:** ours.
-- **GitHub:** #184
-
 ### `period_leaderboard` stays off the player-games relation
 - **Found:** 2026-09-22, step 3 C5's own second task: assess whether a
   no-player read of the relation (`player_games.league()`) would let
