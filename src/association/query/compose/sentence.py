@@ -190,7 +190,7 @@ def team_sentence(q: TeamQuery, result: TeamResult) -> str:
     if result.value is None:
         return f"The warehouse has no {label} on record for the {result.team.name} in the {span}."
     if result.from_season_line:
-        return f"The {result.team.name} had {result.value:,.0f} {label} over the complete {span} ({result.games} games).{result.note}"
+        return f"The {result.team.name} had {result.value:,.0f} {label} over the complete {span} ({result.games} games).{result.note}{result.coverage_note}"
     value = f"{result.value:+,.0f}" if q.measure == "differential" else f"{result.value:,.0f}"
     record = f" ({result.wins}-{result.losses})" if result.wins is not None else ""
     per_game = f" ({result.value / result.games:+.2f} per game)" if q.measure == "differential" and result.games else ""
@@ -198,7 +198,7 @@ def team_sentence(q: TeamQuery, result: TeamResult) -> str:
     # narrowed the read (TeamNarrowed.filters()) - saying the count again
     # here would read as "over 10 games over their last 10 games".
     games_phrase = "" if "game" in result.narrowed_text else f" over {result.games} games"
-    return f"The {result.team.name} {'are' if label == 'point differential' else 'had'} {value} {label}{per_game}{games_phrase}{result.narrowed_text}{record}."
+    return f"The {result.team.name} {'are' if label == 'point differential' else 'had'} {value} {label}{per_game}{games_phrase}{result.narrowed_text}{record}.{result.coverage_note}"
 
 
 def sentence(q: Query, out: dict[str, Any]) -> str:

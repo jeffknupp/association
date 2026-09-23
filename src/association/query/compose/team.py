@@ -57,6 +57,7 @@ from typing import Any
 
 import duckdb
 
+from association.nba.coverage import caveat, unavailable
 from association.nba.season import current_season
 from association.query.entities import _TEAM_NICKNAMES, Entity
 from association.query.team_games import TeamNarrowed
@@ -185,6 +186,10 @@ class TeamResult:
     #: A note appended past the number - the season-total reader's own
     #: postseason addendum (F127: "...and added 78 more in the playoffs").
     note: str = ""
+    #: A season that is covered but only partly (`association.nba.coverage.caveat`)
+    #: - #197, the same note `templates.common.coverage_caveat` gives a
+    #: template's own answer.
+    coverage_note: str = ""
 
 
 def _team_narrowed(slots: dict[str, Any]) -> bool:
@@ -309,16 +314,87 @@ def _compile_team_games_total(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
     )
 
 
-def run_team(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
-    """``q`` answered: the unnarrowed season total, or a narrowed sum over
-    the team-games relation - whichever the question's own slots ask for.
+def _team_coverage_tables(q: TeamQuery) -> tuple[str, ...]:
+    """Which table a :class:`TeamQuery` would be built from - the season line
+    or the game-level relation - the same split :func:`_team_narrowed`
+    already makes, restated as table names for
+    :func:`association.nba.coverage.unavailable`/:func:`association.nba.coverage.caveat`
+    (#197, ISSUES.md).
 
     .. versionadded:: 4.4.0
     """
+    return ("games",) if _team_narrowed(q.slots) else ("team_season_stats",)
+
+
+def _team_season_int(slots: dict[str, Any]) -> int | None:
+    """The ``season`` slot, read only where it is a real int - the same
+    guard :func:`~association.query.templates.common.check_coverage` applies
+    before charging a floor: no season named means the current one, which
+    every table covers."""
+    season = slots.get("season")
+    return season if isinstance(season, int) and not isinstance(season, bool) else None
+
+
+def team_coverage_refusal(q: TeamQuery) -> TemplateResult | None:
+    """Why this team question's season is out of reach, or ``None`` - the
+    team subject's counterpart of
+    :func:`~association.query.templates.common.check_coverage` (#197,
+    ISSUES.md: compose read no coverage floor at all). Checked before the
+    team itself is even resolved, the same order ``check_coverage`` runs in
+    ahead of every relation template.
+
+    .. versionadded:: 4.4.0
+    """
+    season = _team_season_int(q.slots)
+    if season is None:
+        return None
+    season_type = q.slots.get("season_type") or 2
+    message = unavailable(_team_coverage_tables(q), season, season_type)
+    if message is None:
+        return None
+    return TemplateResult(data={"season": season}, answer=message)
+
+
+def _team_coverage_note(q: TeamQuery) -> str:
+    """A note for a season this team question can reach but only partly, or
+    ``""`` - the team subject's counterpart of
+    :func:`~association.query.templates.common.coverage_caveat` (#197,
+    ISSUES.md).
+
+    .. versionadded:: 4.4.0
+    """
+    season = _team_season_int(q.slots)
+    if season is None:
+        return ""
+    season_type = q.slots.get("season_type") or 2
+    note = caveat(_team_coverage_tables(q), season, season_type)
+    return f" {note}" if note else ""
+
+
+def run_team(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
+    """``q`` answered: the unnarrowed season total, or a narrowed sum over
+    the team-games relation - whichever the question's own slots ask for.
+    Raises :class:`~association.query.compose.core.Refused` when
+    :func:`team_coverage_refusal` finds the season out of reach - checked
+    first, the same order ``check_coverage`` runs in ahead of every
+    template.
+
+    .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.4.0
+       Checks the coverage floor first, and carries a partial-season caveat
+       on the result (#197, ISSUES.md).
+    """
+    refusal = team_coverage_refusal(q)
+    if refusal is not None:
+        raise Refused(refusal)
     try:
         if _team_narrowed(q.slots):
-            return _compile_team_games_total(con, q)
-        team = _resolved_team_subject(con, q.slots)
-        return _compile_team_season(con, q, team)
+            result = _compile_team_games_total(con, q)
+        else:
+            team = _resolved_team_subject(con, q.slots)
+            result = _compile_team_season(con, q, team)
     except TemplateUnsupported as exc:
         raise Unsupported(f"relation: {exc}") from exc
+    result.coverage_note = _team_coverage_note(q)
+    return result

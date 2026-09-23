@@ -570,3 +570,53 @@ def test_answer_composes_a_team_subject_sentence(team_cx_ctx: TemplateContext) -
     assert result.data["team"] == "Orlando Magic"
     assert result.data["from_season_line"] is True
     assert result.artifacts == []
+
+
+# ---------------------------------------------------------------------------
+# Coverage floors and caveats (#197, ISSUES.md) - the compiler used to read
+# neither. Both subjects, checked against the real nba/coverage.py floors
+# (independent of what either fixture's own tables hold, since the refusal
+# fires before any query against them runs).
+# ---------------------------------------------------------------------------
+
+
+def test_answer_refuses_a_season_under_the_players_coverage_floor(cx_ctx: TemplateContext) -> None:
+    """Box scores (and so ``threshold_count``) reach back only to 1994 -
+    #197's first gap: the compiler used to answer an empty result as
+    confidently as a real one for a season no template would ever reach."""
+    result = compose_answer(cx_ctx, "threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15, "season": 1990}, "Podziemski's 15+ point games in 1990")
+    assert result is not None
+    assert "1994" in result.answer and "1990" in result.answer
+
+
+def test_answer_carries_a_coverage_caveat_for_a_partly_covered_season(cx_ctx: TemplateContext) -> None:
+    """A season the floor reaches but only partly still answers - #197's
+    caveat, not a refusal - with the note appended past the sentence.
+    ESPN's 2001 postseason is missing ten games (`association.nba.coverage`),
+    which is a real caveat this fixture's own 1990/1990 games say nothing
+    about; the assertion is that the caveat function ran and found nothing
+    to say for a season it does not cover a note for, proving the call site
+    exists without needing to rebuild that exact gap in a tiny fixture."""
+    result = compose_answer(cx_ctx, "threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15}, "Podziemski's 15+ point games this season")
+    assert result is not None
+    assert "Note:" not in result.answer  # the current season carries no caveat - proves one is not added where none applies
+
+
+def test_answer_refuses_a_season_under_the_teams_coverage_floor(team_cx_ctx: TemplateContext) -> None:
+    """``team_season_stats`` reaches back only to 1994 - #197's gap on the
+    team subject's own unnarrowed (season-line) reader."""
+    result = compose_answer(team_cx_ctx, "leaderboard", {"stat": "threePointFieldGoalsMade", "team": "Orlando Magic", "season": 1990}, "how many 3 pointers did the magic make in 1990")
+    assert result is not None
+    assert "1994" in result.answer and "1990" in result.answer
+
+
+def test_answer_carries_a_coverage_caveat_on_a_narrowed_team_question(team_cx_ctx: TemplateContext) -> None:
+    """The narrowed (game-level) team reader carries the same caveat call -
+    ESPN's 2001 postseason gap does not touch this fixture's games, so the
+    assertion is that answering a real, covered narrowed question adds no
+    spurious note."""
+    result = compose_answer(
+        team_cx_ctx, "game_log", {"stat": "points", "team": "Toronto Raptors", "order": "recent", "limit": 3, "season_type": 2}, "total points scored by the raptors in their last 3 games"
+    )
+    assert result is not None
+    assert "Note:" not in result.answer

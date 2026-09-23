@@ -16,6 +16,17 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **`compose.answer` checks the coverage floor and carries a partial-season
+  caveat (#197, ISSUES.md).** It used to answer a season under a table's
+  floor as confidently as a modern one - a 1990 box-score question read "0
+  games" rather than refusing, which looks like a real zero and is actually
+  no data at all. Both subjects now call the same two functions every
+  relation template does (`check_coverage`/`coverage_caveat`), the team
+  subject through its own `compose/team.py` counterparts
+  (`team_coverage_refusal`/`_team_coverage_note`), warehouse-verified against
+  ESPN's real 2001-postseason gap note on both a player and a team question.
+  The box-score caveats (`_box_score_notes` - empty box scores, rebuilt
+  lines, a career predating box scores) remain open, filed in the same entry.
 - **A team's own total or differential is stated, not just its games
   (F128/F129, ISSUES.md).** "Total points scored by the Toronto Raptors in
   the last 10 games" and "Knicks point differential over the last 7 games"

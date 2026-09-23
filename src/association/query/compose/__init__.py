@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from association.query.templates.common import TemplateContext, TemplateResult
+from association.query.templates.common import TemplateContext, TemplateResult, check_coverage, coverage_caveat
 
 from .core import Query, Refused, Unsupported, run
 from .move import move_point
@@ -97,15 +97,33 @@ def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: s
        :func:`~association.query.compose.team.run_team` and
        :func:`~association.query.compose.sentence.team_sentence` instead, the
        same ``Unsupported``/``Refused`` handling either way.
+
+    .. versionchanged:: 4.4.0
+       Checks :func:`~association.query.templates.common.check_coverage`
+       before compiling and appends
+       :func:`~association.query.templates.common.coverage_caveat` after -
+       the same two calls every relation template makes, which this package
+       carried neither of before (#197, ISSUES.md: a season under a table's
+       floor was answered as confidently as a modern one). The team subject
+       makes the same two calls its own way
+       (:func:`~association.query.compose.team.team_coverage_refusal`,
+       inside :func:`~association.query.compose.team.run_team`).
     """
     try:
         query = move_point(ctx.con, intent, slots, question)
         if isinstance(query, TeamQuery):
             result = run_team(ctx.con, query)
             return TemplateResult(data=_team_point_data(query, result), answer=_team_sentence(query, result), artifacts=[])
+        refusal = check_coverage(intent, query.slots)
+        if refusal is not None:
+            raise Refused(TemplateResult(data={"season": query.slots.get("season")}, answer=refusal))
         out = run(ctx.con, query)
     except Unsupported:
         return None
     except Refused as exc:
         return exc.result
-    return TemplateResult(data=_point_data(query, out), answer=_sentence(query, out), artifacts=[])
+    answer_text = _sentence(query, out)
+    note = coverage_caveat(intent, query.slots)
+    if note:
+        answer_text += f" {note}"
+    return TemplateResult(data=_point_data(query, out), answer=answer_text, artifacts=[])
