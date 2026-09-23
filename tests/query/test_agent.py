@@ -565,18 +565,18 @@ def test_a_templates_refusal_that_compose_answers_is_returned_as_fast_with_the_t
 
 
 def test_a_compose_none_falls_through_to_the_agent_exactly_as_before(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """No monkeypatch on compose.answer here: this exercises the real stub
-    module (association.query.compose), which always returns None, and proves
-    the wiring changes nothing for a question the compiler has nothing to say
-    about - the fast path still falls through to the agent, same as before
-    this step existed."""
+    """No monkeypatch on compose.answer here: this exercises the real
+    compiler (association.query.compose) on an intent that is not a point on
+    any relation - a fingerprint is a chart over NetPoints - so it declines
+    with None, and the wiring changes nothing: the fast path still falls
+    through to the agent, same as before this step existed."""
     from association.query.router import Route
 
-    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="player_stat", slots={"player": "Joel Embiid", "since": "2024"}))
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": _refusing_template})
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="fingerprint", slots={"player": "Joel Embiid", "season": 2026}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"fingerprint": _refusing_template})
     monkeypatch.setattr(ollama, "chat", lambda **kw: ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="agent answer")))
 
-    answer = _agent_with_players(tmp_path, "Joel Embiid").ask("how many points has embiid averaged since 2024?")
+    answer = _agent_with_players(tmp_path, "Joel Embiid").ask("show me embiid's fingerprint for 2026")
 
     assert answer.text == "agent answer"
     assert answer.answered_by == "agent"
