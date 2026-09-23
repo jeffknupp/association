@@ -16,6 +16,13 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **"since he joined the league" is a career span.** "Show me luka's avg
+  assists since he joined the league" carried no `_SPAN_WORDS` match at all
+  ("career", "all-time", "ever", "in/of history") and answered one season
+  (8.8 apg, 2019-20) where his whole career (8.23 apg, 514 games, 2019-2026)
+  was asked for. `router._SPAN_JOINED_LEAGUE_WORDS` reads it, anchored on
+  "the league" so "since he joined the Warriors" - a team question - is
+  unaffected.
 - **A near spelling in `without` is taken rather than asked about, and the
   shot-distance leaderboard refusal names the real cause.** "de'aaron fox vs
   magic last five games without wembyanama" refused "did you mean Victor

@@ -844,6 +844,25 @@ def test_all_season_type_games_reads_as_a_career_span() -> None:
     assert his.slots["span"] == "career"
 
 
+def test_since_he_joined_the_league_reads_as_a_career_span() -> None:
+    """yardstick-v2 F031: "Show me luka's avg assists since he joined the
+    league" routed with no ``span`` at all - none of ``_SPAN_WORDS`` is in
+    it - and answered one season (8.8 apg, 2019-20) where his whole career
+    (8.23 apg, 514 games, 2019-2026) was asked for. Anchored on "the league"
+    so it does not fire on "since he joined the team"/"...the Mavericks",
+    which name a team question, not a career one."""
+    got = _ask(
+        "Show me luka's avg assists since he joined the league",
+        '{"intent":"player_stat","player":"Luka Doncic","stat":"assists","season":2026}',
+    )
+    assert got.slots["span"] == "career" and "season" not in got.slots
+    team = _ask(
+        "how many points has curry scored since he joined the Warriors",
+        '{"intent":"player_stat","player":"Stephen Curry","stat":"points","season":2026}',
+    )
+    assert "span" not in team.slots
+
+
 def test_all_season_type_games_does_not_fire_on_all_star() -> None:
     """The anchor is a season-TYPE word directly after "all"/"every" - "star"
     is not one, so an All-Star question keeps its own season rather than

@@ -774,6 +774,14 @@ def _subject_named_in(question: str) -> str | None:
 
 
 _SPAN_WORDS = re.compile(r"\b(?:career|all[- ]time|ever|(?:in|of)\s+(?:nba\s+)?history|of\s+all\s+time)\b", re.IGNORECASE)
+# "since he/she joined the league", "since entering the league": the same
+# "every season" reading `_SPAN_WORDS`' own "career" gets, in words that do
+# not contain it - yardstick-v2 F031, "Show me luka's avg assists since he
+# joined the league", used to answer one season (whichever the router's
+# season default happened to be) where the question asked for his whole
+# career. Anchored on "the league" so it cannot fire on "since he joined the
+# team" (#147's own team question) or "since he joined the Mavericks".
+_SPAN_JOINED_LEAGUE_WORDS = re.compile(r"\bsince\s+(?:he|she|they)\s+(?:joined|entered)\s+the\s+league\b|\bsince\s+(?:joining|entering)\s+the\s+league\b", re.IGNORECASE)
 # "this postseason" names the current season as surely as "this season" does:
 # without it, "maxey's stats for game 4 against the knicks this postseason"
 # read as a career question and asked which Maxey.
@@ -799,11 +807,15 @@ def _validate_span(question: str) -> str | None:
     .. versionchanged:: 4.4.0
        Reads "all playoff games" and its variants too - see
        :data:`_SPAN_ALL_GAMES_WORDS` (#141).
+
+    .. versionchanged:: 4.4.0
+       Reads "since he/she joined the league" - see
+       :data:`_SPAN_JOINED_LEAGUE_WORDS`.
     """
     text = question
     if _CAREER_HIGH.search(text) and (season_from_text(question) is not None or _SEASON_WORDS.search(text)):
         text = _CAREER_HIGH.sub(" ", text)
-    return "career" if _SPAN_WORDS.search(text) or _SPAN_ALL_GAMES_WORDS.search(text) else None
+    return "career" if _SPAN_WORDS.search(text) or _SPAN_ALL_GAMES_WORDS.search(text) or _SPAN_JOINED_LEAGUE_WORDS.search(text) else None
 
 
 # The words that end a teammate's name in "without X this season" and the like.

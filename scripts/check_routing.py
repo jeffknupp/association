@@ -318,6 +318,11 @@ CASES: list[tuple[str, str, dict]] = [
     ("kevin durant true shooting percentage career", "player_stat", {"stat": "ts_pct", "span": "career"}),
     ("luka ft log", "game_log", {}),
     ("Jokic career averages", "player_stat", {"span": "career"}),
+    # yardstick-v2 F031: "since he joined the league" is a career span in
+    # words that never contain "career" - `_SPAN_WORDS` never matched it, so
+    # this used to answer one season (8.8 apg, 2019-20) where his whole
+    # career (8.23 apg, 514 games, 2019-2026) was asked for.
+    ("Show me luka's avg assists since he joined the league", "player_stat", {"player": "Luka Doncic", "stat": "assists", "span": "career"}),
     ("zach lavine vs nuggets last 8 games home", "game_log", {"venue": "home"}),
     ("how did curry do against the celtics this year", "player_stat", {}),
     # Came back as player_compare with the Celtics as the second "player".
