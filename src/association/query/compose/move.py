@@ -23,6 +23,7 @@ from association.query.metrics import PER_GAME_MIN_GAMES
 
 from .adapt import DEFAULT_SINGLE_GAME_LIMIT, _clamp, _named_player, to_query
 from .core import COLUMNS, DERIVED, LINE, Query, Unsupported
+from .team import GAME_MEASURES, SEASON_MEASURES, TeamQuery, team_named_in
 
 #: The router's own stat names that are not relation columns, as measures.
 MEASURE_ALIASES: dict[str, str] = {
@@ -384,14 +385,117 @@ def _move_named(intent: str, slots: dict[str, Any], question: str) -> Query:
     return _move_default(intent, slots, measure)
 
 
-def move_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str) -> Query:
-    """The intent's default point, moved by the question's own words: a
-    measure beyond a template's list, a skeleton move ("most ... in a game" =
-    rows by measure; "how many ... won" = count with a predicate), and two
-    slot repairs (:func:`repair`) - none of it through a prompt edit.
+#: A word in the question naming a team's own measure directly - the team
+#: counterpart of :data:`WORD_MEASURES`, over :data:`~association.query.compose.team.GAME_MEASURES`
+#: and :data:`~association.query.compose.team.SEASON_MEASURES` rather than
+#: the player relation's columns.
+_TEAM_WORD_MEASURES: list[tuple[str, str]] = [
+    (r"\bpoint(?:s)? differential\b|\bpoint diff\b|\bdifferential\b", "differential"),
+    (r"\bpoints? allowed\b|\bopponent'?s? points\b", "points_allowed"),
+    (r"\b(?:3|three)[- ]?point(?:er)?s?\b(?:.{0,10}\bmade\b)?", "threePointFieldGoalsMade"),
+    (r"\btotal points\b|\bpoints scored\b|\bhow many points\b", "points"),
+    (r"\brebounds\b", "rebounds"),
+    (r"\bassists\b", "assists"),
+    (r"\bsteals\b", "steals"),
+    (r"\bblocks\b", "blocks"),
+    (r"\bturnovers\b", "turnovers"),
+]
+"""``(pattern, measure)`` - a phrase naming one of :data:`~association.query.compose.team.GAME_MEASURES`
+or :data:`~association.query.compose.team.SEASON_MEASURES` directly.
+
+.. versionadded:: 4.4.0
+"""
+
+#: A question about players ON a team - a ranking, a log, or an explicit
+#: "who"/"which player" framing - is the league-wide read's question, never
+#: the team's own subject.
+_TEAM_NOT_SUBJECT = re.compile(r"\bwho\b|\bwhich player\b|\bwhich\b.{0,15}\bplayer\b", re.I)
+
+
+def _team_measure(slots: dict[str, Any], question: str) -> str | None:
+    """The team measure a question names - the question's own word first
+    (the same priority :func:`_measure_for_named` gives a player's), the
+    router's ``stat`` slot otherwise, when it is a column
+    :data:`~association.query.compose.team.GAME_MEASURES` or
+    :data:`~association.query.compose.team.SEASON_MEASURES` knows.
 
     .. versionadded:: 4.4.0
     """
+    ql = question.lower()
+    for pattern, name in _TEAM_WORD_MEASURES:
+        if re.search(pattern, ql):
+            return name
+    stat = slots.get("stat")
+    if isinstance(stat, str) and (stat in GAME_MEASURES or stat in SEASON_MEASURES):
+        return stat
+    return None
+
+
+def team_move_point(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], question: str) -> TeamQuery | None:
+    """Whether ``question``/``slots`` name a team as the grammatical
+    SUBJECT - no player, a team identifiable (the router's own ``team`` slot,
+    or :func:`~association.query.compose.team.team_named_in` when the router
+    dropped it, F127's shape), and no ranking/log/period/"who" framing that
+    would make it a league-wide read of the PLAYER relation instead
+    (``_everyone_point``'s own question - "who leads the Lakers in scoring"
+    narrows a player ranking by team, and is not this module's) - and, if so,
+    the point it means. ``None`` where nothing here answers, so the caller
+    falls back to the league-wide reading exactly as before this existed.
+
+    .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.4.0
+       Ignores the router's ``"any_team"`` placeholder (K2's own corpus:
+       "rebounds allowed per team", filed ``team: "any_team"``) rather than
+       treating it as a real name to resolve - it already fails
+       :func:`~association.query.templates.common._resolved_team` (which
+       RAISES for it, unlike a name with no match, which returns a
+       clarification), so returning a :class:`~association.query.compose.team.TeamQuery`
+       here only delayed the same decline `_everyone_point`'s own
+       ``_NOT_PLAYERS`` guard already gives this exact question ("allowed" is
+       in it) - through a noisier path, for no different an outcome.
+    """
+    if _named_player(slots) or _PERIOD.search(question) or _RANKING.search(question) or _LOG.search(question) or _TEAM_NOT_SUBJECT.search(question):
+        return None
+    team_text = slots.get("team")
+    if not (isinstance(team_text, str) and team_text.strip()) or team_text == "any_team":
+        found = team_named_in(con, question)
+        if found is None:
+            return None
+        slots = {**slots, "team": found}
+    measure = _team_measure(slots, question)
+    if measure is None:
+        return None
+    return TeamQuery(slots, measure=measure, aggregate="total")
+
+
+def move_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str) -> Query | TeamQuery:
+    """The intent's default point, moved by the question's own words: a
+    measure beyond a template's list, a skeleton move ("most ... in a game" =
+    rows by measure; "how many ... won" = count with a predicate), and two
+    slot repairs (:func:`repair`) - none of it through a prompt edit. A team
+    named with no player (:func:`team_move_point`) is tried before the
+    league-wide reading, since a team's own total or differential is a
+    narrower, more specific claim than "no player subject" - the same
+    priority a named player already gets over the league-wide read.
+
+    .. versionchanged:: 4.4.0
+       Tries :func:`team_move_point` (the team as a subject) on the
+       UNREPAIRED slots, before :func:`repair` - not merely before
+       :func:`_everyone_point`. "Magic" (Orlando's nickname) is also Magic
+       Johnson's given name, so ``repair``'s dropped-subject restoration
+       (:func:`players_named_in` finding exactly one player) turns "how many
+       3-pointers have the magic made" into a question about him UNLESS the
+       team reading is settled first - the same shape as
+       ``override_invented_players``, in reverse: here it is the REPAIR that
+       would invent a subject, not the router. May return a
+       :class:`~association.query.compose.team.TeamQuery` instead of a
+       :class:`~association.query.compose.core.Query`.
+    """
+    if not _named_player(slots):
+        team_query = team_move_point(con, slots, question)
+        if team_query is not None:
+            return team_query
     slots = repair(con, slots, question)
     if not _named_player(slots):
         return _everyone_point(intent, slots, question, _stat_measure(slots.get("stat")))

@@ -56,6 +56,7 @@ from .common import (
     _slot_season,
     _Span,
     _span_of,
+    _validated_until,
     _where_in,
     measure_filters,
     scoped_games,
@@ -281,6 +282,7 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
             limit=limit,
             ascending=ascending,
             mixed=mixed,
+            stat=slots.get("stat"),
         )
     return _game_log_player(
         con, slots, team_text, slot_season=slot_season, span=span, season=season, opponent=opponent, measures=measures, date=date, limit=limit, ascending=ascending, mixed=mixed, asked=asked
@@ -304,6 +306,7 @@ def _game_log_team(
     limit: int,
     ascending: bool,
     mixed: bool,
+    stat: Any = None,
 ) -> TemplateResult:
     """The team half of :func:`game_log`: resolve the team, refuse what a
     team's log cannot narrow by, and read either one season type or both.
@@ -312,6 +315,12 @@ def _game_log_team(
        Split out of ``game_log`` when reading both season types pushed its
        complexity over the xenon C limit (AGENTS.md, "the way the templates
        and ``route()`` took").
+
+    .. versionchanged:: 4.4.0
+       Takes ``stat``, so a log narrowed to a total or a differential
+       (F128/F129, ISSUES.md) states the number the question actually asked
+       for instead of only listing the games it was computed from - see
+       :func:`_team_game_log_total_line`.
     """
     team = _resolved_team(con, team_text, season=slot_season)
     if isinstance(team, TemplateResult):
@@ -321,12 +330,12 @@ def _game_log_team(
         resolved_season = _span_of(span, season, 2, "games").season
         if resolved_season is None:
             raise TemplateUnsupported("a career span has no single season to read both season types within")
-        return _team_game_log_mixed(con, team, resolved_season, opponent=opponent, venue=venue, limit=limit)
+        return _team_game_log_mixed(con, team, resolved_season, opponent=opponent, venue=venue, limit=limit, stat=stat)
     scope = _span_of(span, season, season_type, "games")
     narrowed = team_games(con, team, scope, {"venue": venue}, opponent=opponent, date=date)
     if isinstance(narrowed, TemplateResult):
         return narrowed
-    return _team_game_log(con, team, scope, narrowed, limit=limit, ascending=ascending)
+    return _team_game_log(con, team, scope, narrowed, limit=limit, ascending=ascending, stat=stat)
 
 
 def _game_log_player(
@@ -549,7 +558,38 @@ def _team_game_log_games(rows: list[tuple[Any, ...]]) -> tuple[list[dict[str, An
     return games, wins, losses, record, lines
 
 
-def _team_game_log_rows(team: Entity, span: _Span, rows: list[tuple[Any, ...]], *, narrowed: str, date: str | None, ascending: bool) -> TemplateResult:
+#: A ``stat`` slot's own word, mapped to the total :func:`_team_game_log_total_line`
+#: appends - "total points" (F128) and "point differential" (F129), both
+#: narrowed correctly by the log already but never STATED: the games were
+#: right and the question's own number was still missing, which is a
+#: wrong-shape answer wearing a right one's clothes.
+_TEAM_GAME_LOG_STAT_TOTALS: dict[str, str] = {"points": "points", "pointsDifference": "differential"}
+"""``stat`` -> which total :func:`_team_game_log_total_line` states.
+
+.. versionadded:: 4.4.0
+"""
+
+
+def _team_game_log_total_line(games: list[dict[str, Any]], stat: Any) -> str | None:
+    """The total or differential line a team's log states when ``stat`` asks
+    for one it can compute from the games already listed - "Total points:
+    1,130." or "Point differential: +62 (+8.86 per game)." - or ``None`` for
+    every other ``stat`` (a per-game average, a named box-score column the
+    relation does not carry, or none at all), which changes nothing about
+    the plain listing.
+
+    .. versionadded:: 4.4.0
+    """
+    kind = _TEAM_GAME_LOG_STAT_TOTALS.get(stat) if isinstance(stat, str) else None
+    if kind is None or not games:
+        return None
+    if kind == "points":
+        return f"\n  Total points: {sum(g['team_score'] for g in games):,}."
+    diff = sum(g["team_score"] - g["opponent_score"] for g in games)
+    return f"\n  Point differential: {diff:+,} ({diff / len(games):+.2f} per game)."
+
+
+def _team_game_log_rows(team: Entity, span: _Span, rows: list[tuple[Any, ...]], *, narrowed: str, date: str | None, ascending: bool, stat: Any = None) -> TemplateResult:
     """The games listing, headed by the single season type ``span`` names."""
     games, wins, losses, record, lines = _team_game_log_games(rows)
     seasons = [g["season"] for g in games]
@@ -559,10 +599,11 @@ def _team_game_log_rows(team: Entity, span: _Span, rows: list[tuple[Any, ...]], 
         years = span.years(min(seasons), max(seasons))
         where = f" ({years})" if date else f" (all-time, {years})"
     header = f"{team.name}{narrowed}, {_scope(len(games), ascending, date)}{where} ({record}):"
-    return TemplateResult(data={"team": team.name, "wins": wins, "losses": losses, "games": games}, answer="\n".join([header, *lines]))
+    total_line = _team_game_log_total_line(games, stat) or ""
+    return TemplateResult(data={"team": team.name, "wins": wins, "losses": losses, "games": games}, answer="\n".join([header, *lines]) + total_line)
 
 
-def _team_game_log(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, narrowed: TeamNarrowed, *, limit: int, ascending: bool) -> TemplateResult:
+def _team_game_log(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, narrowed: TeamNarrowed, *, limit: int, ascending: bool, stat: Any = None) -> TemplateResult:
     """A team's games in ``span``, narrowed as ``narrowed``
     (:func:`association.query.templates.common.team_games`) already reflects."""
     sql, params = team_rows_sql(narrowed, _TEAM_GAME_LOG_SELECT, order=f"tg.eastern_date {'ASC' if ascending else 'DESC'}", limit=limit, join=_TEAM_GAME_LOG_JOIN)
@@ -570,10 +611,10 @@ def _team_game_log(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, na
     if not rows:
         # Which fact is missing: the team's games in that span, or the match.
         return _team_game_log_none(con, team, span, narrowed)
-    return _team_game_log_rows(team, span, rows, narrowed=narrowed.filters(), date=narrowed.date, ascending=ascending)
+    return _team_game_log_rows(team, span, rows, narrowed=narrowed.filters(), date=narrowed.date, ascending=ascending, stat=stat)
 
 
-def _team_game_log_mixed(con: duckdb.DuckDBPyConnection, team: Entity, season: int, *, opponent: Any, venue: Any, limit: int) -> TemplateResult:
+def _team_game_log_mixed(con: duckdb.DuckDBPyConnection, team: Entity, season: int, *, opponent: Any, venue: Any, limit: int, stat: Any = None) -> TemplateResult:
     """A team's "last N games" with no season type named: both types, read
     separately and merged by date - see ``router._route_game_log_recent_span``
     and :func:`_game_log_merge_season_types`. ``without``, a date and a game of
@@ -585,6 +626,9 @@ def _team_game_log_mixed(con: duckdb.DuckDBPyConnection, team: Entity, season: i
     compose.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.4.0
+       Takes ``stat`` (F128/F129, ISSUES.md) - see :func:`_team_game_log_total_line`.
     """
     rows_by_type: dict[int, list[tuple[Any, ...]]] = {}
     narrowed_text = ""
@@ -604,7 +648,8 @@ def _team_game_log_mixed(con: duckdb.DuckDBPyConnection, team: Entity, season: i
         return TemplateResult(data={"team": team.name, "games": []}, answer=f"No {season} games found for the {team.name}{narrowed_text}.")
     games, wins, losses, record, lines = _team_game_log_games(rows)
     header = f"{team.name}{narrowed_text}, {_scope(len(games), False, None)}{_game_log_mixed_where(season, counts)} ({record}):"
-    return TemplateResult(data={"team": team.name, "wins": wins, "losses": losses, "games": games}, answer="\n".join([header, *lines]))
+    total_line = _team_game_log_total_line(games, stat) or ""
+    return TemplateResult(data={"team": team.name, "wins": wins, "losses": losses, "games": games}, answer="\n".join([header, *lines]) + total_line)
 
 
 def _pct(made: Any, attempted: Any) -> float | None:
@@ -951,6 +996,27 @@ def _head_to_head_since(since: Any) -> int | None:
     return since if isinstance(since, int) and since and not isinstance(since, bool) else None
 
 
+def _head_to_head_span_slots(slots: dict[str, Any], date: str | None) -> tuple[int | None, int | None, bool]:
+    """``head_to_head``'s ``since``/``until``/``span`` reading and the
+    conflicts that are its own (a date and a since-bounded or career span at
+    once; ``since`` and ``career`` together) - pulled out of ``head_to_head``
+    itself so that function stays inside the complexity gate, the same move
+    ``_team_record_month_and_split`` already makes for ``team_record``.
+
+    .. versionadded:: 4.4.0
+    """
+    since = _head_to_head_since(slots.get("since"))
+    until = _validated_until(slots.get("until"), since)
+    career = slots.get("span") == "career"
+    if (since is not None or career or until is not None) and date:
+        raise TemplateUnsupported("a date and a since-bounded or career span of meetings at once")
+    if since is not None and career:
+        raise TemplateUnsupported(f"since {since} and a career span of meetings at once")
+    # `until` needs no separate career check: `_validated_until` above already
+    # raises for `until` with no `since`, and `career` never carries a `since`.
+    return since, until, career
+
+
 def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """ "How many times did the 76ers play Boston?" - games between two teams.
 
@@ -976,6 +1042,10 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        ``_Span`` :func:`association.query.templates.teams.team_record` reads,
        over every meeting in it rather than one season. Neither combines with
        ``date``, which already names one game outright.
+
+    .. versionchanged:: 4.4.0
+       Honors ``until`` beside ``since`` (step 3, K1): "meetings from 2011 to
+       2019" reads a bounded range rather than an open-ended "since 2011".
     """
     con = ctx.con
     teams_slot = slots.get("teams")
@@ -993,14 +1063,9 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     raw_date = slots.get("date")
     date = raw_date if isinstance(raw_date, str) and _ISO_DATE.match(raw_date) else None
     venue = _checked_venue(slots["venue"]) if slots.get("venue") else None
-    since = _head_to_head_since(slots.get("since"))
-    career = slots.get("span") == "career"
-    if (since is not None or career) and date:
-        raise TemplateUnsupported("a date and a since-bounded or career span of meetings at once")
-    if since is not None and career:
-        raise TemplateUnsupported(f"since {since} and a career span of meetings at once")
-    if since is not None or career:
-        return _head_to_head_span_result(con, a, b, venue, season_type, since=since, career=career)
+    since, until, career = _head_to_head_span_slots(slots, date)
+    if since is not None or career or until is not None:
+        return _head_to_head_span_result(con, a, b, venue, season_type, since=since, until=until, career=career)
 
     narrowed, season = _head_to_head_narrowed(con, a, b, venue, date, slots.get("season"), season_type)
     if isinstance(narrowed, TemplateResult):
@@ -1021,7 +1086,9 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     return TemplateResult(data=data, answer=answer)
 
 
-def _head_to_head_span_result(con: duckdb.DuckDBPyConnection, a: Entity, b: Entity, venue: str | None, season_type: int, *, since: int | None, career: bool) -> TemplateResult:
+def _head_to_head_span_result(
+    con: duckdb.DuckDBPyConnection, a: Entity, b: Entity, venue: str | None, season_type: int, *, since: int | None, until: int | None = None, career: bool
+) -> TemplateResult:
     """``head_to_head``'s answer for a since-bounded or whole-career span
     (step 3, team cells): every meeting between ``a`` and ``b`` in the span,
     tallied once - read through :func:`association.query.templates.common.team_games`
@@ -1034,8 +1101,11 @@ def _head_to_head_span_result(con: duckdb.DuckDBPyConnection, a: Entity, b: Enti
     what the question asked for.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.4.0
+       Honors ``until`` beside ``since`` (step 3, K1).
     """
-    span = _span_of("career" if career else None, None, season_type, "games", since=since)
+    span = _span_of("career" if career else None, None, season_type, "games", since=since, until=until)
     narrowed = team_games(con, a, span, {"venue": venue}, opponent=b)
     if isinstance(narrowed, TemplateResult):
         return narrowed
@@ -1046,9 +1116,9 @@ def _head_to_head_span_result(con: duckdb.DuckDBPyConnection, a: Entity, b: Enti
     b_wins = sum(1 for won, _ in rows if won is False)
     years = [int(yr) for _, yr in rows]
     first, last = (min(years), max(years)) if years else (None, None)
-    data = {"teams": [a.name, b.name], "games": len(rows), "wins": {a.name: a_wins, b.name: b_wins}, "venue": venue, "date": None, "since": since, "span": "career" if career else None}
+    data = {"teams": [a.name, b.name], "games": len(rows), "wins": {a.name: a_wins, b.name: b_wins}, "venue": venue, "date": None, "since": since, "until": until, "span": "career" if career else None}
     if venue:
-        answer = _head_to_head_narrowed_phrase(a.name, b.name, len(rows), a_wins, b_wins, venue=venue, date=None, season=None, season_type=season_type, since=since, career=career)
+        answer = _head_to_head_narrowed_phrase(a.name, b.name, len(rows), a_wins, b_wins, venue=venue, date=None, season=None, season_type=season_type, since=since, until=until, career=career)
     else:
         answer = _head_to_head_span_phrase(a.name, b.name, len(rows), a_wins, b_wins, span, first, last)
     return TemplateResult(data=data, answer=answer)
@@ -1077,9 +1147,19 @@ def _head_to_head_span_phrase(a: str, b: str, games: int, a_wins: int, b_wins: i
     reads as a settled result, which a since-bounded or career tally is not.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.4.0
+       Says "from 2011 through 2019" rather than "since 2011" once ``until``
+       bounds the span (step 3, K1), via ``span``'s own ``during()``/``since``
+       wording.
     """
     if games == 0:
-        when = f"since {span.since}" if span.since is not None else "on record"
+        if span.since is not None and span.until is not None:
+            when = f"from {span.since} through {span.until}"
+        elif span.since is not None:
+            when = f"since {span.since}"
+        else:
+            when = "on record"
         return f"The {a} and the {b} have not played each other {when}."
     when = span.during(first, last, whose="the seasons on record")
     times = "once" if games == 1 else f"{games} times"
@@ -1091,7 +1171,19 @@ def _head_to_head_span_phrase(a: str, b: str, games: int, a_wins: int, b_wins: i
 
 
 def _head_to_head_narrowed_phrase(
-    a: str, b: str, games: int, a_wins: int, b_wins: int, *, venue: str | None, date: str | None, season: int | None, season_type: int, since: int | None = None, career: bool = False
+    a: str,
+    b: str,
+    games: int,
+    a_wins: int,
+    b_wins: int,
+    *,
+    venue: str | None,
+    date: str | None,
+    season: int | None,
+    season_type: int,
+    since: int | None = None,
+    until: int | None = None,
+    career: bool = False,
 ) -> str:
     """The head-to-head sentence once ``venue`` or ``date`` has narrowed the
     games, phrased to say what was actually counted rather than reusing the
@@ -1103,6 +1195,9 @@ def _head_to_head_narrowed_phrase(
        narrowed to a since-bounded or whole-career span rather than one
        season - unused (both default to the values that reproduce the old
        phrase exactly) by every caller that predates them.
+
+    .. versionchanged:: 4.4.0
+       Takes ``until`` beside ``since`` (step 3, K1).
     """
     if date:
         where = f"on {date}"
@@ -1111,7 +1206,9 @@ def _head_to_head_narrowed_phrase(
         # Warriors, Nets...), and templates/teams.py's own `_possessive` makes
         # the same call inline rather than being imported cross-module.
         possessive = f"{a}'" if a.endswith("s") else f"{a}'s"
-        if since is not None:
+        if since is not None and until is not None:
+            scope = f"from {since} through {until}"
+        elif since is not None:
             scope = f"since {since}"
         elif career:
             scope = "on record"
@@ -1196,6 +1293,12 @@ def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> Template
        an empty team box score - the empty 2013-2018 Chicago and New Orleans
        seasons, AGENTS.md's "Whole team-seasons of box scores are empty" - is
        no longer silently invisible to it; not measured further here.
+
+    .. versionchanged:: 4.4.0
+       Honors ``until`` beside ``since`` and ``situation`` (step 3, K1: a
+       weekday, a month, a fixed holiday, or "since <month day>") - the same
+       two cells step 3, K1 adds to :data:`common.TEAM_RELATION_SCOPING`,
+       reached the same "for free" way through :func:`common.team_games`.
     """
     con = ctx.con
     periods, period_label = _period_scope(slots, "team_quarter_points")
@@ -1213,10 +1316,10 @@ def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> Template
     team, span = settled
     # Named explicitly (rather than handing `slots` on whole) so every cell
     # this template honors is visible in its own body, not only inside the
-    # shared step - `venue`, `game_n` and the `order`/`limit` window all
-    # narrow through `team_games` itself, which reads them off exactly these
-    # keys (see its own docstring).
-    narrowing = {"venue": slots.get("venue"), "game_n": slots.get("game_n"), "order": slots.get("order"), "limit": slots.get("limit")}
+    # shared step - `venue`, `game_n`, `situation` (step 3, K1) and the
+    # `order`/`limit` window all narrow through `team_games` itself, which
+    # reads them off exactly these keys (see its own docstring).
+    narrowing = {"venue": slots.get("venue"), "game_n": slots.get("game_n"), "situation": slots.get("situation"), "order": slots.get("order"), "limit": slots.get("limit")}
     narrowed = team_games(con, team, span, narrowing, opponent=slots.get("opponent"), date=date)
     if isinstance(narrowed, TemplateResult):
         return narrowed
@@ -1243,14 +1346,21 @@ def _team_quarter_points_team_and_span(con: duckdb.DuckDBPyConnection, slots: di
     router's season is usually its "current" default, and a date from a past
     season looked for inside this one finds nothing, so a named date reads
     every season on record instead - the same reasoning ``game_log`` and
-    ``head_to_head`` apply to a dated question. ``since`` is named explicitly,
-    for the same reason ``narrowing`` is built by hand in the caller."""
+    ``head_to_head`` apply to a dated question. ``since``/``until`` (step 3,
+    K1) are named explicitly, for the same reason ``narrowing`` is built by
+    hand in the caller."""
     if date:
         team = _resolved_team(con, slots.get("team"), season=_slot_season(slots))
         if isinstance(team, TemplateResult):
             return team
         return team, _Span(None, slots.get("season_type") or 2)
-    scoped = {"team": slots.get("team"), "season": slots.get("season"), "season_type": slots.get("season_type"), "since": slots.get("since")}
+    scoped = {
+        "team": slots.get("team"),
+        "season": slots.get("season"),
+        "season_type": slots.get("season_type"),
+        "since": slots.get("since"),
+        "until": slots.get("until"),
+    }
     return scoped_team(con, scoped, "team_quarter_points needs a team", span=slots.get("span"), season=slots.get("season"))
 
 
@@ -1332,18 +1442,27 @@ def _team_quarter_points_games(con: duckdb.DuckDBPyConnection, narrowed: TeamNar
 
 def _team_quarter_points_period_str(span: _Span, dated: bool, first: Any, last: Any) -> str:
     """The span as a bare noun phrase - "2026 regular season", "since 2022
-    (2022-2026 regular seasons)" or "their career (1994-2026 regular
+    (2022-2026 regular seasons)", "from 2022 through 2024 (2022-2024 regular
+    seasons)" (step 3, K1's ``until``) or "their career (1994-2026 regular
     seasons)" - the way it always followed a name or a game count in this
     template's answers, now extended past the one season it used to be.
     Empty for a dated question: one Eastern date already says which game, and
     a bare span here would say "(their career (...))" beside a date that has
-    already narrowed it to one."""
+    already narrowed it to one.
+
+    .. versionchanged:: 4.4.0
+       Says "from X through Y" once ``until`` bounds the span (step 3, K1),
+       via ``span.during()`` rather than its own hand-written "since" phrase.
+    """
     if dated:
         return ""
     if span.season is not None:
         return _period(span.season, span.season_type)
     years = span.years(first, last) if isinstance(first, int) and isinstance(last, int) else f"{span.kind}s"
-    return f"since {span.since} ({years})" if span.since is not None else f"their career ({years})"
+    if span.since is not None:
+        bound = f"from {span.since} through {span.until}" if span.until is not None else f"since {span.since}"
+        return f"{bound} ({years})"
+    return f"their career ({years})"
 
 
 def _team_quarter_points_answer(

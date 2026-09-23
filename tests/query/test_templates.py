@@ -1105,6 +1105,41 @@ def test_a_teams_last_n_games_with_no_season_type_named_reads_both(gl_con: Templ
     assert result.data["wins"] == 2 and result.data["losses"] == 1
 
 
+def test_a_teams_last_n_games_states_the_total_points_asked_for(gl_con: TemplateContext) -> None:
+    """F128 (ISSUES.md): "total points scored by the raptors in the last 10
+    games" narrowed correctly but never stated the total - the games were
+    right and the question's own number was still missing. e2 (away, 96),
+    p1 (home, 101) and p2 (away, 105) sum to 302."""
+    _add_knicks_postseason(gl_con)
+    result = game_log(gl_con, {"team": "Knicks", "order": "recent", "limit": 3, "season_type_unstated": True, "stat": "points"})
+    assert "\n  Total points: 302." in (result.answer or "")
+
+
+def test_a_teams_last_n_games_states_the_point_differential_asked_for(gl_con: TemplateContext) -> None:
+    """F129 (ISSUES.md): "Knicks point differential over the last 7 games" -
+    e2 (-14), p1 (+11) and p2 (+6) sum to +3 over 3 games, +1.00 per game."""
+    _add_knicks_postseason(gl_con)
+    result = game_log(gl_con, {"team": "Knicks", "order": "recent", "limit": 3, "season_type_unstated": True, "stat": "pointsDifference"})
+    assert "\n  Point differential: +3 (+1.00 per game)." in (result.answer or "")
+
+
+def test_a_teams_single_type_log_also_states_a_total(gl_con: TemplateContext) -> None:
+    """The single-season-type reader (``_team_game_log``, not the mixed one)
+    gets the same line: the Knicks' two regular-season games (112 home, 96
+    away) total 208 points."""
+    result = game_log(gl_con, {"team": "Knicks", "stat": "points"})
+    assert "\n  Total points: 208." in (result.answer or "")
+
+
+def test_a_teams_plain_stat_names_no_total_line(gl_con: TemplateContext) -> None:
+    """A `stat` this module does not map to a total (or none at all) changes
+    nothing about the plain listing - the fix is additive, not a rewording of
+    every log."""
+    result = game_log(gl_con, {"team": "Knicks"})
+    answer = result.answer or ""
+    assert "Total points" not in answer and "Point differential" not in answer
+
+
 def test_a_teams_last_n_games_naming_its_season_type_is_unchanged(gl_con: TemplateContext) -> None:
     """The correction: saying "playoff games" or "regular season games"
     outright still means only that - the shape this fix must not touch."""
@@ -2250,12 +2285,26 @@ def test_team_record_since_conflicts_with_career(team_cells_con: TemplateContext
         team_record(team_cells_con, {"team": "Celtics", "since": _TC_S1, "span": "career"})
 
 
-def test_team_record_since_does_not_silently_answer_a_month_split(team_cells_con: TemplateContext) -> None:
-    """A month split has no since-bounded form yet - refusing beats silently
-    answering the plain month split instead, the substitution this whole
-    project keeps guarding against."""
+def test_team_record_since_answers_a_month_split_with_one_table_per_season(team_cells_con: TemplateContext) -> None:
+    """Step 3, K1 (F095, ISSUES.md - "Knicks record by month 2024 2025"): a
+    month split with `since` set now reads one table PER SEASON in the span
+    rather than refusing outright. Every Celtics game in this fixture is in
+    November: {S-1} holds one (r3, a win) and {S} holds two (r4, r5, both
+    wins) - two separate tables, not a single row summing three."""
+    result = team_record(team_cells_con, {"team": "Celtics", "since": _TC_S1, "split": "month"})
+    assert result.data["months"] == [
+        {"season": _TC_S1, "month": "November", "games": 1, "wins": 1, "losses": 0},
+        {"season": _TC_S, "month": "November", "games": 2, "wins": 2, "losses": 0},
+    ]
+    assert result.answer.count("The Boston Celtics, record by month") == 2
+
+
+def test_team_record_since_month_split_refuses_game_n(team_cells_con: TemplateContext) -> None:
+    """`game_n` still has no month-split form - the one combination step 3, K1
+    leaves refused, since a series-game number and a whole-season table of
+    months answer two different shapes of question."""
     with pytest.raises(TemplateUnsupported):
-        team_record(team_cells_con, {"team": "Celtics", "since": _TC_S1, "split": "month"})
+        team_record(team_cells_con, {"team": "Celtics", "since": _TC_S1, "split": "month", "game_n": 1})
 
 
 def test_head_to_head_honors_since_over_every_meeting_in_the_span(team_cells_con: TemplateContext) -> None:
@@ -2264,6 +2313,20 @@ def test_head_to_head_honors_since_over_every_meeting_in_the_span(team_cells_con
     result = head_to_head(team_cells_con, {"teams": ["Celtics", "Knicks"], "since": _TC_S1})
     assert result.data["games"] == 2 and result.data["wins"] == {"Boston Celtics": 2, "New York Knicks": 0}
     assert result.answer == f"The Boston Celtics and the New York Knicks have met 2 times since {_TC_S1} ({_TC_S1}-{_TC_S} regular seasons); the Boston Celtics lead the all-time series 2-0."
+
+
+def test_head_to_head_honors_until_bounding_the_since_span(team_cells_con: TemplateContext) -> None:
+    """Step 3, K1: "Celtics vs Knicks from {S-2} to {S-1}" reads a BOUNDED
+    range - r1 ({S-2}) and r3 ({S-1}) count, r4 ({S}) does not, unlike the
+    open-ended since-only test above, which also picks up r4."""
+    result = head_to_head(team_cells_con, {"teams": ["Celtics", "Knicks"], "since": _TC_S2, "until": _TC_S1})
+    assert result.data["games"] == 2 and result.data["wins"] == {"Boston Celtics": 2, "New York Knicks": 0}
+    assert f"from {_TC_S2} through {_TC_S1}" in (result.answer or "")
+
+
+def test_head_to_head_until_with_no_since_is_refused(team_cells_con: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported, match="until"):
+        head_to_head(team_cells_con, {"teams": ["Celtics", "Knicks"], "until": _TC_S1})
 
 
 def test_head_to_head_honors_career_over_every_meeting_on_record(team_cells_con: TemplateContext) -> None:
@@ -4919,22 +4982,26 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
 
     # The compose package (association.query.compose - the compiler landed
     # from the skeleton spike) sits above the templates but reads the same
-    # shared steps (scoped_games, league_games), and the same discipline
-    # applies: it narrows the relation only through them, never by writing
-    # its own clause on an opponent, venue, starter or date column. It is not
-    # registered in TEMPLATES, so it is walked by module source directly
-    # rather than through _source_with_private_steps.
+    # shared steps (scoped_games, league_games, and - step 3, K1's team
+    # subject, compose/team.py - scoped_team/team_games), and the same
+    # discipline applies: it narrows the relation only through them, never by
+    # writing its own clause on an opponent, venue, starter or date column.
+    # It is not registered in TEMPLATES, so it is walked by module source
+    # directly rather than through _source_with_private_steps.
     import inspect
 
     import association.query.compose.adapt as _compose_adapt
     import association.query.compose.core as _compose_core
     import association.query.compose.move as _compose_move
+    import association.query.compose.team as _compose_team
 
-    for module in (_compose_core, _compose_adapt, _compose_move):
+    for module in (_compose_core, _compose_adapt, _compose_move, _compose_team):
         source = inspect.getsource(module)
         for token in forbidden:
-            assert token not in source, f"{module.__name__} narrows the relation itself ({token!r}); use scoped_games / league_games"
-        assert not re.search(r'(scoped_games|condition_player|league_games)\([^\n]*\{"', source), f"{module.__name__} hands the shared step a hand-built dict; pass the question's slots"
+            assert token not in source, f"{module.__name__} narrows the relation itself ({token!r}); use scoped_games / league_games / scoped_team / team_games"
+        assert not re.search(r'(scoped_games|condition_player|league_games|scoped_team|team_games)\([^\n]*\{"', source), (
+            f"{module.__name__} hands the shared step a hand-built dict; pass the question's slots"
+        )
 
 
 def _source_with_private_steps(handler: Any) -> str:

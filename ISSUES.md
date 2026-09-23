@@ -46,6 +46,52 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### `leaderboard` answers a team-shaped question with a player ranking (F127, still live)
+- **Found:** 2026-09-23, building the team subject in `compose`
+  (`association.query.compose.team`).
+- **Evidence:** "how many 3 pointers have the magic made so far this season"
+  routes to `intent='leaderboard' slots={'stat': 'threePointFieldGoalsMade',
+  'season_type': 2, 'season': 2026}` - no `team` slot at all - and
+  `leaderboard` (a PLAYER template, `query/templates/players.py`) answers
+  successfully with the league's individual 3PM leaders (Kon Knueppel, 273),
+  never mentioning the Magic. The real number, from `team_season_stats`, is
+  961 (regular season) + 78 (playoffs) - reproduced directly via
+  `compose.team.run_team` given the right slots, which is how this session
+  fixed the COMPILER side of this question (see `CHANGES.md`, "The team as a
+  subject in `compose`"). The template answers WITHOUT REFUSING, so
+  `agent.py`'s `_try_compose` - which only runs after a template raises
+  `TemplateUnsupported` - never gets a turn: `compose.answer` is correct and
+  tested (`tests/query/test_compose.py`) but not reached for this exact live
+  question.
+- **User sees:** a fast, fluent, wrong-subject answer - the league's scoring
+  leader in 3-pointers, for a question about one team's own total. The
+  failure shape this project keeps producing: an answer that looks right and
+  is not.
+- **Next step:** two independent things, either of which closes this file
+  outright: (1) the router files a `team` slot for this shape (a router/
+  `route()` fix - out of this session's scope, the "team" half explicitly
+  excludes router.py); or (2) `leaderboard`/`team_stat` (owned by the player
+  half of the query path, `query/templates/players.py` - also out of this
+  session's scope) refuse a team-shaped question the way `_everyone_point`'s
+  own `_NOT_PLAYERS` guard already refuses the ones that literally say "team" -
+  "the magic"/"the raptors" do not, since a franchise nickname is not the
+  word "team". Either change lets `_try_compose` reach `compose.team`, which
+  already answers it correctly today when given the right slots.
+- **Status 2026-09-23 (coordinator):** the player agent is being told to make
+  `leaderboard`/`team_stat` refuse a `team` slot on a team-shaped question so
+  `_try_compose` sees it - that is (2) above, in progress on their branch, not
+  this one. **The compose half is done and needs no further work**: given
+  `{'stat': 'threePointFieldGoalsMade', 'team': 'Orlando Magic', 'season':
+  2026}`, `compose.team` composes exactly -
+  `"The Orlando Magic had 961 3-pointers made over the complete 2026 regular
+  season (82 games). They added 78 more over a 7-game playoff run."` -
+  matching the key's 961/78 exactly (`tests/query/test_compose.py::test_team_move_point_reads_an_unnarrowed_season_total`,
+  `test_answer_composes_a_team_subject_sentence`). Once the refusal lands on
+  either branch and the two merge, this question should answer correctly live
+  with no further change here - re-verify with a live `association query`
+  call after the merge and delete this entry then.
+- **Source:** ours, not ESPN's.
+
 ### A position group as the subject is dropped and the team's own log answers: "Centers stats game log vs kings" lists the Kings' last five games
 - **Found:** 2026-09-22, the skeleton spike's K3 run (`~/association-research/skeleton-spike/k3_run.py`)
   re-running `live_c5.jsonl`'s fall-throughs on master `5279f7c`.
@@ -2270,50 +2316,56 @@ those were found.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #183
 
-### `association.query.compose` (the landed compiler) reads no coverage floor and carries none of the box-score caveats
+### `association.query.compose` carries none of the box-score caveats (coverage floor fixed)
 - **Found:** 2026-09-22, landing the skeleton spike's compiler
-  (`association.query.compose`). Not yet live: this package is not wired into
-  the router -> template -> agent pipeline (that wiring is a separate,
-  concurrent change), so no question a user asks reaches it today - filed now
-  so it is fixed, or knowingly deferred, before that wiring lands rather than
-  discovered after.
-- **Evidence:** `grep -rn "check_coverage\|coverage_caveat\|RANKING_INTENTS\|first_ranking_season" src/association/query/compose/` matches nothing. Two
-  separate gaps, both because the compiler reads the relation directly
-  through `scoped_player`/`scoped_games`/`league_games` rather than through a
-  template, and nothing in the compiler re-adds what the templates layer on
-  top of those calls:
-  1. **No coverage floor at all.** Every one of the six relation templates
-     calls `check_coverage(intent, slots)` before running, which refuses a
-     season under `COVERAGE`'s floor (`nba/coverage.py`) rather than
-     answering an empty or unrepresentative result - and a RANKING read
-     additionally checks `first_ranking_season`/`RANKING_INTENTS`, since
-     `player_season_stats` holds real rows for early seasons whose POOL is
-     too thin to rank fairly (`AGENTS.md`: 1980's ranking pool is seven
-     players). `compile_query` has no equivalent call anywhere, for either
-     a named player or the league-wide (`subject="everyone"`) read.
-  2. **No box-score caveats in the composed sentence.** `sentence.py`
-     carries the subject, the span, the narrowing and the predicates, but
-     never `common._box_score_notes` (the without-teammate explanation, the
-     count of games left out because ESPN served an empty box score, the
-     count of games rebuilt from play-by-play, the "box scores begin with
-     the 1993-94 season" note on a career predating them) or
-     `common.coverage_caveat` (a season reachable but only partly, e.g. 2002
-     play-by-play). K1's golden run measured the NUMBERS agree with the
-     templates' (237/0), which this does not contradict - the rows and
-     aggregates are right - but a composed answer says nothing about what a
-     number rests on where a template's equivalent answer would.
-- **User sees:** nothing yet (not wired in). Once it is: a ranking over a
-  thin early pool answered as confidently as a modern one, and a box-score
-  count or average with no word said about games a rebuild stood in for or
-  ESPN served empty - the same silent-caveat shape `_box_score_notes` exists
-  to prevent on every template that reads this relation today.
-- **Next step:** before or as part of wiring `compose.answer()` into
-  `agent.py`, add a `check_coverage`/`RANKING_INTENTS` call to
-  `compile_query` (or to `answer()`, mirroring where the templates call it)
-  and pass the notes `_box_score_notes`/`coverage_caveat` already compute
-  into `sentence()`'s span/narrowing arguments, or append them the way
-  `agent.py` already appends the coverage caveat to a template's answer today
-  (`AGENTS.md`, "Saying what you measured": "the agent path adds something").
+  (`association.query.compose`). Now live (`agent.py`'s `_try_compose`), and
+  now includes the team subject (`compose/team.py`) as well as the player
+  one.
+- **Fixed (step 3, K1):** the coverage-FLOOR half of this entry.
+  `compose/__init__.py`'s `answer()` now calls
+  `templates.common.check_coverage(intent, query.slots)` before compiling a
+  player `Query` (raised as `Refused`, the same "the refusal IS the answer"
+  discipline every relation template follows) and appends
+  `templates.common.coverage_caveat(intent, query.slots)` to the sentence
+  when the season is reachable but only partly. The team subject makes the
+  same two calls its own way (`compose/team.py`'s `team_coverage_refusal`,
+  checked before the team is even resolved, and `_team_coverage_note`,
+  appended in `team_sentence`) since it reads `games`/`team_season_stats`
+  rather than the player relation, and could not reuse `check_coverage`'s own
+  `_sources_for(intent, ...)`, which is not shaped for a team subject
+  reached under an arbitrary player-routed intent. Both guards were watched
+  to fail: removing the player-side call answered a 1990 `threshold_count`
+  question "0 games" (looks like a real zero, is actually no data at all);
+  removing the team-side call answered a 1990 team-total question with the
+  wrong-cause "no data on record" sentence instead of naming the 1994 floor.
+  Warehouse-verified: a 2001 postseason player question and an equivalent
+  narrowed team one both now carry ESPN's real missing-games note ("ESPN is
+  missing ten games of the 2001 playoffs ..."), and a 1990 question on either
+  subject now refuses by name rather than answering an empty result.
+  `RANKING_INTENTS`/`first_ranking_season` is included for free: it is read
+  inside `check_coverage` itself, keyed on `intent`, so no separate call was
+  needed.
+- **Still open:** the box-score CAVEAT half - `sentence.py` still never calls
+  `common._box_score_notes` (the without-teammate explanation, the count of
+  games left out because ESPN served an empty box score, the count of games
+  rebuilt from play-by-play, the "box scores begin with the 1993-94 season"
+  note on a career predating them). Unlike `check_coverage`/`coverage_caveat`
+  (which take only `intent`/`slots`), `_box_score_notes` needs the
+  `Narrowed`/player/span objects `compile_query` builds internally and
+  `run()` does not currently return - a deeper retrofit than the coverage
+  floor was. K1's golden run measured the NUMBERS agree with the templates'
+  (237/0), which this does not contradict - the rows and aggregates are
+  right - but a composed answer over a span reaching an empty-box-score
+  season (2013-2018 Chicago/New Orleans, AGENTS.md) or a rebuilt-line game
+  still says nothing about what the number rests on where a template's
+  equivalent answer would.
+- **User sees:** a box-score count or average with no word said about games
+  a rebuild stood in for or ESPN served empty.
+- **Next step:** have `core.run()` (and `compose/team.py`'s own readers)
+  return enough of the compiled state - the `Narrowed`, the resolved
+  player/team, the span - for `answer()` to call `_box_score_notes`/its team
+  counterpart the way `agent.py` already appends other notes to a template's
+  answer, and append the result to the sentence.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #197
 

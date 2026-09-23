@@ -155,6 +155,20 @@ clarification, a "no match" - is answered, not passed along: it looked at the
 question and had something to say. Nothing here reaches ollama; it is another
 deterministic step, not a smaller agent.
 
+The subject need not be a player. :mod:`association.query.compose.team` is a
+second, separate compiler over :mod:`association.query.team_games` instead -
+"how many 3-pointers have the Magic made this season", "total points scored
+by the Raptors in the last 10 games" - for a question whose grammatical
+subject is a team and names no player. It answers two shapes: an unnarrowed
+question reads the season's own total straight from ``team_season_stats``
+(never the per-game average ``team_stat`` gives - "how many has it made" is a
+different question from "how many per game"), and a narrowed one (an
+opponent, a venue, a date, a span, a calendar situation, or a window) sums
+the team-games relation's own game-level columns through the same shared
+steps every team template narrows through. Kept apart from the player
+compiler on purpose, so every rule measured for the player subject stays
+exactly as it was.
+
 **The agent** (:mod:`association.query.agent`) is the fall-through for
 questions no template covers, and no compiled answer does either. It still
 writes SQL by hand with the tools in :mod:`association.query.toolbox`, and its

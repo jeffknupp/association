@@ -28,12 +28,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from association.query.templates.common import TemplateContext, TemplateResult
+from association.query.templates.common import TemplateContext, TemplateResult, check_coverage, coverage_caveat
 
 from .core import Query, Refused, Unsupported, run
 from .move import move_point
 from .sentence import _span_phrase
 from .sentence import sentence as _sentence
+from .sentence import team_sentence as _team_sentence
+from .team import TeamQuery, TeamResult, run_team
 
 __all__ = ["answer"]
 
@@ -55,6 +57,23 @@ def _point_data(query: Query, out: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _team_point_data(query: TeamQuery, result: TeamResult) -> dict[str, Any]:
+    """The point a compiled :class:`~association.query.compose.team.TeamQuery`
+    answered, as plain values - the team subject's counterpart of :func:`_point_data`."""
+    return {
+        "team": result.team.name,
+        "span": _span_phrase(result.span),
+        "narrowing": result.narrowed_text,
+        "measure": query.measure,
+        "aggregate": query.aggregate,
+        "value": result.value,
+        "games": result.games,
+        "wins": result.wins,
+        "losses": result.losses,
+        "from_season_line": result.from_season_line,
+    }
+
+
 def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: str) -> TemplateResult | None:
     """A router-classified question, answered by the compiler where a
     template refused it - or ``None``, meaning the question is not a point on
@@ -70,12 +89,41 @@ def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: s
     nothing else in this package is meant to be called from outside it.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.4.0
+       ``move_point`` may return a :class:`~association.query.compose.team.TeamQuery`
+       (the team as a subject, step 3, K1) instead of a
+       :class:`~association.query.compose.core.Query` - answered through
+       :func:`~association.query.compose.team.run_team` and
+       :func:`~association.query.compose.sentence.team_sentence` instead, the
+       same ``Unsupported``/``Refused`` handling either way.
+
+    .. versionchanged:: 4.4.0
+       Checks :func:`~association.query.templates.common.check_coverage`
+       before compiling and appends
+       :func:`~association.query.templates.common.coverage_caveat` after -
+       the same two calls every relation template makes, which this package
+       carried neither of before (#197, ISSUES.md: a season under a table's
+       floor was answered as confidently as a modern one). The team subject
+       makes the same two calls its own way
+       (:func:`~association.query.compose.team.team_coverage_refusal`,
+       inside :func:`~association.query.compose.team.run_team`).
     """
     try:
         query = move_point(ctx.con, intent, slots, question)
+        if isinstance(query, TeamQuery):
+            result = run_team(ctx.con, query)
+            return TemplateResult(data=_team_point_data(query, result), answer=_team_sentence(query, result), artifacts=[])
+        refusal = check_coverage(intent, query.slots)
+        if refusal is not None:
+            raise Refused(TemplateResult(data={"season": query.slots.get("season")}, answer=refusal))
         out = run(ctx.con, query)
     except Unsupported:
         return None
     except Refused as exc:
         return exc.result
-    return TemplateResult(data=_point_data(query, out), answer=_sentence(query, out), artifacts=[])
+    answer_text = _sentence(query, out)
+    note = coverage_caveat(intent, query.slots)
+    if note:
+        answer_text += f" {note}"
+    return TemplateResult(data=_point_data(query, out), answer=answer_text, artifacts=[])

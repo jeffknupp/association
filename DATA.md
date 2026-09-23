@@ -1176,7 +1176,25 @@ consistently, which is exactly what makes it dangerous: the data looks healthy.
   over this era must key on `season` as well as `event_id`** — a game log that
   joined on `event_id` alone listed every 1993-94 player-game four times
   (112,780 rows for 28,195 games).
-- **Tracked in:** no action needed.
+- **The duplication is not confined to the regular season.** Re-checked
+  2026-09-23 while building `team_record`'s combined-season-types reading
+  (ISSUES.md, F116): of the 1,185 events shared between `season=1993` and
+  `season=1994`, 1,108 are regular-season and **77 are postseason** (the whole
+  1994 playoffs) — every one of them double-labeled the same way, confirmed
+  by `SELECT event_id FROM games WHERE season IN (1993,1994) AND season_type=3
+  GROUP BY event_id HAVING count(distinct season) = 2` returning all 77. A
+  count against the raw `games`/`real_games` tables that does not key on
+  `season` as well as `event_id` double-counts these 77 games for EVERY team
+  that played in the 1994 postseason, not only in the regular season the
+  original entry above measured. Golden State alone has 2 such games among
+  its road playoff games (`140429021`, `140501021`, both road losses to
+  Phoenix) — raw, undeduped counts of GSW's all-time road postseason record
+  read 105 games / 51-54 where the deduped figure (`team_games`'s own
+  `QUALIFY ... ORDER BY season DESC`, `query/team_games.py`) reads 103 / 51-52.
+- **Tracked in:** no action needed (regular season); the postseason extension
+  is handled the same way `team_games` already handles the regular season -
+  see ISSUES.md's F116 entry for where a raw, undeduped count was measured
+  disagreeing with it.
 
 ### The NBA Cup final is stored as a regular-season game
 

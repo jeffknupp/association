@@ -440,6 +440,32 @@ slower SQL-writing agent; that is by design, not a bug.
   `templates/common.py`, the same discipline the six relation templates keep
   (see "A template on a relation does not declare, or apply, scoping of its
   own" above).
+- **A team can be the subject, not only a narrowing.** `compose/team.py`
+  (`TeamQuery`/`TeamResult`/`run_team`, `move.team_move_point`,
+  `sentence.team_sentence`) is a second, separate compiler beside `core.py`'s
+  player one, over the team-games relation instead - "how many 3-pointers
+  have the Magic made", "total points scored by the Raptors in the last 10
+  games". Kept as its own module on purpose: nothing in it is read by, or
+  reads from, the player-subject functions, so every rule measured for the
+  player subject stays exactly as it was. Two readers, the team counterpart
+  of `player_stat`'s own season-line-vs-box-scores split: an UNNARROWED
+  question reads the season's raw TOTAL straight from `team_season_stats`
+  (never the per-game average `team_stat` gives - "how many has it made" is a
+  different question from "how many per game"), and a NARROWED one (an
+  opponent, a venue, a date, `since`/`until`, a game of a series, a calendar
+  `situation`, or an `order`/`limit` window) sums the team-games relation's
+  own game-level columns (points, points allowed, differential) through
+  `scoped_team`/`team_games`, the same shared steps every team template
+  narrows through - never a hand-written clause here either. A box-score
+  count (3-pointers made, not a game-outcome figure) narrowed to a window
+  refuses rather than answering the season instead, since the relation has no
+  box-score join yet. `move_point` tries `team_move_point` on the UNREPAIRED
+  slots, before the player-subject `repair()` step: "magic" is also Magic
+  Johnson's given name, and `repair()`'s dropped-subject restoration would
+  otherwise invent him from a team reference the way `override_invented_players`
+  exists to catch for the router - here it is the repair itself doing the
+  inventing. `team_named_in` is the same restoration `players_named_in`
+  already makes for a dropped player, over team names instead.
 - **What the router model sees lives in `query/router_prompt.py`, alone.**
   `ROUTER_PROMPT`, `ROUTER_SCHEMA` and the window they share are there; the
   post-processing of the slots the model returns is in `query/router.py`. So a

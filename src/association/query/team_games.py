@@ -56,17 +56,34 @@ reads it into the ``_Span`` a caller passes as ``team_games``'s own ``span``,
 so the relation's ``team_games`` CTE and :func:`association.query.templates.common._team_span_clause`
 narrow by it the same way they already narrow a career.
 
+Step 3, K1 brings the player relation's remaining two cells over: :meth:`TeamNarrowed.narrow_calendar`
+(a ``situation`` - a weekday, a month, a fixed holiday, "since <month day>" - the same
+:func:`association.query.calendar.calendar_clause` the player relation's own
+:meth:`association.query.player_games.Narrowed.narrow_calendar` reads, over the relation's
+own already-Eastern ``eastern_date`` column) and ``until`` (the inclusive last season of a
+``since``-bounded span, read the same way ``since`` already is - see
+:func:`association.query.templates.common._span_of`).
+
 .. versionadded:: 4.4.0
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from association.nba.season import eastern_date_sql
 
 from .entities import Entity
+
+# TYPE_CHECKING avoids a real circular import at module load: `calendar.py`
+# imports `_MONTH_NAMES` from `conditions.py`, which imports `TeamNarrowed`
+# from this module - so a top-level `from .calendar import ...` here would
+# cycle back on itself. `narrow_calendar` below imports the names it actually
+# calls at call time instead, by which point every module has finished
+# loading.
+if TYPE_CHECKING:
+    from .calendar import CalendarNarrowing
 
 # One row per team per game, from that team's side, over every game that was
 # actually played - built from `real_games` alone, because it is the only
@@ -173,6 +190,10 @@ class TeamNarrowed:
     #: narrowed games, or None for all of them - cut AFTER every row filter,
     #: the team counterpart of :attr:`association.query.player_games.Narrowed.window`.
     window: tuple[str, int] | None = None
+    #: The calendar narrowing a ``situation`` slot named - a weekday, a month,
+    #: a fixed day, every game from a day of the season on - or None. The team
+    #: counterpart of :attr:`association.query.player_games.Narrowed.calendar`.
+    calendar: CalendarNarrowing | None = None
 
     def clauses(self, *, narrowed: bool = True) -> tuple[str, list[Any]]:
         """The WHERE body and its parameters - without the narrowing when
@@ -205,6 +226,8 @@ class TeamNarrowed:
             parts.append(f"in game {self.series_game} of {'the' if self.opponent is not None else 'each'} series")
         if self.date and date:
             parts.append(f"on {self.date}")
+        if self.calendar is not None:
+            parts.append(self.calendar.label)
         if self.window is not None:
             order, n = self.window
             parts.append(f"over their {'last' if order == 'recent' else 'first'} {n} game{'s' if n != 1 else ''}")
@@ -224,6 +247,28 @@ class TeamNarrowed:
         """
         self.narrow(f"tg.event_id IN (SELECT event_id FROM ({_TEAM_SERIES_GAMES}) WHERE game_of_series = ?)", n)
         self.series_game = n
+
+    def narrow_calendar(self, narrowing: CalendarNarrowing) -> None:
+        """Only the games on a weekday, in a month, on a fixed day, or from a
+        day of the season on - the team counterpart of
+        :meth:`association.query.player_games.Narrowed.narrow_calendar`.
+
+        Unlike the player relation, :data:`TEAM_GAMES_SQL`'s own
+        ``eastern_date`` column is already the Eastern calendar DATE - the
+        relation's ``listed`` CTE converts ``real_games.date`` once, via
+        :func:`association.nba.season.eastern_date_sql` - so this clause reads
+        it directly rather than converting a raw UTC timestamp a second time,
+        the way :func:`association.query.calendar.calendar_clause`'s
+        ``eastern_date`` argument is written for the player relation's own raw
+        ``g.date``.
+
+        .. versionadded:: 4.4.0
+        """
+        from .calendar import calendar_clause  # local import breaks a module-load cycle; see the TYPE_CHECKING import above
+
+        clause, params = calendar_clause(narrowing, "tg.eastern_date", "tg.season")
+        self.narrow(clause, *params)
+        self.calendar = narrowing
 
 
 # Every postseason game numbered within its series, over the two teams that

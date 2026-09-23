@@ -16,6 +16,103 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **`team_record` honors `season_type_unstated`, combining both season types
+  instead of silently answering one (F116, ISSUES.md).** "Warriors all-time
+  record including playoff record at away" used to read `season_type: 3` and
+  name only the postseason, dropping the regular season the question also
+  asked for. `_team_record_combined_types` reads each type through
+  `team_record`'s own existing single-type routing and sums the two records,
+  naming each component - "574-843 combined on the road, including the
+  playoffs (523-791 regular season, 51-52 playoffs)" for the Warriors,
+  warehouse-verified. Measuring this against the yardstick key's own 601-865
+  (550-811 regular season, 51-54 playoffs) found the key's figures come from
+  an UNDEDUPED count of `real_games`/`games`: the 1994 postseason has the same
+  phantom double-labeling under both `season` 1993 and 1994 that the regular
+  season is already documented for (`DATA.md`, "Season 1993 is a phantom"),
+  and it is not unique to the Warriors - 77 of the 1994 postseason's own
+  events carry both labels. `team_games`'s existing `QUALIFY` dedup already
+  collapses this correctly; the key's undeduped total was not corrected to
+  match, since doing so would reintroduce the double-count this relation
+  exists to prevent.
+- **`team_move_point` no longer treats the router's `"any_team"` placeholder
+  as a real name.** Found re-running the K2 golden harness after landing the
+  team subject: "rebounds allowed per team" files `team: "any_team"`, which
+  `_resolved_team` RAISES for (unlike an unmatched name, which returns a
+  clarification) - so the question reached `run_team` only to fail there,
+  through a noisier path than the decline `_everyone_point`'s own guard
+  already gives it ("allowed"). `team_move_point` now falls back to scanning
+  the question's own words the same way it does for a dropped `team` slot.
+- **`compose.answer` checks the coverage floor and carries a partial-season
+  caveat (#197, ISSUES.md).** It used to answer a season under a table's
+  floor as confidently as a modern one - a 1990 box-score question read "0
+  games" rather than refusing, which looks like a real zero and is actually
+  no data at all. Both subjects now call the same two functions every
+  relation template does (`check_coverage`/`coverage_caveat`), the team
+  subject through its own `compose/team.py` counterparts
+  (`team_coverage_refusal`/`_team_coverage_note`), warehouse-verified against
+  ESPN's real 2001-postseason gap note on both a player and a team question.
+  The box-score caveats (`_box_score_notes` - empty box scores, rebuilt
+  lines, a career predating box scores) remain open, filed in the same entry.
+- **A team's own total or differential is stated, not just its games
+  (F128/F129, ISSUES.md).** "Total points scored by the Toronto Raptors in
+  the last 10 games" and "Knicks point differential over the last 7 games"
+  both narrowed to the right games already but never said the number the
+  question actually asked for - a wrong-shape answer wearing a right one's
+  clothes. `game_log`'s team half now states it (`_team_game_log_total_line`,
+  read from `stat`), in both the single-season-type and the mixed-season-type
+  ("last N games" naming no type) readers. Warehouse-verified against both
+  targets exactly: 1,130 total points (3 regular-season games plus a 7-game
+  playoff series) and a +62 (+8.86/game) differential over the Knicks' Finals
+  run.
+- **The team as a subject in `compose` (step 3, K1).** `compose.team` -
+  `TeamQuery`/`TeamResult`/`run_team`, `team_move_point` in `move.py`,
+  `team_sentence` in `sentence.py` - answers a question whose grammatical
+  subject is a team and names no player, over two readers: an unnarrowed
+  season TOTAL straight from `team_season_stats` (not the per-game average
+  `team_stat` already gives - "how many 3-pointers have the Magic made this
+  season" is 961, warehouse-verified exactly against ESPN's own total, not
+  team_stat's 11.7/game), and a narrowed sum over the team-games relation's
+  own points/points-allowed/differential columns for a single season type.
+  `team_named_in` restores a team slot the router drops entirely, the same
+  repair `players_named_in` already makes for a dropped player - and is tried
+  BEFORE that player repair, because "magic" is also Magic Johnson's given
+  name and the player repair would otherwise invent him from a team
+  reference. A box-score count (not a game-outcome figure) narrowed to a
+  window refuses rather than silently answering the season, since the
+  relation has no box-score join yet (filed in ISSUES.md). Not yet reachable
+  from the live pipeline for every shape it answers - `compose.answer` only
+  runs after a template refuses, and `leaderboard`/`team_stat` do not refuse
+  a team-shaped question today - so F127's fix ships as tested compose
+  infrastructure while F128/F129 ship live, through `game_log`, above.
+- **A since-bounded team leaderboard now counts every franchise, not only
+  the ones with a game in the span (F100, ISSUES.md).** "NBA team with
+  least playoff wins since 2022" ranked "of 28 teams", silently dropping the
+  Charlotte Hornets and Washington Wizards - neither made the playoffs in
+  that span - from a ranking about exactly that. `_team_leaderboard_since_records`
+  now LEFT JOINs from `teams` instead of inner-joining the games it finds, so
+  a team with none reads 0-0 and ranks among the "fewest wins" it genuinely
+  tied for, rather than being left off entirely.
+- **The team-games relation reaches parity with the player one: `situation`
+  and `until` (step 3, K1).** `TeamNarrowed.narrow_calendar` mirrors
+  `player_games.Narrowed`'s own - a weekday, a month, a fixed holiday, or
+  "since <month day>" within each game's own season - applied by the shared
+  `templates.common.team_games` step and reached "for free" by every template
+  that calls it (`team_quarter_points`; `head_to_head`'s calendar reading is
+  filed as a follow-up, not built this round). `team_record` gains the same
+  narrowing directly (it does not call the shared step for its own
+  season-record path), replacing its old bare-month-only reading - "the
+  Knicks' record on Christmas" and "... on Saturdays" now answer, warehouse-
+  verified (2025-12-25: Knicks 126-124 over Cleveland at home; three home
+  Saturdays this season, 1-2). `until` is the inclusive last season of a
+  `since`-bounded range (a decade, or "2019-20 to 2023-24"), read the same way
+  `since` already is - `team_record`, `team_leaderboard` and `head_to_head`
+  all honor it, and `team_leaderboard`'s span-bounded record now answers
+  "best record from 2010-11 to 2018-19" (San Antonio 509-213, ahead of Golden
+  State 479-243 and Oklahoma City 465-257 - matches the warehouse exactly).
+  `team_record`'s by-month split also gains a `since`/`until`-bounded form,
+  one table per season rather than refusing outright - "Knicks record by
+  month 2024 2025" now answers both seasons' tables (warehouse-verified
+  against ESPN's own 50-32/51-31 season totals, month for month).
 - **A composed answer names a position group in its heading, and prints
   TS%/eFG%/usage as percentages.** The first live run of the landed compiler
   headed a log of centers "every player" (the filter was applied; the heading

@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 from .core import Query
+from .team import TeamQuery, TeamResult
 
 #: A measure name, as an answer prints it.
 LABELS: dict[str, str] = {
@@ -151,6 +152,53 @@ def _grouped_sentence(q: Query, out: dict[str, Any]) -> str:
         cells += [f"{LABELS.get(m, m)} {_fmt(r.get(m), m)}" for m in q.measures]
         lines.append(f"  {r['group']!s:24s} " + "  ".join(cells))
     return head + ":\n" + "\n".join(lines)
+
+
+#: A team measure name, as an answer prints it - the team counterpart of
+#: :data:`LABELS`, over :mod:`association.query.compose.team`'s own columns.
+TEAM_LABELS: dict[str, str] = {
+    "points": "points",
+    "points_allowed": "points allowed",
+    "differential": "point differential",
+    "rebounds": "rebounds",
+    "assists": "assists",
+    "steals": "steals",
+    "blocks": "blocks",
+    "turnovers": "turnovers",
+    "threePointFieldGoalsMade": "3-pointers made",
+    "fieldGoalsMade": "field goals made",
+    "freeThrowsMade": "free throws made",
+    "fouls": "fouls",
+}
+"""A team measure name, mapped to the phrase an answer prints for it.
+
+.. versionadded:: 4.4.0
+"""
+
+
+def team_sentence(q: TeamQuery, result: TeamResult) -> str:
+    """The answer for a :class:`~association.query.compose.team.TeamQuery` -
+    the team subject's own sentence, carrying the same things a template's
+    does: the value, the span it covers, the games it rests on, and the
+    narrowing that produced it, so a wrong scope is visible and correctable
+    (`AGENTS.md`, "a default that chooses reasonably ...").
+
+    .. versionadded:: 4.4.0
+    """
+    label = TEAM_LABELS.get(q.measure, q.measure)
+    span = _span_phrase(result.span)
+    if result.value is None:
+        return f"The warehouse has no {label} on record for the {result.team.name} in the {span}."
+    if result.from_season_line:
+        return f"The {result.team.name} had {result.value:,.0f} {label} over the complete {span} ({result.games} games).{result.note}{result.coverage_note}"
+    value = f"{result.value:+,.0f}" if q.measure == "differential" else f"{result.value:,.0f}"
+    record = f" ({result.wins}-{result.losses})" if result.wins is not None else ""
+    per_game = f" ({result.value / result.games:+.2f} per game)" if q.measure == "differential" and result.games else ""
+    # `narrowed_text` already says "over their last N games" when a window
+    # narrowed the read (TeamNarrowed.filters()) - saying the count again
+    # here would read as "over 10 games over their last 10 games".
+    games_phrase = "" if "game" in result.narrowed_text else f" over {result.games} games"
+    return f"The {result.team.name} {'are' if label == 'point differential' else 'had'} {value} {label}{per_game}{games_phrase}{result.narrowed_text}{record}.{result.coverage_note}"
 
 
 def sentence(q: Query, out: dict[str, Any]) -> str:
