@@ -443,11 +443,22 @@ def team_move_point(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], quest
     falls back to the league-wide reading exactly as before this existed.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.4.0
+       Ignores the router's ``"any_team"`` placeholder (K2's own corpus:
+       "rebounds allowed per team", filed ``team: "any_team"``) rather than
+       treating it as a real name to resolve - it already fails
+       :func:`~association.query.templates.common._resolved_team` (which
+       RAISES for it, unlike a name with no match, which returns a
+       clarification), so returning a :class:`~association.query.compose.team.TeamQuery`
+       here only delayed the same decline `_everyone_point`'s own
+       ``_NOT_PLAYERS`` guard already gives this exact question ("allowed" is
+       in it) - through a noisier path, for no different an outcome.
     """
     if _named_player(slots) or _PERIOD.search(question) or _RANKING.search(question) or _LOG.search(question) or _TEAM_NOT_SUBJECT.search(question):
         return None
     team_text = slots.get("team")
-    if not (isinstance(team_text, str) and team_text.strip()):
+    if not (isinstance(team_text, str) and team_text.strip()) or team_text == "any_team":
         found = team_named_in(con, question)
         if found is None:
             return None

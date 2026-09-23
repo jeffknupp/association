@@ -16,6 +16,14 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **`team_move_point` no longer treats the router's `"any_team"` placeholder
+  as a real name.** Found re-running the K2 golden harness after landing the
+  team subject: "rebounds allowed per team" files `team: "any_team"`, which
+  `_resolved_team` RAISES for (unlike an unmatched name, which returns a
+  clarification) - so the question reached `run_team` only to fail there,
+  through a noisier path than the decline `_everyone_point`'s own guard
+  already gives it ("allowed"). `team_move_point` now falls back to scanning
+  the question's own words the same way it does for a dropped `team` slot.
 - **`compose.answer` checks the coverage floor and carries a partial-season
   caveat (#197, ISSUES.md).** It used to answer a season under a table's
   floor as confidently as a modern one - a 1990 box-score question read "0

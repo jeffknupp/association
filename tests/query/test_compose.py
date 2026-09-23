@@ -439,11 +439,13 @@ _TS = current_season()
 
 @pytest.fixture
 def team_cx_ctx(tmp_path: Path) -> TemplateContext:
-    """The Magic (season total, plus a finished postseason for the addendum),
-    the Raptors (five regular-season games, for a narrowed total/differential
-    window) and the Lakers (for the "who leads..." guard test, with two
-    players so a league-wide ranking has something real to rank)."""
+    """The Magic (season total, plus a finished postseason for the addendum)
+    and the Raptors (five regular-season games, for a narrowed
+    total/differential window). ``players`` is empty but present, since
+    ``move_point`` (unlike ``team_move_point`` alone) calls ``repair()``,
+    which reads it via ``players_named_in`` for every question."""
     c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR, position_abbr VARCHAR)")
     c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
     c.execute("INSERT INTO teams VALUES ('1','ORL','Orlando Magic'),('2','CLE','Cleveland Cavaliers'),('3','TOR','Toronto Raptors'),('4','LAL','Los Angeles Lakers')")
     c.execute(
@@ -547,6 +549,21 @@ def test_team_move_point_never_hijacks_a_named_player(team_cx_ctx: TemplateConte
     """A player already named makes the team a narrowing of him, never the
     subject - ``move_point``'s own player path, untouched."""
     assert team_move_point(team_cx_ctx.con, {"stat": "points", "team": "Orlando Magic", "player": "Paolo Banchero"}, "how many points has banchero scored for the magic") is None
+
+
+def test_team_move_point_ignores_the_routers_any_team_placeholder(team_cx_ctx: TemplateContext) -> None:
+    """K2's own corpus: "rebounds allowed per team" files ``team: "any_team"``
+    - a router placeholder, not a name, that ``_resolved_team`` RAISES for
+    rather than returning a clarification. Treating it as a real team to
+    resolve only delayed the exact decline ``_everyone_point``'s own
+    ``_NOT_PLAYERS`` guard already gives this question ("allowed"), through a
+    noisier path - caught by re-running ``k2_run_pkg.py`` against this
+    package, which crashed on it (``'TeamQuery' object has no attribute
+    'subject'``) before this guard existed."""
+    q = team_move_point(team_cx_ctx.con, {"stat": "rebounds", "team": "any_team", "season_type": 2}, "rebounds allowed per team")
+    assert q is None
+    with pytest.raises(Unsupported, match="team relation"):
+        move_point(team_cx_ctx.con, "team_stat", {"stat": "rebounds", "team": "any_team", "season_type": 2}, "rebounds allowed per team")
 
 
 def test_a_box_stat_measure_narrowed_to_a_window_is_unsupported(team_cx_ctx: TemplateContext) -> None:
