@@ -842,13 +842,22 @@ def test_a_leaderboard_since_a_season_tallies_the_relation_across_seasons(team_c
     meetings since 1991: the 1991 Finals (labeled 1990 - "old1", Celtics
     won), a 1994 game filed under two season labels and deduped to one
     ("php", Knicks won), and this season's 3-1 Celtics series (p1-p4) -
-    Knicks 4-2, Celtics 2-4. Teams with no postseason games at all (San
-    Antonio, OKC, Washington) are not ranked, the same as a single-season
-    postseason ranking already leaves a non-participant out."""
+    Knicks 4-2, Celtics 2-4. Every OTHER franchise in the fixture (San
+    Antonio, OKC, Washington, Charlotte) reads 0-0 rather than being left off
+    the ranking (F100, ISSUES.md): a team with no games in the span is a real
+    zero, not a non-participant to drop the way a single-season postseason
+    ranking already drops one."""
     result = team_leaderboard(team_ctx, {"stat": "record", "season_type": 3, "since": 1991})
     assert "since 1991" in (result.answer or "")
     teams = {t["team"]: t["display"] for t in result.data["teams"]}
-    assert teams == {"New York Knicks": "4-2 (.667)", "Boston Celtics": "2-4 (.333)"}
+    assert teams == {
+        "New York Knicks": "4-2 (.667)",
+        "Boston Celtics": "2-4 (.333)",
+        "San Antonio Spurs": "0-0",
+        "Oklahoma City Thunder": "0-0",
+        "Washington Wizards": "0-0",
+        "Charlotte Hornets": "0-0",
+    }
 
 
 def test_a_leaderboard_since_and_a_named_season_at_once_is_refused(team_ctx: TemplateContext) -> None:
@@ -882,7 +891,12 @@ def test_a_leaderboard_until_bounds_the_since_span(team_ctx: TemplateContext) ->
     result = team_leaderboard(team_ctx, {"stat": "record", "season_type": 3, "since": 1991, "until": 1991})
     assert "seasons 1991-1991" in (result.answer or "")
     teams = {t["team"]: t["display"] for t in result.data["teams"]}
-    assert teams == {"New York Knicks": "0-1 (.000)", "Boston Celtics": "1-0 (1.000)"}
+    assert teams["New York Knicks"] == "0-1 (.000)"
+    assert teams["Boston Celtics"] == "1-0 (1.000)"
+    # F100: the other four fixture franchises played nothing in 1991 and read
+    # 0-0 rather than being left off the ranking.
+    assert teams["San Antonio Spurs"] == "0-0"
+    assert teams["Charlotte Hornets"] == "0-0"
 
 
 def test_a_leaderboard_until_with_no_since_is_refused(team_ctx: TemplateContext) -> None:

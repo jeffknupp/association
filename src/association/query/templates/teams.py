@@ -1378,13 +1378,22 @@ def _team_leaderboard_since_records(con: duckdb.DuckDBPyConnection, season_type:
        Honors ``until`` (step 3, K1) - "best record from 2010-11 to 2018-19"
        (F103): Spurs 509-213, ahead of Golden State (479-243) and Oklahoma
        City (465-257).
+
+    .. versionchanged:: 4.4.0
+       LEFT JOINs from ``teams`` rather than INNER JOINing the games it finds
+       (F100, ISSUES.md - "nba team with least playoff wins since 2022"): a
+       team with NO games in the span (the Hornets and Wizards, neither of
+       whom made the 2022-2026 playoffs) used to be missing from the ranking
+       entirely rather than reading 0-0, so "worst playoff record since 2022"
+       silently dropped the two teams the question was really about and
+       reported "of 28 teams" where the league has 30.
     """
     span = _span_of(None, None, season_type, "games", since=since, until=until)
     clause, params = _team_span_clause(span)
     narrowed = TeamNarrowed(base=["tg.team_id IN (SELECT team_id FROM teams)", "tg.season_type = ?", clause], base_params=[season_type, *params])
     base, sub_params = team_games_subquery(narrowed)
     rows = con.execute(
-        f"SELECT t.display_name, count(*) FILTER (WHERE x.won) AS wins, count(*) FILTER (WHERE NOT x.won) AS losses FROM ({base}) x JOIN teams t ON t.team_id = x.team_id GROUP BY 1",
+        f"SELECT t.display_name, count(*) FILTER (WHERE x.won) AS wins, count(*) FILTER (WHERE NOT x.won) AS losses FROM teams t LEFT JOIN ({base}) x ON x.team_id = t.team_id GROUP BY 1",
         sub_params,
     ).fetchall()
     return [TeamRecord(team=name, wins=int(wins), losses=int(losses)) for name, wins, losses in rows]

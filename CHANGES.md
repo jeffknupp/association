@@ -16,6 +16,14 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **A since-bounded team leaderboard now counts every franchise, not only
+  the ones with a game in the span (F100, ISSUES.md).** "NBA team with
+  least playoff wins since 2022" ranked "of 28 teams", silently dropping the
+  Charlotte Hornets and Washington Wizards - neither made the playoffs in
+  that span - from a ranking about exactly that. `_team_leaderboard_since_records`
+  now LEFT JOINs from `teams` instead of inner-joining the games it finds, so
+  a team with none reads 0-0 and ranks among the "fewest wins" it genuinely
+  tied for, rather than being left off entirely.
 - **The team-games relation reaches parity with the player one: `situation`
   and `until` (step 3, K1).** `TeamNarrowed.narrow_calendar` mirrors
   `player_games.Narrowed`'s own - a weekday, a month, a fixed holiday, or
