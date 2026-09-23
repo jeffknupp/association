@@ -46,6 +46,144 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### A bare-name single-game-high with no scoring verb loses its subject: "kawhi most threes in a game" answers the league's leaders
+- **Found:** 2026-09-23, working the router/player half of yardstick-v2's
+  wrong-land bucket 3 (`~/association-research/yardstick-v2/wrong_land.md`,
+  F093).
+- **Evidence:** routes `single_game_high {'stat': 'threePointFieldGoalsMade',
+  'season': 2026, 'season_type': 2}` - no `player` at all - and answers
+  "Stephen Curry and Trey Murphy III tied for the most 3-pointers in a single
+  game ... 12 each", never mentioning Kawhi Leonard, whose own career high is
+  7 (achieved 4 times, most recently 2026-01-15; still 7 including playoffs).
+  `single_game_high` is already in `router._SUBJECT_RESTORED_INTENTS`
+  (`router.py`), so a dropped subject is read back from the question's own
+  grammar when it matches one of three patterns - but none of them cover
+  this shape. `_SUBJECT_OF_HIGH` needs a scoring verb or a possessive
+  ("kawhi scored", "kawhi's"); `_SUBJECT_OF_COUNT` needs "games with"/"games
+  of"/a number-first stat phrase; `_SUBJECT_OF_HAVE` needs an auxiliary
+  ("does/did/has/have ... have"). "kawhi most threes in a game" - name
+  directly before "most" - matches none of the three, so `_subject_named_in`
+  (router.py:739) returns `None` and the league ranking runs unrestored.
+- **User sees:** a wrong answer, fluently: two real players' real numbers,
+  with the actually-asked-about player never named and nothing marking the
+  answer as narrower than it looks.
+- **Next step:** a fourth grammar anchored on a superlative directly after
+  the name ("NAME most/highest/fewest STAT") - AGENTS.md is explicit that
+  this needs measuring against the full routing corpus
+  (`scripts/check_routing.py`'s cases plus
+  `/home/jeff/association-research/statmuse-2026-09/feed_queries.txt`) before
+  it ships, the same way `_SUBJECT_OF_COUNT`'s own stopword list
+  (`_COUNT_SUBJECT_WORDS`) was tuned to avoid "career", "many", "with" and
+  the rest reading as a name - not attempted here for lack of time to run
+  that measurement inside this session. Not the general "restore any dropped
+  player" grammar AGENTS.md already warns off; narrower, single-shape.
+
+### A team-implied narrowing and a career span are both dropped together: "lebron stats as a starter for Miami" answers this season's Lakers
+- **Found:** 2026-09-23, same session, yardstick-v2 F166.
+- **Evidence:** routes `player_stat {'player': 'LeBron James', 'fields':
+  ['minutes'], 'season': 2026, 'season_type': 2, 'split': 'starter'}` - no
+  `team` and no `span` - and answers "20.9 points, 6.1 rebounds and 7.2
+  assists ... 60 games ... in the 2026 regular season", his CURRENT
+  (Lakers) season. The key: as a starter for Miami (2010-11 through
+  2013-14), 26.92/7.77/6.51 across 381 starts. Two things are both missing,
+  neither restored by anything currently in `route()`: (1) "for Miami" beside
+  a player is a former-team narrowing - `game_log` already has this exact
+  shape solved for a `team` slot beside a named player
+  (`_team_slot_for_player`, `templates/games.py`, #147), but nothing reads a
+  team named in TEXT ("for <team>"/"with the <team>") into the `team` slot
+  when the model drops it, the way `_subject_named_in` restores a dropped
+  player; (2) with a historical team named and no season, the question is
+  asking about his tenure there, not "now" - `_validate_span`
+  (`router.py`) has no rule that a team narrowing with no season implies
+  `span: "career"` the way "since he joined the league" now does
+  (this session's own fix, `_SPAN_JOINED_LEAGUE_WORDS`).
+- **User sees:** a wrong answer about the wrong team and the wrong years,
+  fluently, with nothing marking it as anything but a direct answer to the
+  question asked.
+- **Next step:** two router changes, ideally landed and measured together
+  since they compose on this exact question: (a) a text grammar for "for/with
+  the <team>" beside a player, reused from or built alongside
+  `entities.find_teams`, filed into `team`; (b) once a historical team is
+  read this way and the question names no season, default `span` to
+  "career" - narrowed by the team, so `player_stat`'s box-score path already
+  answers only the games he played for that team (`opponent`/`team`-style
+  narrowing already exists on the relation; check whether `player_stat`
+  reads a bare `team` slot honoring it the way `game_log` does, or needs the
+  same fix `_team_slot_for_player` gave `game_log`).
+
+### A single-word question routed to a team-only intent with the named player dropped entirely: "alperen şengün alltime record" answers the league standings <!-- codespell:ignore alltime - a verbatim quote of the yardstick question's own spelling -->
+
+- **Found:** 2026-09-23, same session, yardstick-v2 F111.
+- **Evidence:** routes `team_leaderboard {'stat': 'record', 'limit': 1,
+  'fields': ['assists'], 'season_type': 2}` - no player, no team - and
+  answers "Oklahoma City Thunder 64-18 (.780)", the league's best regular-season
+  record, unrelated to Sengun (168-203 in games he's played) or his career
+  highs (45 pts, 21 reb, 14 ast...). `team_leaderboard` is not in
+  `PLAYER_INTENTS` (`templates/common.py`), so `override_invented_players`
+  never runs against it and a stray or dropped player name changes nothing
+  there by design - correctly so for a genuine team question, but this
+  question names exactly one player and no team at all, so the intent itself
+  is the wrong read, not a slot on top of a right one. Diacritics may also be
+  a factor in why nothing downstream recognized "şengün" as naming a player
+  worth restoring - not confirmed either way; `entities.find_players`'s own
+  normalization was not checked against an unfolded "ş" in this session.
+- **User sees:** a wrong answer, fluently, entirely off the subject asked
+  about.
+- **Next step:** AGENTS.md's own rule ("Refuse by name where the intent
+  cannot be about the subject") is exactly the shape here and is not yet
+  applied to `team_leaderboard`/`team_stat`/`team_outlook`: a question naming
+  exactly one real player (by `entities.players_named_in`'s strict rules,
+  diacritics folded) and routed to a team-only intent with no `team` slot
+  either should ask what was meant rather than answer the league's own
+  ranking. Separately confirm whether `players_named_in`/`find_players` fold
+  "ş" to "s" (`unicodedata` is already imported in `entities.py` for a
+  related purpose - check what it normalizes today).
+
+### A composed triple-double ranking answers a count instead of the highest-scoring one: "players with the highest scoring triple doubles"
+- **Found:** 2026-09-23, same session, yardstick-v2 F124.
+- **Evidence:** routes `leaderboard {'stat': 'triple_double', 'limit': 10,
+  'season_type': 2}` and answers "Nikola Jokic led the league in
+  triple-doubles ... at 34", counting HOW MANY triple-doubles each player
+  had. The key asks for the highest-SCORING triple-double game
+  (Jokic's 61-10-10 tops it, both regular season and including playoffs) -
+  a ranking of triple-double GAMES by points, not a count of players'
+  triple-double totals. The template (`leaderboard`) answers first, so
+  `query.compose` - which does have boolean measures and a rows-by-measure
+  point - never sees the refusal that would let it try. This is on the
+  boundary of the router/player half and `query/compose/*` (owned by the
+  team agent in this session's split), so filed rather than built here.
+- **User sees:** a wrong answer to a question that sounds almost identical
+  to one the system answers correctly (a triple-double COUNT).
+- **Next step:** either `leaderboard` refuses `stat: triple_double` when the
+  question's own words name a metric other than a count ("highest
+  scoring"/"biggest"), handing it to `compose` the way a template's
+  `TemplateUnsupported` already does, or `route()` reads the "highest
+  scoring" qualifier into a different `stat`/`rate` combination before
+  `leaderboard` ever answers. Needs whoever owns `query/compose`'s
+  boolean-measure point next.
+
+### A player intent drops the team subject on a team-count question: "how many 3 pointers have the magic made so far this season"
+- **Found:** 2026-09-23, same session, yardstick-v2 F127.
+- **Evidence:** routes `leaderboard {'stat':
+  'threePointFieldGoalsMade', 'season_type': 2, 'season': 2026}` - the
+  `team: "Magic"` slot the model likely filled (or should have) is not in
+  the final route at all - and answers "Kon Knueppel led the league ... at
+  273", the individual leaderboard, never mentioning the Orlando Magic or
+  their team total (961). This is the mirror image of #147's fix
+  (`_team_slot_for_player`, which keeps a team beside a NAMED PLAYER as his
+  opponent): here there is no player at all, and the team itself is the
+  subject of a counting question the router read as an individual
+  leaderboard.
+- **User sees:** a wrong answer about the wrong subject (individual players
+  instead of the team asked about).
+- **Next step:** the router half is restoring/keeping a team the question
+  names on a player-shaped counting intent (`leaderboard`/`threshold_count`)
+  so `check_scope` refuses (a `team` slot neither honors today) and
+  `compose`/the team-count answer path can see it, the same discipline
+  `_team_slot_for_player` already applies for a named PLAYER's team. The
+  actual team-subject composition (a team's season total of a counting
+  stat) is out of this session's scope (`query/compose`, team agent's files).
+
 ### A position group as the subject is dropped and the team's own log answers: "Centers stats game log vs kings" lists the Kings' last five games
 - **Found:** 2026-09-22, the skeleton spike's K3 run (`~/association-research/skeleton-spike/k3_run.py`)
   re-running `live_c5.jsonl`'s fall-throughs on master `5279f7c`.
@@ -285,6 +423,149 @@ those were found.
 - **GitHub:** #169
 
 ## P2: misleading or incomplete
+
+### A short, genuinely ambiguous question is guessed at rather than asked about: "Tatum rec"
+- **Found:** 2026-09-23, working yardstick-v2's wrong-land bucket 4
+  (`~/association-research/yardstick-v2/wrong_land.md`, F112).
+- **Evidence:** routes `player_stat {'player': 'Jaylen Tatum', 'season':
+  2026, 'season_type': 2}` and answers "Jayson Tatum averaged 21.8 points,
+  10 rebounds and 5.3 assists ... in 16 games" - a specific, confident stat
+  line for a question the key marks unanswerable as written ("no record
+  type - team win-loss vs. personal statistical record, no opponent, no
+  time frame"). This is NOT the invented-name shape `override_invented_players`
+  already catches: "Tatum" is a real word IN the question, so the router's
+  "Jaylen Tatum" survives that check on its own strict rule (any one word of
+  the name is enough, and "Tatum" is one). The actual fault is that "rec" is
+  read as nothing in particular and the whole question collapses to a
+  default player-stat line, when a careful reader would ask what "rec"
+  means before guessing.
+- **User sees:** a fluent, specific-looking answer to a question that has no
+  single right reading - the mirror-image failure shape AGENTS.md warns
+  about, dressed as data rather than as the refusal it should be.
+- **Next step:** unclear how to fix narrowly without a general "ask when
+  ambiguous" rule this project has deliberately avoided (a reasonable
+  default beats a question, per Jeff's rule - but there is no reasonable
+  default between "team record" and "personal stat line" here, unlike a
+  namesake pick). Possibly: a bare "rec"/"record" with a name and nothing
+  else (no stat word, no opponent, no season) is genuinely ambiguous between
+  `team_record` and `player_stat` in a way the router can't resolve, and
+  should refuse naming BOTH readings rather than silently picking one -
+  needs measuring how often this shape appears in the routing corpus before
+  building anything, since a broad "ask on short questions" rule risks
+  breaking working ones.
+
+### A question with zero valid readings gets a fluent, self-chosen answer: "25-26 knicks playoff statistics vs other historic teams"
+- **Found:** 2026-09-23, same session, yardstick-v2 F097.
+- **Evidence:** routes `team_leaderboard {'stat': 'win_percentage', 'team':
+  'New York Knicks', 'season_type': 3}` and answers a 16-team postseason
+  win-percentage ranking - a real, computed answer, but to a framing the
+  question never named (no comparison metric, no named set of "historic
+  teams" to compare against). The key marks this as needing clarification
+  with zero valid readings.
+- **User sees:** a confident, well-formatted table that answers a question
+  nobody asked, with nothing marking it as a guess at what was meant.
+- **Next step:** per AGENTS.md ("when it cannot be repaired, say so"), this
+  may be unfixable without guessing what "vs other historic teams" should
+  compare - filed rather than attempted. If a future pass wants to try:
+  `team_leaderboard` already refuses a `limit` for `team_record` (rejects
+  ranking a single team); a comparable refusal for `team_leaderboard` when a
+  `team` is named ALONGSIDE no comparison metric the question itself states
+  ("vs" with nothing concrete after it) might be the shape, but was not
+  measured here.
+
+### A pair relation with a with/without split is not built: "steph curry record vs lebron regular season without kd"
+- **Found:** 2026-09-23, same session, yardstick-v2 F114.
+- **Evidence:** routes `with_without {'stat': 'wins', 'team': 'Los Angeles
+  Lakers', 'limit': 10, 'fields': ['steals', 'rebounds'], 'season': 2026,
+  'season_type': 2, 'without': ['kd']}` and answers the Houston Rockets'
+  with/without-Durant record - an entirely different question (LeBron's
+  Lakers, not Curry's Warriors vs Lakers, ever came up). The underlying
+  shape - two named players' head-to-head record, further split by a
+  THIRD player's presence/absence - has no relation built for it:
+  `with_without` narrows one team by one absent player;
+  `player_matchup`/`head_to_head` narrow two sides' meetings but read no
+  `without` at all (`HONORED_SCOPING["player_matchup"]` explicitly refuses
+  it for a genuine two-player matchup, in `templates/common.py`).
+- **User sees:** a wrong answer, fluently, about players and a team the
+  question never named.
+- **Next step:** not attempted - a genuinely new relation (a pairing of two
+  players' meetings, further split by a third player's team-tenure absence,
+  mirroring `_tenure_clause`'s existing "teammate's absence" reading but
+  applied to one SIDE of a matchup rather than to a single player's own
+  games). Scope and cost not assessed; filed for whoever picks up
+  `player_matchup`'s own `without` refusal next.
+
+### A "last N games" refusal blames the wrong season when the player has zero games this year: "zach collins first quarter stats last 5 games as a starter"
+- **Found:** 2026-09-23, same session, yardstick-v2 F050 (refused_wrong_cause
+  bucket; not reached before time ran out on this pass).
+- **Evidence:** routes `period_split {'player': 'Zach Collins', 'order':
+  'recent', 'limit': 5, 'fields': ['points'], 'period': 1, 'per_game': True,
+  'season_type': 2, 'split': 'starter'}` and refuses "No 2026 regular season
+  games found for Zach Collins as a starter." The question names no season
+  at all; Collins made zero starts in 2025-26, so his real last 5 starts are
+  all in March 2025 - a real, answerable question the refusal denies exists.
+  The same rule AGENTS.md already names for a bare `limit` (a "last N games"
+  question with no season means the newest N over his CAREER, not
+  necessarily the current season - `_relation_window`/`scoped_games` already
+  read a bare `limit` as a window over the whole scoped span) does not
+  reach here: `period_split` narrows to the current-season default before
+  the window is cut, per `RELATION_SCOPING_EXCLUDED["period_split"]`
+  (`templates/common.py`), which excludes `since`/`span` on purpose (the
+  accuracy caveat is measured per season and the header names one). So the
+  window mechanism that would otherwise cross seasons is blocked from
+  reaching a career span at all for this template.
+- **User sees:** a refusal naming the wrong cause - "no games" reads as
+  "he didn't play", not "he didn't start, but did in a season further back".
+- **Next step:** not attempted here - needs a way for `period_split`
+  specifically to widen to the player's most recent N starts across
+  seasons (not a `since`/`span` career caveat problem, since a WINDOW of N
+  games is still one thing to measure the reconciliation caveat against,
+  unlike a season-spanning average) when the current season alone has
+  fewer than N (or zero) qualifying games. Distinct from the
+  `RELATION_SCOPING_EXCLUDED` reason already on file for `span`/`since`
+  there - a window cross-season redirect is a different shape from a
+  multi-season SUM.
+
+### Ten P7-bucket "partial" answers from the yardstick are still open
+- **Found:** 2026-09-23, same session - not reached; recorded from
+  `~/association-research/yardstick-v2/wrong_land.md`'s own evidence rather
+  than independently re-diagnosed, since no time remained in this pass to
+  read each one's code path. Listed here so the next agent does not have to
+  rediscover the list from scratch, with the file's own F-numbers for the
+  full evidence (query, route, answer, key) each already carries:
+  - **F017** - a 50-row NetPoints leaderboard with each player's team asked
+    for; neither the full 50 nor any team name is given.
+  - **F041** - `player_history`'s season-by-season 2PT% table for a career
+    span never states the single combined career percentage (55.1%) the
+    question asked for, though the rows sum to it exactly.
+  - **F051** - `player_stat` for a made-count stat (3PM) prints makes and
+    games but not attempts or percentage beside them.
+  - **F058**/**F060** - `period_split` with "each game"/"every game" in the
+    question still applies a `limit` of 1 as a window, showing one row where
+    every game's row was asked for; aggregate totals are otherwise right.
+  - **F100** - a "fewest playoff wins since 2022" ranking lists only the 28
+    teams that qualified, when two more (Hornets, Wizards) belong in the
+    zero-win tie for never having qualified at all.
+  - **F128**/**F129** - "last N games" chronological logs (crossing
+    season-type boundaries, ISSUES.md's own `season_type_unstated`
+    mechanism from this session's bucket 1) now find the right games but do
+    not state the total/point-differential sum the question asked for,
+    leaving it for the reader to add up the rows.
+  - **F149** - a game log cut to a qualifying subset (FGA/minutes thresholds)
+    says "last 10 games" without saying how many of the player's total
+    qualifying games (49) that 10 is a truncation of.
+  - **F159** - `player_splits` with `stat: usage_pct` and a `without` filter
+    shows the standard splits table, which has no usage-rate column at all,
+    so the actually-asked-for stat is absent from an otherwise-correct
+    read.
+- **User sees:** mostly right answers, each short of the full truth in one
+  specific, named way per the key's own grading notes above.
+- **Next step:** each needs its own read of the relevant template
+  (`period_split`, `player_history`, `player_stat`, `game_log`,
+  `player_splits`, `team_leaderboard`, the NetPoints leaderboard path) - not
+  attempted in this session. Priority within this group should follow
+  AGENTS.md's own ordering (a wrong number > a missing one > a missing
+  label), which was not assessed per-item here.
 
 ### Two callers sharing one ollama instance corrupt each other's router output; ambient CPU load alone does not
 - **Found:** 2026-09-22, investigating the "router's slots depend on which
