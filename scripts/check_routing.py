@@ -354,6 +354,22 @@ CASES: list[tuple[str, str, dict]] = [
     # test_a_past_n_seasons_count_word_does_not_become_a_limit in
     # tests/query/test_router.py for that half.
     ("show tyrese maxey's games against boston in the past two seasons", "game_log", {"player": "Tyrese Maxey", "opponent": "Boston Celtics", "since": current_season() - 1}),
+    # yardstick-v2 F045: `_validate_range` used to read only an open "since
+    # 2020" or a decade, so "2019-20 to 2023-24" fell back to the model's own
+    # single-season slot and answered 3 games of one season where 16
+    # regular-season games across five were asked for. Worse, `until` - the
+    # range's OTHER end - was declared nowhere and honored nowhere even once
+    # `since` itself was read right, so a CLOSED range answered as an open
+    # one (AGENTS.md's own worst-failure-shape example). Both slots now come
+    # from the router; `until` is honored on the player relation
+    # (`_Span`/`player_games.Narrowed`) the same way `since` already is.
+    ("Portis vs bulls 2019-20 to 2023-24", "player_stat", {"player": "Bobby Portis", "opponent": "Chicago Bulls", "since": 2020, "until": 2024}),
+    # yardstick-v2 F103/F095: the same range parsing, on the team-side
+    # questions the yardstick found it on. Only the router's own slots are
+    # asserted here - `until` on the TEAM relation is the team agent's own
+    # slot contract (`TeamNarrowed`/`TEAM_RELATION_SCOPING`), not ported here.
+    ("Best record from 2010-11 to 2018-19 nba", "team_leaderboard", {"since": 2011, "until": 2019}),
+    ("knicks record by month 2024 2025", "team_record", {"team": "New York Knicks", "since": 2024, "until": 2025}),
     # ISSUES.md #114: `stat` has no enum in ROUTER_SCHEMA, so a 2-point
     # percentage question routinely arrived at fieldGoalPct (the nearest stat
     # ROUTER_PROMPT actually teaches) and answered OVERALL shooting instead.
