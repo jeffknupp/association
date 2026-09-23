@@ -3,7 +3,7 @@ context-growth fix in Agent.ask, and the router fast path's fall-through."""
 
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import ollama
 import pytest
@@ -516,6 +516,117 @@ def test_with_fallthrough_disabled_a_question_no_template_answers_is_an_error_na
     monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="record_when", slots={}))
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"record_when": lambda ctx, slots: TemplateResult(data={}, answer="answered")})
     assert agent.ask("q").text == "answered" and agent.fell_through is None
+
+
+# ---------------- the compiled step between a refusal and the fall-through agent ----------------
+
+
+def _refusing_template(ctx: Any, slots: dict[str, Any]) -> NoReturn:
+    """A template stand-in that always raises TemplateUnsupported, the way
+    check_scope or a template's own validation does - the only trigger that
+    reaches association.query.compose.answer (agent._try_compose)."""
+    from association.query.templates.common import TemplateUnsupported
+
+    raise TemplateUnsupported("a test double's refusal, standing in for whatever check_scope or a real template would have raised")
+
+
+def test_a_templates_refusal_that_compose_answers_is_returned_as_fast_with_the_trace_line(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The whole point of wiring the compiler in: a scoping refusal that used
+    to cost a fall-through to the slow agent is answered here instead, exactly
+    like a template's own result - answered_by="fast", the intent kept - with
+    a trace line naming the point on the relation it composed, the way
+    "-> (router) intent=..." names what was routed."""
+    from association.query.router import Route
+    from association.query.templates.common import TemplateResult
+
+    def composed_answer(ctx: Any, intent: str, slots: dict[str, Any], question: str) -> TemplateResult:
+        return TemplateResult(data={"skeleton": "aggregate", "measures": ["points"], "rows": [{"points": 30.0}]}, answer="Joel Embiid has averaged 30.0 points since 2024.")
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="player_stat", slots={"player": "Joel Embiid", "since": "2024"}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": _refusing_template})
+    monkeypatch.setattr("association.query.compose.answer", composed_answer)
+
+    seen: list[str] = []
+    agent = _agent_with_players(tmp_path, "Joel Embiid")
+    agent.trace = seen.append
+    agent.verbose = True
+    answer = agent.ask("how many points has embiid averaged since 2024?")
+
+    assert answer.text == "Joel Embiid has averaged 30.0 points since 2024."
+    assert answer.answered_by == "fast"
+    assert answer.intent == "player_stat"
+    assert answer.data == {"skeleton": "aggregate", "measures": ["points"], "rows": [{"points": 30.0}]}
+    compose_lines = [line for line in seen if "(compose)" in line]
+    assert len(compose_lines) == 1
+    assert "intent='player_stat'" in compose_lines[0]
+    assert "'skeleton': 'aggregate'" in compose_lines[0] and "'measures': ['points']" in compose_lines[0]
+    # The point is what was composed, not the rows it produced.
+    assert "rows" not in compose_lines[0]
+
+
+def test_a_compose_none_falls_through_to_the_agent_exactly_as_before(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """No monkeypatch on compose.answer here: this exercises the real stub
+    module (association.query.compose), which always returns None, and proves
+    the wiring changes nothing for a question the compiler has nothing to say
+    about - the fast path still falls through to the agent, same as before
+    this step existed."""
+    from association.query.router import Route
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="player_stat", slots={"player": "Joel Embiid", "since": "2024"}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": _refusing_template})
+    monkeypatch.setattr(ollama, "chat", lambda **kw: ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="agent answer")))
+
+    answer = _agent_with_players(tmp_path, "Joel Embiid").ask("how many points has embiid averaged since 2024?")
+
+    assert answer.text == "agent answer"
+    assert answer.answered_by == "agent"
+
+
+def test_a_compose_refusal_is_returned_as_the_answer_not_a_fall_through(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A clarification or a no-match from the compiler is an answer, not a
+    fall-through: it looked at the question and had something to say. The
+    agent must never be asked."""
+    from association.query.router import Route
+    from association.query.templates.common import TemplateResult
+
+    def composed_refusal(ctx: Any, intent: str, slots: dict[str, Any], question: str) -> TemplateResult:
+        return TemplateResult(data={"ambiguous": "since"}, answer="I can't tell which span 'the last few' means - a number of games, or a number of seasons?")
+
+    def chat_must_not_run(**kw: Any) -> None:
+        raise AssertionError("the agent must not be asked - the compiler already answered")
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="player_stat", slots={"player": "Joel Embiid", "since": "the last few"}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": _refusing_template})
+    monkeypatch.setattr("association.query.compose.answer", composed_refusal)
+    monkeypatch.setattr(ollama, "chat", chat_must_not_run)
+
+    answer = _agent_with_players(tmp_path, "Joel Embiid").ask("embiid's line over the last few?")
+
+    assert answer.text == "I can't tell which span 'the last few' means - a number of games, or a number of seasons?"
+    assert answer.answered_by == "fast"
+
+
+def test_a_composed_answer_carries_the_name_reading_it_noted(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The compiler reads a name exactly the way a template does - through
+    entities.collect_name_readings - so a default it chose ("maxey" is Tyrese)
+    is visible in the answer here too, not only on the direct template path."""
+    from association.query.entities import Entity, _note_name_reading
+    from association.query.router import Route
+    from association.query.templates.common import TemplateResult
+
+    def composed_with_reading(ctx: Any, intent: str, slots: dict[str, Any], question: str) -> TemplateResult:
+        _note_name_reading("maxey", Entity("1", "Tyrese Maxey"), [Entity("0", "Marlon Maxey")], 2026, named_in_full=False)
+        return TemplateResult(data={}, answer="Tyrese Maxey has averaged 28.0 points since 2024.")
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="player_stat", slots={"player": "maxey", "since": "2024"}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": _refusing_template})
+    monkeypatch.setattr("association.query.compose.answer", composed_with_reading)
+
+    answer = _agent_with_players(tmp_path, "Marlon Maxey", "Tyrese Maxey").ask("how many points has maxey averaged since 2024?")
+
+    reading = "('maxey' was read as Tyrese Maxey, the only match who played in 2025-26. Marlon Maxey also matches - use the full name, or name a season he played, to ask about him.)"
+    assert answer.text == f"Tyrese Maxey has averaged 28.0 points since 2024. {reading}"
+    assert answer.data == {"name_readings": [reading]}
 
 
 def test_unported_intent_falls_through_to_the_agent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -425,6 +425,21 @@ The pipeline is router → template → deterministic answer, with the agent as
 fall-through. A question the router cannot classify falls through to the
 slower SQL-writing agent; that is by design, not a bug.
 
+- **A template's `TemplateUnsupported` gets one more deterministic try before
+  the agent does.** `query/compose` sits between the two: when `check_scope`
+  or the template itself raises, `agent.py`'s `_try_compose` offers
+  `compose.answer(ctx, intent, slots, question)` the same point on the
+  relation the template could not narrow to. A `TemplateResult` back is
+  answered exactly like a template's own - `answered_by="fast"`, the intent
+  kept, the same name-reading and coverage-caveat attachment - including when
+  that result is itself a refusal (a clarification, a "no match"): looking at
+  the question and having something to say about it is an answer, not a
+  fall-through. `None` falls through to the agent exactly as before this step
+  existed. Nothing in the package may reach ollama - it is a compiler, not a
+  smaller agent - and it narrows the relation only through the shared steps in
+  `templates/common.py`, the same discipline the six relation templates keep
+  (see "A template on a relation does not declare, or apply, scoping of its
+  own" above).
 - **What the router model sees lives in `query/router_prompt.py`, alone.**
   `ROUTER_PROMPT`, `ROUTER_SCHEMA` and the window they share are there; the
   post-processing of the slots the model returns is in `query/router.py`. So a
