@@ -36,6 +36,7 @@ from ..player_games import (  # noqa: F401 - the relation's names, re-exported f
     _log_carries_rebuilt,
     _teammate_played,
     _teammate_stints,
+    league,
 )
 from ..player_games import _tenure_clause as _relation_tenure_clause
 from ..team_games import TeamNarrowed
@@ -1336,6 +1337,74 @@ def scoped_games(
             raise TemplateUnsupported(f'no calendar narrowing in situation {situation!r} - a weekday, a month, a holiday or "since <day>" is read; an age, a conference or a division is not')
         narrowed.narrow_calendar(narrowing)
     narrowed.window = _relation_window(slots)
+    return narrowed
+
+
+#: A ``position`` cell's letter as :func:`league_games` narrows the relation by
+#: it - the generic code plus every specific one it covers. ``players.position_abbr``
+#: holds both the generic letter and the specific one (measured against the
+#: warehouse: G 862, F 724, C 502, SG 254, PF 252, SF 247, PG 237), so "forwards"
+#: reaches every forward on record and "shooting guards" only those listed as SG.
+POSITION_CODES: dict[str, list[str]] = {"G": ["G", "PG", "SG", "GF"], "F": ["F", "PF", "SF", "GF"], "C": ["C"], "PG": ["PG"], "SG": ["SG"], "PF": ["PF"], "SF": ["SF"]}
+"""``players.position_abbr`` values a question's position word reaches.
+
+.. versionadded:: 4.4.0
+"""
+
+
+def league_games(con: duckdb.DuckDBPyConnection, span: _Span, slots: dict[str, Any], *, position: str | None) -> Narrowed | TemplateResult:
+    """Every player's games in ``span`` - the league-wide read a question with
+    no player subject narrows the same way one player's games are: an
+    opponent, a venue, a team's roster, lines on box-score columns and the
+    calendar ``situation`` narrowing - plus one dimension a single player's
+    games have no use for, a position.
+
+    Built on :func:`association.query.player_games.league`, the same
+    "everyone at once" read ``threshold_count``'s and ``single_game_high``'s
+    no-player modes already use (:func:`_threshold_count_rows` in
+    ``query/templates/players.py``), narrowed by the same clauses
+    :func:`scoped_games` applies to a named player's - so a narrowing that
+    reaches a player's games reaches this read too, without being taught to
+    it separately. ``without``, ``split``, ``game_n`` and ``date`` are
+    :func:`scoped_games`' own cells that this read has no subject for (whose
+    teammate would "without" name? whose start would "split" count?) and are
+    not narrowings here; a caller that wants a game-of-series number or a
+    fixed date over the league still resolves a player first.
+
+    .. versionadded:: 4.4.0
+    """
+    season_clause, season_params = span.clause("pgl.season")
+    narrowed = league(season_clause, season_params, span.season_type)
+    # The log LEFT JOINs players; a box score for an athlete missing there
+    # would otherwise be counted under a NULL name (the same guard
+    # _threshold_count_rows keeps for the same reason).
+    narrowed.narrow("pgl.player_name IS NOT NULL")
+    opponent = slots.get("opponent")
+    if isinstance(opponent, str) and opponent.strip():
+        team = _resolved_team(con, opponent, season=span.season)
+        if isinstance(team, TemplateResult):
+            return team
+        narrowed.opponent = team
+        narrowed.narrow("pgl.opponent_team_id = ?", team.id)
+    team_text = slots.get("team")
+    if isinstance(team_text, str) and team_text.strip():
+        team = _resolved_team(con, team_text, season=span.season)
+        if isinstance(team, TemplateResult):
+            return team
+        narrowed.narrow("pgl.team_id = ?", team.id)
+    if slots.get("venue") in ("home", "away"):
+        narrowed.venue = slots["venue"]
+        narrowed.narrow("(g.home_team_id = pgl.team_id) = ?", slots["venue"] == "home")
+    narrow_measures(narrowed, measure_filters(slots.get("below"), slots.get("above")))
+    situation = slots.get("situation")
+    if situation:
+        narrowing = parse_situation(situation)
+        if narrowing is None:
+            raise TemplateUnsupported(f'no calendar narrowing in situation {situation!r} - a weekday, a month, a holiday or "since <day>" is read; an age, a conference or a division is not')
+        narrowed.narrow_calendar(narrowing)
+    if position:
+        codes = POSITION_CODES.get(position, [position])
+        narrowed.narrow(f"pgl.athlete_id IN (SELECT athlete_id FROM players WHERE position_abbr IN ({', '.join('?' for _ in codes)}))", *codes)
     return narrowed
 
 

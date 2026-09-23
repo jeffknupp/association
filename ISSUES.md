@@ -2270,6 +2270,52 @@ those were found.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #183
 
+### `association.query.compose` (the landed compiler) reads no coverage floor and carries none of the box-score caveats
+- **Found:** 2026-09-22, landing the skeleton spike's compiler
+  (`association.query.compose`). Not yet live: this package is not wired into
+  the router -> template -> agent pipeline (that wiring is a separate,
+  concurrent change), so no question a user asks reaches it today - filed now
+  so it is fixed, or knowingly deferred, before that wiring lands rather than
+  discovered after.
+- **Evidence:** `grep -rn "check_coverage\|coverage_caveat\|RANKING_INTENTS\|first_ranking_season" src/association/query/compose/` matches nothing. Two
+  separate gaps, both because the compiler reads the relation directly
+  through `scoped_player`/`scoped_games`/`league_games` rather than through a
+  template, and nothing in the compiler re-adds what the templates layer on
+  top of those calls:
+  1. **No coverage floor at all.** Every one of the six relation templates
+     calls `check_coverage(intent, slots)` before running, which refuses a
+     season under `COVERAGE`'s floor (`nba/coverage.py`) rather than
+     answering an empty or unrepresentative result - and a RANKING read
+     additionally checks `first_ranking_season`/`RANKING_INTENTS`, since
+     `player_season_stats` holds real rows for early seasons whose POOL is
+     too thin to rank fairly (`AGENTS.md`: 1980's ranking pool is seven
+     players). `compile_query` has no equivalent call anywhere, for either
+     a named player or the league-wide (`subject="everyone"`) read.
+  2. **No box-score caveats in the composed sentence.** `sentence.py`
+     carries the subject, the span, the narrowing and the predicates, but
+     never `common._box_score_notes` (the without-teammate explanation, the
+     count of games left out because ESPN served an empty box score, the
+     count of games rebuilt from play-by-play, the "box scores begin with
+     the 1993-94 season" note on a career predating them) or
+     `common.coverage_caveat` (a season reachable but only partly, e.g. 2002
+     play-by-play). K1's golden run measured the NUMBERS agree with the
+     templates' (237/0), which this does not contradict - the rows and
+     aggregates are right - but a composed answer says nothing about what a
+     number rests on where a template's equivalent answer would.
+- **User sees:** nothing yet (not wired in). Once it is: a ranking over a
+  thin early pool answered as confidently as a modern one, and a box-score
+  count or average with no word said about games a rebuild stood in for or
+  ESPN served empty - the same silent-caveat shape `_box_score_notes` exists
+  to prevent on every template that reads this relation today.
+- **Next step:** before or as part of wiring `compose.answer()` into
+  `agent.py`, add a `check_coverage`/`RANKING_INTENTS` call to
+  `compile_query` (or to `answer()`, mirroring where the templates call it)
+  and pass the notes `_box_score_notes`/`coverage_caveat` already compute
+  into `sentence()`'s span/narrowing arguments, or append them the way
+  `agent.py` already appends the coverage caveat to a template's answer today
+  (`AGENTS.md`, "Saying what you measured": "the agent path adds something").
+- **Source:** ours, not ESPN's.
+
 ## P3: refusal or gap
 
 ### `period_leaderboard` stays off the player-games relation

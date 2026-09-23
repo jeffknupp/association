@@ -16,6 +16,40 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **One compiler over the player-games relation (the skeleton spike, landed).**
+  `association.query.compose` - `core.Query`/`compile_query`/`run`, `adapt.to_query`,
+  `move.move_point`, `sentence.sentence`, and `answer()` in `__init__.py` - is the
+  step between a template's refusal and the slower SQL-writing agent, over the
+  same relation the six relation templates (`game_log`, `player_stat`,
+  `threshold_count`, `single_game_high`, `player_splits`, `record_when`) already
+  read. A `Query` names a point (skeleton, measures, aggregate, group, window);
+  `to_query` gives an intent's default point; `move_point` moves it with the
+  question's own words - a measure beyond a template's list, "most ... in a
+  game" as rows by measure, "how many ... won" as a career count, a league-wide
+  read with no player named (grouped by player for a ranking, rows for a
+  position group), and the number in a threshold phrase naming its own column
+  over the router's `stat`. The relation supplies the narrowing through a new
+  shared step, `templates.common.league_games` - the league-wide counterpart of
+  `scoped_games`, narrowed by opponent, venue, team, box-score lines, calendar
+  `situation` and a position - so the compiler never writes its own clause on
+  the relation (`test_templates_on_the_relation_do_not_narrow_it_themselves` now
+  walks the compose package's source for the same forbidden tokens the six
+  templates are checked against). Measured against the real warehouse: 237
+  agree / 0 disagree over 387 recorded questions the six templates already
+  answer (232/0 at the spike's own master commit; `situation` landing on the
+  relation since then answers more of them on both sides), 8 of 31 template
+  fall-throughs answered correctly, and the yardstick's K3 tally unchanged
+  (138 answered live, 3 by a template, 8 by the compiler, 26 still refused).
+  Fixed two bugs the spike's own code carried, both exposed only because
+  `situation` landed on the relation after the spike measured 232/0: a `team`
+  slot beside the player used to narrow a per-game average (`player_stat`'s
+  shape) to his games for that team, when the real template reads no such
+  slot at all and silently returned zero games for a team he never played
+  for; and a bare non-ISO `date` slot (the router sometimes files a weekday
+  word there, meant for `situation`) was handed to the relation unvalidated,
+  raising instead of being read as absent. Not wired into the pipeline yet -
+  `agent.py`/`answer.py` are a separate change - so nothing here changes what
+  a live question answers today.
 - **The player-games relation honors `situation` where it names the calendar
   (step 3, K3).** "Garland on Mondays", "LeBron's line vs the Jazz on
   Tuesdays", "his games in October", "on Christmas", "since January 31st" -
