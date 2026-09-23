@@ -16,6 +16,11 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **A composed answer names a position group in its heading, and prints
+  TS%/eFG%/usage as percentages.** The first live run of the landed compiler
+  headed a log of centers "every player" (the filter was applied; the heading
+  did not say so - the value used was hidden) and printed the view's
+  fractional TS% as "0.5%". Both are the sentence, not the numbers.
 - **One compiler over the player-games relation (the skeleton spike, landed).**
   `association.query.compose` - `core.Query`/`compile_query`/`run`, `adapt.to_query`,
   `move.move_point`, `sentence.sentence`, and `answer()` in `__init__.py` - is the

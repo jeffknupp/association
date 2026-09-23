@@ -501,6 +501,24 @@ def compile_query(con: duckdb.DuckDBPyConnection, q: Query) -> Compiled:
     raise Unsupported(f"skeleton {q.skeleton!r}")
 
 
+_POSITION_LABELS: dict[str, str] = {
+    "C": "every center",
+    "F": "every forward",
+    "G": "every guard",
+    "PG": "every point guard",
+    "SG": "every shooting guard",
+    "PF": "every power forward",
+    "SF": "every small forward",
+}
+
+
+def _everyone_label(position: str | None) -> str:
+    """The league-wide subject as an answer names it. A position narrowing
+    is part of the subject and must be in the heading - a log of centers
+    headed "every player" hides the value that was used."""
+    return _POSITION_LABELS.get(position or "", "every player")
+
+
 def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
     """Compile and execute: rows as dicts, with what the relation settled.
 
@@ -515,7 +533,7 @@ def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
     rows = [dict(zip(names, r, strict=True)) for r in cur.fetchall()]
     return {
         "rows": rows,
-        "player": c.player.name if c.player else "every player",
+        "player": c.player.name if c.player else _everyone_label(q.position),
         "span": c.span,
         "narrowing": c.narrowed.filters(windowed=True),
         "window": c.narrowed.window,

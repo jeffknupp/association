@@ -67,11 +67,18 @@ def _span_phrase(span: Any) -> str:
     return f"{season} {kind}"
 
 
+_FRACTION_COLUMNS = frozenset({"ts_pct", "efg_pct", "usage_pct"})
+
+
 def _fmt(v: Any, name: str) -> str:
     """One cell of an answer's table: a fixed decimal for a float, a percent sign for a rate."""
     if v is None:
         return "-"
     if isinstance(v, float):
+        if name in _FRACTION_COLUMNS:
+            # The view stores these as fractions (0.57); the derived rates
+            # (fg_pct, three_pct, ft_pct) are already scaled to percent.
+            return f"{v * 100:.1f}%"
         return f"{v:.1f}" if not name.endswith("_pct") else f"{v:.1f}%"
     return str(v)
 
