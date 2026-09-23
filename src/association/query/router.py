@@ -1274,6 +1274,32 @@ def _is_team_name(name: str) -> bool:
     return whole in _TEAM_CITY or whole in _TEAM_ABBREVIATION
 
 
+def _team_slot_named_in_text(question: str, candidate: Any) -> str | None:
+    """``candidate`` back, but only if the question's own words actually say
+    it - the mirror of :func:`_is_team_name`, which asks whether a slot IS a
+    team at all rather than whether the question named this one.
+
+    ISSUES.md #170: a quarter question with no `player` slot (see
+    :func:`_route_period_intents`) sometimes fills `team`/`opponent` with a
+    team the model inferred rather than one the question used - "Jokic ...
+    3rd quarter against Boston" filled `opponent` with 'Denver Nuggets', a
+    real team and Jokic's own, but a word the question never wrote, while
+    `team` held 'Boston Celtics', a word it did. Checked against the text the
+    same way :func:`association.query.entities.override_invented_players`
+    checks an invented player name - any one word is enough, since half a
+    name is how a question normally carries one.
+    """
+    if not isinstance(candidate, str):
+        return None
+    words = re.findall(r"[A-Za-z]{4,}", candidate)
+    if not words:
+        return None
+    low = question.lower()
+    if any(re.search(rf"\b{re.escape(word.lower())}\b", low) for word in words):
+        return candidate
+    return None
+
+
 # "best record" and "worst record" rank the league; with no team named they are
 # team_leaderboard's question. Measured: "worst record 2025-26" came back as
 # team_record with team='worst'.
@@ -1550,6 +1576,65 @@ def _route_coach_intent(raw: dict[str, Any], question: str) -> bool:
     return True
 
 
+def _recover_period_subject(raw: dict[str, Any], question: str, asked: dict[str, int] | None, named_player: bool, ranks_players: bool) -> str | None:
+    """The player a quarter or half question names when the model's reply
+    dropped `player` entirely - split out of :func:`_route_period_intents` to
+    keep it inside the complexity gate.
+
+    ISSUES.md #170: "How many points did Jokic score in the 3rd quarter
+    against Boston?" arrived from the model with NO player at all - it filled
+    `team`/`opponent` instead (`team: 'Boston Celtics'`, `opponent: 'Denver
+    Nuggets'`, neither one asked for by name), which reads exactly like the
+    "team's own half" shape `_route_period_intents` handles next and answered
+    Boston's quarter to a question about Jokic. The question's own grammar
+    still names him (`_subject_named_in`, the same reader `threshold_count`
+    and `single_game_high` use for their own dropped subject), so it gets a
+    turn before the team branch does - but only where nothing ranks players
+    (that wins over a recovered subject the same way it wins over the
+    model's own `player` slot, and has to) and the recovered "subject" is not
+    itself a team's name, since "did the 76ers score" fits the identical
+    grammar and must stay the team's own question.
+    """
+    if asked is None or named_player or ranks_players:
+        return None
+    candidate = _subject_named_in(question)
+    if candidate is not None and not _is_team_name(candidate):
+        raw["player"] = candidate
+        return candidate
+    return None
+
+
+def _route_period_split_slots(raw: dict[str, Any], question: str, subject: str | None) -> None:
+    """The slots `period_split` reads once its intent is chosen - split out
+    of :func:`_route_period_intents` to keep it inside the complexity gate."""
+    # `stat` is the one REQUIRED slot, so the model fills it whether or
+    # not the question named one - measured, "duren v nets 1h gameloh"
+    # arrived with stat="none" and "scottie barnes stats 2nd half log"
+    # with stat="minutes", and the template refused both as asking for
+    # a stat it cannot give. Only a stat the question names is kept,
+    # the same rule player_compare follows (see _named_a_stat).
+    if not _named_a_stat(question):
+        raw.pop("stat", None)
+    # A log was asked for, not a season average. Measured, 7 of the 11
+    # questions this template answered in its first replay said "log",
+    # "by game" or "each game" and got a total and an average.
+    if _LOG_WORDS.search(question):
+        raw["per_game"] = True
+    if subject is not None:
+        # The player came from the text, not from the model's own
+        # `player` slot - so its `team`/`opponent` are no more
+        # trustworthy than the player it already dropped. Keep one
+        # only where the question's own words actually say it (the
+        # same "may be fiction" check `entities.override_invented_players`
+        # runs for a name): "Boston Celtics" is a word the Jokic
+        # question used, "Denver Nuggets" is a word it never wrote.
+        opponent = _team_slot_named_in_text(question, raw.get("team")) or _team_slot_named_in_text(question, raw.get("opponent"))
+        raw.pop("team", None)
+        raw.pop("opponent", None)
+        if opponent is not None:
+            raw["opponent"] = opponent
+
+
 def _route_period_intents(raw: dict[str, Any], question: str) -> None:
     """Fouling out, and a quarter or half: intents code assigns from the question's own words."""
     low = question.lower()
@@ -1570,6 +1655,8 @@ def _route_period_intents(raw: dict[str, Any], question: str) -> None:
         # NO player", so it can never be true here where a player is named. The
         # team's own quarter is already exempted by the outer condition.
         named_player = isinstance(raw.get("player"), str) and raw["player"].strip()
+        subject = _recover_period_subject(raw, question, asked, named_player, ranks_players)
+        named_player = named_player or subject is not None
         if asked is not None and not named_player and ranks_players:
             # Players ranked by a quarter or a half - templates.games
             # .period_leaderboard. A team may still be named ("knicks 1st
@@ -1590,19 +1677,7 @@ def _route_period_intents(raw: dict[str, Any], question: str) -> None:
         elif asked is not None and named_player:
             raw["intent"] = "period_split"
             raw |= asked
-            # `stat` is the one REQUIRED slot, so the model fills it whether or
-            # not the question named one - measured, "duren v nets 1h gameloh"
-            # arrived with stat="none" and "scottie barnes stats 2nd half log"
-            # with stat="minutes", and the template refused both as asking for
-            # a stat it cannot give. Only a stat the question names is kept,
-            # the same rule player_compare follows (see _named_a_stat).
-            if not _named_a_stat(question):
-                raw.pop("stat", None)
-            # A log was asked for, not a season average. Measured, 7 of the 11
-            # questions this template answered in its first replay said "log",
-            # "by game" or "each game" and got a total and an average.
-            if _LOG_WORDS.search(question):
-                raw["per_game"] = True
+            _route_period_split_slots(raw, question, subject)
         else:
             raw["intent"] = "other"
 
@@ -1874,6 +1949,18 @@ def _route_intent_slots(intent: str, slots: dict[str, Any], question: str, witho
         rank = next((name for name, pattern in RANK_WORDS if pattern.search(question)), None)
         if rank is not None:
             slots["rank"] = rank
+        # ISSUES.md #172: "nba team with least playoff wins since 2022" filed
+        # the same word twice - correctly into `rank` above, and again into
+        # `team`, where no franchise is named "least" and the template refused
+        # the whole question ("no team matching 'least'") over a cause the
+        # question never gave. The same shape as
+        # `entities.override_invented_players`: a slot the question does not
+        # support. Read against `RANK_WORDS` again rather than a new word
+        # list, so the two checks cannot drift apart (AGENTS.md, "one concept,
+        # one definition").
+        team_slot = slots.get("team")
+        if isinstance(team_slot, str) and any(pattern.fullmatch(team_slot.strip()) for _, pattern in RANK_WORDS):
+            slots.pop("team", None)
     if intent == "streak":
         slots["kind"] = "loss" if _LOSING_STREAK.search(question) else "win"
 

@@ -438,6 +438,47 @@ def test_a_player_quarter_question_never_answers_from_the_teams_linescore() -> N
     assert got is not None and got.intent == "period_split"
 
 
+def test_a_dropped_player_still_reaches_period_split_over_a_team_only_reading() -> None:
+    """ISSUES.md #170: "How many points did Jokic score in the 3rd quarter
+    against Boston?" measured live against qwen2.5:3b came back with NO
+    `player` at all - the model filled `team`/`opponent` instead
+    (`team='Boston Celtics'`, `opponent='Denver Nuggets'`, neither one asked
+    for by name) - which fit the "team's own half" shape exactly and routed to
+    `team_quarter_points`, a template with no player column, for a question
+    about one man. `scripts/check_routing.py` pinned this to `other` before
+    `period_split` existed for the shape; now it answers it.
+
+    The question's own grammar still names Jokic (`_subject_named_in`), so
+    that recovers the player the same way it already does for
+    `threshold_count`/`single_game_high`. Of the two team-shaped slots the
+    model filled, `opponent` ('Denver Nuggets') names nobody the question
+    wrote, and `team` ('Boston Celtics') does - so the surviving one lands in
+    `opponent`, which `period_split` honors."""
+    payload = '{"intent":"other","stat":"points","team":"Boston Celtics","opponent":"Denver Nuggets","season_ref":"current","order":"recent","limit":1}'
+    got = _ask("How many points did Jokic score in the 3rd quarter against Boston?", payload)
+    assert got.intent == "period_split"
+    assert got.slots.get("player") == "Jokic"
+    assert got.slots.get("period") == 3
+    assert got.slots.get("opponent") == "Boston Celtics"
+    assert "team" not in got.slots
+
+
+def test_a_dropped_player_recovery_never_steals_a_teams_own_quarter_or_half() -> None:
+    """The mirror check: a real team subject must not be misread as a
+    "dropped player" just because it sits directly before a scoring verb -
+    "did the 76ers score" fits `_subject_named_in`'s grammar exactly the way
+    "did Jokic score" does, and only `_is_team_name` tells them apart."""
+    payload = '{"intent":"other","team":"Philadelphia 76ers","opponent":"Boston Celtics"}'
+    got = _ask("How many points did the 76ers score in the 3rd quarter against Boston?", payload)
+    assert got.intent == "team_quarter_points"
+    assert got.slots.get("team") == "Philadelphia 76ers"
+    # The already-covered known gap above (a TEAM's half) must stay exactly as
+    # it was - no grammar in "Celtics 2nd half scoring this season" reads as a
+    # scoring verb, so nothing here is newly at risk of being read as a name.
+    still_a_team = _ask("Celtics 2nd half scoring this season", '{"intent":"team_quarter_points","team":"Boston Celtics","period":2}')
+    assert still_a_team.intent == "team_quarter_points" and still_a_team.slots.get("team") == "Boston Celtics"
+
+
 def test_team_quarter_points_is_in_the_schema_enum() -> None:
     assert "team_quarter_points" in ROUTER_SCHEMA["properties"]["intent"]["enum"]
 
@@ -944,6 +985,26 @@ def test_a_team_asked_for_its_most_or_fewest_carries_that_rank() -> None:
     # A plain half question carries no rank, so it still averages.
     plain = _ask("Celtics 2nd half scoring this season", '{"intent":"team_quarter_points","team":"Boston Celtics","period":2}')
     assert "rank" not in plain.slots
+
+
+def test_a_rank_word_filed_as_the_team_is_dropped() -> None:
+    """ISSUES.md #172: "nba team with least playoff wins since 2022" arrived
+    with `team='least'` beside a correctly-read `rank='fewest'` - the same
+    word, filed twice. No franchise is named "least", so `team_leaderboard`
+    refused "no team matching 'least'" over a cause the question never gave,
+    on a question it could otherwise answer in full. `team` is read against
+    `RANK_WORDS` again rather than a new list, so the two checks cannot
+    disagree about what counts as one."""
+    payload = '{"intent":"team_leaderboard","stat":"playoffs_wins","team":"least","season":2022,"season_ref":"previous"}'
+    got = _ask("nba team with least playoff wins since 2022", payload)
+    assert got.intent == "team_leaderboard"
+    assert got.slots.get("rank") == "fewest"
+    assert "team" not in got.slots
+    assert got.slots.get("since") == 2022
+    # A real team beside a rank word is untouched - only a team slot that IS
+    # one of the rank words is ever dropped.
+    real_team = _ask("worst record for the Knicks since 2022", '{"intent":"team_leaderboard","team":"New York Knicks","stat":"record","season":2022,"season_ref":"previous"}')
+    assert real_team.slots.get("team") == "New York Knicks" and real_team.slots.get("rank") == "worst"
 
 
 @pytest.mark.parametrize(
