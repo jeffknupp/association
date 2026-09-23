@@ -46,6 +46,31 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### A position group as the subject is dropped and the team's own log answers: "Centers stats game log vs kings" lists the Kings' last five games
+- **Found:** 2026-09-22, the skeleton spike's K3 run (`~/association-research/skeleton-spike/k3_run.py`)
+  re-running `live_c5.jsonl`'s fall-throughs on master `5279f7c`.
+- **Evidence:** the router files the question as `game_log {'stat': 'all',
+  'team': 'Kings', 'order': 'recent', 'limit': 5, 'span': 'career', ...}` -
+  "Centers" reaches no slot - and `game_log`'s team half answers "Sacramento
+  Kings, last 5 games (all-time, 2026 regular season) (2-3): ..." (reproduced
+  by a direct call with those slots). The blind key: 137 rows, every center's
+  line against the Kings this season. "forwards with 20+ mins vs gsw log"
+  is the same shape (there the router filed "forwards" as the `opponent`,
+  which refuses). `players.position_abbr` carries C/F/G and the specific
+  codes for every player, so the subject is readable.
+- **User sees:** a fluent answer about the wrong subject - a team's results
+  where the question asked about a group of players against that team.
+- **Next step:** a position word in the question with no player is a
+  subject the templates cannot take today: refuse it by name (a
+  `PLAYER_INTENTS`-style check in `route()`, reading the words "centers",
+  "forwards", "guards" and the five specific positions), rather than let a
+  `team` slot beside it answer. The reading itself is one narrowing on the
+  league-wide relation read (`player_games.league()` + `position_abbr IN
+  (...)`), which the spike's compiler answers in K2b - a candidate for the
+  first composed shape to land.
+- **Source:** ours.
+- **GitHub:** none yet
+
 ### A team and a role named together are both dropped: "lebron stats as a starter for Miami" answers this season's Lakers line
 - **Found:** 2026-09-21, yardstick-v2 blind key against build 50c1faa. The
   question is Jeff's own, from his review notes.
