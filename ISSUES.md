@@ -58,8 +58,13 @@ before that commit needs re-checking against the current warehouse.
   is the same shape (there the router filed "forwards" as the `opponent`,
   which refuses). `players.position_abbr` carries C/F/G and the specific
   codes for every player, so the subject is readable.
-- **User sees:** a fluent answer about the wrong subject - a team's results
-  where the question asked about a group of players against that team.
+- **User sees:** today, a refusal naming a team that does not exist - the
+  live run's `no team matching 'Los Angeles Kings'`, the router's own
+  completion of "Kings" applied after the trace above was written - and, the
+  moment "Kings" resolves to Sacramento (a direct call with the traced slots,
+  or a question that spells the city), a fluent answer about the wrong
+  subject: the team's results where the question asked about a group of
+  players against that team. Both are the position word being dropped.
 - **Next step:** a position word in the question with no player is a
   subject the templates cannot take today: refuse it by name (a
   `PLAYER_INTENTS`-style check in `route()`, reading the words "centers",
