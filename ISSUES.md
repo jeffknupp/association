@@ -70,47 +70,27 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** two independent things, either of which closes this file
   outright: (1) the router files a `team` slot for this shape (a router/
   `route()` fix - out of this session's scope, the "team" half explicitly
-  excludes router.py); or (2) `leaderboard` (owned by the player half of the
-  query path, `query/templates/players.py` - also out of this session's
-  scope) refuses a team-shaped question the way `_everyone_point`'s own
-  `_NOT_PLAYERS` guard already refuses the ones that literally say "team" -
+  excludes router.py); or (2) `leaderboard`/`team_stat` (owned by the player
+  half of the query path, `query/templates/players.py` - also out of this
+  session's scope) refuse a team-shaped question the way `_everyone_point`'s
+  own `_NOT_PLAYERS` guard already refuses the ones that literally say "team" -
   "the magic"/"the raptors" do not, since a franchise nickname is not the
   word "team". Either change lets `_try_compose` reach `compose.team`, which
   already answers it correctly today when given the right slots.
+- **Status 2026-09-23 (coordinator):** the player agent is being told to make
+  `leaderboard`/`team_stat` refuse a `team` slot on a team-shaped question so
+  `_try_compose` sees it - that is (2) above, in progress on their branch, not
+  this one. **The compose half is done and needs no further work**: given
+  `{'stat': 'threePointFieldGoalsMade', 'team': 'Orlando Magic', 'season':
+  2026}`, `compose.team` composes exactly -
+  `"The Orlando Magic had 961 3-pointers made over the complete 2026 regular
+  season (82 games). They added 78 more over a 7-game playoff run."` -
+  matching the key's 961/78 exactly (`tests/query/test_compose.py::test_team_move_point_reads_an_unnarrowed_season_total`,
+  `test_answer_composes_a_team_subject_sentence`). Once the refusal lands on
+  either branch and the two merge, this question should answer correctly live
+  with no further change here - re-verify with a live `association query`
+  call after the merge and delete this entry then.
 - **Source:** ours, not ESPN's.
-
-### `team_record` has no combined-season-type reading (F116, "warriors all-time record including playoff record at away")
-- **Found:** 2026-09-23, building the team relation's `situation`/`until`
-  cells this session (step 3, K1) - adjacent work, not this session's own
-  target, recorded per `AGENTS.md`'s "record what you were not looking for".
-- **Evidence:** the live route files `season_type: 3` only (the word
-  "including" is read as "postseason", dropping the regular season the
-  question also asked for), and the answer - "51-52 (.495) on the road in
-  every postseason" - names only the postseason and, going by the key,
-  undercounts even that: the blind key's road playoff record is 51-54 in 105
-  games, three losses more than the live answer's 52. Not re-diagnosed this
-  session (out of scope - the team half owns `team_record`, but the router's
-  `season_type` filing for "including" is the router's, and I did not chase
-  the 51-52-vs-51-54 discrepancy itself, which may be a separate, genuine
-  `team_record` bug worth its own measurement). Even with both season types
-  correctly filed, `team_record` has no code path that SUMS a regular-season
-  and a postseason record into one combined figure - each of its four answer
-  shapes (`_standings_season`/`_standings_career`/`_games_record`/
-  `_team_record_by_month`) takes one `season_type` and answers within it.
-- **User sees:** a road record naming only the postseason under a question
-  that asked to include the regular season too, and (unverified this
-  session) possibly a wrong count even for the postseason alone.
-- **Next step:** (1) re-measure the 51-52 vs. 51-54 discrepancy directly
-  against the warehouse before assuming it is real; (2) if `route()` is
-  taught to file both season types for "including playoffs"/"combined"
-  phrasing (a `CODE_ASSIGNED`-style fix, unrelated to this session's
-  scope), `team_record` needs a combined-season-type answer shape - most
-  naturally a small wrapper that calls the existing per-season-type path
-  twice and adds the two records, since `TEAM_GAMES_SQL`'s own `season_type`
-  column already lets a caller ask for "both" by omitting the filter
-  entirely if the two need to be summed from one query instead.
-- **Source:** the 51-52 figure is ours to re-verify; the "including" wording
-  gap is ours, not ESPN's.
 
 ### A position group as the subject is dropped and the team's own log answers: "Centers stats game log vs kings" lists the Kings' last five games
 - **Found:** 2026-09-22, the skeleton spike's K3 run (`~/association-research/skeleton-spike/k3_run.py`)

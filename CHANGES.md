@@ -16,6 +16,24 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **`team_record` honors `season_type_unstated`, combining both season types
+  instead of silently answering one (F116, ISSUES.md).** "Warriors all-time
+  record including playoff record at away" used to read `season_type: 3` and
+  name only the postseason, dropping the regular season the question also
+  asked for. `_team_record_combined_types` reads each type through
+  `team_record`'s own existing single-type routing and sums the two records,
+  naming each component - "574-843 combined on the road, including the
+  playoffs (523-791 regular season, 51-52 playoffs)" for the Warriors,
+  warehouse-verified. Measuring this against the yardstick key's own 601-865
+  (550-811 regular season, 51-54 playoffs) found the key's figures come from
+  an UNDEDUPED count of `real_games`/`games`: the 1994 postseason has the same
+  phantom double-labeling under both `season` 1993 and 1994 that the regular
+  season is already documented for (`DATA.md`, "Season 1993 is a phantom"),
+  and it is not unique to the Warriors - 77 of the 1994 postseason's own
+  events carry both labels. `team_games`'s existing `QUALIFY` dedup already
+  collapses this correctly; the key's undeduped total was not corrected to
+  match, since doing so would reintroduce the double-count this relation
+  exists to prevent.
 - **`team_move_point` no longer treats the router's `"any_team"` placeholder
   as a real name.** Found re-running the K2 golden harness after landing the
   team subject: "rebounds allowed per team" files `team: "any_team"`, which

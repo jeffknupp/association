@@ -790,6 +790,49 @@ def test_a_default_limit_does_not_block_a_month_narrowing_or_split(team_ctx: Tem
         team_record(team_ctx, {"team": "Knicks", "limit": 12})
 
 
+# ---------------- team_record: `season_type_unstated` combines both types (F116) ----------------
+
+
+def test_team_record_combines_both_season_types_for_one_season(team_ctx: TemplateContext) -> None:
+    """F116 ("warriors all-time record including playoff record at away"):
+    `season_type_unstated` (c9930ad's flag on the player relation, honored
+    here for the first time) combines both season types rather than
+    silently answering one. The Knicks' season-S regular record (53-29, from
+    standings - `test_a_season_record_is_the_standings_line`) plus their
+    postseason series against the Celtics (p1 W, p2 L, p3 W, p4 W - 3-1) sum
+    to 56-30, with each component named."""
+    result = team_record(team_ctx, {"team": "Knicks", "season": S, "season_type_unstated": True})
+    assert result.data["wins"] == 56 and result.data["losses"] == 30
+    assert result.data["regular_season"] == {"wins": 53, "losses": 29}
+    assert result.data["postseason"] == {"wins": 3, "losses": 1}
+    assert "56-30" in result.answer
+    assert "53-29" in result.answer and "regular season" in result.answer
+    assert "3-1" in result.answer and "playoffs" in result.answer
+
+
+def test_team_record_combined_types_honors_opponent(team_ctx: TemplateContext) -> None:
+    """The combined reading applies the SAME narrowing to both season types -
+    here, an opponent. Knicks-vs-Celtics: g3 is their only regular-season
+    meeting (Knicks away, win - 1-0); the postseason series is p1 (home W),
+    p2 (home L), p3 (away W), p4 (away W) - 3-1. Combined: 4-1."""
+    result = team_record(team_ctx, {"team": "Knicks", "opponent": "Celtics", "season": S, "season_type_unstated": True})
+    assert result.data["wins"] == 4 and result.data["losses"] == 1
+    assert result.data["regular_season"] == {"wins": 1, "losses": 0}
+    assert result.data["postseason"] == {"wins": 3, "losses": 1}
+
+
+def test_team_record_combined_types_refuses_game_n(team_ctx: TemplateContext) -> None:
+    """A game of a playoff series names one season type outright; combining
+    both at once has nothing for it to number."""
+    with pytest.raises(TemplateUnsupported):
+        team_record(team_ctx, {"team": "Knicks", "season_type_unstated": True, "game_n": 1})
+
+
+def test_team_record_combined_types_refuses_a_month_split(team_ctx: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        team_record(team_ctx, {"team": "Knicks", "season_type_unstated": True, "split": "month"})
+
+
 # ---------------- team_record: `until` beside `since` (step 3, K1) ----------------
 
 

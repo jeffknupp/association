@@ -338,9 +338,91 @@ def team_record(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     since = _team_record_since(slots.get("since"), career, season)
     until = _validated_until(slots.get("until"), since)
     game_n = slots.get("game_n")
+    if slots.get("season_type_unstated"):
+        # "including the playoffs"/"and the playoffs" - router._BOTH_SEASON_TYPES_WORDS
+        # reuses this flag (c9930ad, the player relation's own fix); checked
+        # before the game_n/season_type conflict below, which assumes one
+        # named type.
+        return _team_record_combined_types(con, team, opponent, split, month, venue, career, season, since, until, game_n, calendar_narrowing)
     if game_n and season_type != 3:
         raise TemplateUnsupported(f"game {game_n} names a game of a playoff series, and this is a regular season question")
     return _team_record_route(con, team, opponent, split, month, season_type, venue, career, season, since, until, game_n, calendar_narrowing)
+
+
+def _extract_note(answer: str | None) -> str:
+    """Any ``"Note: ..."`` tail a single-season-type answer already carries
+    (:func:`_standings_gap`/:func:`_game_list_gaps`, appended by the standings
+    and games-based paths in two different but both grep-able formats) -
+    reused rather than recomputed, so a combined answer does not silently
+    drop a real caveat (a short 2000 season, a 2001 postseason gap) that a
+    single-type question about the same span would have shown."""
+    if not answer:
+        return ""
+    idx = answer.find("Note:")
+    return answer[idx:].strip() if idx != -1 else ""
+
+
+def _team_record_combined_types(
+    con: duckdb.DuckDBPyConnection,
+    team: Entity,
+    opponent: Entity | None,
+    split: str | None,
+    month: int | None,
+    venue: str | None,
+    career: bool,
+    season: int | None,
+    since: int | None,
+    until: int | None,
+    game_n: Any,
+    calendar_narrowing: CalendarNarrowing | None,
+) -> TemplateResult:
+    """Both season types combined - "including the playoffs"/"and the
+    playoffs" (``season_type_unstated``, the flag ``game_log``'s "last N
+    games" reader and ``router.py``'s own both-season-types phrase reading
+    already carry - c9930ad, the player relation's fix; F116, ISSUES.md, is
+    the team relation's own case). Reads each season type through
+    ``team_record``'s own single-type routing (:func:`_team_record_route`),
+    so a combined answer reads from EXACTLY the source a single-type
+    question about the same span would (standings for a plain
+    regular-season career, the team-games relation otherwise), and sums the
+    two records - stating the combined total AND each type's own split,
+    never silently answering one type alone.
+
+    .. versionadded:: 4.4.0
+    """
+    if game_n:
+        raise TemplateUnsupported("a game of a playoff series needs one named season type, not both combined")
+    if split == "month":
+        raise TemplateUnsupported("a month split has no combined-season-type form yet")
+    regular = _team_record_route(con, team, opponent, None, month, 2, venue, career, season, since, until, None, calendar_narrowing)
+    playoff = _team_record_route(con, team, opponent, None, month, 3, venue, career, season, since, until, None, calendar_narrowing)
+    return _combined_record_result(team, opponent, venue, regular, playoff)
+
+
+def _combined_record_result(team: Entity, opponent: Entity | None, venue: str | None, regular: TemplateResult, playoff: TemplateResult) -> TemplateResult:
+    """The combined-season-types sentence: the total, and each type's own
+    split named beside it, so the two populations combined are stated rather
+    than left for the reader to guess which games were counted."""
+    r_wins, r_losses = int(regular.data.get("wins") or 0), int(regular.data.get("losses") or 0)
+    p_wins, p_losses = int(playoff.data.get("wins") or 0), int(playoff.data.get("losses") or 0)
+    wins, losses = r_wins + p_wins, r_losses + p_losses
+    against = f" against the {opponent.name}" if opponent else ""
+    where_played = f" {VENUE_WORDS[venue]}" if venue else ""
+    answer = f"The {team.name} are {_tally(wins, losses)} combined{where_played}{against}, including the playoffs ({_tally(r_wins, r_losses)} regular season, {_tally(p_wins, p_losses)} playoffs)."
+    notes = [n for n in (_extract_note(regular.answer), _extract_note(playoff.answer)) if n]
+    if notes:
+        answer += "\n  " + "\n  ".join(notes)
+    data = {
+        "team": team.name,
+        "opponent": opponent.name if opponent else None,
+        "venue": venue,
+        "wins": wins,
+        "losses": losses,
+        "win_pct": wins / (wins + losses) if wins + losses else 0.0,
+        "regular_season": {"wins": r_wins, "losses": r_losses},
+        "postseason": {"wins": p_wins, "losses": p_losses},
+    }
+    return TemplateResult(data=data, answer=answer)
 
 
 def _team_record_route(

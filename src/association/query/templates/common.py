@@ -384,10 +384,15 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # ISSUES.md - "Knicks record by month 2024 2025"). `since`/`until` (a
     # since-bounded, optionally until-bounded career, the same `_Span` shape a
     # whole one already is) and `game_n` (one game of each playoff series) are
-    # honored too (step 3, team cells / K1). See
+    # honored too (step 3, team cells / K1). `season_type_unstated` ("including
+    # the playoffs"/"and the playoffs", c9930ad's flag on the player relation)
+    # is honored by combining both types (`_team_record_combined_types`, F116,
+    # ISSUES.md) rather than silently answering one - "warriors all-time
+    # record including playoff record at away" now reads the road record from
+    # both, stated separately and summed. See
     # TEAM_RELATION_SCOPING_EXCLUDED["team_record"] for why `date` and `order`
     # still are not here.
-    "team_record": _team_relation_scoping("team_record", "split"),
+    "team_record": _team_relation_scoping("team_record", "split", "season_type_unstated"),
     # Honored for the record metrics, from the standings' own home/road
     # strings, or - for `since`, optionally `until`-bounded (step 3, K1) - a
     # tally of the relation's own wins and losses grouped by team (step 3,
