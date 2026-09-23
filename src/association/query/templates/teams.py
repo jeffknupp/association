@@ -15,6 +15,7 @@ from association.nba.coverage import unavailable
 from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
 
+from ..calendar import CalendarNarrowing, parse_situation
 from ..conditions import _MONTH_NAMES, _season_month_order, _table
 from ..entities import Entity
 from ..team_games import TeamNarrowed
@@ -49,6 +50,7 @@ from .common import (
     _slot_season,
     _span_of,
     _team_span_clause,
+    _validated_until,
 )
 
 # Conference and division words. The warehouse holds no membership for either:
@@ -180,22 +182,37 @@ def _team_record_month(situation: Any) -> int | None:
     return [name.lower() for name in _MONTH_NAMES].index(match.group(1).lower()) + 1
 
 
-def _team_record_month_and_split(split: Any, situation: Any, limit: Any) -> tuple[str | None, int | None]:
-    """The validated ``split`` and calendar ``month`` a question narrows to -
-    or the refusal for a ``split`` that is not "month", a ``situation`` naming
-    no month, or a bare ``limit`` with neither. Pulled out of ``team_record``
-    itself so that function reads as one linear sequence of steps rather than
-    growing a branch for each of the three; called with the slots themselves
-    (``slots.get("split")`` and so on), not the whole dict, so team_record's
-    own source still names every slot it honors -
-    test_every_template_honoring_a_scope_slot_actually_reads_it checks that
-    literally."""
+def _team_record_month_and_split(split: Any, situation: Any, limit: Any) -> tuple[str | None, int | None, CalendarNarrowing | None]:
+    """The validated ``split``, the calendar ``month`` a question narrows to,
+    and - step 3, K1 - the fuller calendar narrowing (a weekday, a fixed
+    holiday, or "since <month day>") ``situation`` names when it is not a bare
+    month. Or the refusal for a ``split`` that is not "month", a ``situation``
+    naming no calendar narrowing at all, a non-month narrowing that combines
+    with a month split (a table already broken out by every month has no
+    further one-weekday-or-holiday reading built), or a bare ``limit`` with
+    none of the three. Pulled out of ``team_record`` itself so that function
+    reads as one linear sequence of steps rather than growing a branch for
+    each of these; called with the slots themselves (``slots.get("split")``
+    and so on), not the whole dict, so team_record's own source still names
+    every slot it honors - test_every_template_honoring_a_scope_slot_actually_reads_it
+    checks that literally.
+
+    .. versionchanged:: 4.4.0
+       Reads the fuller calendar narrowing too (step 3, K1), not only a bare
+       month - "the Knicks' record on Christmas" and "... on Saturdays" now
+       answer, where before only "... in October" did.
+    """
     if split is not None and split != "month":
         raise TemplateUnsupported(f"no split named {split!r}")
     month = _team_record_month(situation)
+    narrowing = None
     if situation and month is None:
-        raise TemplateUnsupported(f"no calendar month narrowing in situation {situation!r}")
-    if limit and split is None and month is None:
+        narrowing = parse_situation(situation)
+        if narrowing is None:
+            raise TemplateUnsupported(f'no calendar narrowing in situation {situation!r} - a weekday, a month, a holiday or "since <day>" is read; an age, a conference or a division is not')
+        if split == "month":
+            raise TemplateUnsupported("a month split already covers every month; narrowing it further to one weekday or holiday is not built")
+    if limit and split is None and month is None and narrowing is None:
         # "how did they do in their last 10 games?" is a game_log question -
         # standings only has the full-season record, and answering with it
         # under a "last 10" question is a silent substitution. game_log already
@@ -203,10 +220,36 @@ def _team_record_month_and_split(split: Any, situation: Any, limit: Any) -> tupl
         # this corpus, a month narrowing or a by-month split never carries a
         # real limit of its own - the router fills `limit` with a default
         # (commonly 12, one slot per month) whether or not the question named
-        # one - so only a bare limit, with neither of those, is read as "last
+        # one - so only a bare limit, with none of the three, is read as "last
         # N games".
         raise TemplateUnsupported("a record over a limited set of games is a game_log question")
-    return split, month
+    return split, month, narrowing
+
+
+def _span_phrase(since: int | None, until: int | None) -> str:
+    """ " since 2022"" or, once ``until`` bounds it (step 3, K1), " from 2011
+    through 2019"" - or "" for no span at all. One place for the wording so
+    every reader of a since-bounded team record, leaderboard or head-to-head
+    says a bounded range the same way.
+
+    .. versionadded:: 4.4.0
+    """
+    if since is None:
+        return ""
+    return f" from {since} through {until}" if until is not None else f" since {since}"
+
+
+def _calendar_phrase(month: int | None, narrowing: CalendarNarrowing | None) -> str:
+    """ " in October"" (the bare-month case ``team_record`` has always read) or
+    the fuller calendar label a general ``situation`` narrowing carries (step
+    3, K1: "on Saturdays", "on Christmas Day", "since January 31") - or "" for
+    neither.
+
+    .. versionadded:: 4.4.0
+    """
+    if narrowing is not None:
+        return f" {narrowing.label}"
+    return f" in {_MONTH_NAMES[month - 1]}" if month is not None else ""
 
 
 def _team_record_since(since: Any, career: bool, season: int | None) -> int | None:
@@ -262,16 +305,23 @@ def team_record(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        Honors ``since`` (a since-bounded career, read the same way
        :func:`_record_narrowed` reads a whole one) and ``game_n`` (one game of
        each playoff series) instead of refusing both (step 3, team cells,
-       ISSUES.md). Neither combines with ``split`` "month" yet - a month split
-       already has no ``since``-bounded or one-game-of-a-series form, so that
-       combination refuses rather than silently answering the plain month
-       split.
+       ISSUES.md).
+
+    .. versionchanged:: 4.4.0
+       Honors ``until`` beside ``since`` (step 3, K1): an inclusive last
+       season, so "best record from 2010-11 to 2018-19" names a bounded
+       range rather than an open-ended one. Honors a ``situation`` naming a
+       weekday, a fixed holiday or "since <month day>", not only a bare month
+       - "the Knicks' record on Christmas" now answers. A month split now
+       covers a ``since``/``until``-bounded span too, as one table per season
+       (:func:`_team_record_by_month_span`) - "Knicks record by month 2024
+       2025" (ISSUES.md).
     """
     con = ctx.con
     refused = _conference_refusal(slots)
     if refused is not None:
         return refused
-    split, month = _team_record_month_and_split(slots.get("split"), slots.get("situation"), slots.get("limit"))
+    split, month, calendar_narrowing = _team_record_month_and_split(slots.get("split"), slots.get("situation"), slots.get("limit"))
 
     teams = _team_record_teams(con, slots, slots.get("opponent"))
     if isinstance(teams, TemplateResult):
@@ -286,10 +336,11 @@ def team_record(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         # "all-time ... in 2020" is either a slip or a range this cannot read.
         raise TemplateUnsupported("a career span and a single season at once")
     since = _team_record_since(slots.get("since"), career, season)
+    until = _validated_until(slots.get("until"), since)
     game_n = slots.get("game_n")
     if game_n and season_type != 3:
         raise TemplateUnsupported(f"game {game_n} names a game of a playoff series, and this is a regular season question")
-    return _team_record_route(con, team, opponent, split, month, season_type, venue, career, season, since, game_n)
+    return _team_record_route(con, team, opponent, split, month, season_type, venue, career, season, since, until, game_n, calendar_narrowing)
 
 
 def _team_record_route(
@@ -303,7 +354,9 @@ def _team_record_route(
     career: bool,
     season: int | None,
     since: int | None,
+    until: int | None,
     game_n: Any,
+    calendar_narrowing: CalendarNarrowing | None,
 ) -> TemplateResult:
     """``team_record``'s last step: which of the four answer shapes the
     settled slots pick out - pulled out of ``team_record`` itself so that
@@ -312,18 +365,24 @@ def _team_record_route(
     reading above it.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.4.0
+       Routes a month split with ``since`` set to :func:`_team_record_by_month_span`
+       (step 3, K1) instead of refusing it.
     """
     if split == "month":
-        if since is not None or game_n:
-            raise TemplateUnsupported("a month split has no since-bounded or one-game-of-a-series form yet")
+        if game_n:
+            raise TemplateUnsupported("a month split has no one-game-of-a-series form yet")
+        if since is not None:
+            return _team_record_by_month_span(con, team, opponent, season_type, venue, since, until)
         return _team_record_by_month(con, team, opponent, None if career else (season or current_season()), season_type, venue)
     if since is not None:
-        return _games_record(con, team, opponent, None, season_type, venue, month, since=since, game_n=game_n)
-    if opponent is None and season_type == 2 and month is None and not game_n:
+        return _games_record(con, team, opponent, None, season_type, venue, month, since=since, until=until, game_n=game_n, calendar_narrowing=calendar_narrowing)
+    if opponent is None and season_type == 2 and month is None and not game_n and calendar_narrowing is None:
         if career:
             return _standings_career(con, team, venue)
         return _standings_season(con, team, season or current_season(), venue)
-    return _games_record(con, team, opponent, None if career else (season or current_season()), season_type, venue, month, game_n=game_n)
+    return _games_record(con, team, opponent, None if career else (season or current_season()), season_type, venue, month, game_n=game_n, calendar_narrowing=calendar_narrowing)
 
 
 def _team_record_teams(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], opponent_text: Any) -> tuple[Entity, Entity | None] | TemplateResult:
@@ -568,7 +627,7 @@ def _standings_career_venue(con: duckdb.DuckDBPyConnection, team: Entity, venue:
     return TemplateResult(data=data, answer=f"{answer} {gap}" if gap else answer)
 
 
-def _record_narrowed(team: Entity, season: int | None, season_type: int, *, since: int | None = None) -> TeamNarrowed:
+def _record_narrowed(team: Entity, season: int | None, season_type: int, *, since: int | None = None, until: int | None = None) -> TeamNarrowed:
     """``team``'s games for a win-loss RECORD tally, over
     :class:`association.query.team_games.TeamNarrowed`:
     :func:`association.query.team_metrics.games_scope`'s own clause (which
@@ -583,9 +642,13 @@ def _record_narrowed(team: Entity, season: int | None, season_type: int, *, sinc
        ``games_scope`` only ever means "one season" or "every season", with no
        notion of a starting point. The NBA Cup final is still excluded from a
        regular-season record either way.
+
+    .. versionchanged:: 4.4.0
+       Honors ``until`` beside ``since`` (step 3, K1): the inclusive last
+       season of a bounded range - "best record from 2010-11 to 2018-19".
     """
     if since is not None:
-        span = _span_of(None, None, season_type, "games", since=since)
+        span = _span_of(None, None, season_type, "games", since=since, until=until)
         clause, params = _team_span_clause(span)
         base = ["tg.team_id = ?", "tg.season_type = ?", clause]
         if season_type == 2:
@@ -595,7 +658,7 @@ def _record_narrowed(team: Entity, season: int | None, season_type: int, *, sinc
     return TeamNarrowed(base=["tg.team_id = ?", scope], base_params=[team.id, *params], team=team)
 
 
-def _game_list_gaps(con: duckdb.DuckDBPyConnection, team: Entity, season_type: int, season: int | None, *, since: int | None = None) -> str | None:
+def _game_list_gaps(con: duckdb.DuckDBPyConnection, team: Entity, season_type: int, season: int | None, *, since: int | None = None, until: int | None = None) -> str | None:
     """Seasons where the games tallied for a team do not number its games in
     team_season_stats - the check that makes a tally from ``games`` safe to
     state. Measured: the 2000 and 2001 postseasons hold 15 of the Lakers' 23
@@ -607,21 +670,26 @@ def _game_list_gaps(con: duckdb.DuckDBPyConnection, team: Entity, season_type: i
        Honors ``since`` (step 3, team cells), the same way :func:`_record_narrowed`
        does, so a since-bounded record's gap note only names seasons the
        question actually covers.
+
+    .. versionchanged:: 4.4.0
+       Honors ``until`` beside ``since`` (step 3, K1), bounding the gap check
+       to the same range the record itself covers.
     """
-    subquery, sub_params = team_games_subquery(_record_narrowed(team, season, season_type, since=since))
+    subquery, sub_params = team_games_subquery(_record_narrowed(team, season, season_type, since=since, until=until))
     by_season = "year(eastern_date)" if season_type == 3 else "season"
     season_filter = "" if season is None else "AND ts.season = ?"
     since_filter = "" if since is None else "AND ts.season >= ?"
+    until_filter = "" if until is None else "AND ts.season <= ?"
     floor = max(FIRST_FULL_REGULAR_SEASON, since) if since is not None else FIRST_FULL_REGULAR_SEASON
     rows = con.execute(
         f"""
 WITH tallied AS (SELECT {by_season} AS season, count(*) AS games FROM ({subquery}) t GROUP BY 1),
-totals AS (SELECT ts.season, ts.gamesPlayed AS games FROM team_season_stats ts WHERE ts.team_id = ? AND ts.season_type = ? {season_filter}{since_filter})
+totals AS (SELECT ts.season, ts.gamesPlayed AS games FROM team_season_stats ts WHERE ts.team_id = ? AND ts.season_type = ? {season_filter}{since_filter}{until_filter})
 SELECT coalesce(l.season, t.season) AS season, coalesce(l.games, 0), coalesce(t.games, 0)
 FROM tallied l FULL OUTER JOIN totals t ON t.season = l.season
 WHERE coalesce(l.season, t.season) >= ? AND coalesce(l.games, 0) <> coalesce(t.games, 0)
 ORDER BY 1""",
-        [*sub_params, team.id, season_type, *([season] if season is not None else []), *([since] if since is not None else []), floor],
+        [*sub_params, team.id, season_type, *([season] if season is not None else []), *([since] if since is not None else []), *([until] if until is not None else []), floor],
     ).fetchall()
     if not rows:
         return None
@@ -631,7 +699,17 @@ ORDER BY 1""",
 
 
 def _no_team_games(
-    con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity | None, season: int | None, season_type: int, month: int | None = None, *, since: int | None = None, game_n: Any = None
+    con: duckdb.DuckDBPyConnection,
+    team: Entity,
+    opponent: Entity | None,
+    season: int | None,
+    season_type: int,
+    month: int | None = None,
+    *,
+    since: int | None = None,
+    until: int | None = None,
+    game_n: Any = None,
+    calendar_narrowing: CalendarNarrowing | None = None,
 ) -> str:
     """Why a tally found nothing. Three different facts, and three sentences:
     the warehouse has no games that season at all (it holds no 1988
@@ -643,10 +721,14 @@ def _no_team_games(
        Names ``since`` and ``game_n`` too (step 3, team cells), so a
        since-bounded or one-game-of-a-series record that finds nothing says
        which narrowing emptied it rather than reading as "no games at all".
+
+    .. versionchanged:: 4.4.0
+       Names ``until`` beside ``since`` and the fuller calendar narrowing
+       beside a bare month (step 3, K1).
     """
     kind = "postseason" if season_type == 3 else "regular-season"
-    where = f" in {_MONTH_NAMES[month - 1]}" if month is not None else ""
-    since_phrase = f" since {since}" if since is not None else ""
+    where = _calendar_phrase(month, calendar_narrowing)
+    since_phrase = _span_phrase(since, until)
     game_n_phrase = f" in game {game_n} of {'the' if opponent is not None else 'each'} series" if game_n else ""
     if season is None:
         if opponent is None:
@@ -673,18 +755,25 @@ def _games_record(
     month: int | None = None,
     *,
     since: int | None = None,
+    until: int | None = None,
     game_n: Any = None,
+    calendar_narrowing: CalendarNarrowing | None = None,
 ) -> TemplateResult:
     """A record tallied from ``games``: against one team, or in a postseason,
-    for one season, since a season (``season`` None, ``since`` set) or
-    (``season`` and ``since`` both None) every season it holds, optionally
-    narrowed to one calendar month - ``standings`` has no game-level date to
-    filter a month from, so a month narrowing reaches this path even where
-    neither an opponent nor a postseason would have.
+    for one season, since a season (``season`` None, ``since`` set, optionally
+    ``until``-bounded) or (``season`` and ``since`` both None) every season it
+    holds, optionally narrowed to one calendar month or the fuller calendar
+    narrowing - ``standings`` has no game-level date to filter a month from,
+    so a calendar narrowing reaches this path even where neither an opponent
+    nor a postseason would have.
 
     .. versionchanged:: 4.4.0
        Honors ``since`` and ``game_n`` (step 3, team cells) - see
        :func:`_record_narrowed` and :func:`_games_record_games`.
+
+    .. versionchanged:: 4.4.0
+       Honors ``until`` beside ``since`` and a fuller ``calendar_narrowing``
+       beside a bare month (step 3, K1).
     """
     if season is not None:
         # _sources_for sends this path through the `games` floor, but a record
@@ -693,7 +782,7 @@ def _games_record(
         refused = unavailable(("games",), season, season_type)
         if refused is not None:
             return TemplateResult(data={"team": team.name, "season": season, "message": refused}, answer=refused)
-    games, narrowed = _games_record_games(con, team, opponent, season, season_type, month, since=since, game_n=game_n)
+    games, narrowed = _games_record_games(con, team, opponent, season, season_type, month, since=since, until=until, game_n=game_n, calendar_narrowing=calendar_narrowing)
     shown = [g for g in games if venue is None or g["venue"] == venue]
     wins = sum(1 for g in shown if g["won"])
     losses = len(shown) - wins
@@ -712,14 +801,17 @@ def _games_record(
     }
 
     if not games:
-        return TemplateResult(data={**data, "games": []}, answer=_no_team_games(con, team, opponent, season, season_type, month, since=since, game_n=game_n))
+        return TemplateResult(
+            data={**data, "games": []},
+            answer=_no_team_games(con, team, opponent, season, season_type, month, since=since, until=until, game_n=game_n, calendar_narrowing=calendar_narrowing),
+        )
 
-    answer = _games_record_answer(team, opponent, season, season_type, venue, games, shown, month, since=since, narrowed=narrowed)
+    answer = _games_record_answer(team, opponent, season, season_type, venue, games, shown, month, since=since, until=until, narrowed=narrowed)
     if opponent is not None and season_type == 2:
-        cup_text, cup_final = _games_record_cup_final(con, team, opponent, season, since=since)
+        cup_text, cup_final = _games_record_cup_final(con, team, opponent, season, since=since, until=until)
         answer += cup_text
         data["cup_final"] = cup_final
-    gap = _game_list_gaps(con, team, season_type, season, since=since)
+    gap = _game_list_gaps(con, team, season_type, season, since=since, until=until)
     if gap:
         answer += f"\n  {gap}"
     data["games"] = shown
@@ -727,12 +819,22 @@ def _games_record(
 
 
 def _games_record_games(
-    con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity | None, season: int | None, season_type: int, month: int | None = None, *, since: int | None = None, game_n: Any = None
+    con: duckdb.DuckDBPyConnection,
+    team: Entity,
+    opponent: Entity | None,
+    season: int | None,
+    season_type: int,
+    month: int | None = None,
+    *,
+    since: int | None = None,
+    until: int | None = None,
+    game_n: Any = None,
+    calendar_narrowing: CalendarNarrowing | None = None,
 ) -> tuple[list[dict[str, Any]], TeamNarrowed]:
-    """The team's games in scope, against ``opponent`` and/or in ``month`` if
-    named, oldest first - and the :class:`TeamNarrowed` they were read
-    through, so a caller can phrase what else narrowed them
-    (:meth:`TeamNarrowed.filters`) without rebuilding it.
+    """The team's games in scope, against ``opponent`` and/or in ``month`` (or
+    a fuller calendar narrowing) if named, oldest first - and the
+    :class:`TeamNarrowed` they were read through, so a caller can phrase what
+    else narrowed them (:meth:`TeamNarrowed.filters`) without rebuilding it.
 
     .. versionchanged:: 4.4.0
        Honors ``since`` (through :func:`_record_narrowed`) and ``game_n``
@@ -740,8 +842,14 @@ def _games_record_games(
        :func:`association.query.templates.common.team_games` makes for every
        other team template - a series has games 1-7, and a regular season has
        nothing "game 4" names.
+
+    .. versionchanged:: 4.4.0
+       Honors ``until`` beside ``since`` and ``calendar_narrowing`` (step 3,
+       K1) via :meth:`association.query.team_games.TeamNarrowed.narrow_calendar` -
+       a weekday, a fixed holiday, or "since <month day>", where ``month`` is
+       not a bare-month narrowing.
     """
-    narrowed = _record_narrowed(team, season, season_type, since=since)
+    narrowed = _record_narrowed(team, season, season_type, since=since, until=until)
     if opponent is not None:
         narrowed.narrow("tg.opponent_id = ?", opponent.id)
         # Read by TeamNarrowed.filters()' own series_game phrase ("of THE
@@ -750,6 +858,8 @@ def _games_record_games(
         narrowed.opponent = opponent
     if month is not None:
         narrowed.narrow("month(tg.eastern_date) = ?", month)
+    if calendar_narrowing is not None:
+        narrowed.narrow_calendar(calendar_narrowing)
     if game_n:
         if season_type != 3:
             raise TemplateUnsupported(f"game {game_n} names a game of a playoff series, and this is a regular-season question")
@@ -760,15 +870,18 @@ def _games_record_games(
     return [{"date": str(r[0]), "venue": "neutral" if r[2] else r[1], "team_score": r[3], "opponent_score": r[4], "won": bool(r[5]), "opponent": r[6]} for r in rows], narrowed
 
 
-def _games_record_span_text(season: int | None, season_type: int, since: int | None) -> str:
+def _games_record_span_text(season: int | None, season_type: int, since: int | None, until: int | None = None) -> str:
     """The span phrase in ``_games_record_answer``'s lead sentence - pulled out
     so that function stays inside the complexity gate. Four shapes: one named
-    season, a since-bounded range (step 3, team cells), every postseason on
-    record, or every regular season on record."""
+    season, a since-bounded range - open-ended or ``until``-bounded (step 3,
+    K1's "2011-2019" wording) - every postseason on record, or every regular
+    season on record."""
     if season is not None:
         return f"the {_period(season, season_type)}"
     if since is not None:
-        return f"the {'postseasons' if season_type == 3 else 'regular seasons'} since {since}"
+        kind = "postseasons" if season_type == 3 else "regular seasons"
+        bound = f"from {since} through {until}" if until is not None else f"since {since}"
+        return f"the {kind} {bound}"
     if season_type == 3:
         return "every postseason from 1989 through the latest - the warehouse's game list starts with the 1989 playoffs"
     return f"the regular seasons from {_season_name(FIRST_FULL_REGULAR_SEASON)} on - the first the warehouse holds every game of"
@@ -785,6 +898,7 @@ def _games_record_answer(
     month: int | None = None,
     *,
     since: int | None = None,
+    until: int | None = None,
     narrowed: TeamNarrowed | None = None,
 ) -> str:
     """The tallied record, its home/away split and, for one season against one
@@ -797,12 +911,24 @@ def _games_record_answer(
        the same idiom :func:`association.query.templates.games.team_quarter_points`
        uses, rather than a hand-written phrase of its own: the game-of-series
        wording lives in one place, :class:`TeamNarrowed` itself.
+
+    .. versionchanged:: 4.4.0
+       Names ``until`` beside ``since`` (step 3, K1). A fuller calendar
+       narrowing beside a bare month is named too, but through ``narrowed``
+       (its own ``.calendar``, via ``narrowed.filters()`` below) rather than a
+       parameter here - it is already set on ``narrowed`` by
+       :func:`_games_record_games` before this is called.
     """
     wins = sum(1 for g in shown if g["won"])
     losses = len(shown) - wins
-    span = _games_record_span_text(season, season_type, since)
+    span = _games_record_span_text(season, season_type, since, until)
     against = f" against the {opponent.name}" if opponent else ""
     where_played = f" {VENUE_WORDS[venue]}" if venue else ""
+    # A bare month has no cell on TeamNarrowed itself (see _games_record_games),
+    # so it is worded here; a fuller calendar narrowing DOES (`.calendar`, set
+    # by `narrow_calendar`), and `narrowed.filters()` below already renders it
+    # - together with game_n - so it is not repeated here. `month` and
+    # `calendar_narrowing` are never both set (`_team_record_month_and_split`).
     month_phrase = f" in {_MONTH_NAMES[month - 1]}" if month is not None else ""
     game_n_phrase = narrowed.filters(opponent=False) if narrowed is not None else ""
     verb = "went" if season is not None else "are"
@@ -822,6 +948,34 @@ def _games_record_answer(
     return answer
 
 
+def _team_record_month_table(team: Entity, opponent: Entity | None, venue: str | None, span_text: str, season: int | None, shown: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
+    """The record-by-month table for one already venue-filtered set of games,
+    headed with ``span_text`` - shared by :func:`_team_record_by_month` and
+    :func:`_team_record_by_month_span` (step 3, K1's since/until-bounded
+    reading), so the two say a month row identically. ``season`` is carried
+    into each row of the returned ``months_data`` (``None`` for a whole-history
+    or plain career table) so a since/until-bounded caller's several tables
+    are still tellable apart in the structured data, not only the headings.
+
+    .. versionadded:: 4.4.0
+    """
+    by_month: dict[int, list[dict[str, Any]]] = {}
+    for g in shown:
+        by_month.setdefault(int(g["date"][5:7]), []).append(g)
+    rows: list[tuple[str, list[str]]] = []
+    months_data: list[dict[str, Any]] = []
+    for month in sorted(by_month, key=_season_month_order):
+        entries = by_month[month]
+        wins = sum(1 for g in entries if g["won"])
+        losses = len(entries) - wins
+        rows.append((_MONTH_NAMES[month - 1], [str(len(entries)), f"{wins}-{losses}"]))
+        months_data.append({"season": season, "month": _MONTH_NAMES[month - 1], "games": len(entries), "wins": wins, "losses": losses})
+    against = f" against the {opponent.name}" if opponent else ""
+    where_played = f" {VENUE_WORDS[venue]}" if venue else ""
+    title = f"The {team.name}, record by month{where_played}{against}, {span_text}:"
+    return _table(title, ["G", "W-L"], rows), months_data
+
+
 def _team_record_by_month(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity | None, season: int | None, season_type: int, venue: str | None) -> TemplateResult:
     """team_record's answer for ``split == "month"``: the team's record broken
     out by calendar month. ``standings`` has no game-level date to group a
@@ -839,29 +993,48 @@ def _team_record_by_month(con: duckdb.DuckDBPyConnection, team: Entity, opponent
     shown = [g for g in games if venue is None or g["venue"] == venue]
     if not shown:
         return TemplateResult(data={"team": team.name, "season": season, "months": []}, answer=_no_team_games(con, team, opponent, season, season_type))
-    by_month: dict[int, list[dict[str, Any]]] = {}
-    for g in shown:
-        by_month.setdefault(int(g["date"][5:7]), []).append(g)
-    rows: list[tuple[str, list[str]]] = []
-    months_data: list[dict[str, Any]] = []
-    for month in sorted(by_month, key=_season_month_order):
-        entries = by_month[month]
-        wins = sum(1 for g in entries if g["won"])
-        losses = len(entries) - wins
-        rows.append((_MONTH_NAMES[month - 1], [str(len(entries)), f"{wins}-{losses}"]))
-        months_data.append({"month": _MONTH_NAMES[month - 1], "games": len(entries), "wins": wins, "losses": losses})
     if season is not None:
         span = f"the {_period(season, season_type)}"
     elif season_type == 3:
         span = "every postseason from 1989 through the latest - the warehouse's game list starts with the 1989 playoffs"
     else:
         span = f"the regular seasons from {_season_name(FIRST_FULL_REGULAR_SEASON)} on - the first the warehouse holds every game of"
-    against = f" against the {opponent.name}" if opponent else ""
-    where_played = f" {VENUE_WORDS[venue]}" if venue else ""
-    title = f"The {team.name}, record by month{where_played}{against}, {span}:"
-    answer = _table(title, ["G", "W-L"], rows)
+    answer, months_data = _team_record_month_table(team, opponent, venue, span, season, shown)
     data = {"team": team.name, "season": season, "opponent": opponent.name if opponent else None, "venue": venue, "months": months_data}
     return TemplateResult(data=data, answer=answer)
+
+
+def _team_record_by_month_span(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity | None, season_type: int, venue: str | None, since: int, until: int | None) -> TemplateResult:
+    """team_record's by-month split honoring a ``since``/``until``-bounded
+    span (step 3, K1) - "Knicks record by month 2024 2025" (ISSUES.md), a
+    range the router files as ``since=2024, until=2025``. One table PER
+    SEASON, since a by-month split covering several seasons is still, within
+    each season, a table of at most twelve months: merging seasons into one
+    table would either double-count a calendar month across the years or need
+    a season column bolted onto its plain two-column shape, and the table
+    already used for one season (:func:`_team_record_month_table`) reads
+    cleanly headed by its own season instead.
+
+    .. versionadded:: 4.4.0
+    """
+    last = until if until is not None else current_season()
+    tables: list[str] = []
+    months_data: list[dict[str, Any]] = []
+    for season in range(since, last + 1):
+        if unavailable(("games",), season, season_type) is not None:
+            continue  # a season the games table cannot reach is skipped, not refused whole
+        games, _narrowed = _games_record_games(con, team, opponent, season, season_type)
+        shown = [g for g in games if venue is None or g["venue"] == venue]
+        if not shown:
+            continue
+        table, season_months = _team_record_month_table(team, opponent, venue, f"the {_period(season, season_type)}", season, shown)
+        tables.append(table)
+        months_data.extend(season_months)
+    if not tables:
+        message = _no_team_games(con, team, opponent, None, season_type, since=since, until=until)
+        return TemplateResult(data={"team": team.name, "months": []}, answer=message)
+    data = {"team": team.name, "opponent": opponent.name if opponent else None, "venue": venue, "months": months_data, "since": since, "until": until}
+    return TemplateResult(data=data, answer="\n\n".join(tables))
 
 
 def _games_record_split(games: list[dict[str, Any]]) -> str:
@@ -875,12 +1048,17 @@ def _games_record_split(games: list[dict[str, Any]]) -> str:
     return f"\n  {split}."
 
 
-def _games_record_cup_final(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity, season: int | None, *, since: int | None = None) -> tuple[str, list[dict[str, Any]]]:
+def _games_record_cup_final(
+    con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity, season: int | None, *, since: int | None = None, until: int | None = None
+) -> tuple[str, list[dict[str, Any]]]:
     """Any NBA Cup final the two teams met in, as sentences and as data.
 
     .. versionchanged:: 4.4.0
        Honors ``since`` (step 3, team cells), the same way ``season`` already
        narrowed this to one year.
+
+    .. versionchanged:: 4.4.0
+       Honors ``until`` beside ``since`` (step 3, K1).
     """
     # The NBA Cup final is a regular-season game that counts in no
     # standings, so it is not in the record above (_record_narrowed's
@@ -894,6 +1072,8 @@ def _games_record_cup_final(con: duckdb.DuckDBPyConnection, team: Entity, oppone
         narrowed.narrow("tg.season = ?", season)
     elif since is not None:
         narrowed.narrow("tg.season >= ?", since)
+        if until is not None:
+            narrowed.narrow("tg.season <= ?", until)
     sql, params = team_rows_sql(narrowed, "tg.eastern_date, tg.team_score, tg.opponent_score, tg.won", order="tg.eastern_date")
     cup = con.execute(sql, params).fetchall()
     text = "".join(f"\n  They also met in the NBA Cup final on {date}, which counts in no standings: {'won' if won else 'lost'} {own}-{theirs}." for date, own, theirs, won in cup)
@@ -1087,6 +1267,24 @@ def _venue_records(con: duckdb.DuckDBPyConnection, season: int, season_type: int
     return [TeamRecord(team=name, wins=int(w), losses=int(lost)) for name, w, lost in rows]
 
 
+def _team_leaderboard_span(slots: dict[str, Any], season: int, season_type: int) -> tuple[int | None, int | None, str]:
+    """team_leaderboard's ``since``/``until`` reading and the period phrase
+    they produce ("seasons since 2022", "seasons 2011-2019", or a single
+    season's own name) - pulled out of ``team_leaderboard`` itself so that
+    function stays inside the complexity gate, the same move
+    ``_team_record_month_and_split`` already makes for ``team_record``.
+
+    .. versionadded:: 4.4.0
+    """
+    since = slots.get("since")
+    since = since if isinstance(since, int) and since and not isinstance(since, bool) else None
+    if since is not None and isinstance(slots.get("season"), int) and slots["season"]:
+        raise TemplateUnsupported(f"since {since} and the {slots['season']} season at once")
+    until = _validated_until(slots.get("until"), since)
+    period = f"seasons {since}-{until}" if until is not None else (f"seasons since {since}" if since is not None else _period(season, season_type))
+    return since, until, period
+
+
 def team_leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     """Every team ranked by one metric from team_metrics.TEAM_METRICS - "which
     team scores the most points per game", "lowest defensive rating", "best
@@ -1107,6 +1305,11 @@ def team_leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
        Honors ``since`` for a record metric (step 3, C4b): "nba team with
        least playoff wins since 2022" (ISSUES.md) - see
        :func:`_team_leaderboard_values`.
+
+    .. versionchanged:: 4.4.0
+       Honors ``until`` beside ``since`` (step 3, K1): "best record from
+       2010-11 to 2018-19" now names a bounded range ("2011-2019") rather than
+       reading only its open-ended first half.
     """
     con = ctx.con
     refused = _conference_refusal(slots)
@@ -1117,16 +1320,12 @@ def team_leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     if key is None:
         raise TemplateUnsupported(f"no team metric for stat {stat!r}")
     metric = TEAM_METRICS[key]
-    since = slots.get("since")
-    since = since if isinstance(since, int) and since and not isinstance(since, bool) else None
-    if since is not None and isinstance(slots.get("season"), int) and slots["season"]:
-        raise TemplateUnsupported(f"since {since} and the {slots['season']} season at once")
     # `season` still settles to a real year even under `since` - unread by
     # _team_leaderboard_values' since-bounded path, and here only for the
     # named team's own-season name lookup below, which stays "now" either way.
     season = slots.get("season") or current_season()
     season_type = slots.get("season_type") or 2
-    period = f"seasons since {since}" if since is not None else _period(season, season_type)
+    since, until, period = _team_leaderboard_span(slots, season, season_type)
     rank_word = slots.get("rank") if slots.get("rank") in ("most", "fewest", "best", "worst") else None
     descending = descending_for(metric, rank_word)
     limit = _clamp_limit(slots.get("limit"), default=DEFAULT_TEAM_LEADERBOARD_LIMIT)
@@ -1136,7 +1335,7 @@ def team_leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     if isinstance(named, TemplateResult):
         return named
 
-    values_or_result = _team_leaderboard_values(con, key, metric, season, season_type, venue, period, since=since)
+    values_or_result = _team_leaderboard_values(con, key, metric, season, season_type, venue, period, since=since, until=until)
     if isinstance(values_or_result, TemplateResult):
         return values_or_result
     values, display = values_or_result
@@ -1160,10 +1359,11 @@ def _team_leaderboard_named(con: duckdb.DuckDBPyConnection, slots: dict[str, Any
     return None
 
 
-def _team_leaderboard_since_records(con: duckdb.DuckDBPyConnection, season_type: int, since: int) -> list[TeamRecord]:
+def _team_leaderboard_since_records(con: duckdb.DuckDBPyConnection, season_type: int, since: int, until: int | None = None) -> list[TeamRecord]:
     """Every team's win-loss record across the postseasons or regular seasons
-    from ``since`` on, tallied straight off the team-games relation and
-    grouped by team - the record metrics' since-bounded counterpart to
+    from ``since`` on (through ``until`` when it bounds the other end, step 3,
+    K1), tallied straight off the team-games relation and grouped by team -
+    the record metrics' since-bounded counterpart to
     :func:`team_metrics.record_table`, which only ever reads one season.
 
     Named by the team's CURRENT display name rather than a per-season one
@@ -1173,8 +1373,13 @@ def _team_leaderboard_since_records(con: duckdb.DuckDBPyConnection, season_type:
     current name is also the right one for all of it.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.4.0
+       Honors ``until`` (step 3, K1) - "best record from 2010-11 to 2018-19"
+       (F103): Spurs 509-213, ahead of Golden State (479-243) and Oklahoma
+       City (465-257).
     """
-    span = _span_of(None, None, season_type, "games", since=since)
+    span = _span_of(None, None, season_type, "games", since=since, until=until)
     clause, params = _team_span_clause(span)
     narrowed = TeamNarrowed(base=["tg.team_id IN (SELECT team_id FROM teams)", "tg.season_type = ?", clause], base_params=[season_type, *params])
     base, sub_params = team_games_subquery(narrowed)
@@ -1186,24 +1391,27 @@ def _team_leaderboard_since_records(con: duckdb.DuckDBPyConnection, season_type:
 
 
 def _team_leaderboard_values(
-    con: duckdb.DuckDBPyConnection, key: str, metric: TeamMetric, season: int, season_type: int, venue: str | None, period: str, since: int | None = None
+    con: duckdb.DuckDBPyConnection, key: str, metric: TeamMetric, season: int, season_type: int, venue: str | None, period: str, since: int | None = None, until: int | None = None
 ) -> tuple[dict[str, float], dict[str, str]] | TemplateResult:
     """team_leaderboard's per-team values and their display strings: the
     standings for a record metric (venue-split where asked, or a tally of the
-    relation across a ``since``-bounded span of seasons), team_metrics
-    otherwise - each with its own early-refusal path.
+    relation across a ``since``-bounded, optionally ``until``-bounded, span of
+    seasons), team_metrics otherwise - each with its own early-refusal path.
 
     .. versionchanged:: 4.4.0
        Honors ``since`` for a record metric (step 3, C4b) - "nba team with
        least playoff wins since 2022" (ISSUES.md) used to refuse for want of
        it. Every other metric still refuses it: a season line (team_metrics'
        own numbers) has no way to sum across a span of seasons yet.
+
+    .. versionchanged:: 4.4.0
+       Honors ``until`` beside ``since`` for a record metric (step 3, K1).
     """
     if metric.expression is None:
         if since:
             if venue is not None:
                 raise TemplateUnsupported("a since-bounded record has no home/road split yet")
-            records: list[TeamRecord] | str = _team_leaderboard_since_records(con, season_type, since)
+            records: list[TeamRecord] | str = _team_leaderboard_since_records(con, season_type, since, until)
         else:
             records = _venue_records(con, season, season_type, venue) if venue else record_table(con, season, season_type)
         if isinstance(records, str):
@@ -1211,7 +1419,7 @@ def _team_leaderboard_values(
         values = {r.team: (r.win_pct if key == "record" else 1 - r.win_pct) for r in records}
         display = {r.team: _tally(r.wins, r.losses) for r in records}
         return values, display
-    if since:
+    if since or until:
         raise TemplateUnsupported(f"team season stats have no way to sum {metric.label} across a span of seasons yet")
     if venue is not None:
         # Team season stats have no home/road split; team_box_stats does,

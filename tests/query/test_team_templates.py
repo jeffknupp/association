@@ -717,14 +717,48 @@ def test_a_named_month_combines_with_venue(team_ctx: TemplateContext) -> None:
     assert "0-1 (.000) in December on the road" in answer
 
 
-def test_a_situation_naming_no_month_is_still_refused(team_ctx: TemplateContext) -> None:
-    """check_scope lets any `situation` value through now (see
-    HONORED_SCOPING); team_record itself still refuses everything but a bare
-    "in <month>" - #84's weekday/holiday/age/window narrowings stay refused."""
+def test_a_situation_naming_no_calendar_narrowing_is_still_refused(team_ctx: TemplateContext) -> None:
+    """check_scope lets any `situation` value through (see HONORED_SCOPING);
+    team_record itself now reads the full calendar narrowing (step 3, K1: a
+    weekday, a month, a fixed holiday, "since <day>" - not only a bare month,
+    #84's original scope), and refuses only what names none of those - an
+    age, a conference, "since returning"."""
     with pytest.raises(TemplateUnsupported):
-        team_record(team_ctx, {"team": "Knicks", "situation": "since january 31st"})
+        team_record(team_ctx, {"team": "Knicks", "situation": "18 year old"})
     with pytest.raises(TemplateUnsupported):
-        team_record(team_ctx, {"team": "Knicks", "situation": "on tuesdays"})
+        team_record(team_ctx, {"team": "Knicks", "situation": "since returning from injury"})
+
+
+def test_since_a_calendar_day_narrows_a_teams_record(team_ctx: TemplateContext) -> None:
+    """Step 3, K1: "since november 20th" is a calendar narrowing the player
+    relation already read (`_SINCE_DAY`) and the team relation now does too.
+    g1 (the Knicks' Nov 19 Eastern-date win over the Spurs) falls BEFORE the
+    cutoff and drops out; g2 (Dec 31 Eastern, a loss at San Antonio) and g3
+    (Dec 13 Eastern, a neutral-site Cup semifinal win at Boston) fall on or
+    after it and count. g4 (Dec 16 Eastern) also falls after the cutoff but
+    is the neutral-site NBA Cup final - correctly excluded from a
+    regular-season RECORD by `games_scope`, the same as the plain season
+    record - so the narrowed record is 1-1, not 2-1 or the season's 3-1."""
+    answer = team_record(team_ctx, {"team": "Knicks", "situation": "since november 20th"}).answer
+    assert "1-1" in answer
+    assert "since November 20" in answer
+    assert "away 0-1, neutral site 1-0" in answer
+
+
+def test_a_weekday_narrows_a_teams_record(team_ctx: TemplateContext) -> None:
+    """Step 3, K1: a weekday narrowing ("on Wednesdays") reads
+    `TeamNarrowed.narrow_calendar` too - not only a fixed calendar day. g1's
+    Eastern date is computed here rather than hardcoded, so the assertion
+    holds whatever `current_season()` happens to be when the suite runs. g1
+    (Nov 19 Eastern, a win) and g2 (Dec 31 Eastern, a loss) are exactly six
+    weeks apart and so share a weekday, giving 1-1 rather than the plain
+    month's 1-0 or the season's 3-1."""
+    from datetime import date
+
+    weekday = date(int(S) - 1, 11, 19).strftime("%A")
+    answer = team_record(team_ctx, {"team": "Knicks", "situation": f"on {weekday}s"}).answer
+    assert "1-1" in answer
+    assert f"on {weekday}s" in answer
 
 
 def test_split_by_month_breaks_the_record_out(team_ctx: TemplateContext) -> None:
@@ -734,8 +768,8 @@ def test_split_by_month_breaks_the_record_out(team_ctx: TemplateContext) -> None
     January never appears at all."""
     result = team_record(team_ctx, {"team": "Knicks", "split": "month"})
     assert result.data["months"] == [
-        {"month": "November", "games": 1, "wins": 1, "losses": 0},
-        {"month": "December", "games": 2, "wins": 1, "losses": 1},
+        {"season": S, "month": "November", "games": 1, "wins": 1, "losses": 0},
+        {"season": S, "month": "December", "games": 2, "wins": 1, "losses": 1},
     ]
     assert "January" not in (result.answer or "")
 
@@ -754,6 +788,48 @@ def test_a_default_limit_does_not_block_a_month_narrowing_or_split(team_ctx: Tem
     assert team_record(team_ctx, {"team": "Knicks", "split": "month", "limit": 12}).data["months"]
     with pytest.raises(TemplateUnsupported, match="game_log"):
         team_record(team_ctx, {"team": "Knicks", "limit": 12})
+
+
+# ---------------- team_record: `until` beside `since` (step 3, K1) ----------------
+
+
+def test_until_bounds_a_since_span_record(team_ctx: TemplateContext) -> None:
+    """F103's shape, on team_record: "meetings from 1991 to {S} postseason"
+    should read a BOUNDED range, not open-ended "since 1991". Across the
+    span, the Knicks are 3-1 in the {S} postseason against Boston (p1 W, p2
+    L, p3 W, p4 W) and lost the 1990-labeled/1991-played Finals game (old1) -
+    4-2 combined, said as "from 1991 through {S}"."""
+    answer = team_record(team_ctx, {"team": "Knicks", "opponent": "Celtics", "season_type": 3, "since": 1991, "until": S}).answer
+    assert "4-2" in answer
+    assert f"from 1991 through {S}" in answer
+
+
+def test_until_with_no_since_is_refused(team_ctx: TemplateContext) -> None:
+    """The slot contract: `until` only ever arrives beside `since` (a decade,
+    or a named range the router files as both at once) - a stray `until` with
+    no `since` is refused rather than silently read as nothing."""
+    with pytest.raises(TemplateUnsupported, match="until"):
+        team_record(team_ctx, {"team": "Knicks", "until": 2020})
+
+
+def test_until_before_since_is_refused(team_ctx: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported, match="until"):
+        team_record(team_ctx, {"team": "Knicks", "since": 2020, "until": 2010})
+
+
+def test_team_record_by_month_spans_since_until_with_one_table_per_season(team_ctx: TemplateContext) -> None:
+    """F095 (ISSUES.md): "Knicks record by month" over a since/until-bounded
+    span - here 1994 through the current season - reads one table PER SEASON
+    rather than merging distinct years' Novembers into one row or silently
+    keeping only the span's first year. 1994 holds one game (`ph`, January);
+    the current season holds the same November/December games the plain
+    by-month test above reads."""
+    result = team_record(team_ctx, {"team": "Knicks", "split": "month", "since": 1994, "until": S})
+    seasons = {row["season"] for row in result.data["months"]}
+    assert seasons == {1994, S}
+    assert result.answer.count("The New York Knicks, record by month") == 2
+    jan_1994 = next(row for row in result.data["months"] if row["season"] == 1994)
+    assert jan_1994 == {"season": 1994, "month": "January", "games": 1, "wins": 1, "losses": 0}
 
 
 # ---------------- team_leaderboard: `since` (step 3, C4b) ----------------
@@ -791,6 +867,27 @@ def test_a_leaderboard_since_refuses_a_rate_metric(team_ctx: TemplateContext) ->
 def test_a_leaderboard_since_refuses_a_venue_split(team_ctx: TemplateContext) -> None:
     with pytest.raises(TemplateUnsupported):
         team_leaderboard(team_ctx, {"stat": "record", "season_type": 3, "since": 1991, "venue": "home"})
+
+
+# ---------------- team_leaderboard: `until` beside `since` (step 3, K1) ----------------
+
+
+def test_a_leaderboard_until_bounds_the_since_span(team_ctx: TemplateContext) -> None:
+    """F103's shape: "best playoff record from 1991 to {S}" reads a BOUNDED
+    range. Narrowed to `until=1991` alone the span holds only the 1991
+    Finals game (`old1`), where the open-ended `since=1991` test above also
+    picks up "php" (1994) and this season's series - so the Celtics, who won
+    that single 1991 game, lead 1.000 and the Knicks are winless, the mirror
+    image of the open-ended ranking."""
+    result = team_leaderboard(team_ctx, {"stat": "record", "season_type": 3, "since": 1991, "until": 1991})
+    assert "seasons 1991-1991" in (result.answer or "")
+    teams = {t["team"]: t["display"] for t in result.data["teams"]}
+    assert teams == {"New York Knicks": "0-1 (.000)", "Boston Celtics": "1-0 (1.000)"}
+
+
+def test_a_leaderboard_until_with_no_since_is_refused(team_ctx: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported, match="until"):
+        team_leaderboard(team_ctx, {"stat": "record", "season_type": 3, "until": 1991})
 
 
 # ---------------- team_quarter_points: the team-games relation (step 3, C4b) ----------------
@@ -886,6 +983,28 @@ def test_a_quarter_points_since_spans_more_than_one_season(tqp_ctx: TemplateCont
     assert len(result.data["games"]) == 5
     assert result.data["total"] == 130
     assert f"since {S - 1}" in (result.answer or "")
+
+
+def test_a_quarter_points_until_bounds_the_since_span(tqp_ctx: TemplateContext) -> None:
+    """Step 3, K1: "until" reaches team_quarter_points "for free" through
+    `scoped_team` - the same shared step `since` already reaches through.
+    Bounded to season {S-1} alone (`since=until={S-1}`), only d1 (Q1 40)
+    counts; the open-ended since-only test above also picks up all four
+    season-{S} games."""
+    result = team_quarter_points(tqp_ctx, {"team": "Knicks", "period": 1, "since": S - 1, "until": S - 1})
+    assert len(result.data["games"]) == 1
+    assert result.data["total"] == 40
+    assert f"from {S - 1} through {S - 1}" in (result.answer or "")
+
+
+def test_a_quarter_points_situation_narrows_by_calendar_month(tqp_ctx: TemplateContext) -> None:
+    """Step 3, K1: `situation` reaches team_quarter_points through the same
+    shared `team_games` step every other team template narrows by it -
+    "november" keeps only e1 (Q1 30), the season's other three games (e2 in
+    December, e3 in January, e4 in February) falling out."""
+    result = team_quarter_points(tqp_ctx, {"team": "Knicks", "period": 1, "season": S, "situation": "in november"})
+    assert [g["points"] for g in result.data["games"]] == [30]
+    assert "in November" in (result.answer or "")
 
 
 def test_a_quarter_points_opponent_and_venue_compose(tqp_ctx: TemplateContext) -> None:

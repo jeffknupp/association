@@ -31,8 +31,11 @@ def test_team_templates_declare_scoping_through_the_shared_helper() -> None:
     """
     # (intent, extra cells that are the template's own rather than the
     # relation's - see each HONORED_SCOPING entry's own comment for why).
+    # `situation` moved from `team_record`'s own extra into `TEAM_RELATION_SCOPING`
+    # itself (step 3, K1): every team template now honors it through the base
+    # set, `team_record` included, so it is no longer listed as its own here.
     on_the_relation = {
-        "team_record": {"situation", "split"},
+        "team_record": {"split"},
         "team_leaderboard": set(),
         "head_to_head": set(),
         "team_quarter_points": set(),
@@ -50,7 +53,7 @@ def test_team_relation_scoping_helper_matches_the_declared_dict() -> None:
     HONORED_SCOPING entry for a template on this relation - proven by
     reconstructing each one from the helper directly, the way the test above
     checks the dict but this checks the FUNCTION agrees with itself."""
-    assert _team_relation_scoping("team_record", "situation", "split") == HONORED_SCOPING["team_record"]
+    assert _team_relation_scoping("team_record", "split") == HONORED_SCOPING["team_record"]
     assert _team_relation_scoping("team_leaderboard") == HONORED_SCOPING["team_leaderboard"]
     assert _team_relation_scoping("head_to_head") == HONORED_SCOPING["head_to_head"]
     assert _team_relation_scoping("team_quarter_points") == HONORED_SCOPING["team_quarter_points"]

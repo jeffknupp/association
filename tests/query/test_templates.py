@@ -2250,12 +2250,26 @@ def test_team_record_since_conflicts_with_career(team_cells_con: TemplateContext
         team_record(team_cells_con, {"team": "Celtics", "since": _TC_S1, "span": "career"})
 
 
-def test_team_record_since_does_not_silently_answer_a_month_split(team_cells_con: TemplateContext) -> None:
-    """A month split has no since-bounded form yet - refusing beats silently
-    answering the plain month split instead, the substitution this whole
-    project keeps guarding against."""
+def test_team_record_since_answers_a_month_split_with_one_table_per_season(team_cells_con: TemplateContext) -> None:
+    """Step 3, K1 (F095, ISSUES.md - "Knicks record by month 2024 2025"): a
+    month split with `since` set now reads one table PER SEASON in the span
+    rather than refusing outright. Every Celtics game in this fixture is in
+    November: {S-1} holds one (r3, a win) and {S} holds two (r4, r5, both
+    wins) - two separate tables, not a single row summing three."""
+    result = team_record(team_cells_con, {"team": "Celtics", "since": _TC_S1, "split": "month"})
+    assert result.data["months"] == [
+        {"season": _TC_S1, "month": "November", "games": 1, "wins": 1, "losses": 0},
+        {"season": _TC_S, "month": "November", "games": 2, "wins": 2, "losses": 0},
+    ]
+    assert result.answer.count("The Boston Celtics, record by month") == 2
+
+
+def test_team_record_since_month_split_refuses_game_n(team_cells_con: TemplateContext) -> None:
+    """`game_n` still has no month-split form - the one combination step 3, K1
+    leaves refused, since a series-game number and a whole-season table of
+    months answer two different shapes of question."""
     with pytest.raises(TemplateUnsupported):
-        team_record(team_cells_con, {"team": "Celtics", "since": _TC_S1, "split": "month"})
+        team_record(team_cells_con, {"team": "Celtics", "since": _TC_S1, "split": "month", "game_n": 1})
 
 
 def test_head_to_head_honors_since_over_every_meeting_in_the_span(team_cells_con: TemplateContext) -> None:
@@ -2264,6 +2278,20 @@ def test_head_to_head_honors_since_over_every_meeting_in_the_span(team_cells_con
     result = head_to_head(team_cells_con, {"teams": ["Celtics", "Knicks"], "since": _TC_S1})
     assert result.data["games"] == 2 and result.data["wins"] == {"Boston Celtics": 2, "New York Knicks": 0}
     assert result.answer == f"The Boston Celtics and the New York Knicks have met 2 times since {_TC_S1} ({_TC_S1}-{_TC_S} regular seasons); the Boston Celtics lead the all-time series 2-0."
+
+
+def test_head_to_head_honors_until_bounding_the_since_span(team_cells_con: TemplateContext) -> None:
+    """Step 3, K1: "Celtics vs Knicks from {S-2} to {S-1}" reads a BOUNDED
+    range - r1 ({S-2}) and r3 ({S-1}) count, r4 ({S}) does not, unlike the
+    open-ended since-only test above, which also picks up r4."""
+    result = head_to_head(team_cells_con, {"teams": ["Celtics", "Knicks"], "since": _TC_S2, "until": _TC_S1})
+    assert result.data["games"] == 2 and result.data["wins"] == {"Boston Celtics": 2, "New York Knicks": 0}
+    assert f"from {_TC_S2} through {_TC_S1}" in (result.answer or "")
+
+
+def test_head_to_head_until_with_no_since_is_refused(team_cells_con: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported, match="until"):
+        head_to_head(team_cells_con, {"teams": ["Celtics", "Knicks"], "until": _TC_S1})
 
 
 def test_head_to_head_honors_career_over_every_meeting_on_record(team_cells_con: TemplateContext) -> None:

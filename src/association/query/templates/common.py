@@ -120,11 +120,18 @@ SEASON_TYPE_NAMES = {1: "preseason", 2: "regular season", 3: "postseason"}
 # templates that honor it and refused by the rest applies whether the slot
 # widens or narrows. Only `game_log` can ever see it - the router sets it for
 # no other intent - so it is refused everywhere else only in principle.
+# `until` (step 3, K1) is the inclusive LAST season of a range whose first the
+# router already files as `since` ("2019-20 to 2023-24", a decade) - never
+# alone, so a template honors it only by honoring `since` and reading `until`
+# beside it (`_span_of`/`_validated_until`); one not wired to `until` at all
+# would otherwise silently read only the range's first half.
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 """A ``date`` slot worth reading: the router's calendar form, ``YYYY-MM-DD``."""
 
 
-SCOPING_SLOTS = frozenset({"order", "date", "opponent", "venue", "span", "without", "round", "split", "since", "below", "above", "game_n", "season_n", "situation", "rate", "season_type_unstated"})
+SCOPING_SLOTS = frozenset(
+    {"order", "date", "opponent", "venue", "span", "without", "round", "split", "since", "until", "below", "above", "game_n", "season_n", "situation", "rate", "season_type_unstated"}
+)
 
 
 # What the player-games relation narrows by, declared ONCE. Every template that
@@ -208,10 +215,24 @@ def _relation_scoping(intent: str, *extra: str) -> frozenset[str]:
 # cell the relation itself carries. A template that wants one leans on
 # `TeamNarrowed.narrow` directly, the way `_record_when_team_base` already
 # joins `team_box_stats` for its own stat threshold.
-TEAM_RELATION_SCOPING = frozenset({"opponent", "venue", "date", "since", "span", "order", "game_n"})
+#
+# `situation` and `until` are step 3, K1's two additions, bringing the team
+# relation to parity with the player one's own RELATION_SCOPING:
+# `situation` is a calendar narrowing - a weekday, a month, a fixed holiday,
+# or "since <month day>" within each game's own season - applied by
+# `team_games` itself via `TeamNarrowed.narrow_calendar`, the exact mirror of
+# `scoped_games`' own reading for the player relation; `until` is the
+# inclusive LAST season of a `since`-bounded range (a decade, "2019-20 to
+# 2023-24"), read the same way `since` already is (`_span_of`/`scoped_team`) -
+# never alone (`_validated_until`), so a template honors it only by also
+# honoring `since`.
+TEAM_RELATION_SCOPING = frozenset({"opponent", "venue", "date", "since", "until", "span", "order", "game_n", "situation"})
 """The scoping slots every template on the team-games relation honors.
 
 .. versionadded:: 4.4.0
+
+.. versionchanged:: 4.4.0
+   Adds ``situation`` and ``until`` (step 3, K1).
 """
 
 # The cells a template on the team relation does NOT honor, each with why. A
@@ -228,6 +249,10 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
         "span": "a leaderboard ranks one season's teams; a career total across every season is not built",
         "order": "a leaderboard ranks a season, not a window of games",
         "game_n": "a leaderboard ranks a season, not one game of a series",
+        # step 3, K1: a leaderboard ranks a season or a since/until-bounded
+        # span of them; narrowing that pool to one weekday, month or holiday
+        # within it is a different question from ranking the span itself.
+        "situation": "a leaderboard ranks a season, not the games in one weekday, month or holiday within it",
     },
     # A record for one game is a single result, which game_log already answers
     # directly, and a record over a limited number of recent games is the same
@@ -250,6 +275,12 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
     "head_to_head": {
         "order": "head_to_head counts every meeting in the span; picking the last N of them is not built",
         "game_n": "head_to_head counts every meeting; one numbered game of a series is not read here",
+        # step 3, K1 wires the calendar narrowing into team_quarter_points and
+        # team_record; head_to_head's own since/career span result
+        # (_head_to_head_span_result) does not read it yet - a weekday or
+        # holiday cut of an all-time series is a real question, just not this
+        # step's.
+        "situation": "head_to_head tallies every meeting in the span; narrowing that tally to one weekday, month or holiday within it is not built",
     },
 }
 """Per template, the team relation's slots it refuses, and why.
@@ -273,16 +304,17 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # season line; a career is summed from the season table.
     "player_stat": _relation_scoping("player_stat"),
     "player_history": frozenset({"span"}),
-    # The team relation's whole set (step 3, C4b): its games now come from
-    # `team_games` (`opponent`, `venue`, `date`, `game_n`, the `order`/`limit`
-    # window) and its team and span from `scoped_team` (`since`, `span`).
+    # The team relation's whole set (step 3, C4b / K1): its games now come
+    # from `team_games` (`opponent`, `venue`, `date`, `game_n`, `situation`,
+    # the `order`/`limit` window) and its team and span from `scoped_team`
+    # (`since`, `until`, `span`).
     "team_quarter_points": _team_relation_scoping("team_quarter_points"),
     "period_split": _relation_scoping("period_split"),
-    # `since` and `span` ("career") are honored (step 3, team cells): every
-    # meeting in a since-bounded or whole-career span, read the same way
-    # team_record's own `since`/`span` are. See
-    # TEAM_RELATION_SCOPING_EXCLUDED["head_to_head"] for why `order` and
-    # `game_n` are still not here.
+    # `since`/`until` and `span` ("career") are honored (step 3, team cells /
+    # K1): every meeting in a since-bounded, optionally until-bounded, or
+    # whole-career span, read the same way team_record's own `since`/`until`/
+    # `span` are. See TEAM_RELATION_SCOPING_EXCLUDED["head_to_head"] for why
+    # `order`, `game_n` and `situation` are still not here.
     "head_to_head": _team_relation_scoping("head_to_head"),
     # A shot read that takes its games from the relation by event id (step 3,
     # C5), the same shape as period_split: every relation slot is answerable -
@@ -340,26 +372,30 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     "streak": _relation_scoping("streak"),
     # The home/road split, the record against one team, and every season at
     # once - "Knicks home record" was answered with their overall 53-29.
-    # `situation` is honored only where it names a real calendar month
-    # ("in october") - team_record itself refuses every other value, the same
-    # way `check_scope` used to refuse all of them (see ISSUES.md #84: this
-    # does not touch the weekday/holiday/age/"since returning" narrowings that
-    # stay refused). `split` is honored only as "month" - a record broken out
-    # by calendar month, read from the same per-game date a month filter uses.
-    # `since` (a since-bounded career, the same `_Span` shape a whole one
-    # already is) and `game_n` (one game of each playoff series) are honored
-    # too (step 3, team cells) - neither combines with the month split yet,
-    # which the template itself refuses. See
+    # `situation` is now the full calendar narrowing TEAM_RELATION_SCOPING
+    # declares (step 3, K1: a weekday, a fixed holiday or "since <month day>",
+    # not only a bare month) - before it, team_record refused every value but
+    # a real calendar month ("in october", see ISSUES.md #84), and a
+    # non-month narrowing still refuses where it would combine with the month
+    # split (`_team_record_month_and_split`). `split` is honored only as
+    # "month" - a record broken out by calendar month, read from the same
+    # per-game date a calendar filter uses, and now also over a
+    # `since`/`until`-bounded span (step 3, K1: `_team_record_by_month_span`,
+    # ISSUES.md - "Knicks record by month 2024 2025"). `since`/`until` (a
+    # since-bounded, optionally until-bounded career, the same `_Span` shape a
+    # whole one already is) and `game_n` (one game of each playoff series) are
+    # honored too (step 3, team cells / K1). See
     # TEAM_RELATION_SCOPING_EXCLUDED["team_record"] for why `date` and `order`
     # still are not here.
-    "team_record": _team_relation_scoping("team_record", "situation", "split"),
+    "team_record": _team_relation_scoping("team_record", "split"),
     # Honored for the record metrics, from the standings' own home/road
-    # strings, or - for `since` - a tally of the relation's own wins and
-    # losses grouped by team (step 3, C4b); any other metric refuses `venue`,
-    # since team season stats carry no venue split at all, and every metric but
-    # a record one refuses `since`, since a season line has no way to sum
-    # across a span of seasons yet. See TEAM_RELATION_SCOPING_EXCLUDED
-    # ["team_leaderboard"] for the rest.
+    # strings, or - for `since`, optionally `until`-bounded (step 3, K1) - a
+    # tally of the relation's own wins and losses grouped by team (step 3,
+    # C4b); any other metric refuses `venue`, since team season stats carry no
+    # venue split at all, and every metric but a record one refuses
+    # `since`/`until`, since a season line has no way to sum across a span of
+    # seasons yet. See TEAM_RELATION_SCOPING_EXCLUDED["team_leaderboard"] for
+    # the rest, including `situation` (step 3, K1).
     "team_leaderboard": _team_relation_scoping("team_leaderboard"),
 }
 
@@ -1027,6 +1063,14 @@ class _Span:
     #: so the answer says "since 2022" and skips the box-score-floor note that
     #: a whole career carries (the question asked for no earlier season).
     since: int | None = None
+    #: The inclusive LAST season of a ``since``-bounded range ("2019-20 to
+    #: 2023-24", a decade) - None for an open-ended "since 2022", which still
+    #: reaches the present. Only ever set alongside ``since`` (see
+    #: :func:`_span_of`); the answer says "2019-2024" rather than "since 2019"
+    #: once it is.
+    #:
+    #: .. versionadded:: 4.4.0
+    until: int | None = None
     #: Which season of his career this one is, when the question named it that
     #: way ("his 18th season") - so the answer says so beside the year.
     ordinal: int | None = None
@@ -1042,13 +1086,19 @@ class _Span:
         return SEASON_TYPE_NAMES.get(self.season_type, "regular season")
 
     def clause(self, column: str) -> tuple[str, list[Any]]:
-        """SQL restricting ``column`` to these seasons, and its parameters."""
+        """SQL restricting ``column`` to these seasons, and its parameters.
+
+        .. versionchanged:: 4.4.0
+           Bounds the upper end too when ``until`` is set.
+        """
         if self.season is not None:
             return f"{column} = ?", [self.season]
         # The phantom is excluded by name, not left to the floor: 1993 is a full,
         # healthy-looking copy of 1994 (see coverage.Coverage.phantom), and a
         # career that counted it would list every 1993-94 game twice.
         excluded = f" AND {column} NOT IN ({', '.join('?' for _ in self.phantom)})" if self.phantom else ""
+        if self.until is not None:
+            return f"{column} BETWEEN ? AND ?{excluded}", [self.first, self.until, *self.phantom]
         return f"{column} >= ?{excluded}", [self.first, *self.phantom]
 
     def years(self, first: Any, last: Any) -> str:
@@ -1060,31 +1110,67 @@ class _Span:
 
     def during(self, first: Any = None, last: Any = None, whose: str = "his career") -> str:
         """The span as it ends a sentence: ``"in the 2026 regular season"`` or
-        ``"over his career (2019-2026 regular seasons)"``."""
+        ``"over his career (2019-2026 regular seasons)"``.
+
+        .. versionchanged:: 4.4.0
+           Says "from 2019 through 2024" rather than "since 2019" once
+           ``until`` bounds the range - the "2011-2019" wording (step 3, K1).
+        """
         if self.season is not None and self.ordinal is not None:
             return f"in his {ordinal_word(self.ordinal)} season ({_period(self.season, self.season_type)})"
         if self.season is not None:
             return f"in the {_period(self.season, self.season_type)}"
+        if self.since is not None and self.until is not None:
+            return f"from {self.since} through {self.until} ({self.years(first, last)})"
         if self.since is not None:
             return f"since {self.since} ({self.years(first, last)})"
         return f"over {whose} ({self.years(first, last)})"
 
 
-def _span_of(span: Any, season: Any, season_type: int, table: str, since: Any = None) -> _Span:
+def _validated_until(until: Any, since: Any) -> int | None:
+    """The validated ``until`` slot: an inclusive last season, named beside
+    ``since`` only - the router never emits one without the other (a decade,
+    or a named range like "2019-20 to 2023-24"), so a caller checks this
+    before ``since`` has necessarily reached :func:`_span_of` itself (a
+    template that reads ``since`` through its own code path, the way
+    ``team_leaderboard`` does for a non-record metric, would otherwise drop
+    ``until`` silently rather than refusing it - the failure shape AGENTS.md
+    warns against).
+
+    .. versionadded:: 4.4.0
+    """
+    if not (isinstance(until, int) and until and not isinstance(until, bool)):
+        return None
+    if not (isinstance(since, int) and since and not isinstance(since, bool)):
+        raise TemplateUnsupported(f"until {until} with no since")
+    if until < since:
+        raise TemplateUnsupported(f"until {until} before since {since}")
+    return until
+
+
+def _span_of(span: Any, season: Any, season_type: int, table: str, since: Any = None, until: Any = None) -> _Span:
     """The seasons a question covers. ``table`` sets how far back a career
     reaches - box scores from 1994, the season line from 1977 - since a career
     is only as long as the table it is summed from. ``since`` (a season) is a
     career that starts there instead: every season from it on, the phantom
-    still excluded, and never earlier than the table reaches.
+    still excluded, and never earlier than the table reaches. ``until`` bounds
+    the other end - the inclusive last season of a range - and is validated
+    against ``since`` here too (see :func:`_validated_until`), so a caller
+    that reads ``since`` straight off the slots and hands both here without
+    checking first still gets the same refusal.
 
     .. versionchanged:: 4.3.0
        Honors ``since``.
+
+    .. versionchanged:: 4.4.0
+       Honors ``until`` (step 3, K1).
     """
+    until = _validated_until(until, since)
     if isinstance(since, int) and since and not isinstance(since, bool):
         if isinstance(season, int) and season:
             raise TemplateUnsupported(f"since {since} and the {season} season at once")
         coverage = COVERAGE[table]
-        return _Span(None, season_type, max(since, coverage.floor(season_type).season), coverage.phantom, since=since)
+        return _Span(None, season_type, max(since, coverage.floor(season_type).season), coverage.phantom, since=since, until=until)
     if not span:
         named = isinstance(season, int) and bool(season)
         return _Span(season if named else current_season(), season_type, defaulted=not named)
@@ -1476,11 +1562,12 @@ def scoped_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], missing: 
     Returns ``(team, span)``, or the ``TemplateResult`` asking which team was
     meant. Honors ``since`` the same way :func:`scoped_player` does for a
     player - a career that starts partway through, rather than at the table's
-    own floor (step 3, C4b).
+    own floor (step 3, C4b) - and ``until`` beside it (step 3, K1): the
+    inclusive last season of a range, read by :func:`_span_of`.
 
     .. versionadded:: 4.4.0
     """
-    scope = _span_of(span, season, slots.get("season_type") or 2, "games", since=slots.get("since"))
+    scope = _span_of(span, season, slots.get("season_type") or 2, "games", since=slots.get("since"), until=slots.get("until"))
     text = slots.get("team")
     if not isinstance(text, str) or not text.strip():
         raise TemplateUnsupported(missing)
@@ -1506,10 +1593,16 @@ def _team_span_clause(span: _Span) -> tuple[str, list[Any]]:
     cannot double it.
 
     Deliberately never excludes the NBA Cup final - see
-    :func:`team_games`."""
+    :func:`team_games`.
+
+    .. versionchanged:: 4.4.0
+       Bounds the upper end too when ``span.until`` is set (step 3, K1).
+    """
     if span.season_type == 3:
         if span.season is not None:
             return "year(tg.eastern_date) = ?", [span.season]
+        if span.until is not None:
+            return "year(tg.eastern_date) BETWEEN ? AND ?", [span.first, span.until]
         return "year(tg.eastern_date) >= ?", [span.first]
     return span.clause("tg.season")
 
@@ -1545,6 +1638,15 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, slots:
        Honors ``order``/``limit`` (step 3, C4b) as a window - the newest or
        oldest N of the narrowed games, cut after every other filter - via
        :attr:`~association.query.team_games.TeamNarrowed.window`.
+
+    .. versionchanged:: 4.4.0
+       Honors ``situation`` (step 3, K1): a weekday, a month, a fixed holiday,
+       or "since <month day>" within each game's own season - read the same
+       way :func:`scoped_games` reads it for the player relation, over
+       :meth:`association.query.team_games.TeamNarrowed.narrow_calendar`. A
+       value that names no calendar narrowing (an age, a conference, "since
+       returning") is refused by value rather than silently dropped, the same
+       as the player relation's own refusal.
     """
     clause, params = _team_span_clause(span)
     narrowed = TeamNarrowed(base=["tg.team_id = ?", "tg.season_type = ?", clause], base_params=[team.id, span.season_type, *params], team=team)
@@ -1570,6 +1672,14 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, slots:
             # A series has games 1-7; a regular season has nothing "game 4" names.
             raise TemplateUnsupported(f"game {game_n} names a game of a playoff series, and this is a {span.kind} question")
         narrowed.narrow_series_game(int(game_n))
+    situation = slots.get("situation")
+    if situation:
+        # Same discipline as scoped_games: honored where it names the
+        # calendar, refused BY VALUE (never silently dropped) otherwise.
+        narrowing = parse_situation(situation)
+        if narrowing is None:
+            raise TemplateUnsupported(f'no calendar narrowing in situation {situation!r} - a weekday, a month, a holiday or "since <day>" is read; an age, a conference or a division is not')
+        narrowed.narrow_calendar(narrowing)
     # The same window rule as the player relation's - a named order, or a
     # bare limit read as the newest N (see _relation_window).
     narrowed.window = _relation_window(slots)

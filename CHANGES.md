@@ -16,6 +16,27 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **The team-games relation reaches parity with the player one: `situation`
+  and `until` (step 3, K1).** `TeamNarrowed.narrow_calendar` mirrors
+  `player_games.Narrowed`'s own - a weekday, a month, a fixed holiday, or
+  "since <month day>" within each game's own season - applied by the shared
+  `templates.common.team_games` step and reached "for free" by every template
+  that calls it (`team_quarter_points`; `head_to_head`'s calendar reading is
+  filed as a follow-up, not built this round). `team_record` gains the same
+  narrowing directly (it does not call the shared step for its own
+  season-record path), replacing its old bare-month-only reading - "the
+  Knicks' record on Christmas" and "... on Saturdays" now answer, warehouse-
+  verified (2025-12-25: Knicks 126-124 over Cleveland at home; three home
+  Saturdays this season, 1-2). `until` is the inclusive last season of a
+  `since`-bounded range (a decade, or "2019-20 to 2023-24"), read the same way
+  `since` already is - `team_record`, `team_leaderboard` and `head_to_head`
+  all honor it, and `team_leaderboard`'s span-bounded record now answers
+  "best record from 2010-11 to 2018-19" (San Antonio 509-213, ahead of Golden
+  State 479-243 and Oklahoma City 465-257 - matches the warehouse exactly).
+  `team_record`'s by-month split also gains a `since`/`until`-bounded form,
+  one table per season rather than refusing outright - "Knicks record by
+  month 2024 2025" now answers both seasons' tables (warehouse-verified
+  against ESPN's own 50-32/51-31 season totals, month for month).
 - **A composed answer names a position group in its heading, and prints
   TS%/eFG%/usage as percentages.** The first live run of the landed compiler
   headed a log of centers "every player" (the filter was applied; the heading
