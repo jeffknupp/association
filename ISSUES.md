@@ -74,7 +74,7 @@ before that commit needs re-checking against the current warehouse.
   (...)`), which the spike's compiler answers in K2b - a candidate for the
   first composed shape to land.
 - **Source:** ours.
-- **GitHub:** none yet
+- **GitHub:** #196
 
 ### A team and a role named together are both dropped: "lebron stats as a starter for Miami" answers this season's Lakers line
 - **Found:** 2026-09-21, yardstick-v2 blind key against build 50c1faa. The
@@ -2315,6 +2315,7 @@ those were found.
   `agent.py` already appends the coverage caveat to a template's answer today
   (`AGENTS.md`, "Saying what you measured": "the agent path adds something").
 - **Source:** ours, not ESPN's.
+- **GitHub:** #197
 
 ## P3: refusal or gap
 
@@ -2717,7 +2718,6 @@ those were found.
   uses into `_head_to_head_narrowed_phrase`'s win/loss sentence, gated on
   `since is not None or career`, the same way its `scope` phrase already is.
 - **Source:** ours.
-- **GitHub:** none yet
 - **GitHub:** #195
 
 ### The team-games postseason span clause is duplicated by a module boundary, not by drift
