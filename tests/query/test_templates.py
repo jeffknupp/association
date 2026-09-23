@@ -1105,6 +1105,41 @@ def test_a_teams_last_n_games_with_no_season_type_named_reads_both(gl_con: Templ
     assert result.data["wins"] == 2 and result.data["losses"] == 1
 
 
+def test_a_teams_last_n_games_states_the_total_points_asked_for(gl_con: TemplateContext) -> None:
+    """F128 (ISSUES.md): "total points scored by the raptors in the last 10
+    games" narrowed correctly but never stated the total - the games were
+    right and the question's own number was still missing. e2 (away, 96),
+    p1 (home, 101) and p2 (away, 105) sum to 302."""
+    _add_knicks_postseason(gl_con)
+    result = game_log(gl_con, {"team": "Knicks", "order": "recent", "limit": 3, "season_type_unstated": True, "stat": "points"})
+    assert "\n  Total points: 302." in (result.answer or "")
+
+
+def test_a_teams_last_n_games_states_the_point_differential_asked_for(gl_con: TemplateContext) -> None:
+    """F129 (ISSUES.md): "Knicks point differential over the last 7 games" -
+    e2 (-14), p1 (+11) and p2 (+6) sum to +3 over 3 games, +1.00 per game."""
+    _add_knicks_postseason(gl_con)
+    result = game_log(gl_con, {"team": "Knicks", "order": "recent", "limit": 3, "season_type_unstated": True, "stat": "pointsDifference"})
+    assert "\n  Point differential: +3 (+1.00 per game)." in (result.answer or "")
+
+
+def test_a_teams_single_type_log_also_states_a_total(gl_con: TemplateContext) -> None:
+    """The single-season-type reader (``_team_game_log``, not the mixed one)
+    gets the same line: the Knicks' two regular-season games (112 home, 96
+    away) total 208 points."""
+    result = game_log(gl_con, {"team": "Knicks", "stat": "points"})
+    assert "\n  Total points: 208." in (result.answer or "")
+
+
+def test_a_teams_plain_stat_names_no_total_line(gl_con: TemplateContext) -> None:
+    """A `stat` this module does not map to a total (or none at all) changes
+    nothing about the plain listing - the fix is additive, not a rewording of
+    every log."""
+    result = game_log(gl_con, {"team": "Knicks"})
+    answer = result.answer or ""
+    assert "Total points" not in answer and "Point differential" not in answer
+
+
 def test_a_teams_last_n_games_naming_its_season_type_is_unchanged(gl_con: TemplateContext) -> None:
     """The correction: saying "playoff games" or "regular season games"
     outright still means only that - the shape this fix must not touch."""

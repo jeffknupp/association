@@ -34,6 +34,8 @@ from .core import Query, Refused, Unsupported, run
 from .move import move_point
 from .sentence import _span_phrase
 from .sentence import sentence as _sentence
+from .sentence import team_sentence as _team_sentence
+from .team import TeamQuery, TeamResult, run_team
 
 __all__ = ["answer"]
 
@@ -55,6 +57,23 @@ def _point_data(query: Query, out: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _team_point_data(query: TeamQuery, result: TeamResult) -> dict[str, Any]:
+    """The point a compiled :class:`~association.query.compose.team.TeamQuery`
+    answered, as plain values - the team subject's counterpart of :func:`_point_data`."""
+    return {
+        "team": result.team.name,
+        "span": _span_phrase(result.span),
+        "narrowing": result.narrowed_text,
+        "measure": query.measure,
+        "aggregate": query.aggregate,
+        "value": result.value,
+        "games": result.games,
+        "wins": result.wins,
+        "losses": result.losses,
+        "from_season_line": result.from_season_line,
+    }
+
+
 def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: str) -> TemplateResult | None:
     """A router-classified question, answered by the compiler where a
     template refused it - or ``None``, meaning the question is not a point on
@@ -70,9 +89,20 @@ def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: s
     nothing else in this package is meant to be called from outside it.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.4.0
+       ``move_point`` may return a :class:`~association.query.compose.team.TeamQuery`
+       (the team as a subject, step 3, K1) instead of a
+       :class:`~association.query.compose.core.Query` - answered through
+       :func:`~association.query.compose.team.run_team` and
+       :func:`~association.query.compose.sentence.team_sentence` instead, the
+       same ``Unsupported``/``Refused`` handling either way.
     """
     try:
         query = move_point(ctx.con, intent, slots, question)
+        if isinstance(query, TeamQuery):
+            result = run_team(ctx.con, query)
+            return TemplateResult(data=_team_point_data(query, result), answer=_team_sentence(query, result), artifacts=[])
         out = run(ctx.con, query)
     except Unsupported:
         return None

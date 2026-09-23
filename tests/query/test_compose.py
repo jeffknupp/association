@@ -20,11 +20,13 @@ from typing import Any
 import duckdb
 import pytest
 
+from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.query.compose import answer as compose_answer
 from association.query.compose.adapt import to_query
 from association.query.compose.core import Query, Refused, Unsupported, compile_query, run
-from association.query.compose.move import _career_slots, move_point
+from association.query.compose.move import _career_slots, move_point, team_move_point
+from association.query.compose.team import TeamQuery, run_team
 from association.query.templates.common import TemplateContext
 
 #: Box-score columns, in the order ``_box`` below fills them - the same shape
@@ -284,6 +286,7 @@ def test_a_measure_word_the_router_did_not_name_moves_the_point(cx_ctx: Template
     """A measure word in the question ("plus-minus") is added to a log's
     line even though the router's own ``stat`` slot said nothing about it."""
     q = move_point(cx_ctx.con, "game_log", {"player": "Brandin Podziemski"}, "Podziemski's plus-minus each game this season")
+    assert isinstance(q, Query)  # a named player never returns a TeamQuery
     out = _run(cx_ctx.con, q)
     g3 = next(r for r in out["rows"] if r["points"] == 28)
     assert g3["plusMinus"] == 17
@@ -293,6 +296,7 @@ def test_most_in_a_game_moves_to_rows_by_measure(cx_ctx: TemplateContext) -> Non
     """ "Career-high" moves a ``player_stat``-shaped point to rows ordered by
     the named measure - the top game(s), not an average."""
     q = move_point(cx_ctx.con, "player_stat", {"player": "Brandin Podziemski", "stat": "points"}, "Podziemski's career-high in points")
+    assert isinstance(q, Query)  # a named player never returns a TeamQuery
     assert q.skeleton == "rows" and q.order == "measure"
     out = _run(cx_ctx.con, q)
     assert out["rows"][0]["points"] == 28  # g3, his career high
@@ -303,6 +307,7 @@ def test_how_many_won_is_a_career_count_with_a_predicate(cx_ctx: TemplateContext
     predicate, whatever season was (or was not) named - route()'s own
     unscoped-count-is-career rule, read here in code."""
     q = move_point(cx_ctx.con, "record_when", {"player": "Brandin Podziemski"}, "how many games has Podziemski's team won?")
+    assert isinstance(q, Query)  # a named player never returns a TeamQuery
     assert q.slots.get("span") == "career"  # Query.span (a binding-parity override) is unset; the slot itself carries it
     out = _run(cx_ctx.con, q)
     assert out["rows"][0]["games"] == 4  # g1, g3, g5, g7 - every win across both seasons (g4 DNP excluded)
@@ -322,6 +327,7 @@ def test_a_ranking_word_with_no_player_groups_by_player_league_wide(cx_ctx: Temp
     point - the leaderboard shape a template refuses because no player was
     named."""
     q = move_point(cx_ctx.con, "other", {}, "top scorers this season")
+    assert isinstance(q, Query)  # no team named in this fixture's own words
     assert q.subject == "everyone" and q.skeleton == "grouped" and q.group == "player"
     out = _run(cx_ctx.con, q)
     assert out["rows"][0]["group"] == "Derek Vollmer"
@@ -332,6 +338,7 @@ def test_a_position_word_with_no_player_reads_that_positions_log(cx_ctx: Templat
     """A position word with no player subject reads that group's log, rows -
     not a ranking, since no ranking word was asked for."""
     q = move_point(cx_ctx.con, "other", {}, "centers game log this season")
+    assert isinstance(q, Query)  # no team named in this fixture's own words
     assert q.subject == "everyone" and q.skeleton == "rows" and q.position == "C"
     out = _run(cx_ctx.con, q)
     assert {r["points"] for r in out["rows"]} == {18, 14}  # Sabonis - the only center on record
@@ -341,6 +348,7 @@ def test_the_questions_own_number_names_its_column_not_the_routers_stat(cx_ctx: 
     """A threshold's own words ("30 point") name its column, even where the
     router's ``stat`` slot names a different one entirely."""
     q = move_point(cx_ctx.con, "threshold_count", {"threshold": 30, "stat": "rebounds"}, "players with a 30 point game this season")
+    assert isinstance(q, Query)  # no team named in this fixture's own words
     assert q.predicates == [("points", ">=", 30)]
     out = _run(cx_ctx.con, q)
     assert out["rows"][0]["group"] == "Derek Vollmer"
@@ -414,3 +422,151 @@ def test_a_refusal_from_answer_is_the_relations_own(cx_ctx: TemplateContext) -> 
     result = compose_answer(cx_ctx, "game_log", {"player": "Podzemski"}, "Podzemski's last 5 games")
     assert result is not None
     assert re.search(r"podziemski", result.answer, re.I)
+
+
+# ---------------------------------------------------------------------------
+# The team as a subject (step 3, K1) - compose/team.py, and team_move_point
+# in move.py. A separate small fixture: the team-games relation reads FROM
+# ``real_games`` (not ``games`` directly), which ``cx_ctx`` above never
+# builds - team_games.py's own module docstring says why ``real_games`` is
+# the shared filtered list, and calling ``real_games.build_table`` is what
+# every other team fixture in this repo (``team_ctx``, ``team_cells_con``)
+# does for the same reason.
+# ---------------------------------------------------------------------------
+
+_TS = current_season()
+
+
+@pytest.fixture
+def team_cx_ctx(tmp_path: Path) -> TemplateContext:
+    """The Magic (season total, plus a finished postseason for the addendum),
+    the Raptors (five regular-season games, for a narrowed total/differential
+    window) and the Lakers (for the "who leads..." guard test, with two
+    players so a league-wide ranking has something real to rank)."""
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO teams VALUES ('1','ORL','Orlando Magic'),('2','CLE','Cleveland Cavaliers'),('3','TOR','Toronto Raptors'),('4','LAL','Los Angeles Lakers')")
+    c.execute(
+        "CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR, home_team_id VARCHAR, away_team_id VARCHAR, "
+        "home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR, neutral_site BOOLEAN, venue_city VARCHAR)"
+    )
+    c.executemany(
+        "INSERT INTO games VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            # Orlando: one regular-season and one postseason game, just to
+            # prove the relation reads real games at all - the season TOTAL
+            # itself comes from team_season_stats, not these rows.
+            ("m1", _TS, 2, f"{_TS - 1}-11-01T23:00Z", "1", "2", 110, 100, "1", False, "Orlando"),
+            ("m2", _TS, 3, f"{_TS}-04-20T23:00Z", "1", "2", 105, 100, "1", False, "Orlando"),
+            # Toronto's last 5 regular-season games, oldest to newest.
+            ("r1", _TS, 2, f"{_TS - 1}-11-10T23:00Z", "3", "2", 100, 90, "3", False, "Toronto"),
+            ("r2", _TS, 2, f"{_TS - 1}-11-15T23:00Z", "2", "3", 95, 105, "3", False, "Cleveland"),
+            ("r3", _TS, 2, f"{_TS}-01-05T23:00Z", "3", "2", 110, 120, "2", False, "Toronto"),
+            ("r4", _TS, 2, f"{_TS}-01-10T23:00Z", "2", "3", 100, 90, "3", False, "Cleveland"),
+            ("r5", _TS, 2, f"{_TS}-01-15T23:00Z", "3", "2", 115, 108, "3", False, "Toronto"),
+        ],
+    )
+    real_games.build_table(c, {"games", "teams"})
+    c.execute("CREATE TABLE team_season_stats (season INTEGER, season_type INTEGER, team_id VARCHAR, gamesPlayed INTEGER, points INTEGER, threePointFieldGoalsMade INTEGER)")
+    c.executemany(
+        "INSERT INTO team_season_stats VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            (_TS, 2, "1", 82, 9200, 961),  # Orlando's regular-season total
+            (_TS, 3, "1", 7, 780, 78),  # Orlando's finished playoff run
+        ],
+    )
+    return TemplateContext(con=c, out_dir=tmp_path)
+
+
+def test_team_move_point_reads_an_unnarrowed_season_total(team_cx_ctx: TemplateContext) -> None:
+    """F127's shape: "how many 3 pointers have the magic made" - a plain
+    season total from ``team_season_stats``, not a per-game average, and the
+    finished postseason is named too rather than left unmentioned."""
+    q = team_move_point(team_cx_ctx.con, {"stat": "threePointFieldGoalsMade", "team": "Orlando Magic"}, "how many 3 pointers have the magic made so far this season")
+    assert isinstance(q, TeamQuery)
+    result = run_team(team_cx_ctx.con, q)
+    assert result.value == 961
+    assert result.games == 82
+    assert result.from_season_line
+    assert "78" in result.note and "playoff" in result.note
+
+
+def test_team_move_point_finds_a_team_the_router_dropped(team_cx_ctx: TemplateContext) -> None:
+    """The router filed no ``team`` slot at all for this exact question, live
+    (ISSUES.md) - ``team_named_in`` reads "magic" from the text itself, the
+    same repair :func:`association.query.entities.players_named_in` already
+    makes for a dropped PLAYER."""
+    q = team_move_point(team_cx_ctx.con, {"stat": "threePointFieldGoalsMade"}, "how many 3 pointers have the magic made so far this season")
+    assert isinstance(q, TeamQuery)
+    assert q.slots["team"] == "Orlando Magic"
+
+
+def test_team_move_point_is_not_fooled_by_magic_johnson(team_cx_ctx: TemplateContext) -> None:
+    """ "Magic" is also Magic Johnson's given name - ``players_named_in``
+    finds him from this exact question text, and ``repair``'s dropped-subject
+    restoration would turn this into a question about him UNLESS the team
+    reading is tried first (``move_point``'s own ordering, not just this
+    function's)."""
+    q = move_point(team_cx_ctx.con, "leaderboard", {"stat": "threePointFieldGoalsMade", "season_type": 2}, "how many 3 pointers have the magic made so far this season")
+    assert isinstance(q, TeamQuery)
+    assert q.slots.get("player") is None
+
+
+def test_team_move_point_reads_a_narrowed_total(team_cx_ctx: TemplateContext) -> None:
+    """F128's shape (one season type - the mixed-type "last N games" reader
+    is ``game_log``'s own ``_team_game_log_mixed``, not this module's): from
+    Toronto's own side, their last 3 regular-season games are r3 (110, a
+    home loss to Cleveland), r4 (90, an away win) and r5 (115, a home win) -
+    315 points, not the season's."""
+    q = team_move_point(team_cx_ctx.con, {"stat": "points", "team": "Toronto Raptors", "order": "recent", "limit": 3, "season_type": 2}, "total points scored by the raptors in their last 3 games")
+    assert isinstance(q, TeamQuery)
+    result = run_team(team_cx_ctx.con, q)
+    assert result.value == 315
+    assert result.games == 3
+    assert not result.from_season_line
+
+
+def test_team_move_point_reads_a_narrowed_differential(team_cx_ctx: TemplateContext) -> None:
+    """F129's shape: Toronto's last 3 games (r3 110-120 L, r4 90-100 W, r5
+    115-108 W) sum to a -13 differential (-10 -10 +7), not the season's."""
+    q = team_move_point(team_cx_ctx.con, {"stat": "pointsDifference", "team": "Toronto Raptors", "order": "recent", "limit": 3, "season_type": 2}, "raptors point differential over their last 3 games")
+    assert isinstance(q, TeamQuery)
+    result = run_team(team_cx_ctx.con, q)
+    assert result.value == -13
+    assert result.wins == 2 and result.losses == 1
+
+
+def test_team_move_point_never_hijacks_a_player_ranking(team_cx_ctx: TemplateContext) -> None:
+    """ "Who leads the Lakers in scoring" narrows a PLAYER ranking by team -
+    it is not the team's own subject, and must fall through to the
+    league-wide reading (``_everyone_point``'s own question) unchanged."""
+    assert team_move_point(team_cx_ctx.con, {"stat": "points", "team": "Los Angeles Lakers"}, "who leads the lakers in scoring") is None
+
+
+def test_team_move_point_never_hijacks_a_named_player(team_cx_ctx: TemplateContext) -> None:
+    """A player already named makes the team a narrowing of him, never the
+    subject - ``move_point``'s own player path, untouched."""
+    assert team_move_point(team_cx_ctx.con, {"stat": "points", "team": "Orlando Magic", "player": "Paolo Banchero"}, "how many points has banchero scored for the magic") is None
+
+
+def test_a_box_stat_measure_narrowed_to_a_window_is_unsupported(team_cx_ctx: TemplateContext) -> None:
+    """A box-score count (3-pointers made, not a game-outcome figure) narrowed
+    to a window needs a join the team-games relation does not have yet
+    (ISSUES.md) - refused rather than silently answering the season instead."""
+    q = team_move_point(
+        team_cx_ctx.con, {"stat": "threePointFieldGoalsMade", "team": "Toronto Raptors", "order": "recent", "limit": 3, "season_type": 2}, "3 pointers made by the raptors in their last 3 games"
+    )
+    assert isinstance(q, TeamQuery)
+    with pytest.raises(Unsupported):
+        run_team(team_cx_ctx.con, q)
+
+
+def test_answer_composes_a_team_subject_sentence(team_cx_ctx: TemplateContext) -> None:
+    """``answer()``'s dispatch to the team subject, end to end - the same
+    surface :func:`association.query.agent.Agent._try_compose` calls."""
+    result = compose_answer(team_cx_ctx, "leaderboard", {"stat": "threePointFieldGoalsMade", "team": "Orlando Magic"}, "how many 3 pointers have the magic made so far this season")
+    assert result is not None
+    assert "961" in result.answer
+    assert result.data["team"] == "Orlando Magic"
+    assert result.data["from_season_line"] is True
+    assert result.artifacts == []

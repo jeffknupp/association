@@ -16,6 +16,37 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **A team's own total or differential is stated, not just its games
+  (F128/F129, ISSUES.md).** "Total points scored by the Toronto Raptors in
+  the last 10 games" and "Knicks point differential over the last 7 games"
+  both narrowed to the right games already but never said the number the
+  question actually asked for - a wrong-shape answer wearing a right one's
+  clothes. `game_log`'s team half now states it (`_team_game_log_total_line`,
+  read from `stat`), in both the single-season-type and the mixed-season-type
+  ("last N games" naming no type) readers. Warehouse-verified against both
+  targets exactly: 1,130 total points (3 regular-season games plus a 7-game
+  playoff series) and a +62 (+8.86/game) differential over the Knicks' Finals
+  run.
+- **The team as a subject in `compose` (step 3, K1).** `compose.team` -
+  `TeamQuery`/`TeamResult`/`run_team`, `team_move_point` in `move.py`,
+  `team_sentence` in `sentence.py` - answers a question whose grammatical
+  subject is a team and names no player, over two readers: an unnarrowed
+  season TOTAL straight from `team_season_stats` (not the per-game average
+  `team_stat` already gives - "how many 3-pointers have the Magic made this
+  season" is 961, warehouse-verified exactly against ESPN's own total, not
+  team_stat's 11.7/game), and a narrowed sum over the team-games relation's
+  own points/points-allowed/differential columns for a single season type.
+  `team_named_in` restores a team slot the router drops entirely, the same
+  repair `players_named_in` already makes for a dropped player - and is tried
+  BEFORE that player repair, because "magic" is also Magic Johnson's given
+  name and the player repair would otherwise invent him from a team
+  reference. A box-score count (not a game-outcome figure) narrowed to a
+  window refuses rather than silently answering the season, since the
+  relation has no box-score join yet (filed in ISSUES.md). Not yet reachable
+  from the live pipeline for every shape it answers - `compose.answer` only
+  runs after a template refuses, and `leaderboard`/`team_stat` do not refuse
+  a team-shaped question today - so F127's fix ships as tested compose
+  infrastructure while F128/F129 ship live, through `game_log`, above.
 - **A since-bounded team leaderboard now counts every franchise, not only
   the ones with a game in the span (F100, ISSUES.md).** "NBA team with
   least playoff wins since 2022" ranked "of 28 teams", silently dropping the

@@ -282,6 +282,7 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
             limit=limit,
             ascending=ascending,
             mixed=mixed,
+            stat=slots.get("stat"),
         )
     return _game_log_player(
         con, slots, team_text, slot_season=slot_season, span=span, season=season, opponent=opponent, measures=measures, date=date, limit=limit, ascending=ascending, mixed=mixed, asked=asked
@@ -305,6 +306,7 @@ def _game_log_team(
     limit: int,
     ascending: bool,
     mixed: bool,
+    stat: Any = None,
 ) -> TemplateResult:
     """The team half of :func:`game_log`: resolve the team, refuse what a
     team's log cannot narrow by, and read either one season type or both.
@@ -313,6 +315,12 @@ def _game_log_team(
        Split out of ``game_log`` when reading both season types pushed its
        complexity over the xenon C limit (AGENTS.md, "the way the templates
        and ``route()`` took").
+
+    .. versionchanged:: 4.4.0
+       Takes ``stat``, so a log narrowed to a total or a differential
+       (F128/F129, ISSUES.md) states the number the question actually asked
+       for instead of only listing the games it was computed from - see
+       :func:`_team_game_log_total_line`.
     """
     team = _resolved_team(con, team_text, season=slot_season)
     if isinstance(team, TemplateResult):
@@ -322,12 +330,12 @@ def _game_log_team(
         resolved_season = _span_of(span, season, 2, "games").season
         if resolved_season is None:
             raise TemplateUnsupported("a career span has no single season to read both season types within")
-        return _team_game_log_mixed(con, team, resolved_season, opponent=opponent, venue=venue, limit=limit)
+        return _team_game_log_mixed(con, team, resolved_season, opponent=opponent, venue=venue, limit=limit, stat=stat)
     scope = _span_of(span, season, season_type, "games")
     narrowed = team_games(con, team, scope, {"venue": venue}, opponent=opponent, date=date)
     if isinstance(narrowed, TemplateResult):
         return narrowed
-    return _team_game_log(con, team, scope, narrowed, limit=limit, ascending=ascending)
+    return _team_game_log(con, team, scope, narrowed, limit=limit, ascending=ascending, stat=stat)
 
 
 def _game_log_player(
@@ -550,7 +558,38 @@ def _team_game_log_games(rows: list[tuple[Any, ...]]) -> tuple[list[dict[str, An
     return games, wins, losses, record, lines
 
 
-def _team_game_log_rows(team: Entity, span: _Span, rows: list[tuple[Any, ...]], *, narrowed: str, date: str | None, ascending: bool) -> TemplateResult:
+#: A ``stat`` slot's own word, mapped to the total :func:`_team_game_log_total_line`
+#: appends - "total points" (F128) and "point differential" (F129), both
+#: narrowed correctly by the log already but never STATED: the games were
+#: right and the question's own number was still missing, which is a
+#: wrong-shape answer wearing a right one's clothes.
+_TEAM_GAME_LOG_STAT_TOTALS: dict[str, str] = {"points": "points", "pointsDifference": "differential"}
+"""``stat`` -> which total :func:`_team_game_log_total_line` states.
+
+.. versionadded:: 4.4.0
+"""
+
+
+def _team_game_log_total_line(games: list[dict[str, Any]], stat: Any) -> str | None:
+    """The total or differential line a team's log states when ``stat`` asks
+    for one it can compute from the games already listed - "Total points:
+    1,130." or "Point differential: +62 (+8.86 per game)." - or ``None`` for
+    every other ``stat`` (a per-game average, a named box-score column the
+    relation does not carry, or none at all), which changes nothing about
+    the plain listing.
+
+    .. versionadded:: 4.4.0
+    """
+    kind = _TEAM_GAME_LOG_STAT_TOTALS.get(stat) if isinstance(stat, str) else None
+    if kind is None or not games:
+        return None
+    if kind == "points":
+        return f"\n  Total points: {sum(g['team_score'] for g in games):,}."
+    diff = sum(g["team_score"] - g["opponent_score"] for g in games)
+    return f"\n  Point differential: {diff:+,} ({diff / len(games):+.2f} per game)."
+
+
+def _team_game_log_rows(team: Entity, span: _Span, rows: list[tuple[Any, ...]], *, narrowed: str, date: str | None, ascending: bool, stat: Any = None) -> TemplateResult:
     """The games listing, headed by the single season type ``span`` names."""
     games, wins, losses, record, lines = _team_game_log_games(rows)
     seasons = [g["season"] for g in games]
@@ -560,10 +599,11 @@ def _team_game_log_rows(team: Entity, span: _Span, rows: list[tuple[Any, ...]], 
         years = span.years(min(seasons), max(seasons))
         where = f" ({years})" if date else f" (all-time, {years})"
     header = f"{team.name}{narrowed}, {_scope(len(games), ascending, date)}{where} ({record}):"
-    return TemplateResult(data={"team": team.name, "wins": wins, "losses": losses, "games": games}, answer="\n".join([header, *lines]))
+    total_line = _team_game_log_total_line(games, stat) or ""
+    return TemplateResult(data={"team": team.name, "wins": wins, "losses": losses, "games": games}, answer="\n".join([header, *lines]) + total_line)
 
 
-def _team_game_log(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, narrowed: TeamNarrowed, *, limit: int, ascending: bool) -> TemplateResult:
+def _team_game_log(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, narrowed: TeamNarrowed, *, limit: int, ascending: bool, stat: Any = None) -> TemplateResult:
     """A team's games in ``span``, narrowed as ``narrowed``
     (:func:`association.query.templates.common.team_games`) already reflects."""
     sql, params = team_rows_sql(narrowed, _TEAM_GAME_LOG_SELECT, order=f"tg.eastern_date {'ASC' if ascending else 'DESC'}", limit=limit, join=_TEAM_GAME_LOG_JOIN)
@@ -571,10 +611,10 @@ def _team_game_log(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, na
     if not rows:
         # Which fact is missing: the team's games in that span, or the match.
         return _team_game_log_none(con, team, span, narrowed)
-    return _team_game_log_rows(team, span, rows, narrowed=narrowed.filters(), date=narrowed.date, ascending=ascending)
+    return _team_game_log_rows(team, span, rows, narrowed=narrowed.filters(), date=narrowed.date, ascending=ascending, stat=stat)
 
 
-def _team_game_log_mixed(con: duckdb.DuckDBPyConnection, team: Entity, season: int, *, opponent: Any, venue: Any, limit: int) -> TemplateResult:
+def _team_game_log_mixed(con: duckdb.DuckDBPyConnection, team: Entity, season: int, *, opponent: Any, venue: Any, limit: int, stat: Any = None) -> TemplateResult:
     """A team's "last N games" with no season type named: both types, read
     separately and merged by date - see ``router._route_game_log_recent_span``
     and :func:`_game_log_merge_season_types`. ``without``, a date and a game of
@@ -586,6 +626,9 @@ def _team_game_log_mixed(con: duckdb.DuckDBPyConnection, team: Entity, season: i
     compose.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.4.0
+       Takes ``stat`` (F128/F129, ISSUES.md) - see :func:`_team_game_log_total_line`.
     """
     rows_by_type: dict[int, list[tuple[Any, ...]]] = {}
     narrowed_text = ""
@@ -605,7 +648,8 @@ def _team_game_log_mixed(con: duckdb.DuckDBPyConnection, team: Entity, season: i
         return TemplateResult(data={"team": team.name, "games": []}, answer=f"No {season} games found for the {team.name}{narrowed_text}.")
     games, wins, losses, record, lines = _team_game_log_games(rows)
     header = f"{team.name}{narrowed_text}, {_scope(len(games), False, None)}{_game_log_mixed_where(season, counts)} ({record}):"
-    return TemplateResult(data={"team": team.name, "wins": wins, "losses": losses, "games": games}, answer="\n".join([header, *lines]))
+    total_line = _team_game_log_total_line(games, stat) or ""
+    return TemplateResult(data={"team": team.name, "wins": wins, "losses": losses, "games": games}, answer="\n".join([header, *lines]) + total_line)
 
 
 def _pct(made: Any, attempted: Any) -> float | None:
