@@ -4982,22 +4982,26 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
 
     # The compose package (association.query.compose - the compiler landed
     # from the skeleton spike) sits above the templates but reads the same
-    # shared steps (scoped_games, league_games), and the same discipline
-    # applies: it narrows the relation only through them, never by writing
-    # its own clause on an opponent, venue, starter or date column. It is not
-    # registered in TEMPLATES, so it is walked by module source directly
-    # rather than through _source_with_private_steps.
+    # shared steps (scoped_games, league_games, and - step 3, K1's team
+    # subject, compose/team.py - scoped_team/team_games), and the same
+    # discipline applies: it narrows the relation only through them, never by
+    # writing its own clause on an opponent, venue, starter or date column.
+    # It is not registered in TEMPLATES, so it is walked by module source
+    # directly rather than through _source_with_private_steps.
     import inspect
 
     import association.query.compose.adapt as _compose_adapt
     import association.query.compose.core as _compose_core
     import association.query.compose.move as _compose_move
+    import association.query.compose.team as _compose_team
 
-    for module in (_compose_core, _compose_adapt, _compose_move):
+    for module in (_compose_core, _compose_adapt, _compose_move, _compose_team):
         source = inspect.getsource(module)
         for token in forbidden:
-            assert token not in source, f"{module.__name__} narrows the relation itself ({token!r}); use scoped_games / league_games"
-        assert not re.search(r'(scoped_games|condition_player|league_games)\([^\n]*\{"', source), f"{module.__name__} hands the shared step a hand-built dict; pass the question's slots"
+            assert token not in source, f"{module.__name__} narrows the relation itself ({token!r}); use scoped_games / league_games / scoped_team / team_games"
+        assert not re.search(r'(scoped_games|condition_player|league_games|scoped_team|team_games)\([^\n]*\{"', source), (
+            f"{module.__name__} hands the shared step a hand-built dict; pass the question's slots"
+        )
 
 
 def _source_with_private_steps(handler: Any) -> str:
