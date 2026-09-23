@@ -2682,6 +2682,28 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
+### `head_to_head`'s venue-narrowed sentence says "won the series" for a since-bounded or career span too
+- **Found:** 2026-09-22, step 3, team cells (`team_record`/`head_to_head`
+  honoring `since`/`game_n`/`span`).
+- **Evidence:** `templates/games.py: _head_to_head_span_result` calls
+  `_head_to_head_narrowed_phrase` (unchanged wording) when `venue` narrows a
+  since-bounded or career meeting count, and that function always says "the
+  X won the series N-M" - accurate for one season, which is what it was
+  written for, but a since-bounded or ongoing rivalry has not "won" anything
+  settled. The venue-LESS path added in the same change
+  (`_head_to_head_span_phrase`) says "lead the all-time series" instead, on
+  purpose, for exactly this reason - the two paths now disagree with each
+  other over the same shape of span.
+- **User sees:** "Celtics vs Knicks home games since 2020" answers "...; the
+  Boston Celtics won the series 9-5" rather than "lead the series 9-5" - a
+  word choice, not a wrong number.
+- **Next step:** thread the same `whose`-style wording `_head_to_head_span_phrase`
+  uses into `_head_to_head_narrowed_phrase`'s win/loss sentence, gated on
+  `since is not None or career`, the same way its `scope` phrase already is.
+- **Source:** ours.
+- **GitHub:** none yet
+- **GitHub:** #195
+
 ### The team-games postseason span clause is duplicated by a module boundary, not by drift
 - **Found:** 2026-09-22, porting `with_without` onto `query/team_games.py`'s
   relation (step 3, C4).
