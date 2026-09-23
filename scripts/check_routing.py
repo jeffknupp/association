@@ -273,7 +273,44 @@ CASES: list[tuple[str, str, dict]] = [
     # who has 58 postseason games and 426 career games with 2+ threes made.
     # The full name is kept, not just "murray": the bare surname is five
     # players who all have a 2026 box score.
-    ("jamal murray games with 2 threes including playoffs", "threshold_count", {"stat": "threePointFieldGoalsMade", "threshold": 2, "player": "jamal murray"}),
+    #
+    # yardstick-v2 F160: "including playoffs" ALSO used to read as
+    # season_type=3 - PLAYOFFS ONLY - because _validate_season_type consulted
+    # _PLAYOFF_WORDS alone, and "including playoffs" contains the word
+    # "playoffs". That silently dropped the regular season the question asked
+    # to keep (3 postseason games shown, 56 regular-season ones never read).
+    # _BOTH_SEASON_TYPES_WORDS now catches this shape and reuses
+    # season_type_unstated - the same "read both" meaning game_log's "last N
+    # games" reader already carries - which threshold_count now honors too
+    # (player_relation_season_type, in one combined `season_type IN (2, 3)`
+    # read rather than a merge).
+    (
+        "jamal murray games with 2 threes including playoffs",
+        "threshold_count",
+        {"stat": "threePointFieldGoalsMade", "threshold": 2, "player": "jamal murray", "season_type_unstated": True},
+    ),
+    # yardstick-v2 F156: the same misreading on a career game_log - "stats vs
+    # 76ers at home including playoffs" answered only the 7 playoff meetings,
+    # then falsely told the reader "Only 7 games ... in his box scores" (a
+    # claim about games it never read: 9 regular-season meetings existed).
+    (
+        # `opponent` not asserted: the model spells it "76ers" or "Philadelphia
+        # 76ers" and both resolve to the same team - see the 76ers case above.
+        "Payton Pritchard stats vs 76ers at home including playoffs game log",
+        "game_log",
+        {"player": "Payton Pritchard", "venue": "home", "season_type_unstated": True},
+    ),
+    # yardstick-v2 F116: the same misreading on a TEAM question (team_record).
+    # Only the router's own slot is asserted here - team_record does not yet
+    # honor season_type_unstated (check_scope now refuses it, correctly,
+    # rather than silently answering the playoff road record alone as though
+    # it covered "all-time ... including playoffs"); the template side is the
+    # team agent's, not ported here.
+    (
+        "warriors all-time record including playoff record at away",
+        "team_record",
+        {"team": "Golden State Warriors", "venue": "away", "season_type_unstated": True},
+    ),
     ("who has the most threes this season", "leaderboard", {"stat": "threePointFieldGoalsMade"}),
     ("career points leaders", "leaderboard", {"span": "career"}),
     ("Knicks home record this season", "team_record", {"venue": "home"}),

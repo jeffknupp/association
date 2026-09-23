@@ -16,6 +16,40 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **"including the playoffs" no longer reads as "the playoffs only".**
+  `router._validate_season_type` consulted `_PLAYOFF_WORDS` alone, and
+  "including playoffs"/"regular season and playoffs"/"playoffs included"
+  contain the word "playoffs", so a question asking to keep BOTH season types
+  silently dropped the regular season - "Payton Pritchard stats vs 76ers at
+  home including playoffs" answered 7 playoff meetings and then falsely told
+  the reader "Only 7 games ... in his box scores", never mentioning the 9
+  regular-season ones it never read; "jamal murray games with 2 threes
+  including playoffs" answered 3 (his 2026 postseason alone) instead of 59
+  (2026 regular season and postseason combined). `router._BOTH_SEASON_TYPES_WORDS`
+  now reads the phrase and sets `season_type_unstated` (the flag `game_log`'s
+  "last N games" reader already carried), honored by `game_log`,
+  `player_stat` and `threshold_count` through one combined
+  `player_games.season_type_clause`/`BOTH_SEASON_TYPES` read on the player
+  relation rather than a merge - simpler than `game_log`'s own row-interleave,
+  since an aggregate has no rows to interleave. A template that does not
+  honor it (`team_record`, on the yardstick's team-side example) is refused
+  by `check_scope` rather than silently answering the postseason alone.
+- **A closed season range ("2019-20 to 2023-24") no longer reads through the
+  present.** `router._validate_range` read only an open "since 2020" or a
+  decade; every other range form ("2019-20 to 2023-24", "from 2010-11 to
+  2018-19", "between 2020 and 2024", "2020-2024", two adjacent bare years)
+  fell back to the model's own single-season slot, so "Portis vs bulls
+  2019-20 to 2023-24" answered 3 games of one season where 16 regular-season
+  games across five were asked for. Worse, even where `since` WAS read
+  correctly, `until` - the range's other end - was declared nowhere and
+  honored nowhere, so a CLOSED range read as an OPEN one: this project's own
+  worst-failure-shape example, an unfilled `until` answering "the 2010s" as
+  2010 through now. `_Span`/`player_games.Narrowed` now carry `until` beside
+  `since`, applied in one clause (`_Span.clause`) the same way `since` already
+  was, and every player-relation template that honors `since` honors `until`
+  beside it (`test_until_is_declared_wherever_since_is`) - `game_log`'s team
+  branch, which had silently dropped `since` itself for the same reason,
+  picked up both in the same fix.
 - **A composed answer names a position group in its heading, and prints
   TS%/eFG%/usage as percentages.** The first live run of the landed compiler
   headed a log of centers "every player" (the filter was applied; the heading

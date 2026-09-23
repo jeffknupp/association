@@ -281,6 +281,8 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
             limit=limit,
             ascending=ascending,
             mixed=mixed,
+            since=slots.get("since"),
+            until=slots.get("until"),
         )
     return _game_log_player(
         con, slots, team_text, slot_season=slot_season, span=span, season=season, opponent=opponent, measures=measures, date=date, limit=limit, ascending=ascending, mixed=mixed, asked=asked
@@ -304,6 +306,8 @@ def _game_log_team(
     limit: int,
     ascending: bool,
     mixed: bool,
+    since: Any = None,
+    until: Any = None,
 ) -> TemplateResult:
     """The team half of :func:`game_log`: resolve the team, refuse what a
     team's log cannot narrow by, and read either one season type or both.
@@ -312,6 +316,13 @@ def _game_log_team(
        Split out of ``game_log`` when reading both season types pushed its
        complexity over the xenon C limit (AGENTS.md, "the way the templates
        and ``route()`` took").
+
+    .. versionchanged:: 4.4.0
+       Takes ``since``/``until`` and passes them to ``_span_of`` - they were
+       read into ``RELATION_SCOPING`` (which ``game_log`` claims in full) but
+       silently dropped here, the team branch, the same shape a bare ``until``
+       was dropped everywhere before this change: "Warriors games since 2024"
+       answered the 2026 regular season alone.
     """
     team = _resolved_team(con, team_text, season=slot_season)
     if isinstance(team, TemplateResult):
@@ -322,7 +333,7 @@ def _game_log_team(
         if resolved_season is None:
             raise TemplateUnsupported("a career span has no single season to read both season types within")
         return _team_game_log_mixed(con, team, resolved_season, opponent=opponent, venue=venue, limit=limit)
-    scope = _span_of(span, season, season_type, "games")
+    scope = _span_of(span, season, season_type, "games", since=since, until=until)
     narrowed = team_games(con, team, scope, {"venue": venue}, opponent=opponent, date=date)
     if isinstance(narrowed, TemplateResult):
         return narrowed

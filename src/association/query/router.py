@@ -285,6 +285,31 @@ _PLAYOFF_WORDS = re.compile(r"\b(?:playoffs?|post-?season|finals|elimination|gam
 # that says "playoffs", and must keep meaning only that.
 _REGULAR_SEASON_WORDS = re.compile(r"\bregular[- ]season\b", re.IGNORECASE)
 
+# Both season types at once, named outright: "including the playoffs",
+# "including postseason", "regular season and playoffs", "playoffs included".
+# Read APART from _PLAYOFF_WORDS, which used to be consulted alone -
+# "including playoffs" contains the word "playoffs", so _validate_season_type
+# returned season_type=3, silently dropping the regular season the question
+# asked to KEEP: "warriors all-time record including playoff record at away"
+# answered only the playoff road record (51-52), and "Payton Prichard stats vs
+# 76ers at home including playoffs game log" answered 7 playoff meetings and
+# then told the reader "Only 7 games ... in his box scores" - a false claim
+# about games (the 9 regular-season meetings) that were never read at all, not
+# a true count of what was found. Read the same way `season_type_unstated`
+# already is for a "last N games" question naming no type
+# (`_route_game_log_recent_span`): the honored meaning is identical - read
+# both, merged or combined - so this reuses the slot rather than adding a
+# second one, and `check_scope` already refuses it wherever nothing honors it
+# yet (`templates.common.HONORED_SCOPING`), which is the right answer for a
+# template that has not been taught to read both.
+_BOTH_SEASON_TYPES_WORDS = re.compile(
+    r"\bincluding\s+(?:the\s+)?(?:playoffs?|post-?season)\b"
+    r"|\b(?:playoffs?|post-?season)\s+included\b"
+    r"|\bregular\s+season\s+and\s+(?:the\s+)?(?:playoffs?|post-?season)\b"
+    r"|\b(?:playoffs?|post-?season)\s+and\s+regular\s+season\b",
+    re.IGNORECASE,
+)
+
 
 # One round or game of the postseason. No table carries a round or a series
 # game number, so no template can narrow to one: "tatum stats in the 2024 finals"
@@ -314,6 +339,30 @@ _SEASON_N = re.compile(r"\b(\d{1,2})(?:st|nd|rd|th)\s+season\b", re.IGNORECASE) 
 _SINCE = re.compile(r"\bsince\s+(?:the\s+)?((?:19|20)\d\d)\b", re.IGNORECASE)
 _DECADE = re.compile(r"\b(?:the\s+)?((?:19|20)\d)0'?s\b", re.IGNORECASE)
 
+# A CLOSED range - both ends named - rather than the open "since 2020" above.
+# `until` was declared nowhere and honored nowhere until this existed
+# (AGENTS.md's own worst-failure-shape example: "best 3 point shooters of the
+# 2010s" answered 2010 through now), so every form here fills BOTH slots.
+#
+# "2019-20 to 2023-24" / "from 2010-11 to 2018-19": the season-hyphenated
+# form on each side of "to"/"through". A season is named for the year it
+# ENDS (nba/season.py), so only the leading four-digit year is read - adding
+# 1 to it gives the season number whatever the trailing two digits say, the
+# same way `_SINCE` never checks them either.
+_SEASON_HYPHEN = r"((?:19|20)\d\d)-\d\d"
+_RANGE_TO_HYPHEN = re.compile(rf"\b(?:from\s+)?{_SEASON_HYPHEN}\s+(?:to|through)\s+{_SEASON_HYPHEN}\b", re.IGNORECASE)
+# "between 2020 and 2024": bare calendar-shaped years, read as season NUMBERS
+# (the same reading `_SINCE`'s own bare year gets), not calendar years.
+_RANGE_BETWEEN = re.compile(r"\bbetween\s+((?:19|20)\d\d)\s+and\s+((?:19|20)\d\d)\b", re.IGNORECASE)
+# "2020-2024": two season numbers joined by a hyphen with no "to"/"from" -
+# distinct from `_SEASON_HYPHEN` above, whose second half is two digits.
+_RANGE_HYPHEN_YEARS = re.compile(r"\b((?:19|20)\d\d)-((?:19|20)\d\d)\b")
+# "knicks record by month 2024 2025": two bare, ADJACENT season numbers with
+# nothing joining them - only when the second is exactly one more than the
+# first, so this reads as a range and not two unrelated years mentioned in
+# passing.
+_RANGE_BARE_YEARS = re.compile(r"\b((?:19|20)\d\d)\s+((?:19|20)\d\d)\b")
+
 # "record" asked with a counting intent means wins and losses, not a count of
 # games. Measured: "Sixers record when Embiid scores 30 points this season" came
 # back as threshold_count and was answered with the league's 30-point games,
@@ -322,7 +371,33 @@ _RECORD = re.compile(r"\brecord\b", re.IGNORECASE)
 
 
 def _validate_range(question: str) -> tuple[int, int | None] | None:
-    """The first and last season a range covers - (first, None) for an open one."""
+    """The first and last season a range covers - (first, None) for an open one.
+
+    .. versionchanged:: 4.4.0
+       Reads four CLOSED forms beside the open "since 2020" one: a
+       season-hyphenated span joined by "to"/"through" (optionally led by
+       "from"), "between YYYY and YYYY", a bare "YYYY-YYYY" and two adjacent
+       season numbers with nothing joining them. Each fills ``until`` as well
+       as ``since`` - see AGENTS.md, "a season range", for why an unfilled
+       ``until`` is this project's worst failure shape rather than a missing
+       nicety.
+    """
+    to_hyphen = _RANGE_TO_HYPHEN.search(question)
+    if to_hyphen is not None:
+        first, last = int(to_hyphen.group(1)) + 1, int(to_hyphen.group(2)) + 1
+        return (first, last) if first <= last else (last, first)
+    between = _RANGE_BETWEEN.search(question)
+    if between is not None:
+        first, last = int(between.group(1)), int(between.group(2))
+        return (first, last) if first <= last else (last, first)
+    hyphen_years = _RANGE_HYPHEN_YEARS.search(question)
+    if hyphen_years is not None:
+        first, last = int(hyphen_years.group(1)), int(hyphen_years.group(2))
+        if first != last:
+            return (first, last) if first <= last else (last, first)
+    bare_years = _RANGE_BARE_YEARS.search(question)
+    if bare_years is not None and int(bare_years.group(2)) == int(bare_years.group(1)) + 1:
+        return int(bare_years.group(1)), int(bare_years.group(2))
     since = _SINCE.search(question)
     if since is not None:
         return int(since.group(1)), None
@@ -1767,6 +1842,18 @@ def _route_season_slots(raw: dict[str, Any], question: str) -> dict[str, Any]:
     else:
         slots["season"] = resolved_season
     slots["season_type"] = _validate_season_type(question)
+    if _BOTH_SEASON_TYPES_WORDS.search(question):
+        # Both, named outright - not merely unnamed the way
+        # `_route_game_log_recent_span` reads a bare "last N games" later in
+        # `route()`. Same slot, same honored meaning: a template that reads it
+        # (`templates.common.player_relation_season_type`) reads both types;
+        # one that does not is refused by `check_scope` rather than guessing
+        # which half the question meant. `season_type` itself is left at the
+        # regular-season default (never 3) so nothing that reads it directly,
+        # ignoring the flag, narrows to the postseason ALONE - the specific
+        # wrong-cause shape this exists to stop.
+        slots["season_type_unstated"] = True
+        slots["season_type"] = SEASON_TYPES["regular"]
     return slots
 
 

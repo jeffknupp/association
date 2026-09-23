@@ -2958,13 +2958,21 @@ def test_scope_guard_allows_templates_that_honor_the_slot() -> None:
     check_scope("player_netpoints", {"order": "recent"})
 
 
-def test_scope_guard_lets_only_game_log_honor_season_type_unstated() -> None:
-    """`season_type_unstated` is set only for `game_log`
-    (router._route_game_log_recent_span), but the discipline is the same as
-    every other scoping slot: a template that cannot honor it refuses rather
-    than silently ignoring it."""
+def test_scope_guard_lets_only_the_templates_that_read_it_honor_season_type_unstated() -> None:
+    """`season_type_unstated` is set by `router._route_game_log_recent_span`
+    (a "last N games" question naming no season type) for `game_log` and,
+    since 4.4.0, by `router._BOTH_SEASON_TYPES_WORDS` for any intent whose
+    question asks for both season types outright ("including the playoffs").
+    `game_log`, `player_stat` and `threshold_count` are the player-relation
+    templates that read it (`_player_relation_season_type`, one combined
+    `season_type IN (2, 3)` read - simpler than `game_log`'s own row-merge,
+    since an aggregate has no rows to interleave); the discipline for every
+    other intent is the same as any other scoping slot - refuse rather than
+    silently ignore."""
     check_scope("game_log", {"order": "recent", "limit": 5, "season_type_unstated": True})
-    for intent in ("player_stat", "leaderboard", "threshold_count", "single_game_high"):
+    check_scope("player_stat", {"season_type_unstated": True})
+    check_scope("threshold_count", {"season_type_unstated": True})
+    for intent in ("leaderboard", "single_game_high"):
         with pytest.raises(TemplateUnsupported, match="different span"):
             check_scope(intent, {"season_type_unstated": True})
 
@@ -3824,6 +3832,29 @@ def test_check_scope_lets_player_stat_honor_since_and_order(pg_ctx: TemplateCont
 
     check_scope("player_stat", {"player": "Brandin Podziemski", "since": 2024})
     check_scope("player_stat", {"player": "Brandin Podziemski", "order": "recent", "limit": 3})
+
+
+def test_until_closes_a_since_bounded_range_rather_than_reading_through_now(pg_ctx: TemplateContext) -> None:
+    """``until`` stops a range at the far end instead of reading every season
+    since the start through the present - AGENTS.md's own worst-failure-shape
+    example ("best 3 point shooters of the 2010s" answering 2010 through now,
+    an unfilled ``until``). yardstick-v2 F045 ("Portis vs bulls 2019-20 to
+    2023-24") was this bug: the router read the range's first year alone and
+    answered one season of three meetings where 21 games across five spanned.
+
+    Podziemski's fixture games: 1 played box score in the earlier season
+    (``s - 1``, e5) and 3 in the current one (``s``: e1, e2, e3 - e4 is a DNP
+    and e6 an empty box score, neither counted). ``since=s-1`` alone reads
+    every season from there on and so all 4; ``since=s-1, until=s-1`` closes
+    the range right back where it opened and reads only the 1.
+    """
+    s = current_season()
+    closed = player_stat(pg_ctx, {"player": "Brandin Podziemski", "stat": "points", "since": s - 1, "until": s - 1})
+    assert closed.data["stats"]["gamesPlayed"] == 1
+    assert closed.data["seasons"] == [s - 1, s - 1]
+    open_ended = player_stat(pg_ctx, {"player": "Brandin Podziemski", "stat": "points", "since": s - 1})
+    assert open_ended.data["stats"]["gamesPlayed"] == 4
+    assert open_ended.data["seasons"] == [s - 1, s]
 
 
 def test_player_stat_names_the_real_cause_when_nothing_matches(pg_ctx: TemplateContext) -> None:
@@ -4836,11 +4867,21 @@ def test_templates_on_the_relation_declare_no_scoping_of_their_own() -> None:
        and ``RELATION_SCOPING_EXCLUDED`` is read live below, so this does not
        need to guess which cells that branch ends up excluding or why - only
        that the two facts still balance the same equation every other
-       relation template does.
+       relation template does. ``player_stat`` now also carries the
+       ``season_type_unstated`` extra beside ``game_log``'s - the season line
+       has no "both at once" row, so the slot sends it to box scores the same
+       way a ``since`` range already does.
     """
     from association.query.templates.common import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 
-    on_the_relation = {"game_log": {"season_type_unstated"}, "player_stat": set(), "period_split": set(), "player_splits": set(), "record_when": set(), "streak": set()}
+    on_the_relation = {
+        "game_log": {"season_type_unstated"},
+        "player_stat": {"season_type_unstated"},
+        "period_split": set(),
+        "player_splits": set(),
+        "record_when": set(),
+        "streak": set(),
+    }
     if _c5_shots_ported():
         on_the_relation |= {"shot_chart": set(), "shot_distance": set()}
     for intent, extra in on_the_relation.items():
@@ -4848,6 +4889,39 @@ def test_templates_on_the_relation_declare_no_scoping_of_their_own() -> None:
         for slot, reason in excluded.items():
             assert slot in RELATION_SCOPING and reason.strip(), f"{intent} excludes {slot!r} without a reason"
         assert HONORED_SCOPING[intent] == (RELATION_SCOPING | extra) - set(excluded), f"{intent} declares scoping of its own"
+
+
+def test_until_is_declared_wherever_since_is() -> None:
+    """A new scoping dimension is one clause on ``_Span`` plus a template
+    turning it on - never a slot honored for ``since`` and silently dropped
+    for ``until``, the same shape ``RELATION_SCOPING`` exists to stop for
+    every other cell. ``until`` closes a ``since``-bounded range at the far
+    end (``router._validate_range``'s closed forms - "2019-20 to 2023-24",
+    "between 2020 and 2024", "2020-2024", two adjacent bare years) and is
+    read nowhere ``since`` is not: ``period_split`` excludes both for the
+    same reason (its accuracy caveat is measured per season), and every
+    player-relation template that honors ``since`` honors ``until`` beside
+    it - checked by reading the source dicts rather than trusting a comment.
+
+    Scoped to the PLAYER relation's own structures (``RELATION_SCOPING``,
+    ``RELATION_SCOPING_EXCLUDED``, and ``HONORED_SCOPING`` for the intents on
+    it) rather than ``HONORED_SCOPING`` as a whole: the team relation's
+    ``since``/``until`` pairing is ``TEAM_RELATION_SCOPING``'s own claim, made
+    and tested separately.
+
+    .. versionadded:: 4.4.0
+    """
+    from association.query.templates.common import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
+
+    assert {"since", "until"} <= RELATION_SCOPING
+    for intent, excluded in RELATION_SCOPING_EXCLUDED.items():
+        assert ("since" in excluded) == ("until" in excluded), f"{intent} excludes since XOR until"
+    on_the_relation = ["game_log", "player_stat", "period_split", "player_splits", "record_when", "streak"]
+    if _c5_shots_ported():
+        on_the_relation += ["shot_chart", "shot_distance"]
+    for intent in on_the_relation:
+        honored = HONORED_SCOPING[intent]
+        assert ("since" in honored) == ("until" in honored), f"{intent} honors since XOR until"
 
 
 def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
