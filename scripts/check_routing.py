@@ -36,7 +36,7 @@ from association.query.entities import override_invented_players, override_nickn
 from association.query.models import DEFAULT_ROUTER_MODEL
 from association.query.router import RouterUnavailable, route
 from association.query.templates import TEMPLATES
-from association.query.templates.common import PLAYER_INTENTS, PLAYER_REQUIRED_INTENTS
+from association.query.templates.common import PLAYER_INTENTS, PLAYER_REQUIRED_INTENTS, SUBJECT_RESTORABLE_INTENTS
 
 # (question, expected intent, expected slots). A list-valued expectation is a
 # SUBSET check: dropping a field the user asked for is a bug, while the router
@@ -82,6 +82,15 @@ CASES: list[tuple[str, str, dict]] = [
     ("who had the most assists in a single game and how many did he have", "single_game_high", {"stat": "assists"}),
     ("What was the highest scoring game by a player this year?", "single_game_high", {"stat": "points"}),
     ("Most rebounds Jokic has had in one game?", "single_game_high", {"stat": "rebounds"}),
+    # yardstick-v2 F093: "NAME most STAT" has neither a scoring verb nor a
+    # possessive, so no router.py grammar (_SUBJECT_OF_HIGH et al.) restores
+    # it - the model dropped the player and this answered the league's
+    # single-game leaders, Kawhi Leonard's own 7 threes never mentioned.
+    # entities.SUBJECT_RESTORABLE_INTENTS/scope_from_question's
+    # `restore_subject` catches it post-router, corpus-measured against
+    # false positives (common.SUBJECT_RESTORABLE_INTENTS' own docstring has
+    # the count) before landing.
+    ("kawhi most threes in a game", "single_game_high", {"stat": "threePointFieldGoalsMade", "player": "Kawhi Leonard"}),
     # No season asserted: an absent season already means the current one in
     # every template, so its absence does not change the answer. Assert slots
     # that change the answer, not slots that merely restate a default.
@@ -445,7 +454,9 @@ def main() -> int:
                 restore_dropped_players(con, question, got.slots)
             # The same order agent.py applies them in: this is where a player
             # the router swapped for his own team comes back.
-            scope_from_question(con, question, got.slots, reads_player=got.intent in PLAYER_INTENTS, needs_player=got.intent in PLAYER_REQUIRED_INTENTS)
+            scope_from_question(
+                con, question, got.slots, reads_player=got.intent in PLAYER_INTENTS, needs_player=got.intent in PLAYER_REQUIRED_INTENTS, restore_subject=got.intent in SUBJECT_RESTORABLE_INTENTS
+            )
             override_invented_players(con, question, got.slots)
         if got is None:
             print(f"FAIL  {elapsed:5.2f}s  {question}\n        router returned nothing", flush=True)

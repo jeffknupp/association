@@ -655,7 +655,11 @@ def test_fast_path_answer_is_recorded_in_conversation_for_later_followups(monkey
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"threshold_count": lambda con, slots: TemplateResult(data={"leaders": []}, answer="template answer")})
     # No ollama.chat stub: reaching one would itself be the bug. The router is
     # stubbed out above, and a template answers without a model call.
-    agent = _agent(tmp_path)
+    # threshold_count is in SUBJECT_RESTORABLE_INTENTS (F093), so scope_from_question
+    # reads the question's words for a dropped subject - an empty `players`
+    # table, not the fully tableless warehouse _agent gives by default, so
+    # that read finds nobody rather than raising a CatalogException.
+    agent = _agent_with_players(tmp_path)
     assert agent.ask("most 30+ point games?").text == "template answer"
     assert agent.last_question == "most 30+ point games?"
     assert [m["content"] for m in agent.messages[1:]] == ["most 30+ point games?", "template answer"]

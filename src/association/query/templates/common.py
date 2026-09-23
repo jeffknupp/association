@@ -539,6 +539,47 @@ that case in the first place.
 """
 
 
+SUBJECT_RESTORABLE_INTENTS: frozenset[str] = frozenset({"single_game_high", "threshold_count"})
+"""Intents where a player left out changes the answer, but is not required -
+an empty slot means "the league" - so a name is restored only where the
+question's own words name exactly one player and that naming survives
+:func:`~association.query.entities._named_only_by_a_team_word` and
+:func:`~association.query.entities._named_only_by_a_common_word`.
+
+Separate from :data:`PLAYER_REQUIRED_INTENTS` on purpose: those templates
+cannot answer at all without a player, while these two have a real,
+different answer with none (the league's leaders) - "kawhi most threes in a
+game" (yardstick-v2 F093) used to answer that league ranking, Kawhi Leonard's
+own 7 never mentioned, because ``single_game_high`` was never taught to read
+a subject named with no scoring verb and no possessive
+(``router._SUBJECT_OF_HIGH`` needs one of those; "NAME most/highest STAT"
+has neither).
+
+Measured before shipping, per AGENTS.md's own discipline for this exact
+trap ("best" is Travis Best): both ``scripts/check_routing.py``'s cases and
+``/home/jeff/association-research/statmuse-2026-09/feed_queries.txt`` (380
+questions together) were run through the restoring grammar
+(``entities._scope_from_question_only_player``) with the two intents here as
+the only ones it can touch. 5 false-positive candidates turned up in the
+WHOLE corpus - "Best true shooting percentage last season?" (Travis Best),
+"Best record from 2010-11 to 2018-19 nba" and "Best NBA record since
+January 31st 201" (both Travis Best again), "Celtics vs Bulls head to head
+record" (Luther Head), and "Aaron gordan vs 76ers log" (a typo landing on
+Gordan Giricek instead of Aaron Gordon) - and NONE of the five route to
+``single_game_high`` or ``threshold_count``, so restricting to this pair
+alone already clears the measured corpus with zero false positives. The
+``best``/``head`` pair is still excluded by
+:func:`~association.query.entities._named_only_by_a_common_word` as a
+forward-looking gate, since a future question in either intent could still
+collide with one of them; the typo case is not addressed here (a wrong
+candidate, not an ungrounded one - :func:`~association.query.entities.suggest_players`'
+own near-spelling pass is the tool for that, and it only ever ASKS, never
+substitutes).
+
+.. versionadded:: 4.4.0
+"""
+
+
 # Templates that rank players AGAINST each other, rather than reporting the
 # numbers of players the question named. The distinction is the whole reason
 # coverage.Coverage carries two floors: player_season_stats holds Michael

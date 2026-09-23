@@ -1174,12 +1174,49 @@ def _team_grounded(con: duckdb.DuckDBPyConnection, question: str, team: Entity) 
     return any(len(word) >= 3 and any(name.startswith(word) for name in carried) for word in asked)
 
 
+#: Ordinary English words that also happen to be an NBA player's whole
+#: surname - measured against the full routing corpus
+#: (``scripts/check_routing.py``'s cases plus
+#: ``/home/jeff/association-research/statmuse-2026-09/feed_queries.txt``, 380
+#: questions) before :data:`~association.query.templates.common.SUBJECT_RESTORABLE_INTENTS`
+#: shipped: "Best true shooting percentage last season?" and "Best record
+#: from 2010-11 to 2018-19 nba" both named Travis Best, and "Celtics vs Bulls
+#: head to head record" named Luther Head - three genuine team/league
+#: questions with no player intended at all. The narrowest gate that removes
+#: them, per AGENTS.md's own instruction for this exact trap: not a general
+#: dictionary (environment-dependent, and this project's other word lists -
+#: ``_COUNT_SUBJECT_WORDS``, ``_NAME_STOPWORDS`` - are hand-curated for the
+#: same reason), grown from what a corpus measurement actually finds.
+#:
+#: .. versionadded:: 4.4.0
+_COMMON_WORDS_THAT_NAME_PLAYERS: frozenset[str] = frozenset({"best", "head"})
+
+
+def _named_only_by_a_common_word(question: str, player: str) -> bool:
+    """Whether every word of ``player``'s name the question holds is ALSO an
+    ordinary English word known to collide with a real surname
+    (:data:`_COMMON_WORDS_THAT_NAME_PLAYERS`) - the same shape
+    :func:`_named_only_by_a_team_word` checks for a team name, applied to a
+    plain word instead of a team's.
+
+    .. versionadded:: 4.4.0
+    """
+    asked = {w.casefold() for w in _words(question)}
+    supporting = [w for w in _words(player) if w.casefold() in asked]
+    return bool(supporting) and all(w.casefold() in _COMMON_WORDS_THAT_NAME_PLAYERS for w in supporting)
+
+
 def _scope_from_question_only_player(con: duckdb.DuckDBPyConnection, question: str) -> str | None:
     """The one player the question names, or None if it names none or several.
     A name held only by a word that names a team the question is about does
     not count: "luka dončić last 15 games vs. magic" names Luka, not Luka and
-    Magic Johnson."""
-    named = [name for name in players_named_in(con, question) if not _named_only_by_a_team_word(con, question, name)]
+    Magic Johnson. Nor does a name held only by an ordinary English word that
+    happens to collide with a surname - "best"/"head" - count either.
+
+    .. versionchanged:: 4.4.0
+       Also excludes a name held only by :data:`_COMMON_WORDS_THAT_NAME_PLAYERS`.
+    """
+    named = [name for name in players_named_in(con, question) if not _named_only_by_a_team_word(con, question, name) and not _named_only_by_a_common_word(question, name)]
     return named[0] if len(named) == 1 else None
 
 
@@ -1362,7 +1399,7 @@ def _scope_from_question_opponent(con: duckdb.DuckDBPyConnection, question: str,
         _scope_from_question_unheld_opponent(con, slots, notes, versus, season, carries_player=carries_player)
 
 
-def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], *, reads_player: bool, needs_player: bool = False) -> list[str]:
+def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], *, reads_player: bool, needs_player: bool = False, restore_subject: bool = False) -> list[str]:
     """Put a team the question plays AGAINST where a template will see it.
     Mutates ``slots``; returns a line per change, for the trace.
 
@@ -1395,7 +1432,21 @@ def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: di
     (``needs_player``): "Sga record 36 plus points" came back with no player
     at all, and an optional player slot left empty means "the league".
 
+    ``restore_subject`` is the same restore for a template where an empty
+    slot has a real, different answer (the league) rather than none at all -
+    :data:`~association.query.templates.common.SUBJECT_RESTORABLE_INTENTS`.
+    "kawhi most threes in a game" used to answer the league's single-game
+    3PM leaders, Kawhi Leonard's own 7 never mentioned, because no grammar in
+    ``router.py`` covers "NAME most/highest STAT" (yardstick-v2 F093). Kept
+    apart from ``needs_player`` because the two read differently even though
+    they call the same restore: ``needs_player`` means the template errors
+    without a name, ``restore_subject`` means it would answer something else
+    entirely correct and unmarked as narrower than it looks.
+
     .. versionadded:: 2.1.0
+
+    .. versionchanged:: 4.4.0
+       Takes ``restore_subject``.
     """
     notes: list[str] = []
     season = slots.get("season") if isinstance(slots.get("season"), int) else None
@@ -1411,7 +1462,7 @@ def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: di
 
     _scope_from_question_team_in_players(con, slots, notes, versus, season)
 
-    if needs_player and not slots.get("player") and not slots.get("players"):
+    if (needs_player or restore_subject) and not slots.get("player") and not slots.get("players"):
         _scope_from_question_restore_player(con, question, slots, notes)
 
     if reads_player and has_player and team is not None and versus is not None and team.id == versus.id and not slots.get("opponent"):

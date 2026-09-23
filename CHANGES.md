@@ -16,6 +16,18 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **A player named with no scoring verb or possessive is restored for
+  `single_game_high`/`threshold_count`.** "kawhi most threes in a game"
+  answered the league's single-game leaders, Kawhi Leonard's own 7 never
+  mentioned - `router._SUBJECT_OF_HIGH` needs "kawhi scored" or "kawhi's",
+  and this shape has neither. `entities.scope_from_question` takes a new
+  `restore_subject` flag
+  (`templates.common.SUBJECT_RESTORABLE_INTENTS`), corpus-measured
+  (`scripts/check_routing.py`'s cases plus the StatMuse feed, 380 questions)
+  before shipping: 5 false-positive candidates turned up in the whole
+  corpus, none on these two intents, and the two recurring words behind them
+  ("best" is Travis Best, "head" is Luther Head) are excluded going forward
+  by `entities._named_only_by_a_common_word`.
 - **A consecutive hyphenated year pair ("the 2023-2024 season") is one
   season, not a range.** `router._RANGE_HYPHEN_YEARS`, added earlier in this
   cycle to read "2020-2024"-style ranges, matched ANY four-digit hyphenated

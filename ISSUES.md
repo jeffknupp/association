@@ -46,38 +46,6 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
-### A bare-name single-game-high with no scoring verb loses its subject: "kawhi most threes in a game" answers the league's leaders
-- **Found:** 2026-09-23, working the router/player half of yardstick-v2's
-  wrong-land bucket 3 (`~/association-research/yardstick-v2/wrong_land.md`,
-  F093).
-- **Evidence:** routes `single_game_high {'stat': 'threePointFieldGoalsMade',
-  'season': 2026, 'season_type': 2}` - no `player` at all - and answers
-  "Stephen Curry and Trey Murphy III tied for the most 3-pointers in a single
-  game ... 12 each", never mentioning Kawhi Leonard, whose own career high is
-  7 (achieved 4 times, most recently 2026-01-15; still 7 including playoffs).
-  `single_game_high` is already in `router._SUBJECT_RESTORED_INTENTS`
-  (`router.py`), so a dropped subject is read back from the question's own
-  grammar when it matches one of three patterns - but none of them cover
-  this shape. `_SUBJECT_OF_HIGH` needs a scoring verb or a possessive
-  ("kawhi scored", "kawhi's"); `_SUBJECT_OF_COUNT` needs "games with"/"games
-  of"/a number-first stat phrase; `_SUBJECT_OF_HAVE` needs an auxiliary
-  ("does/did/has/have ... have"). "kawhi most threes in a game" - name
-  directly before "most" - matches none of the three, so `_subject_named_in`
-  (router.py:739) returns `None` and the league ranking runs unrestored.
-- **User sees:** a wrong answer, fluently: two real players' real numbers,
-  with the actually-asked-about player never named and nothing marking the
-  answer as narrower than it looks.
-- **Next step:** a fourth grammar anchored on a superlative directly after
-  the name ("NAME most/highest/fewest STAT") - AGENTS.md is explicit that
-  this needs measuring against the full routing corpus
-  (`scripts/check_routing.py`'s cases plus
-  `/home/jeff/association-research/statmuse-2026-09/feed_queries.txt`) before
-  it ships, the same way `_SUBJECT_OF_COUNT`'s own stopword list
-  (`_COUNT_SUBJECT_WORDS`) was tuned to avoid "career", "many", "with" and
-  the rest reading as a name - not attempted here for lack of time to run
-  that measurement inside this session. Not the general "restore any dropped
-  player" grammar AGENTS.md already warns off; narrower, single-shape.
-
 ### A team-implied narrowing and a career span are both dropped together: "lebron stats as a starter for Miami" answers this season's Lakers
 - **Found:** 2026-09-23, same session, yardstick-v2 F166.
 - **Evidence:** routes `player_stat {'player': 'LeBron James', 'fields':

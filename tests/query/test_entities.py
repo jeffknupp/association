@@ -892,7 +892,7 @@ def scope_con() -> duckdb.DuckDBPyConnection:
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute(
         "INSERT INTO players VALUES ('1','Jaylen Brown'),('2','Luka Doncic'),('3','Stephen Curry'),('4','Seth Curry'),('5','Brandon Boston Jr.'),('6','Kawhi Leonard'),('7','LeBron James'),"
-        "('8','Magic Johnson'),('9','Karl-Anthony Towns')"
+        "('8','Magic Johnson'),('9','Karl-Anthony Towns'),('10','Travis Best'),('11','Luther Head')"
     )
     return c
 
@@ -1136,6 +1136,44 @@ def test_a_player_left_out_is_restored_only_where_one_is_required(scope_con: duc
     optional: dict[str, Any] = {"stat": "points", "threshold": 36}
     scope_from_question(scope_con, "Sga record 36 plus points", optional, reads_player=True)
     assert "player" not in optional
+
+
+def test_a_subject_named_with_no_verb_is_restored_for_single_game_high(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """yardstick-v2 F093: "kawhi most threes in a game" used to answer the
+    league's single-game leaders, Kawhi Leonard's own 7 never mentioned -
+    router._SUBJECT_OF_HIGH needs a scoring verb ("kawhi scored") or a
+    possessive ("kawhi's"), and this shape has neither. `restore_subject`
+    (SUBJECT_RESTORABLE_INTENTS: single_game_high, threshold_count) reads
+    him back from the question the same way `needs_player` already does for
+    a template with no league reading at all."""
+    slots: dict[str, Any] = {"stat": "threePointFieldGoalsMade"}
+    scope_from_question(scope_con, "kawhi most threes in a game", slots, reads_player=True, restore_subject=True)
+    assert slots["player"] == "Kawhi Leonard"
+    # Off by default, same as needs_player: a caller that does not ask for it
+    # (an intent outside SUBJECT_RESTORABLE_INTENTS) gets the league reading.
+    unrestored: dict[str, Any] = {"stat": "threePointFieldGoalsMade"}
+    scope_from_question(scope_con, "kawhi most threes in a game", unrestored, reads_player=True)
+    assert "player" not in unrestored
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        # yardstick-v2 F093's own false-positive check: "best" is Travis
+        # Best and "head" is Luther Head, and neither question is about
+        # either of them - both are genuine league/team questions.
+        # Corpus-measured (scripts/check_routing.py + the StatMuse feed,
+        # entities._COMMON_WORDS_THAT_NAME_PLAYERS) before restore_subject
+        # shipped.
+        "Best true shooting percentage last season?",
+        "Best record from 2010-11 to 2018-19 nba",
+        "Celtics vs Bulls head to head record",
+    ],
+)
+def test_a_common_english_word_is_not_restored_as_a_player(scope_con: duckdb.DuckDBPyConnection, question: str) -> None:
+    slots: dict[str, Any] = {"stat": "ts_pct"}
+    scope_from_question(scope_con, question, slots, reads_player=True, restore_subject=True)
+    assert "player" not in slots
 
 
 @pytest.mark.parametrize(("nickname", "team"), [("Sixers", "Philadelphia 76ers"), ("cavs", "Cleveland Cavaliers"), ("Mavs", "Dallas Mavericks")])
