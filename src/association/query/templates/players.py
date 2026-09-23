@@ -557,6 +557,16 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        real one (`threePointFieldGoalPct`, answered as a percentage) or
        falling through to a refusal about a filler `player` slot instead
        (ISSUES.md #114).
+
+    .. versionchanged:: 4.4.0
+       The shot-distance refusal now says the ranking is not BUILT rather
+       than that none is possible - yardstick-v2 F019 marked the first
+       wording false: the key computes a real league leader (Porzingis,
+       27.37 ft with a 100-attempt floor) straight from `shot_chart`. Filed
+       in ISSUES.md as the gap it names - a `shot_distance` metric a leaderboard
+       could rank, with an attempt floor and end-of-period heaves excluded -
+       rather than built here, since the ranking needs its own qualifying
+       floor measured (not simply plugged into `LEADERBOARD_METRICS`).
     """
     con = ctx.con
     if slots.get("stat") == "shot_distance":
@@ -570,7 +580,7 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         # player the question does not mention - honest-sounding, and the
         # wrong cause, since no leaderboard metric exists either way. Neither
         # check below gets a chance to name the wrong cause now.
-        message = "No leaderboard ranks shot distance across the league - ask about one named player's average shot distance instead."
+        message = "Shot distance is not ranked league-wide yet - ask about one named player's average shot distance instead."
         return TemplateResult(data={"message": message}, answer=message)
     career = _career_span("leaderboard", slots.get("span"), slots.get("season"))
     metric = resolve_metric(slots.get("stat"), career=career)

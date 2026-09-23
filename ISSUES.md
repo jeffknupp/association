@@ -2319,6 +2319,32 @@ those were found.
 
 ## P3: refusal or gap
 
+### No leaderboard metric ranks average three-point shot distance
+- **Found:** 2026-09-23, fixing the wrong-cause refusal `leaderboard` gives
+  for `stat: "shot_distance"` (yardstick-v2 F019 - "who lead the league in
+  avg 3 point distance"/"...for 3 point shots"). The wording was fixed in the
+  same commit (it used to say "no leaderboard ranks shot distance", which
+  reads as impossible and is false), but the underlying gap the reworded
+  refusal now honestly names is still open.
+- **Evidence:** the key computes a real league leader straight from
+  `shot_chart` - Kristaps Porzingis, 27.37 ft average three-point shot
+  distance over the 2025-26 regular season, with a 100-attempt floor and
+  end-of-period heaves (game clock under 3 seconds) excluded; leaving heaves
+  in changes the leader (Alperen Sengun, 29.62 ft, 9% heaves). Nothing in
+  `LEADERBOARD_METRICS`/`query/leaderboard.py` computes this - `shot_distance`
+  is a per-player metric (`templates.shots.shot_distance`) with no
+  league-wide ranking built over it.
+- **User sees:** a refusal naming the true cause now ("Shot distance is not
+  ranked league-wide yet - ask about one named player's average shot
+  distance instead") rather than a false one, but the question itself is
+  still unanswered by the fast path.
+- **Next step:** a `shot_distance` leaderboard metric, with its own
+  qualifying floor (attempts) and heave exclusion measured the way
+  `SHOT_VALUE_SQL`'s per-season caveats already are for the per-player read -
+  not simply plugged into `LEADERBOARD_METRICS` with somebody else's minimum,
+  since an unqualified leader is a single desperation heave (checked: the
+  warehouse's unfiltered leader is not Porzingis).
+
 ### `period_leaderboard` stays off the player-games relation
 - **Found:** 2026-09-22, step 3 C5's own second task: assess whether a
   no-player read of the relation (`player_games.league()`) would let

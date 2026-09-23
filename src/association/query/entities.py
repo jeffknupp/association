@@ -1888,6 +1888,32 @@ def collect_name_readings() -> Iterator[list[str]]:
         _NAME_READINGS.reset(token)
 
 
+def note_typo_reading(text: str, chosen: Entity) -> None:
+    """Say a near spelling was read as ``chosen``, where somebody is
+    listening - the same visible-and-correctable discipline
+    :func:`_note_name_reading` carries for a bare-surname default, applied to
+    :func:`suggest_players`' OWN single-candidate result. Jeff's rule
+    (AGENTS.md, "A reasonable default beats a question"): a near spelling
+    with exactly one candidate is taken rather than asked about, and the
+    answer says so - "'wembyanama' was read as Victor Wembanyama" - so a
+    wrong guess is visible and a real ambiguity (more than one candidate,
+    which :func:`suggest_players` would have to be asked about instead of
+    called with) is never silently picked.
+
+    Public, unlike :func:`_note_name_reading`: written from
+    :mod:`association.query.templates.common`, which has no other way to
+    reach the :data:`_NAME_READINGS` context.
+
+    .. versionadded:: 4.4.0
+    """
+    notes = _NAME_READINGS.get()
+    if notes is None:
+        return
+    note = f"({text!r} was read as {chosen.name} - a near spelling with no other match.)"
+    if note not in notes:
+        notes.append(note)
+
+
 def _note_name_reading(text: str, chosen: Entity, others: list[Entity], season: int, *, named_in_full: bool) -> None:
     """Say how ``text`` was read, where somebody is listening. The second
     sentence is the point: it names the wording that reaches the other player,

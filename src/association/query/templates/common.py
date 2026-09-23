@@ -19,7 +19,7 @@ from association.nba.season import current_season, eastern_day_utc_range
 from ..answer import Artifact
 from ..calendar import parse_situation
 from ..conditions import _PLAYER_GAME_TABLES, _TEAM_GAME_TABLES, _game_scope, _Scope, box_source
-from ..entities import Ambiguous, Availability, Entity, clarification, find_players, resolve_player, resolve_team, suggest_players, suggestion, teammate_names
+from ..entities import Ambiguous, Availability, Entity, clarification, find_players, note_typo_reading, resolve_player, resolve_team, suggest_players, suggestion, teammate_names
 from ..leaderboard import resolve_metric
 from ..measures import MEASURE_WORDS
 from ..metrics import LEADERBOARD_METRICS
@@ -1693,7 +1693,20 @@ def _teammates_among(con: duckdb.DuckDBPyConnection, candidates: list[Entity], p
 def _resolved_teammate(con: duckdb.DuckDBPyConnection, text: Any, player: Entity, span: _Span) -> Entity | TemplateResult:
     """The teammate a "without" names. "Without curry" is six players by name
     and at most two by roster, so an ambiguous name is narrowed to the ones who
-    shared a team with ``player`` in the span before anything is asked."""
+    shared a team with ``player`` in the span before anything is asked.
+
+    .. versionchanged:: 4.4.0
+       A near spelling (:func:`~association.query.entities.suggest_players`)
+       with exactly one candidate is taken rather than asked about, the same
+       default :func:`~association.query.entities.resolve_player` already
+       applies to a bare surname - visible in the answer
+       (:func:`~association.query.entities.note_typo_reading`) and correctable
+       (the note names the exact text that was typed). yardstick-v2 F157:
+       "de'aaron fox vs magic last five games without wembyanama" used to
+       refuse "did you mean Victor Wembanyama?" over a typo the question's own
+       key note says resolves cleanly - the true reason the question falls
+       short is a game count, not a name that failed to resolve.
+    """
     if not isinstance(text, str) or not text.strip():
         raise TemplateUnsupported("'without' names nobody")
     resolved = resolve_player(con, text)
@@ -1711,10 +1724,15 @@ def _resolved_teammate(con: duckdb.DuckDBPyConnection, text: Any, player: Entity
             return TemplateResult(data={"unmatched": text, "candidates": [c.name for c in candidates]}, answer=message)
         resolved = shared[0]
     if not isinstance(resolved, Entity):
-        found = _resolved_player(con, text, available=_BOX_SCORES)  # a suggestion, or a refusal
-        if isinstance(found, TemplateResult):
-            return found
-        resolved = found
+        near = suggest_players(con, text)
+        if len(near) == 1:
+            note_typo_reading(text, near[0])
+            resolved = near[0]
+        else:
+            found = _resolved_player(con, text, available=_BOX_SCORES)  # a suggestion, or a refusal
+            if isinstance(found, TemplateResult):
+                return found
+            resolved = found
     if resolved.id == player.id:
         raise TemplateUnsupported(f"{player.name} cannot play without himself")
     return resolved

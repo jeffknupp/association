@@ -2678,9 +2678,16 @@ def test_leaderboard_refuses_a_shot_distance_ranking_naming_the_real_cause(lb_co
     sets a sentinel `stat` this checks BEFORE resolve_metric and before the
     named-player refusal above, so a lingering filler player slot (left here
     on purpose, to prove the ordering) cannot produce either wrong-cause
-    refusal first."""
+    refusal first.
+
+    .. versionchanged:: 4.4.0
+       yardstick-v2 F019: the old wording ("No leaderboard ranks shot
+       distance") reads as a claim that none COULD - false, since the key
+       computes a real league leader straight from `shot_chart`. The refusal
+       now says the ranking is not built, which is the true state of things.
+    """
     result = leaderboard(lb_con, {"stat": "shot_distance", "player": "player"})
-    assert result.answer == "No leaderboard ranks shot distance across the league - ask about one named player's average shot distance instead."
+    assert result.answer == "Shot distance is not ranked league-wide yet - ask about one named player's average shot distance instead."
 
 
 # ---------------- player_netpoints ----------------
@@ -3990,10 +3997,37 @@ def test_player_matchup_drops_a_second_player_confirmed_by_a_near_spelling_of_wi
     ("wembyanama") - so the identity confirmation has to reach through
     suggest_players' near-spelling pass, not just an exact match. "Stephen
     Cury" here is one letter short of Stephen Curry and matches nobody else,
-    the same shape "wembyanama" is for Victor Wembanyama."""
+    the same shape "wembyanama" is for Victor Wembanyama.
+
+    .. versionchanged:: 4.4.0
+       A near spelling with exactly one candidate is taken rather than asked
+       about (`_resolved_teammate`, F157) - the same default `resolve_player`
+       already applies to a bare surname - so both paths now answer the
+       narrowed game log instead of refusing over a typo the question's own
+       words resolve cleanly. Still checked for agreeing with each other:
+       that is the point of the case, not which way `without` resolves.
+    """
     matchup = player_matchup(pg_ctx, {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons", "without": ["Stephen Cury"]})
     log = game_log(pg_ctx, {"player": "Brandin Podziemski", "opponent": "Detroit Pistons", "without": ["Stephen Cury"]})
-    assert matchup.answer == log.answer == "No player found matching 'Stephen Cury' - did you mean Stephen Curry?"
+    assert matchup.answer == log.answer
+    assert "did you mean" not in log.answer
+    assert "without Stephen Curry" in log.answer
+
+
+def test_a_near_spelling_of_without_is_taken_and_the_reading_is_visible(pg_ctx: TemplateContext) -> None:
+    """yardstick-v2 F157: "de'aaron fox vs magic last five games without
+    wembyanama" refused "did you mean Victor Wembanyama?" over a typo the
+    question's own key note says resolves cleanly - the true reason the
+    question falls short of five games is a game count (only one qualifying
+    game exists), not a name that failed to resolve. `_resolved_teammate`
+    now takes a near spelling with exactly one candidate rather than asking,
+    and `collect_name_readings` carries the sentence saying so - visible
+    where a template called directly (as here) does not show it, and shown
+    in the agent's own answer (`agent.py` attaches it, not the template)."""
+    with collect_name_readings() as readings:
+        result = game_log(pg_ctx, {"player": "Brandin Podziemski", "opponent": "Detroit Pistons", "without": ["Stephen Cury"]})
+    assert "without Stephen Curry" in result.answer
+    assert readings == ["('Stephen Cury' was read as Stephen Curry - a near spelling with no other match.)"]
 
 
 # ---------------- a narrowed reading over a whole empty-box-score season (#72) ----------------

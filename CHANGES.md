@@ -16,6 +16,19 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **A near spelling in `without` is taken rather than asked about, and the
+  shot-distance leaderboard refusal names the real cause.** "de'aaron fox vs
+  magic last five games without wembyanama" refused "did you mean Victor
+  Wembanyama?" over a typo the question's own words resolve cleanly - the
+  true reason the question falls short of five games is a game count (one
+  qualifying game), not a name that failed to resolve. `_resolved_teammate`
+  now applies the same visible-and-correctable default
+  `entities.resolve_player` already gives a bare surname
+  (`entities.note_typo_reading`) to `suggest_players`' own single-candidate
+  result. Separately, `leaderboard`'s shot-distance refusal said "no
+  leaderboard ranks shot distance", which reads as impossible and is false -
+  the key computes a real league leader straight from `shot_chart`; it now
+  says the ranking is not built (filed in `ISSUES.md`).
 - **"including the playoffs" no longer reads as "the playoffs only".**
   `router._validate_season_type` consulted `_PLAYOFF_WORDS` alone, and
   "including playoffs"/"regular season and playoffs"/"playoffs included"
