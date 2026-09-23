@@ -17,6 +17,7 @@ from association.nba.coverage import COVERAGE, REGULAR_SEASON, caveat, unavailab
 from association.nba.season import current_season, eastern_day_utc_range
 
 from ..answer import Artifact
+from ..calendar import parse_situation
 from ..conditions import _PLAYER_GAME_TABLES, _TEAM_GAME_TABLES, _game_scope, _Scope, box_source
 from ..entities import Ambiguous, Availability, Entity, clarification, find_players, resolve_player, resolve_team, suggest_players, suggestion, teammate_names
 from ..leaderboard import resolve_metric
@@ -146,7 +147,7 @@ SCOPING_SLOTS = frozenset({"order", "date", "opponent", "venue", "span", "withou
 # to one template at a time, which is the O(templates x slots) matrix the
 # algebra port exists to remove. A template on the relation that cannot honor
 # one of these says so in RELATION_SCOPING_EXCLUDED, with the reason.
-RELATION_SCOPING = frozenset({"order", "date", "opponent", "venue", "span", "without", "split", "since", "below", "above", "game_n", "season_n"})
+RELATION_SCOPING = frozenset({"order", "date", "opponent", "venue", "span", "without", "split", "since", "below", "above", "game_n", "season_n", "situation"})
 """The scoping slots every template on the player-games relation honors.
 
 .. versionadded:: 4.4.0
@@ -1322,6 +1323,18 @@ def scoped_games(
         narrowed.extra.append("g.date >= ? AND g.date < ?")
         narrowed.extra_params += [start, end]
         narrowed.date = date
+    situation = slots.get("situation")
+    if situation:
+        # A `situation` is honored where it names the calendar - a weekday, a
+        # month, a fixed day, "since <day>" - and refused BY VALUE where it
+        # names anything else (an age, a conference, "since returning"): the
+        # relation carries the game's Eastern day and nothing about the
+        # player's age or the opponent's division, and dropping the slot would
+        # answer a wider question under a heading that promised the narrower.
+        narrowing = parse_situation(situation)
+        if narrowing is None:
+            raise TemplateUnsupported(f'no calendar narrowing in situation {situation!r} - a weekday, a month, a holiday or "since <day>" is read; an age, a conference or a division is not')
+        narrowed.narrow_calendar(narrowing)
     narrowed.window = _relation_window(slots)
     return narrowed
 

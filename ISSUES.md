@@ -1421,36 +1421,34 @@ those were found.
   player's line through `_narrow_player_games`.
 - **GitHub:** #34
 
-### A weekday or holiday `situation` narrowing falls through to the slow agent instead of a fast refusal
-- **Found:** 2026-09-18, reading `/home/jeff/association-research/statmuse-2026-09/query_set_audit.md`
-  while judging `game_log`'s `situation` refusals
-- **Evidence:** `situation` is deliberately unhonored by every template
-  ("Each narrowing the router has no slot for needs its own regex", above),
-  so a weekday-shaped question - "jamal murray career games on Tuesdays" - hits
-  `check_scope`, raises `TemplateUnsupported`, and falls all the way through to
-  the slow SQL-writing agent (`agent.py`'s `except TemplateUnsupported:
-  return None`). The audit that catalogued all 261 feed queries flags 8 of them
-  as a weekday split, calls all 8 low-value, and says explicitly: "the owner
-  should know the feed keeps asking: if the decision is 'never', it is worth a
-  refusal that says so rather than a fall-through that spends 55 agent-seconds."
-  The same reasoning applies to the two other `game_log` `situation` rows
-  judged here: "paul reed gamelog with 25 minutes" (the audit's own #103,
-  flagged ambiguous - "at least" vs "exactly" 25 minutes, so answering it would
-  be a guess) and "forwards with 20+ mins vs gsw log" (a position-group
-  subject, a different missing shape entirely, not a single-player or
-  single-team question `game_log` has any way to answer).
-- **User sees:** a ~55-second wait for an answer that, for the weekday case,
-  the system could know instantly it cannot give.
-- **Next step:** a fast, worded refusal for a `situation` shape that is known
-  never to be answerable (weekday, holiday) needs a check that runs BEFORE
-  `check_scope`'s raise sends the question to the agent - `check_scope` itself
-  only ever raises (never returns a refusal `TemplateResult`), by design, so
-  it is the wrong place to add one. This is a router/agent-level mechanism
-  change, not a `games.py` template fix, and was not attempted here for that
-  reason - `HONORED_SCOPING` is documented to mean "actually filters by it and
-  says so," and a refusal is neither.
+### A `situation` the team relation cannot read, or one naming no calendar, still falls through to the slow agent
+- **Found:** 2026-09-18, reading the StatMuse audit; narrowed 2026-09-22 when
+  the player-games relation began honoring the calendar shapes (step 3, K3).
+- **Evidence:** `query/calendar.py` reads a weekday, a month, a fixed-date
+  holiday and "since <day>", and every template on the player relation
+  answers them now ("jamal murray career games on Tuesdays" is a log of his
+  Tuesday games). Two things remain: (1) the TEAM relation (`team_games`) does
+  not read the slot - `team_record` still accepts only "in <month>" through
+  its own `_team_record_month`, and `game_log`'s team half, `head_to_head` and
+  the team branches refuse any `situation`; (2) a `situation` naming no
+  calendar (an age: "18 year old", "before turning 27"; a conference or
+  division; "since returning") is refused by value with `TemplateUnsupported`,
+  which `agent.py` turns into a fall-through to the SQL-writing agent - ~55
+  seconds to an answer the system already knows it cannot give. Across every
+  recorded corpus the slot takes 19 distinct values; 11 are calendar shapes,
+  8 are not.
+- **User sees:** a team question on a weekday or since a date refused; an age
+  or conference question answered slowly by the agent, from its own weights.
+- **Next step:** (1) `TeamNarrowed.narrow_calendar` over `tg.eastern_date` /
+  `tg.season` with the same `calendar_clause`, applied in `team_games`, and
+  `team_record`'s month read replaced by it - one parser, both relations.
+  (2) For the non-calendar values, a refusal returned rather than raised, the
+  way `check_coverage` does it: the agent has no column for an age or a
+  division either.
+- **Source:** ours.
 - **GitHub:** not yet filed
 - **GitHub:** #120
+
 ### A team is the real subject of a question routed to a player-only template
 - **Found:** 2026-09-18, entity-resolution pass over the StatMuse replay set
   (`fastpath_after_rows_graded.jsonl`)

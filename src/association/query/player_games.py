@@ -45,6 +45,7 @@ import duckdb
 
 from association.nba.coverage import COVERAGE
 from association.nba.season import eastern_date_sql
+from association.query.calendar import CalendarNarrowing, calendar_clause
 
 from .conditions import UNGATED_ON_REBUILD, BoxSource
 from .entities import Entity
@@ -193,6 +194,9 @@ class Narrowed:
     #: Boston" averages the five Boston games - step 3's one rule that is
     #: about the skeleton rather than the rows.
     window: tuple[str, int] | None = None
+    #: The calendar narrowing a ``situation`` slot named - a weekday, a month,
+    #: a fixed day, every game from a day of the season on - or None.
+    calendar: CalendarNarrowing | None = None
 
     def clauses(self, *, narrowed: bool = True, recorded: bool = True, rebuilt: bool = False) -> tuple[str, list[Any]]:
         """The WHERE body and its parameters - without the narrowing when
@@ -250,6 +254,8 @@ class Narrowed:
             parts.append(f"in game {self.series_game} of {'the' if self.opponent is not None else 'each'} series")
         if self.date and dated:
             parts.append(f"on {self.date}")
+        if self.calendar is not None:
+            parts.append(self.calendar.label)
         if self.window is not None and windowed:
             order, n = self.window
             parts.append(f"over his {'last' if order == 'recent' else 'first'} {n} game{'s' if n != 1 else ''}")
@@ -271,6 +277,20 @@ class Narrowed:
         self.narrow(f"pgl.{column} {MEASURE_OPS[op]} ?", value)
         if label:
             self.measures.append(label)
+
+    def narrow_calendar(self, narrowing: CalendarNarrowing) -> None:
+        """Only the games on a weekday, in a month, on a fixed day, or from a
+        day of the season on - the ``situation`` cell, read by
+        :func:`association.query.calendar.parse_situation` and applied by
+        :func:`association.query.templates.common.scoped_games`. The date is
+        the game's US Eastern day, so "on Tuesdays" is the night the game was
+        played, not ESPN's UTC stamp.
+
+        .. versionadded:: 4.4.0
+        """
+        clause, params = calendar_clause(narrowing, eastern_date_sql("g.date"), "pgl.season")
+        self.narrow(clause, *params)
+        self.calendar = narrowing
 
     def narrow_series_game(self, n: int) -> None:
         """Only the ``n``th game of each playoff series: the games between the
