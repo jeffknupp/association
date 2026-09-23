@@ -16,6 +16,15 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **A consecutive hyphenated year pair ("the 2023-2024 season") is one
+  season, not a range.** `router._RANGE_HYPHEN_YEARS`, added earlier in this
+  cycle to read "2020-2024"-style ranges, matched ANY four-digit hyphenated
+  pair and so also matched a single season spelled out in full - silently
+  overwriting `season_text._SPAN`'s already-correct single-season read
+  (since=2023/until=2024 in place of season=2024). Now only a
+  NON-consecutive pair reads as a range ("how many 20+ point games did SGA
+  have 2024-2026?"); a consecutive one is left to the existing single-season
+  reader, exactly as "2023-24" already means.
 - **"since he joined the league" is a career span.** "Show me luka's avg
   assists since he joined the league" carried no `_SPAN_WORDS` match at all
   ("career", "all-time", "ever", "in/of history") and answered one season

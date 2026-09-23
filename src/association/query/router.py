@@ -356,6 +356,14 @@ _RANGE_TO_HYPHEN = re.compile(rf"\b(?:from\s+)?{_SEASON_HYPHEN}\s+(?:to|through)
 _RANGE_BETWEEN = re.compile(r"\bbetween\s+((?:19|20)\d\d)\s+and\s+((?:19|20)\d\d)\b", re.IGNORECASE)
 # "2020-2024": two season numbers joined by a hyphen with no "to"/"from" -
 # distinct from `_SEASON_HYPHEN` above, whose second half is two digits.
+# CONSECUTIVE years in this shape are not a range at all: "the 2023-2024
+# season" is how people write ONE season (2024) with both digits spelled out,
+# exactly as "2023-24" already means - `season_text._SPAN` already reads that
+# correctly as season 2024, and this regex used to re-match the same text as
+# since=2023/until=2024, silently overwriting a right answer with a wrong one
+# a step later. `_validate_range` only treats this shape as a range when the
+# two years are NOT consecutive ("2024-2026" - Jeff's own yardstick wording,
+# "how many 20+ point games did SGA have 2024-2026?").
 _RANGE_HYPHEN_YEARS = re.compile(r"\b((?:19|20)\d\d)-((?:19|20)\d\d)\b")
 # "knicks record by month 2024 2025": two bare, ADJACENT season numbers with
 # nothing joining them - only when the second is exactly one more than the
@@ -393,7 +401,9 @@ def _validate_range(question: str) -> tuple[int, int | None] | None:
     hyphen_years = _RANGE_HYPHEN_YEARS.search(question)
     if hyphen_years is not None:
         first, last = int(hyphen_years.group(1)), int(hyphen_years.group(2))
-        if first != last:
+        if abs(last - first) > 1:
+            # Consecutive years ("2023-2024") are one season, not a range -
+            # left for season_text._SPAN to read the way "2023-24" already is.
             return (first, last) if first <= last else (last, first)
     bare_years = _RANGE_BARE_YEARS.search(question)
     if bare_years is not None and int(bare_years.group(2)) == int(bare_years.group(1)) + 1:

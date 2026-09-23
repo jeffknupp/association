@@ -375,6 +375,14 @@ CASES: list[tuple[str, str, dict]] = [
     # slot contract (`TeamNarrowed`/`TEAM_RELATION_SCOPING`), not ported here.
     ("Best record from 2010-11 to 2018-19 nba", "team_leaderboard", {"since": 2011, "until": 2019}),
     ("knicks record by month 2024 2025", "team_record", {"team": "New York Knicks", "since": 2024, "until": 2025}),
+    # A coordinator correction to the fix above: a bare four-digit hyphenated
+    # pair is a range only when the years are NOT consecutive ("2024-2026" -
+    # Jeff's own yardstick wording); a CONSECUTIVE pair ("2023-2024") is one
+    # season written with both years spelled out, exactly as "2023-24" means,
+    # and `_RANGE_HYPHEN_YEARS` used to read it as since=2023/until=2024,
+    # silently overwriting `season_text._SPAN`'s already-correct season=2024.
+    ("how many 20+ point games did SGA have 2024-2026?", "threshold_count", {"player": "Shai Gilgeous-Alexander", "since": 2024, "until": 2026}),
+    ("sga stats in the 2023-2024 season", "player_stat", {"player": "Shai Gilgeous-Alexander", "season": 2024}),
     # ISSUES.md #114: `stat` has no enum in ROUTER_SCHEMA, so a 2-point
     # percentage question routinely arrived at fieldGoalPct (the nearest stat
     # ROUTER_PROMPT actually teaches) and answered OVERALL shooting instead.
