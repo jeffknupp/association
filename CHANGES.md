@@ -16,6 +16,24 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **The player-games relation honors `situation` where it names the calendar
+  (step 3, K3).** "Garland on Mondays", "LeBron's line vs the Jazz on
+  Tuesdays", "his games in October", "on Christmas", "since January 31st" -
+  the router files all of these in one `situation` slot, and every template
+  on the relation refused the slot outright (`check_scope`). `query/calendar.py`
+  reads the four shapes a game table can filter on - a weekday, a month, a
+  fixed-date holiday, and every game from a day of the season on (in the
+  calendar year that day falls in for each game's own season) - and
+  `Narrowed.narrow_calendar` applies them over the game's US Eastern day, so
+  "on Tuesdays" is the night it was played. Declared once in
+  `RELATION_SCOPING`, so `game_log`, `player_stat`, `period_split`,
+  `player_splits`, `record_when` and `streak` all read it, and each answer
+  says it ("on Tuesdays" in the heading). A `situation` that names anything
+  else - an age ("as an 18 year old"), a conference or division, "since
+  returning" - is still refused, now by value and with the shapes that are
+  read named in the message; it is never dropped. The team relation does not
+  read it yet (ISSUES.md). Of the 19 distinct `situation` values across every
+  recorded corpus, 11 are one of the four calendar shapes.
 - **Two router post-processing fixes, both slots the question does not
   support arriving in the wrong place.** A quarter or half question that
   names a player but whose model reply drops `player` entirely (filling

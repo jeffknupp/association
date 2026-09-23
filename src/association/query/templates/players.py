@@ -1088,10 +1088,12 @@ def _player_stat_reads_box_scores(slots: dict[str, Any], measures: list[MeasureF
     season line: the opponent, venue and absent teammates; a named half of the
     starter/bench split (it narrows the GAMES - the season line has no such
     column); a line on a box-score column ("under 14 fta"); a game of each
-    playoff series; a range of seasons. The narrowings themselves are applied
-    by common.scoped_games."""
+    playoff series; a range of seasons; a calendar `situation`. The narrowings
+    themselves are applied by common.scoped_games."""
     split_side = slots.get("split") if slots.get("split") in STARTER_SIDES else None
-    return any((slots.get("opponent"), slots.get("venue"), slots.get("without"), split_side, slots.get("since"), measures, slots.get("game_n")))
+    # A `situation` (a weekday, a month, a holiday, "since <day>") is a
+    # narrowing of the GAMES too - the season line has no such column.
+    return any((slots.get("opponent"), slots.get("venue"), slots.get("without"), split_side, slots.get("since"), measures, slots.get("game_n"), slots.get("situation")))
 
 
 def _season_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, season_type: int, wanted: list[str], shooting: tuple[str, str, str, str] | None) -> TemplateResult:

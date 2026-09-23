@@ -1554,9 +1554,16 @@ def _source_a_template_reads_slots_in(handler: Any) -> str:
     for step in sorted(set(re.findall(r"\b(_[a-z][a-z0-9_]*)\(", source))):
         if inspect.isfunction(getattr(module, step, None)):
             source += inspect.getsource(getattr(module, step))
-    for shared in ("scoped_player", "scoped_games", "condition_player"):
-        if f"{shared}(" in source:
-            source += inspect.getsource(getattr(common, shared))
+    # The shared steps, and the shared steps THEY call: condition_player hands
+    # its slots to scoped_games, which is where a condition template's
+    # `situation` (and every other relation cell) is read. Two passes, since
+    # the chain is two deep and a step already added is not added twice.
+    added: set[str] = set()
+    for _ in range(2):
+        for shared in ("scoped_player", "scoped_games", "condition_player"):
+            if f"{shared}(" in source and shared not in added:
+                source += inspect.getsource(getattr(common, shared))
+                added.add(shared)
     return source
 
 
@@ -3387,6 +3394,40 @@ def pg_ctx(tmp_path: Path) -> TemplateContext:
             c.execute("INSERT INTO shot_chart VALUES ('10',?,3,?,'1',1,'10:00',TRUE,'Jump Shot',25,26,3,'26-foot three point jumper')", [s, event])
     real_games.build_table(c, {"games", "teams"})
     return TemplateContext(con=c, out_dir=tmp_path)
+
+
+def test_a_situation_naming_the_calendar_narrows_the_relation(pg_ctx: TemplateContext) -> None:
+    """`situation` is a cell of the relation (step 3, K3): a weekday, a month,
+    a holiday and "since <day>" each narrow Podziemski's games by their US
+    Eastern day, every template on the relation reads it through
+    `scoped_games`, and the answer says it. The fixture's games and their
+    Eastern days: e1 {s-1}-11-01, e2 {s-1}-12-01, e3 {s}-01-10, e5 {s-1}-02-28."""
+    from datetime import date
+
+    s = current_season()
+    played = [date(s - 1, 11, 1), date(s - 1, 12, 1), date(s, 1, 10)]  # e1, e2, e3, the current season's games
+    weekday = played[-1].strftime("%A").lower()  # e3's day of the week
+    expected = sorted(d.isoformat() for d in played if d.strftime("%A").lower() == weekday)
+    log = game_log(pg_ctx, {"player": "Brandin Podziemski", "situation": f"{weekday}s"})
+    assert sorted(g["date"] for g in log.data["games"]) == expected and f"on {weekday.capitalize()}s" in (log.answer or "")
+    january = player_stat(pg_ctx, {"player": "Brandin Podziemski", "stat": "points", "situation": "in january"})
+    assert january.data["stats"]["gamesPlayed"] == 1 and january.data["stats"]["avgPoints"] == 15.0 and "in January" in (january.answer or "")
+    # "since december 1st" reads within each game's own season: December is
+    # the season's first calendar year, so e2 (Dec 1) and e3 (Jan 10) qualify.
+    since = game_log(pg_ctx, {"player": "Brandin Podziemski", "situation": "since december 1st"})
+    assert sorted(g["date"] for g in since.data["games"]) == [f"{s - 1}-12-01", f"{s}-01-10"] and "since December 1" in (since.answer or "")
+    christmas = game_log(pg_ctx, {"player": "Brandin Podziemski", "situation": "christmas"})
+    assert christmas.data.get("games", []) == [] and "on Christmas Day" in (christmas.answer or "")
+
+
+def test_a_situation_naming_no_calendar_is_refused_by_value(pg_ctx: TemplateContext) -> None:
+    """An age, a conference or a return from injury is nothing the relation
+    can filter on. Refused with the value in the message and the shapes that
+    ARE read named - never dropped, which would answer every game under a
+    heading that promised "as an 18 year old"."""
+    for situation in ("18 year old", "western conference", "since returning", "before turning 27"):
+        with pytest.raises(TemplateUnsupported, match=re.escape(situation)):
+            game_log(pg_ctx, {"player": "Brandin Podziemski", "situation": situation})
 
 
 def test_period_split_reads_one_game_of_each_series(pg_ctx: TemplateContext) -> None:
