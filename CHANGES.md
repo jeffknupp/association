@@ -16,6 +16,17 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **`team_record`'s and `head_to_head`'s games-tallying helpers take an
+  optional since-bounded span and a playoff game number (step 3, team
+  cells).** Pure plumbing so far - `_record_narrowed`, `_games_record`,
+  `_games_record_games`, `_games_record_answer`, `_no_team_games`,
+  `_game_list_gaps` and `_games_record_cup_final` (`templates/teams.py`) and
+  `_head_to_head_narrowed_phrase` (`templates/games.py`) each grow a new,
+  default-preserving `since`/`game_n`/`career` parameter that no caller
+  passes a real value for yet, proved identical against the golden set
+  (`INTENTS=team_record,head_to_head`, 58/58 cases). Neither template reads
+  `since` or `game_n` from the question yet - that follows in a separate
+  commit, which is what actually closes the ISSUES.md entry.
 - **The condition skeletons discard the relation's window; the team relation
   reads a bare `limit` the way the player one does.** With C5 reading a bare
   `limit` as "the newest N" in `scoped_games`, the router's filler `limit: 1`

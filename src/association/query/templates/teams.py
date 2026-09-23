@@ -507,36 +507,60 @@ def _standings_career_venue(con: duckdb.DuckDBPyConnection, team: Entity, venue:
     return TemplateResult(data=data, answer=f"{answer} {gap}" if gap else answer)
 
 
-def _record_narrowed(team: Entity, season: int | None, season_type: int) -> TeamNarrowed:
+def _record_narrowed(team: Entity, season: int | None, season_type: int, *, since: int | None = None) -> TeamNarrowed:
     """``team``'s games for a win-loss RECORD tally, over
     :class:`association.query.team_games.TeamNarrowed`:
     :func:`association.query.team_metrics.games_scope`'s own clause (which
     excludes the NBA Cup final from a regular season) plus the team filter -
     the shared base every ``team_record``/``team_leaderboard`` read against
-    :data:`association.query.team_metrics.TEAM_GAMES_SQL` builds on."""
+    :data:`association.query.team_metrics.TEAM_GAMES_SQL` builds on.
+
+    .. versionchanged:: 4.4.0
+       Honors ``since`` (step 3, team cells): a since-bounded span reads the
+       same :func:`common._span_of`/:func:`common._team_span_clause` clause
+       :func:`_team_leaderboard_since_records` already tallies from -
+       ``games_scope`` only ever means "one season" or "every season", with no
+       notion of a starting point. The NBA Cup final is still excluded from a
+       regular-season record either way.
+    """
+    if since is not None:
+        span = _span_of(None, None, season_type, "games", since=since)
+        clause, params = _team_span_clause(span)
+        base = ["tg.team_id = ?", "tg.season_type = ?", clause]
+        if season_type == 2:
+            base.append("NOT tg.cup_final")
+        return TeamNarrowed(base=base, base_params=[team.id, season_type, *params], team=team)
     scope, params = games_scope(season_type, season)
     return TeamNarrowed(base=["tg.team_id = ?", scope], base_params=[team.id, *params], team=team)
 
 
-def _game_list_gaps(con: duckdb.DuckDBPyConnection, team: Entity, season_type: int, season: int | None) -> str | None:
+def _game_list_gaps(con: duckdb.DuckDBPyConnection, team: Entity, season_type: int, season: int | None, *, since: int | None = None) -> str | None:
     """Seasons where the games tallied for a team do not number its games in
     team_season_stats - the check that makes a tally from ``games`` safe to
     state. Measured: the 2000 and 2001 postseasons hold 15 of the Lakers' 23
     and 10 of their 16 games, and 1995 holds a Miami playoff game in a season
     Miami did not make the playoffs. Only seasons from 1994, where the totals
-    exist, can be checked."""
-    subquery, sub_params = team_games_subquery(_record_narrowed(team, season, season_type))
+    exist, can be checked.
+
+    .. versionchanged:: 4.4.0
+       Honors ``since`` (step 3, team cells), the same way :func:`_record_narrowed`
+       does, so a since-bounded record's gap note only names seasons the
+       question actually covers.
+    """
+    subquery, sub_params = team_games_subquery(_record_narrowed(team, season, season_type, since=since))
     by_season = "year(eastern_date)" if season_type == 3 else "season"
     season_filter = "" if season is None else "AND ts.season = ?"
+    since_filter = "" if since is None else "AND ts.season >= ?"
+    floor = max(FIRST_FULL_REGULAR_SEASON, since) if since is not None else FIRST_FULL_REGULAR_SEASON
     rows = con.execute(
         f"""
 WITH tallied AS (SELECT {by_season} AS season, count(*) AS games FROM ({subquery}) t GROUP BY 1),
-totals AS (SELECT ts.season, ts.gamesPlayed AS games FROM team_season_stats ts WHERE ts.team_id = ? AND ts.season_type = ? {season_filter})
+totals AS (SELECT ts.season, ts.gamesPlayed AS games FROM team_season_stats ts WHERE ts.team_id = ? AND ts.season_type = ? {season_filter}{since_filter})
 SELECT coalesce(l.season, t.season) AS season, coalesce(l.games, 0), coalesce(t.games, 0)
 FROM tallied l FULL OUTER JOIN totals t ON t.season = l.season
 WHERE coalesce(l.season, t.season) >= ? AND coalesce(l.games, 0) <> coalesce(t.games, 0)
 ORDER BY 1""",
-        [*sub_params, team.id, season_type, *([season] if season is not None else []), FIRST_FULL_REGULAR_SEASON],
+        [*sub_params, team.id, season_type, *([season] if season is not None else []), *([since] if since is not None else []), floor],
     ).fetchall()
     if not rows:
         return None
@@ -545,18 +569,28 @@ ORDER BY 1""",
     return f"Note: ESPN's game list and the {_possessive(team.name)} season totals disagree on how many {kind} games they played in {parts}, so this tally is off by those games."
 
 
-def _no_team_games(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity | None, season: int | None, season_type: int, month: int | None = None) -> str:
+def _no_team_games(
+    con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity | None, season: int | None, season_type: int, month: int | None = None, *, since: int | None = None, game_n: Any = None
+) -> str:
     """Why a tally found nothing. Three different facts, and three sentences:
     the warehouse has no games that season at all (it holds no 1988
     postseason), the team played none, or the two teams did not meet -
     each narrowed to the named month too, where the question asked for one, so
-    a team with games in OTHER months is not told it has none at all."""
+    a team with games in OTHER months is not told it has none at all.
+
+    .. versionchanged:: 4.4.0
+       Names ``since`` and ``game_n`` too (step 3, team cells), so a
+       since-bounded or one-game-of-a-series record that finds nothing says
+       which narrowing emptied it rather than reading as "no games at all".
+    """
     kind = "postseason" if season_type == 3 else "regular-season"
     where = f" in {_MONTH_NAMES[month - 1]}" if month is not None else ""
+    since_phrase = f" since {since}" if since is not None else ""
+    game_n_phrase = f" in game {game_n} of {'the' if opponent is not None else 'each'} series" if game_n else ""
     if season is None:
         if opponent is None:
-            return f"The warehouse holds no {kind} games for the {team.name}{where}."
-        return f"The warehouse holds no {kind} games between the {team.name} and the {opponent.name}{where}."
+            return f"The warehouse holds no {kind} games for the {team.name}{since_phrase}{game_n_phrase}{where}."
+        return f"The warehouse holds no {kind} games between the {team.name} and the {opponent.name}{since_phrase}{game_n_phrase}{where}."
     scope, params = games_scope(season_type, season)
     period = _period(season, season_type)
     counts = con.execute(f"{TEAM_GAMES_SQL} SELECT count(*), count(*) FILTER (WHERE team_id = ?) FROM team_games WHERE {scope}", [team.id, *params]).fetchone()
@@ -564,16 +598,33 @@ def _no_team_games(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entit
     if not league:
         return f"The warehouse holds no {period} games for any team."
     if opponent is not None and own:
-        return f"The {team.name} and the {opponent.name} did not meet{where} in the {period}."
-    return f"The {team.name} played no games{where} in the {period}."
+        return f"The {team.name} and the {opponent.name} did not meet{game_n_phrase}{where} in the {period}."
+    return f"The {team.name} played no games{game_n_phrase}{where} in the {period}."
 
 
-def _games_record(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity | None, season: int | None, season_type: int, venue: str | None, month: int | None = None) -> TemplateResult:
+def _games_record(
+    con: duckdb.DuckDBPyConnection,
+    team: Entity,
+    opponent: Entity | None,
+    season: int | None,
+    season_type: int,
+    venue: str | None,
+    month: int | None = None,
+    *,
+    since: int | None = None,
+    game_n: Any = None,
+) -> TemplateResult:
     """A record tallied from ``games``: against one team, or in a postseason,
-    for one season or (``season`` None) every season it holds, optionally
+    for one season, since a season (``season`` None, ``since`` set) or
+    (``season`` and ``since`` both None) every season it holds, optionally
     narrowed to one calendar month - ``standings`` has no game-level date to
     filter a month from, so a month narrowing reaches this path even where
-    neither an opponent nor a postseason would have."""
+    neither an opponent nor a postseason would have.
+
+    .. versionchanged:: 4.4.0
+       Honors ``since`` and ``game_n`` (step 3, team cells) - see
+       :func:`_record_narrowed` and :func:`_games_record_games`.
+    """
     if season is not None:
         # _sources_for sends this path through the `games` floor, but a record
         # against a team named only in `teams` reaches it with the standings'
@@ -581,7 +632,7 @@ def _games_record(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity
         refused = unavailable(("games",), season, season_type)
         if refused is not None:
             return TemplateResult(data={"team": team.name, "season": season, "message": refused}, answer=refused)
-    games = _games_record_games(con, team, opponent, season, season_type, month)
+    games, narrowed = _games_record_games(con, team, opponent, season, season_type, month, since=since, game_n=game_n)
     shown = [g for g in games if venue is None or g["venue"] == venue]
     wins = sum(1 for g in shown if g["won"])
     losses = len(shown) - wins
@@ -600,51 +651,101 @@ def _games_record(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity
     }
 
     if not games:
-        return TemplateResult(data={**data, "games": []}, answer=_no_team_games(con, team, opponent, season, season_type, month))
+        return TemplateResult(data={**data, "games": []}, answer=_no_team_games(con, team, opponent, season, season_type, month, since=since, game_n=game_n))
 
-    answer = _games_record_answer(team, opponent, season, season_type, venue, games, shown, month)
+    answer = _games_record_answer(team, opponent, season, season_type, venue, games, shown, month, since=since, narrowed=narrowed)
     if opponent is not None and season_type == 2:
-        cup_text, cup_final = _games_record_cup_final(con, team, opponent, season)
+        cup_text, cup_final = _games_record_cup_final(con, team, opponent, season, since=since)
         answer += cup_text
         data["cup_final"] = cup_final
-    gap = _game_list_gaps(con, team, season_type, season)
+    gap = _game_list_gaps(con, team, season_type, season, since=since)
     if gap:
         answer += f"\n  {gap}"
     data["games"] = shown
     return TemplateResult(data=data, answer=answer)
 
 
-def _games_record_games(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity | None, season: int | None, season_type: int, month: int | None = None) -> list[dict[str, Any]]:
+def _games_record_games(
+    con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity | None, season: int | None, season_type: int, month: int | None = None, *, since: int | None = None, game_n: Any = None
+) -> tuple[list[dict[str, Any]], TeamNarrowed]:
     """The team's games in scope, against ``opponent`` and/or in ``month`` if
-    named, oldest first."""
-    narrowed = _record_narrowed(team, season, season_type)
+    named, oldest first - and the :class:`TeamNarrowed` they were read
+    through, so a caller can phrase what else narrowed them
+    (:meth:`TeamNarrowed.filters`) without rebuilding it.
+
+    .. versionchanged:: 4.4.0
+       Honors ``since`` (through :func:`_record_narrowed`) and ``game_n``
+       (step 3, team cells): one game of each playoff series, the same check
+       :func:`association.query.templates.common.team_games` makes for every
+       other team template - a series has games 1-7, and a regular season has
+       nothing "game 4" names.
+    """
+    narrowed = _record_narrowed(team, season, season_type, since=since)
     if opponent is not None:
         narrowed.narrow("tg.opponent_id = ?", opponent.id)
+        # Read by TeamNarrowed.filters()' own series_game phrase ("of THE
+        # series" vs "of EACH series") - never by the WHERE clause above,
+        # which the opponent id parameter already carries.
+        narrowed.opponent = opponent
     if month is not None:
         narrowed.narrow("month(tg.eastern_date) = ?", month)
+    if game_n:
+        if season_type != 3:
+            raise TemplateUnsupported(f"game {game_n} names a game of a playoff series, and this is a regular-season question")
+        narrowed.narrow_series_game(int(game_n))
     select = f"tg.eastern_date, tg.side, tg.neutral, tg.team_score, tg.opponent_score, tg.won, {season_name_sql('o.team_id', 'tg.season', 'o.display_name')}"
     sql, params = team_rows_sql(narrowed, select, order="tg.eastern_date", join=" JOIN teams o ON o.team_id = tg.opponent_id")
     rows = con.execute(sql, params).fetchall()
-    return [{"date": str(r[0]), "venue": "neutral" if r[2] else r[1], "team_score": r[3], "opponent_score": r[4], "won": bool(r[5]), "opponent": r[6]} for r in rows]
+    return [{"date": str(r[0]), "venue": "neutral" if r[2] else r[1], "team_score": r[3], "opponent_score": r[4], "won": bool(r[5]), "opponent": r[6]} for r in rows], narrowed
+
+
+def _games_record_span_text(season: int | None, season_type: int, since: int | None) -> str:
+    """The span phrase in ``_games_record_answer``'s lead sentence - pulled out
+    so that function stays inside the complexity gate. Four shapes: one named
+    season, a since-bounded range (step 3, team cells), every postseason on
+    record, or every regular season on record."""
+    if season is not None:
+        return f"the {_period(season, season_type)}"
+    if since is not None:
+        return f"the {'postseasons' if season_type == 3 else 'regular seasons'} since {since}"
+    if season_type == 3:
+        return "every postseason from 1989 through the latest - the warehouse's game list starts with the 1989 playoffs"
+    return f"the regular seasons from {_season_name(FIRST_FULL_REGULAR_SEASON)} on - the first the warehouse holds every game of"
 
 
 def _games_record_answer(
-    team: Entity, opponent: Entity | None, season: int | None, season_type: int, venue: str | None, games: list[dict[str, Any]], shown: list[dict[str, Any]], month: int | None = None
+    team: Entity,
+    opponent: Entity | None,
+    season: int | None,
+    season_type: int,
+    venue: str | None,
+    games: list[dict[str, Any]],
+    shown: list[dict[str, Any]],
+    month: int | None = None,
+    *,
+    since: int | None = None,
+    narrowed: TeamNarrowed | None = None,
 ) -> str:
-    """The tallied record, its home/away split and, for one season against one team, the meetings."""
+    """The tallied record, its home/away split and, for one season against one
+    team, the meetings.
+
+    .. versionchanged:: 4.4.0
+       Names ``since`` (a since-bounded span reads like the existing
+       whole-career one, but says the year it starts from) and ``game_n``
+       (step 3, team cells) - the latter via ``narrowed.filters(opponent=False)``,
+       the same idiom :func:`association.query.templates.games.team_quarter_points`
+       uses, rather than a hand-written phrase of its own: the game-of-series
+       wording lives in one place, :class:`TeamNarrowed` itself.
+    """
     wins = sum(1 for g in shown if g["won"])
     losses = len(shown) - wins
-    if season is not None:
-        span = f"the {_period(season, season_type)}"
-    elif season_type == 3:
-        span = "every postseason from 1989 through the latest - the warehouse's game list starts with the 1989 playoffs"
-    else:
-        span = f"the regular seasons from {_season_name(FIRST_FULL_REGULAR_SEASON)} on - the first the warehouse holds every game of"
+    span = _games_record_span_text(season, season_type, since)
     against = f" against the {opponent.name}" if opponent else ""
     where_played = f" {VENUE_WORDS[venue]}" if venue else ""
     month_phrase = f" in {_MONTH_NAMES[month - 1]}" if month is not None else ""
+    game_n_phrase = narrowed.filters(opponent=False) if narrowed is not None else ""
     verb = "went" if season is not None else "are"
-    answer = f"The {team.name} {verb} {_tally(wins, losses)}{month_phrase}{where_played}{against} in {span}."
+    answer = f"The {team.name} {verb} {_tally(wins, losses)}{month_phrase}{where_played}{against}{game_n_phrase} in {span}."
     if venue is None:
         answer += _games_record_split(games)
     elif len(shown) < len(games) and any(g["venue"] == "neutral" for g in games):
@@ -673,7 +774,7 @@ def _team_record_by_month(con: duckdb.DuckDBPyConnection, team: Entity, opponent
         refused = unavailable(("games",), season, season_type)
         if refused is not None:
             return TemplateResult(data={"team": team.name, "season": season, "message": refused}, answer=refused)
-    games = _games_record_games(con, team, opponent, season, season_type)
+    games, _narrowed = _games_record_games(con, team, opponent, season, season_type)
     shown = [g for g in games if venue is None or g["venue"] == venue]
     if not shown:
         return TemplateResult(data={"team": team.name, "season": season, "months": []}, answer=_no_team_games(con, team, opponent, season, season_type))
@@ -713,8 +814,13 @@ def _games_record_split(games: list[dict[str, Any]]) -> str:
     return f"\n  {split}."
 
 
-def _games_record_cup_final(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity, season: int | None) -> tuple[str, list[dict[str, Any]]]:
-    """Any NBA Cup final the two teams met in, as sentences and as data."""
+def _games_record_cup_final(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Entity, season: int | None, *, since: int | None = None) -> tuple[str, list[dict[str, Any]]]:
+    """Any NBA Cup final the two teams met in, as sentences and as data.
+
+    .. versionchanged:: 4.4.0
+       Honors ``since`` (step 3, team cells), the same way ``season`` already
+       narrowed this to one year.
+    """
     # The NBA Cup final is a regular-season game that counts in no
     # standings, so it is not in the record above (_record_narrowed's
     # games_scope excludes it) - but it is a meeting, and leaving it out
@@ -725,6 +831,8 @@ def _games_record_cup_final(con: duckdb.DuckDBPyConnection, team: Entity, oppone
     narrowed.narrow("tg.opponent_id = ?", opponent.id)
     if season is not None:
         narrowed.narrow("tg.season = ?", season)
+    elif since is not None:
+        narrowed.narrow("tg.season >= ?", since)
     sql, params = team_rows_sql(narrowed, "tg.eastern_date, tg.team_score, tg.opponent_score, tg.won", order="tg.eastern_date")
     cup = con.execute(sql, params).fetchall()
     text = "".join(f"\n  They also met in the NBA Cup final on {date}, which counts in no standings: {'won' if won else 'lost'} {own}-{theirs}." for date, own, theirs, won in cup)

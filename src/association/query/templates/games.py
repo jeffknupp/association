@@ -1008,11 +1008,20 @@ def _phrase_head_to_head(a: str, b: str, games: int, a_wins: int, b_wins: int, p
     return f"{lead}; the {leader} won the series {trailing}."
 
 
-def _head_to_head_narrowed_phrase(a: str, b: str, games: int, a_wins: int, b_wins: int, *, venue: str | None, date: str | None, season: int | None, season_type: int) -> str:
+def _head_to_head_narrowed_phrase(
+    a: str, b: str, games: int, a_wins: int, b_wins: int, *, venue: str | None, date: str | None, season: int | None, season_type: int, since: int | None = None, career: bool = False
+) -> str:
     """The head-to-head sentence once ``venue`` or ``date`` has narrowed the
     games, phrased to say what was actually counted rather than reusing the
     plain season sentence (:func:`_phrase_head_to_head`, left untouched) with
-    a different number silently attached to it."""
+    a different number silently attached to it.
+
+    .. versionchanged:: 4.4.0
+       Takes ``since``/``career`` too (step 3, team cells), for a venue
+       narrowed to a since-bounded or whole-career span rather than one
+       season - unused (both default to the values that reproduce the old
+       phrase exactly) by every caller that predates them.
+    """
     if date:
         where = f"on {date}"
     else:
@@ -1020,7 +1029,13 @@ def _head_to_head_narrowed_phrase(a: str, b: str, games: int, a_wins: int, b_win
         # Warriors, Nets...), and templates/teams.py's own `_possessive` makes
         # the same call inline rather than being imported cross-module.
         possessive = f"{a}'" if a.endswith("s") else f"{a}'s"
-        where = f"in the {possessive} {'home' if venue == 'home' else 'road'} games of the {_period(season or current_season(), season_type)}"
+        if since is not None:
+            scope = f"since {since}"
+        elif career:
+            scope = "on record"
+        else:
+            scope = f"of the {_period(season or current_season(), season_type)}"
+        where = f"in the {possessive} {'home' if venue == 'home' else 'road'} games {scope}"
     if games == 0:
         return f"The warehouse has no games between the {a} and the {b} {where}."
     times = "once" if games == 1 else f"{games} times"
