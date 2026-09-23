@@ -119,8 +119,16 @@ CASES: list[tuple[str, str, dict]] = [
     ("How many rebounds is Wembanyama averaging?", "player_stat", {"stat": "rebounds"}),
     ("Which player had the most triple-doubles?", "leaderboard", {"stat": "triple_double"}),
     ("Most double-doubles this season?", "leaderboard", {"stat": "double_double"}),
-    # Not ported - these must fall through, NOT be answered by a near-miss template.
-    ("How many points did Jokic score in the 3rd quarter against Boston?", "other", {}),
+    # ISSUES.md #170: this used to be pinned to "other" (nothing answered a
+    # PLAYER's quarter against a named team), and stayed pinned after
+    # period_split shipped for the plain "his 3rd quarter" shape because the
+    # model, faced with a team word and no player it trusted enough to name,
+    # answered as if the TEAM were the subject - team_quarter_points, which
+    # has no player column, for a question about one man. Read from the
+    # question's own grammar now (router._route_period_intents), the same
+    # reader threshold_count and single_game_high use for their own dropped
+    # subject. Only the period is asserted - see the 76ers case below for why.
+    ("How many points did Jokic score in the 3rd quarter against Boston?", "period_split", {"period": 3}),
     # A TEAM's (not a player's) quarter score IS ported - templates.team_quarter_points
     # reads it straight from games.home_linescores/away_linescores, no plays table
     # needed. Confirmed live: before this template and its router exemption existed,
@@ -282,6 +290,14 @@ CASES: list[tuple[str, str, dict]] = [
     # opponent in place, player_compare refuses it instead.
     ("compare curry and lebron vs the celtics", "player_compare", {"opponent": "Boston Celtics"}),
     ("worst record 2025-26", "team_leaderboard", {"rank": "worst"}),
+    # ISSUES.md #172: the model filed "least" correctly into `rank` and, a
+    # second time, into `team` - no franchise is named "least", so
+    # `team_leaderboard` refused "no team matching 'least'" over a cause the
+    # question never gave, on a question `since` (C4b) already lets it answer
+    # in full. `team` is not asserted absent here (a subset check cannot say
+    # that), but `rank` and `since` together are the two halves of the answer
+    # that refusal was blocking.
+    ("nba team with least playoff wins since 2022", "team_leaderboard", {"rank": "fewest", "since": 2022}),
     ("Longest winning streak in the NBA this season", "streak", {}),
     ("Celtics vs Bulls head to head record", "head_to_head", {}),
     # No table here holds a coach, so `route()` assigns this intent from the

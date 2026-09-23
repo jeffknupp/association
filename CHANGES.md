@@ -16,6 +16,28 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **Two router post-processing fixes, both slots the question does not
+  support arriving in the wrong place.** A quarter or half question that
+  names a player but whose model reply drops `player` entirely (filling
+  `team`/`opponent` instead) used to read as the "team's own half" shape and
+  route to `team_quarter_points`, a template with no player column - "How
+  many points did Jokic score in the 3rd quarter against Boston?" answered
+  (or tried to answer) Boston's own quarter. `route()` now recovers the
+  player from the question's own grammar the same way `threshold_count` and
+  `single_game_high` already do for their own dropped subject
+  (`_subject_named_in`), filtered against `_is_team_name` so a genuine team
+  subject ("did the 76ers score") is never misread as a name; the surviving
+  team-shaped slot lands in `opponent` only where the question's own words
+  say it (`_team_slot_named_in_text`), closing the ISSUES.md entry that
+  tracked it as a standing regression. Separately, `team_leaderboard` refused
+  "nba team with least playoff wins since 2022" with "no team matching
+  'least'" - the router had correctly read "least" into `rank` and then,
+  independently, filed the same word into `team`, where no franchise is
+  named "least". `route()` now drops a `team` value that is itself one of
+  the `RANK_WORDS` the `rank` slot is read from, the same shape
+  `entities.override_invented_players` already applies to an invented player
+  name. Neither fix touches `ROUTER_PROMPT` or `ROUTER_SCHEMA` (hashed
+  unchanged before and after).
 - **The condition skeletons discard the relation's window; the team relation
   reads a bare `limit` the way the player one does.** With C5 reading a bare
   `limit` as "the newest N" in `scoped_games`, the router's filler `limit: 1`
