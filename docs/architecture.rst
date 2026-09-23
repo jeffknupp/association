@@ -143,9 +143,22 @@ minimum-sample floors, the home/away perspective flip, the string
 than ESPN's UTC timestamp (:func:`association.nba.season.eastern_date`). They phrase their own answers, so the
 common case is a single model call end to end.
 
+A template's refusal is not the end of the fast path. When ``check_scope`` or
+the template itself raises ``TemplateUnsupported``,
+:mod:`association.query.compose` gets a turn before the agent does:
+``compose.answer(ctx, intent, slots, question)`` compiles the same point on
+the relation the template could not narrow to and phrases its own answer
+exactly like a template's - a sentence, ``data``, no model call - or returns
+``None`` to say "not a point on this relation", which falls through exactly as
+it did before this step existed. A refusal it hands back instead - a
+clarification, a "no match" - is answered, not passed along: it looked at the
+question and had something to say. Nothing here reaches ollama; it is another
+deterministic step, not a smaller agent.
+
 **The agent** (:mod:`association.query.agent`) is the fall-through for
-questions no template covers. It still writes SQL by hand with the tools in
-:mod:`association.query.toolbox`, and its preamble is assembled per question
+questions no template covers, and no compiled answer does either. It still
+writes SQL by hand with the tools in :mod:`association.query.toolbox`, and its
+preamble is assembled per question
 (:func:`association.query.prompt.build_system_prompt`) so it carries only the
 knowledge-base entries that question needs.
 
@@ -270,8 +283,10 @@ that:
 * Templates declare which scope slots they honor
   (:func:`association.query.templates.check_scope`) - the ones on a relation
   through the relation's single declaration, the rest each for themselves - and
-  a question scoped to particular games falls through rather than being
-  answered for a season.
+  a question scoped to particular games is offered to
+  :mod:`association.query.compose` before it falls through, rather than being
+  answered for a season. Only when the compiler also has nothing to say -
+  ``None``, not a refusal - does the question reach the agent.
 * A question about a season a table cannot reach is refused, with the reason
   (:func:`association.query.templates.check_coverage`). The refusal is returned
   as the answer rather than raised, because the agent would query the same

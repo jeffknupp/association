@@ -28,7 +28,7 @@ from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .keepalive import KEEP_ALIVE
 from .models import AGENT_BUDGET_SECONDS, DEFAULT_ROUTER_MODEL
 from .prompt import AGENT_NUM_CTX, TOOLS, build_system_prompt
-from .router import RouterUnavailable, route
+from .router import Route, RouterUnavailable, route
 from .templates import TEMPLATES
 from .templates.common import PLAYER_INTENTS, PLAYER_REQUIRED_INTENTS, TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, check_scope, coverage_caveat
 from .toolbox import Toolbox
@@ -37,6 +37,13 @@ MAX_TOOL_ITERATIONS = 8
 MAX_AUTO_SQL_RECOVERIES = 2  # cap on auto-executing SQL the model wrote instead of calling run_sql
 MAX_ERROR_RECOVERIES = 2  # cap on nudging a retry after a tool error, instead of letting it fabricate an answer
 MAX_HISTORY_MESSAGES = 40  # trim oldest turns once conversation grows past this, keep system prompt
+
+# The subset of TemplateResult.data a compose.answer() carries that describes
+# WHAT was answered - the point on the relation - rather than the rows
+# themselves. Traced so a refusal that becomes a composed answer says what it
+# composed, the same way "-> (router) intent=..." says what was routed. See
+# association.query.compose's module docstring for the full shape.
+_COMPOSE_POINT_KEYS = ("skeleton", "measures", "aggregate", "group", "predicates", "window", "span", "narrowing", "player")
 
 _SQL_FENCE_RE = re.compile(r"```(?:sql)?\s*\n?(.*?)```", re.IGNORECASE | re.DOTALL)
 
@@ -344,6 +351,16 @@ class Agent:
         # code. "brown" is ten players and has to ask, as it always did.
         for was, now in undo_name_completion(self.toolbox.con, question, routed.slots):
             history.log(f"  -> (player) {was!r} -> {now!r} (the question names only part of it, and that part is ambiguous)")
+        return self._run_scoped_template(question, routed, handler, history)
+
+    def _run_scoped_template(self, question: str, routed: Route, handler: Callable[[TemplateContext, dict[str, Any]], TemplateResult], history: RunHistory) -> tuple[str, TemplateResult] | None:
+        """Check scope and coverage, run the template, and attach the notes
+        every fast-path answer carries. On a scoping refusal
+        (``TemplateUnsupported``, from ``check_scope`` or the template itself),
+        try the compiled answer before giving up on the fast path - split out
+        of ``_try_fast_path`` to keep it under the complexity gate, and because
+        it is one coherent step: "run what the router found, and cope with it
+        refusing"."""
         t0 = time.monotonic()
         try:
             check_scope(routed.intent, routed.slots)
@@ -371,6 +388,17 @@ class Agent:
                     if unmatched_note:
                         result.answer = f"{result.answer} {unmatched_note}"
         except TemplateUnsupported as exc:
+            # The template could not honor the scoping asked for - before
+            # falling through to the slow agent, see whether the compiler can
+            # answer the same point on the relation. A refusal it hands back
+            # (a clarification, a "no match") is still an answer, not a
+            # fall-through: it looked at the question.
+            t1 = time.monotonic()
+            composed = self._try_compose(question, routed.intent, routed.slots, history)
+            if composed is not None:
+                history.record_tool_call(f"compose {routed.intent}", time.monotonic() - t1)
+                history.log(f"  -> (template) {exc} - composed instead of falling through")
+                return routed.intent, composed
             history.log(f"  -> (template) {exc} - falling through to the agent")
             self.fell_through = f"{routed.intent}: {exc}"
             return None
@@ -378,6 +406,40 @@ class Agent:
         # No second model call, ever: templates phrase their own answers. See
         # TemplateResult for why that is both faster and safer than narrating.
         return routed.intent, result
+
+    def _try_compose(self, question: str, intent: str, slots: dict[str, Any], history: RunHistory) -> TemplateResult | None:
+        """The step between a template's refusal and the fall-through agent:
+        ``association.query.compose.answer``, called only here so a caller
+        that never sees a ``TemplateUnsupported`` never pays for the import.
+        Answered exactly like a template's own result - same name-reading and
+        coverage-caveat attachment as :meth:`_run_template` - except its trace
+        line names the point on the relation it composed rather than a
+        template's intent and slots, since that IS the interesting fact about
+        a compiled answer.
+
+        Import inside the function, not at module level: the contract this
+        calls against (``README_land.md``) is built on a parallel branch, and
+        a call-time import is what lets a stub with only ``answer()`` stand in
+        for it - and what tests monkeypatch
+        (``association.query.compose.answer``).
+        """
+        from . import compose
+
+        with collect_name_readings() as readings:
+            composed = compose.answer(TemplateContext(con=self.toolbox.con, out_dir=self.toolbox.out_dir), intent, slots, question)
+        if composed is None:
+            return None
+        for reading in readings:
+            history.log(f"  -> (player) {reading}")
+            composed.answer = f"{composed.answer} {reading}"
+        if readings:
+            composed.data["name_readings"] = list(readings)
+        note = coverage_caveat(intent, slots)
+        if note:
+            composed.answer = f"{composed.answer} {note}"
+        point = {key: composed.data[key] for key in _COMPOSE_POINT_KEYS if key in composed.data}
+        history.log(f"  -> (compose) intent={intent!r} point={point}")
+        return composed
 
     def _run_template(self, handler: Callable[[TemplateContext, dict[str, Any]], TemplateResult], slots: dict[str, Any], history: RunHistory) -> TemplateResult:
         """The template's answer, with how it read any name the question left

@@ -50,6 +50,23 @@ had no published version to be compatible with.
   raising instead of being read as absent. Not wired into the pipeline yet -
   `agent.py`/`answer.py` are a separate change - so nothing here changes what
   a live question answers today.
+- **A template's refusal composes before it falls through.** `agent.py` used
+  to treat `TemplateUnsupported` - raised by `check_scope` or by a template
+  refusing its own slots - as the end of the fast path: log why, and hand the
+  question to the slow SQL-writing agent. It now offers the new
+  `association.query.compose.answer(ctx, intent, slots, question)` one more
+  try first, on the same point on the relation the template could not narrow
+  to. A `TemplateResult` back is answered exactly like a template's own -
+  `answered_by="fast"`, the intent kept, the same name-reading and
+  coverage-caveat attachment, a trace line naming what was composed - and that
+  includes a refusal the compiler hands back (a clarification, a "no match"):
+  it looked at the question and had something to say, which is an answer, not
+  a fall-through. `None` still falls through exactly as before this step
+  existed. This lands the call site and a contract stub
+  (`association.query.compose`, `answer()` always returning `None`) only; the
+  compiler itself - the six-template golden the skeleton spike measured at 232
+  agree / 0 disagree - is a separate, parallel piece of work that replaces the
+  stub module wholesale.
 - **The player-games relation honors `situation` where it names the calendar
   (step 3, K3).** "Garland on Mondays", "LeBron's line vs the Jazz on
   Tuesdays", "his games in October", "on Christmas", "since January 31st" -
