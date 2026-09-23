@@ -230,21 +230,22 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
     # A record for one game is a single result, which game_log already answers
     # directly, and a record over a limited number of recent games is the same
     # substitution the player relation refuses for the same two cells. `since`
-    # and `game_n` are real, plausible readings ("Celtics record since 2022",
-    # "record in game 4 of each series") that nothing here answers yet.
+    # and `game_n` used to be excluded here too ("not built yet" - a reason
+    # about the code, which the rule above this dict forbids) - step 3, team
+    # cells, reads both: `since` the same since-bounded `_Span` a career
+    # already reads (`_record_narrowed`), `game_n` the relation's own
+    # `narrow_series_game` check (`_games_record_games`).
     "team_record": {
         "date": "a record for one calendar date is a single game, which game_log already answers directly",
         "order": "a record over a limited set of games is a game_log question",
-        "since": "team_record answers a season or a career (`span`), not a since-bounded range of seasons yet",
-        "game_n": "team_record does not narrow a record to one game of each series yet",
     },
-    # head_to_head tallies every meeting in the span; none of these four pick
-    # out a subset of that tally, and each is a real, plausible reading
-    # ("head to head since 2022", "their last 10 meetings", "all-time
-    # head-to-head", "game 4 of their series") that nothing here answers yet.
+    # head_to_head tallies every meeting in the span; `order` and `game_n`
+    # pick out a subset of that tally, and neither is built. `since` and
+    # `span` used to be excluded too ("not built yet") - step 3, team cells,
+    # reads both the same since-bounded or whole-career `_Span` team_record's
+    # own `since`/`span` now read, over every meeting in it rather than one
+    # season.
     "head_to_head": {
-        "since": "head_to_head answers one season or one date; a since-bounded span of seasons is not built",
-        "span": "head_to_head answers one season or one date; an all-time tally is not built",
         "order": "head_to_head counts every meeting in the span; picking the last N of them is not built",
         "game_n": "head_to_head counts every meeting; one numbered game of a series is not read here",
     },
@@ -275,9 +276,11 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # window) and its team and span from `scoped_team` (`since`, `span`).
     "team_quarter_points": _team_relation_scoping("team_quarter_points"),
     "period_split": _relation_scoping("period_split"),
-    # See TEAM_RELATION_SCOPING_EXCLUDED["head_to_head"] for why `since`,
-    # `span`, `order` and `game_n` are not here - unchanged from before step 3,
-    # C4b, which only renamed the declaration, through the shared helper.
+    # `since` and `span` ("career") are honored (step 3, team cells): every
+    # meeting in a since-bounded or whole-career span, read the same way
+    # team_record's own `since`/`span` are. See
+    # TEAM_RELATION_SCOPING_EXCLUDED["head_to_head"] for why `order` and
+    # `game_n` are still not here.
     "head_to_head": _team_relation_scoping("head_to_head"),
     # A shot read that takes its games from the relation by event id (step 3,
     # C5), the same shape as period_split: every relation slot is answerable -
@@ -341,9 +344,12 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # does not touch the weekday/holiday/age/"since returning" narrowings that
     # stay refused). `split` is honored only as "month" - a record broken out
     # by calendar month, read from the same per-game date a month filter uses.
-    # See TEAM_RELATION_SCOPING_EXCLUDED["team_record"] for `date`/`order`/
-    # `since`/`game_n` - unchanged from before step 3, C4b, which only
-    # renamed the declaration, through the shared helper.
+    # `since` (a since-bounded career, the same `_Span` shape a whole one
+    # already is) and `game_n` (one game of each playoff series) are honored
+    # too (step 3, team cells) - neither combines with the month split yet,
+    # which the template itself refuses. See
+    # TEAM_RELATION_SCOPING_EXCLUDED["team_record"] for why `date` and `order`
+    # still are not here.
     "team_record": _team_relation_scoping("team_record", "situation", "split"),
     # Honored for the record metrics, from the standings' own home/road
     # strings, or - for `since` - a tally of the relation's own wins and

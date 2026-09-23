@@ -2097,6 +2097,210 @@ def test_head_to_head_plain_wording_is_unchanged_by_the_venue_and_date_additions
     assert answer == f"The New York Knicks and the Boston Celtics met 2 times in the {current_season()} regular season, splitting them 1-1."
 
 
+# ---------------- team_record / head_to_head: since, game_n, career (step 3, team cells) ----------------
+
+_TC_S = current_season()
+_TC_S1 = _TC_S - 1
+_TC_S2 = _TC_S - 2
+
+
+@pytest.fixture
+def team_cells_con(tmp_path: Path) -> TemplateContext:
+    """Three regular seasons (S-2, S-1, S) of Celtics games against the
+    Knicks and the Pistons, plus two playoff series - an early one (1989, the
+    warehouse's own postseason floor) and a current-season one - each best
+    checked by counting the rows below rather than guessed:
+
+    ====== ====== ===== ========================= ==============
+    event  season type  matchup                    result
+    ====== ====== ===== ========================= ==============
+    r1     S-2    reg   Celtics (home) - Knicks     Celtics win
+    r2     S-2    reg   Pistons (home) - Celtics    Celtics loss
+    r3     S-1    reg   Knicks (home) - Celtics     Celtics win
+    r4     S      reg   Celtics (home) - Knicks     Celtics win
+    r5     S      reg   Celtics (home) - Pistons    Celtics win
+    p89_1  1989   post  Celtics (home) - Pistons    Celtics win  (game 1)
+    p89_2  1989   post  Pistons (home) - Celtics    Celtics loss (game 2)
+    p89_3  1989   post  Celtics (home) - Pistons    Celtics win  (game 3)
+    pS_1   S      post  Celtics (home) - Knicks     Celtics win  (game 1)
+    pS_2   S      post  Knicks (home) - Celtics     Celtics loss (game 2)
+    pS_3   S      post  Celtics (home) - Knicks     Celtics win  (game 3)
+    ====== ====== ===== ========================= ==============
+
+    Celtics ``2``, Knicks ``18``, Pistons ``4``. ``team_season_stats`` carries
+    exactly the game counts above, so ``_game_list_gaps`` finds no gap to
+    caveat with and the answers asserted below are not diluted by a note
+    nobody wrote a fixture for.
+    """
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO teams VALUES ('2','BOS','Boston Celtics'),('18','NY','New York Knicks'),('4','DET','Detroit Pistons')")
+    c.execute(
+        "CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR, "
+        "home_team_id VARCHAR, away_team_id VARCHAR, home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR, neutral_site BOOLEAN, venue_city VARCHAR)"
+    )
+    c.executemany(
+        "INSERT INTO games VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        [
+            ("r1", _TC_S2, 2, f"{_TC_S2 - 1}-11-01T23:00Z", "2", "18", 100, 90, "2", False, "Boston"),
+            ("r2", _TC_S2, 2, f"{_TC_S2 - 1}-11-05T23:00Z", "4", "2", 100, 90, "4", False, "Detroit"),
+            ("r3", _TC_S1, 2, f"{_TC_S1 - 1}-11-10T23:00Z", "18", "2", 95, 105, "2", False, "New York"),
+            ("r4", _TC_S, 2, f"{_TC_S - 1}-11-15T23:00Z", "2", "18", 110, 90, "2", False, "Boston"),
+            ("r5", _TC_S, 2, f"{_TC_S - 1}-11-20T23:00Z", "2", "4", 120, 100, "2", False, "Boston"),
+            ("p89_1", 1989, 3, "1989-04-20T23:00Z", "2", "4", 100, 95, "2", False, "Boston"),
+            ("p89_2", 1989, 3, "1989-04-22T23:00Z", "4", "2", 105, 100, "4", False, "Detroit"),
+            ("p89_3", 1989, 3, "1989-04-24T23:00Z", "2", "4", 110, 90, "2", False, "Boston"),
+            ("pS_1", _TC_S, 3, f"{_TC_S}-04-20T23:00Z", "2", "18", 100, 90, "2", False, "Boston"),
+            ("pS_2", _TC_S, 3, f"{_TC_S}-04-22T23:00Z", "18", "2", 95, 90, "18", False, "New York"),
+            ("pS_3", _TC_S, 3, f"{_TC_S}-04-24T23:00Z", "2", "18", 105, 95, "2", False, "Boston"),
+        ],
+    )
+    real_games.build_table(c, {"games", "teams"})
+    # Only the four columns _game_list_gaps reads.
+    c.execute("CREATE TABLE team_season_stats (season INTEGER, season_type INTEGER, team_id VARCHAR, gamesPlayed INTEGER)")
+    c.executemany(
+        "INSERT INTO team_season_stats VALUES (?,?,?,?)",
+        [
+            (_TC_S2, 2, "2", 2),
+            (_TC_S2, 2, "18", 1),
+            (_TC_S2, 2, "4", 1),
+            (_TC_S1, 2, "2", 1),
+            (_TC_S1, 2, "18", 1),
+            (_TC_S, 2, "2", 2),
+            (_TC_S, 2, "18", 1),
+            (_TC_S, 2, "4", 1),
+            (1989, 3, "2", 3),
+            (1989, 3, "4", 3),
+            (_TC_S, 3, "2", 3),
+            (_TC_S, 3, "18", 3),
+        ],
+    )
+    return TemplateContext(con=c, out_dir=tmp_path)
+
+
+def test_team_record_honors_since_as_a_since_bounded_span(team_cells_con: TemplateContext) -> None:
+    """ "Celtics record since {S-1}" (ISSUES.md): a since-bounded span is
+    counted the same shape a whole career already is, not one season."""
+    result = team_record(team_cells_con, {"team": "Celtics", "since": _TC_S1})
+    assert result.data["wins"] == 3 and result.data["losses"] == 0
+    assert result.answer == f"The Boston Celtics are 3-0 (1.000) in the regular seasons since {_TC_S1}.\n  Home 2-0, away 1-0."
+
+
+def test_team_record_since_narrows_to_a_named_opponent(team_cells_con: TemplateContext) -> None:
+    """ "Celtics record vs Knicks since {S-1}" - `since` and `opponent` compose,
+    the same way `opponent` already composes with a single season."""
+    result = team_record(team_cells_con, {"team": "Celtics", "opponent": "Knicks", "since": _TC_S1})
+    assert result.data["wins"] == 2 and result.data["losses"] == 0
+    assert result.answer == f"The Boston Celtics are 2-0 (1.000) against the New York Knicks in the regular seasons since {_TC_S1}.\n  Home 1-0, away 1-0."
+
+
+def test_team_record_since_narrows_by_venue(team_cells_con: TemplateContext) -> None:
+    result = team_record(team_cells_con, {"team": "Celtics", "since": _TC_S1, "venue": "home"})
+    assert result.data["wins"] == 2 and result.data["losses"] == 0
+    assert result.answer == f"The Boston Celtics are 2-0 (1.000) at home in the regular seasons since {_TC_S1}."
+
+
+def test_team_record_since_with_no_games_names_the_since_bound(team_cells_con: TemplateContext) -> None:
+    """The empty-result sentence says which narrowing emptied it - the same
+    false-cause discipline AGENTS.md requires everywhere else - rather than
+    reading as no games on record at all."""
+    result = team_record(team_cells_con, {"team": "Pistons", "since": _TC_S + 10})
+    assert result.answer == f"The warehouse holds no regular-season games for the Detroit Pistons since {_TC_S + 10}."
+
+
+def test_team_record_honors_game_n_within_one_named_postseason(team_cells_con: TemplateContext) -> None:
+    """ "Celtics record in game 1 of the {S} playoffs" - one game of each
+    series the relation's own `narrow_series_game` already numbers."""
+    result = team_record(team_cells_con, {"team": "Celtics", "season_type": 3, "season": _TC_S, "game_n": 1})
+    assert result.data["wins"] == 1 and result.data["losses"] == 0
+    assert result.answer == f"The Boston Celtics went 1-0 (1.000) in game 1 of each series in the {_TC_S} postseason.\n  Home 1-0, away 0-0."
+
+
+def test_team_record_game_n_combines_with_since_across_postseasons(team_cells_con: TemplateContext) -> None:
+    """ "Celtics record in game 1 of each series since 1989" - the warehouse's
+    own playoff-game-list floor (AGENTS.md, "Coverage floors"), reaching the
+    1989 postseason the same way `head_to_head`'s own since-bounded postseason
+    test below does."""
+    result = team_record(team_cells_con, {"team": "Celtics", "season_type": 3, "since": 1989, "game_n": 1})
+    assert result.data["wins"] == 2 and result.data["losses"] == 0
+    assert result.answer == "The Boston Celtics are 2-0 (1.000) in game 1 of each series in the postseasons since 1989.\n  Home 2-0, away 0-0."
+
+
+def test_team_record_game_n_refuses_a_regular_season(team_cells_con: TemplateContext) -> None:
+    """A series has games 1-7; a regular season has nothing "game 4" names -
+    the same check `common.team_games` makes for every other team template."""
+    with pytest.raises(TemplateUnsupported):
+        team_record(team_cells_con, {"team": "Celtics", "game_n": 1})
+
+
+def test_team_record_since_conflicts_with_a_named_season(team_cells_con: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        team_record(team_cells_con, {"team": "Celtics", "since": _TC_S1, "season": _TC_S})
+
+
+def test_team_record_since_conflicts_with_career(team_cells_con: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        team_record(team_cells_con, {"team": "Celtics", "since": _TC_S1, "span": "career"})
+
+
+def test_team_record_since_does_not_silently_answer_a_month_split(team_cells_con: TemplateContext) -> None:
+    """A month split has no since-bounded form yet - refusing beats silently
+    answering the plain month split instead, the substitution this whole
+    project keeps guarding against."""
+    with pytest.raises(TemplateUnsupported):
+        team_record(team_cells_con, {"team": "Celtics", "since": _TC_S1, "split": "month"})
+
+
+def test_head_to_head_honors_since_over_every_meeting_in_the_span(team_cells_con: TemplateContext) -> None:
+    """ "Celtics vs Knicks since {S-1}" (ISSUES.md): every meeting in the span,
+    not one season."""
+    result = head_to_head(team_cells_con, {"teams": ["Celtics", "Knicks"], "since": _TC_S1})
+    assert result.data["games"] == 2 and result.data["wins"] == {"Boston Celtics": 2, "New York Knicks": 0}
+    assert result.answer == f"The Boston Celtics and the New York Knicks have met 2 times since {_TC_S1} ({_TC_S1}-{_TC_S} regular seasons); the Boston Celtics lead the all-time series 2-0."
+
+
+def test_head_to_head_honors_career_over_every_meeting_on_record(team_cells_con: TemplateContext) -> None:
+    """ "All-time Celtics vs Knicks" (ISSUES.md) - `span` "career", the same
+    shape team_record's own whole-career answer already reads."""
+    result = head_to_head(team_cells_con, {"teams": ["Celtics", "Knicks"], "span": "career"})
+    assert result.data["games"] == 3 and result.data["wins"] == {"Boston Celtics": 3, "New York Knicks": 0}
+    assert (
+        result.answer == f"The Boston Celtics and the New York Knicks have met 3 times over the seasons on record ({_TC_S2}-{_TC_S} regular seasons); the Boston Celtics lead the all-time series 3-0."
+    )
+
+
+def test_head_to_head_since_reaches_the_1989_postseason_floor(team_cells_con: TemplateContext) -> None:
+    """The team tables reach 1988-89 for the postseason (AGENTS.md, "Coverage
+    floors") - "Celtics vs Pistons since 1989" reads the one series the
+    warehouse holds that far back."""
+    result = head_to_head(team_cells_con, {"teams": ["Celtics", "Pistons"], "season_type": 3, "since": 1989})
+    assert result.data["games"] == 3 and result.data["wins"] == {"Boston Celtics": 2, "Detroit Pistons": 1}
+    assert result.answer == "The Boston Celtics and the Detroit Pistons have met 3 times since 1989 (1989 postseason); the Boston Celtics lead the all-time series 2-1."
+
+
+def test_head_to_head_since_with_no_meetings_names_the_since_bound(team_cells_con: TemplateContext) -> None:
+    result = head_to_head(team_cells_con, {"teams": ["Celtics", "Pistons"], "since": _TC_S + 10})
+    assert result.answer == f"The Boston Celtics and the Detroit Pistons have not played each other since {_TC_S + 10}."
+
+
+def test_head_to_head_since_narrows_by_venue(team_cells_con: TemplateContext) -> None:
+    """`since` composes with `venue` the same way a single season already
+    does - narrowed to the first-named team's home games."""
+    result = head_to_head(team_cells_con, {"teams": ["Celtics", "Knicks"], "since": _TC_S1, "venue": "home"})
+    assert result.data["games"] == 1 and result.data["wins"] == {"Boston Celtics": 1, "New York Knicks": 0}
+    assert result.answer == f"The Boston Celtics and the New York Knicks met once in the Boston Celtics' home games since {_TC_S1}; the Boston Celtics won the series 1-0."
+
+
+def test_head_to_head_since_conflicts_with_a_date(team_cells_con: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        head_to_head(team_cells_con, {"teams": ["Celtics", "Knicks"], "since": _TC_S1, "date": "2026-01-01"})
+
+
+def test_head_to_head_since_conflicts_with_career(team_cells_con: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported):
+        head_to_head(team_cells_con, {"teams": ["Celtics", "Knicks"], "since": _TC_S1, "span": "career"})
+
+
 def test_team_quarter_points_reads_each_games_own_side_of_linescores(tq_con: TemplateContext) -> None:
     """Regression: "how many points did the 76ers score in the 4th quarter
     against Boston this season?" forced the router's _AGENT_ONLY override to
