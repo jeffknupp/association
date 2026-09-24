@@ -2480,6 +2480,42 @@ those were found.
 
 ## P3: refusal or gap
 
+### A composed league-wide `threshold_count` falls through when the router's `stat` already names the threshold's own column
+- **Found:** 2026-09-24, building F161's multi-line move in
+  `query/compose/move.py`.
+- **Evidence:** `_everyone_threshold_predicates` adds the phrase's own
+  column as a predicate only when it differs from the ranking `measure`
+  variable (`_stat_measure(slots.get("stat"))`) - a dedup meant for
+  `_everyone_ranking`'s grouped-by-player point, where `measure` is what
+  the read is grouped and ordered by. `_everyone_threshold_count`'s point
+  uses no `measure` at all (only `predicates`), so whenever the router's own
+  `stat` slot already names the same column the threshold phrase does - the
+  ordinary case, not an edge one - the predicate is silently skipped and the
+  count has nothing to count, raising `Unsupported` in
+  `_everyone_threshold_count`. Reproduced against `nba.duckdb`:
+  `compose.answer(ctx, "threshold_count", {"stat": "points", "threshold":
+  30, "season_type": 2}, "who had the most games with 30+ points this
+  season")` returns `None` (falls through to the agent) - a very ordinary
+  routing of a very ordinary question.
+- **User sees:** a slow, unreliable agent fall-through (AGENTS.md: 1 correct
+  in 9 finished runs) for a league-wide threshold count phrased plainly,
+  where the fast path already answers the same shape correctly whenever the
+  router's `stat` happens to differ from the phrase's word (see
+  `test_the_questions_own_number_names_its_column_not_the_routers_stat`,
+  `tests/query/test_compose.py`).
+- **Next step:** `_everyone_threshold_count` needs the phrase's own column
+  regardless of what `measure` says, since it never reads `measure` at all -
+  either pass `_everyone_threshold_predicates` a `None` measure when the
+  caller is a count (not a ranking), or give `_everyone_threshold_count` its
+  own predicate read independent of the ranking dedup. Found while building
+  F161's `_everyone_multi_line_games` (same file); not fixed here to keep
+  that change to its own scope - a fixture test
+  (`test_a_single_number_stat_line_still_counts_by_player`) pins today's
+  behavior (a `stat` that differs from the phrase) so a fix does not regress
+  it silently.
+- **Source:** ours, not ESPN's.
+- **GitHub:** not yet filed
+
 ### `team_record`'s combined-season-types sentence drops the regular half's "standings from 1993-94" caveat
 - **Found:** 2026-09-23, grading `live_sweep.jsonl` (yardstick-v2 F116).
 - **Evidence:** "warriors all-time record including playoff record at away"

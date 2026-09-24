@@ -16,6 +16,23 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **A composed league-wide `threshold_count` naming SEVERAL "<N> <stat>"
+  lines at once ("33 points and 13 rebounds and 10 assists 2 blocks and 2
+  steals", F161) now lists the games clearing every line, rather than
+  refusing for want of a single line to count.** `query/compose/move.py`'s
+  `_numbered_stat_lines` reads every "<N> <stat>" pair straight out of the
+  question text (the same `MEASURE_WORDS` lookup a single threshold already
+  used), and `_everyone_multi_line_games` answers rows over everyone under
+  all of them as predicates, naming who had each game - not
+  `_everyone_threshold_count`'s per-player COUNT, which still answers a
+  single line exactly as before. Warehouse-verified: over 1994-onward
+  regular-season box scores, exactly 12 games clear 33+ points, 13+
+  rebounds, 10+ assists, 2+ blocks and 2+ steals at once (direct SQL
+  cross-check against the same five columns agrees). Found and filed, not
+  fixed here: a single-line count still falls through when the router's own
+  `stat` already names the phrase's own column (`_everyone_threshold_predicates`'s
+  ranking-measure dedup applies where it should not), reproduced live
+  against `nba.duckdb` (ISSUES.md).
 - **A composed league-wide ranking of a boolean measure ("highest scoring
   triple doubles") ranks the qualifying GAMES by another measure, rather than
   counting them (#199, ISSUES.md).** `query/compose/move.py`'s

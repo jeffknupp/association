@@ -707,3 +707,49 @@ def test_everyone_career_slots_reads_ever_and_all_time_only_with_no_season_named
     assert _everyone_career_slots({}, "the best triple double ever") == {"span": "career"}
     assert _everyone_career_slots({}, "the best triple double this season") == {}
     assert _everyone_career_slots({"season": 2024}, "the best triple double of all time") == {"season": 2024}  # a named season is not overridden
+
+
+# ---------------------------------------------------------------------------
+# F161: several "<N> <stat>" lines in one question at once - a league-wide
+# READ OF THE GAMES clearing every line, not `_everyone_threshold_count`'s
+# per-player COUNT of a single one.
+# ---------------------------------------------------------------------------
+
+
+def test_several_number_stat_lines_read_the_qualifying_games_not_a_count(cx_ctx: TemplateContext) -> None:
+    """ "33 point and 13 rebound and 10 assist 2 blocks and 2 steals" (F161)
+    reads every "<N> <stat>" pair in the question into predicates and lists
+    the games clearing all of them - rows over everyone, not a per-player
+    count. This fixture's own numbers: exactly two season-``s`` games clear
+    20+ points, 7+ rebounds and 3+ assists at once (Brown's g5 and
+    Podziemski's g3) - the 20-point-guards ranking pool (6 rebounds apiece)
+    and the two players' own lower-rebound games fall short of the 7."""
+    q = move_point(cx_ctx.con, "threshold_count", {"season_type": 2}, "players with 20 points and 7 rebounds and 3 assists this season")
+    assert isinstance(q, Query)
+    assert q.subject == "everyone" and q.skeleton == "rows"
+    assert sorted(q.predicates) == sorted([("points", ">=", 20), ("rebounds", ">=", 7), ("assists", ">=", 3)])
+    out = run(cx_ctx.con, q)
+    assert sorted(r["points"] for r in out["rows"]) == [28, 31]
+
+
+def test_a_single_number_stat_line_still_counts_by_player(cx_ctx: TemplateContext) -> None:
+    """One line only is still :func:`~association.query.compose.move._everyone_threshold_count`'s
+    ordinary per-player COUNT shape - the multi-line move stands aside for
+    it (F161's move applies only once there are two or more lines to read).
+    ``stat`` names a DIFFERENT column than the phrase itself on purpose
+    (the same shape ``test_the_questions_own_number_names_its_column_not_the_routers_stat``
+    exercises) - `_everyone_threshold_predicates` does not add a second,
+    redundant line when the router's own ``stat`` already names the same
+    column the phrase does; filed as a finding (ISSUES.md), not fixed here,
+    since it is a pre-existing single-line quirk outside F161's own scope."""
+    q = move_point(cx_ctx.con, "threshold_count", {"threshold": 15, "stat": "rebounds"}, "players with 15 points this season")
+    assert isinstance(q, Query)
+    assert q.subject == "everyone" and q.skeleton == "grouped" and q.group == "player"
+
+
+def test_a_league_wide_count_with_no_line_at_all_is_still_refused(cx_ctx: TemplateContext) -> None:
+    """The K2 guard :func:`_numbered_stat_lines`'s move does not weaken: a
+    league-wide ``threshold_count`` naming no line at all - not even in the
+    question's own text - is refused, not turned into a whole-league listing."""
+    with pytest.raises(Unsupported, match="needs the line"):
+        move_point(cx_ctx.con, "threshold_count", {}, "players with a good game this season")

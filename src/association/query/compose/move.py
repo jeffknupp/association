@@ -321,6 +321,59 @@ def _everyone_boolean_game_ranking(question: str, slots: dict[str, Any], predica
     )
 
 
+_NUMBER_STAT = re.compile(r"\b(\d{1,3})\s*\+?\s*((?:[a-z]+\s*){1,3})", re.I)
+
+
+def _numbered_stat_lines(question: str) -> list[tuple[str, str, Any]]:
+    """Every "<N> <stat>" pair ``question`` itself names, as predicates - the
+    league-wide multi-line count a single ``threshold`` slot cannot carry
+    (F161: "33 point and 13 rebound and 10 assist 2 blocks and 2 steals").
+    Each number's own trailing word(s) name its column through
+    :data:`~association.query.measures.MEASURE_WORDS`, the lookup
+    :func:`_everyone_threshold_predicates` already uses for one number -
+    applied here to every number the question names, not only the router's
+    own ``threshold``, and never a duplicate column.
+
+    .. versionadded:: 4.4.0
+    """
+    predicates: list[tuple[str, str, Any]] = []
+    seen: set[str] = set()
+    for match in _NUMBER_STAT.finditer(question):
+        value = int(match.group(1))
+        if not value:
+            continue
+        words = match.group(2).lower().split()
+        column = None
+        for width in (3, 2, 1):
+            candidate = " ".join(words[:width])
+            if candidate in MEASURE_WORDS:
+                column = MEASURE_WORDS[candidate]
+                break
+        if column and column not in seen:
+            seen.add(column)
+            predicates.append((column, ">=", value))
+    return predicates
+
+
+def _everyone_multi_line_games(intent: str, slots: dict[str, Any], question: str, predicates: list[tuple[str, str, Any]], position: str | None) -> Query | None:
+    """Several "<N> <stat>" lines named in one question at once (F161) are
+    all conditions on the SAME game, so the answer is which GAMES cleared
+    every line and who had them - rows over everyone, the predicates
+    stated, never :func:`_everyone_threshold_count`'s per-player COUNT of a
+    single line (still the right shape once there is only one - this move
+    stands aside for it, below).
+
+    .. versionadded:: 4.4.0
+    """
+    if intent != "threshold_count":
+        return None
+    text_lines = _numbered_stat_lines(question)
+    lines = text_lines if len(text_lines) > len(predicates) else predicates
+    if len(lines) < 2:
+        return None
+    return Query(slots, "rows", [name for name, _, _ in lines], "none", "none", lines, "date", "desc", _clamp(slots.get("limit"), 25), subject="everyone", position=position)
+
+
 def _everyone_threshold_count(intent: str, slots: dict[str, Any], predicates: list[tuple[str, str, Any]], position: str | None) -> Query | None:
     """A league-wide count: who had games clearing the line(s). Without a
     line to count there is nothing to rank - refused, never turned into a
@@ -365,13 +418,15 @@ def _everyone_point(intent: str, slots: dict[str, Any], question: str, measure: 
     word makes it grouped by player; a log word with a position makes it
     rows; "most ... in a game" is rows by measure over everyone; a
     "highest/biggest ..." boolean-measure question ranks the GAMES rather
-    than counting them.
+    than counting them; several "<N> <stat>" lines at once list the games
+    clearing every one.
 
     .. versionchanged:: 4.4.0
        "Ever"/"all-time" moves the default current-season span to a career
        one (:func:`_everyone_career_slots`), and tries
-       :func:`_everyone_boolean_game_ranking` (#199) before the per-player
-       count and ranking moves, since it is a more specific reading of a
+       :func:`_everyone_boolean_game_ranking` (#199) and
+       :func:`_everyone_multi_line_games` (F161) before the per-player count
+       and ranking moves, since both are more specific readings of a
        ``threshold_count``/ranking question than either of those.
     """
     _everyone_guard(question)
@@ -387,6 +442,9 @@ def _everyone_point(intent: str, slots: dict[str, Any], question: str, measure: 
     boolean_ranked = _everyone_boolean_game_ranking(question, slots, predicates, position)
     if boolean_ranked is not None:
         return boolean_ranked
+    multi_line = _everyone_multi_line_games(intent, slots, question, predicates, position)
+    if multi_line is not None:
+        return multi_line
     counted = _everyone_threshold_count(intent, slots, predicates, position)
     if counted is not None:
         return counted
