@@ -133,3 +133,9 @@ class Answer:
     intent: str | None = None
     data: dict[str, Any] | None = None
     artifacts: list[Artifact] = field(default_factory=list)
+    #: The basename of the ``.history/`` file this answer was recorded to -
+    #: what a client names to annotate it (``POST /api/notes``) - or None
+    #: before the record is written.
+    #:
+    #: .. versionadded:: 4.4.0
+    history_file: str | None = None

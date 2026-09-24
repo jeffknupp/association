@@ -13,6 +13,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -488,13 +489,11 @@ def test_the_page_is_served_and_is_self_contained(tmp_path: Path) -> None:
     assert 'src="' not in body and 'rel="stylesheet"' not in body
 
 
-def test_agent_runner_reads_the_history_file_off_the_traces_own_history_line(tmp_path: Path) -> None:
-    """`Agent.ask` (`query/agent.py`, out of scope for this change) never
-    returns the history file it wrote - it only ever names it in one exact
-    trace line on the way out, `f"[history] {path}  {history.summary_line()}"`.
-    This pins `AgentRunner.ask` to reading exactly that shape: a change to
-    `agent.py`'s line would break this test rather than silently stop naming a
-    history file to the page."""
+def test_agent_runner_reads_the_history_file_off_the_answer(tmp_path: Path) -> None:
+    """`Agent.ask` sets `Answer.history_file` in the same step that writes the
+    record; the runner reads that value and forwards every trace line
+    verbatim - it never parses the `[history] ...` line back into a field
+    (AGENTS.md, "Events carry trace lines verbatim")."""
     from association.web.runner import AgentRunner
 
     class Recording:
@@ -506,22 +505,19 @@ def test_agent_runner_reads_the_history_file_off_the_traces_own_history_line(tmp
         def ask(self, question: str, label: str = "") -> Answer:
             self.trace("  -> (router) intent='leaderboard' slots={}")
             self.trace("[history] .history/4.3.0-abc1234deadbeef01.log  [timing] total 1.23s - model 1.00s (1 call), tools 0.10s (1 call)")
-            return _answer("done")
+            return replace(_answer("done"), history_file="4.3.0-abc1234deadbeef01.log")
 
     runner = AgentRunner(Recording())  # type: ignore[arg-type]  # only .ask, .trace and .reset_conversation are touched
     seen: list[str] = []
     answered = runner.ask("q", label="t", trace=seen.append)
 
     assert answered.history_file == "4.3.0-abc1234deadbeef01.log"
-    # Forwarded to the caller verbatim too - "events carry trace lines
-    # verbatim", the same contract every other progress line keeps.
     assert seen[-1].startswith("[history] .history/4.3.0-abc1234deadbeef01.log")
 
 
-def test_agent_runner_reports_no_history_file_when_the_trace_never_named_one(tmp_path: Path) -> None:
-    """A stub agent that never traces a `[history] ...` line - unlike the real
-    one, which always does, on every return path including an exception - must
-    say None rather than inventing a name nothing wrote."""
+def test_agent_runner_reports_no_history_file_when_the_answer_carries_none(tmp_path: Path) -> None:
+    """An Answer with no `history_file` (a stub's; the real Agent always sets
+    one) reports None rather than a name nothing wrote."""
     from association.web.runner import AgentRunner
 
     class Silent:

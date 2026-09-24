@@ -7,6 +7,7 @@ import re
 import time
 import traceback
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -229,16 +230,22 @@ class Agent:
         history = RunHistory(self.verbose, self.history_dir, sink=self.trace)
         self.toolbox.take_artifacts()  # anything left by a previous question is not this one's
         recorded = ""
+        answer: Answer | None = None
         try:
             answer = self._ask_inner(question, history)
             recorded = answer.text
-            return answer
         except Exception:
             recorded = "EXCEPTION:\n" + traceback.format_exc()
             raise
         finally:
             path = history.write(command=label, model=self.model, think=self.think, question=question, answer=recorded, router_model=self.router_model)
             self.trace(f"[history] {path}  {history.summary_line()}")
+        # The record's name rides on the Answer as a value, so a caller (the
+        # web runner's note feature) never has to read it back out of the
+        # trace line above - AGENTS.md, "Events carry trace lines verbatim".
+        # After the finally, so the record is written before it is named.
+        assert answer is not None
+        return replace(answer, history_file=Path(path).name)
 
     def _answer(
         self,

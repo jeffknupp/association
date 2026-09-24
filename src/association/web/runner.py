@@ -13,11 +13,9 @@ rather than letting them interleave and both come back slow.
 
 from __future__ import annotations
 
-import re
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 from ..query.answer import Answer
@@ -170,48 +168,14 @@ class AgentRunner:
            recorded to, instead of a bare
            :class:`~association.query.answer.Answer`.
         """
-        history_file: list[str | None] = [None]
-
-        def capture(line: str) -> None:
-            """Forward one trace line to ``trace`` exactly as before, and, on
-            the way past, keep it if it is the one line naming this call's own
-            history file."""
-            found = _ask_history_file(line)
-            if found is not None:
-                history_file[0] = found
-            trace(line)
-
         with self._lock:
             self.agent.reset_conversation()
-            previous, self.agent.trace = self.agent.trace, capture
+            previous, self.agent.trace = self.agent.trace, trace
             try:
                 answer = self.agent.ask(question, label=label)
             finally:
                 self.agent.trace = previous
-        return Answered(answer=answer, history_file=history_file[0])
-
-
-_HISTORY_TRACE_LINE = re.compile(r"^\[history\] (\S+)")
-"""What ``Agent.ask``'s own finally block always writes to the trace, verbatim,
-as its very last line (``query/agent.py``, out of scope for this change):
-``f"[history] {path}  {history.summary_line()}"``. ``\\S+`` is enough to
-isolate ``path`` because :func:`association.query.history.RunHistory.write`
-builds it from :func:`~association.query.history.build_id` and a hex
-``uuid4`` - never anything containing whitespace. Private, so not itself a
-compatibility promise - it exists to be perturbed and re-checked the day
-``Agent.ask``'s trace line changes shape, not to be read as one.
-"""
-
-
-def _ask_history_file(line: str) -> str | None:
-    """The history file's basename, if ``line`` is :meth:`AgentRunner.ask`'s
-    one chance to see it - None for every other trace line, which is most of
-    them.
-
-    Only the basename: a client addresses a history file by name over
-    ``POST /api/notes`` exactly the way it already addresses an artifact over
-    ``GET /api/artifacts/{name}`` (:func:`association.web.app.artifact_path`),
-    never by the server's own path to it.
-    """
-    match = _HISTORY_TRACE_LINE.match(line)
-    return Path(match.group(1)).name if match else None
+        # The record's name is a value on the Answer (Agent.ask sets it in
+        # the same finally that writes the record) - never parsed back out of
+        # the "[history] ..." trace line, which the web path carries verbatim.
+        return Answered(answer=answer, history_file=answer.history_file)

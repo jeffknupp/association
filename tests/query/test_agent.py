@@ -1064,3 +1064,22 @@ def test_a_shape_nothing_reads_is_refused_even_where_no_template_exists(monkeypa
 
     assert "Bench points are not read yet" in answer.text
     assert answer.answered_by == "fast"
+
+
+def test_an_answer_names_the_history_file_it_was_recorded_to(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """`Agent.ask` sets `Answer.history_file` to the record's basename in the
+    same step that writes it, so a caller (the web runner's note feature)
+    reads it as a value and never parses the `[history] ...` trace line."""
+    import duckdb
+
+    db_path = tmp_path / "test.duckdb"
+    duckdb.connect(str(db_path)).close()
+    history_dir = tmp_path / ".history"
+    agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=history_dir, fast_path=False, trace=lambda line: None)
+    monkeypatch.setattr(ollama, "chat", lambda **kw: ChatResponse(model="m", created_at="", done=True, message=Message(role="assistant", content="a")))
+
+    answer = agent.ask("q")
+
+    written = [p.name for p in history_dir.glob("*.log")]
+    assert answer.history_file is not None and answer.history_file in written
+    assert "/" not in answer.history_file
