@@ -496,6 +496,9 @@ CASES: list[tuple[str, str, dict]] = [
     # (entities.player_named_on_a_team_only_question). Asserted here: the
     # venue and the opponent the answer depends on.
     ("towns home rec including playoffs since 1/26/20 vs spurs", "team_record", {"venue": "home", "opponent": "San Antonio Spurs"}),
+    # yardstick-v2 F104: "best NBA record" with no team is the league's
+    # ranking, whatever the model filed; the truncated "201" names no season.
+    ("Best NBA record since January 31st 201", "team_leaderboard", {"rank": "best", "situation": "since january 31st"}),
 ]
 
 

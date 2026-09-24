@@ -1468,8 +1468,10 @@ def _team_slot_named_in_text(question: str, candidate: Any) -> str | None:
 
 # "best record" and "worst record" rank the league; with no team named they are
 # team_leaderboard's question. Measured: "worst record 2025-26" came back as
-# team_record with team='worst'.
-_BEST_WORST_RECORD = re.compile(r"\b(?:best|worst)\s+records?\b", re.IGNORECASE)
+# team_record with team='worst'. "the league" or "NBA" between the two words
+# is the same ranking: "Best NBA record since January 31st 201" (yardstick-v2
+# F104) came back as team_record with no team and fell through.
+_BEST_WORST_RECORD = re.compile(r"\b(?:best|worst)\s+(?:nba\s+|league\s+)?records?\b", re.IGNORECASE)
 
 # A `team` slot that names the league rather than a team - "all-NBA",
 # "all_teams", "worst" - measured on three questions, each of which then

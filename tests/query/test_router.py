@@ -1047,6 +1047,20 @@ def test_a_split_is_read_for_every_intent_so_others_can_refuse_it() -> None:
     assert got.slots["split"] == "starter_bench"
 
 
+def test_best_nba_record_with_no_team_is_the_team_leaderboard() -> None:
+    """yardstick-v2 F104, the model's reply as recorded: "Best NBA record
+    since January 31st 201" came back as team_record with no team and fell
+    through ("no team named"). "NBA" between "best" and "record" is still
+    the league's ranking; the truncated year names no season, so the model's
+    guess goes and the default season applies."""
+    got = _asking('{"intent":"team_record","stat":"win_percentage","season":2025,"limit":1,"season_type":2}', "Best NBA record since January 31st 201")
+    assert got.intent == "team_leaderboard"
+    assert got.slots["stat"] == "record" and got.slots["rank"] == "best" and got.slots["situation"] == "since january 31st"
+    assert "season" not in got.slots and "team" not in got.slots
+    # A team named keeps its own record.
+    assert _asking('{"intent":"team_record","team":"Boston Celtics"}', "celtics best nba record since january 31st").intent == "team_record"
+
+
 def test_a_players_career_games_in_a_month_are_his_game_log_in_that_month() -> None:
     """yardstick-v2 F096, the model's reply as recorded: a count over the line
     0 on the stat "games", Bam dropped and March unread ("in the month of"

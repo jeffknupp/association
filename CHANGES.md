@@ -16,6 +16,7 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- "Best NBA record" (or "best league record") with no team named routes to `team_leaderboard`, as "best record" already did - "Best NBA record since January 31st 201" came back as `team_record` with no team and fell through.
 - A team-only question naming one player and a team the question never mentions is refused by the player's name: "towns home rec including playoffs since 1/26/20 vs spurs" routed `team_record` with an invented `team='Toronto Raptors'` and would have answered the Raptors' record. A real team counts only when the question holds a trace of it.
 - "bam adebayo career games in the month of march" is his game log in March (118 games) rather than a fall-through: a `threshold_count` over the line 0 on the stat "games" is `game_log`, with the subject restored, and "in the month of <month>" is read as the month like "in <month>".
 - "Since 2000-01" (and "since 2000-2001") starts at the season ending in the later year, 2001; `route()` read only the leading "2000" and started a season early (#207).

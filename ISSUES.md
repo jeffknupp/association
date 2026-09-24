@@ -2356,6 +2356,26 @@ those were found.
 
 ## P3: refusal or gap
 
+### `team_leaderboard` excludes `situation`, so "best record since <day>" still falls through
+- **Found:** 2026-09-24, fixing yardstick-v2 F104's routing.
+- **Evidence:** "Best NBA record since January 31st 201" now routes
+  `team_leaderboard {'stat': 'record', 'rank': 'best', 'limit': 1,
+  'situation': 'since january 31st'}` (it was `team_record` with no team).
+  Called directly on that tree, `check_scope` refuses: `team_leaderboard
+  cannot honor ['situation']`, and `compose.answer` returns None, so it
+  reaches the agent. The exclusion's reason in
+  `templates/common.py:TEAM_RELATION_SCOPING_EXCLUDED["team_leaderboard"]`
+  ("a leaderboard ranks a season, not the games in one weekday, month or
+  holiday within it") is about narrowing the pool, and a "since <day>"
+  window is not that: "best record since January 31" ranks every team over
+  a window, which is the standings question the key asks.
+- **User sees:** the slow agent, for a standings question.
+- **Next step:** the template owner lets `team_leaderboard` honor a
+  `since_day` situation (the team relation already applies it,
+  `TeamNarrowed.narrow_calendar`), keeping the weekday/month/holiday cells
+  excluded if that reasoning holds for them.
+- **Priority note:** P3 - one corpus question, a fall-through.
+
 ### A player's team record since an absolute date, both season types, is refused: "towns home rec including playoffs since 1/26/20 vs spurs"
 - **Found:** 2026-09-24, fixing yardstick-v2 F110 (it used to answer the
   Raptors' record, a team the question never names; now refused by name).
