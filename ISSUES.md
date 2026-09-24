@@ -396,7 +396,7 @@ those were found.
   `player_matchup`'s own `without` refusal next.
 - **GitHub:** #202
 
-### Ten P7-bucket "partial" answers from the yardstick are still open
+### Nine P7-bucket "partial" answers from the yardstick are still open
 - **Found:** 2026-09-23, same session - not reached; recorded from
   `~/association-research/yardstick-v2/wrong_land.md`'s own evidence rather
   than independently re-diagnosed, since no time remained in this pass to
@@ -421,9 +421,6 @@ those were found.
     mechanism from this session's bucket 1) now find the right games but do
     not state the total/point-differential sum the question asked for,
     leaving it for the reader to add up the rows.
-  - **F149** - a game log cut to a qualifying subset (FGA/minutes thresholds)
-    says "last 10 games" without saying how many of the player's total
-    qualifying games (49) that 10 is a truncation of.
   - **F159** - `player_splits` with `stat: usage_pct` and a `without` filter
     shows the standard splits table, which has no usage-rate column at all,
     so the actually-asked-for stat is absent from an otherwise-correct

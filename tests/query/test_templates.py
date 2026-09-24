@@ -3706,6 +3706,22 @@ def test_game_log_averages_exactly_the_games_it_lists(pg_ctx: TemplateContext) -
     assert "17.5" in average_row
 
 
+def test_game_log_says_how_many_games_the_window_cut_from(pg_ctx: TemplateContext) -> None:
+    """F149 (ISSUES.md): a limit (default or asked) that keeps fewer games
+    than qualified used to head the log "last N games" with no word about
+    the rest. Podziemski has 3 played regular-season games this season (e1,
+    e2, e3 - e4 is a DNP and e6 an empty box-score line, neither played); a
+    limit of 2 keeps the two most recent and now says how many it cut from."""
+    result = game_log(pg_ctx, {"player": "Brandin Podziemski", "limit": 2})
+    assert result.data["qualifying_games"] == 3
+    assert result.answer.splitlines()[0].startswith("Brandin Podziemski, last 2 of 3 games")
+    # No truncation, no "of N": every qualifying game fit inside the window.
+    full = game_log(pg_ctx, {"player": "Brandin Podziemski", "limit": 10})
+    assert full.data["qualifying_games"] == 3
+    assert full.answer.splitlines()[0].startswith("Brandin Podziemski, last 3 games")
+    assert "of 3" not in full.answer.splitlines()[0]
+
+
 def test_a_named_stat_adds_its_columns_to_the_log(pg_ctx: TemplateContext) -> None:
     result = game_log(pg_ctx, {"player": "Brandin Podziemski", "stat": "freeThrowPct"})
     titles = result.answer.splitlines()[1].split()
@@ -3988,7 +4004,9 @@ def test_player_stat_over_the_last_n_games_is_the_log_with_its_averages(pg_ctx: 
     result = player_stat(pg_ctx, {"player": "Brandin Podziemski", "limit": 2})
     assert len(result.data["games"]) == 2
     assert "averages" in result.data
-    assert "last 2 games" in result.answer
+    # F149 (ISSUES.md): the window (2) is narrower than his 3 qualifying
+    # games, so the heading now says how many it cut from.
+    assert "last 2 of 3 games" in result.answer
 
 
 def test_check_scope_lets_player_stat_honor_since_and_order(pg_ctx: TemplateContext) -> None:

@@ -16,6 +16,15 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **`game_log` names how many games a window cut from, not only how many it
+  shows (F149, ISSUES.md).** "Mikal Bridges game log with less than 15 FGA
+  and less than 35 minutes" cut 39 qualifying regular-season games to the
+  default 10 and headed the answer "last 10 games", with no word about the
+  29 left out. The heading now says "last 10 of 39 games" whenever the
+  window (a default limit or an explicit one) actually cuts the narrowed
+  games, read with `aggregate_sql` over `common.whole_span` - the same
+  shared steps every other count over the relation uses, never a
+  hand-written `COUNT(*)`. Warehouse-verified against the traced question.
 - A composed answer over a closed season range names the range it counted -
   "regular season career (2020-2022)" - where it said "(2020 on)": the count
   already stopped at `until`, so the sentence stated a scope the number did
