@@ -441,7 +441,11 @@ def _compile_rows(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity | 
     # A rows read applies its own limit (rows_sql never consults the window),
     # so the relation's window is not what cut these rows and must not be said.
     narrowed.window = None
-    select = ", ".join([_row_select(rebuilt=rebuilt), *(f'{measure_sql(m, rebuilt=rebuilt)} AS "{m}"' for m in q.measures)])
+    # A league-wide read lists games of many players, so each row carries
+    # its player; measured on yardstick-v2 F124, a ranking of triple-doubles
+    # by points printed dates and figures and never said whose they were.
+    who = ["pgl.player_name AS player"] if q.subject != "player" else []
+    select = ", ".join([_row_select(rebuilt=rebuilt), *who, *(f'{measure_sql(m, rebuilt=rebuilt)} AS "{m}"' for m in q.measures)])
     if q.order == "measure":
         if not q.measures:
             raise Unsupported("ordering by a measure needs one")

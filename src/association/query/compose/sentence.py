@@ -121,7 +121,14 @@ def _rows_sentence(q: Query, out: dict[str, Any]) -> str:
         head += f" - top {len(rows)} by {LABELS.get(q.measures[0], q.measures[0])}"
     elif q.limit:
         head += f" - {'first' if q.direction == 'asc' else 'last'} {len(rows)} games"
-    lines = [f"  {r['day']}  {'vs' if r['home'] else '@'} {r['opponent']:4s} {'W' if r['won'] else 'L'}  " + "  ".join(f"{LABELS.get(c, c)} {_fmt(r.get(c), c)}" for c in q.measures) for r in rows]
+    named = max((len(str(r.get("player") or "")) for r in rows), default=0)
+    lines = [
+        f"  {r['day']}  "
+        + (f"{r['player']:{named}s}  " if r.get("player") else "")
+        + f"{'vs' if r['home'] else '@'} {r['opponent']:4s} {'W' if r['won'] else 'L'}  "
+        + "  ".join(f"{LABELS.get(c, c)} {_fmt(r.get(c), c)}" for c in q.measures)
+        for r in rows
+    ]
     return head + ":\n" + "\n".join(lines)
 
 

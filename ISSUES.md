@@ -354,6 +354,7 @@ those were found.
   template reads it.
 - **Source:** ours, not ESPN's.
 - **GitHub:** not yet filed
+- **GitHub:** #206
 
 ### "Since 2000-01" is not read as a span: a league-wide multi-line count answers the default season
 - **Found:** 2026-09-24, grading `live_rest.jsonl` (yardstick-v2 F161).
@@ -371,6 +372,7 @@ those were found.
   templates apply).
 - **Source:** ours, not ESPN's.
 - **GitHub:** not yet filed
+- **GitHub:** #207
 
 ### A short, genuinely ambiguous question is guessed at rather than asked about: "Tatum rec"
 - **Found:** 2026-09-23, working yardstick-v2's wrong-land bucket 4
@@ -2451,6 +2453,7 @@ those were found.
   way `_game_log_window_of` does for the others.
 - **Source:** ours.
 - **GitHub:** not yet filed
+- **GitHub:** #208
 
 ### A composed league-wide `threshold_count` falls through when the router's `stat` already names the threshold's own column
 - **Found:** 2026-09-24, building F161's multi-line move in
@@ -2487,6 +2490,7 @@ those were found.
   it silently.
 - **Source:** ours, not ESPN's.
 - **GitHub:** not yet filed
+- **GitHub:** #209
 
 ### `team_record`'s combined-season-types sentence drops the regular half's "standings from 1993-94" caveat
 - **Found:** 2026-09-23, grading `live_sweep.jsonl` (yardstick-v2 F116).
@@ -2546,6 +2550,7 @@ those were found.
   slots on unrelated questions").
 - **Source:** ours.
 - **GitHub:** not yet filed
+- **GitHub:** #210
 
 ### No leaderboard metric ranks average three-point shot distance
 - **Found:** 2026-09-23, fixing the wrong-cause refusal `leaderboard` gives
@@ -3006,6 +3011,7 @@ those were found.
   same tie rule the golden harness normalizes for.
 - **Source:** ours.
 - **GitHub:** not yet filed
+- **GitHub:** #211
 
 ### `head_to_head`'s venue-narrowed sentence says "won the series" for a since-bounded or career span too
 - **Found:** 2026-09-22, step 3, team cells (`team_record`/`head_to_head`

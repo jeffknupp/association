@@ -911,3 +911,7 @@ def test_a_ranked_by_marker_is_the_compilers_own_slot_not_an_unhonored_one(cx_ct
     assert result is not None
     assert "triple-double" in result.answer
     assert result.data["rows"][0]["points"] == 28
+    # A league-wide row says whose game it is - the one thing a ranking of
+    # players' games is asked for.
+    assert result.data["rows"][0]["player"] == "Brandin Podziemski"
+    assert "Brandin Podziemski" in result.answer
