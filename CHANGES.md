@@ -16,6 +16,21 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **`player_splits` adds a column for a stat the standard line does not
+  carry, or refuses naming it (F159, ISSUES.md).** "Quentin Grimes
+  individual gamelog usage rating without joel embiid" showed the standard
+  split columns (G, W-L, MIN, PTS, REB, AST, STL, BLK, TOV, 3PM, FG%),
+  which have no usage-rate column at all, so the actually-asked-for stat
+  was simply absent from an otherwise-correct read. A named `stat` the
+  table already carries changes nothing (unaffected); one in the new
+  `SPLIT_EXTRA_STATS` map (today, `usage_pct`) reads straight off the
+  relation and gets its own column - "USG%" - read directly from
+  `player_game_log`, per-split, the same as every other column in the
+  line; any other named stat refuses by name rather than answering without
+  it. Player only - a team split has no per-player rate to show, and a team
+  subject now refuses the same stats a player subject can show a column
+  for. Warehouse-verified: Quentin Grimes's splits without Joel Embiid now
+  carry a USG% column with real per-split values.
 - **`player_stat` prints a made-count stat's attempts and percentage beside
   its total (F051, ISSUES.md).** "Davion Mitchell 3 point stats" (a single
   named made-count stat: 3PM, FGM or FTM) used to print makes and games and

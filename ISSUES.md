@@ -396,7 +396,7 @@ those were found.
   `player_matchup`'s own `without` refusal next.
 - **GitHub:** #202
 
-### Seven P7-bucket "partial" answers from the yardstick are still open
+### Six P7-bucket "partial" answers from the yardstick are still open
 - **Found:** 2026-09-23, same session - not reached; recorded from
   `~/association-research/yardstick-v2/wrong_land.md`'s own evidence rather
   than independently re-diagnosed, since no time remained in this pass to
@@ -416,10 +416,6 @@ those were found.
     mechanism from this session's bucket 1) now find the right games but do
     not state the total/point-differential sum the question asked for,
     leaving it for the reader to add up the rows.
-  - **F159** - `player_splits` with `stat: usage_pct` and a `without` filter
-    shows the standard splits table, which has no usage-rate column at all,
-    so the actually-asked-for stat is absent from an otherwise-correct
-    read.
 - **User sees:** mostly right answers, each short of the full truth in one
   specific, named way per the key's own grading notes above.
 - **Next step:** each needs its own read of the relevant template
