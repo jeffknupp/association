@@ -2451,6 +2451,29 @@ those were found.
 
 ## P3: refusal or gap
 
+### The router keeps only the word "division" of "vs southeast division", so the alignment narrowing never sees the division
+- **Found:** 2026-09-24, re-asking yardstick-v2 F055 after `team_alignment`
+  landed (master `02fd795`, warehouse loaded).
+- **Evidence:** "alperen sengun double-doubles vs southeast division career
+  away" routes `player_splits` with `situation: 'division'` - `router._SITUATION`
+  captures `\bdivision\b` alone (and "east(ern)/west(ern) conference",
+  "vs the east/west"), never the division's NAME. `calendar.parse_alignment`
+  reads "vs the southeast division" / "against eastern conference teams" and
+  refuses the bare word honestly: "'division' names a conference or
+  division, but not in a shape this reads". The relation half is done (the
+  same question with the full phrase as the slot answers 8 double-doubles in
+  22 road games, the key exactly).
+- **User sees:** a refusal naming the right cause and the wording that
+  works - but the question as typed does not answer.
+- **Next step:** in `route()`, capture the division name with the word
+  (`(?:atlantic|central|southeast|northwest|pacific|southwest|midwest)\s+division`)
+  and the "vs (the) east/west" forms as the `situation` value, the way the
+  month and holiday captures keep their phrase; add the case to
+  `check_routing.py`. `router.py` is the experiment arms' file while sweep 2
+  runs - after it merges.
+- **Source:** ours.
+- **GitHub:** not yet filed
+
 ### `game_log`'s "last 10 of N games" heading misses the without branch
 - **Found:** 2026-09-24, grading `live_rest.jsonl` (yardstick-v2 F158).
 - **Evidence:** "bane game log without anthony black and franz wagner this
