@@ -2884,6 +2884,24 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
+### A league-wide rows read orders ties by chance when several players share one game
+- **Found:** 2026-09-24, by the compose agent re-running `k2_run_pkg.py`
+  (reported to the lead; transcribed here).
+- **Evidence:** a "rows over everyone" read (`compose` with
+  `subject="everyone"`, e.g. "biggest triple double ever" - top N by points)
+  orders by the measure and the date only; two players with the same figure
+  in the same game have no tiebreaker, so repeated runs list them in either
+  order. Observed as row-order flips between two otherwise identical
+  `k2_run_pkg.py` runs.
+- **User sees:** the same question listing tied rows in a different order
+  from one run to the next - never a different set of rows or a wrong
+  number.
+- **Next step:** add `athlete_id` (and `event_id`) as the last ORDER BY keys
+  in the relation's league reader (`player_games.league()` / `rows_sql`), the
+  same tie rule the golden harness normalizes for.
+- **Source:** ours.
+- **GitHub:** not yet filed
+
 ### `head_to_head`'s venue-narrowed sentence says "won the series" for a since-bounded or career span too
 - **Found:** 2026-09-22, step 3, team cells (`team_record`/`head_to_head`
   honoring `since`/`game_n`/`span`).
