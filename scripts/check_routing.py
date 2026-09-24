@@ -138,6 +138,12 @@ CASES: list[tuple[str, str, dict]] = [
     # reader threshold_count and single_game_high use for their own dropped
     # subject. Only the period is asserted - see the 76ers case below for why.
     ("How many points did Jokic score in the 3rd quarter against Boston?", "period_split", {"period": 3}),
+    # yardstick-v2 F050: no season named at all, only the router's own
+    # intent/slots asserted here - the cross-season redirect itself
+    # (games._period_split_cross_season_redirect) runs inside the template,
+    # past what this script exercises; see tests/query/test_templates.py for
+    # that half.
+    ("zach collins first quarter stats last 5 games as a starter", "period_split", {"player": "Zach Collins", "period": 1, "split": "starter", "limit": 5}),
     # A TEAM's (not a player's) quarter score IS ported - templates.team_quarter_points
     # reads it straight from games.home_linescores/away_linescores, no plays table
     # needed. Confirmed live: before this template and its router exemption existed,

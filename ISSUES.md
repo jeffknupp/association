@@ -431,37 +431,6 @@ those were found.
   games). Scope and cost not assessed; filed for whoever picks up
   `player_matchup`'s own `without` refusal next.
 
-### A "last N games" refusal blames the wrong season when the player has zero games this year: "zach collins first quarter stats last 5 games as a starter"
-- **Found:** 2026-09-23, same session, yardstick-v2 F050 (refused_wrong_cause
-  bucket; not reached before time ran out on this pass).
-- **Evidence:** routes `period_split {'player': 'Zach Collins', 'order':
-  'recent', 'limit': 5, 'fields': ['points'], 'period': 1, 'per_game': True,
-  'season_type': 2, 'split': 'starter'}` and refuses "No 2026 regular season
-  games found for Zach Collins as a starter." The question names no season
-  at all; Collins made zero starts in 2025-26, so his real last 5 starts are
-  all in March 2025 - a real, answerable question the refusal denies exists.
-  The same rule AGENTS.md already names for a bare `limit` (a "last N games"
-  question with no season means the newest N over his CAREER, not
-  necessarily the current season - `_relation_window`/`scoped_games` already
-  read a bare `limit` as a window over the whole scoped span) does not
-  reach here: `period_split` narrows to the current-season default before
-  the window is cut, per `RELATION_SCOPING_EXCLUDED["period_split"]`
-  (`templates/common.py`), which excludes `since`/`span` on purpose (the
-  accuracy caveat is measured per season and the header names one). So the
-  window mechanism that would otherwise cross seasons is blocked from
-  reaching a career span at all for this template.
-- **User sees:** a refusal naming the wrong cause - "no games" reads as
-  "he didn't play", not "he didn't start, but did in a season further back".
-- **Next step:** not attempted here - needs a way for `period_split`
-  specifically to widen to the player's most recent N starts across
-  seasons (not a `since`/`span` career caveat problem, since a WINDOW of N
-  games is still one thing to measure the reconciliation caveat against,
-  unlike a season-spanning average) when the current season alone has
-  fewer than N (or zero) qualifying games. Distinct from the
-  `RELATION_SCOPING_EXCLUDED` reason already on file for `span`/`since`
-  there - a window cross-season redirect is a different shape from a
-  multi-season SUM.
-
 ### Ten P7-bucket "partial" answers from the yardstick are still open
 - **Found:** 2026-09-23, same session - not reached; recorded from
   `~/association-research/yardstick-v2/wrong_land.md`'s own evidence rather

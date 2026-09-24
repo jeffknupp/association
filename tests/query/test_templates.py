@@ -3457,6 +3457,78 @@ def test_period_split_reads_one_game_of_each_series(pg_ctx: TemplateContext) -> 
     assert "game 2 of each series" in (second.answer or "")
 
 
+@pytest.fixture
+def ps_redirect_ctx(tmp_path: Path) -> TemplateContext:
+    """A minimal warehouse for period_split's cross-season redirect
+    (yardstick-v2 F050): one player who started two games with 1st-quarter
+    shots in season ``s - 1`` (5 and 2 points) and played, but did not
+    START, one game in season ``s`` - so "his last N starts" finds nothing
+    in the defaulted (current) season and has to cross into the one
+    before it."""
+    s = current_season()
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO players VALUES ('1', 'Test Player')")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO teams VALUES ('1','GS','Golden State Warriors'),('2','BOS','Boston Celtics')")
+    c.execute(
+        "CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR, home_team_id VARCHAR, away_team_id VARCHAR, "
+        "home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR)"
+    )
+    c.executemany(
+        "INSERT INTO games VALUES (?, ?, 2, ?, '1', '2', 100, 90, '1')",
+        [("e1", s - 1, f"{s - 1}-03-02T00:30Z"), ("e2", s - 1, f"{s - 1}-03-04T00:30Z"), ("e3", s, f"{s}-01-10T00:30Z")],
+    )
+    c.execute(
+        "CREATE TABLE player_game_log (event_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, opponent_team_id VARCHAR, "
+        "athlete_id VARCHAR, did_not_play BOOLEAN, minutes INTEGER, starter BOOLEAN)"
+    )
+    c.executemany(
+        "INSERT INTO player_game_log VALUES (?, ?, 2, '1', '2', '1', FALSE, ?, ?)",
+        [("e1", s - 1, 30, True), ("e2", s - 1, 28, True), ("e3", s, 15, False)],
+    )
+    c.execute(
+        "CREATE TABLE shot_chart (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, team_id VARCHAR, "
+        "period INTEGER, clock VARCHAR, made BOOLEAN, shot_type VARCHAR, coordinate_x INTEGER, coordinate_y INTEGER, points_attempted INTEGER, description VARCHAR)"
+    )
+    c.executemany(
+        "INSERT INTO shot_chart VALUES ('1', ?, 2, ?, '1', 1, '10:00', TRUE, 'Jump Shot', 25, ?, ?, 'a shot')",
+        [(s - 1, "e1", 22, 3), (s - 1, "e1", 23, 2), (s - 1, "e2", 23, 2), (s, "e3", 23, 2)],
+    )
+    return TemplateContext(con=c, out_dir=tmp_path)
+
+
+def test_period_split_crosses_into_an_earlier_season_when_the_current_one_has_no_starts(ps_redirect_ctx: TemplateContext) -> None:
+    """yardstick-v2 F050: "zach collins first quarter stats last 5 games as
+    a starter" answered "No 2026 regular season games found ... as a
+    starter" - true of the box scores read, and about the wrong year, since
+    his real last 5 starts are all in the season before. A "last N games"
+    question naming no season is the newest N over his CAREER, the same
+    reading a bare `limit` already gets everywhere else on the relation."""
+    s = current_season()
+    result = period_split(ps_redirect_ctx, {"player": "Test Player", "period": 1, "split": "starter", "order": "recent", "limit": 5})
+    assert result.data["season"] == s - 1
+    assert result.data["games_played"] == 2
+    assert result.data["total"] == 7  # 5 + 2, both his starts, none from the empty current season
+    assert result.data["average"] == 3.5
+    assert "No games this season" in (result.answer or "")
+    assert f"{s - 1} regular season" in (result.answer or "")
+    # A season the question NAMES outright keeps the plain refusal - the
+    # redirect only fires for a DEFAULTED one.
+    named = period_split(ps_redirect_ctx, {"player": "Test Player", "period": 1, "split": "starter", "order": "recent", "limit": 5, "season": s})
+    assert named.data["games_played"] == 0
+    assert "No games this season" not in (named.answer or "")
+
+
+def test_period_split_does_not_cross_seasons_with_no_window_asked(ps_redirect_ctx: TemplateContext) -> None:
+    """The redirect is for a "last N games" WINDOW - a plain defaulted-season
+    question with nothing found stays the plain refusal, since there is no
+    window to widen."""
+    result = period_split(ps_redirect_ctx, {"player": "Test Player", "period": 1, "split": "starter"})
+    assert result.data["games_played"] == 0
+    assert "No games this season" not in (result.answer or "")
+
+
 def test_game_log_drops_the_players_own_team(pg_ctx: TemplateContext) -> None:
     """#147: `game_log` took its `team` branch before it read `player`, so a
     `team` slot beside a named player answered the TEAM's log instead of his -

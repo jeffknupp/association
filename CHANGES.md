@@ -16,6 +16,18 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **A "last N games" period-split question naming no season crosses into an
+  earlier one when the current season has nothing.** "zach collins first
+  quarter stats last 5 games as a starter" answered "No 2026 regular season
+  games found ... as a starter" - true of the box scores read and about the
+  wrong year, since his real last 5 starts are all from the season before.
+  `games._period_split_cross_season_redirect` retries the same narrowing
+  over his whole career, windowed to the newest N by date - the reading a
+  bare `limit` already gets everywhere else on the player relation - and
+  answers with that season's own numbers and accuracy caveat when the found
+  games land in exactly one season; a question naming a season outright, or
+  a window landing across more than one, is unaffected and keeps the plain
+  refusal.
 - **A question naming exactly one player and no team, routed to a
   team-only intent, refuses instead of answering the league's numbers.**
   "alperen şengün alltime record" routed to `team_leaderboard` - no player
