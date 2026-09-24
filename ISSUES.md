@@ -72,6 +72,7 @@ before that commit needs re-checking against the current warehouse.
   ... for Miami", "westbrook ... for kings").
 - **Source:** ours, not ESPN's.
 - **GitHub:** not yet filed
+- **GitHub:** #198
 
 ### A composed triple-double ranking answers a count instead of the highest-scoring one: "players with the highest scoring triple doubles"
 - **Found:** 2026-09-23, same session, yardstick-v2 F124.
@@ -95,6 +96,7 @@ before that commit needs re-checking against the current warehouse.
   scoring" qualifier into a different `stat`/`rate` combination before
   `leaderboard` ever answers. Needs whoever owns `query/compose`'s
   boolean-measure point next.
+- **GitHub:** #199
 
 ### A position group as the subject is dropped and the team's own log answers: "Centers stats game log vs kings" lists the Kings' last five games
 - **Found:** 2026-09-22, the skeleton spike's K3 run (`~/association-research/skeleton-spike/k3_run.py`)
@@ -349,6 +351,7 @@ those were found.
   needs measuring how often this shape appears in the routing corpus before
   building anything, since a broad "ask on short questions" rule risks
   breaking working ones.
+- **GitHub:** #200
 
 ### A question with zero valid readings gets a fluent, self-chosen answer: "25-26 knicks playoff statistics vs other historic teams"
 - **Found:** 2026-09-23, same session, yardstick-v2 F097.
@@ -368,6 +371,7 @@ those were found.
   `team` is named ALONGSIDE no comparison metric the question itself states
   ("vs" with nothing concrete after it) might be the shape, but was not
   measured here.
+- **GitHub:** #201
 
 ### A pair relation with a with/without split is not built: "steph curry record vs lebron regular season without kd"
 - **Found:** 2026-09-23, same session, yardstick-v2 F114.
@@ -390,6 +394,7 @@ those were found.
   applied to one SIDE of a matchup rather than to a single player's own
   games). Scope and cost not assessed; filed for whoever picks up
   `player_matchup`'s own `without` refusal next.
+- **GitHub:** #202
 
 ### Ten P7-bucket "partial" answers from the yardstick are still open
 - **Found:** 2026-09-23, same session - not reached; recorded from
@@ -431,6 +436,7 @@ those were found.
   attempted in this session. Priority within this group should follow
   AGENTS.md's own ordering (a wrong number > a missing one > a missing
   label), which was not assessed per-item here.
+- **GitHub:** #203
 
 ### Two callers sharing one ollama instance corrupt each other's router output; ambient CPU load alone does not
 - **Found:** 2026-09-22, investigating the "router's slots depend on which
@@ -2488,6 +2494,7 @@ those were found.
   sentences.
 - **Source:** ours (the standings' own floor is ESPN's, in `DATA.md`).
 - **GitHub:** not yet filed
+- **GitHub:** #204
 
 ### No leaderboard metric ranks average three-point shot distance
 - **Found:** 2026-09-23, fixing the wrong-cause refusal `leaderboard` gives
@@ -2514,6 +2521,7 @@ those were found.
   not simply plugged into `LEADERBOARD_METRICS` with somebody else's minimum,
   since an unqualified leader is a single desperation heave (checked: the
   warehouse's unfiltered leader is not Porzingis).
+- **GitHub:** #205
 
 ### `period_leaderboard` stays off the player-games relation
 - **Found:** 2026-09-22, step 3 C5's own second task: assess whether a
