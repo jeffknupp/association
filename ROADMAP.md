@@ -43,7 +43,8 @@ routing) and a hand grade of every row that moved.
 | step 3 C4-C5 | | 107 / 175 (61.1%) | 97 / 166 |
 | the compiler landed | `7fce95a`+ | 118 / 175 (67.4%) | 108 / 166 |
 | sweep + team parity | `43f242f` | 136 / 175 (77.7%) | 125 / 166 (75.3%) |
-| fast refusals, the partials, compiler moves | `08482db` | **155 / 175 (88.6%)** - 135 correct, 18 honest refusals, 2 required clarifications | **144 / 166 (86.7%)** |
+| fast refusals, the partials, compiler moves | `08482db` | 155 / 175 (88.6%) - 135 correct, 18 honest refusals, 2 required clarifications | 144 / 166 (86.7%) |
+| pair relation, division, compiler moves, sweep 2 | `a7b902a` | **161 / 175 (92.0%)** - 140 correct, 19 honest refusals, 2 required clarifications | **150 / 166 (90.4%)** |
 
 Refactors are proved differently: a golden comparison over every recorded
 slot set (~500 player-relation cases, ~110 team-relation cases, the
@@ -221,6 +222,26 @@ the subject, and carries the box-score caveats.
 the 155 are refusals graded good because they name the true cause of a real
 gap - a fuller system would answer them, and the roadmap's plan is what
 would.
+
+### Day two (2026-09-24, later): the pair relation, division, and the compiler's subjects
+
+**What changed.** `player_matchup` narrows the first player's games through
+the shared step (a teammate's absence, a venue, a date, a starter half, a
+calendar, stated in the heading) and a player filed as the `opponent` is
+the second of two players - the pair relation is on the relation. A team's
+conference and division per season (`team_alignment`, from a second
+standings request; the first one's "games back" is conference-relative and
+would have changed) narrow either relation. The compiler reads an ordinal
+season over everyone, a team where a player belongs on a boolean stat (the
+Thunder's 180 regular-season triple-doubles, by player), the router's
+filler word as no player; three more data gaps refuse fast. Sweep 2's seven
+router fixes landed as the experiment's winning branch.
+
+**What it bought.** 155 -> 161 of 175 (92.0%), families 144 -> 150 (90.4%),
+fall-throughs 11 -> 3. The first run past the 90% line - with 19 of the 161
+still honest refusals. The remaining failures are four wrong (two need a
+clarification the system does not ask, one is period data, one is the
+router's division capture), five partial, three fall-throughs.
 
 ## Where the remaining failures are
 

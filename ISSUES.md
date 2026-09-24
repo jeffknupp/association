@@ -267,6 +267,25 @@ those were found.
 
 ## P2: misleading or incomplete
 
+### "Since 2000-01" still reads the default season live, although route() reads it on stubbed slots
+- **Found:** 2026-09-24, grading `live_day2.jsonl` (yardstick-v2 F161) after
+  sweep 2 merged (`637ff4e`).
+- **Evidence:** "players with 33 point and 13 rebound and 10 assist 2 blocks
+  and 2 steals games since 2000-01" composes over "2026 regular season -
+  last 3 games" on the live run, exactly as before the sweep, while
+  `tests/query/test_router.py`'s stubbed case for the same wording files
+  `since: 2001`. Both arms of sweep 2 passed the stubbed test; neither could
+  run the model. The live trace is the place to look: the model's raw
+  slots for this wording (a `season` beside the range? a `limit`?) and
+  which post-processing step wins.
+- **User sees:** the right five lines counted over one season where 26 were
+  asked - the scope is stated, so it is correctable.
+- **Next step:** capture the live raw slots (`association query --verbose`),
+  add the case to `check_routing.py` with the exact expectation, and fix
+  whichever step drops `since`.
+- **Source:** ours.
+- **GitHub:** not yet filed
+
 ### `player_stat`'s coverage floor is computed from the wrong slot list, and misses `situation`, `since`, `game_n`
 - **Found:** 2026-09-24, in passing while verifying the K3-2 conference/division
   narrowing did not need a new coverage-floor entry of its own.
