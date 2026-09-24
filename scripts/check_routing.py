@@ -480,6 +480,10 @@ CASES: list[tuple[str, str, dict]] = [
     # onto period 1, and the linescore holds both quarters.
     ("Detroit Pistons most points in a first half this season", "team_quarter_points", {"half": 1, "rank": "most"}),
     ("Celtics 2nd half scoring this season", "team_quarter_points", {"half": 2}),
+    # #206: the lowercase-embiid substitution landed in `opponent` as Nikola
+    # Jokic, and the refusal named him. override_invented_players now checks
+    # the opponent too, and puts back the player the question names.
+    ("jay huff game log vs Embiid", "player_matchup", {"opponent": "Joel Embiid"}),
 ]
 
 

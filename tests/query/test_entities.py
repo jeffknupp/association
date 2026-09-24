@@ -465,6 +465,39 @@ def test_a_nickname_the_question_uses_counts_as_naming_somebody(con: duckdb.Duck
     assert override_invented_players(con, "Show me The Answer's avg points", slots) == ([], [])
 
 
+def test_an_invented_opponent_is_replaced_by_the_player_the_question_names(con: duckdb.DuckDBPyConnection) -> None:
+    """#206, measured live: "jay huff game log vs Embiid" routed
+    ``opponent='Nikola Jokic'`` and the refusal for a player in the opponent
+    slot named Jokic. The opponent is checked like the subject: the one
+    player the question names that the subject does not claim takes its
+    place."""
+    con.execute("INSERT INTO players VALUES ('20','Jay Huff'),('21','Nikola Jokic')")
+    slots = {"player": "Jay Huff", "opponent": "Nikola Jokic"}
+    changed, invented = override_invented_players(con, "jay huff game log vs Embiid", slots)
+    assert slots == {"player": "Jay Huff", "opponent": "Joel Embiid"}
+    assert changed == [("Nikola Jokic", "Joel Embiid")] and invented == []
+
+
+def test_an_invented_opponent_with_no_replacement_is_dropped(con: duckdb.DuckDBPyConnection) -> None:
+    """Two spare players named (or none) is not an exact count: the invented
+    name goes, rather than a refusal or an answer about him."""
+    con.execute("INSERT INTO players VALUES ('21','Nikola Jokic')")
+    slots = {"player": "Luka Doncic", "opponent": "Nikola Jokic"}
+    changed, _ = override_invented_players(con, "luka game log vs embiid and klay thompson", slots)
+    assert "opponent" not in slots and changed == [("Nikola Jokic", "")]
+
+
+def test_a_team_opponent_and_a_grounded_player_opponent_are_untouched(con: duckdb.DuckDBPyConnection) -> None:
+    """A team is not this check's business, and an opponent the question does
+    name ("vs embiid") stays for the refusal that reads it."""
+    team = {"player": "Luka Doncic", "opponent": "Los Angeles Lakers"}
+    assert override_invented_players(con, "luka vs the warriors", team) == ([], [])
+    assert team["opponent"] == "Los Angeles Lakers"
+    grounded = {"player": "Luka Doncic", "opponent": "Joel Embiid"}
+    assert override_invented_players(con, "luka game log vs embiid", grounded) == ([], [])
+    assert grounded["opponent"] == "Joel Embiid"
+
+
 def test_no_player_slot_is_nothing_to_check(con: duckdb.DuckDBPyConnection) -> None:
     assert override_invented_players(con, "who led the league in scoring?", {"stat": "points"}) == ([], [])
 

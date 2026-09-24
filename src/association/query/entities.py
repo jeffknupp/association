@@ -597,7 +597,50 @@ def override_invented_players(con: duckdb.DuckDBPyConnection, question: str, slo
        "grounded" by the older, looser check - the shape that let a truncated
        "dennis schröder" (typed correctly, arrived as ``'Dennis'``) stand as a
        7-way clarification the question never should have asked.
+
+    .. versionchanged:: 4.4.0
+       Checks ``opponent`` too, when it holds a player's name: one the
+       question never held is replaced by the one spare player the question
+       names, or dropped (reported as ``(was, "")``).
     """
+    changed, ungrounded = _override_invented_players_subject(con, question, slots)
+    changed.extend(_override_invented_players_opponent(con, question, slots))
+    return changed, ungrounded
+
+
+def _override_invented_players_opponent(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any]) -> list[tuple[str, str]]:
+    """The same check over ``opponent``, run after the subject's repair so
+    the subject's names are spoken for. Mutates ``slots``.
+
+    "jay huff game log vs Embiid" routed ``opponent='Nikola Jokic'`` - the
+    lowercase-embiid substitution - and the refusal for a player in the
+    opponent slot then named Jokic, a player the question never held (#206).
+    Only a PLAYER name is checked: a team opponent is left exactly as it
+    came, since teams have their own grounding (``scope_from_question``).
+    A name with no trace in the question is replaced by the one player the
+    question names that no subject slot already claims, when there is
+    exactly one; otherwise it is dropped rather than answered about.
+
+    Returns:
+        The ``(was, now)`` pair, with ``now`` empty when the name was dropped.
+    """
+    opponent = slots.get("opponent")
+    if not isinstance(opponent, str) or not opponent.strip() or _grounded(con, question, opponent):
+        return []
+    if find_teams(con, opponent) or not find_players(con, opponent):
+        return []
+    players = slots.get("players")
+    held = [v for v in [slots.get("player"), *(players if isinstance(players, list) else [players])] if isinstance(v, str) and v.strip()]
+    spare = [name for name in players_named_in(con, question) if not any(_shares_word(name, k) for k in held)]
+    if len(spare) == 1:
+        slots["opponent"] = spare[0]
+        return [(opponent, spare[0])]
+    del slots["opponent"]
+    return [(opponent, "")]
+
+
+def _override_invented_players_subject(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any]) -> tuple[list[tuple[str, str]], list[str]]:
+    """The ``player``/``players`` half of :func:`override_invented_players`."""
     slot = "players" if isinstance(slots.get("players"), list) else "player"
     raw_list, is_list = _override_invented_players_slot(slots, slot)
     positions = [i for i, v in enumerate(raw_list) if isinstance(v, str) and v.strip()]

@@ -16,6 +16,7 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- A player name the router invented in `opponent` is checked against the question like the subject is (#206): "jay huff game log vs Embiid" routed `opponent='Nikola Jokic'` and the refusal named Jokic; the one player the question names that the subject does not claim now takes its place, and with no exact replacement the name is dropped. A team opponent is untouched.
 - A composed league-wide log names the player on each row ("every player ... top 10 by points" listed dates and figures and never said whose they were).
 - The compiler treats `ranked_by` and `team_restored` as its own slots (`COMPILER_SLOTS`) rather than refusing them as scoping the relation cannot honor - measured live, "players with the highest scoring triple doubles" reached the compiler and fell through on the marker alone.
 - "Players with the highest scoring triple doubles" ranks the triple-double games by points instead of counting them: `route()` files `ranked_by`, a slot no template honors, so `leaderboard` refuses and the compiler's boolean-game ranking answers (the bare count "most triple doubles" is unchanged).
