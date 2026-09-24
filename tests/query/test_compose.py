@@ -822,3 +822,80 @@ def test_at_least_does_not_flip_a_highest_ranking_to_ascending() -> None:
     assert _asc_or_desc("fewest points per game") == "asc"
     assert _asc_or_desc("lowest 3-point percentage with at least 40 games") == "asc"
     assert _asc_or_desc("the least points scored") == "asc"
+
+
+# ---------------------------------------------------------------------------
+# #197, the box-score-caveat half: `core.run` now threads the templates' own
+# `_box_score_notes` through - a teammate's absence, the empty lines left
+# out of a count, rebuilt lines, and a career predating box scores.
+# ---------------------------------------------------------------------------
+
+
+def _add_empty_box_score(con: duckdb.DuckDBPyConnection, event: str, season: int, team: str, opponent: str, athlete: str, tip: str) -> None:
+    """A game with a REAL box-score row for ``athlete`` that ESPN served
+    empty - listed (``did_not_play`` False), every stat NULL - the fault
+    `_box_score_notes`' "Not counted" note is about (AGENTS.md, "Whole
+    team-seasons of box scores are empty"). Distinct from `_box(..., dnp=True)`,
+    which is an ordinary did-not-play entry and is excluded from the
+    relation entirely (``Narrowed.base``'s own ``NOT pgl.did_not_play``), so
+    it can never be "not counted" - a real gap in this file's first attempt
+    at this test."""
+    con.execute("INSERT INTO games VALUES (?, ?, 2, ?, ?, ?, ?, ?, ?)", [event, season, tip, team, opponent, 100, 90, team])
+    con.execute(f"INSERT INTO player_box_stats VALUES ({', '.join('?' for _ in range(24))})", (event, season, 2, team, opponent, athlete, False, *([None] * 17)))
+
+
+def test_run_carries_the_not_counted_box_score_note(cx_ctx: TemplateContext) -> None:
+    """A game_log read now says how many of the span's games it left out for
+    an empty box score - ESPN listing Podziemski with no minutes or stats
+    at all, not a did-not-play entry (:func:`_add_empty_box_score`)."""
+    s = current_season()
+    _add_empty_box_score(cx_ctx.con, "g8", s, GS, DET, PODZ, f"{s}-03-15T20:00Z")
+    q = to_query("game_log", {"player": "Brandin Podziemski"})
+    out = run(cx_ctx.con, q)
+    assert any("Not counted: 1 game" in note for note in out["notes"])
+
+
+def test_answer_appends_the_box_score_notes_to_the_sentence(cx_ctx: TemplateContext) -> None:
+    """``answer()`` appends ``out["notes"]`` to the sentence the same way it
+    already appends the coverage caveat, and carries the same list on
+    ``data`` for a caller that reads values rather than the prose."""
+    s = current_season()
+    _add_empty_box_score(cx_ctx.con, "g8", s, GS, DET, PODZ, f"{s}-03-15T20:00Z")
+    result = compose_answer(cx_ctx, "game_log", {"player": "Brandin Podziemski"}, "Podziemski's game log this season")
+    assert result is not None
+    assert "Not counted: 1 game" in result.answer
+    assert any("Not counted: 1 game" in note for note in result.data["notes"])
+
+
+def test_a_career_predating_box_scores_gets_the_floor_note(cx_ctx: TemplateContext) -> None:
+    """A career reaching further back than box scores do (the real 1994
+    floor, `nba.coverage` - not derived from this fixture) says so.
+    Podziemski's `player_season_stats_deduped` row for 1990, added here
+    only, is what makes his earliest season on record predate the floor."""
+    cx_ctx.con.execute("INSERT INTO player_season_stats_deduped VALUES ('10', 1990, 2, 10)")
+    q = to_query("game_log", {"player": "Brandin Podziemski", "span": "career"})
+    out = run(cx_ctx.con, q)
+    assert any("Box scores begin with the 1993-94 season" in note and "1990-1993" in note for note in out["notes"])
+
+
+def test_no_career_floor_note_when_the_season_is_defaulted_not_career(cx_ctx: TemplateContext) -> None:
+    """The floor note is a CAREER note - it says nothing about a plain
+    current-season read, even with the same older row on record."""
+    cx_ctx.con.execute("INSERT INTO player_season_stats_deduped VALUES ('10', 1990, 2, 10)")
+    q = to_query("game_log", {"player": "Brandin Podziemski"})
+    out = run(cx_ctx.con, q)
+    assert not any("Box scores begin with" in note for note in out["notes"])
+
+
+def test_a_scalar_or_grouped_read_carries_no_leaked_rebuilt_shown_column(cx_ctx: TemplateContext) -> None:
+    """The scratch ``rebuilt_shown`` column :func:`~association.query.compose.core._scalar_selects`
+    adds for the box-score notes is popped back off before the rows reach a
+    caller, for a named player (a `scalar` read) and for the league-wide
+    subject (a `grouped` read, which has no box-score notes of its own to
+    read it for at all) alike."""
+    named = run(cx_ctx.con, to_query("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15}))
+    assert "rebuilt_shown" not in named["rows"][0]
+    q = move_point(cx_ctx.con, "other", {}, "top scorers this season")
+    assert isinstance(q, Query)  # no team named in this fixture's own words
+    everyone = run(cx_ctx.con, q)
+    assert "rebuilt_shown" not in everyone["rows"][0]

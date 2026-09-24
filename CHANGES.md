@@ -16,6 +16,27 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **`query.compose` now carries the box-score caveats a template's own
+  answer would (#197, ISSUES.md, closing the entry's remaining half - the
+  coverage-floor half was fixed earlier the same week).** A composed
+  answer over box scores never said which teammate's absence it read as
+  "without", how many games it left out for an empty ESPN box score, how
+  many of its games were rebuilt from play-by-play rather than fetched, or
+  that a career predates box scores entirely - all of it
+  `templates.common._box_score_notes`, which the six relation templates
+  already call and `compose` never did. `core.run()` now calls it itself
+  (a named player only - the league-wide subject has no ONE player's career
+  to check a floor against) and returns the result as `notes`, which
+  `answer()` appends to the sentence the same way it already appends the
+  coverage caveat. The scratch `rebuilt_shown` column
+  `core._scalar_selects` adds to compute the rebuilt-line count for a
+  `scalar`/`grouped` read is popped back off before the rows reach a
+  caller, for every subject - a named player's own reads and the
+  league-wide one alike, since it is an internal detail of how the count
+  was gotten, not a value either was asked for. No relation counterpart
+  exists for the team subject (`compose/team.py` reads
+  `games`/`team_season_stats`, never a player's box score), so nothing was
+  added there.
 - **A position word in the router's own `player` slot ("shooting guard") is
   read as the position-group subject rather than a player name nothing
   resolves to (F056, ISSUES.md #160).** `query/compose/move.py`'s new
