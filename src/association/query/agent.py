@@ -30,7 +30,18 @@ from .models import AGENT_BUDGET_SECONDS, DEFAULT_ROUTER_MODEL
 from .prompt import AGENT_NUM_CTX, TOOLS, build_system_prompt
 from .router import Route, RouterUnavailable, route
 from .templates import TEMPLATES
-from .templates.common import PLAYER_INTENTS, PLAYER_REQUIRED_INTENTS, SUBJECT_RESTORABLE_INTENTS, TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, check_scope, coverage_caveat
+from .templates.common import (
+    OWN_TEAM_RESTORABLE_INTENTS,
+    PLAYER_INTENTS,
+    PLAYER_REQUIRED_INTENTS,
+    SUBJECT_RESTORABLE_INTENTS,
+    TemplateContext,
+    TemplateResult,
+    TemplateUnsupported,
+    check_coverage,
+    check_scope,
+    coverage_caveat,
+)
 from .toolbox import Toolbox
 
 MAX_TOOL_ITERATIONS = 8
@@ -336,6 +347,7 @@ class Agent:
             reads_player=routed.intent in PLAYER_INTENTS,
             needs_player=routed.intent in PLAYER_REQUIRED_INTENTS,
             restore_subject=routed.intent in SUBJECT_RESTORABLE_INTENTS,
+            restore_team=routed.intent in OWN_TEAM_RESTORABLE_INTENTS,
         ):
             history.log(f"  -> (scope) {change}")
         # The router invents whole names, not only nicknames: "compare sga and

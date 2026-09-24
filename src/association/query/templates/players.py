@@ -1095,7 +1095,7 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     wanted = [] if shooting else _wanted_stats(slots)
 
     if from_box_scores:
-        narrowed = scoped_games(con, player, span, slots, opponent=slots.get("opponent"), measures=measures, date=date)
+        narrowed = scoped_games(con, player, span, slots, opponent=slots.get("opponent"), measures=measures, date=date, team=slots.get("own_team"))
         if isinstance(narrowed, TemplateResult):
             return narrowed
         return _box_score_player_stat(con, player, span, narrowed, wanted, shooting)
@@ -1118,6 +1118,15 @@ def _player_stat_reads_box_scores(slots: dict[str, Any], measures: list[MeasureF
        season line is one row per ``season_type`` and has no "both at once"
        reading, so a question asking for both is answered from box scores,
        the same as a ``since``-bounded one already is.
+
+    .. versionchanged:: 4.4.0
+       Also true for ``own_team`` - "lebron stats as a starter for Miami"
+       (yardstick-v2 F166) keeps only the games he played for that team,
+       which the season line (one row per season, not per team-within-season)
+       cannot narrow to. Deliberately ``own_team``, set only by
+       ``entities._scope_from_question_own_team``, and not the router's own
+       ``team`` slot - see that function's docstring for the recorded case
+       that slot silently narrowed before this distinction existed.
     """
     split_side = slots.get("split") if slots.get("split") in STARTER_SIDES else None
     # A `situation` (a weekday, a month, a holiday, "since <day>") is a
@@ -1133,6 +1142,7 @@ def _player_stat_reads_box_scores(slots: dict[str, Any], measures: list[MeasureF
             slots.get("game_n"),
             slots.get("situation"),
             slots.get("season_type_unstated"),
+            slots.get("own_team"),
         )
     )
 

@@ -46,39 +46,6 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
-### A team-implied narrowing and a career span are both dropped together: "lebron stats as a starter for Miami" answers this season's Lakers
-- **Found:** 2026-09-23, same session, yardstick-v2 F166.
-- **Evidence:** routes `player_stat {'player': 'LeBron James', 'fields':
-  ['minutes'], 'season': 2026, 'season_type': 2, 'split': 'starter'}` - no
-  `team` and no `span` - and answers "20.9 points, 6.1 rebounds and 7.2
-  assists ... 60 games ... in the 2026 regular season", his CURRENT
-  (Lakers) season. The key: as a starter for Miami (2010-11 through
-  2013-14), 26.92/7.77/6.51 across 381 starts. Two things are both missing,
-  neither restored by anything currently in `route()`: (1) "for Miami" beside
-  a player is a former-team narrowing - `game_log` already has this exact
-  shape solved for a `team` slot beside a named player
-  (`_team_slot_for_player`, `templates/games.py`, #147), but nothing reads a
-  team named in TEXT ("for <team>"/"with the <team>") into the `team` slot
-  when the model drops it, the way `_subject_named_in` restores a dropped
-  player; (2) with a historical team named and no season, the question is
-  asking about his tenure there, not "now" - `_validate_span`
-  (`router.py`) has no rule that a team narrowing with no season implies
-  `span: "career"` the way "since he joined the league" now does
-  (this session's own fix, `_SPAN_JOINED_LEAGUE_WORDS`).
-- **User sees:** a wrong answer about the wrong team and the wrong years,
-  fluently, with nothing marking it as anything but a direct answer to the
-  question asked.
-- **Next step:** two router changes, ideally landed and measured together
-  since they compose on this exact question: (a) a text grammar for "for/with
-  the <team>" beside a player, reused from or built alongside
-  `entities.find_teams`, filed into `team`; (b) once a historical team is
-  read this way and the question names no season, default `span` to
-  "career" - narrowed by the team, so `player_stat`'s box-score path already
-  answers only the games he played for that team (`opponent`/`team`-style
-  narrowing already exists on the relation; check whether `player_stat`
-  reads a bare `team` slot honoring it the way `game_log` does, or needs the
-  same fix `_team_slot_for_player` gave `game_log`).
-
 ### A single-word question routed to a team-only intent with the named player dropped entirely: "alperen şengün alltime record" answers the league standings <!-- codespell:ignore alltime - a verbatim quote of the yardstick question's own spelling -->
 
 - **Found:** 2026-09-23, same session, yardstick-v2 F111.
@@ -391,6 +358,35 @@ those were found.
 - **GitHub:** #169
 
 ## P2: misleading or incomplete
+
+### `player_stat`'s "for Miami" narrowing counts fewer games than the yardstick key expects
+- **Found:** 2026-09-23, verifying F166's fix (`entities._scope_from_question_own_team`,
+  this session) against the real warehouse. Not a routing bug - the
+  narrowing itself (`pgl.team_id = ?`, the same clause
+  `templates.common._narrow_player_games` already uses for `opponent`) is
+  correct and warehouse-verified elsewhere; this is a plain count
+  discrepancy against the yardstick's OWN key, which was not generated from
+  this warehouse snapshot.
+- **Evidence:** `player_stat(ctx, {"player": "LeBron James", "own_team":
+  "Miami Heat", "span": "career", "split": "starter"})` against
+  `/home/jeff/code/association/nba.duckdb` gives 294 starts (301 games
+  played total, `player_game_log` queried directly with
+  `team_id = <Miami> AND season_type = 2 AND NOT did_not_play AND starter`).
+  The yardstick key says 381 starts of 388 total games played for Miami - 87
+  more games than this warehouse holds for the same player/team/season-type
+  combination. Averages are close (26.9/7.6/6.7 here vs. the key's
+  26.92/7.77/6.51) despite the game-count gap, which suggests a
+  denominator/coverage difference rather than wrong per-game figures.
+- **User sees:** a plausible-looking but possibly undercounted total ("294
+  games") for any question this narrowing answers about a player's
+  multi-season tenure with one team.
+- **Next step:** not investigated - compare `player_game_log`'s Miami-era
+  LeBron rows against `player_season_stats`' own Miami-season totals
+  (`gamesPlayed`) the way `AGENTS.md`'s "empty box scores" finding was
+  originally caught, to see whether this is a real gap in what
+  `player_game_log` holds for 2010-2014 or a difference in how the
+  yardstick key was generated (a different source, or a different
+  definition of "started").
 
 ### A short, genuinely ambiguous question is guessed at rather than asked about: "Tatum rec"
 - **Found:** 2026-09-23, working yardstick-v2's wrong-land bucket 4

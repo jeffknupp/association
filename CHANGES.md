@@ -16,6 +16,21 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **A team named "for <team>"/"with the <team>" beside a player is restored
+  as his own tenure, and defaults the span to his career.** "lebron stats as
+  a starter for Miami" answered his current (Lakers) season, "Miami" never
+  read at all - the player relation had no way to narrow to a team he no
+  longer plays for. `entities.scope_from_question` takes a new
+  `restore_team` flag (`templates.common.OWN_TEAM_RESTORABLE_INTENTS`, only
+  `player_stat`), writing to a new `own_team` slot - deliberately not the
+  router's own `team`, which a recorded golden case shows sitting as noise
+  beside an already-correct `opponent` (his own current team, redundant);
+  reading it directly would have silently renarrowed that case's 9 real
+  meetings down to 4. `templates.common._narrow_player_games` gained a
+  `team` parameter (as opposed to `opponent`) for the actual clause
+  (`pgl.team_id = ?`). Corpus-measured against the same 380 questions as the
+  restore above: one true positive ("westbrook stats as a starter for
+  kings"), zero false positives.
 - **A player named with no scoring verb or possessive is restored for
   `single_game_high`/`threshold_count`.** "kawhi most threes in a game"
   answered the league's single-game leaders, Kawhi Leonard's own 7 never

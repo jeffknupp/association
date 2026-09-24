@@ -3864,6 +3864,24 @@ def test_until_closes_a_since_bounded_range_rather_than_reading_through_now(pg_c
     assert open_ended.data["seasons"] == [s - 1, s]
 
 
+def test_player_stat_honors_an_own_team_slot_as_his_tenure(pg_ctx: TemplateContext) -> None:
+    """yardstick-v2 F166: "lebron stats as a starter for Miami" used to
+    answer his current season, with no way to narrow to a team he no longer
+    plays for at all - `own_team` (distinct from `opponent`, and from the
+    router's own `team` - see entities._scope_from_question_own_team's
+    docstring for why the two are not interchangeable) now keeps only the
+    games he played FOR that team. Seth Curry's fixture career has three
+    box-scored games: one for Boston (e7, season s-1, 12 points) and two for
+    Golden State (e3/e4, season s) - `own_team='Boston Celtics'` keeps only
+    the one."""
+    result = player_stat(pg_ctx, {"player": "Seth Curry", "stat": "points", "own_team": "Boston Celtics", "span": "career"})
+    assert result.data["stats"]["gamesPlayed"] == 1
+    assert result.data["stats"]["avgPoints"] == 12
+    assert "with the Boston Celtics" in (result.answer or "")
+    warriors = player_stat(pg_ctx, {"player": "Seth Curry", "stat": "points", "own_team": "Golden State Warriors", "span": "career"})
+    assert warriors.data["stats"]["gamesPlayed"] == 2
+
+
 def test_player_stat_names_the_real_cause_when_nothing_matches(pg_ctx: TemplateContext) -> None:
     answer = player_stat(pg_ctx, {"player": "Brandin Podziemski", "opponent": "Los Angeles Lakers"}).answer
     assert answer == f"Brandin Podziemski played 3 games in the {current_season()} regular season, none of them vs the Los Angeles Lakers."

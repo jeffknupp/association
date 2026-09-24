@@ -36,7 +36,7 @@ from association.query.entities import override_invented_players, override_nickn
 from association.query.models import DEFAULT_ROUTER_MODEL
 from association.query.router import RouterUnavailable, route
 from association.query.templates import TEMPLATES
-from association.query.templates.common import PLAYER_INTENTS, PLAYER_REQUIRED_INTENTS, SUBJECT_RESTORABLE_INTENTS
+from association.query.templates.common import OWN_TEAM_RESTORABLE_INTENTS, PLAYER_INTENTS, PLAYER_REQUIRED_INTENTS, SUBJECT_RESTORABLE_INTENTS
 
 # (question, expected intent, expected slots). A list-valued expectation is a
 # SUBSET check: dropping a field the user asked for is a bug, while the router
@@ -332,6 +332,18 @@ CASES: list[tuple[str, str, dict]] = [
     # this used to answer one season (8.8 apg, 2019-20) where his whole
     # career (8.23 apg, 514 games, 2019-2026) was asked for.
     ("Show me luka's avg assists since he joined the league", "player_stat", {"player": "Luka Doncic", "stat": "assists", "span": "career"}),
+    # yardstick-v2 F166: "for <team>"/"with the <team>" beside a player, with
+    # no season named, is his TENURE there - "lebron stats as a starter for
+    # Miami" used to answer his current (Lakers) season, "Miami" never read
+    # at all. entities._scope_from_question_own_team restores `own_team` -
+    # never the router's own `team`, which a recorded golden case shows
+    # sitting beside a correct `opponent` as noise (see that function's own
+    # docstring) - and defaults `span` to career the same way F031's "since
+    # he joined the league" does. `player` not asserted for the second case:
+    # the model spells "westbrook" out in full or leaves the nickname, and
+    # both resolve to Russell Westbrook.
+    ("lebron stats as a starter for Miami", "player_stat", {"player": "LeBron James", "own_team": "Miami Heat", "span": "career"}),
+    ("westbrook stats as a starter for kings", "player_stat", {"own_team": "Sacramento Kings", "span": "career"}),
     ("zach lavine vs nuggets last 8 games home", "game_log", {"venue": "home"}),
     ("how did curry do against the celtics this year", "player_stat", {}),
     # Came back as player_compare with the Celtics as the second "player".
@@ -455,7 +467,13 @@ def main() -> int:
             # The same order agent.py applies them in: this is where a player
             # the router swapped for his own team comes back.
             scope_from_question(
-                con, question, got.slots, reads_player=got.intent in PLAYER_INTENTS, needs_player=got.intent in PLAYER_REQUIRED_INTENTS, restore_subject=got.intent in SUBJECT_RESTORABLE_INTENTS
+                con,
+                question,
+                got.slots,
+                reads_player=got.intent in PLAYER_INTENTS,
+                needs_player=got.intent in PLAYER_REQUIRED_INTENTS,
+                restore_subject=got.intent in SUBJECT_RESTORABLE_INTENTS,
+                restore_team=got.intent in OWN_TEAM_RESTORABLE_INTENTS,
             )
             override_invented_players(con, question, got.slots)
         if got is None:

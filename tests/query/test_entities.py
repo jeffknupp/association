@@ -1176,6 +1176,65 @@ def test_a_common_english_word_is_not_restored_as_a_player(scope_con: duckdb.Duc
     assert "player" not in slots
 
 
+def test_a_team_named_beside_a_player_with_no_season_is_his_tenure(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """yardstick-v2 F166: "lebron stats as a starter for Miami" used to
+    answer his current season, "Miami" never read at all - the router filed
+    no `team` and no `opponent`. `restore_team` reads "for <team>" beside an
+    already-known player and, since no season is named either, defaults
+    `span` to "career" too - a historical team names a tenure, not "now".
+    Written to `own_team`, not `team` - see
+    entities._scope_from_question_own_team's own docstring for why a
+    router-supplied `team` is not safe to trust directly."""
+    slots: dict[str, Any] = {"player": "LeBron James", "stat": "points", "season": 2026, "split": "starter"}
+    notes = scope_from_question(scope_con, "lebron stats as a starter for the lakers", slots, reads_player=True, restore_team=True)
+    assert slots["own_team"] == "Los Angeles Lakers"
+    assert slots["span"] == "career"
+    assert "season" not in slots
+    assert any("Los Angeles Lakers" in note for note in notes)
+    # A season the question DOES name still wins - no career override.
+    named: dict[str, Any] = {"player": "LeBron James", "stat": "points", "season": 2026, "split": "starter"}
+    scope_from_question(scope_con, "lebron stats as a starter for the lakers in 2026", named, reads_player=True, restore_team=True)
+    assert named["own_team"] == "Los Angeles Lakers"
+    assert named.get("span") != "career"
+    assert named["season"] == 2026
+    # Off by default, same as restore_subject: a caller that does not ask
+    # for it (an intent outside OWN_TEAM_RESTORABLE_INTENTS) leaves
+    # `own_team` alone, since nothing on that relation could honor it either
+    # way.
+    unrestored: dict[str, Any] = {"player": "LeBron James", "stat": "points", "season": 2026}
+    scope_from_question(scope_con, "lebron stats as a starter for the lakers", unrestored, reads_player=True)
+    assert "own_team" not in unrestored
+
+
+def test_an_own_team_is_not_restored_with_no_player_or_over_an_existing_opponent(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """A bare "for <team>" with no player at all is a team question, not
+    this one - and an `opponent` the question already names (a genuine "vs"
+    reading) is not overwritten by a coincidental "for" phrase elsewhere in
+    the question."""
+    no_player: dict[str, Any] = {"stat": "points"}
+    scope_from_question(scope_con, "points scored for the lakers this season", no_player, reads_player=True, restore_team=True)
+    assert "own_team" not in no_player
+    has_opponent: dict[str, Any] = {"player": "LeBron James", "opponent": "Boston Celtics"}
+    scope_from_question(scope_con, "lebron vs celtics stats for the lakers", has_opponent, reads_player=True, restore_team=True)
+    assert "own_team" not in has_opponent and has_opponent["opponent"] == "Boston Celtics"
+
+
+def test_a_router_supplied_team_is_not_trusted_as_a_tenure_narrowing(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """The recorded shape that motivated `own_team` over reusing `team`:
+    "lebron james 2 3 pointers all-time vs jazz on tuesdays" carries a
+    router-supplied `team='Los Angeles Lakers'` (his own, current, and
+    redundant) beside a real `opponent='Utah Jazz'` - noise
+    `games._team_slot_for_player` already drops for `game_log`. `restore_team`
+    must not promote that same noise into a real narrowing for `player_stat`:
+    with `team` already set, `_scope_from_question_own_team` declines
+    outright, so `own_team` is never written and the recorded `team` value
+    is left exactly as it was."""
+    slots: dict[str, Any] = {"player": "LeBron James", "team": "Los Angeles Lakers", "opponent": "Utah Jazz", "span": "career"}
+    scope_from_question(scope_con, "lebron james 2 3 pointers all-time vs jazz on tuesdays", slots, reads_player=True, restore_team=True)
+    assert "own_team" not in slots
+    assert slots["team"] == "Los Angeles Lakers"
+
+
 @pytest.mark.parametrize(("nickname", "team"), [("Sixers", "Philadelphia 76ers"), ("cavs", "Cleveland Cavaliers"), ("Mavs", "Dallas Mavericks")])
 def test_a_team_nickname_resolves_to_the_team(nickname: str, team: str) -> None:
     c = duckdb.connect(":memory:")

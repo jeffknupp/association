@@ -203,6 +203,11 @@ class Narrowed:
     extra: list[str] = field(default_factory=list)
     extra_params: list[Any] = field(default_factory=list)
     opponent: Entity | None = None
+    #: The player's OWN team the question narrowed to - "for the Miami Heat",
+    #: read only where the question names one and the router left no team
+    #: slot at all (yardstick-v2 F166). Distinct from ``opponent``: this keeps
+    #: only the games he played FOR this team, not games against it.
+    team: Entity | None = None
     venue: str | None = None
     #: True for a log of starts, False for one off the bench, None when the
     #: question named neither half.
@@ -266,6 +271,8 @@ class Narrowed:
            behind it.
         """
         parts = []
+        if self.team is not None:
+            parts.append(f"with the {self.team.name}")
         if self.opponent is not None:
             parts.append(f"vs the {self.opponent.name}")
         if self.venue:

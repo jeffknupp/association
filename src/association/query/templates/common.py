@@ -580,6 +580,40 @@ substitutes).
 """
 
 
+OWN_TEAM_RESTORABLE_INTENTS: frozenset[str] = frozenset({"player_stat"})
+"""Intents where a player's OWN team, named beside him and left out by the
+router, is worth restoring - narrower than :data:`PLAYER_INTENTS` on
+purpose, since honoring the restored ``own_team`` slot needs the relation to
+narrow by it (``templates.common._narrow_player_games``'s ``team`` param,
+threaded through ``scoped_games`` only where a caller passes it), which only
+``player_stat`` does.
+
+"lebron stats as a starter for Miami" (yardstick-v2 F166) used to answer his
+current (Lakers) season, "Miami" never read at all - not even as noise, since
+nothing on the relation could have narrowed to it either way.
+``entities.scope_from_question``'s ``restore_team`` flag reads "for
+<team>"/"with the <team>" beside an already-known player
+(``entities._scope_from_question_own_team``) and, with no season also
+named, defaults ``span`` to "career" too - a historical team names a
+tenure, not "now". Written to ``own_team``, never the router's own ``team``
+slot - see that function's docstring for the recorded case
+(``player_stat``'s golden snapshot) where a router-supplied ``team`` sitting
+beside a correct ``opponent`` is noise, not a second fact to narrow by, the
+same shape ``games._team_slot_for_player`` already treats it as for
+``game_log``.
+
+Deliberately not ``game_log``: its own ``team``/``opponent`` dance
+(``games._team_slot_for_player``) already reads a ``team`` slot beside a
+player, and drops it outright when he actually played for that team ("his
+own team narrows nothing") - correct only because no tenure narrowing
+existed there. Reusing this flag for ``game_log`` without first reconciling
+the two readings would leave one of them silently wrong; filed in
+``ISSUES.md`` rather than done here.
+
+.. versionadded:: 4.4.0
+"""
+
+
 # Templates that rank players AGAINST each other, rather than reporting the
 # numbers of players the question named. The distinction is the whole reason
 # coverage.Coverage carries two floors: player_season_stats holds Michael
@@ -1244,7 +1278,9 @@ def _checked_venue(venue: Any) -> str:
     return str(venue)
 
 
-def _narrow_player_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, *, opponent: Any, venue: Any, without: Any, split: Any = None, game_n: Any = None) -> Narrowed | TemplateResult:
+def _narrow_player_games(
+    con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, *, opponent: Any, venue: Any, without: Any, split: Any = None, game_n: Any = None, team: Any = None
+) -> Narrowed | TemplateResult:
     """``player``'s games in ``span``, narrowed to an opponent, a venue, a
     teammate's absence and a starter/bench half where the question named them.
     A name that needs a clarifying question comes back as the TemplateResult
@@ -1259,6 +1295,17 @@ def _narrow_player_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _
     .. versionchanged:: 4.3.0
        Honors one half of the starter/bench split (``split``), and one game of
        each playoff series (``game_n``).
+
+    .. versionchanged:: 4.4.0
+       Takes ``team`` - the player's OWN team, as opposed to ``opponent`` -
+       for the shape ``player_stat`` alone opts into
+       (``templates.common.OWN_TEAM_RESTORABLE_INTENTS``): "lebron stats as a
+       starter for Miami" (yardstick-v2 F166) keeps only the games he played
+       for that team, unlike ``game_log``'s own ``team``/``opponent`` dance
+       (``games._team_slot_for_player``), which still drops a team the
+       player actually played for rather than narrowing by it - a template
+       has to ask for this explicitly, so nothing else on the relation is
+       affected.
     """
     if game_n and span.season_type != 3:
         # A series has games 1-7; a regular season has nothing "game 4" names -
@@ -1271,6 +1318,13 @@ def _narrow_player_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _
         base=["pgl.athlete_id = ?", type_clause, season_clause, "NOT pgl.did_not_play"],
         base_params=[player.id, *type_params, *season_params],
     )
+    if team:
+        resolved_team = team if isinstance(team, Entity) else _resolved_team(con, team, season=span.season)
+        if isinstance(resolved_team, TemplateResult):
+            return resolved_team
+        narrowed.team = resolved_team
+        narrowed.extra.append("pgl.team_id = ?")
+        narrowed.extra_params.append(resolved_team.id)
     if opponent:
         # A caller that has already resolved the team (it needs the name for
         # its answer before the games are read) passes the Entity; text is
@@ -1416,6 +1470,7 @@ def scoped_games(
     opponent: Any,
     measures: list[MeasureFilter],
     date: str | None = None,
+    team: Any = None,
 ) -> Narrowed | TemplateResult:
     """``player``'s games in ``span`` under every row-level narrowing the
     question carries: opponent, venue, an absent teammate, a starter/bench
@@ -1434,7 +1489,10 @@ def scoped_games(
     ``team`` beside a named player is his opponent) and a template that needs
     the team's name before the read passes it already resolved; ``measures``
     because each template decides what a bare ``threshold`` means before any
-    name is resolved.
+    name is resolved. ``team`` is passed the same way, but stays ``None`` for
+    every caller except ``player_stat`` - see
+    :func:`_narrow_player_games`'s own note on why this is a caller's explicit
+    choice rather than a plain read of ``slots["team"]`` here.
 
     .. versionadded:: 4.4.0
 
@@ -1450,8 +1508,11 @@ def scoped_games(
        :func:`~association.query.player_games.games_subquery` - all three
        already honor it - is affected, and only when the question's own
        slots set a window.
+
+    .. versionchanged:: 4.4.0
+       Takes ``team``.
     """
-    narrowed = _narrow_player_games(con, player, span, opponent=opponent, venue=slots.get("venue"), without=slots.get("without"), split=slots.get("split"), game_n=slots.get("game_n"))
+    narrowed = _narrow_player_games(con, player, span, opponent=opponent, venue=slots.get("venue"), without=slots.get("without"), split=slots.get("split"), game_n=slots.get("game_n"), team=team)
     if isinstance(narrowed, TemplateResult):
         return narrowed
     narrow_measures(narrowed, measures)
