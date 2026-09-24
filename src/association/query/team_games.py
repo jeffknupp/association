@@ -83,7 +83,7 @@ from .entities import Entity
 # calls at call time instead, by which point every module has finished
 # loading.
 if TYPE_CHECKING:
-    from .calendar import CalendarNarrowing
+    from .calendar import AlignmentNarrowing, CalendarNarrowing
 
 # One row per team per game, from that team's side, over every game that was
 # actually played - built from `real_games` alone, because it is the only
@@ -194,6 +194,10 @@ class TeamNarrowed:
     #: a fixed day, every game from a day of the season on - or None. The team
     #: counterpart of :attr:`association.query.player_games.Narrowed.calendar`.
     calendar: CalendarNarrowing | None = None
+    #: The conference or division a ``situation`` slot named the OPPONENT to
+    #: be in - or None. The team counterpart of
+    #: :attr:`association.query.player_games.Narrowed.alignment`.
+    alignment: AlignmentNarrowing | None = None
 
     def clauses(self, *, narrowed: bool = True) -> tuple[str, list[Any]]:
         """The WHERE body and its parameters - without the narrowing when
@@ -228,6 +232,8 @@ class TeamNarrowed:
             parts.append(f"on {self.date}")
         if self.calendar is not None:
             parts.append(self.calendar.label)
+        if self.alignment is not None:
+            parts.append(self.alignment.label)
         if self.window is not None:
             order, n = self.window
             parts.append(f"over their {'last' if order == 'recent' else 'first'} {n} game{'s' if n != 1 else ''}")
@@ -269,6 +275,21 @@ class TeamNarrowed:
         clause, params = calendar_clause(narrowing, "tg.eastern_date", "tg.season")
         self.narrow(clause, *params)
         self.calendar = narrowing
+
+    def narrow_alignment(self, narrowing: AlignmentNarrowing) -> None:
+        """Only the games against an opponent in this conference or division,
+        for that game's own season - the team counterpart of
+        :meth:`association.query.player_games.Narrowed.narrow_alignment`,
+        over ``team_games``'s own ``opponent_id``/``season`` columns rather
+        than a raw join to ``games``.
+
+        .. versionadded:: 4.4.0
+        """
+        from .calendar import alignment_clause  # local import breaks a module-load cycle; see the TYPE_CHECKING import above
+
+        clause, params = alignment_clause(narrowing, "tg.opponent_id", "tg.season")
+        self.narrow(clause, *params)
+        self.alignment = narrowing
 
 
 # Every postseason game numbered within its series, over the two teams that

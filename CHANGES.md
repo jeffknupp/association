@@ -19,6 +19,27 @@ had no published version to be compatible with.
 - Three more shapes are refused fast with their cause instead of reaching the agent: a team's stat other than points by quarter (the linescore holds points only), bench points (derivable from the starter flag, read by nothing yet), and an attempts or minutes floor on a league ranking (the compiler now refuses it by name rather than declining).
 - The pair relation is on the relation: `player_matchup` narrows the first player's games through the shared step, so a teammate's absence ("curry vs lebron without kd"), a venue, a date, a starter half, box-score lines and a calendar are honored and stated in the heading; `order` and an ordinal season are excluded with their reasons. A matchup with no meetings under a narrowing says the meetings are missing from those games, not that the two never met.
 - A player filed as the `opponent` is the second of two players, and `player_matchup` answers their meetings ("lebron vs kawhi head to head", "jay huff game log vs embiid") - the refusal that said games between two named players were "not read yet" was false and is gone.
+- **A team's conference and division are read from the standings, and both
+  relations narrow games by an opponent's (K3-2, ISSUES.md #25).** ESPN's
+  standings response, re-requested at `&level=3`, nests a division level the
+  plain request (`standings`'s own source) does not carry - probed live
+  across the table's floor, the same two conferences hold four divisions
+  before the 2004-05 realignment and six after. `fetch.parse.parse_team_alignment`
+  reads it into a new `team_alignment` table (season, team_id, conference,
+  division; same 1988 floor as `standings`, since it is the same endpoint).
+  `query.calendar.parse_alignment` reads a `situation` value naming one -
+  "vs the west", "against eastern conference teams", "vs southeast
+  division", "in the west" - beside the existing calendar reader
+  (`parse_situation`), and `Narrowed.narrow_alignment`/`TeamNarrowed.narrow_alignment`
+  narrow to games against an opponent aligned that way IN THAT GAME'S OWN
+  SEASON, applied by the same shared steps every other `situation` shape
+  goes through (`_apply_situation`, `templates/common.py`) - so every
+  template that already honored `situation` (`game_log`, `player_stat`,
+  `threshold_count`, `player_splits`, `record_when`, `streak`, `team_record`,
+  `team_leaderboard`, `team_quarter_points`, `team_stat`, and more) reads it
+  at once. `query.refusals._non_calendar_situation` stops refusing it by
+  value and, where the words are right but the phrasing is not ("the Central
+  Division these days"), says so rather than the generic "not read" message.
 - A composed league-wide log names the player on each row ("every player ... top 10 by points" listed dates and figures and never said whose they were).
 - The compiler treats `ranked_by` and `team_restored` as its own slots (`COMPILER_SLOTS`) rather than refusing them as scoping the relation cannot honor - measured live, "players with the highest scoring triple doubles" reached the compiler and fell through on the marker alone.
 - "Players with the highest scoring triple doubles" ranks the triple-double games by points instead of counting them: `route()` files `ranked_by`, a slot no template honors, so `leaderboard` refuses and the compiler's boolean-game ranking answers (the bare count "most triple doubles" is unchanged).
@@ -27,10 +48,12 @@ had no published version to be compatible with.
   handed to the slow agent: `association.query.refusals` is the step after
   the template and the compiler both decline - a playoff round (the games
   carry no round label), an age (no birth dates on record), a conference or
-  division (in the standings, not yet read), a stat other than points by
-  quarter, a game log "vs" another player, a team where a player belongs.
-  Measured on the yardstick's fall-throughs, each took 30-120 seconds to
-  reach an agent answer that was wrong or never came.
+  division named as a team (`team_record`'s `opponent`, still nothing to
+  tally), a stat other than points by quarter, a game log "vs" another
+  player, a team where a player belongs. Measured on the yardstick's
+  fall-throughs, each took 30-120 seconds to reach an agent answer that was
+  wrong or never came. (A conference or division named as an opponent's
+  *situation* - "vs the west" - now answers instead; K3-2 below.)
 - "Stats for the sixers when maxey scored 20+ points" is the team's record
   under the condition (`record_when`), not the player's own average - two
   readers agree before the intent moves; and "for <team>" is a player's
@@ -512,11 +535,11 @@ had no published version to be compatible with.
   `RELATION_SCOPING`, so `game_log`, `player_stat`, `period_split`,
   `player_splits`, `record_when` and `streak` all read it, and each answer
   says it ("on Tuesdays" in the heading). A `situation` that names anything
-  else - an age ("as an 18 year old"), a conference or division, "since
-  returning" - is still refused, now by value and with the shapes that are
-  read named in the message; it is never dropped. The team relation does not
-  read it yet (ISSUES.md). Of the 19 distinct `situation` values across every
-  recorded corpus, 11 are one of the four calendar shapes.
+  else - an age ("as an 18 year old"), "since returning" - is still refused,
+  now by value and with the shapes that are read named in the message; it is
+  never dropped. A conference or division is read too, as of K3-2 below. Of
+  the 19 distinct `situation` values across every recorded corpus, 11 are one
+  of the four calendar shapes.
 - **Two router post-processing fixes, both slots the question does not
   support arriving in the wrong place.** A quarter or half question that
   names a player but whose model reply drops `player` entirely (filling

@@ -439,6 +439,75 @@ def parse_standings(data: JSON | None, season: int) -> tuple[list[Row], list[Row
     return list(seen.values()), glossary
 
 
+def parse_team_alignment(data: JSON | None, season: int) -> list[Row]:
+    """One row per team: the conference and division ESPN's standings grouped
+    it under for ``season``.
+
+    A second, separate read of the standings response - :func:`parse_standings`
+    above walks the same ``children`` tree purely to reach the entries and
+    throws the group name away (its own test says so). This one keeps it, but
+    over a request at ``&level=3`` rather than the default one
+    ``fetch_standings`` makes: probed live across the table's floor (1988,
+    1990, 1994, 2000, 2003, 2004, 2005, 2015, 2026), the default request's
+    ``children`` are the two conferences THEMSELVES holding every team's entry
+    directly - no division level at all - while ``&level=3`` nests a division
+    level beneath each conference, with the entries there instead. Reusing
+    ``fetch_standings``'s own request would cost the division; a second
+    request costs one more call a season, which stays cheap the same way the
+    first already is.
+
+    That second request is not read for anything else on purpose. Probed
+    against the same team, same season, the two requests' ``stats`` lists
+    differ in exactly one field, otherwise identical: the level-3 response's
+    ``gamesBehind`` is the team's games behind its DIVISION leader where the
+    default response's is behind its CONFERENCE leader, and the field ESPN
+    names the aggregate "record" stat changes from ``overall`` to ``Division
+    Standings``. `team_record` already reads ``gamesBehind`` off the default
+    request as "games back" in a conference sense
+    (``query/templates/teams.py``), so folding the two reads into one would
+    silently change what an existing answer's "games back" means. Kept apart,
+    ``standings`` and its callers see nothing new at all.
+
+    The tree has three shapes across this table's floor, walked the same way
+    regardless: two conferences, each with divisions beneath it (four before
+    the 2004-05 realignment - Atlantic, Central, Midwest, Pacific; six from
+    2004-05 on - Atlantic, Central, Southeast, Northwest, Pacific, Southwest).
+    A transitional season (``season=2004``, the last old-alignment year) can
+    carry an extra, empty division shell in the tree (an empty "Southeast"
+    beside the four real ones) - it contributes no rows, since nothing is
+    entered under it, so it needs no special case.
+
+    Every conference node ESPN returns sets ``isConference: true``; every
+    division node (and the root) sets it false. That flag, not depth, is what
+    tells a conference from a division while walking, since a division's own
+    children (there are none) would otherwise be indistinguishable from a
+    conference's in a deeper level not requested here.
+
+    .. versionadded:: 4.4.0
+    """
+    seen: dict[str, Row] = {}
+
+    def walk(node: JSON | None, conference: str | None, division: str | None) -> None:
+        """Recurse the standings tree, carrying the conference/division name
+        resolved so far down to the leaves that hold entries."""
+        standings = (node or {}).get("standings") or {}
+        for entry in standings.get("entries") or []:
+            team = entry.get("team") or {}
+            team_id = team.get("id")
+            if team_id is None or team_id in seen:
+                continue
+            seen[team_id] = {"season": season, "team_id": team_id, "conference": conference, "division": division}
+        for child in (node or {}).get("children") or []:
+            if child.get("isConference"):
+                walk(child, child.get("name"), None)
+            else:
+                walk(child, conference, child.get("name"))
+
+    if data:
+        walk(data, None, None)
+    return list(seen.values())
+
+
 def parse_player_career_stats(data: JSON | None, athlete_id: str, season_type: int) -> tuple[list[Row], list[Row]]:
     """A player's season-by-season totals and averages, one row per season and
     season type."""

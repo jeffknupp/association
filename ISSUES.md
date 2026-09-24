@@ -268,6 +268,44 @@ those were found.
 
 ## P2: misleading or incomplete
 
+### `player_stat`'s coverage floor is computed from the wrong slot list, and misses `situation`, `since`, `game_n`
+- **Found:** 2026-09-24, in passing while verifying the K3-2 conference/division
+  narrowing did not need a new coverage-floor entry of its own.
+- **Evidence:** `templates.common._sources_for_player_stat` decides whether a
+  question reads the season line (`player_season_stats_deduped`, floor 1977)
+  or box scores (`player_game_log`, floor 1994) by checking
+  `_BOX_SCORE_SCOPING = ("opponent", "venue", "without")` against the slots -
+  but the template's OWN decision of which table to actually read,
+  `players._player_stat_reads_box_scores`, checks a longer list: also
+  `situation`, `since`, `measures` (below/above), `game_n`, `season_type_unstated`
+  and `own_team`. A question that sets one of the five slots the floor check
+  does not know about is checked against the WRONG table's floor (1977, too
+  lenient) while actually reading the narrower one (1994). Reproduced
+  read-only against `/home/jeff/code/association/nba.duckdb`, 2026-09-24:
+  `check_coverage("player_stat", {"player": "Michael Jordan", "stat":
+  "points", "season": 1990, "situation": "on tuesdays"})` returns `None` (no
+  floor problem), and the template then answers "No 1990 regular season
+  games found for Michael Jordan" - true of `player_game_log` alone, and the
+  same false-cause shape AGENTS.md warns about ("a refusal that names the
+  wrong cause"): the real cause is `player_game_log`'s 1994 floor, not that
+  Jordan skipped Tuesdays in 1990. Pre-existing (the calendar half of
+  `situation` has been honored since step 3, K3, before this session), not
+  introduced by K3-2's conference/division addition - just found while
+  checking whether K3-2 needed a similar fix and it did not (the alignment
+  narrowing's own floor, 1988, is never the binding one regardless, so this
+  gap is `since`/`game_n`/`measures`/`own_team`'s to begin with, situation is
+  only one of five).
+- **User sees:** a "no games found" answer for a pre-1994 box-score-narrowed
+  question about a player whose career reaches back that far, instead of the
+  informative "player game logs only go back to 1994" sentence every other
+  under-floor question on this template gets.
+- **Next step:** make `_sources_for_player_stat` call
+  `_player_stat_reads_box_scores` (or the same slot list) instead of its own
+  narrower `_BOX_SCORE_SCOPING`, so the two decisions read the same slots. Not
+  fixed here: `templates/players.py` is outside this task's file ownership.
+- **Source:** ours, not ESPN's.
+- **GitHub:** not yet filed
+
 ### The router invents a name in the `opponent` slot, and the refusal repeats it: "jay huff game log vs Embiid" refuses about Nikola Jokic
 - **Found:** 2026-09-24, grading `live_rest.jsonl` (yardstick-v2 F142).
 - **Evidence:** routes `player_matchup {'player': 'Jaylen Huff', 'opponent':
@@ -1623,6 +1661,49 @@ those were found.
   table this entry used to propose.
 - **Source:** DATA.md, "No conference, division or birth-date data anywhere"
   (`DATA.md:376`, corrected 2026-09-15)
+- **Fixed 2026-09-24, for the OPPONENT-narrowing half only (K3-2).** A new
+  `team_alignment` table (`fetch.parse.parse_team_alignment`, a second
+  request to the standings endpoint at `&level=3` - see DATA.md, "The
+  standings endpoint holds conference and division, at two different request
+  shapes") carries season, team_id, conference and division back to 1988,
+  same floor as `standings`. `query.calendar.parse_alignment` reads a
+  `situation` value naming one ("vs the west", "against eastern conference
+  teams", "vs southeast division", "in the west"), and both relations'
+  shared narrowing steps (`Narrowed.narrow_alignment`/
+  `TeamNarrowed.narrow_alignment`, applied by `_apply_situation` in
+  `templates/common.py`) narrow to games against an opponent aligned that way
+  IN THAT GAME'S OWN SEASON - so every template that already honored
+  `situation` (`game_log`, `player_stat`, `threshold_count`, `player_splits`,
+  `record_when`, `streak`, `team_record`, `team_leaderboard`,
+  `team_quarter_points`, `team_stat`, and the compiler, which reads the same
+  shared step) reads it at once, and `query.refusals._non_calendar_situation`
+  stops refusing it. Verified against a scratch warehouse built from a fresh
+  pull of `team_alignment` for every season 1988-2026 plus the main
+  warehouse's other tables (copied, read-only, never written): yardstick-v2
+  F055 "alperen sengun double-doubles vs southeast division career away"
+  gives exactly 8 double-doubles in 22 career road games vs Southeast
+  Division opponents, all regular season, matching the key; F152 "oklahoma
+  city thunder all-time triple doubles vs west" gives exactly 101 of 177
+  Thunder player triple-doubles since 2009 against Western Conference
+  opponents, matching the key (90 regular season + 11 postseason of 166 + 11) -
+  though the team-aggregate-of-a-player-boolean-stat half of that answer is
+  the compiler's to assemble, not this relation clause's; what is verified
+  here is that the relation delivers the right game set for it to aggregate
+  over.
+- **What remains (the SUBJECT-is-a-conference half - "who leads the East",
+  "Western Conference standings").** Unchanged by this fix: `_conference_refusal`
+  (`templates/teams.py`) still refuses a `team`/`opponent` slot that names a
+  conference or division, and "Western Conference standings" still falls
+  through to an agent with no conference data grounded for it either, because
+  neither shape reads `situation` - the router files a conference/division
+  named as the SUBJECT into a team slot, not a narrowing. Answering it would
+  need either a `team_leaderboard`-shaped read grouped by `team_alignment`
+  (e.g. every West team's record, ranked) or a `team_record`-style read of
+  each team's OWN "vs. Conf."/"vs. Div." standings column - a different shape
+  from the opponent-narrowing this entry now answers, and outside this task's
+  scope (`_conference_refusal` and `router._SITUATION` are not this agent's
+  files). Re-titled narrower rather than closed, since half the original
+  finding is still open.
 - **GitHub:** #25
 
 ### A player's career TS% is refused
@@ -2924,6 +3005,42 @@ those were found.
 - **GitHub:** #192
 
 ## P4: tooling, docs, low impact
+
+### `team_alignment` is not declared in every `TEMPLATE_SOURCES` tuple that can now read it
+- **Found:** 2026-09-24, landing the K3-2 conference/division narrowing.
+- **Evidence:** `situation` reaching `Narrowed.narrow_alignment`/
+  `TeamNarrowed.narrow_alignment` means `team_alignment` is read by every
+  template whose `HONORED_SCOPING` includes `situation` (by
+  `_relation_scoping(intent)`'s default, essentially every template on
+  either relation) - but `templates.common.TEMPLATE_SOURCES` was not updated
+  to list `team_alignment` alongside `player_game_log`/`games`/`team_games`
+  for any of them. Deliberately: `team_alignment`'s coverage floor (1988,
+  the same request `standings` already floors at) is provably never the
+  BINDING one in any declared combination today - `nba.coverage.unavailable`
+  takes the NARROWEST (latest-starting) floor among a tuple's tables, and
+  every table already declared alongside a box-score or `games` read floors
+  at 1989 or 1994, both later than 1988. `scripts/check_coverage.py` (30/30,
+  run against a scratch warehouse with `team_alignment` loaded) and
+  `test_every_declared_source_has_a_floor` both pass without the addition. A
+  handful of the affected entries (`player_stat`, `game_log`, `team_record`,
+  `team_leaderboard`, `team_stat`, `team_quarter_points`, `threshold_count`,
+  `single_game_high`, `period_split`, `period_leaderboard`, `shot_chart`,
+  `shot_distance`) are literal tuples in `templates/common.py`, in this
+  task's ownership; the rest (`player_splits`, `with_without`, `record_when`,
+  `player_matchup`, `streak`) share `_PLAYER_GAME_TABLES`/`_TEAM_GAME_TABLES`
+  from `conditions.py`, outside it.
+- **User sees:** nothing today - this is a no-op given the current floors,
+  not a wrong-cause refusal. It would only start mattering if a table
+  currently floored later than 1988 were ever relaxed to something earlier,
+  at which point `team_alignment` should have been the binding declared
+  floor and was not.
+- **Next step:** add `team_alignment` to the literal `TEMPLATE_SOURCES`
+  tuples above and to `_PLAYER_GAME_TABLES`/`_TEAM_GAME_TABLES` in
+  `conditions.py`, for completeness rather than correctness. Cheap and
+  behavior-neutral (proven by the reasoning above); left for whoever owns
+  `conditions.py`/the templates outside `common.py`, or a follow-up pass.
+- **Source:** ours, not ESPN's.
+- **GitHub:** not yet filed
 
 ### A league-wide rows read orders ties by chance when several players share one game
 - **Found:** 2026-09-24, by the compose agent re-running `k2_run_pkg.py`

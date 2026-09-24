@@ -7,6 +7,7 @@ import duckdb
 import pytest
 
 from association.nba.season import current_season
+from association.query.calendar import AlignmentNarrowing
 from association.query.player_games import Narrowed, aggregate_sql, grouped_sql, league, rows_sql
 
 
@@ -90,3 +91,68 @@ def test_the_played_guard_is_stated_in_every_read(tmp_path: Path) -> None:
         assert "NOT pgl.did_not_play" in sql
         assert "pgl.minutes IS NOT NULL" in sql
         assert "JOIN games g ON g.event_id = pgl.event_id AND g.season = pgl.season" in sql
+
+
+@pytest.fixture
+def alignment_con() -> duckdb.DuckDBPyConnection:
+    """One player against three opponents in two seasons that straddle the
+    2004-05 realignment: Atlanta (Southeast from ``s``), Chicago (Central
+    always) and a fourth opponent, Golden State (Pacific), that never
+    matches. ``s - 1`` predates the Southeast division existing at all, so
+    Atlanta's ``s - 1`` game is Central, not Southeast - the "alignment is
+    read per season" rule this fixture exists to pin."""
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR, home_team_id VARCHAR, winner_team_id VARCHAR)")
+    c.execute(
+        "CREATE TABLE player_game_log (event_id VARCHAR, athlete_id VARCHAR, player_name VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, "
+        "opponent_team_id VARCHAR, game_date VARCHAR, points INTEGER, minutes INTEGER, did_not_play BOOLEAN, reconstructed BOOLEAN)"
+    )
+    c.execute("CREATE TABLE team_alignment (season INTEGER, team_id VARCHAR, conference VARCHAR, division VARCHAR)")
+    s = current_season()
+    c.executemany(
+        "INSERT INTO team_alignment VALUES (?, ?, ?, ?)",
+        [
+            (s, "ATL", "Eastern Conference", "Southeast"),
+            (s, "CHI", "Eastern Conference", "Central"),
+            (s, "GS", "Western Conference", "Pacific"),
+            (s - 1, "ATL", "Eastern Conference", "Central"),  # pre-realignment: no Southeast yet
+            (s - 1, "CHI", "Eastern Conference", "Central"),
+        ],
+    )
+    rows = [
+        ("atl_now", s, "ATL", f"{s}-01-01T00:00Z"),
+        ("chi_now", s, "CHI", f"{s}-01-02T00:00Z"),
+        ("gs_now", s, "GS", f"{s}-01-03T00:00Z"),
+        ("atl_prior", s - 1, "ATL", f"{s - 1}-01-01T00:00Z"),
+    ]
+    for event, season, opponent, date in rows:
+        c.execute("INSERT INTO games VALUES (?, ?, 2, ?, 'T', 'T')", [event, season, date])
+        c.execute("INSERT INTO player_game_log VALUES (?, '1', 'A Player', ?, 2, 'T', ?, ?, 20, 30, FALSE, FALSE)", [event, season, opponent, date])
+    return c
+
+
+def _league(season: int) -> Narrowed:
+    return Narrowed(base=["pgl.season = ?", "pgl.season_type = ?", "NOT pgl.did_not_play"], base_params=[season, 2])
+
+
+def test_narrow_alignment_reads_the_opponents_conference_or_division(alignment_con: duckdb.DuckDBPyConnection) -> None:
+    """ "vs the east"/"vs the southeast division" narrow to the games against
+    an opponent aligned that way THAT SEASON - Atlanta counts for the current
+    season's Southeast but not the prior one's, since the Southeast division
+    did not exist yet."""
+    s = current_season()
+    conference = _league(s)
+    conference.narrow_alignment(AlignmentNarrowing("conference", "Eastern Conference", "against Eastern Conference teams"))
+    sql, params = rows_sql(conference, "pgl.event_id", order="pgl.event_id")
+    assert {r[0] for r in alignment_con.execute(sql, params).fetchall()} == {"atl_now", "chi_now"}
+    assert "against Eastern Conference teams" in conference.filters()
+
+    division = _league(s)
+    division.narrow_alignment(AlignmentNarrowing("division", "Southeast", "against the Southeast Division"))
+    sql, params = rows_sql(division, "pgl.event_id", order="pgl.event_id")
+    assert {r[0] for r in alignment_con.execute(sql, params).fetchall()} == {"atl_now"}
+
+    prior = _league(s - 1)
+    prior.narrow_alignment(AlignmentNarrowing("division", "Southeast", "against the Southeast Division"))
+    sql, params = rows_sql(prior, "pgl.event_id", order="pgl.event_id")
+    assert alignment_con.execute(sql, params).fetchall() == []  # Atlanta was Central in s - 1, pre-realignment

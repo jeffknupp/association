@@ -18,6 +18,7 @@ KNOWN_TABLES = {
     "player_season_stats",
     "team_season_stats",
     "standings",
+    "team_alignment",
     "team_power_index",
     "shot_chart",
     "win_probability",
