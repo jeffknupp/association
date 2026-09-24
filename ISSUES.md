@@ -446,11 +446,10 @@ those were found.
 - **User sees:** mostly right answers, each short of the full truth in one
   specific, named way per the key's own grading notes above.
 - **Next step:** each needs its own read of the relevant template
-  (`period_split`, `player_history`, `player_stat`, `game_log`,
-  `player_splits`, `team_leaderboard`, the NetPoints leaderboard path) - not
-  attempted in this session. Priority within this group should follow
-  AGENTS.md's own ordering (a wrong number > a missing one > a missing
-  label), which was not assessed per-item here.
+  (`period_split`, `team_leaderboard`) - not attempted in this session.
+  Priority within this group should follow AGENTS.md's own ordering (a
+  wrong number > a missing one > a missing label), which was not assessed
+  per-item here.
 - **GitHub:** #203
 
 ### Two callers sharing one ollama instance corrupt each other's router output; ambient CPU load alone does not
