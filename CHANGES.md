@@ -16,6 +16,31 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **A position word in the router's own `player` slot ("shooting guard") is
+  read as the position-group subject rather than a player name nothing
+  resolves to (F056, ISSUES.md #160).** `query/compose/move.py`'s new
+  `_position_only_player`/`_drop_position_only_player` clears `player` when
+  it holds NOTHING but a position word, before the rest of the module's
+  existing position handling (`_position`, reading the question text) takes
+  over - so "highest 3 point percentage ... by a shooting guard" no longer
+  tries to resolve "shooting guard" as a name. A "with at least N games"
+  phrase now replaces a league ranking's default minimum sample
+  (`_ranking_minimum`); a unit the relation cannot apply as a `HAVING`
+  clause (attempts, minutes) is refused by name rather than silently
+  dropped or misread as a games count. Fixed the same session: "at least"
+  contains the word "least" as a whole word, which flipped a "highest ..."
+  ranking to ascending order whenever a minimum-sample phrase was present -
+  measured against the real warehouse before the fix ("highest 3-point
+  percentage ... with at least 40 games" answered lowest-first) and pinned
+  by a fixture test after it. Warehouse-verified (season 2025, which
+  carries specific position codes - see DATA.md): "highest 3-point
+  percentage in 2025 by a shooting guard with at least 40 games" correctly
+  ranks Alec Burks (42.5%, 49 games) first, descending. Found and recorded,
+  not built here: an attempts floor is still refused (no `HAVING` clause
+  for one yet), and the CURRENT season's roster data mostly lacks specific
+  position codes at all (DATA.md), so a position-group ranking for "this
+  season" alone still returns nothing even once the subject reads
+  correctly.
 - **A composed league-wide `threshold_count` naming SEVERAL "<N> <stat>"
   lines at once ("33 points and 13 rebounds and 10 assists 2 blocks and 2
   steals", F161) now lists the games clearing every line, rather than

@@ -25,7 +25,7 @@ from association.nba.season import current_season
 from association.query.compose import answer as compose_answer
 from association.query.compose.adapt import to_query
 from association.query.compose.core import Query, Refused, Unsupported, compile_query, run
-from association.query.compose.move import _career_slots, _everyone_career_slots, move_point, team_move_point
+from association.query.compose.move import _asc_or_desc, _career_slots, _drop_position_only_player, _everyone_career_slots, _position_only_player, _ranking_minimum, move_point, team_move_point
 from association.query.compose.team import TeamQuery, run_team
 from association.query.templates.common import TemplateContext
 
@@ -753,3 +753,72 @@ def test_a_league_wide_count_with_no_line_at_all_is_still_refused(cx_ctx: Templa
     question's own text - is refused, not turned into a whole-league listing."""
     with pytest.raises(Unsupported, match="needs the line"):
         move_point(cx_ctx.con, "threshold_count", {}, "players with a good game this season")
+
+
+# ---------------------------------------------------------------------------
+# F056: a position word in the ``player`` slot ("shooting guard") is the
+# router misfiling a position-GROUP subject as a name, not a player to
+# resolve; a "with at least N <unit>" phrase is the ranking's own minimum
+# sample, applied only where the relation can (a games floor), refused by
+# name otherwise (an attempts or minutes floor, which it cannot apply yet).
+# ---------------------------------------------------------------------------
+
+
+def test_a_position_only_player_slot_is_read_as_the_position_group_subject() -> None:
+    """:func:`_position_only_player` finds the position code only when the
+    ``player`` slot holds NOTHING else; a real name beside a position word
+    is left alone."""
+    assert _position_only_player({"player": "shooting guard"}) == "SG"
+    assert _position_only_player({"player": "shooting guards"}) == "SG"
+    assert _position_only_player({"player": "Klay Thompson"}) is None
+    assert _position_only_player({"player": None}) is None
+    assert _drop_position_only_player({"player": "shooting guard", "stat": "points"}) == {"player": None, "stat": "points"}
+    assert _drop_position_only_player({"player": "Klay Thompson"}) == {"player": "Klay Thompson"}
+
+
+def test_a_position_word_misfiled_as_the_player_slot_reads_as_the_subject(cx_ctx: TemplateContext) -> None:
+    """F056: "highest points per game ... by a point guard" arrives with
+    the router's own ``player`` slot holding "point guard" - read as the
+    position-group subject, not a name nothing resolves to. Curry ('PG')
+    is the fixture's only point guard; a "with at least 2 games" floor
+    (:func:`_ranking_minimum`) clears his 4 games past the real
+    ``PER_GAME_MIN_GAMES`` default, which he does not reach on his own."""
+    q = move_point(cx_ctx.con, "leaderboard", {"player": "point guard", "stat": "points", "season_type": 2}, "highest points per game this season by a point guard with at least 2 games")
+    assert isinstance(q, Query)
+    assert q.subject == "everyone" and q.position == "PG" and q.minimum_games == 2
+    out = run(cx_ctx.con, q)
+    assert out["rows"][0]["group"] == "Stephen Curry"
+    assert out["rows"][0]["games"] == 4
+    assert out["rows"][0]["points"] == pytest.approx(30.5)  # (35 + 40 + 25 + 22) / 4
+
+
+def test_an_attempts_or_minutes_floor_is_refused_by_name_not_dropped_or_misapplied(cx_ctx: TemplateContext) -> None:
+    """F056's own shape: "... with at least 100 attempts" names a floor the
+    relation has no HAVING clause for yet (only a minimum GAMES count,
+    :data:`~association.query.compose.core.Query.minimum_games`) - refused
+    by name, never silently dropped (which would rank on an unqualified
+    sample) and never misread as a games count (100 attempts is not 100
+    games)."""
+    with pytest.raises(Unsupported, match="100 attempts"):
+        move_point(cx_ctx.con, "leaderboard", {"player": "point guard", "stat": "points", "season_type": 2}, "highest points per game by a point guard with at least 100 attempts")
+
+
+def test_ranking_minimum_reads_the_unit_and_the_number() -> None:
+    """:func:`_ranking_minimum` reads the "at least N <unit>" phrase without
+    committing to what a caller does with it - the unit is read back, not
+    silently coerced to a games count."""
+    assert _ranking_minimum("... with at least 100 attempts") == ("attempts", 100)
+    assert _ranking_minimum("... with at least 20 games") == ("games", 20)
+    assert _ranking_minimum("... this season") is None
+
+
+def test_at_least_does_not_flip_a_highest_ranking_to_ascending() -> None:
+    """The minimum-sample phrase "at least" ("with at least 40 games") is
+    not the ascending word "least" ("the least points") - before this, any
+    "at least N ..." floor silently reversed a "highest ..." ranking's sort
+    order (measured against the real warehouse: a 3-point-percentage
+    leaderboard "with at least 40 games" answered lowest-first)."""
+    assert _asc_or_desc("highest points per game with at least 40 games") == "desc"
+    assert _asc_or_desc("fewest points per game") == "asc"
+    assert _asc_or_desc("lowest 3-point percentage with at least 40 games") == "asc"
+    assert _asc_or_desc("the least points scored") == "asc"

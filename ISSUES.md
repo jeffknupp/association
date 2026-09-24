@@ -2769,14 +2769,42 @@ those were found.
   same way a team is.
 - **User sees:** a refusal, or the opposing team's log, for a question that
   names its subject as clearly as a player's name would.
-- **Next step:** read a position word from the question in `route()` (a
-  code-assigned slot, so `ROUTER_PROMPT` is untouched) into a `position` slot,
-  and let the player-games relation filter on it the way it filters an
-  opponent - the ranking these questions mostly want is `period_leaderboard`'s
-  or `leaderboard`'s shape with the pool narrowed, not a new template per
-  question. Note the two-letter values are ESPN's own and not a hierarchy: a
-  question about "guards" means G, SG and PG together, and getting that wrong
-  silently answers a narrower question.
+- **One of the six is now answered, from the compose side** (this session):
+  "highest 3 point percentage in a season. by a shooting guard with at least
+  100 attempts" arrives with the router's own `player` slot holding
+  literally "shooting guard" (not dropped, not filed as `team`/`opponent` -
+  this question's own routing shape) - `query/compose/move.py`'s
+  `_position_only_player`/`_drop_position_only_player` reads a slot that
+  holds NOTHING but a position word as the position-group subject rather
+  than a player name to resolve, so `_everyone_point` reaches its existing
+  position filter the same way "centers game log" already did. Also added:
+  a "with at least N games" phrase now sets the ranking's own minimum
+  sample (`_ranking_minimum`), replacing the default
+  `PER_GAME_MIN_GAMES` floor. Warehouse-verified against `nba.duckdb`,
+  season 2025 (2024-25, which carries specific position codes - see
+  DATA.md): "highest 3-point percentage in 2025 by a shooting guard with at
+  least 40 games" correctly ranks Alec Burks (42.5%, 49 games), Malik
+  Beasley (41.6%, 82 games), Shake Milton (35.8%), Brandon Boston Jr.
+  (35.0%) - descending, as asked.
+- **Still open, and this is why the exact target question above is not
+  fully answered:** an ATTEMPTS floor ("with at least 100 attempts") is
+  refused by name (`_everyone_ranking` raises rather than silently dropping
+  it or misreading it as a games count - the relation has only a
+  minimum-GAMES `HAVING` clause today, no minimum-attempts one) - a real
+  capability gap, not a bug, and worth its own entry if built. **A second,
+  independent gap surfaced verifying this**: the CURRENT season (2026)
+  carries almost no specific position codes at all (`SG`/`PG`/`PF`/`SF`),
+  only the generic `G`/`F`/`C` - see DATA.md, "The current season's roster
+  carries generic position codes" - so a position-GROUP question answered
+  for "this season" with no year named returns nothing even once the
+  subject reads correctly, and the four questions this entry filed under
+  "Centers"/"stating centers"/"forwards" remain open (a router-side slot
+  drop this worktree does not own).
+- **Next step:** an attempts (or makes, or minutes) floor on a league
+  ranking - a `HAVING SUM(<attempts column>) >= N` the relation does not
+  carry yet, keyed off the same measure being ranked; the other four
+  questions need the router to stop filing a position word as `team` or
+  dropping it outright.
 - **GitHub:** #160
 
 ### A team's per-quarter average of anything but points has no source
