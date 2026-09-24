@@ -2342,6 +2342,8 @@ def test_a_period_split_window_the_question_never_named_is_dropped() -> None:
     assert "limit" not in each.slots and "order" not in each.slots
     games = _asking('{"intent":"period_split","player":"Rudy Gobert","order":"recent","limit":1,"half":1}', "Rudy gobert first half games this season")
     assert "limit" not in games.slots and "order" not in games.slots
+    team = _asking('{"intent":"team_quarter_points","team":"Washington Wizards","order":"recent","limit":1,"half":1,"season":2026}', "least points scored by the wizards in the first half this season")
+    assert "limit" not in team.slots and "order" not in team.slots
     last5 = _asking('{"intent":"period_split","player":"Zach Collins","order":"recent","limit":5,"period":1,"split":"starter"}', "zach collins first quarter stats last 5 games as a starter")
     assert last5.slots["limit"] == 5 and last5.slots["order"] == "recent"
 
@@ -2357,3 +2359,16 @@ def test_an_opponent_that_is_the_without_list_is_dropped() -> None:
     assert "opponent" not in got.slots
     kept = _asking('{"intent":"game_log","stat":"minutes","player":"Bane","opponent":"Boston Celtics","limit":10,"season":2026}', "bane game log vs boston without franz wagner this season")
     assert kept.slots["opponent"] == "Boston Celtics"
+
+
+def test_a_teams_half_named_only_by_nickname_is_team_quarter_points() -> None:
+    """The one check_routing.py gap after step 3: "Celtics 2nd half scoring
+    this season" arrived with no `team` slot at all and became `other`. The
+    nickname the question holds is the team; two nicknames are a matchup and
+    file nothing."""
+    got = _asking('{"intent":"team_stat","stat":"points","season":2026}', "Celtics 2nd half scoring this season")
+    assert got.intent == "team_quarter_points"
+    assert got.slots["half"] == 2
+    assert got.slots["team"].lower().endswith("celtics")
+    two = _asking('{"intent":"team_stat","stat":"points","season":2026}', "celtics vs knicks 2nd half scoring")
+    assert two.intent != "team_quarter_points" or two.slots.get("team") is None

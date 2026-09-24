@@ -8,6 +8,11 @@ For how the system is designed — the three stages, the router/agent split, why
 templates instead of better prompting — read `docs/architecture.rst`. That is
 the source of truth for design, and this file does not restate it.
 
+Where the work is going - the goal, what each spike bought and why, and the
+next steps - is `ROADMAP.md`. Read it before starting a spike, and keep a
+spike pointed at it: measurements turn up fixable things, and those go to
+agents or to `ISSUES.md`, not into the spike.
+
 What is known to be wrong, missing or unverified is in `ISSUES.md`, ranked by
 priority. Read the entries for the area you are about to touch, and add what
 you find to it, including findings that are not part of your task (see

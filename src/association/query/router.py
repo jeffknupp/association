@@ -1771,12 +1771,17 @@ def _route_period_intents(raw: dict[str, Any], question: str) -> None:
             raw |= asked
             if not _named_a_stat(question):
                 raw.pop("stat", None)
-        elif asked is not None and not named_player and isinstance(raw.get("team"), str) and raw["team"].strip():
+        elif asked is not None and not named_player and (_team_slot_or_word(raw, low)):
             # A TEAM's half. A team's QUARTER never reaches here - the
             # exemption above keeps it on its own template - but a half always
             # does, because the model maps "first half" onto period 1 and that
             # is wrong for a team the same way it is for a player. The
-            # linescore holds both quarters, so the template sums them.
+            # linescore holds both quarters, so the template sums them. The
+            # team is the model's `team` slot, or - measured, the model filed
+            # none for "Celtics 2nd half scoring this season" (the one
+            # check_routing.py gap after step 3) and "least points scored by
+            # the wizards in the first half" (yardstick-v2 F064) - the one
+            # nickname the question itself holds, which _TEAM_WORD reads.
             raw["intent"] = "team_quarter_points"
             raw |= asked
         elif asked is not None and named_player:
@@ -1785,6 +1790,19 @@ def _route_period_intents(raw: dict[str, Any], question: str) -> None:
             _route_period_split_slots(raw, question, subject)
         else:
             raw["intent"] = "other"
+
+
+def _team_slot_or_word(raw: dict[str, Any], low: str) -> bool:
+    """Whether a team is named - by the model's ``team`` slot, or failing
+    that by exactly one nickname in the question, which is then filed as the
+    slot. Two nicknames name a matchup, not a subject, and file nothing."""
+    if isinstance(raw.get("team"), str) and raw["team"].strip():
+        return True
+    nicknames = _TEAM_WORD.findall(low)
+    if len(set(nicknames)) != 1:
+        return False
+    raw["team"] = nicknames[0]
+    return True
 
 
 def _route_team_and_player_intents(raw: dict[str, Any], question: str) -> None:
@@ -2301,11 +2319,16 @@ def _drop_filler_limit(intent: str, slots: dict[str, Any], question: str) -> Non
         slots.pop("limit", None)
 
 
+#: The period templates that honor a window, where a filler ``limit`` costs
+#: the season: "least points scored by the wizards in the first half this
+#: season" (yardstick-v2 F064) arrived with ``limit: 1`` and answered "their
+#: fewest ... over their last 1 game".
+_PERIOD_WINDOW_INTENTS = frozenset({"period_split", "team_quarter_points"})
 _PERIOD_PHRASE = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+(?:quarter|half|period)s?\b|\b[1-4]q\b|\bq[1-4]\b|\b[12]h\b", re.IGNORECASE)
 
 
 def _route_period_window(intent: str, slots: dict[str, Any], question: str) -> None:
-    """A ``period_split`` window only where the question names one.
+    """A period template's window only where the question names one.
 
     Measured (yardstick-v2 F058/F060): "harrison barnes 1st quarter stats
     each game vs magic" and "rudy gobert first half games this season" both
@@ -2318,7 +2341,7 @@ def _route_period_window(intent: str, slots: dict[str, Any], question: str) -> N
     :func:`_names_one_game` - the ordinal names the period, not a window.
     "last 5 games" (Zach Collins, F050) keeps both slots.
     """
-    if intent != "period_split":
+    if intent not in _PERIOD_WINDOW_INTENTS:
         return
     without_period = _PERIOD_PHRASE.sub(" ", question)
     if isinstance(slots.get("limit"), int) and not _names_a_count(without_period):

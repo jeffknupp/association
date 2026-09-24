@@ -152,6 +152,9 @@ CASES: list[tuple[str, str, dict]] = [
     # yardstick-v2 F087: a team's record when a player reaches a number is
     # record_when whatever the model files (router._WHEN_REACHES).
     ("show me stats for sixers when maxey scored 20+ points", "record_when", {"threshold": 20}),
+    # yardstick-v2 F064: a team's half with no `team` slot from the model -
+    # the nickname in the question is the team (router._team_slot_or_word).
+    ("least points scored by the wizards in the first half this season", "team_quarter_points", {"half": 1, "limit": None}),
     # yardstick-v2 F158: the without list repeated as the opponent is dropped
     # (router._route_opponent_named_as_teammates).
     ("bane game log without anthony black and franz wagner this season", "game_log", {"without": ["anthony black", "franz wagner"], "opponent": None}),

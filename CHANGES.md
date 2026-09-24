@@ -16,6 +16,7 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- A team's half named only by its nickname ("Celtics 2nd half scoring this season") routes to `team_quarter_points` where the model filed no `team` slot and the question went to the agent.
 - What nothing here can answer is refused fast, with its cause, instead of
   handed to the slow agent: `association.query.refusals` is the step after
   the template and the compiler both decline - a playoff round (the games
