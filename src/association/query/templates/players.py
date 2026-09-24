@@ -12,11 +12,12 @@ from typing import Any
 import duckdb
 
 from association.nba.coverage import COVERAGE, POSTSEASON
+from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date
 
 from ..entities import Availability, Entity
-from ..leaderboard import SEASON_TOTAL_OF, LeaderboardError, not_a_postseason_copy, resolve_metric, run_career_leaderboard, run_leaderboard
+from ..leaderboard import SEASON_TOTAL_OF, LeaderboardError, LeaderboardResult, not_a_postseason_copy, resolve_metric, run_career_leaderboard, run_leaderboard
 from ..metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS
 from ..player_games import Narrowed, aggregate_sql, grouped_sql, league, rows_sql, scope_without_guard, season_type_clause
 from .common import (
@@ -602,6 +603,8 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     fields = _leaderboard_fields(slots, metric)
     if career:
         return _career_leaderboard(con, metric, slots, fields)
+    show_team = "team" in fields
+    box_fields = [f for f in fields if f != "team"]
     try:
         result = run_leaderboard(
             con,
@@ -609,18 +612,24 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
             season=slots.get("season"),
             season_type=slots.get("season_type") or 2,
             team=slots.get("team") if isinstance(slots.get("team"), str) else None,
-            fields=fields or None,
+            fields=box_fields or None,
             limit=_clamp_limit(slots.get("limit"), default=DEFAULT_LEADERBOARD_LIMIT),
         )
     except LeaderboardError as exc:
         # An ambiguous team, an unknown metric, or a table that needs a
         # warehouse flag - all reasons to fall through, never to guess.
         raise TemplateUnsupported(str(exc)) from exc
+    if show_team and result.season_type is None:
+        # A metric with no season_type (a fingerprint-shaped one) has nothing
+        # for player_game_log's own season_type column to join on - refused
+        # rather than silently dropping the team column nobody asked to lose.
+        raise TemplateUnsupported(f"{result.label} has no season type to look a team up by")
 
     period = _period(result.season, result.season_type or 2)
     where = f"the {result.team_name}" if result.team_name else "the league"
     summary = f"{result.label}, {period}"
     ratio = LEADERBOARD_METRICS[metric].ratio
+    trade_note = _leaderboard_show_teams(con, result) if show_team else ""
     answer = (
         _tabulate_leaderboard(result.rows, result.label, where, period, fields, result.min_sample_applied, result.min_sample_column, ratio)
         if fields
@@ -628,18 +637,21 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     )
     return TemplateResult(
         data={"question_shape": summary, "season": result.season, "fields": fields, "min_sample": result.min_sample_applied, "leaders": result.rows},
-        answer=answer,
+        answer=answer + trade_note,
     )
 
 
 def _leaderboard_fields(slots: dict[str, Any], metric: str) -> list[str]:
-    """The extra columns a leaderboard was asked to show beside its metric."""
+    """The extra columns a leaderboard was asked to show beside its metric -
+    a box-score average (:data:`~association.query.metrics.EXTRA_FIELD_COLUMNS`),
+    or ``"team"`` (F017, ISSUES.md), which :func:`leaderboard` looks up
+    separately rather than through the same generic box-score join."""
     # "top 10 in NetPoints ALONGSIDE their points per game" used to be answered
     # without the second half and without saying so - a silent partial answer,
     # the failure this whole architecture exists to prevent. An unknown field
     # falls through rather than being dropped.
     requested = [f for f in slots.get("fields") or [] if isinstance(f, str)]
-    unknown = [f for f in requested if f not in EXTRA_FIELD_COLUMNS]
+    unknown = [f for f in requested if f not in EXTRA_FIELD_COLUMNS and f != "team"]
     if unknown:
         raise TemplateUnsupported(f"unknown leaderboard field(s) {unknown}")
     # Deduplicated, order preserved: the router repeats itself sometimes
@@ -647,6 +659,63 @@ def _leaderboard_fields(slots: dict[str, Any], metric: str) -> list[str]:
     # minutes in the agent. A field restating the ranked metric goes too - it
     # rendered the same 33.5 twice under two headings.
     return [f for f in dict.fromkeys(requested) if metric != f"avg_{f}"]
+
+
+def _leaderboard_team_names(con: duckdb.DuckDBPyConnection, athlete_ids: list[str], season: int, season_type: int) -> tuple[dict[str, str], bool]:
+    """Each athlete's team for a leaderboard row that asked to see it (F017,
+    ISSUES.md): the team he played his most recent game for that season and
+    season type - read off ``player_game_log``, the one table that orders a
+    traded player's stints by date, unlike the ranked table itself (whose own
+    "combined" row for a traded player has no single team at all). Team names
+    are read for the season asked about (:func:`~association.nba.franchises.season_name_sql`),
+    since a franchise's own name can differ by season.
+
+    Returns each athlete's team by id, and whether ANY of them played for more
+    than one team that season - the fact behind the caller's own "shown the
+    most recent team" note.
+
+    .. versionadded:: 4.4.0
+    """
+    placeholders = ", ".join("?" for _ in athlete_ids)
+    rows = con.execute(
+        f"""
+        SELECT athlete_id, team, traded FROM (
+            SELECT pgl.athlete_id AS athlete_id,
+                   {season_name_sql("pgl.team_id", "pgl.season", "t.display_name")} AS team,
+                   COUNT(DISTINCT pgl.team_id) OVER (PARTITION BY pgl.athlete_id) > 1 AS traded,
+                   ROW_NUMBER() OVER (PARTITION BY pgl.athlete_id ORDER BY pgl.game_date DESC) AS rn
+            FROM player_game_log pgl JOIN teams t ON t.team_id = pgl.team_id
+            WHERE pgl.season = ? AND pgl.season_type = ? AND pgl.athlete_id IN ({placeholders})
+        ) WHERE rn = 1
+        """,
+        [season, season_type, *athlete_ids],
+    ).fetchall()
+    names = {athlete_id: team for athlete_id, team, _ in rows}
+    return names, any(traded for _, _, traded in rows)
+
+
+def _leaderboard_show_teams(con: duckdb.DuckDBPyConnection, result: LeaderboardResult) -> str:
+    """Injects each shown row's team into it (F017, ISSUES.md), mutating
+    ``result.rows`` in place so :func:`_tabulate_leaderboard`'s existing
+    generic column reader (``row.get("team")``) needs no column of its own to
+    know about - and returns the trade note, or "" when nobody shown played
+    for more than one team that season.
+
+    .. versionadded:: 4.4.0
+    """
+    assert result.season_type is not None  # the caller already refused this case
+    ids = [athlete_id for athlete_id in result.athlete_ids if athlete_id is not None]
+    if not ids:
+        for row in result.rows:
+            row["team"] = "-"
+        return ""
+    names, traded = _leaderboard_team_names(con, ids, result.season, result.season_type)
+    for athlete_id, row in zip(result.athlete_ids, result.rows, strict=True):
+        row["team"] = names.get(athlete_id, "-") if athlete_id is not None else "-"
+    # "team" always makes `fields` non-empty, so `leaderboard` always appends
+    # this after a table (never the plain sentence) - a new line, the same
+    # way a table's own truncation and box-score notes follow it elsewhere.
+    return "\nTeam is each player's most recent team that season." if traded else ""
 
 
 def _career_leaderboard(con: duckdb.DuckDBPyConnection, metric: str, slots: dict[str, Any], fields: list[str]) -> TemplateResult:

@@ -21,7 +21,7 @@ player whose career reached 1993-94, not every player who ever played."""
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from difflib import get_close_matches
 from typing import Any
 
@@ -69,6 +69,17 @@ class LeaderboardResult:
     team: str | None
     team_name: str | None
     rows: list[dict[str, Any]]
+    #: Each row's athlete id, aligned by index with ``rows`` - kept OUTSIDE the
+    #: row dicts rather than as one more key in them, so it never rides along
+    #: into ``toolbox.get_leaderboard``'s JSON (which serializes ``rows``
+    #: verbatim for the model to read) the way a raw id leaking into an
+    #: answer was already a fixed regression once (``toolbox.py``'s own
+    #: ``run_sql`` note). A caller that needs a fact the ranked table itself
+    #: does not carry - each player's team, for a leaderboard that asked to
+    #: see it (F017, ISSUES.md) - looks it up by these ids.
+    #:
+    #: .. versionadded:: 4.4.0
+    athlete_ids: list[str | None] = field(default_factory=list)
 
 
 @dataclass
@@ -363,7 +374,10 @@ def _run_leaderboard_select(spec: LeaderboardMetric, fields: list[str] | None, r
     ranked metric itself lives in - player_season_stats is the one table
     every metric can join to this way.
     """
-    select_cols = ["p.display_name AS display_name", f"{_value_sql(spec)} AS value"]
+    # athlete_id rides along unconditionally - it costs nothing (it is already
+    # the join key) and it is what lets a caller look up something the ranked
+    # table itself does not carry, such as each player's team (F017, ISSUES.md).
+    select_cols = ["p.display_name AS display_name", "p.athlete_id AS athlete_id", f"{_value_sql(spec)} AS value"]
     select_cols.extend(f"t.{col}" for col in spec.extra_columns)
     select_cols.extend(f"box.{EXTRA_FIELD_COLUMNS[f]} AS {f}" for f in fields or [])
     from_clause = f"FROM {spec.table} t JOIN players p ON p.athlete_id = t.{spec.id_column}"
@@ -469,6 +483,11 @@ def run_leaderboard(
     except Exception as exc:  # e.g. the table needs a warehouse flag that wasn't used
         raise LeaderboardError(f"SQL error: {exc}" + (f" (requires: {spec.requires})" if spec.requires else "")) from exc
 
+    # athlete_id is popped back OUT of each row dict here - it rides the query
+    # only to be resolvable, never as a key of `rows` itself (see
+    # LeaderboardResult.athlete_ids' own docstring for why).
+    row_dicts = [dict(zip(cols, row, strict=True)) for row in rows]
+    athlete_ids = [row_dict.pop("athlete_id", None) for row_dict in row_dicts]
     return LeaderboardResult(
         metric=metric,
         label=spec.label,
@@ -478,7 +497,8 @@ def run_leaderboard(
         min_sample_column=spec.min_sample_column,
         team=team,
         team_name=resolved_team_name,
-        rows=[dict(zip(cols, row, strict=True)) for row in rows],
+        rows=row_dicts,
+        athlete_ids=athlete_ids,
     )
 
 

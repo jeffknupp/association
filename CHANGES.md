@@ -16,6 +16,29 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **`leaderboard` can show each player's team beside their name (F017,
+  ISSUES.md).** "Who are the top 50 in total adjusted netpoints with the
+  team they play for" asked for a team beside every row and got none. A
+  `fields` list now accepts `"team"` alongside the existing box-score
+  columns (`_leaderboard_fields`); it adds a "team" column read from
+  `player_game_log` - the team a player played his most recent game for
+  that season and season type, so a mid-season trade shows the last team,
+  said once in a note ("Team is each player's most recent team that
+  season.") rather than per row. Player only, and only where the ranked
+  metric has a season type to look the team up by. `run_leaderboard`'s rows
+  now also carry each row's athlete id on the side
+  (`LeaderboardResult.athlete_ids`, aligned by index, never a key inside a
+  row dict) so a caller can resolve something the ranked table itself does
+  not carry, without that id riding along into `toolbox.get_leaderboard`'s
+  JSON for the model to read. Warehouse-verified: a 50-row NetPoints-per-100
+  ranking with `fields: ["team"]` now lists each player's team, all 50 rows
+  present (the row LIMIT was already honored correctly before this change -
+  confirmed directly against the warehouse; F017's own capture was cut off
+  by the yardstick log's own display truncation, not a real limit). The
+  router does not yet emit `fields: ["team"]` for wording like "with the
+  team they play for" - `ROUTER_SCHEMA`'s `fields` enum has no `"team"`
+  entry - so this is the template-side half of the fix; see ISSUES.md for
+  the remaining router-side gap.
 - **`player_splits` adds a column for a stat the standard line does not
   carry, or refuses naming it (F159, ISSUES.md).** "Quentin Grimes
   individual gamelog usage rating without joel embiid" showed the standard

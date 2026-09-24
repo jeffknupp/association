@@ -440,6 +440,43 @@ def test_leaderboard_phrases_its_own_answer(lb_con: TemplateContext) -> None:
     assert result.answer == (f"Luka Doncic led the league in points per game in the {current_season()} regular season (minimum 20 games), at 33.5. Next: Stephen Curry (27.1).")
 
 
+def test_leaderboard_shows_each_players_team_when_asked(lb_con: TemplateContext) -> None:
+    """F017 (ISSUES.md): "who are the top 50 in total adjusted netpoints with
+    the team they play for" asked for each player's team beside the name and
+    got none. `fields: ["team"]` (the template-side half of the fix - the
+    router does not yet emit "team" as a fields value; see this test's own
+    module for the ISSUES.md entry recording that gap) now adds a "team"
+    column, read from player_game_log so a mid-season trade shows the team
+    he played his most recent game for, with a note saying so."""
+    lb_con.con.execute("CREATE TABLE player_game_log (athlete_id VARCHAR, team_id VARCHAR, season INTEGER, season_type INTEGER, game_date VARCHAR)")
+    s = current_season()
+    # Luka stays with Dallas all season. Curry is traded from Golden State to
+    # Dallas mid-season - his most recent game is with Dallas.
+    lb_con.con.executemany(
+        "INSERT INTO player_game_log VALUES (?, ?, ?, 2, ?)",
+        [("1", "6", s, f"{s - 1}-11-01"), ("2", "9", s, f"{s - 1}-11-01"), ("2", "6", s, f"{s}-02-01")],
+    )
+    result = leaderboard(lb_con, {"stat": "points", "fields": ["team"]})
+    rows = {r["display_name"]: r["team"] for r in result.data["leaders"]}
+    assert rows == {"Luka Doncic": "Dallas Mavericks", "Stephen Curry": "Dallas Mavericks"}
+    assert "team" in result.answer.splitlines()[1]  # the header row
+    assert "Team is each player's most recent team that season." in result.answer
+
+
+def test_leaderboard_team_field_says_nothing_when_nobody_was_traded(lb_con: TemplateContext) -> None:
+    """The trade note is said once, and only when it is true: with nobody
+    shown having played for more than one team, it does not appear."""
+    lb_con.con.execute("CREATE TABLE player_game_log (athlete_id VARCHAR, team_id VARCHAR, season INTEGER, season_type INTEGER, game_date VARCHAR)")
+    s = current_season()
+    lb_con.con.executemany(
+        "INSERT INTO player_game_log VALUES (?, ?, ?, 2, ?)",
+        [("1", "6", s, f"{s - 1}-11-01"), ("2", "9", s, f"{s - 1}-11-01")],
+    )
+    result = leaderboard(lb_con, {"stat": "points", "fields": ["team"]})
+    assert "Team is each player's most recent team" not in result.answer
+    assert {r["team"] for r in result.data["leaders"]} == {"Dallas Mavericks", "Golden State Warriors"}
+
+
 def test_leaderboard_names_the_team_when_filtered(lb_con: TemplateContext) -> None:
     result = leaderboard(lb_con, {"stat": "points", "team": "Warriors"})
     assert "led the Golden State Warriors" in (result.answer or "")

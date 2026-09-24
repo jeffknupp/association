@@ -396,15 +396,13 @@ those were found.
   `player_matchup`'s own `without` refusal next.
 - **GitHub:** #202
 
-### Six P7-bucket "partial" answers from the yardstick are still open
+### Five P7-bucket "partial" answers from the yardstick are still open
 - **Found:** 2026-09-23, same session - not reached; recorded from
   `~/association-research/yardstick-v2/wrong_land.md`'s own evidence rather
   than independently re-diagnosed, since no time remained in this pass to
   read each one's code path. Listed here so the next agent does not have to
   rediscover the list from scratch, with the file's own F-numbers for the
   full evidence (query, route, answer, key) each already carries:
-  - **F017** - a 50-row NetPoints leaderboard with each player's team asked
-    for; neither the full 50 nor any team name is given.
   - **F058**/**F060** - `period_split` with "each game"/"every game" in the
     question still applies a `limit` of 1 as a window, showing one row where
     every game's row was asked for; aggregate totals are otherwise right.
@@ -2458,6 +2456,43 @@ those were found.
 - **GitHub:** #197
 
 ## P3: refusal or gap
+
+### The router cannot ask `leaderboard` to show each player's team (F017)
+- **Found:** 2026-09-23, fixing yardstick-v2 F017 ("who are the top 50 in
+  total adjusted netpoints with the team they play for").
+- **Evidence:** `leaderboard`'s `fields` slot now accepts `"team"` and adds a
+  "team" column, read from `player_game_log` (the season's most recent
+  team, with a "Team is each player's most recent team that season." note
+  when a shown player was traded) - `templates/players.py`,
+  `_leaderboard_fields`/`_leaderboard_show_teams`. Warehouse-verified
+  directly (`leaderboard(ctx, {"stat": "netpoints_per_100", "fields":
+  ["team"], "limit": 50})` lists all 50 players with a team beside each).
+  But `ROUTER_SCHEMA`'s `fields` enum (`router_prompt.py`) is
+  `["points","rebounds","assists","steals","blocks","minutes"]` - no
+  `"team"` - so the router can never emit `fields: ["team"]` under
+  constrained decoding, whatever the question's wording. F017's own trace
+  (`slots={'stat': 'netpoints_per_100', 'limit': 50, 'season_type': 2}`)
+  confirms this: no `fields` at all. Also note the row-count half of F017's
+  complaint ("neither the full 50 ... is given") was not reproducible
+  measured directly against this worktree's code before this change - a
+  50-row request already returned exactly 50 rows in the answer text
+  (1,238 characters); the yardstick log's own captured `answer` field cuts
+  off mid-word ("...Jalen") in a way consistent with the LOG's display
+  truncation, not the system's real output. Not re-measured on a from-
+  scratch git-bisect, so recorded as a discrepancy rather than closed as a
+  separately-fixed bug.
+- **User sees:** a leaderboard that never shows team names, even for
+  wording that explicitly asks for them ("with the team they play for",
+  "and their team") - the router's own words, not the template's.
+- **Next step:** add `"team"` to `ROUTER_SCHEMA`'s `fields` enum and a line
+  in `ROUTER_PROMPT` describing when to set it, then verify with
+  `scripts/check_routing.py` (both belong to the router owner - this
+  session's split assigns `router_prompt.py`/`router.py` there, and
+  changing either without re-running that script risks moving an unrelated
+  question's routing per `AGENTS.md`, "Any edit to ROUTER_PROMPT moves
+  slots on unrelated questions").
+- **Source:** ours.
+- **GitHub:** not yet filed
 
 ### `team_record`'s combined-season-types sentence drops the regular half's "standings from 1993-94" caveat
 - **Found:** 2026-09-23, grading `live_sweep.jsonl` (yardstick-v2 F116).
