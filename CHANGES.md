@@ -16,6 +16,28 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **A team the question names as its own subject, dropped by the router on a
+  `leaderboard`- or `team_stat`-shaped question, is restored instead of
+  silently ranking or refusing about the wrong thing.** "how many 3 pointers
+  have the magic made so far this season" routed to `leaderboard` with
+  `stat`/`season` only - no `team` at all - and ranked the league's
+  individual leaders in makes, the Magic never named (yardstick-v2 F127).
+  `entities.teams_named_in` (the team counterpart of `players_named_in`)
+  finds the one team the question names, and
+  `entities._scope_from_question_team_subject` restores it into `team` so
+  `query.compose` can see it. For `leaderboard` alone the restored value is
+  also marked `team_restored` - a slot no `HONORED_SCOPING` entry lists, so
+  `check_scope` refuses and hands the question to `compose` instead of
+  `leaderboard` quietly ranking players "on" a team that was meant to be the
+  whole subject; `leaderboard`'s own, router-supplied `team` reading ("Top 5
+  scorers on the Lakers?") is untouched, since only a team THIS restore
+  itself wrote carries the marker. `team_stat` gets no marker - an empty
+  `team` there already raises `TemplateUnsupported("no team named")` on its
+  own, so restoring it is a strict improvement. `teams_named_in` excludes any
+  span shorter than three letters and two measured common-word collisions
+  with a real team abbreviation ("was" -> Washington Wizards, "min" ->
+  Minnesota Timberwolves), the same discipline `players_named_in` already
+  applies to a player's name.
 - **A "last N games" period-split question naming no season crosses into an
   earlier one when the current season has nothing.** "zach collins first
   quarter stats last 5 games as a starter" answered "No 2026 regular season

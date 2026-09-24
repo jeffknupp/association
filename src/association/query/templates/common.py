@@ -133,12 +133,38 @@ SEASON_TYPE_NAMES = {0: "regular season and postseason", 1: "preseason", 2: "reg
 # templates that honor it and refused by the rest applies whether the slot
 # widens or narrows. Only `game_log` can ever see it - the router sets it for
 # no other intent - so it is refused everywhere else only in principle.
+# `team_restored` is not read by anything: it marks a `team` value
+# entities._scope_from_question_team_subject wrote back onto `leaderboard`
+# after the router dropped it, so check_scope refuses on its presence alone
+# and query.compose gets the question instead of `leaderboard` quietly
+# ranking players "on" a team that was meant to be the whole subject
+# (yardstick-v2 F127). No HONORED_SCOPING entry lists it, so it always
+# refuses; a team the router supplies itself never carries the marker.
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 """A ``date`` slot worth reading: the router's calendar form, ``YYYY-MM-DD``."""
 
 
 SCOPING_SLOTS = frozenset(
-    {"order", "date", "opponent", "venue", "span", "without", "round", "split", "since", "until", "below", "above", "game_n", "season_n", "situation", "rate", "season_type_unstated"}
+    {
+        "order",
+        "date",
+        "opponent",
+        "venue",
+        "span",
+        "without",
+        "round",
+        "split",
+        "since",
+        "until",
+        "below",
+        "above",
+        "game_n",
+        "season_n",
+        "situation",
+        "rate",
+        "season_type_unstated",
+        "team_restored",
+    }
 )
 
 
@@ -634,6 +660,34 @@ own reroute for a player's record against a team
 (``entities.player_record_against_a_team``, #163), and ``coach`` is
 TABLELESS_INTENTS and already refuses on its own terms - neither needs a
 second, more general check that could only disagree with the first.
+
+.. versionadded:: 4.4.0
+"""
+
+
+TEAM_SUBJECT_RESTORABLE_INTENTS: frozenset[str] = frozenset({"leaderboard", "team_stat"})
+"""Intents where a team the question names as its own subject, and the
+router dropped outright, is worth restoring into ``team`` -
+``entities.scope_from_question``'s ``restore_team_subject`` flag
+(``entities._scope_from_question_team_subject``, yardstick-v2 F127).
+
+"how many 3 pointers have the magic made so far this season" routed to
+``leaderboard`` with no ``team`` slot at all - `stat` and `season` only -
+and ranked the league's individual leaders in makes, the Magic never named.
+``leaderboard`` already reads a router-supplied ``team`` to rank players
+WITHIN it ("Top 5 scorers on the Lakers?"), a different question this must
+not disturb, so only the value this restore itself writes is ALSO marked
+with ``team_restored`` (:data:`SCOPING_SLOTS`, absent from every
+``HONORED_SCOPING`` entry), forcing ``check_scope`` to refuse a
+``leaderboard`` this function touched and hand the question to
+``query.compose``, which composes the team's own total rather than a
+per-player ranking.
+
+``team_stat`` gets no marker: an empty ``team`` there already raises
+``TemplateUnsupported("no team named")`` on its own
+(``templates.common._resolved_team``), so restoring the team there is a
+strict improvement - the template answers directly, using the team as the
+single subject it was always meant to be.
 
 .. versionadded:: 4.4.0
 """

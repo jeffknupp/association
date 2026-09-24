@@ -27,6 +27,7 @@ from association.query.entities import (
     scope_from_question,
     suggest_players,
     team_only_question_names_a_player,
+    teams_named_in,
     undo_name_completion,
 )
 
@@ -1280,6 +1281,91 @@ def test_a_common_word_is_not_read_as_the_team_only_questions_player(scope_con: 
     slots: dict[str, Any] = {"stat": "record", "limit": 1}
     assert player_named_on_a_team_only_question(scope_con, "Best record from 2010-11 to 2018-19 nba", slots) is None
     assert player_named_on_a_team_only_question(scope_con, "Celtics vs Bulls head to head record", slots) is None
+
+
+def test_teams_named_in_reads_a_whole_word_span(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """The team counterpart of players_named_in: a run of up to three words
+    that names one team, longest span first, so "trail blazers" and
+    "los angeles lakers" are each read as one team rather than falling back
+    to a single failed word."""
+    assert [t.name for t in teams_named_in(scope_con, "how did the lakers do")] == ["Los Angeles Lakers"]
+    assert [t.name for t in teams_named_in(scope_con, "warriors vs magic last night")] == ["Golden State Warriors", "Orlando Magic"]
+    assert teams_named_in(scope_con, "how many points did luka score") == []
+
+
+def test_teams_named_in_ignores_common_words_that_collide_with_abbreviations(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """_team_named matches an abbreviation with no length floor of its own,
+    so a bare scan without a guard reads "was" as the Washington Wizards
+    (abbreviation WAS) and "in" as the Indiana Pacers (IN) - measured
+    against the full routing corpus before this shipped (78 false
+    candidates with no guard at all, 61 after a length-3 floor alone, 0
+    once "was"/"min" were excluded outright). Neither collision is an NBA
+    team the question means."""
+    scope_con.execute("INSERT INTO teams VALUES ('23','Washington Wizards','WAS'),('24','Indiana Pacers','IN')")
+    assert teams_named_in(scope_con, "What was the highest scoring game by a player this year?") == []
+    assert teams_named_in(scope_con, "Most games with 15+ assists in 2024?") == []
+    # A real mention of either team still resolves - the guard is on the
+    # coincidental short word, not on the teams themselves.
+    assert [t.name for t in teams_named_in(scope_con, "least points scored by the wizards in the first half")] == ["Washington Wizards"]
+
+
+def test_scope_from_question_restores_a_dropped_team_subject_for_leaderboard(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """yardstick-v2 F127: "how many 3 pointers have the magic made so far
+    this season" arrived at `leaderboard` with `stat`/`season` only, no
+    `team` at all, and ranked the league's individual leaders instead of
+    answering the Magic's own total. `restore_team_subject` puts the team
+    back into `team` (so `query.compose` can see it) AND marks it
+    `team_restored` for `leaderboard` alone, forcing `check_scope` to refuse
+    rather than let `leaderboard` rank players "on" a team that was meant to
+    be the whole subject."""
+    slots: dict[str, Any] = {"stat": "threePointFieldGoalsMade", "season": 2026, "season_type": 2}
+    notes = scope_from_question(scope_con, "how many 3 pointers have the magic made so far this season", slots, reads_player=False, restore_team_subject=True, intent="leaderboard")
+    assert slots["team"] == "Orlando Magic"
+    assert slots["team_restored"] is True
+    assert any("Orlando Magic" in note for note in notes)
+
+
+def test_scope_from_question_restores_a_dropped_team_subject_for_team_stat_with_no_marker(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """`team_stat` already raises TemplateUnsupported("no team named") on an
+    empty `team` on its own (`_resolved_team`), so restoring the team there
+    is a strict improvement and needs no refusing marker - unlike
+    `leaderboard`, which has its own, different, legitimate reading of
+    `team` that must keep answering directly."""
+    slots: dict[str, Any] = {"stat": "pace"}
+    scope_from_question(scope_con, "knicks pace this season", slots, reads_player=False, restore_team_subject=True, intent="team_stat")
+    assert slots["team"] == "New York Knicks"
+    assert "team_restored" not in slots
+
+
+def test_restore_team_subject_does_not_fire_with_a_player_already_present(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """A bare team word beside an already-known player is a different
+    question - `own_team`'s - and a team-only intent naming a player with no
+    team of its own is the F111 refusal-by-name shape; this restore must not
+    quietly paper over either one."""
+    slots: dict[str, Any] = {"stat": "points", "player": "LeBron James"}
+    scope_from_question(scope_con, "lebron points for the lakers this season", slots, reads_player=True, restore_team_subject=True, intent="leaderboard")
+    assert "team" not in slots and "team_restored" not in slots
+
+
+def test_restore_team_subject_does_not_fire_on_an_ambiguous_or_absent_team(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """Never a guess: zero teams named, or more than one, leaves the slots
+    untouched and the question falls through exactly as it did before this
+    restore existed."""
+    none_named: dict[str, Any] = {"stat": "points"}
+    scope_from_question(scope_con, "who led the league in scoring", none_named, reads_player=False, restore_team_subject=True, intent="leaderboard")
+    assert "team" not in none_named
+    two_named: dict[str, Any] = {"stat": "points"}
+    scope_from_question(scope_con, "76ers vs magic total points", two_named, reads_player=False, restore_team_subject=True, intent="leaderboard")
+    assert "team" not in two_named
+
+
+def test_restore_team_subject_is_off_by_default(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """Same discipline as restore_subject/restore_team: a caller that does
+    not ask for it (an intent outside TEAM_SUBJECT_RESTORABLE_INTENTS)
+    leaves `team` alone."""
+    slots: dict[str, Any] = {"stat": "points"}
+    scope_from_question(scope_con, "how many 3 pointers have the magic made so far this season", slots, reads_player=False, intent="leaderboard")
+    assert "team" not in slots
 
 
 @pytest.mark.parametrize(("nickname", "team"), [("Sixers", "Philadelphia 76ers"), ("cavs", "Cleveland Cavaliers"), ("Mavs", "Dallas Mavericks")])

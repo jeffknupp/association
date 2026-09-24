@@ -445,6 +445,28 @@ def test_leaderboard_names_the_team_when_filtered(lb_con: TemplateContext) -> No
     assert "led the Golden State Warriors" in (result.answer or "")
 
 
+def test_leaderboard_refuses_a_team_the_question_named_as_its_own_subject(lb_con: TemplateContext) -> None:
+    """yardstick-v2 F127: "how many 3 pointers have the magic made so far
+    this season" routed to `leaderboard` with `stat` and `season` only - no
+    `team` at all - and ranked the league's individual leaders in makes,
+    the Magic never named. `entities._scope_from_question_team_subject`
+    restores the dropped team AND marks it `team_restored`
+    (`SCOPING_SLOTS`, absent from every `HONORED_SCOPING` entry), so
+    `check_scope` refuses this exact shape and hands the question to
+    `query.compose` instead of `leaderboard` quietly ranking players.
+
+    The marker is the whole point: `leaderboard`'s OWN, router-supplied
+    `team` reading - ranking players WITHIN a team, proven by
+    `test_leaderboard_names_the_team_when_filtered` just above - must keep
+    answering directly. `team_restored` is set only where THIS restore
+    itself wrote `team`, never where the router supplied it."""
+    router_supplied = {"stat": "points", "team": "Warriors"}
+    check_scope("leaderboard", router_supplied)  # does not raise
+    restored = {"stat": "threePointFieldGoalsMade", "season": 2026, "team": "Orlando Magic", "team_restored": True}
+    with pytest.raises(TemplateUnsupported, match="team_restored"):
+        check_scope("leaderboard", restored)
+
+
 def test_leaderboard_honors_playoffs(lb_con: TemplateContext) -> None:
     result = leaderboard(lb_con, {"stat": "points", "season_type": 3})
     assert "postseason" in (result.answer or "") and result.data["leaders"][0]["value"] == 31.0

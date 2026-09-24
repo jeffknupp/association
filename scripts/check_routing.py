@@ -36,7 +36,7 @@ from association.query.entities import override_invented_players, override_nickn
 from association.query.models import DEFAULT_ROUTER_MODEL
 from association.query.router import RouterUnavailable, route
 from association.query.templates import TEMPLATES
-from association.query.templates.common import OWN_TEAM_RESTORABLE_INTENTS, PLAYER_INTENTS, PLAYER_REQUIRED_INTENTS, SUBJECT_RESTORABLE_INTENTS
+from association.query.templates.common import OWN_TEAM_RESTORABLE_INTENTS, PLAYER_INTENTS, PLAYER_REQUIRED_INTENTS, SUBJECT_RESTORABLE_INTENTS, TEAM_SUBJECT_RESTORABLE_INTENTS
 
 # (question, expected intent, expected slots). A list-valued expectation is a
 # SUBSET check: dropping a field the user asked for is a bug, while the router
@@ -358,6 +358,16 @@ CASES: list[tuple[str, str, dict]] = [
     # commit message for the nondeterministic "team" slot this question's
     # own router run sometimes fills with the player's own name.
     ("alperen şengün alltime record", "team_leaderboard", {}),
+    # yardstick-v2 F127: routed to `leaderboard` with `stat`/`season` only -
+    # no `team` at all - and ranked the league's individual leaders in makes,
+    # the Magic never named. entities._scope_from_question_team_subject
+    # restores the team into `team` (so query.compose can see it) and marks
+    # it `team_restored` - a slot leaderboard's own HONORED_SCOPING never
+    # lists, so check_scope refuses and hands the question to compose instead
+    # of leaderboard quietly ranking players "on" what was meant to be the
+    # whole subject. See tests/query/test_templates.py for the check_scope
+    # half and tests/query/test_entities.py for teams_named_in itself.
+    ("how many 3 pointers have the magic made so far this season", "leaderboard", {"team": "Orlando Magic", "team_restored": True}),
     ("zach lavine vs nuggets last 8 games home", "game_log", {"venue": "home"}),
     ("how did curry do against the celtics this year", "player_stat", {}),
     # Came back as player_compare with the Celtics as the second "player".
@@ -488,6 +498,8 @@ def main() -> int:
                 needs_player=got.intent in PLAYER_REQUIRED_INTENTS,
                 restore_subject=got.intent in SUBJECT_RESTORABLE_INTENTS,
                 restore_team=got.intent in OWN_TEAM_RESTORABLE_INTENTS,
+                restore_team_subject=got.intent in TEAM_SUBJECT_RESTORABLE_INTENTS,
+                intent=got.intent,
             )
             override_invented_players(con, question, got.slots)
         if got is None:

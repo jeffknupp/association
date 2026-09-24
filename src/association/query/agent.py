@@ -38,6 +38,7 @@ from .templates.common import (
     PLAYER_REQUIRED_INTENTS,
     SUBJECT_RESTORABLE_INTENTS,
     TEAM_ONLY_INTENTS,
+    TEAM_SUBJECT_RESTORABLE_INTENTS,
     TemplateContext,
     TemplateResult,
     TemplateUnsupported,
@@ -351,6 +352,8 @@ class Agent:
             needs_player=routed.intent in PLAYER_REQUIRED_INTENTS,
             restore_subject=routed.intent in SUBJECT_RESTORABLE_INTENTS,
             restore_team=routed.intent in OWN_TEAM_RESTORABLE_INTENTS,
+            restore_team_subject=routed.intent in TEAM_SUBJECT_RESTORABLE_INTENTS,
+            intent=routed.intent,
         ):
             history.log(f"  -> (scope) {change}")
         # The router invents whole names, not only nicknames: "compare sga and

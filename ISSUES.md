@@ -69,28 +69,6 @@ before that commit needs re-checking against the current warehouse.
   `leaderboard` ever answers. Needs whoever owns `query/compose`'s
   boolean-measure point next.
 
-### A player intent drops the team subject on a team-count question: "how many 3 pointers have the magic made so far this season"
-- **Found:** 2026-09-23, same session, yardstick-v2 F127.
-- **Evidence:** routes `leaderboard {'stat':
-  'threePointFieldGoalsMade', 'season_type': 2, 'season': 2026}` - the
-  `team: "Magic"` slot the model likely filled (or should have) is not in
-  the final route at all - and answers "Kon Knueppel led the league ... at
-  273", the individual leaderboard, never mentioning the Orlando Magic or
-  their team total (961). This is the mirror image of #147's fix
-  (`_team_slot_for_player`, which keeps a team beside a NAMED PLAYER as his
-  opponent): here there is no player at all, and the team itself is the
-  subject of a counting question the router read as an individual
-  leaderboard.
-- **User sees:** a wrong answer about the wrong subject (individual players
-  instead of the team asked about).
-- **Next step:** the router half is restoring/keeping a team the question
-  names on a player-shaped counting intent (`leaderboard`/`threshold_count`)
-  so `check_scope` refuses (a `team` slot neither honors today) and
-  `compose`/the team-count answer path can see it, the same discipline
-  `_team_slot_for_player` already applies for a named PLAYER's team. The
-  actual team-subject composition (a team's season total of a counting
-  stat) is out of this session's scope (`query/compose`, team agent's files).
-
 ### A position group as the subject is dropped and the team's own log answers: "Centers stats game log vs kings" lists the Kings' last five games
 - **Found:** 2026-09-22, the skeleton spike's K3 run (`~/association-research/skeleton-spike/k3_run.py`)
   re-running `live_c5.jsonl`'s fall-throughs on master `5279f7c`.
