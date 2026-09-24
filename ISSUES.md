@@ -2949,6 +2949,23 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
+### A career `game_log`'s heading names one season in parentheses beside a career count
+- **Found:** 2026-09-24, checking the answer to "bam adebayo career games in
+  the month of march" (yardstick-v2 F096) after routing it to `game_log`.
+- **Evidence:** `game_log` with `span: career` heads its answer "Bam Adebayo
+  in March, last 10 of 118 games of his career (2026 regular season)"; with
+  no situation, "Bam Adebayo, last 10 of 640 games of his career (2026
+  regular season)", and for Dwyane Wade "... of 1054 games of his career
+  (2019 regular season)". The parenthesis is the season the ten rows shown
+  come from, but it sits beside the career count and reads as the span of
+  all 118 (which run 2018-2026: 118 played March games by Eastern date,
+  re-measured on `player_game_log` x `real_games`).
+- **User sees:** a heading that seems to contradict itself - a career count
+  labeled with one season. The numbers are right.
+- **Next step:** the template owner words the parenthesis as what it is
+  ("shown: 2026") or drops it on a career span.
+- **Priority note:** P4 - wording, the figures are correct.
+
 ### A league-wide rows read orders ties by chance when several players share one game
 - **Found:** 2026-09-24, by the compose agent re-running `k2_run_pkg.py`
   (reported to the lead; transcribed here).
