@@ -30,7 +30,7 @@ from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .keepalive import KEEP_ALIVE
 from .models import AGENT_BUDGET_SECONDS, DEFAULT_ROUTER_MODEL
 from .prompt import AGENT_NUM_CTX, TOOLS, build_system_prompt
-from .refusals import unanswerable
+from .refusals import pair_from_opponent, unanswerable
 from .router import Route, RouterUnavailable, route
 from .templates import TEMPLATES
 from .templates.common import (
@@ -375,6 +375,11 @@ class Agent:
         # Completing a bare surname is the prominence tiebreak this project
         # measured and rejected, arriving through the model instead of through
         # code. "brown" is ten players and has to ask, as it always did.
+        paired = pair_from_opponent(self.toolbox.con, routed.intent, routed.slots)
+        if paired is not None:
+            history.log(f"  -> (scope) {routed.intent!r} -> 'player_matchup' (the opponent {paired!r} is a player: the games the two played against each other)")
+            routed.intent = "player_matchup"
+            handler = TEMPLATES[routed.intent]
         for was, now in undo_name_completion(self.toolbox.con, question, routed.slots):
             history.log(f"  -> (player) {was!r} -> {now!r} (the question names only part of it, and that part is ambiguous)")
         # AGENTS.md, "Refuse by name where the intent cannot be about the

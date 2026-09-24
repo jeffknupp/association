@@ -10,8 +10,8 @@ floor refusal rather than raising it: the agent would query the same tables,
 take a minute over it, and is then free to fill the silence from its own
 weights (AGENTS.md, "Refusing beats falling through wherever the agent has
 nothing to read"). Measured on the yardstick's fall-throughs, 2026-09-23: a
-playoff round, an age, a conference, a stat other than points by quarter, and
-a "game log vs <another player>" each took 30-120 seconds to reach an agent
+playoff round, an age, a conference, and a stat other than points by quarter
+each took 30-120 seconds to reach an agent
 answer that was wrong or never came.
 
 Every shape here is one the templates already refuse and the warehouse has no
@@ -36,10 +36,14 @@ from association.query.calendar import parse_situation
 from association.query.entities import find_players, find_teams
 from association.query.templates.common import PLAYER_INTENTS, TemplateResult
 
-#: Intents whose ``opponent`` is a team the subject played against - a player
-#: in that slot is a pair question ("lebron vs kawhi head to head"), which no
-#: relation carries yet.
-_OPPONENT_IS_A_TEAM_INTENTS: frozenset[str] = frozenset({"player_matchup", "game_log", "player_stat", "threshold_count", "single_game_high", "player_splits", "streak", "record_when"})
+#: Intents whose ``opponent`` is a team the subject played against. A PLAYER
+#: in that slot is the pair relation's question - "lebron vs kawhi head to
+#: head", "jay huff game log vs embiid" - which `player_matchup` answers
+#: from two reads of the relation joined on the event; the router filed the
+#: second player as an opponent, and a genuine two-player matchup refuses
+#: `opponent`, so both fell through (yardstick-v2 F081, F142).
+_PAIRABLE_INTENTS: frozenset[str] = frozenset({"player_matchup", "game_log", "player_stat", "threshold_count", "single_game_high", "streak", "record_when", "player_splits"})
+
 
 _AGE = re.compile(r"\b(?:\d+\s+years?\s+old|(?:before|after|by|at)\s+(?:turning|age)\s+\d+|age\s+\d+)\b", re.IGNORECASE)
 _CONFERENCE_OR_DIVISION = re.compile(r"\b(?:east(?:ern)?|west(?:ern)?|conference|division|atlantic|central|southeast|northwest|pacific|southwest)\b", re.IGNORECASE)
@@ -52,7 +56,7 @@ def unanswerable(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, A
 
     .. versionadded:: 4.4.0
     """
-    for check in (_playoff_round, _non_calendar_situation, _period_stat, _opponent_is_a_player, _team_where_a_player_belongs):
+    for check in (_playoff_round, _non_calendar_situation, _period_stat, _team_where_a_player_belongs):
         message = check(con, intent, slots, question)
         if message is not None:
             return TemplateResult(data={"message": message, "refused": check.__name__.lstrip("_"), "intent": intent}, answer=message)
@@ -95,17 +99,6 @@ def _period_stat(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, A
     return f"By quarter or half, only points are on record - {stat!r} is not split by period. Ask for points in {where}, or for {stat} over whole games."
 
 
-def _opponent_is_a_player(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str) -> str | None:
-    """A player in the ``opponent`` slot: games between two named players
-    are a pair relation nothing carries yet - name his team instead."""
-    opponent = slots.get("opponent")
-    if intent not in _OPPONENT_IS_A_TEAM_INTENTS or not isinstance(opponent, str) or not opponent.strip():
-        return None
-    if find_teams(con, opponent) or not find_players(con, opponent):
-        return None
-    return f"Games between two named players are not read yet - '{opponent}' is a player, not a team. Name his team to get the games against it."
-
-
 def _team_where_a_player_belongs(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str) -> str | None:
     """A team in the ``player`` slot of a template that answers for one
     player: ask which player was meant, or send the team's own question to
@@ -116,3 +109,26 @@ def _team_where_a_player_belongs(con: duckdb.DuckDBPyConnection, intent: str, sl
     if find_players(con, player) or not find_teams(con, player):
         return None
     return f"'{player}' is a team, and this was read as a question about one player's {slots.get('stat') or 'stats'}. Name a player, or ask for the team's own record or stats."
+
+
+def pair_from_opponent(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any]) -> str | None:
+    """Rewrite a player filed as the ``opponent`` into the second of two
+    ``players``, so :func:`~association.query.templates.games.player_matchup`
+    answers the meetings; returns the opponent's name when it did, else None.
+    Only where the opponent matches a player and no team - a team opponent,
+    or a name matching nothing, is left for the template to read or refuse.
+
+    Not a refusal: this module's one repair, kept here beside the refusal it
+    replaced (a "not read yet" that was false - the pair relation is read).
+
+    .. versionadded:: 4.4.0
+    """
+    opponent, player = slots.get("opponent"), slots.get("player")
+    if intent not in _PAIRABLE_INTENTS or not isinstance(opponent, str) or not opponent.strip() or not isinstance(player, str) or not player.strip():
+        return None
+    if find_teams(con, opponent) or not find_players(con, opponent):
+        return None
+    slots["players"] = [player, opponent]
+    slots.pop("player", None)
+    slots.pop("opponent", None)
+    return opponent

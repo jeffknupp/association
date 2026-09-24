@@ -12,7 +12,7 @@ import duckdb
 import pytest
 
 from association.query.calendar import parse_situation
-from association.query.refusals import unanswerable
+from association.query.refusals import pair_from_opponent, unanswerable
 from association.query.templates.common import TemplateUnsupported, check_scope
 
 
@@ -88,17 +88,6 @@ def test_a_stat_other_than_points_by_quarter_is_refused(con: duckdb.DuckDBPyConn
     assert half is not None and "the 2nd half" in half.answer
 
 
-def test_a_player_in_the_opponent_slot_is_a_pair_question(con: duckdb.DuckDBPyConnection) -> None:
-    """yardstick-v2 F081 "lebron vs kawhi head to head": games between two
-    named players are a relation nothing carries - the refusal says so and
-    names the repair (his team). A team opponent is not touched."""
-    refusal = unanswerable(con, "player_matchup", {"player": "LeBron James", "opponent": "Kawhi Leonard"}, "lebron vs kawhi head to head")
-    assert refusal is not None
-    assert "two named players" in refusal.answer and "'Kawhi Leonard' is a player" in refusal.answer
-    assert unanswerable(con, "player_matchup", {"player": "LeBron James", "opponent": "Atlanta Hawks"}, "lebron vs the hawks") is None
-    assert unanswerable(con, "player_matchup", {"player": "LeBron James", "opponent": "Nobody Real"}, "lebron vs nobody") is None
-
-
 def test_a_team_in_the_player_slot_asks_which_player(con: duckdb.DuckDBPyConnection) -> None:
     """yardstick-v2 F125 "Most reb by a hawk player history" routed
     player_history with player='Hawks': a team where one player belongs."""
@@ -108,3 +97,18 @@ def test_a_team_in_the_player_slot_asks_which_player(con: duckdb.DuckDBPyConnect
     assert unanswerable(con, "player_history", {"player": "LeBron James", "stat": "rebounds"}, "lebron rebounds by year") is None
     # A team-only intent is not this module's business - the team templates read it.
     assert unanswerable(con, "team_record", {"player": "Hawks"}, "hawks record") is None
+
+
+def test_a_player_in_the_opponent_slot_becomes_the_second_of_two_players(con: duckdb.DuckDBPyConnection) -> None:
+    """yardstick-v2 F081 "lebron vs kawhi head to head": the pair relation
+    is read by player_matchup, so a player filed as the opponent is the
+    second player - not a refusal. A team opponent, or a name matching
+    nothing, is left alone."""
+    slots: dict[str, Any] = {"player": "LeBron James", "opponent": "Kawhi Leonard", "limit": 5}
+    assert pair_from_opponent(con, "game_log", slots) == "Kawhi Leonard"
+    assert slots == {"players": ["LeBron James", "Kawhi Leonard"], "limit": 5}
+    team: dict[str, Any] = {"player": "LeBron James", "opponent": "Atlanta Hawks"}
+    assert pair_from_opponent(con, "game_log", team) is None and team["opponent"] == "Atlanta Hawks"
+    nobody: dict[str, Any] = {"player": "LeBron James", "opponent": "Nobody Real"}
+    assert pair_from_opponent(con, "player_matchup", nobody) is None
+    assert pair_from_opponent(con, "team_record", {"player": "LeBron James", "opponent": "Kawhi Leonard"}) is None
