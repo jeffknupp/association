@@ -63,6 +63,17 @@
   }
   header h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .02em; }
   header .status { font-size: 12px; color: var(--muted); margin-left: auto; }
+  /* The connection indicator: whether this page can still reach its server,
+     and whether that server has restarted under it (a new commit or a rebuilt
+     warehouse, on the deployed box). */
+  header .conn { font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  header .conn .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+  header .conn.ok .dot { background: var(--fast); }
+  header .conn.stale .dot { background: var(--agent); }
+  header .conn.down .dot { background: var(--warn); }
+  header .conn.down { color: var(--warn); }
+  header .conn.updated .dot { background: var(--accent); }
+  header .conn.updated { color: var(--accent); cursor: pointer; text-decoration: underline; }
   /* #71: what the warehouse actually holds, in the tiers coverage.py
      enforces - box score, +play-by-play, +NetPoints - rather than the single
      min/max season the status line above gives, which reads as "the whole
@@ -345,6 +356,7 @@
 <header>
   <h1>association</h1>
   <span class="status" id="status">checking…</span>
+  <span class="conn" id="conn" role="status" aria-live="polite"><span class="dot"></span><span id="conn-text">connecting…</span></span>
 </header>
 <div class="coverage" id="coverage"></div>
 
@@ -386,6 +398,49 @@
     status.textContent = parts.join(" · ");
     status.title = `${h.warehouse}\nrouter: ${h.models.router}\nagent: ${h.models.agent}`;
   }).catch(() => { status.textContent = "server unreachable"; });
+
+  // Connection and live reload. /api/ping names the server's instance, drawn
+  // fresh each time it starts - and the deployed server restarts on every
+  // commit to master and every warehouse rebuild, so a changed instance means
+  // this page may be out of date. It reloads itself only when that loses
+  // nothing: no answer on screen, no draft, no question in flight. Otherwise
+  // it says so, and a click reloads - a thread of answers is not something to
+  // throw away behind the reader's back.
+  const conn = document.getElementById("conn");
+  const connText = document.getElementById("conn-text");
+  const PING_EVERY_MS = 10000;
+  const RETRY_EVERY_MS = 3000;
+  let instance = null;
+  let failures = 0;
+  let updated = false;
+  function setConn(state, text, title) {
+    conn.className = "conn " + state;
+    connText.textContent = text;
+    conn.title = title;
+  }
+  function nothingToLose() {
+    return !thread.querySelector(".turn") && !input.value.trim() && !send.disabled;
+  }
+  function ping() {
+    fetch("/api/ping", {cache: "no-store"}).then(r => {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    }).then(p => {
+      failures = 0;
+      if (instance === null) instance = p.instance;
+      else if (p.instance !== instance) updated = true;
+      if (updated && nothingToLose()) { location.reload(); return; }
+      if (updated) setConn("updated", "updated · reload", "The server restarted, possibly with a newer version. Click to reload this page - the answers on it will be cleared.");
+      else setConn("ok", p.busy ? "connected · answering" : "connected", "Connected to the server" + (p.busy ? "; it is answering a question." : "."));
+    }).catch(() => {
+      failures += 1;
+      // One missed poll is a restart in progress as often as an outage.
+      if (failures < 3) setConn("stale", "reconnecting…", "The last check could not reach the server; retrying.");
+      else setConn("down", "disconnected", "The server has not answered " + failures + " checks in a row; still retrying.");
+    }).finally(() => { setTimeout(ping, failures ? RETRY_EVERY_MS : PING_EVERY_MS); });
+  }
+  conn.addEventListener("click", () => { if (updated) location.reload(); });
+  ping();
 
   // #71: what's actually answerable, per tier - read straight off the
   // response, never recomputed here. A tier with no `last_season` was never

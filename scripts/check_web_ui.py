@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Browser check for the page's keyboard, clipboard and note-saving behaviors.
+"""Browser check for the page's keyboard, clipboard, note-saving and live-reload behaviors.
 
 `web/static/index.html` carries its JavaScript inline, and pytest can only read
 that file as text: `test_renderers.py` parses the renderer table out of it and
@@ -7,7 +7,10 @@ syntax-checks the script with `node --check`, which is everything that can be
 done without a browser. ArrowUp recall, the per-question copy button and
 saving a note are none of them - they are key events, a caret position, a
 clipboard and a real `fetch` to `POST /api/notes`, so they get a real browser
-engine, real key presses and a real `navigator.clipboard.readText`.
+engine, real key presses and a real `navigator.clipboard.readText`. The
+connection indicator and live reload are timers and a real `location.reload()`,
+checked on a page of their own under Playwright's fake clock so ten-second
+polls cost nothing.
 
     uv run --with playwright python scripts/check_web_ui.py
 
@@ -22,8 +25,9 @@ because `navigator.clipboard` exists only in a secure context and a loopback
 address is one - the same reason the copy button keeps a selection-based
 fallback for the LAN address the same server also answers on.
 
-The API is stubbed in the page (EventSource, the two startup fetches, and
-`POST /api/notes`), so this needs no ollama, no warehouse and no network.
+The API is stubbed in the page (EventSource, the two startup fetches,
+`POST /api/notes`, and `GET /api/ping`, whose instance and failure the checks
+set through `window.__ping`), so this needs no ollama, no warehouse and no network.
 """
 
 import functools
@@ -31,6 +35,7 @@ import http.server
 import threading
 from pathlib import Path
 
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
 STATIC = Path(__file__).resolve().parent.parent / "src" / "association" / "web" / "static"
@@ -50,9 +55,14 @@ window.EventSource = class {
   close() {}
 };
 window.__notes = [];
+window.__ping = {instance: "first", fail: false};
 const realFetch = window.fetch;
 window.fetch = (u, o) => {
   if (String(u).indexOf("/api/health") >= 0) return Promise.resolve(new Response(JSON.stringify({ready: true, model: "stub", db: "stub"}), {headers: {"content-type": "application/json"}}));
+  if (String(u).indexOf("/api/ping") >= 0) {
+    if (window.__ping.fail) return Promise.reject(new TypeError("Failed to fetch"));
+    return Promise.resolve(new Response(JSON.stringify({instance: window.__ping.instance, busy: false}), {headers: {"content-type": "application/json"}}));
+  }
   if (String(u).indexOf("/api/coverage") >= 0) return Promise.resolve(new Response(JSON.stringify({}), {headers: {"content-type": "application/json"}}));
   if (String(u).indexOf("/api/notes") >= 0) {
     window.__notes.push(JSON.parse(o.body));
@@ -164,11 +174,71 @@ with sync_playwright() as p:
     page.press("#input", "ArrowUp")
     check("typing restarts recall from the newest", page.input_value("#input") == "second question", page.input_value("#input"))
 
+    # Connection indicator and live reload, on pages with a fake clock. A
+    # marker set on `window` survives everything except a real reload, which
+    # is how "it reloaded" and "it did not" are told apart.
+    def live_page():
+        page = ctx.new_page()
+        page.add_init_script(STUB)
+        page.clock.install()
+        page.goto(url)
+        page.wait_for_selector("#input")
+        page.clock.run_for(100)
+        page.evaluate("window.__marker = true")
+        return page
+
+    def conn(page):
+        return page.inner_text("#conn-text")
+
+    def reloaded(page):
+        # A reload may still be in flight when this is called: reading the
+        # marker then fails with "execution context was destroyed", which is
+        # the navigation itself, so settle and read the new page instead.
+        for _ in range(20):
+            try:
+                page.wait_for_load_state()
+                page.wait_for_selector("#input")
+                return page.evaluate("window.__marker") is None
+            except PlaywrightError:  # noqa: PERF203 - retrying is the point: a reload in flight destroys the context being read
+                page.wait_for_timeout(100)
+        return False
+
+    live = live_page()
+    check("the indicator says connected once the server answers", conn(live) == "connected", conn(live))
+    live.evaluate("window.__ping.fail = true")
+    live.clock.run_for(10_500)
+    check("one missed poll reads as reconnecting, not down", conn(live) == "reconnecting…", conn(live))
+    live.clock.run_for(6_500)
+    check("three missed polls read as disconnected", conn(live) == "disconnected", conn(live))
+    live.evaluate("window.__ping.fail = false")
+    live.clock.run_for(3_500)
+    check("it says connected again when the server comes back", conn(live) == "connected", conn(live))
+
+    live.fill("#input", "a draft in progress")
+    live.evaluate("window.__ping.instance = 'second'")
+    live.clock.run_for(10_500)
+    check("a restart with a draft typed offers a reload instead", conn(live) == "updated · reload" and not reloaded(live), conn(live))
+    live.fill("#input", "")
+    live.clock.run_for(10_500)
+    check("with nothing to lose it reloads itself", reloaded(live))
+    live.close()
+
+    live = live_page()
+    live.fill("#input", "a question")
+    live.press("#input", "Enter")
+    live.clock.run_for(100)
+    live.evaluate("window.__ping.instance = 'second'")
+    live.clock.run_for(10_500)
+    check("a restart with an answer on screen does not reload it away", conn(live) == "updated · reload" and not reloaded(live), conn(live))
+    live.click("#conn")
+    check("clicking the indicator reloads", reloaded(live))
+    live.close()
+
     browser.close()
 
-if len(results) < 19:
+if len(results) < 27:
     # A crash mid-run would otherwise print a short, all-PASS list and exit 0.
-    check("every check ran", False, f"only {len(results)} of 19 checks reported")
+    check("every check ran", False, f"only {len(results)} of 27 checks reported")
 
 for ok, name, detail in results:
     print(("PASS " if ok else "FAIL ") + name + (f"  :: {detail}" if detail and not ok else ""))

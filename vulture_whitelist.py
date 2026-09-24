@@ -19,6 +19,7 @@ web
 # association/web/app.py, inside create_app: registered by FastAPI's @app.get
 # / @app.post.
 health
+ping
 ask_stream
 add_note
 
@@ -28,6 +29,10 @@ warehouse_ready
 output_dir
 models
 ollama_ready
+
+# association/web/app.py, PingResponse: a pydantic response field, serialized
+# by FastAPI and read as JSON by the page's connection indicator.
+instance
 
 # association/web/app.py, NoteResponse: a pydantic response field, serialized
 # by FastAPI and read as JSON by the page's note control.

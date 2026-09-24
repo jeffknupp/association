@@ -196,6 +196,41 @@ def test_health_reports_an_unreachable_model_backend(tmp_path: Path) -> None:
     assert _client(answerer, tmp_path).get("/api/health").json()["ollama_ready"] is False
 
 
+def test_ping_names_one_instance_for_the_life_of_a_server(tmp_path: Path) -> None:
+    """The page reloads when this changes, so it must hold still across polls
+    of one server - a value drawn per request would reload the page forever."""
+    client = _client(StubAnswerer(), tmp_path)
+    first, second = client.get("/api/ping").json(), client.get("/api/ping").json()
+    assert first["instance"] == second["instance"]
+    assert len(first["instance"]) == 16
+
+
+def test_ping_names_a_new_instance_after_a_restart(tmp_path: Path) -> None:
+    """A restarted server is a newly built app, and the page can only notice
+    the restart if the new one says something different."""
+    before = _client(StubAnswerer(), tmp_path).get("/api/ping").json()["instance"]
+    after = _client(StubAnswerer(), tmp_path).get("/api/ping").json()["instance"]
+    assert before != after
+
+
+def test_ping_reports_busy_without_asking_whether_the_model_is_up(tmp_path: Path) -> None:
+    """Polled every few seconds, so it must stay cheap: unlike /api/health it
+    never reads ``ready``, which on the real runner reaches ollama."""
+
+    class NoProbe(StubAnswerer):
+        @property
+        def ready(self) -> bool:
+            raise AssertionError("/api/ping asked the model backend whether it is up")
+
+        @ready.setter
+        def ready(self, value: bool) -> None:
+            pass
+
+    answerer = NoProbe()
+    answerer.busy = True
+    assert _client(answerer, tmp_path).get("/api/ping").json()["busy"] is True
+
+
 def test_health_reports_the_seasons_a_real_warehouse_holds(tmp_path: Path) -> None:
     """A warehouse loaded before `real_games` existed holds `games` alone, and
     the health line falls back to it rather than reporting the warehouse
