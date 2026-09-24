@@ -50,6 +50,7 @@ from .common import (
     _optional_team,
     _ordinal,
     _period,
+    _player_relation_season_type,
     _relation_window,
     _resolved_player,
     _resolved_team,
@@ -2325,9 +2326,14 @@ def player_matchup(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
        three-way question, and :func:`_player_matchup_drop_fabricated_second`
        recognizes each shape - eliminating, never guessing which of two real
        players was meant - and folds it back into the branch above, which
-       already reads ``without`` because :func:`game_log` does. A ``without``
-       left over on a genuine two-player matchup is refused rather than
-       silently dropped, the same reasoning ``opponent`` already gets.
+       already reads ``without`` because :func:`game_log` does.
+
+    .. versionchanged:: 4.4.0
+       A genuine two-player matchup narrows the first player's games through
+       the shared ``scoped_games`` step, so a teammate's absence, a venue, a
+       date, a starter half and a calendar are honored and stated - the pair
+       relation is on the relation. ``opponent`` is still refused there: two
+       players' meetings have no third team to narrow by.
 
     .. versionadded:: 2.1.0
     """
@@ -2352,20 +2358,16 @@ def player_matchup(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
         # real two-player matchup that still has one left over has to refuse
         # it itself - it names no third team to narrow the meetings by.
         raise TemplateUnsupported("player_matchup cannot narrow a two-player matchup to one opponent")
-    if without:
-        # check_scope lets `without` through for the same fallback, so a
-        # genuine two-player matchup with one left over has to refuse it
-        # itself too - a meeting's OWN teammates are not what either player's
-        # box-score row narrows, and nothing here answers which side a name
-        # belongs to.
-        raise TemplateUnsupported("player_matchup cannot narrow a two-player matchup by a teammate's absence")
     scope = _condition_scope(slots.get("season"), slots.get("span"), slots.get("season_type"), _PLAYER_GAME_TABLES, since=slots.get("since"))
     resolved = _player_matchup_resolve(con, texts, scope)
     if isinstance(resolved, TemplateResult):
         return resolved
     a, b = resolved
+    narrowed = _player_matchup_narrowed(con, a, b, slots)
+    if isinstance(narrowed, TemplateResult):
+        return narrowed
 
-    meetings, together = _meetings(con, scope, a.id, b.id)
+    meetings, together = _meetings(con, narrowed, b.id)
     unseen = _unseen_meetings(con, scope, a.id, b.id)
     caveat = (
         f" {unseen} game{'' if unseen == 1 else 's'} between their teams while both were playing for them {'has' if unseen == 1 else 'have'} no box score, so a meeting there is not counted."
@@ -2373,11 +2375,36 @@ def player_matchup(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
         else ""
     )
     if not meetings:
-        return _player_matchup_no_meetings(con, scope, a, b, together, caveat)
+        return _player_matchup_no_meetings(con, scope, a, b, together, caveat, narrowed.filters())
 
     wins, lines, count, summary = _player_matchup_summary(a, b, meetings)
     shown, log = _player_matchup_log(con, meetings, slots.get("limit"), a, b)
-    return _player_matchup_answer(a, b, scope, meetings, wins, lines, count, summary, shown, log, caveat)
+    return _player_matchup_answer(a, b, scope, meetings, wins, lines, count, summary, shown, log, caveat, narrowed.filters())
+
+
+def _player_matchup_narrowed(con: duckdb.DuckDBPyConnection, a: Entity, b: Entity, slots: dict[str, Any]) -> _Narrowed | TemplateResult:
+    """The first player's games under every row-level narrowing the question
+    carries - a teammate's absence ("curry vs lebron without kd", yardstick-v2
+    F114), a venue, a date, a starter half, a calendar - read through the
+    shared step so the pair relation honors what every other template on the
+    relation honors, and says it. The window (``limit``) is the matchup's
+    own: the newest N meetings are shown BENEATH averages over all of them,
+    never a cut on the averages. A second player who is also the absent
+    teammate ("fox vs wembanyama without wembanyama") is a question with no
+    games in it, said so rather than answered "never met" (found by the
+    golden the day ``without`` landed on the pair relation).
+
+    .. versionadded:: 4.4.0
+    """
+    span = _span_of(slots.get("span"), slots.get("season"), _player_relation_season_type(slots), "player_game_log", since=slots.get("since"), until=slots.get("until"))
+    narrowed = scoped_games(con, a, span, {k: v for k, v in slots.items() if k not in ("limit", "order", "opponent")}, opponent=None, measures=measure_filters(slots.get("below"), slots.get("above")))
+    if isinstance(narrowed, TemplateResult):
+        return narrowed
+    narrowed = whole_span(narrowed)
+    if any(absent.id == b.id for absent in narrowed.without):
+        message = f"{b.name} is both the player {a.name} is matched against and the teammate named as absent - no game can be both. Name the opponent team, or drop 'without'."
+        return TemplateResult(data={"players": [a.name, b.name], "message": message}, answer=message)
+    return narrowed
 
 
 def _player_matchup_drop_fabricated_second(con: duckdb.DuckDBPyConnection, texts: list[str], without: Any, season: Any, span: Any, season_type: Any) -> list[str]:
@@ -2450,15 +2477,23 @@ def _player_matchup_resolve(con: duckdb.DuckDBPyConnection, texts: list[str], sc
     return a, b
 
 
-def _player_matchup_no_meetings(con: duckdb.DuckDBPyConnection, scope: _Scope, a: Entity, b: Entity, together: int, caveat: str) -> TemplateResult:
+def _player_matchup_no_meetings(con: duckdb.DuckDBPyConnection, scope: _Scope, a: Entity, b: Entity, together: int, caveat: str, narrowing: str = "") -> TemplateResult:
     """The refusal for two players who never played against each other in
     scope - naming whichever of them has no games at all, since that is the
-    missing fact rather than the matchup itself."""
+    missing fact rather than the matchup itself. ``narrowing`` is what the
+    first player's games were narrowed to (" without Jamal Murray"): with one,
+    the sentence says the meetings are missing from THOSE games, since
+    "never played against each other" would be false of two players who
+    met whenever the teammate was there (found by the golden the day the
+    narrowing landed: Jokic and Embiid "never met" without Murray)."""
     for player in (a, b):
         if _totals(con, _player_games(scope, box=box_source(con)), {**scope.params(), "player": player.id})[0] == 0:
             return _no_games(con, player, scope, None)
     teammates = f" - they were teammates in all {together} games they both played" if together else ""
-    message = f"{a.name} and {b.name} never played against each other {_where_in(scope)}{teammates}.{caveat}"
+    if narrowing:
+        message = f"No meetings between {a.name} and {b.name} in {a.name}'s games{narrowing} {_where_in(scope)}{teammates}.{caveat}"
+    else:
+        message = f"{a.name} and {b.name} never played against each other {_where_in(scope)}{teammates}.{caveat}"
     return TemplateResult(data={"players": [a.name, b.name], "meetings": 0, "teammate_games": together}, answer=message)
 
 
@@ -2515,10 +2550,13 @@ def _player_matchup_answer(
     shown: list[dict[str, Any]],
     log: list[tuple[str, list[str]]],
     caveat: str,
+    narrowing: str = "",
 ) -> TemplateResult:
-    """The head-to-head summary table and the most recent meetings beside it."""
+    """The head-to-head summary table and the most recent meetings beside it.
+    ``narrowing`` is what the first player's games were narrowed to, as the
+    relation says it (" without Kevin Durant", " at home")."""
     label = scope.label(min(m["season"] for m in meetings), max(m["season"] for m in meetings))
-    title = f"{a.name} vs {b.name}, {label}: {count} meeting{'' if count == 1 else 's'}, {a.name}'s team won {wins}."
+    title = f"{a.name} vs {b.name}{narrowing}, {label}: {count} meeting{'' if count == 1 else 's'}, {a.name}'s team won {wins}."
     answer = _table(title, [a.name, b.name], summary)
     answer += "\n\n" + _table(f"Most recent {len(shown)} of {count} (points/rebounds/assists):", ["score", a.name, b.name], log)
     answer += f"\n{caveat.strip()}" if caveat else ""

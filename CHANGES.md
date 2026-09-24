@@ -16,6 +16,7 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- The pair relation is on the relation: `player_matchup` narrows the first player's games through the shared step, so a teammate's absence ("curry vs lebron without kd"), a venue, a date, a starter half, box-score lines and a calendar are honored and stated in the heading; `order` and an ordinal season are excluded with their reasons. A matchup with no meetings under a narrowing says the meetings are missing from those games, not that the two never met.
 - A player filed as the `opponent` is the second of two players, and `player_matchup` answers their meetings ("lebron vs kawhi head to head", "jay huff game log vs embiid") - the refusal that said games between two named players were "not read yet" was false and is gone.
 - A composed league-wide log names the player on each row ("every player ... top 10 by points" listed dates and figures and never said whose they were).
 - The compiler treats `ranked_by` and `team_restored` as its own slots (`COMPILER_SLOTS`) rather than refusing them as scoping the relation cannot honor - measured live, "players with the highest scoring triple doubles" reached the compiler and fell through on the marker alone.

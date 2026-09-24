@@ -4185,22 +4185,27 @@ def test_check_scope_lets_player_matchup_honor_without_too(pg_ctx: TemplateConte
 
 
 def test_check_scope_still_refuses_player_matchup_on_an_unhonored_slot(pg_ctx: TemplateContext) -> None:
-    """`opponent` and `without` being honored must not quietly let every
-    other scoping slot through too."""
+    """The relation's slots being honored must not quietly let every other
+    scoping slot through too: `order` is excluded (the newest meetings are
+    shown beneath averages over all of them), and `round` no relation has."""
     with pytest.raises(TemplateUnsupported, match="different span"):
-        check_scope("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "venue": "home"})
+        check_scope("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "order": "recent"})
+    with pytest.raises(TemplateUnsupported, match="different span"):
+        check_scope("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "round": "finals"})
 
 
-def test_player_matchup_refuses_a_real_two_player_matchup_with_a_leftover_without(pg_ctx: TemplateContext) -> None:
-    """ "jokic vs embiid without jamal murray" names no team, so
-    _player_matchup_drop_fabricated_second never runs (it only looks for a
-    fabricated second player once there is an `opponent` to fold the question
-    into) and this stays the genuine two-player matchup it looks like. A
-    meeting's own teammates are not what either player's box-score row
-    narrows, so `without` is refused rather than silently dropped, the same
-    way a leftover `opponent` already is."""
-    with pytest.raises(TemplateUnsupported, match="teammate's absence"):
-        player_matchup(pg_ctx, {"players": ["Brandin Podziemski", "Stephen Curry"], "without": ["Jaylen Brown"]})
+def test_player_matchup_honors_without_on_a_real_two_player_matchup(pg_ctx: TemplateContext) -> None:
+    """ "jokic vs embiid without jamal murray" names no team, so this stays
+    the genuine two-player matchup it looks like - and the first player's
+    games are narrowed through the shared step now (the pair relation is on
+    the relation), so a teammate's absence is honored and stated rather than
+    refused. Jaylen Brown is nobody's teammate in this fixture, so the
+    answer either finds no meetings or says the narrowing; it never raises."""
+    check_scope("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "without": ["Jaylen Brown"]})
+    assert "without" in HONORED_SCOPING["player_matchup"] and "venue" in HONORED_SCOPING["player_matchup"]
+    assert "order" not in HONORED_SCOPING["player_matchup"]
+    # The behavior itself is pinned on the league fixture in
+    # tests/query/test_conditions.py (a teammate's absence, a venue).
 
 
 def test_player_matchup_refuses_a_real_two_player_matchup_with_opponent_and_without(pg_ctx: TemplateContext) -> None:

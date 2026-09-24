@@ -1443,3 +1443,30 @@ def test_above_and_below_narrow_which_games_the_splits_cover(league: TemplateCon
     assert "under 32 points" in (low.answer or "")
     with pytest.raises(TemplateUnsupported):
         player_splits(league, _slots(player="Jayson Tatum", above="20 vibes"))
+
+
+def test_a_matchup_without_a_teammate_narrows_the_first_players_games(league: TemplateContext) -> None:
+    """The pair relation on the relation (yardstick-v2 F114 "curry vs lebron
+    without kd"): LeBron met Tatum in e1 and e7 this season; Journeyman Guy,
+    LeBron's teammate, played e1 and has no line in e7, so "without" him
+    leaves e7 alone - and the heading says so."""
+    result = player_matchup(league, _slots(players=["LeBron James", "Jayson Tatum"], without=["Journeyman Guy"]))
+    assert result.data["meetings"] == 1
+    assert "without Journeyman Guy" in result.answer
+
+
+def test_a_matchup_at_home_is_the_first_players_home_meetings(league: TemplateContext) -> None:
+    """A venue narrows the first player's side: e7 is at LAL, e1 at BOS."""
+    home = player_matchup(league, _slots(players=["LeBron James", "Jayson Tatum"], venue="home"))
+    assert home.data["meetings"] == 1
+    assert "at home" in home.answer
+    away = player_matchup(league, _slots(players=["Jayson Tatum", "LeBron James"], venue="home"))
+    assert away.data["meetings"] == 1
+
+
+def test_a_matchup_whose_second_player_is_the_absent_teammate_says_so(league: TemplateContext) -> None:
+    """A recorded case: "fox vs wembanyama without wembanyama" - with the
+    absence honored, the meetings are empty by construction, and "never
+    played against each other" would be a false sentence. Said instead."""
+    result = player_matchup(league, _slots(players=["LeBron James", "Jayson Tatum"], without=["Jayson Tatum"]))
+    assert "both the player" in result.answer and result.data["message"]

@@ -226,6 +226,10 @@ RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
     # regular season". `date` is no longer here: it narrows to one game (and
     # so one season) through `scoped_games`, the same as every other template
     # on the relation.
+    "player_matchup": {
+        "order": "the newest meetings are shown beneath averages over all of them - a window would cut the averages the matchup exists to give",
+        "season_n": "an ordinal season is one player's - a matchup names two, and the question does not say whose fifth season is meant",
+    },
     "period_split": {
         "span": "the accuracy caveat is measured per season, not across a career",
         "since": "the accuracy caveat is measured per season, and the header names one season - both wrong for a range",
@@ -422,7 +426,11 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # versionchanged note on player_matchup itself. A genuine two-player
     # matchup with either left over refuses it from inside the template,
     # since check_scope cannot tell the two shapes apart from the slots alone.
-    "player_matchup": frozenset({"span", "opponent", "without", "since"}),
+    # `opponent` is honored for the one-player-vs-a-team fallback only; a
+    # genuine two-player matchup refuses it itself (no third team to narrow
+    # by). `order` is excluded: the newest meetings are shown beneath
+    # averages over all of them, and a window would cut the averages.
+    "player_matchup": _relation_scoping("player_matchup"),
     "streak": _relation_scoping("streak"),
     # The home/road split, the record against one team, and every season at
     # once - "Knicks home record" was answered with their overall 53-29.

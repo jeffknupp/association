@@ -62,7 +62,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import duckdb
 
@@ -70,6 +70,10 @@ from association.nba.coverage import COVERAGE
 from association.nba.season import eastern_date_sql
 
 from .team_games import TeamNarrowed, games_subquery, named
+
+if TYPE_CHECKING:
+    from .player_games import Narrowed
+
 
 Params = dict[str, Any] | list[Any]
 """What a reader binds to its query: named parameters, or the positional list a
@@ -792,20 +796,25 @@ def _longest_runs(
 # ---------------- two players' meetings ----------------
 
 
-def _meetings(con: duckdb.DuckDBPyConnection, scope: _Scope, a: str, b: str) -> tuple[list[dict[str, Any]], int]:
+def _meetings(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, b: str) -> tuple[list[dict[str, Any]], int]:
     """Games both players played on opposite teams, most recent first, and how
     many games they both played as teammates - the reason "never met" can be
     true of two players who shared a floor for years.
 
-    Read through the pair relation (:func:`association.query.player_games.paired_rows_sql`),
-    so the season floor, the phantom, the played guard and the rebuilt-line
-    blanking are the relation's, not restated here.
+    Read through the pair relation (:func:`association.query.player_games.paired_rows_sql`)
+    over the FIRST player's narrowed games (``scoped_games``' result: his span,
+    the played guard, and whatever the question narrowed by), so the season
+    floor, the phantom, the guard, the rebuilt-line blanking and every
+    narrowing are the relation's, not restated here.
+
+    .. versionchanged:: 4.4.0
+       Takes the first player's :class:`~association.query.player_games.Narrowed`
+       instead of building one - the pair relation honors the relation's
+       scoping (a teammate's absence, a venue) through the shared step.
     """
-    from .player_games import Narrowed, column, paired_rows_sql
+    from .player_games import column, paired_rows_sql
 
     box = box_source(con)
-    clause, params = scope.clause("pgl")
-    narrowed = Narrowed(base=["pgl.athlete_id = ?", clause, "NOT pgl.did_not_play"], base_params=[a, *params])
     stats = ["minutes", "points", "rebounds", "assists", "fieldGoalsMade", "fieldGoalsAttempted"]
     select = ", ".join(
         [
