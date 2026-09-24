@@ -244,21 +244,30 @@ honest refusals that a fuller system would answer. By cause:
 
 ## Next steps (the next working day)
 
-1. **Sweep 2** (in flight as the Sonnet-vs-Opus-low experiment; the Opus
-   arm waits for a fresh session): #206 the invented `opponent`, #207 "since
-   2000-01" and the league filler limit, and five router-side fall-throughs
-   (a dropped subject, an invented team, "Best NBA record since", a player's
-   half at home, "td3s").
-2. **Conference and division from the standings** (in flight): parsed,
-   loaded, and read as a narrowing on both relations.
+1. **Sweep 2 - done, as the Sonnet-vs-Opus-low experiment.** Both arms
+   ran the identical seven-fix prompt; the Opus-low branch merged (`637ff4e`)
+   after scoring: same routing (137/138), two live wins and no losses for
+   Opus-low, at 65% of the tokens and ~1.2-1.3x the dollars; the Sonnet arm
+   produced the one fluent wrong answer. Rule from it: Opus-low for
+   sweep-shaped work (grammars measured over the corpus, judgment about what
+   ships); Sonnet for bounded harness tasks. A general-purpose agent
+   inherits the session's effort - control it with an agent definition.
+   Details: `~/association-research/agent_review_2026-09-24.md`.
+2. **Conference and division from the standings - done** (`team_alignment`,
+   1988-2026, loaded): "vs the southeast division" narrows either relation;
+   the router still captures only the word "division" (#213), so the
+   question as typed refuses honestly until that lands.
 3. **Done 2026-09-24:** the eleven fall-throughs sorted (seven router-side
    -> sweep 2; three data gaps -> refused fast: a team's stat by quarter,
    bench points, an attempts floor; one compiler shape left); the pair
    relation as a template (above); "lebron vs kawhi head to head" answers.
-4. **Left:** "Most points in 15th season played" (an ordinal season over
-   everyone - a clause on the league read), the Hornets' best first-quarter
-   scorer (period data), two questions that need a clarification the system
-   does not ask.
+4. **Done 2026-09-24 (later):** an ordinal season over everyone ("Most
+   points in 15th season played"), a team where a player belongs on a
+   boolean stat ("thunder all-time triple doubles": 180, by player), three
+   more fast refusals (a team's stat by quarter, bench points, an attempts
+   floor). **Left:** the router's division capture (#213), the Hornets'
+   best first-quarter scorer (period data), two questions that need a
+   clarification the system does not ask, the pair as a compiler subject.
 
 ## The current plan: what buys the most correctness next
 
@@ -307,4 +316,7 @@ with nothing to read fills the silence from its own weights), and more data
   yardstick; a gate is watched to fail before it counts.
 - One ollama caller at a time. Never chain a gate with `;`.
 - Contained fixes go to agents in worktrees with disjoint files; the lead
-  keeps the structural change, and this file says which it is.
+  keeps the structural change, and this file says which it is. Opus-low for
+  sweep-shaped work, Sonnet for bounded harness tasks (measured 2026-09-24);
+  every agent takes its before-golden from its own worktree's package and
+  says which copy it read.

@@ -71,7 +71,6 @@ before that commit needs re-checking against the current warehouse.
   team precedes "when"/"in games"), only when it follows the player ("lebron
   ... for Miami", "westbrook ... for kings").
 - **Source:** ours, not ESPN's.
-- **GitHub:** not yet filed
 - **GitHub:** #198
 
 ### The agent fall-through answers 1 question in 23, and does not finish 61% of the time
@@ -304,7 +303,7 @@ those were found.
   narrower `_BOX_SCORE_SCOPING`, so the two decisions read the same slots. Not
   fixed here: `templates/players.py` is outside this task's file ownership.
 - **Source:** ours, not ESPN's.
-- **GitHub:** not yet filed
+- **GitHub:** #212
 
 ### The router invents a name in the `opponent` slot, and the refusal repeats it: "jay huff game log vs Embiid" refuses about Nikola Jokic
 - **Found:** 2026-09-24, grading `live_rest.jsonl` (yardstick-v2 F142).
@@ -322,7 +321,6 @@ those were found.
   `players_named_in` when the count is exact), before any refusal or
   template reads it.
 - **Source:** ours, not ESPN's.
-- **GitHub:** not yet filed
 - **GitHub:** #206
 
 ### "Since 2000-01" is not read as a span: a league-wide multi-line count answers the default season
@@ -2273,7 +2271,6 @@ those were found.
   against the corpus the same way the guard that replaced it was, and this
   session's budget did not extend to a second round of that measurement.
 - **Source:** ours (a matching heuristic), not ESPN's.
-- **GitHub:** not yet filed
 - **GitHub:** #131
 
 ### A career-span `shot_distance` drops an unseparable season and loses the derived-season caveat, silently
@@ -2479,7 +2476,7 @@ those were found.
   `check_routing.py`. `router.py` is the experiment arms' file while sweep 2
   runs - after it merges.
 - **Source:** ours.
-- **GitHub:** not yet filed
+- **GitHub:** #213
 ### `team_leaderboard` excludes `situation`, so "best record since <day>" still falls through
 - **Found:** 2026-09-24, fixing yardstick-v2 F104's routing.
 - **Evidence:** "Best NBA record since January 31st 201" now routes
@@ -2499,6 +2496,7 @@ those were found.
   `TeamNarrowed.narrow_calendar`), keeping the weekday/month/holiday cells
   excluded if that reasoning holds for them.
 - **Priority note:** P3 - one corpus question, a fall-through.
+- **GitHub:** #214
 
 ### A player's team record since an absolute date, both season types, is refused: "towns home rec including playoffs since 1/26/20 vs spurs"
 - **Found:** 2026-09-24, fixing yardstick-v2 F110 (it used to answer the
@@ -2517,6 +2515,7 @@ those were found.
   (one clause on `Narrowed` and `TeamNarrowed`), and a numeric-date reading
   ("1/26/20") in `route()`; then this is record_when/player_splits-shaped.
 - **Priority note:** P3 - one corpus question, refused rather than wrong.
+- **GitHub:** #215
 
 ### `game_log`'s "last 10 of N games" heading misses the without branch
 - **Found:** 2026-09-24, grading `live_rest.jsonl` (yardstick-v2 F158).
@@ -2531,7 +2530,6 @@ those were found.
 - **Next step:** count through `whole_span` on the without path too, the
   way `_game_log_window_of` does for the others.
 - **Source:** ours.
-- **GitHub:** not yet filed
 - **GitHub:** #208
 
 ### A composed league-wide `threshold_count` falls through when the router's `stat` already names the threshold's own column
@@ -2568,7 +2566,6 @@ those were found.
   behavior (a `stat` that differs from the phrase) so a fix does not regress
   it silently.
 - **Source:** ours, not ESPN's.
-- **GitHub:** not yet filed
 - **GitHub:** #209
 
 ### `team_record`'s combined-season-types sentence drops the regular half's "standings from 1993-94" caveat
@@ -2628,7 +2625,6 @@ those were found.
   question's routing per `AGENTS.md`, "Any edit to ROUTER_PROMPT moves
   slots on unrelated questions").
 - **Source:** ours.
-- **GitHub:** not yet filed
 - **GitHub:** #210
 
 ### No leaderboard metric ranks average three-point shot distance
@@ -3107,7 +3103,7 @@ those were found.
   behavior-neutral (proven by the reasoning above); left for whoever owns
   `conditions.py`/the templates outside `common.py`, or a follow-up pass.
 - **Source:** ours, not ESPN's.
-- **GitHub:** not yet filed
+- **GitHub:** #216
 ### A career `game_log`'s heading names one season in parentheses beside a career count
 - **Found:** 2026-09-24, checking the answer to "bam adebayo career games in
   the month of march" (yardstick-v2 F096) after routing it to `game_log`.
@@ -3124,6 +3120,7 @@ those were found.
 - **Next step:** the template owner words the parenthesis as what it is
   ("shown: 2026") or drops it on a career span.
 - **Priority note:** P4 - wording, the figures are correct.
+- **GitHub:** #217
 
 ### A league-wide rows read orders ties by chance when several players share one game
 - **Found:** 2026-09-24, by the compose agent re-running `k2_run_pkg.py`
@@ -3141,7 +3138,6 @@ those were found.
   in the relation's league reader (`player_games.league()` / `rows_sql`), the
   same tie rule the golden harness normalizes for.
 - **Source:** ours.
-- **GitHub:** not yet filed
 - **GitHub:** #211
 
 ### `head_to_head`'s venue-narrowed sentence says "won the series" for a since-bounded or career span too
@@ -3586,7 +3582,6 @@ those were found.
   place and move the P3-shaped entries currently under `## P2` beneath it.
   Left undone here since it touches many entries other agents may be editing
   concurrently and risks a merge conflict far out of proportion to the fix.
-- **GitHub:** not yet filed
 - **GitHub:** #127
 
 ### The header status line still states coverage as a single misleading range, beside a correct one
