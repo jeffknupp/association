@@ -1047,6 +1047,23 @@ def test_a_split_is_read_for_every_intent_so_others_can_refuse_it() -> None:
     assert got.slots["split"] == "starter_bench"
 
 
+def test_a_players_career_games_in_a_month_are_his_game_log_in_that_month() -> None:
+    """yardstick-v2 F096, the model's reply as recorded: a count over the line
+    0 on the stat "games", Bam dropped and March unread ("in the month of"
+    was not a month phrase). Nothing read that count, so it fell through; his
+    games with no line on them are his log, narrowed to March."""
+    got = _asking(
+        '{"intent":"threshold_count","stat":"games","threshold":0,"season_type":2,"fields":["minutes","points"],"span":"career"}',
+        "bam adebayo career games in the month of march",
+    )
+    assert got.intent == "game_log"
+    assert got.slots["player"] == "bam adebayo" and got.slots["situation"] == "in the month of march" and got.slots["span"] == "career"
+    assert "stat" not in got.slots and "threshold" not in got.slots
+    # A real line keeps the count, and a named month reads the short way too.
+    kept = _asking('{"intent":"threshold_count","stat":"points","threshold":30,"player":"Bam Adebayo"}', "bam adebayo 30 point games in march")
+    assert kept.intent == "threshold_count" and kept.slots["situation"] == "in march"
+
+
 @pytest.mark.parametrize(
     ("question", "since", "until"),
     [

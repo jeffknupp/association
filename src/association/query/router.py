@@ -758,6 +758,10 @@ _SUBJECT_OF_COUNT = re.compile(
     r"games?\s+with\b"
     r"|games?\s+of\b"
     r"|\d+\+?\s*[- ]?\s*" + _COUNT_STAT_WORD + r"s?\s+games?\b"
+    # "bam adebayo career games in the month of march" (yardstick-v2 F096):
+    # the model dropped Bam, and none of the shapes above follows a name
+    # with "career games".
+    r"|career\s+games?\b"
     r")",
     re.IGNORECASE,
 )
@@ -1054,7 +1058,9 @@ _ABOVE = re.compile(r"\b(?:with\s+(?:at\s+least\s+)?)?(?<!than\s)(?<!under\s)(?<
 # question that routes correctly today starts refusing.
 _SITUATION = re.compile(
     r"\bback[- ]to[- ]backs?\b|\bb2bs?\b|\bsecond\s+night\b|\bovertime\b|"
-    r"\bin\s+(?:october|november|december|january|february|march|april|may|june)\b|"
+    # "in the month of march" as well as "in march" (F096) - the calendar
+    # reader (calendar._IN_MONTH) already takes both.
+    r"\bin\s+(?:the\s+month\s+of\s+)?(?:october|november|december|january|february|march|april|may|june)\b|"
     r"\b(?:east(?:ern)?|west(?:ern)?)\s+conference\b|\bvs\.?\s+the\s+(?:east|west)\b|\bdivision\b|\ball[- ]star\s+break\b|"
     # A day of the week: 8 of the 14, and the most common shape in the feed.
     r"\b(?:mon|tues|wednes|thurs|fri|satur|sun)days?\b|"
@@ -1988,6 +1994,22 @@ def _route_threshold(raw: dict[str, Any], slots: dict[str, Any], question: str) 
         if together:
             raw["intent"] = "with_without"
             slots["with_player"] = together
+    if raw["intent"] == "threshold_count" and slots.get("stat") in ("games", "game") and not slots.get("threshold"):
+        # "bam adebayo career games in the month of march" (yardstick-v2 F096)
+        # arrived as a count of games over the line 0 on the stat "games" -
+        # no line at all, and no template or compiler reads it, so it fell
+        # through. A player's games with no line on them are his game log,
+        # which states how many there were and his line in them. Measured
+        # over the replayed corpus: this question is the only one routed so.
+        raw["intent"] = "game_log"
+        slots.pop("stat", None)
+        slots.pop("threshold", None)
+        # The count's subject, restored as a count's would be
+        # (_route_subject_slots) - game_log is not one of the intents that
+        # step restores for, and the model dropped Bam here.
+        subject = None if slots.get("player") or slots.get("players") else _subject_named_in(question)
+        if subject is not None:
+            slots["player"] = subject
     if raw["intent"] == "threshold_count" and not isinstance(slots.get("threshold"), int):
         # A count of games needs a threshold. Without one, "who has the most
         # threes" is a season ranking - measured, it arrived here with none and

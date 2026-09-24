@@ -16,6 +16,7 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- "bam adebayo career games in the month of march" is his game log in March (118 games) rather than a fall-through: a `threshold_count` over the line 0 on the stat "games" is `game_log`, with the subject restored, and "in the month of <month>" is read as the month like "in <month>".
 - "Since 2000-01" (and "since 2000-2001") starts at the season ending in the later year, 2001; `route()` read only the leading "2000" and started a season early (#207).
 - A player name the router invented in `opponent` is checked against the question like the subject is (#206): "jay huff game log vs Embiid" routed `opponent='Nikola Jokic'` and the refusal named Jokic; the one player the question names that the subject does not claim now takes its place, and with no exact replacement the name is dropped. A team opponent is untouched.
 - A composed league-wide log names the player on each row ("every player ... top 10 by points" listed dates and figures and never said whose they were).

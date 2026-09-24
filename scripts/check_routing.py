@@ -486,6 +486,9 @@ CASES: list[tuple[str, str, dict]] = [
     ("jay huff game log vs Embiid", "player_matchup", {"opponent": "Joel Embiid"}),
     # #207: "since 2000-01" starts at the season ending in 2001, not 2000.
     ("players with 33 point and 13 rebound and 10 assist 2 blocks and 2 steals games since 2000-01", "threshold_count", {"since": 2001}),
+    # yardstick-v2 F096: a count of "games" over the line 0 is his game log,
+    # Bam restored and "in the month of march" read as a month.
+    ("bam adebayo career games in the month of march", "game_log", {"player": frozenset({"bam adebayo", "Bam Adebayo"}), "situation": "in the month of march", "span": "career"}),
 ]
 
 
