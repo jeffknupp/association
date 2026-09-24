@@ -1291,6 +1291,38 @@ def _route_leaderboard_shot_distance(intent: str, slots: dict[str, Any], questio
     slots.pop("player", None)
 
 
+#: The stats that are a yes/no about a game, which `leaderboard` counts per
+#: player ("most triple-doubles"). Ranking THOSE GAMES by another measure
+#: ("highest scoring triple doubles") is a different question the compiler
+#: answers once the template refuses it - see `_route_ranked_boolean_games`.
+_BOOLEAN_STATS = frozenset({"triple_double", "double_double", "fouled_out"})
+_RANKED_BOOLEAN_GAMES = re.compile(
+    r"\b(?:highest[- ]scoring|biggest|largest|best[- ]scoring)\b|\b(?:most|highest|fewest|lowest)\s+(?:points?|rebounds?|assists?|steals?|blocks?|minutes?)\s+in\s+(?:a|an|any|one)\b",
+    re.IGNORECASE,
+)
+_RANKED_BY_WORD = re.compile(r"\b(scoring|points?|rebounds?|assists?|steals?|blocks?|minutes?)\b", re.IGNORECASE)
+
+
+def _route_ranked_boolean_games(intent: str, slots: dict[str, Any], question: str) -> None:
+    """ "Players with the highest scoring triple doubles" (yardstick-v2 F124)
+    routes to `leaderboard` with `stat='triple_double'` - the SAME slots as
+    "most triple doubles", which the count answers rightly - and answered
+    the count. The template never sees the question, so the word that
+    tells the two apart ("scoring", "biggest") has to become a slot here:
+    `ranked_by`, the measure the qualifying games are ranked by, which no
+    template honors, so `check_scope` refuses and the compiler's
+    boolean-game ranking (compose.move) answers instead. A bare "most
+    triple doubles" files nothing and keeps its count.
+
+    .. versionadded:: 4.4.0
+    """
+    if intent != "leaderboard" or slots.get("stat") not in _BOOLEAN_STATS or not _RANKED_BOOLEAN_GAMES.search(question):
+        return
+    word = _RANKED_BY_WORD.search(question)
+    measure = (word.group(1).lower() if word else "points").rstrip("s")
+    slots["ranked_by"] = "points" if measure in ("scoring", "point") else measure + ("s" if not measure.endswith("s") else "")
+
+
 # A game log asked for by name. Measured: "luka ft log" routed to player_stat
 # and was answered with a season average.
 _LOG_WORDS = re.compile(r"\b(?:game\s*logs?|gamelogs?|logs?)\b|\b(?:each|every|by)\s+game\b", re.IGNORECASE)
@@ -2432,6 +2464,7 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     _route_game_score(raw["intent"], slots, question)
     _route_two_point_pct(raw["intent"], slots, question)
     _route_leaderboard_shot_distance(raw["intent"], slots, question)
+    _route_ranked_boolean_games(raw["intent"], slots, question)
     _route_team_slots(raw["intent"], slots, question)
     _route_rate(raw["intent"], slots, question)
     _route_subject_slots(raw["intent"], slots, question)

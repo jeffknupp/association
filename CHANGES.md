@@ -16,6 +16,7 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- "Players with the highest scoring triple doubles" ranks the triple-double games by points instead of counting them: `route()` files `ranked_by`, a slot no template honors, so `leaderboard` refuses and the compiler's boolean-game ranking answers (the bare count "most triple doubles" is unchanged).
 - A team's half named only by its nickname ("Celtics 2nd half scoring this season") routes to `team_quarter_points` where the model filed no `team` slot and the question went to the agent.
 - What nothing here can answer is refused fast, with its cause, instead of
   handed to the slow agent: `association.query.refusals` is the step after

@@ -2372,3 +2372,18 @@ def test_a_teams_half_named_only_by_nickname_is_team_quarter_points() -> None:
     assert got.slots["team"].lower().endswith("celtics")
     two = _asking('{"intent":"team_stat","stat":"points","season":2026}', "celtics vs knicks 2nd half scoring")
     assert two.intent != "team_quarter_points" or two.slots.get("team") is None
+
+
+def test_a_ranking_of_boolean_games_by_another_measure_files_ranked_by() -> None:
+    """yardstick-v2 F124: "players with the highest scoring triple doubles"
+    and "most triple doubles" route to the same slots, so the word that
+    tells them apart becomes a slot no template honors (`ranked_by`), and
+    the compiler ranks the games. The bare count files nothing."""
+    ranked = _asking('{"intent":"leaderboard","stat":"triple_double","limit":10}', "players with the highest scoring triple doubles")
+    assert ranked.slots["ranked_by"] == "points"
+    biggest = _asking('{"intent":"leaderboard","stat":"triple_double","limit":10}', "biggest triple double ever")
+    assert biggest.slots["ranked_by"] == "points"
+    boards = _asking('{"intent":"leaderboard","stat":"double_double","limit":10}', "most rebounds in a double double this season")
+    assert boards.slots["ranked_by"] == "rebounds"
+    count = _asking('{"intent":"leaderboard","stat":"triple_double","limit":10}', "who has the most triple doubles this season")
+    assert "ranked_by" not in count.slots

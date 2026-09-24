@@ -152,6 +152,9 @@ CASES: list[tuple[str, str, dict]] = [
     # yardstick-v2 F087: a team's record when a player reaches a number is
     # record_when whatever the model files (router._WHEN_REACHES).
     ("show me stats for sixers when maxey scored 20+ points", "record_when", {"threshold": 20}),
+    # yardstick-v2 F124: the games are ranked by another measure - `ranked_by`
+    # is the slot no template honors, so the compiler answers.
+    ("players with the highest scoring triple doubles", "leaderboard", {"stat": "triple_double", "ranked_by": "points"}),
     # yardstick-v2 F064: a team's half with no `team` slot from the model -
     # the nickname in the question is the team (router._team_slot_or_word).
     ("least points scored by the wizards in the first half this season", "team_quarter_points", {"half": 1, "limit": None}),
