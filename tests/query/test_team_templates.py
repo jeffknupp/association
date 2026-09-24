@@ -803,11 +803,15 @@ def test_team_record_combines_both_season_types_for_one_season(team_ctx: Templat
     to 56-30, with each component named."""
     result = team_record(team_ctx, {"team": "Knicks", "season": S, "season_type_unstated": True})
     assert result.data["wins"] == 56 and result.data["losses"] == 30
-    assert result.data["regular_season"] == {"wins": 53, "losses": 29}
-    assert result.data["postseason"] == {"wins": 3, "losses": 1}
+    # #204 (ISSUES.md): the regular half reads standings, which carries no
+    # first_season at all, so it names none; the postseason half always
+    # reads games, which does - here trivially the named season itself,
+    # since both halves cover the same one year.
+    assert result.data["regular_season"] == {"wins": 53, "losses": 29, "first_season": None}
+    assert result.data["postseason"] == {"wins": 3, "losses": 1, "first_season": S}
     assert "56-30" in result.answer
-    assert "53-29" in result.answer and "regular season" in result.answer
-    assert "3-1" in result.answer and "playoffs" in result.answer
+    assert "53-29 (.646) regular season," in result.answer
+    assert f"3-1 (.750) playoffs from {S})" in result.answer
 
 
 def test_team_record_combined_types_honors_opponent(team_ctx: TemplateContext) -> None:
@@ -817,8 +821,27 @@ def test_team_record_combined_types_honors_opponent(team_ctx: TemplateContext) -
     p2 (home L), p3 (away W), p4 (away W) - 3-1. Combined: 4-1."""
     result = team_record(team_ctx, {"team": "Knicks", "opponent": "Celtics", "season": S, "season_type_unstated": True})
     assert result.data["wins"] == 4 and result.data["losses"] == 1
-    assert result.data["regular_season"] == {"wins": 1, "losses": 0}
-    assert result.data["postseason"] == {"wins": 3, "losses": 1}
+    # An opponent forces both halves through _games_record (never standings),
+    # so both carry the named season as their own first_season - #204,
+    # ISSUES.md.
+    assert result.data["regular_season"] == {"wins": 1, "losses": 0, "first_season": S}
+    assert result.data["postseason"] == {"wins": 3, "losses": 1, "first_season": S}
+
+
+def test_team_record_combined_career_names_each_halfs_own_start(team_ctx: TemplateContext) -> None:
+    """#204 (ISSUES.md): the combined-season-types sentence used to carry only
+    "Note:" lines from its halves, so the reader could not see that they
+    start in different seasons - true here: the Knicks' standings reach back
+    to 1990 in this fixture, but their earliest postseason game ("old1") is
+    LABELED 1990 and actually played in 1991 - read by the calendar year it
+    was played, per team_games.py, not by ESPN's pre-1993-94 started-year
+    label, so the postseason half starts a season LATER than the regular
+    one, the opposite direction of the Warriors example in the issue."""
+    result = team_record(team_ctx, {"team": "Knicks", "span": "career", "season_type_unstated": True})
+    assert result.data["regular_season"]["first_season"] == 1990
+    assert result.data["postseason"]["first_season"] == 1991
+    assert "regular season from 1989-90" in result.answer
+    assert "playoffs from 1991" in result.answer
 
 
 def test_team_record_combined_types_refuses_game_n(team_ctx: TemplateContext) -> None:

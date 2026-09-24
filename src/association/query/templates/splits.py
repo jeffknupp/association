@@ -90,6 +90,50 @@ SPLIT_KINDS: tuple[str, ...] = ("home_away", "starter_bench", "wins_losses", "mo
 """
 
 
+# Router stat name -> the standard split line's own key: naming one of these
+# changes nothing about which columns are shown, since _PLAYER_LINE/_TEAM_LINE
+# already carry it. Kept apart from SPLIT_EXTRA_STATS below so a stat that IS
+# already on the table is neither refused nor given a redundant second column.
+_SPLIT_LINE_STATS: dict[str, frozenset[str]] = {
+    "p": frozenset({"points", "rebounds", "assists", "steals", "blocks", "turnovers", "minutes", "threePointFieldGoalsMade", "fieldGoalPct"}),
+    "t": frozenset({"points", "rebounds", "assists", "threePointFieldGoalsMade", "fieldGoalPct"}),
+}
+
+# A stat player_splits can add as its own column beside the standard line,
+# read straight off the player-games relation the way _PLAYER_LINE's own
+# entries are - never silently left off a table that has no such column.
+# "Quentin Grimes individual gamelog usage rating without joel embiid" showed
+# the standard split columns with no usage-rate column anywhere, and the
+# actually-asked-for stat simply missing (F159, ISSUES.md). Player only: a
+# team split (alias "t") has no per-player rate like this to show.
+SPLIT_EXTRA_STATS: dict[str, tuple[str, str, str]] = {
+    "usage_pct": ("usage_pct", "USG%", "AVG(p.usage_pct)"),
+}
+"""``player_splits`` extra-column stats, keyed by the router's stat name.
+
+.. versionadded:: 4.4.0
+"""
+
+
+def _player_splits_line(stat: Any, base_line: tuple[tuple[str, str, str], ...], *, alias: str) -> tuple[tuple[str, str, str], ...]:
+    """``base_line`` (:data:`_PLAYER_LINE` or :data:`_TEAM_LINE`), with a
+    named ``stat`` the table does not already carry added as its own column -
+    or a refusal naming the stat, never a table that quietly leaves it out
+    (F159, ISSUES.md). No ``stat`` at all is the common case and returns
+    ``base_line`` unchanged.
+
+    .. versionadded:: 4.4.0
+    """
+    if not isinstance(stat, str) or not stat.strip():
+        return base_line
+    if stat in _SPLIT_LINE_STATS.get(alias, frozenset()):
+        return base_line
+    extra = SPLIT_EXTRA_STATS.get(stat) if alias == "p" else None
+    if extra is None:
+        raise TemplateUnsupported(f"player_splits has no column for stat {stat!r}")
+    return (*base_line, extra)
+
+
 _DEFAULT_STREAK_LIMIT = 5
 
 
@@ -475,6 +519,10 @@ def _player_splits_player(
        starter" reached the template and were silently dropped before the
        relation ever saw them.
     """
+    # Checked before any name is resolved, the same discipline player_stat's
+    # own measures follow: a stat this cannot show is a fact about the
+    # question, not about which player it names.
+    line = _player_splits_line(slots.get("stat"), _PLAYER_LINE, alias="p")
     # `since` narrows this player's OWN scope the same way it narrows the
     # relation inside condition_player (below) - both read the slot
     # independently, so the label this scope renders and the rows the
@@ -520,7 +568,7 @@ def _player_splits_player(
         # the "current season" this scope defaulted to.
         scope = replace(scope, season=int(first))
     subject_text = player.name + (f" for the {team.name}" if team else "") + narrowed.filters()
-    alias, line, counted = "p", _PLAYER_LINE, f"{games} game{'s' if games != 1 else ''} he played"
+    alias, counted = "p", f"{games} game{'s' if games != 1 else ''} he played"
     data: dict[str, Any] = {
         "player": player.name,
         "team": team.name if team else None,
@@ -577,6 +625,7 @@ def _player_splits_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], s
         # question from any this template answers. True of one named half as
         # much as of the category.
         raise TemplateUnsupported("a team has no starter/bench split of its own")
+    line = _player_splits_line(slots.get("stat"), _TEAM_LINE, alias="t")
     scope = _span_of(span, slots.get("season"), slots.get("season_type") or 2, "games", since=slots.get("since"))
     narrowed = team_games(con, team, scope, slots, opponent=opponent)
     if isinstance(narrowed, TemplateResult):
@@ -587,7 +636,7 @@ def _player_splits_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], s
     games, first, last = _team_season_range(con, base, params, scope)
     if not games:
         return _condition_team_no_games(con, team, scope, narrowed)
-    subject, alias, line, counted = f"The {team.name}" + narrowed.filters(), "t", _TEAM_LINE, f"{games} game{'s' if games != 1 else ''}"
+    subject, alias, counted = f"The {team.name}" + narrowed.filters(), "t", f"{games} game{'s' if games != 1 else ''}"
     data: dict[str, Any] = {"player": None, "team": team.name, "venue": narrowed.venue, "opponent": narrowed.opponent.name if narrowed.opponent else None}
     # The score of a game with no box score is still on record, but its
     # team box stats are NULL - averaged over the rest, and said so.

@@ -19,7 +19,7 @@ from ..conditions import _PLAYER_GAME_TABLES, _cell, _matchup_line, _meetings, _
 from ..entities import Entity, find_players, resolve_team, teammate_names
 from ..leaderboard import resolve_metric
 from ..metrics import PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
-from ..player_games import _joined, rows_sql
+from ..player_games import _joined, aggregate_sql, rows_sql
 from ..shotchart import SHOT_AVAILABILITY, SHOT_VALUE_SQL, UNSEPARABLE_SHOT_VALUES
 from ..team_games import TEAM_GAMES_SQL, TeamNarrowed
 from ..team_games import games_subquery as team_games_subquery
@@ -64,6 +64,7 @@ from .common import (
     scoped_player,
     scoped_team,
     team_games,
+    whole_span,
 )
 
 
@@ -744,16 +745,47 @@ def _player_game_log_averages(headers: list[str], raws: list[dict[str, Any]]) ->
     return averages
 
 
-def _player_game_log_header(player: Entity, span: _Span, narrowed: _Narrowed, games: list[dict[str, Any]], *, ascending: bool) -> str:
-    """The listing's headline: how many games, over what span, filtered how."""
+def _player_game_log_total(con: duckdb.DuckDBPyConnection, narrowed: _Narrowed, *, rebuilt: bool) -> int:
+    """How many of the player's games match every narrowing the question
+    carries, before the window (``order``/``limit``) cuts them to the rows
+    actually listed - what the heading needs to say "of how many" (F149,
+    ISSUES.md).
+
+    Read through :func:`~association.query.player_games.aggregate_sql` over
+    :func:`~association.query.templates.common.whole_span`, the same shared
+    step the condition templates use to read a span with no window applied -
+    never a hand-written ``COUNT(*)`` clause, so a new narrowing dimension
+    reaches this count for free the way it reaches every other reader of the
+    relation.
+
+    .. versionadded:: 4.4.0
+    """
+    sql, params = aggregate_sql(whole_span(narrowed), ["COUNT(*)"], rebuilt=rebuilt)
+    row = con.execute(sql, params).fetchone()
+    return int(row[0]) if row and row[0] is not None else 0
+
+
+def _player_game_log_header(player: Entity, span: _Span, narrowed: _Narrowed, games: list[dict[str, Any]], *, ascending: bool, total: int | None = None) -> str:
+    """The listing's headline: how many games, over what span, filtered how.
+
+    .. versionchanged:: 4.4.0
+       Names how many games the window cut from - "last 10 of 49 games" -
+       whenever ``total`` (the count before the window,
+       :func:`_player_game_log_total`) exceeds what is actually listed
+       (F149, ISSUES.md). A default limit and an explicit one are the same
+       cut from the reader's point of view, so both are said the same way.
+    """
     count = len(games)
+    cut = total is not None and total > count
     if narrowed.date:
         listed = "game" if count == 1 else "games"
         scope_text = f"{listed} on {narrowed.date}"
     elif count == 1:
-        scope_text = "first game" if ascending else "most recent game"
+        base = "first game" if ascending else "most recent game"
+        scope_text = f"{'first' if ascending else 'most recent'} of {total} games" if cut else base
     else:
-        scope_text = f"first {count} games" if ascending else f"last {count} games"
+        word = "first" if ascending else "last"
+        scope_text = f"{word} {count} of {total} games" if cut else f"{word} {count} games"
     seasons = [g["season"] for g in games]
     if span.season is not None:
         where_text = f" of the {_period(span.season, span.season_type)}"
@@ -822,11 +854,16 @@ def _player_game_log(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span
 
     games, raws = _player_game_log_rows(rows, needed, headers)
     averages = _player_game_log_averages(headers, raws)
-    header = _player_game_log_header(player, span, narrowed, games, ascending=ascending)
+    # How many games the question's own narrowing matched, before the window
+    # (order/limit) cut them to the rows above - `_player_game_log_total`
+    # reads it with the window cleared (`whole_span`), which also clears it
+    # on `narrowed` itself; nothing below reads `.window`.
+    total = _player_game_log_total(con, narrowed, rebuilt=rebuilt)
+    header = _player_game_log_header(player, span, narrowed, games, ascending=ascending, total=total)
     table = _player_game_log_table(headers, games, averages)
     notes = _player_game_log_notes(con, player, span, narrowed, games, asked=asked, rebuilt=rebuilt)
     return TemplateResult(
-        data={**scope, "columns": headers, "games": games, "averages": averages},
+        data={**scope, "columns": headers, "games": games, "averages": averages, "qualifying_games": total},
         answer="\n".join([header, *table, *notes]),
     )
 

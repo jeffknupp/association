@@ -75,7 +75,10 @@ before that commit needs re-checking against the current warehouse.
 - **GitHub:** #198
 
 ### A composed triple-double ranking answers a count instead of the highest-scoring one: "players with the highest scoring triple doubles"
-- **Found:** 2026-09-23, same session, yardstick-v2 F124.
+- **Found:** 2026-09-23, same session, yardstick-v2 F124. Investigated
+  further 2026-09-24 (this session, templates half): confirmed the
+  template-side refusal the earlier entry proposed cannot be built with
+  what the router files today - see below.
 - **Evidence:** routes `leaderboard {'stat': 'triple_double', 'limit': 10,
   'season_type': 2}` and answers "Nikola Jokic led the league in
   triple-doubles ... at 34", counting HOW MANY triple-doubles each player
@@ -84,9 +87,26 @@ before that commit needs re-checking against the current warehouse.
   a ranking of triple-double GAMES by points, not a count of players'
   triple-double totals. The template (`leaderboard`) answers first, so
   `query.compose` - which does have boolean measures and a rows-by-measure
-  point - never sees the refusal that would let it try. This is on the
-  boundary of the router/player half and `query/compose/*` (owned by the
-  team agent in this session's split), so filed rather than built here.
+  point - never sees the refusal that would let it try.
+  **Checked whether `leaderboard` can refuse this shape by name using only
+  the slots it is given** (templates never see the raw question - confirmed
+  by reading `agent.py`'s call site, `TEMPLATES[intent](ctx, slots)`, and
+  `TemplateContext`, which carries only a connection and an output
+  directory): "players with the highest scoring triple doubles" and "most
+  triple-doubles" route to the IDENTICAL slots, `{'stat': 'triple_double',
+  'limit': 10, 'season_type': 2}` - checked across every capture of the
+  question in the routing corpus
+  (`~/association-research/algebra-spike/baseline/*.jsonl`, thirteen files,
+  all agree) - so no code reading only `slots` can refuse one and answer
+  the other; either both refuse (breaking the count question the task
+  explicitly protects) or both answer (today's bug). `route()`'s own
+  `RANK_WORDS` (`router.py`) does not help either: its "most" bucket
+  matches "highest" and "most" identically, and is not filed for
+  `leaderboard` at all today (only `team_leaderboard`/`team_quarter_points`)
+  - even filed, it could not tell "highest [count]" from "highest
+  [scoring]", since neither reading trips a different word in that list.
+  The word that actually distinguishes the two questions is "scoring"
+  itself, beside a boolean stat name - a pattern no existing slot carries.
 - **User sees:** a wrong answer to a question that sounds almost identical
   to one the system answers correctly (a triple-double COUNT).
 - **The compose half is now built** (this session, `query/compose/move.py`):
@@ -105,6 +125,22 @@ before that commit needs re-checking against the current warehouse.
   own. Until that refusal lands and both halves merge, `leaderboard` still
   answers the wrong count for this exact question live. Re-measure once
   merged and close then.
+- **Next step:** a router-level fix - `route()` needs a NEW code-assigned
+  check (the shape `CODE_ASSIGNED_INTENTS`/`coach` already uses, AGENTS.md
+  "A new intent does not need a prompt edit if the question's own words
+  name it"): when a `leaderboard` question names a boolean stat
+  (`triple_double`, `double_double`, `fouled_out`) AND the question's own
+  words also name a ranking qualifier ("scoring", "points in a", "biggest")
+  distinct from RANK_WORDS' bare most/fewest, file a slot `leaderboard` can
+  refuse on (e.g. a boolean value on `rank_by_value` or reusing `stat` with
+  a second cell). Once such a slot exists, the template half is
+  mechanical - refuse in `leaderboard` when it is set, exactly the way
+  every other declared-but-unhonored slot already refuses via
+  `check_scope`/`HONORED_SCOPING`. This is `router.py`/`router_prompt.py`
+  work (the router owner's files - a `ROUTER_PROMPT` edit needs
+  `scripts/check_routing.py`, which only they should run this session), so
+  filed rather than built here. `query/compose`'s boolean-measure point is
+  presumably already able to answer once the question reaches it.
 - **GitHub:** #199
 
 ### The agent fall-through answers 1 question in 23, and does not finish 61% of the time
@@ -375,20 +411,13 @@ those were found.
   `player_matchup`'s own `without` refusal next.
 - **GitHub:** #202
 
-### Ten P7-bucket "partial" answers from the yardstick are still open
+### Five P7-bucket "partial" answers from the yardstick are still open
 - **Found:** 2026-09-23, same session - not reached; recorded from
   `~/association-research/yardstick-v2/wrong_land.md`'s own evidence rather
   than independently re-diagnosed, since no time remained in this pass to
   read each one's code path. Listed here so the next agent does not have to
   rediscover the list from scratch, with the file's own F-numbers for the
   full evidence (query, route, answer, key) each already carries:
-  - **F017** - a 50-row NetPoints leaderboard with each player's team asked
-    for; neither the full 50 nor any team name is given.
-  - **F041** - `player_history`'s season-by-season 2PT% table for a career
-    span never states the single combined career percentage (55.1%) the
-    question asked for, though the rows sum to it exactly.
-  - **F051** - `player_stat` for a made-count stat (3PM) prints makes and
-    games but not attempts or percentage beside them.
   - **F058**/**F060** - `period_split` with "each game"/"every game" in the
     question still applies a `limit` of 1 as a window, showing one row where
     every game's row was asked for; aggregate totals are otherwise right.
@@ -400,21 +429,13 @@ those were found.
     mechanism from this session's bucket 1) now find the right games but do
     not state the total/point-differential sum the question asked for,
     leaving it for the reader to add up the rows.
-  - **F149** - a game log cut to a qualifying subset (FGA/minutes thresholds)
-    says "last 10 games" without saying how many of the player's total
-    qualifying games (49) that 10 is a truncation of.
-  - **F159** - `player_splits` with `stat: usage_pct` and a `without` filter
-    shows the standard splits table, which has no usage-rate column at all,
-    so the actually-asked-for stat is absent from an otherwise-correct
-    read.
 - **User sees:** mostly right answers, each short of the full truth in one
   specific, named way per the key's own grading notes above.
 - **Next step:** each needs its own read of the relevant template
-  (`period_split`, `player_history`, `player_stat`, `game_log`,
-  `player_splits`, `team_leaderboard`, the NetPoints leaderboard path) - not
-  attempted in this session. Priority within this group should follow
-  AGENTS.md's own ordering (a wrong number > a missing one > a missing
-  label), which was not assessed per-item here.
+  (`period_split`, `team_leaderboard`) - not attempted in this session.
+  Priority within this group should follow AGENTS.md's own ordering (a
+  wrong number > a missing one > a missing label), which was not assessed
+  per-item here.
 - **GitHub:** #203
 
 ### Two callers sharing one ollama instance corrupt each other's router output; ambient CPU load alone does not
@@ -2439,8 +2460,42 @@ those were found.
   own `data` (add the first season there if it is not), not by parsing their
   sentences.
 - **Source:** ours (the standings' own floor is ESPN's, in `DATA.md`).
+### The router cannot ask `leaderboard` to show each player's team (F017)
+- **Found:** 2026-09-23, fixing yardstick-v2 F017 ("who are the top 50 in
+  total adjusted netpoints with the team they play for").
+- **Evidence:** `leaderboard`'s `fields` slot now accepts `"team"` and adds a
+  "team" column, read from `player_game_log` (the season's most recent
+  team, with a "Team is each player's most recent team that season." note
+  when a shown player was traded) - `templates/players.py`,
+  `_leaderboard_fields`/`_leaderboard_show_teams`. Warehouse-verified
+  directly (`leaderboard(ctx, {"stat": "netpoints_per_100", "fields":
+  ["team"], "limit": 50})` lists all 50 players with a team beside each).
+  But `ROUTER_SCHEMA`'s `fields` enum (`router_prompt.py`) is
+  `["points","rebounds","assists","steals","blocks","minutes"]` - no
+  `"team"` - so the router can never emit `fields: ["team"]` under
+  constrained decoding, whatever the question's wording. F017's own trace
+  (`slots={'stat': 'netpoints_per_100', 'limit': 50, 'season_type': 2}`)
+  confirms this: no `fields` at all. Also note the row-count half of F017's
+  complaint ("neither the full 50 ... is given") was not reproducible
+  measured directly against this worktree's code before this change - a
+  50-row request already returned exactly 50 rows in the answer text
+  (1,238 characters); the yardstick log's own captured `answer` field cuts
+  off mid-word ("...Jalen") in a way consistent with the LOG's display
+  truncation, not the system's real output. Not re-measured on a from-
+  scratch git-bisect, so recorded as a discrepancy rather than closed as a
+  separately-fixed bug.
+- **User sees:** a leaderboard that never shows team names, even for
+  wording that explicitly asks for them ("with the team they play for",
+  "and their team") - the router's own words, not the template's.
+- **Next step:** add `"team"` to `ROUTER_SCHEMA`'s `fields` enum and a line
+  in `ROUTER_PROMPT` describing when to set it, then verify with
+  `scripts/check_routing.py` (both belong to the router owner - this
+  session's split assigns `router_prompt.py`/`router.py` there, and
+  changing either without re-running that script risks moving an unrelated
+  question's routing per `AGENTS.md`, "Any edit to ROUTER_PROMPT moves
+  slots on unrelated questions").
+- **Source:** ours.
 - **GitHub:** not yet filed
-- **GitHub:** #204
 
 ### No leaderboard metric ranks average three-point shot distance
 - **Found:** 2026-09-23, fixing the wrong-cause refusal `leaderboard` gives

@@ -398,6 +398,41 @@ def test_an_unknown_split_is_refused(league: TemplateContext) -> None:
         player_splits(league, _slots(player="Jayson Tatum", split="by_weekday"))
 
 
+def test_a_stat_the_standard_line_does_not_carry_gets_its_own_column(league: TemplateContext) -> None:
+    """F159 (ISSUES.md): "Quentin Grimes individual gamelog usage rating
+    without joel embiid" showed the standard split columns, which have no
+    usage-rate column at all, so the actually-asked-for stat was simply
+    missing from an otherwise-correct read. `usage_pct` now reads straight
+    off the relation and adds its own column - read directly from
+    player_game_log, the way the yardstick key notes it already can be."""
+    league.con.execute("ALTER TABLE player_box_stats ADD COLUMN usage_pct DOUBLE")
+    # Tatum's three played games this season: e1 (home vs LAL), e4 (away @
+    # PHI), e7 (away @ LAL) - see the `league` fixture's own table.
+    league.con.execute("UPDATE player_box_stats SET usage_pct = 20.0 WHERE athlete_id = ? AND event_id = 'e1'", [TATUM])
+    league.con.execute("UPDATE player_box_stats SET usage_pct = 30.0 WHERE athlete_id = ? AND event_id = 'e4'", [TATUM])
+    league.con.execute("UPDATE player_box_stats SET usage_pct = 40.0 WHERE athlete_id = ? AND event_id = 'e7'", [TATUM])
+    result = player_splits(league, _slots(player="Jayson Tatum", stat="usage_pct", split="home_away"))
+    assert "USG%" in result.answer
+    rows = _rows(result, "home_away")
+    assert rows["home"]["usage_pct"] == pytest.approx(20.0)
+    assert rows["away"]["usage_pct"] == pytest.approx(35.0)  # mean of 30.0 and 40.0
+    # A stat the standard line already carries is neither refused nor given a
+    # redundant second column.
+    already_shown = player_splits(league, _slots(player="Jayson Tatum", stat="points", split="home_away"))
+    assert already_shown.answer.count("PTS") == 1
+
+
+def test_player_splits_refuses_a_stat_it_has_no_column_for(league: TemplateContext) -> None:
+    """The other half of F159's fix: a stat neither on the standard line nor
+    in SPLIT_EXTRA_STATS is refused by name rather than silently answered
+    without it - and a team subject, which has no per-player rate column at
+    all, refuses the same stat a player subject can show."""
+    with pytest.raises(TemplateUnsupported, match="fouls"):
+        player_splits(league, _slots(player="Jayson Tatum", stat="fouls", split="home_away"))
+    with pytest.raises(TemplateUnsupported, match="usage_pct"):
+        player_splits(league, _slots(team="Boston Celtics", stat="usage_pct", split="wins_losses"))
+
+
 def test_a_player_with_only_dnp_rows_is_told_apart_from_one_with_none(league: TemplateContext) -> None:
     listed = player_splits(league, _slots(player="Jayson Tatum", team="Boston Celtics", season=S - 2)).answer
     assert listed == f"Jayson Tatum has no games for the Boston Celtics in the {S - 2} regular season in the warehouse."

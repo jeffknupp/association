@@ -112,6 +112,93 @@ had no published version to be compatible with.
   Reachable only once `leaderboard` itself refuses this framing instead of
   answering a triple-double COUNT first - the router/template half of #199,
   not built in this worktree.
+- **`team_record`'s combined-season-types sentence names each half's own
+  starting season (#204, ISSUES.md).** "Warriors all-time record including
+  playoff record at away" used to carry only "Note:" lines from its two
+  halves, leaving the reader unable to see that the regular-season half
+  starts five seasons after the playoff half's own floor. The sentence now
+  reads "(523-791 regular season from 1993-94, 51-52 playoffs from 1989)" -
+  each half's first season, read from its own `data` (`_games_record` now
+  carries `first_season`/`last_season`, computed from `team_games`'s own
+  season column for a single named season and from a small MIN/MAX query
+  otherwise) rather than parsed out of either half's sentence.
+  A postseason's first season is read by the calendar year it was actually
+  played (`year(tg.eastern_date)`), never `team_games.season` directly -
+  that column is ESPN's own pre-1993-94 label, which names a season by the
+  year it STARTED, not the year its games were played (the same fault
+  `templates/splits.py`'s `_team_season_range` already guards against).
+  Measured directly against the warehouse before trusting the constant
+  "1989" this file's own prose used elsewhere: the Warriors' own earliest
+  playoff game reads 1988 by the raw label and 1989 by calendar year -
+  confirming the raw label would have been wrong here too.
+  Warehouse-verified against the Warriors' road record.
+- **`leaderboard` can show each player's team beside their name (F017,
+  ISSUES.md).** "Who are the top 50 in total adjusted netpoints with the
+  team they play for" asked for a team beside every row and got none. A
+  `fields` list now accepts `"team"` alongside the existing box-score
+  columns (`_leaderboard_fields`); it adds a "team" column read from
+  `player_game_log` - the team a player played his most recent game for
+  that season and season type, so a mid-season trade shows the last team,
+  said once in a note ("Team is each player's most recent team that
+  season.") rather than per row. Player only, and only where the ranked
+  metric has a season type to look the team up by. `run_leaderboard`'s rows
+  now also carry each row's athlete id on the side
+  (`LeaderboardResult.athlete_ids`, aligned by index, never a key inside a
+  row dict) so a caller can resolve something the ranked table itself does
+  not carry, without that id riding along into `toolbox.get_leaderboard`'s
+  JSON for the model to read. Warehouse-verified: a 50-row NetPoints-per-100
+  ranking with `fields: ["team"]` now lists each player's team, all 50 rows
+  present (the row LIMIT was already honored correctly before this change -
+  confirmed directly against the warehouse; F017's own capture was cut off
+  by the yardstick log's own display truncation, not a real limit). The
+  router does not yet emit `fields: ["team"]` for wording like "with the
+  team they play for" - `ROUTER_SCHEMA`'s `fields` enum has no `"team"`
+  entry - so this is the template-side half of the fix; see ISSUES.md for
+  the remaining router-side gap.
+- **`player_splits` adds a column for a stat the standard line does not
+  carry, or refuses naming it (F159, ISSUES.md).** "Quentin Grimes
+  individual gamelog usage rating without joel embiid" showed the standard
+  split columns (G, W-L, MIN, PTS, REB, AST, STL, BLK, TOV, 3PM, FG%),
+  which have no usage-rate column at all, so the actually-asked-for stat
+  was simply absent from an otherwise-correct read. A named `stat` the
+  table already carries changes nothing (unaffected); one in the new
+  `SPLIT_EXTRA_STATS` map (today, `usage_pct`) reads straight off the
+  relation and gets its own column - "USG%" - read directly from
+  `player_game_log`, per-split, the same as every other column in the
+  line; any other named stat refuses by name rather than answering without
+  it. Player only - a team split has no per-player rate to show, and a team
+  subject now refuses the same stats a player subject can show a column
+  for. Warehouse-verified: Quentin Grimes's splits without Joel Embiid now
+  carry a USG% column with real per-split values.
+- **`player_stat` prints a made-count stat's attempts and percentage beside
+  its total (F051, ISSUES.md).** "Davion Mitchell 3 point stats" (a single
+  named made-count stat: 3PM, FGM or FTM) used to print makes and games and
+  nothing else. It now reads the attempted sibling column alongside the
+  made one - the same "out of how many?" discipline `SHOOTING_STATS`
+  already keeps for a bare percentage - and says "That is 90 of 228
+  (39.5%)." instead of "That is 90 in total.", over a season, a career and
+  a box-score-narrowed read alike. Never for a multi-stat line (no `stat`
+  named), where singling out one entry's attempts would read as though only
+  it needed the qualifier. Warehouse-verified against Davion Mitchell's
+  season (90/228, 39.5%) and career (395/1,114, 35.5%) three-point lines.
+- **`player_history` states the combined career figure for a career span, not
+  only the season-by-season table it sums to (F041, ISSUES.md).** "Show me
+  sga's career 2pt percentage" printed a table whose rows summed exactly to
+  55.1% (3,945 of 7,166) without ever stating it. A career span now adds a
+  line under the table: the games-weighted total (makes and attempts summed
+  across every season shown, never a mean of means) for a shooting
+  percentage, and the plain career total (the stored season total, or
+  `avg * games` where the table has none) for a counting stat. Warehouse-
+  verified against Shai Gilgeous-Alexander's career 2PT%.
+- **`game_log` names how many games a window cut from, not only how many it
+  shows (F149, ISSUES.md).** "Mikal Bridges game log with less than 15 FGA
+  and less than 35 minutes" cut 39 qualifying regular-season games to the
+  default 10 and headed the answer "last 10 games", with no word about the
+  29 left out. The heading now says "last 10 of 39 games" whenever the
+  window (a default limit or an explicit one) actually cuts the narrowed
+  games, read with `aggregate_sql` over `common.whole_span` - the same
+  shared steps every other count over the relation uses, never a
+  hand-written `COUNT(*)`. Warehouse-verified against the traced question.
 - A composed answer over a closed season range names the range it counted -
   "regular season career (2020-2022)" - where it said "(2020 on)": the count
   already stopped at `until`, so the sentence stated a scope the number did

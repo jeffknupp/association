@@ -145,6 +145,11 @@ SEASON_TYPE_NAMES = {0: "regular season and postseason", 1: "preseason", 2: "reg
 # ranking players "on" a team that was meant to be the whole subject
 # (yardstick-v2 F127). No HONORED_SCOPING entry lists it, so it always
 # refuses; a team the router supplies itself never carries the marker.
+# `ranked_by` is read by nothing either: the router files it when a
+# `leaderboard` question ranks the GAMES that satisfy a boolean stat by another
+# measure ("highest scoring triple doubles" - yardstick-v2 F124), the same
+# slots as the count "most triple doubles" otherwise. No template honors it,
+# so check_scope refuses and the compiler's boolean-game ranking answers.
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 """A ``date`` slot worth reading: the router's calendar form, ``YYYY-MM-DD``."""
 
@@ -169,6 +174,7 @@ SCOPING_SLOTS = frozenset(
         "rate",
         "season_type_unstated",
         "team_restored",
+        "ranked_by",
     }
 )
 

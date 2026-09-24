@@ -440,6 +440,43 @@ def test_leaderboard_phrases_its_own_answer(lb_con: TemplateContext) -> None:
     assert result.answer == (f"Luka Doncic led the league in points per game in the {current_season()} regular season (minimum 20 games), at 33.5. Next: Stephen Curry (27.1).")
 
 
+def test_leaderboard_shows_each_players_team_when_asked(lb_con: TemplateContext) -> None:
+    """F017 (ISSUES.md): "who are the top 50 in total adjusted netpoints with
+    the team they play for" asked for each player's team beside the name and
+    got none. `fields: ["team"]` (the template-side half of the fix - the
+    router does not yet emit "team" as a fields value; see this test's own
+    module for the ISSUES.md entry recording that gap) now adds a "team"
+    column, read from player_game_log so a mid-season trade shows the team
+    he played his most recent game for, with a note saying so."""
+    lb_con.con.execute("CREATE TABLE player_game_log (athlete_id VARCHAR, team_id VARCHAR, season INTEGER, season_type INTEGER, game_date VARCHAR)")
+    s = current_season()
+    # Luka stays with Dallas all season. Curry is traded from Golden State to
+    # Dallas mid-season - his most recent game is with Dallas.
+    lb_con.con.executemany(
+        "INSERT INTO player_game_log VALUES (?, ?, ?, 2, ?)",
+        [("1", "6", s, f"{s - 1}-11-01"), ("2", "9", s, f"{s - 1}-11-01"), ("2", "6", s, f"{s}-02-01")],
+    )
+    result = leaderboard(lb_con, {"stat": "points", "fields": ["team"]})
+    rows = {r["display_name"]: r["team"] for r in result.data["leaders"]}
+    assert rows == {"Luka Doncic": "Dallas Mavericks", "Stephen Curry": "Dallas Mavericks"}
+    assert "team" in result.answer.splitlines()[1]  # the header row
+    assert "Team is each player's most recent team that season." in result.answer
+
+
+def test_leaderboard_team_field_says_nothing_when_nobody_was_traded(lb_con: TemplateContext) -> None:
+    """The trade note is said once, and only when it is true: with nobody
+    shown having played for more than one team, it does not appear."""
+    lb_con.con.execute("CREATE TABLE player_game_log (athlete_id VARCHAR, team_id VARCHAR, season INTEGER, season_type INTEGER, game_date VARCHAR)")
+    s = current_season()
+    lb_con.con.executemany(
+        "INSERT INTO player_game_log VALUES (?, ?, ?, 2, ?)",
+        [("1", "6", s, f"{s - 1}-11-01"), ("2", "9", s, f"{s - 1}-11-01")],
+    )
+    result = leaderboard(lb_con, {"stat": "points", "fields": ["team"]})
+    assert "Team is each player's most recent team" not in result.answer
+    assert {r["team"] for r in result.data["leaders"]} == {"Dallas Mavericks", "Golden State Warriors"}
+
+
 def test_leaderboard_names_the_team_when_filtered(lb_con: TemplateContext) -> None:
     result = leaderboard(lb_con, {"stat": "points", "team": "Warriors"})
     assert "led the Golden State Warriors" in (result.answer or "")
@@ -2510,9 +2547,13 @@ def test_player_compare_refuses_a_named_stat_it_cannot_provide(ps_con: TemplateC
 def test_player_stat_supports_the_shooting_stats_the_router_emits(ps_con: TemplateContext) -> None:
     ps_con.con.execute("ALTER TABLE player_season_stats_deduped ADD COLUMN avgThreePointFieldGoalsMade DOUBLE")
     ps_con.con.execute("ALTER TABLE player_season_stats_deduped ADD COLUMN threePointFieldGoalsMade INTEGER")
-    ps_con.con.execute("UPDATE player_season_stats_deduped SET avgThreePointFieldGoalsMade = 4.4, threePointFieldGoalsMade = 282 WHERE athlete_id = '1'")
+    ps_con.con.execute("ALTER TABLE player_season_stats_deduped ADD COLUMN threePointFieldGoalsAttempted INTEGER")
+    ps_con.con.execute("UPDATE player_season_stats_deduped SET avgThreePointFieldGoalsMade = 4.4, threePointFieldGoalsMade = 282, threePointFieldGoalsAttempted = 620 WHERE athlete_id = '1'")
     answer = player_stat(ps_con, {"player": "Luka Doncic", "stat": "threePointFieldGoalsMade"}).answer or ""
-    assert "4.4 3-pointers" in answer and "282 in total" in answer
+    # F051 (ISSUES.md): a made-count stat now carries its attempts and the
+    # percentage they make beside the total - "282 of 620 (45.5%)" - the same
+    # "out of how many?" discipline a bare shooting percentage already keeps.
+    assert "4.4 3-pointers" in answer and "282 of 620 (45.5%)" in answer
 
 
 def test_player_stat_answers_two_point_percentage_for_a_season_and_a_career(ps_con: TemplateContext) -> None:
@@ -3706,6 +3747,22 @@ def test_game_log_averages_exactly_the_games_it_lists(pg_ctx: TemplateContext) -
     assert "17.5" in average_row
 
 
+def test_game_log_says_how_many_games_the_window_cut_from(pg_ctx: TemplateContext) -> None:
+    """F149 (ISSUES.md): a limit (default or asked) that keeps fewer games
+    than qualified used to head the log "last N games" with no word about
+    the rest. Podziemski has 3 played regular-season games this season (e1,
+    e2, e3 - e4 is a DNP and e6 an empty box-score line, neither played); a
+    limit of 2 keeps the two most recent and now says how many it cut from."""
+    result = game_log(pg_ctx, {"player": "Brandin Podziemski", "limit": 2})
+    assert result.data["qualifying_games"] == 3
+    assert result.answer.splitlines()[0].startswith("Brandin Podziemski, last 2 of 3 games")
+    # No truncation, no "of N": every qualifying game fit inside the window.
+    full = game_log(pg_ctx, {"player": "Brandin Podziemski", "limit": 10})
+    assert full.data["qualifying_games"] == 3
+    assert full.answer.splitlines()[0].startswith("Brandin Podziemski, last 3 games")
+    assert "of 3" not in full.answer.splitlines()[0]
+
+
 def test_a_named_stat_adds_its_columns_to_the_log(pg_ctx: TemplateContext) -> None:
     result = game_log(pg_ctx, {"player": "Brandin Podziemski", "stat": "freeThrowPct"})
     titles = result.answer.splitlines()[1].split()
@@ -3981,6 +4038,25 @@ def test_player_stat_answers_a_shooting_percentage_with_its_makes_and_attempts(p
     assert "83.3% on free throws (5 of 6) in 2 games vs the Detroit Pistons" in against
 
 
+def test_player_stat_answers_a_made_count_stat_with_its_attempts_and_percentage(pg_ctx: TemplateContext) -> None:
+    """F051 (ISSUES.md): "davion mitchell 3 point stats" (stat=
+    threePointFieldGoalsMade) printed the makes and the games and nothing
+    else - not the attempts or the percentage they make, both
+    `must_include` in the yardstick key. Exercised here over box scores
+    (an opponent narrows the read), the one path `test_player_stat_answers_a_shooting_percentage_with_its_makes_and_attempts`
+    above does not cover for a made-count stat."""
+    against = player_stat(pg_ctx, {"player": "Brandin Podziemski", "stat": "freeThrowsMade", "opponent": "Detroit Pistons"}).answer or ""
+    # Same two games (e2, e3) test_player_stat_answers_a_shooting_percentage_with_its_makes_and_attempts
+    # reads as freeThrowPct (5 of 6, 83.3%) - the made-count reading states
+    # the identical makes/attempts/percentage, phrased as a total rather than
+    # a percentage-first sentence.
+    assert "That is 5 of 6 (83.3%)." in against
+    # A multi-stat line (no single `stat` named) is unaffected: singling out
+    # one entry's attempts would read as though only it needed the qualifier.
+    default_line = player_stat(pg_ctx, {"player": "Brandin Podziemski", "opponent": "Detroit Pistons"}).answer or ""
+    assert "of 6" not in default_line and "%" not in default_line
+
+
 def test_player_stat_over_the_last_n_games_is_the_log_with_its_averages(pg_ctx: TemplateContext) -> None:
     """The product decision: "stats over his last N games" is a log of those
     games with averages beneath, never the season line - so player_stat hands
@@ -3988,7 +4064,9 @@ def test_player_stat_over_the_last_n_games_is_the_log_with_its_averages(pg_ctx: 
     result = player_stat(pg_ctx, {"player": "Brandin Podziemski", "limit": 2})
     assert len(result.data["games"]) == 2
     assert "averages" in result.data
-    assert "last 2 games" in result.answer
+    # F149 (ISSUES.md): the window (2) is narrower than his 3 qualifying
+    # games, so the heading now says how many it cut from.
+    assert "last 2 of 3 games" in result.answer
 
 
 def test_check_scope_lets_player_stat_honor_since_and_order(pg_ctx: TemplateContext) -> None:
@@ -4392,6 +4470,43 @@ def test_player_history_career_is_every_season(ps_con: TemplateContext) -> None:
     assert result.answer.startswith(f"Luka Doncic, points per game by regular season, career, {s - 7}-{s} (most recent first):")
     four = player_history(ps_con, {"player": "Luka Doncic", "stat": "points"}).answer
     assert four.startswith(f"Luka Doncic, points per game by regular season, {s - 3}-{s} (most recent first):")
+
+
+def test_player_history_career_states_the_combined_percentage(ps_con: TemplateContext) -> None:
+    """F041 (ISSUES.md): "show me sga's career 2pt percentage" answered a
+    season-by-season table whose rows summed exactly to the combined career
+    figure the question asked for, without ever stating it. The career line
+    is the games-weighted total (makes/attempts summed), never a mean of the
+    per-season percentages - which would give a different, wrong number here
+    ((60% + 20%) / 2 = 40%, not the true (600+40)/(1000+200) = 53.3%)."""
+    for col in ("fieldGoalsMade", "fieldGoalsAttempted", "threePointFieldGoalsMade", "threePointFieldGoalsAttempted"):
+        ps_con.con.execute(f"ALTER TABLE player_season_stats_deduped ADD COLUMN {col} INTEGER")
+    s = current_season()
+    ps_con.con.execute(
+        "UPDATE player_season_stats_deduped SET fieldGoalsMade=600, fieldGoalsAttempted=1000, threePointFieldGoalsMade=0, threePointFieldGoalsAttempted=0 WHERE athlete_id='1' AND season=?", [s]
+    )
+    ps_con.con.execute(
+        "INSERT INTO player_season_stats_deduped "
+        "(athlete_id, season, season_type, gamesPlayed, avgPoints, fieldGoalsMade, fieldGoalsAttempted, threePointFieldGoalsMade, threePointFieldGoalsAttempted) "
+        "VALUES ('1',?,2,70,20.0,40,200,0,0)",
+        [s - 1],
+    )
+    answer = player_history(ps_con, {"player": "Luka Doncic", "stat": "twoPointFieldGoalPct", "span": "career"}).answer or ""
+    assert answer.endswith("Luka Doncic's career 2PT%: 53.3% (640 of 1,200).")
+    # No span: the default four-season table (here, both rows) states no
+    # combined figure - a window nobody asked to see summed.
+    windowed = player_history(ps_con, {"player": "Luka Doncic", "stat": "twoPointFieldGoalPct"}).answer or ""
+    assert "career" not in windowed
+
+
+def test_player_history_career_states_the_combined_total(ps_con: TemplateContext) -> None:
+    """The counting-stat sibling of the percentage career line above: the
+    plain career total, summed the same way `_career_player_stat` sums one."""
+    s = current_season()
+    ps_con.con.execute("INSERT INTO player_season_stats_deduped (athlete_id, season, season_type, gamesPlayed, avgPoints, points) VALUES ('1',?,2,70,20.0,1400)", [s - 1])
+    answer = player_history(ps_con, {"player": "Luka Doncic", "stat": "points", "span": "career"}).answer or ""
+    # Base row (ps_con): 2,143 total points; plus the season just added: 1,400.
+    assert answer.endswith("Luka Doncic's career total: 3,543 points.")
 
 
 def test_team_game_log_honors_opponent_and_venue(gl_con: TemplateContext) -> None:
@@ -5256,3 +5371,13 @@ def _source_with_private_steps(handler: Any) -> str:
             if step is not None:
                 todo.append(step)
     return "\n".join(out)
+
+
+def test_a_leaderboard_ranked_by_another_measure_refuses_to_the_compiler() -> None:
+    """yardstick-v2 F124: `ranked_by` is the slot route() files for "highest
+    scoring triple doubles"; no template honors it, so check_scope refuses
+    and the compiler's boolean-game ranking answers. The bare count - the
+    same slots without it - is untouched."""
+    with pytest.raises(TemplateUnsupported, match="ranked_by"):
+        check_scope("leaderboard", {"stat": "triple_double", "limit": 10, "ranked_by": "points"})
+    check_scope("leaderboard", {"stat": "triple_double", "limit": 10})
