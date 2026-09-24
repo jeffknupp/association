@@ -480,6 +480,31 @@ CASES: list[tuple[str, str, dict]] = [
     # onto period 1, and the linescore holds both quarters.
     ("Detroit Pistons most points in a first half this season", "team_quarter_points", {"half": 1, "rank": "most"}),
     ("Celtics 2nd half scoring this season", "team_quarter_points", {"half": 2}),
+    # #206: the lowercase-embiid substitution landed in `opponent` as Nikola
+    # Jokic, and the refusal named him. override_invented_players now checks
+    # the opponent too, and puts back the player the question names.
+    ("jay huff game log vs Embiid", "player_matchup", {"opponent": "Joel Embiid"}),
+    # #207: "since 2000-01" starts at the season ending in 2001, not 2000.
+    ("players with 33 point and 13 rebound and 10 assist 2 blocks and 2 steals games since 2000-01", "threshold_count", {"since": 2001}),
+    # yardstick-v2 F096: a count of "games" over the line 0 is his game log,
+    # Bam restored and "in the month of march" read as a month.
+    ("bam adebayo career games in the month of march", "game_log", {"player": frozenset({"bam adebayo", "Bam Adebayo"}), "situation": "in the month of march", "span": "career"}),
+    # yardstick-v2 F110: routed team_record with an invented `team='Toronto
+    # Raptors'`. The routing is left as the model files it; what changed is
+    # after it - a team the question never names no longer counts as the
+    # question's team, so the agent refuses by Towns's name
+    # (entities.player_named_on_a_team_only_question). Asserted here: the
+    # venue and the opponent the answer depends on.
+    ("towns home rec including playoffs since 1/26/20 vs spurs", "team_record", {"venue": "home", "opponent": "San Antonio Spurs"}),
+    # yardstick-v2 F104: "best NBA record" with no team is the league's
+    # ranking, whatever the model filed; the truncated "201" names no season.
+    ("Best NBA record since January 31st 201", "team_leaderboard", {"rank": "best", "situation": "since january 31st"}),
+    # yardstick-v2 F059: a player and a team together in `players`, on a "vs"
+    # question, are the player and his opponent - a named player's half.
+    ("Kd vs clippers 2h at home gamelog", "period_split", {"player": "Kevin Durant", "half": 2, "venue": "home", "opponent": frozenset({"Los Angeles Clippers", "LA Clippers"})}),
+    # yardstick-v2 F098: "td3s" is a triple-double, not a period word and not
+    # a shot value; the compiler counts one player's, at home here.
+    ("luka td3s home", "player_stat", {"player": "Luka Doncic", "stat": "triple_double", "venue": "home"}),
 ]
 
 

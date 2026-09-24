@@ -1047,6 +1047,72 @@ def test_a_split_is_read_for_every_intent_so_others_can_refuse_it() -> None:
     assert got.slots["split"] == "starter_bench"
 
 
+def test_a_player_beside_a_team_in_players_is_a_players_half_against_that_team() -> None:
+    """yardstick-v2 F059, the model's reply as recorded: "Kd vs clippers 2h
+    at home gamelog" filed Durant and the Clippers together in `players`
+    with no `player`, so the team's-half branch took it and
+    team_quarter_points refused for naming a player. The pair is the player
+    and his opponent, and a named player's half is period_split."""
+    got = _asking(
+        '{"intent":"team_quarter_points","stat":"points","players":["Kevin Durant","Los Angeles Clippers"],"fields":["points","assists","rebounds"],'
+        '"team":"clippers","half":2,"season_type":2,"venue":"home"}',
+        "Kd vs clippers 2h at home gamelog",
+    )
+    assert got.intent == "period_split"
+    assert got.slots["player"] == "Kevin Durant" and got.slots["opponent"] == "Los Angeles Clippers"
+    assert got.slots["half"] == 2 and got.slots["venue"] == "home" and got.slots["per_game"] is True
+    assert "players" not in got.slots and "team" not in got.slots
+    # With no "vs", a team in the list is not read as an opponent.
+    unchanged = _asking('{"intent":"team_quarter_points","players":["Kevin Durant","Los Angeles Clippers"],"half":2}', "kd clippers 2h")
+    assert unchanged.slots.get("players") == ["Kevin Durant", "Los Angeles Clippers"]
+
+
+def test_td3s_is_a_triple_double_and_not_a_period_or_a_shot_value() -> None:
+    """yardstick-v2 F098, the model's reply as recorded: "luka td3s home"
+    came back as `other` with stat threePointFieldGoalsMade and shot_value
+    3, and `_AGENT_ONLY` then sent it to the agent as though "td3s" were a
+    period word. It is a triple-double: one player's count of them at home
+    is a player_stat the compiler answers."""
+    got = _asking(
+        '{"intent":"other","stat":"threePointFieldGoalsMade","player":"Luka Doncic","shot_value":3,"fields":["points"],"season":2026,"season_type":2,"venue":"home"}',
+        "luka td3s home",
+    )
+    assert got.intent == "player_stat"
+    assert got.slots["stat"] == "triple_double" and got.slots["venue"] == "home" and got.slots["player"] == "Luka Doncic"
+    assert "shot_value" not in got.slots and "period" not in got.slots
+
+
+def test_best_nba_record_with_no_team_is_the_team_leaderboard() -> None:
+    """yardstick-v2 F104, the model's reply as recorded: "Best NBA record
+    since January 31st 201" came back as team_record with no team and fell
+    through ("no team named"). "NBA" between "best" and "record" is still
+    the league's ranking; the truncated year names no season, so the model's
+    guess goes and the default season applies."""
+    got = _asking('{"intent":"team_record","stat":"win_percentage","season":2025,"limit":1,"season_type":2}', "Best NBA record since January 31st 201")
+    assert got.intent == "team_leaderboard"
+    assert got.slots["stat"] == "record" and got.slots["rank"] == "best" and got.slots["situation"] == "since january 31st"
+    assert "season" not in got.slots and "team" not in got.slots
+    # A team named keeps its own record.
+    assert _asking('{"intent":"team_record","team":"Boston Celtics"}', "celtics best nba record since january 31st").intent == "team_record"
+
+
+def test_a_players_career_games_in_a_month_are_his_game_log_in_that_month() -> None:
+    """yardstick-v2 F096, the model's reply as recorded: a count over the line
+    0 on the stat "games", Bam dropped and March unread ("in the month of"
+    was not a month phrase). Nothing read that count, so it fell through; his
+    games with no line on them are his log, narrowed to March."""
+    got = _asking(
+        '{"intent":"threshold_count","stat":"games","threshold":0,"season_type":2,"fields":["minutes","points"],"span":"career"}',
+        "bam adebayo career games in the month of march",
+    )
+    assert got.intent == "game_log"
+    assert got.slots["player"] == "bam adebayo" and got.slots["situation"] == "in the month of march" and got.slots["span"] == "career"
+    assert "stat" not in got.slots and "threshold" not in got.slots
+    # A real line keeps the count, and a named month reads the short way too.
+    kept = _asking('{"intent":"threshold_count","stat":"points","threshold":30,"player":"Bam Adebayo"}', "bam adebayo 30 point games in march")
+    assert kept.intent == "threshold_count" and kept.slots["situation"] == "in march"
+
+
 @pytest.mark.parametrize(
     ("question", "since", "until"),
     [
@@ -1068,6 +1134,14 @@ def test_a_split_is_read_for_every_intent_so_others_can_refuse_it() -> None:
         # season_text._SPAN's already-correct single-season read.
         ("how many 20+ point games did SGA have 2024-2026?", 2024, 2026),
         ("sga stats in the 2023-2024 season", None, None),
+        # #207: "since" before a season-hyphenated year starts at the season
+        # ENDING in the later year - `_SINCE` alone read "2000" and started a
+        # season early. Four digits a year apart read the same way; halves
+        # that are not one season's two years keep the old leading-year read.
+        ("players with 33 point and 13 rebound and 10 assist 2 blocks and 2 steals games since 2000-01", 2001, None),
+        ("most triple doubles since 2000-2001", 2001, None),
+        ("most triple doubles since 1999-00", 2000, None),
+        ("most triple doubles since 2000-05", 2000, None),
     ],
 )
 def test_a_range_of_seasons_replaces_the_one_the_model_picked(question: str, since: int | None, until: int | None) -> None:
@@ -1560,12 +1634,13 @@ def test_a_player_whose_name_looks_like_a_team_is_still_a_player(name: str) -> N
 
 
 def test_a_triple_double_abbreviation_is_not_read_as_three_pointers() -> None:
-    """Not a narrowing, though the replay filed it as one: "luka td3s home" had
-    its venue read and honored correctly, and answered his POINTS per game at
-    home, because `td3s` became shot_value 3. Nothing counts triple-doubles for
-    one player, and the season table they live on has no venue dimension, so
-    this is the agent's. Spelled out, "triple double" already routes right."""
-    assert _ask("luka td3s home", '{"intent":"player_stat","player":"Luka Doncic","shot_value":3}').intent == "other"
+    """ "luka td3s home" once answered his POINTS per game at home, because
+    `td3s` became shot_value 3; then `_AGENT_ONLY` sent it to the agent,
+    since nothing counted one player's triple-doubles. The compiler counts
+    them now, so a player_stat the model chose keeps its intent and reads
+    the right stat."""
+    got = _ask("luka td3s home", '{"intent":"player_stat","player":"Luka Doncic","shot_value":3}')
+    assert got.intent == "player_stat" and got.slots["stat"] == "triple_double" and "shot_value" not in got.slots
 
 
 @pytest.mark.parametrize("question", ["Duncan Robison 1q log", "Devin Vassell nba player per game stats 1q"])

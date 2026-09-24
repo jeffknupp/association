@@ -57,17 +57,18 @@ FOUL_OUT_THRESHOLD = 6
 # and "Devin Vassell nba player per game stats 1q" were both answered with a
 # whole-game line in the 2026-09-15 feed replay. Same shape as the "4th qtr"
 # gap that made these patterns grow abbreviations in the first place.
-# `td3s` is here rather than in _SITUATION because it is not a narrowing at
-# all, which is worth keeping straight: the feed replay filed "luka td3s home"
-# under "condition dropped", but the venue was read correctly and honored -
-# the fault is that `td3s` became shot_value 3, so the answer was his points
-# per game at home instead of a count of triple-doubles. Triple-doubles exist
-# as a leaderboard metric (metrics.triple_doubles, off player_season_stats),
-# but nothing counts them for ONE player, and nothing can split them by venue,
-# since that season table has no venue dimension - deriving them per game from
-# box scores is exactly the agent's job. Spelled out, "triple double" already
-# routes correctly; only the abbreviation is unreadable.
-_AGENT_ONLY = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+(?:quarter|qtr|q)\b|\bq[1-4]\b|\b[1-4]q\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b|\btd3s?\b")
+# `td3s` used to be here too, sending "luka td3s home" to the agent because
+# nothing counted one player's triple-doubles. The compiler does now (a
+# per-game flag on the player-games relation), so it left: see
+# `_route_triple_double_abbreviation`, which reads the word instead.
+_AGENT_ONLY = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+(?:quarter|qtr|q)\b|\bq[1-4]\b|\b[1-4]q\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b")
+
+# "td3" is a triple-double, and the model reads its "3" as a shot value:
+# "luka td3s home" came back as `other` with stat threePointFieldGoalsMade
+# and shot_value 3 (yardstick-v2 F098), and before that as his points per
+# game at home. The compiler's own measure words already read "td3s"
+# (compose/move.py), so only the slots have to say it.
+_TRIPLE_DOUBLE_ABBREVIATION = re.compile(r"\btd3s?\b", re.IGNORECASE)
 
 # A half is never a quarter. team_quarter_points reads a period number and the
 # model maps "first half" onto period 1, which is wrong for a TEAM the same way
@@ -337,6 +338,12 @@ _SEASON_N = re.compile(r"\b(\d{1,2})(?:st|nd|rd|th)\s+season\b", re.IGNORECASE) 
 # ending in 2020; a decade ("the 2010s") is the seasons ending in it. Stated this
 # way, not guessed at, so a template that honors it can print the exact range.
 _SINCE = re.compile(r"\bsince\s+(?:the\s+)?((?:19|20)\d\d)\b", re.IGNORECASE)
+# "since 2000-01" / "since 2000-2001": the season-hyphenated year after
+# "since", which is the season ENDING in the second year (nba/season.py) -
+# `_SINCE` alone read its leading "2000" and started a season early (#207).
+# The second half must be the next year, two digits or four, so a real range
+# ("2019-2024") is still `_RANGE_HYPHEN_YEARS`'s to read.
+_SINCE_SEASON = re.compile(r"\bsince\s+(?:the\s+)?((?:19|20)\d\d)-(\d\d|(?:19|20)\d\d)\b", re.IGNORECASE)
 _DECADE = re.compile(r"\b(?:the\s+)?((?:19|20)\d)0'?s\b", re.IGNORECASE)
 
 # A CLOSED range - both ends named - rather than the open "since 2020" above.
@@ -408,6 +415,9 @@ def _validate_range(question: str) -> tuple[int, int | None] | None:
     bare_years = _RANGE_BARE_YEARS.search(question)
     if bare_years is not None and int(bare_years.group(2)) == int(bare_years.group(1)) + 1:
         return int(bare_years.group(1)), int(bare_years.group(2))
+    since_season = _validate_range_since_season(question)
+    if since_season is not None:
+        return since_season, None
     since = _SINCE.search(question)
     if since is not None:
         return int(since.group(1)), None
@@ -416,6 +426,20 @@ def _validate_range(question: str) -> tuple[int, int | None] | None:
         first = int(decade.group(1) + "0")
         return first, first + 9
     return None
+
+
+def _validate_range_since_season(question: str) -> int | None:
+    """The season "since 2000-01" (or "since 2000-2001") starts from - the one
+    ending in the later year - or ``None`` when the halves are not one
+    season's two years."""
+    match = _SINCE_SEASON.search(question)
+    if match is None:
+        return None
+    first, second = int(match.group(1)), match.group(2)
+    ends = first // 100 * 100 + int(second) if len(second) == 2 else int(second)
+    if len(second) == 2 and ends < first:
+        ends += 100  # "since 1999-00": the century turns inside the season
+    return ends if ends == first + 1 else None
 
 
 # "past two seasons", "last 3 years": a relative window counted back from NOW,
@@ -735,6 +759,10 @@ _SUBJECT_OF_COUNT = re.compile(
     r"games?\s+with\b"
     r"|games?\s+of\b"
     r"|\d+\+?\s*[- ]?\s*" + _COUNT_STAT_WORD + r"s?\s+games?\b"
+    # "bam adebayo career games in the month of march" (yardstick-v2 F096):
+    # the model dropped Bam, and none of the shapes above follows a name
+    # with "career games".
+    r"|career\s+games?\b"
     r")",
     re.IGNORECASE,
 )
@@ -1031,7 +1059,9 @@ _ABOVE = re.compile(r"\b(?:with\s+(?:at\s+least\s+)?)?(?<!than\s)(?<!under\s)(?<
 # question that routes correctly today starts refusing.
 _SITUATION = re.compile(
     r"\bback[- ]to[- ]backs?\b|\bb2bs?\b|\bsecond\s+night\b|\bovertime\b|"
-    r"\bin\s+(?:october|november|december|january|february|march|april|may|june)\b|"
+    # "in the month of march" as well as "in march" (F096) - the calendar
+    # reader (calendar._IN_MONTH) already takes both.
+    r"\bin\s+(?:the\s+month\s+of\s+)?(?:october|november|december|january|february|march|april|may|june)\b|"
     r"\b(?:east(?:ern)?|west(?:ern)?)\s+conference\b|\bvs\.?\s+the\s+(?:east|west)\b|\bdivision\b|\ball[- ]star\s+break\b|"
     # A day of the week: 8 of the 14, and the most common shape in the feed.
     r"\b(?:mon|tues|wednes|thurs|fri|satur|sun)days?\b|"
@@ -1439,8 +1469,10 @@ def _team_slot_named_in_text(question: str, candidate: Any) -> str | None:
 
 # "best record" and "worst record" rank the league; with no team named they are
 # team_leaderboard's question. Measured: "worst record 2025-26" came back as
-# team_record with team='worst'.
-_BEST_WORST_RECORD = re.compile(r"\b(?:best|worst)\s+records?\b", re.IGNORECASE)
+# team_record with team='worst'. "the league" or "NBA" between the two words
+# is the same ranking: "Best NBA record since January 31st 201" (yardstick-v2
+# F104) came back as team_record with no team and fell through.
+_BEST_WORST_RECORD = re.compile(r"\b(?:best|worst)\s+(?:nba\s+|league\s+)?records?\b", re.IGNORECASE)
 
 # A `team` slot that names the league rather than a team - "all-NBA",
 # "all_teams", "worst" - measured on three questions, each of which then
@@ -1633,7 +1665,7 @@ def _validate_order(slots: dict[str, Any], question: str) -> str | None:
 _STAT_WORDS = re.compile(
     r"\b(points?|scor\w*|pts|rebound\w*|boards|reb|assist\w*|passing|dimes|ast|steal\w*|stl|block\w*|blk|"
     r"turnover\w*|giveaways?|fouls?|minutes?|mins?|shoot\w*|shots?|three\w*|3pt|3-point\w*|field goals?|free throws?|"
-    r"percentage|efficien\w*|usage|double-doubles?|triple-doubles?|ppg|rpg|apg|spg|bpg|fg|ft|3p|ts|efg)\b",
+    r"percentage|efficien\w*|usage|double-doubles?|triple-doubles?|td3s?|ppg|rpg|apg|spg|bpg|fg|ft|3p|ts|efg)\b",
     re.IGNORECASE,
 )
 
@@ -1788,6 +1820,8 @@ def _route_period_intents(raw: dict[str, Any], question: str) -> None:
         # behavior: slots are kept, because the agent sees the conversation
         # rather than the Route, and the log line shows what the model thought.
         asked = _period_asked(question)
+        if asked is not None:
+            _route_period_intents_player_beside_team(raw, question)
         # No second `_is_team_quarter_points` check: it means "this intent, and
         # NO player", so it can never be true here where a player is named. The
         # team's own quarter is already exempted by the outer condition.
@@ -1822,6 +1856,55 @@ def _route_period_intents(raw: dict[str, Any], question: str) -> None:
             _route_period_split_slots(raw, question, subject)
         else:
             raw["intent"] = "other"
+
+
+def _route_period_intents_player_beside_team(raw: dict[str, Any], question: str) -> None:
+    """A player and a team in ``players``, on a "vs" question, are the
+    player and his opponent.
+
+    yardstick-v2 F059: "Kd vs clippers 2h at home gamelog" arrived with
+    ``players: ['Kevin Durant', 'Los Angeles Clippers']``, no ``player`` and
+    ``team: 'clippers'``, so :func:`_route_period_intents` saw no named
+    player and took the team's-half branch - team_quarter_points, which
+    refused for naming a player. A named player's half is ``period_split``;
+    the team beside him in the list is who he played. Only an exact pair
+    (one player, one team, per :func:`_is_team_name`) on a question that
+    says "vs"/"against", and only where the model filed no ``player`` - so a
+    real two-player list, or a team with no versus word, is left alone. A
+    ``team`` slot naming that same opponent goes too: it is the opponent
+    filed twice, not the player's own team."""
+    if isinstance(raw.get("player"), str) and raw["player"].strip():
+        return
+    listed = raw.get("players")
+    if not isinstance(listed, list) or len(listed) != 2 or not all(isinstance(name, str) and name.strip() for name in listed) or not _VERSUS_WORDS.search(question):
+        return
+    teams = [name for name in listed if _is_team_name(name)]
+    if len(teams) != 1:
+        return
+    opponent = teams[0]
+    raw["player"] = next(name for name in listed if name != opponent)
+    raw.pop("players", None)
+    team_slot = raw.get("team")
+    if isinstance(team_slot, str) and set(team_slot.lower().split()) & set(opponent.lower().split()):
+        raw.pop("team", None)
+    if not (isinstance(raw.get("opponent"), str) and raw["opponent"].strip()):
+        raw["opponent"] = opponent
+
+
+def _route_triple_double_abbreviation(raw: dict[str, Any], question: str) -> None:
+    """ "td3s" is the stat ``triple_double``, never a shot value, and one named
+    player's count of them is a ``player_stat`` the compiler answers (the
+    template refuses a stat with no per-game column, and the compiler then
+    counts the games). Measured over the corpus (CASES, the StatMuse feed,
+    yardstick-v2): "luka td3s home" is the one question holding the word;
+    the model filed it as ``other``, so only that intent is moved - a
+    leaderboard or a count the model chose keeps its own intent."""
+    if not _TRIPLE_DOUBLE_ABBREVIATION.search(question):
+        return
+    raw["stat"] = "triple_double"
+    raw.pop("shot_value", None)
+    if raw["intent"] == "other" and isinstance(raw.get("player"), str) and raw["player"].strip():
+        raw["intent"] = "player_stat"
 
 
 def _team_slot_or_word(raw: dict[str, Any], low: str) -> bool:
@@ -1965,6 +2048,22 @@ def _route_threshold(raw: dict[str, Any], slots: dict[str, Any], question: str) 
         if together:
             raw["intent"] = "with_without"
             slots["with_player"] = together
+    if raw["intent"] == "threshold_count" and slots.get("stat") in ("games", "game") and not slots.get("threshold"):
+        # "bam adebayo career games in the month of march" (yardstick-v2 F096)
+        # arrived as a count of games over the line 0 on the stat "games" -
+        # no line at all, and no template or compiler reads it, so it fell
+        # through. A player's games with no line on them are his game log,
+        # which states how many there were and his line in them. Measured
+        # over the replayed corpus: this question is the only one routed so.
+        raw["intent"] = "game_log"
+        slots.pop("stat", None)
+        slots.pop("threshold", None)
+        # The count's subject, restored as a count's would be
+        # (_route_subject_slots) - game_log is not one of the intents that
+        # step restores for, and the model dropped Bam here.
+        subject = None if slots.get("player") or slots.get("players") else _subject_named_in(question)
+        if subject is not None:
+            slots["player"] = subject
     if raw["intent"] == "threshold_count" and not isinstance(slots.get("threshold"), int):
         # A count of games needs a threshold. Without one, "who has the most
         # threes" is a season ranking - measured, it arrived here with none and
@@ -2453,6 +2552,7 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     # threshold the question lacks turns a count back into a ranking before
     # any intent-specific slot is chosen.
     _route_period_intents(raw, question)
+    _route_triple_double_abbreviation(raw, question)
     _route_team_and_player_intents(raw, question)
     rerouted_to_line = _route_line_and_record_intents(raw, question)
     slots = _route_season_slots(raw, question)

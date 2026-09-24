@@ -327,20 +327,27 @@ those were found.
 
 ### "Since 2000-01" is not read as a span: a league-wide multi-line count answers the default season
 - **Found:** 2026-09-24, grading `live_rest.jsonl` (yardstick-v2 F161).
+### A composed league-wide read ignores `since`/`until`: "... games since 2000-01" answers the current season
+- **Found:** 2026-09-24, grading `live_rest.jsonl` (yardstick-v2 F161);
+  re-diagnosed the same day fixing the router half of #207.
 - **Evidence:** "players with 33 point and 13 rebound and 10 assist 2 blocks
-  and 2 steals games since 2000-01" composes the right five predicates but
-  over "2026 regular season - last 3 games": `router._SINCE` reads "since
-  YYYY" and `_RANGE_TO_HYPHEN` reads "YYYY-YY to YYYY-YY", and neither reads
-  "since YYYY-YY" (a season-hyphenated year after "since"). A filler
-  `limit: 3` also cut the list. Key: 12 such games since 2000-01.
-- **User sees:** a count over one season where a 26-season span was asked -
-  the span is stated, so it is correctable.
-- **Next step:** `_SINCE` accepts the two-digit season suffix ("since
-  2000-01" = since 2001, the year it ends); a league-wide rows read drops a
-  `limit` the question does not name (the same filler rule the period
-  templates apply).
+  and 2 steals games since 2000-01" now routes `since: 2001` (the router
+  read "since 2000" before, a season early - fixed). But
+  `compose/core.py:_resolve_everyone` settles the span from `season`/`span`
+  alone and never reads `since`/`until`, so the composed rows are "2026
+  regular season" whatever the router sent: `compose.answer` with
+  `since: 2001` prints 3 rows, all 2026. Measured on the warehouse
+  (`player_game_log` joined to `real_games`): 11 regular-season games since
+  2001 clear all five lines (1 more in a postseason), 3 of them in 2026.
+  The "filler `limit: 3`" this entry used to name was not a limit at all:
+  every recorded routing of this question (yardstick-v2 live runs and the
+  baseline replays) is `since: 2000` with no `limit`, and "last 3 games" is
+  the row count of the 2026-only read.
+- **User sees:** 3 games of one season where a 26-season span was asked -
+  the span is stated, so it is correctable, but no wording reaches the span.
+- **Next step:** `_resolve_everyone` reads `since`/`until` into the span the
+  way `scoped_player` does for a named player (compose owns it).
 - **Source:** ours, not ESPN's.
-- **GitHub:** not yet filed
 - **GitHub:** #207
 
 ### A short, genuinely ambiguous question is guessed at rather than asked about: "Tatum rec"
@@ -2473,6 +2480,43 @@ those were found.
   runs - after it merges.
 - **Source:** ours.
 - **GitHub:** not yet filed
+### `team_leaderboard` excludes `situation`, so "best record since <day>" still falls through
+- **Found:** 2026-09-24, fixing yardstick-v2 F104's routing.
+- **Evidence:** "Best NBA record since January 31st 201" now routes
+  `team_leaderboard {'stat': 'record', 'rank': 'best', 'limit': 1,
+  'situation': 'since january 31st'}` (it was `team_record` with no team).
+  Called directly on that tree, `check_scope` refuses: `team_leaderboard
+  cannot honor ['situation']`, and `compose.answer` returns None, so it
+  reaches the agent. The exclusion's reason in
+  `templates/common.py:TEAM_RELATION_SCOPING_EXCLUDED["team_leaderboard"]`
+  ("a leaderboard ranks a season, not the games in one weekday, month or
+  holiday within it") is about narrowing the pool, and a "since <day>"
+  window is not that: "best record since January 31" ranks every team over
+  a window, which is the standings question the key asks.
+- **User sees:** the slow agent, for a standings question.
+- **Next step:** the template owner lets `team_leaderboard` honor a
+  `since_day` situation (the team relation already applies it,
+  `TeamNarrowed.narrow_calendar`), keeping the weekday/month/holiday cells
+  excluded if that reasoning holds for them.
+- **Priority note:** P3 - one corpus question, a fall-through.
+
+### A player's team record since an absolute date, both season types, is refused: "towns home rec including playoffs since 1/26/20 vs spurs"
+- **Found:** 2026-09-24, fixing yardstick-v2 F110 (it used to answer the
+  Raptors' record, a team the question never names; now refused by name).
+- **Evidence:** the key asks for Towns's teams' home record against the
+  Spurs in his games since 2020-01-26, regular season and playoffs. No slot
+  carries an absolute start date: `situation: "since january 26"` is read
+  within EACH season (`calendar.parse_situation`'s `since_day`), so
+  `since: 2020` beside it would drop October-January of every later season;
+  and "1/26/20" is not read by `router._validate_date` at all (month names
+  only). No player-relation template answers "his team's record in his
+  games" with both season types combined either.
+- **User sees:** a refusal naming Towns ("team record has no reading for
+  one") - honest about the subject, silent about the date window.
+- **Next step:** an absolute `after`/`before` date slot on both relations
+  (one clause on `Narrowed` and `TeamNarrowed`), and a numeric-date reading
+  ("1/26/20") in `route()`; then this is record_when/player_splits-shaped.
+- **Priority note:** P3 - one corpus question, refused rather than wrong.
 
 ### `game_log`'s "last 10 of N games" heading misses the without branch
 - **Found:** 2026-09-24, grading `live_rest.jsonl` (yardstick-v2 F158).
@@ -3064,6 +3108,22 @@ those were found.
   `conditions.py`/the templates outside `common.py`, or a follow-up pass.
 - **Source:** ours, not ESPN's.
 - **GitHub:** not yet filed
+### A career `game_log`'s heading names one season in parentheses beside a career count
+- **Found:** 2026-09-24, checking the answer to "bam adebayo career games in
+  the month of march" (yardstick-v2 F096) after routing it to `game_log`.
+- **Evidence:** `game_log` with `span: career` heads its answer "Bam Adebayo
+  in March, last 10 of 118 games of his career (2026 regular season)"; with
+  no situation, "Bam Adebayo, last 10 of 640 games of his career (2026
+  regular season)", and for Dwyane Wade "... of 1054 games of his career
+  (2019 regular season)". The parenthesis is the season the ten rows shown
+  come from, but it sits beside the career count and reads as the span of
+  all 118 (which run 2018-2026: 118 played March games by Eastern date,
+  re-measured on `player_game_log` x `real_games`).
+- **User sees:** a heading that seems to contradict itself - a career count
+  labeled with one season. The numbers are right.
+- **Next step:** the template owner words the parenthesis as what it is
+  ("shown: 2026") or drops it on a career span.
+- **Priority note:** P4 - wording, the figures are correct.
 
 ### A league-wide rows read orders ties by chance when several players share one game
 - **Found:** 2026-09-24, by the compose agent re-running `k2_run_pkg.py`
@@ -3138,30 +3198,6 @@ those were found.
 - **Priority note:** P4 - no wrong answer today, a maintenance risk if the
   next two ports each add their own copy instead of reading this one first.
 - **GitHub:** #193
-
-### No template counts triple-doubles for one named player, or splits them by venue
-- **Found:** 2026-09-21, a Sonnet agent clustering the 261-question corpus
-  into shapes for the yardstick review; it read the comment and checked the
-  replay.
-- **Evidence:** "luka td3s home" is `outcome=fell_through` in
-  `~/association-research/algebra-spike/baseline/replay_rerouted_tp.jsonl`.
-  `query/router.py:60-68` (the comment above `_AGENT_ONLY`) already says why:
-  triple-doubles exist only as a season leaderboard metric
-  (`metrics.triple_doubles`, off `player_season_stats`), nothing counts them
-  for ONE player, and that table has no venue dimension to split by. The gap
-  lived only in that comment. It is a template gap, not a data gap -
-  `player_box_stats` holds what a per-game derivation needs.
-- **User sees:** the slow agent. It used to be worse: `td3s` was read as
-  `shot_value=3` and answered fluently as his scoring average at home, which
-  `_AGENT_ONLY` now prevents.
-- **Next step:** if picked up, a triple-double is a derived per-game flag on
-  the player-games relation (three of PTS/REB/AST/STL/BLK at 10+), after which
-  `threshold_count` counts it and every scoping slot the relation honors -
-  venue included - applies for free. That is the step 3 plan's argument in
-  miniature, so do it after C2 rather than as a one-off in one template.
-- **Priority note:** P4 - one corpus question, and it falls through rather
-  than answering wrongly.
-- **GitHub:** #194
 
 ### "Points by quarter" asks for all four at once, and every template answers one
 - **Found:** 2026-09-20, finishing the quarters-and-halves work

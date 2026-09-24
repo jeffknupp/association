@@ -370,7 +370,10 @@ class Agent:
         # stage after this one would have answered about him perfectly.
         grounded, invented = override_invented_players(self.toolbox.con, question, routed.slots)
         for was, now in grounded:
-            history.log(f"  -> (player) {was!r} -> {now!r} (from the question, overriding the router)")
+            if now:
+                history.log(f"  -> (player) {was!r} -> {now!r} (from the question, overriding the router)")
+            else:
+                history.log(f"  -> (opponent) {was!r} dropped (the question never names him, and names no one else to put there)")
         # Said, not passed along. Falling through was tried and is worse: the
         # agent answered one of these with a 55-second fingerprint for "Ronaldo
         # Lopes", a player who does not exist, percentages included. Only where
