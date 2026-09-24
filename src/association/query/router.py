@@ -337,6 +337,12 @@ _SEASON_N = re.compile(r"\b(\d{1,2})(?:st|nd|rd|th)\s+season\b", re.IGNORECASE) 
 # ending in 2020; a decade ("the 2010s") is the seasons ending in it. Stated this
 # way, not guessed at, so a template that honors it can print the exact range.
 _SINCE = re.compile(r"\bsince\s+(?:the\s+)?((?:19|20)\d\d)\b", re.IGNORECASE)
+# "since 2000-01" / "since 2000-2001": the season-hyphenated year after
+# "since", which is the season ENDING in the second year (nba/season.py) -
+# `_SINCE` alone read its leading "2000" and started a season early (#207).
+# The second half must be the next year, two digits or four, so a real range
+# ("2019-2024") is still `_RANGE_HYPHEN_YEARS`'s to read.
+_SINCE_SEASON = re.compile(r"\bsince\s+(?:the\s+)?((?:19|20)\d\d)-(\d\d|(?:19|20)\d\d)\b", re.IGNORECASE)
 _DECADE = re.compile(r"\b(?:the\s+)?((?:19|20)\d)0'?s\b", re.IGNORECASE)
 
 # A CLOSED range - both ends named - rather than the open "since 2020" above.
@@ -408,6 +414,9 @@ def _validate_range(question: str) -> tuple[int, int | None] | None:
     bare_years = _RANGE_BARE_YEARS.search(question)
     if bare_years is not None and int(bare_years.group(2)) == int(bare_years.group(1)) + 1:
         return int(bare_years.group(1)), int(bare_years.group(2))
+    since_season = _validate_range_since_season(question)
+    if since_season is not None:
+        return since_season, None
     since = _SINCE.search(question)
     if since is not None:
         return int(since.group(1)), None
@@ -416,6 +425,20 @@ def _validate_range(question: str) -> tuple[int, int | None] | None:
         first = int(decade.group(1) + "0")
         return first, first + 9
     return None
+
+
+def _validate_range_since_season(question: str) -> int | None:
+    """The season "since 2000-01" (or "since 2000-2001") starts from - the one
+    ending in the later year - or ``None`` when the halves are not one
+    season's two years."""
+    match = _SINCE_SEASON.search(question)
+    if match is None:
+        return None
+    first, second = int(match.group(1)), match.group(2)
+    ends = first // 100 * 100 + int(second) if len(second) == 2 else int(second)
+    if len(second) == 2 and ends < first:
+        ends += 100  # "since 1999-00": the century turns inside the season
+    return ends if ends == first + 1 else None
 
 
 # "past two seasons", "last 3 years": a relative window counted back from NOW,

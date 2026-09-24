@@ -1068,6 +1068,14 @@ def test_a_split_is_read_for_every_intent_so_others_can_refuse_it() -> None:
         # season_text._SPAN's already-correct single-season read.
         ("how many 20+ point games did SGA have 2024-2026?", 2024, 2026),
         ("sga stats in the 2023-2024 season", None, None),
+        # #207: "since" before a season-hyphenated year starts at the season
+        # ENDING in the later year - `_SINCE` alone read "2000" and started a
+        # season early. Four digits a year apart read the same way; halves
+        # that are not one season's two years keep the old leading-year read.
+        ("players with 33 point and 13 rebound and 10 assist 2 blocks and 2 steals games since 2000-01", 2001, None),
+        ("most triple doubles since 2000-2001", 2001, None),
+        ("most triple doubles since 1999-00", 2000, None),
+        ("most triple doubles since 2000-05", 2000, None),
     ],
 )
 def test_a_range_of_seasons_replaces_the_one_the_model_picked(question: str, since: int | None, until: int | None) -> None:

@@ -484,6 +484,8 @@ CASES: list[tuple[str, str, dict]] = [
     # Jokic, and the refusal named him. override_invented_players now checks
     # the opponent too, and puts back the player the question names.
     ("jay huff game log vs Embiid", "player_matchup", {"opponent": "Joel Embiid"}),
+    # #207: "since 2000-01" starts at the season ending in 2001, not 2000.
+    ("players with 33 point and 13 rebound and 10 assist 2 blocks and 2 steals games since 2000-01", "threshold_count", {"since": 2001}),
 ]
 
 

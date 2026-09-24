@@ -268,22 +268,27 @@ those were found.
 
 ## P2: misleading or incomplete
 
-### "Since 2000-01" is not read as a span: a league-wide multi-line count answers the default season
-- **Found:** 2026-09-24, grading `live_rest.jsonl` (yardstick-v2 F161).
+### A composed league-wide read ignores `since`/`until`: "... games since 2000-01" answers the current season
+- **Found:** 2026-09-24, grading `live_rest.jsonl` (yardstick-v2 F161);
+  re-diagnosed the same day fixing the router half of #207.
 - **Evidence:** "players with 33 point and 13 rebound and 10 assist 2 blocks
-  and 2 steals games since 2000-01" composes the right five predicates but
-  over "2026 regular season - last 3 games": `router._SINCE` reads "since
-  YYYY" and `_RANGE_TO_HYPHEN` reads "YYYY-YY to YYYY-YY", and neither reads
-  "since YYYY-YY" (a season-hyphenated year after "since"). A filler
-  `limit: 3` also cut the list. Key: 12 such games since 2000-01.
-- **User sees:** a count over one season where a 26-season span was asked -
-  the span is stated, so it is correctable.
-- **Next step:** `_SINCE` accepts the two-digit season suffix ("since
-  2000-01" = since 2001, the year it ends); a league-wide rows read drops a
-  `limit` the question does not name (the same filler rule the period
-  templates apply).
+  and 2 steals games since 2000-01" now routes `since: 2001` (the router
+  read "since 2000" before, a season early - fixed). But
+  `compose/core.py:_resolve_everyone` settles the span from `season`/`span`
+  alone and never reads `since`/`until`, so the composed rows are "2026
+  regular season" whatever the router sent: `compose.answer` with
+  `since: 2001` prints 3 rows, all 2026. Measured on the warehouse
+  (`player_game_log` joined to `real_games`): 11 regular-season games since
+  2001 clear all five lines (1 more in a postseason), 3 of them in 2026.
+  The "filler `limit: 3`" this entry used to name was not a limit at all:
+  every recorded routing of this question (yardstick-v2 live runs and the
+  baseline replays) is `since: 2000` with no `limit`, and "last 3 games" is
+  the row count of the 2026-only read.
+- **User sees:** 3 games of one season where a 26-season span was asked -
+  the span is stated, so it is correctable, but no wording reaches the span.
+- **Next step:** `_resolve_everyone` reads `since`/`until` into the span the
+  way `scoped_player` does for a named player (compose owns it).
 - **Source:** ours, not ESPN's.
-- **GitHub:** not yet filed
 - **GitHub:** #207
 
 ### A short, genuinely ambiguous question is guessed at rather than asked about: "Tatum rec"
