@@ -42,7 +42,8 @@ routing) and a hand grade of every row that moved.
 | step 3 C1-C3 | `c64c2f2` | 106 / 175 | 96 / 166 |
 | step 3 C4-C5 | | 107 / 175 (61.1%) | 97 / 166 |
 | the compiler landed | `7fce95a`+ | 118 / 175 (67.4%) | 108 / 166 |
-| sweep + team parity | `43f242f` | **136 / 175 (77.7%)** | **125 / 166 (75.3%)** |
+| sweep + team parity | `43f242f` | 136 / 175 (77.7%) | 125 / 166 (75.3%) |
+| fast refusals, the partials, compiler moves | `08482db` | **155 / 175 (88.6%)** - 135 correct, 18 honest refusals, 2 required clarifications | **144 / 166 (86.7%)** |
 
 Refactors are proved differently: a golden comparison over every recorded
 slot set (~500 player-relation cases, ~110 team-relation cases, the
@@ -192,10 +193,40 @@ the key itself was wrong twice (it counted a phantom season and blended
 playoff games into a regular-season figure), caught by re-measuring every
 merged agent's load-bearing number.
 
+### The day after (2026-09-24): refusals, partials, compiler moves
+
+**Why.** After the sweep, 25 of the 39 remaining failures were fall-throughs
+to an agent that answers 1 in 23 - a minute's wait for a refusal or a
+fabrication - and seven partials were answers missing the one figure asked
+for.
+
+**What changed.** `query/refusals.py`: after the template and the compiler
+both decline, a shape nothing here reads is refused in seconds naming what
+is missing (a playoff round, an age, a conference or division, a stat other
+than points by quarter, a game log "vs" another player, a team where a
+player belongs) - each one paired in tests with the template's own refusal
+so it can never shadow an answer. The router reads "stats for the sixers
+when maxey scored 20+" as the team's record under the condition, drops a
+period template's filler window, reads a team's half by its nickname (the
+last known routing gap, 131/131), and files `ranked_by` so "highest scoring
+triple doubles" reaches the compiler, which ranks the games and names each
+player. The templates state "last 10 of 39 games", a career line under a
+per-season table, attempts and percentage beside a made count, the stat
+asked for in a splits table, each player's team in a ranking, and each
+half's first season in a combined record. The compiler ranks boolean games
+by another measure, reads several lines at once, takes a position word as
+the subject, and carries the box-score caveats.
+
+**What it bought.** 136 -> 155 of 175, fall-throughs 25 -> 11. Eighteen of
+the 155 are refusals graded good because they name the true cause of a real
+gap - a fuller system would answer them, and the roadmap's plan is what
+would.
+
 ## Where the remaining failures are
 
-On the sweep run (`live_sweep.jsonl`, 175 primaries): 5 wrong, 7 partial,
-25 fall-throughs, 2 clarifications that should not have been asked. By cause:
+On the rest run (`live_rest.jsonl`, 175 primaries): 4 wrong, 3 partial,
+11 fall-throughs, 2 clarifications that should not have been asked, and 18
+honest refusals that a fuller system would answer. By cause:
 
 - **Shape and measure the compiler does not move to yet** - the highest-
   scoring triple-double, a multi-line league count, a position word in the
@@ -213,18 +244,18 @@ On the sweep run (`live_sweep.jsonl`, 175 primaries): 5 wrong, 7 partial,
 
 ## Next steps (the next working day)
 
-1. **The seven partials** (#203) - a window that cuts qualifying games says
-   "10 of 49"; a career line under a per-season table; attempts and
-   percentage beside a made count; the stat asked for in a splits table; 50
-   rows and teams where asked. Template-side, in flight.
-2. **Compiler moves** - a ranking of the games that satisfy a boolean measure
-   by another measure ("highest scoring triple doubles", #199); a league-wide
-   count with several lines; a position word as the subject; the box-score
-   caveats a composed answer still lacks (#197). In flight.
-3. **Merge, gate, live run, grade** - the same loop as every landing.
-4. **The five still wrong** - one is a `record_when` question the router now
-   reads (F087, fixed); one is period data; two need a clarification the
-   system does not ask; one is a pair with a with/without split.
+1. **The invented `opponent`** (#206): the invented-name check runs over
+   `player`/`players` and never `opponent`, so "vs Embiid" became Jokic and
+   the refusal repeated it. One check, one place.
+2. **"Since 2000-01"** (#207) and the filler `limit` on a league-wide rows
+   read - the last two silent-scope shapes the run found.
+3. **The eleven fall-throughs**: which are shapes for the compiler (a team's
+   3PT by quarter, a per-game rate after a condition), which are the pair
+   relation, which are period data - sort them, refuse fast what is data,
+   and hand the rest to the plan below.
+4. **The four still wrong**: the Hornets' best first-quarter scorer (period
+   data), two that need a clarification the system does not ask, Curry vs
+   LeBron without Durant (the pair relation).
 
 ## The current plan: what buys the most correctness next
 
