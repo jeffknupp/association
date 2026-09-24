@@ -319,6 +319,14 @@ class Agent:
         handler = TEMPLATES.get(routed.intent)
         history.log(f"  -> (router) intent={routed.intent!r} slots={routed.slots}" + ("" if handler else " - not ported yet, falling through"))
         if handler is None:
+            # No template, but maybe nothing to read either: "most opponent
+            # bench points allowed ..." routes to `other`, and the refusals
+            # module knows bench points are read by nothing - said in seconds
+            # rather than after the agent's minute (query/refusals).
+            refusal = unanswerable(self.toolbox.con, routed.intent, routed.slots, question)
+            if refusal is not None:
+                history.log(f"  -> (refusal) {refusal.data['refused']}: nothing here reads that shape")
+                return routed.intent, refusal
             self.fell_through = f"intent {routed.intent!r} has no template yet"
             return None
         # A fingerprint draws as many polygons as it is given, and the router

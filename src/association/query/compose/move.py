@@ -20,9 +20,10 @@ import duckdb
 from association.query.entities import players_named_in
 from association.query.measures import MEASURE_WORDS
 from association.query.metrics import PER_GAME_MIN_GAMES
+from association.query.templates.common import TemplateResult
 
 from .adapt import DEFAULT_SINGLE_GAME_LIMIT, _clamp, _named_player, to_query
-from .core import COLUMNS, DERIVED, LINE, Query, Unsupported
+from .core import COLUMNS, DERIVED, LINE, Query, Refused, Unsupported
 from .team import GAME_MEASURES, SEASON_MEASURES, TeamQuery, team_named_in
 
 #: The router's own stat names that are not relation columns, as measures.
@@ -465,7 +466,12 @@ def _everyone_ranking(intent: str, slots: dict[str, Any], question: str, measure
     if named_minimum is not None:
         unit, count = named_minimum
         if not unit.startswith("game"):
-            raise Unsupported(f"a minimum of {count} {unit} is not a floor this ranking can apply - only a minimum number of games")
+            # A refusal, not a decline: nothing downstream reads an attempts or
+            # minutes floor either, and "None" here sent yardstick-v2 F056 to
+            # the agent for a minute. The sentence names the floor that IS
+            # applied so the question can be re-asked with it.
+            message = f"A minimum of {count} {unit} is not a floor this ranking can apply yet - only a minimum number of games is. Ask with 'at least N games', or without the floor."
+            raise Refused(TemplateResult(data={"message": message, "floor": {"unit": unit, "count": count}}, answer=message))
         minimum_games = count
     return Query(
         slots,

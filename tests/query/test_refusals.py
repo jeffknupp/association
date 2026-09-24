@@ -112,3 +112,20 @@ def test_a_player_in_the_opponent_slot_becomes_the_second_of_two_players(con: du
     nobody: dict[str, Any] = {"player": "LeBron James", "opponent": "Nobody Real"}
     assert pair_from_opponent(con, "player_matchup", nobody) is None
     assert pair_from_opponent(con, "team_record", {"player": "LeBron James", "opponent": "Kawhi Leonard"}) is None
+
+
+def test_a_teams_stat_other_than_points_by_period_is_refused(con: duckdb.DuckDBPyConnection) -> None:
+    """yardstick-v2 F065 "trailblazers stats last 10 games 3 point average
+    1st quarter": the linescore holds points per period and nothing else."""
+    refusal = unanswerable(con, "team_quarter_points", {"team": "Portland Trail Blazers", "stat": "threePointFieldGoalsMade", "period": 1}, "trailblazers 3 point average 1st quarter")
+    assert refusal is not None
+    assert "linescore" in refusal.answer and "'threePointFieldGoalsMade'" in refusal.answer
+    assert unanswerable(con, "team_quarter_points", {"team": "Portland Trail Blazers", "stat": "points", "period": 1}, "blazers 1st quarter points") is None
+
+
+def test_bench_points_are_refused_as_a_gap_of_ours_not_missing_data(con: duckdb.DuckDBPyConnection) -> None:
+    """yardstick-v2 F106: the box score flags starters, so bench points are
+    derivable - the refusal says nothing reads them yet, never "no data"."""
+    refusal = unanswerable(con, "other", {"stat": "points", "venue": "home"}, "most opponent bench points allowed in the west at home by team this month")
+    assert refusal is not None
+    assert "not read yet" in refusal.answer and "flags starters" in refusal.answer

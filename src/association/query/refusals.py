@@ -45,6 +45,7 @@ from association.query.templates.common import PLAYER_INTENTS, TemplateResult
 _PAIRABLE_INTENTS: frozenset[str] = frozenset({"player_matchup", "game_log", "player_stat", "threshold_count", "single_game_high", "streak", "record_when", "player_splits"})
 
 
+_BENCH_POINTS = re.compile(r"\bbench\s+(?:points?|scoring|pts)\b", re.IGNORECASE)
 _AGE = re.compile(r"\b(?:\d+\s+years?\s+old|(?:before|after|by|at)\s+(?:turning|age)\s+\d+|age\s+\d+)\b", re.IGNORECASE)
 _CONFERENCE_OR_DIVISION = re.compile(r"\b(?:east(?:ern)?|west(?:ern)?|conference|division|atlantic|central|southeast|northwest|pacific|southwest)\b", re.IGNORECASE)
 
@@ -56,7 +57,7 @@ def unanswerable(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, A
 
     .. versionadded:: 4.4.0
     """
-    for check in (_playoff_round, _non_calendar_situation, _period_stat, _team_where_a_player_belongs):
+    for check in (_playoff_round, _non_calendar_situation, _period_stat, _team_period_stat, _bench_points, _team_where_a_player_belongs):
         message = check(con, intent, slots, question)
         if message is not None:
             return TemplateResult(data={"message": message, "refused": check.__name__.lstrip("_"), "intent": intent}, answer=message)
@@ -132,3 +133,29 @@ def pair_from_opponent(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[
     slots.pop("player", None)
     slots.pop("opponent", None)
     return opponent
+
+
+def _team_period_stat(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str) -> str | None:
+    """A team's stat other than points by quarter or half: the linescore
+    holds each team's points per period and nothing else (yardstick-v2 F065,
+    "trailblazers ... 3 point average 1st quarter")."""
+    stat = slots.get("stat")
+    if intent != "team_quarter_points" or not isinstance(stat, str) or stat in ("points", "pts", ""):
+        return None
+    return (
+        f"A team's quarter or half holds points only - the linescore is the one per-period figure on record, and {stat!r} is not split by period. "
+        f"Ask for the team's points in that period, or for {stat} over whole games."
+    )
+
+
+def _bench_points(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str) -> str | None:
+    """Bench points: derivable (the non-starters' points in the box score,
+    which flags starters) but read by nothing yet - a gap of ours, named as
+    one, not "no data" (yardstick-v2 F106, "most opponent bench points
+    allowed ...")."""
+    if not _BENCH_POINTS.search(question):
+        return None
+    return (
+        "Bench points are not read yet - the box score flags starters, so a bench total could be built, but no template or the compiler adds one up today. "
+        "Ask for a named player's points, or a team's points, instead."
+    )

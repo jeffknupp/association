@@ -1042,3 +1042,22 @@ def test_a_shape_nothing_reads_is_refused_before_the_agent_is_asked(monkeypatch:
     assert "not labeled by playoff round" in answer.text
     assert answer.answered_by == "fast"
     assert agent.fell_through is None
+
+
+def test_a_shape_nothing_reads_is_refused_even_where_no_template_exists(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """An intent with no template used to go straight to the agent; the
+    refusals module gets its look first, so "bench points" (routed `other`)
+    is refused in seconds with its cause."""
+    from association.query.router import Route
+
+    def chat_must_not_run(**kw: Any) -> None:
+        raise AssertionError("the agent must not be asked")
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="other", slots={"stat": "points", "venue": "home"}))
+    monkeypatch.setattr(ollama, "chat", chat_must_not_run)
+
+    agent = _agent_with_players(tmp_path, "Joel Embiid")
+    answer = agent.ask("most opponent bench points allowed in the west at home by team this month")
+
+    assert "Bench points are not read yet" in answer.text
+    assert answer.answered_by == "fast"

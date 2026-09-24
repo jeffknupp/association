@@ -799,8 +799,9 @@ def test_an_attempts_or_minutes_floor_is_refused_by_name_not_dropped_or_misappli
     by name, never silently dropped (which would rank on an unqualified
     sample) and never misread as a games count (100 attempts is not 100
     games)."""
-    with pytest.raises(Unsupported, match="100 attempts"):
+    with pytest.raises(Refused) as refused:
         move_point(cx_ctx.con, "leaderboard", {"player": "point guard", "stat": "points", "season_type": 2}, "highest points per game by a point guard with at least 100 attempts")
+    assert "100 attempts" in refused.value.result.answer and "at least N games" in refused.value.result.answer
 
 
 def test_ranking_minimum_reads_the_unit_and_the_number() -> None:
