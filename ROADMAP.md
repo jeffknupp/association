@@ -244,18 +244,21 @@ honest refusals that a fuller system would answer. By cause:
 
 ## Next steps (the next working day)
 
-1. **The invented `opponent`** (#206): the invented-name check runs over
-   `player`/`players` and never `opponent`, so "vs Embiid" became Jokic and
-   the refusal repeated it. One check, one place.
-2. **"Since 2000-01"** (#207) and the filler `limit` on a league-wide rows
-   read - the last two silent-scope shapes the run found.
-3. **The eleven fall-throughs**: which are shapes for the compiler (a team's
-   3PT by quarter, a per-game rate after a condition), which are the pair
-   relation, which are period data - sort them, refuse fast what is data,
-   and hand the rest to the plan below.
-4. **The four still wrong**: the Hornets' best first-quarter scorer (period
-   data), two that need a clarification the system does not ask, Curry vs
-   LeBron without Durant (the pair relation).
+1. **Sweep 2** (in flight as the Sonnet-vs-Opus-low experiment; the Opus
+   arm waits for a fresh session): #206 the invented `opponent`, #207 "since
+   2000-01" and the league filler limit, and five router-side fall-throughs
+   (a dropped subject, an invented team, "Best NBA record since", a player's
+   half at home, "td3s").
+2. **Conference and division from the standings** (in flight): parsed,
+   loaded, and read as a narrowing on both relations.
+3. **Done 2026-09-24:** the eleven fall-throughs sorted (seven router-side
+   -> sweep 2; three data gaps -> refused fast: a team's stat by quarter,
+   bench points, an attempts floor; one compiler shape left); the pair
+   relation as a template (above); "lebron vs kawhi head to head" answers.
+4. **Left:** "Most points in 15th season played" (an ordinal season over
+   everyone - a clause on the league read), the Hornets' best first-quarter
+   scorer (period data), two questions that need a clarification the system
+   does not ask.
 
 ## The current plan: what buys the most correctness next
 
@@ -277,10 +280,14 @@ yardstick before the next starts:
    longer needs an intent for. Fewer intents means a shorter prompt, and the
    prompt is the router's ceiling. `CODE_ASSIGNED_INTENTS` is the route for
    any shape the question's own words name.
-3. **The pair relation.** Two players' games joined on the event, under both
-   guards (`paired_rows_sql` exists); `player_matchup` is its one template.
-   Head-to-head, "vs <player>", a record against a player, with/without over
-   a pair - a whole family of fall-throughs and one of the five wrong.
+3. **The pair relation.** Done as a template, 2026-09-24: `player_matchup`
+   narrows the first player's games through the shared step, so a
+   teammate's absence, a venue, a date, a starter half and a calendar are
+   honored and stated; a player filed as the `opponent` is the second of
+   two players (`refusals.pair_from_opponent`). What remains is the pair as
+   a compiler subject - measures and predicates over the meetings ("most
+   points by curry vs lebron", "how many times did lebron score 30 vs
+   kawhi") - which no template answers.
 4. **The period relation.** Per-quarter figures beyond points, rebuilt from
    plays the way points are, as one relation the compiler can read - a
    player's or a team's quarter as a narrowing rather than three templates.
