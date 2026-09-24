@@ -850,7 +850,7 @@ def misread_players(names: list[str]) -> str:
     )
 
 
-def _has_a_real_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> bool:
+def _has_a_real_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], question: str) -> bool:
     """Whether ``slots`` carries a ``team``/``teams`` value that actually
     resolves to a real franchise - not merely a non-empty string. The router
     invents a team the way it invents a player (AGENTS.md, "the router
@@ -859,10 +859,21 @@ def _has_a_real_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> b
     own name, filed as though it were a franchise, which
     :func:`~association.query.templates.team_record.team_record`-shaped
     templates then refuse as "no team matching", the wrong cause. A team
-    slot nothing resolves is functionally the same as no team slot at all."""
+    slot nothing resolves is functionally the same as no team slot at all.
+
+    So is one that resolves to a franchise the question never names:
+    "towns home rec including playoffs since 1/26/20 vs spurs" (yardstick-v2
+    F110) arrived with ``team='Toronto Raptors'`` - a real team, and no word
+    of it in the question - and would have answered the Raptors' record
+    about a question naming Karl-Anthony Towns (:func:`_team_grounded`)."""
     season = slots.get("season") if isinstance(slots.get("season"), int) else None
-    texts = [slots.get("team"), *(slots.get("teams") or [])]
-    return any(isinstance(text, str) and text.strip() and _team_named(con, text, season) is not None for text in texts)
+    teams = slots.get("teams")
+    texts = [slots.get("team"), *(teams if isinstance(teams, list) else [teams])]
+    for text in texts:
+        team = _team_named(con, text, season) if isinstance(text, str) and text.strip() else None
+        if team is not None and _team_grounded(con, question, team):
+            return True
+    return False
 
 
 def player_named_on_a_team_only_question(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any]) -> str | None:
@@ -896,7 +907,7 @@ def player_named_on_a_team_only_question(con: duckdb.DuckDBPyConnection, questio
 
     .. versionadded:: 4.4.0
     """
-    if _has_a_real_team(con, slots):
+    if _has_a_real_team(con, slots, question):
         return None
     named = [name for name in players_named_in(con, question) if not _named_only_by_a_team_word(con, question, name) and not _named_only_by_a_common_word(question, name)]
     return named[0] if len(named) == 1 else None

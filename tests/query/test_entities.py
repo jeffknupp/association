@@ -1307,6 +1307,20 @@ def test_an_invented_team_holding_the_players_own_name_does_not_block_the_refusa
     assert player_named_on_a_team_only_question(scope_con, "alperen şengün alltime record", invented) == "Alperen Sengun"
 
 
+def test_a_real_team_the_question_never_names_does_not_block_the_refusal(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """yardstick-v2 F110: "towns home rec including playoffs since 1/26/20 vs
+    spurs" routed team_record with `team='Toronto Raptors'` - a real
+    franchise with no word in the question - and would have answered the
+    Raptors' record about Karl-Anthony Towns. An ungrounded team is no team;
+    the question names one player, so it is refused by his name. A team
+    the question does name ("lakers") still wins."""
+    scope_con.execute("INSERT INTO teams VALUES ('28','Toronto Raptors','TOR')")
+    invented: dict[str, Any] = {"stat": "wins", "team": "Toronto Raptors", "venue": "home", "opponent": "San Antonio Spurs"}
+    assert player_named_on_a_team_only_question(scope_con, "towns home rec including playoffs since 1/26/20 vs spurs", invented) == "Karl-Anthony Towns"
+    named: dict[str, Any] = {"stat": "wins", "team": "Los Angeles Lakers"}
+    assert player_named_on_a_team_only_question(scope_con, "towns lakers home rec", named) is None
+
+
 def test_a_common_word_is_not_read_as_the_team_only_questions_player(scope_con: duckdb.DuckDBPyConnection) -> None:
     """ "best" is Travis Best and "head" is Luther Head - the same
     false-positive trap F093's restore_subject was measured against, applied

@@ -489,6 +489,13 @@ CASES: list[tuple[str, str, dict]] = [
     # yardstick-v2 F096: a count of "games" over the line 0 is his game log,
     # Bam restored and "in the month of march" read as a month.
     ("bam adebayo career games in the month of march", "game_log", {"player": frozenset({"bam adebayo", "Bam Adebayo"}), "situation": "in the month of march", "span": "career"}),
+    # yardstick-v2 F110: routed team_record with an invented `team='Toronto
+    # Raptors'`. The routing is left as the model files it; what changed is
+    # after it - a team the question never names no longer counts as the
+    # question's team, so the agent refuses by Towns's name
+    # (entities.player_named_on_a_team_only_question). Asserted here: the
+    # venue and the opponent the answer depends on.
+    ("towns home rec including playoffs since 1/26/20 vs spurs", "team_record", {"venue": "home", "opponent": "San Antonio Spurs"}),
 ]
 
 

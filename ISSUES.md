@@ -2356,6 +2356,24 @@ those were found.
 
 ## P3: refusal or gap
 
+### A player's team record since an absolute date, both season types, is refused: "towns home rec including playoffs since 1/26/20 vs spurs"
+- **Found:** 2026-09-24, fixing yardstick-v2 F110 (it used to answer the
+  Raptors' record, a team the question never names; now refused by name).
+- **Evidence:** the key asks for Towns's teams' home record against the
+  Spurs in his games since 2020-01-26, regular season and playoffs. No slot
+  carries an absolute start date: `situation: "since january 26"` is read
+  within EACH season (`calendar.parse_situation`'s `since_day`), so
+  `since: 2020` beside it would drop October-January of every later season;
+  and "1/26/20" is not read by `router._validate_date` at all (month names
+  only). No player-relation template answers "his team's record in his
+  games" with both season types combined either.
+- **User sees:** a refusal naming Towns ("team record has no reading for
+  one") - honest about the subject, silent about the date window.
+- **Next step:** an absolute `after`/`before` date slot on both relations
+  (one clause on `Narrowed` and `TeamNarrowed`), and a numeric-date reading
+  ("1/26/20") in `route()`; then this is record_when/player_splits-shaped.
+- **Priority note:** P3 - one corpus question, refused rather than wrong.
+
 ### `game_log`'s "last 10 of N games" heading misses the without branch
 - **Found:** 2026-09-24, grading `live_rest.jsonl` (yardstick-v2 F158).
 - **Evidence:** "bane game log without anthony black and franz wagner this
