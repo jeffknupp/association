@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>association</title>
 <style>
   /* Theme-aware the same way the chart pages are: every color is a variable,
@@ -26,6 +26,7 @@
        which says which path answered and is not a fault. */
     --warn: #b3261e;
     --trace-bg: #f0f0ec;
+    --edge: rgba(0, 0, 0, .16);
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -42,6 +43,7 @@
       --agent: #f0a05c;
       --warn: #f2938c;
       --trace-bg: #17171c;
+      --edge: rgba(0, 0, 0, .55);
     }
   }
   * { box-sizing: border-box; }
@@ -205,7 +207,18 @@
   table.answer td.rank { color: var(--muted); }
   table.answer tbody tr:first-child td { padding-top: 6px; }
   /* Wide tables scroll inside the answer rather than widening the page. */
-  .scroller { overflow-x: auto; }
+  /* A table wider than the answer scrolls sideways, and on a phone most do -
+     so each edge that has more beyond it shows a shadow. Pure CSS: the two
+     panel-colored covers scroll WITH the content ("local") and hide the
+     shadows, which stay put ("scroll"), exactly when that edge is reached. */
+  .scroller {
+    overflow-x: auto;
+    background:
+      linear-gradient(to right, var(--panel) 30%, transparent) left center / 40px 100% no-repeat local,
+      linear-gradient(to left, var(--panel) 30%, transparent) right center / 40px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, var(--edge), transparent) left center / 12px 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, var(--edge), transparent) right center / 12px 100% no-repeat scroll;
+  }
   .record { display: flex; gap: 22px; align-items: baseline; }
   .record .wl { font-size: 26px; font-weight: 600; letter-spacing: -.01em; }
   .record .pct { font: 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--muted); }
@@ -350,6 +363,62 @@
   .note-save:disabled { opacity: .5; cursor: default; }
   .note-status { font-size: 11.5px; color: var(--muted); }
   .note-status.failed { color: var(--warn); }
+  /* Phones. The chrome - header, coverage pills, footer - took about 80% of
+     a 667px-tall screen at the desktop sizes, leaving an answer a third of
+     it, so it is tightened here: the pills become one row that scrolls
+     sideways instead of three stacked lines, and padding shrinks. Measured
+     with a stubbed page at 320, 375 and 412px. */
+  body { height: 100dvh; }  /* not 100%: mobile Safari's toolbar would cover the footer */
+  header, .coverage, footer {
+    padding-left: max(20px, env(safe-area-inset-left));
+    padding-right: max(20px, env(safe-area-inset-right));
+  }
+  footer { padding-bottom: max(18px, env(safe-area-inset-bottom)); }
+  @media (max-width: 600px) {
+    header {
+      padding-top: 8px;
+      padding-bottom: 8px;
+      padding-left: max(12px, env(safe-area-inset-left));
+      padding-right: max(12px, env(safe-area-inset-right));
+      gap: 10px;
+    }
+    header h1 { font-size: 14px; }
+    header .status { font-size: 11px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    header .conn { font-size: 11px; }
+    .coverage {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      scrollbar-width: none;
+      padding: 6px max(12px, env(safe-area-inset-right)) 6px max(12px, env(safe-area-inset-left));
+    }
+    .coverage::-webkit-scrollbar { display: none; }
+    .coverage-tier { flex: none; }
+    .thread { padding: 14px 10px 4px; }
+    .turn { margin-bottom: 16px; }
+    .q { max-width: 85%; }
+    .a { padding: 10px 12px; }
+    /* A column heading is often a player's full name, and nowrap made one
+       name the width of the phone: the comparison's second player started
+       off-screen. Headings wrap; the numbers under them still do not. */
+    table.answer { font-size: 12px; }
+    table.answer th { white-space: normal; vertical-align: bottom; }
+    table.answer th, table.answer td { padding-right: 14px; }
+    iframe.artifact { max-height: 520px; }
+    footer {
+      padding-top: 10px;
+      padding-bottom: max(10px, env(safe-area-inset-bottom));
+      padding-left: max(12px, env(safe-area-inset-left));
+      padding-right: max(12px, env(safe-area-inset-right));
+    }
+    form { gap: 8px; }
+    button.send { padding: 0 16px; }
+  }
+  /* Touch screens: iOS zooms the whole page into any field under 16px when it
+     is tapped, and a keyboard-shortcut hint has no keyboard to describe. */
+  @media (pointer: coarse) {
+    textarea, .note-input { font-size: 16px; }
+    .hint { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -375,7 +444,7 @@
 
 <footer>
   <form id="form">
-    <textarea id="input" rows="1" placeholder="Ask a question…" autofocus></textarea>
+    <textarea id="input" rows="1" placeholder="Ask a question…" enterkeyhint="send" autofocus></textarea>
     <button class="send" id="send" type="submit">Ask</button>
   </form>
   <div class="hint">Enter to send, Shift+Enter for a new line. One question at a time — the model has a single cache slot.</div>

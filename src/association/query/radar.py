@@ -307,6 +307,20 @@ def render_fingerprint_html(
   th[scope="row"] {{ text-align: left; font-weight: normal; }}
   thead th {{ color: var(--muted); font-weight: normal; }}
   tr.section th {{ text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; padding-top: 12px; border-bottom: 1px solid currentColor; }}
+  /* Scale down, never up, to the width available: in the web page's frame on
+     a phone that is about 300px against a plot of 460 or more, and a fixed
+     width clipped the plot's right side. The viewBox keeps the geometry
+     exact; the skill labels are drawn in the plot's own units, so they are
+     enlarged here to stay legible once the whole plot shrinks. */
+  svg {{ max-width: 100%; height: auto; }}
+  @media (max-width: 520px) {{
+    body {{ padding: 12px; }}
+    h1 {{ font-size: 17px; text-align: center; }}
+    .headline {{ flex-wrap: wrap; gap: 4px 14px; justify-content: center; }}
+    text.axis {{ font-size: 15px; }}
+    table {{ font-size: 12px; }}
+    th, td {{ padding: 3px 6px; }}
+  }}
 </style>
 </head>
 <body>

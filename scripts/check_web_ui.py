@@ -63,7 +63,11 @@ window.fetch = (u, o) => {
     if (window.__ping.fail) return Promise.reject(new TypeError("Failed to fetch"));
     return Promise.resolve(new Response(JSON.stringify({instance: window.__ping.instance, busy: false}), {headers: {"content-type": "application/json"}}));
   }
-  if (String(u).indexOf("/api/coverage") >= 0) return Promise.resolve(new Response(JSON.stringify({}), {headers: {"content-type": "application/json"}}));
+  if (String(u).indexOf("/api/coverage") >= 0) return Promise.resolve(new Response(JSON.stringify({tiers: [
+    {name: "box score", tables: [], first_season: 1994, last_season: 2026, partial_seasons: [], phantom_seasons: [1993]},
+    {name: "+ play-by-play", tables: [], first_season: 2002, last_season: 2026, partial_seasons: [{season: 2002, table: "plays", note: "half a season"}],
+     phantom_seasons: []},
+    {name: "+ NetPoints", tables: [], first_season: 2019, last_season: 2026, partial_seasons: [], phantom_seasons: []}]}), {headers: {"content-type": "application/json"}}));
   if (String(u).indexOf("/api/notes") >= 0) {
     window.__notes.push(JSON.parse(o.body));
     return Promise.resolve(new Response(JSON.stringify({saved: true}), {headers: {"content-type": "application/json"}}));
@@ -234,11 +238,33 @@ with sync_playwright() as p:
     check("clicking the indicator reloads", reloaded(live))
     live.close()
 
+    # Phone width: the rules under `max-width: 600px` and `pointer: coarse`,
+    # checked where they apply - an iPhone SE-sized touch screen with the
+    # coverage pills loaded and an answer on screen. Before those rules the
+    # header, pills and footer took ~80% of this screen's height.
+    phone_ctx = browser.new_context(viewport={"width": 375, "height": 667}, is_mobile=True, has_touch=True)
+    phone = phone_ctx.new_page()
+    phone.add_init_script(STUB)
+    phone.goto(url)
+    phone.wait_for_selector(".coverage-tier")
+    phone.fill("#input", "a question")
+    phone.press("#input", "Enter")
+    phone.wait_for_timeout(150)
+    width = phone.evaluate("document.documentElement.scrollWidth")
+    check("a phone-width page never scrolls sideways", width <= 375, width)
+    chrome = phone.evaluate("['header', '.coverage', 'footer'].reduce((t, s) => t + document.querySelector(s).getBoundingClientRect().height, 0)")
+    check("header, coverage and footer leave most of a phone screen to the answers", chrome < 667 * 0.35, f"{chrome:.0f}px of 667")
+    rows = phone.evaluate("new Set([...document.querySelectorAll('.coverage-tier')].map(t => Math.round(t.getBoundingClientRect().top))).size")
+    check("the coverage pills are one row on a phone", rows == 1, f"{rows} rows")
+    size = phone.evaluate("getComputedStyle(document.getElementById('input')).fontSize")
+    check("the question box is 16px on a touch screen, so iOS does not zoom into it", size == "16px", size)
+    phone_ctx.close()
+
     browser.close()
 
-if len(results) < 27:
+if len(results) < 31:
     # A crash mid-run would otherwise print a short, all-PASS list and exit 0.
-    check("every check ran", False, f"only {len(results)} of 27 checks reported")
+    check("every check ran", False, f"only {len(results)} of 31 checks reported")
 
 for ok, name, detail in results:
     print(("PASS " if ok else "FAIL ") + name + (f"  :: {detail}" if detail and not ok else ""))
