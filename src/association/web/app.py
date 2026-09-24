@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import queue
 import re
+import secrets
 import threading
 from collections.abc import Iterator
 from pathlib import Path
@@ -144,6 +145,23 @@ class HealthResponse(BaseModel):
     seasons: dict[str, int] | None
     models: dict[str, str]
     ollama_ready: bool
+    busy: bool
+
+
+class PingResponse(BaseModel):
+    """Which server process answered, and whether it is answering a question.
+
+    The page polls this every few seconds, to show that it is still connected
+    and to notice a restart: ``instance`` is drawn fresh each time the app is
+    built, so a different value means a different server - on a deployment
+    that restarts on every commit and every warehouse rebuild, a page that may
+    be out of date. Cheap on purpose, unlike :class:`HealthResponse`: it opens
+    no warehouse connection and never asks the model backend whether it is up.
+
+    .. versionadded:: 4.4.0
+    """
+
+    instance: str
     busy: bool
 
 
@@ -495,8 +513,11 @@ def create_app(answerer: Answerer, db_path: str, out_dir: Path, model: str, rout
        Takes ``history_dir``, the directory ``POST /api/notes`` guards a name
        against - the same directory the ``Agent`` this server wraps was built
        with, so a name an answer actually reported always resolves.
+       Serves ``GET /api/ping`` (:class:`PingResponse`), which the page polls
+       for its connection indicator and to reload itself after a restart.
     """
     app = FastAPI(title="association", description="Ask questions about the local NBA warehouse.", version="2.0.0")
+    instance = secrets.token_hex(8)
 
     @app.get("/", include_in_schema=False)
     def index() -> FileResponse:
@@ -515,6 +536,11 @@ def create_app(answerer: Answerer, db_path: str, out_dir: Path, model: str, rout
             ollama_ready=answerer.ready,
             busy=answerer.busy,
         )
+
+    @app.get("/api/ping")
+    def ping() -> PingResponse:
+        """This server's instance id - a new one on every start - and whether it is answering."""
+        return PingResponse(instance=instance, busy=answerer.busy)
 
     @app.get("/api/coverage")
     def coverage() -> CoverageResponse:
