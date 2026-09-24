@@ -16,6 +16,15 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **`player_history` states the combined career figure for a career span, not
+  only the season-by-season table it sums to (F041, ISSUES.md).** "Show me
+  sga's career 2pt percentage" printed a table whose rows summed exactly to
+  55.1% (3,945 of 7,166) without ever stating it. A career span now adds a
+  line under the table: the games-weighted total (makes and attempts summed
+  across every season shown, never a mean of means) for a shooting
+  percentage, and the plain career total (the stored season total, or
+  `avg * games` where the table has none) for a counting stat. Warehouse-
+  verified against Shai Gilgeous-Alexander's career 2PT%.
 - **`game_log` names how many games a window cut from, not only how many it
   shows (F149, ISSUES.md).** "Mikal Bridges game log with less than 15 FGA
   and less than 35 minutes" cut 39 qualifying regular-season games to the

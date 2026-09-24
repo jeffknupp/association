@@ -396,7 +396,7 @@ those were found.
   `player_matchup`'s own `without` refusal next.
 - **GitHub:** #202
 
-### Nine P7-bucket "partial" answers from the yardstick are still open
+### Eight P7-bucket "partial" answers from the yardstick are still open
 - **Found:** 2026-09-23, same session - not reached; recorded from
   `~/association-research/yardstick-v2/wrong_land.md`'s own evidence rather
   than independently re-diagnosed, since no time remained in this pass to
@@ -405,9 +405,6 @@ those were found.
   full evidence (query, route, answer, key) each already carries:
   - **F017** - a 50-row NetPoints leaderboard with each player's team asked
     for; neither the full 50 nor any team name is given.
-  - **F041** - `player_history`'s season-by-season 2PT% table for a career
-    span never states the single combined career percentage (55.1%) the
-    question asked for, though the rows sum to it exactly.
   - **F051** - `player_stat` for a made-count stat (3PM) prints makes and
     games but not attempts or percentage beside them.
   - **F058**/**F060** - `period_split` with "each game"/"every game" in the

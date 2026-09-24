@@ -799,6 +799,15 @@ def player_history(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
        Honors ``span``: "his career" is every season on record, where it used
        to be the default four under a heading that did not say so. The heading
        now names the seasons shown.
+
+    .. versionchanged:: 4.4.0
+       A career span (``span: "career"``) now adds a single combined career
+       line under the season-by-season table - the games-weighted total for a
+       shooting percentage (makes and attempts summed across every season
+       shown, never a mean of means) and the plain career total for a
+       counting stat - since the rows summed to the figure the question
+       actually asked for ("show me sga's career 2pt percentage") without
+       ever stating it (F041, ISSUES.md).
     """
     con = ctx.con
     # A named season anchors the range's END rather than replacing it, so
@@ -836,10 +845,59 @@ def player_history(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
 
     period = SEASON_TYPE_NAMES.get(season_type, "regular season")
     history = [dict(zip(["season", "games"] + [c for c, _ in columns], r, strict=True)) for r in rows]
+    answer = _phrase_history(player.name, label, period, history, columns, career=career)
+    # Only for a career: the default four seasons is already a window a
+    # reader chose, and a combined figure over a window nobody asked to see
+    # summed would be the substitution this module exists to stop.
+    if career and history:
+        career_line = (
+            _player_history_career_rate(player.name, label, columns, history) if len(columns) == 3 else _player_history_career_count(con, player.id, season_type, latest, stat, label, player.name)
+        )
+        if career_line:
+            answer += f"\n{career_line}"
     return TemplateResult(
         data={"player": player.name, "stat": stat, "span": "career" if career else None, "seasons": history},
-        answer=_phrase_history(player.name, label, period, history, columns, career=career),
+        answer=answer,
     )
+
+
+def _player_history_career_rate(name: str, label: str, columns: list[tuple[str, str]], history: list[dict[str, Any]]) -> str | None:
+    """The games-weighted career percentage behind a per-season shooting
+    column - the makes and attempts summed across every season shown, never a
+    mean of means (F041, ISSUES.md). ``columns`` is the (percentage, made,
+    attempted) triple a shooting entry in :data:`HISTORY_COLUMNS` carries, in
+    that order.
+
+    .. versionadded:: 4.4.0
+    """
+    made_key, attempted_key = columns[1][0], columns[2][0]
+    made = sum(row.get(made_key) or 0 for row in history)
+    attempted = sum(row.get(attempted_key) or 0 for row in history)
+    if not attempted:
+        return None
+    pct = 100.0 * made / attempted
+    return f"{name}'s career {label}: {pct:.1f}% ({int(made):,} of {int(attempted):,})."
+
+
+def _player_history_career_count(con: duckdb.DuckDBPyConnection, player_id: str, season_type: int, latest: int, stat: str, label: str, name: str) -> str | None:
+    """The plain career total behind a per-season counting column - the
+    stored season total where the table has one, ``avg * gamesPlayed`` where
+    it does not (minutes), summed exactly the way :func:`_career_player_stat`
+    sums a career total (F041, ISSUES.md).
+
+    .. versionadded:: 4.4.0
+    """
+    per_game_col = HISTORY_COLUMNS[stat][1][0][0]
+    total_col = _CAREER_TOTALS.get(stat)
+    amount = f"COALESCE({total_col}, {per_game_col} * gamesPlayed)" if total_col else f"{per_game_col} * gamesPlayed"
+    row = con.execute(
+        f"SELECT SUM({amount}) FROM player_season_stats_deduped WHERE athlete_id = ? AND season_type = ? AND season <= ? AND gamesPlayed > 0",
+        [player_id, season_type, latest],
+    ).fetchone()
+    if row is None or row[0] is None:
+        return None
+    noun = label.removesuffix(" per game")
+    return f"{name}'s career total: {round(row[0]):,} {noun}."
 
 
 def _phrase_history(name: str, label: str, period: str, history: list[dict[str, Any]], columns: list[tuple[str, str]], *, career: bool = False) -> str:

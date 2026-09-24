@@ -4412,6 +4412,43 @@ def test_player_history_career_is_every_season(ps_con: TemplateContext) -> None:
     assert four.startswith(f"Luka Doncic, points per game by regular season, {s - 3}-{s} (most recent first):")
 
 
+def test_player_history_career_states_the_combined_percentage(ps_con: TemplateContext) -> None:
+    """F041 (ISSUES.md): "show me sga's career 2pt percentage" answered a
+    season-by-season table whose rows summed exactly to the combined career
+    figure the question asked for, without ever stating it. The career line
+    is the games-weighted total (makes/attempts summed), never a mean of the
+    per-season percentages - which would give a different, wrong number here
+    ((60% + 20%) / 2 = 40%, not the true (600+40)/(1000+200) = 53.3%)."""
+    for col in ("fieldGoalsMade", "fieldGoalsAttempted", "threePointFieldGoalsMade", "threePointFieldGoalsAttempted"):
+        ps_con.con.execute(f"ALTER TABLE player_season_stats_deduped ADD COLUMN {col} INTEGER")
+    s = current_season()
+    ps_con.con.execute(
+        "UPDATE player_season_stats_deduped SET fieldGoalsMade=600, fieldGoalsAttempted=1000, threePointFieldGoalsMade=0, threePointFieldGoalsAttempted=0 WHERE athlete_id='1' AND season=?", [s]
+    )
+    ps_con.con.execute(
+        "INSERT INTO player_season_stats_deduped "
+        "(athlete_id, season, season_type, gamesPlayed, avgPoints, fieldGoalsMade, fieldGoalsAttempted, threePointFieldGoalsMade, threePointFieldGoalsAttempted) "
+        "VALUES ('1',?,2,70,20.0,40,200,0,0)",
+        [s - 1],
+    )
+    answer = player_history(ps_con, {"player": "Luka Doncic", "stat": "twoPointFieldGoalPct", "span": "career"}).answer or ""
+    assert answer.endswith("Luka Doncic's career 2PT%: 53.3% (640 of 1,200).")
+    # No span: the default four-season table (here, both rows) states no
+    # combined figure - a window nobody asked to see summed.
+    windowed = player_history(ps_con, {"player": "Luka Doncic", "stat": "twoPointFieldGoalPct"}).answer or ""
+    assert "career" not in windowed
+
+
+def test_player_history_career_states_the_combined_total(ps_con: TemplateContext) -> None:
+    """The counting-stat sibling of the percentage career line above: the
+    plain career total, summed the same way `_career_player_stat` sums one."""
+    s = current_season()
+    ps_con.con.execute("INSERT INTO player_season_stats_deduped (athlete_id, season, season_type, gamesPlayed, avgPoints, points) VALUES ('1',?,2,70,20.0,1400)", [s - 1])
+    answer = player_history(ps_con, {"player": "Luka Doncic", "stat": "points", "span": "career"}).answer or ""
+    # Base row (ps_con): 2,143 total points; plus the season just added: 1,400.
+    assert answer.endswith("Luka Doncic's career total: 3,543 points.")
+
+
 def test_team_game_log_honors_opponent_and_venue(gl_con: TemplateContext) -> None:
     home = game_log(gl_con, {"team": "Knicks", "venue": "home"})
     assert [g["date"] for g in home.data["games"]] == ["2026-04-10"]
