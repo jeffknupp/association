@@ -1553,7 +1553,7 @@ rows, not a season.
 
 | Table | Usable from | What is before it |
 | --- | --- | --- |
-| `standings` | 1988 | — league-wide and real all the way back (23 teams in 1988, 27 by 1990) |
+| `standings`, `team_alignment` | 1988 | — league-wide and real all the way back (23 teams in 1988, 27 by 1990) - same endpoint, same floor |
 | `games`, `team_box_stats` (postseason) | 1989 | — full brackets all the way back; the 1987-88 playoffs are not in ESPN's archive |
 | `games` (regular), `player_box_stats`, `team_box_stats`, `team_season_stats` | **1994** | one team's 82 games per season, and nothing at all for 1989-90 |
 | `player_season_stats` (one named player) | 1977 | nothing — but see the survivor-sample note below |
