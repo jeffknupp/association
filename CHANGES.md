@@ -16,6 +16,17 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **`player_stat` prints a made-count stat's attempts and percentage beside
+  its total (F051, ISSUES.md).** "Davion Mitchell 3 point stats" (a single
+  named made-count stat: 3PM, FGM or FTM) used to print makes and games and
+  nothing else. It now reads the attempted sibling column alongside the
+  made one - the same "out of how many?" discipline `SHOOTING_STATS`
+  already keeps for a bare percentage - and says "That is 90 of 228
+  (39.5%)." instead of "That is 90 in total.", over a season, a career and
+  a box-score-narrowed read alike. Never for a multi-stat line (no `stat`
+  named), where singling out one entry's attempts would read as though only
+  it needed the qualifier. Warehouse-verified against Davion Mitchell's
+  season (90/228, 39.5%) and career (395/1,114, 35.5%) three-point lines.
 - **`player_history` states the combined career figure for a career span, not
   only the season-by-season table it sums to (F041, ISSUES.md).** "Show me
   sga's career 2pt percentage" printed a table whose rows summed exactly to

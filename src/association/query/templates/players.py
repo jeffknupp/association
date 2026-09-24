@@ -994,6 +994,26 @@ percentage, so a season, a career and a set of games are all the same sum.
 """
 
 
+# A made-count stat's attempted sibling column - the same name in the season
+# table and in player_game_log, exactly like SHOOTING_STATS' own pairs, but
+# for the three stats the router files as a plain COUNT ("3-pointers made")
+# rather than a percentage. "Davion Mitchell 3 point stats" answered makes and
+# games and nothing else - not the attempts or the percentage they make,
+# both `must_include` in the yardstick key (F051, ISSUES.md). `player_stat`
+# reads this only for a single named made-count stat, never a multi-stat
+# line, where singling out one entry's "out of how many?" would read as
+# though only it needed the qualifier.
+MADE_STAT_ATTEMPTS: dict[str, str] = {
+    "threePointFieldGoalsMade": "threePointFieldGoalsAttempted",
+    "fieldGoalsMade": "fieldGoalsAttempted",
+    "freeThrowsMade": "freeThrowsAttempted",
+}
+"""``player_stat`` made-count stat -> its attempted column.
+
+.. versionadded:: 4.4.0
+"""
+
+
 @dataclass(frozen=True)
 class _AdvancedStat:
     """One of the stats computed from box scores rather than served by ESPN.
@@ -1218,6 +1238,14 @@ def _season_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span: _S
         columns.append(per_game)
         if total:
             columns.append(total)
+    # A single made-count stat ("3-pointers made") brings its attempted
+    # sibling along, the same "out of how many?" discipline SHOOTING_STATS
+    # keeps for a percentage (F051, ISSUES.md) - never for a multi-stat line,
+    # where a bare made-count is one entry among several and asking "out of
+    # how many" of only one of them would read as singling it out.
+    attempted_col = MADE_STAT_ATTEMPTS.get(wanted[0]) if len(wanted) == 1 else None
+    if attempted_col:
+        columns.append(attempted_col)
     if shooting:
         columns += [shooting[0], shooting[1]]
     row = _season_row(con, player.id, columns, season, season_type)
@@ -1245,9 +1273,10 @@ def _season_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span: _S
     # season (2025 regular season)" when the question named it by ordinal.
     if shooting:
         return _shooting_result(player.name, {"season": season, "season_n": span.ordinal}, values, shooting, when=span.during())
+    attempted = values.get(attempted_col) if attempted_col else None
     return TemplateResult(
         data={"player": player.name, "season": season, "season_n": span.ordinal, "stats": values},
-        answer=_phrase_player_stat(player.name, period, values, wanted, when=span.during()),
+        answer=_phrase_player_stat(player.name, period, values, wanted, when=span.during(), attempted=attempted),
     )
 
 
@@ -1261,6 +1290,11 @@ def _career_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span: _S
         total = _CAREER_TOTALS[stat]
         amount = f"COALESCE({total}, {per_game} * gamesPlayed)" if total else f"{per_game} * gamesPlayed"
         selects += [f"SUM({amount}) / SUM(CASE WHEN {amount} IS NOT NULL THEN gamesPlayed END)", f"SUM({amount})"]
+    # See _season_player_stat's own comment: a single made-count stat's
+    # attempted total, never a multi-stat line's (F051, ISSUES.md).
+    attempted_col = MADE_STAT_ATTEMPTS.get(wanted[0]) if len(wanted) == 1 else None
+    if attempted_col:
+        selects.append(f"SUM({attempted_col})")
     if shooting:
         made, attempted = shooting[0], shooting[1]
         selects += [f"SUM(CASE WHEN {attempted} IS NOT NULL THEN {made} END)", f"SUM({attempted})"]
@@ -1284,9 +1318,12 @@ def _career_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span: _S
         amount = row[5 + 2 * index]
         if total_col and amount is not None:
             values[total_col] = round(amount)
+    attempted_total = row[4 + 2 * len(wanted)] if attempted_col else None
+    if attempted_col and attempted_total is not None:
+        values[attempted_col] = int(attempted_total)
     return TemplateResult(
         data={"player": player.name, **scope, "stats": values},
-        answer=_phrase_player_stat(player.name, f"career {span.kind}s", values, wanted, when=when),
+        answer=_phrase_player_stat(player.name, f"career {span.kind}s", values, wanted, when=when, attempted=attempted_total),
     )
 
 
@@ -1418,6 +1455,49 @@ def _pgl_qualified(column: str) -> str:
     return column if " " in column else f"pgl.{column}"
 
 
+def _box_score_player_stat_selects(wanted: list[str], shooting: tuple[str, str, str, str] | None, rebuilt: bool) -> tuple[list[str], str | None]:
+    """The aggregate SELECT list :func:`_box_score_player_stat` reads its row
+    through, and the attempted column a single made-count stat brings along
+    (F051, ISSUES.md) - split out to keep that function under the complexity
+    gate; the steps are in the order they were, and each keeps its comment.
+
+    .. versionadded:: 4.4.0
+    """
+    selects = ["COUNT(*)", "MIN(pgl.season)", "MAX(pgl.season)"]
+    for stat in wanted:
+        selects += [f"AVG(pgl.{stat})", f"SUM(pgl.{stat})"]
+    # See _season_player_stat's own comment: a single made-count stat's
+    # attempted total, never a multi-stat line's (F051, ISSUES.md).
+    attempted_col = MADE_STAT_ATTEMPTS.get(wanted[0]) if len(wanted) == 1 else None
+    if attempted_col:
+        selects.append(f"SUM(pgl.{attempted_col})")
+    if shooting:
+        selects += [f"SUM({_pgl_qualified(shooting[0])})", f"SUM({_pgl_qualified(shooting[1])})"]
+    if rebuilt:
+        selects.append("SUM(CASE WHEN pgl.reconstructed THEN 1 ELSE 0 END)")
+    return selects, attempted_col
+
+
+def _box_score_player_stat_values(row: tuple[Any, ...], wanted: list[str], attempted_col: str | None) -> tuple[dict[str, Any], Any]:
+    """The non-shooting half of :func:`_box_score_player_stat`'s fetched row:
+    each wanted stat's per-game and total value, and the attempted total
+    behind a single made-count stat (F051, ISSUES.md) - split out for the
+    same reason as :func:`_box_score_player_stat_selects`.
+
+    .. versionadded:: 4.4.0
+    """
+    values: dict[str, Any] = {}
+    for index, stat in enumerate(wanted):
+        per_game_col, total_col, _ = PLAYER_STAT_COLUMNS[stat]
+        values[per_game_col] = _rounded(row[3 + 2 * index])
+        if total_col and row[4 + 2 * index] is not None:
+            values[total_col] = int(row[4 + 2 * index])
+    attempted = row[3 + 2 * len(wanted)] if attempted_col else None
+    if attempted_col and attempted is not None:
+        values[attempted_col] = int(attempted)
+    return values, attempted
+
+
 def _box_score_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: _Narrowed, wanted: list[str], shooting: tuple[str, str, str, str] | None) -> TemplateResult:
     """Averages over exactly the games a question narrowed to. The box-score
     column for each stat is the stat's own name (``points``, ``fouls``...), so
@@ -1432,13 +1512,7 @@ def _box_score_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span:
        an empty box score" - rather than the wrong-cause "no games found".
     """
     rebuilt = _box_score_stat_rebuilt(con, wanted, shooting)
-    selects = ["COUNT(*)", "MIN(pgl.season)", "MAX(pgl.season)"]
-    for stat in wanted:
-        selects += [f"AVG(pgl.{stat})", f"SUM(pgl.{stat})"]
-    if shooting:
-        selects += [f"SUM({_pgl_qualified(shooting[0])})", f"SUM({_pgl_qualified(shooting[1])})"]
-    if rebuilt:
-        selects.append("SUM(CASE WHEN pgl.reconstructed THEN 1 ELSE 0 END)")
+    selects, attempted_col = _box_score_player_stat_selects(wanted, shooting, rebuilt)
     sql, params = aggregate_sql(narrowed, selects, rebuilt=rebuilt)
     row = con.execute(sql, params).fetchone()
     filters = narrowed.filters(dated=False)
@@ -1468,12 +1542,9 @@ def _box_score_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span:
         values[shooting[0]], values[shooting[1]] = row[3], row[4]
         result = _shooting_result(player.name, {**scope, "seasons": [first, last]}, values, shooting, when=when, games_note=filters)
     else:
-        for index, stat in enumerate(wanted):
-            per_game_col, total_col, _ = PLAYER_STAT_COLUMNS[stat]
-            values[per_game_col] = _rounded(row[3 + 2 * index])
-            if total_col and row[4 + 2 * index] is not None:
-                values[total_col] = int(row[4 + 2 * index])
-        answer = _phrase_player_stat(player.name, _period(first, span.season_type), values, wanted, games_note=filters, when=when)
+        extra_values, attempted = _box_score_player_stat_values(row, wanted, attempted_col)
+        values.update(extra_values)
+        answer = _phrase_player_stat(player.name, _period(first, span.season_type), values, wanted, games_note=filters, when=when, attempted=attempted)
         result = TemplateResult(data={"player": player.name, **scope, "seasons": [first, last], "stats": values}, answer=answer)
     if notes:
         result.answer = " ".join([result.answer, *notes])
@@ -1557,7 +1628,7 @@ def _shooting_result(name: str, scope: dict[str, Any], values: dict[str, Any], s
     return TemplateResult(data={"player": name, **scope, "stats": {**values, "pct": pct}}, answer=answer)
 
 
-def _phrase_player_stat(name: str, period: str, values: dict[str, Any], wanted: list[str], *, games_note: str = "", when: str | None = None) -> str:
+def _phrase_player_stat(name: str, period: str, values: dict[str, Any], wanted: list[str], *, games_note: str = "", when: str | None = None, attempted: Any = None) -> str:
     games = values.get("gamesPlayed")
     parts = []
     for stat in wanted:
@@ -1581,7 +1652,17 @@ def _phrase_player_stat(name: str, period: str, values: dict[str, Any], wanted: 
         total_col = PLAYER_STAT_COLUMNS[wanted[0]][1]
         total = values.get(total_col) if total_col else None
         if total is not None:
-            sentence += f" That is {total:,} in total."
+            # A made-count stat with its attempted total on hand (F051,
+            # ISSUES.md): "90 of 228 (39.5%)" is the makes and attempts, and
+            # the percentage they make - the same reading a bare percentage
+            # answer always carries, since a made-count with no attempts
+            # beside it is the thing a reader immediately asks "out of how
+            # many?" about. Falls back to the plain total when the stat has
+            # no attempted sibling (points, rebounds, assists...).
+            if attempted:
+                sentence += f" That is {round(total):,} of {round(attempted):,} ({100.0 * total / attempted:.1f}%)."
+            else:
+                sentence += f" That is {total:,} in total."
     return sentence
 
 

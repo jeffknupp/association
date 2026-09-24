@@ -2510,9 +2510,13 @@ def test_player_compare_refuses_a_named_stat_it_cannot_provide(ps_con: TemplateC
 def test_player_stat_supports_the_shooting_stats_the_router_emits(ps_con: TemplateContext) -> None:
     ps_con.con.execute("ALTER TABLE player_season_stats_deduped ADD COLUMN avgThreePointFieldGoalsMade DOUBLE")
     ps_con.con.execute("ALTER TABLE player_season_stats_deduped ADD COLUMN threePointFieldGoalsMade INTEGER")
-    ps_con.con.execute("UPDATE player_season_stats_deduped SET avgThreePointFieldGoalsMade = 4.4, threePointFieldGoalsMade = 282 WHERE athlete_id = '1'")
+    ps_con.con.execute("ALTER TABLE player_season_stats_deduped ADD COLUMN threePointFieldGoalsAttempted INTEGER")
+    ps_con.con.execute("UPDATE player_season_stats_deduped SET avgThreePointFieldGoalsMade = 4.4, threePointFieldGoalsMade = 282, threePointFieldGoalsAttempted = 620 WHERE athlete_id = '1'")
     answer = player_stat(ps_con, {"player": "Luka Doncic", "stat": "threePointFieldGoalsMade"}).answer or ""
-    assert "4.4 3-pointers" in answer and "282 in total" in answer
+    # F051 (ISSUES.md): a made-count stat now carries its attempts and the
+    # percentage they make beside the total - "282 of 620 (45.5%)" - the same
+    # "out of how many?" discipline a bare shooting percentage already keeps.
+    assert "4.4 3-pointers" in answer and "282 of 620 (45.5%)" in answer
 
 
 def test_player_stat_answers_two_point_percentage_for_a_season_and_a_career(ps_con: TemplateContext) -> None:
@@ -3995,6 +3999,25 @@ def test_player_stat_answers_a_shooting_percentage_with_its_makes_and_attempts(p
     assert "35.3% on 3-pointers (120 of 340)" in career
     against = player_stat(pg_ctx, {"player": "Brandin Podziemski", "stat": "freeThrowPct", "opponent": "Detroit Pistons"}).answer
     assert "83.3% on free throws (5 of 6) in 2 games vs the Detroit Pistons" in against
+
+
+def test_player_stat_answers_a_made_count_stat_with_its_attempts_and_percentage(pg_ctx: TemplateContext) -> None:
+    """F051 (ISSUES.md): "davion mitchell 3 point stats" (stat=
+    threePointFieldGoalsMade) printed the makes and the games and nothing
+    else - not the attempts or the percentage they make, both
+    `must_include` in the yardstick key. Exercised here over box scores
+    (an opponent narrows the read), the one path `test_player_stat_answers_a_shooting_percentage_with_its_makes_and_attempts`
+    above does not cover for a made-count stat."""
+    against = player_stat(pg_ctx, {"player": "Brandin Podziemski", "stat": "freeThrowsMade", "opponent": "Detroit Pistons"}).answer or ""
+    # Same two games (e2, e3) test_player_stat_answers_a_shooting_percentage_with_its_makes_and_attempts
+    # reads as freeThrowPct (5 of 6, 83.3%) - the made-count reading states
+    # the identical makes/attempts/percentage, phrased as a total rather than
+    # a percentage-first sentence.
+    assert "That is 5 of 6 (83.3%)." in against
+    # A multi-stat line (no single `stat` named) is unaffected: singling out
+    # one entry's attempts would read as though only it needed the qualifier.
+    default_line = player_stat(pg_ctx, {"player": "Brandin Podziemski", "opponent": "Detroit Pistons"}).answer or ""
+    assert "of 6" not in default_line and "%" not in default_line
 
 
 def test_player_stat_over_the_last_n_games_is_the_log_with_its_averages(pg_ctx: TemplateContext) -> None:
