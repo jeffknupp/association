@@ -233,6 +233,14 @@ COVERAGE: dict[str, Coverage] = {
         first_season=1988,
         reason="ESPN's standings endpoint reaches 1988 and no further, though what it does have is real and league-wide (23 teams in 1988, 27 by 1990)",
     ),
+    # Same endpoint as `standings` above, same floor - it is a second request
+    # to it (see fetch.pipeline.Pipeline.fetch_team_alignment), not a
+    # different source, so it starts exactly where standings does.
+    "team_alignment": Coverage(
+        subject="Conference and division membership",
+        first_season=1988,
+        reason="read from the same standings endpoint as the win-loss table, which reaches 1988 and no further",
+    ),
     # 37 distinct regular seasons but 39 postseasons: 1989 and 1990 hold no
     # regular-season games at all, and 1988, 1991 and 1992 hold exactly 82 -
     # one team's schedule, not a league's.

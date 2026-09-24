@@ -534,6 +534,27 @@ class Pipeline:
         self._add_glossary(glossary)
         self._write_rows(path, rows)
 
+    # ---------------- team alignment (conference/division) ----------------
+    def fetch_team_alignment(self, season: int) -> None:
+        """Each team's conference and division for ``season`` - a second,
+        separate request to the same standings endpoint as ``fetch_standings``
+        above, at ``&level=3`` so the response nests a division level the
+        default request does not carry (see ``parse.parse_team_alignment`` for
+        what was probed live to confirm that, and why the two reads are kept
+        apart rather than folded into one request).
+
+        Same freshness reasoning as ``fetch_standings``: alignment does not
+        move mid-season, but it can move between seasons (the 2004-05
+        realignment), so a season still in progress is re-fetched every run
+        the same way its record is, and a finished one keeps its resumability
+        skip."""
+        path = self._p("team_alignment", f"season={season}", "team_alignment.parquet")
+        if storage.exists(path) and not self.force and season < current_season():
+            return
+        data = self._live_client.get_json(endpoints.standings_url(), params={"season": season, "level": 3})
+        rows = parse.parse_team_alignment(data, season)
+        self._write_rows(path, rows)
+
     # ---------------- power index (BPI) ----------------
     def fetch_power_index(self, season: int) -> None:
         """Same reasoning as fetch_standings above - BPI/projected wins shift
@@ -989,6 +1010,7 @@ class Pipeline:
         for season in seasons:
             log.info("== season %s ==", season)
             self.fetch_standings(season)
+            self.fetch_team_alignment(season)
             self.fetch_power_index(season)
 
             for season_type in season_types:

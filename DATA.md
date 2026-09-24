@@ -519,32 +519,88 @@ ESPN's core API. The missing rows were never missing from ESPN.
   "The 2026 regular-season power index snapshot carries no BPI rating for any
   team".
 
-### No birth dates anywhere, and conference membership is fetched but discarded
+### No birth dates anywhere
 
-**Corrected 2026-09-15.** This section used to say ESPN publishes no
-team-to-conference mapping through any endpoint the pull reads. That is wrong:
-the standings response the pull already fetches is grouped by conference, and
-the parser throws the grouping away. The birth-date half stands.
+**Corrected 2026-09-15, conference/division half moved out 2026-09-24.** This
+section used to also cover conference and division membership; that half is
+now its own entry below, since the fault it described (fetched, then thrown
+away) is fixed - it is `DATA.md`'s job to describe what the source holds, not
+to track what we do about it, and there is nothing left to do about the
+conference/division half. The birth-date half stands, unfixed.
 
-- **What ESPN does:** returns `conferenceCompetition` as false on every game
-  (so the per-game flag really is useless), **but** serves standings as a tree:
-  `standings?season=2026` has children `Eastern Conference` (15 teams) and
-  `Western Conference` (15); 2004 gives 15 and 14, 1990 gives 13 and 14; and
-  `&level=3` returns the six divisions at 5 teams each. It publishes no birth
-  date through any endpoint the pull reads.
-- **Evidence:** `games.conference_game` is False on all 43,504 rows.
-  `parse_standings` (`fetch/parse.py:342`) walks `children` only to reach the
-  entries and keeps no group name — its own test says the entries "appear at
-  both conference and division level" (`tests/fetch/test_parse.py:413-414`).
-  `standings` also carries "vs. Conf." and "vs. Div." records, real from 2004.
-  No table holds a birth date.
-- **Does a refetch fix it?** **For conference and division, yes** — a parser
-  change plus a standings re-pull, no new endpoint. For birth dates, no.
-- **How we handle it:** `_conference_refusal` refuses a conference named as the
-  subject. Anything by age is refused or falls through.
+- **What ESPN does:** publishes no birth date through any endpoint the pull
+  reads. `games.conference_game` is also False on all 43,504 rows checked -
+  the per-game flag is useless regardless of the standings' own grouping,
+  covered below.
+- **Does a refetch fix it?** No - there is no endpoint left to try.
+- **How we handle it:** anything by age is refused or falls through.
+- **Tracked in:** ISSUES.md, "Shapes deferred for lack of data or logic" (#32).
+
+### The standings endpoint holds conference and division, at two different request shapes
+
+**Found 2026-09-11; corrected 2026-09-15 that it goes unread at all; read as
+of 2026-09-24 (`team_alignment`, ISSUES.md #25).** ESPN serves the grouping
+two ways, and a pull now makes both requests per season - re-verify anything
+here against a live probe before changing which one `fetch_standings`/
+`fetch_team_alignment` reads, since the shapes below were measured live across
+the table's 1988 floor and are easy to get wrong from the response alone.
+
+- **The default request (`standings?season=<year>`, no `level` param) groups
+  by CONFERENCE ONLY**, with each team's full stat line an entry directly
+  under its conference - no division level at all, at every season probed
+  (1988, 1990, 1994, 2000, 2003, 2004, 2005, 2015, 2026). `fetch_standings`
+  reads this one; it is what `standings` (wins, losses, streak, seed, the
+  "Home"/"Road" split) has always come from.
+- **`&level=3` nests a division level under each conference instead**, with
+  entries at the division leaves and the conference nodes holding none of
+  their own. `fetch_team_alignment` reads this one, purely for the grouping:
+  see `fetch.parse.parse_team_alignment` for how the tree is walked (a node's
+  own `isConference` flag says which level it is, not its depth - the root
+  itself sets it false, same as a division).
+- **The two requests are NOT interchangeable for anything beyond the
+  grouping**, checked field by field on the same team in the same season
+  (2026, Boston Celtics): 21 of 23 stat fields are byte-identical, and the
+  other two differ in a way that would silently change an existing answer if
+  the two reads were ever folded into one. `gamesBehind` is behind the
+  CONFERENCE leader on the default request and behind the DIVISION leader at
+  `level=3` (0.0 for a team that leads its division but trails its
+  conference); and the field ESPN itself names the aggregate W-L record stat
+  changes from `overall` (default) to `Division Standings` (`level=3`). This
+  project's own parser does not read the second field either way (its `name` in the API is
+  the display label, not a value), but `gamesBehind` is read as "games back"
+  in `templates/teams.py` - conference-relative, the meaning the default
+  request alone gives it. This is why `fetch_team_alignment` is a SECOND
+  request rather than a re-read of `fetch_standings`'s own response: reusing
+  it would change what "games back" means, silently - both requests return a
+  field literally named `gamesBehind`, so nothing about reading it would look
+  wrong.
+- **Two conferences, four divisions before the 2004-05 realignment, six
+  after** - matches NBA history. Probed live: `season=2004` (2003-04, the
+  last old-alignment year) holds Atlantic/Central (East) and Midwest/Pacific
+  (West), 29 teams; `season=2005` (2004-05, the realignment year) already
+  holds the current six (Atlantic/Central/Southeast, Northwest/Pacific/
+  Southwest), 30 teams. **A transitional season's tree can carry an extra,
+  EMPTY division shell** - `season=2004` at `level=3` includes a
+  zero-entry "Southeast" node beside the four real divisions, apparently
+  because the endpoint's own division list is not season-versioned the way
+  its entries are. It contributes no rows (nothing is ever entered under it),
+  so it needs no special case, but it would be surprising to someone
+  expecting the tree's shape to match the season's own team count.
+- **Division names across the whole floor:** Atlantic, Central, Southeast,
+  Northwest, Pacific, Southwest, and (pre-2004-05 only) Midwest - seven in
+  total, never renamed within an era. Conference names are always "Eastern
+  Conference"/"Western Conference", full text, at both request shapes.
+- **Unlike a player's bio** (see "A player's bio is point-in-time" below),
+  alignment is read PER SEASON - the `team_alignment` table's own key - not
+  fetched once and assumed constant, so a franchise that moved conference or
+  division mid-history would be read correctly for each season on its own.
+  None has since 1988 (the realignment above moved every division at once,
+  not one team at a time), but the code makes no assumption that none ever
+  will.
 - **Tracked in:** ISSUES.md, "Conference and division are in the standings we
-  fetch, and the parser drops them" (#25) and "Shapes deferred for lack of data
-  or logic" (#32).
+  fetch, and the parser drops them" (#25, now closed - see that entry's
+  history) and the coverage floor in `nba/coverage.py` (`team_alignment`,
+  1988, the same as `standings` since it is the same endpoint).
 
 ### No award, All-Star or All-NBA selection anywhere, and `teams.is_all_star` is a franchise flag
 

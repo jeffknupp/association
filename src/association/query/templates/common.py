@@ -17,7 +17,7 @@ from association.nba.coverage import COVERAGE, REGULAR_SEASON, caveat, unavailab
 from association.nba.season import current_season, eastern_day_utc_range
 
 from ..answer import Artifact
-from ..calendar import parse_situation
+from ..calendar import parse_alignment, parse_situation
 from ..conditions import _PLAYER_GAME_TABLES, _TEAM_GAME_TABLES, _game_scope, _Scope, box_source
 from ..entities import Ambiguous, Availability, Entity, clarification, find_players, note_typo_reading, resolve_player, resolve_team, suggest_players, suggestion, teammate_names
 from ..leaderboard import resolve_metric
@@ -109,9 +109,13 @@ SEASON_TYPE_NAMES = {0: "regular season and postseason", 1: "preseason", 2: "reg
 # a template that is not about splits or ranges answered them with one season.
 # `below` ("under 14 FTA") and `above` ("with 25 minutes") are lines a game's
 # box score is kept under or over - `measure_filters` reads them onto the
-# relation for the templates listed with them. `situation` (back-to-backs,
-# overtime, a conference) is refused by every template: nothing narrows to it
-# yet, and answering without it answered the whole season.
+# relation for the templates listed with them. `situation` is a weekday, a
+# month, a fixed holiday, "since <day>" (`calendar.parse_situation`), or - the
+# other half of the same slot, K3-2 - a conference or division the opponent is
+# in (`calendar.parse_alignment`), applied together by `_apply_situation`
+# below. Anything else it could name (back-to-backs, overtime, an age, "since
+# returning") is refused by every template: nothing narrows to it yet, and
+# answering without it answered the whole season.
 # `until` closes a `since`-bounded range at the far end ("2019-20 to 2023-24",
 # "the 2010s") - `router._validate_range` - and is declared and read
 # everywhere `since` is (`_span_of`, `_Span.clause`), never on its own: a
@@ -267,7 +271,10 @@ def _relation_scoping(intent: str, *extra: str) -> frozenset[str]:
 # `situation` is a calendar narrowing - a weekday, a month, a fixed holiday,
 # or "since <month day>" within each game's own season - applied by
 # `team_games` itself via `TeamNarrowed.narrow_calendar`, the exact mirror of
-# `scoped_games`' own reading for the player relation; `until` is the
+# `scoped_games`' own reading for the player relation, OR (K3-2) an
+# opponent's conference or division for that game's own season, via
+# `TeamNarrowed.narrow_alignment` - both read by the one `_apply_situation`
+# helper both relations' shared steps call; `until` is the
 # inclusive LAST season of a `since`-bounded range (a decade, "2019-20 to
 # 2023-24"), read the same way `since` already is (`_span_of`/`scoped_team`) -
 # never alone (`_validated_until`), so a template honors it only by also
@@ -1576,6 +1583,40 @@ def scoped_player(
 _NarrowedT = TypeVar("_NarrowedT", Narrowed, TeamNarrowed)
 
 
+def _apply_situation(narrowed: _NarrowedT, situation: str) -> None:
+    """Read a ``situation`` value as the calendar narrowing it names (a
+    weekday, a month, a fixed day, "since <day>") or - the other half of the
+    same slot - the conference/division narrowing it names ("vs the west",
+    "against the southeast division"), and apply whichever one it is to
+    ``narrowed``. Refused BY VALUE (never silently dropped) when it names
+    neither: the relation carries the game's Eastern day and each opponent's
+    season-alignment, and nothing about the player's age or a return from
+    injury, so dropping the slot would answer a wider question under a
+    heading that promised the narrower.
+
+    The one place :func:`scoped_games`/:func:`league_games` (the player
+    relation) and :func:`team_games` (the team relation) turn a ``situation``
+    value into a clause, so a reading either function adds here reaches every
+    template on both relations at once - the same discipline every other
+    relation-scoping cell keeps (see ``RELATION_SCOPING``/``TEAM_RELATION_SCOPING``
+    above).
+
+    .. versionadded:: 4.4.0
+    """
+    calendar = parse_situation(situation)
+    if calendar is not None:
+        narrowed.narrow_calendar(calendar)
+        return
+    alignment = parse_alignment(situation)
+    if alignment is not None:
+        narrowed.narrow_alignment(alignment)
+        return
+    raise TemplateUnsupported(
+        f'no narrowing in situation {situation!r} - a weekday, a month, a holiday, "since <day>", a conference ("vs the west") or a division '
+        '("vs the southeast division") is read; an age or anything else is not'
+    )
+
+
 def _relation_window(slots: dict[str, Any]) -> tuple[str, int] | None:
     """The WINDOW :func:`scoped_games` cuts the narrowed games to - the
     newest or oldest N, after every other filter
@@ -1665,16 +1706,10 @@ def scoped_games(
         narrowed.date = date
     situation = slots.get("situation")
     if situation:
-        # A `situation` is honored where it names the calendar - a weekday, a
-        # month, a fixed day, "since <day>" - and refused BY VALUE where it
-        # names anything else (an age, a conference, "since returning"): the
-        # relation carries the game's Eastern day and nothing about the
-        # player's age or the opponent's division, and dropping the slot would
-        # answer a wider question under a heading that promised the narrower.
-        narrowing = parse_situation(situation)
-        if narrowing is None:
-            raise TemplateUnsupported(f'no calendar narrowing in situation {situation!r} - a weekday, a month, a holiday or "since <day>" is read; an age, a conference or a division is not')
-        narrowed.narrow_calendar(narrowing)
+        # Honored where it names the calendar or a conference/division, and
+        # refused BY VALUE where it names anything else (an age, "since
+        # returning") - see _apply_situation.
+        _apply_situation(narrowed, situation)
     narrowed.window = _relation_window(slots)
     return narrowed
 
@@ -1737,10 +1772,7 @@ def league_games(con: duckdb.DuckDBPyConnection, span: _Span, slots: dict[str, A
     narrow_measures(narrowed, measure_filters(slots.get("below"), slots.get("above")))
     situation = slots.get("situation")
     if situation:
-        narrowing = parse_situation(situation)
-        if narrowing is None:
-            raise TemplateUnsupported(f'no calendar narrowing in situation {situation!r} - a weekday, a month, a holiday or "since <day>" is read; an age, a conference or a division is not')
-        narrowed.narrow_calendar(narrowing)
+        _apply_situation(narrowed, situation)
     if position:
         codes = POSITION_CODES.get(position, [position])
         narrowed.narrow(f"pgl.athlete_id IN (SELECT athlete_id FROM players WHERE position_abbr IN ({', '.join('?' for _ in codes)}))", *codes)
@@ -1897,9 +1929,16 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, slots:
        or "since <month day>" within each game's own season - read the same
        way :func:`scoped_games` reads it for the player relation, over
        :meth:`association.query.team_games.TeamNarrowed.narrow_calendar`. A
-       value that names no calendar narrowing (an age, a conference, "since
-       returning") is refused by value rather than silently dropped, the same
-       as the player relation's own refusal.
+       value that names no calendar narrowing (an age, "since returning") is
+       refused by value rather than silently dropped, the same as the player
+       relation's own refusal.
+
+    .. versionchanged:: 4.4.0
+       Honors the other half of ``situation`` (K3-2): an opponent's conference
+       or division for that game's own season ("vs the west", "against the
+       southeast division"), over
+       :meth:`association.query.team_games.TeamNarrowed.narrow_alignment` -
+       see :func:`_apply_situation`.
     """
     clause, params = _team_span_clause(span)
     narrowed = TeamNarrowed(base=["tg.team_id = ?", "tg.season_type = ?", clause], base_params=[team.id, span.season_type, *params], team=team)
@@ -1928,11 +1967,9 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, slots:
     situation = slots.get("situation")
     if situation:
         # Same discipline as scoped_games: honored where it names the
-        # calendar, refused BY VALUE (never silently dropped) otherwise.
-        narrowing = parse_situation(situation)
-        if narrowing is None:
-            raise TemplateUnsupported(f'no calendar narrowing in situation {situation!r} - a weekday, a month, a holiday or "since <day>" is read; an age, a conference or a division is not')
-        narrowed.narrow_calendar(narrowing)
+        # calendar or a conference/division, refused BY VALUE (never
+        # silently dropped) otherwise - see _apply_situation.
+        _apply_situation(narrowed, situation)
     # The same window rule as the player relation's - a named order, or a
     # bare limit read as the newest N (see _relation_window).
     narrowed.window = _relation_window(slots)

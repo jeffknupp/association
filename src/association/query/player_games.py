@@ -45,7 +45,7 @@ import duckdb
 
 from association.nba.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON
 from association.nba.season import eastern_date_sql
-from association.query.calendar import CalendarNarrowing, calendar_clause
+from association.query.calendar import AlignmentNarrowing, CalendarNarrowing, alignment_clause, calendar_clause
 
 from .conditions import UNGATED_ON_REBUILD, BoxSource
 from .entities import Entity
@@ -233,6 +233,12 @@ class Narrowed:
     #: The calendar narrowing a ``situation`` slot named - a weekday, a month,
     #: a fixed day, every game from a day of the season on - or None.
     calendar: CalendarNarrowing | None = None
+    #: The conference or division a ``situation`` slot named the OPPONENT to
+    #: be in - "vs the west", "against the southeast division" - or None. The
+    #: same slot as ``calendar`` and mutually exclusive with it: a value is
+    #: read as one or the other, never both, by :func:`association.query.calendar.parse_situation`/
+    #: :func:`~association.query.calendar.parse_alignment` in that order.
+    alignment: AlignmentNarrowing | None = None
 
     def clauses(self, *, narrowed: bool = True, recorded: bool = True, rebuilt: bool = False) -> tuple[str, list[Any]]:
         """The WHERE body and its parameters - without the narrowing when
@@ -250,6 +256,23 @@ class Narrowed:
             where += self.extra
             params += self.extra_params
         return " AND ".join(where), params
+
+    def _situation_phrase(self) -> str | None:
+        """The phrase a ``situation`` slot named, or None - the calendar one
+        (``self.calendar``) or the conference/division one (``self.alignment``),
+        whichever :meth:`narrow_calendar`/:meth:`narrow_alignment` set. The two
+        are mutually exclusive, since a value is read as one or the other
+        (never both) by :func:`association.query.calendar.parse_situation`/
+        :func:`~association.query.calendar.parse_alignment` in that order -
+        pulled out of :meth:`filters` to keep its own branch count down.
+
+        .. versionadded:: 4.4.0
+        """
+        if self.calendar is not None:
+            return self.calendar.label
+        if self.alignment is not None:
+            return self.alignment.label
+        return None
 
     def filters(self, *, dated: bool = True, windowed: bool = False) -> str:
         """What the games were narrowed to, as it follows a name: ``" vs the
@@ -292,8 +315,9 @@ class Narrowed:
             parts.append(f"in game {self.series_game} of {'the' if self.opponent is not None else 'each'} series")
         if self.date and dated:
             parts.append(f"on {self.date}")
-        if self.calendar is not None:
-            parts.append(self.calendar.label)
+        situation = self._situation_phrase()
+        if situation:
+            parts.append(situation)
         if self.window is not None and windowed:
             order, n = self.window
             parts.append(f"over his {'last' if order == 'recent' else 'first'} {n} game{'s' if n != 1 else ''}")
@@ -329,6 +353,22 @@ class Narrowed:
         clause, params = calendar_clause(narrowing, eastern_date_sql("g.date"), "pgl.season")
         self.narrow(clause, *params)
         self.calendar = narrowing
+
+    def narrow_alignment(self, narrowing: AlignmentNarrowing) -> None:
+        """Only the games against an opponent in this conference or division,
+        for that game's own season - the ``situation`` cell's other half,
+        read by :func:`association.query.calendar.parse_alignment` and
+        applied by :func:`association.query.templates.common.scoped_games`/
+        :func:`~association.query.templates.common.league_games`.
+        ``pgl.opponent_team_id`` is the column :func:`league_games` already
+        narrows by name against; this reads it against every team in the
+        conference or division instead of one.
+
+        .. versionadded:: 4.4.0
+        """
+        clause, params = alignment_clause(narrowing, "pgl.opponent_team_id", "pgl.season")
+        self.narrow(clause, *params)
+        self.alignment = narrowing
 
     def narrow_series_game(self, n: int) -> None:
         """Only the ``n``th game of each playoff series: the games between the

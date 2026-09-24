@@ -32,7 +32,7 @@ from typing import Any
 
 import duckdb
 
-from association.query.calendar import parse_situation
+from association.query.calendar import parse_alignment, parse_situation
 from association.query.entities import find_players, find_teams
 from association.query.templates.common import PLAYER_INTENTS, TemplateResult
 
@@ -71,17 +71,32 @@ def _playoff_round(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str,
 
 
 def _non_calendar_situation(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str) -> str | None:
-    """A ``situation`` that names no calendar: an age (no birth dates on
-    record), a conference or division (in the standings, not yet read), or
-    anything else the games are not read by."""
+    """A ``situation`` that names neither a calendar narrowing nor a
+    conference or division (:func:`association.query.calendar.parse_situation`/
+    :func:`~association.query.calendar.parse_alignment`, the same two readers
+    the relations' own shared steps try): an age (no birth dates on record),
+    or anything else the games are not read by.
+
+    A conference/division WORD in a shape ``parse_alignment`` does not
+    recognize ("the Central Division these days") gets its own message naming
+    the shape that is read, rather than the generic one - the words are
+    right and only the phrasing is not, which is a different sentence than
+    "not something the games are read by".
+
+    .. versionchanged:: 4.4.0
+       A conference or division IS read now (K3-2), by value - this used to
+       refuse every one outright ("not read from the standings yet").
+    """
     situation = slots.get("situation")
-    if not isinstance(situation, str) or not situation.strip() or parse_situation(situation) is not None:
+    if not isinstance(situation, str) or not situation.strip():
+        return None
+    if parse_situation(situation) is not None or parse_alignment(situation) is not None:
         return None
     if _AGE.search(situation):
         return f"'{situation}' needs a birth date, and the player records here carry none - so no answer can be narrowed by age. Ask by season instead (the season he turned that age)."
     if _CONFERENCE_OR_DIVISION.search(situation):
-        return f"'{situation}' narrows by conference or division, which are not read from the standings yet - name the teams instead, or ask without the narrowing."
-    return f"'{situation}' is not something the games are read by - a weekday, a month, a holiday or \"since <day>\" is. Ask without it, or with one of those."
+        return f'\'{situation}\' names a conference or division, but not in a shape this reads - try "vs the west", "against eastern conference teams" or "vs the southeast division".'
+    return f"'{situation}' is not something the games are read by - a weekday, a month, a holiday, \"since <day>\", a conference or a division is. Ask without it, or with one of those."
 
 
 def _period_stat(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str) -> str | None:

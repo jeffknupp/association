@@ -3533,6 +3533,23 @@ def pg_ctx(tmp_path: Path) -> TemplateContext:
     for event, n in (("p1", 1), ("p2", 1), ("p3", 1), ("p5", 2)):
         for _ in range(n):
             c.execute("INSERT INTO shot_chart VALUES ('10',?,3,?,'1',1,'10:00',TRUE,'Jump Shot',25,26,3,'26-foot three point jumper')", [s, event])
+    # Alignment for `situation`'s other half (K3-2): GS and LAL are West,
+    # BOS/DET/CHI are East - constant across `s` and `s - 1` here, since the
+    # realignment itself is pinned separately (tests/query/test_player_games.py).
+    c.execute("CREATE TABLE team_alignment (season INTEGER, team_id VARCHAR, conference VARCHAR, division VARCHAR)")
+    c.executemany(
+        "INSERT INTO team_alignment VALUES (?, ?, ?, ?)",
+        [
+            (season, team_id, conference, division)
+            for season in (s, s - 1)
+            for team_id, conference, division in (
+                ("1", "Western Conference", "Pacific"),
+                ("2", "Eastern Conference", "Atlantic"),
+                ("3", "Eastern Conference", "Central"),
+                ("4", "Western Conference", "Pacific"),
+            )
+        ],
+    )
     real_games.build_table(c, {"games", "teams"})
     return TemplateContext(con=c, out_dir=tmp_path)
 
@@ -3562,13 +3579,41 @@ def test_a_situation_naming_the_calendar_narrows_the_relation(pg_ctx: TemplateCo
 
 
 def test_a_situation_naming_no_calendar_is_refused_by_value(pg_ctx: TemplateContext) -> None:
-    """An age, a conference or a return from injury is nothing the relation
-    can filter on. Refused with the value in the message and the shapes that
-    ARE read named - never dropped, which would answer every game under a
-    heading that promised "as an 18 year old"."""
-    for situation in ("18 year old", "western conference", "since returning", "before turning 27"):
+    """An age or a return from injury is nothing the relation can filter on.
+    Refused with the value in the message and the shapes that ARE read named
+    - never dropped, which would answer every game under a heading that
+    promised "as an 18 year old"."""
+    for situation in ("18 year old", "since returning", "before turning 27"):
         with pytest.raises(TemplateUnsupported, match=re.escape(situation)):
             game_log(pg_ctx, {"player": "Brandin Podziemski", "situation": situation})
+
+
+def test_a_situation_naming_a_conference_or_division_narrows_the_relation(pg_ctx: TemplateContext) -> None:
+    """`situation`'s other half (K3-2): the opponent's conference or division,
+    for that game's own season. Podziemski's `s` games actually played: e1 vs
+    BOS (East/Atlantic, {s-1}-11-01), e2 and e3 vs DET (East/Central,
+    {s-1}-12-01 and {s}-01-10) - e4 (vs LAL, West) is a DNP and e6 (vs BOS) an
+    empty line, neither counted as played."""
+    s = current_season()
+    east = game_log(pg_ctx, {"player": "Brandin Podziemski", "situation": "vs the east"})
+    assert sorted(g["date"] for g in east.data["games"]) == sorted([f"{s - 1}-11-01", f"{s - 1}-12-01", f"{s}-01-10"])
+    assert "against Eastern Conference teams" in (east.answer or "")
+    # No played game is against a Western opponent at all in this fixture (e4
+    # is a DNP) - proves the filter actually narrows rather than passing
+    # every game through, not merely that the West has none by default.
+    west = game_log(pg_ctx, {"player": "Brandin Podziemski", "situation": "against western conference teams"})
+    assert west.data["games"] == []
+    atlantic = game_log(pg_ctx, {"player": "Brandin Podziemski", "situation": "vs the atlantic division"})
+    assert [g["date"] for g in atlantic.data["games"]] == [f"{s - 1}-11-01"]
+    assert "against the Atlantic Division" in (atlantic.answer or "")
+
+
+def test_a_situation_naming_a_conference_in_no_recognized_shape_is_refused_by_value(pg_ctx: TemplateContext) -> None:
+    """A conference/division word that is not one of `parse_alignment`'s
+    shapes still refuses BY VALUE, the same as any other unread situation -
+    not silently as though the slot had never been set."""
+    with pytest.raises(TemplateUnsupported, match=re.escape("western conference these days")):
+        game_log(pg_ctx, {"player": "Brandin Podziemski", "situation": "western conference these days"})
 
 
 def test_period_split_reads_one_game_of_each_series(pg_ctx: TemplateContext) -> None:

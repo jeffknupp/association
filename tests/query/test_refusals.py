@@ -11,7 +11,7 @@ from typing import Any
 import duckdb
 import pytest
 
-from association.query.calendar import parse_situation
+from association.query.calendar import parse_alignment, parse_situation
 from association.query.refusals import unanswerable
 from association.query.templates.common import TemplateUnsupported, check_scope
 
@@ -57,12 +57,23 @@ def test_an_age_is_refused_because_no_birth_date_is_on_record(con: duckdb.DuckDB
     assert "birth date" in refusal.answer and "'18 year old'" in refusal.answer
 
 
-def test_a_conference_or_division_names_its_own_cause(con: duckdb.DuckDBPyConnection) -> None:
-    """yardstick-v2 F055 "vs southeast division": in the standings, not yet
-    read - a different sentence from the age one."""
-    refusal = unanswerable(con, "player_splits", {"player": "LeBron James", "situation": "vs southeast division"}, "lebron vs southeast division")
+def test_a_conference_or_division_in_no_recognized_shape_names_its_own_cause(con: duckdb.DuckDBPyConnection) -> None:
+    """A conference/division word outside the shapes ``parse_alignment`` reads
+    ("vs the west", "against eastern conference teams", "vs the southeast
+    division", "in the west") still gets its own sentence naming what would
+    be read, not the generic "not something the games are read by" one - the
+    words are right and only the phrasing is not, which is a different cause
+    than an unreadable value entirely.
+
+    .. versionchanged:: 4.4.0
+       A conference or division IS read now (K3-2, yardstick-v2 F055 "vs
+       southeast division") - this used to refuse every shape naming one,
+       "not read from the standings yet"; see
+       test_an_alignment_situation_is_never_refused_here below.
+    """
+    refusal = unanswerable(con, "player_splits", {"player": "LeBron James", "situation": "the Central Division these days"}, "lebron in the central division these days")
     assert refusal is not None
-    assert "conference or division" in refusal.answer and "not read from the standings yet" in refusal.answer
+    assert "conference or division" in refusal.answer and "not in a shape this reads" in refusal.answer
     other = unanswerable(con, "player_stat", {"player": "LeBron James", "situation": "since returning"}, "lebron since returning")
     assert other is not None
     assert "not something the games are read by" in other.answer
@@ -74,6 +85,15 @@ def test_a_calendar_situation_is_never_refused_here(con: duckdb.DuckDBPyConnecti
     for situation in ("on tuesdays", "in march", "on christmas", "since january 31st"):
         assert parse_situation(situation) is not None
         assert unanswerable(con, "game_log", {"player": "LeBron James", "situation": situation}, f"lebron games {situation}") is None
+
+
+def test_an_alignment_situation_is_never_refused_here(con: duckdb.DuckDBPyConnection) -> None:
+    """yardstick-v2 F055 "vs southeast division": a conference or division
+    situation the relation reads (K3-2) is the relation's to answer or refuse
+    by value - the same discipline the calendar shapes above already keep."""
+    for situation in ("vs southeast division", "vs the west", "against eastern conference teams", "in the west"):
+        assert parse_alignment(situation) is not None
+        assert unanswerable(con, "player_splits", {"player": "LeBron James", "situation": situation}, f"lebron {situation}") is None
 
 
 def test_a_stat_other_than_points_by_quarter_is_refused(con: duckdb.DuckDBPyConnection) -> None:
