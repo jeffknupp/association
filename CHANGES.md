@@ -16,6 +16,19 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **A question naming exactly one player and no team, routed to a
+  team-only intent, refuses instead of answering the league's numbers.**
+  "alperen şengün alltime record" routed to `team_leaderboard` - no player
+  slot exists on that intent, and no team slot was filled either - and
+  answered the league standings, entirely off Sengun. `entities.player_named_on_a_team_only_question`
+  runs before `templates.common.TEAM_ONLY_INTENTS` (`team_record`,
+  `team_leaderboard`, `team_stat`, `team_outlook`) reach their template,
+  naming the player in the refusal instead. Diacritics are already folded
+  (`entities._fold`); an invented `team` slot holding the player's OWN name
+  (measured live, a second run of the same question) is treated the same as
+  no team at all (`entities._has_a_real_team`), so the router's
+  nondeterminism on this exact question does not slip past the check either
+  way.
 - **A team named "for <team>"/"with the <team>" beside a player is restored
   as his own tenure, and defaults the span to his career.** "lebron stats as
   a starter for Miami" answered his current (Lakers) season, "Miami" never

@@ -807,6 +807,72 @@ def misread_players(names: list[str]) -> str:
     )
 
 
+def _has_a_real_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> bool:
+    """Whether ``slots`` carries a ``team``/``teams`` value that actually
+    resolves to a real franchise - not merely a non-empty string. The router
+    invents a team the way it invents a player (AGENTS.md, "the router
+    invents names"): "alperen şengün alltime record" arrived one run with no
+    `team` at all, and another with `team='Alperen Şengün'` - the player's
+    own name, filed as though it were a franchise, which
+    :func:`~association.query.templates.team_record.team_record`-shaped
+    templates then refuse as "no team matching", the wrong cause. A team
+    slot nothing resolves is functionally the same as no team slot at all."""
+    season = slots.get("season") if isinstance(slots.get("season"), int) else None
+    texts = [slots.get("team"), *(slots.get("teams") or [])]
+    return any(isinstance(text, str) and text.strip() and _team_named(con, text, season) is not None for text in texts)
+
+
+def player_named_on_a_team_only_question(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any]) -> str | None:
+    """The one player a question names, when the routed intent has no
+    reading for him at all and the question names no REAL team either - or
+    None.
+
+    yardstick-v2 F111: "alperen şengün alltime record" routed to
+    ``team_leaderboard`` - no player slot exists on that intent at all, and
+    no ``team`` slot that resolves to a real franchise was filled either -
+    and answered the league standings, entirely off the subject the
+    question named. Diacritics are already handled: ``players_named_in``
+    folds "şengün" to "sengun" (:func:`_fold`) before matching, the same way
+    it reads "dončić". See :func:`_has_a_real_team` for why an invented
+    ``team`` value (the player's own name, filed as though it were a
+    franchise - measured live, a second run of this exact question) counts
+    as no team at all rather than stopping this check.
+
+    Caller-gated to :data:`~association.query.templates.common.TEAM_ONLY_INTENTS`
+    (this function does not check the intent itself, the same shape
+    ``restore_subject``/``restore_team`` take in
+    :func:`scope_from_question`): a REAL team already named there is the
+    real subject, and a player coincidentally named beside it changes no
+    answer - the same reasoning that keeps a stray name on ``head_to_head``
+    from being refused elsewhere in this module. A word that names only a
+    team ("magic" in "magic vs nets" is the Orlando Magic, not Magic
+    Johnson - :func:`_named_only_by_a_team_word`) or only a common English
+    word that collides with a surname ("best" is Travis Best -
+    :func:`_named_only_by_a_common_word`) is excluded the same way
+    :func:`_scope_from_question_only_player` already excludes both.
+
+    .. versionadded:: 4.4.0
+    """
+    if _has_a_real_team(con, slots):
+        return None
+    named = [name for name in players_named_in(con, question) if not _named_only_by_a_team_word(con, question, name) and not _named_only_by_a_common_word(question, name)]
+    return named[0] if len(named) == 1 else None
+
+
+def team_only_question_names_a_player(named_player: str, intent: str) -> str:
+    """The refusal sentence for :func:`player_named_on_a_team_only_question`
+    - names the player it read rather than answering the league or a team's
+    own numbers, the wrong subject.
+
+    .. versionadded:: 4.4.0
+    """
+    return (
+        f"This was read as a question about {named_player}, a player, but {intent.replace('_', ' ')} has no reading for one - "
+        f"it would have answered the league's or a team's own numbers instead. Ask about {named_player}'s own stats, "
+        "or name a team if a team's record was meant."
+    )
+
+
 def undo_name_completion(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any]) -> list[tuple[str, str]]:
     """Give back the ambiguity the router resolved on its own. Mutates ``slots``.
 

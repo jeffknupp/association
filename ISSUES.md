@@ -46,34 +46,6 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
-### A single-word question routed to a team-only intent with the named player dropped entirely: "alperen şengün alltime record" answers the league standings <!-- codespell:ignore alltime - a verbatim quote of the yardstick question's own spelling -->
-
-- **Found:** 2026-09-23, same session, yardstick-v2 F111.
-- **Evidence:** routes `team_leaderboard {'stat': 'record', 'limit': 1,
-  'fields': ['assists'], 'season_type': 2}` - no player, no team - and
-  answers "Oklahoma City Thunder 64-18 (.780)", the league's best regular-season
-  record, unrelated to Sengun (168-203 in games he's played) or his career
-  highs (45 pts, 21 reb, 14 ast...). `team_leaderboard` is not in
-  `PLAYER_INTENTS` (`templates/common.py`), so `override_invented_players`
-  never runs against it and a stray or dropped player name changes nothing
-  there by design - correctly so for a genuine team question, but this
-  question names exactly one player and no team at all, so the intent itself
-  is the wrong read, not a slot on top of a right one. Diacritics may also be
-  a factor in why nothing downstream recognized "şengün" as naming a player
-  worth restoring - not confirmed either way; `entities.find_players`'s own
-  normalization was not checked against an unfolded "ş" in this session.
-- **User sees:** a wrong answer, fluently, entirely off the subject asked
-  about.
-- **Next step:** AGENTS.md's own rule ("Refuse by name where the intent
-  cannot be about the subject") is exactly the shape here and is not yet
-  applied to `team_leaderboard`/`team_stat`/`team_outlook`: a question naming
-  exactly one real player (by `entities.players_named_in`'s strict rules,
-  diacritics folded) and routed to a team-only intent with no `team` slot
-  either should ask what was meant rather than answer the league's own
-  ranking. Separately confirm whether `players_named_in`/`find_players` fold
-  "ş" to "s" (`unicodedata` is already imported in `entities.py` for a
-  related purpose - check what it normalizes today).
-
 ### A composed triple-double ranking answers a count instead of the highest-scoring one: "players with the highest scoring triple doubles"
 - **Found:** 2026-09-23, same session, yardstick-v2 F124.
 - **Evidence:** routes `leaderboard {'stat': 'triple_double', 'limit': 10,

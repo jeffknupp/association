@@ -19,9 +19,11 @@ from .entities import (
     misread_players,
     override_invented_players,
     override_nicknames,
+    player_named_on_a_team_only_question,
     player_record_against_a_team,
     restore_dropped_players,
     scope_from_question,
+    team_only_question_names_a_player,
     undo_name_completion,
 )
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
@@ -35,6 +37,7 @@ from .templates.common import (
     PLAYER_INTENTS,
     PLAYER_REQUIRED_INTENTS,
     SUBJECT_RESTORABLE_INTENTS,
+    TEAM_ONLY_INTENTS,
     TemplateContext,
     TemplateResult,
     TemplateUnsupported,
@@ -370,6 +373,18 @@ class Agent:
         # code. "brown" is ten players and has to ask, as it always did.
         for was, now in undo_name_completion(self.toolbox.con, question, routed.slots):
             history.log(f"  -> (player) {was!r} -> {now!r} (the question names only part of it, and that part is ambiguous)")
+        # AGENTS.md, "Refuse by name where the intent cannot be about the
+        # subject": a question naming exactly one real player and no team,
+        # routed to an intent with no player reading at all, is about a
+        # different subject than the one it would answer - "alperen şengün
+        # alltime record" routed to team_leaderboard and answered the league
+        # standings, Sengun never read (yardstick-v2 F111).
+        if routed.intent in TEAM_ONLY_INTENTS:
+            named_player = player_named_on_a_team_only_question(self.toolbox.con, question, routed.slots)
+            if named_player is not None:
+                message = team_only_question_names_a_player(named_player, routed.intent)
+                history.log(f"  -> (player) {message}")
+                return routed.intent, TemplateResult(data={"message": message, "named_player": named_player}, answer=message)
         return self._run_scoped_template(question, routed, handler, history)
 
     def _run_scoped_template(self, question: str, routed: Route, handler: Callable[[TemplateContext, dict[str, Any]], TemplateResult], history: RunHistory) -> tuple[str, TemplateResult] | None:

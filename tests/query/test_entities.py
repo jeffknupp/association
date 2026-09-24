@@ -18,6 +18,7 @@ from association.query.entities import (
     no_match,
     override_invented_players,
     override_nicknames,
+    player_named_on_a_team_only_question,
     player_record_against_a_team,
     players_named_in,
     resolve_player,
@@ -25,6 +26,7 @@ from association.query.entities import (
     restore_dropped_players,
     scope_from_question,
     suggest_players,
+    team_only_question_names_a_player,
     undo_name_completion,
 )
 
@@ -892,7 +894,7 @@ def scope_con() -> duckdb.DuckDBPyConnection:
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute(
         "INSERT INTO players VALUES ('1','Jaylen Brown'),('2','Luka Doncic'),('3','Stephen Curry'),('4','Seth Curry'),('5','Brandon Boston Jr.'),('6','Kawhi Leonard'),('7','LeBron James'),"
-        "('8','Magic Johnson'),('9','Karl-Anthony Towns'),('10','Travis Best'),('11','Luther Head')"
+        "('8','Magic Johnson'),('9','Karl-Anthony Towns'),('10','Travis Best'),('11','Luther Head'),('12','Alperen Sengun')"
     )
     return c
 
@@ -1233,6 +1235,51 @@ def test_a_router_supplied_team_is_not_trusted_as_a_tenure_narrowing(scope_con: 
     scope_from_question(scope_con, "lebron james 2 3 pointers all-time vs jazz on tuesdays", slots, reads_player=True, restore_team=True)
     assert "own_team" not in slots
     assert slots["team"] == "Los Angeles Lakers"
+
+
+def test_a_team_only_question_naming_one_player_is_read_back(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """yardstick-v2 F111: "alperen şengün alltime record" routed to
+    team_leaderboard - no player slot on that intent, and no `team` slot
+    either - and answered the league standings, Sengun never read.
+    Diacritics are already folded (players_named_in._fold)."""
+    slots: dict[str, Any] = {"stat": "record", "limit": 1}
+    named = player_named_on_a_team_only_question(scope_con, "alperen şengün alltime record", slots)
+    assert named == "Alperen Sengun"
+    message = team_only_question_names_a_player(named, "team_leaderboard")
+    assert "Alperen Sengun" in message and "team leaderboard" in message
+
+
+def test_a_team_named_wins_over_a_coincidental_player_word(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """A `team` (or `teams`) slot already present, and resolving to a REAL
+    franchise, means the question is genuinely about that team - a player
+    named beside it, by a possessive or a nickname, changes no answer, the
+    same reasoning that leaves a stray name alone on head_to_head elsewhere
+    in this module."""
+    with_team: dict[str, Any] = {"stat": "record", "team": "Boston Celtics"}
+    assert player_named_on_a_team_only_question(scope_con, "alperen şengün celtics record", with_team) is None
+    with_teams: dict[str, Any] = {"stat": "record", "teams": ["Boston Celtics", "Orlando Magic"]}
+    assert player_named_on_a_team_only_question(scope_con, "alperen şengün celtics vs magic", with_teams) is None
+
+
+def test_an_invented_team_holding_the_players_own_name_does_not_block_the_refusal(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """Measured live: "alperen şengün alltime record" arrived one run with
+    no `team` slot at all, and another with `team='Alperen Şengün'` - the
+    player's own name, filed as though it were a franchise
+    (AGENTS.md, "the router invents names", the team-slot version). A team
+    slot nothing resolves is functionally the same as no team slot -
+    otherwise `team_leaderboard` would refuse "no team matching 'Alperen
+    Şengün'" instead, the same wrong-cause shape this check exists to fix."""
+    invented: dict[str, Any] = {"stat": "record", "team": "Alperen Şengün"}
+    assert player_named_on_a_team_only_question(scope_con, "alperen şengün alltime record", invented) == "Alperen Sengun"
+
+
+def test_a_common_word_is_not_read_as_the_team_only_questions_player(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """ "best" is Travis Best and "head" is Luther Head - the same
+    false-positive trap F093's restore_subject was measured against, applied
+    here too."""
+    slots: dict[str, Any] = {"stat": "record", "limit": 1}
+    assert player_named_on_a_team_only_question(scope_con, "Best record from 2010-11 to 2018-19 nba", slots) is None
+    assert player_named_on_a_team_only_question(scope_con, "Celtics vs Bulls head to head record", slots) is None
 
 
 @pytest.mark.parametrize(("nickname", "team"), [("Sixers", "Philadelphia 76ers"), ("cavs", "Cleveland Cavaliers"), ("Mavs", "Dallas Mavericks")])

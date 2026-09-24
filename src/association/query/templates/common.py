@@ -614,6 +614,31 @@ the two readings would leave one of them silently wrong; filed in
 """
 
 
+TEAM_ONLY_INTENTS: frozenset[str] = frozenset({"team_record", "team_leaderboard", "team_stat", "team_outlook"})
+"""Intents with no player-shaped reading at all - absent from
+:data:`PLAYER_INTENTS`, and so never checked by ``entities.override_invented_players``
+or `check_scope` against a stray player name.
+
+A question naming exactly one real player and no team, routed to one of
+these, is answering a different subject than the one named -
+yardstick-v2 F111, "alperen şengün alltime record" routed to
+``team_leaderboard`` with no player and no team slot at all, and answered
+the league standings, entirely off Sengun. AGENTS.md's "Refuse by name
+where the intent cannot be about the subject" is exactly this shape;
+``entities.player_named_on_a_team_only_question`` is the check, called from
+``agent.py`` before the template runs, and its refusal names the player it
+read rather than answering the wrong one.
+
+Deliberately not every team-shaped intent: ``head_to_head`` already has its
+own reroute for a player's record against a team
+(``entities.player_record_against_a_team``, #163), and ``coach`` is
+TABLELESS_INTENTS and already refuses on its own terms - neither needs a
+second, more general check that could only disagree with the first.
+
+.. versionadded:: 4.4.0
+"""
+
+
 # Templates that rank players AGAINST each other, rather than reporting the
 # numbers of players the question named. The distinction is the whole reason
 # coverage.Coverage carries two floors: player_season_stats holds Michael

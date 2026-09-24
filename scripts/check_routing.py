@@ -344,6 +344,14 @@ CASES: list[tuple[str, str, dict]] = [
     # both resolve to Russell Westbrook.
     ("lebron stats as a starter for Miami", "player_stat", {"player": "LeBron James", "own_team": "Miami Heat", "span": "career"}),
     ("westbrook stats as a starter for kings", "player_stat", {"own_team": "Sacramento Kings", "span": "career"}),
+    # yardstick-v2 F111: only the router's own intent/slots are asserted
+    # here - the refusal itself (entities.player_named_on_a_team_only_question,
+    # AGENTS.md's "Refuse by name where the intent cannot be about the
+    # subject") runs in agent.py, past what this script exercises. See
+    # tests/query/test_agent.py for that half and the live re-ask in the
+    # commit message for the nondeterministic "team" slot this question's
+    # own router run sometimes fills with the player's own name.
+    ("alperen şengün alltime record", "team_leaderboard", {}),
     ("zach lavine vs nuggets last 8 games home", "game_log", {"venue": "home"}),
     ("how did curry do against the celtics this year", "player_stat", {}),
     # Came back as player_compare with the Celtics as the second "player".
