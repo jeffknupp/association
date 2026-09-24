@@ -305,6 +305,40 @@
   }
   button.send:disabled { opacity: .45; cursor: default; }
   .hint { max-width: 820px; margin: 8px auto 0; font-size: 11.5px; color: var(--muted); }
+  /* A note about one answer, saved back into that answer's own history file -
+     under the meta row, unobtrusive by default and never in the way of the
+     answer itself. */
+  .note-box { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+  .note-input {
+    display: block;
+    width: 100%;
+    resize: none;
+    font: inherit;
+    font-size: 12.5px;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 6px 10px;
+    min-height: 30px;
+    max-height: 160px;
+  }
+  .note-input:focus { outline: none; border-color: var(--accent); }
+  .note-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+  .note-save {
+    font: inherit;
+    font-size: 12px;
+    color: var(--accent);
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 3px 12px;
+    cursor: pointer;
+  }
+  .note-save:hover { border-color: var(--accent); }
+  .note-save:disabled { opacity: .5; cursor: default; }
+  .note-status { font-size: 11.5px; color: var(--muted); }
+  .note-status.failed { color: var(--warn); }
 </style>
 </head>
 <body>
@@ -1115,6 +1149,68 @@
     return details;
   }
 
+  // ---- annotating an answer -------------------------------------------
+
+  // Saved back into `historyFile` - the file `association web` already
+  // writes for this exact answer (build, trace, timing, the answer text) -
+  // rather than kept only on this page, which is lost on reload the same
+  // way the rest of the conversation is (ISSUES.md #69). More than one note
+  // is allowed: each click of "Save note" appends its own line rather than
+  // replacing the last one, so the text stays in the box afterward instead
+  // of being cleared as though it had been consumed.
+  function noteControl(historyFile) {
+    const box = el("div", "note-box");
+    const ta = el("textarea", "note-input");
+    ta.rows = 1;
+    ta.placeholder = "Add a note about this answer…";
+    const row = el("div", "note-row");
+    const button = el("button", "note-save", "Save note");
+    button.type = "button";  // never submits the question form it sits inside
+    const status = el("span", "note-status");
+    row.appendChild(button);
+    row.appendChild(status);
+    box.appendChild(ta);
+    box.appendChild(row);
+
+    function resize() {
+      ta.style.height = "auto";
+      ta.style.height = Math.min(ta.scrollHeight, 160) + "px";
+    }
+    ta.addEventListener("input", () => {
+      resize();
+      // Edited since the last save - the old "saved" state no longer
+      // describes what is in the box.
+      status.textContent = "";
+      status.classList.remove("failed");
+    });
+
+    button.addEventListener("click", () => {
+      const note = ta.value.trim();
+      if (!note) {
+        status.textContent = "Nothing to save";
+        status.classList.add("failed");
+        return;
+      }
+      button.disabled = true;
+      status.classList.remove("failed");
+      status.textContent = "Saving…";
+      fetch("/api/notes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ history_file: historyFile, note: note }),
+      }).then(r => {
+        if (!r.ok) throw new Error("save failed");
+        status.classList.remove("failed");
+        status.textContent = "Note saved";
+      }).catch(() => {
+        status.classList.add("failed");
+        status.textContent = "Could not save the note";
+      }).finally(() => { button.disabled = false; });
+    });
+
+    return box;
+  }
+
   function ask() {
     const question = input.value.trim();
     if (!question || send.disabled) return;
@@ -1183,6 +1279,10 @@
       if (rendered) meta.appendChild(disclosure("text", a.text));
       if (lines.length) meta.appendChild(disclosure("trace", lines.join("\n"), "trace"));
       answer.appendChild(meta);
+      // `history_file` is missing only when nothing that looked like a
+      // history file's own trace line ever went by - real traffic always
+      // writes one, but there is nothing to attach a note to without it.
+      if (a.history_file) answer.appendChild(noteControl(a.history_file));
       scroll();
     });
 

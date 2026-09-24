@@ -21,13 +21,19 @@ from fastapi.testclient import TestClient
 
 from association.query.answer import Answer, Artifact, Timing
 from association.web.app import create_app
+from association.web.runner import Answered
 
 
 class StubAnswerer:
     """An Answerer that records what it was asked and answers instantly."""
 
-    def __init__(self, answer: Answer | None = None) -> None:
+    def __init__(self, answer: Answer | None = None, history_file: str | None = "abc1234-deadbeefdeadbeef0.log") -> None:
         self.answer = answer or _answer("the answer")
+        # The name AgentRunner.ask would have read off the real Agent's own
+        # "[history] ..." trace line - a stub answers instantly, so nothing
+        # here reaches that trace line for real, and a test that wants no
+        # history file at all passes history_file=None.
+        self.history_file = history_file
         self.asked: list[tuple[str, str]] = []
         self.trace_lines: list[str] = ["  -> (router) intent='leaderboard' slots={}", "  [timing] model inference #1: 1.30s"]
         self.busy = False
@@ -35,11 +41,11 @@ class StubAnswerer:
         # reaches ollama and the offline guarantee holds by construction.
         self.ready = True
 
-    def ask(self, question: str, label: str, trace: Callable[[str], None] = lambda line: None) -> Answer:
+    def ask(self, question: str, label: str, trace: Callable[[str], None] = lambda line: None) -> Answered:
         self.asked.append((question, label))
         for line in self.trace_lines:
             trace(line)
-        return self.answer
+        return Answered(answer=self.answer, history_file=self.history_file)
 
 
 def _answer(text: str, **kwargs: Any) -> Answer:
@@ -71,6 +77,28 @@ def test_ask_returns_the_whole_answer_not_just_the_text(tmp_path: Path) -> None:
     assert body["intent"] == "leaderboard"
     assert body["data"] == {"leaders": ["Jokic"]}
     assert body["timing"]["total_seconds"] == 1.4
+
+
+def test_the_answer_names_the_history_file_it_was_recorded_to(tmp_path: Path) -> None:
+    """What a note gets attached to. `AgentRunner.ask` reads this off the real
+    Agent's own `[history] ...` trace line; a stub reports it directly, but the
+    wire shape - and the guarantee that it survives to the client - is the
+    same either way."""
+    client = _client(StubAnswerer(history_file="4.3.0-abc1234deadbeef01.log"), tmp_path)
+    body = client.post("/api/ask", json={"question": "who leads the league in assists?"}).json()
+
+    assert body["history_file"] == "4.3.0-abc1234deadbeef01.log"
+
+
+def test_a_missing_history_file_is_reported_as_null_not_omitted(tmp_path: Path) -> None:
+    """Real traffic always has one - `Agent.ask` writes it on every return path,
+    including an exception - but a stub, or a trace line the extractor somehow
+    missed, has to say so honestly rather than the client inferring a name that
+    was never there."""
+    client = _client(StubAnswerer(history_file=None), tmp_path)
+    body = client.post("/api/ask", json={"question": "who leads the league in assists?"}).json()
+
+    assert body["history_file"] is None
 
 
 def test_an_agent_answer_reports_no_intent_rather_than_an_empty_one(tmp_path: Path) -> None:
@@ -116,6 +144,10 @@ def test_the_stream_reports_progress_and_then_the_answer(tmp_path: Path) -> None
     assert events[0][1]["line"].startswith("-> (router)")
     assert events[-1][1]["text"] == "the answer"
     assert events[-1][1]["answered_by"] == "fast"
+    # The stream is where every real question is asked from - the page's own
+    # `ask()` only ever opens `/api/ask/stream` - so this is the path that has
+    # to carry the history file, not just the plain POST route above.
+    assert events[-1][1]["history_file"] == "abc1234-deadbeefdeadbeef0.log"
 
 
 def test_the_stream_reports_an_engine_failure_rather_than_truncating(tmp_path: Path) -> None:
@@ -123,7 +155,7 @@ def test_the_stream_reports_an_engine_failure_rather_than_truncating(tmp_path: P
     would close the stream with no explanation at all."""
 
     class Failing(StubAnswerer):
-        def ask(self, question: str, label: str, trace: Callable[[str], None] = lambda line: None) -> Answer:
+        def ask(self, question: str, label: str, trace: Callable[[str], None] = lambda line: None) -> Answered:
             raise RuntimeError("ollama is not running")
 
     with _client(Failing(), tmp_path) as client, client.stream("GET", "/api/ask/stream", params={"question": "q"}) as response:
@@ -456,6 +488,55 @@ def test_the_page_is_served_and_is_self_contained(tmp_path: Path) -> None:
     assert 'src="' not in body and 'rel="stylesheet"' not in body
 
 
+def test_agent_runner_reads_the_history_file_off_the_traces_own_history_line(tmp_path: Path) -> None:
+    """`Agent.ask` (`query/agent.py`, out of scope for this change) never
+    returns the history file it wrote - it only ever names it in one exact
+    trace line on the way out, `f"[history] {path}  {history.summary_line()}"`.
+    This pins `AgentRunner.ask` to reading exactly that shape: a change to
+    `agent.py`'s line would break this test rather than silently stop naming a
+    history file to the page."""
+    from association.web.runner import AgentRunner
+
+    class Recording:
+        trace: Any = None
+
+        def reset_conversation(self) -> None:
+            pass
+
+        def ask(self, question: str, label: str = "") -> Answer:
+            self.trace("  -> (router) intent='leaderboard' slots={}")
+            self.trace("[history] .history/4.3.0-abc1234deadbeef01.log  [timing] total 1.23s - model 1.00s (1 call), tools 0.10s (1 call)")
+            return _answer("done")
+
+    runner = AgentRunner(Recording())  # type: ignore[arg-type]  # only .ask, .trace and .reset_conversation are touched
+    seen: list[str] = []
+    answered = runner.ask("q", label="t", trace=seen.append)
+
+    assert answered.history_file == "4.3.0-abc1234deadbeef01.log"
+    # Forwarded to the caller verbatim too - "events carry trace lines
+    # verbatim", the same contract every other progress line keeps.
+    assert seen[-1].startswith("[history] .history/4.3.0-abc1234deadbeef01.log")
+
+
+def test_agent_runner_reports_no_history_file_when_the_trace_never_named_one(tmp_path: Path) -> None:
+    """A stub agent that never traces a `[history] ...` line - unlike the real
+    one, which always does, on every return path including an exception - must
+    say None rather than inventing a name nothing wrote."""
+    from association.web.runner import AgentRunner
+
+    class Silent:
+        trace: Any = None
+
+        def reset_conversation(self) -> None:
+            pass
+
+        def ask(self, question: str, label: str = "") -> Answer:
+            return _answer("done")
+
+    runner = AgentRunner(Silent())  # type: ignore[arg-type]  # only .ask, .trace and .reset_conversation are touched
+    assert runner.ask("q", label="t").history_file is None
+
+
 def test_two_questions_at_once_are_answered_one_at_a_time(tmp_path: Path) -> None:
     """The measured reason for the lock: ollama keeps one KV cache slot per
     model, so two questions in flight evict each other's prefix and both come
@@ -565,7 +646,7 @@ def test_a_disabled_fallthrough_is_a_501_that_says_why(tmp_path: Path) -> None:
     from association.query.answer import FallthroughDisabled
 
     class Refusing(StubAnswerer):
-        def ask(self, question: str, label: str, trace: Callable[[str], None] = lambda line: None) -> Answer:
+        def ask(self, question: str, label: str, trace: Callable[[str], None] = lambda line: None) -> Answered:
             raise FallthroughDisabled("no template answered this question and fall-through to the agent is disabled: intent 'other' has no template yet")
 
     with _client(Refusing(), tmp_path) as client:
