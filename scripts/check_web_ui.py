@@ -1,28 +1,29 @@
 #!/usr/bin/env python3
-"""Browser check for the page's two keyboard-and-clipboard behaviors.
+"""Browser check for the page's keyboard, clipboard and note-saving behaviors.
 
 `web/static/index.html` carries its JavaScript inline, and pytest can only read
 that file as text: `test_renderers.py` parses the renderer table out of it and
 syntax-checks the script with `node --check`, which is everything that can be
-done without a browser. ArrowUp recall and the per-question copy button are
-neither - they are key events, a caret position and a clipboard, so they get a
-real browser engine, real key presses and a real `navigator.clipboard.readText`.
+done without a browser. ArrowUp recall, the per-question copy button and
+saving a note are none of them - they are key events, a caret position, a
+clipboard and a real `fetch` to `POST /api/notes`, so they get a real browser
+engine, real key presses and a real `navigator.clipboard.readText`.
 
     uv run --with playwright python scripts/check_web_ui.py
 
 Deliberately NOT a pre-commit gate. Playwright is not in the `dev` extra and
 its browser is a ~150MB download, while the gates here run offline in seconds;
-adding it would make every commit pay for a check that two files can move. Run
-it when you touch the page's script, the way check_coverage.py is run after
-editing a floor.
+adding it would make every commit pay for a check that a couple of files can
+move. Run it when you touch the page's script, the way check_coverage.py is
+run after editing a floor.
 
 It serves `static/` over http://127.0.0.1 rather than opening a `file://` URL,
 because `navigator.clipboard` exists only in a secure context and a loopback
 address is one - the same reason the copy button keeps a selection-based
 fallback for the LAN address the same server also answers on.
 
-The API is stubbed in the page (EventSource and the two startup fetches), so
-this needs no ollama, no warehouse and no network.
+The API is stubbed in the page (EventSource, the two startup fetches, and
+`POST /api/notes`), so this needs no ollama, no warehouse and no network.
 """
 
 import functools
@@ -42,16 +43,21 @@ STUB = """
 window.EventSource = class {
   constructor(u) { this.ls = {}; setTimeout(() => {
     const payload = JSON.stringify({text: "an answer", answered_by: "fast", intent: "leaderboard",
-      timing: {total_seconds: 0.5}, data: {}, artifacts: []});
+      timing: {total_seconds: 0.5}, data: {}, artifacts: [], history_file: "stub-0000000000000000.log"});
     (this.ls["answer"] || []).forEach(f => f({data: payload}));
   }, 5); }
   addEventListener(n, f) { (this.ls[n] = this.ls[n] || []).push(f); }
   close() {}
 };
+window.__notes = [];
 const realFetch = window.fetch;
 window.fetch = (u, o) => {
   if (String(u).indexOf("/api/health") >= 0) return Promise.resolve(new Response(JSON.stringify({ready: true, model: "stub", db: "stub"}), {headers: {"content-type": "application/json"}}));
   if (String(u).indexOf("/api/coverage") >= 0) return Promise.resolve(new Response(JSON.stringify({}), {headers: {"content-type": "application/json"}}));
+  if (String(u).indexOf("/api/notes") >= 0) {
+    window.__notes.push(JSON.parse(o.body));
+    return Promise.resolve(new Response(JSON.stringify({saved: true}), {headers: {"content-type": "application/json"}}));
+  }
   return realFetch(u, o);
 };
 """
@@ -93,6 +99,35 @@ with sync_playwright() as p:
         check("clicking copies that question to the clipboard", page.evaluate("navigator.clipboard.readText()") == "first question", page.evaluate("navigator.clipboard.readText()"))
         check("the button says it copied", "done" in (first_copy.get_attribute("class") or ""))
 
+    # Notes: saved back into the answer's own history file (POST /api/notes),
+    # not merely held on the page - a real key event and a real fetch, which
+    # is exactly what node --check and test_renderers.py cannot exercise.
+    note_boxes = page.query_selector_all(".turn .note-box")
+    check("a note control appears under every answer", len(note_boxes) == len(rows), f"note_boxes={len(note_boxes)} rows={len(rows)}")
+
+    first_note = note_boxes[0] if note_boxes else None
+    if first_note is None:
+        check("saving a note posts it to /api/notes", False, "no note control to use")
+        check("the button reports the saved state", False, "no note control to use")
+        check("the note text stays visible after saving", False, "no note control to use")
+        check("a second save appends another note rather than replacing it", False, "no note control to use")
+    else:
+        note_input = first_note.query_selector(".note-input")
+        save_button = first_note.query_selector(".note-save")
+        note_input.fill("this answer undercounts rebounds")
+        save_button.click()
+        page.wait_for_timeout(120)
+        sent = page.evaluate("window.__notes")
+        check("saving a note posts it to /api/notes", len(sent) == 1 and sent[0]["note"] == "this answer undercounts rebounds" and sent[0]["history_file"] == "stub-0000000000000000.log", sent)
+        status_text = first_note.query_selector(".note-status").inner_text()
+        check("the button reports the saved state", status_text == "Note saved", status_text)
+        check("the note text stays visible after saving", note_input.input_value() == "this answer undercounts rebounds", note_input.input_value())
+
+        save_button.click()
+        page.wait_for_timeout(120)
+        sent = page.evaluate("window.__notes")
+        check("a second save appends another note rather than replacing it", len(sent) == 2, sent)
+
     page.fill("#input", "half typed")
     page.press("#input", "ArrowUp")
     check("ArrowUp recalls the newest question", page.input_value("#input") == "second question", page.input_value("#input"))
@@ -131,9 +166,9 @@ with sync_playwright() as p:
 
     browser.close()
 
-if len(results) < 14:
+if len(results) < 19:
     # A crash mid-run would otherwise print a short, all-PASS list and exit 0.
-    check("every check ran", False, f"only {len(results)} of 14 checks reported")
+    check("every check ran", False, f"only {len(results)} of 19 checks reported")
 
 for ok, name, detail in results:
     print(("PASS " if ok else "FAIL ") + name + (f"  :: {detail}" if detail and not ok else ""))

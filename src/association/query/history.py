@@ -159,3 +159,33 @@ class RunHistory:
         ]
         path.write_text("\n".join(parts) + "\n")
         return path
+
+
+def append_note(path: Path, note: str) -> str:
+    """Append one timestamped annotation to an already-written history file -
+    what is wrong with that run's answer, or a thought on how it should look,
+    recorded beside the trace and the answer it is about rather than living
+    only in the head of whoever noticed it.
+
+    Appending, never rewriting: :meth:`RunHistory.write` is the only thing
+    that lays down a run's own trace and summary, so a note added afterward is
+    layered on top of a file that already says what happened, not mixed into
+    it. Calling this more than once on the same file is how more than one note
+    ends up on the same answer - each call adds its own line, none of them
+    overwritten by the next.
+
+    ``note`` always lands on a single line: an embedded backslash or newline
+    is escaped (``\\`` and ``\\n`` respectively) rather than written literally,
+    so a multi-line note can never be mistaken for a second note, or for the
+    trace text around it - the whole reason this file records one thing per
+    line. Returns the exact line written, so a caller does not have to
+    re-derive it just to report what happened.
+
+    .. versionadded:: 4.4.0
+    """
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    escaped = note.replace("\\", "\\\\").replace("\n", "\\n")
+    line = f"[note {timestamp}] {escaped}"
+    with path.open("a") as f:
+        f.write(line + "\n")
+    return line

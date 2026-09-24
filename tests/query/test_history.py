@@ -1,13 +1,14 @@
 """Regression + sanity tests for RunHistory - every run's command/trace/timing
 evidence, written regardless of --verbose."""
 
+import re
 from pathlib import Path
 
 import pytest
 
 from association import __version__
 from association.query import history as history_module
-from association.query.history import RunHistory, build_id
+from association.query.history import RunHistory, append_note, build_id
 
 
 def test_log_always_recorded_but_only_printed_when_verbose(capsys: pytest.CaptureFixture[str]) -> None:
@@ -152,3 +153,55 @@ def test_the_build_id_asks_about_the_package_not_the_caller(monkeypatch: pytest.
         build_id.cache_clear()
     package = str(Path(history_module.__file__).resolve().parent)
     assert seen and all(argv[:3] == ["git", "-C", package] for argv in seen), seen
+
+
+def test_append_note_adds_one_timestamped_line(tmp_path: Path) -> None:
+    """The web UI's way of recording what is wrong with an answer, or a thought
+    on how it should look, beside the trace and the answer it is about."""
+    path = tmp_path / "run.log"
+    path.write_text("command: q\nanswer:\nthe answer\n")
+
+    line = append_note(path, "this undercounts rebounds")
+
+    assert re.fullmatch(r"\[note \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\] this undercounts rebounds", line), line
+    content = path.read_text()
+    assert content == f"command: q\nanswer:\nthe answer\n{line}\n"  # appended, not mixed into the run's own record
+
+
+def test_append_note_can_be_called_more_than_once(tmp_path: Path) -> None:
+    """Each call adds its own line - the second call must not overwrite or
+    absorb the first, which is the whole point of allowing more than one note
+    per answer."""
+    path = tmp_path / "run.log"
+    path.write_text("")
+
+    first = append_note(path, "first thought")
+    second = append_note(path, "second thought")
+
+    assert first != second
+    assert path.read_text() == f"{first}\n{second}\n"
+
+
+def test_append_note_escapes_an_embedded_newline(tmp_path: Path) -> None:
+    """The whole reason this file records one thing per line: a note with a
+    newline in it must not be readable as a second note, or as trace text
+    around it."""
+    path = tmp_path / "run.log"
+    path.write_text("")
+
+    line = append_note(path, "line one\nline two")
+
+    assert line.endswith("line one\\nline two")  # the two characters \, n - not a real newline
+    assert path.read_text().count("\n") == 1  # the one line terminator append_note itself writes
+
+
+def test_append_note_escapes_a_literal_backslash_too(tmp_path: Path) -> None:
+    """Escaping only `\\n` and leaving a bare backslash alone would make
+    `r"a\nb"` (a literal backslash-n, never a newline) indistinguishable from
+    an escaped real newline on the way back out."""
+    path = tmp_path / "run.log"
+    path.write_text("")
+
+    line = append_note(path, "a\\nb")
+
+    assert line.endswith("a\\\\nb")

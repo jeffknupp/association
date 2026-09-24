@@ -16,9 +16,11 @@ data_load
 data_check
 web
 
-# association/web/app.py, inside create_app: registered by FastAPI's @app.get.
+# association/web/app.py, inside create_app: registered by FastAPI's @app.get
+# / @app.post.
 health
 ask_stream
+add_note
 
 # association/web/app.py, HealthResponse: pydantic response fields, serialized
 # by FastAPI and read as JSON by the page.
@@ -26,6 +28,10 @@ warehouse_ready
 output_dir
 models
 ollama_ready
+
+# association/web/app.py, NoteResponse: a pydantic response field, serialized
+# by FastAPI and read as JSON by the page's note control.
+saved
 
 # association/web/app.py, TierResponse (#71): pydantic response fields,
 # serialized by FastAPI and read as JSON by the page's coverage pills.

@@ -406,6 +406,14 @@ A question that falls through to the agent can take minutes, and the page
 streams the trace while it does — the same lines ``--verbose`` prints — because
 a spinner for two minutes is indistinguishable from a hang.
 
+Every answer has a small note control underneath it — what is wrong with this
+one, or a thought on how it should look. Saving a note appends a timestamped
+line to that exact answer's own history file (the same file ``[history] ...``
+names in the trace, and ``--verbose`` on the CLI), right beside the trace and
+the answer it is about, rather than living only in your head or a chat
+scrollback. Saving again adds a second note rather than replacing the first,
+so more than one thought about the same answer is never lost to the last save.
+
 The server binds to localhost and has no authentication. It has no business
 being reachable by anything but you.
 

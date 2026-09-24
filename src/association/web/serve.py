@@ -95,7 +95,7 @@ def serve(
     # to lines nobody asked for.
     agent = Agent(model, db_path, out_dir, verbose=True, history_dir=history_dir, router_model=router_model, trace=discard, fallthrough=fallthrough, budget_seconds=budget_seconds)
     runner = AgentRunner(agent)
-    app = create_app(runner, db_path=db_path, out_dir=out_dir, model=model, router_model=router_model)
+    app = create_app(runner, db_path=db_path, out_dir=out_dir, model=model, router_model=router_model, history_dir=history_dir)
 
     sock = bind(host, port)
     # flush=True because the URL is the entire point of an ephemeral port, and

@@ -28,6 +28,7 @@ from pydantic import BaseModel
 
 from ..nba.coverage import COVERAGE
 from ..query.answer import Answer, FallthroughDisabled
+from ..query.history import DEFAULT_HISTORY_DIR, append_note
 from ..query.toolbox import connect_read_only
 from .runner import Answerer
 
@@ -62,6 +63,31 @@ class ArtifactResponse(BaseModel):
     name: str
 
 
+class NoteRequest(BaseModel):
+    """A note about one already-answered question, to be appended to the
+    history file that recorded it.
+
+    ``history_file`` is the basename :attr:`AnswerResponse.history_file`
+    reported for that answer, never a path the client constructs itself - see
+    :func:`history_file_path` for how it is checked.
+
+    .. versionadded:: 4.4.0
+    """
+
+    history_file: str
+    note: str
+
+
+class NoteResponse(BaseModel):
+    """Confirms a note was appended. Nothing else to report: the client
+    already holds the text it sent.
+
+    .. versionadded:: 4.4.0
+    """
+
+    saved: bool
+
+
 class TimingResponse(BaseModel):
     """Where the answer's wall time went.
 
@@ -83,6 +109,14 @@ class AnswerResponse(BaseModel):
     shape.
 
     .. versionadded:: 2.0.0
+
+    .. versionchanged:: 4.4.0
+       Adds ``history_file``, the basename of the run this answer was recorded
+       to - never the server's full path to it, the same discipline
+       :class:`ArtifactResponse.name <ArtifactResponse>` already keeps. It is
+       what a client passes back to ``POST /api/notes`` to attach a note to
+       this exact answer; null only when nothing that looked like a history
+       file's own trace line was ever seen, which real traffic never produces.
     """
 
     question: str
@@ -92,6 +126,7 @@ class AnswerResponse(BaseModel):
     data: dict[str, Any] | None
     artifacts: list[ArtifactResponse]
     timing: TimingResponse
+    history_file: str | None = None
 
 
 class HealthResponse(BaseModel):
@@ -170,10 +205,18 @@ class CoverageResponse(BaseModel):
     tiers: list[TierResponse]
 
 
-def as_response(answer: Answer) -> AnswerResponse:
+def as_response(answer: Answer, history_file: str | None = None) -> AnswerResponse:
     """The wire form of an answer.
 
+    ``history_file`` is threaded in separately rather than read off ``answer``
+    because :class:`~association.query.answer.Answer` itself carries no such
+    field - it comes from :class:`association.web.runner.Answered`, the
+    wrapper :meth:`association.web.runner.AgentRunner.ask` actually returns.
+
     .. versionadded:: 2.0.0
+
+    .. versionchanged:: 4.4.0
+       Takes ``history_file``.
     """
     return AnswerResponse(
         question=answer.question,
@@ -189,6 +232,7 @@ def as_response(answer: Answer) -> AnswerResponse:
             tool_seconds=answer.timing.tool_seconds,
             tool_calls=answer.timing.tool_calls,
         ),
+        history_file=history_file,
     )
 
 
@@ -228,6 +272,39 @@ def artifact_path(out_dir: Path, name: str) -> Path | None:
     if not ARTIFACT_NAME.match(name):
         return None
     root = out_dir.resolve()
+    path = (root / name).resolve()
+    if path.parent != root or not path.is_file():
+        return None
+    return path
+
+
+HISTORY_FILE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*\.log$")
+"""What a history file may be named to be annotated over ``POST /api/notes``.
+
+The same allowlist shape as :data:`ARTIFACT_NAME`, for the same reason - it
+admits exactly what :func:`association.query.history.RunHistory.write`
+produces (``<build>-<hash>.log``, where ``<build>`` is either a short git hash,
+optionally suffixed ``-dirty``, or a dotted version like ``4.3.0``) and nothing
+shaped like a path: no separator, no ``%``, no leading dot.
+
+.. versionadded:: 4.4.0
+"""
+
+
+def history_file_path(history_dir: Path, name: str) -> Path | None:
+    """The history file to annotate for ``name``, or None if there is not one.
+
+    Identical in shape to :func:`artifact_path`, guarding a different
+    directory - the allowlist rules out anything shaped like a path, and
+    resolving the file and requiring it to sit directly in the resolved
+    history directory catches a symlink whose name alone looks innocent.
+    Neither check subsumes the other.
+
+    .. versionadded:: 4.4.0
+    """
+    if not HISTORY_FILE_NAME.match(name):
+        return None
+    root = history_dir.resolve()
     path = (root / name).resolve()
     if path.parent != root or not path.is_file():
         return None
@@ -406,13 +483,18 @@ def _warehouse_coverage(db_path: str) -> list[TierResponse]:
         con.close()
 
 
-def create_app(answerer: Answerer, db_path: str, out_dir: Path, model: str, router_model: str) -> FastAPI:
+def create_app(answerer: Answerer, db_path: str, out_dir: Path, model: str, router_model: str, history_dir: Path = DEFAULT_HISTORY_DIR) -> FastAPI:
     """Build the app around an already-constructed engine.
 
     The engine is passed in rather than built here so the tests can supply a
     stub: the suite is offline, and an Agent wants ollama and a warehouse.
 
     .. versionadded:: 2.0.0
+
+    .. versionchanged:: 4.4.0
+       Takes ``history_dir``, the directory ``POST /api/notes`` guards a name
+       against - the same directory the ``Agent`` this server wraps was built
+       with, so a name an answer actually reported always resolves.
     """
     app = FastAPI(title="association", description="Ask questions about the local NBA warehouse.", version="2.0.0")
 
@@ -449,9 +531,33 @@ def create_app(answerer: Answerer, db_path: str, out_dir: Path, model: str, rout
         the fast path gave it up, rather than minutes of the agent.
         """
         try:
-            return as_response(answerer.ask(request.question, label=f"POST /api/ask {request.question!r}"))
+            answered = answerer.ask(request.question, label=f"POST /api/ask {request.question!r}")
         except FallthroughDisabled as exc:
             raise HTTPException(status_code=501, detail=str(exc)) from None
+        return as_response(answered.answer, answered.history_file)
+
+    @app.post("/api/notes")
+    def add_note(request: NoteRequest) -> NoteResponse:
+        """Append a note to one answer's history file - what is wrong with it,
+        or a thought on how it should look, recorded beside the trace and the
+        answer it is about rather than living only in whoever noticed it.
+
+        Guarded exactly like ``GET /api/artifacts/{name}``: an allowlist rules
+        out anything shaped like a path, and the resolved file must sit
+        directly in the resolved history directory, which is what catches a
+        symlink whose name alone looks innocent. 404 for an unknown or
+        rejected name, the same "not allowed" and "not there" read the same
+        way `artifact` already gives, so a rejected name learns nothing about
+        why.
+        """
+        note = request.note.strip()
+        if not note:
+            raise HTTPException(status_code=400, detail="a note cannot be empty")
+        path = history_file_path(history_dir, request.history_file)
+        if path is None:
+            raise HTTPException(status_code=404, detail="no such history file")
+        append_note(path, note)
+        return NoteResponse(saved=True)
 
     @app.get("/api/artifacts/{name}")
     def artifact(name: str) -> FileResponse:
@@ -478,7 +584,8 @@ def create_app(answerer: Answerer, db_path: str, out_dir: Path, model: str, rout
         `routed`/`tool` event. The engine's trace lines are prose, and turning
         prose back into structure is the exact move this codebase removed from
         the chart renderers; the structured facts a client acts on - which path
-        answered, the intent, the timing - are all on the final `answer` event.
+        answered, the intent, the timing, which history file to attach a note
+        to - are all on the final `answer` event.
         """
         return StreamingResponse(
             _stream(answerer, question),
@@ -507,8 +614,8 @@ def _stream(answerer: Answerer, question: str) -> Iterator[str]:
     def work() -> None:
         """Answer, in a thread, putting everything on the queue."""
         try:
-            answer = answerer.ask(question, label=f"GET /api/ask/stream {question!r}", trace=lambda line: events.put(("progress", {"line": line.strip()})))
-            events.put(("answer", as_response(answer).model_dump()))
+            answered = answerer.ask(question, label=f"GET /api/ask/stream {question!r}", trace=lambda line: events.put(("progress", {"line": line.strip()})))
+            events.put(("answer", as_response(answered.answer, answered.history_file).model_dump()))
         except Exception as exc:  # noqa: BLE001 - see below
             # Reported to the browser rather than raised: the response has
             # already started, so raising here would truncate the stream with

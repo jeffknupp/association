@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 
 from association.query.answer import Answer, Timing
 from association.web.app import INDEX_HTML, artifact_path, create_app
+from association.web.runner import Answered
 
 
 class Idle:
@@ -25,8 +26,8 @@ class Idle:
     busy = False
     ready = True
 
-    def ask(self, question: str, label: str, trace: Callable[[str], None] = lambda line: None) -> Answer:
-        return Answer(question=question, text="", answered_by="fast", timing=Timing(0.0, 0.0, 0, 0.0, 0))
+    def ask(self, question: str, label: str, trace: Callable[[str], None] = lambda line: None) -> Answered:
+        return Answered(answer=Answer(question=question, text="", answered_by="fast", timing=Timing(0.0, 0.0, 0, 0.0, 0)), history_file=None)
 
 
 # Every shape a name could take to escape the output directory, and a couple of

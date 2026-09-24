@@ -13,8 +13,11 @@ rather than letting them interleave and both come back slow.
 
 from __future__ import annotations
 
+import re
 import threading
 from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 from ..query.answer import Answer
@@ -34,6 +37,27 @@ def discard(line: str) -> None:
     """
 
 
+@dataclass(frozen=True)
+class Answered:
+    """One question's answer, plus the name of the history file it was
+    recorded to.
+
+    ``history_file`` is a *basename*, never a full path - the same discipline
+    :func:`association.web.app.as_response` already keeps for an artifact's
+    ``name``, so the API never has to redact a filesystem path a client has no
+    way to read. It is None only when nothing that looked like a history
+    file's own trace line was seen at all, which real traffic never produces:
+    :meth:`association.query.agent.Agent.ask` always writes one, on every
+    return path including an exception, and always reports it through the
+    trace - see :meth:`AgentRunner.ask`.
+
+    .. versionadded:: 4.4.0
+    """
+
+    answer: Answer
+    history_file: str | None
+
+
 class Answerer(Protocol):
     """What the API layer needs from a query engine, and no more.
 
@@ -41,9 +65,14 @@ class Answerer(Protocol):
     the whole test suite is offline, and an Agent would want ollama.
 
     .. versionadded:: 2.0.0
+
+    .. versionchanged:: 4.4.0
+       ``ask`` returns :class:`Answered` rather than a bare
+       :class:`~association.query.answer.Answer`, so a caller can name the
+       history file an answer was recorded to without a second, racy call.
     """
 
-    def ask(self, question: str, label: str, trace: Callable[[str], None] = discard) -> Answer:
+    def ask(self, question: str, label: str, trace: Callable[[str], None] = discard) -> Answered:
         """Answer one question, reporting progress lines to ``trace``.
 
         ``trace`` is optional so ``POST /api/ask``, which has nowhere to stream
@@ -99,7 +128,7 @@ class AgentRunner:
             return False
         return True
 
-    def ask(self, question: str, label: str, trace: Callable[[str], None] = discard) -> Answer:
+    def ask(self, question: str, label: str, trace: Callable[[str], None] = discard) -> Answered:
         """Answer one question, with everything else waiting its turn.
 
         The trace sink is swapped rather than passed down because it belongs to
@@ -121,14 +150,68 @@ class AgentRunner:
         conversations, which needs a session the API does not have yet. Until
         then this is stateless on purpose rather than by accident.
 
+        ``Agent.ask`` (``query/agent.py``) never returns the history file it
+        wrote, only names it in one exact trace line on its way out - on every
+        return path, including an exception. The wrapped sink below reads that
+        one line as it goes by and keeps the name in a variable local to this
+        call, never on ``self``: two questions can only ever be mid-flight here
+        one at a time (the whole point of the lock), but the lock is released
+        on the way OUT of this method, before the caller can read anything
+        back, so a name stored on the instance would be a real race against
+        the very next call landing here before this one's caller has read it.
+        A local has no such window.
+
         .. versionchanged:: 2.1.0
            Resets the conversation per request instead of sharing one across
            every client.
+
+        .. versionchanged:: 4.4.0
+           Returns :class:`Answered`, naming the history file the answer was
+           recorded to, instead of a bare
+           :class:`~association.query.answer.Answer`.
         """
+        history_file: list[str | None] = [None]
+
+        def capture(line: str) -> None:
+            """Forward one trace line to ``trace`` exactly as before, and, on
+            the way past, keep it if it is the one line naming this call's own
+            history file."""
+            found = _ask_history_file(line)
+            if found is not None:
+                history_file[0] = found
+            trace(line)
+
         with self._lock:
             self.agent.reset_conversation()
-            previous, self.agent.trace = self.agent.trace, trace
+            previous, self.agent.trace = self.agent.trace, capture
             try:
-                return self.agent.ask(question, label=label)
+                answer = self.agent.ask(question, label=label)
             finally:
                 self.agent.trace = previous
+        return Answered(answer=answer, history_file=history_file[0])
+
+
+_HISTORY_TRACE_LINE = re.compile(r"^\[history\] (\S+)")
+"""What ``Agent.ask``'s own finally block always writes to the trace, verbatim,
+as its very last line (``query/agent.py``, out of scope for this change):
+``f"[history] {path}  {history.summary_line()}"``. ``\\S+`` is enough to
+isolate ``path`` because :func:`association.query.history.RunHistory.write`
+builds it from :func:`~association.query.history.build_id` and a hex
+``uuid4`` - never anything containing whitespace. Private, so not itself a
+compatibility promise - it exists to be perturbed and re-checked the day
+``Agent.ask``'s trace line changes shape, not to be read as one.
+"""
+
+
+def _ask_history_file(line: str) -> str | None:
+    """The history file's basename, if ``line`` is :meth:`AgentRunner.ask`'s
+    one chance to see it - None for every other trace line, which is most of
+    them.
+
+    Only the basename: a client addresses a history file by name over
+    ``POST /api/notes`` exactly the way it already addresses an artifact over
+    ``GET /api/artifacts/{name}`` (:func:`association.web.app.artifact_path`),
+    never by the server's own path to it.
+    """
+    match = _HISTORY_TRACE_LINE.match(line)
+    return Path(match.group(1)).name if match else None
