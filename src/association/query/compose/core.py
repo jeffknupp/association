@@ -287,12 +287,24 @@ def _iso_date(slots: dict[str, Any]) -> str | None:
     return raw if isinstance(raw, str) and len(raw) == 10 else None
 
 
+#: Scoping slots the router files FOR the compiler - markers a template refuses
+#: on so the question reaches here, which the compiler then reads itself:
+#: ``ranked_by`` (the games that satisfy a boolean stat, ranked by another
+#: measure - move.py reads the measure off the question) and ``team_restored``
+#: (a team the question named as its own subject - the team path's marker).
+#: Neither narrows the relation, so neither is "unhonored" here; measured
+#: live on yardstick-v2 F124, the marker alone sent the question to the agent.
+#:
+#: .. versionadded:: 4.4.0
+COMPILER_SLOTS: frozenset[str] = frozenset({"ranked_by", "team_restored"})
+
+
 def _check_relation_scoping(slots: dict[str, Any]) -> None:
     """``check_scope``'s rule, for the relation: a scoping slot the relation
     does not narrow by (``situation`` when it names no calendar, ``round``,
     ``rate`` ...) is refused, never dropped - answering "on Tuesdays" for
     every day is the silent widening the templates exist to stop."""
-    unhonored = sorted(k for k in SCOPING_SLOTS - RELATION_SCOPING if slots.get(k) not in (None, "", [], False))
+    unhonored = sorted(k for k in SCOPING_SLOTS - RELATION_SCOPING - COMPILER_SLOTS if slots.get(k) not in (None, "", [], False))
     if unhonored:
         raise Unsupported(f"the relation cannot honor {unhonored} - it would answer for a different span than was asked")
 

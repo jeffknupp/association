@@ -337,6 +337,41 @@ those were found.
 
 ## P2: misleading or incomplete
 
+### The router invents a name in the `opponent` slot, and the refusal repeats it: "jay huff game log vs Embiid" refuses about Nikola Jokic
+- **Found:** 2026-09-24, grading `live_rest.jsonl` (yardstick-v2 F142).
+- **Evidence:** routes `player_matchup {'player': 'Jaylen Huff', 'opponent':
+  'Nikola Jokic'}` - "Embiid" became Jokic (the known lowercase-embiid
+  substitution, AGENTS.md "Why embiid specifically"), and "Jay Huff" became
+  Jaylen Huff. `override_invented_players` checks `player`/`players` against
+  the question and never `opponent`, so the invented opponent survived into
+  `refusals._opponent_is_a_player`, whose sentence names him: "'Nikola
+  Jokic' is a player, not a team". The cause is right (a pair question);
+  the name is one the question never held.
+- **User sees:** a refusal about a player they did not mention.
+- **Next step:** run the invented-name check over `opponent` too (a name
+  with no word in the question is dropped, or replaced from
+  `players_named_in` when the count is exact), before any refusal or
+  template reads it.
+- **Source:** ours, not ESPN's.
+- **GitHub:** not yet filed
+
+### "Since 2000-01" is not read as a span: a league-wide multi-line count answers the default season
+- **Found:** 2026-09-24, grading `live_rest.jsonl` (yardstick-v2 F161).
+- **Evidence:** "players with 33 point and 13 rebound and 10 assist 2 blocks
+  and 2 steals games since 2000-01" composes the right five predicates but
+  over "2026 regular season - last 3 games": `router._SINCE` reads "since
+  YYYY" and `_RANGE_TO_HYPHEN` reads "YYYY-YY to YYYY-YY", and neither reads
+  "since YYYY-YY" (a season-hyphenated year after "since"). A filler
+  `limit: 3` also cut the list. Key: 12 such games since 2000-01.
+- **User sees:** a count over one season where a 26-season span was asked -
+  the span is stated, so it is correctable.
+- **Next step:** `_SINCE` accepts the two-digit season suffix ("since
+  2000-01" = since 2001, the year it ends); a league-wide rows read drops a
+  `limit` the question does not name (the same filler rule the period
+  templates apply).
+- **Source:** ours, not ESPN's.
+- **GitHub:** not yet filed
+
 ### A short, genuinely ambiguous question is guessed at rather than asked about: "Tatum rec"
 - **Found:** 2026-09-23, working yardstick-v2's wrong-land bucket 4
   (`~/association-research/yardstick-v2/wrong_land.md`, F112).
@@ -2401,6 +2436,21 @@ those were found.
 - **GitHub:** #183
 
 ## P3: refusal or gap
+
+### `game_log`'s "last 10 of N games" heading misses the without branch
+- **Found:** 2026-09-24, grading `live_rest.jsonl` (yardstick-v2 F158).
+- **Evidence:** "bane game log without anthony black and franz wagner this
+  season" says "last 10 games of the 2026 regular season" where 15 games
+  qualify (key: a contiguous 15-game stretch), while the same template says
+  "last 10 of 39 games" for a measure-narrowed log (F149). The count before
+  the window is computed on the plain and measure paths and not on the
+  teammate-absence one.
+- **User sees:** a page of a log with no word on how many games it is a page
+  of - the shape F149 was fixed for.
+- **Next step:** count through `whole_span` on the without path too, the
+  way `_game_log_window_of` does for the others.
+- **Source:** ours.
+- **GitHub:** not yet filed
 
 ### A composed league-wide `threshold_count` falls through when the router's `stat` already names the threshold's own column
 - **Found:** 2026-09-24, building F161's multi-line move in

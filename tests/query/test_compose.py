@@ -899,3 +899,15 @@ def test_a_scalar_or_grouped_read_carries_no_leaked_rebuilt_shown_column(cx_ctx:
     assert isinstance(q, Query)  # no team named in this fixture's own words
     everyone = run(cx_ctx.con, q)
     assert "rebuilt_shown" not in everyone["rows"][0]
+
+
+def test_a_ranked_by_marker_is_the_compilers_own_slot_not_an_unhonored_one(cx_ctx: TemplateContext) -> None:
+    """yardstick-v2 F124, measured live: route() files `ranked_by` so
+    `leaderboard` refuses "highest scoring triple doubles" to the compiler -
+    which then refused it too, as a scoping slot the relation does not
+    honor, and the question fell through to the agent. The marker is the
+    compiler's to read (COMPILER_SLOTS); the games are ranked by points."""
+    result = compose_answer(cx_ctx, "leaderboard", {"stat": "triple_double", "limit": 5, "ranked_by": "points"}, "players with the highest scoring triple doubles")
+    assert result is not None
+    assert "triple-double" in result.answer
+    assert result.data["rows"][0]["points"] == 28
