@@ -75,7 +75,10 @@ before that commit needs re-checking against the current warehouse.
 - **GitHub:** #198
 
 ### A composed triple-double ranking answers a count instead of the highest-scoring one: "players with the highest scoring triple doubles"
-- **Found:** 2026-09-23, same session, yardstick-v2 F124.
+- **Found:** 2026-09-23, same session, yardstick-v2 F124. Investigated
+  further 2026-09-24 (this session, templates half): confirmed the
+  template-side refusal the earlier entry proposed cannot be built with
+  what the router files today - see below.
 - **Evidence:** routes `leaderboard {'stat': 'triple_double', 'limit': 10,
   'season_type': 2}` and answers "Nikola Jokic led the league in
   triple-doubles ... at 34", counting HOW MANY triple-doubles each player
@@ -84,18 +87,44 @@ before that commit needs re-checking against the current warehouse.
   a ranking of triple-double GAMES by points, not a count of players'
   triple-double totals. The template (`leaderboard`) answers first, so
   `query.compose` - which does have boolean measures and a rows-by-measure
-  point - never sees the refusal that would let it try. This is on the
-  boundary of the router/player half and `query/compose/*` (owned by the
-  team agent in this session's split), so filed rather than built here.
+  point - never sees the refusal that would let it try.
+  **Checked whether `leaderboard` can refuse this shape by name using only
+  the slots it is given** (templates never see the raw question - confirmed
+  by reading `agent.py`'s call site, `TEMPLATES[intent](ctx, slots)`, and
+  `TemplateContext`, which carries only a connection and an output
+  directory): "players with the highest scoring triple doubles" and "most
+  triple-doubles" route to the IDENTICAL slots, `{'stat': 'triple_double',
+  'limit': 10, 'season_type': 2}` - checked across every capture of the
+  question in the routing corpus
+  (`~/association-research/algebra-spike/baseline/*.jsonl`, thirteen files,
+  all agree) - so no code reading only `slots` can refuse one and answer
+  the other; either both refuse (breaking the count question the task
+  explicitly protects) or both answer (today's bug). `route()`'s own
+  `RANK_WORDS` (`router.py`) does not help either: its "most" bucket
+  matches "highest" and "most" identically, and is not filed for
+  `leaderboard` at all today (only `team_leaderboard`/`team_quarter_points`)
+  - even filed, it could not tell "highest [count]" from "highest
+  [scoring]", since neither reading trips a different word in that list.
+  The word that actually distinguishes the two questions is "scoring"
+  itself, beside a boolean stat name - a pattern no existing slot carries.
 - **User sees:** a wrong answer to a question that sounds almost identical
   to one the system answers correctly (a triple-double COUNT).
-- **Next step:** either `leaderboard` refuses `stat: triple_double` when the
-  question's own words name a metric other than a count ("highest
-  scoring"/"biggest"), handing it to `compose` the way a template's
-  `TemplateUnsupported` already does, or `route()` reads the "highest
-  scoring" qualifier into a different `stat`/`rate` combination before
-  `leaderboard` ever answers. Needs whoever owns `query/compose`'s
-  boolean-measure point next.
+- **Next step:** a router-level fix - `route()` needs a NEW code-assigned
+  check (the shape `CODE_ASSIGNED_INTENTS`/`coach` already uses, AGENTS.md
+  "A new intent does not need a prompt edit if the question's own words
+  name it"): when a `leaderboard` question names a boolean stat
+  (`triple_double`, `double_double`, `fouled_out`) AND the question's own
+  words also name a ranking qualifier ("scoring", "points in a", "biggest")
+  distinct from RANK_WORDS' bare most/fewest, file a slot `leaderboard` can
+  refuse on (e.g. a boolean value on `rank_by_value` or reusing `stat` with
+  a second cell). Once such a slot exists, the template half is
+  mechanical - refuse in `leaderboard` when it is set, exactly the way
+  every other declared-but-unhonored slot already refuses via
+  `check_scope`/`HONORED_SCOPING`. This is `router.py`/`router_prompt.py`
+  work (the router owner's files - a `ROUTER_PROMPT` edit needs
+  `scripts/check_routing.py`, which only they should run this session), so
+  filed rather than built here. `query/compose`'s boolean-measure point is
+  presumably already able to answer once the question reaches it.
 - **GitHub:** #199
 
 ### A position group as the subject is dropped and the team's own log answers: "Centers stats game log vs kings" lists the Kings' last five games
