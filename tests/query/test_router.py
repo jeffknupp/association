@@ -1067,6 +1067,21 @@ def test_a_player_beside_a_team_in_players_is_a_players_half_against_that_team()
     assert unchanged.slots.get("players") == ["Kevin Durant", "Los Angeles Clippers"]
 
 
+def test_td3s_is_a_triple_double_and_not_a_period_or_a_shot_value() -> None:
+    """yardstick-v2 F098, the model's reply as recorded: "luka td3s home"
+    came back as `other` with stat threePointFieldGoalsMade and shot_value
+    3, and `_AGENT_ONLY` then sent it to the agent as though "td3s" were a
+    period word. It is a triple-double: one player's count of them at home
+    is a player_stat the compiler answers."""
+    got = _asking(
+        '{"intent":"other","stat":"threePointFieldGoalsMade","player":"Luka Doncic","shot_value":3,"fields":["points"],"season":2026,"season_type":2,"venue":"home"}',
+        "luka td3s home",
+    )
+    assert got.intent == "player_stat"
+    assert got.slots["stat"] == "triple_double" and got.slots["venue"] == "home" and got.slots["player"] == "Luka Doncic"
+    assert "shot_value" not in got.slots and "period" not in got.slots
+
+
 def test_best_nba_record_with_no_team_is_the_team_leaderboard() -> None:
     """yardstick-v2 F104, the model's reply as recorded: "Best NBA record
     since January 31st 201" came back as team_record with no team and fell
@@ -1619,12 +1634,13 @@ def test_a_player_whose_name_looks_like_a_team_is_still_a_player(name: str) -> N
 
 
 def test_a_triple_double_abbreviation_is_not_read_as_three_pointers() -> None:
-    """Not a narrowing, though the replay filed it as one: "luka td3s home" had
-    its venue read and honored correctly, and answered his POINTS per game at
-    home, because `td3s` became shot_value 3. Nothing counts triple-doubles for
-    one player, and the season table they live on has no venue dimension, so
-    this is the agent's. Spelled out, "triple double" already routes right."""
-    assert _ask("luka td3s home", '{"intent":"player_stat","player":"Luka Doncic","shot_value":3}').intent == "other"
+    """ "luka td3s home" once answered his POINTS per game at home, because
+    `td3s` became shot_value 3; then `_AGENT_ONLY` sent it to the agent,
+    since nothing counted one player's triple-doubles. The compiler counts
+    them now, so a player_stat the model chose keeps its intent and reads
+    the right stat."""
+    got = _ask("luka td3s home", '{"intent":"player_stat","player":"Luka Doncic","shot_value":3}')
+    assert got.intent == "player_stat" and got.slots["stat"] == "triple_double" and "shot_value" not in got.slots
 
 
 @pytest.mark.parametrize("question", ["Duncan Robison 1q log", "Devin Vassell nba player per game stats 1q"])

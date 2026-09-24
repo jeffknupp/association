@@ -16,6 +16,7 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- "luka td3s home" counts his triple-doubles at home (48, through the compiler) instead of going to the agent: "td3s" is no longer read as a period word, and `route()` files it as `stat: triple_double` - never a shot value of 3 - with a named player's `other` becoming `player_stat` (#194).
 - "Kd vs clippers 2h at home gamelog" is Durant's second halves against the Clippers at home (`period_split`), not the Clippers' own half: a player and a team filed together in `players` on a "vs" question are read as the player and his opponent.
 - "Best NBA record" (or "best league record") with no team named routes to `team_leaderboard`, as "best record" already did - "Best NBA record since January 31st 201" came back as `team_record` with no team and fell through.
 - A team-only question naming one player and a team the question never mentions is refused by the player's name: "towns home rec including playoffs since 1/26/20 vs spurs" routed `team_record` with an invented `team='Toronto Raptors'` and would have answered the Raptors' record. A real team counts only when the question holds a trace of it.

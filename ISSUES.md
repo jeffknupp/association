@@ -3023,30 +3023,6 @@ those were found.
   next two ports each add their own copy instead of reading this one first.
 - **GitHub:** #193
 
-### No template counts triple-doubles for one named player, or splits them by venue
-- **Found:** 2026-09-21, a Sonnet agent clustering the 261-question corpus
-  into shapes for the yardstick review; it read the comment and checked the
-  replay.
-- **Evidence:** "luka td3s home" is `outcome=fell_through` in
-  `~/association-research/algebra-spike/baseline/replay_rerouted_tp.jsonl`.
-  `query/router.py:60-68` (the comment above `_AGENT_ONLY`) already says why:
-  triple-doubles exist only as a season leaderboard metric
-  (`metrics.triple_doubles`, off `player_season_stats`), nothing counts them
-  for ONE player, and that table has no venue dimension to split by. The gap
-  lived only in that comment. It is a template gap, not a data gap -
-  `player_box_stats` holds what a per-game derivation needs.
-- **User sees:** the slow agent. It used to be worse: `td3s` was read as
-  `shot_value=3` and answered fluently as his scoring average at home, which
-  `_AGENT_ONLY` now prevents.
-- **Next step:** if picked up, a triple-double is a derived per-game flag on
-  the player-games relation (three of PTS/REB/AST/STL/BLK at 10+), after which
-  `threshold_count` counts it and every scoping slot the relation honors -
-  venue included - applies for free. That is the step 3 plan's argument in
-  miniature, so do it after C2 rather than as a one-off in one template.
-- **Priority note:** P4 - one corpus question, and it falls through rather
-  than answering wrongly.
-- **GitHub:** #194
-
 ### "Points by quarter" asks for all four at once, and every template answers one
 - **Found:** 2026-09-20, finishing the quarters-and-halves work
 - **Evidence:** "nba playerspoints by quarter average" reaches `other` and

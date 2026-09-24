@@ -502,6 +502,9 @@ CASES: list[tuple[str, str, dict]] = [
     # yardstick-v2 F059: a player and a team together in `players`, on a "vs"
     # question, are the player and his opponent - a named player's half.
     ("Kd vs clippers 2h at home gamelog", "period_split", {"player": "Kevin Durant", "half": 2, "venue": "home", "opponent": frozenset({"Los Angeles Clippers", "LA Clippers"})}),
+    # yardstick-v2 F098: "td3s" is a triple-double, not a period word and not
+    # a shot value; the compiler counts one player's, at home here.
+    ("luka td3s home", "player_stat", {"player": "Luka Doncic", "stat": "triple_double", "venue": "home"}),
 ]
 
 

@@ -57,17 +57,18 @@ FOUL_OUT_THRESHOLD = 6
 # and "Devin Vassell nba player per game stats 1q" were both answered with a
 # whole-game line in the 2026-09-15 feed replay. Same shape as the "4th qtr"
 # gap that made these patterns grow abbreviations in the first place.
-# `td3s` is here rather than in _SITUATION because it is not a narrowing at
-# all, which is worth keeping straight: the feed replay filed "luka td3s home"
-# under "condition dropped", but the venue was read correctly and honored -
-# the fault is that `td3s` became shot_value 3, so the answer was his points
-# per game at home instead of a count of triple-doubles. Triple-doubles exist
-# as a leaderboard metric (metrics.triple_doubles, off player_season_stats),
-# but nothing counts them for ONE player, and nothing can split them by venue,
-# since that season table has no venue dimension - deriving them per game from
-# box scores is exactly the agent's job. Spelled out, "triple double" already
-# routes correctly; only the abbreviation is unreadable.
-_AGENT_ONLY = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+(?:quarter|qtr|q)\b|\bq[1-4]\b|\b[1-4]q\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b|\btd3s?\b")
+# `td3s` used to be here too, sending "luka td3s home" to the agent because
+# nothing counted one player's triple-doubles. The compiler does now (a
+# per-game flag on the player-games relation), so it left: see
+# `_route_triple_double_abbreviation`, which reads the word instead.
+_AGENT_ONLY = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+(?:quarter|qtr|q)\b|\bq[1-4]\b|\b[1-4]q\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b")
+
+# "td3" is a triple-double, and the model reads its "3" as a shot value:
+# "luka td3s home" came back as `other` with stat threePointFieldGoalsMade
+# and shot_value 3 (yardstick-v2 F098), and before that as his points per
+# game at home. The compiler's own measure words already read "td3s"
+# (compose/move.py), so only the slots have to say it.
+_TRIPLE_DOUBLE_ABBREVIATION = re.compile(r"\btd3s?\b", re.IGNORECASE)
 
 # A half is never a quarter. team_quarter_points reads a period number and the
 # model maps "first half" onto period 1, which is wrong for a TEAM the same way
@@ -1664,7 +1665,7 @@ def _validate_order(slots: dict[str, Any], question: str) -> str | None:
 _STAT_WORDS = re.compile(
     r"\b(points?|scor\w*|pts|rebound\w*|boards|reb|assist\w*|passing|dimes|ast|steal\w*|stl|block\w*|blk|"
     r"turnover\w*|giveaways?|fouls?|minutes?|mins?|shoot\w*|shots?|three\w*|3pt|3-point\w*|field goals?|free throws?|"
-    r"percentage|efficien\w*|usage|double-doubles?|triple-doubles?|ppg|rpg|apg|spg|bpg|fg|ft|3p|ts|efg)\b",
+    r"percentage|efficien\w*|usage|double-doubles?|triple-doubles?|td3s?|ppg|rpg|apg|spg|bpg|fg|ft|3p|ts|efg)\b",
     re.IGNORECASE,
 )
 
@@ -1888,6 +1889,22 @@ def _route_period_intents_player_beside_team(raw: dict[str, Any], question: str)
         raw.pop("team", None)
     if not (isinstance(raw.get("opponent"), str) and raw["opponent"].strip()):
         raw["opponent"] = opponent
+
+
+def _route_triple_double_abbreviation(raw: dict[str, Any], question: str) -> None:
+    """ "td3s" is the stat ``triple_double``, never a shot value, and one named
+    player's count of them is a ``player_stat`` the compiler answers (the
+    template refuses a stat with no per-game column, and the compiler then
+    counts the games). Measured over the corpus (CASES, the StatMuse feed,
+    yardstick-v2): "luka td3s home" is the one question holding the word;
+    the model filed it as ``other``, so only that intent is moved - a
+    leaderboard or a count the model chose keeps its own intent."""
+    if not _TRIPLE_DOUBLE_ABBREVIATION.search(question):
+        return
+    raw["stat"] = "triple_double"
+    raw.pop("shot_value", None)
+    if raw["intent"] == "other" and isinstance(raw.get("player"), str) and raw["player"].strip():
+        raw["intent"] = "player_stat"
 
 
 def _team_slot_or_word(raw: dict[str, Any], low: str) -> bool:
@@ -2535,6 +2552,7 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     # threshold the question lacks turns a count back into a ranking before
     # any intent-specific slot is chosen.
     _route_period_intents(raw, question)
+    _route_triple_double_abbreviation(raw, question)
     _route_team_and_player_intents(raw, question)
     rerouted_to_line = _route_line_and_record_intents(raw, question)
     slots = _route_season_slots(raw, question)
