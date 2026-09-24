@@ -92,7 +92,14 @@ _NOT_PLAYERS = re.compile(r"\bby team\b|\bteams?\b|\ballowed\b|\bopponent'?s?\b|
 _PERIOD = re.compile(r"\b(quarter|qtr|half|period|overtime|\d(?:st|nd|rd|th) q|q[1-4]|[1-4]q|[12]h)\b", re.I)  # codespell:ignore nd - an ordinal suffix
 _HOW_MANY_OR_OFTEN = re.compile(r"\bhow many\b|\bhow often\b|\bnumber of\b|\btimes\b", re.I)
 _WON = re.compile(r"\b(won|wins|win)\b", re.I)
-_FEWEST = re.compile(r"\b(fewest|least|lowest)\b", re.I)
+#: "least" on its own is ascending ("the least points"); "AT least" is the
+#: minimum-sample floor phrase (:func:`_ranking_minimum`, F056: "with at
+#: least 100 attempts") and names no direction at all - the negative
+#: lookbehind keeps that phrase from flipping a "highest ..." ranking to
+#: ascending, which it did before this existed (measured against the real
+#: warehouse: "highest 3-point percentage ... with at least 40 games"
+#: answered lowest-first).
+_FEWEST = re.compile(r"\b(fewest|lowest)\b|(?<!at )\bleast\b", re.I)
 _TOTAL = re.compile(r"\btotal\b", re.I)
 _VS = re.compile(r"\b(vs\.?|versus|against)\b", re.I)
 
@@ -170,6 +177,43 @@ def _position(question: str) -> str | None:
     return None
 
 
+def _position_only_player(slots: dict[str, Any]) -> str | None:
+    """The position code the router's own ``player`` slot names, when the
+    slot holds NOTHING but a position word or phrase ("shooting guard") - a
+    position-GROUP subject the router misfiled as a name (F056: "highest 3
+    point percentage ... by a shooting guard"), not a player to resolve.
+    ``None`` where the slot holds anything else, including a real name
+    beside a position word - only an exact, whole-slot match counts, the
+    same discipline :func:`~association.query.entities.players_named_in`
+    keeps for a name.
+
+    .. versionadded:: 4.4.0
+    """
+    text = slots.get("player")
+    if not (isinstance(text, str) and text.strip()):
+        return None
+    stripped = text.strip()
+    for pattern, code in POSITIONS:
+        if re.fullmatch(pattern, stripped, re.I):
+            return code
+    return None
+
+
+def _drop_position_only_player(slots: dict[str, Any]) -> dict[str, Any]:
+    """``slots``, with ``player`` cleared when :func:`_position_only_player`
+    finds it holds only a position word. Nothing here needs to carry the
+    code forward by hand: once ``player`` reads empty, :func:`_everyone_point`
+    reads the position straight back off the QUESTION TEXT (:func:`_position`),
+    the same way every other position-group reading in this module already
+    does.
+
+    .. versionadded:: 4.4.0
+    """
+    if _position_only_player(slots) is not None:
+        return {**slots, "player": None}
+    return slots
+
+
 def _measure_and_predicates(words: list[str], fallback: str | None) -> tuple[str | None, list[tuple[str, str, Any]]]:
     """The measure a question ranks or lists by, and the boolean measures it
     names as conditions: "highest fg% in a triple-double game" measures
@@ -182,6 +226,40 @@ def _measure_and_predicates(words: list[str], fallback: str | None) -> tuple[str
 def _asc_or_desc(question: str) -> str:
     """ "asc" for a "fewest"/"least"/"lowest" question, "desc" otherwise."""
     return "asc" if _FEWEST.search(question) else "desc"
+
+
+_EVER = re.compile(r"\bever\b|\ball[- ]time\b", re.I)
+
+
+def _everyone_career_slots(slots: dict[str, Any], question: str) -> dict[str, Any]:
+    """ "Ever"/"all-time" in the question is a career span for a league-wide
+    read, the way :func:`_career_slots` gives a named player's own unscoped
+    count his whole career - stated because a league-wide read with no
+    season named otherwise defaults to the CURRENT season
+    (:func:`~association.query.compose.core._resolve_everyone`), not "every
+    season on record" the word asks for.
+
+    .. versionadded:: 4.4.0
+    """
+    if _EVER.search(question) and not isinstance(slots.get("season"), int):
+        return {**slots, "span": "career"}
+    return slots
+
+
+_AT_LEAST = re.compile(r"\bat least\s+(\d+)\s+([a-z]+)", re.I)
+
+
+def _ranking_minimum(question: str) -> tuple[str, int] | None:
+    """The "at least N <unit>" phrase naming a league ranking's own minimum
+    sample ("with at least 100 attempts", F056) - the unit and the number,
+    or ``None`` where the question names no such floor.
+
+    .. versionadded:: 4.4.0
+    """
+    match = _AT_LEAST.search(question)
+    if not match:
+        return None
+    return match.group(2).lower(), int(match.group(1))
 
 
 def _everyone_guard(question: str) -> None:
@@ -244,6 +322,118 @@ def _everyone_single_game(slots: dict[str, Any], question: str, measure: str | N
     )
 
 
+#: A word in the question naming what a "highest/biggest ... triple-double"
+#: ranking of GAMES orders by - the local counterpart of ``WORD_MEASURES``
+#: for the plain box-score words that list does not carry (those name the
+#: default four-stat line already; this is only reached once a boolean
+#: measure has taken the ranking word - see :func:`_everyone_boolean_game_ranking`).
+_BOOLEAN_RANK_WORDS: list[tuple[str, str]] = [
+    (r"\bscoring\b|\bpoints?\b|\bpts\b", "points"),
+    (r"\brebounds?\b|\bboards?\b", "rebounds"),
+    (r"\bassists?\b", "assists"),
+    (r"\bsteals?\b", "steals"),
+    (r"\bblocks?\b", "blocks"),
+]
+_BOOLEAN_GAME_RANKING = re.compile(r"\b(highest|biggest|largest|best|most|top)\b", re.I)
+
+
+def _boolean_game_measure(question: str) -> str:
+    """The measure a "highest/biggest ... triple-double" ranks the
+    qualifying games BY - the question's own word (:data:`_BOOLEAN_RANK_WORDS`)
+    first, points otherwise: "highest scoring" and "biggest" both mean the
+    game's point total unless another stat is named."""
+    for pattern, name in _BOOLEAN_RANK_WORDS:
+        if re.search(pattern, question, re.I):
+            return name
+    return "points"
+
+
+def _everyone_boolean_game_ranking(question: str, slots: dict[str, Any], predicates: list[tuple[str, str, Any]], position: str | None) -> Query | None:
+    """ "players with the highest scoring triple doubles", "biggest triple
+    double", "most rebounds in a double double" (#199, F124): a RANKING OF
+    THE GAMES that satisfy a boolean measure (:data:`BOOLEAN_MEASURES`) by
+    another measure - rows over everyone, the boolean as a predicate,
+    ordered by the question's own stat word. Not
+    :func:`_everyone_ranking`'s per-player AVERAGE, which would need
+    ``minimum_games`` triple-doubles just to rank anyone, and not
+    :func:`_everyone_single_game`'s "in a game" phrasing, which this shape
+    does not use ("the highest scoring triple doubles" names no game at
+    all - it is the games themselves being ranked).
+
+    .. versionadded:: 4.4.0
+    """
+    boolean = [name for name, _, value in predicates if name in BOOLEAN_MEASURES and value is True]
+    if not (boolean and _BOOLEAN_GAME_RANKING.search(question)):
+        return None
+    measure = _boolean_game_measure(question)
+    return Query(
+        slots,
+        "rows",
+        [measure, *(m for m in LINE if m != measure)],
+        "none",
+        "none",
+        predicates,
+        "measure",
+        _asc_or_desc(question),
+        _clamp(slots.get("limit"), DEFAULT_SINGLE_GAME_LIMIT),
+        subject="everyone",
+        position=position,
+    )
+
+
+_NUMBER_STAT = re.compile(r"\b(\d{1,3})\s*\+?\s*((?:[a-z]+\s*){1,3})", re.I)
+
+
+def _numbered_stat_lines(question: str) -> list[tuple[str, str, Any]]:
+    """Every "<N> <stat>" pair ``question`` itself names, as predicates - the
+    league-wide multi-line count a single ``threshold`` slot cannot carry
+    (F161: "33 point and 13 rebound and 10 assist 2 blocks and 2 steals").
+    Each number's own trailing word(s) name its column through
+    :data:`~association.query.measures.MEASURE_WORDS`, the lookup
+    :func:`_everyone_threshold_predicates` already uses for one number -
+    applied here to every number the question names, not only the router's
+    own ``threshold``, and never a duplicate column.
+
+    .. versionadded:: 4.4.0
+    """
+    predicates: list[tuple[str, str, Any]] = []
+    seen: set[str] = set()
+    for match in _NUMBER_STAT.finditer(question):
+        value = int(match.group(1))
+        if not value:
+            continue
+        words = match.group(2).lower().split()
+        column = None
+        for width in (3, 2, 1):
+            candidate = " ".join(words[:width])
+            if candidate in MEASURE_WORDS:
+                column = MEASURE_WORDS[candidate]
+                break
+        if column and column not in seen:
+            seen.add(column)
+            predicates.append((column, ">=", value))
+    return predicates
+
+
+def _everyone_multi_line_games(intent: str, slots: dict[str, Any], question: str, predicates: list[tuple[str, str, Any]], position: str | None) -> Query | None:
+    """Several "<N> <stat>" lines named in one question at once (F161) are
+    all conditions on the SAME game, so the answer is which GAMES cleared
+    every line and who had them - rows over everyone, the predicates
+    stated, never :func:`_everyone_threshold_count`'s per-player COUNT of a
+    single line (still the right shape once there is only one - this move
+    stands aside for it, below).
+
+    .. versionadded:: 4.4.0
+    """
+    if intent != "threshold_count":
+        return None
+    text_lines = _numbered_stat_lines(question)
+    lines = text_lines if len(text_lines) > len(predicates) else predicates
+    if len(lines) < 2:
+        return None
+    return Query(slots, "rows", [name for name, _, _ in lines], "none", "none", lines, "date", "desc", _clamp(slots.get("limit"), 25), subject="everyone", position=position)
+
+
 def _everyone_threshold_count(intent: str, slots: dict[str, Any], predicates: list[tuple[str, str, Any]], position: str | None) -> Query | None:
     """A league-wide count: who had games clearing the line(s). Without a
     line to count there is nothing to rank - refused, never turned into a
@@ -256,10 +446,27 @@ def _everyone_threshold_count(intent: str, slots: dict[str, Any], predicates: li
 
 
 def _everyone_ranking(intent: str, slots: dict[str, Any], question: str, measure: str | None, predicates: list[tuple[str, str, Any]], position: str | None) -> Query | None:
-    """A ranking word, or a leaderboard/single-game-high intent: grouped by player."""
+    """A ranking word, or a leaderboard/single-game-high intent: grouped by
+    player. A "with at least N games" phrase in the question replaces the
+    default minimum sample (:data:`~association.query.metrics.PER_GAME_MIN_GAMES`)
+    with the one the question itself named; a unit the relation has no
+    HAVING clause for (attempts, minutes, ...) is refused by name rather
+    than silently dropped or misapplied as a games count (F056:
+    "... by a shooting guard with at least 100 attempts").
+
+    .. versionchanged:: 4.4.0
+       Reads a "with at least N <unit>" floor (:func:`_ranking_minimum`).
+    """
     if not (_RANKING.search(question) or intent in ("leaderboard", "single_game_high")):
         return None
     aggregate = "total" if _TOTAL.search(question) else "per_game"
+    minimum_games = PER_GAME_MIN_GAMES
+    named_minimum = _ranking_minimum(question)
+    if named_minimum is not None:
+        unit, count = named_minimum
+        if not unit.startswith("game"):
+            raise Unsupported(f"a minimum of {count} {unit} is not a floor this ranking can apply - only a minimum number of games")
+        minimum_games = count
     return Query(
         slots,
         "grouped",
@@ -270,7 +477,7 @@ def _everyone_ranking(intent: str, slots: dict[str, Any], question: str, measure
         "measure",
         _asc_or_desc(question),
         _clamp(slots.get("limit"), 10),
-        minimum_games=PER_GAME_MIN_GAMES,
+        minimum_games=minimum_games,
         subject="everyone",
         position=position,
     )
@@ -286,9 +493,22 @@ def _everyone_position_log(slots: dict[str, Any], question: str, position: str |
 def _everyone_point(intent: str, slots: dict[str, Any], question: str, measure: str | None) -> Query:
     """No player named: the league-wide read of the same relation. A ranking
     word makes it grouped by player; a log word with a position makes it
-    rows; "most ... in a game" is rows by measure over everyone."""
+    rows; "most ... in a game" is rows by measure over everyone; a
+    "highest/biggest ..." boolean-measure question ranks the GAMES rather
+    than counting them; several "<N> <stat>" lines at once list the games
+    clearing every one.
+
+    .. versionchanged:: 4.4.0
+       "Ever"/"all-time" moves the default current-season span to a career
+       one (:func:`_everyone_career_slots`), and tries
+       :func:`_everyone_boolean_game_ranking` (#199) and
+       :func:`_everyone_multi_line_games` (F161) before the per-player count
+       and ranking moves, since both are more specific readings of a
+       ``threshold_count``/ranking question than either of those.
+    """
     _everyone_guard(question)
     slots = _everyone_opponent(slots, question)
+    slots = _everyone_career_slots(slots, question)
     position = _position(question)
     words = _measure_words(question)
     measure, predicates = _measure_and_predicates(words, measure if measure not in BOOLEAN_MEASURES else None)
@@ -296,6 +516,12 @@ def _everyone_point(intent: str, slots: dict[str, Any], question: str, measure: 
     single = _everyone_single_game(slots, question, measure, predicates, position)
     if single is not None:
         return single
+    boolean_ranked = _everyone_boolean_game_ranking(question, slots, predicates, position)
+    if boolean_ranked is not None:
+        return boolean_ranked
+    multi_line = _everyone_multi_line_games(intent, slots, question, predicates, position)
+    if multi_line is not None:
+        return multi_line
     counted = _everyone_threshold_count(intent, slots, predicates, position)
     if counted is not None:
         return counted
@@ -491,7 +717,16 @@ def move_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any
        would invent a subject, not the router. May return a
        :class:`~association.query.compose.team.TeamQuery` instead of a
        :class:`~association.query.compose.core.Query`.
+
+    .. versionchanged:: 4.4.0
+       Drops the router's own ``player`` slot first when it holds nothing
+       but a position word (:func:`_drop_position_only_player`, F056:
+       "... by a shooting guard") - before even :func:`team_move_point`,
+       since a position phrase misfiled as a name would otherwise be
+       resolved as one (:func:`_move_named`) rather than read as the
+       position-group subject it is.
     """
+    slots = _drop_position_only_player(slots)
     if not _named_player(slots):
         team_query = team_move_point(con, slots, question)
         if team_query is not None:

@@ -89,13 +89,22 @@ before that commit needs re-checking against the current warehouse.
   team agent in this session's split), so filed rather than built here.
 - **User sees:** a wrong answer to a question that sounds almost identical
   to one the system answers correctly (a triple-double COUNT).
-- **Next step:** either `leaderboard` refuses `stat: triple_double` when the
-  question's own words name a metric other than a count ("highest
-  scoring"/"biggest"), handing it to `compose` the way a template's
-  `TemplateUnsupported` already does, or `route()` reads the "highest
-  scoring" qualifier into a different `stat`/`rate` combination before
-  `leaderboard` ever answers. Needs whoever owns `query/compose`'s
-  boolean-measure point next.
+- **The compose half is now built** (this session, `query/compose/move.py`):
+  `_everyone_boolean_game_ranking` reads "highest scoring"/"biggest"/"most
+  <stat> in a" over a boolean measure (`triple_double`, `double_double`,
+  `fouled_out`) as rows over everyone, the boolean as a predicate, ordered
+  by the question's own stat word (points by default). Warehouse-verified
+  against `nba.duckdb`: "biggest triple double ever" -> Jokic's 61-10-10 on
+  2025-04-01 vs MIN, the same game the yardstick key names; the current
+  season alone (no "ever") tops out at his 56-point 16/15 game on
+  2025-12-25. "Ever"/"all-time" moves the otherwise-current-season default
+  to a career read (`_everyone_career_slots`).
+- **Still open:** the compose half only gets a turn once `leaderboard`
+  refuses this framing rather than answering the count first - the other
+  half of this entry, on the router/template side this worktree does not
+  own. Until that refusal lands and both halves merge, `leaderboard` still
+  answers the wrong count for this exact question live. Re-measure once
+  merged and close then.
 - **GitHub:** #199
 
 ### The agent fall-through answers 1 question in 23, and does not finish 61% of the time
@@ -2370,60 +2379,43 @@ those were found.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #183
 
-### `association.query.compose` carries none of the box-score caveats (coverage floor fixed)
-- **Found:** 2026-09-22, landing the skeleton spike's compiler
-  (`association.query.compose`). Now live (`agent.py`'s `_try_compose`), and
-  now includes the team subject (`compose/team.py`) as well as the player
-  one.
-- **Fixed (step 3, K1):** the coverage-FLOOR half of this entry.
-  `compose/__init__.py`'s `answer()` now calls
-  `templates.common.check_coverage(intent, query.slots)` before compiling a
-  player `Query` (raised as `Refused`, the same "the refusal IS the answer"
-  discipline every relation template follows) and appends
-  `templates.common.coverage_caveat(intent, query.slots)` to the sentence
-  when the season is reachable but only partly. The team subject makes the
-  same two calls its own way (`compose/team.py`'s `team_coverage_refusal`,
-  checked before the team is even resolved, and `_team_coverage_note`,
-  appended in `team_sentence`) since it reads `games`/`team_season_stats`
-  rather than the player relation, and could not reuse `check_coverage`'s own
-  `_sources_for(intent, ...)`, which is not shaped for a team subject
-  reached under an arbitrary player-routed intent. Both guards were watched
-  to fail: removing the player-side call answered a 1990 `threshold_count`
-  question "0 games" (looks like a real zero, is actually no data at all);
-  removing the team-side call answered a 1990 team-total question with the
-  wrong-cause "no data on record" sentence instead of naming the 1994 floor.
-  Warehouse-verified: a 2001 postseason player question and an equivalent
-  narrowed team one both now carry ESPN's real missing-games note ("ESPN is
-  missing ten games of the 2001 playoffs ..."), and a 1990 question on either
-  subject now refuses by name rather than answering an empty result.
-  `RANKING_INTENTS`/`first_ranking_season` is included for free: it is read
-  inside `check_coverage` itself, keyed on `intent`, so no separate call was
-  needed.
-- **Still open:** the box-score CAVEAT half - `sentence.py` still never calls
-  `common._box_score_notes` (the without-teammate explanation, the count of
-  games left out because ESPN served an empty box score, the count of games
-  rebuilt from play-by-play, the "box scores begin with the 1993-94 season"
-  note on a career predating them). Unlike `check_coverage`/`coverage_caveat`
-  (which take only `intent`/`slots`), `_box_score_notes` needs the
-  `Narrowed`/player/span objects `compile_query` builds internally and
-  `run()` does not currently return - a deeper retrofit than the coverage
-  floor was. K1's golden run measured the NUMBERS agree with the templates'
-  (237/0), which this does not contradict - the rows and aggregates are
-  right - but a composed answer over a span reaching an empty-box-score
-  season (2013-2018 Chicago/New Orleans, AGENTS.md) or a rebuilt-line game
-  still says nothing about what the number rests on where a template's
-  equivalent answer would.
-- **User sees:** a box-score count or average with no word said about games
-  a rebuild stood in for or ESPN served empty.
-- **Next step:** have `core.run()` (and `compose/team.py`'s own readers)
-  return enough of the compiled state - the `Narrowed`, the resolved
-  player/team, the span - for `answer()` to call `_box_score_notes`/its team
-  counterpart the way `agent.py` already appends other notes to a template's
-  answer, and append the result to the sentence.
-- **Source:** ours, not ESPN's.
-- **GitHub:** #197
-
 ## P3: refusal or gap
+
+### A composed league-wide `threshold_count` falls through when the router's `stat` already names the threshold's own column
+- **Found:** 2026-09-24, building F161's multi-line move in
+  `query/compose/move.py`.
+- **Evidence:** `_everyone_threshold_predicates` adds the phrase's own
+  column as a predicate only when it differs from the ranking `measure`
+  variable (`_stat_measure(slots.get("stat"))`) - a dedup meant for
+  `_everyone_ranking`'s grouped-by-player point, where `measure` is what
+  the read is grouped and ordered by. `_everyone_threshold_count`'s point
+  uses no `measure` at all (only `predicates`), so whenever the router's own
+  `stat` slot already names the same column the threshold phrase does - the
+  ordinary case, not an edge one - the predicate is silently skipped and the
+  count has nothing to count, raising `Unsupported` in
+  `_everyone_threshold_count`. Reproduced against `nba.duckdb`:
+  `compose.answer(ctx, "threshold_count", {"stat": "points", "threshold":
+  30, "season_type": 2}, "who had the most games with 30+ points this
+  season")` returns `None` (falls through to the agent) - a very ordinary
+  routing of a very ordinary question.
+- **User sees:** a slow, unreliable agent fall-through (AGENTS.md: 1 correct
+  in 9 finished runs) for a league-wide threshold count phrased plainly,
+  where the fast path already answers the same shape correctly whenever the
+  router's `stat` happens to differ from the phrase's word (see
+  `test_the_questions_own_number_names_its_column_not_the_routers_stat`,
+  `tests/query/test_compose.py`).
+- **Next step:** `_everyone_threshold_count` needs the phrase's own column
+  regardless of what `measure` says, since it never reads `measure` at all -
+  either pass `_everyone_threshold_predicates` a `None` measure when the
+  caller is a count (not a ranking), or give `_everyone_threshold_count` its
+  own predicate read independent of the ranking dedup. Found while building
+  F161's `_everyone_multi_line_games` (same file); not fixed here to keep
+  that change to its own scope - a fixture test
+  (`test_a_single_number_stat_line_still_counts_by_player`) pins today's
+  behavior (a `stat` that differs from the phrase) so a fix does not regress
+  it silently.
+- **Source:** ours, not ESPN's.
+- **GitHub:** not yet filed
 
 ### `team_record`'s combined-season-types sentence drops the regular half's "standings from 1993-94" caveat
 - **Found:** 2026-09-23, grading `live_sweep.jsonl` (yardstick-v2 F116).
@@ -2678,14 +2670,42 @@ those were found.
   same way a team is.
 - **User sees:** a refusal, or the opposing team's log, for a question that
   names its subject as clearly as a player's name would.
-- **Next step:** read a position word from the question in `route()` (a
-  code-assigned slot, so `ROUTER_PROMPT` is untouched) into a `position` slot,
-  and let the player-games relation filter on it the way it filters an
-  opponent - the ranking these questions mostly want is `period_leaderboard`'s
-  or `leaderboard`'s shape with the pool narrowed, not a new template per
-  question. Note the two-letter values are ESPN's own and not a hierarchy: a
-  question about "guards" means G, SG and PG together, and getting that wrong
-  silently answers a narrower question.
+- **One of the six is now answered, from the compose side** (this session):
+  "highest 3 point percentage in a season. by a shooting guard with at least
+  100 attempts" arrives with the router's own `player` slot holding
+  literally "shooting guard" (not dropped, not filed as `team`/`opponent` -
+  this question's own routing shape) - `query/compose/move.py`'s
+  `_position_only_player`/`_drop_position_only_player` reads a slot that
+  holds NOTHING but a position word as the position-group subject rather
+  than a player name to resolve, so `_everyone_point` reaches its existing
+  position filter the same way "centers game log" already did. Also added:
+  a "with at least N games" phrase now sets the ranking's own minimum
+  sample (`_ranking_minimum`), replacing the default
+  `PER_GAME_MIN_GAMES` floor. Warehouse-verified against `nba.duckdb`,
+  season 2025 (2024-25, which carries specific position codes - see
+  DATA.md): "highest 3-point percentage in 2025 by a shooting guard with at
+  least 40 games" correctly ranks Alec Burks (42.5%, 49 games), Malik
+  Beasley (41.6%, 82 games), Shake Milton (35.8%), Brandon Boston Jr.
+  (35.0%) - descending, as asked.
+- **Still open, and this is why the exact target question above is not
+  fully answered:** an ATTEMPTS floor ("with at least 100 attempts") is
+  refused by name (`_everyone_ranking` raises rather than silently dropping
+  it or misreading it as a games count - the relation has only a
+  minimum-GAMES `HAVING` clause today, no minimum-attempts one) - a real
+  capability gap, not a bug, and worth its own entry if built. **A second,
+  independent gap surfaced verifying this**: the CURRENT season (2026)
+  carries almost no specific position codes at all (`SG`/`PG`/`PF`/`SF`),
+  only the generic `G`/`F`/`C` - see DATA.md, "The current season's roster
+  carries generic position codes" - so a position-GROUP question answered
+  for "this season" with no year named returns nothing even once the
+  subject reads correctly, and the four questions this entry filed under
+  "Centers"/"stating centers"/"forwards" remain open (a router-side slot
+  drop this worktree does not own).
+- **Next step:** an attempts (or makes, or minutes) floor on a league
+  ranking - a `HAVING SUM(<attempts column>) >= N` the relation does not
+  carry yet, keyed off the same measure being ranked; the other four
+  questions need the router to stop filing a position word as `team` or
+  dropping it outright.
 - **GitHub:** #160
 - **Re-measured 2026-09-24:** the compiler reads a position group as its
   subject now (`compose.move._position`, "every center vs the Sacramento

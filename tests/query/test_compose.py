@@ -25,7 +25,7 @@ from association.nba.season import current_season
 from association.query.compose import answer as compose_answer
 from association.query.compose.adapt import to_query
 from association.query.compose.core import Query, Refused, Unsupported, compile_query, run
-from association.query.compose.move import _career_slots, move_point, team_move_point
+from association.query.compose.move import _asc_or_desc, _career_slots, _drop_position_only_player, _everyone_career_slots, _position_only_player, _ranking_minimum, move_point, team_move_point
 from association.query.compose.team import TeamQuery, run_team
 from association.query.templates.common import TemplateContext
 
@@ -157,6 +157,18 @@ def cx_ctx(tmp_path: Path) -> TemplateContext:
         "CREATE VIEW player_game_log AS SELECT pbs.*, p.display_name AS player_name, g.date AS game_date, t.abbreviation AS team_abbr, o.abbreviation AS opponent_abbr "
         "FROM player_box_stats pbs LEFT JOIN players p ON p.athlete_id = pbs.athlete_id LEFT JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season "
         "LEFT JOIN teams t ON t.team_id = pbs.team_id LEFT JOIN teams o ON o.team_id = pbs.opponent_team_id"
+    )
+    # `_box_score_notes` (threaded through `core.run` for #197's box-score-
+    # caveat half) reads this for its career-floor note - MIN(season) with a
+    # game played, per player. One row per player per season here keeps that
+    # note quiet (earliest on record is never before the real 1994 floor,
+    # which is fixed in `nba.coverage` and not derived from this fixture);
+    # `test_a_career_predating_box_scores_gets_the_floor_note` adds an older
+    # row of its own to turn the note on.
+    c.execute("CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER, gamesPlayed INTEGER)")
+    c.executemany(
+        "INSERT INTO player_season_stats_deduped VALUES (?, ?, 2, 1)",
+        [(pid, season) for pid in (PODZ, CURRY, BROWN, SABONIS, "90", "91") for season in (s - 1, s)],
     )
     return TemplateContext(con=c, out_dir=tmp_path)
 
@@ -653,3 +665,237 @@ def test_answer_carries_a_coverage_caveat_on_a_narrowed_team_question(team_cx_ct
     )
     assert result is not None
     assert "Note:" not in result.answer
+
+
+# ---------------------------------------------------------------------------
+# #199, F124: a ranking of the GAMES that satisfy a boolean measure by
+# another measure ("highest scoring triple doubles"), not a per-player count
+# or average.
+# ---------------------------------------------------------------------------
+
+
+def test_a_highest_scoring_boolean_measure_ranks_the_games_not_a_per_player_average(cx_ctx: TemplateContext) -> None:
+    """ "Players with the highest scoring triple doubles" is rows over
+    everyone, ordered by points, with `triple_double` as a predicate - not
+    `_everyone_ranking`'s per-player AVERAGE (which would need
+    `minimum_games` triple-doubles just to rank anyone). Podziemski's g3
+    (28/10/11) is the fixture's only triple-double."""
+    q = move_point(cx_ctx.con, "leaderboard", {"stat": "triple_double", "limit": 10, "season_type": 2}, "players with the highest scoring triple doubles")
+    assert isinstance(q, Query)
+    assert q.subject == "everyone" and q.skeleton == "rows" and q.order == "measure"
+    assert q.predicates == [("triple_double", "=", True)]
+    assert q.measures[0] == "points"
+    out = run(cx_ctx.con, q)
+    assert [r["points"] for r in out["rows"]] == [28]  # Podziemski's g3, the fixture's only triple-double
+
+
+def test_biggest_with_no_stat_word_defaults_to_points(cx_ctx: TemplateContext) -> None:
+    """ "Biggest triple double" names no stat word at all -
+    :func:`~association.query.compose.move._boolean_game_measure` falls
+    back to points, the same default a "career-high" question gets."""
+    q = move_point(cx_ctx.con, "leaderboard", {"stat": "triple_double", "season_type": 2}, "biggest triple double ever")
+    assert isinstance(q, Query)
+    assert q.measures[0] == "points"
+    assert q.slots.get("span") == "career"  # "ever" moved the default current-season span
+
+
+def test_everyone_career_slots_reads_ever_and_all_time_only_with_no_season_named() -> None:
+    """:func:`_everyone_career_slots`: "ever"/"all-time" is a career span for
+    a league-wide read UNLESS the question also named a season - the same
+    "do not silently override a named year" discipline
+    :func:`~association.query.compose.core._span_of` keeps for ``since``."""
+    assert _everyone_career_slots({}, "the best triple double ever") == {"span": "career"}
+    assert _everyone_career_slots({}, "the best triple double this season") == {}
+    assert _everyone_career_slots({"season": 2024}, "the best triple double of all time") == {"season": 2024}  # a named season is not overridden
+
+
+# ---------------------------------------------------------------------------
+# F161: several "<N> <stat>" lines in one question at once - a league-wide
+# READ OF THE GAMES clearing every line, not `_everyone_threshold_count`'s
+# per-player COUNT of a single one.
+# ---------------------------------------------------------------------------
+
+
+def test_several_number_stat_lines_read_the_qualifying_games_not_a_count(cx_ctx: TemplateContext) -> None:
+    """ "33 point and 13 rebound and 10 assist 2 blocks and 2 steals" (F161)
+    reads every "<N> <stat>" pair in the question into predicates and lists
+    the games clearing all of them - rows over everyone, not a per-player
+    count. This fixture's own numbers: exactly two season-``s`` games clear
+    20+ points, 7+ rebounds and 3+ assists at once (Brown's g5 and
+    Podziemski's g3) - the 20-point-guards ranking pool (6 rebounds apiece)
+    and the two players' own lower-rebound games fall short of the 7."""
+    q = move_point(cx_ctx.con, "threshold_count", {"season_type": 2}, "players with 20 points and 7 rebounds and 3 assists this season")
+    assert isinstance(q, Query)
+    assert q.subject == "everyone" and q.skeleton == "rows"
+    assert sorted(q.predicates) == sorted([("points", ">=", 20), ("rebounds", ">=", 7), ("assists", ">=", 3)])
+    out = run(cx_ctx.con, q)
+    assert sorted(r["points"] for r in out["rows"]) == [28, 31]
+
+
+def test_a_single_number_stat_line_still_counts_by_player(cx_ctx: TemplateContext) -> None:
+    """One line only is still :func:`~association.query.compose.move._everyone_threshold_count`'s
+    ordinary per-player COUNT shape - the multi-line move stands aside for
+    it (F161's move applies only once there are two or more lines to read).
+    ``stat`` names a DIFFERENT column than the phrase itself on purpose
+    (the same shape ``test_the_questions_own_number_names_its_column_not_the_routers_stat``
+    exercises) - `_everyone_threshold_predicates` does not add a second,
+    redundant line when the router's own ``stat`` already names the same
+    column the phrase does; filed as a finding (ISSUES.md), not fixed here,
+    since it is a pre-existing single-line quirk outside F161's own scope."""
+    q = move_point(cx_ctx.con, "threshold_count", {"threshold": 15, "stat": "rebounds"}, "players with 15 points this season")
+    assert isinstance(q, Query)
+    assert q.subject == "everyone" and q.skeleton == "grouped" and q.group == "player"
+
+
+def test_a_league_wide_count_with_no_line_at_all_is_still_refused(cx_ctx: TemplateContext) -> None:
+    """The K2 guard :func:`_numbered_stat_lines`'s move does not weaken: a
+    league-wide ``threshold_count`` naming no line at all - not even in the
+    question's own text - is refused, not turned into a whole-league listing."""
+    with pytest.raises(Unsupported, match="needs the line"):
+        move_point(cx_ctx.con, "threshold_count", {}, "players with a good game this season")
+
+
+# ---------------------------------------------------------------------------
+# F056: a position word in the ``player`` slot ("shooting guard") is the
+# router misfiling a position-GROUP subject as a name, not a player to
+# resolve; a "with at least N <unit>" phrase is the ranking's own minimum
+# sample, applied only where the relation can (a games floor), refused by
+# name otherwise (an attempts or minutes floor, which it cannot apply yet).
+# ---------------------------------------------------------------------------
+
+
+def test_a_position_only_player_slot_is_read_as_the_position_group_subject() -> None:
+    """:func:`_position_only_player` finds the position code only when the
+    ``player`` slot holds NOTHING else; a real name beside a position word
+    is left alone."""
+    assert _position_only_player({"player": "shooting guard"}) == "SG"
+    assert _position_only_player({"player": "shooting guards"}) == "SG"
+    assert _position_only_player({"player": "Klay Thompson"}) is None
+    assert _position_only_player({"player": None}) is None
+    assert _drop_position_only_player({"player": "shooting guard", "stat": "points"}) == {"player": None, "stat": "points"}
+    assert _drop_position_only_player({"player": "Klay Thompson"}) == {"player": "Klay Thompson"}
+
+
+def test_a_position_word_misfiled_as_the_player_slot_reads_as_the_subject(cx_ctx: TemplateContext) -> None:
+    """F056: "highest points per game ... by a point guard" arrives with
+    the router's own ``player`` slot holding "point guard" - read as the
+    position-group subject, not a name nothing resolves to. Curry ('PG')
+    is the fixture's only point guard; a "with at least 2 games" floor
+    (:func:`_ranking_minimum`) clears his 4 games past the real
+    ``PER_GAME_MIN_GAMES`` default, which he does not reach on his own."""
+    q = move_point(cx_ctx.con, "leaderboard", {"player": "point guard", "stat": "points", "season_type": 2}, "highest points per game this season by a point guard with at least 2 games")
+    assert isinstance(q, Query)
+    assert q.subject == "everyone" and q.position == "PG" and q.minimum_games == 2
+    out = run(cx_ctx.con, q)
+    assert out["rows"][0]["group"] == "Stephen Curry"
+    assert out["rows"][0]["games"] == 4
+    assert out["rows"][0]["points"] == pytest.approx(30.5)  # (35 + 40 + 25 + 22) / 4
+
+
+def test_an_attempts_or_minutes_floor_is_refused_by_name_not_dropped_or_misapplied(cx_ctx: TemplateContext) -> None:
+    """F056's own shape: "... with at least 100 attempts" names a floor the
+    relation has no HAVING clause for yet (only a minimum GAMES count,
+    :data:`~association.query.compose.core.Query.minimum_games`) - refused
+    by name, never silently dropped (which would rank on an unqualified
+    sample) and never misread as a games count (100 attempts is not 100
+    games)."""
+    with pytest.raises(Unsupported, match="100 attempts"):
+        move_point(cx_ctx.con, "leaderboard", {"player": "point guard", "stat": "points", "season_type": 2}, "highest points per game by a point guard with at least 100 attempts")
+
+
+def test_ranking_minimum_reads_the_unit_and_the_number() -> None:
+    """:func:`_ranking_minimum` reads the "at least N <unit>" phrase without
+    committing to what a caller does with it - the unit is read back, not
+    silently coerced to a games count."""
+    assert _ranking_minimum("... with at least 100 attempts") == ("attempts", 100)
+    assert _ranking_minimum("... with at least 20 games") == ("games", 20)
+    assert _ranking_minimum("... this season") is None
+
+
+def test_at_least_does_not_flip_a_highest_ranking_to_ascending() -> None:
+    """The minimum-sample phrase "at least" ("with at least 40 games") is
+    not the ascending word "least" ("the least points") - before this, any
+    "at least N ..." floor silently reversed a "highest ..." ranking's sort
+    order (measured against the real warehouse: a 3-point-percentage
+    leaderboard "with at least 40 games" answered lowest-first)."""
+    assert _asc_or_desc("highest points per game with at least 40 games") == "desc"
+    assert _asc_or_desc("fewest points per game") == "asc"
+    assert _asc_or_desc("lowest 3-point percentage with at least 40 games") == "asc"
+    assert _asc_or_desc("the least points scored") == "asc"
+
+
+# ---------------------------------------------------------------------------
+# #197, the box-score-caveat half: `core.run` now threads the templates' own
+# `_box_score_notes` through - a teammate's absence, the empty lines left
+# out of a count, rebuilt lines, and a career predating box scores.
+# ---------------------------------------------------------------------------
+
+
+def _add_empty_box_score(con: duckdb.DuckDBPyConnection, event: str, season: int, team: str, opponent: str, athlete: str, tip: str) -> None:
+    """A game with a REAL box-score row for ``athlete`` that ESPN served
+    empty - listed (``did_not_play`` False), every stat NULL - the fault
+    `_box_score_notes`' "Not counted" note is about (AGENTS.md, "Whole
+    team-seasons of box scores are empty"). Distinct from `_box(..., dnp=True)`,
+    which is an ordinary did-not-play entry and is excluded from the
+    relation entirely (``Narrowed.base``'s own ``NOT pgl.did_not_play``), so
+    it can never be "not counted" - a real gap in this file's first attempt
+    at this test."""
+    con.execute("INSERT INTO games VALUES (?, ?, 2, ?, ?, ?, ?, ?, ?)", [event, season, tip, team, opponent, 100, 90, team])
+    con.execute(f"INSERT INTO player_box_stats VALUES ({', '.join('?' for _ in range(24))})", (event, season, 2, team, opponent, athlete, False, *([None] * 17)))
+
+
+def test_run_carries_the_not_counted_box_score_note(cx_ctx: TemplateContext) -> None:
+    """A game_log read now says how many of the span's games it left out for
+    an empty box score - ESPN listing Podziemski with no minutes or stats
+    at all, not a did-not-play entry (:func:`_add_empty_box_score`)."""
+    s = current_season()
+    _add_empty_box_score(cx_ctx.con, "g8", s, GS, DET, PODZ, f"{s}-03-15T20:00Z")
+    q = to_query("game_log", {"player": "Brandin Podziemski"})
+    out = run(cx_ctx.con, q)
+    assert any("Not counted: 1 game" in note for note in out["notes"])
+
+
+def test_answer_appends_the_box_score_notes_to_the_sentence(cx_ctx: TemplateContext) -> None:
+    """``answer()`` appends ``out["notes"]`` to the sentence the same way it
+    already appends the coverage caveat, and carries the same list on
+    ``data`` for a caller that reads values rather than the prose."""
+    s = current_season()
+    _add_empty_box_score(cx_ctx.con, "g8", s, GS, DET, PODZ, f"{s}-03-15T20:00Z")
+    result = compose_answer(cx_ctx, "game_log", {"player": "Brandin Podziemski"}, "Podziemski's game log this season")
+    assert result is not None
+    assert "Not counted: 1 game" in result.answer
+    assert any("Not counted: 1 game" in note for note in result.data["notes"])
+
+
+def test_a_career_predating_box_scores_gets_the_floor_note(cx_ctx: TemplateContext) -> None:
+    """A career reaching further back than box scores do (the real 1994
+    floor, `nba.coverage` - not derived from this fixture) says so.
+    Podziemski's `player_season_stats_deduped` row for 1990, added here
+    only, is what makes his earliest season on record predate the floor."""
+    cx_ctx.con.execute("INSERT INTO player_season_stats_deduped VALUES ('10', 1990, 2, 10)")
+    q = to_query("game_log", {"player": "Brandin Podziemski", "span": "career"})
+    out = run(cx_ctx.con, q)
+    assert any("Box scores begin with the 1993-94 season" in note and "1990-1993" in note for note in out["notes"])
+
+
+def test_no_career_floor_note_when_the_season_is_defaulted_not_career(cx_ctx: TemplateContext) -> None:
+    """The floor note is a CAREER note - it says nothing about a plain
+    current-season read, even with the same older row on record."""
+    cx_ctx.con.execute("INSERT INTO player_season_stats_deduped VALUES ('10', 1990, 2, 10)")
+    q = to_query("game_log", {"player": "Brandin Podziemski"})
+    out = run(cx_ctx.con, q)
+    assert not any("Box scores begin with" in note for note in out["notes"])
+
+
+def test_a_scalar_or_grouped_read_carries_no_leaked_rebuilt_shown_column(cx_ctx: TemplateContext) -> None:
+    """The scratch ``rebuilt_shown`` column :func:`~association.query.compose.core._scalar_selects`
+    adds for the box-score notes is popped back off before the rows reach a
+    caller, for a named player (a `scalar` read) and for the league-wide
+    subject (a `grouped` read, which has no box-score notes of its own to
+    read it for at all) alike."""
+    named = run(cx_ctx.con, to_query("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15}))
+    assert "rebuilt_shown" not in named["rows"][0]
+    q = move_point(cx_ctx.con, "other", {}, "top scorers this season")
+    assert isinstance(q, Query)  # no team named in this fixture's own words
+    everyone = run(cx_ctx.con, q)
+    assert "rebuilt_shown" not in everyone["rows"][0]

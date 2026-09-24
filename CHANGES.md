@@ -32,6 +32,85 @@ had no published version to be compatible with.
 - A `period_split` window the question never named is dropped ("each game",
   "games": a filler `limit: 1` printed one row under a whole-season total),
   and an `opponent` that only repeats the `without` list is not an opponent.
+- **`query.compose` now carries the box-score caveats a template's own
+  answer would (#197, ISSUES.md, closing the entry's remaining half - the
+  coverage-floor half was fixed earlier the same week).** A composed
+  answer over box scores never said which teammate's absence it read as
+  "without", how many games it left out for an empty ESPN box score, how
+  many of its games were rebuilt from play-by-play rather than fetched, or
+  that a career predates box scores entirely - all of it
+  `templates.common._box_score_notes`, which the six relation templates
+  already call and `compose` never did. `core.run()` now calls it itself
+  (a named player only - the league-wide subject has no ONE player's career
+  to check a floor against) and returns the result as `notes`, which
+  `answer()` appends to the sentence the same way it already appends the
+  coverage caveat. The scratch `rebuilt_shown` column
+  `core._scalar_selects` adds to compute the rebuilt-line count for a
+  `scalar`/`grouped` read is popped back off before the rows reach a
+  caller, for every subject - a named player's own reads and the
+  league-wide one alike, since it is an internal detail of how the count
+  was gotten, not a value either was asked for. No relation counterpart
+  exists for the team subject (`compose/team.py` reads
+  `games`/`team_season_stats`, never a player's box score), so nothing was
+  added there.
+- **A position word in the router's own `player` slot ("shooting guard") is
+  read as the position-group subject rather than a player name nothing
+  resolves to (F056, ISSUES.md #160).** `query/compose/move.py`'s new
+  `_position_only_player`/`_drop_position_only_player` clears `player` when
+  it holds NOTHING but a position word, before the rest of the module's
+  existing position handling (`_position`, reading the question text) takes
+  over - so "highest 3 point percentage ... by a shooting guard" no longer
+  tries to resolve "shooting guard" as a name. A "with at least N games"
+  phrase now replaces a league ranking's default minimum sample
+  (`_ranking_minimum`); a unit the relation cannot apply as a `HAVING`
+  clause (attempts, minutes) is refused by name rather than silently
+  dropped or misread as a games count. Fixed the same session: "at least"
+  contains the word "least" as a whole word, which flipped a "highest ..."
+  ranking to ascending order whenever a minimum-sample phrase was present -
+  measured against the real warehouse before the fix ("highest 3-point
+  percentage ... with at least 40 games" answered lowest-first) and pinned
+  by a fixture test after it. Warehouse-verified (season 2025, which
+  carries specific position codes - see DATA.md): "highest 3-point
+  percentage in 2025 by a shooting guard with at least 40 games" correctly
+  ranks Alec Burks (42.5%, 49 games) first, descending. Found and recorded,
+  not built here: an attempts floor is still refused (no `HAVING` clause
+  for one yet), and the CURRENT season's roster data mostly lacks specific
+  position codes at all (DATA.md), so a position-group ranking for "this
+  season" alone still returns nothing even once the subject reads
+  correctly.
+- **A composed league-wide `threshold_count` naming SEVERAL "<N> <stat>"
+  lines at once ("33 points and 13 rebounds and 10 assists 2 blocks and 2
+  steals", F161) now lists the games clearing every line, rather than
+  refusing for want of a single line to count.** `query/compose/move.py`'s
+  `_numbered_stat_lines` reads every "<N> <stat>" pair straight out of the
+  question text (the same `MEASURE_WORDS` lookup a single threshold already
+  used), and `_everyone_multi_line_games` answers rows over everyone under
+  all of them as predicates, naming who had each game - not
+  `_everyone_threshold_count`'s per-player COUNT, which still answers a
+  single line exactly as before. Warehouse-verified: over 1994-onward
+  regular-season box scores, exactly 12 games clear 33+ points, 13+
+  rebounds, 10+ assists, 2+ blocks and 2+ steals at once (direct SQL
+  cross-check against the same five columns agrees). Found and filed, not
+  fixed here: a single-line count still falls through when the router's own
+  `stat` already names the phrase's own column (`_everyone_threshold_predicates`'s
+  ranking-measure dedup applies where it should not), reproduced live
+  against `nba.duckdb` (ISSUES.md).
+- **A composed league-wide ranking of a boolean measure ("highest scoring
+  triple doubles") ranks the qualifying GAMES by another measure, rather than
+  counting them (#199, ISSUES.md).** `query/compose/move.py`'s
+  `_everyone_boolean_game_ranking` reads "highest"/"biggest"/"most <stat> in
+  a"/"top" over a boolean predicate (`triple_double`, `double_double`,
+  `fouled_out`) as rows over everyone, ordered by the question's own stat
+  word (points by default), not `_everyone_ranking`'s per-player average -
+  which would have needed `minimum_games` qualifying games just to rank
+  anyone. "Ever"/"all-time" now moves the otherwise-current-season default to
+  a career read (`_everyone_career_slots`), stated because a league-wide read
+  with no season named defaults to the current season. Warehouse-verified:
+  "biggest triple double ever" returns Nikola Jokic's 61-10-10 (2025-04-01 vs
+  Minnesota), the regular-season high the router's own corpus keys against.
+  Reachable only once `leaderboard` itself refuses this framing instead of
+  answering a triple-double COUNT first - the router/template half of #199,
+  not built in this worktree.
 - A composed answer over a closed season range names the range it counted -
   "regular season career (2020-2022)" - where it said "(2020 on)": the count
   already stopped at `until`, so the sentence stated a scope the number did

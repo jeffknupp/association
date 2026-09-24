@@ -637,6 +637,40 @@ the useful half of this entry is what is wrong with it.
 - **Tracked in:** nothing yet; recorded so the next reader does not have to
   re-probe it.
 
+### The current season's roster carries generic position codes, not the specific ones earlier seasons have
+
+- **What ESPN does:** `players.position_abbr` (fetched per athlete, kept as
+  the warehouse's one copy — it is not season-specific in the schema) reads
+  mostly `G`/`F`/`C` for players active in the season in progress, where the
+  same players' specific codes (`SG`, `PG`, `PF`, `SF`) show up for a
+  completed season.
+- **Evidence:** measured 2026-09-24 against `nba.duckdb`, joining
+  `player_game_log` to `players` and grouping by `position_abbr` per
+  season: season 2026 (2025-26, the season in progress today) is `G` 15,350
+  player-games, `F` 12,085, `C` 4,643, and only `PF` 75, `PG` 31, `SF` 4 -
+  the specific guard code `SG` does not appear at all. Season 2025
+  (2024-25, complete) over the same query: `G` 14,408, `F` 11,822, `C`
+  4,662, `SG` 552, `PG` 498, `PF` 357, `SF` 311 - a normal mix. Since
+  `players` carries one row per athlete rather than one per season, this
+  is not "position_abbr is missing for some players" but "the CURRENT
+  value for a player active this season reads generically, and the same
+  row will presumably specialize once ESPN's own roster data catches up" -
+  unverified whether that happens automatically on a later pull or needs
+  one.
+- **Does a refetch fix it?** Unmeasured - a refetch reads whatever ESPN
+  currently serves for each athlete, and whether ESPN's own generic-to-specific
+  transition happens over the season or only between seasons is not known
+  from one snapshot.
+- **How we handle it:** a position-group question ("shooting guards")
+  answered for the CURRENT season under-counts or returns nothing, even
+  though the same players correctly resolve to `SG` a season later; a
+  broader group word (`G`/`F`/`C`) is unaffected. `query.compose.move`'s
+  `POSITION_CODES`-driven position reading (F056) is exact about the code
+  it filters on, so this is a source gap it inherits rather than a bug in
+  the filter itself.
+- **Tracked in:** ISSUES.md, "A position group as the subject has no
+  template, and six corpus questions want one" (#160).
+
 ---
 
 ## Wrong values

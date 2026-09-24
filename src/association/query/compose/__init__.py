@@ -54,6 +54,7 @@ def _point_data(query: Query, out: dict[str, Any]) -> dict[str, Any]:
         "group": query.group,
         "predicates": query.predicates,
         "window": out["window"],
+        "notes": out["notes"],
     }
 
 
@@ -108,6 +109,16 @@ def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: s
        makes the same two calls its own way
        (:func:`~association.query.compose.team.team_coverage_refusal`,
        inside :func:`~association.query.compose.team.run_team`).
+
+    .. versionchanged:: 4.4.0
+       Appends ``out["notes"]`` - the box-score caveats
+       :func:`~association.query.compose.core._box_notes` reads off the
+       ``Narrowed``/player/span :func:`~association.query.compose.core.run`
+       builds internally (#197, ISSUES.md, the box-score-CAVEAT half: the
+       coverage-floor half was fixed first and is a separate call, above).
+       ``TeamQuery`` carries none, since the team relation has no box-score
+       equivalent to check (:mod:`association.query.compose.team` reads
+       ``games``/``team_season_stats``, never a player's box score).
     """
     try:
         query = move_point(ctx.con, intent, slots, question)
@@ -126,4 +137,6 @@ def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: s
     note = coverage_caveat(intent, query.slots)
     if note:
         answer_text += f" {note}"
+    for box_note in out["notes"]:
+        answer_text += f" {box_note}"
     return TemplateResult(data=_point_data(query, out), answer=answer_text, artifacts=[])
