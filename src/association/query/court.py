@@ -200,6 +200,11 @@ def render_court_html(title: str, subtitle: str, shots: list[tuple[Any, ...]]) -
   .legend span {{ display: inline-flex; align-items: center; gap: 6px; }}
   .dot {{ width: 10px; height: 10px; border-radius: 50%; background: var(--make); display: inline-block; }}
   .x {{ width: 10px; height: 10px; display: inline-block; position: relative; }}
+  /* Scale down, never up, to the width available: in the web page's frame on
+     a phone that is about 300px against the court's 500, and a fixed width
+     clipped the court's far side. The viewBox keeps the geometry exact. */
+  svg {{ max-width: 100%; height: auto; }}
+  @media (max-width: 520px) {{ body {{ padding: 12px; }} h1 {{ font-size: 17px; }} }}
 </style>
 </head>
 <body>

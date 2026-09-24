@@ -170,3 +170,21 @@ def test_the_chart_renderers_still_emit_no_scripts() -> None:
     for module in (court, radar):
         source = Path(module.__file__ or "").read_text()
         assert "<script" not in source, f"{module.__name__} now emits a script - the artifact iframe blocks it"
+
+
+def test_the_chart_renderers_scale_down_to_a_phone_sized_frame() -> None:
+    """On a phone the page's chart frame is about 300px wide, and both charts
+    are drawn at a fixed 460-500. With a fixed-width SVG and nothing else, the
+    far side of the court and the right of the fingerprint were clipped
+    (measured in Chromium at 320, 375 and 412px); this rule is what scales
+    them into the frame, the viewBox keeping the geometry exact."""
+    from association.query.court import render_court_html
+    from association.query.radar import Axis, Cell, Series, render_fingerprint_html
+
+    series = [Series("A", [("Total", "+1.0", "50th")], [Axis(label, "scoring", 0.5, "") for label in ("x", "y", "z")])]
+    pages = {
+        "court": render_court_html("T", "s", []),
+        "radar": render_fingerprint_html("T", "s", series, [(1.0, "best")], "note", ["A"], [("x", "scoring", [Cell("1")])]),
+    }
+    for name, page in pages.items():
+        assert "svg { max-width: 100%; height: auto; }" in page, f"the {name} chart no longer scales down to its frame"
