@@ -31,7 +31,7 @@ exactly those tokens.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import duckdb
@@ -583,6 +583,21 @@ def _box_notes(con: duckdb.DuckDBPyConnection, q: Query, c: Compiled, rows: list
     return _box_score_notes(con, c.player, c.span, c.narrowed, career_note=career_note, rebuilt=c.rebuilt, rebuilt_shown=rebuilt_shown)
 
 
+def _grouped_total(con: duckdb.DuckDBPyConnection, q: Query, c: Compiled, rows: list[dict[str, Any]]) -> int | None:
+    """The whole count behind a by-player count that a window cut: "thunder
+    all-time triple doubles" lists ten players and is asked for the 193,
+    not the ten rows' 176. Read by re-running the grouped read with no
+    limit and summing; None for any other point."""
+    if q.skeleton != "grouped" or q.aggregate != "count" or q.group != "player":
+        return None
+    if not q.limit or len(rows) < q.limit:
+        return sum(int(r.get("games") or 0) for r in rows)
+    whole = _compile_grouped(replace(q, limit=None), c.narrowed, c.rebuilt, c.player, c.span)
+    cur = con.execute(whole.sql, whole.params)
+    names = [d[0] for d in cur.description]
+    return sum(int(dict(zip(names, r, strict=True)).get("games") or 0) for r in cur.fetchall())
+
+
 def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
     """Compile and execute: rows as dicts, with what the relation settled.
 
@@ -603,6 +618,7 @@ def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
     notes = _box_notes(con, q, c, rows)
     return {
         "rows": rows,
+        "total": _grouped_total(con, q, c, rows),
         "player": c.player.name if c.player else _everyone_label(q.position),
         "span": c.span,
         "narrowing": c.narrowed.filters(windowed=True),

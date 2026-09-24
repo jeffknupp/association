@@ -171,6 +171,12 @@ def _grouped_sentence(q: Query, out: dict[str, Any]) -> str:
             cells.append(f"{r.get('wins')}-{r.get('losses')}")
         cells += [f"{LABELS.get(m, m)} {_fmt(r.get(m), m)}" for m in q.measures]
         lines.append(f"  {r['group']!s:24s} " + "  ".join(cells))
+    if q.aggregate == "count" and q.group == "player" and len(rows) > 1 and out.get("total") is not None:
+        # A count by player is usually asked for its total too ("thunder
+        # all-time triple doubles": 193, then who had them) - the whole
+        # count, not the listed rows' (core._grouped_total).
+        listed = " listed" if out["total"] != sum(int(r.get("games") or 0) for r in rows) else ""
+        lines.append(f"  {'Total':24s} {out['total']} G" + (f" ({len(rows)} players{listed} of more)" if listed else ""))
     return head + ":\n" + "\n".join(lines)
 
 

@@ -17,7 +17,7 @@ from typing import Any
 
 import duckdb
 
-from association.query.entities import players_named_in
+from association.query.entities import find_players, find_teams, players_named_in
 from association.query.measures import MEASURE_WORDS
 from association.query.metrics import PER_GAME_MIN_GAMES
 from association.query.templates.common import TemplateResult
@@ -198,6 +198,27 @@ def _position_only_player(slots: dict[str, Any]) -> str | None:
         if re.fullmatch(pattern, stripped, re.I):
             return code
     return None
+
+
+def _drop_filler_or_team_player(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> dict[str, Any]:
+    """``slots`` with ``player`` cleared when it holds the router's own
+    filler word ("player", filed on "Most points in 15th season played" -
+    yardstick-v2 F099), or a TEAM's name and no player's ("oklahoma city
+    thunder all-time triple doubles" - F152), which becomes the ``team``
+    narrowing of a league-wide read: the team's players' games. A name
+    matching a player is left alone; a name matching neither is left for
+    the relation to refuse by name.
+
+    .. versionadded:: 4.4.0
+    """
+    text = slots.get("player")
+    if not (isinstance(text, str) and text.strip()):
+        return slots
+    if text.strip().lower() in ("player", "players", "a player", "any player"):
+        return {**slots, "player": None}
+    if not slots.get("team") and find_teams(con, text) and not find_players(con, text):
+        return {**slots, "player": None, "team": text}
+    return slots
 
 
 def _drop_position_only_player(slots: dict[str, Any]) -> dict[str, Any]:
@@ -439,7 +460,10 @@ def _everyone_threshold_count(intent: str, slots: dict[str, Any], predicates: li
     """A league-wide count: who had games clearing the line(s). Without a
     line to count there is nothing to rank - refused, never turned into a
     per-game ranking."""
-    if intent != "threshold_count":
+    if intent != "threshold_count" and not (predicates and slots.get("team")):
+        # A TEAM's players' boolean games ("thunder all-time triple doubles",
+        # yardstick-v2 F152) is this count too, whatever intent the router
+        # filed - the team narrows the league read to its roster's games.
         return None
     if not predicates:
         raise Unsupported("a league-wide count needs the line(s) it counts; none could be read from the question")
@@ -733,6 +757,7 @@ def move_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any
        position-group subject it is.
     """
     slots = _drop_position_only_player(slots)
+    slots = _drop_filler_or_team_player(con, slots)
     if not _named_player(slots):
         team_query = team_move_point(con, slots, question)
         if team_query is not None:

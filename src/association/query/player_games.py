@@ -230,6 +230,9 @@ class Narrowed:
     #: Boston" averages the five Boston games - step 3's one rule that is
     #: about the skeleton rather than the rows.
     window: tuple[str, int] | None = None
+    #: The ordinal season a league-wide read was narrowed to - each player's
+    #: Nth regular season ("most points in a 15th season") - or None.
+    ordinal: int | None = None
     #: The calendar narrowing a ``situation`` slot named - a weekday, a month,
     #: a fixed day, every game from a day of the season on - or None.
     calendar: CalendarNarrowing | None = None
@@ -274,6 +277,16 @@ class Narrowed:
             return self.alignment.label
         return None
 
+    def _ordinal_parts(self) -> list[str]:
+        """``["in their 15th season"]`` for a league read narrowed to each
+        player's Nth season, else nothing - a list so :meth:`filters` adds no
+        branch for it."""
+        if self.ordinal is None:
+            return []
+        n = self.ordinal
+        suffix = "th" if 11 <= n % 100 <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")  # codespell:ignore nd - an ordinal suffix
+        return [f"in their {n}{suffix} season"]
+
     def filters(self, *, dated: bool = True, windowed: bool = False) -> str:
         """What the games were narrowed to, as it follows a name: ``" vs the
         Detroit Pistons at home"``.
@@ -309,6 +322,7 @@ class Narrowed:
             parts.append(f"without {_joined([mate.name for mate in self.without])}")
         if self.measures:
             parts.append(f"with {_joined(self.measures)}")
+        parts.extend(self._ordinal_parts())
         if self.series_game is not None:
             # "of the series" only where one series is in view: an opponent
             # names it. Across a postseason it is game 4 of each series.

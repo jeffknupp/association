@@ -270,6 +270,9 @@ def _agent_with_players(tmp_path: Path, *names: str) -> Agent:
     db_path = tmp_path / "test.duckdb"
     con = duckdb.connect(str(db_path))
     con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    # An empty teams table too: the compiler asks whether a name in the
+    # player slot is a team's before it resolves it as a player's.
+    con.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
     for i, name in enumerate(names):
         con.execute("INSERT INTO players VALUES (?, ?)", [str(i), name])
     con.close()

@@ -1773,11 +1773,25 @@ def league_games(con: duckdb.DuckDBPyConnection, span: _Span, slots: dict[str, A
         team = _resolved_team(con, team_text, season=span.season)
         if isinstance(team, TemplateResult):
             return team
+        narrowed.team = team
         narrowed.narrow("pgl.team_id = ?", team.id)
     if slots.get("venue") in ("home", "away"):
         narrowed.venue = slots["venue"]
         narrowed.narrow("(g.home_team_id = pgl.team_id) = ?", slots["venue"] == "home")
     narrow_measures(narrowed, measure_filters(slots.get("below"), slots.get("above")))
+    season_n = slots.get("season_n")
+    if isinstance(season_n, int) and season_n > 0 and not isinstance(season_n, bool):
+        # Each player's Nth regular season, counted the way settle_ordinal_season
+        # counts one player's: distinct regular seasons on the per-player season
+        # table, in order. "Most points in 15th season played" (yardstick-v2
+        # F099) is every player's own 15th season, not the 15th season on
+        # record.
+        narrowed.narrow(
+            "pgl.season = (SELECT s.season FROM (SELECT athlete_id, season, ROW_NUMBER() OVER (PARTITION BY athlete_id ORDER BY season) AS n "
+            "FROM (SELECT DISTINCT athlete_id, season FROM player_season_stats_deduped WHERE season_type = 2)) s WHERE s.athlete_id = pgl.athlete_id AND s.n = ?)",
+            season_n,
+        )
+        narrowed.ordinal = season_n
     situation = slots.get("situation")
     if situation:
         _apply_situation(narrowed, situation)

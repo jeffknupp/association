@@ -916,3 +916,32 @@ def test_a_ranked_by_marker_is_the_compilers_own_slot_not_an_unhonored_one(cx_ct
     # players' games is asked for.
     assert result.data["rows"][0]["player"] == "Brandin Podziemski"
     assert "Brandin Podziemski" in result.answer
+
+
+def test_an_ordinal_season_over_everyone_is_each_players_own(cx_ctx: TemplateContext) -> None:
+    """yardstick-v2 F099 "Most points in 15th season played": the router's
+    filler `player: "player"` is dropped, and `season_n` over everyone is
+    each player's Nth regular season - every fixture player's 1st is s-1 and
+    2nd is s, so the top single game moves from Brown's 26 (g6, s-1) to
+    Curry's 40 (g3, s), and the sentence names the ordinal."""
+    first = compose_answer(cx_ctx, "single_game_high", {"player": "player", "stat": "points", "season_n": 1, "span": "career"}, "most points in a game in 1st season played")
+    second = compose_answer(cx_ctx, "single_game_high", {"player": "player", "stat": "points", "season_n": 2, "span": "career"}, "most points in a game in 2nd season played")
+    assert first is not None and second is not None
+    assert first.data["rows"][0]["points"] == 26 and first.data["rows"][0]["player"] == "Jaylen Brown"
+    assert second.data["rows"][0]["points"] == 40 and second.data["rows"][0]["player"] == "Stephen Curry"
+    assert "in their 2nd season" in second.answer
+
+
+def test_a_team_in_the_player_slot_is_the_teams_players_games(cx_ctx: TemplateContext) -> None:
+    """yardstick-v2 F152 "oklahoma city thunder all-time triple doubles":
+    a team's name where a player's belongs is the `team` narrowing of a
+    league-wide read - the Warriors' players' triple-doubles are
+    Podziemski's one (g3, 28/10/11)."""
+    result = compose_answer(cx_ctx, "threshold_count", {"player": "Golden State Warriors", "stat": "triple_double", "span": "career"}, "golden state warriors all-time triple doubles")
+    assert result is not None
+    assert "Golden State Warriors" in result.answer
+    assert result.data["rows"][0]["games"] == 1
+    # The router files player_stat for the live wording; the team makes it
+    # the same count.
+    as_stat = compose_answer(cx_ctx, "player_stat", {"player": "Golden State Warriors", "span": "career"}, "golden state warriors all-time triple doubles")
+    assert as_stat is not None and as_stat.data["rows"][0]["games"] == 1
