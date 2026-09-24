@@ -1047,6 +1047,26 @@ def test_a_split_is_read_for_every_intent_so_others_can_refuse_it() -> None:
     assert got.slots["split"] == "starter_bench"
 
 
+def test_a_player_beside_a_team_in_players_is_a_players_half_against_that_team() -> None:
+    """yardstick-v2 F059, the model's reply as recorded: "Kd vs clippers 2h
+    at home gamelog" filed Durant and the Clippers together in `players`
+    with no `player`, so the team's-half branch took it and
+    team_quarter_points refused for naming a player. The pair is the player
+    and his opponent, and a named player's half is period_split."""
+    got = _asking(
+        '{"intent":"team_quarter_points","stat":"points","players":["Kevin Durant","Los Angeles Clippers"],"fields":["points","assists","rebounds"],'
+        '"team":"clippers","half":2,"season_type":2,"venue":"home"}',
+        "Kd vs clippers 2h at home gamelog",
+    )
+    assert got.intent == "period_split"
+    assert got.slots["player"] == "Kevin Durant" and got.slots["opponent"] == "Los Angeles Clippers"
+    assert got.slots["half"] == 2 and got.slots["venue"] == "home" and got.slots["per_game"] is True
+    assert "players" not in got.slots and "team" not in got.slots
+    # With no "vs", a team in the list is not read as an opponent.
+    unchanged = _asking('{"intent":"team_quarter_points","players":["Kevin Durant","Los Angeles Clippers"],"half":2}', "kd clippers 2h")
+    assert unchanged.slots.get("players") == ["Kevin Durant", "Los Angeles Clippers"]
+
+
 def test_best_nba_record_with_no_team_is_the_team_leaderboard() -> None:
     """yardstick-v2 F104, the model's reply as recorded: "Best NBA record
     since January 31st 201" came back as team_record with no team and fell

@@ -1819,6 +1819,8 @@ def _route_period_intents(raw: dict[str, Any], question: str) -> None:
         # behavior: slots are kept, because the agent sees the conversation
         # rather than the Route, and the log line shows what the model thought.
         asked = _period_asked(question)
+        if asked is not None:
+            _route_period_intents_player_beside_team(raw, question)
         # No second `_is_team_quarter_points` check: it means "this intent, and
         # NO player", so it can never be true here where a player is named. The
         # team's own quarter is already exempted by the outer condition.
@@ -1853,6 +1855,39 @@ def _route_period_intents(raw: dict[str, Any], question: str) -> None:
             _route_period_split_slots(raw, question, subject)
         else:
             raw["intent"] = "other"
+
+
+def _route_period_intents_player_beside_team(raw: dict[str, Any], question: str) -> None:
+    """A player and a team in ``players``, on a "vs" question, are the
+    player and his opponent.
+
+    yardstick-v2 F059: "Kd vs clippers 2h at home gamelog" arrived with
+    ``players: ['Kevin Durant', 'Los Angeles Clippers']``, no ``player`` and
+    ``team: 'clippers'``, so :func:`_route_period_intents` saw no named
+    player and took the team's-half branch - team_quarter_points, which
+    refused for naming a player. A named player's half is ``period_split``;
+    the team beside him in the list is who he played. Only an exact pair
+    (one player, one team, per :func:`_is_team_name`) on a question that
+    says "vs"/"against", and only where the model filed no ``player`` - so a
+    real two-player list, or a team with no versus word, is left alone. A
+    ``team`` slot naming that same opponent goes too: it is the opponent
+    filed twice, not the player's own team."""
+    if isinstance(raw.get("player"), str) and raw["player"].strip():
+        return
+    listed = raw.get("players")
+    if not isinstance(listed, list) or len(listed) != 2 or not all(isinstance(name, str) and name.strip() for name in listed) or not _VERSUS_WORDS.search(question):
+        return
+    teams = [name for name in listed if _is_team_name(name)]
+    if len(teams) != 1:
+        return
+    opponent = teams[0]
+    raw["player"] = next(name for name in listed if name != opponent)
+    raw.pop("players", None)
+    team_slot = raw.get("team")
+    if isinstance(team_slot, str) and set(team_slot.lower().split()) & set(opponent.lower().split()):
+        raw.pop("team", None)
+    if not (isinstance(raw.get("opponent"), str) and raw["opponent"].strip()):
+        raw["opponent"] = opponent
 
 
 def _team_slot_or_word(raw: dict[str, Any], low: str) -> bool:

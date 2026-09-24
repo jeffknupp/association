@@ -499,6 +499,9 @@ CASES: list[tuple[str, str, dict]] = [
     # yardstick-v2 F104: "best NBA record" with no team is the league's
     # ranking, whatever the model filed; the truncated "201" names no season.
     ("Best NBA record since January 31st 201", "team_leaderboard", {"rank": "best", "situation": "since january 31st"}),
+    # yardstick-v2 F059: a player and a team together in `players`, on a "vs"
+    # question, are the player and his opponent - a named player's half.
+    ("Kd vs clippers 2h at home gamelog", "period_split", {"player": "Kevin Durant", "half": 2, "venue": "home", "opponent": frozenset({"Los Angeles Clippers", "LA Clippers"})}),
 ]
 
 

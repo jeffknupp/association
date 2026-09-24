@@ -16,6 +16,7 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- "Kd vs clippers 2h at home gamelog" is Durant's second halves against the Clippers at home (`period_split`), not the Clippers' own half: a player and a team filed together in `players` on a "vs" question are read as the player and his opponent.
 - "Best NBA record" (or "best league record") with no team named routes to `team_leaderboard`, as "best record" already did - "Best NBA record since January 31st 201" came back as `team_record` with no team and fell through.
 - A team-only question naming one player and a team the question never mentions is refused by the player's name: "towns home rec including playoffs since 1/26/20 vs spurs" routed `team_record` with an invented `team='Toronto Raptors'` and would have answered the Raptors' record. A real team counts only when the question holds a trace of it.
 - "bam adebayo career games in the month of march" is his game log in March (118 games) rather than a fall-through: a `threshold_count` over the line 0 on the stat "games" is `game_log`, with the subject restored, and "in the month of <month>" is read as the month like "in <month>".
