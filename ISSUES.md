@@ -3069,6 +3069,49 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
+### The web UI's note feature learns an answer's history file by parsing a trace line, not by reading it off `Answer`
+- **Found:** 2026-09-24, adding `POST /api/notes` (annotating an answer,
+  saved into its own history file).
+- **Evidence:** `association.query.agent.Agent.ask` (`query/agent.py`, out of
+  this task's ownership) never returns the history file it wrote - it only
+  names it in its `finally` block, as one exact trace line:
+  `f"[history] {path}  {history.summary_line()}"`. `AnswerResponse.history_file`,
+  the field the page needs to attach a note to an answer, has no other source
+  than that line, so `association.web.runner._ask_history_file`
+  (`src/association/web/runner.py`) matches it with a regex
+  (`_HISTORY_TRACE_LINE`) inside the wrapped trace sink `AgentRunner.ask`
+  installs. This is exactly the shape `AGENTS.md` ("Working on the web path")
+  warns against elsewhere ("do not parse trace lines back into structured
+  fields") - here it is unavoidable without editing `query/agent.py` or
+  `query/answer.py`, both explicitly out of this task's scope, so the answer
+  event still carries `history_file` as a real value rather than the page
+  parsing prose, but the *server-side* extraction is coupled to one literal
+  f-string in a file this change could not touch.
+  `tests/web/test_app.py::test_agent_runner_reads_the_history_file_off_the_traces_own_history_line`
+  pins the exact string and was watched to fail (perturbing the regex) - but
+  it exercises a fake `Agent`-shaped stub, not the real one, so it cannot
+  catch a change to `agent.py`'s own f-string; nothing in the suite currently
+  does, because that file is out of this task's scope and its own tests
+  (`tests/query/test_agent.py`) are not this task's to extend either.
+- **User sees:** nothing today - the coupling holds, proven by
+  `scripts/check_web_ui.py`'s Playwright run against the real page script and
+  the offline test above against the real trace-line format. It would degrade
+  silently rather than error if `agent.py`'s `f"[history] {path} ..."` line
+  ever changed shape: `_ask_history_file` would quietly return None for every
+  question, `AnswerResponse.history_file` would go null, and the note control
+  would simply stop appearing under every answer - no crash, no failing test
+  outside `runner.py`'s own fixture-based one.
+- **Next step:** the durable fix is for `Agent.ask` to return the history
+  path it already computes (or a small wrapper carrying it) directly, the way
+  `AgentRunner.Answered` now does for the web layer - removing the trace-line
+  parse entirely. That is a `query/agent.py` / `query/answer.py` change,
+  outside this task's ownership; whoever next touches either file should
+  fold it in and delete `_HISTORY_TRACE_LINE` / `_ask_history_file`
+  (`src/association/web/runner.py`) in the same change. Until then, a
+  regression here would surface only as a support report ("the note button
+  never shows up") or by rerunning `scripts/check_web_ui.py`, not by a gate.
+- **Source:** ours, not ESPN's.
+
 ### `team_alignment` is not declared in every `TEMPLATE_SOURCES` tuple that can now read it
 - **Found:** 2026-09-24, landing the K3-2 conference/division narrowing.
 - **Evidence:** `situation` reaching `Narrowed.narrow_alignment`/
