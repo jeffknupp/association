@@ -30,6 +30,7 @@ from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .keepalive import KEEP_ALIVE
 from .models import AGENT_BUDGET_SECONDS, DEFAULT_ROUTER_MODEL
 from .prompt import AGENT_NUM_CTX, TOOLS, build_system_prompt
+from .refusals import unanswerable
 from .router import Route, RouterUnavailable, route
 from .templates import TEMPLATES
 from .templates.common import (
@@ -436,6 +437,14 @@ class Agent:
                 history.record_tool_call(f"compose {routed.intent}", time.monotonic() - t1)
                 history.log(f"  -> (template) {exc} - composed instead of falling through")
                 return routed.intent, composed
+            # Then, before the slow agent: is this a shape nothing here can
+            # read - a playoff round, an age, a stat by quarter other than
+            # points? The agent has no better source for those either, and a
+            # refusal naming the missing thing is the answer (query/refusals).
+            refusal = unanswerable(self.toolbox.con, routed.intent, routed.slots, question)
+            if refusal is not None:
+                history.log(f"  -> (template) {exc} - refused ({refusal.data['refused']}): nothing here reads that shape")
+                return routed.intent, refusal
             history.log(f"  -> (template) {exc} - falling through to the agent")
             self.fell_through = f"{routed.intent}: {exc}"
             return None

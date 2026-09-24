@@ -144,6 +144,17 @@ CASES: list[tuple[str, str, dict]] = [
     # past what this script exercises; see tests/query/test_templates.py for
     # that half.
     ("zach collins first quarter stats last 5 games as a starter", "period_split", {"player": "Zach Collins", "period": 1, "split": "starter", "limit": 5}),
+    # yardstick-v2 F058/F060: "each game"/"games" names no window - the
+    # model's filler limit 1 (and the order beside it) is dropped by
+    # router._route_period_window; "last 5 games" above keeps its 5.
+    ("harrison barnes 1st quarter stats each game vs magic", "period_split", {"player": "Harrison Barnes", "opponent": "Orlando Magic", "period": 1, "limit": None, "order": None}),
+    ("Rudy gobert first half games this season", "period_split", {"player": "Rudy Gobert", "half": 1, "limit": None, "order": None}),
+    # yardstick-v2 F087: a team's record when a player reaches a number is
+    # record_when whatever the model files (router._WHEN_REACHES).
+    ("show me stats for sixers when maxey scored 20+ points", "record_when", {"threshold": 20}),
+    # yardstick-v2 F158: the without list repeated as the opponent is dropped
+    # (router._route_opponent_named_as_teammates).
+    ("bane game log without anthony black and franz wagner this season", "game_log", {"without": ["anthony black", "franz wagner"], "opponent": None}),
     # A TEAM's (not a player's) quarter score IS ported - templates.team_quarter_points
     # reads it straight from games.home_linescores/away_linescores, no plays table
     # needed. Confirmed live: before this template and its router exemption existed,

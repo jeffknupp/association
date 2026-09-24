@@ -1018,3 +1018,27 @@ def test_giving_up_names_what_the_fast_path_could_not_answer(monkeypatch: pytest
     agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history", budget_seconds=0)
     answer = agent.ask("who had the most triple-doubles?")
     assert "No template answered it either: intent 'other' has no template yet" in answer.text
+
+
+def test_a_shape_nothing_reads_is_refused_before_the_agent_is_asked(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """After the template refuses and the compiler declines, a shape the
+    agent has no better source for (association.query.refusals) is refused
+    with its cause as a fast answer - the agent is never asked. A playoff
+    round is the worked case: no template honors the slot, and the games
+    carry no round label."""
+    from association.query.router import Route
+
+    def chat_must_not_run(**kw: Any) -> None:
+        raise AssertionError("the agent must not be asked - the shape is one nothing here reads")
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="game_log", slots={"team": "NBA Finals", "season": 2025, "season_type": 3, "round": "finals"}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"game_log": _refusing_template})
+    monkeypatch.setattr("association.query.compose.answer", lambda *a, **k: None)
+    monkeypatch.setattr(ollama, "chat", chat_must_not_run)
+
+    agent = _agent_with_players(tmp_path, "Joel Embiid")
+    answer = agent.ask("nba finals game log 2025")
+
+    assert "not labeled by playoff round" in answer.text
+    assert answer.answered_by == "fast"
+    assert agent.fell_through is None

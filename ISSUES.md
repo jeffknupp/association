@@ -98,36 +98,6 @@ before that commit needs re-checking against the current warehouse.
   boolean-measure point next.
 - **GitHub:** #199
 
-### A position group as the subject is dropped and the team's own log answers: "Centers stats game log vs kings" lists the Kings' last five games
-- **Found:** 2026-09-22, the skeleton spike's K3 run (`~/association-research/skeleton-spike/k3_run.py`)
-  re-running `live_c5.jsonl`'s fall-throughs on master `5279f7c`.
-- **Evidence:** the router files the question as `game_log {'stat': 'all',
-  'team': 'Kings', 'order': 'recent', 'limit': 5, 'span': 'career', ...}` -
-  "Centers" reaches no slot - and `game_log`'s team half answers "Sacramento
-  Kings, last 5 games (all-time, 2026 regular season) (2-3): ..." (reproduced
-  by a direct call with those slots). The blind key: 137 rows, every center's
-  line against the Kings this season. "forwards with 20+ mins vs gsw log"
-  is the same shape (there the router filed "forwards" as the `opponent`,
-  which refuses). `players.position_abbr` carries C/F/G and the specific
-  codes for every player, so the subject is readable.
-- **User sees:** today, a refusal naming a team that does not exist - the
-  live run's `no team matching 'Los Angeles Kings'`, the router's own
-  completion of "Kings" applied after the trace above was written - and, the
-  moment "Kings" resolves to Sacramento (a direct call with the traced slots,
-  or a question that spells the city), a fluent answer about the wrong
-  subject: the team's results where the question asked about a group of
-  players against that team. Both are the position word being dropped.
-- **Next step:** a position word in the question with no player is a
-  subject the templates cannot take today: refuse it by name (a
-  `PLAYER_INTENTS`-style check in `route()`, reading the words "centers",
-  "forwards", "guards" and the five specific positions), rather than let a
-  `team` slot beside it answer. The reading itself is one narrowing on the
-  league-wide relation read (`player_games.league()` + `position_abbr IN
-  (...)`), which the spike's compiler answers in K2b - a candidate for the
-  first composed shape to land.
-- **Source:** ours.
-- **GitHub:** #196
-
 ### The agent fall-through answers 1 question in 23, and does not finish 61% of the time
 - **Found:** 2026-09-18, the first measurement of the agent path in this project
 - **Evidence:** 24 questions stratified across the four fall-through causes, run
@@ -1003,7 +973,7 @@ those were found.
 - **Source:** DATA.md, "`games` carries placeholder, duplicate and phantom rows"
 - **GitHub:** #73
 
-### A named playoff round falls through to the agent, which has no better source
+### A named playoff round is refused - the games carry no round label, and the Finals are derivable
 - **Found:** 2026-09-11, repo audit; **re-measured 2026-09-18** over the
   2,285-question large StatMuse set (`~/association-research/statmuse-2026-09-large/`):
   **124 of 2,285 (5.4%) mention the Finals in some form**, and a read of a
@@ -1033,6 +1003,12 @@ those were found.
   the other rounds to refusing all of them. Evidence:
   `~/association-research/statmuse-2026-09-large/live_sample200_2026-09-21/`.
 - **GitHub:** #10
+- **Re-measured 2026-09-24:** the fall-through half is fixed - `round` is
+  now refused fast, naming the missing label and the repair (the two teams
+  and the season), by `association.query.refusals` after the template and
+  the compiler both decline; "nba finals game log 2025" no longer reaches
+  the agent. What remains is the derivation above: rounds from series order,
+  the Finals first.
 
 ### The NBA Cup final is counted as a regular-season game in most answers
 - **Found:** 2026-09-11, transcript review; verified in the issues audit
@@ -1602,28 +1578,6 @@ those were found.
 - **Next step:** let `player_compare` honor `opponent` by building each
   player's line through `_narrow_player_games`.
 - **GitHub:** #34
-
-### A `situation` naming no calendar still falls through to the slow agent
-- **Found:** 2026-09-18, reading the StatMuse audit; narrowed 2026-09-22 when
-  the player-games relation began honoring the calendar shapes (step 3, K3),
-  and again 2026-09-23 when the team relation did (`TeamNarrowed.narrow_calendar`,
-  applied in `team_games`, declared in `TEAM_RELATION_SCOPING`).
-- **Evidence:** `query/calendar.py` reads a weekday, a month, a fixed-date
-  holiday and "since <day>", and both relations answer them now ("jamal
-  murray career games on Tuesdays", "knicks record on christmas"). What
-  remains: a `situation` naming no calendar (an age: "18 year old", "before
-  turning 27"; a conference or division; "since returning") is refused by
-  value with `TemplateUnsupported`, which `agent.py` turns into a fall-through
-  to the SQL-writing agent - ~55 seconds to an answer the system already
-  knows it cannot give. Across every recorded corpus the slot takes 19
-  distinct values; 11 are calendar shapes, 8 are not.
-- **User sees:** an age or conference question answered slowly by the agent,
-  from its own weights.
-- **Next step:** for the non-calendar values, a refusal returned rather than
-  raised, the way `check_coverage` does it: the agent has no column for an
-  age or a division either.
-- **Source:** ours.
-- **GitHub:** #120
 
 ### A team is the real subject of a question routed to a player-only template
 - **Found:** 2026-09-18, entity-resolution pass over the StatMuse replay set
@@ -2733,6 +2687,13 @@ those were found.
   question about "guards" means G, SG and PG together, and getting that wrong
   silently answers a narrower question.
 - **GitHub:** #160
+- **Re-measured 2026-09-24:** the compiler reads a position group as its
+  subject now (`compose.move._position`, "every center vs the Sacramento
+  Kings" - yardstick-v2 F153/F154 graded correct on the live sweep run),
+  reached when the template refuses; a `player` slot holding only a
+  position word is the compose agent's next step (F056). Left open for the
+  corpus questions that route to a template which answers the team's own
+  numbers without refusing.
 
 ### A team's per-quarter average of anything but points has no source
 - **Found:** 2026-09-20, finishing the quarters-and-halves work

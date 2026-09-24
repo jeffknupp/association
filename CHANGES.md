@@ -16,6 +16,21 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- What nothing here can answer is refused fast, with its cause, instead of
+  handed to the slow agent: `association.query.refusals` is the step after
+  the template and the compiler both decline - a playoff round (the games
+  carry no round label), an age (no birth dates on record), a conference or
+  division (in the standings, not yet read), a stat other than points by
+  quarter, a game log "vs" another player, a team where a player belongs.
+  Measured on the yardstick's fall-throughs, each took 30-120 seconds to
+  reach an agent answer that was wrong or never came.
+- "Stats for the sixers when maxey scored 20+ points" is the team's record
+  under the condition (`record_when`), not the player's own average - two
+  readers agree before the intent moves; and "for <team>" is a player's
+  tenure only when the player is named before it.
+- A `period_split` window the question never named is dropped ("each game",
+  "games": a filler `limit: 1` printed one row under a whole-season total),
+  and an `opponent` that only repeats the `without` list is not an opponent.
 - A composed answer over a closed season range names the range it counted -
   "regular season career (2020-2022)" - where it said "(2020 on)": the count
   already stopped at `until`, so the sentence stated a scope the number did

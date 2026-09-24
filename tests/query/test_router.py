@@ -2318,3 +2318,42 @@ def test_a_record_when_a_player_reaches_a_number_keeps_its_intent() -> None:
     that names one is untouched however the players are worded."""
     got = _ask("Sixers record when Embiid scores 30 points this season", '{"intent":"record_when","stat":"points","threshold":30,"team":"Philadelphia 76ers","season":2026}')
     assert got.intent == "record_when" and got.slots["threshold"] == 30 and "with_player" not in got.slots
+
+
+def test_a_teams_record_when_a_player_reaches_a_number_is_record_when() -> None:
+    """yardstick-v2 F087 "show me stats for sixers when maxey scored 20+
+    points": the model files player_stat (Maxey's own average) where the
+    team's record under the condition was asked. Two readers agree before it
+    moves - "when <someone> scored" and a threshold in the text."""
+    got = _asking('{"intent":"player_stat","stat":"points","player":"Maxey","season":2026}', "show me stats for sixers when maxey scored 20+ points")
+    assert got.intent == "record_when"
+    assert got.slots["threshold"] == 20
+    # No "when <someone> scores" clause: the intent the model chose stands.
+    stays = _asking('{"intent":"player_stat","stat":"points","player":"Maxey","season":2026}', "maxey stats in games with 20+ points")
+    assert stays.intent == "player_stat"
+
+
+def test_a_period_split_window_the_question_never_named_is_dropped() -> None:
+    """yardstick-v2 F058/F060: "each game" and "games" questions arrived
+    with a filler limit of 1 (and an order), and period_split printed one
+    row under a whole-season total. The period's own ordinal is not a
+    window: "first half games" keeps no limit, "last 5 games" keeps its 5."""
+    each = _asking('{"intent":"period_split","player":"Harrison Barnes","opponent":"Orlando Magic","order":"recent","limit":1,"period":1}', "harrison barnes 1st quarter stats each game vs magic")
+    assert "limit" not in each.slots and "order" not in each.slots
+    games = _asking('{"intent":"period_split","player":"Rudy Gobert","order":"recent","limit":1,"half":1}', "Rudy gobert first half games this season")
+    assert "limit" not in games.slots and "order" not in games.slots
+    last5 = _asking('{"intent":"period_split","player":"Zach Collins","order":"recent","limit":5,"period":1,"split":"starter"}', "zach collins first quarter stats last 5 games as a starter")
+    assert last5.slots["limit"] == 5 and last5.slots["order"] == "recent"
+
+
+def test_an_opponent_that_is_the_without_list_is_dropped() -> None:
+    """yardstick-v2 F158: the teammates named after "without" came back as
+    the `opponent` too, and a log against no team fell through. A real team
+    beside the without list is kept."""
+    got = _asking(
+        '{"intent":"game_log","stat":"minutes","player":"Bane","opponent":"Anthony Black, Franz Wagner","limit":10,"season":2026}', "bane game log without anthony black and franz wagner this season"
+    )
+    assert got.slots["without"] == ["anthony black", "franz wagner"]
+    assert "opponent" not in got.slots
+    kept = _asking('{"intent":"game_log","stat":"minutes","player":"Bane","opponent":"Boston Celtics","limit":10,"season":2026}', "bane game log vs boston without franz wagner this season")
+    assert kept.slots["opponent"] == "Boston Celtics"

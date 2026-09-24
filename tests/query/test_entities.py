@@ -1549,3 +1549,17 @@ def test_a_player_swapped_into_the_opponent_slot_is_replaced_by_the_questions_te
     slots: dict[str, Any] = {"player": "Andrew Wiggins", "opponent": "Andrew Wiggins"}
     scope_from_question(franchises, "andrew wiggins last 15 games vs warriors", slots, reads_player=True)
     assert slots["opponent"] == "Golden State Warriors"
+
+
+def test_a_team_named_before_the_player_is_not_his_tenure(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """yardstick-v2 F087 "show me stats for sixers when maxey scored 20+
+    points": the team is the subject and the player follows as a condition,
+    so "for sixers" is not his tenure with them - the own-team reading needs
+    the player named BEFORE the "for <team>" phrase, the order a tenure is
+    asked in ("lebron ... for Miami")."""
+    slots: dict[str, Any] = {"player": "Alperen Sengun", "stat": "points", "season": 2026}
+    scope_from_question(scope_con, "show me stats for the celtics when sengun scored 20+ points", slots, reads_player=True, restore_team=True)
+    assert "own_team" not in slots
+    tenure: dict[str, Any] = {"player": "Alperen Sengun", "stat": "points", "season": 2026}
+    scope_from_question(scope_con, "sengun stats as a starter for the celtics", tenure, reads_player=True, restore_team=True)
+    assert tenure["own_team"] == "Boston Celtics"

@@ -1075,6 +1075,14 @@ _TEAM_SUBJECT = re.compile(
     re.IGNORECASE,
 )
 _PLAYER_RANKING_INTENTS = frozenset({"leaderboard", "single_game_high", "threshold_count"})
+#: Intents the model files for a "<team> when <player> reaches N" question,
+#: each of which would answer the player's own line instead of the team's
+#: record under the condition.
+_WHEN_REACHES_REROUTABLE = frozenset({"player_stat", "threshold_count", "game_log", "team_stat", "team_record", "other"})
+_WHEN_REACHES = re.compile(
+    r"\bwhen\s+(?:[a-z][\w'.-]*\s+){1,3}?(?:scores?|scored|has|had|gets?|got|puts?\s+up|drops?|dropped|grabs?|grabbed|dishes|dished|records?|recorded|makes?|made|hits?)\b",
+    re.IGNORECASE,
+)
 
 # A fingerprint is one named artifact, and a question that never names it is not
 # asking for one. Measured: "Plot Curry's threes from last season" came back as
@@ -1789,6 +1797,14 @@ def _route_team_and_player_intents(raw: dict[str, Any], question: str) -> None:
         raw["intent"] = "team_leaderboard" if raw["intent"] == "leaderboard" else "other"
     if raw["intent"] == "threshold_count" and _RECORD.search(question):
         raw["intent"] = "record_when"
+    if raw["intent"] in _WHEN_REACHES_REROUTABLE and _WHEN_REACHES.search(question) and _threshold_from_text(question) is not None:
+        # "stats for sixers when maxey scored 20+ points" (yardstick-v2 F087):
+        # a team's games divided by a NUMBER a player reached is record_when
+        # whatever the model filed - it chose player_stat and answered Maxey's
+        # own average, then (after "for <team>" became his tenure) his career
+        # average with the 76ers. Two readers agree before it moves: the
+        # "when <someone> scores/has/gets" clause and a threshold in the text.
+        raw["intent"] = "record_when"
     if raw["intent"] == "fingerprint" and not _FINGERPRINT_WORDS.search(question):
         raw["intent"] = "shot_chart" if _SHOT_WORDS.search(question) else "other"
     listed = [name for name in raw.get("players") or [] if isinstance(name, str)]
@@ -2285,6 +2301,51 @@ def _drop_filler_limit(intent: str, slots: dict[str, Any], question: str) -> Non
         slots.pop("limit", None)
 
 
+_PERIOD_PHRASE = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+(?:quarter|half|period)s?\b|\b[1-4]q\b|\bq[1-4]\b|\b[12]h\b", re.IGNORECASE)
+
+
+def _route_period_window(intent: str, slots: dict[str, Any], question: str) -> None:
+    """A ``period_split`` window only where the question names one.
+
+    Measured (yardstick-v2 F058/F060): "harrison barnes 1st quarter stats
+    each game vs magic" and "rudy gobert first half games this season" both
+    arrived with ``limit: 1`` and ``order: 'recent'``, and period_split -
+    which honors a window - printed ONE game's row under a two-game (or
+    76-game) total, where every game was asked for. Neither question names
+    a count; the model's 1 is filler, like the ``order`` beside it. The
+    period phrase is taken out before asking, because "first half games"
+    reads as "first N games" to :func:`_names_a_count` and "first" to
+    :func:`_names_one_game` - the ordinal names the period, not a window.
+    "last 5 games" (Zach Collins, F050) keeps both slots.
+    """
+    if intent != "period_split":
+        return
+    without_period = _PERIOD_PHRASE.sub(" ", question)
+    if isinstance(slots.get("limit"), int) and not _names_a_count(without_period):
+        slots.pop("limit", None)
+        if slots.get("order") and not _names_one_game(without_period):
+            slots.pop("order", None)
+
+
+def _route_opponent_named_as_teammates(slots: dict[str, Any], without: list[str]) -> None:
+    """An ``opponent`` that is the ``without`` list again is not an opponent.
+
+    "bane game log without anthony black and franz wagner this season"
+    (yardstick-v2 F158) arrived with both ``without: ['anthony black',
+    'franz wagner']`` and ``opponent: 'Anthony Black, Franz Wagner'``; the
+    second is no team, so the log fell through to the agent where the
+    first alone answers it. Dropped only when EVERY name in the opponent is
+    one of the teammates - a real team beside a without list is kept.
+    """
+    opponent = slots.get("opponent")
+    if not without or not isinstance(opponent, str) or not opponent.strip():
+        return
+    absent = {name.casefold().strip() for name in without}
+    named = [part.casefold().strip() for part in re.split(r",|\band\b|&", opponent) if part.strip()]
+    if named and all(part in absent for part in named):
+        slots.pop("opponent", None)
+
+
 def _route_game_log_recent_span(intent: str, slots: dict[str, Any], question: str) -> None:
     """A "last N games" question naming no season type: a signal for
     ``game_log`` to read both season types and take the newest N by date,
@@ -2353,5 +2414,7 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     _route_subject_slots(raw["intent"], slots, question)
     _route_record_when_threshold(raw["intent"], slots, question)
     _route_side_and_order(raw["intent"], slots, question)
+    _route_period_window(raw["intent"], slots, question)
+    _route_opponent_named_as_teammates(slots, without)
     _route_game_log_recent_span(raw["intent"], slots, question)
     return Route(intent=raw["intent"], slots=slots)

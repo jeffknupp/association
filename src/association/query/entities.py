@@ -1234,11 +1234,11 @@ def _team_after_versus(con: duckdb.DuckDBPyConnection, question: str, season: in
 _FOR_TEAM = re.compile(r"\bfor\s+(?:the\s+)?(.+)|\bwith\s+the\s+(.+)", re.IGNORECASE)
 
 
-def _team_after_for(con: duckdb.DuckDBPyConnection, question: str, season: int | None = None) -> Entity | None:
+def _team_after_for(con: duckdb.DuckDBPyConnection, question: str, season: int | None = None) -> tuple[Entity, int] | None:
     """The player's OWN team a question names with "for"/"with the"
-    ("lebron stats as a starter for Miami", yardstick-v2 F166), or None.
-    Spans of three words down to one are tried, the same as
-    :func:`_team_after_versus`.
+    ("lebron stats as a starter for Miami", yardstick-v2 F166) with where
+    in the question the phrase starts, or None. Spans of three words down
+    to one are tried, the same as :func:`_team_after_versus`.
 
     .. versionadded:: 4.4.0
     """
@@ -1249,7 +1249,7 @@ def _team_after_for(con: duckdb.DuckDBPyConnection, question: str, season: int |
             if size <= len(words) and len(" ".join(words[:size])) >= 2:
                 team = _team_named(con, " ".join(words[:size]), season)
                 if team is not None:
-                    return team
+                    return team, match.start()
     return None
 
 
@@ -1556,6 +1556,16 @@ def _scope_from_question_restore_player(con: duckdb.DuckDBPyConnection, question
         notes.append(f"player {player!r} (from the question; the router left it out)")
 
 
+def _player_named_before(question: str, player: Any, at: int) -> bool:
+    """Whether a word of the player's name (three letters or more) appears in
+    the question before position ``at`` - the order that makes "for <team>"
+    his tenure rather than the team's own question."""
+    if not isinstance(player, str):
+        return False
+    head = question[:at].casefold()
+    return any(re.search(rf"\b{re.escape(word)}\b", head) for word in _words(player.casefold()) if len(word) >= 3)
+
+
 def _scope_from_question_own_team(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], notes: list[str]) -> None:
     """Put back a player's OWN team, where "for <team>"/"with the <team>"
     names one and the router filed neither a ``team`` nor an ``opponent``
@@ -1593,8 +1603,16 @@ def _scope_from_question_own_team(con: duckdb.DuckDBPyConnection, question: str,
     if slots.get("team") or slots.get("opponent") or slots.get("own_team"):
         return
     named_season = season_from_text(question)
-    team = _team_after_for(con, question, named_season)
-    if team is None:
+    found = _team_after_for(con, question, named_season)
+    if found is None:
+        return
+    team, at = found
+    if not _player_named_before(question, slots.get("player"), at):
+        # "show me stats for sixers when maxey scored 20+ points"
+        # (yardstick-v2 F087): the team is the SUBJECT there, and the player
+        # follows it as a condition - his tenure with it is not the question.
+        # A tenure is named the other way round ("lebron ... for Miami",
+        # "westbrook ... for kings"): the player first, then his team.
         return
     slots["own_team"] = team.name
     notes.append(f"own_team {team.name!r} (from the question; the router left it out)")
