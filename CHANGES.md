@@ -16,6 +16,22 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **A composed league-wide ranking of a boolean measure ("highest scoring
+  triple doubles") ranks the qualifying GAMES by another measure, rather than
+  counting them (#199, ISSUES.md).** `query/compose/move.py`'s
+  `_everyone_boolean_game_ranking` reads "highest"/"biggest"/"most <stat> in
+  a"/"top" over a boolean predicate (`triple_double`, `double_double`,
+  `fouled_out`) as rows over everyone, ordered by the question's own stat
+  word (points by default), not `_everyone_ranking`'s per-player average -
+  which would have needed `minimum_games` qualifying games just to rank
+  anyone. "Ever"/"all-time" now moves the otherwise-current-season default to
+  a career read (`_everyone_career_slots`), stated because a league-wide read
+  with no season named defaults to the current season. Warehouse-verified:
+  "biggest triple double ever" returns Nikola Jokic's 61-10-10 (2025-04-01 vs
+  Minnesota), the regular-season high the router's own corpus keys against.
+  Reachable only once `leaderboard` itself refuses this framing instead of
+  answering a triple-double COUNT first - the router/template half of #199,
+  not built in this worktree.
 - A composed answer over a closed season range names the range it counted -
   "regular season career (2020-2022)" - where it said "(2020 on)": the count
   already stopped at `until`, so the sentence stated a scope the number did

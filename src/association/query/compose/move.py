@@ -184,6 +184,24 @@ def _asc_or_desc(question: str) -> str:
     return "asc" if _FEWEST.search(question) else "desc"
 
 
+_EVER = re.compile(r"\bever\b|\ball[- ]time\b", re.I)
+
+
+def _everyone_career_slots(slots: dict[str, Any], question: str) -> dict[str, Any]:
+    """ "Ever"/"all-time" in the question is a career span for a league-wide
+    read, the way :func:`_career_slots` gives a named player's own unscoped
+    count his whole career - stated because a league-wide read with no
+    season named otherwise defaults to the CURRENT season
+    (:func:`~association.query.compose.core._resolve_everyone`), not "every
+    season on record" the word asks for.
+
+    .. versionadded:: 4.4.0
+    """
+    if _EVER.search(question) and not isinstance(slots.get("season"), int):
+        return {**slots, "span": "career"}
+    return slots
+
+
 def _everyone_guard(question: str) -> None:
     """What a league-wide read cannot answer: a period, or a team's own
     figure read literally as a ranking of players (K2's guards)."""
@@ -244,6 +262,65 @@ def _everyone_single_game(slots: dict[str, Any], question: str, measure: str | N
     )
 
 
+#: A word in the question naming what a "highest/biggest ... triple-double"
+#: ranking of GAMES orders by - the local counterpart of ``WORD_MEASURES``
+#: for the plain box-score words that list does not carry (those name the
+#: default four-stat line already; this is only reached once a boolean
+#: measure has taken the ranking word - see :func:`_everyone_boolean_game_ranking`).
+_BOOLEAN_RANK_WORDS: list[tuple[str, str]] = [
+    (r"\bscoring\b|\bpoints?\b|\bpts\b", "points"),
+    (r"\brebounds?\b|\bboards?\b", "rebounds"),
+    (r"\bassists?\b", "assists"),
+    (r"\bsteals?\b", "steals"),
+    (r"\bblocks?\b", "blocks"),
+]
+_BOOLEAN_GAME_RANKING = re.compile(r"\b(highest|biggest|largest|best|most|top)\b", re.I)
+
+
+def _boolean_game_measure(question: str) -> str:
+    """The measure a "highest/biggest ... triple-double" ranks the
+    qualifying games BY - the question's own word (:data:`_BOOLEAN_RANK_WORDS`)
+    first, points otherwise: "highest scoring" and "biggest" both mean the
+    game's point total unless another stat is named."""
+    for pattern, name in _BOOLEAN_RANK_WORDS:
+        if re.search(pattern, question, re.I):
+            return name
+    return "points"
+
+
+def _everyone_boolean_game_ranking(question: str, slots: dict[str, Any], predicates: list[tuple[str, str, Any]], position: str | None) -> Query | None:
+    """ "players with the highest scoring triple doubles", "biggest triple
+    double", "most rebounds in a double double" (#199, F124): a RANKING OF
+    THE GAMES that satisfy a boolean measure (:data:`BOOLEAN_MEASURES`) by
+    another measure - rows over everyone, the boolean as a predicate,
+    ordered by the question's own stat word. Not
+    :func:`_everyone_ranking`'s per-player AVERAGE, which would need
+    ``minimum_games`` triple-doubles just to rank anyone, and not
+    :func:`_everyone_single_game`'s "in a game" phrasing, which this shape
+    does not use ("the highest scoring triple doubles" names no game at
+    all - it is the games themselves being ranked).
+
+    .. versionadded:: 4.4.0
+    """
+    boolean = [name for name, _, value in predicates if name in BOOLEAN_MEASURES and value is True]
+    if not (boolean and _BOOLEAN_GAME_RANKING.search(question)):
+        return None
+    measure = _boolean_game_measure(question)
+    return Query(
+        slots,
+        "rows",
+        [measure, *(m for m in LINE if m != measure)],
+        "none",
+        "none",
+        predicates,
+        "measure",
+        _asc_or_desc(question),
+        _clamp(slots.get("limit"), DEFAULT_SINGLE_GAME_LIMIT),
+        subject="everyone",
+        position=position,
+    )
+
+
 def _everyone_threshold_count(intent: str, slots: dict[str, Any], predicates: list[tuple[str, str, Any]], position: str | None) -> Query | None:
     """A league-wide count: who had games clearing the line(s). Without a
     line to count there is nothing to rank - refused, never turned into a
@@ -286,9 +363,20 @@ def _everyone_position_log(slots: dict[str, Any], question: str, position: str |
 def _everyone_point(intent: str, slots: dict[str, Any], question: str, measure: str | None) -> Query:
     """No player named: the league-wide read of the same relation. A ranking
     word makes it grouped by player; a log word with a position makes it
-    rows; "most ... in a game" is rows by measure over everyone."""
+    rows; "most ... in a game" is rows by measure over everyone; a
+    "highest/biggest ..." boolean-measure question ranks the GAMES rather
+    than counting them.
+
+    .. versionchanged:: 4.4.0
+       "Ever"/"all-time" moves the default current-season span to a career
+       one (:func:`_everyone_career_slots`), and tries
+       :func:`_everyone_boolean_game_ranking` (#199) before the per-player
+       count and ranking moves, since it is a more specific reading of a
+       ``threshold_count``/ranking question than either of those.
+    """
     _everyone_guard(question)
     slots = _everyone_opponent(slots, question)
+    slots = _everyone_career_slots(slots, question)
     position = _position(question)
     words = _measure_words(question)
     measure, predicates = _measure_and_predicates(words, measure if measure not in BOOLEAN_MEASURES else None)
@@ -296,6 +384,9 @@ def _everyone_point(intent: str, slots: dict[str, Any], question: str, measure: 
     single = _everyone_single_game(slots, question, measure, predicates, position)
     if single is not None:
         return single
+    boolean_ranked = _everyone_boolean_game_ranking(question, slots, predicates, position)
+    if boolean_ranked is not None:
+        return boolean_ranked
     counted = _everyone_threshold_count(intent, slots, predicates, position)
     if counted is not None:
         return counted

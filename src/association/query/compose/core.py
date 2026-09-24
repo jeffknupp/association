@@ -47,6 +47,7 @@ from association.query.templates.common import (
     SCOPING_SLOTS,
     TemplateResult,
     TemplateUnsupported,
+    _box_score_notes,
     _resolved_team,
     _Span,
     _span_of,
@@ -442,7 +443,11 @@ def _compile_rows(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity | 
 
 def _scalar_selects(q: Query, rebuilt: bool) -> list[str]:
     """The SELECT list for a ``scalar`` or ``grouped`` read: a count, a
-    win-loss record, or one aggregate per measure."""
+    win-loss record, one aggregate per measure, and - guarded the same way
+    :func:`_row_select` guards its own ``reconstructed`` column - how many of
+    the counted games are rebuilt rather than fetched, for
+    :func:`~association.query.templates.common._box_score_notes`' own
+    rebuilt-line note (#197, ISSUES.md)."""
     selects = ["COUNT(*) AS games"]
     if q.aggregate == "record":
         selects += [
@@ -452,6 +457,7 @@ def _scalar_selects(q: Query, rebuilt: bool) -> list[str]:
         selects += [_agg(m, "per_game", rebuilt=rebuilt) for m in q.measures]
     elif q.aggregate != "count":
         selects += [_agg(m, q.aggregate, rebuilt=rebuilt) for m in q.measures]
+    selects.append("SUM(CASE WHEN pgl.reconstructed THEN 1 ELSE 0 END) AS rebuilt_shown" if rebuilt else "0 AS rebuilt_shown")
     return selects
 
 
@@ -519,10 +525,57 @@ def _everyone_label(position: str | None) -> str:
     return _POSITION_LABELS.get(position or "", "every player")
 
 
+def _rebuilt_shown_count(q: Query, rows: list[dict[str, Any]]) -> int:
+    """How many of the answer's rows rest on a rebuilt line, however the
+    skeleton carries that count. A ``rows`` read has it per row
+    (``reconstructed``, from :func:`_row_select`, already exposed on every
+    row and left there); a ``scalar``/``grouped`` read has it as its own
+    aggregate column (``rebuilt_shown``, from :func:`_scalar_selects`) -
+    popped off each row here, so it never leaks into ``data["rows"]``, and
+    summed across whatever groups came back."""
+    if q.skeleton == "rows":
+        return sum(1 for r in rows if r.get("reconstructed"))
+    return sum(int(r.pop("rebuilt_shown", 0) or 0) for r in rows)
+
+
+def _box_notes(con: duckdb.DuckDBPyConnection, q: Query, c: Compiled, rows: list[dict[str, Any]]) -> list[str]:
+    """What this answer has to say about its own box scores - a teammate's
+    absence explained, the empty lines left out of the count, the games
+    rebuilt from play-by-play rather than fetched, and a career predating
+    box scores entirely
+    (:func:`~association.query.templates.common._box_score_notes`, the
+    templates' own notes, threaded through here for the first time: #197,
+    ISSUES.md). Only for a named player - the league-wide subject has no
+    ONE player's career to check a floor against, which is what
+    ``_box_score_notes`` assumes.
+
+    .. versionchanged:: 4.4.0
+       Pops the scratch ``rebuilt_shown`` column unconditionally, even for
+       the league-wide subject this function otherwise has nothing to say
+       about - it is :func:`_scalar_selects`' own internal column, never
+       meant to reach a caller, and previously leaked into
+       ``data["rows"]`` for exactly the subject this function returns early
+       for.
+    """
+    rebuilt_shown = _rebuilt_shown_count(q, rows)
+    if c.player is None:
+        return []
+    # A dated read's "career" span is only how the game was FOUND (binding
+    # parity, K1 rule 6), not what the answer is about - the same reason
+    # `game_log`'s own notes turn this note off for one.
+    career_note = c.narrowed.date is None
+    return _box_score_notes(con, c.player, c.span, c.narrowed, career_note=career_note, rebuilt=c.rebuilt, rebuilt_shown=rebuilt_shown)
+
+
 def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
     """Compile and execute: rows as dicts, with what the relation settled.
 
-    .. versionadded:: 4.4.0
+    .. versionchanged:: 4.4.0
+       Carries ``notes`` - the box-score caveats a named player's answer
+       rests on (:func:`_box_notes`), which :func:`~association.query.compose.answer`
+       appends to the sentence the same way it already appends
+       :func:`~association.query.templates.common.coverage_caveat` (#197,
+       ISSUES.md).
     """
     try:
         c = compile_query(con, q)
@@ -531,6 +584,7 @@ def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
     cur = con.execute(c.sql, c.params)
     names = [d[0] for d in cur.description]
     rows = [dict(zip(names, r, strict=True)) for r in cur.fetchall()]
+    notes = _box_notes(con, q, c, rows)
     return {
         "rows": rows,
         "player": c.player.name if c.player else _everyone_label(q.position),
@@ -541,4 +595,5 @@ def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
         "params": c.params,
         "rebuilt": c.rebuilt,
         "measures": c.measures,
+        "notes": notes,
     }

@@ -25,7 +25,7 @@ from association.nba.season import current_season
 from association.query.compose import answer as compose_answer
 from association.query.compose.adapt import to_query
 from association.query.compose.core import Query, Refused, Unsupported, compile_query, run
-from association.query.compose.move import _career_slots, move_point, team_move_point
+from association.query.compose.move import _career_slots, _everyone_career_slots, move_point, team_move_point
 from association.query.compose.team import TeamQuery, run_team
 from association.query.templates.common import TemplateContext
 
@@ -157,6 +157,18 @@ def cx_ctx(tmp_path: Path) -> TemplateContext:
         "CREATE VIEW player_game_log AS SELECT pbs.*, p.display_name AS player_name, g.date AS game_date, t.abbreviation AS team_abbr, o.abbreviation AS opponent_abbr "
         "FROM player_box_stats pbs LEFT JOIN players p ON p.athlete_id = pbs.athlete_id LEFT JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season "
         "LEFT JOIN teams t ON t.team_id = pbs.team_id LEFT JOIN teams o ON o.team_id = pbs.opponent_team_id"
+    )
+    # `_box_score_notes` (threaded through `core.run` for #197's box-score-
+    # caveat half) reads this for its career-floor note - MIN(season) with a
+    # game played, per player. One row per player per season here keeps that
+    # note quiet (earliest on record is never before the real 1994 floor,
+    # which is fixed in `nba.coverage` and not derived from this fixture);
+    # `test_a_career_predating_box_scores_gets_the_floor_note` adds an older
+    # row of its own to turn the note on.
+    c.execute("CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER, gamesPlayed INTEGER)")
+    c.executemany(
+        "INSERT INTO player_season_stats_deduped VALUES (?, ?, 2, 1)",
+        [(pid, season) for pid in (PODZ, CURRY, BROWN, SABONIS, "90", "91") for season in (s - 1, s)],
     )
     return TemplateContext(con=c, out_dir=tmp_path)
 
@@ -653,3 +665,45 @@ def test_answer_carries_a_coverage_caveat_on_a_narrowed_team_question(team_cx_ct
     )
     assert result is not None
     assert "Note:" not in result.answer
+
+
+# ---------------------------------------------------------------------------
+# #199, F124: a ranking of the GAMES that satisfy a boolean measure by
+# another measure ("highest scoring triple doubles"), not a per-player count
+# or average.
+# ---------------------------------------------------------------------------
+
+
+def test_a_highest_scoring_boolean_measure_ranks_the_games_not_a_per_player_average(cx_ctx: TemplateContext) -> None:
+    """ "Players with the highest scoring triple doubles" is rows over
+    everyone, ordered by points, with `triple_double` as a predicate - not
+    `_everyone_ranking`'s per-player AVERAGE (which would need
+    `minimum_games` triple-doubles just to rank anyone). Podziemski's g3
+    (28/10/11) is the fixture's only triple-double."""
+    q = move_point(cx_ctx.con, "leaderboard", {"stat": "triple_double", "limit": 10, "season_type": 2}, "players with the highest scoring triple doubles")
+    assert isinstance(q, Query)
+    assert q.subject == "everyone" and q.skeleton == "rows" and q.order == "measure"
+    assert q.predicates == [("triple_double", "=", True)]
+    assert q.measures[0] == "points"
+    out = run(cx_ctx.con, q)
+    assert [r["points"] for r in out["rows"]] == [28]  # Podziemski's g3, the fixture's only triple-double
+
+
+def test_biggest_with_no_stat_word_defaults_to_points(cx_ctx: TemplateContext) -> None:
+    """ "Biggest triple double" names no stat word at all -
+    :func:`~association.query.compose.move._boolean_game_measure` falls
+    back to points, the same default a "career-high" question gets."""
+    q = move_point(cx_ctx.con, "leaderboard", {"stat": "triple_double", "season_type": 2}, "biggest triple double ever")
+    assert isinstance(q, Query)
+    assert q.measures[0] == "points"
+    assert q.slots.get("span") == "career"  # "ever" moved the default current-season span
+
+
+def test_everyone_career_slots_reads_ever_and_all_time_only_with_no_season_named() -> None:
+    """:func:`_everyone_career_slots`: "ever"/"all-time" is a career span for
+    a league-wide read UNLESS the question also named a season - the same
+    "do not silently override a named year" discipline
+    :func:`~association.query.compose.core._span_of` keeps for ``since``."""
+    assert _everyone_career_slots({}, "the best triple double ever") == {"span": "career"}
+    assert _everyone_career_slots({}, "the best triple double this season") == {}
+    assert _everyone_career_slots({"season": 2024}, "the best triple double of all time") == {"season": 2024}  # a named season is not overridden

@@ -89,13 +89,22 @@ before that commit needs re-checking against the current warehouse.
   team agent in this session's split), so filed rather than built here.
 - **User sees:** a wrong answer to a question that sounds almost identical
   to one the system answers correctly (a triple-double COUNT).
-- **Next step:** either `leaderboard` refuses `stat: triple_double` when the
-  question's own words name a metric other than a count ("highest
-  scoring"/"biggest"), handing it to `compose` the way a template's
-  `TemplateUnsupported` already does, or `route()` reads the "highest
-  scoring" qualifier into a different `stat`/`rate` combination before
-  `leaderboard` ever answers. Needs whoever owns `query/compose`'s
-  boolean-measure point next.
+- **The compose half is now built** (this session, `query/compose/move.py`):
+  `_everyone_boolean_game_ranking` reads "highest scoring"/"biggest"/"most
+  <stat> in a" over a boolean measure (`triple_double`, `double_double`,
+  `fouled_out`) as rows over everyone, the boolean as a predicate, ordered
+  by the question's own stat word (points by default). Warehouse-verified
+  against `nba.duckdb`: "biggest triple double ever" -> Jokic's 61-10-10 on
+  2025-04-01 vs MIN, the same game the yardstick key names; the current
+  season alone (no "ever") tops out at his 56-point 16/15 game on
+  2025-12-25. "Ever"/"all-time" moves the otherwise-current-season default
+  to a career read (`_everyone_career_slots`).
+- **Still open:** the compose half only gets a turn once `leaderboard`
+  refuses this framing rather than answering the count first - the other
+  half of this entry, on the router/template side this worktree does not
+  own. Until that refusal lands and both halves merge, `leaderboard` still
+  answers the wrong count for this exact question live. Re-measure once
+  merged and close then.
 - **GitHub:** #199
 
 ### A position group as the subject is dropped and the team's own log answers: "Centers stats game log vs kings" lists the Kings' last five games
