@@ -16,6 +16,11 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- A composed answer over a closed season range names the range it counted -
+  "regular season career (2020-2022)" - where it said "(2020 on)": the count
+  already stopped at `until`, so the sentence stated a scope the number did
+  not have (yardstick-v2 F036). A both-season-types span is named as such
+  (`compose/sentence.py`).
 - **`team_record` honors `season_type_unstated`, combining both season types
   instead of silently answering one (F116, ISSUES.md).** "Warriors all-time
   record including playoff record at away" used to read `season_type: 3` and

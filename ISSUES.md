@@ -46,51 +46,33 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
-### `leaderboard` answers a team-shaped question with a player ranking (F127, still live)
-- **Found:** 2026-09-23, building the team subject in `compose`
-  (`association.query.compose.team`).
-- **Evidence:** "how many 3 pointers have the magic made so far this season"
-  routes to `intent='leaderboard' slots={'stat': 'threePointFieldGoalsMade',
-  'season_type': 2, 'season': 2026}` - no `team` slot at all - and
-  `leaderboard` (a PLAYER template, `query/templates/players.py`) answers
-  successfully with the league's individual 3PM leaders (Kon Knueppel, 273),
-  never mentioning the Magic. The real number, from `team_season_stats`, is
-  961 (regular season) + 78 (playoffs) - reproduced directly via
-  `compose.team.run_team` given the right slots, which is how this session
-  fixed the COMPILER side of this question (see `CHANGES.md`, "The team as a
-  subject in `compose`"). The template answers WITHOUT REFUSING, so
-  `agent.py`'s `_try_compose` - which only runs after a template raises
-  `TemplateUnsupported` - never gets a turn: `compose.answer` is correct and
-  tested (`tests/query/test_compose.py`) but not reached for this exact live
-  question.
-- **User sees:** a fast, fluent, wrong-subject answer - the league's scoring
-  leader in 3-pointers, for a question about one team's own total. The
-  failure shape this project keeps producing: an answer that looks right and
-  is not.
-- **Next step:** two independent things, either of which closes this file
-  outright: (1) the router files a `team` slot for this shape (a router/
-  `route()` fix - out of this session's scope, the "team" half explicitly
-  excludes router.py); or (2) `leaderboard`/`team_stat` (owned by the player
-  half of the query path, `query/templates/players.py` - also out of this
-  session's scope) refuse a team-shaped question the way `_everyone_point`'s
-  own `_NOT_PLAYERS` guard already refuses the ones that literally say "team" -
-  "the magic"/"the raptors" do not, since a franchise nickname is not the
-  word "team". Either change lets `_try_compose` reach `compose.team`, which
-  already answers it correctly today when given the right slots.
-- **Status 2026-09-23 (coordinator):** the player agent is being told to make
-  `leaderboard`/`team_stat` refuse a `team` slot on a team-shaped question so
-  `_try_compose` sees it - that is (2) above, in progress on their branch, not
-  this one. **The compose half is done and needs no further work**: given
-  `{'stat': 'threePointFieldGoalsMade', 'team': 'Orlando Magic', 'season':
-  2026}`, `compose.team` composes exactly -
-  `"The Orlando Magic had 961 3-pointers made over the complete 2026 regular
-  season (82 games). They added 78 more over a 7-game playoff run."` -
-  matching the key's 961/78 exactly (`tests/query/test_compose.py::test_team_move_point_reads_an_unnarrowed_season_total`,
-  `test_answer_composes_a_team_subject_sentence`). Once the refusal lands on
-  either branch and the two merge, this question should answer correctly live
-  with no further change here - re-verify with a live `association query`
-  call after the merge and delete this entry then.
+### "For the <team>" beside a player is read as his own-team tenure even when the team is the subject: "show me stats for sixers when maxey scored 20+ points"
+- **Found:** 2026-09-23, grading `live_sweep.jsonl` (yardstick-v2 F087) after
+  the sweep merged (`28dfb9d`).
+- **Evidence:** routes to `player_stat` with `player='Maxey', season=2026`
+  (the `record_when` shape - a TEAM's record in the games a player reached a
+  threshold - is never chosen), and now the "for/with the <team>" reading
+  (`entities._scope_from_question_own_team`, F166's fix) fires on "for
+  sixers", answering "Tyrese Maxey averaged 21.1 points per game in 387
+  games with the Philadelphia 76ers over his career (2021-2026 regular
+  seasons)". Before the sweep it answered his 2026 average. The key: the
+  76ers are 35-28 in 2025-26 regular-season games where Maxey scored 20+
+  (39-32 with the playoffs).
+- **User sees:** a fluent line about the wrong subject (the player's
+  average, where the team's record under a condition was asked) - the scope
+  it did use is stated, which is why it is a different wrong answer and not
+  a hidden one.
+- **Next step:** two halves. The router: "stats for <team> when <player>
+  scored N+" is `record_when` (the team is the subject, the player is the
+  condition) - `_names_a_count`/the threshold grammar already sees the "20+";
+  route it by the text (`CODE_ASSIGNED_INTENTS`-style) and add the case to
+  `check_routing.py`. The own-team reading: do not fire it when the team is
+  the grammatical subject of the sentence ("stats for sixers when ..." - the
+  team precedes "when"/"in games"), only when it follows the player ("lebron
+  ... for Miami", "westbrook ... for kings").
 - **Source:** ours, not ESPN's.
+- **GitHub:** not yet filed
+
 ### A composed triple-double ranking answers a count instead of the highest-scoring one: "players with the highest scoring triple doubles"
 - **Found:** 2026-09-23, same session, yardstick-v2 F124.
 - **Evidence:** routes `leaderboard {'stat': 'triple_double', 'limit': 10,
@@ -2482,6 +2464,30 @@ those were found.
 - **GitHub:** #197
 
 ## P3: refusal or gap
+
+### `team_record`'s combined-season-types sentence drops the regular half's "standings from 1993-94" caveat
+- **Found:** 2026-09-23, grading `live_sweep.jsonl` (yardstick-v2 F116).
+- **Evidence:** "warriors all-time record including playoff record at away"
+  now answers "574-843 (.405) combined on the road, including the playoffs
+  (523-791 (.398) regular season, 51-52 (.495) playoffs)" plus the 2000
+  standings-gap note. Asked for one season type, the regular half says
+  "across the 33 regular seasons from 1993-94 through 2025-26 - ESPN's
+  standings carry no home/road split before 1993-94", and the playoff half
+  "in every postseason from 1989 through the latest". Combined
+  (`templates/teams.py`, `_combined_record_result`), only "Note:" lines are
+  carried over (`_extract_note`), so the two halves' different starting
+  seasons are not stated - the reader cannot see that the regular half starts
+  five seasons later than the playoff half. Measured: the 523-791 is right
+  for what standings hold (the key's 550-811 counted the phantom 1993 season
+  and six pre-1994 stray games in the game list; `DATA.md`).
+- **User sees:** a combined record with no word about the two spans it
+  combines; the number is right but its coverage is not stated.
+- **Next step:** carry each half's span into the parenthesis - "(523-791
+  regular season from 1993-94, 51-52 playoffs from 1989)" - from the halves'
+  own `data` (add the first season there if it is not), not by parsing their
+  sentences.
+- **Source:** ours (the standings' own floor is ESPN's, in `DATA.md`).
+- **GitHub:** not yet filed
 
 ### No leaderboard metric ranks average three-point shot distance
 - **Found:** 2026-09-23, fixing the wrong-cause refusal `leaderboard` gives

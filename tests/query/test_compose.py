@@ -417,6 +417,22 @@ def test_answer_composes_a_sentence_and_the_point_it_rests_on(cx_ctx: TemplateCo
     assert result.artifacts == []
 
 
+def test_a_closed_range_is_named_as_one_and_counted_as_one(cx_ctx: TemplateContext) -> None:
+    """``since``/``until`` bound the read at both ends, and the sentence says
+    the range it counted - "(2025-2026)", not "(2025 on)" - so the stated
+    scope matches the number (yardstick-v2 F036, where a 2024-2026 count read
+    "2024 on"). One season named at both ends is named once."""
+    s = current_season()
+    both = compose_answer(cx_ctx, "player_stat", {"player": "Brandin Podziemski", "stat": "points", "since": s - 1, "until": s}, "Podziemski's points")
+    assert both is not None
+    assert f"({s - 1}-{s})" in both.answer and "on)" not in both.answer
+    assert both.data["rows"][0]["games"] == 6
+    one = compose_answer(cx_ctx, "player_stat", {"player": "Brandin Podziemski", "stat": "points", "since": s - 1, "until": s - 1}, "Podziemski's points")
+    assert one is not None
+    assert f"career ({s - 1})" in one.answer
+    assert one.data["rows"][0]["games"] == 2
+
+
 def test_a_refusal_from_answer_is_the_relations_own(cx_ctx: TemplateContext) -> None:
     """A near-miss name is a handled refusal from ``answer()``, not ``None``."""
     result = compose_answer(cx_ctx, "game_log", {"player": "Podzemski"}, "Podzemski's last 5 games")

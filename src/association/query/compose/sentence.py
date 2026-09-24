@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from association.query.player_games import BOTH_SEASON_TYPES
+
 from .core import Query
 from .team import TeamQuery, TeamResult
 
@@ -59,11 +61,22 @@ PREDICATE_WORDS: dict[str, str] = {"won": "won", "triple_double": "with a triple
 
 
 def _span_phrase(span: Any) -> str:
-    """The span an answer names: a season, or a career (from its first season on)."""
-    kind = {2: "regular season", 3: "postseason"}.get(getattr(span, "season_type", 2), "regular season")
+    """The span an answer names: a season, or a career (from its first season
+    on, or between the two seasons a closed range named).
+
+    .. versionchanged:: 4.4.0
+       A closed range says "(2020-2022)" rather than "(2020 on)" - the numbers
+       already stopped at ``until`` (`_span_of` bounds the read), so the
+       sentence saying otherwise was a stated scope that did not match the
+       count (yardstick-v2 F036). A both-season-types span is named as such.
+    """
+    kind = {2: "regular season", 3: "postseason", BOTH_SEASON_TYPES: "regular season and postseason"}.get(getattr(span, "season_type", 2), "regular season")
     season = getattr(span, "season", None)
     if season is None:
         first = getattr(span, "first", None)
+        until = getattr(span, "until", None)
+        if first and until:
+            return f"{kind} career ({first})" if first == until else f"{kind} career ({first}-{until})"
         return f"{kind} career" + (f" ({first} on)" if first else "")
     return f"{season} {kind}"
 
