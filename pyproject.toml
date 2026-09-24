@@ -167,8 +167,11 @@ builtin = "clear,rare,en-GB_to_en-US"
 # generated files are never prose.
 skip = "CHANGES.md,CLAUDE.md,uv.lock,*.png,*.jpg,*.svg,*.duckdb,*.parquet,completions/*"
 # Basketball and ESPN tokens, not misspellings: OT (overtime), IST (the
-# In-Season Tournament), PlayIn (ESPN's play-in season-type label).
-ignore-words-list = "ot,ist,playin"
+# In-Season Tournament), PlayIn (ESPN's play-in season-type label). "alltime"
+# is the yardstick-v2 F111 question's own spelling ("alperen şengün alltime
+# record"), quoted verbatim across src/ and tests/ once it recurred past the
+# single inline codespell:ignore in ISSUES.md.
+ignore-words-list = "ot,ist,playin,alltime"
 
 [tool.importlinter]
 root_package = "association"

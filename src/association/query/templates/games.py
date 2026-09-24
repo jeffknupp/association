@@ -50,6 +50,7 @@ from .common import (
     _optional_team,
     _ordinal,
     _period,
+    _relation_window,
     _resolved_player,
     _resolved_team,
     _resolved_teammate,
@@ -283,6 +284,8 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
             ascending=ascending,
             mixed=mixed,
             stat=slots.get("stat"),
+            since=slots.get("since"),
+            until=slots.get("until"),
         )
     return _game_log_player(
         con, slots, team_text, slot_season=slot_season, span=span, season=season, opponent=opponent, measures=measures, date=date, limit=limit, ascending=ascending, mixed=mixed, asked=asked
@@ -307,6 +310,8 @@ def _game_log_team(
     ascending: bool,
     mixed: bool,
     stat: Any = None,
+    since: Any = None,
+    until: Any = None,
 ) -> TemplateResult:
     """The team half of :func:`game_log`: resolve the team, refuse what a
     team's log cannot narrow by, and read either one season type or both.
@@ -321,6 +326,11 @@ def _game_log_team(
        (F128/F129, ISSUES.md) states the number the question actually asked
        for instead of only listing the games it was computed from - see
        :func:`_team_game_log_total_line`.
+       Takes ``since``/``until`` and passes them to ``_span_of`` - they were
+       read into ``RELATION_SCOPING`` (which ``game_log`` claims in full) but
+       silently dropped here, the team branch, the same shape a bare ``until``
+       was dropped everywhere before this change: "Warriors games since 2024"
+       answered the 2026 regular season alone.
     """
     team = _resolved_team(con, team_text, season=slot_season)
     if isinstance(team, TemplateResult):
@@ -331,7 +341,7 @@ def _game_log_team(
         if resolved_season is None:
             raise TemplateUnsupported("a career span has no single season to read both season types within")
         return _team_game_log_mixed(con, team, resolved_season, opponent=opponent, venue=venue, limit=limit, stat=stat)
-    scope = _span_of(span, season, season_type, "games")
+    scope = _span_of(span, season, season_type, "games", since=since, until=until)
     narrowed = team_games(con, team, scope, {"venue": venue}, opponent=opponent, date=date)
     if isinstance(narrowed, TemplateResult):
         return narrowed
@@ -1745,8 +1755,7 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         "games_played": len(games),
     }
     if not games:
-        message = f"No {scope} games found for {player.name}{vs}{at}."
-        return TemplateResult(data={**data, "message": message}, answer=message)
+        return _period_split_empty(con, player, span, periods, period_label, slots, opponent, measures, venue, started, data, scope, vs, at)
 
     total = sum(g["points"] for g in games)
     average = total / len(games)
@@ -1970,6 +1979,7 @@ def _period_split_rows(
     opponent: Entity | None,
     measures: list[MeasureFilter] | None = None,
     date: str | None = None,
+    limit: int | None = None,
 ) -> tuple[list[tuple[Any, ...]], list[str], list[str], int | None] | TemplateResult:
     """A player's per-game point total in the wanted periods, one row a game.
 
@@ -2041,6 +2051,16 @@ def _period_split_rows(
        on record, the same false-cause shape `AGENTS.md` warns about
        elsewhere. Joining by the games the relation already selected removes
        the literal pair entirely, so it needs no fixing up for either shape.
+
+    .. versionchanged:: 4.4.0
+       Takes ``limit`` - the newest N games, by date, rather than every game
+       of ``span``. ``None`` (the default) is every caller except
+       :func:`_period_split_cross_season_redirect`: every OTHER caller reads
+       one already-settled season in full (a bare ``order``/``limit`` on
+       ``period_split`` is a DISPLAY cap applied afterward, in
+       :func:`_period_split_header`, not a row window - see
+       ``scoped_games``'s own note on why ``.window`` is a no-op here), and
+       changing that default would move the answer for every one of them.
     """
     # The question's own slots, whole - not a dict built here. A dict built
     # here carried venue, without and split and nothing else, so `game_n` was
@@ -2053,7 +2073,8 @@ def _period_split_rows(
         narrowed,
         "pgl.event_id AS event_id, g.date AS date, pgl.season AS game_season, CASE WHEN g.home_team_id = pgl.team_id THEN 'home' ELSE 'away' END AS side, "
         f"(SELECT {season_name_sql('t.team_id', 'g.season', 't.display_name')} FROM teams t WHERE t.team_id = pgl.opponent_team_id) AS opponent",
-        order="g.date",
+        order="g.date DESC" if limit else "g.date",
+        limit=limit,
         rebuilt=rebuilt,
     )
     marks = ", ".join("?" for _ in periods)
@@ -2077,6 +2098,117 @@ def _period_split_rows(
         [*played_params, player.id, *periods],
     ).fetchall()
     return rows, [mate.name for mate in narrowed.without], list(narrowed.measures), narrowed.series_game
+
+
+def _period_split_empty(
+    con: duckdb.DuckDBPyConnection,
+    player: Entity,
+    span: _Span,
+    periods: tuple[int, ...],
+    period_label: str,
+    slots: dict[str, Any],
+    opponent: Entity | None,
+    measures: list[MeasureFilter] | None,
+    venue: str | None,
+    started: bool | None,
+    data: dict[str, Any],
+    scope: str,
+    vs: str,
+    at: str,
+) -> TemplateResult:
+    """:func:`period_split`'s own "no games" branch - split out to keep that
+    function inside the complexity gate. Tries
+    :func:`_period_split_cross_season_redirect` first (yardstick-v2 F050);
+    the plain refusal, unchanged, is what it falls back to."""
+    redirect = _period_split_cross_season_redirect(con, player, span, periods, period_label, slots, opponent, measures, venue, started)
+    if redirect is not None:
+        return redirect
+    message = f"No {scope} games found for {player.name}{vs}{at}."
+    return TemplateResult(data={**data, "message": message}, answer=message)
+
+
+def _period_split_cross_season_redirect(
+    con: duckdb.DuckDBPyConnection,
+    player: Entity,
+    span: _Span,
+    periods: tuple[int, ...],
+    period_label: str,
+    slots: dict[str, Any],
+    opponent: Entity | None,
+    measures: list[MeasureFilter] | None,
+    venue: str | None,
+    started: bool | None,
+) -> TemplateResult | None:
+    """ "Last N games" with no season named is the newest N over his whole
+    CAREER, not "this (defaulted) season alone" - the same reading a bare
+    ``limit`` already gets everywhere else on the player relation
+    (``common._relation_window``). ``period_split`` cannot simply widen
+    ``span`` to "career" through the normal slot path
+    (``common.RELATION_SCOPING_EXCLUDED["period_split"]``: the accuracy
+    caveat is measured per season, so summing across several would mix
+    accuracy levels or drop the caveat) - but that refusal is about a
+    QUESTION asking for a career split outright, and this is a defaulted,
+    empty ONE-season read finding nothing at all.
+
+    yardstick-v2 F050: "zach collins first quarter stats last 5 games as a
+    starter" answered "No 2026 regular season games found for Zach Collins
+    as a starter" - true of the box scores it read, and about the wrong
+    year: he made zero 2025-26 starts, and his real last 5 starts are all in
+    March 2025. Retries the SAME narrowing over his whole career, windowed
+    to the newest N by date - the one caller of :func:`_period_split_rows`'s
+    own ``limit`` parameter, since every other reads one already-settled
+    season in full.
+
+    Only when the season was never named at all (``span.defaulted``) and the
+    question asked for a window (``order``/a bare ``limit``,
+    :func:`common._relation_window`) - a question that DID name a season
+    keeps the plain "no games" refusal, because that is the correct answer.
+    Returns the found games ONLY when they land in exactly one season:
+    ``PERIOD_RECONCILIATION``'s own caveat is measured per season, so a
+    window straddling two would need two different caveats (or none), which
+    is not built - None falls back to the refusal that was already about to
+    be given, no worse than before this existed.
+
+    .. versionadded:: 4.4.0
+    """
+    window = _relation_window(slots)
+    if not span.defaulted or window is None or window[0] != "recent":
+        return None
+    _, count = window
+    career = _span_of("career", None, span.season_type, "player_game_log")
+    widened = _period_split_rows(con, player, career, periods, slots, opponent, measures, limit=count)
+    if isinstance(widened, TemplateResult) or not widened[0]:
+        return None
+    rows, narrowed_mates, narrowed_measures, series_game = widened
+    seasons = {int(row[1]) for row in rows}
+    if len(seasons) != 1:
+        return None
+    (season,) = seasons
+    refusal = _period_split_reconciliation_refusal(season)
+    if refusal is not None:
+        return refusal
+    scope = _period(season, span.season_type)
+    vs = f" against the {opponent.name}" if opponent else ""
+    at = _period_split_narrowing_said(venue, started, narrowed_mates, narrowed_measures, None, series_game=series_game, one_series=opponent is not None)
+    games = [{"date": _eastern_date(d), "opponent": name, "home_away": side, "points": int(pts or 0)} for d, _game_season, side, name, pts in rows]
+    total = sum(g["points"] for g in games)
+    average = total / len(games)
+    data = {
+        "player": player.name,
+        "period": period_label,
+        "season": season,
+        "opponent": opponent.name if opponent else None,
+        "venue": venue,
+        "started": started,
+        "measures": narrowed_measures,
+        "games": games,
+        "games_played": len(games),
+        "total": total,
+        "average": average,
+    }
+    header = _period_split_header(player, period_label, scope, vs, at, total, average, games, slots, slots.get("order"))
+    redirect_note = f"\nNo games this season, so these are his most recent {len(games)}{at}, from the {scope}."
+    return TemplateResult(data=data, answer=header + redirect_note + _period_split_caveat(season, PERIOD_RECONCILIATION.get(season)))
 
 
 def _period_split_header(player: Entity, period_label: str, scope: str, vs: str, at: str, total: int, average: float, games: list[dict[str, Any]], slots: dict[str, Any], order: Any = None) -> str:

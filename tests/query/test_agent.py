@@ -295,6 +295,57 @@ def test_the_fast_path_replaces_a_player_the_question_never_named(monkeypatch: p
     assert seen == ["Shai Gilgeous-Alexander", "Joel Embiid"]
 
 
+def test_a_team_only_intent_naming_one_player_refuses_rather_than_answering_the_league(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """yardstick-v2 F111: "alperen şengün alltime record" routed to
+    team_leaderboard - no player slot, no team slot - and answered the
+    league standings, Sengun never read. The template is not reached at
+    all: team_leaderboard has no reading for a named player, so the
+    question is refused, naming him, rather than answered about the wrong
+    subject. Diacritics ("şengün") are already folded before this runs."""
+    from association.query.router import Route
+
+    reached = False
+
+    def record(ctx: Any, slots: dict[str, Any]) -> Any:
+        nonlocal reached
+        reached = True
+        raise AssertionError("team_leaderboard should not run at all")
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="team_leaderboard", slots={"stat": "record", "limit": 1}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"team_leaderboard": record})
+    answer = _agent_with_players(tmp_path, "Alperen Sengun").ask("alperen şengün alltime record")
+    assert not reached
+    assert "Alperen Sengun" in answer.text
+    assert "team leaderboard" in answer.text
+
+
+def test_a_team_only_intent_with_a_team_named_is_unaffected(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A genuine team question - a `team` slot resolving to a REAL
+    franchise - runs the template normally, whatever player-shaped words
+    happen to also appear. A `teams` table is needed here (unlike
+    `_agent_with_players`'s plain one): `_has_a_real_team` looks the team
+    slot up against it, and a warehouse missing the table entirely reads as
+    "no team found" the same way `entities._team_named` already does."""
+    import duckdb
+
+    from association.query.router import Route
+    from association.query.templates.common import TemplateResult
+
+    db_path = tmp_path / "test.duckdb"
+    con = duckdb.connect(str(db_path))
+    con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    con.execute("INSERT INTO players VALUES ('1', 'Alperen Sengun')")
+    con.execute("CREATE TABLE teams (team_id VARCHAR, display_name VARCHAR, abbreviation VARCHAR)")
+    con.execute("INSERT INTO teams VALUES ('2', 'Houston Rockets', 'HOU')")
+    con.close()
+    agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history")
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="team_leaderboard", slots={"stat": "record", "team": "Houston Rockets"}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"team_leaderboard": lambda ctx, slots: TemplateResult(data={}, answer="templated")})
+    answer = agent.ask("alperen şengün rockets record")
+    assert answer.text == "templated"
+
+
 def test_a_router_that_could_not_be_asked_falls_through_saying_why(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """The rule is unchanged - a router failure costs a round trip, never an
     answer - so this still falls through. What it must not do is report it as
@@ -655,7 +706,11 @@ def test_fast_path_answer_is_recorded_in_conversation_for_later_followups(monkey
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"threshold_count": lambda con, slots: TemplateResult(data={"leaders": []}, answer="template answer")})
     # No ollama.chat stub: reaching one would itself be the bug. The router is
     # stubbed out above, and a template answers without a model call.
-    agent = _agent(tmp_path)
+    # threshold_count is in SUBJECT_RESTORABLE_INTENTS (F093), so scope_from_question
+    # reads the question's words for a dropped subject - an empty `players`
+    # table, not the fully tableless warehouse _agent gives by default, so
+    # that read finds nobody rather than raising a CatalogException.
+    agent = _agent_with_players(tmp_path)
     assert agent.ask("most 30+ point games?").text == "template answer"
     assert agent.last_question == "most 30+ point games?"
     assert [m["content"] for m in agent.messages[1:]] == ["most 30+ point games?", "template answer"]

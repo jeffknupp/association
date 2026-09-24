@@ -285,6 +285,31 @@ _PLAYOFF_WORDS = re.compile(r"\b(?:playoffs?|post-?season|finals|elimination|gam
 # that says "playoffs", and must keep meaning only that.
 _REGULAR_SEASON_WORDS = re.compile(r"\bregular[- ]season\b", re.IGNORECASE)
 
+# Both season types at once, named outright: "including the playoffs",
+# "including postseason", "regular season and playoffs", "playoffs included".
+# Read APART from _PLAYOFF_WORDS, which used to be consulted alone -
+# "including playoffs" contains the word "playoffs", so _validate_season_type
+# returned season_type=3, silently dropping the regular season the question
+# asked to KEEP: "warriors all-time record including playoff record at away"
+# answered only the playoff road record (51-52), and "Payton Prichard stats vs
+# 76ers at home including playoffs game log" answered 7 playoff meetings and
+# then told the reader "Only 7 games ... in his box scores" - a false claim
+# about games (the 9 regular-season meetings) that were never read at all, not
+# a true count of what was found. Read the same way `season_type_unstated`
+# already is for a "last N games" question naming no type
+# (`_route_game_log_recent_span`): the honored meaning is identical - read
+# both, merged or combined - so this reuses the slot rather than adding a
+# second one, and `check_scope` already refuses it wherever nothing honors it
+# yet (`templates.common.HONORED_SCOPING`), which is the right answer for a
+# template that has not been taught to read both.
+_BOTH_SEASON_TYPES_WORDS = re.compile(
+    r"\bincluding\s+(?:the\s+)?(?:playoffs?|post-?season)\b"
+    r"|\b(?:playoffs?|post-?season)\s+included\b"
+    r"|\bregular\s+season\s+and\s+(?:the\s+)?(?:playoffs?|post-?season)\b"
+    r"|\b(?:playoffs?|post-?season)\s+and\s+regular\s+season\b",
+    re.IGNORECASE,
+)
+
 
 # One round or game of the postseason. No table carries a round or a series
 # game number, so no template can narrow to one: "tatum stats in the 2024 finals"
@@ -314,6 +339,38 @@ _SEASON_N = re.compile(r"\b(\d{1,2})(?:st|nd|rd|th)\s+season\b", re.IGNORECASE) 
 _SINCE = re.compile(r"\bsince\s+(?:the\s+)?((?:19|20)\d\d)\b", re.IGNORECASE)
 _DECADE = re.compile(r"\b(?:the\s+)?((?:19|20)\d)0'?s\b", re.IGNORECASE)
 
+# A CLOSED range - both ends named - rather than the open "since 2020" above.
+# `until` was declared nowhere and honored nowhere until this existed
+# (AGENTS.md's own worst-failure-shape example: "best 3 point shooters of the
+# 2010s" answered 2010 through now), so every form here fills BOTH slots.
+#
+# "2019-20 to 2023-24" / "from 2010-11 to 2018-19": the season-hyphenated
+# form on each side of "to"/"through". A season is named for the year it
+# ENDS (nba/season.py), so only the leading four-digit year is read - adding
+# 1 to it gives the season number whatever the trailing two digits say, the
+# same way `_SINCE` never checks them either.
+_SEASON_HYPHEN = r"((?:19|20)\d\d)-\d\d"
+_RANGE_TO_HYPHEN = re.compile(rf"\b(?:from\s+)?{_SEASON_HYPHEN}\s+(?:to|through)\s+{_SEASON_HYPHEN}\b", re.IGNORECASE)
+# "between 2020 and 2024": bare calendar-shaped years, read as season NUMBERS
+# (the same reading `_SINCE`'s own bare year gets), not calendar years.
+_RANGE_BETWEEN = re.compile(r"\bbetween\s+((?:19|20)\d\d)\s+and\s+((?:19|20)\d\d)\b", re.IGNORECASE)
+# "2020-2024": two season numbers joined by a hyphen with no "to"/"from" -
+# distinct from `_SEASON_HYPHEN` above, whose second half is two digits.
+# CONSECUTIVE years in this shape are not a range at all: "the 2023-2024
+# season" is how people write ONE season (2024) with both digits spelled out,
+# exactly as "2023-24" already means - `season_text._SPAN` already reads that
+# correctly as season 2024, and this regex used to re-match the same text as
+# since=2023/until=2024, silently overwriting a right answer with a wrong one
+# a step later. `_validate_range` only treats this shape as a range when the
+# two years are NOT consecutive ("2024-2026" - Jeff's own yardstick wording,
+# "how many 20+ point games did SGA have 2024-2026?").
+_RANGE_HYPHEN_YEARS = re.compile(r"\b((?:19|20)\d\d)-((?:19|20)\d\d)\b")
+# "knicks record by month 2024 2025": two bare, ADJACENT season numbers with
+# nothing joining them - only when the second is exactly one more than the
+# first, so this reads as a range and not two unrelated years mentioned in
+# passing.
+_RANGE_BARE_YEARS = re.compile(r"\b((?:19|20)\d\d)\s+((?:19|20)\d\d)\b")
+
 # "record" asked with a counting intent means wins and losses, not a count of
 # games. Measured: "Sixers record when Embiid scores 30 points this season" came
 # back as threshold_count and was answered with the league's 30-point games,
@@ -322,7 +379,35 @@ _RECORD = re.compile(r"\brecord\b", re.IGNORECASE)
 
 
 def _validate_range(question: str) -> tuple[int, int | None] | None:
-    """The first and last season a range covers - (first, None) for an open one."""
+    """The first and last season a range covers - (first, None) for an open one.
+
+    .. versionchanged:: 4.4.0
+       Reads four CLOSED forms beside the open "since 2020" one: a
+       season-hyphenated span joined by "to"/"through" (optionally led by
+       "from"), "between YYYY and YYYY", a bare "YYYY-YYYY" and two adjacent
+       season numbers with nothing joining them. Each fills ``until`` as well
+       as ``since`` - see AGENTS.md, "a season range", for why an unfilled
+       ``until`` is this project's worst failure shape rather than a missing
+       nicety.
+    """
+    to_hyphen = _RANGE_TO_HYPHEN.search(question)
+    if to_hyphen is not None:
+        first, last = int(to_hyphen.group(1)) + 1, int(to_hyphen.group(2)) + 1
+        return (first, last) if first <= last else (last, first)
+    between = _RANGE_BETWEEN.search(question)
+    if between is not None:
+        first, last = int(between.group(1)), int(between.group(2))
+        return (first, last) if first <= last else (last, first)
+    hyphen_years = _RANGE_HYPHEN_YEARS.search(question)
+    if hyphen_years is not None:
+        first, last = int(hyphen_years.group(1)), int(hyphen_years.group(2))
+        if abs(last - first) > 1:
+            # Consecutive years ("2023-2024") are one season, not a range -
+            # left for season_text._SPAN to read the way "2023-24" already is.
+            return (first, last) if first <= last else (last, first)
+    bare_years = _RANGE_BARE_YEARS.search(question)
+    if bare_years is not None and int(bare_years.group(2)) == int(bare_years.group(1)) + 1:
+        return int(bare_years.group(1)), int(bare_years.group(2))
     since = _SINCE.search(question)
     if since is not None:
         return int(since.group(1)), None
@@ -699,6 +784,14 @@ def _subject_named_in(question: str) -> str | None:
 
 
 _SPAN_WORDS = re.compile(r"\b(?:career|all[- ]time|ever|(?:in|of)\s+(?:nba\s+)?history|of\s+all\s+time)\b", re.IGNORECASE)
+# "since he/she joined the league", "since entering the league": the same
+# "every season" reading `_SPAN_WORDS`' own "career" gets, in words that do
+# not contain it - yardstick-v2 F031, "Show me luka's avg assists since he
+# joined the league", used to answer one season (whichever the router's
+# season default happened to be) where the question asked for his whole
+# career. Anchored on "the league" so it cannot fire on "since he joined the
+# team" (#147's own team question) or "since he joined the Mavericks".
+_SPAN_JOINED_LEAGUE_WORDS = re.compile(r"\bsince\s+(?:he|she|they)\s+(?:joined|entered)\s+the\s+league\b|\bsince\s+(?:joining|entering)\s+the\s+league\b", re.IGNORECASE)
 # "this postseason" names the current season as surely as "this season" does:
 # without it, "maxey's stats for game 4 against the knicks this postseason"
 # read as a career question and asked which Maxey.
@@ -724,11 +817,15 @@ def _validate_span(question: str) -> str | None:
     .. versionchanged:: 4.4.0
        Reads "all playoff games" and its variants too - see
        :data:`_SPAN_ALL_GAMES_WORDS` (#141).
+
+    .. versionchanged:: 4.4.0
+       Reads "since he/she joined the league" - see
+       :data:`_SPAN_JOINED_LEAGUE_WORDS`.
     """
     text = question
     if _CAREER_HIGH.search(text) and (season_from_text(question) is not None or _SEASON_WORDS.search(text)):
         text = _CAREER_HIGH.sub(" ", text)
-    return "career" if _SPAN_WORDS.search(text) or _SPAN_ALL_GAMES_WORDS.search(text) else None
+    return "career" if _SPAN_WORDS.search(text) or _SPAN_ALL_GAMES_WORDS.search(text) or _SPAN_JOINED_LEAGUE_WORDS.search(text) else None
 
 
 # The words that end a teammate's name in "without X this season" and the like.
@@ -1767,6 +1864,18 @@ def _route_season_slots(raw: dict[str, Any], question: str) -> dict[str, Any]:
     else:
         slots["season"] = resolved_season
     slots["season_type"] = _validate_season_type(question)
+    if _BOTH_SEASON_TYPES_WORDS.search(question):
+        # Both, named outright - not merely unnamed the way
+        # `_route_game_log_recent_span` reads a bare "last N games" later in
+        # `route()`. Same slot, same honored meaning: a template that reads it
+        # (`templates.common.player_relation_season_type`) reads both types;
+        # one that does not is refused by `check_scope` rather than guessing
+        # which half the question meant. `season_type` itself is left at the
+        # regular-season default (never 3) so nothing that reads it directly,
+        # ignoring the flag, narrows to the postseason ALONE - the specific
+        # wrong-cause shape this exists to stop.
+        slots["season_type_unstated"] = True
+        slots["season_type"] = SEASON_TYPES["regular"]
     return slots
 
 

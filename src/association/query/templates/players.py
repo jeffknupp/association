@@ -18,7 +18,7 @@ from association.nba.season import eastern_date as _eastern_date
 from ..entities import Availability, Entity
 from ..leaderboard import SEASON_TOTAL_OF, LeaderboardError, not_a_postseason_copy, resolve_metric, run_career_leaderboard, run_leaderboard
 from ..metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS
-from ..player_games import Narrowed, aggregate_sql, grouped_sql, league, rows_sql, scope_without_guard
+from ..player_games import Narrowed, aggregate_sql, grouped_sql, league, rows_sql, scope_without_guard, season_type_clause
 from .common import (
     _BOX_SCORES,
     _GAME_LOGS,
@@ -44,6 +44,7 @@ from .common import (
     _Narrowed,
     _no_narrowed_games,
     _period,
+    _player_relation_season_type,
     _resolved_player,
     _season_redirect,
     _Span,
@@ -151,9 +152,17 @@ def _game_span(con: duckdb.DuckDBPyConnection, season: int | None, season_type: 
 def _seasons_on_record(con: duckdb.DuckDBPyConnection, athlete_id: str, season_type: int) -> tuple[Any, Any]:
     """A player's first and last season in the per-player season table, which
     reaches back to 1976-77 - before any box score here. A postseason copied
-    from the regular season is not a postseason on record."""
+    from the regular season is not a postseason on record.
+
+    .. versionchanged:: 4.4.0
+       Honors :data:`~association.query.player_games.BOTH_SEASON_TYPES`
+       through :func:`~association.query.player_games.season_type_clause`,
+       rather than an equality that a sentinel outside (2, 3) could never
+       match.
+    """
     copy = f" AND {not_a_postseason_copy(('points',))}" if season_type == POSTSEASON else ""
-    row = con.execute(f"SELECT MIN(t.season), MAX(t.season) FROM player_season_stats t WHERE t.athlete_id = ? AND t.season_type = ?{copy}", [athlete_id, season_type]).fetchone()
+    type_clause, type_params = season_type_clause("t.season_type", season_type)
+    row = con.execute(f"SELECT MIN(t.season), MAX(t.season) FROM player_season_stats t WHERE t.athlete_id = ? AND {type_clause}{copy}", [athlete_id, *type_params]).fetchone()
     return (row[0], row[1]) if row else (None, None)
 
 
@@ -263,7 +272,10 @@ def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResu
 
     career = _career_span("threshold_count", slots.get("span"), slots.get("season"))
     season = None if career else (slots.get("season") or current_season())
-    season_type = slots.get("season_type") or 2
+    # BOTH_SEASON_TYPES ("including the playoffs", or a "last N games"
+    # question naming no type - _player_relation_season_type) reads one
+    # combined query rather than a merge: a count has no rows to interleave.
+    season_type = _player_relation_season_type(slots)
     limit = _clamp_limit(slots.get("limit"))
 
     subject = _threshold_count_subject(con, slots.get("player"), slots.get("season_n"), season, season_type)
@@ -545,6 +557,16 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        real one (`threePointFieldGoalPct`, answered as a percentage) or
        falling through to a refusal about a filler `player` slot instead
        (ISSUES.md #114).
+
+    .. versionchanged:: 4.4.0
+       The shot-distance refusal now says the ranking is not BUILT rather
+       than that none is possible - yardstick-v2 F019 marked the first
+       wording false: the key computes a real league leader (Porzingis,
+       27.37 ft with a 100-attempt floor) straight from `shot_chart`. Filed
+       in ISSUES.md as the gap it names - a `shot_distance` metric a leaderboard
+       could rank, with an attempt floor and end-of-period heaves excluded -
+       rather than built here, since the ranking needs its own qualifying
+       floor measured (not simply plugged into `LEADERBOARD_METRICS`).
     """
     con = ctx.con
     if slots.get("stat") == "shot_distance":
@@ -558,7 +580,7 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         # player the question does not mention - honest-sounding, and the
         # wrong cause, since no leaderboard metric exists either way. Neither
         # check below gets a chance to name the wrong cause now.
-        message = "No leaderboard ranks shot distance across the league - ask about one named player's average shot distance instead."
+        message = "Shot distance is not ranked league-wide yet - ask about one named player's average shot distance instead."
         return TemplateResult(data={"message": message}, answer=message)
     career = _career_span("leaderboard", slots.get("span"), slots.get("season"))
     metric = resolve_metric(slots.get("stat"), career=career)
@@ -1073,7 +1095,7 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     wanted = [] if shooting else _wanted_stats(slots)
 
     if from_box_scores:
-        narrowed = scoped_games(con, player, span, slots, opponent=slots.get("opponent"), measures=measures, date=date)
+        narrowed = scoped_games(con, player, span, slots, opponent=slots.get("opponent"), measures=measures, date=date, team=slots.get("own_team"))
         if isinstance(narrowed, TemplateResult):
             return narrowed
         return _box_score_player_stat(con, player, span, narrowed, wanted, shooting)
@@ -1089,11 +1111,40 @@ def _player_stat_reads_box_scores(slots: dict[str, Any], measures: list[MeasureF
     starter/bench split (it narrows the GAMES - the season line has no such
     column); a line on a box-score column ("under 14 fta"); a game of each
     playoff series; a range of seasons; a calendar `situation`. The narrowings
-    themselves are applied by common.scoped_games."""
+    themselves are applied by common.scoped_games.
+
+    .. versionchanged:: 4.4.0
+       Also true for ``season_type_unstated`` ("including the playoffs") - the
+       season line is one row per ``season_type`` and has no "both at once"
+       reading, so a question asking for both is answered from box scores,
+       the same as a ``since``-bounded one already is.
+
+    .. versionchanged:: 4.4.0
+       Also true for ``own_team`` - "lebron stats as a starter for Miami"
+       (yardstick-v2 F166) keeps only the games he played for that team,
+       which the season line (one row per season, not per team-within-season)
+       cannot narrow to. Deliberately ``own_team``, set only by
+       ``entities._scope_from_question_own_team``, and not the router's own
+       ``team`` slot - see that function's docstring for the recorded case
+       that slot silently narrowed before this distinction existed.
+    """
     split_side = slots.get("split") if slots.get("split") in STARTER_SIDES else None
     # A `situation` (a weekday, a month, a holiday, "since <day>") is a
     # narrowing of the GAMES too - the season line has no such column.
-    return any((slots.get("opponent"), slots.get("venue"), slots.get("without"), split_side, slots.get("since"), measures, slots.get("game_n"), slots.get("situation")))
+    return any(
+        (
+            slots.get("opponent"),
+            slots.get("venue"),
+            slots.get("without"),
+            split_side,
+            slots.get("since"),
+            measures,
+            slots.get("game_n"),
+            slots.get("situation"),
+            slots.get("season_type_unstated"),
+            slots.get("own_team"),
+        )
+    )
 
 
 def _season_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, season_type: int, wanted: list[str], shooting: tuple[str, str, str, str] | None) -> TemplateResult:

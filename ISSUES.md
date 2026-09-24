@@ -91,6 +91,28 @@ before that commit needs re-checking against the current warehouse.
   with no further change here - re-verify with a live `association query`
   call after the merge and delete this entry then.
 - **Source:** ours, not ESPN's.
+### A composed triple-double ranking answers a count instead of the highest-scoring one: "players with the highest scoring triple doubles"
+- **Found:** 2026-09-23, same session, yardstick-v2 F124.
+- **Evidence:** routes `leaderboard {'stat': 'triple_double', 'limit': 10,
+  'season_type': 2}` and answers "Nikola Jokic led the league in
+  triple-doubles ... at 34", counting HOW MANY triple-doubles each player
+  had. The key asks for the highest-SCORING triple-double game
+  (Jokic's 61-10-10 tops it, both regular season and including playoffs) -
+  a ranking of triple-double GAMES by points, not a count of players'
+  triple-double totals. The template (`leaderboard`) answers first, so
+  `query.compose` - which does have boolean measures and a rows-by-measure
+  point - never sees the refusal that would let it try. This is on the
+  boundary of the router/player half and `query/compose/*` (owned by the
+  team agent in this session's split), so filed rather than built here.
+- **User sees:** a wrong answer to a question that sounds almost identical
+  to one the system answers correctly (a triple-double COUNT).
+- **Next step:** either `leaderboard` refuses `stat: triple_double` when the
+  question's own words name a metric other than a count ("highest
+  scoring"/"biggest"), handing it to `compose` the way a template's
+  `TemplateUnsupported` already does, or `route()` reads the "highest
+  scoring" qualifier into a different `stat`/`rate` combination before
+  `leaderboard` ever answers. Needs whoever owns `query/compose`'s
+  boolean-measure point next.
 
 ### A position group as the subject is dropped and the team's own log answers: "Centers stats game log vs kings" lists the Kings' last five games
 - **Found:** 2026-09-22, the skeleton spike's K3 run (`~/association-research/skeleton-spike/k3_run.py`)
@@ -121,22 +143,6 @@ before that commit needs re-checking against the current warehouse.
   first composed shape to land.
 - **Source:** ours.
 - **GitHub:** #196
-
-### A team and a role named together are both dropped: "lebron stats as a starter for Miami" answers this season's Lakers line
-- **Found:** 2026-09-21, yardstick-v2 blind key against build 50c1faa. The
-  question is Jeff's own, from his review notes.
-- **Evidence:** answered "20.9 / 6.1 / 7.2 in 60 games in the 2026 regular
-  season". The key: 26.9 / 7.8 / 6.5 over 381 starts for Miami, 2010-11 to
-  2013-14. Neither "as a starter" nor "for Miami" reached the answer, and the
-  season defaulted to the current one.
-- **User sees:** a fluent line about the wrong team, era and role, with nothing
-  saying two conditions were set aside.
-- **Next step:** a team named beside a player with no season is a span - the
-  seasons he played for that team - on the player-games relation, and
-  `split=starter` is already honored by `game_log`/`player_stat`; check why it
-  did not arrive. Until then `check_scope` should refuse rather than drop.
-- **Source:** ours, not ESPN's.
-- **GitHub:** #166
 
 ### The agent fall-through answers 1 question in 23, and does not finish 61% of the time
 - **Found:** 2026-09-18, the first measurement of the agent path in this project
@@ -331,6 +337,118 @@ those were found.
 - **GitHub:** #169
 
 ## P2: misleading or incomplete
+
+### A short, genuinely ambiguous question is guessed at rather than asked about: "Tatum rec"
+- **Found:** 2026-09-23, working yardstick-v2's wrong-land bucket 4
+  (`~/association-research/yardstick-v2/wrong_land.md`, F112).
+- **Evidence:** routes `player_stat {'player': 'Jaylen Tatum', 'season':
+  2026, 'season_type': 2}` and answers "Jayson Tatum averaged 21.8 points,
+  10 rebounds and 5.3 assists ... in 16 games" - a specific, confident stat
+  line for a question the key marks unanswerable as written ("no record
+  type - team win-loss vs. personal statistical record, no opponent, no
+  time frame"). This is NOT the invented-name shape `override_invented_players`
+  already catches: "Tatum" is a real word IN the question, so the router's
+  "Jaylen Tatum" survives that check on its own strict rule (any one word of
+  the name is enough, and "Tatum" is one). The actual fault is that "rec" is
+  read as nothing in particular and the whole question collapses to a
+  default player-stat line, when a careful reader would ask what "rec"
+  means before guessing.
+- **User sees:** a fluent, specific-looking answer to a question that has no
+  single right reading - the mirror-image failure shape AGENTS.md warns
+  about, dressed as data rather than as the refusal it should be.
+- **Next step:** unclear how to fix narrowly without a general "ask when
+  ambiguous" rule this project has deliberately avoided (a reasonable
+  default beats a question, per Jeff's rule - but there is no reasonable
+  default between "team record" and "personal stat line" here, unlike a
+  namesake pick). Possibly: a bare "rec"/"record" with a name and nothing
+  else (no stat word, no opponent, no season) is genuinely ambiguous between
+  `team_record` and `player_stat` in a way the router can't resolve, and
+  should refuse naming BOTH readings rather than silently picking one -
+  needs measuring how often this shape appears in the routing corpus before
+  building anything, since a broad "ask on short questions" rule risks
+  breaking working ones.
+
+### A question with zero valid readings gets a fluent, self-chosen answer: "25-26 knicks playoff statistics vs other historic teams"
+- **Found:** 2026-09-23, same session, yardstick-v2 F097.
+- **Evidence:** routes `team_leaderboard {'stat': 'win_percentage', 'team':
+  'New York Knicks', 'season_type': 3}` and answers a 16-team postseason
+  win-percentage ranking - a real, computed answer, but to a framing the
+  question never named (no comparison metric, no named set of "historic
+  teams" to compare against). The key marks this as needing clarification
+  with zero valid readings.
+- **User sees:** a confident, well-formatted table that answers a question
+  nobody asked, with nothing marking it as a guess at what was meant.
+- **Next step:** per AGENTS.md ("when it cannot be repaired, say so"), this
+  may be unfixable without guessing what "vs other historic teams" should
+  compare - filed rather than attempted. If a future pass wants to try:
+  `team_leaderboard` already refuses a `limit` for `team_record` (rejects
+  ranking a single team); a comparable refusal for `team_leaderboard` when a
+  `team` is named ALONGSIDE no comparison metric the question itself states
+  ("vs" with nothing concrete after it) might be the shape, but was not
+  measured here.
+
+### A pair relation with a with/without split is not built: "steph curry record vs lebron regular season without kd"
+- **Found:** 2026-09-23, same session, yardstick-v2 F114.
+- **Evidence:** routes `with_without {'stat': 'wins', 'team': 'Los Angeles
+  Lakers', 'limit': 10, 'fields': ['steals', 'rebounds'], 'season': 2026,
+  'season_type': 2, 'without': ['kd']}` and answers the Houston Rockets'
+  with/without-Durant record - an entirely different question (LeBron's
+  Lakers, not Curry's Warriors vs Lakers, ever came up). The underlying
+  shape - two named players' head-to-head record, further split by a
+  THIRD player's presence/absence - has no relation built for it:
+  `with_without` narrows one team by one absent player;
+  `player_matchup`/`head_to_head` narrow two sides' meetings but read no
+  `without` at all (`HONORED_SCOPING["player_matchup"]` explicitly refuses
+  it for a genuine two-player matchup, in `templates/common.py`).
+- **User sees:** a wrong answer, fluently, about players and a team the
+  question never named.
+- **Next step:** not attempted - a genuinely new relation (a pairing of two
+  players' meetings, further split by a third player's team-tenure absence,
+  mirroring `_tenure_clause`'s existing "teammate's absence" reading but
+  applied to one SIDE of a matchup rather than to a single player's own
+  games). Scope and cost not assessed; filed for whoever picks up
+  `player_matchup`'s own `without` refusal next.
+
+### Ten P7-bucket "partial" answers from the yardstick are still open
+- **Found:** 2026-09-23, same session - not reached; recorded from
+  `~/association-research/yardstick-v2/wrong_land.md`'s own evidence rather
+  than independently re-diagnosed, since no time remained in this pass to
+  read each one's code path. Listed here so the next agent does not have to
+  rediscover the list from scratch, with the file's own F-numbers for the
+  full evidence (query, route, answer, key) each already carries:
+  - **F017** - a 50-row NetPoints leaderboard with each player's team asked
+    for; neither the full 50 nor any team name is given.
+  - **F041** - `player_history`'s season-by-season 2PT% table for a career
+    span never states the single combined career percentage (55.1%) the
+    question asked for, though the rows sum to it exactly.
+  - **F051** - `player_stat` for a made-count stat (3PM) prints makes and
+    games but not attempts or percentage beside them.
+  - **F058**/**F060** - `period_split` with "each game"/"every game" in the
+    question still applies a `limit` of 1 as a window, showing one row where
+    every game's row was asked for; aggregate totals are otherwise right.
+  - **F100** - a "fewest playoff wins since 2022" ranking lists only the 28
+    teams that qualified, when two more (Hornets, Wizards) belong in the
+    zero-win tie for never having qualified at all.
+  - **F128**/**F129** - "last N games" chronological logs (crossing
+    season-type boundaries, ISSUES.md's own `season_type_unstated`
+    mechanism from this session's bucket 1) now find the right games but do
+    not state the total/point-differential sum the question asked for,
+    leaving it for the reader to add up the rows.
+  - **F149** - a game log cut to a qualifying subset (FGA/minutes thresholds)
+    says "last 10 games" without saying how many of the player's total
+    qualifying games (49) that 10 is a truncation of.
+  - **F159** - `player_splits` with `stat: usage_pct` and a `without` filter
+    shows the standard splits table, which has no usage-rate column at all,
+    so the actually-asked-for stat is absent from an otherwise-correct
+    read.
+- **User sees:** mostly right answers, each short of the full truth in one
+  specific, named way per the key's own grading notes above.
+- **Next step:** each needs its own read of the relevant template
+  (`period_split`, `player_history`, `player_stat`, `game_log`,
+  `player_splits`, `team_leaderboard`, the NetPoints leaderboard path) - not
+  attempted in this session. Priority within this group should follow
+  AGENTS.md's own ordering (a wrong number > a missing one > a missing
+  label), which was not assessed per-item here.
 
 ### Two callers sharing one ollama instance corrupt each other's router output; ambient CPU load alone does not
 - **Found:** 2026-09-22, investigating the "router's slots depend on which
@@ -1497,32 +1615,26 @@ those were found.
   player's line through `_narrow_player_games`.
 - **GitHub:** #34
 
-### A `situation` the team relation cannot read, or one naming no calendar, still falls through to the slow agent
+### A `situation` naming no calendar still falls through to the slow agent
 - **Found:** 2026-09-18, reading the StatMuse audit; narrowed 2026-09-22 when
-  the player-games relation began honoring the calendar shapes (step 3, K3).
+  the player-games relation began honoring the calendar shapes (step 3, K3),
+  and again 2026-09-23 when the team relation did (`TeamNarrowed.narrow_calendar`,
+  applied in `team_games`, declared in `TEAM_RELATION_SCOPING`).
 - **Evidence:** `query/calendar.py` reads a weekday, a month, a fixed-date
-  holiday and "since <day>", and every template on the player relation
-  answers them now ("jamal murray career games on Tuesdays" is a log of his
-  Tuesday games). Two things remain: (1) the TEAM relation (`team_games`) does
-  not read the slot - `team_record` still accepts only "in <month>" through
-  its own `_team_record_month`, and `game_log`'s team half, `head_to_head` and
-  the team branches refuse any `situation`; (2) a `situation` naming no
-  calendar (an age: "18 year old", "before turning 27"; a conference or
-  division; "since returning") is refused by value with `TemplateUnsupported`,
-  which `agent.py` turns into a fall-through to the SQL-writing agent - ~55
-  seconds to an answer the system already knows it cannot give. Across every
-  recorded corpus the slot takes 19 distinct values; 11 are calendar shapes,
-  8 are not.
-- **User sees:** a team question on a weekday or since a date refused; an age
-  or conference question answered slowly by the agent, from its own weights.
-- **Next step:** (1) `TeamNarrowed.narrow_calendar` over `tg.eastern_date` /
-  `tg.season` with the same `calendar_clause`, applied in `team_games`, and
-  `team_record`'s month read replaced by it - one parser, both relations.
-  (2) For the non-calendar values, a refusal returned rather than raised, the
-  way `check_coverage` does it: the agent has no column for an age or a
-  division either.
+  holiday and "since <day>", and both relations answer them now ("jamal
+  murray career games on Tuesdays", "knicks record on christmas"). What
+  remains: a `situation` naming no calendar (an age: "18 year old", "before
+  turning 27"; a conference or division; "since returning") is refused by
+  value with `TemplateUnsupported`, which `agent.py` turns into a fall-through
+  to the SQL-writing agent - ~55 seconds to an answer the system already
+  knows it cannot give. Across every recorded corpus the slot takes 19
+  distinct values; 11 are calendar shapes, 8 are not.
+- **User sees:** an age or conference question answered slowly by the agent,
+  from its own weights.
+- **Next step:** for the non-calendar values, a refusal returned rather than
+  raised, the way `check_coverage` does it: the agent has no column for an
+  age or a division either.
 - **Source:** ours.
-- **GitHub:** not yet filed
 - **GitHub:** #120
 
 ### A team is the real subject of a question routed to a player-only template
@@ -2370,6 +2482,32 @@ those were found.
 - **GitHub:** #197
 
 ## P3: refusal or gap
+
+### No leaderboard metric ranks average three-point shot distance
+- **Found:** 2026-09-23, fixing the wrong-cause refusal `leaderboard` gives
+  for `stat: "shot_distance"` (yardstick-v2 F019 - "who lead the league in
+  avg 3 point distance"/"...for 3 point shots"). The wording was fixed in the
+  same commit (it used to say "no leaderboard ranks shot distance", which
+  reads as impossible and is false), but the underlying gap the reworded
+  refusal now honestly names is still open.
+- **Evidence:** the key computes a real league leader straight from
+  `shot_chart` - Kristaps Porzingis, 27.37 ft average three-point shot
+  distance over the 2025-26 regular season, with a 100-attempt floor and
+  end-of-period heaves (game clock under 3 seconds) excluded; leaving heaves
+  in changes the leader (Alperen Sengun, 29.62 ft, 9% heaves). Nothing in
+  `LEADERBOARD_METRICS`/`query/leaderboard.py` computes this - `shot_distance`
+  is a per-player metric (`templates.shots.shot_distance`) with no
+  league-wide ranking built over it.
+- **User sees:** a refusal naming the true cause now ("Shot distance is not
+  ranked league-wide yet - ask about one named player's average shot
+  distance instead") rather than a false one, but the question itself is
+  still unanswered by the fast path.
+- **Next step:** a `shot_distance` leaderboard metric, with its own
+  qualifying floor (attempts) and heave exclusion measured the way
+  `SHOT_VALUE_SQL`'s per-season caveats already are for the per-player read -
+  not simply plugged into `LEADERBOARD_METRICS` with somebody else's minimum,
+  since an unqualified leader is a single desperation heave (checked: the
+  warehouse's unfiltered leader is not Porzingis).
 
 ### `period_leaderboard` stays off the player-games relation
 - **Found:** 2026-09-22, step 3 C5's own second task: assess whether a

@@ -19,7 +19,7 @@ from association.nba.season import current_season, eastern_day_utc_range
 from ..answer import Artifact
 from ..calendar import parse_situation
 from ..conditions import _PLAYER_GAME_TABLES, _TEAM_GAME_TABLES, _game_scope, _Scope, box_source
-from ..entities import Ambiguous, Availability, Entity, clarification, find_players, resolve_player, resolve_team, suggest_players, suggestion, teammate_names
+from ..entities import Ambiguous, Availability, Entity, clarification, find_players, note_typo_reading, resolve_player, resolve_team, suggest_players, suggestion, teammate_names
 from ..leaderboard import resolve_metric
 from ..measures import MEASURE_WORDS
 from ..metrics import LEADERBOARD_METRICS
@@ -29,6 +29,7 @@ from ..player_games import (  # noqa: F401 - the relation's names, re-exported f
     _PLAYER_GAMES,
     _RECORDED,
     _RECORDED_OR_REBUILT,
+    BOTH_SEASON_TYPES,
     REBUILT_STATS,
     STARTER_SIDES,
     Narrowed,
@@ -37,6 +38,7 @@ from ..player_games import (  # noqa: F401 - the relation's names, re-exported f
     _teammate_played,
     _teammate_stints,
     league,
+    season_type_clause,
 )
 from ..player_games import _tenure_clause as _relation_tenure_clause
 from ..team_games import TeamNarrowed
@@ -82,7 +84,11 @@ MAX_LIMIT = 50
 
 
 # Named in every answer, so answering the wrong one is visible rather than silent.
-SEASON_TYPE_NAMES = {1: "preseason", 2: "regular season", 3: "postseason"}
+# `0` is `player_games.BOTH_SEASON_TYPES` - never a real value a row carries,
+# only a question that asked for both at once ("including the playoffs"). One
+# entry here means every existing `SEASON_TYPE_NAMES.get(season_type, ...)`
+# call site names it correctly with no further change.
+SEASON_TYPE_NAMES = {0: "regular season and postseason", 1: "preseason", 2: "regular season", 3: "postseason"}
 
 
 # Slots that narrow WHICH games an answer covers. A template that ignores one
@@ -106,6 +112,13 @@ SEASON_TYPE_NAMES = {1: "preseason", 2: "regular season", 3: "postseason"}
 # relation for the templates listed with them. `situation` (back-to-backs,
 # overtime, a conference) is refused by every template: nothing narrows to it
 # yet, and answering without it answered the whole season.
+# `until` closes a `since`-bounded range at the far end ("2019-20 to 2023-24",
+# "the 2010s") - `router._validate_range` - and is declared and read
+# everywhere `since` is (`_span_of`, `_Span.clause`), never on its own: a
+# template that honors `since` but not `until` would read a CLOSED range as an
+# open one and answer every season after it too, the same silent-widening
+# shape `since` itself exists to stop. `test_until_is_declared_wherever_since_is`
+# (tests/query/test_templates.py) enforces this pairing by reading the source.
 # `game_n` ("game 4") is one game of each playoff series, numbered by date over
 # `real_games`; the relation finds it, and a regular-season question refuses.
 # `season_n` ("his 18th season") is one season named by its place in a career;
@@ -125,12 +138,38 @@ SEASON_TYPE_NAMES = {1: "preseason", 2: "regular season", 3: "postseason"}
 # alone, so a template honors it only by honoring `since` and reading `until`
 # beside it (`_span_of`/`_validated_until`); one not wired to `until` at all
 # would otherwise silently read only the range's first half.
+# `team_restored` is not read by anything: it marks a `team` value
+# entities._scope_from_question_team_subject wrote back onto `leaderboard`
+# after the router dropped it, so check_scope refuses on its presence alone
+# and query.compose gets the question instead of `leaderboard` quietly
+# ranking players "on" a team that was meant to be the whole subject
+# (yardstick-v2 F127). No HONORED_SCOPING entry lists it, so it always
+# refuses; a team the router supplies itself never carries the marker.
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 """A ``date`` slot worth reading: the router's calendar form, ``YYYY-MM-DD``."""
 
 
 SCOPING_SLOTS = frozenset(
-    {"order", "date", "opponent", "venue", "span", "without", "round", "split", "since", "until", "below", "above", "game_n", "season_n", "situation", "rate", "season_type_unstated"}
+    {
+        "order",
+        "date",
+        "opponent",
+        "venue",
+        "span",
+        "without",
+        "round",
+        "split",
+        "since",
+        "until",
+        "below",
+        "above",
+        "game_n",
+        "season_n",
+        "situation",
+        "rate",
+        "season_type_unstated",
+        "team_restored",
+    }
 )
 
 
@@ -155,7 +194,7 @@ SCOPING_SLOTS = frozenset(
 # to one template at a time, which is the O(templates x slots) matrix the
 # algebra port exists to remove. A template on the relation that cannot honor
 # one of these says so in RELATION_SCOPING_EXCLUDED, with the reason.
-RELATION_SCOPING = frozenset({"order", "date", "opponent", "venue", "span", "without", "split", "since", "below", "above", "game_n", "season_n", "situation"})
+RELATION_SCOPING = frozenset({"order", "date", "opponent", "venue", "span", "without", "split", "since", "until", "below", "above", "game_n", "season_n", "situation"})
 """The scoping slots every template on the player-games relation honors.
 
 .. versionadded:: 4.4.0
@@ -184,6 +223,7 @@ RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
     "period_split": {
         "span": "the accuracy caveat is measured per season, not across a career",
         "since": "the accuracy caveat is measured per season, and the header names one season - both wrong for a range",
+        "until": "the accuracy caveat is measured per season, and the header names one season - both wrong for a range",
     },
 }
 """Per template, the relation's slots it refuses, and why.
@@ -301,8 +341,13 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # router._route_game_log_recent_span and game_log's own handling of it.
     "game_log": _relation_scoping("game_log", "season_type_unstated"),
     # The three that narrow games are answered from box scores rather than the
-    # season line; a career is summed from the season table.
-    "player_stat": _relation_scoping("player_stat"),
+    # season line; a career is summed from the season table. `season_type_unstated`
+    # is one more such narrowing (`_player_stat_reads_box_scores`): the season
+    # LINE table has one row per season_type and so no "both at once" reading,
+    # so BOTH_SEASON_TYPES forces the box-score path the same as an `opponent`
+    # or a `since` does, and is read there through the shared `scoped_player`
+    # (`_player_relation_season_type`), same as `threshold_count`'s.
+    "player_stat": _relation_scoping("player_stat", "season_type_unstated"),
     "player_history": frozenset({"span"}),
     # The team relation's whole set (step 3, C4b / K1): its games now come
     # from `team_games` (`opponent`, `venue`, `date`, `game_n`, `situation`,
@@ -349,7 +394,10 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # A count is already a line on a column; `below` is the same line the
     # other way ("games with under 14 fta"), and a phrase carrying the count's
     # own number IS the count, misread - see _threshold_count_lines.
-    "threshold_count": frozenset({"span", "below", "above", "season_n"}),
+    # `season_type_unstated` is honored the same way `scoped_player` reads it
+    # for game_log - one combined `season_type IN (2, 3)` read rather than a
+    # merge, since a count has no rows to interleave (_player_relation_season_type).
+    "threshold_count": frozenset({"span", "below", "above", "season_n", "season_type_unstated"}),
     "single_game_high": frozenset({"span"}),
     # A career is every season on record rather than the current one; see
     # _condition_scope. `without` is the teammate with_without divides by, and
@@ -553,6 +601,134 @@ time, before this set is ever consulted - so nothing here was relied on for
 that case in the first place.
 
 .. versionadded:: 2.1.0
+"""
+
+
+SUBJECT_RESTORABLE_INTENTS: frozenset[str] = frozenset({"single_game_high", "threshold_count"})
+"""Intents where a player left out changes the answer, but is not required -
+an empty slot means "the league" - so a name is restored only where the
+question's own words name exactly one player and that naming survives
+:func:`~association.query.entities._named_only_by_a_team_word` and
+:func:`~association.query.entities._named_only_by_a_common_word`.
+
+Separate from :data:`PLAYER_REQUIRED_INTENTS` on purpose: those templates
+cannot answer at all without a player, while these two have a real,
+different answer with none (the league's leaders) - "kawhi most threes in a
+game" (yardstick-v2 F093) used to answer that league ranking, Kawhi Leonard's
+own 7 never mentioned, because ``single_game_high`` was never taught to read
+a subject named with no scoring verb and no possessive
+(``router._SUBJECT_OF_HIGH`` needs one of those; "NAME most/highest STAT"
+has neither).
+
+Measured before shipping, per AGENTS.md's own discipline for this exact
+trap ("best" is Travis Best): both ``scripts/check_routing.py``'s cases and
+``/home/jeff/association-research/statmuse-2026-09/feed_queries.txt`` (380
+questions together) were run through the restoring grammar
+(``entities._scope_from_question_only_player``) with the two intents here as
+the only ones it can touch. 5 false-positive candidates turned up in the
+WHOLE corpus - "Best true shooting percentage last season?" (Travis Best),
+"Best record from 2010-11 to 2018-19 nba" and "Best NBA record since
+January 31st 201" (both Travis Best again), "Celtics vs Bulls head to head
+record" (Luther Head), and "Aaron gordan vs 76ers log" (a typo landing on
+Gordan Giricek instead of Aaron Gordon) - and NONE of the five route to
+``single_game_high`` or ``threshold_count``, so restricting to this pair
+alone already clears the measured corpus with zero false positives. The
+``best``/``head`` pair is still excluded by
+:func:`~association.query.entities._named_only_by_a_common_word` as a
+forward-looking gate, since a future question in either intent could still
+collide with one of them; the typo case is not addressed here (a wrong
+candidate, not an ungrounded one - :func:`~association.query.entities.suggest_players`'
+own near-spelling pass is the tool for that, and it only ever ASKS, never
+substitutes).
+
+.. versionadded:: 4.4.0
+"""
+
+
+OWN_TEAM_RESTORABLE_INTENTS: frozenset[str] = frozenset({"player_stat"})
+"""Intents where a player's OWN team, named beside him and left out by the
+router, is worth restoring - narrower than :data:`PLAYER_INTENTS` on
+purpose, since honoring the restored ``own_team`` slot needs the relation to
+narrow by it (``templates.common._narrow_player_games``'s ``team`` param,
+threaded through ``scoped_games`` only where a caller passes it), which only
+``player_stat`` does.
+
+"lebron stats as a starter for Miami" (yardstick-v2 F166) used to answer his
+current (Lakers) season, "Miami" never read at all - not even as noise, since
+nothing on the relation could have narrowed to it either way.
+``entities.scope_from_question``'s ``restore_team`` flag reads "for
+<team>"/"with the <team>" beside an already-known player
+(``entities._scope_from_question_own_team``) and, with no season also
+named, defaults ``span`` to "career" too - a historical team names a
+tenure, not "now". Written to ``own_team``, never the router's own ``team``
+slot - see that function's docstring for the recorded case
+(``player_stat``'s golden snapshot) where a router-supplied ``team`` sitting
+beside a correct ``opponent`` is noise, not a second fact to narrow by, the
+same shape ``games._team_slot_for_player`` already treats it as for
+``game_log``.
+
+Deliberately not ``game_log``: its own ``team``/``opponent`` dance
+(``games._team_slot_for_player``) already reads a ``team`` slot beside a
+player, and drops it outright when he actually played for that team ("his
+own team narrows nothing") - correct only because no tenure narrowing
+existed there. Reusing this flag for ``game_log`` without first reconciling
+the two readings would leave one of them silently wrong; filed in
+``ISSUES.md`` rather than done here.
+
+.. versionadded:: 4.4.0
+"""
+
+
+TEAM_ONLY_INTENTS: frozenset[str] = frozenset({"team_record", "team_leaderboard", "team_stat", "team_outlook"})
+"""Intents with no player-shaped reading at all - absent from
+:data:`PLAYER_INTENTS`, and so never checked by ``entities.override_invented_players``
+or `check_scope` against a stray player name.
+
+A question naming exactly one real player and no team, routed to one of
+these, is answering a different subject than the one named -
+yardstick-v2 F111, "alperen şengün alltime record" routed to
+``team_leaderboard`` with no player and no team slot at all, and answered
+the league standings, entirely off Sengun. AGENTS.md's "Refuse by name
+where the intent cannot be about the subject" is exactly this shape;
+``entities.player_named_on_a_team_only_question`` is the check, called from
+``agent.py`` before the template runs, and its refusal names the player it
+read rather than answering the wrong one.
+
+Deliberately not every team-shaped intent: ``head_to_head`` already has its
+own reroute for a player's record against a team
+(``entities.player_record_against_a_team``, #163), and ``coach`` is
+TABLELESS_INTENTS and already refuses on its own terms - neither needs a
+second, more general check that could only disagree with the first.
+
+.. versionadded:: 4.4.0
+"""
+
+
+TEAM_SUBJECT_RESTORABLE_INTENTS: frozenset[str] = frozenset({"leaderboard", "team_stat"})
+"""Intents where a team the question names as its own subject, and the
+router dropped outright, is worth restoring into ``team`` -
+``entities.scope_from_question``'s ``restore_team_subject`` flag
+(``entities._scope_from_question_team_subject``, yardstick-v2 F127).
+
+"how many 3 pointers have the magic made so far this season" routed to
+``leaderboard`` with no ``team`` slot at all - `stat` and `season` only -
+and ranked the league's individual leaders in makes, the Magic never named.
+``leaderboard`` already reads a router-supplied ``team`` to rank players
+WITHIN it ("Top 5 scorers on the Lakers?"), a different question this must
+not disturb, so only the value this restore itself writes is ALSO marked
+with ``team_restored`` (:data:`SCOPING_SLOTS`, absent from every
+``HONORED_SCOPING`` entry), forcing ``check_scope`` to refuse a
+``leaderboard`` this function touched and hand the question to
+``query.compose``, which composes the team's own total rather than a
+per-player ranking.
+
+``team_stat`` gets no marker: an empty ``team`` there already raises
+``TemplateUnsupported("no team named")`` on its own
+(``templates.common._resolved_team``), so restoring the team there is a
+strict improvement - the template answers directly, using the team as the
+single subject it was always meant to be.
+
+.. versionadded:: 4.4.0
 """
 
 
@@ -1108,10 +1284,21 @@ class _Span:
 
     def years(self, first: Any, last: Any) -> str:
         """The seasons a career answer's rows actually reach: ``"2024-2026
-        regular seasons"``, or one season's name."""
+        regular seasons"``, or one season's name.
+
+        .. versionchanged:: 4.4.0
+           A :data:`~association.query.player_games.BOTH_SEASON_TYPES` span
+           pluralizes each half ("2024-2026 regular seasons and postseasons")
+           rather than tacking an "s" onto the end of "regular season and
+           postseason", which reads as though only the second half repeated.
+        """
         if first is None or last is None:
             return f"{self.kind}s"
-        return f"{first} {self.kind}" if first == last else f"{first}-{last} {self.kind}s"
+        if first == last:
+            return f"{first} {self.kind}"
+        if self.season_type == BOTH_SEASON_TYPES:
+            return f"{first}-{last} regular seasons and postseasons"
+        return f"{first}-{last} {self.kind}s"
 
     def during(self, first: Any = None, last: Any = None, whose: str = "his career") -> str:
         """The span as it ends a sentence: ``"in the 2026 regular season"`` or
@@ -1227,7 +1414,9 @@ def _checked_venue(venue: Any) -> str:
     return str(venue)
 
 
-def _narrow_player_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, *, opponent: Any, venue: Any, without: Any, split: Any = None, game_n: Any = None) -> Narrowed | TemplateResult:
+def _narrow_player_games(
+    con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, *, opponent: Any, venue: Any, without: Any, split: Any = None, game_n: Any = None, team: Any = None
+) -> Narrowed | TemplateResult:
     """``player``'s games in ``span``, narrowed to an opponent, a venue, a
     teammate's absence and a starter/bench half where the question named them.
     A name that needs a clarifying question comes back as the TemplateResult
@@ -1242,15 +1431,36 @@ def _narrow_player_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _
     .. versionchanged:: 4.3.0
        Honors one half of the starter/bench split (``split``), and one game of
        each playoff series (``game_n``).
+
+    .. versionchanged:: 4.4.0
+       Takes ``team`` - the player's OWN team, as opposed to ``opponent`` -
+       for the shape ``player_stat`` alone opts into
+       (``templates.common.OWN_TEAM_RESTORABLE_INTENTS``): "lebron stats as a
+       starter for Miami" (yardstick-v2 F166) keeps only the games he played
+       for that team, unlike ``game_log``'s own ``team``/``opponent`` dance
+       (``games._team_slot_for_player``), which still drops a team the
+       player actually played for rather than narrowing by it - a template
+       has to ask for this explicitly, so nothing else on the relation is
+       affected.
     """
     if game_n and span.season_type != 3:
-        # A series has games 1-7; a regular season has nothing "game 4" names.
+        # A series has games 1-7; a regular season has nothing "game 4" names -
+        # true of BOTH_SEASON_TYPES too (0 != 3), so "game 4 including the
+        # playoffs" still refuses rather than guessing which type "game 4" was.
         raise TemplateUnsupported(f"game {game_n} names a game of a playoff series, and this is a {span.kind} question")
     season_clause, season_params = span.clause("pgl.season")
+    type_clause, type_params = season_type_clause("pgl.season_type", span.season_type)
     narrowed = Narrowed(
-        base=["pgl.athlete_id = ?", "pgl.season_type = ?", season_clause, "NOT pgl.did_not_play"],
-        base_params=[player.id, span.season_type, *season_params],
+        base=["pgl.athlete_id = ?", type_clause, season_clause, "NOT pgl.did_not_play"],
+        base_params=[player.id, *type_params, *season_params],
     )
+    if team:
+        resolved_team = team if isinstance(team, Entity) else _resolved_team(con, team, season=span.season)
+        if isinstance(resolved_team, TemplateResult):
+            return resolved_team
+        narrowed.team = resolved_team
+        narrowed.extra.append("pgl.team_id = ?")
+        narrowed.extra_params.append(resolved_team.id)
     if opponent:
         # A caller that has already resolved the team (it needs the name for
         # its answer before the games are read) passes the Entity; text is
@@ -1293,6 +1503,31 @@ def _narrow_player_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _
     return narrowed
 
 
+def _player_relation_season_type(slots: dict[str, Any]) -> int:
+    """The ``season_type`` to read the player relation for: ``BOTH_SEASON_TYPES``
+    when the question asked for both explicitly ("including the playoffs") or
+    named none at all in a "last N games" question
+    (``season_type_unstated`` - ``router._BOTH_SEASON_TYPES_WORDS`` and
+    ``router._route_game_log_recent_span`` both set it, for the same honored
+    meaning), else the value the router read from the question's own words.
+
+    ``game_log``'s own "last N games" merge (``_player_game_log_mixed``) does
+    not call this - it interleaves two separate reads rather than reading one
+    relation with ``season_type IN (2, 3)``, because it needs each type's own
+    count for the header. Every other reader on the relation (``scoped_player``
+    here, and ``threshold_count``'s own league/one-player read in
+    ``templates/players.py``) wants exactly the single combined read this
+    gives, which is simpler than a merge: an aggregate has no rows to
+    interleave.
+
+    .. versionadded:: 4.4.0
+    """
+    if slots.get("season_type_unstated"):
+        return BOTH_SEASON_TYPES
+    season_type = slots.get("season_type")
+    return season_type if isinstance(season_type, int) and not isinstance(season_type, bool) else REGULAR_SEASON
+
+
 def scoped_player(
     con: duckdb.DuckDBPyConnection,
     slots: dict[str, Any],
@@ -1322,7 +1557,7 @@ def scoped_player(
     .. versionadded:: 4.4.0
     """
     season_n = slots.get("season_n")
-    scope = _span_of("career" if season_n else span, None if season_n else season, slots.get("season_type") or 2, table, since=slots.get("since"))
+    scope = _span_of("career" if season_n else span, None if season_n else season, _player_relation_season_type(slots), table, since=slots.get("since"), until=slots.get("until"))
     player = _resolved_player(con, slots.get("player"), missing, available=available, season=scope.season, through=_career_end(scope.season))
     if isinstance(player, TemplateResult):
         return player
@@ -1371,6 +1606,7 @@ def scoped_games(
     opponent: Any,
     measures: list[MeasureFilter],
     date: str | None = None,
+    team: Any = None,
 ) -> Narrowed | TemplateResult:
     """``player``'s games in ``span`` under every row-level narrowing the
     question carries: opponent, venue, an absent teammate, a starter/bench
@@ -1389,7 +1625,10 @@ def scoped_games(
     ``team`` beside a named player is his opponent) and a template that needs
     the team's name before the read passes it already resolved; ``measures``
     because each template decides what a bare ``threshold`` means before any
-    name is resolved.
+    name is resolved. ``team`` is passed the same way, but stays ``None`` for
+    every caller except ``player_stat`` - see
+    :func:`_narrow_player_games`'s own note on why this is a caller's explicit
+    choice rather than a plain read of ``slots["team"]`` here.
 
     .. versionadded:: 4.4.0
 
@@ -1405,8 +1644,11 @@ def scoped_games(
        :func:`~association.query.player_games.games_subquery` - all three
        already honor it - is affected, and only when the question's own
        slots set a window.
+
+    .. versionchanged:: 4.4.0
+       Takes ``team``.
     """
-    narrowed = _narrow_player_games(con, player, span, opponent=opponent, venue=slots.get("venue"), without=slots.get("without"), split=slots.get("split"), game_n=slots.get("game_n"))
+    narrowed = _narrow_player_games(con, player, span, opponent=opponent, venue=slots.get("venue"), without=slots.get("without"), split=slots.get("split"), game_n=slots.get("game_n"), team=team)
     if isinstance(narrowed, TemplateResult):
         return narrowed
     narrow_measures(narrowed, measures)
@@ -1713,7 +1955,20 @@ def _teammates_among(con: duckdb.DuckDBPyConnection, candidates: list[Entity], p
 def _resolved_teammate(con: duckdb.DuckDBPyConnection, text: Any, player: Entity, span: _Span) -> Entity | TemplateResult:
     """The teammate a "without" names. "Without curry" is six players by name
     and at most two by roster, so an ambiguous name is narrowed to the ones who
-    shared a team with ``player`` in the span before anything is asked."""
+    shared a team with ``player`` in the span before anything is asked.
+
+    .. versionchanged:: 4.4.0
+       A near spelling (:func:`~association.query.entities.suggest_players`)
+       with exactly one candidate is taken rather than asked about, the same
+       default :func:`~association.query.entities.resolve_player` already
+       applies to a bare surname - visible in the answer
+       (:func:`~association.query.entities.note_typo_reading`) and correctable
+       (the note names the exact text that was typed). yardstick-v2 F157:
+       "de'aaron fox vs magic last five games without wembyanama" used to
+       refuse "did you mean Victor Wembanyama?" over a typo the question's own
+       key note says resolves cleanly - the true reason the question falls
+       short is a game count, not a name that failed to resolve.
+    """
     if not isinstance(text, str) or not text.strip():
         raise TemplateUnsupported("'without' names nobody")
     resolved = resolve_player(con, text)
@@ -1731,10 +1986,15 @@ def _resolved_teammate(con: duckdb.DuckDBPyConnection, text: Any, player: Entity
             return TemplateResult(data={"unmatched": text, "candidates": [c.name for c in candidates]}, answer=message)
         resolved = shared[0]
     if not isinstance(resolved, Entity):
-        found = _resolved_player(con, text, available=_BOX_SCORES)  # a suggestion, or a refusal
-        if isinstance(found, TemplateResult):
-            return found
-        resolved = found
+        near = suggest_players(con, text)
+        if len(near) == 1:
+            note_typo_reading(text, near[0])
+            resolved = near[0]
+        else:
+            found = _resolved_player(con, text, available=_BOX_SCORES)  # a suggestion, or a refusal
+            if isinstance(found, TemplateResult):
+                return found
+            resolved = found
     if resolved.id == player.id:
         raise TemplateUnsupported(f"{player.name} cannot play without himself")
     return resolved

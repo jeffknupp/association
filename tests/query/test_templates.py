@@ -445,6 +445,28 @@ def test_leaderboard_names_the_team_when_filtered(lb_con: TemplateContext) -> No
     assert "led the Golden State Warriors" in (result.answer or "")
 
 
+def test_leaderboard_refuses_a_team_the_question_named_as_its_own_subject(lb_con: TemplateContext) -> None:
+    """yardstick-v2 F127: "how many 3 pointers have the magic made so far
+    this season" routed to `leaderboard` with `stat` and `season` only - no
+    `team` at all - and ranked the league's individual leaders in makes,
+    the Magic never named. `entities._scope_from_question_team_subject`
+    restores the dropped team AND marks it `team_restored`
+    (`SCOPING_SLOTS`, absent from every `HONORED_SCOPING` entry), so
+    `check_scope` refuses this exact shape and hands the question to
+    `query.compose` instead of `leaderboard` quietly ranking players.
+
+    The marker is the whole point: `leaderboard`'s OWN, router-supplied
+    `team` reading - ranking players WITHIN a team, proven by
+    `test_leaderboard_names_the_team_when_filtered` just above - must keep
+    answering directly. `team_restored` is set only where THIS restore
+    itself wrote `team`, never where the router supplied it."""
+    router_supplied = {"stat": "points", "team": "Warriors"}
+    check_scope("leaderboard", router_supplied)  # does not raise
+    restored = {"stat": "threePointFieldGoalsMade", "season": 2026, "team": "Orlando Magic", "team_restored": True}
+    with pytest.raises(TemplateUnsupported, match="team_restored"):
+        check_scope("leaderboard", restored)
+
+
 def test_leaderboard_honors_playoffs(lb_con: TemplateContext) -> None:
     result = leaderboard(lb_con, {"stat": "points", "season_type": 3})
     assert "postseason" in (result.answer or "") and result.data["leaders"][0]["value"] == 31.0
@@ -2741,9 +2763,16 @@ def test_leaderboard_refuses_a_shot_distance_ranking_naming_the_real_cause(lb_co
     sets a sentinel `stat` this checks BEFORE resolve_metric and before the
     named-player refusal above, so a lingering filler player slot (left here
     on purpose, to prove the ordering) cannot produce either wrong-cause
-    refusal first."""
+    refusal first.
+
+    .. versionchanged:: 4.4.0
+       yardstick-v2 F019: the old wording ("No leaderboard ranks shot
+       distance") reads as a claim that none COULD - false, since the key
+       computes a real league leader straight from `shot_chart`. The refusal
+       now says the ranking is not built, which is the true state of things.
+    """
     result = leaderboard(lb_con, {"stat": "shot_distance", "player": "player"})
-    assert result.answer == "No leaderboard ranks shot distance across the league - ask about one named player's average shot distance instead."
+    assert result.answer == "Shot distance is not ranked league-wide yet - ask about one named player's average shot distance instead."
 
 
 # ---------------- player_netpoints ----------------
@@ -3021,13 +3050,21 @@ def test_scope_guard_allows_templates_that_honor_the_slot() -> None:
     check_scope("player_netpoints", {"order": "recent"})
 
 
-def test_scope_guard_lets_only_game_log_honor_season_type_unstated() -> None:
-    """`season_type_unstated` is set only for `game_log`
-    (router._route_game_log_recent_span), but the discipline is the same as
-    every other scoping slot: a template that cannot honor it refuses rather
-    than silently ignoring it."""
+def test_scope_guard_lets_only_the_templates_that_read_it_honor_season_type_unstated() -> None:
+    """`season_type_unstated` is set by `router._route_game_log_recent_span`
+    (a "last N games" question naming no season type) for `game_log` and,
+    since 4.4.0, by `router._BOTH_SEASON_TYPES_WORDS` for any intent whose
+    question asks for both season types outright ("including the playoffs").
+    `game_log`, `player_stat` and `threshold_count` are the player-relation
+    templates that read it (`_player_relation_season_type`, one combined
+    `season_type IN (2, 3)` read - simpler than `game_log`'s own row-merge,
+    since an aggregate has no rows to interleave); the discipline for every
+    other intent is the same as any other scoping slot - refuse rather than
+    silently ignore."""
     check_scope("game_log", {"order": "recent", "limit": 5, "season_type_unstated": True})
-    for intent in ("player_stat", "leaderboard", "threshold_count", "single_game_high"):
+    check_scope("player_stat", {"season_type_unstated": True})
+    check_scope("threshold_count", {"season_type_unstated": True})
+    for intent in ("leaderboard", "single_game_high"):
         with pytest.raises(TemplateUnsupported, match="different span"):
             check_scope(intent, {"season_type_unstated": True})
 
@@ -3505,6 +3542,78 @@ def test_period_split_reads_one_game_of_each_series(pg_ctx: TemplateContext) -> 
     assert "game 2 of each series" in (second.answer or "")
 
 
+@pytest.fixture
+def ps_redirect_ctx(tmp_path: Path) -> TemplateContext:
+    """A minimal warehouse for period_split's cross-season redirect
+    (yardstick-v2 F050): one player who started two games with 1st-quarter
+    shots in season ``s - 1`` (5 and 2 points) and played, but did not
+    START, one game in season ``s`` - so "his last N starts" finds nothing
+    in the defaulted (current) season and has to cross into the one
+    before it."""
+    s = current_season()
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO players VALUES ('1', 'Test Player')")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO teams VALUES ('1','GS','Golden State Warriors'),('2','BOS','Boston Celtics')")
+    c.execute(
+        "CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR, home_team_id VARCHAR, away_team_id VARCHAR, "
+        "home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR)"
+    )
+    c.executemany(
+        "INSERT INTO games VALUES (?, ?, 2, ?, '1', '2', 100, 90, '1')",
+        [("e1", s - 1, f"{s - 1}-03-02T00:30Z"), ("e2", s - 1, f"{s - 1}-03-04T00:30Z"), ("e3", s, f"{s}-01-10T00:30Z")],
+    )
+    c.execute(
+        "CREATE TABLE player_game_log (event_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, opponent_team_id VARCHAR, "
+        "athlete_id VARCHAR, did_not_play BOOLEAN, minutes INTEGER, starter BOOLEAN)"
+    )
+    c.executemany(
+        "INSERT INTO player_game_log VALUES (?, ?, 2, '1', '2', '1', FALSE, ?, ?)",
+        [("e1", s - 1, 30, True), ("e2", s - 1, 28, True), ("e3", s, 15, False)],
+    )
+    c.execute(
+        "CREATE TABLE shot_chart (athlete_id VARCHAR, season INTEGER, season_type INTEGER, event_id VARCHAR, team_id VARCHAR, "
+        "period INTEGER, clock VARCHAR, made BOOLEAN, shot_type VARCHAR, coordinate_x INTEGER, coordinate_y INTEGER, points_attempted INTEGER, description VARCHAR)"
+    )
+    c.executemany(
+        "INSERT INTO shot_chart VALUES ('1', ?, 2, ?, '1', 1, '10:00', TRUE, 'Jump Shot', 25, ?, ?, 'a shot')",
+        [(s - 1, "e1", 22, 3), (s - 1, "e1", 23, 2), (s - 1, "e2", 23, 2), (s, "e3", 23, 2)],
+    )
+    return TemplateContext(con=c, out_dir=tmp_path)
+
+
+def test_period_split_crosses_into_an_earlier_season_when_the_current_one_has_no_starts(ps_redirect_ctx: TemplateContext) -> None:
+    """yardstick-v2 F050: "zach collins first quarter stats last 5 games as
+    a starter" answered "No 2026 regular season games found ... as a
+    starter" - true of the box scores read, and about the wrong year, since
+    his real last 5 starts are all in the season before. A "last N games"
+    question naming no season is the newest N over his CAREER, the same
+    reading a bare `limit` already gets everywhere else on the relation."""
+    s = current_season()
+    result = period_split(ps_redirect_ctx, {"player": "Test Player", "period": 1, "split": "starter", "order": "recent", "limit": 5})
+    assert result.data["season"] == s - 1
+    assert result.data["games_played"] == 2
+    assert result.data["total"] == 7  # 5 + 2, both his starts, none from the empty current season
+    assert result.data["average"] == 3.5
+    assert "No games this season" in (result.answer or "")
+    assert f"{s - 1} regular season" in (result.answer or "")
+    # A season the question NAMES outright keeps the plain refusal - the
+    # redirect only fires for a DEFAULTED one.
+    named = period_split(ps_redirect_ctx, {"player": "Test Player", "period": 1, "split": "starter", "order": "recent", "limit": 5, "season": s})
+    assert named.data["games_played"] == 0
+    assert "No games this season" not in (named.answer or "")
+
+
+def test_period_split_does_not_cross_seasons_with_no_window_asked(ps_redirect_ctx: TemplateContext) -> None:
+    """The redirect is for a "last N games" WINDOW - a plain defaulted-season
+    question with nothing found stays the plain refusal, since there is no
+    window to widen."""
+    result = period_split(ps_redirect_ctx, {"player": "Test Player", "period": 1, "split": "starter"})
+    assert result.data["games_played"] == 0
+    assert "No games this season" not in (result.answer or "")
+
+
 def test_game_log_drops_the_players_own_team(pg_ctx: TemplateContext) -> None:
     """#147: `game_log` took its `team` branch before it read `player`, so a
     `team` slot beside a named player answered the TEAM's log instead of his -
@@ -3889,6 +3998,47 @@ def test_check_scope_lets_player_stat_honor_since_and_order(pg_ctx: TemplateCont
     check_scope("player_stat", {"player": "Brandin Podziemski", "order": "recent", "limit": 3})
 
 
+def test_until_closes_a_since_bounded_range_rather_than_reading_through_now(pg_ctx: TemplateContext) -> None:
+    """``until`` stops a range at the far end instead of reading every season
+    since the start through the present - AGENTS.md's own worst-failure-shape
+    example ("best 3 point shooters of the 2010s" answering 2010 through now,
+    an unfilled ``until``). yardstick-v2 F045 ("Portis vs bulls 2019-20 to
+    2023-24") was this bug: the router read the range's first year alone and
+    answered one season of three meetings where 21 games across five spanned.
+
+    Podziemski's fixture games: 1 played box score in the earlier season
+    (``s - 1``, e5) and 3 in the current one (``s``: e1, e2, e3 - e4 is a DNP
+    and e6 an empty box score, neither counted). ``since=s-1`` alone reads
+    every season from there on and so all 4; ``since=s-1, until=s-1`` closes
+    the range right back where it opened and reads only the 1.
+    """
+    s = current_season()
+    closed = player_stat(pg_ctx, {"player": "Brandin Podziemski", "stat": "points", "since": s - 1, "until": s - 1})
+    assert closed.data["stats"]["gamesPlayed"] == 1
+    assert closed.data["seasons"] == [s - 1, s - 1]
+    open_ended = player_stat(pg_ctx, {"player": "Brandin Podziemski", "stat": "points", "since": s - 1})
+    assert open_ended.data["stats"]["gamesPlayed"] == 4
+    assert open_ended.data["seasons"] == [s - 1, s]
+
+
+def test_player_stat_honors_an_own_team_slot_as_his_tenure(pg_ctx: TemplateContext) -> None:
+    """yardstick-v2 F166: "lebron stats as a starter for Miami" used to
+    answer his current season, with no way to narrow to a team he no longer
+    plays for at all - `own_team` (distinct from `opponent`, and from the
+    router's own `team` - see entities._scope_from_question_own_team's
+    docstring for why the two are not interchangeable) now keeps only the
+    games he played FOR that team. Seth Curry's fixture career has three
+    box-scored games: one for Boston (e7, season s-1, 12 points) and two for
+    Golden State (e3/e4, season s) - `own_team='Boston Celtics'` keeps only
+    the one."""
+    result = player_stat(pg_ctx, {"player": "Seth Curry", "stat": "points", "own_team": "Boston Celtics", "span": "career"})
+    assert result.data["stats"]["gamesPlayed"] == 1
+    assert result.data["stats"]["avgPoints"] == 12
+    assert "with the Boston Celtics" in (result.answer or "")
+    warriors = player_stat(pg_ctx, {"player": "Seth Curry", "stat": "points", "own_team": "Golden State Warriors", "span": "career"})
+    assert warriors.data["stats"]["gamesPlayed"] == 2
+
+
 def test_player_stat_names_the_real_cause_when_nothing_matches(pg_ctx: TemplateContext) -> None:
     answer = player_stat(pg_ctx, {"player": "Brandin Podziemski", "opponent": "Los Angeles Lakers"}).answer
     assert answer == f"Brandin Podziemski played 3 games in the {current_season()} regular season, none of them vs the Los Angeles Lakers."
@@ -4022,10 +4172,37 @@ def test_player_matchup_drops_a_second_player_confirmed_by_a_near_spelling_of_wi
     ("wembyanama") - so the identity confirmation has to reach through
     suggest_players' near-spelling pass, not just an exact match. "Stephen
     Cury" here is one letter short of Stephen Curry and matches nobody else,
-    the same shape "wembyanama" is for Victor Wembanyama."""
+    the same shape "wembyanama" is for Victor Wembanyama.
+
+    .. versionchanged:: 4.4.0
+       A near spelling with exactly one candidate is taken rather than asked
+       about (`_resolved_teammate`, F157) - the same default `resolve_player`
+       already applies to a bare surname - so both paths now answer the
+       narrowed game log instead of refusing over a typo the question's own
+       words resolve cleanly. Still checked for agreeing with each other:
+       that is the point of the case, not which way `without` resolves.
+    """
     matchup = player_matchup(pg_ctx, {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons", "without": ["Stephen Cury"]})
     log = game_log(pg_ctx, {"player": "Brandin Podziemski", "opponent": "Detroit Pistons", "without": ["Stephen Cury"]})
-    assert matchup.answer == log.answer == "No player found matching 'Stephen Cury' - did you mean Stephen Curry?"
+    assert matchup.answer == log.answer
+    assert "did you mean" not in log.answer
+    assert "without Stephen Curry" in log.answer
+
+
+def test_a_near_spelling_of_without_is_taken_and_the_reading_is_visible(pg_ctx: TemplateContext) -> None:
+    """yardstick-v2 F157: "de'aaron fox vs magic last five games without
+    wembyanama" refused "did you mean Victor Wembanyama?" over a typo the
+    question's own key note says resolves cleanly - the true reason the
+    question falls short of five games is a game count (only one qualifying
+    game exists), not a name that failed to resolve. `_resolved_teammate`
+    now takes a near spelling with exactly one candidate rather than asking,
+    and `collect_name_readings` carries the sentence saying so - visible
+    where a template called directly (as here) does not show it, and shown
+    in the agent's own answer (`agent.py` attaches it, not the template)."""
+    with collect_name_readings() as readings:
+        result = game_log(pg_ctx, {"player": "Brandin Podziemski", "opponent": "Detroit Pistons", "without": ["Stephen Cury"]})
+    assert "without Stephen Curry" in result.answer
+    assert readings == ["('Stephen Cury' was read as Stephen Curry - a near spelling with no other match.)"]
 
 
 # ---------------- a narrowed reading over a whole empty-box-score season (#72) ----------------
@@ -4899,11 +5076,21 @@ def test_templates_on_the_relation_declare_no_scoping_of_their_own() -> None:
        and ``RELATION_SCOPING_EXCLUDED`` is read live below, so this does not
        need to guess which cells that branch ends up excluding or why - only
        that the two facts still balance the same equation every other
-       relation template does.
+       relation template does. ``player_stat`` now also carries the
+       ``season_type_unstated`` extra beside ``game_log``'s - the season line
+       has no "both at once" row, so the slot sends it to box scores the same
+       way a ``since`` range already does.
     """
     from association.query.templates.common import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 
-    on_the_relation = {"game_log": {"season_type_unstated"}, "player_stat": set(), "period_split": set(), "player_splits": set(), "record_when": set(), "streak": set()}
+    on_the_relation = {
+        "game_log": {"season_type_unstated"},
+        "player_stat": {"season_type_unstated"},
+        "period_split": set(),
+        "player_splits": set(),
+        "record_when": set(),
+        "streak": set(),
+    }
     if _c5_shots_ported():
         on_the_relation |= {"shot_chart": set(), "shot_distance": set()}
     for intent, extra in on_the_relation.items():
@@ -4911,6 +5098,39 @@ def test_templates_on_the_relation_declare_no_scoping_of_their_own() -> None:
         for slot, reason in excluded.items():
             assert slot in RELATION_SCOPING and reason.strip(), f"{intent} excludes {slot!r} without a reason"
         assert HONORED_SCOPING[intent] == (RELATION_SCOPING | extra) - set(excluded), f"{intent} declares scoping of its own"
+
+
+def test_until_is_declared_wherever_since_is() -> None:
+    """A new scoping dimension is one clause on ``_Span`` plus a template
+    turning it on - never a slot honored for ``since`` and silently dropped
+    for ``until``, the same shape ``RELATION_SCOPING`` exists to stop for
+    every other cell. ``until`` closes a ``since``-bounded range at the far
+    end (``router._validate_range``'s closed forms - "2019-20 to 2023-24",
+    "between 2020 and 2024", "2020-2024", two adjacent bare years) and is
+    read nowhere ``since`` is not: ``period_split`` excludes both for the
+    same reason (its accuracy caveat is measured per season), and every
+    player-relation template that honors ``since`` honors ``until`` beside
+    it - checked by reading the source dicts rather than trusting a comment.
+
+    Scoped to the PLAYER relation's own structures (``RELATION_SCOPING``,
+    ``RELATION_SCOPING_EXCLUDED``, and ``HONORED_SCOPING`` for the intents on
+    it) rather than ``HONORED_SCOPING`` as a whole: the team relation's
+    ``since``/``until`` pairing is ``TEAM_RELATION_SCOPING``'s own claim, made
+    and tested separately.
+
+    .. versionadded:: 4.4.0
+    """
+    from association.query.templates.common import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
+
+    assert {"since", "until"} <= RELATION_SCOPING
+    for intent, excluded in RELATION_SCOPING_EXCLUDED.items():
+        assert ("since" in excluded) == ("until" in excluded), f"{intent} excludes since XOR until"
+    on_the_relation = ["game_log", "player_stat", "period_split", "player_splits", "record_when", "streak"]
+    if _c5_shots_ported():
+        on_the_relation += ["shot_chart", "shot_distance"]
+    for intent in on_the_relation:
+        honored = HONORED_SCOPING[intent]
+        assert ("since" in honored) == ("until" in honored), f"{intent} honors since XOR until"
 
 
 def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:

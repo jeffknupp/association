@@ -43,7 +43,7 @@ from typing import Any
 
 import duckdb
 
-from association.nba.coverage import COVERAGE
+from association.nba.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON
 from association.nba.season import eastern_date_sql
 from association.query.calendar import CalendarNarrowing, calendar_clause
 
@@ -66,6 +66,37 @@ FLOOR: int = COVERAGE["player_box_stats"].first_season
 """
 
 _RECORDED = "pgl.minutes IS NOT NULL"
+
+
+#: A ``season_type`` value meaning "both the regular season and the
+#: postseason at once" - a sentinel outside the two real values a game row
+#: carries (``REGULAR_SEASON`` 2, ``POSTSEASON`` 3), never written to a
+#: ``season_type`` column itself. Read the same way ``game_log`` already read
+#: a "last N games" question naming no season type at all
+#: (``router._route_game_log_recent_span``, ``season_type_unstated``), and
+#: now also for a question that asks for both outright ("including the
+#: playoffs", "regular season and playoffs") - see
+#: ``router._BOTH_SEASON_TYPES_WORDS``. :func:`season_type_clause` is the one
+#: place this turns into SQL; every other reader of the relation still sees a
+#: real ``season_type`` (2 or 3) or this sentinel, never a third meaning.
+#:
+#: .. versionadded:: 4.4.0
+BOTH_SEASON_TYPES: int = 0
+
+
+def season_type_clause(column: str, season_type: int) -> tuple[str, list[Any]]:
+    """SQL restricting ``column`` to one season type, or - for
+    :data:`BOTH_SEASON_TYPES` - both of the two real ones, and its parameters.
+
+    The one place a ``season_type`` value becomes SQL, so a new caller that
+    wants to honor "including the playoffs" gets the sentinel right by
+    construction rather than by copying an ``IN`` list.
+
+    .. versionadded:: 4.4.0
+    """
+    if season_type == BOTH_SEASON_TYPES:
+        return f"{column} IN ({REGULAR_SEASON}, {POSTSEASON})", []
+    return f"{column} = ?", [season_type]
 
 
 #: The stats a rebuilt box line may be read for, and the reason the list is
@@ -172,6 +203,11 @@ class Narrowed:
     extra: list[str] = field(default_factory=list)
     extra_params: list[Any] = field(default_factory=list)
     opponent: Entity | None = None
+    #: The player's OWN team the question narrowed to - "for the Miami Heat",
+    #: read only where the question names one and the router left no team
+    #: slot at all (yardstick-v2 F166). Distinct from ``opponent``: this keeps
+    #: only the games he played FOR this team, not games against it.
+    team: Entity | None = None
     venue: str | None = None
     #: True for a log of starts, False for one off the bench, None when the
     #: question named neither half.
@@ -235,6 +271,8 @@ class Narrowed:
            behind it.
         """
         parts = []
+        if self.team is not None:
+            parts.append(f"with the {self.team.name}")
         if self.opponent is not None:
             parts.append(f"vs the {self.opponent.name}")
         if self.venue:
@@ -319,8 +357,13 @@ MEASURE_OPS: dict[str, str] = {">=": ">=", ">": ">", "<=": "<=", "<": "<", "=": 
 
 def league(season_clause: str, season_params: list[Any], season_type: int) -> Narrowed:
     """Every player's games in a span - the read a league-wide count or
-    single-game high starts from. Same guards as one player's, without him."""
-    return Narrowed(base=["pgl.season_type = ?", season_clause, "NOT pgl.did_not_play"], base_params=[season_type, *season_params])
+    single-game high starts from. Same guards as one player's, without him.
+
+    .. versionchanged:: 4.4.0
+       Honors :data:`BOTH_SEASON_TYPES` through :func:`season_type_clause`.
+    """
+    type_clause, type_params = season_type_clause("pgl.season_type", season_type)
+    return Narrowed(base=[type_clause, season_clause, "NOT pgl.did_not_play"], base_params=[*type_params, *season_params])
 
 
 def rows_sql(narrowed: Narrowed, select: str, *, order: str, limit: int | None = None, offset: int = 0, rebuilt: bool = False) -> tuple[str, list[Any]]:
@@ -483,10 +526,14 @@ def scope_without_guard(alias: str, season: int | None, season_type: int) -> tup
     1993 out: ESPN answers season=1993 with the same games as 1994 (coverage's
     phantom), so a career counted from 1993 counts every 1993-94 game twice -
     26,350 duplicate player-games.
+
+    .. versionchanged:: 4.4.0
+       Honors :data:`BOTH_SEASON_TYPES` through :func:`season_type_clause`.
     """
+    type_clause, type_params = season_type_clause(f"{alias}.season_type", season_type)
     if season is None:
-        return f"{alias}.season >= ? AND {alias}.season_type = ?", [FLOOR, season_type]
-    return f"{alias}.season = ? AND {alias}.season_type = ?", [season, season_type]
+        return f"{alias}.season >= ? AND {type_clause}", [FLOOR, *type_params]
+    return f"{alias}.season = ? AND {type_clause}", [season, *type_params]
 
 
 def _teammate_stints(con: duckdb.DuckDBPyConnection, athlete_id: str) -> list[tuple[int, str, str, str]]:

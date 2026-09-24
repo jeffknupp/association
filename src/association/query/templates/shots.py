@@ -171,7 +171,14 @@ def _shot_chart_settle_player(con: duckdb.DuckDBPyConnection, name: str, slots: 
     not), and ``season_n`` is read the same way.
     """
     season_n = slots.get("season_n")
-    scope = _span_of("career" if season_n else slots.get("span"), None if season_n else slots.get("season"), slots.get("season_type") or 2, "player_game_log", since=slots.get("since"))
+    scope = _span_of(
+        "career" if season_n else slots.get("span"),
+        None if season_n else slots.get("season"),
+        slots.get("season_type") or 2,
+        "player_game_log",
+        since=slots.get("since"),
+        until=slots.get("until"),
+    )
     resolved = resolve_chart_player(con, name, SHOT_AVAILABILITY, scope.season)
     if resolved is None:
         message = no_match(con, name)

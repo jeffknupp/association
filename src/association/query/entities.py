@@ -36,6 +36,8 @@ import duckdb
 from association.nba.franchises import FRANCHISE_ERAS, FranchiseEra, season_name
 from association.nba.season import current_season
 
+from .season_text import season_from_text
+
 MAX_CANDIDATES = 10
 
 # Curated shorthand -> the player it unambiguously means. NOT the prominence
@@ -805,6 +807,72 @@ def misread_players(names: list[str]) -> str:
     )
 
 
+def _has_a_real_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> bool:
+    """Whether ``slots`` carries a ``team``/``teams`` value that actually
+    resolves to a real franchise - not merely a non-empty string. The router
+    invents a team the way it invents a player (AGENTS.md, "the router
+    invents names"): "alperen şengün alltime record" arrived one run with no
+    `team` at all, and another with `team='Alperen Şengün'` - the player's
+    own name, filed as though it were a franchise, which
+    :func:`~association.query.templates.team_record.team_record`-shaped
+    templates then refuse as "no team matching", the wrong cause. A team
+    slot nothing resolves is functionally the same as no team slot at all."""
+    season = slots.get("season") if isinstance(slots.get("season"), int) else None
+    texts = [slots.get("team"), *(slots.get("teams") or [])]
+    return any(isinstance(text, str) and text.strip() and _team_named(con, text, season) is not None for text in texts)
+
+
+def player_named_on_a_team_only_question(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any]) -> str | None:
+    """The one player a question names, when the routed intent has no
+    reading for him at all and the question names no REAL team either - or
+    None.
+
+    yardstick-v2 F111: "alperen şengün alltime record" routed to
+    ``team_leaderboard`` - no player slot exists on that intent at all, and
+    no ``team`` slot that resolves to a real franchise was filled either -
+    and answered the league standings, entirely off the subject the
+    question named. Diacritics are already handled: ``players_named_in``
+    folds "şengün" to "sengun" (:func:`_fold`) before matching, the same way
+    it reads "dončić". See :func:`_has_a_real_team` for why an invented
+    ``team`` value (the player's own name, filed as though it were a
+    franchise - measured live, a second run of this exact question) counts
+    as no team at all rather than stopping this check.
+
+    Caller-gated to :data:`~association.query.templates.common.TEAM_ONLY_INTENTS`
+    (this function does not check the intent itself, the same shape
+    ``restore_subject``/``restore_team`` take in
+    :func:`scope_from_question`): a REAL team already named there is the
+    real subject, and a player coincidentally named beside it changes no
+    answer - the same reasoning that keeps a stray name on ``head_to_head``
+    from being refused elsewhere in this module. A word that names only a
+    team ("magic" in "magic vs nets" is the Orlando Magic, not Magic
+    Johnson - :func:`_named_only_by_a_team_word`) or only a common English
+    word that collides with a surname ("best" is Travis Best -
+    :func:`_named_only_by_a_common_word`) is excluded the same way
+    :func:`_scope_from_question_only_player` already excludes both.
+
+    .. versionadded:: 4.4.0
+    """
+    if _has_a_real_team(con, slots):
+        return None
+    named = [name for name in players_named_in(con, question) if not _named_only_by_a_team_word(con, question, name) and not _named_only_by_a_common_word(question, name)]
+    return named[0] if len(named) == 1 else None
+
+
+def team_only_question_names_a_player(named_player: str, intent: str) -> str:
+    """The refusal sentence for :func:`player_named_on_a_team_only_question`
+    - names the player it read rather than answering the league or a team's
+    own numbers, the wrong subject.
+
+    .. versionadded:: 4.4.0
+    """
+    return (
+        f"This was read as a question about {named_player}, a player, but {intent.replace('_', ' ')} has no reading for one - "
+        f"it would have answered the league's or a team's own numbers instead. Ask about {named_player}'s own stats, "
+        "or name a team if a team's record was meant."
+    )
+
+
 def undo_name_completion(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any]) -> list[tuple[str, str]]:
     """Give back the ambiguity the router resolved on its own. Mutates ``slots``.
 
@@ -1153,6 +1221,152 @@ def _team_after_versus(con: duckdb.DuckDBPyConnection, question: str, season: in
     return None
 
 
+# "for", "with the" and whatever follows - a player's OWN team, unlike
+# _AGAINST's opponent. Loose on purpose, the same way _AGAINST is: a false
+# match ("stats for this season") tries "this season" against the teams
+# table and simply fails to find one, which costs nothing - the DB lookup
+# is the real gate, not the regex. "with" alone is not read here: "westbrook
+# stats with the clippers" and "westbrook stats vs the clippers" mean
+# different things, but a bare "with" also introduces `without`'s own
+# teammate phrasing ("stats with steph curry on the floor" names a
+# TEAMMATE, not a team), so only "with the" - which a teammate's name never
+# takes - is read as this shape.
+_FOR_TEAM = re.compile(r"\bfor\s+(?:the\s+)?(.+)|\bwith\s+the\s+(.+)", re.IGNORECASE)
+
+
+def _team_after_for(con: duckdb.DuckDBPyConnection, question: str, season: int | None = None) -> Entity | None:
+    """The player's OWN team a question names with "for"/"with the"
+    ("lebron stats as a starter for Miami", yardstick-v2 F166), or None.
+    Spans of three words down to one are tried, the same as
+    :func:`_team_after_versus`.
+
+    .. versionadded:: 4.4.0
+    """
+    for match in _FOR_TEAM.finditer(question):
+        span_text = match.group(1) or match.group(2) or ""
+        words = _words(span_text)[:3]
+        for size in (3, 2, 1):
+            if size <= len(words) and len(" ".join(words[:size])) >= 2:
+                team = _team_named(con, " ".join(words[:size]), season)
+                if team is not None:
+                    return team
+    return None
+
+
+#: Ordinary English words that collide with a real NBA team abbreviation,
+#: found the same way :data:`_COMMON_WORDS_THAT_NAME_PLAYERS` was - measured
+#: against the full routing corpus before :func:`teams_named_in` shipped.
+#: :func:`_team_named` matches an abbreviation with no length floor of its
+#: own (`abbreviation ILIKE ?`), so a bare three-letter word run through it
+#: directly can resolve to a team nobody meant: "was" is the Washington
+#: Wizards ("What was the highest scoring game by a player this year?"),
+#: "min" is the Minnesota Timberwolves (a plausible box-score "20+ min").
+#: Unlike the player list, this one is checked against the SPAN actually
+#: tried rather than the team's own name, because a team's matched span is
+#: often not a word of its display name at all (an abbreviation matches
+#: nothing in "Washington Wizards" except by lookup).
+#:
+#: .. versionadded:: 4.4.0
+_COMMON_WORDS_THAT_NAME_TEAMS: frozenset[str] = frozenset({"was", "min"})
+
+
+def teams_named_in(con: duckdb.DuckDBPyConnection, question: str, season: int | None = None) -> list[Entity]:
+    """Teams the question itself names, in the order it names them - the team
+    counterpart of :func:`players_named_in`, built for
+    :data:`~association.query.templates.common.TEAM_SUBJECT_RESTORABLE_INTENTS`
+    (yardstick-v2 F127).
+
+    Spans of three words down to one are tried left to right, the same as
+    :func:`players_named_in`, so "trail blazers" is read as one team rather
+    than two failed one-word lookups. A span shorter than three letters is
+    never tried (the same floor :func:`players_named_in` applies, for the
+    same reason: "in", "la", "no" match something by accident), and a span
+    equal to :data:`_COMMON_WORDS_THAT_NAME_TEAMS` is skipped outright even
+    at three letters, since those two are real words dense enough in
+    ordinary questions that the floor alone does not clear them.
+
+    .. versionadded:: 4.4.0
+    """
+    words = _words(question)
+    found: list[Entity] = []
+    index = 0
+    while index < len(words):
+        matched = False
+        for size in (3, 2, 1):
+            if index + size > len(words):
+                continue
+            span_words = words[index : index + size]
+            if any(len(w) < 3 for w in span_words):
+                continue
+            if size == 1 and span_words[0].casefold() in _COMMON_WORDS_THAT_NAME_TEAMS:
+                continue
+            team = _team_named(con, " ".join(span_words), season)
+            if team is not None:
+                found.append(team)
+                index += size
+                matched = True
+                break
+        if not matched:
+            index += 1
+    seen: set[str] = set()
+    unique: list[Entity] = []
+    for team in found:
+        if team.id not in seen:
+            seen.add(team.id)
+            unique.append(team)
+    return unique
+
+
+def _scope_from_question_team_subject(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], notes: list[str], intent: str) -> None:
+    """Put back a team the question names as its own subject, where the router
+    routed a team-shaped question to ``leaderboard`` or ``team_stat`` and
+    dropped the team entirely - yardstick-v2 F127: "how many 3 pointers have
+    the magic made so far this season" arrived at ``leaderboard`` with no
+    team slot at all, and ranked the league's leaders in makes instead of
+    answering the Magic's own total.
+
+    Requires no player already in the slots: with one present, a bare
+    team word beside it is a different question already handled elsewhere
+    (:func:`_scope_from_question_own_team`'s ``own_team``), and a team-only
+    intent naming a player with none of its own is the F111 shape
+    (:func:`player_named_on_a_team_only_question`), which this must not
+    quietly repair around. Also requires no ``opponent`` already set: "76ers
+    vs magic total points" resolves `_team_after_versus` to the Magic before
+    this ever runs, and a team-vs-team question is a comparison, not one
+    team's own total - the same team ending up in both `team` and
+    ``opponent`` would be nonsensical either way.
+
+    For ``leaderboard`` the restored value is ALSO marked with
+    ``team_restored`` - a slot :data:`~association.query.templates.common.HONORED_SCOPING`
+    never lists for it, so ``check_scope`` refuses and
+    ``query.compose`` gets a chance to answer the team's own total instead of
+    ``leaderboard`` ranking players. ``leaderboard`` already has a
+    legitimate, router-supplied reading of ``team`` - "Top 5 scorers on the
+    Lakers?" ranks the Lakers' own players, and has to keep answering that
+    directly - so only a team THIS function restored is marked; a team the
+    router itself supplied is left alone.
+
+    ``team_stat`` needs no such marker: an empty ``team`` there already
+    raises ``TemplateUnsupported("no team named")`` on its own
+    (``_resolved_team``), so restoring the team is a strict improvement -
+    it lets the template answer directly instead of falling through with
+    nothing to read.
+
+    .. versionadded:: 4.4.0
+    """
+    if slots.get("team") or slots.get("player") or slots.get("players") or slots.get("opponent"):
+        return
+    season = slots.get("season") if isinstance(slots.get("season"), int) else None
+    teams = teams_named_in(con, question, season)
+    if len(teams) != 1:
+        return
+    team = teams[0]
+    slots["team"] = team.name
+    notes.append(f"team {team.name!r} (from the question; the router left it out)")
+    if intent == "leaderboard":
+        slots["team_restored"] = True
+
+
 def _team_grounded(con: duckdb.DuckDBPyConnection, question: str, team: Entity) -> bool:
     """Whether the question shows any trace of ``team`` - a word of its name,
     its abbreviation, or a nickname. The team counterpart of :func:`_grounded`."""
@@ -1174,12 +1388,49 @@ def _team_grounded(con: duckdb.DuckDBPyConnection, question: str, team: Entity) 
     return any(len(word) >= 3 and any(name.startswith(word) for name in carried) for word in asked)
 
 
+#: Ordinary English words that also happen to be an NBA player's whole
+#: surname - measured against the full routing corpus
+#: (``scripts/check_routing.py``'s cases plus
+#: ``/home/jeff/association-research/statmuse-2026-09/feed_queries.txt``, 380
+#: questions) before :data:`~association.query.templates.common.SUBJECT_RESTORABLE_INTENTS`
+#: shipped: "Best true shooting percentage last season?" and "Best record
+#: from 2010-11 to 2018-19 nba" both named Travis Best, and "Celtics vs Bulls
+#: head to head record" named Luther Head - three genuine team/league
+#: questions with no player intended at all. The narrowest gate that removes
+#: them, per AGENTS.md's own instruction for this exact trap: not a general
+#: dictionary (environment-dependent, and this project's other word lists -
+#: ``_COUNT_SUBJECT_WORDS``, ``_NAME_STOPWORDS`` - are hand-curated for the
+#: same reason), grown from what a corpus measurement actually finds.
+#:
+#: .. versionadded:: 4.4.0
+_COMMON_WORDS_THAT_NAME_PLAYERS: frozenset[str] = frozenset({"best", "head"})
+
+
+def _named_only_by_a_common_word(question: str, player: str) -> bool:
+    """Whether every word of ``player``'s name the question holds is ALSO an
+    ordinary English word known to collide with a real surname
+    (:data:`_COMMON_WORDS_THAT_NAME_PLAYERS`) - the same shape
+    :func:`_named_only_by_a_team_word` checks for a team name, applied to a
+    plain word instead of a team's.
+
+    .. versionadded:: 4.4.0
+    """
+    asked = {w.casefold() for w in _words(question)}
+    supporting = [w for w in _words(player) if w.casefold() in asked]
+    return bool(supporting) and all(w.casefold() in _COMMON_WORDS_THAT_NAME_PLAYERS for w in supporting)
+
+
 def _scope_from_question_only_player(con: duckdb.DuckDBPyConnection, question: str) -> str | None:
     """The one player the question names, or None if it names none or several.
     A name held only by a word that names a team the question is about does
     not count: "luka dončić last 15 games vs. magic" names Luka, not Luka and
-    Magic Johnson."""
-    named = [name for name in players_named_in(con, question) if not _named_only_by_a_team_word(con, question, name)]
+    Magic Johnson. Nor does a name held only by an ordinary English word that
+    happens to collide with a surname - "best"/"head" - count either.
+
+    .. versionchanged:: 4.4.0
+       Also excludes a name held only by :data:`_COMMON_WORDS_THAT_NAME_PLAYERS`.
+    """
+    named = [name for name in players_named_in(con, question) if not _named_only_by_a_team_word(con, question, name) and not _named_only_by_a_common_word(question, name)]
     return named[0] if len(named) == 1 else None
 
 
@@ -1305,6 +1556,54 @@ def _scope_from_question_restore_player(con: duckdb.DuckDBPyConnection, question
         notes.append(f"player {player!r} (from the question; the router left it out)")
 
 
+def _scope_from_question_own_team(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], notes: list[str]) -> None:
+    """Put back a player's OWN team, where "for <team>"/"with the <team>"
+    names one and the router filed neither a ``team`` nor an ``opponent``
+    slot at all - yardstick-v2 F166, "lebron stats as a starter for Miami".
+
+    Written to ``own_team``, never ``team`` - a router-supplied ``team``
+    beside an already-correct ``opponent`` is documented noise elsewhere in
+    this module (:func:`_team_slot_for_player` in ``templates/games.py``:
+    "Phoenix Suns" beside a real "Philadelphia 76ers" opponent, "Los Angeles
+    Lakers" beside a real "Houston Rockets" one), and a template that read
+    ``slots["team"]`` directly here would occasionally trust that same noise
+    - measured on the step 3 golden set, "lebron james 2 3 pointers all-time
+    vs jazz on tuesdays" carries a recorded ``team='Los Angeles Lakers'``
+    (his own, current, and entirely redundant beside a real
+    ``opponent='Utah Jazz'``) and silently narrowed 9 real meetings down to 4
+    before ``own_team`` existed. ``own_team`` is a name only this function
+    and :data:`~association.query.templates.common.OWN_TEAM_RESTORABLE_INTENTS`'
+    one caller (``player_stat``) ever read or write, so nothing else can hand
+    it noise.
+
+    A historical team names a TENURE, not "now": with no season NAMED IN
+    THE QUESTION - read with :func:`~association.query.season_text.season_from_text`,
+    not ``slots["season"]``, since that slot already carries the router's own
+    "current season" default (``season_ref: "current"``) on a question that
+    named no year at all, and trusting it would read every "for <team>"
+    question as though "this season" had been said - ``span`` becomes
+    "career" too, the same reading
+    :data:`~association.query.router._SPAN_JOINED_LEAGUE_WORDS` gives "since
+    he joined the league", for the same reason ("for Miami" 15 years into a
+    Lakers career is not asking about this season). A season the question
+    DID name still wins, exactly as every other span reading here does.
+
+    .. versionadded:: 4.4.0
+    """
+    if slots.get("team") or slots.get("opponent") or slots.get("own_team"):
+        return
+    named_season = season_from_text(question)
+    team = _team_after_for(con, question, named_season)
+    if team is None:
+        return
+    slots["own_team"] = team.name
+    notes.append(f"own_team {team.name!r} (from the question; the router left it out)")
+    if named_season is None and not slots.get("span"):
+        slots["span"] = "career"
+        slots.pop("season", None)
+        notes.append("span 'career' (a team named with no season is a tenure, not \"now\")")
+
+
 def _scope_from_question_drop_opposing_team(slots: dict[str, Any], notes: list[str], team: Entity) -> None:
     """Drop the team the question plays against from ``team``, where it sits beside a player."""
     # The team the question plays AGAINST, filed as the subject's team
@@ -1362,7 +1661,18 @@ def _scope_from_question_opponent(con: duckdb.DuckDBPyConnection, question: str,
         _scope_from_question_unheld_opponent(con, slots, notes, versus, season, carries_player=carries_player)
 
 
-def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], *, reads_player: bool, needs_player: bool = False) -> list[str]:
+def scope_from_question(
+    con: duckdb.DuckDBPyConnection,
+    question: str,
+    slots: dict[str, Any],
+    *,
+    reads_player: bool,
+    needs_player: bool = False,
+    restore_subject: bool = False,
+    restore_team: bool = False,
+    restore_team_subject: bool = False,
+    intent: str = "",
+) -> list[str]:
     """Put a team the question plays AGAINST where a template will see it.
     Mutates ``slots``; returns a line per change, for the trace.
 
@@ -1395,7 +1705,48 @@ def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: di
     (``needs_player``): "Sga record 36 plus points" came back with no player
     at all, and an optional player slot left empty means "the league".
 
+    ``restore_subject`` is the same restore for a template where an empty
+    slot has a real, different answer (the league) rather than none at all -
+    :data:`~association.query.templates.common.SUBJECT_RESTORABLE_INTENTS`.
+    "kawhi most threes in a game" used to answer the league's single-game
+    3PM leaders, Kawhi Leonard's own 7 never mentioned, because no grammar in
+    ``router.py`` covers "NAME most/highest STAT" (yardstick-v2 F093). Kept
+    apart from ``needs_player`` because the two read differently even though
+    they call the same restore: ``needs_player`` means the template errors
+    without a name, ``restore_subject`` means it would answer something else
+    entirely correct and unmarked as narrower than it looks.
+
+    ``restore_team`` puts back the player's OWN team, into ``own_team`` -
+    never ``team``, which a router-supplied noise value already sits in
+    often enough to make trusting it directly unsafe (see
+    :func:`_scope_from_question_own_team`'s own docstring) - where "for
+    <team>"/"with the <team>" names one beside him and the router left both
+    ``team`` and ``opponent`` empty (yardstick-v2 F166,
+    :data:`~association.query.templates.common.OWN_TEAM_RESTORABLE_INTENTS`).
+    Requires a player already in the slots - a bare "for <team>" with no
+    player is a team question, not this one.
+
+    ``restore_team_subject`` puts back a team the question names as its OWN
+    subject, into ``team`` - unlike ``restore_team``, which never touches
+    ``team`` directly - where the router routed a team-shaped question to
+    ``leaderboard`` or ``team_stat`` and dropped the team entirely
+    (yardstick-v2 F127,
+    :data:`~association.query.templates.common.TEAM_SUBJECT_RESTORABLE_INTENTS`).
+    See :func:`_scope_from_question_team_subject` for why ``team`` is safe to
+    write here where ``own_team`` was not, and for the ``team_restored``
+    marker it also sets on ``leaderboard`` alone. ``intent`` is read only to
+    decide that marker.
+
     .. versionadded:: 2.1.0
+
+    .. versionchanged:: 4.4.0
+       Takes ``restore_subject``.
+
+    .. versionchanged:: 4.4.0
+       Takes ``restore_team``.
+
+    .. versionchanged:: 4.4.0
+       Takes ``restore_team_subject`` and ``intent``.
     """
     notes: list[str] = []
     season = slots.get("season") if isinstance(slots.get("season"), int) else None
@@ -1411,7 +1762,7 @@ def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: di
 
     _scope_from_question_team_in_players(con, slots, notes, versus, season)
 
-    if needs_player and not slots.get("player") and not slots.get("players"):
+    if (needs_player or restore_subject) and not slots.get("player") and not slots.get("players"):
         _scope_from_question_restore_player(con, question, slots, notes)
 
     if reads_player and has_player and team is not None and versus is not None and team.id == versus.id and not slots.get("opponent"):
@@ -1419,7 +1770,27 @@ def scope_from_question(con: duckdb.DuckDBPyConnection, question: str, slots: di
 
     _scope_from_question_opponent(con, question, slots, notes, versus, season, carries_player=reads_player and has_player)
     _scope_from_question_opponent_is_a_subject(con, slots, notes)
+    _scope_from_question_own_team_if_asked(con, question, slots, notes, restore_team=restore_team, has_player=has_player)
+    _scope_from_question_team_subject_if_asked(con, question, slots, notes, restore_team_subject=restore_team_subject, intent=intent)
     return notes
+
+
+def _scope_from_question_team_subject_if_asked(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], notes: list[str], *, restore_team_subject: bool, intent: str) -> None:
+    """The last step of :func:`scope_from_question` - split out, like
+    :func:`_scope_from_question_own_team_if_asked` just above it, to keep
+    that function's own branch count under the complexity gate."""
+    if restore_team_subject:
+        _scope_from_question_team_subject(con, question, slots, notes, intent)
+
+
+def _scope_from_question_own_team_if_asked(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], notes: list[str], *, restore_team: bool, has_player: bool) -> None:
+    """The last step of :func:`scope_from_question` - split out to keep that
+    function's own branch count under the complexity gate. Requires a player
+    already in the slots (``has_player``, or one a later step of
+    ``scope_from_question`` itself just wrote): a bare "for <team>" with no
+    player is a team question, not this one."""
+    if restore_team and (has_player or slots.get("player")):
+        _scope_from_question_own_team(con, question, slots, notes)
 
 
 def _scope_from_question_opponent_is_a_subject(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], notes: list[str]) -> None:
@@ -1886,6 +2257,32 @@ def collect_name_readings() -> Iterator[list[str]]:
         yield notes
     finally:
         _NAME_READINGS.reset(token)
+
+
+def note_typo_reading(text: str, chosen: Entity) -> None:
+    """Say a near spelling was read as ``chosen``, where somebody is
+    listening - the same visible-and-correctable discipline
+    :func:`_note_name_reading` carries for a bare-surname default, applied to
+    :func:`suggest_players`' OWN single-candidate result. Jeff's rule
+    (AGENTS.md, "A reasonable default beats a question"): a near spelling
+    with exactly one candidate is taken rather than asked about, and the
+    answer says so - "'wembyanama' was read as Victor Wembanyama" - so a
+    wrong guess is visible and a real ambiguity (more than one candidate,
+    which :func:`suggest_players` would have to be asked about instead of
+    called with) is never silently picked.
+
+    Public, unlike :func:`_note_name_reading`: written from
+    :mod:`association.query.templates.common`, which has no other way to
+    reach the :data:`_NAME_READINGS` context.
+
+    .. versionadded:: 4.4.0
+    """
+    notes = _NAME_READINGS.get()
+    if notes is None:
+        return
+    note = f"({text!r} was read as {chosen.name} - a near spelling with no other match.)"
+    if note not in notes:
+        notes.append(note)
 
 
 def _note_name_reading(text: str, chosen: Entity, others: list[Entity], season: int, *, named_in_full: bool) -> None:

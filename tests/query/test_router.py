@@ -844,6 +844,25 @@ def test_all_season_type_games_reads_as_a_career_span() -> None:
     assert his.slots["span"] == "career"
 
 
+def test_since_he_joined_the_league_reads_as_a_career_span() -> None:
+    """yardstick-v2 F031: "Show me luka's avg assists since he joined the
+    league" routed with no ``span`` at all - none of ``_SPAN_WORDS`` is in
+    it - and answered one season (8.8 apg, 2019-20) where his whole career
+    (8.23 apg, 514 games, 2019-2026) was asked for. Anchored on "the league"
+    so it does not fire on "since he joined the team"/"...the Mavericks",
+    which name a team question, not a career one."""
+    got = _ask(
+        "Show me luka's avg assists since he joined the league",
+        '{"intent":"player_stat","player":"Luka Doncic","stat":"assists","season":2026}',
+    )
+    assert got.slots["span"] == "career" and "season" not in got.slots
+    team = _ask(
+        "how many points has curry scored since he joined the Warriors",
+        '{"intent":"player_stat","player":"Stephen Curry","stat":"points","season":2026}',
+    )
+    assert "span" not in team.slots
+
+
 def test_all_season_type_games_does_not_fire_on_all_star() -> None:
     """The anchor is a season-TYPE word directly after "all"/"every" - "star"
     is not one, so an All-Star question keeps its own season rather than
@@ -1034,6 +1053,21 @@ def test_a_split_is_read_for_every_intent_so_others_can_refuse_it() -> None:
         ("most 3 pointers made since 2020", 2020, None),
         ("most steals by bucks players 2010s", 2010, 2019),
         ("most points this season", None, None),
+        # Closed ranges - both ends named. `until` used to be declared nowhere
+        # and honored nowhere at all, so these read as an open "since" span
+        # (AGENTS.md's own worst-failure-shape example).
+        ("Portis vs bulls 2019-20 to 2023-24", 2020, 2024),
+        ("Best record from 2010-11 to 2018-19 nba", 2011, 2019),
+        ("between 2020 and 2024 who led in assists", 2020, 2024),
+        ("knicks record by month 2024 2025", 2024, 2025),
+        # "2024-2026" (non-consecutive, hyphenated, no "to"/"from") is a
+        # range; "2023-2024" (consecutive) is a SINGLE season written with
+        # both years spelled out, exactly as "2023-24" already means - a
+        # correction to this same commit's first version, which read the
+        # consecutive form as since=2023/until=2024 and silently overwrote
+        # season_text._SPAN's already-correct single-season read.
+        ("how many 20+ point games did SGA have 2024-2026?", 2024, 2026),
+        ("sga stats in the 2023-2024 season", None, None),
     ],
 )
 def test_a_range_of_seasons_replaces_the_one_the_model_picked(question: str, since: int | None, until: int | None) -> None:
@@ -1042,6 +1076,17 @@ def test_a_range_of_seasons_replaces_the_one_the_model_picked(question: str, sin
     assert got.slots.get("since") == since and got.slots.get("until") == until
     if since is not None:
         assert "season" not in got.slots
+
+
+def test_a_consecutive_hyphenated_year_pair_keeps_season_texts_own_reading() -> None:
+    """ "the 2023-2024 season" is ONE season (2024), the way "2023-24" already
+    is - `_validate_range`'s `_RANGE_HYPHEN_YEARS` used to treat ANY
+    four-digit hyphenated pair as a range, so this silently became
+    since=2023/until=2024 and popped the single, correct `season` slot
+    `_validate_season`/`season_text._SPAN` had already set."""
+    got = _ask("sga stats in the 2023-2024 season", '{"intent":"player_stat","player":"Shai Gilgeous-Alexander","stat":"points"}')
+    assert got.slots.get("season") == 2024
+    assert "since" not in got.slots and "until" not in got.slots
 
 
 @pytest.mark.parametrize(

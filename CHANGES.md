@@ -113,6 +113,143 @@ had no published version to be compatible with.
   one table per season rather than refusing outright - "Knicks record by
   month 2024 2025" now answers both seasons' tables (warehouse-verified
   against ESPN's own 50-32/51-31 season totals, month for month).
+- **A team the question names as its own subject, dropped by the router on a
+  `leaderboard`- or `team_stat`-shaped question, is restored instead of
+  silently ranking or refusing about the wrong thing.** "how many 3 pointers
+  have the magic made so far this season" routed to `leaderboard` with
+  `stat`/`season` only - no `team` at all - and ranked the league's
+  individual leaders in makes, the Magic never named (yardstick-v2 F127).
+  `entities.teams_named_in` (the team counterpart of `players_named_in`)
+  finds the one team the question names, and
+  `entities._scope_from_question_team_subject` restores it into `team` so
+  `query.compose` can see it. For `leaderboard` alone the restored value is
+  also marked `team_restored` - a slot no `HONORED_SCOPING` entry lists, so
+  `check_scope` refuses and hands the question to `compose` instead of
+  `leaderboard` quietly ranking players "on" a team that was meant to be the
+  whole subject; `leaderboard`'s own, router-supplied `team` reading ("Top 5
+  scorers on the Lakers?") is untouched, since only a team THIS restore
+  itself wrote carries the marker. `team_stat` gets no marker - an empty
+  `team` there already raises `TemplateUnsupported("no team named")` on its
+  own, so restoring it is a strict improvement. `teams_named_in` excludes any
+  span shorter than three letters and two measured common-word collisions
+  with a real team abbreviation ("was" -> Washington Wizards, "min" ->
+  Minnesota Timberwolves), the same discipline `players_named_in` already
+  applies to a player's name.
+- **A "last N games" period-split question naming no season crosses into an
+  earlier one when the current season has nothing.** "zach collins first
+  quarter stats last 5 games as a starter" answered "No 2026 regular season
+  games found ... as a starter" - true of the box scores read and about the
+  wrong year, since his real last 5 starts are all from the season before.
+  `games._period_split_cross_season_redirect` retries the same narrowing
+  over his whole career, windowed to the newest N by date - the reading a
+  bare `limit` already gets everywhere else on the player relation - and
+  answers with that season's own numbers and accuracy caveat when the found
+  games land in exactly one season; a question naming a season outright, or
+  a window landing across more than one, is unaffected and keeps the plain
+  refusal.
+- **A question naming exactly one player and no team, routed to a
+  team-only intent, refuses instead of answering the league's numbers.**
+  "alperen şengün alltime record" routed to `team_leaderboard` - no player
+  slot exists on that intent, and no team slot was filled either - and
+  answered the league standings, entirely off Sengun. `entities.player_named_on_a_team_only_question`
+  runs before `templates.common.TEAM_ONLY_INTENTS` (`team_record`,
+  `team_leaderboard`, `team_stat`, `team_outlook`) reach their template,
+  naming the player in the refusal instead. Diacritics are already folded
+  (`entities._fold`); an invented `team` slot holding the player's OWN name
+  (measured live, a second run of the same question) is treated the same as
+  no team at all (`entities._has_a_real_team`), so the router's
+  nondeterminism on this exact question does not slip past the check either
+  way.
+- **A team named "for <team>"/"with the <team>" beside a player is restored
+  as his own tenure, and defaults the span to his career.** "lebron stats as
+  a starter for Miami" answered his current (Lakers) season, "Miami" never
+  read at all - the player relation had no way to narrow to a team he no
+  longer plays for. `entities.scope_from_question` takes a new
+  `restore_team` flag (`templates.common.OWN_TEAM_RESTORABLE_INTENTS`, only
+  `player_stat`), writing to a new `own_team` slot - deliberately not the
+  router's own `team`, which a recorded golden case shows sitting as noise
+  beside an already-correct `opponent` (his own current team, redundant);
+  reading it directly would have silently renarrowed that case's 9 real
+  meetings down to 4. `templates.common._narrow_player_games` gained a
+  `team` parameter (as opposed to `opponent`) for the actual clause
+  (`pgl.team_id = ?`). Corpus-measured against the same 380 questions as the
+  restore above: one true positive ("westbrook stats as a starter for
+  kings"), zero false positives.
+- **A player named with no scoring verb or possessive is restored for
+  `single_game_high`/`threshold_count`.** "kawhi most threes in a game"
+  answered the league's single-game leaders, Kawhi Leonard's own 7 never
+  mentioned - `router._SUBJECT_OF_HIGH` needs "kawhi scored" or "kawhi's",
+  and this shape has neither. `entities.scope_from_question` takes a new
+  `restore_subject` flag
+  (`templates.common.SUBJECT_RESTORABLE_INTENTS`), corpus-measured
+  (`scripts/check_routing.py`'s cases plus the StatMuse feed, 380 questions)
+  before shipping: 5 false-positive candidates turned up in the whole
+  corpus, none on these two intents, and the two recurring words behind them
+  ("best" is Travis Best, "head" is Luther Head) are excluded going forward
+  by `entities._named_only_by_a_common_word`.
+- **A consecutive hyphenated year pair ("the 2023-2024 season") is one
+  season, not a range.** `router._RANGE_HYPHEN_YEARS`, added earlier in this
+  cycle to read "2020-2024"-style ranges, matched ANY four-digit hyphenated
+  pair and so also matched a single season spelled out in full - silently
+  overwriting `season_text._SPAN`'s already-correct single-season read
+  (since=2023/until=2024 in place of season=2024). Now only a
+  NON-consecutive pair reads as a range ("how many 20+ point games did SGA
+  have 2024-2026?"); a consecutive one is left to the existing single-season
+  reader, exactly as "2023-24" already means.
+- **"since he joined the league" is a career span.** "Show me luka's avg
+  assists since he joined the league" carried no `_SPAN_WORDS` match at all
+  ("career", "all-time", "ever", "in/of history") and answered one season
+  (8.8 apg, 2019-20) where his whole career (8.23 apg, 514 games, 2019-2026)
+  was asked for. `router._SPAN_JOINED_LEAGUE_WORDS` reads it, anchored on
+  "the league" so "since he joined the Warriors" - a team question - is
+  unaffected.
+- **A near spelling in `without` is taken rather than asked about, and the
+  shot-distance leaderboard refusal names the real cause.** "de'aaron fox vs
+  magic last five games without wembyanama" refused "did you mean Victor
+  Wembanyama?" over a typo the question's own words resolve cleanly - the
+  true reason the question falls short of five games is a game count (one
+  qualifying game), not a name that failed to resolve. `_resolved_teammate`
+  now applies the same visible-and-correctable default
+  `entities.resolve_player` already gives a bare surname
+  (`entities.note_typo_reading`) to `suggest_players`' own single-candidate
+  result. Separately, `leaderboard`'s shot-distance refusal said "no
+  leaderboard ranks shot distance", which reads as impossible and is false -
+  the key computes a real league leader straight from `shot_chart`; it now
+  says the ranking is not built (filed in `ISSUES.md`).
+- **"including the playoffs" no longer reads as "the playoffs only".**
+  `router._validate_season_type` consulted `_PLAYOFF_WORDS` alone, and
+  "including playoffs"/"regular season and playoffs"/"playoffs included"
+  contain the word "playoffs", so a question asking to keep BOTH season types
+  silently dropped the regular season - "Payton Pritchard stats vs 76ers at
+  home including playoffs" answered 7 playoff meetings and then falsely told
+  the reader "Only 7 games ... in his box scores", never mentioning the 9
+  regular-season ones it never read; "jamal murray games with 2 threes
+  including playoffs" answered 3 (his 2026 postseason alone) instead of 59
+  (2026 regular season and postseason combined). `router._BOTH_SEASON_TYPES_WORDS`
+  now reads the phrase and sets `season_type_unstated` (the flag `game_log`'s
+  "last N games" reader already carried), honored by `game_log`,
+  `player_stat` and `threshold_count` through one combined
+  `player_games.season_type_clause`/`BOTH_SEASON_TYPES` read on the player
+  relation rather than a merge - simpler than `game_log`'s own row-interleave,
+  since an aggregate has no rows to interleave. A template that does not
+  honor it (`team_record`, on the yardstick's team-side example) is refused
+  by `check_scope` rather than silently answering the postseason alone.
+- **A closed season range ("2019-20 to 2023-24") no longer reads through the
+  present.** `router._validate_range` read only an open "since 2020" or a
+  decade; every other range form ("2019-20 to 2023-24", "from 2010-11 to
+  2018-19", "between 2020 and 2024", "2020-2024", two adjacent bare years)
+  fell back to the model's own single-season slot, so "Portis vs bulls
+  2019-20 to 2023-24" answered 3 games of one season where 16 regular-season
+  games across five were asked for. Worse, even where `since` WAS read
+  correctly, `until` - the range's other end - was declared nowhere and
+  honored nowhere, so a CLOSED range read as an OPEN one: this project's own
+  worst-failure-shape example, an unfilled `until` answering "the 2010s" as
+  2010 through now. `_Span`/`player_games.Narrowed` now carry `until` beside
+  `since`, applied in one clause (`_Span.clause`) the same way `since` already
+  was, and every player-relation template that honors `since` honors `until`
+  beside it (`test_until_is_declared_wherever_since_is`) - `game_log`'s team
+  branch, which had silently dropped `since` itself for the same reason,
+  picked up both in the same fix.
 - **A composed answer names a position group in its heading, and prints
   TS%/eFG%/usage as percentages.** The first live run of the landed compiler
   headed a log of centers "every player" (the filter was applied; the heading
