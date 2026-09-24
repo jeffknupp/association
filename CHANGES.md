@@ -16,6 +16,26 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- **`team_record`'s combined-season-types sentence names each half's own
+  starting season (#204, ISSUES.md).** "Warriors all-time record including
+  playoff record at away" used to carry only "Note:" lines from its two
+  halves, leaving the reader unable to see that the regular-season half
+  starts five seasons after the playoff half's own floor. The sentence now
+  reads "(523-791 regular season from 1993-94, 51-52 playoffs from 1989)" -
+  each half's first season, read from its own `data` (`_games_record` now
+  carries `first_season`/`last_season`, computed from `team_games`'s own
+  season column for a single named season and from a small MIN/MAX query
+  otherwise) rather than parsed out of either half's sentence.
+  A postseason's first season is read by the calendar year it was actually
+  played (`year(tg.eastern_date)`), never `team_games.season` directly -
+  that column is ESPN's own pre-1993-94 label, which names a season by the
+  year it STARTED, not the year its games were played (the same fault
+  `templates/splits.py`'s `_team_season_range` already guards against).
+  Measured directly against the warehouse before trusting the constant
+  "1989" this file's own prose used elsewhere: the Warriors' own earliest
+  playoff game reads 1988 by the raw label and 1989 by calendar year -
+  confirming the raw label would have been wrong here too.
+  Warehouse-verified against the Warriors' road record.
 - **`leaderboard` can show each player's team beside their name (F017,
   ISSUES.md).** "Who are the top 50 in total adjusted netpoints with the
   team they play for" asked for a team beside every row and got none. A

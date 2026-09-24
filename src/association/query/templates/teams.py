@@ -399,16 +399,37 @@ def _team_record_combined_types(
     return _combined_record_result(team, opponent, venue, regular, playoff)
 
 
+def _combined_span_phrase(first_season: Any, *, playoff: bool) -> str:
+    """ " from 1993-94" or " from 1989", or "" when a half's own data carries
+    no first season (a single named season, where the two halves start
+    together and a "from" clause would only restate it) - #204, ISSUES.md.
+    A regular-season year is named the way a person names a season
+    (``_season_name``); a postseason is dated by the calendar year it was
+    actually played in, which is already a plain year, not a range."""
+    if not isinstance(first_season, int):
+        return ""
+    return f" from {first_season if playoff else _season_name(first_season)}"
+
+
 def _combined_record_result(team: Entity, opponent: Entity | None, venue: str | None, regular: TemplateResult, playoff: TemplateResult) -> TemplateResult:
     """The combined-season-types sentence: the total, and each type's own
     split named beside it, so the two populations combined are stated rather
-    than left for the reader to guess which games were counted."""
+    than left for the reader to guess which games were counted - including,
+    since #204 (ISSUES.md), the season each half's own count actually starts
+    from, so "regular season" and "playoffs" are not read as covering the
+    same span when they do not (the regular half can start years after the
+    playoff half's own floor)."""
     r_wins, r_losses = int(regular.data.get("wins") or 0), int(regular.data.get("losses") or 0)
     p_wins, p_losses = int(playoff.data.get("wins") or 0), int(playoff.data.get("losses") or 0)
     wins, losses = r_wins + p_wins, r_losses + p_losses
     against = f" against the {opponent.name}" if opponent else ""
     where_played = f" {VENUE_WORDS[venue]}" if venue else ""
-    answer = f"The {team.name} are {_tally(wins, losses)} combined{where_played}{against}, including the playoffs ({_tally(r_wins, r_losses)} regular season, {_tally(p_wins, p_losses)} playoffs)."
+    r_from = _combined_span_phrase(regular.data.get("first_season"), playoff=False)
+    p_from = _combined_span_phrase(playoff.data.get("first_season"), playoff=True)
+    answer = (
+        f"The {team.name} are {_tally(wins, losses)} combined{where_played}{against}, including the playoffs "
+        f"({_tally(r_wins, r_losses)} regular season{r_from}, {_tally(p_wins, p_losses)} playoffs{p_from})."
+    )
     notes = [n for n in (_extract_note(regular.answer), _extract_note(playoff.answer)) if n]
     if notes:
         answer += "\n  " + "\n  ".join(notes)
@@ -419,8 +440,8 @@ def _combined_record_result(team: Entity, opponent: Entity | None, venue: str | 
         "wins": wins,
         "losses": losses,
         "win_pct": wins / (wins + losses) if wins + losses else 0.0,
-        "regular_season": {"wins": r_wins, "losses": r_losses},
-        "postseason": {"wins": p_wins, "losses": p_losses},
+        "regular_season": {"wins": r_wins, "losses": r_losses, "first_season": regular.data.get("first_season")},
+        "postseason": {"wins": p_wins, "losses": p_losses, "first_season": playoff.data.get("first_season")},
     }
     return TemplateResult(data=data, answer=answer)
 
@@ -827,6 +848,27 @@ def _no_team_games(
     return f"The {team.name} played no games{game_n_phrase}{where} in the {period}."
 
 
+def _games_record_span(con: duckdb.DuckDBPyConnection, narrowed: TeamNarrowed, season_type: int) -> tuple[int | None, int | None]:
+    """The first and last season a narrowed team-games read actually reaches
+    - `None, None` where it reaches none.
+
+    A postseason is read by the calendar year it was actually played in
+    (``year(tg.eastern_date)``), never ``tg.season`` itself: that column is
+    ESPN's own raw label, which for a postseason before 1993-94 names the
+    year the SEASON STARTED, not the year the games were played - the same
+    fault ``AGENTS.md`` ("Select a postseason by the calendar year") and
+    :func:`association.query.templates.splits._team_season_range` both
+    record, read here the same way. A regular season's label already agrees
+    with the calendar year it was played in, so it is read directly.
+
+    .. versionadded:: 4.4.0
+    """
+    season_col = "year(tg.eastern_date)" if season_type == 3 else "tg.season"
+    where, params = narrowed.clauses()
+    row = con.execute(f"{TEAM_GAMES_SQL} SELECT MIN({season_col}), MAX({season_col}) FROM team_games tg WHERE {where}", params).fetchone()
+    return (row[0], row[1]) if row else (None, None)
+
+
 def _games_record(
     con: duckdb.DuckDBPyConnection,
     team: Entity,
@@ -869,6 +911,13 @@ def _games_record(
     wins = sum(1 for g in shown if g["won"])
     losses = len(shown) - wins
     kind = "postseason" if season_type == 3 else "regular season"
+    # first_season/last_season: for one named season, trivially itself; for a
+    # career or since-bounded span, the relation's own season column - which
+    # already selects a pre-1994 postseason by the calendar year it was
+    # played in, not ESPN's own-year label (team_games.py) - read once here
+    # so a caller (the combined-season-types sentence, #204, ISSUES.md) can
+    # state each half's own start without parsing either one's prose.
+    first_season, last_season = (season, season) if season is not None else _games_record_span(con, narrowed, season_type)
     data: dict[str, Any] = {
         "team": team.name,
         "opponent": opponent.name if opponent else None,
@@ -880,6 +929,8 @@ def _games_record(
         "losses": losses,
         # Read by the web page's record card, like the standings paths' own.
         "win_pct": wins / (wins + losses) if wins + losses else 0.0,
+        "first_season": first_season,
+        "last_season": last_season,
     }
 
     if not games:

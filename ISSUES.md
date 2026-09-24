@@ -2523,31 +2523,6 @@ those were found.
 - **Source:** ours.
 - **GitHub:** not yet filed
 
-### `team_record`'s combined-season-types sentence drops the regular half's "standings from 1993-94" caveat
-- **Found:** 2026-09-23, grading `live_sweep.jsonl` (yardstick-v2 F116).
-- **Evidence:** "warriors all-time record including playoff record at away"
-  now answers "574-843 (.405) combined on the road, including the playoffs
-  (523-791 (.398) regular season, 51-52 (.495) playoffs)" plus the 2000
-  standings-gap note. Asked for one season type, the regular half says
-  "across the 33 regular seasons from 1993-94 through 2025-26 - ESPN's
-  standings carry no home/road split before 1993-94", and the playoff half
-  "in every postseason from 1989 through the latest". Combined
-  (`templates/teams.py`, `_combined_record_result`), only "Note:" lines are
-  carried over (`_extract_note`), so the two halves' different starting
-  seasons are not stated - the reader cannot see that the regular half starts
-  five seasons later than the playoff half. Measured: the 523-791 is right
-  for what standings hold (the key's 550-811 counted the phantom 1993 season
-  and six pre-1994 stray games in the game list; `DATA.md`).
-- **User sees:** a combined record with no word about the two spans it
-  combines; the number is right but its coverage is not stated.
-- **Next step:** carry each half's span into the parenthesis - "(523-791
-  regular season from 1993-94, 51-52 playoffs from 1989)" - from the halves'
-  own `data` (add the first season there if it is not), not by parsing their
-  sentences.
-- **Source:** ours (the standings' own floor is ESPN's, in `DATA.md`).
-- **GitHub:** not yet filed
-- **GitHub:** #204
-
 ### No leaderboard metric ranks average three-point shot distance
 - **Found:** 2026-09-23, fixing the wrong-cause refusal `leaderboard` gives
   for `stat: "shot_distance"` (yardstick-v2 F019 - "who lead the league in
