@@ -34,7 +34,7 @@ from .models import AGENT_BUDGET_SECONDS, DEFAULT_ROUTER_MODEL
 from .prompt import AGENT_NUM_CTX, TOOLS, build_system_prompt
 from .refusals import by_question, pair_from_opponent, unanswerable
 from .router import Route, RouterUnavailable, route
-from .subject import read_subject
+from .subject import Subject, apply_subject, read_subject
 from .templates import TEMPLATES
 from .templates.common import (
     OWN_TEAM_RESTORABLE_INTENTS,
@@ -347,7 +347,7 @@ class Agent:
         # questions it agreed on 278 and was right on the five where the chain
         # was wrong (query/subject.py); each chain step becomes a no-op, then
         # goes, as the reading takes over the field it settled.
-        self._record_subject(question, routed, history)
+        subject = self._record_subject(question, routed, history)
         settled = self._settled_before_template(question, routed, handler, history)
         if settled is not None:
             return settled
@@ -392,21 +392,9 @@ class Agent:
         # The router invents whole names, not only nicknames: "compare sga and
         # embiid" came back with Jusuf Nurkic in the second slot, and every
         # stage after this one would have answered about him perfectly.
-        grounded, invented = override_invented_players(self.toolbox.con, question, routed.slots)
-        for was, now in grounded:
-            if now:
-                history.log(f"  -> (player) {was!r} -> {now!r} (from the question, overriding the router)")
-            else:
-                history.log(f"  -> (opponent) {was!r} dropped (the question never names him, and names no one else to put there)")
-        # Said, not passed along. Falling through was tried and is worse: the
-        # agent answered one of these with a 55-second fingerprint for "Ronaldo
-        # Lopes", a player who does not exist, percentages included. Only where
-        # the template would actually be about that player - a stray name on a
-        # team question changes no answer.
-        if invented and routed.intent in PLAYER_INTENTS:
-            misread = misread_players(invented)
-            history.log(f"  -> (player) {misread}")
-            return routed.intent, TemplateResult(data={"message": misread, "misread": invented}, answer=misread)
+        misread_result = self._ground_players(question, routed, subject, history)
+        if misread_result is not None:
+            return routed.intent, misread_result
         # Completing a bare surname is the prominence tiebreak this project
         # measured and rejected, arriving through the model instead of through
         # code. "brown" is ten players and has to ask, as it always did.
@@ -431,7 +419,40 @@ class Agent:
                 return routed.intent, TemplateResult(data={"message": message, "named_player": named_player}, answer=message)
         return self._run_scoped_template(question, routed, handler, history)
 
-    def _record_subject(self, question: str, routed: Route, history: RunHistory) -> None:
+    def _ground_players(self, question: str, routed: Route, subject: Subject, history: RunHistory) -> TemplateResult | None:
+        """Every player name a template will read is one the question holds:
+        the subject reading writes the names it read, the older repair runs
+        after it, and a name neither can ground is refused by name (the
+        result returned here). Split out of _try_fast_path for the
+        complexity gate."""
+        # The subject reading writes the players it read (query/subject.py,
+        # apply_subject) before the older repair runs over the same field -
+        # which then finds nothing to do on them and is proven a no-op by the
+        # golden before it goes. A router name the question never held and
+        # the reading could not replace is refused by name below, exactly as
+        # the older check's `invented` names are.
+        applied, dropped = apply_subject(subject, routed.slots)
+        for decision in applied:
+            history.record_decision(decision)
+        grounded, invented = override_invented_players(self.toolbox.con, question, routed.slots)
+        invented = list(dict.fromkeys([*dropped, *invented]))
+        for was, now in grounded:
+            if now:
+                history.log(f"  -> (player) {was!r} -> {now!r} (from the question, overriding the router)")
+            else:
+                history.log(f"  -> (opponent) {was!r} dropped (the question never names him, and names no one else to put there)")
+        # Said, not passed along. Falling through was tried and is worse: the
+        # agent answered one of these with a 55-second fingerprint for "Ronaldo
+        # Lopes", a player who does not exist, percentages included. Only where
+        # the template would actually be about that player - a stray name on a
+        # team question changes no answer.
+        if invented and routed.intent in PLAYER_INTENTS:
+            misread = misread_players(invented)
+            history.log(f"  -> (player) {misread}")
+            return TemplateResult(data={"message": misread, "misread": invented}, answer=misread)
+        return None
+
+    def _record_subject(self, question: str, routed: Route, history: RunHistory) -> Subject:
         """The subject reading (query/subject.py) as decisions - who the
         question was read to be about, from its own words - recorded beside
         the repair chain, which still writes every slot. Split out of
@@ -448,6 +469,7 @@ class Agent:
         ):
             if value:
                 history.record_decision(Decision("subject", name, None, list(value) if isinstance(value, tuple) else value, "from the question's own words"))
+        return subject
 
     def _settled_before_template(self, question: str, routed: Route, handler: Callable[..., TemplateResult] | None, history: RunHistory) -> tuple[str, TemplateResult] | None:
         """What is decided before any template runs: a shape the question's
