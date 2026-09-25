@@ -317,6 +317,18 @@ honest refusals that a fuller system would answer. By cause:
    slot encodings of the same subject, one a kind neither side has ("a
    Hawks player"). Method, rules and the landing order:
    `~/association-research/subject-kinds/RESULT.md`.
+7. **Steps 1-2 landed 2026-09-25** (`9b745a1`, `f7aa9fc`): `query/subject.py`
+   (the reading, 278/290 against the chain and right on the five where the
+   chain is wrong - F049 joined the four once the `team_players` kind
+   existed) and `query/decisions.py` - **decisions as data**, Jeff's ask:
+   every reading of the question and override of a routed field as a
+   `Decision(stage, field, before, after, reason)` on the history record,
+   the `Answer`, the API and the page's "decisions" fold, never parsed
+   back out of the trace. The subject reading is the first producer and
+   writes no slot yet: text identical on 56 rendered recorded answers.
+   **Next: step 3** - `apply_subject` writes the slots templates read and
+   each chain step becomes a no-op, then goes, golden-proven one at a time;
+   the five chain bugs are its first test cases.
 
 ## The current plan: what buys the most correctness next
 
@@ -345,7 +357,18 @@ yardstick before the next starts:
    two players (`refusals.pair_from_opponent`). What remains is the pair as
    a compiler subject - measures and predicates over the meetings ("most
    points by curry vs lebron", "how many times did lebron score 30 vs
-   kawhi") - which no template answers.
+   kawhi") - which no template answers. **And its generalization** (Jeff,
+   2026-09-25: "sixers record when embiid, maxey and edgecombe start"): a
+   player CONDITION is `(player, side, predicate)` - own team or opponent;
+   played / started / absent / scored 30+ - and either relation narrowed by
+   ALL of a list of them. `with_without`'s `with_player`/`without` lists
+   are the two-predicate special case; F114 "curry record vs lebron
+   without kd" is Curry's games with two conditions (LeBron on the other
+   side, Durant absent from his own), which is why the chain lost it. The
+   subject reading's `companions` are these names with their stated role,
+   so this follows subject kinds directly. The true N-way matchup (three
+   players on court across teams) is an N-way event join and stays
+   two-sided.
 4. **The period relation.** Per-quarter figures beyond points, rebuilt from
    plays the way points are, as one relation the compiler can read - a
    player's or a team's quarter as a narrowing rather than three templates.
