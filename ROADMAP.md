@@ -345,10 +345,26 @@ honest refusals that a fuller system would answer. By cause:
    and fixed on the way: 3b's respelling from the whole-word match rewrote
    "kareem stats vs bob lanier" to Kareem Rush (ISSUES #123's shape, shipped
    in 4.4.0, not in the corpus - the chain's own span tests caught it once
-   re-homed onto the reading). **Next:** `scope_from_question`'s
-   team/opponent fields; then the compiler's `repair`/`_drop_*` and
-   `refusals` read the Subject instead of re-deriving it. The five chain
-   bugs are the test cases for the step that reaches each.
+   re-homed onto the reading). **Step 3d landed** (2026-09-25, later, in
+   three increments - `1f585f2`, `0c4a2c3`, `0ba3526`): the reading writes
+   the opponent team, the restored player, the own team, the team subject,
+   a player filed in `team` and a team that displaced the player, and
+   settles the INTENT where the router's cannot be about the subject
+   (`Subject.intent`: a player's record vs a team is `with_without`; a
+   pair is `player_matchup`, or `player_compare` where the question
+   compares). `entities.scope_from_question`, `player_record_against_a_team`
+   and `refusals.pair_from_opponent` are deleted; the fast path is
+   nicknames -> reading -> a fingerprint's dropped players -> the reading
+   applied -> name completion undone -> the team-only refusal. Golden
+   306/308, 307/308, then 304/308 with the two moves being the chain bugs
+   the step was written to reach: F114 answers the pair's meetings without
+   Durant (not the Rockets' record), Brown/Tatum refuses by name for
+   `since` (not a fall-through). Found on the way: the chain's unit tests
+   are the second golden (they caught the 4.4.0 kareem regression, a rule
+   no recorded question exercises). **Next (3e):** the compiler's
+   `repair`/`_drop_*` and `refusals._team_where_a_player_belongs` read the
+   Subject instead of re-deriving it - the two position-group logs and
+   F049 (`team_players`) are its test cases.
 
 ## The current plan: what buys the most correctness next
 
