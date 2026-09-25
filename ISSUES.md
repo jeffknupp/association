@@ -514,27 +514,28 @@ those were found.
   measured here.
 - **GitHub:** #201
 
-### A pair relation with a with/without split is not built: "steph curry record vs lebron regular season without kd"
-- **Found:** 2026-09-23, same session, yardstick-v2 F114.
+### "steph curry record vs lebron regular season without kd" reads the router's default season, and `without` a non-teammate as no games
+- **Found:** 2026-09-23, yardstick-v2 F114; re-measured 2026-09-25 after the
+  subject reading took the intent (ROADMAP plan item 1, step 3d-iii).
 - **Evidence:** routes `with_without {'stat': 'wins', 'team': 'Los Angeles
-  Lakers', 'limit': 10, 'fields': ['steals', 'rebounds'], 'season': 2026,
-  'season_type': 2, 'without': ['kd']}` and answers the Houston Rockets'
-  with/without-Durant record - an entirely different question (LeBron's
-  Lakers, not Curry's Warriors vs Lakers, ever came up). The underlying
-  shape - two named players' head-to-head record, further split by a
-  THIRD player's presence/absence - has no relation built for it:
-  `with_without` narrows one team by one absent player;
-  `player_matchup`/`head_to_head` narrow two sides' meetings but read no
-  `without` at all (`HONORED_SCOPING["player_matchup"]` explicitly refuses
-  it for a genuine two-player matchup, in `templates/common.py`).
-- **User sees:** a wrong answer, fluently, about players and a team the
-  question never named.
-- **Next step:** not attempted - a genuinely new relation (a pairing of two
-  players' meetings, further split by a third player's team-tenure absence,
-  mirroring `_tenure_clause`'s existing "teammate's absence" reading but
-  applied to one SIDE of a matchup rather than to a single player's own
-  games). Scope and cost not assessed; filed for whoever picks up
-  `player_matchup`'s own `without` refusal next.
+  Lakers', ..., 'season': 2026, 'without': ['kd']}`. Until 3d-iii the
+  answer was the Houston Rockets' record with and without Durant - a
+  fluent wrong answer about a team the question never named. The reading
+  now says the subject is the pair (Curry, LeBron) with Durant as a
+  companion and settles `player_matchup`, which honors `without`:
+  "No meetings between Stephen Curry and LeBron James in Stephen Curry's
+  games without Kevin Durant in the 2026 regular season." Two things
+  remain: the season is the router's default (`season_ref: current`) on
+  a question that names none, where the pair's history with Durant on
+  Curry's side is 2017-2019; and `without` a player who was never Curry's
+  teammate that season narrows to no games without saying so.
+- **User sees:** an honest "no meetings" for the wrong season, with
+  nothing saying Durant was not on the roster.
+- **Next step:** the pair relation with a player CONDITION `(player,
+  side, predicate)` (ROADMAP plan item 3): "without kd" is Durant absent
+  from Curry's own side, over the span the two share, and a condition
+  naming a player who was never on that side says so.
+- **Source:** ours, not ESPN's.
 - **GitHub:** #202
 
 ### Five P7-bucket "partial" answers from the yardstick are still open
@@ -2439,17 +2440,6 @@ those were found.
   "sixers" in `_fold`), then re-run the entity golden comparison: `_words`
   feeds `players_named_in`, where a stray number must not start naming people.
 - **GitHub:** #176
-
-### A second player in `opponent` is never moved to `players`
-- **Found:** 2026-09-21, live sample; also corpus "jay huff game log vs Embiid"
-- **Evidence:** "giannis stats against jokic" routes to `player_matchup` with
-  `player: 'Giannis Antetokounmpo', opponent: 'Nikola Jokic'`.
-  `players_named_in` finds both; `scope_from_question` changes nothing; the
-  template says "no team matching 'Nikola Jokic'" and falls through.
-- **User sees:** the slow agent, for the most ordinary two-player question.
-- **Next step:** in the entity stage, an `opponent` that names no team and IS a
-  player the question names joins `players`. Eliminates, never chooses.
-- **GitHub:** #177
 
 ### A name written without its periods matches nobody ("Pj washington")
 - **Found:** 2026-09-21, live sample

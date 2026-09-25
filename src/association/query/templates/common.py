@@ -98,7 +98,7 @@ SEASON_TYPE_NAMES = {0: "regular season and postseason", 1: "preseason", 2: "reg
 # template dropping them; only this can.
 #
 # The five after those are read from the question text by the router and by
-# entities.scope_from_question, never asked of the model, and exist for the same
+# subject.apply_subject, never asked of the model, and exist for the same
 # reason. Measured against real StatMuse queries before they did: "jaylen brown
 # last 8 games vs pistons" answered with the Celtics' last 8 games, "Knicks
 # home record" with their overall record, "career points leaders" with this
@@ -645,7 +645,7 @@ Measured before shipping, per AGENTS.md's own discipline for this exact
 trap ("best" is Travis Best): both ``scripts/check_routing.py``'s cases and
 ``/home/jeff/association-research/statmuse-2026-09/feed_queries.txt`` (380
 questions together) were run through the restoring grammar
-(``entities._scope_from_question_only_player``) with the two intents here as
+(the subject reading) with the two intents here as
 the only ones it can touch. 5 false-positive candidates turned up in the
 WHOLE corpus - "Best true shooting percentage last season?" (Travis Best),
 "Best record from 2010-11 to 2018-19 nba" and "Best NBA record since
@@ -716,7 +716,7 @@ read rather than answering the wrong one.
 
 Deliberately not every team-shaped intent: ``head_to_head`` already has its
 own reroute for a player's record against a team
-(``entities.player_record_against_a_team``, #163), and ``coach`` is
+(``subject.Subject.intent``, #163), and ``coach`` is
 TABLELESS_INTENTS and already refuses on its own terms - neither needs a
 second, more general check that could only disagree with the first.
 

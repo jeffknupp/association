@@ -21,9 +21,7 @@ from .entities import (
     misread_players,
     override_nicknames,
     player_named_on_a_team_only_question,
-    player_record_against_a_team,
     restore_dropped_players,
-    scope_from_question,
     team_only_question_names_a_player,
     undo_name_completion,
 )
@@ -31,7 +29,7 @@ from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .keepalive import KEEP_ALIVE
 from .models import AGENT_BUDGET_SECONDS, DEFAULT_ROUTER_MODEL
 from .prompt import AGENT_NUM_CTX, TOOLS, build_system_prompt
-from .refusals import by_question, pair_from_opponent, unanswerable
+from .refusals import by_question, unanswerable
 from .router import Route, RouterUnavailable, route
 from .subject import Subject, apply_subject, read_subject
 from .templates import TEMPLATES
@@ -356,38 +354,25 @@ class Agent:
             restored = restore_dropped_players(self.toolbox.con, question, routed.slots)
             if restored is not None:
                 history.log(f"  -> (player) {restored[0]!r} -> {restored[1]!r} (the question names more players than the router returned)")
-        # Before scope_from_question, so the slots are read for the intent the
-        # question actually asks. The router cannot make this call itself: it
-        # has no warehouse, and whether a name in `teams` is a player or a
-        # franchise is a fact about the warehouse, not about the words.
-        rerouted = player_record_against_a_team(self.toolbox.con, question, routed.intent, routed.slots)
-        if rerouted is not None:
-            history.log(f"  -> (scope) {routed.intent!r} -> {rerouted!r} (a player's record against a team, not two teams meeting)")
-            routed.intent = rerouted
-            # The handler goes with the intent. Resolving it above and not here
-            # is how this shipped broken the first time: the intent said
-            # with_without, the trace said with_without, and head_to_head ran
-            # and refused for wanting two team names.
-            handler = TEMPLATES[routed.intent]
-        # Before the name checks below, because this is where a team the
-        # router mistook for a player leaves `players`, and a player it dropped
-        # in favor of his team comes back. See entities.scope_from_question.
-        for change in scope_from_question(self.toolbox.con, question, routed.slots, reads_player=routed.intent in PLAYER_INTENTS):
-            history.log(f"  -> (scope) {change}")
-        # The router invents whole names, not only nicknames: "compare sga and
-        # embiid" came back with Jusuf Nurkic in the second slot, and every
-        # stage after this one would have answered about him perfectly.
+        # The reading writes the slots a template reads - who the question
+        # is about, in the router's own slot shape - and settles the intent
+        # where the router's cannot be about that subject. The router invents
+        # whole names, not only nicknames: "compare sga and embiid" came back
+        # with Jusuf Nurkic in the second slot, and every stage after this one
+        # would have answered about him perfectly; a name nothing in the
+        # question can replace is refused by name here.
         misread_result = self._ground_players(routed, subject, history)
         if misread_result is not None:
             return routed.intent, misread_result
+        if subject.intent and subject.intent != routed.intent and subject.intent in TEMPLATES:
+            # The handler goes with the intent. Resolving them apart is how a
+            # reroute shipped broken once: the intent said with_without, the
+            # trace said with_without, and head_to_head ran.
+            routed.intent = subject.intent
+            handler = TEMPLATES[routed.intent]
         # Completing a bare surname is the prominence tiebreak this project
         # measured and rejected, arriving through the model instead of through
         # code. "brown" is ten players and has to ask, as it always did.
-        paired = pair_from_opponent(self.toolbox.con, routed.intent, routed.slots)
-        if paired is not None:
-            history.log(f"  -> (scope) {routed.intent!r} -> 'player_matchup' (the opponent {paired!r} is a player: the games the two played against each other)")
-            routed.intent = "player_matchup"
-            handler = TEMPLATES[routed.intent]
         for was, now in undo_name_completion(self.toolbox.con, question, routed.slots):
             history.log(f"  -> (player) {was!r} -> {now!r} (the question names only part of it, and that part is ambiguous)")
         # AGENTS.md, "Refuse by name where the intent cannot be about the
@@ -412,9 +397,10 @@ class Agent:
         question never held that nothing in the question can replace is
         refused by name (the result returned here). Split out of
         _try_fast_path for the complexity gate."""
-        applied, dropped = apply_subject(subject, routed.slots, con=self.toolbox.con, intent=routed.intent)
-        for decision in applied:
+        applied = apply_subject(subject, routed.slots, con=self.toolbox.con, intent=routed.intent)
+        for decision in applied.decisions:
             history.record_decision(decision)
+        dropped = applied.dropped
         # Said, not passed along. Falling through was tried and is worse: the
         # agent answered one of these with a 55-second fingerprint for "Ronaldo
         # Lopes", a player who does not exist, percentages included. Only where

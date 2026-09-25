@@ -746,9 +746,9 @@ def player_named_on_a_team_only_question(con: duckdb.DuckDBPyConnection, questio
     as no team at all rather than stopping this check.
 
     Caller-gated to :data:`~association.query.templates.common.TEAM_ONLY_INTENTS`
-    (this function does not check the intent itself, the same shape
-    ``restore_subject``/``restore_team`` take in
-    :func:`scope_from_question`): a REAL team already named there is the
+    (this function does not check the intent itself, the same shape the
+    subject reading's intent sets take in
+    :func:`association.query.subject.apply_subject`): a REAL team already named there is the
     real subject, and a player coincidentally named beside it changes no
     answer - the same reasoning that keeps a stray name on ``head_to_head``
     from being refused elsewhere in this module. A word that names only a
@@ -756,7 +756,7 @@ def player_named_on_a_team_only_question(con: duckdb.DuckDBPyConnection, questio
     Johnson - :func:`_named_only_by_a_team_word`) or only a common English
     word that collides with a surname ("best" is Travis Best -
     :func:`_named_only_by_a_common_word`) is excluded the same way
-    :func:`_scope_from_question_only_player` already excludes both.
+    the subject reading already excludes both.
 
     .. versionadded:: 4.4.0
     """
@@ -1006,7 +1006,7 @@ def _by_nickname(con: duckdb.DuckDBPyConnection, text: str, season: int | None) 
     Blazers' city. "Los Angeles Kings" does not, because Los Angeles is two
     OTHER teams' city and choosing between an invented city and a real nickname
     is a guess; the question's own words settle that one instead, in
-    :func:`scope_from_question`.
+    :func:`association.query.subject.apply_subject`.
     """
     try:
         return _nickname_match(con, text, season)
@@ -1277,111 +1277,6 @@ def _named_only_by_a_common_word(question: str, player: str) -> bool:
     return bool(supporting) and all(w.casefold() in _COMMON_WORDS_THAT_NAME_PLAYERS for w in supporting)
 
 
-def _scope_from_question_only_player(con: duckdb.DuckDBPyConnection, question: str) -> str | None:
-    """The one player the question names, or None if it names none or several.
-    A name held only by a word that names a team the question is about does
-    not count: "luka dončić last 15 games vs. magic" names Luka, not Luka and
-    Magic Johnson. Nor does a name held only by an ordinary English word that
-    happens to collide with a surname - "best"/"head" - count either.
-
-    .. versionchanged:: 4.4.0
-       Also excludes a name held only by :data:`_COMMON_WORDS_THAT_NAME_PLAYERS`.
-    """
-    named = [name for name in players_named_in(con, question) if not _named_only_by_a_team_word(con, question, name) and not _named_only_by_a_common_word(question, name)]
-    return named[0] if len(named) == 1 else None
-
-
-def _scope_from_question_player_in_team_slot(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], notes: list[str]) -> bool:
-    """Move a player's name out of ``team`` and into ``player``. Returns whether it did.
-
-    Two ways a player ends up there. Measured: "Podziemski game log without
-    curry" arrived as team='Podziemski', player='Curry' - the subject in the
-    team slot and the absent teammate in the player slot - which
-    :func:`find_players` settles outright, since "Podziemski" alone names one
-    person.
-
-    The other is a router that kept only a bare fragment of a name the
-    question spells in full: "Will Riley last 5 game s" arrived as
-    team='Riley', and "Riley" alone is three players - Eric, Minix and Will -
-    so :func:`find_players` cannot settle it. :func:`players_named_in` can,
-    the same way it settles a dropped or invented player elsewhere in this
-    module: a whole name, not a guess. Gated on the fragment actually
-    sharing a word with what it finds, so a garbled `team` next to some
-    OTHER player named later in a long question cannot borrow that name -
-    the same discipline :func:`association.query.subject.apply_subject`
-    applies to a name the router invented outright.
-    """
-    team_text = slots.get("team")
-    if not (isinstance(team_text, str) and team_text.strip()):
-        return False
-    as_player = find_players(con, team_text)
-    held, without = slots.get("player"), teammate_names(slots.get("without"))
-    name: str | None = None
-    if len(as_player) == 1 and (not held or (isinstance(held, str) and any(held.casefold() == n.casefold() for n in without))):
-        name = as_player[0].name
-    elif not held:
-        found = _scope_from_question_only_player(con, question)
-        if found is not None and _shares_word(found, team_text):
-            name = found
-    if name is None:
-        return False
-    slots.pop("team", None)
-    slots["player"] = name
-    notes.append(f"{team_text!r} is a player, not a team; the subject is {name!r}")
-    return True
-
-
-def _scope_from_question_displaced_player(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], slot_notes: list[str], team: Entity, versus: Entity | None) -> Entity | None:
-    """Put back the player a team in ``team`` displaced, and put the team
-    where it belongs. Returns the team still in the slot, or None once it has gone.
-
-    The team in ``team`` is the opponent (the team after "vs"), or a team the
-    question never mentioned (the router's guess at the player's own). Either
-    way the player it displaced is the subject, and:
-
-    - the opponent stays an opponent. "karl towns stats vs netslast 5 games"
-      arrived as ``team='Brooklyn Nets'`` - the router's reading of a garbled
-      "vs nets" - and dropping the team with the player restored answered his
-      last five games against anybody, with nothing saying the Nets had gone.
-    - a word that names a team the question is about is not a player. "magic
-      vs nets last 10" named Magic Johnson by its one word "magic", and the
-      Magic's log became his. With nobody named, "X vs Y" is a team's log
-      against another, and the two are put back in order.
-    - a team the question never names goes even when nobody was found:
-      "stating centers vs phoenix suns log" arrived as the Lakers, whose log
-      it then was. A subject the question does not name is for the template
-      to refuse, not for the router's guess to supply.
-    """
-    displaced = versus is not None and team.id == versus.id
-    if not displaced and _team_grounded(con, question, team):
-        return team
-    player = _scope_from_question_only_player(con, question)
-    if player is not None and _named_only_by_a_team_word(con, question, player):
-        player = None
-    slots.pop("team", None)
-    if player is not None:
-        slots["player"] = player
-        slot_notes.append(f"{team.name!r} was {'the opponent' if displaced else 'not in the question'}; the subject is {player!r}")
-        if displaced or (versus is None and "opponent" not in slots and _AGAINST.search(question)):
-            # The team the question plays against - resolved from the text,
-            # or the router's reading of a word nothing here resolves.
-            slots["opponent"] = team.name
-        return None
-    before = _team_named(con, slots.get("opponent")) if displaced else None
-    if before is not None and before.id != team.id and _team_grounded(con, question, before):
-        # "magic vs nets": the router filed the sides backwards. The team
-        # before "vs" is the subject, the one after it the opponent.
-        slots["team"], slots["opponent"] = before.name, team.name
-        slot_notes.append(f"{before.name!r} is the subject and {team.name!r} the opponent, as the question orders them")
-        return before
-    if displaced:
-        slots.setdefault("opponent", team.name)
-        slot_notes.append(f"{team.name!r} is the team the question plays against; the question names no subject")
-    else:
-        slot_notes.append(f"{team.name!r} is not in the question, and the question names no player; dropped")
-    return None
-
-
 def _named_only_by_a_team_word(con: duckdb.DuckDBPyConnection, question: str, player: str) -> bool:
     """Whether every word of ``player``'s name the question holds also names a
     team - "magic" in "magic vs nets" is the Orlando Magic, not Magic Johnson,
@@ -1389,76 +1284,6 @@ def _named_only_by_a_team_word(con: duckdb.DuckDBPyConnection, question: str, pl
     asked = {w.casefold() for w in _words(question)}
     supporting = [w for w in _words(player) if w.casefold() in asked]
     return bool(supporting) and all(_team_named(con, w) is not None for w in supporting)
-
-
-def scope_from_question(
-    con: duckdb.DuckDBPyConnection,
-    question: str,
-    slots: dict[str, Any],
-    *,
-    reads_player: bool,
-) -> list[str]:
-    """Put a team the question plays AGAINST where a template will see it.
-    Mutates ``slots``; returns a line per change, for the trace.
-
-    The router has an ``opponent`` slot but is only ever taught it for team
-    quarter scoring, so on every other shape the opposing team either vanishes
-    or lands in the wrong slot. Measured against real StatMuse queries, the
-    single most common shape there is (a third of the feed):
-
-    - "jaylen brown last 8 games vs pistons" routed to ``game_log`` with
-      ``team='Boston Celtics'`` - his team, which the question never names -
-      and no player. The answer was the Celtics' last eight games.
-    - "Luka Doncic game log vs Lakers" put the Lakers in ``team`` and dropped
-      Luka: the Lakers' log.
-    - "how did curry do against the celtics" put the Celtics in ``players``,
-      where "boston" resolves to Brandon Boston Jr.
-
-    So the question is read for the team after "vs"/"against", and each of
-    those is undone. The resulting ``opponent`` is a scoping slot: a template
-    that cannot restrict to one refuses it (templates.check_scope) instead of
-    answering about every opponent. A team the slots already carry - both
-    sides of ``head_to_head``, the opponent ``team_quarter_points`` was given -
-    is left exactly as it was, with one exception: the team the question plays
-    against, filed in ``team`` beside a player a ``reads_player`` template
-    reads, is that player's opponent and moves there.
-
-    What is left here is the router filing a PLAYER's name in ``team``, and a
-    team in ``team`` that displaced the player the question names; the
-    opponent, the restored player, the player's own team and the team
-    subject moved to :func:`association.query.subject.apply_subject` in
-    4.5.0, which writes them from the subject reading.
-
-    .. versionadded:: 2.1.0
-
-    .. versionchanged:: 4.4.0
-       Takes ``restore_subject``.
-
-    .. versionchanged:: 4.4.0
-       Takes ``restore_team``.
-
-    .. versionchanged:: 4.4.0
-       Takes ``restore_team_subject`` and ``intent``.
-
-    .. versionchanged:: 4.5.0
-       ``needs_player``, ``restore_subject``, ``restore_team``,
-       ``restore_team_subject`` and ``intent`` are gone with the steps they
-       gated, now :func:`association.query.subject.apply_subject`'s; so are
-       the opponent steps. Only the player-in-``team`` repairs remain.
-    """
-    notes: list[str] = []
-    season = slots.get("season") if isinstance(slots.get("season"), int) else None
-    versus = _team_after_versus(con, question, season)
-    has_player = bool(slots.get("player")) or bool(slots.get("players"))
-    team = _team_named(con, slots.get("team"), season)
-
-    if reads_player and team is None:
-        has_player = _scope_from_question_player_in_team_slot(con, question, slots, notes) or has_player
-
-    if team is not None and not has_player and reads_player:
-        team = _scope_from_question_displaced_player(con, question, slots, notes, team, versus)
-
-    return notes
 
 
 def teammate_names(value: Any) -> list[str]:
@@ -2087,69 +1912,3 @@ def resolve_team(con: duckdb.DuckDBPyConnection, text: str, season: int | None =
 
 # "record" is the whole signal that a head_to_head naming a player is a
 # question about that player's games rather than about two franchises.
-_RECORD_ASKED = re.compile(r"\brecords?\b", re.IGNORECASE)
-
-
-def _player_record_subject(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], opponent: Entity) -> str | None:
-    """The player a record-against-a-team question is about, or None.
-
-    Two shapes, both measured (``ISSUES.md`` #163). The router either files
-    the player in ``teams`` beside the real opponent - "Embiid career record
-    vs boston" arrives as ``teams: ['Joel Embiid', 'Boston Celtics']`` - or
-    replaces him with his own team, leaving two real franchises and the
-    player's name only in the question: "Show Embiid's career record against
-    Boston" arrives as ``teams: ['Philadelphia 76ers', 'Boston Celtics']``.
-    """
-    listed = slots.get("teams")
-    for name in listed if isinstance(listed, list) else []:
-        # A name in the TEAM list that names no team and does name exactly one
-        # player. `_team_named` first, so "Boston" stays a team.
-        if isinstance(name, str) and name.strip() and _team_named(con, name) is None and len(find_players(con, name)) == 1:
-            return name
-    named = _scope_from_question_only_player(con, question)
-    # `_scope_from_question_only_player` already drops a name held only by a
-    # word that names a team, which is what keeps "boston" from naming Brandon
-    # Boston Jr. here; this also refuses the opponent's own name outright.
-    return named if named is not None and not _shares_word(named, opponent.name) else None
-
-
-def player_record_against_a_team(con: duckdb.DuckDBPyConnection, question: str, intent: str, slots: dict[str, Any]) -> str | None:
-    """The intent a "PLAYER's record against TEAM" question really wants, or None.
-
-    ``head_to_head`` is two franchises meeting, and the router sends a
-    player's record against one of them there as well - which is a different
-    question, since it counts every meeting including the ones he sat out.
-    Both of the shapes it arrives in are described in
-    :func:`_player_record_subject`, and both fell through (``ISSUES.md``
-    #163): 76ers 13-15 in the 28 regular-season games Joel Embiid played
-    against Boston, against a 76ers-Celtics record covering far more.
-
-    ``with_without`` is what answers it - a team's record in the games one
-    player played against the ones he missed, narrowed to one opponent - so
-    the slots are rewritten for it and the new intent returned. The subject
-    goes in ``without`` because that is the slot the template splits BY; it
-    infers his team itself, which is why none is passed.
-
-    Returns None for every other question, including a real head-to-head, so
-    a question that works today cannot move.
-
-    .. versionadded:: 4.4.0
-    """
-    if intent != "head_to_head" or not _RECORD_ASKED.search(question):
-        return None
-    season = slots.get("season") if isinstance(slots.get("season"), int) else None
-    opponent = _team_after_versus(con, question, season)
-    if opponent is None:
-        return None
-    player = _player_record_subject(con, question, slots, opponent)
-    if player is None:
-        return None
-    # Only the slots that still mean the same thing for the new intent. The
-    # team slots are exactly what must not survive: they are the reading being
-    # replaced.
-    kept = {key: value for key, value in slots.items() if key in ("season", "season_type", "span", "venue")}
-    slots.clear()
-    slots.update(kept)
-    slots["without"] = [player]
-    slots["opponent"] = opponent.name
-    return "with_without"

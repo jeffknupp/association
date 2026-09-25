@@ -36,15 +36,6 @@ from association.query.calendar import parse_alignment, parse_situation
 from association.query.entities import find_players, find_teams
 from association.query.templates.common import PLAYER_INTENTS, TemplateResult
 
-#: Intents whose ``opponent`` is a team the subject played against. A PLAYER
-#: in that slot is the pair relation's question - "lebron vs kawhi head to
-#: head", "jay huff game log vs embiid" - which `player_matchup` answers
-#: from two reads of the relation joined on the event; the router filed the
-#: second player as an opponent, and a genuine two-player matchup refuses
-#: `opponent`, so both fell through (yardstick-v2 F081, F142).
-_PAIRABLE_INTENTS: frozenset[str] = frozenset({"player_matchup", "game_log", "player_stat", "threshold_count", "single_game_high", "streak", "record_when", "player_splits"})
-
-
 _CHAMPIONSHIP = re.compile(r"\b(?:championships?|champions?|nba\s+titles?|won\s+the\s+(?:title|finals)|title\s+winners?|finals\s+winners?)\b", re.IGNORECASE)
 _BENCH_POINTS = re.compile(r"\bbench\s+(?:points?|scoring|pts)\b", re.IGNORECASE)
 _AGE = re.compile(r"\b(?:\d+\s+years?\s+old|(?:before|after|by|at)\s+(?:turning|age)\s+\d+|age\s+\d+)\b", re.IGNORECASE)
@@ -126,29 +117,6 @@ def _team_where_a_player_belongs(con: duckdb.DuckDBPyConnection, intent: str, sl
     if find_players(con, player) or not find_teams(con, player):
         return None
     return f"'{player}' is a team, and this was read as a question about one player's {slots.get('stat') or 'stats'}. Name a player, or ask for the team's own record or stats."
-
-
-def pair_from_opponent(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any]) -> str | None:
-    """Rewrite a player filed as the ``opponent`` into the second of two
-    ``players``, so :func:`~association.query.templates.games.player_matchup`
-    answers the meetings; returns the opponent's name when it did, else None.
-    Only where the opponent matches a player and no team - a team opponent,
-    or a name matching nothing, is left for the template to read or refuse.
-
-    Not a refusal: this module's one repair, kept here beside the refusal it
-    replaced (a "not read yet" that was false - the pair relation is read).
-
-    .. versionadded:: 4.4.0
-    """
-    opponent, player = slots.get("opponent"), slots.get("player")
-    if intent not in _PAIRABLE_INTENTS or not isinstance(opponent, str) or not opponent.strip() or not isinstance(player, str) or not player.strip():
-        return None
-    if find_teams(con, opponent) or not find_players(con, opponent):
-        return None
-    slots["players"] = [player, opponent]
-    slots.pop("player", None)
-    slots.pop("opponent", None)
-    return opponent
 
 
 def _team_period_stat(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str) -> str | None:

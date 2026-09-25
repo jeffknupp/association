@@ -1972,7 +1972,7 @@ def _route_team_and_player_intents(raw: dict[str, Any], question: str) -> None:
     if raw["intent"] == "player_compare" and sum(map(_is_team_name, listed)) == 1 and len(listed) == 2:
         # One player compared with a team is his games against it. Measured:
         # "compare curry vs the celtics this season" arrived as player_compare
-        # with the Celtics in `players`; scope_from_question made them the
+        # with the Celtics in `players`; subject.apply_subject made them the
         # opponent, which player_compare cannot honor, so the question fell
         # through to the agent while player_stat answers it exactly. Two
         # players and a team stay a comparison, and refuse the opponent.
@@ -1986,7 +1986,7 @@ def _route_matchup_against_team(raw: dict[str, Any], question: str, listed: list
     """A ``player_matchup`` whose second "player" is a team."""
     if raw["intent"] == "player_matchup" and any(map(_is_team_name, listed)):
         # One of the "two players" is a team: this is a player's games against
-        # it. entities.scope_from_question moves the team to `opponent`.
+        # it. subject.apply_subject moves the team to `opponent`.
         raw["intent"] = "game_log" if _LOG_WORDS.search(question) or _GAMES_WORDS.search(question) else "player_stat"
     if raw["intent"] == "player_matchup" and len(listed) < 2 and isinstance(raw.get("player"), str):
         # The same question, arriving in the other shape. The rule above reads

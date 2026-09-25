@@ -18,12 +18,10 @@ from association.query.entities import (
     no_match,
     override_nicknames,
     player_named_on_a_team_only_question,
-    player_record_against_a_team,
     players_named_in,
     resolve_player,
     resolve_team,
     restore_dropped_players,
-    scope_from_question,
     suggest_players,
     team_only_question_names_a_player,
     teams_named_in,
@@ -471,17 +469,15 @@ def _apply(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any],
     names dropped, the shape these tests were first written against."""
     from association.query.subject import apply_subject, read_subject
 
-    decisions, dropped = apply_subject(read_subject(con, question, intent, slots), slots, con=con, intent=intent)
-    return [(str(d.before), str(d.after)) for d in decisions], dropped
+    applied = apply_subject(read_subject(con, question, intent, slots), slots, con=con, intent=intent)
+    return [(str(d.before), str(d.after)) for d in applied.decisions], applied.dropped
 
 
 def _scope(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], *, reads_player: bool, intent: str = "", **flags: Any) -> list[str]:
-    """The whole slot repair the agent runs, in its order: the subject read
-    from the router's slots, `scope_from_question` over them, then the
-    reading applied (`apply_subject`, which took the opponent-team steps
-    over from `scope_from_question` in 4.5.0). One line per change, the
-    chain's notes and the reading's decisions together, so a test written
-    against `scope_from_question` alone reads the same."""
+    """The slot repair the agent runs: the subject read from the router's
+    slots, then applied (`subject.apply_subject`, which took every step of
+    `scope_from_question` over in 4.5.0). One line per change, so a test
+    written against `scope_from_question` reads the same."""
     from association.query.subject import apply_subject, read_subject
 
     # The chain's flags were one per intent set; the reading reads the
@@ -493,9 +489,7 @@ def _scope(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any],
     assert not flags, flags
     intent = intent or ("game_log" if reads_player else "team_record")
     subject = read_subject(con, question, intent, slots)
-    notes = scope_from_question(con, question, slots, reads_player=reads_player)
-    decisions, _ = apply_subject(subject, slots, con=con, intent=intent)
-    return notes + [d.line() for d in decisions]
+    return [d.line() for d in apply_subject(subject, slots, con=con, intent=intent).decisions]
 
 
 def test_a_truncated_name_is_expanded_from_the_question(span_con: duckdb.DuckDBPyConnection) -> None:
@@ -926,7 +920,7 @@ def test_an_opponent_that_names_one_of_the_questions_own_players_is_dropped(scop
     rebuilt into `players` and then check_scope refused the leftover slot, so
     a question the system answers under other words had no answer at all."""
     slots: dict[str, Any] = {"players": ["Stephen Curry", "Jaylen Brown"], "opponent": "Jaylen Brown", "side": "total"}
-    _scope(scope_con, "curry vs jaylen brown fingerprint", slots, reads_player=True)
+    _scope(scope_con, "curry vs jaylen brown fingerprint", slots, reads_player=True, intent="fingerprint")
     assert slots == {"players": ["Stephen Curry", "Jaylen Brown"], "side": "total"}
 
 
@@ -937,7 +931,7 @@ def test_an_opponent_naming_a_player_nobody_asked_about_is_left_to_be_refused(sc
     has to hold the name: an opponent it never held is the invented-name
     shape, dropped by `subject.apply_subject` since 4.4.0.)"""
     slots: dict[str, Any] = {"player": "Stephen Curry", "opponent": "Kawhi Leonard"}
-    _scope(scope_con, "curry fingerprint vs kawhi", slots, reads_player=True)
+    _scope(scope_con, "curry fingerprint vs kawhi", slots, reads_player=True, intent="fingerprint")
     assert slots["opponent"] == "Kawhi Leonard"
     # A real team in `opponent` is untouched, whoever the subject is.
     team: dict[str, Any] = {"player": "Stephen Curry", "opponent": "Boston Celtics"}
@@ -1052,6 +1046,13 @@ def test_part_of_a_team_name_run_together_still_names_no_team(scope_con: duckdb.
         assert not isinstance(resolve_team(scope_con, spelling), Entity), spelling
 
 
+def _rerouted(con: duckdb.DuckDBPyConnection, question: str, intent: str, slots: dict[str, Any]) -> str:
+    """The intent the reading settles for the question, with `slots` rewritten for it."""
+    from association.query.subject import apply_subject, read_subject
+
+    return apply_subject(read_subject(con, question, intent, slots), slots, con=con, intent=intent).intent
+
+
 def test_a_players_record_against_a_team_is_not_two_teams_meeting(scope_con: duckdb.DuckDBPyConnection) -> None:
     """#163: the router sends "Embiid career record vs boston" to head_to_head,
     which is two franchises meeting - a different question, counting every
@@ -1061,10 +1062,10 @@ def test_a_players_record_against_a_team_is_not_two_teams_meeting(scope_con: duc
     he played against the ones he missed"."""
     scope_con.execute("INSERT INTO players VALUES ('20','Joel Embiid')")
     in_teams: dict[str, Any] = {"teams": ["Joel Embiid", "Boston Celtics"], "season_type": 2, "span": "career"}
-    assert player_record_against_a_team(scope_con, "Embiid career record vs boston", "head_to_head", in_teams) == "with_without"
+    assert _rerouted(scope_con, "Embiid career record vs boston", "head_to_head", in_teams) == "with_without"
     assert in_teams == {"season_type": 2, "span": "career", "without": ["Joel Embiid"], "opponent": "Boston Celtics"}
     displaced: dict[str, Any] = {"stat": "wins", "teams": ["Philadelphia 76ers", "Boston Celtics"], "season_type": 2, "span": "career"}
-    assert player_record_against_a_team(scope_con, "Show Embiid's career record against Boston", "head_to_head", displaced) == "with_without"
+    assert _rerouted(scope_con, "Show Embiid's career record against Boston", "head_to_head", displaced) == "with_without"
     # `players_named_in` returns the roster's own spelling, not the question's.
     assert displaced["without"] == ["Joel Embiid"] and displaced["opponent"] == "Boston Celtics"
     # The team slots must not survive: they are the reading being replaced.
@@ -1091,9 +1092,7 @@ def test_a_real_head_to_head_is_left_exactly_as_it_was(scope_con: duckdb.DuckDBP
         ("Embiid vs boston last 5 games", "head_to_head", {"teams": ["Joel Embiid", "Boston Celtics"], "limit": 5}),
         ("Lakers vs Celtics this season", "head_to_head", {"teams": ["Los Angeles Lakers", "Boston Celtics"]}),
     ):
-        before = dict(slots)
-        assert player_record_against_a_team(scope_con, question, intent, slots) is None, question
-        assert slots == before, question
+        assert _rerouted(scope_con, question, intent, dict(slots)) == intent, question
 
 
 def test_a_team_nickname_names_an_opponent(scope_con: duckdb.DuckDBPyConnection) -> None:
@@ -1387,7 +1386,7 @@ def test_an_ambiguous_fragment_in_the_team_slot_is_settled_by_the_question(scope
     slots: dict[str, Any] = {"team": "Riley", "order": "recent", "limit": 5}
     notes = _scope(scope_con, "Will Riley last 5 game s", slots, reads_player=True)
     assert slots == {"order": "recent", "limit": 5, "player": "Will Riley"}
-    assert notes == ["'Riley' is a player, not a team; the subject is 'Will Riley'"]
+    assert len(notes) == 1 and "'Riley' is a player, not a team; the subject is 'Will Riley'" in notes[0]
 
 
 def test_the_fragment_fallback_does_not_borrow_an_unrelated_name(scope_con: duckdb.DuckDBPyConnection) -> None:

@@ -204,22 +204,22 @@ def test_apply_subject_writes_the_players_the_question_names_in_the_routers_own_
     from association.query.subject import apply_subject
 
     slots: dict[str, Any] = {"players": ["Shai Gilgeous-Alexander", "Jusuf Nurkic"]}
-    decisions, dropped = apply_subject(read_subject(con, "compare sga and embiid", "player_compare", slots), slots, con=con, intent="player_compare")
+    decisions, dropped, _ = apply_subject(read_subject(con, "compare sga and embiid", "player_compare", slots), slots, con=con, intent="player_compare")
     assert slots["players"] == ["Shai Gilgeous-Alexander", "Joel Embiid"] and dropped == []
     assert [(d.field, d.before, d.after) for d in decisions] == [("players", "Jusuf Nurkic", "Joel Embiid")]
 
     single: dict[str, Any] = {"player": "Ben Simmons"}
-    decisions, dropped = apply_subject(read_subject(con, "how many points does embiid average", "player_stat", single), single, con=con, intent="player_stat")
+    decisions, dropped, _ = apply_subject(read_subject(con, "how many points does embiid average", "player_stat", single), single, con=con, intent="player_stat")
     assert single == {"player": "Joel Embiid"} and [d.field for d in decisions] == ["player"] and dropped == []
 
     kept: dict[str, Any] = {"player": "Nikola Jokic"}
-    assert apply_subject(read_subject(con, "jokic ppg", "player_stat", kept), kept, con=con, intent="player_stat") == ([], []) and kept == {"player": "Nikola Jokic"}
+    assert apply_subject(read_subject(con, "jokic ppg", "player_stat", kept), kept, con=con, intent="player_stat")[:2] == ([], []) and kept == {"player": "Nikola Jokic"}
 
     # A companion the router filed among the players (player_matchup's pair
     # shape) is the question's own name, kept - the golden caught this as a
     # refusal of "fox vs magic ... without wembyanama" (F157, graded correct).
     pair: dict[str, Any] = {"players": ["De'Aaron Fox", "Victor Wembanyama"]}
-    decisions, dropped = apply_subject(read_subject(con, "de'aaron fox vs magic last five games without wembyanama", "player_matchup", pair), pair, con=con, intent="player_matchup")
+    decisions, dropped, _ = apply_subject(read_subject(con, "de'aaron fox vs magic last five games without wembyanama", "player_matchup", pair), pair, con=con, intent="player_matchup")
     assert pair["players"] == ["De'Aaron Fox", "Victor Wembanyama"] and dropped == []
     assert [(d.field, d.after) for d in decisions] == [("opponent", "Orlando Magic")] and pair["opponent"] == "Orlando Magic"
 
@@ -228,22 +228,22 @@ def test_apply_subject_writes_the_players_the_question_names_in_the_routers_own_
     # corrected, a two-edit near miss ("Deron Williams" for "derozan") put
     # right - _question_derived_player's job, now the reading's.
     bare: dict[str, Any] = {"player": "Jokic"}
-    decisions, _ = apply_subject(read_subject(con, "How many 30+ point games did Jokic have this season?", "threshold_count", bare), bare, con=con, intent="threshold_count")
+    decisions, _, _ = apply_subject(read_subject(con, "How many 30+ point games did Jokic have this season?", "threshold_count", bare), bare, con=con, intent="threshold_count")
     assert bare == {"player": "Nikola Jokic"} and [(d.before, d.after) for d in decisions] == [("Jokic", "Nikola Jokic")]
     near: dict[str, Any] = {"player": "Deron Williams"}
     apply_subject(read_subject(con, "derozan career points vs knicks", "player_stat", near), near, con=con, intent="player_stat")
     assert near == {"player": "DeMar DeRozan"}
     right: dict[str, Any] = {"player": "Deron Williams"}
-    assert apply_subject(read_subject(con, "deron williams career points", "player_stat", right), right, con=con, intent="player_stat") == ([], []) and right == {"player": "Deron Williams"}
+    assert apply_subject(read_subject(con, "deron williams career points", "player_stat", right), right, con=con, intent="player_stat")[:2] == ([], []) and right == {"player": "Deron Williams"}
 
     # A player the router left OUT (the question names two, the slot holds
     # one) is not put back here - restore_dropped_players' job still - and
     # must not trip anything: the golden crashed on this shape twice.
     omitted: dict[str, Any] = {"player": "Nikola Jokic"}
-    assert apply_subject(read_subject(con, "compare jokic and embiid", "player_compare", omitted), omitted, con=con, intent="player_compare") == ([], []) and omitted == {"player": "Nikola Jokic"}
+    assert apply_subject(read_subject(con, "compare jokic and embiid", "player_compare", omitted), omitted, con=con, intent="player_compare")[:2] == ([], []) and omitted == {"player": "Nikola Jokic"}
 
     nobody: dict[str, Any] = {"players": ["Ronaldo Lopes", "Nikola Jokic"]}
-    decisions, dropped = apply_subject(read_subject(con, "compare jokic's fingerprint to last season", "fingerprint", nobody), nobody, con=con, intent="fingerprint")
+    decisions, dropped, _ = apply_subject(read_subject(con, "compare jokic's fingerprint to last season", "fingerprint", nobody), nobody, con=con, intent="fingerprint")
     assert dropped == ["Ronaldo Lopes"] and decisions == [] and nobody["players"] == ["Ronaldo Lopes", "Nikola Jokic"]  # reported, untouched
 
 
@@ -259,7 +259,7 @@ def test_a_typo_of_the_questions_own_is_resolved_from_the_span_the_routers_name_
     slots: dict[str, Any] = {"stat": "threePointFieldGoalsMade", "player": "Stephen Curry", "season": 2025}
     s = read_subject(con, "Show a shot chart for 3 point shots by Seph Curry's last season", "shot_chart", slots)
     assert s.players == ("Seth Curry",)
-    decisions, dropped = apply_subject(s, slots, con=con, intent="shot_chart")
+    decisions, dropped, _ = apply_subject(s, slots, con=con, intent="shot_chart")
     assert slots["player"] == "Seth Curry" and dropped == [] and [(d.field, d.before, d.after) for d in decisions] == [("player", "Stephen Curry", "Seth Curry")]
 
     typo: dict[str, Any] = {"player": "Payton Prichard", "opponent": "Philadelphia 76ers", "venue": "home"}
@@ -281,7 +281,7 @@ def test_the_routers_spelling_stands_where_a_whole_word_names_somebody_else(con:
     slots: dict[str, Any] = {"players": ["Kareem Abdul-Jabbar", "Bob Lanier"]}
     s = read_subject(con, "kareem stats vs bob lanier", "player_matchup", slots)
     assert s.players == ("Kareem Abdul-Jabbar", "Bob Lanier")
-    assert apply_subject(s, slots, con=con, intent="player_matchup") == ([], []) and slots["players"] == ["Kareem Abdul-Jabbar", "Bob Lanier"]
+    assert apply_subject(s, slots, con=con, intent="player_matchup")[:2] == ([], []) and slots["players"] == ["Kareem Abdul-Jabbar", "Bob Lanier"]
 
 
 def test_a_player_filed_as_the_opponent_is_checked_like_the_subject(con: duckdb.DuckDBPyConnection) -> None:
@@ -296,19 +296,23 @@ def test_a_player_filed_as_the_opponent_is_checked_like_the_subject(con: duckdb.
     slots: dict[str, Any] = {"player": "Jaylen Huff", "opponent": "Nikola Jokic"}
     s = read_subject(con, "jay huff game log vs Embiid", "player_matchup", slots)
     assert s.kind == "pair" and s.players == ("Jay Huff", "Joel Embiid") and s.routed_opponent == "Nikola Jokic"
-    decisions, dropped = apply_subject(s, slots, con=con, intent="player_matchup")
-    assert slots == {"player": "Jay Huff", "opponent": "Joel Embiid"} and dropped == []
-    assert [(d.field, d.before, d.after) for d in decisions] == [("player", "Jaylen Huff", "Jay Huff"), ("opponent", "Nikola Jokic", "Joel Embiid")]
+    decisions, dropped, intent = apply_subject(s, slots, con=con, intent="player_matchup")
+    assert slots == {"players": ["Jay Huff", "Joel Embiid"]} and dropped == [] and intent == "player_matchup"
+    assert [(d.field, d.before, d.after) for d in decisions] == [("player", "Jaylen Huff", "Jay Huff"), ("opponent", "Nikola Jokic", "Joel Embiid"), ("players", None, ["Jay Huff", "Joel Embiid"])]
 
     two_spare: dict[str, Any] = {"player": "Luka Doncic", "opponent": "Nikola Jokic"}
-    decisions, dropped = apply_subject(read_subject(con, "luka game log vs embiid and klay thompson", "game_log", two_spare), two_spare, con=con, intent="game_log")
+    decisions, dropped, _ = apply_subject(read_subject(con, "luka game log vs embiid and klay thompson", "game_log", two_spare), two_spare, con=con, intent="game_log")
     assert "opponent" not in two_spare and dropped == [] and [(d.field, d.before, d.after) for d in decisions] == [("opponent", "Nikola Jokic", None)]
 
     team: dict[str, Any] = {"player": "Luka Doncic", "opponent": "Los Angeles Lakers"}
     assert read_subject(con, "luka vs the lakers", "game_log", team).routed_opponent is None
-    assert apply_subject(read_subject(con, "luka vs the lakers", "game_log", team), team, con=con, intent="game_log") == ([], []) and team["opponent"] == "Los Angeles Lakers"
+    assert apply_subject(read_subject(con, "luka vs the lakers", "game_log", team), team, con=con, intent="game_log")[:2] == ([], []) and team["opponent"] == "Los Angeles Lakers"
+    # A player the question does name in `opponent` is the second of a pair:
+    # the games the two played against each other (player_matchup), which
+    # refusals.pair_from_opponent used to decide.
     named: dict[str, Any] = {"player": "Luka Doncic", "opponent": "Joel Embiid"}
-    assert apply_subject(read_subject(con, "luka game log vs embiid", "game_log", named), named, con=con, intent="game_log") == ([], []) and named["opponent"] == "Joel Embiid"
+    applied = apply_subject(read_subject(con, "luka game log vs embiid", "game_log", named), named, con=con, intent="game_log")
+    assert applied.intent == "player_matchup" and named == {"players": ["Luka Doncic", "Joel Embiid"]} and applied.dropped == []
 
 
 def test_a_supported_name_stays_as_the_router_spelled_it(con: duckdb.DuckDBPyConnection) -> None:
@@ -327,7 +331,7 @@ def test_a_supported_name_stays_as_the_router_spelled_it(con: duckdb.DuckDBPyCon
         ("who led the league in scoring?", "leaderboard", {"stat": "points"}),
     ):
         before = dict(slots)
-        assert apply_subject(read_subject(con, question, intent, slots), slots, con=con, intent=intent) == ([], []), question
+        assert apply_subject(read_subject(con, question, intent, slots), slots, con=con, intent=intent)[:2] == ([], []), question
         assert slots == before, question
 
 

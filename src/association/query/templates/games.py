@@ -2372,7 +2372,7 @@ def player_matchup(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
        instead of refused. ``router._route_matchup_against_team`` already
        reroutes this shape to ``game_log``/``player_stat`` where it can, but
        only from the router's raw output; it cannot see a player name
-       ``entities.scope_from_question`` restores afterward, in ``agent.py``,
+       ``subject.apply_subject`` restores afterward, in ``agent.py``,
        which is how these three still arrived here with one name and an
        opponent. A genuine two-player matchup still refuses ``opponent``,
        since it has no third team to narrow by.
@@ -2478,7 +2478,7 @@ def _player_matchup_drop_fabricated_second(con: duckdb.DuckDBPyConnection, texts
 
     - **A name matching no player at all.** "oubre vs warriors without
       embiid" keeps a garbled "Warriners" in ``players`` beside the
-      ``opponent`` that ``entities.scope_from_question`` already resolved
+      ``opponent`` that ``subject.apply_subject`` already resolved
       correctly from it - not a second player, noise already captured
       elsewhere. Eliminated outright: a string nothing in the warehouse
       answers to was never naming anybody.

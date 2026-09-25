@@ -32,12 +32,11 @@ import duckdb
 
 from association.cli.paths import default_db_path
 from association.nba.season import current_season
-from association.query.entities import override_nicknames, restore_dropped_players, scope_from_question
+from association.query.entities import override_nicknames, restore_dropped_players
 from association.query.models import DEFAULT_ROUTER_MODEL
 from association.query.router import RouterUnavailable, route
 from association.query.subject import apply_subject, read_subject
 from association.query.templates import TEMPLATES
-from association.query.templates.common import PLAYER_INTENTS
 
 # (question, expected intent, expected slots). A list-valued expectation is a
 # SUBSET check: dropping a field the user asked for is a bug, while the router
@@ -87,7 +86,7 @@ CASES: list[tuple[str, str, dict]] = [
     # possessive, so no router.py grammar (_SUBJECT_OF_HIGH et al.) restores
     # it - the model dropped the player and this answered the league's
     # single-game leaders, Kawhi Leonard's own 7 threes never mentioned.
-    # entities.SUBJECT_RESTORABLE_INTENTS/scope_from_question's
+    # entities.SUBJECT_RESTORABLE_INTENTS/subject.apply_subject's
     # `restore_subject` catches it post-router, corpus-measured against
     # false positives (common.SUBJECT_RESTORABLE_INTENTS' own docstring has
     # the count) before landing.
@@ -541,10 +540,10 @@ def main() -> int:
             subject = read_subject(con, question, got.intent, got.slots)
             if got.intent == "fingerprint":
                 restore_dropped_players(con, question, got.slots)
-            # The same order agent.py applies them in: this is where a player
-            # the router swapped for his own team comes back.
-            scope_from_question(con, question, got.slots, reads_player=got.intent in PLAYER_INTENTS)
-            apply_subject(subject, got.slots, con=con, intent=got.intent)
+            # The same order agent.py applies them in: the reading writes
+            # the slots a template reads, and the intent where the router's
+            # cannot be about the subject.
+            got.intent = apply_subject(subject, got.slots, con=con, intent=got.intent).intent
         if got is None:
             print(f"FAIL  {elapsed:5.2f}s  {question}\n        router returned nothing", flush=True)
             failures += 1

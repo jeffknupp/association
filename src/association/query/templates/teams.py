@@ -496,7 +496,7 @@ def _team_record_teams(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], op
     listed = [n for n in slots.get("teams") or [] if isinstance(n, str) and n.strip()] if isinstance(slots.get("teams"), list) else []
     if not (isinstance(team_text, str) and team_text.strip()) and listed:
         # "celtics vs bulls record" can land both teams in `teams`, which
-        # scope_from_question leaves alone; the first is the subject.
+        # subject.apply_subject leaves alone; the first is the subject.
         team_text, listed = listed[0], listed[1:]
     team = _resolved_team(con, team_text, season=_slot_season(slots))
     if isinstance(team, TemplateResult):

@@ -12,7 +12,8 @@ import duckdb
 import pytest
 
 from association.query.calendar import parse_alignment, parse_situation
-from association.query.refusals import by_question, pair_from_opponent, unanswerable
+from association.query.refusals import by_question, unanswerable
+from association.query.subject import apply_subject, read_subject
 from association.query.templates.common import TemplateUnsupported, check_scope
 
 
@@ -124,14 +125,18 @@ def test_a_player_in_the_opponent_slot_becomes_the_second_of_two_players(con: du
     is read by player_matchup, so a player filed as the opponent is the
     second player - not a refusal. A team opponent, or a name matching
     nothing, is left alone."""
+
+    def paired(question: str, intent: str, slots: dict[str, Any]) -> str:
+        return apply_subject(read_subject(con, question, intent, slots), slots, con=con, intent=intent).intent
+
     slots: dict[str, Any] = {"player": "LeBron James", "opponent": "Kawhi Leonard", "limit": 5}
-    assert pair_from_opponent(con, "game_log", slots) == "Kawhi Leonard"
+    assert paired("lebron vs kawhi head to head", "game_log", slots) == "player_matchup"
     assert slots == {"players": ["LeBron James", "Kawhi Leonard"], "limit": 5}
     team: dict[str, Any] = {"player": "LeBron James", "opponent": "Atlanta Hawks"}
-    assert pair_from_opponent(con, "game_log", team) is None and team["opponent"] == "Atlanta Hawks"
+    assert paired("lebron vs the hawks", "game_log", team) == "game_log" and team["opponent"] == "Atlanta Hawks"
     nobody: dict[str, Any] = {"player": "LeBron James", "opponent": "Nobody Real"}
-    assert pair_from_opponent(con, "player_matchup", nobody) is None
-    assert pair_from_opponent(con, "team_record", {"player": "LeBron James", "opponent": "Kawhi Leonard"}) is None
+    assert paired("lebron vs nobody real", "player_matchup", nobody) == "player_matchup" and nobody["opponent"] == "Nobody Real"
+    assert paired("lebron vs kawhi record", "team_record", {"player": "LeBron James", "opponent": "Kawhi Leonard"}) == "team_record"
 
 
 def test_a_teams_stat_other_than_points_by_period_is_refused(con: duckdb.DuckDBPyConnection) -> None:

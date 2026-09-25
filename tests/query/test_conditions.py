@@ -863,15 +863,11 @@ def test_a_named_player_beats_the_team_branch_end_to_end(league: TemplateContext
     A question naming a player is about HIM even where the subject grammar does
     not fire, and one naming nobody is about the team. Run through
     `scope_from_question` exactly as the pipeline runs it."""
-    from association.query.entities import scope_from_question
     from association.query.subject import apply_subject, read_subject
-    from association.query.templates.common import PLAYER_INTENTS
 
     def answered(question: str, **slots: Any) -> str:
         given = _slots(**slots)
-        subject = read_subject(league.con, question, "record_when", given)
-        scope_from_question(league.con, question, given, reads_player="record_when" in PLAYER_INTENTS)
-        apply_subject(subject, given, con=league.con, intent="record_when")
+        apply_subject(read_subject(league.con, question, "record_when", given), given, con=league.con, intent="record_when")
         return (record_when(league, given).answer or "").splitlines()[0]
 
     named = answered("celtics record with 20+ points from jayson tatum", stat="points", threshold=20, team="Boston Celtics")
