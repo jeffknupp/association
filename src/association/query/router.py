@@ -1294,7 +1294,7 @@ def _route_two_point_pct(intent: str, slots: dict[str, Any], question: str) -> N
 # Luke Kennard's 3-point PERCENTAGE, 47.8% - a real, fluently wrong number.
 # The sibling phrasing with no metric word in it ("...in shot distance for 3
 # point shots") arrived with a filler `player: "player"` instead, which
-# override_invented_players (agent.py) then refused for naming a player the
+# the invented-name check (agent.py) then refused for naming a player the
 # question does not mention - honest-sounding, and also the wrong cause,
 # since no leaderboard could answer either question anyway.
 _LEADERBOARD_SHOT_DISTANCE = re.compile(
@@ -1337,7 +1337,7 @@ def _route_leaderboard_shot_distance(intent: str, slots: dict[str, Any], questio
     Also drops any `player` the router filled, filler or real: `leaderboard`
     never reads one for real (a named player is refused separately), and a
     filler value here ("player": "player" on a question that names nobody)
-    would otherwise reach `override_invented_players` first and refuse for
+    would otherwise reach `subject.apply_subject` first and refuse for
     the WRONG cause - "read as a question about player, who the question does
     not mention" - before this refusal, the right one, ever runs.
 
@@ -1480,7 +1480,7 @@ def _team_slot_named_in_text(question: str, candidate: Any) -> str | None:
     3rd quarter against Boston" filled `opponent` with 'Denver Nuggets', a
     real team and Jokic's own, but a word the question never wrote, while
     `team` held 'Boston Celtics', a word it did. Checked against the text the
-    same way :func:`association.query.entities.override_invented_players`
+    same way :func:`association.query.subject.question_supports`
     checks an invented player name - any one word is enough, since half a
     name is how a question normally carries one.
     """
@@ -1822,7 +1822,7 @@ def _route_period_split_slots(raw: dict[str, Any], question: str, subject: str |
         # `player` slot - so its `team`/`opponent` are no more
         # trustworthy than the player it already dropped. Keep one
         # only where the question's own words actually say it (the
-        # same "may be fiction" check `entities.override_invented_players`
+        # same "may be fiction" check `subject.read_subject`
         # runs for a name): "Boston Celtics" is a word the Jokic
         # question used, "Denver Nuggets" is a word it never wrote.
         opponent = _team_slot_named_in_text(question, raw.get("team")) or _team_slot_named_in_text(question, raw.get("opponent"))
@@ -2256,7 +2256,7 @@ def _route_intent_slots(intent: str, slots: dict[str, Any], question: str, witho
         # `team`, where no franchise is named "least" and the template refused
         # the whole question ("no team matching 'least'") over a cause the
         # question never gave. The same shape as
-        # `entities.override_invented_players`: a slot the question does not
+        # `subject.apply_subject`: a slot the question does not
         # support. Read against `RANK_WORDS` again rather than a new word
         # list, so the two checks cannot drift apart (AGENTS.md, "one concept,
         # one definition").

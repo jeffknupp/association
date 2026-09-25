@@ -333,11 +333,18 @@ honest refusals that a fuller system would answer. By cause:
    identical each step (the two are same-date row order, master's own
    noise, filed P4); `override_invented_players` still runs after and now
    acts on 4 answers (a question's own typo resolved by near spelling, and
-   the opponent half). **Next:** the reading takes those two, that step
-   goes; then `scope_from_question`'s team/opponent fields; then the
-   compiler's `repair`/`_drop_*` and `refusals` read the Subject instead of
-   re-deriving it. The five chain bugs are the test cases for the step
-   that reaches each.
+   the opponent half). **Step 3c landed** (2026-09-25, later): the reading
+   takes both - spellings from the anchored span resolver (a question's own
+   typo: "Seph Curry" is Seth), a player filed as `opponent` as a routed
+   name - and `override_invented_players` is deleted with its helpers;
+   golden 306/308 again, the reading making all four writes itself. Found
+   and fixed on the way: 3b's respelling from the whole-word match rewrote
+   "kareem stats vs bob lanier" to Kareem Rush (ISSUES #123's shape, shipped
+   in 4.4.0, not in the corpus - the chain's own span tests caught it once
+   re-homed onto the reading). **Next:** `scope_from_question`'s
+   team/opponent fields; then the compiler's `repair`/`_drop_*` and
+   `refusals` read the Subject instead of re-deriving it. The five chain
+   bugs are the test cases for the step that reaches each.
 
 ## The current plan: what buys the most correctness next
 

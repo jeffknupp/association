@@ -595,7 +595,7 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         # 3 point distance" used to resolve `stat` to the nearest real metric
         # and answer a PERCENTAGE, and its "shot distance" sibling used to
         # arrive with a filler player slot ("player": "player") that
-        # override_invented_players (agent.py) refused first, for naming a
+        # the invented-name check (agent.py) refused first, for naming a
         # player the question does not mention - honest-sounding, and the
         # wrong cause, since no leaderboard metric exists either way. Neither
         # check below gets a chance to name the wrong cause now.

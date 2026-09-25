@@ -438,24 +438,6 @@ those were found.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #212
 
-### The router invents a name in the `opponent` slot, and the refusal repeats it: "jay huff game log vs Embiid" refuses about Nikola Jokic
-- **Found:** 2026-09-24, grading `live_rest.jsonl` (yardstick-v2 F142).
-- **Evidence:** routes `player_matchup {'player': 'Jaylen Huff', 'opponent':
-  'Nikola Jokic'}` - "Embiid" became Jokic (the known lowercase-embiid
-  substitution, AGENTS.md "Why embiid specifically"), and "Jay Huff" became
-  Jaylen Huff. `override_invented_players` checks `player`/`players` against
-  the question and never `opponent`, so the invented opponent survived into
-  `refusals._opponent_is_a_player`, whose sentence names him: "'Nikola
-  Jokic' is a player, not a team". The cause is right (a pair question);
-  the name is one the question never held.
-- **User sees:** a refusal about a player they did not mention.
-- **Next step:** run the invented-name check over `opponent` too (a name
-  with no word in the question is dropped, or replaced from
-  `players_named_in` when the count is exact), before any refusal or
-  template reads it.
-- **Source:** ours, not ESPN's.
-- **GitHub:** #206
-
 ### "Since 2000-01" is not read as a span: a league-wide multi-line count answers the default season
 - **Found:** 2026-09-24, grading `live_rest.jsonl` (yardstick-v2 F161).
 ### A composed league-wide read ignores `since`/`until`: "... games since 2000-01" answers the current season

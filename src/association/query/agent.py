@@ -19,7 +19,6 @@ from .entities import (
     collect_name_readings,
     compared_but_unmatched,
     misread_players,
-    override_invented_players,
     override_nicknames,
     player_named_on_a_team_only_question,
     player_record_against_a_team,
@@ -392,7 +391,7 @@ class Agent:
         # The router invents whole names, not only nicknames: "compare sga and
         # embiid" came back with Jusuf Nurkic in the second slot, and every
         # stage after this one would have answered about him perfectly.
-        misread_result = self._ground_players(question, routed, subject, history)
+        misread_result = self._ground_players(routed, subject, history)
         if misread_result is not None:
             return routed.intent, misread_result
         # Completing a bare surname is the prominence tiebreak this project
@@ -419,37 +418,26 @@ class Agent:
                 return routed.intent, TemplateResult(data={"message": message, "named_player": named_player}, answer=message)
         return self._run_scoped_template(question, routed, handler, history)
 
-    def _ground_players(self, question: str, routed: Route, subject: Subject, history: RunHistory) -> TemplateResult | None:
+    def _ground_players(self, routed: Route, subject: Subject, history: RunHistory) -> TemplateResult | None:
         """Every player name a template will read is one the question holds:
-        the subject reading writes the names it read, the older repair runs
-        after it, and a name neither can ground is refused by name (the
-        result returned here). Split out of _try_fast_path for the
-        complexity gate."""
-        # The subject reading writes the players it read (query/subject.py,
-        # apply_subject) before the older repair runs over the same field -
-        # which then finds nothing to do on them and is proven a no-op by the
-        # golden before it goes. A router name the question never held and
-        # the reading could not replace is refused by name below, exactly as
-        # the older check's `invented` names are.
+        the subject reading writes the names it read (query/subject.py,
+        apply_subject) - the router's players and a player filed as the
+        opponent, each write a recorded decision - and a router name the
+        question never held that nothing in the question can replace is
+        refused by name (the result returned here). Split out of
+        _try_fast_path for the complexity gate."""
         applied, dropped = apply_subject(subject, routed.slots)
         for decision in applied:
             history.record_decision(decision)
-        grounded, invented = override_invented_players(self.toolbox.con, question, routed.slots)
-        invented = list(dict.fromkeys([*dropped, *invented]))
-        for was, now in grounded:
-            if now:
-                history.log(f"  -> (player) {was!r} -> {now!r} (from the question, overriding the router)")
-            else:
-                history.log(f"  -> (opponent) {was!r} dropped (the question never names him, and names no one else to put there)")
         # Said, not passed along. Falling through was tried and is worse: the
         # agent answered one of these with a 55-second fingerprint for "Ronaldo
         # Lopes", a player who does not exist, percentages included. Only where
         # the template would actually be about that player - a stray name on a
         # team question changes no answer.
-        if invented and routed.intent in PLAYER_INTENTS:
-            misread = misread_players(invented)
+        if dropped and routed.intent in PLAYER_INTENTS:
+            misread = misread_players(dropped)
             history.log(f"  -> (player) {misread}")
-            return TemplateResult(data={"message": misread, "misread": invented}, answer=misread)
+            return TemplateResult(data={"message": misread, "misread": dropped}, answer=misread)
         return None
 
     def _record_subject(self, question: str, routed: Route, history: RunHistory) -> Subject:

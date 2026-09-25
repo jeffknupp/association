@@ -16,7 +16,6 @@ from association.query.entities import (
     misread_players,
     nicknames_in,
     no_match,
-    override_invented_players,
     override_nicknames,
     player_named_on_a_team_only_question,
     player_record_against_a_team,
@@ -411,103 +410,15 @@ def test_a_nickname_another_slot_already_holds_is_not_the_subject() -> None:
     assert override_nicknames("how many points does giannis average", alone) == [("Jayson Tatum", "Giannis Antetokounmpo")]
 
 
-# ---------------- names the question does not support ----------------
-
-
-def test_a_player_the_question_never_mentions_is_replaced_by_one_it_does(con: duckdb.DuckDBPyConnection) -> None:
-    """The bug this exists for, measured live: "compare sga and embiid" routed
-    to ['Shai Gilgeous-Alexander', 'Jusuf Nurkic'] and answered with a fluent
-    table of two real players, one of whom the question never named. Nothing
-    downstream could notice - "Jusuf Nurkic" resolves perfectly."""
-    slots = {"players": ["Shai Gilgeous-Alexander", "Jusuf Nurkic"]}
-    changed, invented = override_invented_players(con, "compare sga and embiid", slots)
-    assert slots["players"] == ["Shai Gilgeous-Alexander", "Joel Embiid"]
-    assert changed == [("Jusuf Nurkic", "Joel Embiid")] and invented == []
-
-
-def test_an_invented_name_with_nothing_to_replace_it_is_reported_rather_than_answered(con: duckdb.DuckDBPyConnection) -> None:
-    """Reported, not repaired: the caller falls through to the agent, which at
-    least reads the question. What must not happen is answering about Nurkic."""
-    slots = {"players": ["Jusuf Nurkic", "Joel Embiid"]}
-    changed, invented = override_invented_players(con, "compare the two best centers", slots)
-    assert changed == [] and invented == ["Jusuf Nurkic", "Joel Embiid"]
-    assert slots["players"] == ["Jusuf Nurkic", "Joel Embiid"]
-
-
-def test_half_a_name_in_the_question_supports_the_whole_of_it(con: duckdb.DuckDBPyConnection) -> None:
-    """Expanding "Luka" to "Luka Doncic" is the router doing its job. Trimming
-    the name back to what the question literally holds would undo it - "Luka"
-    alone is ambiguous against Luka Garza in the real warehouse."""
-    slots = {"player": "Luka Doncic"}
-    assert override_invented_players(con, "how many points did Luka average?", slots) == ([], [])
-    assert slots["player"] == "Luka Doncic"
-
-
-def test_a_near_spelling_still_counts_as_naming_somebody(con: duckdb.DuckDBPyConnection) -> None:
-    """ "compare sga and embid" - the router corrected the surname and invented
-    the given name. The surname is a trace of the question, so this leaves the
-    slot alone and lets resolution answer with a suggestion rather than
-    replacing a name the question half-supports."""
-    slots = {"players": ["Shai Gilgeous-Alexander", "Jemel Embiid"]}
-    assert override_invented_players(con, "compare sga and embid", slots) == ([], [])
-
-
-def test_initials_count_as_naming_somebody(con: duckdb.DuckDBPyConnection) -> None:
-    """ "KAT" and "SGA" are how questions carry a name the nickname table may
-    not have. Without this, expanding one would look like an invention and
-    every such question would fall through to the agent."""
-    slots = {"players": ["Jaylen Brown", "Joel Embiid"]}
-    assert override_invented_players(con, "compare jb and embiid", slots) == ([], [])
-
-
-def test_a_nickname_the_question_uses_counts_as_naming_somebody(con: duckdb.DuckDBPyConnection) -> None:
-    slots = {"player": "Allen Iverson"}
-    assert override_invented_players(con, "Show me The Answer's avg points", slots) == ([], [])
-
-
-def test_an_invented_opponent_is_replaced_by_the_player_the_question_names(con: duckdb.DuckDBPyConnection) -> None:
-    """#206, measured live: "jay huff game log vs Embiid" routed
-    ``opponent='Nikola Jokic'`` and the refusal for a player in the opponent
-    slot named Jokic. The opponent is checked like the subject: the one
-    player the question names that the subject does not claim takes its
-    place."""
-    con.execute("INSERT INTO players VALUES ('20','Jay Huff'),('21','Nikola Jokic')")
-    slots = {"player": "Jay Huff", "opponent": "Nikola Jokic"}
-    changed, invented = override_invented_players(con, "jay huff game log vs Embiid", slots)
-    assert slots == {"player": "Jay Huff", "opponent": "Joel Embiid"}
-    assert changed == [("Nikola Jokic", "Joel Embiid")] and invented == []
-
-
-def test_an_invented_opponent_with_no_replacement_is_dropped(con: duckdb.DuckDBPyConnection) -> None:
-    """Two spare players named (or none) is not an exact count: the invented
-    name goes, rather than a refusal or an answer about him."""
-    con.execute("INSERT INTO players VALUES ('21','Nikola Jokic')")
-    slots = {"player": "Luka Doncic", "opponent": "Nikola Jokic"}
-    changed, _ = override_invented_players(con, "luka game log vs embiid and klay thompson", slots)
-    assert "opponent" not in slots and changed == [("Nikola Jokic", "")]
-
-
-def test_a_team_opponent_and_a_grounded_player_opponent_are_untouched(con: duckdb.DuckDBPyConnection) -> None:
-    """A team is not this check's business, and an opponent the question does
-    name ("vs embiid") stays for the refusal that reads it."""
-    team = {"player": "Luka Doncic", "opponent": "Los Angeles Lakers"}
-    assert override_invented_players(con, "luka vs the warriors", team) == ([], [])
-    assert team["opponent"] == "Los Angeles Lakers"
-    grounded = {"player": "Luka Doncic", "opponent": "Joel Embiid"}
-    assert override_invented_players(con, "luka game log vs embiid", grounded) == ([], [])
-    assert grounded["opponent"] == "Joel Embiid"
-
-
-def test_no_player_slot_is_nothing_to_check(con: duckdb.DuckDBPyConnection) -> None:
-    assert override_invented_players(con, "who led the league in scoring?", {"stat": "points"}) == ([], [])
-
-
 # ---------------- the question's own span, not the router's spelling ----------------
 #
-# `_grounded`'s "any one word is enough" check passes every name below - a
-# truncated one because the word it kept is right there, a fabricated one
-# because whichever half is real is right there too - so none of them ever
-# reached the repair above. These are the five rows AGENTS.md records as
+# The subject reading's "any one word is enough" support check passes every
+# name below - a truncated one because the word it kept is right there, a
+# fabricated one because whichever half is real is right there too - so
+# none is ever replaced; `_question_derived_player` is what respells them
+# from the question's own span, reached here the way the agent reaches it:
+# through subject.read_subject/apply_subject. These are the five rows
+# AGENTS.md records as
 # measured against the live router, and the fixture below matches its own
 # description of each: a surname shared by several first names (or the
 # reverse), so a wrong repair would resolve to the wrong real person, not
@@ -554,13 +465,23 @@ def span_con() -> duckdb.DuckDBPyConnection:
     return c
 
 
+def _apply(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], intent: str = "player_stat") -> tuple[list[tuple[str, str]], list[str]]:
+    """The router's names written the way the agent writes them - the subject
+    reading applied to the slots - reduced to the (was, now) pairs and the
+    names dropped, the shape these tests were first written against."""
+    from association.query.subject import apply_subject, read_subject
+
+    decisions, dropped = apply_subject(read_subject(con, question, intent, slots), slots)
+    return [(str(d.before), str(d.after)) for d in decisions], dropped
+
+
 def test_a_truncated_name_is_expanded_from_the_question(span_con: duckdb.DuckDBPyConnection) -> None:
     """The router dropped the surname the question spelled correctly, and
     'Dennis' alone is grounded (the word is right there) - so the old check
     never touched it, and seven Dennises would have been asked about, one
     right answer among them."""
     slots = {"player": "Dennis"}
-    changed, invented = override_invented_players(span_con, "how many points does dennis schroder average", slots)
+    changed, invented = _apply(span_con, "how many points does dennis schroder average", slots)
     assert changed == [("Dennis", "Dennis Schroder")]
     assert invented == []
     assert slots["player"] == "Dennis Schroder"
@@ -573,7 +494,7 @@ def test_a_typo_on_the_dropped_half_of_a_name_still_resolves(span_con: duckdb.Du
     away, the same discipline suggest_players already trusts for a
     suggestion, strong enough here to act on directly."""
     slots = {"player": "Aaron"}
-    changed, invented = override_invented_players(span_con, "aaron gordan points per game", slots)
+    changed, invented = _apply(span_con, "aaron gordan points per game", slots)
     assert changed == [("Aaron", "Aaron Gordon")]
     assert invented == []
     assert slots["player"] == "Aaron Gordon"
@@ -584,7 +505,7 @@ def test_a_typo_on_the_kept_half_of_a_name_still_resolves(span_con: duckdb.DuckD
     question's given name ('jayleyn') is a typo - narrowed against three
     Browns to the one whose given name is a real edit away."""
     slots = {"player": "Brown"}
-    changed, invented = override_invented_players(span_con, "jayleyn brown last 10 games", slots)
+    changed, invented = _apply(span_con, "jayleyn brown last 10 games", slots)
     assert changed == [("Brown", "Jaylen Brown")]
     assert invented == []
     assert slots["player"] == "Jaylen Brown"
@@ -597,7 +518,7 @@ def test_a_fabricated_given_name_next_to_an_exact_surname_is_discarded(span_con:
     a guess, which is what makes discarding the invented half safe rather
     than a substitution."""
     slots = {"player": "Jaylen Tatum"}
-    changed, invented = override_invented_players(span_con, "tatum rec home", slots)
+    changed, invented = _apply(span_con, "tatum rec home", slots)
     assert changed == [("Jaylen Tatum", "Jayson Tatum")]
     assert invented == []
     assert slots["player"] == "Jayson Tatum"
@@ -612,7 +533,7 @@ def test_a_fabricated_surname_extension_is_discarded_not_the_router_s_wrong_gues
     Hunter Dickinson's surname does not literally contain as a whole word,
     so he is never a candidate here at all."""
     slots = {"player": "Grady Dickinson"}
-    changed, invented = override_invented_players(span_con, "Grady dick last 10 games", slots)
+    changed, invented = _apply(span_con, "Grady dick last 10 games", slots)
     assert changed == [("Grady Dickinson", "Gradey Dick")]
     assert invented == []
     assert slots["player"] == "Gradey Dick"
@@ -622,7 +543,7 @@ def test_a_span_that_already_matches_the_router_is_a_no_op(span_con: duckdb.Duck
     """The common case: the router already wrote the exact name the question
     spells out, so nothing should be logged as changed."""
     slots = {"player": "Jayson Tatum"}
-    assert override_invented_players(span_con, "how many points does jayson tatum average", slots) == ([], [])
+    assert _apply(span_con, "how many points does jayson tatum average", slots) == ([], [])
     assert slots["player"] == "Jayson Tatum"
 
 
@@ -637,7 +558,7 @@ def test_two_anchored_words_that_fail_together_do_not_fall_back_to_one(span_con:
     name are exactly in the question, so the failure of the full span must
     be believed rather than repaired from a single leftover word."""
     slots = {"players": ["Kareem Abdul-Jabbar", "Bob Lanier"]}
-    assert override_invented_players(span_con, "kareem stats vs bob lanier", slots) == ([], [])
+    assert _apply(span_con, "kareem stats vs bob lanier", slots) == ([], [])
     assert slots["players"] == ["Kareem Abdul-Jabbar", "Bob Lanier"]
 
 
@@ -649,7 +570,7 @@ def test_a_given_name_anchor_alone_is_not_trusted_but_its_window_is(span_con: du
     A lone given-name anchor with no corroborating window must stay unfixed,
     the same as a lone fuzzy surname."""
     slots = {"player": "Kareem Abdul-Jabbar"}
-    assert override_invented_players(span_con, "kareem stats this season", slots) == ([], [])
+    assert _apply(span_con, "kareem stats this season", slots) == ([], [])
     assert slots["player"] == "Kareem Abdul-Jabbar"
 
 
@@ -661,7 +582,7 @@ def test_a_lone_fuzzy_word_is_still_left_for_a_suggestion_not_a_silent_pick(span
     covers the same shape against the smaller `con` fixture), so this must
     stay a no-op and let the existing grounded/suggestion path run."""
     slots = {"player": "Jemel Gradee"}
-    assert override_invented_players(span_con, "how many rebounds does gradee average", slots) == ([], [])
+    assert _apply(span_con, "how many rebounds does gradee average", slots) == ([], [])
     assert slots["player"] == "Jemel Gradee"
 
 
@@ -673,7 +594,7 @@ def test_a_stray_possessive_letter_does_not_narrow_an_ambiguous_surname(span_con
     and the same trap already caught players_named_in over "Jokic's" without
     a length floor on a span's own words."""
     slots = {"player": "Jemel Williams"}
-    assert override_invented_players(span_con, "williams's rebounds this game", slots) == ([], [])
+    assert _apply(span_con, "williams's rebounds this game", slots) == ([], [])
     assert slots["player"] == "Jemel Williams"
 
 
@@ -683,7 +604,7 @@ def test_an_ambiguous_span_is_left_for_the_clarification_to_ask(span_con: duckdb
     existing undo_name_completion trims the router's completed 'Jaylen
     Brown' back to the ambiguous 'brown' afterward, unaffected by this."""
     slots = {"players": ["Jayson Tatum", "Jaylen Brown"]}
-    assert override_invented_players(span_con, "who is better, tatum or brown", slots) == ([], [])
+    assert _apply(span_con, "who is better, tatum or brown", slots) == ([], [])
     assert slots["players"] == ["Jayson Tatum", "Jaylen Brown"]
 
 
@@ -1436,7 +1357,7 @@ def test_an_ambiguous_fragment_in_the_team_slot_is_settled_by_the_question(scope
     """Measured: "Will Riley last 5 game s" arrived as team='Riley', and
     find_players alone cannot settle it - three Rileys share the surname. The
     question spells the whole name, so players_named_in does, the same
-    discipline override_invented_players applies to a name the router
+    discipline subject.apply_subject applies to a name the router
     invented outright rather than merely truncated."""
     scope_con.execute("INSERT INTO players VALUES ('9','Eric Riley'),('10','Riley Minix'),('11','Will Riley')")
     slots: dict[str, Any] = {"team": "Riley", "order": "recent", "limit": 5}
@@ -1560,7 +1481,7 @@ def test_the_questions_own_opponent_beats_one_the_router_could_not_ground(franch
     "duren v nets" it found the Brooklyn Nets - and then only used it when the
     `opponent` slot was EMPTY. A router string that resolves to nothing, or to a
     team the question never names, counted as filled, so it won. Same rule as
-    override_invented_players: the question is the source."""
+    subject.apply_subject: the question is the source."""
     slots: dict[str, Any] = {"player": "X", "opponent": held}
     scope_from_question(franchises, question, slots, reads_player=True)
     assert slots["opponent"] == want

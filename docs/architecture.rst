@@ -308,7 +308,7 @@ that:
 * Slots the router drops or files in the wrong place are read from the
   question text, and a player name the question does not support is refused
   rather than answered about
-  (:func:`association.query.entities.override_invented_players`).
+  (:func:`association.query.subject.apply_subject`).
 * :func:`association.query.prompt.build_system_prompt` raises rather than
   handing ollama a prompt it would quietly truncate.
 * :meth:`association.query.toolbox.Toolbox.run_sql` bounds results by tokens

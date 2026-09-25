@@ -2343,7 +2343,7 @@ def test_leaderboard_shot_distance_gets_the_sentinel_stat_and_drops_any_player()
     is overridden to a sentinel `templates.players.leaderboard` refuses on by
     name, and any `player` the router filled is dropped with it - `leaderboard`
     never reads one for real, and a filler value ("player": "player") would
-    otherwise reach override_invented_players first and refuse for the wrong
+    otherwise reach subject.apply_subject first and refuse for the wrong
     cause."""
     got = _ask("who lead the league in avg 3 point distance", '{"intent":"leaderboard","stat":"threePointFieldGoalPct"}')
     assert got.slots["stat"] == "shot_distance"

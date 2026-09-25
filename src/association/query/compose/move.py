@@ -3,7 +3,7 @@ the intent's default point; the question's own words - read in code, the way
 ``route()``'s ``CODE_ASSIGNED_INTENTS`` and its ``_validate_*`` helpers read
 them, never through the router prompt - may move the measure, the skeleton or
 the aggregate. Two slot repairs are included because the question text
-supports them exactly (the ``override_invented_players`` /
+supports them exactly (the ``subject.apply_subject`` /
 ``restore_dropped_players`` discipline described in ``AGENTS.md``): a subject
 the router dropped, and player names the router filed as the ``opponent``.
 
@@ -761,7 +761,7 @@ def move_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any
        (:func:`players_named_in` finding exactly one player) turns "how many
        3-pointers have the magic made" into a question about him UNLESS the
        team reading is settled first - the same shape as
-       ``override_invented_players``, in reverse: here it is the REPAIR that
+       ``subject.apply_subject``, in reverse: here it is the REPAIR that
        would invent a subject, not the router. May return a
        :class:`~association.query.compose.team.TeamQuery` instead of a
        :class:`~association.query.compose.core.Query`.

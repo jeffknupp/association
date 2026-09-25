@@ -702,7 +702,7 @@ the two readings would leave one of them silently wrong; filed in
 
 TEAM_ONLY_INTENTS: frozenset[str] = frozenset({"team_record", "team_leaderboard", "team_stat", "team_outlook"})
 """Intents with no player-shaped reading at all - absent from
-:data:`PLAYER_INTENTS`, and so never checked by ``entities.override_invented_players``
+:data:`PLAYER_INTENTS`, and so never checked by ``subject.apply_subject``
 or `check_scope` against a stray player name.
 
 A question naming exactly one real player and no team, routed to one of

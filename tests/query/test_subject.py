@@ -41,6 +41,17 @@ def con() -> duckdb.DuckDBPyConnection:
             ("17", "Sir'Dominic Pointer"),
             ("18", "DeMar DeRozan"),
             ("19", "Deron Williams"),
+            ("20", "Seth Curry"),
+            ("21", "Payton Pritchard"),
+            ("22", "Jay Huff"),
+            ("23", "Luka Doncic"),
+            ("24", "Klay Thompson"),
+            ("25", "Allen Iverson"),
+            # "kareem stats vs bob lanier": neither legend is in `players`
+            # (both retired before the 1993-94 floor), and each surname alone
+            # is a whole word of one unrelated real player - ISSUES.md #123.
+            ("26", "Kareem Rush"),
+            ("27", "Chaz Lanier"),
         ],
     )
     c.execute("CREATE TABLE teams (team_id VARCHAR, display_name VARCHAR, abbreviation VARCHAR)")
@@ -187,7 +198,7 @@ def test_two_teams_a_position_group_a_teams_players_and_everyone(con: duckdb.Duc
 
 def test_apply_subject_writes_the_players_the_question_names_in_the_routers_own_shape(con: duckdb.DuckDBPyConnection) -> None:
     """The first field the reading settles in place of the repair chain:
-    override_invented_players' job. A router name the question supports is
+    the invented-name check's job. A router name the question supports is
     kept as the router spelled it; one it never held is replaced by the
     question's spare name, or reported for the refusal - never guessed."""
     from association.query.subject import apply_subject
@@ -233,6 +244,90 @@ def test_apply_subject_writes_the_players_the_question_names_in_the_routers_own_
     nobody: dict[str, Any] = {"players": ["Ronaldo Lopes", "Nikola Jokic"]}
     decisions, dropped = apply_subject(read_subject(con, "compare jokic's fingerprint to last season", "fingerprint", nobody), nobody)
     assert dropped == ["Ronaldo Lopes"] and decisions == [] and nobody["players"] == ["Ronaldo Lopes", "Nikola Jokic"]  # reported, untouched
+
+
+def test_a_typo_of_the_questions_own_is_resolved_from_the_span_the_routers_name_anchors(con: duckdb.DuckDBPyConnection) -> None:
+    """ "Seph Curry" is the QUESTION's typo: no whole-word match finds Seth
+    Curry in it, and the router's "Stephen Curry" is supported by "curry".
+    The span around the router's name, resolved with near spelling
+    (entities._question_derived_player), is what reaches him - the last
+    thing override_invented_players did that the reading did not, per the
+    golden (live_day2: "Seph Curry" twice, "Payton Prichard" once)."""
+    from association.query.subject import apply_subject
+
+    slots: dict[str, Any] = {"stat": "threePointFieldGoalsMade", "player": "Stephen Curry", "season": 2025}
+    s = read_subject(con, "Show a shot chart for 3 point shots by Seph Curry's last season", "shot_chart", slots)
+    assert s.players == ("Seth Curry",)
+    decisions, dropped = apply_subject(s, slots)
+    assert slots["player"] == "Seth Curry" and dropped == [] and [(d.field, d.before, d.after) for d in decisions] == [("player", "Stephen Curry", "Seth Curry")]
+
+    typo: dict[str, Any] = {"player": "Payton Prichard", "opponent": "Philadelphia 76ers", "venue": "home"}
+    apply_subject(read_subject(con, "Payton Prichard stats vs 76ers at home including playoffs game log", "game_log", typo), typo)
+    assert typo["player"] == "Payton Pritchard" and typo["opponent"] == "Philadelphia 76ers"
+
+
+def test_the_routers_spelling_stands_where_a_whole_word_names_somebody_else(con: duckdb.DuckDBPyConnection) -> None:
+    """The 4.4.0 regression this step fixes: "kareem" is a whole word of
+    exactly one player here (Kareem Rush) and "lanier" of one (Chaz
+    Lanier), so players_named_in names both - two real players the question
+    is not about - and the first `apply_subject` respelled the router's
+    correct "Kareem Abdul-Jabbar" to Kareem Rush from that. ISSUES.md #123's
+    shape, reintroduced through the reading. The anchored span settles
+    neither name (entities._question_derived_player's own guard), so the
+    router's spelling stands and the template says nobody matched."""
+    from association.query.subject import apply_subject
+
+    slots: dict[str, Any] = {"players": ["Kareem Abdul-Jabbar", "Bob Lanier"]}
+    s = read_subject(con, "kareem stats vs bob lanier", "player_matchup", slots)
+    assert s.players == ("Kareem Abdul-Jabbar", "Bob Lanier")
+    assert apply_subject(s, slots) == ([], []) and slots["players"] == ["Kareem Abdul-Jabbar", "Bob Lanier"]
+
+
+def test_a_player_filed_as_the_opponent_is_checked_like_the_subject(con: duckdb.DuckDBPyConnection) -> None:
+    """#206, measured live: "jay huff game log vs Embiid" routed
+    ``opponent='Nikola Jokic'`` and the refusal for a player in the opponent
+    slot named Jokic. A player there the question never held is replaced by
+    the one player the question names that the subject does not claim, or
+    dropped - never reported, since the refusal would name him. A team, and
+    a player the question does name, are left exactly as they came."""
+    from association.query.subject import apply_subject
+
+    slots: dict[str, Any] = {"player": "Jaylen Huff", "opponent": "Nikola Jokic"}
+    s = read_subject(con, "jay huff game log vs Embiid", "player_matchup", slots)
+    assert s.kind == "pair" and s.players == ("Jay Huff", "Joel Embiid") and s.routed_opponent == "Nikola Jokic"
+    decisions, dropped = apply_subject(s, slots)
+    assert slots == {"player": "Jay Huff", "opponent": "Joel Embiid"} and dropped == []
+    assert [(d.field, d.before, d.after) for d in decisions] == [("player", "Jaylen Huff", "Jay Huff"), ("opponent", "Nikola Jokic", "Joel Embiid")]
+
+    two_spare: dict[str, Any] = {"player": "Luka Doncic", "opponent": "Nikola Jokic"}
+    decisions, dropped = apply_subject(read_subject(con, "luka game log vs embiid and klay thompson", "game_log", two_spare), two_spare)
+    assert "opponent" not in two_spare and dropped == [] and [(d.field, d.before, d.after) for d in decisions] == [("opponent", "Nikola Jokic", None)]
+
+    team: dict[str, Any] = {"player": "Luka Doncic", "opponent": "Los Angeles Lakers"}
+    assert read_subject(con, "luka vs the lakers", "game_log", team).routed_opponent is None
+    assert apply_subject(read_subject(con, "luka vs the lakers", "game_log", team), team) == ([], []) and team["opponent"] == "Los Angeles Lakers"
+    named: dict[str, Any] = {"player": "Luka Doncic", "opponent": "Joel Embiid"}
+    assert apply_subject(read_subject(con, "luka game log vs embiid", "game_log", named), named) == ([], []) and named["opponent"] == "Joel Embiid"
+
+
+def test_a_supported_name_stays_as_the_router_spelled_it(con: duckdb.DuckDBPyConnection) -> None:
+    """A near spelling ("embid" - the router corrected the surname and
+    invented the given name; resolution then suggests rather than this
+    replacing a half-supported name), initials ("jb") and a curated nickname
+    ("The Answer") each support a router name, and no question slot is
+    nothing to check. The cases override_invented_players' tests carried."""
+    from association.query.subject import apply_subject
+
+    for question, intent, slots in (
+        ("compare sga and embid", "player_compare", {"players": ["Shai Gilgeous-Alexander", "Jemel Embiid"]}),
+        ("compare jb and embiid", "player_compare", {"players": ["Jaylen Brown", "Joel Embiid"]}),
+        ("Show me The Answer's avg points", "player_stat", {"player": "Allen Iverson"}),
+        ("how many points did Luka average?", "player_stat", {"player": "Luka Doncic"}),
+        ("who led the league in scoring?", "leaderboard", {"stat": "points"}),
+    ):
+        before = dict(slots)
+        assert apply_subject(read_subject(con, question, intent, slots), slots) == ([], []), question
+        assert slots == before, question
 
 
 def test_the_compare_whose_second_player_the_router_filed_as_the_opponent(con: duckdb.DuckDBPyConnection) -> None:

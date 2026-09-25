@@ -19,10 +19,13 @@ yardstick-v2 F114), six are the chain's slot encodings of the same subject,
 one a kind neither side had. The rules below are the ones that measurement
 needed, each named for the question that needed it.
 
-Nothing reads this yet: :func:`read_subject` is pure, takes the routed
-slots, and returns a :class:`Subject` with its evidence. Wiring it in - as a
-logged decision first, then as the source the slots are written from - is
-the roadmap's plan item 1, step by step against the golden.
+:func:`read_subject` is pure, takes the routed slots, and returns a
+:class:`Subject` with its evidence; :func:`apply_subject` writes the fields
+it has taken over from the chain into the slots the templates read - the
+players and a player filed as the opponent, so far - each write a recorded
+:class:`~association.query.decisions.Decision`. The rest of the chain still
+writes the other fields; each step goes as the reading takes its field over,
+proven by the golden (the roadmap's plan item 1).
 
 .. versionadded:: 4.4.0
 """
@@ -41,7 +44,19 @@ import duckdb
 from association.query.compose.move import POSITIONS
 from association.query.compose.team import team_named_in
 from association.query.decisions import Decision
-from association.query.entities import PLAYER_NICKNAMES, _edit_budget, _initials, _team_after_for, _team_after_versus, _words, find_players, find_teams, nicknames_in, players_named_in
+from association.query.entities import (
+    PLAYER_NICKNAMES,
+    _edit_budget,
+    _initials,
+    _question_derived_player,
+    _team_after_for,
+    _team_after_versus,
+    _words,
+    find_players,
+    find_teams,
+    nicknames_in,
+    players_named_in,
+)
 
 #: The kinds a subject can be. ``team_players`` is "a Hawks player" - the
 #: team's players as a group, which the compiler's team-where-a-player-
@@ -59,13 +74,23 @@ class Subject:
 
     ``kind`` is one of :data:`SUBJECT_KINDS`. ``players`` and ``teams`` are
     the names as the question or the router gave them - resolution to an
-    entity stays with :mod:`association.query.entities`. ``opponent`` is a
+    entity stays with :mod:`association.query.entities` - except that a
+    router name the question's own span spells differently carries the
+    question's spelling (a bare "Jokic" completed, "Jaylen Huff" cut back to
+    the "Jay Huff" typed; see :func:`_spellings`). ``opponent`` is a
     team the subject is set against ("vs the Pistons"); ``own_team`` the
     player's own ("for the Heat"); ``companions`` players named beside the
     subject with a role the question states ("without KD", "when Maxey
     scored 20+"). ``evidence`` says, per line, what the reading rested on.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.5.0
+       ``named`` is gone: ``players`` itself carries the question's own
+       spelling of each router name, resolved from the span the router's
+       name anchors rather than from a whole-word match - which read "kareem
+       stats vs bob lanier" as Kareem Rush. ``routed_opponent`` and
+       ``invented`` added.
     """
 
     kind: str
@@ -76,10 +101,17 @@ class Subject:
     own_team: str | None = None
     companions: tuple[str, ...] = ()
     evidence: tuple[str, ...] = ()
-    #: The players the question ITSELF names, resolved ("jokic" -> Nikola
-    #: Jokic) - the spelling a template gets where the router's is a bare
-    #: surname, a truncation or a near miss for the same person.
-    named: tuple[str, ...] = ()
+    #: The router's ``opponent`` when it names a player rather than a team -
+    #: the second of a pair, in the slot shape ``refusals.pair_from_opponent``
+    #: reads - so :func:`apply_subject` knows that slot holds a name to check.
+    #: ``None`` for a team opponent, which is a narrowing and not a subject.
+    routed_opponent: str | None = None
+    #: The router's player names - from ``player``, ``players`` and a player
+    #: filed as the ``opponent`` - that the question never held and that are
+    #: not teams: fiction, as far as the question can tell ("Jusuf Nurkic" on
+    #: "compare sga and embiid"). :func:`apply_subject` replaces or reports
+    #: each, whatever kind the subject is.
+    invented: tuple[str, ...] = ()
 
 
 _MONTH_ABBREVIATIONS = frozenset({"jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec"})
@@ -163,22 +195,21 @@ def _levenshtein(a: str, b: str) -> int:
 
 
 def question_supports(name: str, question: str) -> bool:
-    """Whether ``question`` holds ``name``: any one word of it (three or more
-    letters), a near spelling of one within
+    """Whether ``question`` holds ``name``: any one word of it, a near
+    spelling of one (three or more letters) within
     :func:`association.query.entities._edit_budget` (none for a short word,
     one edit to six letters, two beyond - the router corrects typos, "embid"
     is Embiid), a curated nickname for the player, or its initials ("SGA",
-    "kd"). The discipline of
-    :func:`association.query.entities.override_invented_players`'s grounding
-    check, as a predicate.
+    "kd"). The repair chain's grounding check, as a predicate.
 
     .. versionadded:: 4.4.0
     """
     q = [w.casefold() for w in _words(question)]
-    words = [w.casefold() for w in _words(name) if len(w) >= 3]
+    words = [w.casefold() for w in _words(name)]
     if any(w in q for w in words):
         return True
-    if any(any(len(x) >= 3 and _levenshtein(w, x) <= _edit_budget(w) for x in q) for w in words):
+    # A near spelling of a word under three letters is a different word.
+    if any(len(w) >= 3 and any(len(x) >= 3 and _levenshtein(w, x) <= _edit_budget(w) for x in q) for w in words):
         return True
     if name in nicknames_in(question):
         return True
@@ -252,22 +283,59 @@ def _question_players(con: duckdb.DuckDBPyConnection, question: str, routed: lis
     return kept
 
 
-def _merge_names(question_named: list[str], router_named: list[str]) -> tuple[str, ...]:
-    """The question's names, plus the router's names the question supports
-    that are not one of them already (the router's completion of a surname
-    the question gives is the same person, not a second one)."""
-    out = list(question_named)
-    for r in router_named:
-        if not any(question_supports(o, r) or question_supports(r, o) for o in out):
-            out.append(r)
+def _merge_names(router_named: list[str], question_named: list[str]) -> tuple[str, ...]:
+    """The router's names the question supports (in the question's own
+    spelling), plus the names the question gives that are not one of them
+    already - the router's completion of a surname the question gives is the
+    same person, not a second one. The router's spelling leads on purpose:
+    :func:`~association.query.entities.players_named_in` reads "kareem stats
+    vs bob lanier" as naming Kareem Rush and Chaz Lanier, two real players by
+    whole word and neither the one asked about (ISSUES.md #123), and the
+    router's "Kareem Abdul-Jabbar" is the better reading of "kareem"."""
+    out = list(router_named)
+    for name in question_named:
+        if not _same_person(name, out):
+            out.append(name)
     return tuple(out)
 
 
-def _routed_names(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], question: str) -> list[str]:
-    """The router's player names the question supports, minus any that is a
-    team (the router files "Boston Celtics" as a player)."""
-    routed = [p for p in ([slots.get("player")] if slots.get("player") else []) + list(slots.get("players") or []) if isinstance(p, str) and p.strip()]
-    return [p for p in routed if question_supports(p, question) and not _is_a_team(con, p)]
+def _opponent_player(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> str | None:
+    """The router's ``opponent`` when it names a player and not a team: the
+    second of a pair, filed in the slot ``refusals.pair_from_opponent``
+    reads ("jay huff game log vs Embiid" arrived with Jokic there). A team
+    opponent is a narrowing, not a subject, and stays ``scope_from_question``'s."""
+    opponent = slots.get("opponent")
+    if not isinstance(opponent, str) or not opponent.strip() or find_teams(con, opponent) or not find_players(con, opponent):
+        return None
+    return opponent
+
+
+def _routed_names(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], question: str, opponent_player: str | None) -> tuple[list[str], list[str]]:
+    """The router's player names - from ``player``, ``players`` and a player
+    filed as the ``opponent`` - split into the ones the question supports and
+    the ones it never held, minus any that is a team (the router files
+    "Boston Celtics" as a player; a team is a narrowing, not an invention)."""
+    routed = [p for p in _routed_player_slots(slots) + ([opponent_player] if opponent_player else []) if not _is_a_team(con, p)]
+    supported = [p for p in routed if question_supports(p, question)]
+    return supported, [p for p in routed if p not in supported]
+
+
+def _spellings(con: duckdb.DuckDBPyConnection, question: str, routed: list[str]) -> dict[str, str]:
+    """The question's own spelling of each router name it supports, resolved
+    from the question's words anchored at the router's
+    (:func:`~association.query.entities._question_derived_player`): a bare
+    "Jokic" completed, "Jaylen Huff" cut back to the "Jay Huff" typed, "Grady
+    Dickinson" put right as Gradey Dick, and "Stephen Curry" for a "Seph
+    Curry" the question itself misspelled - a typo of the QUESTION's, which
+    no whole-word match finds. Anchored on purpose: a whole-word match reads
+    "kareem stats vs bob lanier" as Kareem Rush and Chaz Lanier, while the
+    anchored span settles neither and the router's spelling stands."""
+    out: dict[str, str] = {}
+    for name in routed:
+        derived = _question_derived_player(con, question, name)
+        if derived is not None and derived.name != name:
+            out[name] = derived.name
+    return out
 
 
 def _companions(question: str, players: tuple[str, ...], slots: dict[str, Any]) -> tuple[str, ...]:
@@ -283,7 +351,7 @@ def _companions(question: str, players: tuple[str, ...], slots: dict[str, Any]) 
         return ()
     found = [p for p in players if question_supports(p, text)]
     for r in list(slots.get("without") or []) + list(slots.get("with_player") or []):
-        if isinstance(r, str) and r not in found and _near(r, text):
+        if isinstance(r, str) and not _same_person(r, found) and _near(r, text):
             found.append(r)
     return tuple(found)
 
@@ -327,26 +395,35 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, slo
     opponent = versus.name if versus is not None else None
     teams_here = {t for t in (opponent, own[0].name if own is not None else None, team_word) if t}
 
-    routed = _routed_names(con, slots, question)
+    routed_opponent = _opponent_player(con, slots)
+    routed, invented = _routed_names(con, slots, question, routed_opponent)
     named = _question_players(con, question, routed, teams_here)
-    players = _merge_names(named, routed)
+    spellings = _spellings(con, question, routed)
+    players = _merge_names([spellings.get(r, r) for r in routed], named)
     companions = _companions(question, players, slots)
     players = tuple(p for p in players if p not in companions)
     # "for the Heat" is a player's OWN team only beside a player subject;
     # with none, "splits for the Sixers" names the team the question is about.
     own_team = own[0].name if own is not None and players else None
     teams = _team_names(con, question, slots, team_word, opponent, own_team)
-    evidence = tuple(
+    evidence = _evidence(named, routed, spellings, invented, team_word, opponent)
+    return replace(_decide(players, teams, position, opponent, own_team, companions, evidence, intent, question), routed_opponent=routed_opponent, invented=tuple(invented))
+
+
+def _evidence(named: list[str], routed: list[str], spellings: dict[str, str], invented: list[str], team_word: str | None, opponent: str | None) -> tuple[str, ...]:
+    """What the reading rested on, one line per finding, for the trace."""
+    return tuple(
         line
         for line in (
             f"question names players {named}" if named else "",
             f"router players the question supports {routed}" if routed else "",
+            *(f"question spells {was!r} as {now!r}" for was, now in spellings.items()),
+            f"router names the question never held {invented}" if invented else "",
             f"team word {team_word!r}" if team_word else "",
             f"against {opponent!r}" if opponent else "",
         )
         if line
     )
-    return replace(_decide(players, teams, position, opponent, own_team, companions, evidence, intent, question), named=tuple(named))
 
 
 def _decide(
@@ -379,34 +456,55 @@ def apply_subject(subject: Subject, slots: dict[str, Any]) -> tuple[list[Decisio
     cannot be repaired, say so - do not hand it to the agent"). Mutates
     ``slots``; returns the decisions made and the names dropped.
 
-    The first field the reading settles in place of the repair chain:
-    :func:`association.query.entities.override_invented_players`'s job -
-    "compare sga and embiid" arriving as Nurkic - done from the reading
-    instead. A name the router filed that the question supports is kept as
-    the router spelled it, so nothing downstream sees a different string
-    for the same person; a name it does not support is replaced by the
-    question's own spare name where there is exactly one per dropped name,
-    else dropped and reported. A player the router left OUT is not put back
-    here yet - that stays :func:`~association.query.entities.restore_dropped_players`'
-    and ``scope_from_question``'s until the golden says the reading may.
+    The first fields the reading settles in place of the repair chain, and
+    what ``entities.override_invented_players`` did until 4.5.0: "compare sga
+    and embiid" arriving as Nurkic, "jay huff game log vs Embiid" arriving
+    with Jokic as the ``opponent``. A name the router filed that the question
+    supports is kept as the router spelled it - or as the question's own span
+    spells it where the two differ (:func:`_spellings`), so a template reads
+    "Jay Huff" and "Seth Curry" where the router wrote "Jaylen Huff" and
+    "Stephen Curry"; a name it does not support is replaced by the question's
+    own spare name where there is exactly one per dropped name, else dropped
+    and reported. An unsupported opponent with no spare is deleted rather
+    than reported: the refusal would name him. A player the router left OUT
+    is not put back here yet - that stays
+    :func:`~association.query.entities.restore_dropped_players`' and
+    ``scope_from_question``'s until the golden says the reading may.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.5.0
+       Writes ``opponent`` too, when it holds a player's name, and respells a
+       kept name from the anchored span (a question's own typo, "Seph
+       Curry", included) rather than from a whole-word match.
     """
+    decisions, dropped = _apply_players(subject, slots)
+    if dropped:
+        return [], dropped
+    decisions.extend(_apply_opponent(subject, slots))
+    return decisions, []
+
+
+def _apply_players(subject: Subject, slots: dict[str, Any]) -> tuple[list[Decision], list[str]]:
+    """The ``player``/``players`` half of :func:`apply_subject`."""
     routed = _routed_player_slots(slots)
-    if not routed or subject.kind not in ("player", "pair"):
+    if not routed:
         return [], []
-    # A companion the router filed among the players ("fox vs magic without
-    # wembyanama" arrives as the pair Fox/Wembanyama) is the question's own
-    # name in the chain's slot shape - kept, not dropped.
-    kept = [r for r in routed if _same_person(r, (*subject.players, *subject.companions))]
-    dropped = [r for r in routed if r not in kept]
+    # Whatever kind the subject is: "compare the two best centers" reads as a
+    # position group, and the two players the router put in its slots are
+    # still nobody the question named. A companion the router filed among
+    # the players ("fox vs magic without wembyanama" arrives as the pair
+    # Fox/Wembanyama) is the question's own name in the chain's slot shape -
+    # supported, so kept, not dropped.
+    dropped = [r for r in routed if r in subject.invented]
+    kept = [r for r in routed if r not in dropped]
     spare = [p for p in subject.players if not _same_person(p, kept)]
     if dropped and len(spare) != len(dropped):
         return [], dropped
     field = "players" if isinstance(slots.get("players"), list) else "player"
     replacement = dict(zip(dropped, spare, strict=True)) if dropped else {}  # a spare name with nothing dropped is a player the router omitted: not put back here
     decisions = [Decision("subject", field, was, now, "the question never names the router's player; it names this one") for was, now in replacement.items()]
-    respelled = _respellings(kept, subject.named)
+    respelled = _respellings(kept, subject.players)
     replacement.update(respelled)
     decisions.extend(Decision("subject", field, was, now, "spelled as the question names the player") for was, now in respelled.items())
     new = [replacement.get(r, r) for r in routed]
@@ -417,6 +515,25 @@ def apply_subject(subject: Subject, slots: dict[str, Any]) -> tuple[list[Decisio
     else:
         slots["player"] = new[0]
     return decisions, []
+
+
+def _apply_opponent(subject: Subject, slots: dict[str, Any]) -> list[Decision]:
+    """The ``opponent`` half of :func:`apply_subject`, run after the players'
+    so their names are spoken for. A player there the question never held is
+    replaced by the one player the question names that no subject slot
+    claims, or dropped rather than answered about - never reported for the
+    refusal, since the refusal would name him (#206). One the question does
+    support stays as the router spelled him: the pair template resolves it."""
+    opponent = subject.routed_opponent
+    if opponent is None or slots.get("opponent") != opponent or opponent not in subject.invented:
+        return []
+    held = _routed_player_slots(slots)
+    spare = [p for p in subject.players if not _same_person(p, held)]
+    if len(spare) == 1:
+        slots["opponent"] = spare[0]
+        return [Decision("subject", "opponent", opponent, spare[0], "the question never names the router's opponent; it names this player")]
+    del slots["opponent"]
+    return [Decision("subject", "opponent", opponent, None, "the question never names the router's opponent, and names no one else to put there")]
 
 
 def _routed_player_slots(slots: dict[str, Any]) -> list[str]:
@@ -430,15 +547,14 @@ def _same_person(name: str, others: tuple[str, ...] | list[str]) -> bool:
     return any(question_supports(name, o) or question_supports(o, name) for o in others)
 
 
-def _respellings(kept: list[str], named: tuple[str, ...]) -> dict[str, str]:
-    """A kept router name the question itself spells differently - a bare
-    "Jokic" the router left bare, "Jaylen Tatum" for the question's "tatum",
-    a "Deron Williams" two edits from the question's "derozan" - mapped to
-    the question's own resolved name:
-    :func:`association.query.entities._question_derived_player`'s job."""
+def _respellings(kept: list[str], players: tuple[str, ...]) -> dict[str, str]:
+    """A kept router name the subject spells differently - a bare "Jokic"
+    the router left bare, "Jaylen Tatum" for the question's "tatum", "Seph
+    Curry" resolved to Seth where the router wrote Stephen - mapped to the
+    subject's spelling of the same person (:func:`_spellings`)."""
     out: dict[str, str] = {}
     for r in kept:
-        own = next((p for p in named if _same_person(r, (p,)) and p != r), None)
+        own = next((p for p in players if _same_person(r, (p,)) and p != r), None)
         if own is not None:
             out[r] = own
     return out

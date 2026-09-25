@@ -563,152 +563,6 @@ def _question_derived_player_search(con: duckdb.DuckDBPyConnection, window: list
     return None
 
 
-def override_invented_players(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any]) -> tuple[list[tuple[str, str]], list[str]]:
-    """Replace router-supplied player names the question does not support, or
-    report the ones that cannot be replaced. Mutates ``slots``.
-
-    :func:`override_nicknames` fixes a nickname the router rewrote wrongly.
-    This is the same failure without the nickname: asked to "compare sga and
-    embiid" the 3B router emitted ``['Shai Gilgeous-Alexander', 'Jusuf
-    Nurkic']`` and the answer was a fluent, correct-looking table of two real
-    players, one of whom the question never mentioned. Nothing downstream could
-    notice - "Jusuf Nurkic" resolves perfectly.
-
-    So every name is checked against the question before a template reads it.
-    First against the question's OWN span (:func:`_question_derived_player`),
-    which repairs a name confidently even where it is already "grounded" by
-    the looser check below - a truncated or partly-fabricated name the router
-    produced. Second, for whatever that leaves untouched, against the
-    generous word-or-nickname-or-initials check that is :func:`_grounded`: a
-    name with no trace there at all is not answered about. Where the question
-    names somebody nothing else claims, that player takes its place; where it
-    does not, the name is reported and the caller says so rather than handing
-    the question to the agent: measured, the agent filled that silence with a
-    player who does not exist. Guessing is not on the list.
-
-    Returns:
-        The ``(was, now)`` pairs replaced, and the ungrounded names that could
-        not be replaced. A non-empty second element means the slots are not
-        safe to answer from, even though the first may also be non-empty.
-
-    .. versionchanged:: 4.3.0
-       Tries :func:`_question_derived_player` first, so a name the question's
-       own words resolve confidently is corrected even when it was already
-       "grounded" by the older, looser check - the shape that let a truncated
-       "dennis schröder" (typed correctly, arrived as ``'Dennis'``) stand as a
-       7-way clarification the question never should have asked.
-
-    .. versionchanged:: 4.4.0
-       Checks ``opponent`` too, when it holds a player's name: one the
-       question never held is replaced by the one spare player the question
-       names, or dropped (reported as ``(was, "")``).
-    """
-    changed, ungrounded = _override_invented_players_subject(con, question, slots)
-    changed.extend(_override_invented_players_opponent(con, question, slots))
-    return changed, ungrounded
-
-
-def _override_invented_players_opponent(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any]) -> list[tuple[str, str]]:
-    """The same check over ``opponent``, run after the subject's repair so
-    the subject's names are spoken for. Mutates ``slots``.
-
-    "jay huff game log vs Embiid" routed ``opponent='Nikola Jokic'`` - the
-    lowercase-embiid substitution - and the refusal for a player in the
-    opponent slot then named Jokic, a player the question never held (#206).
-    Only a PLAYER name is checked: a team opponent is left exactly as it
-    came, since teams have their own grounding (``scope_from_question``).
-    A name with no trace in the question is replaced by the one player the
-    question names that no subject slot already claims, when there is
-    exactly one; otherwise it is dropped rather than answered about.
-
-    Returns:
-        The ``(was, now)`` pair, with ``now`` empty when the name was dropped.
-    """
-    opponent = slots.get("opponent")
-    if not isinstance(opponent, str) or not opponent.strip() or _grounded(con, question, opponent):
-        return []
-    if find_teams(con, opponent) or not find_players(con, opponent):
-        return []
-    players = slots.get("players")
-    held = [v for v in [slots.get("player"), *(players if isinstance(players, list) else [players])] if isinstance(v, str) and v.strip()]
-    spare = [name for name in players_named_in(con, question) if not any(_shares_word(name, k) for k in held)]
-    if len(spare) == 1:
-        slots["opponent"] = spare[0]
-        return [(opponent, spare[0])]
-    del slots["opponent"]
-    return [(opponent, "")]
-
-
-def _override_invented_players_subject(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any]) -> tuple[list[tuple[str, str]], list[str]]:
-    """The ``player``/``players`` half of :func:`override_invented_players`."""
-    slot = "players" if isinstance(slots.get("players"), list) else "player"
-    raw_list, is_list = _override_invented_players_slot(slots, slot)
-    positions = [i for i, v in enumerate(raw_list) if isinstance(v, str) and v.strip()]
-    if not positions:
-        return [], []
-
-    changed, still_ungrounded = _override_invented_players_derive(con, question, slots, slot, raw_list, is_list, positions)
-    if not still_ungrounded:
-        return changed, []
-
-    # Only the names nothing already accounts for are available as
-    # replacements: "compare sga and embiid" names two players, and one of
-    # them is the slot that came through fine (or was already repaired above).
-    kept = [raw_list[i] for i in positions if i not in still_ungrounded]
-    ungrounded_names = [raw_list[i] for i in still_ungrounded]
-    spare = [name for name in players_named_in(con, question) if not any(_shares_word(name, k) for k in kept)]
-    if len(spare) != len(ungrounded_names):
-        return changed, ungrounded_names
-
-    replacement = dict(zip(ungrounded_names, spare, strict=True))
-    for i in still_ungrounded:
-        was = raw_list[i]
-        _override_invented_players_write(slots, slot, raw_list, is_list, i, replacement[was])
-        changed.append((was, replacement[was]))
-    return changed, []
-
-
-def _override_invented_players_slot(slots: dict[str, Any], slot: str) -> tuple[list[Any], bool]:
-    """The list :func:`override_invented_players` mutates, and whether it is
-    the real ``slots["players"]`` list rather than a throwaway wrapper around
-    the single ``slots["player"]`` value - what
-    :func:`_override_invented_players_write` needs to know before it can
-    write a repair back."""
-    values = slots.get(slot)
-    if slot == "players" and isinstance(values, list):
-        return values, True
-    return [values], False
-
-
-def _override_invented_players_write(slots: dict[str, Any], slot: str, raw_list: list[Any], is_list: bool, i: int, new_value: str) -> None:
-    """Write ``new_value`` at position ``i`` of ``raw_list``, and back into
-    ``slots`` too when ``raw_list`` is only a throwaway wrapper around
-    ``slots[slot]`` rather than that same list object."""
-    raw_list[i] = new_value
-    if not is_list:
-        slots[slot] = new_value
-
-
-def _override_invented_players_derive(
-    con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], slot: str, raw_list: list[Any], is_list: bool, positions: list[int]
-) -> tuple[list[tuple[str, str]], list[int]]:
-    """The first pass over every named position: repair it from the
-    question's own span where :func:`_question_derived_player` resolves that
-    confidently, and collect whatever is left that :func:`_grounded` still
-    calls ungrounded."""
-    changed: list[tuple[str, str]] = []
-    still_ungrounded: list[int] = []
-    for i in positions:
-        name = raw_list[i]
-        derived = _question_derived_player(con, question, name)
-        if derived is not None and derived.name.casefold() != name.strip().casefold():
-            changed.append((name, derived.name))
-            _override_invented_players_write(slots, slot, raw_list, is_list, i, derived.name)
-        elif not _grounded(con, question, name):
-            still_ungrounded.append(i)
-    return changed, still_ungrounded
-
-
 def restore_dropped_players(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any]) -> tuple[str, str] | None:
     """Put back players a fingerprint's slots lost. Mutates ``slots``.
 
@@ -746,8 +600,9 @@ def restore_dropped_players(con: duckdb.DuckDBPyConnection, question: str, slots
        (a span counts only when it names EXACTLY one player) drops it, and
        the surviving count no longer means what the count comparison
        assumed. Now a held name is kept only when :func:`_grounded` finds a
-       trace of it in the question at all - the same test
-       :func:`override_invented_players` uses for a router invention - and
+       trace of it in the question at all - the same test the subject
+       reading (:func:`association.query.subject.question_supports`) applies
+       to a router invention - and
        whatever :func:`players_named_in` finds that shares no word with a
        kept name is added rather than used to replace the whole list, so an
        already-correct name is never swapped for a mere spelling of itself.
@@ -759,7 +614,7 @@ def restore_dropped_players(con: duckdb.DuckDBPyConnection, question: str, slots
     raw = listed if isinstance(listed, list) else [slots.get("player")]
     held = [name for name in raw if isinstance(name, str) and name.strip()]
     # A held name the question shows no trace of at all is the router's own
-    # invention (the same shape override_invented_players guards against) and
+    # invention (the same shape subject.apply_subject guards against) and
     # is dropped rather than kept; `named`, read straight from the question,
     # can replace it outright. A held name WITH a trace is kept, even where
     # players_named_in itself could not confirm it (an ambiguous bare
@@ -1505,8 +1360,8 @@ def _scope_from_question_player_in_team_slot(con: duckdb.DuckDBPyConnection, que
     module: a whole name, not a guess. Gated on the fragment actually
     sharing a word with what it finds, so a garbled `team` next to some
     OTHER player named later in a long question cannot borrow that name -
-    the same discipline :func:`override_invented_players` applies to a name
-    the router invented outright.
+    the same discipline :func:`association.query.subject.apply_subject`
+    applies to a name the router invented outright.
     """
     team_text = slots.get("team")
     if not (isinstance(team_text, str) and team_text.strip()):
@@ -1726,7 +1581,7 @@ def _scope_from_question_opponent(con: duckdb.DuckDBPyConnection, question: str,
         # it was EMPTY, so an unresolvable string beat a team the question
         # named: "duren v nets 1h gameloh" arrived as opponent="New Jersey
         # Nets", this read "nets" as the Brooklyn Nets correctly, and threw it
-        # away. Same rule as override_invented_players, for the other entity.
+        # away. Same rule as subject.apply_subject, for the other entity.
         slots["opponent"] = versus.name
         notes.append(f"opponent {held!r} -> {versus.name!r} (the question names it; the router's {'resolves to no team' if held_team is None else 'is not in the question'})")
     elif versus is not None and not held:
@@ -1770,7 +1625,7 @@ def scope_from_question(
     against, filed in ``team`` beside a player a ``reads_player`` template
     reads, is that player's opponent and moves there.
 
-    Restoring a player follows :func:`override_invented_players`' discipline:
+    Restoring a player follows :func:`association.query.subject.apply_subject`'s discipline:
     only when the question names exactly one player, and only for a template
     that reads one (``reads_player``). A player the router simply left out is
     restored only where the template cannot answer without one

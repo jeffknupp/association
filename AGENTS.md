@@ -296,9 +296,11 @@ cleanly. The nickname version of this was already known
 (`override_nicknames`: "The Answer" became Klay Thompson); the general version
 is that **any** router-supplied name may be fiction.
 
-So a name is checked against the question before a template reads it -
-`entities.override_invented_players`. What counts as the question supporting a
-name is deliberately generous, because the router's expansions are usually the
+So a name is checked against the question before a template reads it:
+`subject.read_subject` reads who the question is about from its own spans,
+and `subject.apply_subject` writes those names into the slots (until 4.5.0 this
+was `entities.override_invented_players`). What counts as the question
+supporting a name (`subject.question_supports`) is deliberately generous, because the router's expansions are usually the
 useful kind: the word itself, a near spelling of it (the router silently
 corrects typos), a nickname, or the initials ("KAT", "SGA"). Any ONE word of
 the name is enough, since half a name is how a question normally carries one -
@@ -474,7 +476,7 @@ slower SQL-writing agent; that is by design, not a bug.
   box-score join yet. `move_point` tries `team_move_point` on the UNREPAIRED
   slots, before the player-subject `repair()` step: "magic" is also Magic
   Johnson's given name, and `repair()`'s dropped-subject restoration would
-  otherwise invent him from a team reference the way `override_invented_players`
+  otherwise invent him from a team reference the way `subject.apply_subject`
   exists to catch for the router - here it is the repair itself doing the
   inventing. `team_named_in` is the same restoration `players_named_in`
   already makes for a dropped player, over team names instead.

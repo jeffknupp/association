@@ -7,8 +7,8 @@ contract - a prompt change can silently start routing "who leads in points" to
 through route() only (no SQL, no answer), asserting intent and the slots that
 matter, and prints per-question latency.
 
-Needs ollama running with the model loaded, and a built warehouse - the second
-override checks the router's player names against the roster. Cheap after the first call: the
+Needs ollama running with the model loaded, and a built warehouse - the
+subject reading checks the router's player names against the roster. Cheap after the first call: the
 router prompt is small enough to stay in the KV cache, so questions after the
 first typically land in 1-2s.
 
@@ -32,9 +32,10 @@ import duckdb
 
 from association.cli.paths import default_db_path
 from association.nba.season import current_season
-from association.query.entities import override_invented_players, override_nicknames, restore_dropped_players, scope_from_question
+from association.query.entities import override_nicknames, restore_dropped_players, scope_from_question
 from association.query.models import DEFAULT_ROUTER_MODEL
 from association.query.router import RouterUnavailable, route
+from association.query.subject import apply_subject, read_subject
 from association.query.templates import TEMPLATES
 from association.query.templates.common import OWN_TEAM_RESTORABLE_INTENTS, PLAYER_INTENTS, PLAYER_REQUIRED_INTENTS, SUBJECT_RESTORABLE_INTENTS, TEAM_SUBJECT_RESTORABLE_INTENTS
 
@@ -249,9 +250,9 @@ CASES: list[tuple[str, str, dict]] = [
     ("Show me luka's avg points", "player_stat", {"player": "Luka Doncic"}),
     # The same invention without a nickname to blame it on: measured live,
     # this came back with 'Jusuf Nurkic' in the second slot and answered with a
-    # confident table about him. It passes on
-    # entities.override_invented_players, applied above - route() alone still
-    # returns Nurkic, which is why the slot is what this case asserts.
+    # confident table about him. It passes on subject.apply_subject,
+    # applied above - route() alone still returns Nurkic, which is why the
+    # slot is what this case asserts.
     ("compare sga and embiid", "player_compare", {"players": ["Shai Gilgeous-Alexander", "Joel Embiid"]}),
     # Both halves at once: the router put an invented name in a SINGLE player
     # slot for a question naming two, so this was answered with one polygon
@@ -465,7 +466,7 @@ CASES: list[tuple[str, str, dict]] = [
     # mention - the wrong cause, since no leaderboard metric ranks distance
     # either way. Both now carry the sentinel `stat` `leaderboard`
     # (templates/players.py) refuses on by name, with no `player` slot left
-    # for override_invented_players to misread.
+    # for the subject reading to misread.
     ("who lead the league in avg 3 point distance", "leaderboard", {"stat": "shot_distance"}),
     ("who lead the league in shot distance for 3 point shots", "leaderboard", {"stat": "shot_distance"}),
     # #156: a record "when X and Y played" is with_without's question - the
@@ -483,8 +484,8 @@ CASES: list[tuple[str, str, dict]] = [
     ("Detroit Pistons most points in a first half this season", "team_quarter_points", {"half": 1, "rank": "most"}),
     ("Celtics 2nd half scoring this season", "team_quarter_points", {"half": 2}),
     # #206: the lowercase-embiid substitution landed in `opponent` as Nikola
-    # Jokic, and the refusal named him. override_invented_players now checks
-    # the opponent too, and puts back the player the question names.
+    # Jokic, and the refusal named him. The subject reading checks the
+    # opponent too, and puts back the player the question names.
     # The invented-opponent repair works when the question's names are exact
     # (#206, tests); live, the 3B invents the PLAYER too on some runs ("Jaylen
     # Huff", "Jayson Tatum"), and the case then reads a different failure.
@@ -520,8 +521,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     # Defaults to the model the router actually ships with, not the agent's.
     parser.add_argument("--model", default=DEFAULT_ROUTER_MODEL)
-    # A warehouse, because the second override checks the router's names
-    # against the roster - see entities.override_invented_players.
+    # A warehouse, because the subject reading checks the router's names
+    # against the roster - see query/subject.py.
     parser.add_argument("--db-path", default=default_db_path())
     args = parser.parse_args()
 
@@ -536,6 +537,8 @@ def main() -> int:
         # case about a nickname would otherwise check the wrong thing.
         if got is not None:
             override_nicknames(question, got.slots)
+            # Read before the chain and applied after it, as agent.py does.
+            subject = read_subject(con, question, got.intent, got.slots)
             if got.intent == "fingerprint":
                 restore_dropped_players(con, question, got.slots)
             # The same order agent.py applies them in: this is where a player
@@ -551,7 +554,7 @@ def main() -> int:
                 restore_team_subject=got.intent in TEAM_SUBJECT_RESTORABLE_INTENTS,
                 intent=got.intent,
             )
-            override_invented_players(con, question, got.slots)
+            apply_subject(subject, got.slots)
         if got is None:
             print(f"FAIL  {elapsed:5.2f}s  {question}\n        router returned nothing", flush=True)
             failures += 1
