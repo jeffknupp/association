@@ -41,6 +41,7 @@ CASES: dict[str, dict[str, Any]] = {
     "head_to_head": {"teams": ["Rockets", "Mavericks"], "season": 2026},
     "team_quarter_points": {"team": "Rockets", "period": 1, "season": 2026},
     "period_split": {"player": "Ada Star", "period": 1, "season": 2026},
+    "period_leaderboard": {"period": 1, "season": 2026},
     "player_splits": {"player": "Ada Star", "split": "wins_losses", "season": 2026},
     "with_without": {"team": "Rockets", "with_player": "Ada Star", "season": 2026},
     "record_when": {"player": "Ada Star", "stat": "points", "threshold": 32, "season": 2026},

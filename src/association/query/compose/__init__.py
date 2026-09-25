@@ -136,7 +136,10 @@ def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: s
     answer_text = _sentence(query, out)
     note = coverage_caveat(intent, query.slots)
     if note:
-        answer_text += f" {note}"
-    for box_note in out["notes"]:
-        answer_text += f" {box_note}"
+        out["notes"] = [*out["notes"], note]
+    # Each note on its own line: glued to the sentence with a space, a caveat
+    # landed on the last row of a table ("... points 26.9 5 of these games
+    # have no box score ...") - seen on the rendered page, 2026-09-24.
+    for each_note in out["notes"]:
+        answer_text += f"\n{each_note}"
     return TemplateResult(data=_point_data(query, out), answer=answer_text, artifacts=[])

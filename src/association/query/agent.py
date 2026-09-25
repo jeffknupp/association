@@ -87,6 +87,19 @@ def _is_tool_error(result: str) -> bool:
     return result.startswith("Error") or result.startswith("SQL error")
 
 
+def _note(result: TemplateResult, note: str) -> None:
+    """Carry a note attached to an answer's sentence in its ``data`` too
+    (``data["notes"]``), so the web page shows it beneath the rendered table
+    instead of only inside the text toggle - a coverage caveat, how a bare
+    surname was read, a compared name nothing matched. The sentence still
+    carries it: the CLI prints the sentence.
+
+    .. versionadded:: 4.4.0
+    """
+    if isinstance(result.data, dict):
+        result.data.setdefault("notes", []).append(note.strip())
+
+
 class Agent:
     """Holds conversation state across turns so interactive mode has real
     multi-turn memory (e.g. "what about for 2025?" referring to the prior question).
@@ -440,6 +453,7 @@ class Agent:
                 note = coverage_caveat(routed.intent, routed.slots)
                 if note:
                     result.answer = f"{result.answer} {note}"
+                    _note(result, note)
                 # A "vs" question that produced one polygon answered half of
                 # itself. entities.compared_but_unmatched tells a name nothing
                 # can repair from one restore_dropped_players simply missed -
@@ -448,6 +462,7 @@ class Agent:
                     unmatched_note = compared_but_unmatched(self.toolbox.con, question, self._named_in(routed.slots))
                     if unmatched_note:
                         result.answer = f"{result.answer} {unmatched_note}"
+                        _note(result, unmatched_note)
         except TemplateUnsupported as exc:
             # The template could not honor the scoping asked for - before
             # falling through to the slow agent, see whether the compiler can
@@ -501,11 +516,13 @@ class Agent:
         for reading in readings:
             history.log(f"  -> (player) {reading}")
             composed.answer = f"{composed.answer} {reading}"
+            _note(composed, reading)
         if readings:
             composed.data["name_readings"] = list(readings)
         note = coverage_caveat(intent, slots)
         if note:
             composed.answer = f"{composed.answer} {note}"
+            _note(composed, note)
         point = {key: composed.data[key] for key in _COMPOSE_POINT_KEYS if key in composed.data}
         history.log(f"  -> (compose) intent={intent!r} point={point}")
         return composed
@@ -521,6 +538,7 @@ class Agent:
         for reading in readings:
             history.log(f"  -> (player) {reading}")
             result.answer = f"{result.answer} {reading}"
+            _note(result, reading)
         if readings:
             result.data["name_readings"] = list(readings)
         return result

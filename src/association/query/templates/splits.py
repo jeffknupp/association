@@ -1614,10 +1614,25 @@ def _streak_league(
     rows = [(s["name"], [str(s["length"]), s["from"], s["to"] + (" *" if s["open"] else "")]) for s in streaks]
     footnote = " * still going at the last game on record." if any(s["open"] for s in streaks) else ""
     answer = f"{headline}\n" + _table(f"Longest, {label}:", ["games", "from", "to"], rows) + f"\n{rule}{footnote}"
+    # The rule and the footnote's key ride in `data["notes"]` too, so the web
+    # page shows them under the rendered table: rendered, the "*" beside a
+    # run had no key anywhere on screen (Jeff's note, 2026-09-24).
     return TemplateResult(
-        data={"span": label, "stat": stat if by_stat else None, "threshold": threshold if by_stat else None, "kind": None if by_stat else ("win" if want_win else "loss"), "streaks": streaks},
+        data={
+            "span": label,
+            "stat": stat if by_stat else None,
+            "threshold": threshold if by_stat else None,
+            "kind": None if by_stat else ("win" if want_win else "loss"),
+            "streaks": streaks,
+            "notes": _streak_league_notes(rule, footnote),
+        },
         answer=answer,
     )
+
+
+def _streak_league_notes(rule: str, footnote: str) -> list[str]:
+    """The rule and, where a run is open, the footnote's key - as data notes."""
+    return [rule.strip(), *([footnote.strip()] if footnote else [])]
 
 
 def _single_streak(subject: str, label: str, runs: list[dict[str, Any]], rule: str, scope: _Scope | _Span, who: dict[str, Any]) -> TemplateResult:

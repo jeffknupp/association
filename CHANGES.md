@@ -16,6 +16,20 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- The web page shows every rendered answer's sentence first and at reading
+  size (it was the muted 12.5px caption), shows what the sentence goes on to
+  say beneath the table - a footnote's key, a coverage caveat, how a name was
+  read - instead of folding it under the text toggle (`data["notes"]`, filled
+  by the templates and `agent.py` as they attach them; the compiler's notes
+  are lines of their own), draws the sparkline at full width, folds a
+  season-long game table under its sparkline, renders a table-less answer as
+  prose rather than monospace, formats a rate column as a percent, and draws a
+  composed answer by its skeleton (rows, grouped, scalar) whatever intent the
+  router filed. `team_record`'s month tables, `period_leaderboard` and a
+  player log's venue, result and per-game line render too.
+- `scripts/preview_answers.py` renders any recorded question through the page
+  without the router - from a live-run jsonl, a history directory or an
+  explicit case - and screenshots each answer in headless Chromium.
 - The web interface fits a phone. Below 600px the coverage pills are one row that scrolls sideways, and the header, footer and answer padding tighten - the chrome took about 80% of a 667px-tall screen and now takes under a quarter. A column heading wraps rather than pushing the next column off-screen (a comparison's second player started past the edge), and a table wider than its answer shows a shadow on the side with more to scroll. On a touch screen the question box is 16px, so iOS no longer zooms into it, and the keyboard hint is hidden; the page is sized to `100dvh` and clears the notch and home indicator. Shot charts and fingerprints scale down to the frame they are drawn in (`svg { max-width: 100% }`) instead of being clipped, with the fingerprint's skill labels enlarged so they stay legible; at desktop width the page is pixel-identical.
 - The web interface shows whether it is connected - a dot in the top bar, green when the server answers, amber after one missed check, red after three - and reloads itself when the server restarts (a new commit or a rebuilt warehouse, where the server is deployed to restart on those), but only when that loses nothing: with an answer on screen, a draft typed or a question in flight it says "updated · reload" instead, and a click reloads. The page polls the new `GET /api/ping` (`association.web.app.PingResponse`): an instance id drawn fresh each time the server starts, and whether it is answering. Unlike `/api/health` it opens no warehouse connection and never probes ollama.
 - `Answer.history_file` names the `.history/` record an answer was written to (set by `Agent.ask` in the same step that writes it); the web runner reads it off the `Answer` rather than parsing the `[history] ...` trace line, which the web path carries verbatim.

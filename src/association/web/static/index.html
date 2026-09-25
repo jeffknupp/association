@@ -180,11 +180,25 @@
     max-height: 220px;
     overflow-y: auto;
   }
+  /* The answer's own sentence, first and at reading size: it IS the answer,
+     the table under it is the evidence. It used to be the muted 12.5px
+     caption, smaller than the table it headed (Jeff's note, 2026-09-24). */
+  .headline {
+    font-size: 15px;
+    line-height: 1.5;
+    margin-bottom: 8px;
+  }
   .caption {
     font-size: 12.5px;
     color: var(--muted);
     margin-bottom: 8px;
   }
+  /* What the sentence goes on to say after its table - a footnote's key
+     ("* still going at the last game on record"), a coverage caveat, how a
+     name was read. Shown, not hidden under the text toggle. */
+  .notes { margin-top: 8px; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+  details.folded summary { font-size: 12.5px; color: var(--muted); cursor: pointer; margin: 4px 0 6px; }
+  .notes p { margin: 0 0 4px; }
   table.answer {
     border-collapse: collapse;
     font: 13px/1.5 ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
@@ -222,7 +236,7 @@
   .record { display: flex; gap: 22px; align-items: baseline; }
   .record .wl { font-size: 26px; font-weight: 600; letter-spacing: -.01em; }
   .record .pct { font: 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--muted); }
-  .spark { display: block; margin: 2px 0 12px; overflow: visible; }
+  .spark { display: block; margin: 2px 0 12px; overflow: visible; width: 100%; max-width: 680px; height: auto; }
   .spark path { fill: none; stroke: var(--accent); stroke-width: 1.6; }
   .spark circle { fill: var(--accent); }
   .spark text { font: 10px ui-monospace, Menlo, monospace; fill: var(--muted); }
@@ -670,6 +684,15 @@
     return Number.isInteger(v) ? v.toLocaleString() : v.toFixed(1);
   }
 
+  // A rate stored as a fraction (true shooting 0.724) prints as a percent -
+  // "0.724, 0.703, 0.687" rendered as "0.7, 0.7, 0.7", every row the same
+  // (2026-09-24). Decided by the column's label, never by the value: a
+  // margin of +0.4 is not 40%.
+  function rateOrNum(v, label) {
+    if (typeof v === "number" && /%/.test(label || "") && Math.abs(v) <= 1) return (v * 100).toFixed(1) + "%";
+    return num(v);
+  }
+
   function signed(v) {
     // NetPoints carry their sign as the whole reading: an unmarked "0.42"
     // beside "-1.10" loses which player helped their team.
@@ -708,6 +731,15 @@
     return wrap;
   }
 
+  // A body worth folding: a long per-game table beneath a sparkline that
+  // already says what it says. Opens in place; the count is the summary.
+  function folded(summary, body) {
+    const details = el("details", "folded");
+    details.appendChild(el("summary", null, summary));
+    details.appendChild(body);
+    return details;
+  }
+
   function firstLine(text) { return (text || "").split("\n")[0].replace(/:$/, ""); }
 
   // A list of rows keyed by `nameKey`, numbered, with `valueKey` and any extra
@@ -719,8 +751,22 @@
     // routes with limit 1 and lands here constantly.
     if (rows.length < 2) return null;
     const headers = ["#", label(nameKey), valueLabel].concat((extras || []).map(label));
-    const body = rows.map((r, i) => [i + 1, r[nameKey], num(r[valueKey])].concat((extras || []).map(k => num(r[k]))));
+    const body = rows.map((r, i) => [i + 1, r[nameKey], rateOrNum(r[valueKey], valueLabel)].concat((extras || []).map(k => num(r[k]))));
     return table(headers, body);
+  }
+
+  // A player's game log: home or away as the sentence says it ("@ BOS" -
+  // every row used to read "vs"), the result, the columns the template chose
+  // (`columns`, when it names extra ones such as FGM/FGA), and the per-game
+  // line beneath when the template averaged the games.
+  function playerLog(d) {
+    const cols = ["minutes", "points", "rebounds", "assists"];
+    const headers = ["date", "opponent", "W/L", "MIN", "PTS", "REB", "AST"];
+    // A player's row carries `result` ("W"/"L", null for a game with no
+    // recorded winner); a team's carries `won`.
+    const rows = d.games.map(g => [g.date, (g.home_away === "away" ? "@ " : "vs ") + g.opponent, g.result || (g.won === true ? "W" : g.won === false ? "L" : "")].concat(cols.map(c => num(g[c]))));
+    if (d.averages && typeof d.averages === "object") rows.push(["per game", "", ""].concat(cols.map(c => d.averages[c] === undefined ? "" : num(d.averages[c]))));
+    return table(headers, rows);
   }
 
   function sparkline(points) {
@@ -729,7 +775,7 @@
     // would read as the opposite trend.
     const values = points.map(p => p.value);
     const lo = Math.min(...values), hi = Math.max(...values);
-    const w = 260, h = 46, pad = 4;
+    const w = 640, h = 56, pad = 6;
     const span = hi - lo || 1;
     const x = i => pad + (i * (w - 2 * pad)) / Math.max(points.length - 1, 1);
     const y = v => h - pad - ((v - lo) / span) * (h - 2 * pad);
@@ -738,6 +784,7 @@
     svg.setAttribute("viewBox", `0 0 ${w} ${h + 14}`);
     svg.setAttribute("width", String(w));
     svg.setAttribute("height", String(h + 14));
+    svg.setAttribute("preserveAspectRatio", "xMinYMid meet");
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("d", points.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(" "));
     svg.appendChild(path);
@@ -878,14 +925,24 @@
         const body = team
           ? table(["date", "", "opponent", "for", "against"],
               d.games.map(g => [g.date, g.won === true ? "W" : g.won === false ? "L" : "\u2013", (g.home_away === "away" ? "at " : "vs ") + g.opponent, num(g.team_score), num(g.opponent_score)]))
-          : table(["date", "opponent", "MIN", "PTS", "REB", "AST"],
-              d.games.map(g => [g.date, "vs " + g.opponent, num(g.minutes), num(g.points), num(g.rebounds), num(g.assists)]));
+          : playerLog(d);
         return { caption: firstLine(text), body };
       },
     },
     team_record: {
-      needs: ["wins", "losses", "win_pct", "team"],
+      needs: ["team"],
       render: (d, text) => {
+        // Two shapes: one record (wins/losses/win_pct), or a month-by-month
+        // split (`months`, one row per month - per season when a range was
+        // asked for), which used to fall back to the terminal table.
+        if (Array.isArray(d.months)) {
+          if (!d.months.length) return null;
+          const bySeason = "season" in d.months[0];
+          const headers = (bySeason ? ["season"] : []).concat(["month", "G", "W-L"]);
+          const rows = d.months.map(m => (bySeason ? [m.season] : []).concat([m.month || m.name, num(m.games), num(m.wins) + "-" + num(m.losses)]));
+          return { caption: null, body: table(headers, rows) };
+        }
+        if (d.wins === undefined || d.losses === undefined || typeof d.win_pct !== "number") return null;
         const card = el("div", "record");
         card.appendChild(el("span", "wl", `${num(d.wins)}\u2013${num(d.losses)}`));
         card.appendChild(el("span", "pct", d.win_pct.toFixed(3).replace(/^0/, "")));
@@ -939,11 +996,21 @@
       needs: ["games", "total"],
       render: (d, text) => {
         if (!d.games.length) return null;
+        // A season's 82 rows are not the answer to "2nd half scoring this
+        // season" - the total and the trend are; the games fold away beneath.
+        const games = table(["date", "opponent", "PTS"], d.games.map(g => [g.date, g.opponent, num(g.points)]));
         return {
-          caption: firstLine(text),
+          caption: null,
           spark: d.games.length > 1 ? d.games.map(g => ({ label: g.date, value: g.points })) : null,
-          body: table(["date", "opponent", "PTS"], d.games.map(g => [g.date, g.opponent, num(g.points)])),
+          body: d.games.length > 12 ? folded(`${d.games.length} games`, games) : games,
         };
+      },
+    },
+    period_leaderboard: {
+      needs: ["leaders", "period"],
+      render: (d, text) => {
+        const body = ranked(d.leaders, "player", "average", "PTS/G", ["games"]);
+        return body && { caption: null, body };
       },
     },
     period_split: {
@@ -1176,20 +1243,72 @@
     if (!out && !charts.length) return null;
     const box = el("div");
     if (out) {
-      // A chart is self-describing - court.py and radar.py draw their own
-      // title and subtitle - so a chart-only answer gets no caption here, and
-      // its sentence (which is mostly a file path) goes under the text toggle.
-      if (out.caption) box.appendChild(el("div", "caption", out.caption));
+      // The sentence first, at reading size: it is the answer, and what it
+      // says after its table (a footnote's key, a caveat) is shown beneath
+      // the body rather than folded under the text toggle. A chart is
+      // self-describing - court.py and radar.py draw their own title and
+      // subtitle - so a chart-only answer gets no headline here, and its
+      // sentence (which is mostly a file path) goes under the text toggle.
+      // The headline is the sentence, not the "Next: ..." list that restates
+      // the table in prose beside it.
+      const headline = (a.data && a.data.headline) || firstLine(a.text).replace(/\s+Next:.*$/, "");
+      if (headline) box.appendChild(el("div", "headline", headline));
+      if (out.caption && out.caption !== headline) box.appendChild(el("div", "caption", out.caption));
       if (out.spark) box.appendChild(sparkline(out.spark));
       box.appendChild(out.body);
+      const notes = answerNotes(a);
+      if (notes.length) {
+        const list = el("div", "notes");
+        for (const note of notes) list.appendChild(el("p", null, note));
+        box.appendChild(list);
+      }
     }
     for (const chart of charts) box.appendChild(chart);
     return box;
   }
 
+  // The lines of an answer that are prose rather than its table: what a
+  // template says after the rows (the meaning of a "*", how many games have
+  // no box score, how a bare surname was read). Preferred from
+  // `data.notes`, which the templates and agent.py fill as they attach
+  // them; otherwise read off the text - a table's line holds a run of
+  // spaces between its columns or ends in ":", and a note does neither.
+  function answerNotes(a) {
+    if (a.data && Array.isArray(a.data.notes) && a.data.notes.length) return a.data.notes.map(String);
+    const lines = (a.text || "").split("\n").slice(1).map(l => l.trim()).filter(Boolean);
+    return lines.filter(l => !/\S {2,}\S/.test(l) && !/:$/.test(l) && !/^[-=]+$/.test(l));
+  }
+
+  // An answer with nothing to draw is still a sentence, not a terminal dump:
+  // the first line at reading size and the rest as notes when no line of it
+  // is a table's ("who leads the league in assists?" is one sentence, and it
+  // rendered in monospace). Text with table-shaped lines - a fall-through's,
+  // an agent's - keeps the monospace block so its columns line up.
+  function prose(a) {
+    const lines = (a.text || "").split("\n");
+    const tabular = lines.slice(1).some(l => /\S {2,}\S/.test(l) || /^\s+\S/.test(l));
+    if (a.answered_by !== "fast" || tabular) return el("pre", null, a.text);
+    const box = el("div");
+    box.appendChild(el("div", "headline", firstLine(a.text)));
+    const notes = answerNotes(a);
+    if (notes.length) {
+      const list = el("div", "notes");
+      for (const note of notes) list.appendChild(el("p", null, note));
+      box.appendChild(list);
+    }
+    return box;
+  }
+
   function renderBody(a) {
+    if (!a.data) return null;
+    // A composed answer carries the compiler's own shape - `skeleton`, `rows`,
+    // `measures` - whatever intent the router filed, so it is drawn by the
+    // skeleton, not the intent: one renderer for every point on a relation.
+    if (a.data.skeleton && Array.isArray(a.data.rows)) {
+      try { return renderComposed(a.data, a.text) || null; } catch (err) { return null; }
+    }
     const spec = a.intent && RENDERERS[a.intent];
-    if (!spec || !a.data) return null;
+    if (!spec) return null;
     // A key the template stopped producing means this renderer is looking at a
     // shape that no longer exists. Fall back rather than render half a table.
     if (spec.needs.some(k => a.data[k] === undefined || a.data[k] === null)) return null;
@@ -1198,6 +1317,48 @@
     } catch (err) {
       return null;  // never let a rendering bug swallow an answer that is fine
     }
+  }
+
+  // The compiler's three skeletons (association.query.compose): rows are
+  // games (a log, or the top games by a measure), grouped rows are per
+  // player or per season, a scalar is one line of figures.
+  const MEASURE_LABELS = {points: "PTS", rebounds: "REB", assists: "AST", minutes: "MIN", steals: "STL", blocks: "BLK", turnovers: "TOV", fouls: "PF",
+    fieldGoalsMade: "FGM", fieldGoalsAttempted: "FGA", threePointFieldGoalsMade: "3PM", threePointFieldGoalsAttempted: "3PA", freeThrowsMade: "FTM", freeThrowsAttempted: "FTA",
+    plusMinus: "+/-", ts_pct: "TS%", efg_pct: "eFG%", fg_pct: "FG%", three_pct: "3P%", ft_pct: "FT%", usage_pct: "USG%", game_score: "game score", pra: "PRA"};
+  const FRACTIONS = new Set(["ts_pct", "efg_pct", "usage_pct"]);
+  function measureCell(v, m) {
+    if (v === null || v === undefined) return "";
+    if (typeof v === "number" && FRACTIONS.has(m)) return (v * 100).toFixed(1) + "%";
+    if (typeof v === "number" && /_pct$/.test(m)) return v.toFixed(1) + "%";
+    return num(v);
+  }
+  function renderComposed(d, text) {
+    const measures = d.measures || [];
+    const labels = measures.map(m => MEASURE_LABELS[m] || m);
+    if (d.skeleton === "rows") {
+      if (!d.rows.length) return null;
+      const named = d.rows.some(r => r.player);
+      const headers = ["date"].concat(named ? ["player"] : [], ["opp", "W/L"], labels);
+      const rows = d.rows.map(r => [r.day].concat(named ? [r.player || ""] : [], [(r.home ? "vs " : "@ ") + (r.opponent || ""), r.won ? "W" : "L"], measures.map(m => measureCell(r[m], m))));
+      return { caption: null, body: table(headers, rows) };
+    }
+    if (d.skeleton === "grouped") {
+      if (!d.rows.length) return null;
+      const wins = d.rows.some(r => "wins" in r);
+      const headers = [d.group || "group", "G"].concat(wins ? ["W-L"] : [], labels);
+      const rows = d.rows.map(r => [r.group, num(r.games)].concat(wins ? [num(r.wins) + "-" + num(r.losses)] : [], measures.map(m => measureCell(r[m], m))));
+      if (d.total !== undefined && d.total !== null && d.rows.length > 1) rows.push(["Total", num(d.total)].concat(wins ? [""] : [], measures.map(() => "")));
+      return { caption: null, body: table(headers, rows) };
+    }
+    if (d.skeleton === "scalar") {
+      const r = d.rows[0] || {};
+      const items = [];
+      if (r.games !== undefined) items.push({ value: num(r.games), label: "games" });
+      if ("wins" in r) items.push({ value: num(r.wins) + "-" + num(r.losses), label: "record" });
+      for (const m of measures) if (r[m] !== undefined) items.push({ value: measureCell(r[m], m), label: labels[measures.indexOf(m)] });
+      return items.length ? { caption: null, body: statGrid(items) } : null;
+    }
+    return null;
   }
 
   function el(tag, cls, text) {
@@ -1384,7 +1545,7 @@
       answer.innerHTML = "";
       // A rendered form when this intent has one, the text otherwise.
       const rendered = renderAnswer(a);
-      answer.appendChild(rendered || el("pre", null, a.text));
+      answer.appendChild(rendered || prose(a));
 
       const meta = el("div", "meta");
       const badge = el("span", "badge " + a.answered_by, a.answered_by === "fast" ? "template" : "agent");

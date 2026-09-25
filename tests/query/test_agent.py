@@ -511,7 +511,9 @@ def test_the_fast_path_says_how_it_read_a_name_the_question_left_open(monkeypatc
     answer = _agent_with_players(tmp_path, "Marlon Maxey", "Tyrese Maxey").ask("how many points does maxey average?")
     reading = "('maxey' was read as Tyrese Maxey, the only match who played in 2025-26. Marlon Maxey also matches - use the full name, or name a season he played, to ask about him.)"
     assert answer.text == f"Tyrese Maxey averaged 28.0 points. {reading}"
-    assert answer.data == {"name_readings": [reading]}
+    # The reading rides in `notes` too, for the web page to show beneath a
+    # rendered table (agent._note).
+    assert answer.data == {"name_readings": [reading], "notes": [reading]}
 
 
 def test_fast_path_is_skipped_entirely_when_disabled(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -680,7 +682,7 @@ def test_a_composed_answer_carries_the_name_reading_it_noted(monkeypatch: pytest
 
     reading = "('maxey' was read as Tyrese Maxey, the only match who played in 2025-26. Marlon Maxey also matches - use the full name, or name a season he played, to ask about him.)"
     assert answer.text == f"Tyrese Maxey has averaged 28.0 points since 2024. {reading}"
-    assert answer.data == {"name_readings": [reading]}
+    assert answer.data == {"name_readings": [reading], "notes": [reading]}
 
 
 def test_unported_intent_falls_through_to_the_agent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
