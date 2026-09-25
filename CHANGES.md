@@ -16,6 +16,7 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- "Who attempted the most three pointers" ranks attempts, not makes (the question's own word decides the column), and a championship question is refused before a team ranking answers it fluently and wrongly - titles are not on record as such.
 - The web page shows every rendered answer's sentence first and at reading
   size (it was the muted 12.5px caption), shows what the sentence goes on to
   say beneath the table - a footnote's key, a coverage caveat, how a name was

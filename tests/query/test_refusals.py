@@ -12,7 +12,7 @@ import duckdb
 import pytest
 
 from association.query.calendar import parse_alignment, parse_situation
-from association.query.refusals import pair_from_opponent, unanswerable
+from association.query.refusals import by_question, pair_from_opponent, unanswerable
 from association.query.templates.common import TemplateUnsupported, check_scope
 
 
@@ -149,3 +149,14 @@ def test_bench_points_are_refused_as_a_gap_of_ours_not_missing_data(con: duckdb.
     refusal = unanswerable(con, "other", {"stat": "points", "venue": "home"}, "most opponent bench points allowed in the west at home by team this month")
     assert refusal is not None
     assert "not read yet" in refusal.answer and "flags starters" in refusal.answer
+
+
+def test_a_championship_question_is_refused_before_a_ranking_answers_it() -> None:
+    """ "show which team won the nba championship for the past 10 years" routed
+    team_leaderboard and ranked records since 2017 - a fluent wrong answer;
+    titles are not on record as such. "Title odds" is team_outlook's and is
+    left alone."""
+    refusal = by_question("show which team won the nba championship for the past 10 years", "team_leaderboard")
+    assert refusal is not None and "not on record as such" in refusal.answer
+    assert by_question("what are the sixers title odds?", "team_outlook") is None
+    assert by_question("best record from 2010-11 to 2018-19", "team_leaderboard") is None

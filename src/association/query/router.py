@@ -1296,6 +1296,27 @@ _LEADERBOARD_SHOT_DISTANCE = re.compile(
 )
 
 
+_ATTEMPTED = re.compile(r"\battempt(?:ed|s)?\b|\bfga\b|\b3pa\b|\bfta\b|\bshots?\s+taken\b", re.IGNORECASE)
+_MADE_TO_ATTEMPTED = {"threePointFieldGoalsMade": "threePointFieldGoalsAttempted", "fieldGoalsMade": "fieldGoalsAttempted", "freeThrowsMade": "freeThrowsAttempted"}
+
+
+def _route_attempted_stat(slots: dict[str, Any], question: str) -> None:
+    """ "Who attempted the most three pointers" filed ``threePointFieldGoalsMade``
+    and answered makes (Jeff's session, 2026-09-24) - the model's stat enum
+    reaches for the made column whenever a shot is named. The question's own
+    "attempted"/"attempts"/"FGA" word decides: a made-stat beside it is the
+    attempted column. Read only where the question names attempts and NOT
+    makes ("made" / "hit" / "makes"), so "3-pointers made per attempt" is
+    left alone.
+
+    .. versionadded:: 4.4.0
+    """
+    stat = slots.get("stat")
+    if stat not in _MADE_TO_ATTEMPTED or not _ATTEMPTED.search(question) or re.search(r"\b(?:made|makes?|hit|hits)\b", question, re.IGNORECASE):
+        return
+    slots["stat"] = _MADE_TO_ATTEMPTED[stat]
+
+
 def _route_leaderboard_shot_distance(intent: str, slots: dict[str, Any], question: str) -> None:
     """No leaderboard ranks shot distance - see :data:`_LEADERBOARD_SHOT_DISTANCE`.
 
@@ -2564,6 +2585,7 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     _route_game_score(raw["intent"], slots, question)
     _route_two_point_pct(raw["intent"], slots, question)
     _route_leaderboard_shot_distance(raw["intent"], slots, question)
+    _route_attempted_stat(slots, question)
     _route_ranked_boolean_games(raw["intent"], slots, question)
     _route_team_slots(raw["intent"], slots, question)
     _route_rate(raw["intent"], slots, question)

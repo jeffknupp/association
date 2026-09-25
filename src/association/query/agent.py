@@ -31,7 +31,7 @@ from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .keepalive import KEEP_ALIVE
 from .models import AGENT_BUDGET_SECONDS, DEFAULT_ROUTER_MODEL
 from .prompt import AGENT_NUM_CTX, TOOLS, build_system_prompt
-from .refusals import pair_from_opponent, unanswerable
+from .refusals import by_question, pair_from_opponent, unanswerable
 from .router import Route, RouterUnavailable, route
 from .templates import TEMPLATES
 from .templates.common import (
@@ -338,16 +338,10 @@ class Agent:
             history.log(f"  -> (nickname) {was!r} -> {now!r} (from the question, overriding the router)")
         handler = TEMPLATES.get(routed.intent)
         history.log(f"  -> (router) intent={routed.intent!r} slots={routed.slots}" + ("" if handler else " - not ported yet, falling through"))
+        settled = self._settled_before_template(question, routed, handler, history)
+        if settled is not None:
+            return settled
         if handler is None:
-            # No template, but maybe nothing to read either: "most opponent
-            # bench points allowed ..." routes to `other`, and the refusals
-            # module knows bench points are read by nothing - said in seconds
-            # rather than after the agent's minute (query/refusals).
-            refusal = unanswerable(self.toolbox.con, routed.intent, routed.slots, question)
-            if refusal is not None:
-                history.log(f"  -> (refusal) {refusal.data['refused']}: nothing here reads that shape")
-                return routed.intent, refusal
-            self.fell_through = f"intent {routed.intent!r} has no template yet"
             return None
         # A fingerprint draws as many polygons as it is given, and the router
         # drops the second name often enough that "compare fingerprints for
@@ -426,6 +420,28 @@ class Agent:
                 history.log(f"  -> (player) {message}")
                 return routed.intent, TemplateResult(data={"message": message, "named_player": named_player}, answer=message)
         return self._run_scoped_template(question, routed, handler, history)
+
+    def _settled_before_template(self, question: str, routed: Route, handler: Callable[..., TemplateResult] | None, history: RunHistory) -> tuple[str, TemplateResult] | None:
+        """What is decided before any template runs: a shape the question's
+        own words settle (a championship question a team ranking would
+        answer fluently and wrongly - refusals.by_question), and, where no
+        template exists for the intent, a shape nothing reads at all ("most
+        opponent bench points allowed ..." routes to `other`, and the
+        refusals module knows bench points are read by nothing - said in
+        seconds rather than after the agent's minute). With no template and
+        no refusal, records the fall-through and returns None."""
+        early = by_question(question, routed.intent)
+        if early is not None:
+            history.log(f"  -> (refusal) {early.data['refused']}: nothing here reads that shape")
+            return routed.intent, early
+        if handler is not None:
+            return None
+        refusal = unanswerable(self.toolbox.con, routed.intent, routed.slots, question)
+        if refusal is not None:
+            history.log(f"  -> (refusal) {refusal.data['refused']}: nothing here reads that shape")
+            return routed.intent, refusal
+        self.fell_through = f"intent {routed.intent!r} has no template yet"
+        return None
 
     def _run_scoped_template(self, question: str, routed: Route, handler: Callable[[TemplateContext, dict[str, Any]], TemplateResult], history: RunHistory) -> tuple[str, TemplateResult] | None:
         """Check scope and coverage, run the template, and attach the notes

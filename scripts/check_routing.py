@@ -155,6 +155,8 @@ CASES: list[tuple[str, str, dict]] = [
     # yardstick-v2 F124: the games are ranked by another measure - `ranked_by`
     # is the slot no template honors, so the compiler answers.
     ("players with the highest scoring triple doubles", "leaderboard", {"stat": "triple_double", "ranked_by": "points"}),
+    # Jeff's session 2026-09-24: "attempted" is the attempted column (router._route_attempted_stat).
+    ("who attempted the most three pointers this season?", "leaderboard", {"stat": "threePointFieldGoalsAttempted"}),
     # yardstick-v2 F064: a team's half with no `team` slot from the model -
     # the nickname in the question is the team (router._team_slot_or_word).
     ("least points scored by the wizards in the first half this season", "team_quarter_points", {"half": 1, "limit": None}),

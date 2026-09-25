@@ -2462,3 +2462,14 @@ def test_a_ranking_of_boolean_games_by_another_measure_files_ranked_by() -> None
     assert boards.slots["ranked_by"] == "rebounds"
     count = _asking('{"intent":"leaderboard","stat":"triple_double","limit":10}', "who has the most triple doubles this season")
     assert "ranked_by" not in count.slots
+
+
+def test_an_attempted_shot_stat_is_the_attempted_column() -> None:
+    """ "who attempted the most three pointers this season?" filed the made
+    column and answered makes (2026-09-24); the question's own word decides."""
+    got = _asking('{"intent":"leaderboard","stat":"threePointFieldGoalsMade","season":2026}', "who attempted the most three pointers this season?")
+    assert got.slots["stat"] == "threePointFieldGoalsAttempted"
+    made = _asking('{"intent":"leaderboard","stat":"threePointFieldGoalsMade","season":2026}', "who made the most three pointers this season?")
+    assert made.slots["stat"] == "threePointFieldGoalsMade"
+    ratio = _asking('{"intent":"leaderboard","stat":"fieldGoalsMade","season":2026}', "most field goals made per attempt")
+    assert ratio.slots["stat"] == "fieldGoalsMade"

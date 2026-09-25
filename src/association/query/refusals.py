@@ -45,6 +45,7 @@ from association.query.templates.common import PLAYER_INTENTS, TemplateResult
 _PAIRABLE_INTENTS: frozenset[str] = frozenset({"player_matchup", "game_log", "player_stat", "threshold_count", "single_game_high", "streak", "record_when", "player_splits"})
 
 
+_CHAMPIONSHIP = re.compile(r"\b(?:championships?|champions?|nba\s+titles?|won\s+the\s+(?:title|finals)|title\s+winners?|finals\s+winners?)\b", re.IGNORECASE)
 _BENCH_POINTS = re.compile(r"\bbench\s+(?:points?|scoring|pts)\b", re.IGNORECASE)
 _AGE = re.compile(r"\b(?:\d+\s+years?\s+old|(?:before|after|by|at)\s+(?:turning|age)\s+\d+|age\s+\d+)\b", re.IGNORECASE)
 _CONFERENCE_OR_DIVISION = re.compile(r"\b(?:east(?:ern)?|west(?:ern)?|conference|division|atlantic|central|southeast|northwest|pacific|southwest)\b", re.IGNORECASE)
@@ -174,3 +175,26 @@ def _bench_points(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, 
         "Bench points are not read yet - the box score flags starters, so a bench total could be built, but no template or the compiler adds one up today. "
         "Ask for a named player's points, or a team's points, instead."
     )
+
+
+def by_question(question: str, intent: str | None) -> TemplateResult | None:
+    """A refusal decided from the question's own words BEFORE any template
+    runs - for a shape a template would otherwise answer fluently and wrongly.
+    "Show which team won the nba championship for the past 10 years" (Jeff's
+    session, 2026-09-24) routed ``team_leaderboard`` and ranked regular-season
+    records since 2017. The warehouse holds every playoff game and no table of
+    titles; a champion is derivable (the winner of a postseason's last game)
+    and nothing derives it yet, so the refusal names that and the question
+    that works.
+
+    .. versionadded:: 4.4.0
+    """
+    if not _CHAMPIONSHIP.search(question):
+        return None
+    if re.search(r"\btitle\s+odds\b|\bchampionship\s+odds\b", question, re.IGNORECASE):
+        return None  # "title odds" is a regular-season projection team_outlook answers
+    message = (
+        "Championships are not on record as such - the warehouse holds every playoff game and no table of titles, and nothing derives a champion from a postseason's last series yet. "
+        "Ask for a team's postseason record in a season, or two teams' playoff meetings, to see who won a series."
+    )
+    return TemplateResult(data={"message": message, "refused": "championship", "intent": intent}, answer=message)
