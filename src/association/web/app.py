@@ -107,6 +107,20 @@ class TimingResponse(BaseModel):
     tool_calls: int
 
 
+class DecisionResponse(BaseModel):
+    """One decision, the wire form of
+    :class:`~association.query.decisions.Decision`.
+
+    .. versionadded:: 4.4.0
+    """
+
+    stage: str
+    field: str
+    before: Any
+    after: Any
+    reason: str
+
+
 class AnswerResponse(BaseModel):
     """An answered question.
 
@@ -133,6 +147,13 @@ class AnswerResponse(BaseModel):
     artifacts: list[ArtifactResponse]
     timing: TimingResponse
     history_file: str | None = None
+    decisions: list[DecisionResponse] = []
+    """What was decided on the way to the answer, as values - each reading of
+    the question and override of a routed field, in the order made. Empty for
+    an agent answer today.
+
+    .. versionadded:: 4.4.0
+    """
 
 
 class HealthResponse(BaseModel):
@@ -256,6 +277,7 @@ def as_response(answer: Answer, history_file: str | None = None) -> AnswerRespon
             tool_calls=answer.timing.tool_calls,
         ),
         history_file=history_file,
+        decisions=[DecisionResponse(**d.as_dict()) for d in answer.decisions],
     )
 
 

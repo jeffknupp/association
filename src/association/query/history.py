@@ -12,6 +12,7 @@ gets its own history file, the same as a one-shot `query` call would."""
 from __future__ import annotations
 
 import functools
+import json
 import subprocess
 import sys
 import time
@@ -21,6 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from association import __version__
+from association.query.decisions import Decision
 
 DEFAULT_HISTORY_DIR = Path(".history")
 
@@ -94,6 +96,7 @@ class RunHistory:
         self.history_dir = history_dir
         self.sink = sink
         self.lines: list[str] = []
+        self.decisions: list[Decision] = []
         self.model_calls: int = 0
         self.model_seconds: float = 0.0
         self.tool_calls: int = 0
@@ -105,6 +108,17 @@ class RunHistory:
         self.lines.append(line)
         if self.verbose:
             self.sink(line)
+
+    def record_decision(self, decision: Decision) -> None:
+        """Keep one :class:`~association.query.decisions.Decision` as a value,
+        and log its one-line form where it happened in the trace - so the
+        record reads the same to a person and the values reach the answer
+        without being parsed back out of the prose.
+
+        .. versionadded:: 4.4.0
+        """
+        self.decisions.append(decision)
+        self.log(decision.line())
 
     def record_model_call(self, elapsed: float) -> None:
         """Count one model round trip. These dominate wall time, so the count
@@ -154,6 +168,10 @@ class RunHistory:
             "=" * 80,
             self.summary_line(),
             "=" * 80,
+            # The decisions as values, one JSON object per line, beside the
+            # trace that already shows each where it happened: what a reader
+            # of the record or a script grades an answer's reasoning by.
+            *(["decisions:", *(json.dumps(d.as_dict(), default=str) for d in self.decisions), "=" * 80] if self.decisions else []),
             "answer:",
             answer,
         ]

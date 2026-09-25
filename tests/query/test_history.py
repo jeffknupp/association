@@ -1,6 +1,7 @@
 """Regression + sanity tests for RunHistory - every run's command/trace/timing
 evidence, written regardless of --verbose."""
 
+import json
 import re
 from pathlib import Path
 
@@ -153,6 +154,27 @@ def test_the_build_id_asks_about_the_package_not_the_caller(monkeypatch: pytest.
         build_id.cache_clear()
     package = str(Path(history_module.__file__).resolve().parent)
     assert seen and all(argv[:3] == ["git", "-C", package] for argv in seen), seen
+
+
+def test_a_decision_is_kept_as_a_value_and_logged_where_it_happened(tmp_path: Path) -> None:
+    """A Decision reaches the answer as data and the record as a `decisions:`
+    section of JSON lines - and its one-line form sits in the trace at the
+    point it was made, so a person reading the record sees it there."""
+    from association.query.decisions import Decision
+
+    history = RunHistory(verbose=False, history_dir=tmp_path)
+    history.log("  -> (router) intent='game_log'")
+    history.record_decision(Decision("subject", "players", None, ["Joel Embiid"], "question names players ['Joel Embiid']"))
+    history.record_decision(Decision("scope", "team", "Boston Celtics", None, "the team after 'vs' is the opponent"))
+    assert history.lines[1] == "  -> (decision) subject players: ['Joel Embiid'] (question names players ['Joel Embiid'])"
+    assert history.lines[2] == "  -> (decision) scope team: 'Boston Celtics' -> None (the team after 'vs' is the opponent)"
+    path = history.write("q", "m", False, "embiid vs boston", "the answer")
+    text = path.read_text()
+    section = text.split("decisions:\n", 1)[1].split("\n" + "=" * 80, 1)[0].splitlines()
+    assert [json.loads(line)["field"] for line in section] == ["players", "team"]
+    assert text.index("decisions:") < text.index("answer:")
+    # A run with no decisions writes no section at all.
+    assert "decisions:" not in RunHistory(verbose=False, history_dir=tmp_path).write("q", "m", False, "x", "y").read_text()
 
 
 def test_append_note_adds_one_timestamped_line(tmp_path: Path) -> None:
