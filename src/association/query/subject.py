@@ -39,7 +39,8 @@ import duckdb
 
 from association.query.compose.move import POSITIONS
 from association.query.compose.team import team_named_in
-from association.query.entities import PLAYER_NICKNAMES, _initials, _team_after_for, _team_after_versus, _words, find_players, find_teams, players_named_in
+from association.query.decisions import Decision
+from association.query.entities import PLAYER_NICKNAMES, _edit_budget, _initials, _team_after_for, _team_after_versus, _words, find_players, find_teams, nicknames_in, players_named_in
 
 #: The kinds a subject can be. ``team_players`` is "a Hawks player" - the
 #: team's players as a group, which the compiler's team-where-a-player-
@@ -150,11 +151,13 @@ def _levenshtein(a: str, b: str) -> int:
 
 def question_supports(name: str, question: str) -> bool:
     """Whether ``question`` holds ``name``: any one word of it (three or more
-    letters), a near spelling of one (one edit, five or more letters - the
-    router corrects typos, "embid" is Embiid), or its initials ("SGA",
+    letters), a near spelling of one within
+    :func:`association.query.entities._edit_budget` (none for a short word,
+    one edit to six letters, two beyond - the router corrects typos, "embid"
+    is Embiid), a curated nickname for the player, or its initials ("SGA",
     "kd"). The discipline of
-    :func:`association.query.entities.override_invented_players`, as a
-    predicate.
+    :func:`association.query.entities.override_invented_players`'s grounding
+    check, as a predicate.
 
     .. versionadded:: 4.4.0
     """
@@ -162,7 +165,9 @@ def question_supports(name: str, question: str) -> bool:
     words = [w.casefold() for w in _words(name) if len(w) >= 3]
     if any(w in q for w in words):
         return True
-    if any(len(w) >= 5 and any(len(x) >= 4 and _levenshtein(w, x) <= 1 for x in q) for w in words):
+    if any(any(len(x) >= 3 and _levenshtein(w, x) <= _edit_budget(w) for x in q) for w in words):
+        return True
+    if name in nicknames_in(question):
         return True
     initials = _initials(name)
     return bool(initials) and initials in q
@@ -351,3 +356,59 @@ def _decide(
     if teams:
         return Subject("team", (), tuple(teams), position, opponent, own_team, companions, evidence)
     return Subject("everyone", (), (), position, opponent, own_team, companions, evidence)
+
+
+def apply_subject(subject: Subject, slots: dict[str, Any]) -> tuple[list[Decision], list[str]]:
+    """Write the players the subject was read to be about into the slots a
+    template reads - ``player`` or ``players``, whichever shape the router
+    used - and report the router's names the question never held, which the
+    caller refuses by name rather than answers about (AGENTS.md: "when it
+    cannot be repaired, say so - do not hand it to the agent"). Mutates
+    ``slots``; returns the decisions made and the names dropped.
+
+    The first field the reading settles in place of the repair chain:
+    :func:`association.query.entities.override_invented_players`'s job -
+    "compare sga and embiid" arriving as Nurkic - done from the reading
+    instead. A name the router filed that the question supports is kept as
+    the router spelled it, so nothing downstream sees a different string
+    for the same person; a name it does not support is replaced by the
+    question's own spare name where there is exactly one per dropped name,
+    else dropped and reported. A player the router left OUT is not put back
+    here yet - that stays :func:`~association.query.entities.restore_dropped_players`'
+    and ``scope_from_question``'s until the golden says the reading may.
+
+    .. versionadded:: 4.4.0
+    """
+    routed = _routed_player_slots(slots)
+    if not routed or subject.kind not in ("player", "pair"):
+        return [], []
+    # A companion the router filed among the players ("fox vs magic without
+    # wembyanama" arrives as the pair Fox/Wembanyama) is the question's own
+    # name in the chain's slot shape - kept, not dropped.
+    kept = [r for r in routed if _same_person(r, (*subject.players, *subject.companions))]
+    dropped = [r for r in routed if r not in kept]
+    if not dropped:
+        return [], []
+    spare = [p for p in subject.players if not _same_person(p, kept)]
+    if len(spare) != len(dropped):
+        return [], dropped
+    replacement = dict(zip(dropped, spare, strict=True))
+    field = "players" if isinstance(slots.get("players"), list) else "player"
+    decisions = [Decision("subject", field, was, now, "the question never names the router's player; it names this one") for was, now in replacement.items()]
+    new = [replacement.get(r, r) for r in routed]
+    if field == "players":
+        slots["players"] = new
+    else:
+        slots["player"] = new[0]
+    return decisions, []
+
+
+def _routed_player_slots(slots: dict[str, Any]) -> list[str]:
+    """The router's player names, from ``player`` or ``players``."""
+    return [p for p in ([slots.get("player")] if slots.get("player") else []) + list(slots.get("players") or []) if isinstance(p, str) and p.strip()]
+
+
+def _same_person(name: str, others: tuple[str, ...] | list[str]) -> bool:
+    """Whether ``name`` and one of ``others`` support each other - the same
+    person under two spellings (a surname and its completion)."""
+    return any(question_supports(name, o) or question_supports(o, name) for o in others)

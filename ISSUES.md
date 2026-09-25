@@ -3206,6 +3206,23 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
+### A game log's same-date rows come out in an unstable order
+- **Found:** 2026-09-25, running the agent-level golden
+  (`scripts/preview_answers.py` over `live_day2.jsonl`) on master three
+  times to classify a diff.
+- **Evidence:** "Centers stats game log vs kings" and "forwards with 20+
+  mins vs gsw log" (a position group's log, several players on one date)
+  list the 2026-04-12 rows in a different order run to run - Robert
+  Williams III first twice, Donovan Clingan first once - on the same
+  commit and warehouse. The log is ordered by date alone
+  (`player_games.rows_sql`), so rows sharing a date fall in DuckDB's
+  parallel scan order.
+- **User sees:** the same question answered with the same rows in a
+  different order; a golden comparison reads it as a change.
+- **Next step:** a deterministic tiebreak after the date - event id, then
+  player name - in the relation's one ORDER BY, so every reader gets it.
+- **Source:** ours.
+
 ### The compiler's career span says "(1994 on)" where the template named the player's own seasons
 - **Found:** 2026-09-25, grading `live_day3.jsonl` (yardstick-v2 F061 "Sga
   games with under 14 fta in his whole career").

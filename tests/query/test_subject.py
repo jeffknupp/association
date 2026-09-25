@@ -158,6 +158,37 @@ def test_two_teams_a_position_group_a_teams_players_and_everyone(con: duckdb.Duc
     assert _read(con, "most points in a single game 1980 nba season", "single_game_high").kind == "everyone"
 
 
+def test_apply_subject_writes_the_players_the_question_names_in_the_routers_own_shape(con: duckdb.DuckDBPyConnection) -> None:
+    """The first field the reading settles in place of the repair chain:
+    override_invented_players' job. A router name the question supports is
+    kept as the router spelled it; one it never held is replaced by the
+    question's spare name, or reported for the refusal - never guessed."""
+    from association.query.subject import apply_subject
+
+    slots: dict[str, Any] = {"players": ["Shai Gilgeous-Alexander", "Jusuf Nurkic"]}
+    decisions, dropped = apply_subject(read_subject(con, "compare sga and embiid", "player_compare", slots), slots)
+    assert slots["players"] == ["Shai Gilgeous-Alexander", "Joel Embiid"] and dropped == []
+    assert [(d.field, d.before, d.after) for d in decisions] == [("players", "Jusuf Nurkic", "Joel Embiid")]
+
+    single: dict[str, Any] = {"player": "Ben Simmons"}
+    decisions, dropped = apply_subject(read_subject(con, "how many points does embiid average", "player_stat", single), single)
+    assert single == {"player": "Joel Embiid"} and [d.field for d in decisions] == ["player"] and dropped == []
+
+    kept: dict[str, Any] = {"player": "Nikola Jokic"}
+    assert apply_subject(read_subject(con, "jokic ppg", "player_stat", kept), kept) == ([], []) and kept == {"player": "Nikola Jokic"}
+
+    # A companion the router filed among the players (player_matchup's pair
+    # shape) is the question's own name, kept - the golden caught this as a
+    # refusal of "fox vs magic ... without wembyanama" (F157, graded correct).
+    pair: dict[str, Any] = {"players": ["De'Aaron Fox", "Victor Wembanyama"]}
+    assert apply_subject(read_subject(con, "de'aaron fox vs magic last five games without wembyanama", "player_matchup", pair), pair) == ([], [])
+    assert pair["players"] == ["De'Aaron Fox", "Victor Wembanyama"]
+
+    nobody: dict[str, Any] = {"players": ["Ronaldo Lopes", "Nikola Jokic"]}
+    decisions, dropped = apply_subject(read_subject(con, "compare jokic's fingerprint to last season", "fingerprint", nobody), nobody)
+    assert dropped == ["Ronaldo Lopes"] and decisions == [] and nobody["players"] == ["Ronaldo Lopes", "Nikola Jokic"]  # reported, untouched
+
+
 def test_the_compare_whose_second_player_the_router_filed_as_the_opponent(con: duckdb.DuckDBPyConnection) -> None:
     """The chain bug the measurement found first: "compare Jaylen Brown and
     Jason Tatum's netpoints" came back with Tatum as `opponent` and fell
