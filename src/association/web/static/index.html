@@ -1681,11 +1681,13 @@
   // Saved back into `historyFile` - the file `association web` already
   // writes for this exact answer (build, trace, timing, the answer text) -
   // rather than kept only on this page, which is lost on reload the same
-  // way the rest of the conversation is (ISSUES.md #69). More than one note
-  // is allowed: each click of "Save note" appends its own line rather than
-  // replacing the last one, so the text stays in the box afterward instead
-  // of being cleared as though it had been consumed.
+  // way the rest of the conversation is (ISSUES.md #69). One box is one
+  // note: saving again after an edit REPLACES the line the earlier save
+  // wrote (the server returns that line; it goes back as `replaces`), so the
+  // text stays in the box afterward and a correction does not leave its
+  // first draft on record beside it.
   function noteControl(historyFile) {
+    let savedLine = null;
     const box = el("div", "note-box");
     const ta = el("textarea", "note-input");
     ta.rows = 1;
@@ -1724,9 +1726,12 @@
       fetch("/api/notes", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ history_file: historyFile, note: note }),
+        body: JSON.stringify({ history_file: historyFile, note: note, replaces: savedLine }),
       }).then(r => {
         if (!r.ok) throw new Error("save failed");
+        return r.json();
+      }).then(saved => {
+        savedLine = saved.line || null;
         status.classList.remove("failed");
         status.textContent = "Note saved";
       }).catch(() => {

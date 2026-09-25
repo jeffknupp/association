@@ -69,8 +69,11 @@ window.fetch = (u, o) => {
      phantom_seasons: []},
     {name: "+ NetPoints", tables: [], first_season: 2019, last_season: 2026, partial_seasons: [], phantom_seasons: []}]}), {headers: {"content-type": "application/json"}}));
   if (String(u).indexOf("/api/notes") >= 0) {
-    window.__notes.push(JSON.parse(o.body));
-    return Promise.resolve(new Response(JSON.stringify({saved: true}), {headers: {"content-type": "application/json"}}));
+    const body = JSON.parse(o.body);
+    window.__notes.push(body);
+    // The line the server would write, stamped by save count so a re-save
+    // can be seen to hand the FIRST save's line back as `replaces`.
+    return Promise.resolve(new Response(JSON.stringify({saved: true, line: "[note stub-" + window.__notes.length + "] " + body.note}), {headers: {"content-type": "application/json"}}));
   }
   return realFetch(u, o);
 };
@@ -124,7 +127,8 @@ with sync_playwright() as p:
         check("saving a note posts it to /api/notes", False, "no note control to use")
         check("the button reports the saved state", False, "no note control to use")
         check("the note text stays visible after saving", False, "no note control to use")
-        check("a second save appends another note rather than replacing it", False, "no note control to use")
+        check("the first save is a new note (no `replaces`)", False, "no note control to use")
+        check("a second save replaces the first note's line rather than appending", False, "no note control to use")
     else:
         note_input = first_note.query_selector(".note-input")
         save_button = first_note.query_selector(".note-save")
@@ -140,7 +144,8 @@ with sync_playwright() as p:
         save_button.click()
         page.wait_for_timeout(120)
         sent = page.evaluate("window.__notes")
-        check("a second save appends another note rather than replacing it", len(sent) == 2, sent)
+        check("the first save is a new note (no `replaces`)", sent[0].get("replaces") is None, sent[0])
+        check("a second save replaces the first note's line rather than appending", len(sent) == 2 and sent[1].get("replaces") == "[note stub-1] this answer undercounts rebounds", sent)
 
     page.fill("#input", "half typed")
     page.press("#input", "ArrowUp")
