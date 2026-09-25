@@ -335,6 +335,27 @@ def test_a_supported_name_stays_as_the_router_spelled_it(con: duckdb.DuckDBPyCon
         assert slots == before, question
 
 
+def test_a_position_phrase_or_a_filler_word_in_the_player_slot_is_not_a_player(con: duckdb.DuckDBPyConnection) -> None:
+    """The router files "shooting guard" as the player on "highest 3 point
+    percentage ... by a shooting guard" (F056) and "player" on "Most points
+    in 15th season played" (F099). Both words are in the question, so the
+    support check passes them; neither is a name. The first is the
+    position-group subject; the second nobody - and the compiler, which
+    used to match both again, reads the kind."""
+    from association.query.compose.move import _drop_filler_or_team_player, _drop_position_only_player
+
+    s = _read(con, "highest 3 point percentage in a season by a shooting guard", "leaderboard", player="shooting guard")
+    assert s.kind == "position" and s.position == "SG" and s.players == () and s.invented == ()
+    assert _drop_position_only_player({"player": "shooting guard"}, s) == {"player": None}
+    s = _read(con, "Most points in 15th season played", "leaderboard", player="player")
+    assert s.kind == "everyone" and s.players == () and s.invented == ()
+    assert _drop_filler_or_team_player({"player": "player", "stat": "points"}, s) == {"player": None, "stat": "points"}
+    # A team in the player slot is the team's players' games, not a player.
+    s = _read(con, "oklahoma city thunder all-time triple doubles", "threshold_count", player="Thunder")
+    assert s.kind == "team" and s.teams == ("Oklahoma City Thunder",) and s.players == ()
+    assert _drop_filler_or_team_player({"player": "Thunder"}, s) == {"player": None, "team": "Thunder"}
+
+
 def test_the_compare_whose_second_player_the_router_filed_as_the_opponent(con: duckdb.DuckDBPyConnection) -> None:
     """The chain bug the measurement found first: "compare Jaylen Brown and
     Jason Tatum's netpoints" came back with Tatum as `opponent` and fell

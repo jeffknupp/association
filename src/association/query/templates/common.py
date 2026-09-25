@@ -1747,6 +1747,35 @@ def scoped_games(
 #: warehouse: G 862, F 724, C 502, SG 254, PF 252, SF 247, PG 237), so "forwards"
 #: reaches every forward on record and "shooting guards" only those listed as SG.
 POSITION_CODES: dict[str, list[str]] = {"G": ["G", "PG", "SG", "GF"], "F": ["F", "PF", "SF", "GF"], "C": ["C"], "PG": ["PG"], "SG": ["SG"], "PF": ["PF"], "SF": ["SF"]}
+
+#: A question's position word, mapped to :data:`POSITION_CODES`' own letter.
+POSITIONS: list[tuple[str, str]] = [
+    (r"\bcenters?\b", "C"),
+    (r"\bpoint guards?\b", "PG"),
+    (r"\bshooting guards?\b", "SG"),
+    (r"\bpower forwards?\b", "PF"),
+    (r"\bsmall forwards?\b", "SF"),
+    (r"\bforwards?\b", "F"),
+    (r"\bguards?\b", "G"),
+]
+"""``(pattern, position code)`` - the words a position-group question uses.
+
+.. versionadded:: 4.4.0
+
+.. versionchanged:: 4.5.0
+   Moved here from ``compose.move`` (which still re-exports it), so the
+   subject reading and the compiler share one list without importing each
+   other.
+"""
+
+FILLER_PLAYER_WORDS: frozenset[str] = frozenset({"player", "players", "a player", "any player"})
+"""What the router writes in ``player`` when the question names nobody -
+filler, not a name ("Most points in 15th season played" arrived as
+``player: "player"``, yardstick-v2 F099). The subject reading reads none of
+them as a player, and the compiler clears the slot.
+
+.. versionadded:: 4.5.0
+"""
 """``players.position_abbr`` values a question's position word reaches.
 
 .. versionadded:: 4.4.0

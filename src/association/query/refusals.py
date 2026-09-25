@@ -33,7 +33,7 @@ from typing import Any
 import duckdb
 
 from association.query.calendar import parse_alignment, parse_situation
-from association.query.entities import find_players, find_teams
+from association.query.subject import Subject, read_subject
 from association.query.templates.common import PLAYER_INTENTS, TemplateResult
 
 _CHAMPIONSHIP = re.compile(r"\b(?:championships?|champions?|nba\s+titles?|won\s+the\s+(?:title|finals)|title\s+winners?|finals\s+winners?)\b", re.IGNORECASE)
@@ -42,21 +42,27 @@ _AGE = re.compile(r"\b(?:\d+\s+years?\s+old|(?:before|after|by|at)\s+(?:turning|
 _CONFERENCE_OR_DIVISION = re.compile(r"\b(?:east(?:ern)?|west(?:ern)?|conference|division|atlantic|central|southeast|northwest|pacific|southwest)\b", re.IGNORECASE)
 
 
-def unanswerable(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str) -> TemplateResult | None:
+def unanswerable(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None) -> TemplateResult | None:
     """The refusal for a question shape nothing here reads, or None where the
     agent should have its turn. Called only after the template refused and
     the compiler declined, so an answerable question never reaches it.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.5.0
+       Takes the :class:`~association.query.subject.Subject` the agent read
+       (read here when not given); the team-in-``player`` refusal reads it.
     """
+    if subject is None:
+        subject = read_subject(con, question, intent, slots)
     for check in (_playoff_round, _non_calendar_situation, _period_stat, _team_period_stat, _bench_points, _team_where_a_player_belongs):
-        message = check(con, intent, slots, question)
+        message = check(con, intent, slots, question, subject)
         if message is not None:
             return TemplateResult(data={"message": message, "refused": check.__name__.lstrip("_"), "intent": intent}, answer=message)
     return None
 
 
-def _playoff_round(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str) -> str | None:
+def _playoff_round(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject) -> str | None:
     """A named round: the games carry no round or series label (ISSUES #10)."""
     playoff_round = slots.get("round")
     if not isinstance(playoff_round, str) or not playoff_round.strip():
@@ -67,7 +73,7 @@ def _playoff_round(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str,
     )
 
 
-def _non_calendar_situation(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str) -> str | None:
+def _non_calendar_situation(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject) -> str | None:
     """A ``situation`` that names neither a calendar narrowing nor a
     conference or division (:func:`association.query.calendar.parse_situation`/
     :func:`~association.query.calendar.parse_alignment`, the same two readers
@@ -96,7 +102,7 @@ def _non_calendar_situation(con: duckdb.DuckDBPyConnection, intent: str, slots: 
     return f"'{situation}' is not something the games are read by - a weekday, a month, a holiday, \"since <day>\", a conference or a division is. Ask without it, or with one of those."
 
 
-def _period_stat(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str) -> str | None:
+def _period_stat(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject) -> str | None:
     """A stat other than points by quarter or half: the per-period figures
     are rebuilt from the scoring plays, so points is the only one."""
     stat = slots.get("stat")
@@ -107,19 +113,20 @@ def _period_stat(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, A
     return f"By quarter or half, only points are on record - {stat!r} is not split by period. Ask for points in {where}, or for {stat} over whole games."
 
 
-def _team_where_a_player_belongs(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str) -> str | None:
+def _team_where_a_player_belongs(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject) -> str | None:
     """A team in the ``player`` slot of a template that answers for one
-    player: ask which player was meant, or send the team's own question to
-    the team templates."""
+    player - the reading says the subject is the team and names no player:
+    ask which player was meant, or send the team's own question to the team
+    templates."""
     player = slots.get("player")
     if intent not in PLAYER_INTENTS or not isinstance(player, str) or not player.strip():
         return None
-    if find_players(con, player) or not find_teams(con, player):
+    if subject.kind not in ("team", "team_players") or subject.players:
         return None
     return f"'{player}' is a team, and this was read as a question about one player's {slots.get('stat') or 'stats'}. Name a player, or ask for the team's own record or stats."
 
 
-def _team_period_stat(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str) -> str | None:
+def _team_period_stat(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject) -> str | None:
     """A team's stat other than points by quarter or half: the linescore
     holds each team's points per period and nothing else (yardstick-v2 F065,
     "trailblazers ... 3 point average 1st quarter")."""
@@ -132,7 +139,7 @@ def _team_period_stat(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[s
     )
 
 
-def _bench_points(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str) -> str | None:
+def _bench_points(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject) -> str | None:
     """Bench points: derivable (the non-starters' points in the box score,
     which flags starters) but read by nothing yet - a gap of ours, named as
     one, not "no data" (yardstick-v2 F106, "most opponent bench points

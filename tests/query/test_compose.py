@@ -836,8 +836,11 @@ def test_a_position_only_player_slot_is_read_as_the_position_group_subject() -> 
     assert _position_only_player({"player": "shooting guards"}) == "SG"
     assert _position_only_player({"player": "Klay Thompson"}) is None
     assert _position_only_player({"player": None}) is None
-    assert _drop_position_only_player({"player": "shooting guard", "stat": "points"}) == {"player": None, "stat": "points"}
-    assert _drop_position_only_player({"player": "Klay Thompson"}) == {"player": "Klay Thompson"}
+    from association.query.subject import Subject
+
+    # The reading says the subject is the position group and names nobody.
+    assert _drop_position_only_player({"player": "shooting guard", "stat": "points"}, Subject("position", position="SG")) == {"player": None, "stat": "points"}
+    assert _drop_position_only_player({"player": "Klay Thompson"}, Subject("player", players=("Klay Thompson",))) == {"player": "Klay Thompson"}
 
 
 def test_a_position_word_misfiled_as_the_player_slot_reads_as_the_subject(cx_ctx: TemplateContext) -> None:

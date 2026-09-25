@@ -2873,6 +2873,15 @@ those were found.
   position word is the compose agent's next step (F056). Left open for the
   corpus questions that route to a template which answers the team's own
   numbers without refusing.
+- **Re-measured 2026-09-25 (subject kinds, steps 3d-3e):** the reading
+  says `position` for all six, the position phrase in `player` (F056) is
+  no longer read as a player, and the team the router files in `team` for
+  a position-group log is its opponent, not the subject - "Centers stats
+  game log vs kings" and "forwards with 20+ mins vs gsw log" answer "every
+  center vs the Sacramento Kings" / "every forward vs the Golden State
+  Warriors with at least 20 minutes" on the recorded golden. Still open:
+  the attempts floor above, and the current season's generic position
+  codes (DATA.md).
 
 ### A team's per-quarter average of anything but points has no source
 - **Found:** 2026-09-20, finishing the quarters-and-halves work

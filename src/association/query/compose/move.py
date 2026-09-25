@@ -13,18 +13,20 @@ the router dropped, and player names the router filed as the ``opponent``.
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import duckdb
 
-from association.query.entities import find_players, find_teams, players_named_in
 from association.query.measures import MEASURE_WORDS
 from association.query.metrics import PER_GAME_MIN_GAMES
-from association.query.templates.common import TemplateResult
+from association.query.templates.common import FILLER_PLAYER_WORDS, POSITIONS, TEAM_ONLY_INTENTS, TemplateResult
 
 from .adapt import DEFAULT_SINGLE_GAME_LIMIT, _clamp, _named_player, to_query
 from .core import BOOLEAN_MEASURES, COLUMNS, DERIVED, LINE, Query, Refused, Unsupported
-from .team import GAME_MEASURES, SEASON_MEASURES, TeamQuery, team_named_in
+from .team import GAME_MEASURES, SEASON_MEASURES, TeamQuery
+
+if TYPE_CHECKING:
+    from association.query.subject import Subject
 
 #: The router's own stat names that are not relation columns, as measures.
 MEASURE_ALIASES: dict[str, str] = {
@@ -120,55 +122,48 @@ def _stat_measure(stat: Any) -> str | None:
     return MEASURE_WORDS.get(stat.strip().lower())
 
 
-def repair(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], question: str) -> dict[str, Any]:
-    """Two repairs the question text supports exactly - never a guess between
-    candidates. Returns a new dict.
+def repair(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], question: str, subject: Subject | None = None) -> dict[str, Any]:
+    """Two repairs the subject reading supports exactly - never a guess
+    between candidates. Returns a new dict.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.5.0
+       Reads the :class:`~association.query.subject.Subject` (read here
+       when not given) rather than the question's names over again.
     """
     slots = dict(slots)
-    named = players_named_in(con, question)
+    subject = _subject(con, question, slots, subject)
+    named = list(dict.fromkeys((*subject.players, *subject.companions)))
     # A subject the router dropped ("how many playoff games has embiid won?"
     # arrived with a team and no player): restore it when the question names
     # exactly one player.
     if not _named_player(slots) and len(named) == 1:
-        slots["player"] = str(named[0])
+        slots["player"] = named[0]
     # Player names filed as the opponent ("bane game log without anthony
     # black and franz wagner") are teammates absent, when the question says so.
     opp = slots.get("opponent")
     if isinstance(opp, str) and opp.strip() and re.search(r"\bwithout\b", question, re.I):
         parts = [p.strip() for p in re.split(r",|\band\b", opp) if p.strip()]
-        if parts and all(any(p.lower() in str(n).lower() or str(n).lower() in p.lower() for n in named) for p in parts):
+        if parts and all(any(p.lower() in n.lower() or n.lower() in p.lower() for n in named) for p in parts):
             slots["without"] = [*(slots.get("without") or []), *parts]
             slots["opponent"] = None
     return slots
 
 
-#: A question's position word, mapped to :data:`~association.query.templates.common.POSITION_CODES`' own letter.
-POSITIONS: list[tuple[str, str]] = [
-    (r"\bcenters?\b", "C"),
-    (r"\bpoint guards?\b", "PG"),
-    (r"\bshooting guards?\b", "SG"),
-    (r"\bpower forwards?\b", "PF"),
-    (r"\bsmall forwards?\b", "SF"),
-    (r"\bforwards?\b", "F"),
-    (r"\bguards?\b", "G"),
-]
-"""``(pattern, position code)`` - the words a position-group question uses.
+def _subject(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], subject: Subject | None, intent: str = "") -> Subject:
+    """The reading the agent already made, or one made here for a caller
+    (a test, a script) that has none. A call-time import: the subject module
+    imports this package's team relation, so a module-level one would cycle."""
+    if subject is not None:
+        return subject
+    from association.query.subject import read_subject
 
-.. versionadded:: 4.4.0
-"""
+    return read_subject(con, question, intent, slots)
+
 
 _RANKING = re.compile(r"\b(leaders?|most|highest|top|best|fewest|least|lowest)\b", re.I)
 _LOG = re.compile(r"\b(log|gamelog|game log|each game|by game|stats)\b", re.I)
-
-
-def _position(question: str) -> str | None:
-    """The position code :data:`POSITIONS` finds named in ``question``, or None."""
-    for pattern, code in POSITIONS:
-        if re.search(pattern, question, re.I):
-            return code
-    return None
 
 
 def _position_only_player(slots: dict[str, Any]) -> str | None:
@@ -193,38 +188,45 @@ def _position_only_player(slots: dict[str, Any]) -> str | None:
     return None
 
 
-def _drop_filler_or_team_player(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> dict[str, Any]:
+def _drop_filler_or_team_player(slots: dict[str, Any], subject: Subject) -> dict[str, Any]:
     """``slots`` with ``player`` cleared when it holds the router's own
-    filler word ("player", filed on "Most points in 15th season played" -
-    yardstick-v2 F099), or a TEAM's name and no player's ("oklahoma city
-    thunder all-time triple doubles" - F152), which becomes the ``team``
-    narrowing of a league-wide read: the team's players' games. A name
-    matching a player is left alone; a name matching neither is left for
-    the relation to refuse by name.
+    filler word (:data:`~association.query.templates.common.FILLER_PLAYER_WORDS`,
+    filed on "Most points in 15th season played" - yardstick-v2 F099), or a
+    TEAM's name and no player's ("oklahoma city thunder all-time triple
+    doubles" - F152), which becomes the ``team`` narrowing of a league-wide
+    read: the team's players' games. The reading says which: a team in the
+    slot reads as ``team``/``team_players`` with no player, a real player as
+    the player. A name matching neither is left for the relation to refuse
+    by name.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.5.0
+       Reads the subject rather than the roster over again.
     """
     text = slots.get("player")
     if not (isinstance(text, str) and text.strip()):
         return slots
-    if text.strip().lower() in ("player", "players", "a player", "any player"):
+    if text.strip().lower() in FILLER_PLAYER_WORDS:
         return {**slots, "player": None}
-    if not slots.get("team") and find_teams(con, text) and not find_players(con, text):
+    if not slots.get("team") and subject.kind in ("team", "team_players") and not subject.players:
         return {**slots, "player": None, "team": text}
     return slots
 
 
-def _drop_position_only_player(slots: dict[str, Any]) -> dict[str, Any]:
-    """``slots``, with ``player`` cleared when :func:`_position_only_player`
-    finds it holds only a position word. Nothing here needs to carry the
-    code forward by hand: once ``player`` reads empty, :func:`_everyone_point`
-    reads the position straight back off the QUESTION TEXT (:func:`_position`),
-    the same way every other position-group reading in this module already
-    does.
+def _drop_position_only_player(slots: dict[str, Any], subject: Subject) -> dict[str, Any]:
+    """``slots``, with ``player`` cleared when the reading says the subject
+    is a position group and names no player - the router's ``player`` slot
+    holding nothing but a position phrase ("shooting guard", F056). Nothing
+    here needs to carry the code forward by hand: :func:`_everyone_point`
+    reads the position off the subject.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.5.0
+       Reads the subject's kind rather than matching the slot again.
     """
-    if _position_only_player(slots) is not None:
+    if subject.kind == "position" and not subject.players and _position_only_player(slots) is not None:
         return {**slots, "player": None}
     return slots
 
@@ -277,13 +279,19 @@ def _ranking_minimum(question: str) -> tuple[str, int] | None:
     return match.group(2).lower(), int(match.group(1))
 
 
-def _everyone_guard(question: str) -> None:
-    """What a league-wide read cannot answer: a period, or a team's own
-    figure read literally as a ranking of players (K2's guards)."""
+def _everyone_guard(intent: str, question: str, position: str | None) -> None:
+    """What a league-wide read cannot answer: a period, a team's own figure
+    read literally as a ranking of players (K2's guards), or a team-only
+    intent's question at all - "Best NBA record since January 31st 2015"
+    reached this read once the reading stopped naming Travis Best for it,
+    and a player ranking refusing it for want of a "record" measure names
+    the wrong cause; it is not this relation's question."""
     if _PERIOD.search(question):
         raise Unsupported("a quarter or half is the period relation's question")
-    if _NOT_PLAYERS.search(question) and not _position(question):
+    if _NOT_PLAYERS.search(question) and not position:
         raise Unsupported("a team, an opponent's figure or a franchise is the team relation's question")
+    if intent in TEAM_ONLY_INTENTS:
+        raise Unsupported("a team's own question is not the player relation's")
 
 
 def _everyone_opponent(slots: dict[str, Any], question: str) -> dict[str, Any]:
@@ -531,7 +539,7 @@ def _everyone_position_log(slots: dict[str, Any], question: str, position: str |
     return Query(slots, "rows", list(LINE), "none", "none", [], "date", "desc", _clamp(slots.get("limit"), 10), subject="everyone", position=position)
 
 
-def _everyone_point(intent: str, slots: dict[str, Any], question: str, measure: str | None) -> Query:
+def _everyone_point(intent: str, slots: dict[str, Any], question: str, measure: str | None, position: str | None = None) -> Query:
     """No player named: the league-wide read of the same relation. A ranking
     word makes it grouped by player; a log word with a position makes it
     rows; "most ... in a game" is rows by measure over everyone; a
@@ -547,10 +555,9 @@ def _everyone_point(intent: str, slots: dict[str, Any], question: str, measure: 
        and ranking moves, since both are more specific readings of a
        ``threshold_count``/ranking question than either of those.
     """
-    _everyone_guard(question)
+    _everyone_guard(intent, question, position)
     slots = _everyone_opponent(slots, question)
     slots = _everyone_career_slots(slots, question)
-    position = _position(question)
     words = _measure_words(question)
     measure, predicates = _measure_and_predicates(words, measure if measure not in BOOLEAN_MEASURES else None)
     predicates = _everyone_threshold_predicates(slots, question, measure, predicates)
@@ -705,7 +712,7 @@ def _team_measure(slots: dict[str, Any], question: str) -> str | None:
     return None
 
 
-def team_move_point(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], question: str) -> TeamQuery | None:
+def team_move_point(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], question: str, subject: Subject | None = None) -> TeamQuery | None:
     """Whether ``question``/``slots`` name a team as the grammatical
     SUBJECT - no player, a team identifiable (the router's own ``team`` slot,
     or :func:`~association.query.compose.team.team_named_in` when the router
@@ -733,17 +740,19 @@ def team_move_point(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], quest
         return None
     team_text = slots.get("team")
     if not (isinstance(team_text, str) and team_text.strip()) or team_text == "any_team":
-        found = team_named_in(con, question)
-        if found is None:
+        # The router dropped the team (F127's shape): the subject reading
+        # has it, from the question's own team word.
+        subject = _subject(con, question, slots, subject)
+        if subject.kind not in ("team", "team_players") or not subject.teams:
             return None
-        slots = {**slots, "team": found}
+        slots = {**slots, "team": subject.teams[0]}
     measure = _team_measure(slots, question)
     if measure is None:
         return None
     return TeamQuery(slots, measure=measure, aggregate="total")
 
 
-def move_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str) -> Query | TeamQuery:
+def move_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None) -> Query | TeamQuery:
     """The intent's default point, moved by the question's own words: a
     measure beyond a template's list, a skeleton move ("most ... in a game" =
     rows by measure; "how many ... won" = count with a predicate), and two
@@ -773,14 +782,21 @@ def move_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any
        since a position phrase misfiled as a name would otherwise be
        resolved as one (:func:`_move_named`) rather than read as the
        position-group subject it is.
+
+    .. versionchanged:: 4.5.0
+       Takes the :class:`~association.query.subject.Subject` the agent read
+       (read here when not given), and every subject repair reads it: the
+       position group, the filler and the team in ``player``, the dropped
+       subject, the team the router left out, the position.
     """
-    slots = _drop_position_only_player(slots)
-    slots = _drop_filler_or_team_player(con, slots)
+    subject = _subject(con, question, slots, subject, intent)
+    slots = _drop_position_only_player(slots, subject)
+    slots = _drop_filler_or_team_player(slots, subject)
     if not _named_player(slots):
-        team_query = team_move_point(con, slots, question)
+        team_query = team_move_point(con, slots, question, subject)
         if team_query is not None:
             return team_query
-    slots = repair(con, slots, question)
+    slots = repair(con, slots, question, subject)
     if not _named_player(slots):
-        return _everyone_point(intent, slots, question, _stat_measure(slots.get("stat")))
+        return _everyone_point(intent, slots, question, _stat_measure(slots.get("stat")), subject.position)
     return _move_named(intent, slots, question)

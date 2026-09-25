@@ -41,7 +41,6 @@ from typing import Any, NamedTuple
 
 import duckdb
 
-from association.query.compose.move import POSITIONS
 from association.query.compose.team import team_named_in
 from association.query.decisions import Decision
 from association.query.entities import (
@@ -63,7 +62,15 @@ from association.query.entities import (
     players_named_in,
 )
 from association.query.season_text import season_from_text
-from association.query.templates.common import OWN_TEAM_RESTORABLE_INTENTS, PLAYER_INTENTS, PLAYER_REQUIRED_INTENTS, SUBJECT_RESTORABLE_INTENTS, TEAM_SUBJECT_RESTORABLE_INTENTS
+from association.query.templates.common import (
+    FILLER_PLAYER_WORDS,
+    OWN_TEAM_RESTORABLE_INTENTS,
+    PLAYER_INTENTS,
+    PLAYER_REQUIRED_INTENTS,
+    POSITIONS,
+    SUBJECT_RESTORABLE_INTENTS,
+    TEAM_SUBJECT_RESTORABLE_INTENTS,
+)
 
 #: The kinds a subject can be. ``team_players`` is "a Hawks player" - the
 #: team's players as a group, which the compiler's team-where-a-player-
@@ -398,9 +405,19 @@ def _routed_names(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], questio
     the ones it never held, minus any that is a team (the router files
     "Boston Celtics" as a player; a team is a narrowing, not an invention)."""
     team_slot = _team_slot_player(con, slots)
-    routed = [p for p in _routed_player_slots(slots) + ([opponent_player] if opponent_player else []) + ([team_slot] if team_slot else []) if not _is_a_team(con, p)]
+    routed = [p for p in _routed_player_slots(slots) + ([opponent_player] if opponent_player else []) + ([team_slot] if team_slot else []) if not _is_a_team(con, p) and not _not_a_name(p)]
     supported = [p for p in routed if question_supports(p, question)]
     return supported, [p for p in routed if p not in supported]
+
+
+def _not_a_name(text: str) -> bool:
+    """A router ``player`` that is no name at all: a position phrase ("shooting
+    guard" on "highest 3 point percentage ... by a shooting guard", F056 - the
+    position-group subject, which :attr:`Subject.position` carries) or the
+    router's filler word ("player" on "Most points in 15th season played",
+    F099). Neither is a player to read, replace or report."""
+    stripped = text.strip()
+    return stripped.lower() in FILLER_PLAYER_WORDS or any(re.fullmatch(pattern, stripped, re.IGNORECASE) for pattern, _ in POSITIONS)
 
 
 def _team_slot_player(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> str | None:
@@ -463,6 +480,7 @@ def _team_names(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, 
         and routed_team
         and not names
         and question_supports(routed_team, question)
+        and _team_named(con, routed_team) is not None  # "any_team" is the router's placeholder, not a team
         and not any(t and (question_supports(routed_team, t) or question_supports(t, routed_team)) for t in (opponent, own_team))
     ):
         names.append(routed_team)

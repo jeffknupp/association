@@ -26,7 +26,7 @@ a connection, an already-routed intent and slots, and the question's own text.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from association.query.templates.common import TemplateContext, TemplateResult, check_coverage, coverage_caveat
 
@@ -36,6 +36,9 @@ from .sentence import _span_phrase
 from .sentence import sentence as _sentence
 from .sentence import team_sentence as _team_sentence
 from .team import TeamQuery, TeamResult, run_team
+
+if TYPE_CHECKING:
+    from association.query.subject import Subject
 
 __all__ = ["answer"]
 
@@ -85,7 +88,7 @@ def _team_point_data(query: TeamQuery, result: TeamResult) -> dict[str, Any]:
     }
 
 
-def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: str) -> TemplateResult | None:
+def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None) -> TemplateResult | None:
     """A router-classified question, answered by the compiler where a
     template refused it - or ``None``, meaning the question is not a point on
     this relation at all and should fall through to the agent.
@@ -131,7 +134,7 @@ def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: s
        ``games``/``team_season_stats``, never a player's box score).
     """
     try:
-        query = move_point(ctx.con, intent, slots, question)
+        query = move_point(ctx.con, intent, slots, question, subject)
         if isinstance(query, TeamQuery):
             result = run_team(ctx.con, query)
             return TemplateResult(data=_team_point_data(query, result), answer=_team_sentence(query, result), artifacts=[])

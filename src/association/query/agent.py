@@ -341,7 +341,7 @@ class Agent:
         # was wrong (query/subject.py); each chain step becomes a no-op, then
         # goes, as the reading takes over the field it settled.
         subject = self._record_subject(question, routed, history)
-        settled = self._settled_before_template(question, routed, handler, history)
+        settled = self._settled_before_template(question, routed, handler, history, subject)
         if settled is not None:
             return settled
         if handler is None:
@@ -387,7 +387,7 @@ class Agent:
                 message = team_only_question_names_a_player(named_player, routed.intent)
                 history.log(f"  -> (player) {message}")
                 return routed.intent, TemplateResult(data={"message": message, "named_player": named_player}, answer=message)
-        return self._run_scoped_template(question, routed, handler, history)
+        return self._run_scoped_template(question, routed, handler, history, subject)
 
     def _ground_players(self, routed: Route, subject: Subject, history: RunHistory) -> TemplateResult | None:
         """Every player name a template will read is one the question holds:
@@ -431,7 +431,7 @@ class Agent:
                 history.record_decision(Decision("subject", name, None, list(value) if isinstance(value, tuple) else value, "from the question's own words"))
         return subject
 
-    def _settled_before_template(self, question: str, routed: Route, handler: Callable[..., TemplateResult] | None, history: RunHistory) -> tuple[str, TemplateResult] | None:
+    def _settled_before_template(self, question: str, routed: Route, handler: Callable[..., TemplateResult] | None, history: RunHistory, subject: Subject) -> tuple[str, TemplateResult] | None:
         """What is decided before any template runs: a shape the question's
         own words settle (a championship question a team ranking would
         answer fluently and wrongly - refusals.by_question), and, where no
@@ -446,14 +446,16 @@ class Agent:
             return routed.intent, early
         if handler is not None:
             return None
-        refusal = unanswerable(self.toolbox.con, routed.intent, routed.slots, question)
+        refusal = unanswerable(self.toolbox.con, routed.intent, routed.slots, question, subject)
         if refusal is not None:
             history.log(f"  -> (refusal) {refusal.data['refused']}: nothing here reads that shape")
             return routed.intent, refusal
         self.fell_through = f"intent {routed.intent!r} has no template yet"
         return None
 
-    def _run_scoped_template(self, question: str, routed: Route, handler: Callable[[TemplateContext, dict[str, Any]], TemplateResult], history: RunHistory) -> tuple[str, TemplateResult] | None:
+    def _run_scoped_template(
+        self, question: str, routed: Route, handler: Callable[[TemplateContext, dict[str, Any]], TemplateResult], history: RunHistory, subject: Subject
+    ) -> tuple[str, TemplateResult] | None:
         """Check scope and coverage, run the template, and attach the notes
         every fast-path answer carries. On a scoping refusal
         (``TemplateUnsupported``, from ``check_scope`` or the template itself),
@@ -496,7 +498,7 @@ class Agent:
             # (a clarification, a "no match") is still an answer, not a
             # fall-through: it looked at the question.
             t1 = time.monotonic()
-            composed = self._try_compose(question, routed.intent, routed.slots, history)
+            composed = self._try_compose(question, routed.intent, routed.slots, history, subject)
             if composed is not None:
                 history.record_tool_call(f"compose {routed.intent}", time.monotonic() - t1)
                 history.log(f"  -> (template) {exc} - composed instead of falling through")
@@ -505,7 +507,7 @@ class Agent:
             # read - a playoff round, an age, a stat by quarter other than
             # points? The agent has no better source for those either, and a
             # refusal naming the missing thing is the answer (query/refusals).
-            refusal = unanswerable(self.toolbox.con, routed.intent, routed.slots, question)
+            refusal = unanswerable(self.toolbox.con, routed.intent, routed.slots, question, subject)
             if refusal is not None:
                 history.log(f"  -> (template) {exc} - refused ({refusal.data['refused']}): nothing here reads that shape")
                 return routed.intent, refusal
@@ -517,7 +519,7 @@ class Agent:
         # TemplateResult for why that is both faster and safer than narrating.
         return routed.intent, result
 
-    def _try_compose(self, question: str, intent: str, slots: dict[str, Any], history: RunHistory) -> TemplateResult | None:
+    def _try_compose(self, question: str, intent: str, slots: dict[str, Any], history: RunHistory, subject: Subject) -> TemplateResult | None:
         """The step between a template's refusal and the fall-through agent:
         ``association.query.compose.answer``, called only here so a caller
         that never sees a ``TemplateUnsupported`` never pays for the import.
@@ -536,7 +538,7 @@ class Agent:
         from . import compose
 
         with collect_name_readings() as readings:
-            composed = compose.answer(TemplateContext(con=self.toolbox.con, out_dir=self.toolbox.out_dir), intent, slots, question)
+            composed = compose.answer(TemplateContext(con=self.toolbox.con, out_dir=self.toolbox.out_dir), intent, slots, question, subject)
         if composed is None:
             return None
         for reading in readings:
