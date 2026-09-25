@@ -362,10 +362,14 @@ scope string the template computed (``question_shape``) or from the answer's
 own first line.
 
 An intent with no renderer answers exactly as it always did, in the text the
-CLI prints - which is the normal case, not a failure. So does a shape a
-renderer decides is not worth a table: "who leads the league in assists?"
-returns a single row, and one row is not a ranking, so it stays a sentence.
-Every rendered answer keeps the full text one click away, beside the trace.
+CLI prints - which is the normal case, not a failure. A ranking still renders
+down to a single leader ("who leads the league in assists?"), but a shape a
+renderer decides is not worth a table still falls back to the sentence - two
+players compared where the same question would draw one polygon for a
+fingerprint, say. A long ranking shows its top ten and folds the rest under
+their own count, and a long per-game or per-season table folds the same way
+beneath its trend line. Every rendered answer keeps the full text one click
+away, beside the trace.
 
 Charts render in the conversation. A question that draws a shot chart or a
 fingerprint shows it inline, served from the same directory the CLI writes to -
@@ -383,7 +387,10 @@ Each chart is drawn in an ``<iframe>`` with scripts disabled: the pages
 complete, theme-aware documents of pure HTML, SVG and CSS - they have never
 contained a script - so nothing is lost by refusing to run one, and the
 directory being served is one you can drop files into yourself. A frame taller
-than the cap scrolls, and the link beneath it opens the standalone file.
+than the cap scrolls, and the link beneath it opens the standalone file. A
+chart-only answer still gets a headline above it and any note the template
+attached beneath - which player, which season, a substitution the router made
+- rather than just the chart on its own.
 
 Three more things about it are deliberate:
 
