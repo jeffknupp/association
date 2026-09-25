@@ -170,6 +170,18 @@ def cx_ctx(tmp_path: Path) -> TemplateContext:
         "INSERT INTO player_season_stats_deduped VALUES (?, ?, 2, 1)",
         [(pid, season) for pid in (PODZ, CURRY, BROWN, SABONIS, "90", "91") for season in (s - 1, s)],
     )
+    # `_player_own_seasons` (`compose.core`) reuses `templates.players._seasons_on_record`,
+    # which reads the RAW table `player_season_stats_deduped` is a view over
+    # in the real warehouse - so a plain career sentence can name a player's
+    # own first and last season instead of the relation's floor (ISSUES.md,
+    # "The compiler's career span says '(1994 on)' ..."). Same rows as the
+    # deduped table above: this fixture has no postseason-copy row for either
+    # to disagree about.
+    c.execute("CREATE TABLE player_season_stats (athlete_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, gamesPlayed INTEGER, points INTEGER)")
+    c.executemany(
+        "INSERT INTO player_season_stats VALUES (?, ?, 2, NULL, 1, NULL)",
+        [(pid, season) for pid in (PODZ, CURRY, BROWN, SABONIS, "90", "91") for season in (s - 1, s)],
+    )
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
@@ -464,6 +476,37 @@ def test_a_closed_range_is_named_as_one_and_counted_as_one(cx_ctx: TemplateConte
     assert one is not None
     assert f"career ({s - 1})" in one.answer
     assert one.data["rows"][0]["games"] == 2
+
+
+def test_a_plain_career_names_the_players_own_seasons_not_the_floor(cx_ctx: TemplateContext) -> None:
+    """A career with no ``since``/``until`` named used to read the relation's
+    floor - "(1994 on)", true of every player and naming nothing about the
+    one asked about (ISSUES.md, "The compiler's career span says '(1994 on)'
+    where the template named the player's own seasons" - yardstick-v2 F061,
+    "Sga games with under 14 fta in his whole career", where ``threshold_count``
+    said "(2018-19 through 2025-26)" for the same 479 games and the compiler
+    said "(1994 on)"). A named player's own first and last season on record
+    (:func:`~association.query.compose.core._player_own_seasons`, reusing
+    :func:`~association.query.templates.players._seasons_on_record` - the
+    same read ``threshold_count``/``single_game_high`` already make through
+    ``_game_span``) now names the career instead; the fixture's players are
+    on record for seasons s-1 and s (``cx_ctx``'s ``player_season_stats``
+    rows). A league-wide career - no one player's seasons to substitute -
+    still reads the floor, so ``player_seasons`` stays unset for it."""
+    s = current_season()
+    result = compose_answer(cx_ctx, "threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15, "span": "career"}, "Podziemski's games with 15+ points in his whole career")
+    assert result is not None
+    assert f"({s - 1}-{s})" in result.answer
+    assert "1994" not in result.answer
+    # g1 (20), g2 (15), g3 (28), g7 (18) clear 15; g5 (10) and g6 (12) do
+    # not, and g4's DNP is not a game at all (see the `_box` inserts above).
+    assert result.data["rows"][0]["games"] == 4
+    assert result.data["span"] == f"regular season career ({s - 1}-{s})"
+
+    q = move_point(cx_ctx.con, "threshold_count", {"threshold": 10, "stat": "rebounds", "span": "career"}, "players with 10 points career")
+    assert isinstance(q, Query) and q.subject == "everyone"
+    out = run(cx_ctx.con, q)
+    assert out["player_seasons"] is None
 
 
 def test_a_refusal_from_answer_is_the_relations_own(cx_ctx: TemplateContext) -> None:
@@ -913,8 +956,11 @@ def test_a_career_predating_box_scores_gets_the_floor_note(cx_ctx: TemplateConte
     """A career reaching further back than box scores do (the real 1994
     floor, `nba.coverage` - not derived from this fixture) says so.
     Podziemski's `player_season_stats_deduped` row for 1990, added here
-    only, is what makes his earliest season on record predate the floor."""
+    only, is what makes his earliest season on record predate the floor. The
+    matching raw-table row keeps `_player_own_seasons` (`compose.core`, which
+    reads `player_season_stats`) agreeing with it."""
     cx_ctx.con.execute("INSERT INTO player_season_stats_deduped VALUES ('10', 1990, 2, 10)")
+    cx_ctx.con.execute("INSERT INTO player_season_stats VALUES ('10', 1990, 2, NULL, 10, NULL)")
     q = to_query("game_log", {"player": "Brandin Podziemski", "span": "career"})
     out = run(cx_ctx.con, q)
     assert any("Box scores begin with the 1993-94 season" in note and "1990-1993" in note for note in out["notes"])
@@ -924,6 +970,7 @@ def test_no_career_floor_note_when_the_season_is_defaulted_not_career(cx_ctx: Te
     """The floor note is a CAREER note - it says nothing about a plain
     current-season read, even with the same older row on record."""
     cx_ctx.con.execute("INSERT INTO player_season_stats_deduped VALUES ('10', 1990, 2, 10)")
+    cx_ctx.con.execute("INSERT INTO player_season_stats VALUES ('10', 1990, 2, NULL, 10, NULL)")
     q = to_query("game_log", {"player": "Brandin Podziemski"})
     out = run(cx_ctx.con, q)
     assert not any("Box scores begin with" in note for note in out["notes"])

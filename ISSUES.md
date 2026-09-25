@@ -3178,40 +3178,6 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
-### A game log's same-date rows come out in an unstable order
-- **Found:** 2026-09-25, running the agent-level golden
-  (`scripts/preview_answers.py` over `live_day2.jsonl`) on master three
-  times to classify a diff.
-- **Evidence:** "Centers stats game log vs kings" and "forwards with 20+
-  mins vs gsw log" (a position group's log, several players on one date)
-  list the 2026-04-12 rows in a different order run to run - Robert
-  Williams III first twice, Donovan Clingan first once - on the same
-  commit and warehouse. The log is ordered by date alone
-  (`player_games.rows_sql`), so rows sharing a date fall in DuckDB's
-  parallel scan order.
-- **User sees:** the same question answered with the same rows in a
-  different order; a golden comparison reads it as a change.
-- **Next step:** a deterministic tiebreak after the date - event id, then
-  player name - in the relation's one ORDER BY, so every reader gets it.
-- **Source:** ours.
-
-### The compiler's career span says "(1994 on)" where the template named the player's own seasons
-- **Found:** 2026-09-25, grading `live_day3.jsonl` (yardstick-v2 F061 "Sga
-  games with under 14 fta in his whole career").
-- **Evidence:** day2 answered through `threshold_count` - "479 games ... in
-  his regular season career (2018-19 through 2025-26)"; day3, with the
-  router now filing `freeThrowsAttempted` (a1acde5), the question reaches
-  the compiler and its sentence says "in the regular season career (1994
-  on)" - the relation's floor, not his seasons. Same 479, vaguer scope;
-  `compose/sentence.py`'s `_span_phrase` for a career span.
-- **User sees:** a correct count with a scope line that reads as the
-  warehouse's floor rather than the player's career - "1994 on" for a
-  player who debuted in 2018.
-- **Next step:** the career phrase names the player's first and last
-  regular season (the relation already has them - the template's own
-  wording), falling back to the floor only for a league-wide read.
-- **Source:** ours.
-
 ### `team_record`'s standings/games-record card renderer always duplicates its own caption
 - **Found:** 2026-09-25, the "look nice" data-shape sweep, screenshotting
   answers through the real page rather than only diffing `data`.

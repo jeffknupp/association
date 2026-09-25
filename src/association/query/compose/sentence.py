@@ -60,21 +60,37 @@ PREDICATE_WORDS: dict[str, str] = {"won": "won", "triple_double": "with a triple
 """
 
 
-def _span_phrase(span: Any) -> str:
+def _span_phrase(span: Any, player_seasons: tuple[int, int] | None = None) -> str:
     """The span an answer names: a season, or a career (from its first season
     on, or between the two seasons a closed range named).
+
+    ``player_seasons`` - a named player's own first and last season on record
+    (:func:`~association.query.compose.core._player_own_seasons`) - names a
+    *plain* career by them instead of the relation's floor: "(1994 on)" is
+    true of every player and names nothing about the one asked about, where a
+    question naming its own ``since``/``until`` already says exactly what it
+    covers and keeps that wording (ISSUES.md, "The compiler's career span
+    says '(1994 on)' where the template named the player's own seasons").
 
     .. versionchanged:: 4.4.0
        A closed range says "(2020-2022)" rather than "(2020 on)" - the numbers
        already stopped at ``until`` (`_span_of` bounds the read), so the
        sentence saying otherwise was a stated scope that did not match the
        count (yardstick-v2 F036). A both-season-types span is named as such.
+
+    .. versionchanged:: 4.5.0
+       Takes ``player_seasons``.
     """
     kind = {2: "regular season", 3: "postseason", BOTH_SEASON_TYPES: "regular season and postseason"}.get(getattr(span, "season_type", 2), "regular season")
     season = getattr(span, "season", None)
     if season is None:
-        first = getattr(span, "first", None)
-        until = getattr(span, "until", None)
+        first: int | None
+        until: int | None
+        if player_seasons is not None:
+            first, until = player_seasons
+        else:
+            first = getattr(span, "first", None)
+            until = getattr(span, "until", None)
         if first and until:
             return f"{kind} career ({first})" if first == until else f"{kind} career ({first}-{until})"
         return f"{kind} career" + (f" ({first} on)" if first else "")
@@ -113,7 +129,7 @@ def _rows_sentence(q: Query, out: dict[str, Any]) -> str:
     rows = out["rows"]
     who = out["player"]
     where = out["narrowing"]
-    span = _span_phrase(out["span"])
+    span = _span_phrase(out["span"], out.get("player_seasons"))
     if not rows:
         return f"No games for {who}{where} in the {span}{_predicates(q)}."
     head = f"{who}{where}, {span}{_predicates(q)}"
@@ -137,7 +153,7 @@ def _scalar_sentence(q: Query, out: dict[str, Any]) -> str:
     rows = out["rows"]
     who = out["player"]
     where = out["narrowing"]
-    span = _span_phrase(out["span"])
+    span = _span_phrase(out["span"], out.get("player_seasons"))
     r = rows[0] if rows else {}
     games = r.get("games") or 0
     if q.aggregate == "count":
@@ -158,7 +174,7 @@ def _grouped_sentence(q: Query, out: dict[str, Any]) -> str:
     rows = out["rows"]
     who = out["player"]
     where = out["narrowing"]
-    span = _span_phrase(out["span"])
+    span = _span_phrase(out["span"], out.get("player_seasons"))
     if not rows:
         return f"No games for {who}{where} in the {span}."
     head = f"{who}{where}, {span}{_predicates(q)}, by {q.group}"
