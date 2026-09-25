@@ -30,9 +30,10 @@ the roadmap's plan item 1, step by step against the golden.
 from __future__ import annotations
 
 import functools
+import gzip
 import re
 from dataclasses import dataclass, replace
-from pathlib import Path
+from importlib import resources
 from typing import Any
 
 import duckdb
@@ -131,16 +132,24 @@ TEAM_SINGULARS: dict[str, str] = {
 
 @functools.lru_cache(maxsize=1)
 def _dictionary() -> frozenset[str]:
-    """The ordinary words: the system word list's lowercase entries (a
-    capitalized entry is a proper noun - "Jordan" is a name there, "best" a
-    word), plus the month abbreviations. A machine with no word list gets
-    the abbreviations alone, and the rule that reads this then fires only
-    on those - a weaker guard, never a wrong one."""
-    try:
-        words = Path("/usr/share/dict/words").read_text().splitlines()
-    except OSError:
-        return _MONTH_ABBREVIATIONS
-    return frozenset(w for w in words if w and w[0].islower() and "'" not in w) | _MONTH_ABBREVIATIONS
+    """The ordinary words: the lowercase entries of a word list shipped in
+    this package (a capitalized entry is a proper noun - "Jordan" is a name
+    there, "best" a word), plus the month abbreviations.
+
+    Shipped rather than read from ``/usr/share/dict/words``, which is what
+    this first did: a machine without that file read "Best record from
+    2010-11 to 2018-19" as a question about Travis Best, so the same question
+    had a different answer on a machine without it - GitHub's runner is one,
+    and CI failed there while passing locally. ``words.txt.gz`` is Debian's
+    ``wamerican`` 2020.12.07 (SCOWL, notice in ``words.COPYRIGHT``) reduced to
+    the entries this function used to keep from it (lowercase first letter, no
+    apostrophe - ``str.islower``, so "élan" is kept), sorted, gzipped with
+    ``mtime=0``: the same 64,005 words the system file gave on the machine
+    this was measured on. A missing file raises
+    rather than falling back: a wheel that dropped it would otherwise answer
+    differently with no error."""
+    words = gzip.decompress(resources.files("association.query").joinpath("words.txt.gz").read_bytes()).decode()
+    return frozenset(words.split()) | _MONTH_ABBREVIATIONS
 
 
 def _levenshtein(a: str, b: str) -> int:

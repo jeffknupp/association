@@ -90,11 +90,14 @@ where = ["src"]
 # treat the package's annotations as authoritative rather than inferring them.
 [tool.setuptools.package-data]
 association = ["py.typed"]
-# The web UI is one self-contained HTML file, and it is the only non-Python
-# thing this package ships. `association web` checks for it at startup rather
-# than on the first request, because a wheel that dropped it would otherwise
-# look like a working server that serves a 404.
+# The web UI is one self-contained HTML file. `association web` checks for it
+# at startup rather than on the first request, because a wheel that dropped it
+# would otherwise look like a working server that serves a 404.
 "association.web" = ["static/*.html"]
+# The ordinary-word list `query.subject` reads, with the notice its license
+# requires. Shipped because reading the system's `/usr/share/dict/words`
+# answered differently on a machine that lacks it.
+"association.query" = ["words.txt.gz", "words.COPYRIGHT"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
