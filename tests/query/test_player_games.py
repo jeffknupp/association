@@ -93,6 +93,30 @@ def test_the_played_guard_is_stated_in_every_read(tmp_path: Path) -> None:
         assert "JOIN games g ON g.event_id = pgl.event_id AND g.season = pgl.season" in sql
 
 
+def test_same_date_rows_are_broken_by_event_then_player_name(con: duckdb.DuckDBPyConnection) -> None:
+    """A league-wide or position-group log lists several players' games on
+    the same date, and ``rows_sql``'s ORDER BY used to be the caller's date
+    alone - so two players' rows on the same date, in the same game, came
+    out in DuckDB's parallel scan order, which is not stable run to run
+    (ISSUES.md, "A game log's same-date rows come out in an unstable
+    order"). :data:`~association.query.player_games.ROWS_TIEBREAK` breaks
+    the tie after the caller's own order - event, then player name - inside
+    :func:`rows_sql` itself, so every caller gets it. Inserted in reverse
+    alphabetical order here (Z before A) to prove the ORDER BY is doing the
+    sorting, not insertion order."""
+    con.execute("INSERT INTO games VALUES ('same', ?, 2, '2026-02-02T00:00Z', 'T', 'T')", [current_season()])
+    con.execute("INSERT INTO player_game_log VALUES ('same', '3', 'Zeke Player', ?, 2, 'T', '2026-02-02T00:00Z', 'OPP', 10, 20, FALSE, FALSE)", [current_season()])
+    con.execute("INSERT INTO player_game_log VALUES ('same', '2', 'Amy Player', ?, 2, 'T', '2026-02-02T00:00Z', 'OPP', 12, 22, FALSE, FALSE)", [current_season()])
+    scope = league("pgl.season = ? AND pgl.event_id = ?", [current_season(), "same"], 2)
+    sql, params = rows_sql(scope, "pgl.player_name", order="pgl.game_date DESC")
+    names = [r[0] for r in con.execute(sql, params).fetchall()]
+    assert names == ["Amy Player", "Zeke Player"]
+    # Run twice: the tiebreak makes a second run come back identical, which
+    # is the property the ISSUES.md entry says DuckDB's scan order alone
+    # does not guarantee.
+    assert con.execute(sql, params).fetchall() == con.execute(sql, params).fetchall()
+
+
 @pytest.fixture
 def alignment_con() -> duckdb.DuckDBPyConnection:
     """One player against three opponents in two seasons that straddle the

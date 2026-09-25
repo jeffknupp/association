@@ -3681,10 +3681,10 @@ def ps_redirect_ctx(tmp_path: Path) -> TemplateContext:
     )
     c.execute(
         "CREATE TABLE player_game_log (event_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, opponent_team_id VARCHAR, "
-        "athlete_id VARCHAR, did_not_play BOOLEAN, minutes INTEGER, starter BOOLEAN)"
+        "athlete_id VARCHAR, player_name VARCHAR, did_not_play BOOLEAN, minutes INTEGER, starter BOOLEAN)"
     )
     c.executemany(
-        "INSERT INTO player_game_log VALUES (?, ?, 2, '1', '2', '1', FALSE, ?, ?)",
+        "INSERT INTO player_game_log VALUES (?, ?, 2, '1', '2', '1', 'Test Player', FALSE, ?, ?)",
         [("e1", s - 1, 30, True), ("e2", s - 1, 28, True), ("e3", s, 15, False)],
     )
     c.execute(

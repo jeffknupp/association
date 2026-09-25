@@ -420,11 +420,28 @@ def league(season_clause: str, season_params: list[Any], season_type: int) -> Na
     return Narrowed(base=[type_clause, season_clause, "NOT pgl.did_not_play"], base_params=[*type_params, *season_params])
 
 
+#: The tiebreak every :func:`rows_sql` read falls back on after its caller's
+#: own order: the game, then the player, so two rows a caller's order leaves
+#: equal - two centers in the same game, on the same date, in a league-wide
+#: log - still come out in the same order every run rather than DuckDB's
+#: parallel scan order, which is not stable. Appended once here rather than
+#: repeated (or forgotten) in each of :func:`rows_sql`'s callers, per
+#: ISSUES.md "A game log's same-date rows come out in an unstable order".
+#:
+#: .. versionadded:: 4.5.0
+ROWS_TIEBREAK = "pgl.event_id, pgl.player_name"
+
+
 def rows_sql(narrowed: Narrowed, select: str, *, order: str, limit: int | None = None, offset: int = 0, rebuilt: bool = False) -> tuple[str, list[Any]]:
     """The rows themselves - a log, a single game, the top game by a stat.
-    ``select`` and ``order`` are column expressions written in code."""
+    ``select`` and ``order`` are column expressions written in code, ordered
+    after by :data:`ROWS_TIEBREAK` so no caller has to add its own.
+
+    .. versionchanged:: 4.5.0
+       Appends :data:`ROWS_TIEBREAK` after ``order``.
+    """
     where, params = narrowed.clauses(rebuilt=rebuilt)
-    sql = f"SELECT {select} {_PLAYER_GAMES} WHERE {where} ORDER BY {order}"
+    sql = f"SELECT {select} {_PLAYER_GAMES} WHERE {where} ORDER BY {order}, {ROWS_TIEBREAK}"
     if limit is not None:
         sql += f" LIMIT {int(limit)}"
     if offset:

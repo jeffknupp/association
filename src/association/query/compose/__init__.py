@@ -54,7 +54,7 @@ def _point_data(query: Query, out: dict[str, Any], headline: str) -> dict[str, A
     return {
         "rows": out["rows"],
         "player": out["player"],
-        "span": _span_phrase(out["span"]),
+        "span": _span_phrase(out["span"], out.get("player_seasons")),
         "narrowing": out["narrowing"],
         "skeleton": query.skeleton,
         "measures": out["measures"],

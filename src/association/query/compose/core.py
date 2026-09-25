@@ -57,6 +57,7 @@ from association.query.templates.common import (
     scoped_player,
 )
 from association.query.templates.games import _team_slot_for_player
+from association.query.templates.players import _seasons_on_record
 
 EASTERN = eastern_date_sql("g.date")
 
@@ -618,6 +619,31 @@ def _grouped_total(con: duckdb.DuckDBPyConnection, q: Query, c: Compiled, rows: 
     return sum(int(dict(zip(names, r, strict=True)).get("games") or 0) for r in cur.fetchall())
 
 
+def _player_own_seasons(con: duckdb.DuckDBPyConnection, player: Entity | None, span: _Span) -> tuple[int, int] | None:
+    """A named player's own first and last season on record, for
+    :func:`~association.query.compose.sentence._span_phrase` to name a plain
+    career by instead of the relation's floor.
+
+    ``threshold_count`` and ``single_game_high`` already read this from the
+    player's own seasons (`templates.players._seasons_on_record`, via
+    `_game_span`) rather than the box-score floor every career otherwise
+    starts from, and this reuses that same read rather than a second one -
+    "one concept, one definition" (`AGENTS.md`). Only for a *plain* career:
+    a named season, or a career explicitly bounded by ``since``/``until``,
+    already says exactly what it covers and is left alone (ISSUES.md, "The
+    compiler's career span says '(1994 on)' where the template named the
+    player's own seasons").
+
+    .. versionadded:: 4.5.0
+    """
+    if player is None or span.season is not None or span.since is not None:
+        return None
+    began, ended = _seasons_on_record(con, player.id, span.season_type)
+    if not isinstance(began, int) or not isinstance(ended, int):
+        return None
+    return began, ended
+
+
 def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
     """Compile and execute: rows as dicts, with what the relation settled.
 
@@ -627,6 +653,11 @@ def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
        appends to the sentence the same way it already appends
        :func:`~association.query.templates.common.coverage_caveat` (#197,
        ISSUES.md).
+
+    .. versionchanged:: 4.5.0
+       Carries ``player_seasons`` (:func:`_player_own_seasons`), so a plain
+       career sentence names the player's own seasons rather than the
+       relation's floor.
     """
     try:
         c = compile_query(con, q)
@@ -641,6 +672,7 @@ def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
         "total": _grouped_total(con, q, c, rows),
         "player": c.player.name if c.player else _everyone_label(q.position),
         "span": c.span,
+        "player_seasons": _player_own_seasons(con, c.player, c.span),
         "narrowing": c.narrowed.filters(windowed=True),
         "window": c.narrowed.window,
         "sql": c.sql,
