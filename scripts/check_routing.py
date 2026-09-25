@@ -37,7 +37,7 @@ from association.query.models import DEFAULT_ROUTER_MODEL
 from association.query.router import RouterUnavailable, route
 from association.query.subject import apply_subject, read_subject
 from association.query.templates import TEMPLATES
-from association.query.templates.common import OWN_TEAM_RESTORABLE_INTENTS, PLAYER_INTENTS, PLAYER_REQUIRED_INTENTS, SUBJECT_RESTORABLE_INTENTS, TEAM_SUBJECT_RESTORABLE_INTENTS
+from association.query.templates.common import PLAYER_INTENTS
 
 # (question, expected intent, expected slots). A list-valued expectation is a
 # SUBSET check: dropping a field the user asked for is a bug, while the router
@@ -361,7 +361,7 @@ CASES: list[tuple[str, str, dict]] = [
     # yardstick-v2 F166: "for <team>"/"with the <team>" beside a player, with
     # no season named, is his TENURE there - "lebron stats as a starter for
     # Miami" used to answer his current (Lakers) season, "Miami" never read
-    # at all. entities._scope_from_question_own_team restores `own_team` -
+    # at all. subject._apply_own_team restores `own_team` -
     # never the router's own `team`, which a recorded golden case shows
     # sitting beside a correct `opponent` as noise (see that function's own
     # docstring) - and defaults `span` to career the same way F031's "since
@@ -380,7 +380,7 @@ CASES: list[tuple[str, str, dict]] = [
     ("alperen şengün alltime record", "team_leaderboard", {}),
     # yardstick-v2 F127: routed to `leaderboard` with `stat`/`season` only -
     # no `team` at all - and ranked the league's individual leaders in makes,
-    # the Magic never named. entities._scope_from_question_team_subject
+    # the Magic never named. subject._apply_team_subject
     # restores the team into `team` (so query.compose can see it) and marks
     # it `team_restored` - a slot leaderboard's own HONORED_SCOPING never
     # lists, so check_scope refuses and hands the question to compose instead
@@ -543,17 +543,7 @@ def main() -> int:
                 restore_dropped_players(con, question, got.slots)
             # The same order agent.py applies them in: this is where a player
             # the router swapped for his own team comes back.
-            scope_from_question(
-                con,
-                question,
-                got.slots,
-                reads_player=got.intent in PLAYER_INTENTS,
-                needs_player=got.intent in PLAYER_REQUIRED_INTENTS,
-                restore_subject=got.intent in SUBJECT_RESTORABLE_INTENTS,
-                restore_team=got.intent in OWN_TEAM_RESTORABLE_INTENTS,
-                restore_team_subject=got.intent in TEAM_SUBJECT_RESTORABLE_INTENTS,
-                intent=got.intent,
-            )
+            scope_from_question(con, question, got.slots, reads_player=got.intent in PLAYER_INTENTS)
             apply_subject(subject, got.slots, con=con, intent=got.intent)
         if got is None:
             print(f"FAIL  {elapsed:5.2f}s  {question}\n        router returned nothing", flush=True)

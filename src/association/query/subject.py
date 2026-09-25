@@ -61,7 +61,8 @@ from association.query.entities import (
     nicknames_in,
     players_named_in,
 )
-from association.query.templates.common import PLAYER_INTENTS
+from association.query.season_text import season_from_text
+from association.query.templates.common import OWN_TEAM_RESTORABLE_INTENTS, PLAYER_INTENTS, PLAYER_REQUIRED_INTENTS, SUBJECT_RESTORABLE_INTENTS, TEAM_SUBJECT_RESTORABLE_INTENTS
 
 #: The kinds a subject can be. ``team_players`` is "a Hawks player" - the
 #: team's players as a group, which the compiler's team-where-a-player-
@@ -97,8 +98,9 @@ class Subject:
        spelling of each router name, resolved from the span the router's
        name anchors rather than from a whole-word match - which read "kareem
        stats vs bob lanier" as Kareem Rush. ``routed_opponent`` and
-       ``invented`` added. ``opponent`` also reads the router's slot where
-       the question supports it.
+       ``invented`` and ``named_season`` added. ``opponent`` also reads the
+       router's slot where the question supports it; ``own_team`` needs the
+       player named before the "for <team>" phrase.
     """
 
     kind: str
@@ -120,6 +122,10 @@ class Subject:
     #: "compare sga and embiid"). :func:`apply_subject` replaces or reports
     #: each, whatever kind the subject is.
     invented: tuple[str, ...] = ()
+    #: The season the question ITSELF names, if one - what the tenure rule
+    #: reads ("for Miami" with no season is a career, not this season), and
+    #: never the router's own "current season" default.
+    named_season: int | None = None
 
 
 _MONTH_ABBREVIATIONS = frozenset({"jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec"})
@@ -429,12 +435,27 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, slo
     players = _merge_names([spellings.get(r, r) for r in routed], named)
     companions = _companions(question, players, slots)
     players = tuple(p for p in players if p not in companions)
-    # "for the Heat" is a player's OWN team only beside a player subject;
-    # with none, "splits for the Sixers" names the team the question is about.
-    own_team = own[0].name if own is not None and players else None
+    # "for the Heat" is a player's OWN team only beside a player subject
+    # named BEFORE it - the order a tenure is asked in ("lebron ... for
+    # Miami"); with none, or with the player following as a condition
+    # ("stats for sixers when maxey scored 20+", F087), it names the team the
+    # question is about.
+    own_team = own[0].name if own is not None and players and _named_before(question, players, own[1]) else None
     teams = _team_names(con, question, slots, team_word, opponent, own_team)
     evidence = _evidence(named, routed, spellings, invented, team_word, opponent)
-    return replace(_decide(players, teams, position, opponent, own_team, companions, evidence, intent, question), routed_opponent=routed_opponent, invented=tuple(invented))
+    return replace(
+        _decide(players, teams, position, opponent, own_team, companions, evidence, intent, question),
+        routed_opponent=routed_opponent,
+        invented=tuple(invented),
+        named_season=season_from_text(question),
+    )
+
+
+def _named_before(question: str, players: tuple[str, ...], at: int) -> bool:
+    """Whether a word of a subject player's name (three letters or more)
+    appears in the question before position ``at``."""
+    head = question[:at].casefold()
+    return any(re.search(rf"\b{re.escape(word)}\b", head) for p in players for word in _words(p.casefold()) if len(word) >= 3)
 
 
 def _evidence(named: list[str], routed: list[str], spellings: dict[str, str], invented: list[str], team_word: str | None, opponent: str | None) -> tuple[str, ...]:
@@ -518,8 +539,97 @@ def apply_subject(subject: Subject, slots: dict[str, Any], *, con: duckdb.DuckDB
     if dropped:
         return [], dropped
     decisions.extend(_apply_opponent(subject, slots))
+    decisions.extend(_apply_restored_player(subject, slots, intent))
     decisions.extend(_apply_opponent_team(subject, slots, con, intent))
+    decisions.extend(_apply_own_team(subject, slots, intent))
+    decisions.extend(_apply_team_subject(subject, slots, intent))
     return decisions, []
+
+
+def _apply_restored_player(subject: Subject, slots: dict[str, Any], intent: str) -> list[Decision]:
+    """Put back the one player the question names where the router left the
+    player out - only for a template that cannot answer without one
+    (:data:`~association.query.templates.common.PLAYER_REQUIRED_INTENTS`:
+    "Sga record 36 plus points" came back with no player at all) or where an
+    empty slot has a real, different answer, the league
+    (:data:`~association.query.templates.common.SUBJECT_RESTORABLE_INTENTS`:
+    "kawhi most threes in a game" answered the league's single-game leaders,
+    Kawhi Leonard's own 7 never mentioned - yardstick-v2 F093). Anywhere
+    else an empty player slot means the league, and filling it would turn a
+    league question into one about somebody the question happened to name.
+    Only where the reading settled on exactly one player - subject or
+    companion: "celtics record with 20+ points from jayson tatum" reads as
+    the Celtics with Tatum as the condition, and ``record_when``'s player
+    slot IS the condition player. "Best true shooting percentage" names
+    Travis Best by whole word and nobody to the reading (an ordinary word),
+    so nothing is restored there."""
+    if intent not in PLAYER_REQUIRED_INTENTS | SUBJECT_RESTORABLE_INTENTS or slots.get("player") or slots.get("players"):
+        return []
+    named = list(dict.fromkeys((*subject.players, *subject.companions)))
+    if len(named) != 1:
+        return []
+    slots["player"] = named[0]
+    return [Decision("subject", "player", None, named[0], "from the question; the router left it out")]
+
+
+def _apply_own_team(subject: Subject, slots: dict[str, Any], intent: str) -> list[Decision]:
+    """Put back a player's OWN team, where "for <team>" / "with the <team>"
+    names one beside him and the router filed neither ``team`` nor
+    ``opponent`` - yardstick-v2 F166, "lebron stats as a starter for Miami".
+    Written to ``own_team``, never ``team``: a router-supplied ``team``
+    beside an already-correct ``opponent`` is documented noise
+    (``templates/games.py``'s ``_team_slot_for_player``), and a template that
+    read ``team`` here would trust it - "lebron james 2 3 pointers all-time
+    vs jazz on tuesdays" carries ``team='Los Angeles Lakers'`` beside a real
+    ``opponent='Utah Jazz'``, and silently narrowed 9 meetings to 4 before
+    ``own_team`` existed. Only for the templates whose relation narrows by
+    it (:data:`~association.query.templates.common.OWN_TEAM_RESTORABLE_INTENTS`).
+
+    A historical team names a TENURE, not "now": with no season named in
+    the question (:attr:`Subject.named_season`, never the router's own
+    "current season" default), ``span`` becomes "career" - "for Miami"
+    fifteen years into a Lakers career is not asking about this season."""
+    if intent not in OWN_TEAM_RESTORABLE_INTENTS or subject.own_team is None or not (slots.get("player") or slots.get("players")):
+        return []
+    if slots.get("team") or slots.get("opponent") or slots.get("own_team"):
+        return []
+    slots["own_team"] = subject.own_team
+    decisions = [Decision("subject", "own_team", None, subject.own_team, "from the question; the router left it out")]
+    if subject.named_season is None and not slots.get("span"):
+        slots["span"] = "career"
+        slots.pop("season", None)
+        decisions.append(Decision("subject", "span", None, "career", 'a team named with no season is a tenure, not "now"'))
+    return decisions
+
+
+def _apply_team_subject(subject: Subject, slots: dict[str, Any], intent: str) -> list[Decision]:
+    """Put back a team the question names as its OWN subject, where the
+    router routed a team-shaped question to ``leaderboard`` or ``team_stat``
+    and dropped the team entirely - yardstick-v2 F127, "how many 3 pointers
+    have the magic made so far this season" arrived at ``leaderboard`` with
+    no team slot at all and ranked the league's leaders in makes
+    (:data:`~association.query.templates.common.TEAM_SUBJECT_RESTORABLE_INTENTS`).
+
+    Only a team the reading settled as the subject itself - not one beside a
+    player (that is ``own_team``'s), not one set against another ("76ers vs
+    magic total points" is a comparison, not one team's total), and not a
+    team-only intent naming a player, which is the F111 refusal-by-name
+    shape this must not paper over. For ``leaderboard`` the restored team
+    is ALSO marked ``team_restored``, a slot ``HONORED_SCOPING`` never lists
+    for it, so ``check_scope`` refuses and ``query.compose`` answers the
+    team's own total instead of ``leaderboard`` ranking players "on" it -
+    while a ``team`` the router itself supplied ("Top 5 scorers on the
+    Lakers?") keeps its direct answer. ``team_stat`` needs no marker: an
+    empty ``team`` there already raises, so the restore is a strict
+    improvement."""
+    if intent not in TEAM_SUBJECT_RESTORABLE_INTENTS or subject.kind not in ("team", "team_players") or subject.opponent is not None or len(subject.teams) != 1:
+        return []
+    if slots.get("team") or slots.get("player") or slots.get("players") or slots.get("opponent"):
+        return []
+    slots["team"] = subject.teams[0]
+    if intent == "leaderboard":
+        slots["team_restored"] = True
+    return [Decision("subject", "team", None, subject.teams[0], "from the question; the router left it out")]
 
 
 def _apply_players(subject: Subject, slots: dict[str, Any]) -> tuple[list[Decision], list[str]]:

@@ -143,7 +143,7 @@ SEASON_TYPE_NAMES = {0: "regular season and postseason", 1: "preseason", 2: "reg
 # beside it (`_span_of`/`_validated_until`); one not wired to `until` at all
 # would otherwise silently read only the range's first half.
 # `team_restored` is not read by anything: it marks a `team` value
-# entities._scope_from_question_team_subject wrote back onto `leaderboard`
+# subject._apply_team_subject wrote back onto `leaderboard`
 # after the router dropped it, so check_scope refuses on its presence alone
 # and query.compose gets the question instead of `leaderboard` quietly
 # ranking players "on" a team that was meant to be the whole subject
@@ -677,9 +677,8 @@ threaded through ``scoped_games`` only where a caller passes it), which only
 "lebron stats as a starter for Miami" (yardstick-v2 F166) used to answer his
 current (Lakers) season, "Miami" never read at all - not even as noise, since
 nothing on the relation could have narrowed to it either way.
-``entities.scope_from_question``'s ``restore_team`` flag reads "for
-<team>"/"with the <team>" beside an already-known player
-(``entities._scope_from_question_own_team``) and, with no season also
+the subject reading reads "for <team>"/"with the <team>" beside an
+already-known player (``subject._apply_own_team``) and, with no season also
 named, defaults ``span`` to "career" too - a historical team names a
 tenure, not "now". Written to ``own_team``, never the router's own ``team``
 slot - see that function's docstring for the recorded case
@@ -728,8 +727,8 @@ second, more general check that could only disagree with the first.
 TEAM_SUBJECT_RESTORABLE_INTENTS: frozenset[str] = frozenset({"leaderboard", "team_stat"})
 """Intents where a team the question names as its own subject, and the
 router dropped outright, is worth restoring into ``team`` -
-``entities.scope_from_question``'s ``restore_team_subject`` flag
-(``entities._scope_from_question_team_subject``, yardstick-v2 F127).
+the subject reading's team-subject write (``subject._apply_team_subject``,
+yardstick-v2 F127).
 
 "how many 3 pointers have the magic made so far this season" routed to
 ``leaderboard`` with no ``team`` slot at all - `stat` and `season` only -

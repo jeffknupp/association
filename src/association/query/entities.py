@@ -36,8 +36,6 @@ import duckdb
 from association.nba.franchises import FRANCHISE_ERAS, FranchiseEra, season_name
 from association.nba.season import current_season
 
-from .season_text import season_from_text
-
 MAX_CANDIDATES = 10
 
 # Curated shorthand -> the player it unambiguously means. NOT the prominence
@@ -1226,60 +1224,6 @@ def teams_named_in(con: duckdb.DuckDBPyConnection, question: str, season: int | 
     return unique
 
 
-def _scope_from_question_team_subject(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], notes: list[str], intent: str) -> None:
-    """Put back a team the question names as its own subject, where the router
-    routed a team-shaped question to ``leaderboard`` or ``team_stat`` and
-    dropped the team entirely - yardstick-v2 F127: "how many 3 pointers have
-    the magic made so far this season" arrived at ``leaderboard`` with no
-    team slot at all, and ranked the league's leaders in makes instead of
-    answering the Magic's own total.
-
-    Requires no player already in the slots: with one present, a bare
-    team word beside it is a different question already handled elsewhere
-    (:func:`_scope_from_question_own_team`'s ``own_team``), and a team-only
-    intent naming a player with none of its own is the F111 shape
-    (:func:`player_named_on_a_team_only_question`), which this must not
-    quietly repair around. Also requires no ``opponent`` already set: "76ers
-    vs magic total points" resolves `_team_after_versus` to the Magic before
-    this ever runs, and a team-vs-team question is a comparison, not one
-    team's own total - the same team ending up in both `team` and
-    ``opponent`` would be nonsensical either way.
-
-    For ``leaderboard`` the restored value is ALSO marked with
-    ``team_restored`` - a slot :data:`~association.query.templates.common.HONORED_SCOPING`
-    never lists for it, so ``check_scope`` refuses and
-    ``query.compose`` gets a chance to answer the team's own total instead of
-    ``leaderboard`` ranking players. ``leaderboard`` already has a
-    legitimate, router-supplied reading of ``team`` - "Top 5 scorers on the
-    Lakers?" ranks the Lakers' own players, and has to keep answering that
-    directly - so only a team THIS function restored is marked; a team the
-    router itself supplied is left alone.
-
-    ``team_stat`` needs no such marker: an empty ``team`` there already
-    raises ``TemplateUnsupported("no team named")`` on its own
-    (``_resolved_team``), so restoring the team is a strict improvement -
-    it lets the template answer directly instead of falling through with
-    nothing to read.
-
-    .. versionadded:: 4.4.0
-    """
-    if slots.get("team") or slots.get("player") or slots.get("players") or slots.get("opponent"):
-        return
-    season = slots.get("season") if isinstance(slots.get("season"), int) else None
-    if _team_after_versus(con, question, season) is not None:
-        # Read here rather than from `opponent`, which the subject reading
-        # now fills AFTER this runs (subject.apply_subject).
-        return
-    teams = teams_named_in(con, question, season)
-    if len(teams) != 1:
-        return
-    team = teams[0]
-    slots["team"] = team.name
-    notes.append(f"team {team.name!r} (from the question; the router left it out)")
-    if intent == "leaderboard":
-        slots["team_restored"] = True
-
-
 def _team_grounded(con: duckdb.DuckDBPyConnection, question: str, team: Entity) -> bool:
     """Whether the question shows any trace of ``team`` - a word of its name,
     its abbreviation, or a nickname. The team counterpart of :func:`_grounded`."""
@@ -1447,91 +1391,12 @@ def _named_only_by_a_team_word(con: duckdb.DuckDBPyConnection, question: str, pl
     return bool(supporting) and all(_team_named(con, w) is not None for w in supporting)
 
 
-def _scope_from_question_restore_player(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], notes: list[str]) -> None:
-    """Put back the one player the question names, where the router left the player out."""
-    player = _scope_from_question_only_player(con, question)
-    if player is not None:
-        slots["player"] = player
-        notes.append(f"player {player!r} (from the question; the router left it out)")
-
-
-def _player_named_before(question: str, player: Any, at: int) -> bool:
-    """Whether a word of the player's name (three letters or more) appears in
-    the question before position ``at`` - the order that makes "for <team>"
-    his tenure rather than the team's own question."""
-    if not isinstance(player, str):
-        return False
-    head = question[:at].casefold()
-    return any(re.search(rf"\b{re.escape(word)}\b", head) for word in _words(player.casefold()) if len(word) >= 3)
-
-
-def _scope_from_question_own_team(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], notes: list[str]) -> None:
-    """Put back a player's OWN team, where "for <team>"/"with the <team>"
-    names one and the router filed neither a ``team`` nor an ``opponent``
-    slot at all - yardstick-v2 F166, "lebron stats as a starter for Miami".
-
-    Written to ``own_team``, never ``team`` - a router-supplied ``team``
-    beside an already-correct ``opponent`` is documented noise elsewhere in
-    this module (:func:`_team_slot_for_player` in ``templates/games.py``:
-    "Phoenix Suns" beside a real "Philadelphia 76ers" opponent, "Los Angeles
-    Lakers" beside a real "Houston Rockets" one), and a template that read
-    ``slots["team"]`` directly here would occasionally trust that same noise
-    - measured on the step 3 golden set, "lebron james 2 3 pointers all-time
-    vs jazz on tuesdays" carries a recorded ``team='Los Angeles Lakers'``
-    (his own, current, and entirely redundant beside a real
-    ``opponent='Utah Jazz'``) and silently narrowed 9 real meetings down to 4
-    before ``own_team`` existed. ``own_team`` is a name only this function
-    and :data:`~association.query.templates.common.OWN_TEAM_RESTORABLE_INTENTS`'
-    one caller (``player_stat``) ever read or write, so nothing else can hand
-    it noise.
-
-    A historical team names a TENURE, not "now": with no season NAMED IN
-    THE QUESTION - read with :func:`~association.query.season_text.season_from_text`,
-    not ``slots["season"]``, since that slot already carries the router's own
-    "current season" default (``season_ref: "current"``) on a question that
-    named no year at all, and trusting it would read every "for <team>"
-    question as though "this season" had been said - ``span`` becomes
-    "career" too, the same reading
-    :data:`~association.query.router._SPAN_JOINED_LEAGUE_WORDS` gives "since
-    he joined the league", for the same reason ("for Miami" 15 years into a
-    Lakers career is not asking about this season). A season the question
-    DID name still wins, exactly as every other span reading here does.
-
-    .. versionadded:: 4.4.0
-    """
-    if slots.get("team") or slots.get("opponent") or slots.get("own_team"):
-        return
-    named_season = season_from_text(question)
-    found = _team_after_for(con, question, named_season)
-    if found is None:
-        return
-    team, at = found
-    if not _player_named_before(question, slots.get("player"), at):
-        # "show me stats for sixers when maxey scored 20+ points"
-        # (yardstick-v2 F087): the team is the SUBJECT there, and the player
-        # follows it as a condition - his tenure with it is not the question.
-        # A tenure is named the other way round ("lebron ... for Miami",
-        # "westbrook ... for kings"): the player first, then his team.
-        return
-    slots["own_team"] = team.name
-    notes.append(f"own_team {team.name!r} (from the question; the router left it out)")
-    if named_season is None and not slots.get("span"):
-        slots["span"] = "career"
-        slots.pop("season", None)
-        notes.append("span 'career' (a team named with no season is a tenure, not \"now\")")
-
-
 def scope_from_question(
     con: duckdb.DuckDBPyConnection,
     question: str,
     slots: dict[str, Any],
     *,
     reads_player: bool,
-    needs_player: bool = False,
-    restore_subject: bool = False,
-    restore_team: bool = False,
-    restore_team_subject: bool = False,
-    intent: str = "",
 ) -> list[str]:
     """Put a team the question plays AGAINST where a template will see it.
     Mutates ``slots``; returns a line per change, for the trace.
@@ -1558,44 +1423,11 @@ def scope_from_question(
     against, filed in ``team`` beside a player a ``reads_player`` template
     reads, is that player's opponent and moves there.
 
-    Restoring a player follows :func:`association.query.subject.apply_subject`'s discipline:
-    only when the question names exactly one player, and only for a template
-    that reads one (``reads_player``). A player the router simply left out is
-    restored only where the template cannot answer without one
-    (``needs_player``): "Sga record 36 plus points" came back with no player
-    at all, and an optional player slot left empty means "the league".
-
-    ``restore_subject`` is the same restore for a template where an empty
-    slot has a real, different answer (the league) rather than none at all -
-    :data:`~association.query.templates.common.SUBJECT_RESTORABLE_INTENTS`.
-    "kawhi most threes in a game" used to answer the league's single-game
-    3PM leaders, Kawhi Leonard's own 7 never mentioned, because no grammar in
-    ``router.py`` covers "NAME most/highest STAT" (yardstick-v2 F093). Kept
-    apart from ``needs_player`` because the two read differently even though
-    they call the same restore: ``needs_player`` means the template errors
-    without a name, ``restore_subject`` means it would answer something else
-    entirely correct and unmarked as narrower than it looks.
-
-    ``restore_team`` puts back the player's OWN team, into ``own_team`` -
-    never ``team``, which a router-supplied noise value already sits in
-    often enough to make trusting it directly unsafe (see
-    :func:`_scope_from_question_own_team`'s own docstring) - where "for
-    <team>"/"with the <team>" names one beside him and the router left both
-    ``team`` and ``opponent`` empty (yardstick-v2 F166,
-    :data:`~association.query.templates.common.OWN_TEAM_RESTORABLE_INTENTS`).
-    Requires a player already in the slots - a bare "for <team>" with no
-    player is a team question, not this one.
-
-    ``restore_team_subject`` puts back a team the question names as its OWN
-    subject, into ``team`` - unlike ``restore_team``, which never touches
-    ``team`` directly - where the router routed a team-shaped question to
-    ``leaderboard`` or ``team_stat`` and dropped the team entirely
-    (yardstick-v2 F127,
-    :data:`~association.query.templates.common.TEAM_SUBJECT_RESTORABLE_INTENTS`).
-    See :func:`_scope_from_question_team_subject` for why ``team`` is safe to
-    write here where ``own_team`` was not, and for the ``team_restored``
-    marker it also sets on ``leaderboard`` alone. ``intent`` is read only to
-    decide that marker.
+    What is left here is the router filing a PLAYER's name in ``team``, and a
+    team in ``team`` that displaced the player the question names; the
+    opponent, the restored player, the player's own team and the team
+    subject moved to :func:`association.query.subject.apply_subject` in
+    4.5.0, which writes them from the subject reading.
 
     .. versionadded:: 2.1.0
 
@@ -1607,6 +1439,12 @@ def scope_from_question(
 
     .. versionchanged:: 4.4.0
        Takes ``restore_team_subject`` and ``intent``.
+
+    .. versionchanged:: 4.5.0
+       ``needs_player``, ``restore_subject``, ``restore_team``,
+       ``restore_team_subject`` and ``intent`` are gone with the steps they
+       gated, now :func:`association.query.subject.apply_subject`'s; so are
+       the opponent steps. Only the player-in-``team`` repairs remain.
     """
     notes: list[str] = []
     season = slots.get("season") if isinstance(slots.get("season"), int) else None
@@ -1620,30 +1458,7 @@ def scope_from_question(
     if team is not None and not has_player and reads_player:
         team = _scope_from_question_displaced_player(con, question, slots, notes, team, versus)
 
-    if (needs_player or restore_subject) and not slots.get("player") and not slots.get("players"):
-        _scope_from_question_restore_player(con, question, slots, notes)
-
-    _scope_from_question_own_team_if_asked(con, question, slots, notes, restore_team=restore_team, has_player=has_player)
-    _scope_from_question_team_subject_if_asked(con, question, slots, notes, restore_team_subject=restore_team_subject, intent=intent)
     return notes
-
-
-def _scope_from_question_team_subject_if_asked(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], notes: list[str], *, restore_team_subject: bool, intent: str) -> None:
-    """The last step of :func:`scope_from_question` - split out, like
-    :func:`_scope_from_question_own_team_if_asked` just above it, to keep
-    that function's own branch count under the complexity gate."""
-    if restore_team_subject:
-        _scope_from_question_team_subject(con, question, slots, notes, intent)
-
-
-def _scope_from_question_own_team_if_asked(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], notes: list[str], *, restore_team: bool, has_player: bool) -> None:
-    """The last step of :func:`scope_from_question` - split out to keep that
-    function's own branch count under the complexity gate. Requires a player
-    already in the slots (``has_player``, or one a later step of
-    ``scope_from_question`` itself just wrote): a bare "for <team>" with no
-    player is a team question, not this one."""
-    if restore_team and (has_player or slots.get("player")):
-        _scope_from_question_own_team(con, question, slots, notes)
 
 
 def teammate_names(value: Any) -> list[str]:

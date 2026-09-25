@@ -1392,7 +1392,7 @@ def _player_stat_reads_box_scores(slots: dict[str, Any], measures: list[MeasureF
        (yardstick-v2 F166) keeps only the games he played for that team,
        which the season line (one row per season, not per team-within-season)
        cannot narrow to. Deliberately ``own_team``, set only by
-       ``entities._scope_from_question_own_team``, and not the router's own
+       ``subject._apply_own_team``, and not the router's own
        ``team`` slot - see that function's docstring for the recorded case
        that slot silently narrowed before this distinction existed.
     """

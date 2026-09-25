@@ -488,7 +488,7 @@ def test_leaderboard_refuses_a_team_the_question_named_as_its_own_subject(lb_con
     """yardstick-v2 F127: "how many 3 pointers have the magic made so far
     this season" routed to `leaderboard` with `stat` and `season` only - no
     `team` at all - and ranked the league's individual leaders in makes,
-    the Magic never named. `entities._scope_from_question_team_subject`
+    the Magic never named. `subject._apply_team_subject`
     restores the dropped team AND marks it `team_restored`
     (`SCOPING_SLOTS`, absent from every `HONORED_SCOPING` entry), so
     `check_scope` refuses this exact shape and hands the question to
@@ -4187,7 +4187,7 @@ def test_player_stat_honors_an_own_team_slot_as_his_tenure(pg_ctx: TemplateConte
     """yardstick-v2 F166: "lebron stats as a starter for Miami" used to
     answer his current season, with no way to narrow to a team he no longer
     plays for at all - `own_team` (distinct from `opponent`, and from the
-    router's own `team` - see entities._scope_from_question_own_team's
+    router's own `team` - see subject._apply_own_team's
     docstring for why the two are not interchangeable) now keeps only the
     games he played FOR that team. Seth Curry's fixture career has three
     box-scored games: one for Boston (e7, season s-1, 12 points) and two for

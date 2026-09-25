@@ -484,9 +484,16 @@ def _scope(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any],
     against `scope_from_question` alone reads the same."""
     from association.query.subject import apply_subject, read_subject
 
+    # The chain's flags were one per intent set; the reading reads the
+    # intent itself, so a flag picks a representative intent from its set.
+    for flag, representative in (("needs_player", "record_when"), ("restore_subject", "single_game_high"), ("restore_team", "player_stat")):
+        if flags.pop(flag, False):
+            intent = intent or representative
+    flags.pop("restore_team_subject", None)
+    assert not flags, flags
     intent = intent or ("game_log" if reads_player else "team_record")
     subject = read_subject(con, question, intent, slots)
-    notes = scope_from_question(con, question, slots, reads_player=reads_player, intent=intent, **flags)
+    notes = scope_from_question(con, question, slots, reads_player=reads_player)
     decisions, _ = apply_subject(subject, slots, con=con, intent=intent)
     return notes + [d.line() for d in decisions]
 
@@ -1158,7 +1165,7 @@ def test_a_team_named_beside_a_player_with_no_season_is_his_tenure(scope_con: du
     already-known player and, since no season is named either, defaults
     `span` to "career" too - a historical team names a tenure, not "now".
     Written to `own_team`, not `team` - see
-    entities._scope_from_question_own_team's own docstring for why a
+    subject._apply_own_team's own docstring for why a
     router-supplied `team` is not safe to trust directly."""
     slots: dict[str, Any] = {"player": "LeBron James", "stat": "points", "season": 2026, "split": "starter"}
     notes = _scope(scope_con, "lebron stats as a starter for the lakers", slots, reads_player=True, restore_team=True)
@@ -1201,7 +1208,7 @@ def test_a_router_supplied_team_is_not_trusted_as_a_tenure_narrowing(scope_con: 
     redundant) beside a real `opponent='Utah Jazz'` - noise
     `games._team_slot_for_player` already drops for `game_log`. `restore_team`
     must not promote that same noise into a real narrowing for `player_stat`:
-    with `team` already set, `_scope_from_question_own_team` declines
+    with `team` already set, `subject._apply_own_team` declines
     outright, so `own_team` is never written and the recorded `team` value
     is left exactly as it was."""
     slots: dict[str, Any] = {"player": "LeBron James", "team": "Los Angeles Lakers", "opponent": "Utah Jazz", "span": "career"}
@@ -1346,11 +1353,10 @@ def test_restore_team_subject_does_not_fire_on_an_ambiguous_or_absent_team(scope
 
 
 def test_restore_team_subject_is_off_by_default(scope_con: duckdb.DuckDBPyConnection) -> None:
-    """Same discipline as restore_subject/restore_team: a caller that does
-    not ask for it (an intent outside TEAM_SUBJECT_RESTORABLE_INTENTS)
-    leaves `team` alone."""
+    """Same discipline as the player and own-team restores: an intent
+    outside TEAM_SUBJECT_RESTORABLE_INTENTS leaves `team` alone."""
     slots: dict[str, Any] = {"stat": "points"}
-    _scope(scope_con, "how many 3 pointers have the magic made so far this season", slots, reads_player=False, intent="leaderboard")
+    _scope(scope_con, "how many 3 pointers have the magic made so far this season", slots, reads_player=False, intent="team_record")
     assert "team" not in slots
 
 

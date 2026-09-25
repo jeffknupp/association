@@ -36,12 +36,8 @@ from .router import Route, RouterUnavailable, route
 from .subject import Subject, apply_subject, read_subject
 from .templates import TEMPLATES
 from .templates.common import (
-    OWN_TEAM_RESTORABLE_INTENTS,
     PLAYER_INTENTS,
-    PLAYER_REQUIRED_INTENTS,
-    SUBJECT_RESTORABLE_INTENTS,
     TEAM_ONLY_INTENTS,
-    TEAM_SUBJECT_RESTORABLE_INTENTS,
     TemplateContext,
     TemplateResult,
     TemplateUnsupported,
@@ -376,17 +372,7 @@ class Agent:
         # Before the name checks below, because this is where a team the
         # router mistook for a player leaves `players`, and a player it dropped
         # in favor of his team comes back. See entities.scope_from_question.
-        for change in scope_from_question(
-            self.toolbox.con,
-            question,
-            routed.slots,
-            reads_player=routed.intent in PLAYER_INTENTS,
-            needs_player=routed.intent in PLAYER_REQUIRED_INTENTS,
-            restore_subject=routed.intent in SUBJECT_RESTORABLE_INTENTS,
-            restore_team=routed.intent in OWN_TEAM_RESTORABLE_INTENTS,
-            restore_team_subject=routed.intent in TEAM_SUBJECT_RESTORABLE_INTENTS,
-            intent=routed.intent,
-        ):
+        for change in scope_from_question(self.toolbox.con, question, routed.slots, reads_player=routed.intent in PLAYER_INTENTS):
             history.log(f"  -> (scope) {change}")
         # The router invents whole names, not only nicknames: "compare sga and
         # embiid" came back with Jusuf Nurkic in the second slot, and every
