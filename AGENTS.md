@@ -126,6 +126,13 @@ orphaned section in the middle of its history. Nothing caught this: the older
 rule only asked that the file was touched. Found by reading the file after a
 merge, which is not a gate; now it is one.
 
+**Every released version keeps its own heading, checked by the same hook.** A
+fix for an entry that landed inside the last release's section renamed
+`## 4.3.0` to `## Unreleased` instead of adding a heading above it, and 4.4.0's
+notes then held all of 4.3.0's too. The hook checks the heading for the version
+in `pyproject.toml` everywhere and for every tag where the clone has tags (CI's
+shallow clone has none, and says so).
+
 **Adding a gate** follows the shape of the ones already there, so local and CI
 keep saying the same thing: pin the tool in the `dev` extra (`uv add --optional
 dev <tool>`, which also updates `uv.lock`), add a `language: system` hook that
