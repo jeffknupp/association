@@ -2033,6 +2033,18 @@ had no published version to be compatible with.
   relation has no measure for ("who had the highest netpoint game this
   season" used to rank by points instead, with nothing to tell the two
   apart from the answer).
+- `game_log`, `period_split`, `period_leaderboard`, `head_to_head`,
+  `team_quarter_points` and `player_matchup` carry `data["headline"]` (the
+  answer's own first line, whatever the rest of it goes on to say) and, for
+  every template that already computed one, `data["notes"]` (a truncation
+  note, a box-score caveat, an accuracy caveat, a cross-season redirect,
+  an unseen-meeting count) as a list of lines rather than only text glued
+  onto the sentence. A team's game log also carries `data["total_points"]`
+  or `data["differential"]`/`data["differential_per_game"]` when the
+  question asked for one (F128/F129) - narrowed and stated in the text
+  already, absent from `data` until now - and `period_split`/
+  `team_quarter_points` carry `data["average"]` beside the total they
+  already had.
 
 ## 4.2.0 - 2026-09-18
 - **A NetPoints name ESPN spells with a generational suffix, or hyphenates

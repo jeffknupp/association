@@ -1101,6 +1101,7 @@ def test_game_log_tallies_the_record_over_exactly_the_rows_shown(gl_con: Templat
     result = game_log(gl_con, {"team": "Knicks"})
     assert result.data["wins"] == 1
     assert "(1-1)" in (result.answer or "")
+    assert result.data["headline"] == (result.answer or "").splitlines()[0].rstrip(":")
 
 
 def test_game_log_order_first_is_ascending(gl_con: TemplateContext) -> None:
@@ -2091,8 +2092,10 @@ def test_a_team_log_leaves_out_rows_that_are_not_games(gl_con: TemplateContext) 
 
 
 def test_head_to_head_reports_the_series_record(gl_con: TemplateContext) -> None:
-    answer = head_to_head(gl_con, {"teams": ["Knicks", "Celtics"], "season": current_season()}).answer or ""
+    result = head_to_head(gl_con, {"teams": ["Knicks", "Celtics"], "season": current_season()})
+    answer = result.answer or ""
     assert "met 2 times" in answer and "splitting them 1-1" in answer
+    assert result.data["headline"] == answer  # one sentence, no table beneath it
 
 
 def test_head_to_head_applies_the_season_to_the_whole_matchup(gl_con: TemplateContext) -> None:
@@ -2449,6 +2452,8 @@ def test_team_quarter_points_reads_each_games_own_side_of_linescores(tq_con: Tem
     result = team_quarter_points(tq_con, {"team": "Knicks", "period": 1, "season": current_season()})
     assert result.data["total"] == 60  # 30 (home in e1) + 20 (away in e2) + 10 (home in e3)
     assert len(result.data["games"]) == 3
+    assert result.data["average"] == pytest.approx(20.0)  # 60 / 3 - the text says it, data now carries it too
+    assert result.data["headline"] == (result.answer or "").splitlines()[0].rstrip(":")
 
 
 def test_team_quarter_points_reads_a_bare_limit_as_the_newest_games(tq_con: TemplateContext) -> None:
@@ -3789,6 +3794,9 @@ def test_game_log_lists_only_games_he_played_and_says_what_it_left_out(pg_ctx: T
     result = game_log(pg_ctx, {"player": "Brandin Podziemski"})
     assert len(result.data["games"]) == 3
     assert "Not counted: 1 game in this span whose box score lists him with no minutes and no stats." in result.answer
+    # The note is in the answer's text either way; `data["notes"]` is what
+    # lets the page show it without falling back to guessing at the text.
+    assert "Not counted: 1 game in this span whose box score lists him with no minutes and no stats." in result.data["notes"]
 
 
 def test_game_log_averages_exactly_the_games_it_lists(pg_ctx: TemplateContext) -> None:
@@ -3808,6 +3816,13 @@ def test_game_log_says_how_many_games_the_window_cut_from(pg_ctx: TemplateContex
     result = game_log(pg_ctx, {"player": "Brandin Podziemski", "limit": 2})
     assert result.data["qualifying_games"] == 3
     assert result.answer.splitlines()[0].startswith("Brandin Podziemski, last 2 of 3 games")
+    # The page's headline (renderAnswer) - the answer's own first line, with
+    # the trailing ":" a table heading carries stripped, so a table-less
+    # page still shows the same words a table-drawing one would.
+    assert result.data["headline"] == result.answer.splitlines()[0].rstrip(":")
+    # Not a truncation note - Podziemski's e6 empty box score is outside
+    # this window either way, so the same note attaches regardless of limit.
+    assert result.data["notes"] == ["Not counted: 1 game in this span whose box score lists him with no minutes and no stats."]
     # No truncation, no "of N": every qualifying game fit inside the window.
     full = game_log(pg_ctx, {"player": "Brandin Podziemski", "limit": 10})
     assert full.data["qualifying_games"] == 3
