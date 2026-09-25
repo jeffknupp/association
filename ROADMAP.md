@@ -326,9 +326,18 @@ honest refusals that a fuller system would answer. By cause:
    the `Answer`, the API and the page's "decisions" fold, never parsed
    back out of the trace. The subject reading is the first producer and
    writes no slot yet: text identical on 56 rendered recorded answers.
-   **Next: step 3** - `apply_subject` writes the slots templates read and
-   each chain step becomes a no-op, then goes, golden-proven one at a time;
-   the five chain bugs are its first test cases.
+   **Step 3a-3b landed** (`55e186a`, `1963d0f`): `apply_subject` writes
+   `player`/`players` from the reading - an invented router name replaced
+   by the question's own or refused by name, a kept name respelled to the
+   question's resolved one. Golden over 308 recorded questions: 306
+   identical each step (the two are same-date row order, master's own
+   noise, filed P4); `override_invented_players` still runs after and now
+   acts on 4 answers (a question's own typo resolved by near spelling, and
+   the opponent half). **Next:** the reading takes those two, that step
+   goes; then `scope_from_question`'s team/opponent fields; then the
+   compiler's `repair`/`_drop_*` and `refusals` read the Subject instead of
+   re-deriving it. The five chain bugs are the test cases for the step
+   that reaches each.
 
 ## The current plan: what buys the most correctness next
 
