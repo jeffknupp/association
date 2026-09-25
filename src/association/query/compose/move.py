@@ -481,9 +481,27 @@ def _everyone_ranking(intent: str, slots: dict[str, Any], question: str, measure
 
     .. versionchanged:: 4.4.0
        Reads a "with at least N <unit>" floor (:func:`_ranking_minimum`).
+
+    .. versionchanged:: 4.4.0
+       Refuses by name, rather than silently ranking by points, when the
+       question named a real ``stat`` this relation has no measure for -
+       "who had the highest netpoint game this season" used to rank by
+       POINTS instead (measured live: the stat this relation cannot read,
+       NetPoints, fell back to the one measure every league-wide ranking
+       already defaults to, and the answer read as though it had ranked
+       what was asked). ``measure`` is ``None`` for two different reasons -
+       no stat was named at all (the plain "top scorers" ranking, still
+       points by default) or a real one was named and did not map
+       (:func:`_stat_measure`) - and only the second is a refusal; the
+       first keeps its default.
     """
     if not (_RANKING.search(question) or intent in ("leaderboard", "single_game_high")):
         return None
+    if measure is None:
+        stat = slots.get("stat")
+        if isinstance(stat, str) and stat.strip():
+            message = f"No ranking reads {stat!r} on the player-games relation - it only ranks the box-score measures it knows, not a NetPoints or other outside figure."
+            raise Refused(TemplateResult(data={"message": message, "stat": stat}, answer=message))
     aggregate = "total" if _TOTAL.search(question) else "per_game"
     minimum_games = PER_GAME_MIN_GAMES
     named_minimum = _ranking_minimum(question)

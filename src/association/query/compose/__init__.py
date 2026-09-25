@@ -40,9 +40,17 @@ from .team import TeamQuery, TeamResult, run_team
 __all__ = ["answer"]
 
 
-def _point_data(query: Query, out: dict[str, Any]) -> dict[str, Any]:
+def _point_data(query: Query, out: dict[str, Any], headline: str) -> dict[str, Any]:
     """The point a compiled query answered, as plain values - what a caller
-    checks an answer against without re-parsing the sentence."""
+    checks an answer against without re-parsing the sentence.
+
+    ``headline`` is the sentence's own first line (the page's headline, when
+    a template does not carry one of its own - ``renderAnswer`` in
+    ``web/static/index.html``). ``total`` is the whole count behind a
+    by-player count a window cut short (:func:`~association.query.compose.core._grouped_total`,
+    e.g. "thunder all-time triple doubles": ten rows shown, ``total`` the
+    real 193) - ``None`` for every other point, since only that one shape has
+    a listed count smaller than the real one."""
     return {
         "rows": out["rows"],
         "player": out["player"],
@@ -55,6 +63,8 @@ def _point_data(query: Query, out: dict[str, Any]) -> dict[str, Any]:
         "predicates": query.predicates,
         "window": out["window"],
         "notes": out["notes"],
+        "headline": headline,
+        "total": out["total"],
     }
 
 
@@ -134,6 +144,10 @@ def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: s
     except Refused as exc:
         return exc.result
     answer_text = _sentence(query, out)
+    # The page's headline (renderAnswer, web/static/index.html): the sentence
+    # alone, before any note is glued on below - the same "head:" line a rows
+    # or grouped read prints before its table, or a scalar's one line whole.
+    headline = answer_text.split("\n")[0].rstrip(":")
     note = coverage_caveat(intent, query.slots)
     if note:
         out["notes"] = [*out["notes"], note]
@@ -142,4 +156,4 @@ def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: s
     # have no box score ...") - seen on the rendered page, 2026-09-24.
     for each_note in out["notes"]:
         answer_text += f"\n{each_note}"
-    return TemplateResult(data=_point_data(query, out), answer=answer_text, artifacts=[])
+    return TemplateResult(data=_point_data(query, out, headline), answer=answer_text, artifacts=[])

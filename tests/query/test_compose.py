@@ -804,6 +804,26 @@ def test_an_attempts_or_minutes_floor_is_refused_by_name_not_dropped_or_misappli
     assert "100 attempts" in refused.value.result.answer and "at least N games" in refused.value.result.answer
 
 
+def test_a_stat_this_relation_cannot_read_is_refused_not_defaulted_to_points(cx_ctx: TemplateContext) -> None:
+    """ "Who had the highest netpoints game this season" (no player named, so
+    the league-wide reading) named a real stat - NetPoints - this relation
+    has no measure for. Before this, ``measure`` came back ``None`` and
+    ``_everyone_ranking`` silently ranked by points instead, so the answer
+    looked like a real ranking of what was asked for and was not one. A
+    ranking with no stat named at all still defaults to points - only a
+    stat that was NAMED and failed to map is a refusal."""
+    with pytest.raises(Refused) as refused:
+        move_point(cx_ctx.con, "single_game_high", {"stat": "netpoints"}, "who had the highest netpoints game this season")
+    assert "netpoints" in refused.value.result.answer
+    with pytest.raises(Refused) as leaderboard_refused:
+        move_point(cx_ctx.con, "leaderboard", {"stat": "netpoints"}, "who leads the league in netpoints this season")
+    assert "netpoints" in leaderboard_refused.value.result.answer
+    # No stat named at all is still the plain "top scorers" default.
+    q = move_point(cx_ctx.con, "leaderboard", {}, "who are the top scorers this season")
+    assert isinstance(q, Query)
+    assert q.measures == ["points"]
+
+
 def test_ranking_minimum_reads_the_unit_and_the_number() -> None:
     """:func:`_ranking_minimum` reads the "at least N <unit>" phrase without
     committing to what a caller does with it - the unit is read back, not
@@ -936,12 +956,49 @@ def test_a_team_in_the_player_slot_is_the_teams_players_games(cx_ctx: TemplateCo
     """yardstick-v2 F152 "oklahoma city thunder all-time triple doubles":
     a team's name where a player's belongs is the `team` narrowing of a
     league-wide read - the Warriors' players' triple-doubles are
-    Podziemski's one (g3, 28/10/11)."""
+    Podziemski's one (g3, 28/10/11).
+
+    Seen live on the rendered page (2026-09-24): the grouped head named the
+    span but not WHAT was counted ("... regular season career (1994 on), by
+    player" - no "with a triple-double" at all), so the table of counts had
+    no subject. ``_grouped_sentence`` now includes the predicates
+    (``_predicates(q)``, the same call ``_rows_sentence``/``_scalar_sentence``
+    already make), and ``data["headline"]`` carries the same sentence."""
     result = compose_answer(cx_ctx, "threshold_count", {"player": "Golden State Warriors", "stat": "triple_double", "span": "career"}, "golden state warriors all-time triple doubles")
     assert result is not None
     assert "Golden State Warriors" in result.answer
+    assert "with a triple-double" in result.answer  # the predicate, not just the span
     assert result.data["rows"][0]["games"] == 1
+    assert result.data["headline"] == result.answer.split("\n")[0].rstrip(":")
+    assert "with a triple-double" in result.data["headline"]
     # The router files player_stat for the live wording; the team makes it
     # the same count.
     as_stat = compose_answer(cx_ctx, "player_stat", {"player": "Golden State Warriors", "span": "career"}, "golden state warriors all-time triple doubles")
     assert as_stat is not None and as_stat.data["rows"][0]["games"] == 1
+
+
+def test_a_grouped_by_player_count_carries_the_whole_total_a_window_cut(cx_ctx: TemplateContext) -> None:
+    """ "Players with 10 points this season", limited to the top 2: the page's
+    Total row (``renderComposed``'s ``grouped`` skeleton) needs the WHOLE
+    count behind the listed rows, not just the two shown - ``core.run``
+    already computed it (``_grouped_total``) but ``_point_data`` dropped it
+    on the floor before this. 90 and 91 (22 games apiece, clearing the
+    10-point line every game) are the top two; Podziemski, Curry, Brown and
+    Sabonis clear it in fewer games each, so the real total (56) is well
+    past what the top two alone account for (44). ``stat: "rebounds"`` is a
+    decoy the phrase's own "10 points" overrides (the same discipline
+    ``test_the_questions_own_number_names_its_column_not_the_routers_stat``
+    exercises) - stat and phrase naming the SAME column is the one case
+    ``_everyone_threshold_predicates`` does not add a line for, which would
+    leave no predicate to count at all."""
+    q = move_point(cx_ctx.con, "threshold_count", {"threshold": 10, "stat": "rebounds", "limit": 2}, "players with 10 points this season")
+    assert isinstance(q, Query)
+    assert q.subject == "everyone" and q.skeleton == "grouped" and q.group == "player"
+    out = run(cx_ctx.con, q)
+    assert len(out["rows"]) == 2
+    assert out["total"] == 56
+    assert sum(r["games"] for r in out["rows"]) == 44  # the listed two alone
+    result = compose_answer(cx_ctx, "threshold_count", {"threshold": 10, "stat": "rebounds", "limit": 2}, "players with 10 points this season")
+    assert result is not None
+    assert result.data["total"] == 56
+    assert "56" in result.answer and "listed" in result.answer

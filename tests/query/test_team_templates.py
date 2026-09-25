@@ -589,6 +589,23 @@ def test_the_outlook_names_its_snapshot_date_and_size(team_ctx: TemplateContext)
     assert f"also has a postseason snapshot ({S}-06-15, 3 teams)" in answer
 
 
+def test_the_outlook_carries_its_own_headline_and_notes(team_ctx: TemplateContext) -> None:
+    """The page draws team_outlook's card from typed values (bpi, wins,
+    chances, strength_of_schedule) and used to have nothing but the raw text
+    for the sentences beneath it - the BPI rank, the record, the chances and
+    the strength-of-schedule lines, each its own line in `data["notes"]`
+    rather than parsed back out of the answer text."""
+    result = team_outlook(team_ctx, {"team": "Knicks"})
+    assert result.data["headline"] == f"ESPN's power index for the New York Knicks, {S} play-in snapshot (updated {S}-04-18, 3 teams)"
+    assert result.data["notes"] == [
+        "BPI +7.6 (offense +3.2, defense +4.3), 3rd of the 3 teams in the snapshot",
+        "record 53-29, projected 53-29",
+        "chances: playoffs 100.0%, conference finals 42.0%, Finals 21.5%, title 7.2%",
+        "strength of schedule .503, 14th hardest in the league",
+        f"ESPN's power index for {S} also has a postseason snapshot ({S}-06-15, 3 teams).",
+    ]
+
+
 def test_a_postseason_snapshot_adds_the_playoff_games(team_ctx: TemplateContext) -> None:
     assert "record 69-32 including the playoffs; 53-29 in the regular season" in team_outlook(team_ctx, {"team": "Knicks", "season_type": 3}).answer
 

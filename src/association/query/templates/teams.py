@@ -1922,4 +1922,12 @@ def _team_outlook_detail(team: Entity, season: int, postseason: bool, chosen: tu
     if others_line is not None:
         lines_out.append(others_line)
     data = _team_outlook_data(team, season, name, chosen, updated, bpi, offense, defense, higher, wins, losses, proj_w, proj_l, chances, sos)
+    # The page draws its own BPI/record/chances card from the typed values
+    # above (RENDERERS.team_outlook, web/static/index.html) and would
+    # otherwise have to parse the rest of the sentence back out of its text
+    # to show the BPI rank, the record, the chances and the strength-of-
+    # schedule lines beneath it - exactly the prose-parsing this project's
+    # notes exist to avoid. Every line after the opening one, in order.
+    data["headline"] = lines_out[0].rstrip(":")
+    data["notes"] = [line.strip() for line in lines_out[1:]]
     return TemplateResult(data=data, answer="\n".join(lines_out))

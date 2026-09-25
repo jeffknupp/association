@@ -720,6 +720,13 @@ def ps_con(tmp_path: Path) -> TemplateContext:
 def test_player_stat_reports_one_named_stat_with_its_total(ps_con: TemplateContext) -> None:
     result = player_stat(ps_con, {"player": "Luka Doncic", "stat": "points"})
     assert result.answer == (f"Luka Doncic averaged 33.5 points per game in 64 games in the {current_season()} regular season. That is 2,143 in total.")
+    # The page's own label table maps BOTH "avgPoints" and "points" to "PTS"
+    # (LABELS, web/static/index.html) - two tiles that would read identically
+    # while one is a per-game average and the other a season total in the
+    # thousands (seen live on the rendered page, 2026-09-24). `data["labels"]`
+    # names each explicitly so a renderer does not have to guess them apart.
+    assert result.data["stats"] == {"gamesPlayed": 64, "avgPoints": 33.5, "points": 2143}
+    assert result.data["labels"] == {"avgPoints": "points per game", "points": "points total"}
 
 
 def test_player_stat_with_no_stat_gives_a_stat_line(ps_con: TemplateContext) -> None:

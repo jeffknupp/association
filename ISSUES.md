@@ -2474,6 +2474,31 @@ those were found.
 
 ## P3: refusal or gap
 
+### The compiler has no NetPoints measure, so a single-game NetPoints ranking has nowhere to land but the agent
+- **Found:** 2026-09-24, fixing a live finding on the rendered page
+  (`/tmp/claude-1000/preview6`): "who had the highest netpoint game this
+  season?" and "... highest total netpoint game ..." routed `single_game_high`
+  with a NetPoints stat, which the `single_game_high` template refuses (no
+  such column), and the compiler (`query/compose`) then silently answered a
+  ranking of POINTS instead - `_everyone_ranking` (`compose/move.py`)
+  defaulted an unmapped measure to `"points"` the same way it does for a
+  genuinely stat-less ranking ("top scorers"), with no way to tell the two
+  apart from the answer. Fixed in this commit: a `stat` that was NAMED but
+  does not map to a measure this relation knows is now a named `Refused`
+  ("No ranking reads 'netpoints' on the player-games relation ...") rather
+  than a silent substitution - see `test_a_stat_this_relation_cannot_read_is_refused_not_defaulted_to_points`
+  (`tests/query/test_compose.py`).
+- **User sees:** the refusal now names the real cause instead of a fluent,
+  wrong ranking; the question itself still has no fast answer and falls
+  through to the agent, slower.
+- **Next step:** `net_points_player_game` (per-player-per-game NetPoints,
+  `DATA.md`) is a real table the compiler does not read at all - a second
+  relation, or a narrow addition to this one, would let a NetPoints
+  single-game ranking answer as fast as a points one does. Not attempted
+  here: it is a new relation, not a one-line fix, and outside this session's
+  scope (the "look nice" data-shape pass).
+- **Source:** ours.
+
 ### The router keeps only the word "division" of "vs southeast division", so the alignment narrowing never sees the division
 - **Found:** 2026-09-24, re-asking yardstick-v2 F055 after `team_alignment`
   landed (master `02fd795`, warehouse loaded).

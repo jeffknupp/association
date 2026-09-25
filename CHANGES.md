@@ -2005,6 +2005,34 @@ had no published version to be compatible with.
   slot beside it, and `leaderboard` refuses on that sentinel before either
   wrong-cause path can run, pointing at `shot_distance` for one named player
   instead (#114).
+- `player_stat` and `player_history` carry `data["labels"]` (a stat's key ->
+  the short word a page should print beside it) beside `data["stats"]` /
+  `data["seasons"]`, and `player_stat`'s stats keys for a shooting percentage
+  (`twoPointFieldGoalPct` and, incidentally, the three ESPN-stored ones) are
+  now stable names rather than, for the two-point case, the raw SQL
+  expression the value was read through - that expression used to reach
+  `data["stats"]` and `data["seasons"]` as a dict key directly, which a page
+  cannot look up a stat by (seen live on the rendered page, 2026-09-24: a
+  column headed with the whole SQL expression and no value under it). A
+  multi-stat `player_stat` line's per-game and season-total figures also get
+  distinct labels ("points per game" / "points total") rather than sharing
+  one abbreviation.
+- `team_outlook` carries `data["headline"]` and `data["notes"]` (the BPI
+  line, the record, the title chances, strength of schedule and a note about
+  the season's other snapshots, each its own line) instead of leaving them
+  only in the answer's prose.
+- The compiler's `data["headline"]` (the sentence's own first line) and, for
+  a by-player count a window cut short, `data["total"]` (the real count
+  behind the listed rows - `core.run`'s `_grouped_total` already computed
+  it; `_point_data` was dropping it). A grouped read's sentence now states
+  its predicates too ("... with a triple-double, by player"), not only its
+  span - before this a team's boolean-count table ("oklahoma city thunder
+  all-time triple doubles") had no subject in its own heading.
+- The compiler refuses by name, rather than silently ranking by points, when
+  a league-wide ranking or single-game-high question named a real stat this
+  relation has no measure for ("who had the highest netpoint game this
+  season" used to rank by points instead, with nothing to tell the two
+  apart from the answer).
 
 ## 4.2.0 - 2026-09-18
 - **A NetPoints name ESPN spells with a generational suffix, or hyphenates
