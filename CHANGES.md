@@ -15,6 +15,26 @@ Sections dated rather than numbered predate the first release, when the project
 had no published version to be compatible with.
 
 ## Unreleased
+- **`player_netpoints` gets a web renderer** (a season-totals card, an
+  Offense/Defense table of the six partition categories, and a play-type
+  detail table, all read off `data.fingerprint`'s own stable keys, each now
+  carrying `partition: bool` instead of the page recomputing the category
+  set), and `data["headline"]` is now the display sentence rather than the
+  raw six-number season row it used to be stored under that key
+  (`query/templates/netpoints.py`, `web/static/index.html` - ISSUES.md
+  #110). `data["notes"]` carries the season line's own minutes/games/per-100
+  detail, what units the fingerprint's numbers are in, and the play-type
+  overlap disclaimer, so a card-rendered page loses nothing the plain text
+  said.
+- **`team_record`'s web card draws the season's own seed, streak, home/road
+  split, last-10 and points-for/against directly from `data`** instead of
+  leaving them reachable only under "text" (`web/static/index.html`), and
+  the month/venue/career branches that had no `data["headline"]` at all now
+  carry one, the way the plain-season branch already did
+  (`_standings_season_venue`, `_standings_career`, `_standings_career_venue`,
+  `_team_record_by_month`, `_team_record_by_month_span` -
+  `query/templates/teams.py`; ISSUES.md #218 and the now-deleted duplicate-
+  caption entry, which the caption half of turned out to already be fixed).
 - **`entities.override_invented_players` is gone: the subject reading does its whole job.** `subject.read_subject` now takes a player the router filed as the `opponent` as a routed name ("jay huff game log vs Embiid" arriving with Jokic there - #206), and spells each supported router name the way the question's own span does, resolved from the words anchored at the router's (`entities._question_derived_player`): a typo of the QUESTION's - "Seph Curry" is Seth Curry, "Payton Prichard" is Pritchard - which no whole-word match finds. `apply_subject` writes `opponent` beside `player`/`players` (a player there the question never held is replaced by the one spare player the question names, or deleted rather than reported, since the refusal would name him). Over the 308-question golden the older check had 4 actions left after 4.4.0, exactly these; with the reading doing them it had none, and it is deleted with its five helpers. `scripts/check_routing.py` applies the reading in its place.
 - **Fixed, a 4.4.0 regression:** `apply_subject` respelled a supported router name from `players_named_in`'s whole-word match, which reads "kareem stats vs bob lanier" as Kareem Rush and Chaz Lanier - two real players the question is not about, the shape #123 fixed for `suggest_players` - and so rewrote the router's correct "Kareem Abdul-Jabbar" to Kareem Rush. Spellings now come from the anchored span, which settles neither name there, and the router's stands. `Subject.named` is gone with it: `players` carries the question's spelling.
 

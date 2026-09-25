@@ -85,7 +85,7 @@ def player_netpoints(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     # net_points_player uses its OWN string season_type; filtering it with the
     # numeric one every other table uses silently matches nothing.
     label = SEASON_TYPE_LABELS.get(season_type, "Regular Season")
-    headline = con.execute(
+    totals_row = con.execute(
         "SELECT overall, offense, defense, overall_per_100_poss, total_minutes, games FROM net_points_player WHERE athlete_id = ? AND season = ? AND net_points_season_type = ?",
         [player.id, season, label],
     ).fetchone()
@@ -108,7 +108,7 @@ def player_netpoints(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     breakdown = _netpoints_breakdown(fingerprint, categories, scale) if fingerprint is not None else []
 
     period = _period(season, season_type)
-    if headline is None and not breakdown:
+    if totals_row is None and not breakdown:
         answer = f"The warehouse has no {period} NetPoints for {player.name}."
         if defaulted:
             # The season was defaulted to "now", not asked for. A player with
@@ -124,27 +124,112 @@ def player_netpoints(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
             redirect = (int(row[0]), int(row[1])) if row and row[0] is not None else None
             answer += _defaulted_season_note(redirect, SEASON_TYPE_NAMES.get(season_type, "regular season"), career_hint=False)
         return TemplateResult(
-            data={"player": player.name, "season": season},
+            data={"player": player.name, "season": season, "headline": answer},
             answer=answer,
         )
+
+    units, scope = _netpoints_units(per_100, possessions)
+    answer = _phrase_netpoints(player.name, period, totals_row, breakdown, units, scope)
     return TemplateResult(
-        data={"player": player.name, "season": season, "headline": headline, "fingerprint": breakdown},
-        answer=_phrase_netpoints(player.name, period, headline, breakdown, per_100, possessions),
+        data={
+            "player": player.name,
+            "season": season,
+            # `totals` is a stable dict, not the raw SQL row `headline` used to
+            # be: the page's own `data["headline"]` is the display sentence
+            # every other renderer reads verbatim, and a 6-number array under
+            # that name could never be one (ISSUES.md, "`player_netpoints`
+            # still renders as a `<pre>` block").
+            "totals": _netpoints_totals(totals_row),
+            "fingerprint": breakdown,
+            "per_100": per_100,
+            "possessions": possessions,
+            "headline": answer.split("\n")[0],
+            "notes": _netpoints_notes(totals_row, breakdown, units, scope),
+        },
+        answer=answer,
     )
+
+
+def _netpoints_units(per_100: bool, possessions: float | None) -> tuple[str, str]:
+    """The words describing what the fingerprint's numbers are - shared between
+    the printed table's own headers (`_phrase_netpoints_partition`/`_detail`)
+    and `data["notes"]`, so a card-rendered page and the CLI's text cannot say
+    two different things about the same numbers."""
+    units = "per 100 possessions" if per_100 else "season totals"
+    scope = f" over {possessions:,.0f} possessions" if per_100 and possessions else ""
+    return units, scope
+
+
+def _netpoints_totals(totals_row: tuple[Any, ...] | None) -> dict[str, Any] | None:
+    """The season-total row (`net_points_player`'s own order: overall, offense,
+    defense, per-100 rate, minutes, games) as a stable dict for the page, or
+    ``None`` with no season totals on record."""
+    if totals_row is None:
+        return None
+    overall, offense, defense, per_100_rate, minutes, games = totals_row
+    return {
+        "overall": overall,
+        "offense": offense,
+        "defense": defense,
+        "per_100": per_100_rate,
+        "minutes": int(minutes) if minutes else None,
+        "games": int(games) if games else None,
+    }
+
+
+def _netpoints_headline_detail(totals_row: tuple[Any, ...] | None) -> list[str]:
+    """The minutes/games/per-100-rate clauses beside the season line - shared
+    between the printed sentence (`_phrase_netpoints_headline`) and
+    `data["notes"]` (`_netpoints_notes`), so the two read the same numbers off
+    one place rather than each computing them."""
+    if totals_row is None:
+        return []
+    _, _, _, per_100_rate, minutes, games = totals_row
+    detail = []
+    if per_100_rate is not None:
+        detail.append(f"{per_100_rate:.2f} per 100 possessions")
+    if minutes:
+        detail.append(f"{int(minutes):,} minutes")
+    if games:
+        detail.append(f"{int(games)} games")
+    return detail
+
+
+def _netpoints_notes(totals_row: tuple[Any, ...] | None, breakdown: list[dict[str, Any]], units: str, scope: str) -> list[str]:
+    """The lines a table- or card-rendered page needs beside the numbers
+    rather than in them: the season line's own detail, what units the
+    category rows are in, and the play-type overlap disclaimer - the same
+    three facts `answer`'s prose already carries, so a page that draws
+    `fingerprint` as a table loses nothing the plain text keeps."""
+    notes = []
+    detail = _netpoints_headline_detail(totals_row)
+    if detail:
+        notes.append(", ".join(detail) + ".")
+    if breakdown:
+        notes.append(f"Categories are {units}{scope}.")
+    if any(not row["partition"] for row in breakdown):
+        notes.append("Play-type detail is overlapping slices - a driving layup at the rim counts in driving, layup and rim, so these do not add up.")
+    return notes
 
 
 def _netpoints_breakdown(fingerprint: tuple[Any, ...], categories: list[str], scale: float) -> list[dict[str, Any]]:
     """The fingerprint's categories, scaled, largest total first. ``fingerprint``
     is the row read by player_netpoints: possessions, then offense, defense and
-    total for each of ``categories`` in turn."""
+    total for each of ``categories`` in turn. ``partition`` marks the six
+    categories that sum to the season total (`FINGERPRINT_PARTITION`) - the
+    flag the printed table and the page's renderer both split sections on, so
+    the two read one fact rather than each recomputing the category set."""
+    partition_names = {c.replace("_", " ") for c in FINGERPRINT_PARTITION}
     breakdown: list[dict[str, Any]] = []
     for index, category in enumerate(categories):
         o, d, t = fingerprint[1 + index * 3 : 1 + index * 3 + 3]
         if o is None and d is None and t is None:
             continue
+        name = category.replace("_", " ")
         breakdown.append(
             {
-                "category": category.replace("_", " "),
+                "category": name,
+                "partition": name in partition_names,
                 "offense": None if o is None else o * scale,
                 "defense": None if d is None else d * scale,
                 "total": None if t is None else t * scale,
@@ -180,9 +265,10 @@ def _single_game_netpoints(ctx: TemplateContext, player: Entity, season: int, se
 
     if row is None:
         which = "earliest" if order == "first" else "most recent"
+        answer = f"No per-game NetPoints on record for {player.name}'s {which} {period} game."
         return TemplateResult(
-            data={"player": player.name, "season": season, "game": None},
-            answer=f"No per-game NetPoints on record for {player.name}'s {which} {period} game.",
+            data={"player": player.name, "season": season, "game": None, "headline": answer},
+            answer=answer,
         )
     event_id, date, o, d, t, o_poss, d_poss, wpa = row
     which = "first" if order == "first" else "most recent"
@@ -192,57 +278,55 @@ def _single_game_netpoints(ctx: TemplateContext, player: Entity, season: int, se
         detail.append(f"{o_poss:.0f} offensive and {d_poss:.0f} defensive possessions")
     if wpa is not None:
         detail.append(f"{wpa:+.3f} win probability added")
-    answer = f"{player.name}, NetPoints in his {which} {period} game ({_eastern_date(date)}): {_table_cell(t)} total ({_table_cell(o)} offense, {_table_cell(d)} defense)."
+    headline = f"{player.name}, NetPoints in his {which} {period} game ({_eastern_date(date)}): {_table_cell(t)} total ({_table_cell(o)} offense, {_table_cell(d)} defense)."
+    answer = headline
     if detail:
         answer += "\n  " + ", ".join(detail) + "."
     answer += "\n  (Ask for a fingerprint of that game to see the play-type split behind it.)"
-    return TemplateResult(data={"player": player.name, "game": game}, answer=answer)
+    notes = [", ".join(detail) + "."] if detail else []
+    return TemplateResult(data={"player": player.name, "game": game, "headline": headline, "notes": notes}, answer=answer)
 
 
 def _phrase_netpoints(
     name: str,
     period: str,
-    headline: tuple[Any, ...] | None,
+    totals_row: tuple[Any, ...] | None,
     breakdown: list[dict[str, Any]],
-    per_100: bool,
-    possessions: float | None,
+    units: str,
+    scope: str,
 ) -> str:
-    lines = _phrase_netpoints_headline(name, period, headline)
+    """The season line, then a table of the six partition categories (offense
+    and defense sections) and one of the overlapping play-type detail rows.
+    ``units``/``scope`` come from `_netpoints_units`, computed once in
+    `player_netpoints` and reused in `data["notes"]` so the printed table and
+    the page's own render of `fingerprint` say the same thing about what the
+    numbers are."""
+    lines = _phrase_netpoints_headline(name, period, totals_row)
 
     if not breakdown:
         lines.append("  No play-type fingerprint on record for this season.")
         return "\n".join(lines)
 
-    units = "per 100 possessions" if per_100 else "season totals"
-    scope = f" over {possessions:,.0f} possessions" if per_100 and possessions else ""
     width = max(len(row["category"]) for row in breakdown)
-    partition_names = {c.replace("_", " ") for c in FINGERPRINT_PARTITION}
-    # NOT `detail`: the headline block above binds that to a list of strings,
-    # and reusing it here is the same shadowing that made a rate=total request
-    # print under a per-100 heading.
-    partition_rows = [r for r in breakdown if r["category"] in partition_names]
-    detail_rows = [r for r in breakdown if r["category"] not in partition_names]
+    partition_rows = [r for r in breakdown if r["partition"]]
+    detail_rows = [r for r in breakdown if not r["partition"]]
     lines += _phrase_netpoints_partition(partition_rows, units, scope, width)
     lines += _phrase_netpoints_detail(detail_rows, units, width)
     return "\n".join(lines)
 
 
-def _phrase_netpoints_headline(name: str, period: str, headline: tuple[Any, ...] | None) -> list[str]:
+def _phrase_netpoints_headline(name: str, period: str, totals_row: tuple[Any, ...] | None) -> list[str]:
     """The season-total line, and its minutes and games, or the note that there are none."""
     lines = []
-    if headline is not None:
-        # NOT `per_100`: that is the parameter saying which UNITS the
-        # fingerprint is in, and unpacking over it made a rate=total request
-        # print season totals under a "per 100 possessions" heading.
-        overall, offense, defense, per_100_rate, minutes, games = headline
+    if totals_row is not None:
+        # NOT unpacked over `per_100`: that is the caller's own flag for which
+        # UNITS the *fingerprint* is in, a different question from what this
+        # row's own stored per-100 rate is - conflating them made a
+        # rate=total request print season totals under a "per 100
+        # possessions" heading.
+        overall, offense, defense, *_rest = totals_row
         lines.append(f"{name}, NetPoints in the {period}: {_table_cell(overall)} overall ({_table_cell(offense)} offense, {_table_cell(defense)} defense)")
-        detail = []
-        if per_100_rate is not None:
-            detail.append(f"{per_100_rate:.2f} per 100 possessions")
-        if minutes:
-            detail.append(f"{int(minutes):,} minutes")
-        if games:
-            detail.append(f"{int(games)} games")
+        detail = _netpoints_headline_detail(totals_row)
         if detail:
             lines.append("  " + ", ".join(detail) + ".")
     else:

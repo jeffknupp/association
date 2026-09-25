@@ -301,9 +301,13 @@ honest refusals that a fuller system would answer. By cause:
    refusals that used to rank points). And #213: "vs southeast division"
    keeps its name through the router (routing 140/140) and answers the
    key's 8 - which exposed and fixed the compiler averaging a boolean.
-   **Left from it:** `player_netpoints` has no renderer; `team_record`'s
-   month/venue/career branches still rely on the page's first-line
-   fallback; a NetPoints single-game ranking has no fast relation.
+   **Left from it, done 2026-09-25:** `player_netpoints` now has a renderer
+   (a season-totals card plus offense/defense and play-type-detail tables)
+   and `team_record`'s month/venue/career branches carry their own
+   `data["headline"]` instead of relying on the page's first-line fallback;
+   the card also draws the season branch's seed/streak/split/points fields
+   that used to be lost outside `answer`/`text`. **Still left:** a NetPoints
+   single-game ranking has no fast relation.
 6. **2026-09-25, `live_day3.jsonl` on `8ac55f0`: 161/175 (92.0%) - the
    total unchanged, the composition moved** (141 correct + 18 honest
    refusals + 2 clarifications; F055 flipped refusal -> correct). Four

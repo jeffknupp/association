@@ -292,13 +292,20 @@ those were found.
     still in the "text" toggle.
   - `record_when` (10 of 11): "Over the 70 games he played; a game he missed
     is in neither row."
-  - `team_record` (5 of 8, every one with the wins/losses card rather than
+  - ~~`team_record` (5 of 8, every one with the wins/losses card rather than
     the month table): the seed, streak, home/road split, last-10 and
-    points-for/against line - "Home 31-10, road 19-22; last 10: 6-4; 18
-    games back. 113.4 points per game, 112.2 allowed (+1.2)." None of it is
-    in `data` at all (`web/static/index.html`'s `team_record` renderer used
-    to keep the whole sentence as its caption for exactly this reason,
-    before that became a second problem - see below).
+    points-for/against line~~ **Fixed 2026-09-25**: the card now reads
+    `data.home`/`data.road`/`data.last_ten`/`data.games_behind`/
+    `data.points_for`/`data.points_against` directly (they were already on
+    `data` - `_standings_season` set them; nothing in the page read them),
+    and the month/venue/career branches that had no `data["headline"]` at
+    all now do (`_standings_season_venue`, `_standings_career`,
+    `_standings_career_venue`, `_team_record_by_month`,
+    `_team_record_by_month_span` - `query/templates/teams.py`). See the
+    (now-deleted) "`team_record`'s standings/games-record card renderer
+    always duplicates its own caption" entry for the caption half of this,
+    which turned out to already be fixed before this session started
+    (`caption: null` landed in `586ed35`, before that entry was filed).
   - `player_splits` (3 of 4): "Played means he appeared in the game, and W-L
     is his team's record in those games. Months go by the US Eastern date of
     the game."
@@ -311,9 +318,13 @@ those were found.
     "Without Anthony Black and Franz Wagner means games neither of them
     played while on the same team - a did-not-play entry, or no line in the
     box score at all" clause (`_box_score_notes`).
-  - `player_netpoints` (2 of 2, though this intent has no renderer at all -
+  - ~~`player_netpoints` (2 of 2, though this intent has no renderer at all -
     see the next bullet): the per-100-possession summary line and the
-    play-type disclaimer.
+    play-type disclaimer.~~ **Fixed 2026-09-25**: both now reach
+    `data["notes"]` (`_netpoints_notes`, `query/templates/netpoints.py`),
+    alongside `data["notes"]`'s own new units line ("Categories are per 100
+    possessions over 1,329 possessions."). See the (now-narrowed) "No future
+    template gets a renderer for free" entry above for the renderer itself.
   - `player_history` (2 of 21, the `career` span only): the career total/
     rate line ("Luka Doncic's career total: 4,230 assists.",
     `_player_history_career_count`/`_rate`) is appended to `answer` after
@@ -322,12 +333,16 @@ those were found.
     aside ("Luka Doncic has no 2026 postseason numbers in the warehouse.",
     "Streaks are counted within one season.", a defaulted-season redirect).
 
-  Rough total: about 42 of 277 answers in the live gallery lost a line this
-  way. The fix is one shape repeated: give each of these its own
-  `data["notes"]` entry (`agent.py`'s `_note` helper already shows how - the
-  same list `player_compare`'s "vs" refusal and the fingerprint substitution
-  note already use, which the page renders correctly today) instead of only
-  appending to `answer`.
+  Rough total when this was written: about 42 of 277 answers in the live
+  gallery lost a line this way; minus the two bullets fixed above (2
+  `player_netpoints` + 5 `team_record`), that is arithmetic against the
+  original count, not a re-measurement - the gallery this was measured
+  against (`/tmp/claude-1000/gallery_before_live`) is not on disk in this
+  session to re-run. The fix is one shape repeated: give each of these its
+  own `data["notes"]` entry (`agent.py`'s `_note` helper already shows how -
+  the same list `player_compare`'s "vs" refusal and the fingerprint
+  substitution note already use, which the page renders correctly today)
+  instead of only appending to `answer`.
 - **`player_history`'s `twoPointFieldGoalPct` reads land under a raw SQL
   expression as their dict key, not a header.**
   `templates/players.py:916` (`_player_history`) builds `history` as
@@ -352,32 +367,14 @@ those were found.
   but the underlying key is still wrong. Fix: zip on `[h for _, h in
   columns]` like `_phrase_history` does, or add `columns`/headers to `data`
   the way `game_log` already does.
-- **`player_netpoints` has no renderer, and its `data` cannot support a
-  faithful one yet.** Its `text` has three sections (an offense/defense
-  six-category partition - turnover, foul, three pt, two pt, rebound, free
-  throw, each with a total - then a 15-category play-type detail), but
-  `data` only has `fingerprint` (the play-type detail) and `headline`, and
-  `headline` **is a raw 6-number array** (`[121.61, 125.13, -3.52, 4.32,
-  1329, 43]`), not a string or a dict - inconsistent with every other
-  template's `data["headline"]`, which the page reads as the display
-  sentence verbatim when present. Building a table from `fingerprint` alone
-  would render less than the sentence already says (the partition
-  breakdown, the more commonly asked-for figure, is nowhere in `data`) -
-  exactly the "what is missing" failure shape AGENTS.md warns about, so the
-  page leaves this one as monospace text rather than a partial table. Not
-  visibly broken today only because `player_netpoints` has no renderer and
-  no artifacts, so the page never reaches the code path that would try to
-  use `data.headline` as a string - it would if this intent gained either.
 - **User sees:** a correct but visually stripped-down answer for the notes
-  (still one click away, under "text"), a broken-looking table for the
-  `twoPointFieldGoalPct` history case, and permanently-monospace text for
-  `player_netpoints`.
+  (still one click away, under "text"), and a broken-looking table for the
+  `twoPointFieldGoalPct` history case.
 - **Next step:** the bullets above, in the templates package - none of it is
   a page fix.
 - **Source:** ours (the page's own gap), except `twoPointFieldGoalPct` and
   the `_team_game_log_total_line`/career-total lines, which are template
   bugs (a wrong dict key; an answer-only append) independent of the page.
-- **GitHub:** not yet filed
 - **GitHub:** #218
 
 ### "Since 2000-01" still reads the default season live, although route() reads it on stubbed slots
@@ -2056,200 +2053,68 @@ those were found.
   whole session a user loses, not a detail of one answer.
 - **GitHub:** #69
 
-### `player_netpoints` still renders as a `<pre>` block, and no future template gets a renderer for free
-- **Found:** 2026-09-18, scoping study requested ("richer HTML answers - cards,
-  sparklines, tables"). Checked first: no open or closed issue on this repo
-  covers it; the nearest neighbors are #69 (above) and the chart renderers
-  (`court.py`, `radar.py`), which already draw `shot_chart` and `fingerprint`
-  as standalone HTML artifacts.
-- **Status: stage 1 of the plan below shipped 2026-09-18** (a separate agent
-  session, `web/static/index.html` + `tests/web/test_renderers.py` only, no
-  template touched). `RENDERERS` now covers 20 of the 24 `TEMPLATES` entries -
-  the original seven (`leaderboard`, `threshold_count`, `single_game_high`,
-  `player_history`, `player_compare`, `game_log`, `team_record`), the two
-  chart intents (`shot_chart`, `fingerprint`), and thirteen more added in this
-  pass: `player_stat`, `shot_distance` (a stat card each), `head_to_head` (a
-  two-team score card), `team_quarter_points`/`period_split` (sparkline plus a
-  per-game table), `player_splits` (one table per split kind), `with_without`/
-  `record_when` (a two-row team-record comparison), `player_matchup`
-  (comparison table plus the recent-meetings log), `streak` (a ranked table
-  for the league-wide shape, a plain one for a named player or team),
-  `team_stat` (value and rank per metric), `team_leaderboard` (a ranked
-  table) and `team_outlook` (a stat-card grid). Every new renderer read a key
-  already on `Answer.data` - no template changed, matching what the inventory
-  below found. Checked in a real browser, light and dark: `.stats`, `.h2h` and
-  `.group-title` (the three new CSS shapes) render correctly against both
-  palettes, since they use only the existing color tokens. What remains is
-  stages 2-4 below, which do reach into a template or reshape the fallback
-  path - out of scope for a renderer-only pass and left here rather than
-  folded into a "done" entry.
-- **What already existed before stage 1, for the record.**
-  `web/static/index.html`'s `RENDERERS` table already turned `Answer.data`
-  into a table, a ranked list, a two-column comparison, a season-by-season
-  sparkline, or a W-L record card, for the original seven intents. Two more,
-  `shot_chart` and `fingerprint`, get a chart drawn server-side and shown in a
-  sandboxed iframe (`chartFrame()`). Every other intent fell through
-  `renderBody()` ("no renderer, or a key it needs is missing" both read
-  `null`) to `el("pre", null, a.text)`: literally the raw sentence in an
-  unstyled `<pre>`, which is the "raw unstyled terminal text" the request
-  asked to fix. `tests/web/test_renderers.py` is the contract test - it reads
-  `RENDERERS`' `needs` lists back out of the page and asserts each template
-  still produces every key its renderer reads, so a new renderer plugs into
-  an existing, exercised guard rather than inventing one.
-- **Architectural facts, established from code, that constrain the design:**
-  - `TemplateResult.data` (`query/templates/common.py:438`) already is "the
-    same result as structured values - resolved names and numbers, no ids and
-    no schema" (its own docstring, `query/answer.py:96-117`), and has been
-    carried out on `Answer.data` since 2.0. Confirmed against the live
-    warehouse (`nba.duckdb`, read-only) by calling all 24 `TEMPLATES` entries
-    directly with representative slots: every one returns a populated,
-    JSON-serializable `dict` with resolved names (e.g. `'Nikola Jokic'`,
-    `'Denver Nuggets'`) and no `athlete_id`/`team_id`/`event_id` anywhere in
-    the 24 payloads inspected, matching what the docstring claims. A renderer
-    can consume `data` with no query-path change for any of the 24 - see the
-    inventory below for which ones are worth it.
-  - `answered_by == "agent"` answers carry `intent=None` and `data=None`
-    (`AnswerResponse`, `web/app.py:78-95`; `Answer`, `query/answer.py:104-116`),
-    so a renderer needs a text-only fallback by construction, and `renderBody`
-    already supplies it (`index.html:680-681`, `if (!spec || !a.data) return
-    null`). **Reported, not re-verified**: `ISSUES.md`'s own baseline
-    (`fastpath_after_rows_graded.jsonl`, cited in "Each narrowing the router
-    has no slot for needs its own regex" above, 261 rows) counts 94
-    `fell_through` - about 36% of that sample - against 87 `correct`, 29
-    `wrong`, 25 `clarified`, 12 `refused`, 12 `partial`, 2 `unclear`. That
-    file is not checked into this tree, so the exact `fell_through` ->
-    `answered_by=="agent"` mapping could not be re-run here; treat 36% as an
-    order-of-magnitude estimate of how often the page has no `data` to render
-    at all, not a re-measured figure.
-  - The page is one self-contained HTML file (`web/static/index.html`, 32KB),
-    inline CSS and JS, declared in `[tool.setuptools.package-data]`
-    (`pyproject.toml:90-95`) and checked to exist at `serve()` startup. A
-    renderer is a function added to the existing `RENDERERS` object plus, at
-    most, a few lines of shared CSS (`.record`, `.spark` already exist for the
-    card and sparkline shapes) - no build step, no second asset, no new
-    dependency.
-  - Chart iframes run `sandbox="allow-same-origin"` with scripts off
-    (`chartFrame()`, `index.html:612`); `allow-same-origin` is load-bearing so
-    `fit()` (`index.html:637-652`) can read `frame.contentDocument` to size the
-    frame to its content. This constrains only the two chart intents, which
-    already work this way - it says nothing about the plain-data intents,
-    whose tables/cards render inline in the page's own DOM, not in an iframe.
-  - `answer.text` is what the CLI prints, unchanged, and the CLI has no
-    `--json` flag (`cli/commands.py:317`, `click.echo(agent.ask(...).text)` is
-    the only place `.text` is read outside the web layer - grepped, nothing
-    else in `cli/` or `web/runner.py` touches `.answer`/`.text` directly). The
-    web API's `/api/ask` and `/api/ask/stream` responses carry `text` as one
-    field of `AnswerResponse` alongside `data`, so a JSON consumer of the API
-    already gets both and loses nothing either way. A richer page is additive:
-    `text` stays the sentence of record for the CLI and for any API caller
-    that ignores `data`.
-- **Per-intent inventory**, as it stood before stage 1 (called directly
-  against `nba.duckdb`, read-only, with representative slots for all 24
-  `TEMPLATES` entries - full coverage, none skipped for time). "Renderer
-  today" is now stale for the thirteen stage 1 shipped - see "Status" above -
-  and kept here only so the "needs template change" column, which is still
-  accurate, has its evidence beside it.
-
-  | intent | `data` carries | UI it could support | needs template change |
-  |---|---|---|---|
-  | `player_stat` | one stat's `gamesPlayed`/avg/total | single stat card | no - **shipped** |
-  | `leaderboard` | ranked `leaders` list, `fields` | ranked table | - (already had one) |
-  | `threshold_count` | ranked `leaders` (player, games) | ranked table | - (already had one) |
-  | `team_record` | wins/losses/pct/home/road/last_ten | W-L card | - (already had one) |
-  | `game_log` | list of games, per-game box line | table | - (already had one) |
-  | `shot_chart` | `path` to a drawn SVG chart | chart artifact | - (already had one) |
-  | `player_compare` | per-player stat dict + NetPoints | comparison table | - (already had one) |
-  | `single_game_high` | ranked `games` (player, value, date, opp) | ranked table | - (already had one) |
-  | `head_to_head` | `games` count, `wins` per team | small 2-team card | no - **shipped** |
-  | `team_quarter_points` | per-game list (date, opponent, points), `total` | sparkline over games | no - **shipped** |
-  | `period_split` | per-game list (date, opponent, points), average | sparkline over games | no - **shipped** |
-  | `shot_distance` | one number (`avg_feet`) + `attempts` | single stat card | no - **shipped** |
-  | `player_history` | season-by-season one-stat series | table + sparkline | - (already had one) |
-  | `player_netpoints` | per-category offense/defense/total list (`fingerprint`) | bar chart - same category set the `fingerprint` chart already draws | **yes - still open, stage 2 below** |
-  | `fingerprint` | `path` to a drawn radar chart | chart artifact | - (already had one) |
-  | `player_splits` | grouped table: home/away, starter/bench, win/loss, by month | multi-group table | no - **shipped** |
-  | `with_without` | two-row group comparison (played/out), `tenure` | two-column comparison | no - **shipped** |
-  | `record_when` | two-row group comparison (`reached`/`fell_short`) | two-column comparison | no - **shipped** |
-  | `player_matchup` | `averages` (2-player comparison dict) + per-meeting `games` list when they met | comparison table + game log | no - **shipped** |
-  | `streak` | list of `streaks` (length, from, to) | small ranked list / timeline | no - **shipped** |
-  | `team_stat` | dict of metric -> {value, rank, of} | ranked stat table (card grid) | no - **shipped** |
-  | `team_leaderboard` | ranked `teams` list | ranked table | no - **shipped** |
-  | `team_outlook` | many single values: bpi, record, projections, `chances` dict | multi-card grid | no - **shipped** |
-  | `coach` | `message`, `unanswerable` | refusal - prose only, correctly | **n/a - nothing structured to show, by design** |
-
-  The one genuine gap is `player_netpoints`: its `fingerprint` list is the
-  identical category/offense/defense/total shape the `fingerprint` template
-  already hands to `radar.py`, so the cheapest richer UI for it is not a new
-  renderer at all but drawing the same chart artifact from `player_netpoints`'
-  own data - it touches the template (adding an `Artifact`), which is why it
-  was left out of a renderer-only pass rather than folded in.
-- **User sees:** nothing wrong - the plain-text answers are correct - but
-  `player_netpoints` still gets a `<pre>` block on a page that renders every
-  other intent but the tableless `coach` refusal as a table, card or chart.
-  It is also the one remaining intent whose answer is the same shape
-  (offense/defense/total per category) as a chart the page already draws
-  (`fingerprint`), so the gap reads as more visible than one plain-text
-  answer among twenty-three - a reader who has seen a fingerprint radar
-  once would reasonably expect the same category list here to draw one too.
-- **Next step - the plan's remaining stages, cheapest first, each
-  independently shippable:**
-  1. ~~**Renderer-only, no template change.**~~ **Shipped 2026-09-18** - see
-     "Status" above.
-  2. **`player_netpoints` as a chart, not a table.** Draw the same radar chart
-     `fingerprint` does, from `player_netpoints`' own `fingerprint` list,
-     rather than writing a fourteenth bar-shaped renderer. **Touches the
-     template** (`player_netpoints` gains an `Artifact`, `query/templates/netpoints.py`),
-     not only `index.html`. **Risk:** `radar.py`'s existing per-game-vs-per-100
-     `Unit` labeling (`AGENTS.md`, "A single game's fingerprint...") has to
-     stay correct for a season-level input, since `player_netpoints` is a
-     season aggregate and `fingerprint` can be either - reusing the renderer
-     wrong would silently mislabel the scale, exactly the failure shape this
-     project keeps producing.
-  3. **A generic fallback formatter for everything with no dedicated
-     renderer**, rather than a 24th hand-written one: for any `data` dict with
-     no `RENDERERS` entry, render flat scalar keys as a small card grid and
-     any list-of-dicts key as a table, generically, in `renderBody`'s `null`
-     branch. This is the stage that makes the *baseline* ("every template's
-     answer render as formatted HTML rather than raw unstyled terminal text")
-     true for every future template too, not just the 24 named above, without
-     writing a renderer per intent forever. **Risk:** a generic renderer is
-     more likely to produce a confusing layout for a shape nobody has looked
-     at (the recurring failure shape here is a too-narrow answer, and a
-     too-generic one is the same risk turned around) - ship it behind the
-     same `try/catch` fallback to `<pre>` so a bad generic render never loses
-     the correct sentence, and look at a handful of real answers per intent
-     before trusting it for `coach`-shaped refusals and other prose-only
-     results, which should probably opt out entirely.
-  4. **`coach`-and-friends stay prose.** Not every `data` payload should grow
-     a UI - `coach`'s `data` is a refusal message, and rendering that as a
-     "card" would dress up a sentence as if it were a number. Exclude
-     refusal-shaped payloads (a `message`/`unanswerable` pair, or any answer
-     with `answered_by != "fast"`) from stage 3's generic renderer explicitly,
-     rather than letting it try and fall back silently - a silent fallback
-     here reads as "nothing to show" when the real content is the sentence
-     itself.
-- **Priority note:** P3 (placed beside #69, the page's other structural gap),
-  not P1/P2 - nothing here is wrong. Every one of the 24 answers is correct
-  and already readable as plain text; `player_netpoints` getting a `<pre>`
-  block where its sibling `fingerprint` gets a chart is a real gap in what a
-  user sees rather than a bug, so it is ranked as a gap and not inflated to a
-  wrong-answer priority it does not meet.
-- **Could not verify (stage 1):** whether a generic stage-3 renderer looks
-  good for every shape in practice, which needs eyes on real output rather
-  than a data-shape read, is unchanged by shipping stage 1 - still open. The
-  thirteen stage 1 renderers were themselves checked against a real Chromium
-  render, light and dark, with synthetic data matching every shape the
-  per-intent inventory above describes (including the league-wide vs.
-  single-subject `streak` shapes, and `with_without`'s subject-vs-no-subject
-  column set) - not just asserted via the DOM-level contract test.
-- **Could not verify (stage 2, unstarted):** the exact `fell_through` ->
-  `answered_by=="agent"` mapping in the 261-row baseline (file not in this
-  tree, and re-running the router was out of scope - ollama was not run for
-  this task); and whether `player_netpoints`'s aggregate-season fingerprint
-  plots correctly on `radar.py`'s per-game percentile scale without changes
-  beyond wiring - that needs the scale checked against real numbers, not
-  assumed from the shared category names.
-- **GitHub:** #110
+### No future template gets a renderer for free
+- **Found:** 2026-09-18, scoping study requested ("richer HTML answers -
+  cards, sparklines, tables"). Originally filed together with
+  "`player_netpoints` still renders as a `<pre>` block", which is now fixed
+  (see below) - what remains is the design point the old title's second
+  half named, so the entry is narrowed to that rather than closed outright.
+- **Status:** stage 1 (a renderer per existing shape) shipped 2026-09-18.
+  `player_netpoints`, the one intent stage 1 left as a `<pre>` block, got its
+  own renderer 2026-09-25 (`RENDERERS.player_netpoints`,
+  `web/static/index.html`): a stat card for the season totals
+  (`data.totals`) plus an Offense/Defense table of the six partition
+  categories and a table of the overlapping play-type detail, all read
+  straight off `data.fingerprint`'s own stable keys (each row now also
+  carries `partition: bool`, so the page and the printed CLI table split
+  offense/defense the same way without a second copy of
+  `FINGERPRINT_PARTITION`). `data.headline` is now the display sentence
+  (`answer.split("\n")[0]`), not the raw six-number SQL row it used to be
+  stored under that key, and `data.notes` carries the season line's own
+  minutes/games/per-100-rate detail, what units the category rows are in,
+  and the play-type overlap disclaimer -
+  `query/templates/netpoints.py`'s `_netpoints_totals`/`_netpoints_notes`.
+  Not the radar-chart route the entry originally proposed as "stage 2": its
+  own stated risk (reusing `radar.py`'s per-game-vs-per-100 `Unit` labeling
+  for a season aggregate without checking the scale first) is exactly the
+  failure shape this project keeps producing, and a table read off
+  `fingerprint`'s own keys carries none of it. `RENDERERS` now covers all 24
+  `TEMPLATES` entries but `coach`, which stays prose by design (nothing
+  structured to show).
+- **What remains is a design point, not a fix for anything wrong today.**
+  Every one of the 24 typed intents already has a hand-written renderer, so
+  nothing is currently stuck behind a generic fallback - the gap is only for
+  the NEXT template. Today, shipping one with no `RENDERERS` entry falls
+  through to `el("pre", null, a.text)` - correct, but back to unstyled
+  terminal text - rather than drawing a table/card for free from its own
+  `data` shape, the way the original request asked for once and for all.
+  1. **A generic fallback formatter** for any `data` dict with no
+     `RENDERERS` entry: flat scalar keys as a small card grid, and any
+     list-of-dicts key as a table, generically, in `renderBody`'s `null`
+     branch. **Risk:** a generic renderer is more likely to produce a
+     confusing layout for a shape nobody has looked at (the recurring
+     failure shape here is a too-narrow answer, and a too-generic one is the
+     same risk turned around) - ship it behind the same `try/catch` fallback
+     to `<pre>` so a bad generic render never loses the correct sentence,
+     and look at a handful of real answers per intent before trusting it.
+  2. **Refusal-shaped payloads stay prose**, excluded from the generic
+     renderer explicitly (a `message`/`unanswerable` pair, or any answer
+     with `answered_by != "fast"`) rather than letting it try and fall back
+     silently - a silent fallback reads as "nothing to show" when the real
+     content is the sentence itself.
+- **User sees:** nothing wrong today - every current intent has a renderer.
+  The gap only reaches a reader once a new template ships with no
+  `RENDERERS` entry of its own.
+- **Priority note:** P3 (placed beside #69, the page's other structural
+  gap) - a design point, not a bug; no template today is affected.
+- **Could not verify:** whether a generic fallback formatter looks good for
+  every shape in practice needs eyes on real output rather than a data-shape
+  read, and is unstarted.
+- **GitHub:** #110 - heading changed from "`player_netpoints` still renders
+  as a `<pre>` block, and no future template gets a renderer for free" to
+  this one; the issue's title needs the same update
+  (`scripts/sync_issues.py` only opens issues for headings with no
+  `- **GitHub:**` line yet, so a rename here does not retitle it).
 
 ### The connection indicator is written once at load and never updated
 - **Found:** 2026-09-14, requested
@@ -3221,41 +3086,6 @@ those were found.
   regular season (the relation already has them - the template's own
   wording), falling back to the floor only for a league-wide read.
 - **Source:** ours.
-
-### `team_record`'s standings/games-record card renderer always duplicates its own caption
-- **Found:** 2026-09-25, the "look nice" data-shape sweep, screenshotting
-  answers through the real page rather than only diffing `data`.
-- **Evidence:** `RENDERERS.team_record` (`web/static/index.html`) has two
-  shapes; the wins/losses-card one sets `caption: text` - the WHOLE answer,
-  every line, not `firstLine(text)` the way every other card-shaped renderer
-  here does it. Its own comment says why: "The sentence carries the seed
-  and the streak, which are NOT in data. Dropping it for the card alone
-  would lose them, so it stays whole." `renderAnswer`'s dedup
-  (`out.caption !== headline`) only suppresses the caption when it EQUALS
-  the headline, and a multi-line `caption: text` can never equal a
-  single-line `headline` - so the full sentence, the home/road split, the
-  points-per-game line and any coverage-gap note all print a second time,
-  in gray, under the headline. Screenshotted: "Celtics record this season"
-  showed the record sentence, then the entire same block again verbatim,
-  then the record card, then the gap/detail notes a third time.
-  `templates/teams.py`'s `_standings_season` and `_games_record` (this
-  session, `git log` "teams.py templates carry a headline...") now carry
-  `data["seed"]`, `data["streak"]`, `data["home"]`/`data["road"]`,
-  `data["last_ten"]`, `data["games_behind"]`, `data["points_for"]`/
-  `data["points_against"]` and `data["notes"]` - the reason `caption: text`
-  gave for staying whole no longer holds, but the renderer was not this
-  session's file to change.
-- **User sees:** a correct answer, twice - the sentence, its full detail and
-  any note each print once as the caption block and, for the note, a third
-  time in the notes list. Not new information withheld or wrong, just
-  visual noise the record card was supposed to replace.
-- **Next step:** in `web/static/index.html`, drop `caption: text` for the
-  card branch (its comment is stale) and build the card from `data.seed`/
-  `data.streak`/etc. directly, the way `data.headline`/`data.notes` are
-  already read elsewhere on this page; keep `caption` only for a shape
-  (a `months` table) that still needs one.
-- **Source:** ours.
-- **GitHub:** #221
 
 ### `team_alignment` is not declared in every `TEMPLATE_SOURCES` tuple that can now read it
 - **Found:** 2026-09-24, landing the K3-2 conference/division narrowing.

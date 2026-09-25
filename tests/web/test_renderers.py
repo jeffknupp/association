@@ -22,6 +22,7 @@ from typing import Any
 import duckdb
 import pytest
 
+from association.nba.netpoints import FINGERPRINT_CATEGORIES
 from association.query.templates import TEMPLATES
 from association.query.templates.common import TemplateContext
 from association.web.app import INDEX_HTML
@@ -37,6 +38,7 @@ CASES: dict[str, dict[str, Any]] = {
     "game_log": {"player": "Ada Star", "limit": 3},
     "team_record": {"team": "Rockets", "season": 2026},
     "player_stat": {"player": "Ada Star", "stat": "points", "season": 2026},
+    "player_netpoints": {"player": "Ada Star", "season": 2026},
     "shot_distance": {"player": "Ada Star", "season": 2026},
     "head_to_head": {"teams": ["Rockets", "Mavericks"], "season": 2026},
     "team_quarter_points": {"team": "Rockets", "period": 1, "season": 2026},
@@ -196,6 +198,14 @@ def ctx(tmp_path: Path) -> TemplateContext:
         "overall DOUBLE, offense DOUBLE, defense DOUBLE, overall_per_100_poss DOUBLE, offense_per_100_poss DOUBLE, defense_per_100_poss DOUBLE, total_minutes BIGINT, games BIGINT)"
     )
     con.execute("INSERT INTO net_points_player VALUES ('1',2026,'Regular Season',120.0,90.0,30.0,4.5,3.4,1.1,71,2),('2',2026,'Regular Season',-10.0,-4.0,-6.0,-0.8,-0.3,-0.5,30,1)")
+    # player_netpoints' play-type fingerprint, one row per player-season - see
+    # test_templates.py's own np_ctx fixture for the same shape.
+    _fp_categories = [c for c in FINGERPRINT_CATEGORIES.values() if c != "total"]
+    _fp_cols = ", ".join(f"{cat}_{side}_net_pts DOUBLE" for cat in _fp_categories for side in ("o", "d", "t"))
+    con.execute(f"CREATE TABLE net_points_player_fingerprint (athlete_id VARCHAR, season INTEGER, total_poss DOUBLE, {_fp_cols})")
+    _fp_values = ", ".join("1.0" for _ in _fp_categories for _ in range(3))
+    con.execute(f"INSERT INTO net_points_player_fingerprint VALUES ('1', 2026, 71, {_fp_values})")
+    con.execute("UPDATE net_points_player_fingerprint SET two_pt_t_net_pts = 25.9, two_pt_o_net_pts = 25.3")
     con.execute(
         "CREATE TABLE standings (team_id VARCHAR, season INTEGER, season_type INTEGER, wins DOUBLE, losses DOUBLE, winPercent DOUBLE, playoffSeed DOUBLE, streak DOUBLE, "
         'gamesBehind DOUBLE, "Home" VARCHAR, "Road" VARCHAR, "Last Ten Games" VARCHAR, avgPointsFor DOUBLE, avgPointsAgainst DOUBLE, differential DOUBLE)'
