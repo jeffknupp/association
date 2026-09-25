@@ -843,8 +843,16 @@
     const allowSingle = opts && opts.allowSingle;
     if (rows.length < 1 || (rows.length < 2 && !allowSingle)) return null;
     const headers = ["#", label(nameKey), valueLabel].concat((extras || []).map(label));
-    const body = rows.map((r, i) => [i + 1, r[nameKey], rateOrNum(r[valueKey], valueLabel)].concat((extras || []).map(k => num(r[k]))));
-    return table(headers, body);
+    const body = (slice, offset) => slice.map((r, i) => [offset + i + 1, r[nameKey], rateOrNum(r[valueKey], valueLabel)].concat((extras || []).map(k => num(r[k]))));
+    // A ranking of 50 shows the top RANKING_SHOWN and folds the rest under
+    // their own count - a top-50 netpoints leaderboard used to list all 50
+    // rows whether the question asked "top 5" or "top 50" (Jeff's finding,
+    // 2026-09-24). The shown rows are never hidden; only the tail folds.
+    if (rows.length <= RANKING_SHOWN) return table(headers, body(rows, 0));
+    const wrap = el("div");
+    wrap.appendChild(table(headers, body(rows.slice(0, RANKING_SHOWN), 0)));
+    wrap.appendChild(folded(`${rows.length - RANKING_SHOWN} more`, table(headers, body(rows.slice(RANKING_SHOWN), RANKING_SHOWN))));
+    return wrap;
   }
 
   // A player's game log: home or away as the sentence says it ("@ BOS" -
@@ -981,6 +989,9 @@
   // listing every one (team_quarter_points' original threshold, now shared).
   const MIN_SPARKLINE_POINTS = 2;
   const FOLD_GAMES_OVER = 12;
+  // ranked()'s own fold point: how many rows of a leaderboard-shaped table
+  // stay visible before the rest collapse under their own count.
+  const RANKING_SHOWN = 10;
 
   // Mirrors templates.NETPOINTS_COMPARE_ROWS - label, then the data key.
   const NETPOINTS_ROWS = [
