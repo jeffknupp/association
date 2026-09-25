@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import functools
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -75,6 +75,10 @@ class Subject:
     own_team: str | None = None
     companions: tuple[str, ...] = ()
     evidence: tuple[str, ...] = ()
+    #: The players the question ITSELF names, resolved ("jokic" -> Nikola
+    #: Jokic) - the spelling a template gets where the router's is a bare
+    #: surname, a truncation or a near miss for the same person.
+    named: tuple[str, ...] = ()
 
 
 _MONTH_ABBREVIATIONS = frozenset({"jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec"})
@@ -333,7 +337,7 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, slo
         )
         if line
     )
-    return _decide(players, teams, position, opponent, own_team, companions, evidence, intent, question)
+    return replace(_decide(players, teams, position, opponent, own_team, companions, evidence, intent, question), named=tuple(named))
 
 
 def _decide(
@@ -387,15 +391,18 @@ def apply_subject(subject: Subject, slots: dict[str, Any]) -> tuple[list[Decisio
     # name in the chain's slot shape - kept, not dropped.
     kept = [r for r in routed if _same_person(r, (*subject.players, *subject.companions))]
     dropped = [r for r in routed if r not in kept]
-    if not dropped:
-        return [], []
     spare = [p for p in subject.players if not _same_person(p, kept)]
-    if len(spare) != len(dropped):
+    if dropped and len(spare) != len(dropped):
         return [], dropped
-    replacement = dict(zip(dropped, spare, strict=True))
     field = "players" if isinstance(slots.get("players"), list) else "player"
+    replacement = dict(zip(dropped, spare, strict=True)) if dropped else {}  # a spare name with nothing dropped is a player the router omitted: not put back here
     decisions = [Decision("subject", field, was, now, "the question never names the router's player; it names this one") for was, now in replacement.items()]
+    respelled = _respellings(kept, subject.named)
+    replacement.update(respelled)
+    decisions.extend(Decision("subject", field, was, now, "spelled as the question names the player") for was, now in respelled.items())
     new = [replacement.get(r, r) for r in routed]
+    if new == routed:
+        return [], []
     if field == "players":
         slots["players"] = new
     else:
@@ -412,3 +419,17 @@ def _same_person(name: str, others: tuple[str, ...] | list[str]) -> bool:
     """Whether ``name`` and one of ``others`` support each other - the same
     person under two spellings (a surname and its completion)."""
     return any(question_supports(name, o) or question_supports(o, name) for o in others)
+
+
+def _respellings(kept: list[str], named: tuple[str, ...]) -> dict[str, str]:
+    """A kept router name the question itself spells differently - a bare
+    "Jokic" the router left bare, "Jaylen Tatum" for the question's "tatum",
+    a "Deron Williams" two edits from the question's "derozan" - mapped to
+    the question's own resolved name:
+    :func:`association.query.entities._question_derived_player`'s job."""
+    out: dict[str, str] = {}
+    for r in kept:
+        own = next((p for p in named if _same_person(r, (p,)) and p != r), None)
+        if own is not None:
+            out[r] = own
+    return out

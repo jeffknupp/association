@@ -37,6 +37,8 @@ def con() -> duckdb.DuckDBPyConnection:
             ("15", "De'Aaron Fox"),
             ("16", "Shai Gilgeous-Alexander"),
             ("17", "Sir'Dominic Pointer"),
+            ("18", "DeMar DeRozan"),
+            ("19", "Deron Williams"),
         ],
     )
     c.execute("CREATE TABLE teams (team_id VARCHAR, display_name VARCHAR, abbreviation VARCHAR)")
@@ -183,6 +185,25 @@ def test_apply_subject_writes_the_players_the_question_names_in_the_routers_own_
     pair: dict[str, Any] = {"players": ["De'Aaron Fox", "Victor Wembanyama"]}
     assert apply_subject(read_subject(con, "de'aaron fox vs magic last five games without wembyanama", "player_matchup", pair), pair) == ([], [])
     assert pair["players"] == ["De'Aaron Fox", "Victor Wembanyama"]
+
+    # A kept router name the question spells differently takes the question's
+    # own resolved name: a bare surname completed, a fabricated given name
+    # corrected, a two-edit near miss ("Deron Williams" for "derozan") put
+    # right - _question_derived_player's job, now the reading's.
+    bare: dict[str, Any] = {"player": "Jokic"}
+    decisions, _ = apply_subject(read_subject(con, "How many 30+ point games did Jokic have this season?", "threshold_count", bare), bare)
+    assert bare == {"player": "Nikola Jokic"} and [(d.before, d.after) for d in decisions] == [("Jokic", "Nikola Jokic")]
+    near: dict[str, Any] = {"player": "Deron Williams"}
+    apply_subject(read_subject(con, "derozan career points vs knicks", "player_stat", near), near)
+    assert near == {"player": "DeMar DeRozan"}
+    right: dict[str, Any] = {"player": "Deron Williams"}
+    assert apply_subject(read_subject(con, "deron williams career points", "player_stat", right), right) == ([], []) and right == {"player": "Deron Williams"}
+
+    # A player the router left OUT (the question names two, the slot holds
+    # one) is not put back here - restore_dropped_players' job still - and
+    # must not trip anything: the golden crashed on this shape twice.
+    omitted: dict[str, Any] = {"player": "Nikola Jokic"}
+    assert apply_subject(read_subject(con, "compare jokic and embiid", "player_compare", omitted), omitted) == ([], []) and omitted == {"player": "Nikola Jokic"}
 
     nobody: dict[str, Any] = {"players": ["Ronaldo Lopes", "Nikola Jokic"]}
     decisions, dropped = apply_subject(read_subject(con, "compare jokic's fingerprint to last season", "fingerprint", nobody), nobody)
