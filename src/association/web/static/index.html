@@ -1362,9 +1362,12 @@
     team_outlook: {
       needs: ["team", "season", "snapshot", "position", "chances"],
       render: d => {
-        const items = [{ value: d.bpi == null ? "–" : (d.bpi >= 0 ? "+" : "") + d.bpi.toFixed(1), label: `BPI (${d.position} of ${d.teams_in_snapshot})` }];
+        // No BPI means no rank either: "1 of 30" among thirty empty ratings says nothing.
+        const items = [{ value: d.bpi == null ? "–" : (d.bpi >= 0 ? "+" : "") + d.bpi.toFixed(1), label: d.bpi == null ? "BPI" : `BPI (${d.position} of ${d.teams_in_snapshot})` }];
         if (d.wins != null && d.losses != null) items.push({ value: `${num(d.wins)}–${num(d.losses)}`, label: "record" });
         if (d.projected_wins != null && d.projected_losses != null) items.push({ value: `${num(d.projected_wins)}–${num(d.projected_losses)}`, label: "projected" });
+        // A postseason snapshot's second record is the finished regular season, not a projection.
+        if (d.regular_season_wins != null && d.regular_season_losses != null) items.push({ value: `${num(d.regular_season_wins)}–${num(d.regular_season_losses)}`, label: "regular season" });
         for (const [chanceLabel, value] of Object.entries(d.chances)) {
           if (value != null) items.push({ value: value.toFixed(1) + "%", label: chanceLabel });
         }

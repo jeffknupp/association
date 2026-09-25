@@ -1896,6 +1896,7 @@ def _team_outlook_data(
     proj_l: Any,
     chances: dict[str, Any],
     sos: Any,
+    kind: int,
 ) -> dict[str, Any]:
     """team_outlook's structured data, alongside its prose answer."""
     return {
@@ -1910,8 +1911,12 @@ def _team_outlook_data(
         "position": int(higher) + 1,
         "wins": wins,
         "losses": losses,
-        "projected_wins": proj_w,
-        "projected_losses": proj_l,
+        # In a postseason snapshot ESPN's "projection" columns hold the
+        # finished regular season (see _team_outlook_record_line), so they
+        # are filed under that name: the page drew "PROJECTED 45-37" beside
+        # "RECORD 49-44" for a team whose season was over (Jeff's session,
+        # 2026-09-24).
+        **({"regular_season_wins": proj_w, "regular_season_losses": proj_l} if kind == 3 else {"projected_wins": proj_w, "projected_losses": proj_l}),
         "chances": {label: chances[column] for label, column in _BPI_CHANCES},
         "strength_of_schedule": sos,
     }
@@ -1939,13 +1944,14 @@ def _team_outlook_detail(team: Entity, season: int, postseason: bool, chosen: tu
     others_line = _team_outlook_others_line(season, kind, snapshots, listing)
     if others_line is not None:
         lines_out.append(others_line)
-    data = _team_outlook_data(team, season, name, chosen, updated, bpi, offense, defense, higher, wins, losses, proj_w, proj_l, chances, sos)
+    data = _team_outlook_data(team, season, name, chosen, updated, bpi, offense, defense, higher, wins, losses, proj_w, proj_l, chances, sos, kind)
     # The page draws its own BPI/record/chances card from the typed values
-    # above (RENDERERS.team_outlook, web/static/index.html) and would
-    # otherwise have to parse the rest of the sentence back out of its text
-    # to show the BPI rank, the record, the chances and the strength-of-
-    # schedule lines beneath it - exactly the prose-parsing this project's
-    # notes exist to avoid. Every line after the opening one, in order.
+    # above (RENDERERS.team_outlook, web/static/index.html), so its notes
+    # are only the lines the card does NOT carry: the BPI's offense/defense
+    # split, the strength-of-schedule RANK, and the other snapshots. The
+    # record and chances lines restate the card's own boxes and were shown
+    # beneath them, twice over (Jeff's session, 2026-09-24); the CLI's text
+    # keeps every line.
     data["headline"] = lines_out[0].rstrip(":")
-    data["notes"] = [line.strip() for line in lines_out[1:]]
+    data["notes"] = [line.strip() for line in (bpi_line, sos_line, others_line) if line is not None]
     return TemplateResult(data=data, answer="\n".join(lines_out))
