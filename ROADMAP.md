@@ -275,9 +275,9 @@ honest refusals that a fuller system would answer. By cause:
    inherits the session's effort - control it with an agent definition.
    Details: `~/association-research/agent_review_2026-09-24.md`.
 2. **Conference and division from the standings - done** (`team_alignment`,
-   1988-2026, loaded): "vs the southeast division" narrows either relation;
-   the router still captures only the word "division" (#213), so the
-   question as typed refuses honestly until that lands.
+   1988-2026, loaded): "vs the southeast division" narrows either relation,
+   and since 87fa6a1 the router keeps the division's name (#213), so the
+   question as typed answers.
 3. **Done 2026-09-24:** the eleven fall-throughs sorted (seven router-side
    -> sweep 2; three data gaps -> refused fast: a team's stat by quarter,
    bench points, an attempts floor; one compiler shape left); the pair
@@ -286,9 +286,24 @@ honest refusals that a fuller system would answer. By cause:
    points in 15th season played"), a team where a player belongs on a
    boolean stat ("thunder all-time triple doubles": 180, by player), three
    more fast refusals (a team's stat by quarter, bench points, an attempts
-   floor). **Left:** the router's division capture (#213), the Hornets'
-   best first-quarter scorer (period data), two questions that need a
-   clarification the system does not ask, the pair as a compiler subject.
+   floor). **Left:** the Hornets' best first-quarter scorer (period data),
+   two questions that need a clarification the system does not ask, the
+   pair as a compiler subject.
+5. **Done 2026-09-24/25 (the rendering pass):** every answer on the web
+   page drawn from typed data - `headline` and `notes` on every template
+   with a renderer, stable keys for derived stats (a 2PT% history's column
+   was its SQL expression), typeset tables, folds past 10-12 rows, rates as
+   percents, signed margins, chart-only answers with their sentence, a note
+   box that corrects rather than appends. Measured on three galleries (277
+   yardstick answers, the deploy's history, Jeff's 17-question session)
+   through `scripts/preview_answers.py`: text moved on exactly the three
+   answers it was meant to (a championship refusal, two NetPoints
+   refusals that used to rank points). And #213: "vs southeast division"
+   keeps its name through the router (routing 140/140) and answers the
+   key's 8 - which exposed and fixed the compiler averaging a boolean.
+   **Left from it:** `player_netpoints` has no renderer; `team_record`'s
+   month/venue/career branches still rely on the page's first-line
+   fallback; a NetPoints single-game ranking has no fast relation.
 
 ## The current plan: what buys the most correctness next
 
@@ -322,7 +337,9 @@ yardstick before the next starts:
    plays the way points are, as one relation the compiler can read - a
    player's or a team's quarter as a narrowing rather than three templates.
 5. **Conference and division** from the standings we already fetch - the
-   last unanswerable narrowing that is answerable in principle.
+   last unanswerable narrowing that is answerable in principle. **Done
+   2026-09-25** end to end (`team_alignment`, the relations' shared step,
+   the router's capture): "vs southeast division" answers as typed.
 
 Not on the list: a bigger router (measured: does not fix names, and the
 latency fear was overstated), improving the agent fall-through (an agent
