@@ -989,6 +989,18 @@
   // listing every one (team_quarter_points' original threshold, now shared).
   const MIN_SPARKLINE_POINTS = 2;
   const FOLD_GAMES_OVER = 12;
+
+  // Points for a sparkline, keeping only ones with a real finite number - a
+  // key mismatch between the data and what a renderer reads it under (see
+  // ISSUES.md - "Template data the page cannot render from",
+  // player_history/twoPointFieldGoalPct) produces `undefined` for every
+  // point, and a line drawn through NaN coordinates is not a chart, just a
+  // row of misplaced dots. Below MIN_SPARKLINE_POINTS valid points, no
+  // sparkline is better than a broken one.
+  function sparkPoints(items, toPoint) {
+    const points = items.map(toPoint).filter(p => typeof p.value === "number" && Number.isFinite(p.value));
+    return points.length > MIN_SPARKLINE_POINTS ? points : null;
+  }
   // ranked()'s own fold point: how many rows of a leaderboard-shaped table
   // stay visible before the rest collapse under their own count.
   const RANKING_SHOWN = 10;
@@ -1033,11 +1045,15 @@
       render: (d, text) => {
         const rows = d.seasons.slice().reverse();
         const cols = Object.keys(d.seasons[0] || {}).filter(k => k !== "season");
+        const seasons = table(["season"].concat(cols.map(label)),
+          d.seasons.map(s => [s.season].concat(cols.map(c => num(s[c])))));
         return {
           caption: firstLine(text),
-          spark: rows.length > MIN_SPARKLINE_POINTS ? rows.map(s => ({ label: String(s.season), value: s[d.stat] })) : null,
-          body: table(["season"].concat(cols.map(label)),
-            d.seasons.map(s => [s.season].concat(cols.map(c => num(s[c]))))),
+          spark: sparkPoints(rows, s => ({ label: String(s.season), value: s[d.stat] })),
+          // A "career" or "past 20 years" question is still a long list once
+          // the sparkline has already said what it says - the same fold
+          // team_quarter_points and period_split use for a long game log.
+          body: d.seasons.length > FOLD_GAMES_OVER ? folded(`${d.seasons.length} seasons`, seasons) : seasons,
         };
       },
     },
@@ -1183,7 +1199,7 @@
         const games = table(["date", "opponent", "PTS"], d.games.map(g => [g.date, g.opponent, num(g.points)]));
         return {
           caption: null,
-          spark: d.games.length > MIN_SPARKLINE_POINTS ? d.games.map(g => ({ label: g.date, value: g.points })) : null,
+          spark: sparkPoints(d.games, g => ({ label: g.date, value: g.points })),
           body: d.games.length > FOLD_GAMES_OVER ? folded(`${d.games.length} games`, games) : games,
         };
       },
@@ -1206,7 +1222,7 @@
         const games = table(["date", "opponent", "PTS"], d.games.map(g => [g.date, (g.home_away === "home" ? "vs " : "at ") + g.opponent, num(g.points)]));
         return {
           caption: firstLine(text),
-          spark: d.games.length > MIN_SPARKLINE_POINTS ? d.games.map(g => ({ label: g.date, value: g.points })) : null,
+          spark: sparkPoints(d.games, g => ({ label: g.date, value: g.points })),
           body: d.games.length > FOLD_GAMES_OVER ? folded(`${d.games.length} games`, games) : games,
         };
       },
