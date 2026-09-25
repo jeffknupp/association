@@ -361,25 +361,35 @@ honest refusals that a fuller system would answer. By cause:
    Durant (not the Rockets' record), Brown/Tatum refuses by name for
    `since` (not a fall-through). Found on the way: the chain's unit tests
    are the second golden (they caught the 4.4.0 kareem regression, a rule
-   no recorded question exercises). **Next (3e):** the compiler's
-   `repair`/`_drop_*` and `refusals._team_where_a_player_belongs` read the
-   Subject instead of re-deriving it - the two position-group logs and
-   F049 (`team_players`) are its test cases.
+   no recorded question exercises). **Step 3e landed** (`91d1461`): the
+   compiler (`move_point`/`repair`/`team_move_point`/`answer`) and
+   `refusals.unanswerable` take the Subject the agent read; the position
+   group, the filler word, the team in `player`, the dropped subject, the
+   team the router left out and the position all come off it. 308/308.
+   **Plan item 1 is closed**: one reading decides the subject, nothing in
+   the query path derives it twice. Of the five chain bugs the measurement
+   found, four answer or refuse honestly; F049 needs `period_leaderboard`
+   to take a team (plan item 4). **Next:** a day4 live yardstick run to
+   measure what steps 1-3e bought; then plan item 3 (the player condition
+   `(player, side, predicate)` - F114's remainder) or plan item 2.
 
 ## The current plan: what buys the most correctness next
 
 In order of lift per unit of structural change, each measured on the
 yardstick before the next starts:
 
-1. **Subject kinds, decided once.** A question's subject is a player, a
-   team, a position group, everyone, or a pair - today that is inferred in
-   four places (the router's slots, `entities.scope_from_question`, the
-   compiler's `move_point`, the refusals). One reading, made from the
-   question's own words before any template runs, that files the subject
-   kind and name and refuses by name when the intent cannot be about it.
-   This is the "names are selected, not generated" tension from the first
-   plan, closed by construction: every name a template reads is a span of
-   the question.
+1. **Subject kinds, decided once - done 2026-09-25** (`query/subject.py`,
+   steps 1-3e above). A question's subject is a player, a pair, a team, two
+   teams, a position group, a team's players, or everyone; one reading
+   from the question's own words before any template runs files the kind
+   and the names, writes the slots the templates read, settles the intent
+   where the router's cannot be about the subject, and refuses by name
+   where nothing in the question can replace a router invention. The
+   repair chain (`scope_from_question` and nine siblings), the two
+   reroutes, and the compiler's and refusals' own re-derivations are gone.
+   The "names are selected, not generated" tension from the first plan is
+   closed by construction: every name a template reads is a span of the
+   question or a router name the question supports.
 2. **Skeleton x measure over both relations, in the compiler, and the intent
    enum shrinks.** The compiler already answers rows / scalar / grouped over
    two relations; each template it reproduces exactly is one the router no
