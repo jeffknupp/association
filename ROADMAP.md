@@ -304,6 +304,19 @@ honest refusals that a fuller system would answer. By cause:
    **Left from it:** `player_netpoints` has no renderer; `team_record`'s
    month/venue/career branches still rely on the page's first-line
    fallback; a NetPoints single-game ranking has no fast relation.
+6. **2026-09-25, `live_day3.jsonl` on `8ac55f0`: 161/175 (92.0%) - the
+   total unchanged, the composition moved** (141 correct + 18 honest
+   refusals + 2 clarifications; F055 flipped refusal -> correct). Four
+   rows moved, all still right; one wording regression filed (P4: the
+   compiler's career span says "(1994 on)"). Then plan item 1 was
+   MEASURED before any code: one reading of the subject from the
+   question's own spans agrees with today's ten-step repair chain on
+   279 of 290 recorded questions; of the eleven left, four are chain
+   bugs the reading gets right (a compare whose second player the router
+   filed as the opponent, the two position-group logs, F114), six are
+   slot encodings of the same subject, one a kind neither side has ("a
+   Hawks player"). Method, rules and the landing order:
+   `~/association-research/subject-kinds/RESULT.md`.
 
 ## The current plan: what buys the most correctness next
 
