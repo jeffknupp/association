@@ -267,6 +267,118 @@ those were found.
 
 ## P2: misleading or incomplete
 
+### Template data the page cannot render from
+- **Found:** 2026-09-24/25, building the web page's typeset tables and going
+  through both preview galleries (`/tmp/claude-1000/gallery_before_live` and
+  `..._after_live`, 277 answers each, and `..._before_hist`/`..._after_hist`)
+  answer by answer against `/home/jeff/code/association/nba.duckdb`. One
+  entry, as the task that found these asked for, since every line below is
+  the same shape: the page has a rendered body but the fact is only in
+  `text`, not in `data`, so it cannot appear under the body without either
+  re-parsing the sentence (which the page used to do, unreliably enough to
+  need fixing - see the next bullet) or being dropped. The templates agent
+  works from this list.
+- **The big one - `answerNotes`'s text-parsing fallback is now off wherever a
+  renderer built a real body**, because it was producing exact duplicates
+  (`team_outlook`'s stat card, every line under it again as a "note" -
+  Jeff's finding, live). That fix is right, but it also turned off the ONLY
+  thing that ever surfaced these lines, and re-measuring the full 277-answer
+  gallery after the fix shows it is not a small list:
+  - `with_without` (14 of 14 answers with a "Counted: games inside ...
+    tenure ... Played means ..." line) - e.g. "show 76ers record without
+    maxey in 2025": "Counted: games inside Tyrese Maxey's time with the team
+    (2020-12-23 to 2026-05-10) ... Played means Tyrese Maxey appeared in the
+    game; out is a DNP or no box-score row at all." Gone from the page;
+    still in the "text" toggle.
+  - `record_when` (10 of 11): "Over the 70 games he played; a game he missed
+    is in neither row."
+  - `team_record` (5 of 8, every one with the wins/losses card rather than
+    the month table): the seed, streak, home/road split, last-10 and
+    points-for/against line - "Home 31-10, road 19-22; last 10: 6-4; 18
+    games back. 113.4 points per game, 112.2 allowed (+1.2)." None of it is
+    in `data` at all (`web/static/index.html`'s `team_record` renderer used
+    to keep the whole sentence as its caption for exactly this reason,
+    before that became a second problem - see below).
+  - `player_splits` (3 of 4): "Played means he appeared in the game, and W-L
+    is his team's record in those games. Months go by the US Eastern date of
+    the game."
+  - `game_log`, team path (2 of 28): `games.py`'s `_team_game_log_total_line`
+    ("Total points: 1,130." / "Point differential: +62 (+8.86 per game).")
+    is appended to `answer` only (`_team_game_log_rows`), never to `data`, so
+    a `stat` asking for a team total or differential lists the right games
+    with the actual number nowhere on the page.
+  - `game_log`, player path with a `without` narrowing (1 of 28): the
+    "Without Anthony Black and Franz Wagner means games neither of them
+    played while on the same team - a did-not-play entry, or no line in the
+    box score at all" clause (`_box_score_notes`).
+  - `player_netpoints` (2 of 2, though this intent has no renderer at all -
+    see the next bullet): the per-100-possession summary line and the
+    play-type disclaimer.
+  - `player_history` (2 of 21, the `career` span only): the career total/
+    rate line ("Luka Doncic's career total: 4,230 assists.",
+    `_player_history_career_count`/`_rate`) is appended to `answer` after
+    the per-season table and never reaches `data`.
+  - `player_compare`, `streak`, `period_split` (1 each): a coverage-style
+    aside ("Luka Doncic has no 2026 postseason numbers in the warehouse.",
+    "Streaks are counted within one season.", a defaulted-season redirect).
+
+  Rough total: about 42 of 277 answers in the live gallery lost a line this
+  way. The fix is one shape repeated: give each of these its own
+  `data["notes"]` entry (`agent.py`'s `_note` helper already shows how - the
+  same list `player_compare`'s "vs" refusal and the fingerprint substitution
+  note already use, which the page renders correctly today) instead of only
+  appending to `answer`.
+- **`player_history`'s `twoPointFieldGoalPct` reads land under a raw SQL
+  expression as their dict key, not a header.**
+  `templates/players.py:916` (`_player_history`) builds `history` as
+  `dict(zip(["season", "games"] + [c for c, _ in columns], r, ...))` - `c` is
+  `HISTORY_COLUMNS["twoPointFieldGoalPct"][1][i][0]`, the SELECT expression
+  itself (`"100.0 * (fieldGoalsMade - threePointFieldGoalsMade) /
+  NULLIF(fieldGoalsAttempted - threePointFieldGoalsAttempted, 0)"`), where
+  every other stat's tuple has a real column name there. `_phrase_history`
+  reads the same wrong keys back out for the CLI text (so the text is fine -
+  it uses the tuple's second element, the header, only for the printed
+  column titles) but the JSON `data.seasons` a reader gets is `{"season":
+  2026, "games": 60, "100.0 * (fieldGoalsMade - threePointFieldGoalsMade) /
+  NULLIF(...)": 58.6, "(fieldGoalsMade - threePointFieldGoalsMade)": 396,
+  "(fieldGoalsAttempted - threePointFieldGoalsAttempted)": 676}`. Two
+  consequences, both reproduced against the current warehouse ("show me
+  lebron's 2pt percentage for the past 20 years"): the page's table header
+  is that raw expression text (very wide, useless), and the sparkline reads
+  `s[d.stat]` (`d.stat` is the clean `"twoPointFieldGoalPct"`, which is not a
+  key in `s` at all) and drew a line through `undefined` points - the page
+  now guards against that specifically (`sparkPoints`, never draws from a
+  non-finite value) so the visible bug today is only the unreadable header,
+  but the underlying key is still wrong. Fix: zip on `[h for _, h in
+  columns]` like `_phrase_history` does, or add `columns`/headers to `data`
+  the way `game_log` already does.
+- **`player_netpoints` has no renderer, and its `data` cannot support a
+  faithful one yet.** Its `text` has three sections (an offense/defense
+  six-category partition - turnover, foul, three pt, two pt, rebound, free
+  throw, each with a total - then a 15-category play-type detail), but
+  `data` only has `fingerprint` (the play-type detail) and `headline`, and
+  `headline` **is a raw 6-number array** (`[121.61, 125.13, -3.52, 4.32,
+  1329, 43]`), not a string or a dict - inconsistent with every other
+  template's `data["headline"]`, which the page reads as the display
+  sentence verbatim when present. Building a table from `fingerprint` alone
+  would render less than the sentence already says (the partition
+  breakdown, the more commonly asked-for figure, is nowhere in `data`) -
+  exactly the "what is missing" failure shape AGENTS.md warns about, so the
+  page leaves this one as monospace text rather than a partial table. Not
+  visibly broken today only because `player_netpoints` has no renderer and
+  no artifacts, so the page never reaches the code path that would try to
+  use `data.headline` as a string - it would if this intent gained either.
+- **User sees:** a correct but visually stripped-down answer for the notes
+  (still one click away, under "text"), a broken-looking table for the
+  `twoPointFieldGoalPct` history case, and permanently-monospace text for
+  `player_netpoints`.
+- **Next step:** the bullets above, in the templates package - none of it is
+  a page fix.
+- **Source:** ours (the page's own gap), except `twoPointFieldGoalPct` and
+  the `_team_game_log_total_line`/career-total lines, which are template
+  bugs (a wrong dict key; an answer-only append) independent of the page.
+- **GitHub:** not yet filed
+
 ### "Since 2000-01" still reads the default season live, although route() reads it on stubbed slots
 - **Found:** 2026-09-24, grading `live_day2.jsonl` (yardstick-v2 F161) after
   sweep 2 merged (`637ff4e`).

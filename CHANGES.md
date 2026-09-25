@@ -32,6 +32,43 @@ had no published version to be compatible with.
 - `scripts/preview_answers.py` renders any recorded question through the page
   without the router - from a live-run jsonl, a history directory or an
   explicit case - and screenshots each answer in headless Chromium.
+- The web page's tables are typeset in the page's own proportional font
+  (`font-variant-numeric: tabular-nums` keeps digits aligned) instead of
+  monospace, with a header rule and row separators; a percent column now
+  right-aligns like any other number. A chart-only answer (`fingerprint`,
+  `shot_chart`) shows a headline and its notes for the first time - it used to
+  render nothing above the iframe but the artifact itself, with which players,
+  which season and a substitution note ("only one of them matches anybody in
+  the warehouse") visible only under the collapsed text toggle. A player's
+  game log renders the extra columns a question asked for (`data.columns`,
+  e.g. FGM/FGA) instead of always the same four; a single-leader question
+  ("who leads the league in total netpoints") still renders as a ranked table
+  instead of falling back to monospace text; a rate column whose label spells
+  out "percentage" or "pct" (a leaderboard's own wording) formats as one; a
+  margin/differential column keeps its sign; `player_stat`'s per-game figure
+  and season total no longer share one label ("PTS" twice); `period_split`
+  folds a long per-game table under its sparkline the way `team_quarter_points`
+  already did, and a sparkline needs three points, not two, to draw. A
+  redundant caption (equal to, or a prefix of, the headline) no longer shows
+  twice, and a note re-derived from an answer's own sentence no longer repeats
+  underneath a body already built from `data` - `data.notes` alone once a
+  renderer has drawn something, since `answerNotes`'s text-parsing fallback
+  could only guess at the same sentence a structured body already read
+  correctly. A numeric table column now shows one decimal throughout once any
+  cell in it has one (`table()`'s `pad`), except a synthesized summary row (a
+  game log's "per game" line, `skipPaddingRows`) or a transposed table where a
+  column mixes a count with an average (`player_compare`, `player_matchup`,
+  `pad: false`), which format their own decimals per row instead.
+- A ranked table (leaderboard, threshold_count, period_leaderboard) shows its
+  top 10 rows and folds the rest under their own count instead of listing
+  every one - a "top 50" question drew all 50 rows regardless of what was
+  asked.
+- `player_history` folds a season table over 12 seasons ("past 20 years") the
+  same way a long game log does, and a sparkline is only drawn from points
+  that are real finite numbers - a mismatched key between the data and what
+  the chart reads it under used to draw a line through `NaN` coordinates
+  (see ISSUES.md, "Template data the page cannot render from",
+  `player_history`/`twoPointFieldGoalPct`) rather than simply not drawing one.
 - The web interface fits a phone. Below 600px the coverage pills are one row that scrolls sideways, and the header, footer and answer padding tighten - the chrome took about 80% of a 667px-tall screen and now takes under a quarter. A column heading wraps rather than pushing the next column off-screen (a comparison's second player started past the edge), and a table wider than its answer shows a shadow on the side with more to scroll. On a touch screen the question box is 16px, so iOS no longer zooms into it, and the keyboard hint is hidden; the page is sized to `100dvh` and clears the notch and home indicator. Shot charts and fingerprints scale down to the frame they are drawn in (`svg { max-width: 100% }`) instead of being clipped, with the fingerprint's skill labels enlarged so they stay legible; at desktop width the page is pixel-identical.
 - The web interface shows whether it is connected - a dot in the top bar, green when the server answers, amber after one missed check, red after three - and reloads itself when the server restarts (a new commit or a rebuilt warehouse, where the server is deployed to restart on those), but only when that loses nothing: with an answer on screen, a draft typed or a question in flight it says "updated · reload" instead, and a click reloads. The page polls the new `GET /api/ping` (`association.web.app.PingResponse`): an instance id drawn fresh each time the server starts, and whether it is answering. Unlike `/api/health` it opens no warehouse connection and never probes ollama.
 - `Answer.history_file` names the `.history/` record an answer was written to (set by `Agent.ask` in the same step that writes it); the web runner reads it off the `Answer` rather than parsing the `[history] ...` trace line, which the web path carries verbatim.
