@@ -77,16 +77,21 @@ class NoteRequest(BaseModel):
 
     history_file: str
     note: str
+    replaces: str | None = None
+    """The ``line`` an earlier save of this same note returned, when this
+    save corrects it: that line is rewritten in place rather than joined by a
+    second one. Absent for a new note."""
 
 
 class NoteResponse(BaseModel):
-    """Confirms a note was appended. Nothing else to report: the client
-    already holds the text it sent.
+    """Confirms a note was saved, and returns the line as written - what the
+    client passes back as ``replaces`` if the note is edited and saved again.
 
     .. versionadded:: 4.4.0
     """
 
     saved: bool
+    line: str
 
 
 class TimingResponse(BaseModel):
@@ -582,8 +587,8 @@ def create_app(answerer: Answerer, db_path: str, out_dir: Path, model: str, rout
         path = history_file_path(history_dir, request.history_file)
         if path is None:
             raise HTTPException(status_code=404, detail="no such history file")
-        append_note(path, note)
-        return NoteResponse(saved=True)
+        line = append_note(path, note, replacing=request.replaces)
+        return NoteResponse(saved=True, line=line)
 
     @app.get("/api/artifacts/{name}")
     def artifact(name: str) -> FileResponse:

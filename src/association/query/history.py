@@ -161,31 +161,48 @@ class RunHistory:
         return path
 
 
-def append_note(path: Path, note: str) -> str:
+def append_note(path: Path, note: str, replacing: str | None = None) -> str:
     """Append one timestamped annotation to an already-written history file -
     what is wrong with that run's answer, or a thought on how it should look,
     recorded beside the trace and the answer it is about rather than living
     only in the head of whoever noticed it.
 
-    Appending, never rewriting: :meth:`RunHistory.write` is the only thing
-    that lays down a run's own trace and summary, so a note added afterward is
-    layered on top of a file that already says what happened, not mixed into
-    it. Calling this more than once on the same file is how more than one note
-    ends up on the same answer - each call adds its own line, none of them
-    overwritten by the next.
+    Appending, never rewriting the run: :meth:`RunHistory.write` is the only
+    thing that lays down a run's own trace and summary, so a note added
+    afterward is layered on top of a file that already says what happened,
+    not mixed into it. Calling this more than once on the same file is how
+    more than one note ends up on the same answer - each call adds its own
+    line, none of them overwritten by the next.
+
+    The one exception is a note being CORRECTED: ``replacing`` is the exact
+    line an earlier call returned, and when that line is still in the file it
+    is rewritten in place (new timestamp, new text) rather than joined by a
+    second one. That is what a page's single text box means by saving again -
+    editing the note, not adding another - and without it the first draft of
+    every corrected note stayed on record beside its correction (Jeff's two
+    notes of 2026-09-24 each had that). A ``replacing`` line no longer in the
+    file (edited by hand since) falls back to appending, so a correction is
+    never lost for want of its earlier draft.
 
     ``note`` always lands on a single line: an embedded backslash or newline
     is escaped (``\\`` and ``\\n`` respectively) rather than written literally,
     so a multi-line note can never be mistaken for a second note, or for the
     trace text around it - the whole reason this file records one thing per
     line. Returns the exact line written, so a caller does not have to
-    re-derive it just to report what happened.
+    re-derive it just to report what happened - and so it can hand the line
+    back as ``replacing`` next time.
 
     .. versionadded:: 4.4.0
     """
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     escaped = note.replace("\\", "\\\\").replace("\n", "\\n")
     line = f"[note {timestamp}] {escaped}"
+    if replacing is not None and replacing.startswith("[note "):
+        lines = path.read_text().splitlines()
+        if replacing in lines:
+            lines[lines.index(replacing)] = line
+            path.write_text("\n".join(lines) + "\n")
+            return line
     with path.open("a") as f:
         f.write(line + "\n")
     return line

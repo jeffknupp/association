@@ -76,11 +76,26 @@ def test_a_note_is_appended_to_the_named_history_file(served: tuple[TestClient, 
     response = client.post("/api/notes", json={"history_file": HISTORY_NAME, "note": "this undercounts rebounds"})
 
     assert response.status_code == 200
-    assert response.json() == {"saved": True}
+    assert response.json()["saved"] is True
     content = (history_dir / HISTORY_NAME).read_text()
     assert content.startswith("command: q\n")  # the run's own record, untouched
     last_line = content.splitlines()[-1]
     assert re.fullmatch(r"\[note \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\] this undercounts rebounds", last_line), last_line
+    assert response.json()["line"] == last_line  # what a re-save hands back as `replaces`
+
+
+def test_saving_an_edited_note_again_replaces_the_earlier_line(served: tuple[TestClient, Path]) -> None:
+    """One text box per answer means saving twice is editing the note, not
+    adding a second: Jeff saved two notes on 2026-09-24, corrected each and
+    saved again, and expected the file to hold the correction alone. The
+    client passes the line the first save returned as ``replaces``."""
+    client, history_dir = served
+    first = client.post("/api/notes", json={"history_file": HISTORY_NAME, "note": "first draft"}).json()["line"]
+    second = client.post("/api/notes", json={"history_file": HISTORY_NAME, "note": "corrected", "replaces": first}).json()["line"]
+
+    note_lines = [line for line in (history_dir / HISTORY_NAME).read_text().splitlines() if line.startswith("[note ")]
+    assert note_lines == [second]
+    assert second.endswith("corrected") and first not in note_lines
 
 
 def test_more_than_one_note_is_allowed_and_each_appends_its_own_line(served: tuple[TestClient, Path]) -> None:

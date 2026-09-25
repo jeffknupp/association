@@ -182,6 +182,26 @@ def test_append_note_can_be_called_more_than_once(tmp_path: Path) -> None:
     assert path.read_text() == f"{first}\n{second}\n"
 
 
+def test_append_note_replacing_rewrites_that_line_in_place(tmp_path: Path) -> None:
+    """A corrected note replaces its earlier draft - same position in the file,
+    new stamp and text - and the run's own record above it is untouched. A
+    ``replacing`` line no longer there (edited by hand) appends instead, so
+    the correction is never dropped; and only a note line can be replaced,
+    never a line of the run's record."""
+    path = tmp_path / "run.log"
+    path.write_text("command: q\nanswer:\nthe answer\n")
+    first = append_note(path, "first draft")
+    after = append_note(path, "a later note")
+
+    corrected = append_note(path, "corrected", replacing=first)
+    assert path.read_text() == f"command: q\nanswer:\nthe answer\n{corrected}\n{after}\n"
+
+    appended = append_note(path, "again", replacing="[note 2026-01-01T00:00:00Z] gone")
+    assert path.read_text().endswith(f"{after}\n{appended}\n")
+    untouched = append_note(path, "not a rewrite", replacing="command: q")
+    assert path.read_text().startswith("command: q\n") and path.read_text().endswith(f"{untouched}\n")
+
+
 def test_append_note_escapes_an_embedded_newline(tmp_path: Path) -> None:
     """The whole reason this file records one thing per line: a note with a
     newline in it must not be readable as a second note, or as trace text

@@ -16,6 +16,7 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- Saving an edited note again replaces the earlier one in the history file instead of appending a second: `POST /api/notes` returns the line it wrote, and a save passing it back as `replaces` rewrites that line in place (`append_note(replacing=...)`; a line no longer in the file appends, so a correction is never lost).
 - "Who attempted the most three pointers" ranks attempts, not makes (the question's own word decides the column), and a championship question is refused before a team ranking answers it fluently and wrongly - titles are not on record as such.
 - The web page shows every rendered answer's sentence first and at reading
   size (it was the muted 12.5px caption), shows what the sentence goes on to
