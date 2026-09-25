@@ -1117,18 +1117,36 @@
           return { caption: null, body: table(headers, rows) };
         }
         if (d.wins === undefined || d.losses === undefined || typeof d.win_pct !== "number") return null;
+        const box = el("div");
         const card = el("div", "record");
         card.appendChild(el("span", "wl", `${num(d.wins)}\u2013${num(d.losses)}`));
         card.appendChild(el("span", "pct", d.win_pct.toFixed(3).replace(/^0/, "")));
-        // The sentence carries the seed, streak, home/road split and points
-        // for/against, which are not in `data` - it used to sit whole as the
-        // caption underneath so nothing was lost, but that duplicated the
-        // headline AND the card almost word for word (both already say
-        // "50-32 (.610)"). See ISSUES.md - "Template data the page cannot
-        // render from" (team_record) - for making these fields (or a
-        // `notes` list) reach the page properly; until then they are still
-        // one click away under "text".
-        return { caption: null, body: card };
+        box.appendChild(card);
+        // The seed/streak (already folded into `headline` when either is
+        // worth naming - templates/teams.py's own _standings_season) plus the
+        // home/road split, last ten and games back sat only in the sentence:
+        // the card used to hold the whole thing as its `caption`, which
+        // printed the SAME "50-32 (.610)" a second time under the headline
+        // (ISSUES.md, "team_record's standings/games-record card renderer
+        // always duplicates its own caption"). These keys exist only on a
+        // season's own standings row (_standings_season); a venue, career or
+        // opponent/postseason record carries none of them, so the block is
+        // skipped rather than drawn empty.
+        const lines = [];
+        const split = [];
+        if (Array.isArray(d.home) && Array.isArray(d.road)) split.push(`Home ${num(d.home[0])}-${num(d.home[1])}, road ${num(d.road[0])}-${num(d.road[1])}`);
+        if (typeof d.last_ten === "string" && d.last_ten.trim()) split.push(`last 10: ${d.last_ten}`);
+        if (d.games_behind) split.push(`${num(d.games_behind)} games back`);
+        if (split.length) lines.push(split.join("; ") + ".");
+        if (typeof d.points_for === "number" && typeof d.points_against === "number") {
+          lines.push(`${d.points_for.toFixed(1)} points per game, ${d.points_against.toFixed(1)} allowed (${signed(d.points_for - d.points_against, 1)}).`);
+        }
+        if (lines.length) {
+          const detail = el("div", "notes");
+          for (const line of lines) detail.appendChild(el("p", null, line));
+          box.appendChild(detail);
+        }
+        return { caption: null, body: box };
       },
     },
     player_stat: {
@@ -1169,6 +1187,50 @@
           { value: num(d.attempts), label: "attempts" },
         ]),
       }),
+    },
+    player_netpoints: {
+      needs: ["fingerprint"],
+      render: (d, text) => {
+        const box = el("div");
+        // `totals` (net_points_player's season row) and `fingerprint` (the
+        // play-type breakdown) come from different tables and can each be
+        // empty on their own - templates/netpoints.py's own comment: "the two
+        // disagree about who they hold". Either alone is still worth a card.
+        if (d.totals) {
+          const items = [
+            { value: signed(d.totals.overall), label: "NetPoints" },
+            { value: signed(d.totals.offense), label: "offense" },
+            { value: signed(d.totals.defense), label: "defense" },
+          ];
+          if (d.totals.per_100 != null) items.push({ value: d.totals.per_100.toFixed(2), label: "per 100 poss" });
+          box.appendChild(statGrid(items));
+        }
+        // `partition` marks the six categories net_points_player_fingerprint
+        // itself sums to the season total (templates.netpoints.FINGERPRINT_PARTITION,
+        // carried onto each row rather than a second copy of that list here -
+        // see `_netpoints_breakdown`'s own comment). The rest are overlapping
+        // play-type slices, shown separately so nobody sums them together.
+        const partition = d.fingerprint.filter(r => r.partition);
+        const detail = d.fingerprint.filter(r => !r.partition);
+        for (const [side, heading] of [["offense", "Offense"], ["defense", "Defense"]]) {
+          // Sorted by this side alone, like the CLI table - a category with a
+          // big offensive number and a near-zero defensive one would bury its
+          // own defense row under others if both sides shared one order.
+          const rows = partition.filter(r => r[side] !== null).sort((a, b) => Math.abs(b[side]) - Math.abs(a[side]));
+          if (!rows.length) continue;
+          box.appendChild(el("div", "group-title", heading));
+          box.appendChild(table(["category", "net pts"], rows.map(r => [r.category, signed(r[side])])));
+        }
+        if (detail.length) {
+          box.appendChild(el("div", "group-title", "Play-type detail"));
+          const rows = detail.slice().sort((a, b) => Math.abs(b.total || 0) - Math.abs(a.total || 0));
+          box.appendChild(table(["category", "O", "D"], rows.map(r => [r.category, signed(r.offense), signed(r.defense)])));
+        }
+        // Nothing built (a season row with no fingerprint at all, and no
+        // partition/detail rows either) - fall back to the sentence.
+        if (!box.children.length) return null;
+        return { caption: firstLine(text), body: box };
+      },
     },
     head_to_head: {
       needs: ["teams", "games", "wins"],

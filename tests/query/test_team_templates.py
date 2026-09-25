@@ -197,6 +197,13 @@ def test_a_home_record_is_the_home_record_not_the_season(team_ctx: TemplateConte
     # must be the record asked about, with the season's kept beside them.
     assert (result.data["wins"], result.data["losses"], result.data["win_pct"]) == (30, 10, 0.75)
     assert (result.data["season_wins"], result.data["season_losses"]) == (53, 29)
+    # The venue branch used to rely on the page's first-line fallback for a
+    # headline at all (ROADMAP, "team_record's month/venue/career branches
+    # still rely on the page's first-line fallback"). No gap note for this
+    # season - test_a_record_short_of_its_season_says_so covers one that has
+    # one - so the headline is the whole answer here.
+    assert result.data["headline"] == result.answer
+    assert result.data["notes"] == []
 
 
 def test_a_road_record(team_ctx: TemplateContext) -> None:
@@ -212,6 +219,16 @@ def test_a_record_short_of_its_season_says_so(team_ctx: TemplateContext) -> None
     """ESPN's 2000 standings stop two games short, and nothing in the row says so."""
     answer = team_record(team_ctx, {"team": "Knicks", "season": 2000}).answer
     assert "49-31" in answer and "2000 (80 of 82 games)" in answer
+
+
+def test_a_home_record_short_of_its_season_carries_the_gap_as_a_note(team_ctx: TemplateContext) -> None:
+    """The same gap note as the season-total case above, but through the venue
+    branch (`_standings_season_venue`), which did not carry `data["notes"]`
+    at all before this - the note sat only in `answer`, glued onto the
+    headline sentence with a space."""
+    result = team_record(team_ctx, {"team": "Knicks", "venue": "home", "season": 2000})
+    assert result.data["notes"] == ["Note: ESPN's standings do not cover the New York Knicks' whole season in 2000 (80 of 82 games), so this record is short by those games."]
+    assert result.data["headline"] + " " + result.data["notes"][0] == result.answer
 
 
 # ---------------- team_record: against one team, from games ----------------
@@ -294,16 +311,33 @@ def test_a_postseason_short_of_the_teams_own_totals_says_so(team_ctx: TemplateCo
 
 
 def test_an_all_time_record_says_where_the_data_starts(team_ctx: TemplateContext) -> None:
-    answer = team_record(team_ctx, {"team": "Knicks", "span": "career"}).answer
+    result = team_record(team_ctx, {"team": "Knicks", "span": "career"})
+    answer = result.answer
     assert f"147-97 (.602) across the 3 regular seasons from 1989-90 through {LAST}" in answer
     assert "not the franchise's whole history" in answer
     assert "2000 (80 of 82 games)" in answer
+    # `_standings_career` carried no `data["headline"]` at all before this
+    # (ROADMAP, "team_record's month/venue/career branches still rely on the
+    # page's first-line fallback") - the gap note is the one thing beyond the
+    # headline sentence, so it is the one thing in `notes`.
+    assert result.data["headline"] + " " + result.data["notes"][0] == answer
+    assert "2000 (80 of 82 games)" in result.data["notes"][0]
+    assert "2000 (80 of 82 games)" not in result.data["headline"]
 
 
 def test_an_all_time_home_record_counts_only_seasons_with_a_split(team_ctx: TemplateContext) -> None:
-    answer = team_record(team_ctx, {"team": "Knicks", "span": "career", "venue": "home"}).answer
+    result = team_record(team_ctx, {"team": "Knicks", "span": "career", "venue": "home"})
+    answer = result.answer
     assert f"58-23 (.716) at home across the 2 regular seasons from 1999-00 through {LAST}" in answer
     assert "1 neutral-site game counts as neither." in answer
+    # `_standings_career_venue` carried no `data["headline"]` at all before
+    # this. The neutral-site clause is part of the headline (it is part of
+    # what was asked, a home record, not a caveat beside it); the 2000 gap
+    # note - the same one the plain career case above carries - is the one
+    # thing beyond it, so it is the one thing in `notes`.
+    assert result.data["headline"] + " " + result.data["notes"][0] == answer
+    assert "as neither." in result.data["headline"]
+    assert "2000 (80 of 82 games)" in result.data["notes"][0]
 
 
 # ---------------- team_record: refusals ----------------
@@ -822,6 +856,10 @@ def test_split_by_month_breaks_the_record_out(team_ctx: TemplateContext) -> None
         {"season": S, "month": "December", "games": 2, "wins": 1, "losses": 1},
     ]
     assert "January" not in (result.answer or "")
+    # `_team_record_by_month` carried no `data["headline"]` at all before
+    # this - the page's first-line fallback happened to read the same title
+    # line off `answer`, but nothing in `data` said so.
+    assert result.data["headline"] == f"The New York Knicks, record by month, the {S} regular season"
 
 
 def test_an_unnamed_split_is_refused(team_ctx: TemplateContext) -> None:

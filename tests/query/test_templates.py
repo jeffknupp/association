@@ -2383,6 +2383,12 @@ def test_team_record_since_answers_a_month_split_with_one_table_per_season(team_
         {"season": _TC_S, "month": "November", "games": 2, "wins": 2, "losses": 0},
     ]
     assert result.answer.count("The Boston Celtics, record by month") == 2
+    # `_team_record_by_month_span` carried no `data["headline"]` at all
+    # before this - it now reads the same first table's title `answer`
+    # already led with (ROADMAP, "team_record's month/venue/career branches
+    # still rely on the page's first-line fallback").
+    assert result.data["headline"] == result.answer.split("\n")[0].rstrip(":")
+    assert f"the {_TC_S1} regular season" in result.data["headline"]
 
 
 def test_team_record_since_month_split_refuses_game_n(team_cells_con: TemplateContext) -> None:
@@ -2895,6 +2901,58 @@ def test_player_netpoints_uses_the_string_season_type(np_ctx: TemplateContext) -
     assert player_netpoints(np_ctx, {"player": "SGA"}).data["headline"] is not None
 
 
+def test_player_netpoints_headline_is_the_display_sentence_not_the_raw_row(np_ctx: TemplateContext) -> None:
+    """`data["headline"]` used to be the raw SQL row (overall, offense,
+    defense, per-100 rate, minutes, games) under the same key every other
+    template's `data["headline"]` uses for the display sentence - the page's
+    web renderer would have shown a 6-number array as a headline the moment
+    `player_netpoints` gained one. It is a string, and it is the answer's own
+    first line (ISSUES.md, "No future template gets a renderer for free")."""
+    result = player_netpoints(np_ctx, {"player": "SGA"})
+    assert isinstance(result.data["headline"], str)
+    assert result.data["headline"] == (result.answer or "").split("\n")[0]
+    assert result.data["headline"].startswith("Shai Gilgeous-Alexander, NetPoints in the")
+
+
+def test_player_netpoints_totals_is_a_stable_dict(np_ctx: TemplateContext) -> None:
+    """The season row that used to sit raw under `data["headline"]` is now
+    `data["totals"]`, with named keys rather than positional ones."""
+    totals = player_netpoints(np_ctx, {"player": "SGA"}).data["totals"]
+    assert totals == {"overall": 468.33, "offense": 403.9, "defense": 64.43, "per_100": 9.91, "minutes": 2259, "games": 68}
+
+
+def test_player_netpoints_totals_is_none_without_a_season_row(np_ctx: TemplateContext) -> None:
+    np_ctx.con.execute("DELETE FROM net_points_player")
+    assert player_netpoints(np_ctx, {"player": "SGA"}).data["totals"] is None
+
+
+def test_player_netpoints_fingerprint_rows_mark_the_six_partition_categories(np_ctx: TemplateContext) -> None:
+    """`partition` is read by the page's own renderer to split the Offense/
+    Defense sections from the play-type detail table without a second copy of
+    FINGERPRINT_PARTITION in JavaScript."""
+    rows = {r["category"]: r["partition"] for r in player_netpoints(np_ctx, {"player": "SGA"}).data["fingerprint"]}
+    assert rows["two pt"] is True and rows["rebound"] is True and rows["foul"] is True
+    assert rows["driving"] is False and rows["rim"] is False
+
+
+def test_player_netpoints_notes_carry_the_headline_detail_and_units(np_ctx: TemplateContext) -> None:
+    result = player_netpoints(np_ctx, {"player": "SGA"})
+    notes = result.data["notes"]
+    assert any("2,259 minutes" in n and "68 games" in n for n in notes)
+    assert any(n.startswith("Categories are per 100 possessions over") for n in notes)
+    assert any("do not add up" in n for n in notes)
+
+
+def test_player_netpoints_notes_say_season_totals_for_a_rate_total_request(np_ctx: TemplateContext) -> None:
+    notes = player_netpoints(np_ctx, {"player": "SGA", "rate": "total"}).data["notes"]
+    assert "Categories are season totals." in notes
+
+
+def test_player_netpoints_missing_season_refusal_carries_a_headline(np_ctx: TemplateContext) -> None:
+    result = player_netpoints(np_ctx, {"player": "SGA", "season": 1999})
+    assert result.data["headline"] == result.answer
+
+
 def test_player_netpoints_reports_a_missing_season_honestly(np_ctx: TemplateContext) -> None:
     assert "no 1999 regular season NetPoints" in (player_netpoints(np_ctx, {"player": "SGA", "season": 1999}).answer or "")
 
@@ -3064,6 +3122,11 @@ def test_player_netpoints_scopes_to_one_game_when_order_is_set(np_ctx: TemplateC
     answer = result.answer or ""
     assert "6.3 total" in answer and "most recent" in answer
     assert "Offense," not in answer  # not the season breakdown
+    # A single game's headline is the totals sentence alone - "Ask for a
+    # fingerprint..." and the possession/win-probability detail sit beneath
+    # it, so the headline does not carry the whole multi-line answer.
+    assert result.data["headline"] == answer.split("\n")[0]
+    assert "possessions" in result.data["notes"][0] and "win probability added" in result.data["notes"][0]
 
 
 def test_player_netpoints_order_first_picks_the_earliest_game(np_ctx: TemplateContext) -> None:

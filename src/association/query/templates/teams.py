@@ -634,7 +634,7 @@ def _standings_season_venue(
         message = f"ESPN's {season} standings carry no home/road split for the {team.name} (it reads 0-0 before 1993-94), and the warehouse has no full game list for that season to tally one from."
         return TemplateResult(data={**data, "message": message}, answer=message)
     vw, vl = split[0] if venue == "home" else split[1]
-    answer = f"The {team.name} were {_tally(vw, vl)} {VENUE_WORDS[venue]} in the {season} regular season, {w}-{lost} overall{neutral_note}."
+    headline = f"The {team.name} were {_tally(vw, vl)} {VENUE_WORDS[venue]} in the {season} regular season, {w}-{lost} overall{neutral_note}."
     # `wins`/`losses`/`win_pct` are what the web page draws as the record
     # card, so they carry the record that was asked for. Leaving the
     # season's there would print 53-29 in large type under a question
@@ -651,9 +651,17 @@ def _standings_season_venue(
             "venue_wins": vw,
             "venue_losses": vl,
             "neutral_site_games": neutral,
+            # See _standings_season's own comment: the card renderer used to
+            # keep the WHOLE sentence as its caption so nothing under it was
+            # lost, which duplicated the headline underneath itself. `gap`
+            # (ESPN's standings falling short of the team's own season total)
+            # is the one thing here beyond the headline sentence, so it moves
+            # to `notes` instead of staying glued onto `headline` with a space.
+            "headline": headline,
         }
     )
-    return TemplateResult(data=data, answer=f"{answer} {gap}" if gap else answer)
+    data["notes"] = [gap] if gap else []
+    return TemplateResult(data=data, answer=f"{headline} {gap}" if gap else headline)
 
 
 def _standings_season_detail(split: tuple[tuple[int, int], tuple[int, int]] | None, neutral_note: str, last_ten: Any, behind: Any) -> str:
@@ -688,7 +696,7 @@ def _standings_career(con: duckdb.DuckDBPyConnection, team: Entity, venue: str |
         if first == min(r[0] for r in con.execute("SELECT MIN(season) FROM standings").fetchall())
         else "the first season the warehouse holds for them"
     )
-    answer = f"The {team.name} are {_tally(wins, losses)} across the {len(rows)} regular seasons from {_season_name(first)} through {_season_name(last)} - {start}."
+    headline = f"The {team.name} are {_tally(wins, losses)} across the {len(rows)} regular seasons from {_season_name(first)} through {_season_name(last)} - {start}."
     gap = _standings_gap(con, team, [(int(r[0]), int(r[1]) + int(r[2])) for r in rows])
     return TemplateResult(
         data={
@@ -699,8 +707,10 @@ def _standings_career(con: duckdb.DuckDBPyConnection, team: Entity, venue: str |
             "first_season": first,
             "last_season": last,
             "seasons": len(rows),
+            "headline": headline,
+            "notes": [gap] if gap else [],
         },
-        answer=f"{answer} {gap}" if gap else answer,
+        answer=f"{headline} {gap}" if gap else headline,
     )
 
 
@@ -718,13 +728,13 @@ def _standings_career_venue(con: duckdb.DuckDBPyConnection, team: Entity, venue:
     vl = sum(h[2][1] for h in halves)
     neutral = sum(h[1] - h[3] for h in halves)
     first, last = halves[0][0], halves[-1][0]
-    answer = (
+    headline = (
         f"The {team.name} are {_tally(vw, vl)} {VENUE_WORDS[venue]} across the {len(halves)} regular seasons from {_season_name(first)} through {_season_name(last)}"
         + (" - ESPN's standings carry no home/road split before 1993-94" if first == FIRST_FULL_REGULAR_SEASON else "")
         + "."
     )
     if neutral > 0:
-        answer += f" {neutral} neutral-site game{'s' if neutral != 1 else ''} count{'s' if neutral == 1 else ''} as neither."
+        headline += f" {neutral} neutral-site game{'s' if neutral != 1 else ''} count{'s' if neutral == 1 else ''} as neither."
     data: dict[str, Any] = {
         "team": team.name,
         "venue": venue,
@@ -734,9 +744,11 @@ def _standings_career_venue(con: duckdb.DuckDBPyConnection, team: Entity, venue:
         "first_season": first,
         "last_season": last,
         "seasons": len(halves),
+        "headline": headline,
     }
     gap = _standings_gap(con, team, [(h[0], h[1]) for h in halves])
-    return TemplateResult(data=data, answer=f"{answer} {gap}" if gap else answer)
+    data["notes"] = [gap] if gap else []
+    return TemplateResult(data=data, answer=f"{headline} {gap}" if gap else headline)
 
 
 def _record_narrowed(team: Entity, season: int | None, season_type: int, *, since: int | None = None, until: int | None = None) -> TeamNarrowed:
@@ -1142,7 +1154,7 @@ def _team_record_by_month(con: duckdb.DuckDBPyConnection, team: Entity, opponent
     else:
         span = f"the regular seasons from {_season_name(FIRST_FULL_REGULAR_SEASON)} on - the first the warehouse holds every game of"
     answer, months_data = _team_record_month_table(team, opponent, venue, span, season, shown)
-    data = {"team": team.name, "season": season, "opponent": opponent.name if opponent else None, "venue": venue, "months": months_data}
+    data = {"team": team.name, "season": season, "opponent": opponent.name if opponent else None, "venue": venue, "months": months_data, "headline": answer.split("\n")[0].rstrip(":")}
     return TemplateResult(data=data, answer=answer)
 
 
@@ -1175,8 +1187,9 @@ def _team_record_by_month_span(con: duckdb.DuckDBPyConnection, team: Entity, opp
     if not tables:
         message = _no_team_games(con, team, opponent, None, season_type, since=since, until=until)
         return TemplateResult(data={"team": team.name, "months": []}, answer=message)
-    data = {"team": team.name, "opponent": opponent.name if opponent else None, "venue": venue, "months": months_data, "since": since, "until": until}
-    return TemplateResult(data=data, answer="\n\n".join(tables))
+    answer = "\n\n".join(tables)
+    data = {"team": team.name, "opponent": opponent.name if opponent else None, "venue": venue, "months": months_data, "since": since, "until": until, "headline": answer.split("\n")[0].rstrip(":")}
+    return TemplateResult(data=data, answer=answer)
 
 
 def _games_record_split(games: list[dict[str, Any]]) -> str:
