@@ -58,6 +58,26 @@ if [[ -z "${notes// /}" ]]; then
     exit 1
 fi
 
+# GitHub refuses a release body over 125,000 characters (HTTP 422, "body is
+# too long"), and 4.4.0's section was 129,987. Past the limit, the notes are
+# the section's leading entries - whole ones, cut at a top-level "- " line -
+# followed by a link to the full section in CHANGES.md at this tag, so the
+# release page is still a prefix of the changelog and never a rewrite of it.
+NOTES_LIMIT=125000
+if (( ${#notes} > NOTES_LIMIT )); then
+    heading=$(grep -m1 "^## ${VERSION} " CHANGES.md)
+    anchor=$(printf '%s' "${heading#\#\# }" | tr '[:upper:]' '[:lower:]' | tr -d '.' | tr ' ' '-')
+    link="https://github.com/jeffknupp/association/blob/${TAG}/CHANGES.md#${anchor}"
+    pointer=$'\n\n'"**These notes are cut short: the full ${VERSION} section (${#notes} characters) is longer than a GitHub release allows. Read all of it in [CHANGES.md](${link}).**"
+    budget=$(( NOTES_LIMIT - ${#pointer} - 1000 ))
+    notes=$(NOTES="${notes}" BUDGET="${budget}" python3 -c '
+import os
+notes, budget = os.environ["NOTES"], int(os.environ["BUDGET"])
+cut = notes.rfind("\n- ", 0, budget)
+print(notes[:cut].rstrip() if cut > 0 else notes[:budget])
+')"${pointer}"
+fi
+
 if ! command -v gh >/dev/null 2>&1; then
     cat >&2 <<MSG
 error: the GitHub CLI (gh) is not installed.
