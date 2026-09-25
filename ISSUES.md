@@ -378,6 +378,7 @@ those were found.
   the `_team_game_log_total_line`/career-total lines, which are template
   bugs (a wrong dict key; an answer-only append) independent of the page.
 - **GitHub:** not yet filed
+- **GitHub:** #218
 
 ### "Since 2000-01" still reads the default season live, although route() reads it on stubbed slots
 - **Found:** 2026-09-24, grading `live_day2.jsonl` (yardstick-v2 F161) after
@@ -397,6 +398,7 @@ those were found.
   whichever step drops `since`.
 - **Source:** ours.
 - **GitHub:** not yet filed
+- **GitHub:** #219
 
 ### `player_stat`'s coverage floor is computed from the wrong slot list, and misses `situation`, `since`, `game_n`
 - **Found:** 2026-09-24, in passing while verifying the K3-2 conference/division
@@ -2610,6 +2612,7 @@ those were found.
   here: it is a new relation, not a one-line fix, and outside this session's
   scope (the "look nice" data-shape pass).
 - **Source:** ours.
+- **GitHub:** #220
 
 ### `team_leaderboard` excludes `situation`, so "best record since <day>" still falls through
 - **Found:** 2026-09-24, fixing yardstick-v2 F104's routing.
@@ -3236,6 +3239,7 @@ those were found.
   already read elsewhere on this page; keep `caption` only for a shape
   (a `months` table) that still needs one.
 - **Source:** ours.
+- **GitHub:** #221
 
 ### `team_alignment` is not declared in every `TEMPLATE_SOURCES` tuple that can now read it
 - **Found:** 2026-09-24, landing the K3-2 conference/division narrowing.
