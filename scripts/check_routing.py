@@ -554,7 +554,7 @@ def main() -> int:
                 restore_team_subject=got.intent in TEAM_SUBJECT_RESTORABLE_INTENTS,
                 intent=got.intent,
             )
-            apply_subject(subject, got.slots)
+            apply_subject(subject, got.slots, con=con, intent=got.intent)
         if got is None:
             print(f"FAIL  {elapsed:5.2f}s  {question}\n        router returned nothing", flush=True)
             failures += 1

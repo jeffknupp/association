@@ -426,7 +426,7 @@ class Agent:
         question never held that nothing in the question can replace is
         refused by name (the result returned here). Split out of
         _try_fast_path for the complexity gate."""
-        applied, dropped = apply_subject(subject, routed.slots)
+        applied, dropped = apply_subject(subject, routed.slots, con=self.toolbox.con, intent=routed.intent)
         for decision in applied:
             history.record_decision(decision)
         # Said, not passed along. Falling through was tried and is worse: the

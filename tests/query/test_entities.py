@@ -471,8 +471,24 @@ def _apply(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any],
     names dropped, the shape these tests were first written against."""
     from association.query.subject import apply_subject, read_subject
 
-    decisions, dropped = apply_subject(read_subject(con, question, intent, slots), slots)
+    decisions, dropped = apply_subject(read_subject(con, question, intent, slots), slots, con=con, intent=intent)
     return [(str(d.before), str(d.after)) for d in decisions], dropped
+
+
+def _scope(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], *, reads_player: bool, intent: str = "", **flags: Any) -> list[str]:
+    """The whole slot repair the agent runs, in its order: the subject read
+    from the router's slots, `scope_from_question` over them, then the
+    reading applied (`apply_subject`, which took the opponent-team steps
+    over from `scope_from_question` in 4.5.0). One line per change, the
+    chain's notes and the reading's decisions together, so a test written
+    against `scope_from_question` alone reads the same."""
+    from association.query.subject import apply_subject, read_subject
+
+    intent = intent or ("game_log" if reads_player else "team_record")
+    subject = read_subject(con, question, intent, slots)
+    notes = scope_from_question(con, question, slots, reads_player=reads_player, intent=intent, **flags)
+    decisions, _ = apply_subject(subject, slots, con=con, intent=intent)
+    return notes + [d.line() for d in decisions]
 
 
 def test_a_truncated_name_is_expanded_from_the_question(span_con: duckdb.DuckDBPyConnection) -> None:
@@ -858,7 +874,7 @@ def test_a_player_the_router_swapped_for_his_own_team_comes_back(scope_con: duck
     """Measured: routed to game_log with team='Boston Celtics' and no player, and
     answered with the Celtics' last eight games."""
     slots: dict[str, Any] = {"team": "Boston Celtics", "limit": 8}
-    notes = scope_from_question(scope_con, "jaylen brown last 8 games vs pistons", slots, reads_player=True)
+    notes = _scope(scope_con, "jaylen brown last 8 games vs pistons", slots, reads_player=True)
     assert slots == {"player": "Jaylen Brown", "opponent": "Detroit Pistons", "limit": 8}
     assert len(notes) == 2
 
@@ -868,7 +884,7 @@ def test_the_routers_team_stays_the_opponent_when_the_player_it_displaced_comes_
     "vs nets" as team='Brooklyn Nets' and dropped Towns. Restoring him and
     dropping the team answered his last five games against anybody."""
     slots: dict[str, Any] = {"team": "Brooklyn Nets", "limit": 5}
-    scope_from_question(scope_con, "karl towns stats vs netslast 5 games", slots, reads_player=True)
+    _scope(scope_con, "karl towns stats vs netslast 5 games", slots, reads_player=True)
     assert slots == {"player": "Karl-Anthony Towns", "opponent": "Brooklyn Nets", "limit": 5}
 
 
@@ -877,7 +893,7 @@ def test_a_word_that_names_a_team_the_question_is_about_is_not_a_player(scope_co
     the Magic's log became his. Nobody is named, so it is a team's log against
     another - and the router had the two sides backwards."""
     slots: dict[str, Any] = {"team": "Brooklyn Nets", "opponent": "Orlando Magic", "limit": 10}
-    scope_from_question(scope_con, "magic vs nets last 10", slots, reads_player=True)
+    _scope(scope_con, "magic vs nets last 10", slots, reads_player=True)
     assert slots == {"team": "Orlando Magic", "opponent": "Brooklyn Nets", "limit": 10}
 
 
@@ -887,14 +903,14 @@ def test_an_opponent_alone_leaves_no_subject_rather_than_the_opponents_log(scope
     Suns' last five games. The Suns are the opponent; the subject is missing,
     which is the template's to refuse."""
     slots: dict[str, Any] = {"team": "Phoenix Suns", "limit": 5}
-    scope_from_question(scope_con, "Jersmi grant last 5 games vs the suns", slots, reads_player=True)
+    _scope(scope_con, "Jersmi grant last 5 games vs the suns", slots, reads_player=True)
     assert slots == {"opponent": "Phoenix Suns", "limit": 5}
 
 
 def test_a_team_the_question_never_names_goes_even_when_nobody_is_named(scope_con: duckdb.DuckDBPyConnection) -> None:
     """ "stating centers vs phoenix suns log" arrived as the Lakers, whose log it then was."""
     slots: dict[str, Any] = {"team": "Los Angeles Lakers", "opponent": "Phoenix Suns"}
-    scope_from_question(scope_con, "stating centers vs phoenix suns log", slots, reads_player=True)
+    _scope(scope_con, "stating centers vs phoenix suns log", slots, reads_player=True)
     assert slots == {"opponent": "Phoenix Suns"}
 
 
@@ -903,20 +919,22 @@ def test_an_opponent_that_names_one_of_the_questions_own_players_is_dropped(scop
     rebuilt into `players` and then check_scope refused the leftover slot, so
     a question the system answers under other words had no answer at all."""
     slots: dict[str, Any] = {"players": ["Stephen Curry", "Jaylen Brown"], "opponent": "Jaylen Brown", "side": "total"}
-    scope_from_question(scope_con, "curry vs jaylen brown fingerprint", slots, reads_player=True)
+    _scope(scope_con, "curry vs jaylen brown fingerprint", slots, reads_player=True)
     assert slots == {"players": ["Stephen Curry", "Jaylen Brown"], "side": "total"}
 
 
 def test_an_opponent_naming_a_player_nobody_asked_about_is_left_to_be_refused(scope_con: duckdb.DuckDBPyConnection) -> None:
     """Narrow on purpose: the slot goes only when the person it names is
     already a subject. Otherwise a template that cannot honor it must still
-    refuse, rather than silently widening to every opponent."""
+    refuse, rather than silently widening to every opponent. (The question
+    has to hold the name: an opponent it never held is the invented-name
+    shape, dropped by `subject.apply_subject` since 4.4.0.)"""
     slots: dict[str, Any] = {"player": "Stephen Curry", "opponent": "Kawhi Leonard"}
-    scope_from_question(scope_con, "curry fingerprint", slots, reads_player=True)
+    _scope(scope_con, "curry fingerprint vs kawhi", slots, reads_player=True)
     assert slots["opponent"] == "Kawhi Leonard"
     # A real team in `opponent` is untouched, whoever the subject is.
     team: dict[str, Any] = {"player": "Stephen Curry", "opponent": "Boston Celtics"}
-    scope_from_question(scope_con, "curry vs the celtics", team, reads_player=True)
+    _scope(scope_con, "curry vs the celtics", team, reads_player=True)
     assert team["opponent"] == "Boston Celtics"
 
 
@@ -924,14 +942,14 @@ def test_a_name_typed_with_accents_still_names_its_player(scope_con: duckdb.Duck
     """The warehouse spells every name in plain letters; "luka dončić last 15
     games vs. magic" matched nobody and answered the Lakers' log."""
     slots: dict[str, Any] = {"team": "Los Angeles Lakers", "opponent": "Orlando Magic", "limit": 15}
-    scope_from_question(scope_con, "luka dončić last 15 games vs. magic", slots, reads_player=True)
+    _scope(scope_con, "luka dončić last 15 games vs. magic", slots, reads_player=True)
     assert slots == {"player": "Luka Doncic", "opponent": "Orlando Magic", "limit": 15}
     assert [p.name for p in find_players(scope_con, "dončić")] == ["Luka Doncic"]
 
 
 def test_an_opponent_in_the_team_slot_becomes_the_opponent(scope_con: duckdb.DuckDBPyConnection) -> None:
     slots: dict[str, Any] = {"team": "Los Angeles Lakers"}
-    scope_from_question(scope_con, "Luka Doncic game log vs Lakers this season", slots, reads_player=True)
+    _scope(scope_con, "Luka Doncic game log vs Lakers this season", slots, reads_player=True)
     assert slots == {"player": "Luka Doncic", "opponent": "Los Angeles Lakers"}
 
 
@@ -939,7 +957,7 @@ def test_a_team_is_not_a_player_to_compare(scope_con: duckdb.DuckDBPyConnection)
     """ "boston" alone names Brandon Boston Jr., so leaving the Celtics in
     `players` was a comparison with a player nobody asked about."""
     slots: dict[str, Any] = {"players": ["Stephen Curry", "Boston Celtics"]}
-    scope_from_question(scope_con, "how did curry do against the celtics this year", slots, reads_player=True)
+    _scope(scope_con, "how did curry do against the celtics this year", slots, reads_player=True)
     assert slots == {"player": "Stephen Curry", "opponent": "Boston Celtics"}
 
 
@@ -947,50 +965,50 @@ def test_an_opponent_filed_as_the_team_beside_a_player_becomes_the_opponent(scop
     """Measured: came back with team='Boston Celtics' beside both players. No
     template read it and no opponent was set, so nothing refused."""
     slots: dict[str, Any] = {"players": ["Stephen Curry", "LeBron James"], "team": "Boston Celtics"}
-    scope_from_question(scope_con, "compare curry and lebron vs the celtics", slots, reads_player=True)
+    _scope(scope_con, "compare curry and lebron vs the celtics", slots, reads_player=True)
     assert slots == {"players": ["Stephen Curry", "LeBron James"], "opponent": "Boston Celtics"}
     one: dict[str, Any] = {"player": "Stephen Curry", "team": "Boston Celtics"}
-    scope_from_question(scope_con, "how did steph curry do against the celtics last season", one, reads_player=True)
+    _scope(scope_con, "how did steph curry do against the celtics last season", one, reads_player=True)
     assert one == {"player": "Stephen Curry", "opponent": "Boston Celtics"}
 
 
 def test_a_team_beside_a_player_stays_unless_the_question_plays_against_it(scope_con: duckdb.DuckDBPyConnection) -> None:
     # His own team, which no "vs" names.
     slots: dict[str, Any] = {"player": "LeBron James", "team": "Los Angeles Lakers"}
-    assert scope_from_question(scope_con, "lebron points for the lakers", slots, reads_player=True) == []
+    assert _scope(scope_con, "lebron points for the lakers", slots, reads_player=True) == []
     assert slots == {"player": "LeBron James", "team": "Los Angeles Lakers"}
     # A template that reads no player keeps its team whatever the question says.
     kept: dict[str, Any] = {"player": "Stephen Curry", "team": "Boston Celtics"}
-    scope_from_question(scope_con, "curry vs the celtics", kept, reads_player=False)
+    _scope(scope_con, "curry vs the celtics", kept, reads_player=False)
     assert kept["team"] == "Boston Celtics"
 
 
 def test_both_sides_of_a_head_to_head_are_left_alone(scope_con: duckdb.DuckDBPyConnection) -> None:
     slots: dict[str, Any] = {"teams": ["Los Angeles Lakers", "Boston Celtics"]}
-    assert scope_from_question(scope_con, "Lakers vs Celtics record this season", slots, reads_player=False) == []
+    assert _scope(scope_con, "Lakers vs Celtics record this season", slots, reads_player=False) == []
     assert slots == {"teams": ["Los Angeles Lakers", "Boston Celtics"]}
 
 
 def test_an_opponent_the_router_already_gave_is_left_alone(scope_con: duckdb.DuckDBPyConnection) -> None:
     slots: dict[str, Any] = {"team": "Philadelphia 76ers", "opponent": "Boston Celtics", "period": 4}
-    assert scope_from_question(scope_con, "76ers 4th quarter points against boston", slots, reads_player=False) == []
+    assert _scope(scope_con, "76ers 4th quarter points against boston", slots, reads_player=False) == []
 
 
 def test_a_player_comparison_names_no_opponent(scope_con: duckdb.DuckDBPyConnection) -> None:
     slots: dict[str, Any] = {"players": ["LeBron James", "Kawhi Leonard"]}
-    assert scope_from_question(scope_con, "lebron vs kawhi 2015", slots, reads_player=True) == []
+    assert _scope(scope_con, "lebron vs kawhi 2015", slots, reads_player=True) == []
     assert slots == {"players": ["LeBron James", "Kawhi Leonard"]}
 
 
 def test_la_is_two_teams_and_names_no_opponent(scope_con: duckdb.DuckDBPyConnection) -> None:
     slots: dict[str, Any] = {"player": "Stephen Curry"}
-    assert scope_from_question(scope_con, "curry vs la", slots, reads_player=True) == []
+    assert _scope(scope_con, "curry vs la", slots, reads_player=True) == []
 
 
 def test_a_team_nickname_grounds_the_team_slot(scope_con: duckdb.DuckDBPyConnection) -> None:
     """ "sixers" is no word of "Philadelphia 76ers", but it is the team."""
     slots: dict[str, Any] = {"team": "Philadelphia 76ers"}
-    assert scope_from_question(scope_con, "Top 5 scorers on the sixers", slots, reads_player=True) == []
+    assert _scope(scope_con, "Top 5 scorers on the sixers", slots, reads_player=True) == []
     assert slots == {"team": "Philadelphia 76ers"}
 
 
@@ -1003,7 +1021,7 @@ def test_a_team_written_without_its_space_still_names_the_team(scope_con: duckdb
     slots: dict[str, Any] = {"team": "Portland Trail Blazers", "period": 1}
     # reads_player as the pipeline passes it: team_quarter_points is in
     # PLAYER_INTENTS, and it is that path which drops an ungrounded team.
-    assert scope_from_question(scope_con, "trailblazers stats last 10 games 3 point average 1st quarter", slots, reads_player=True) == []
+    assert _scope(scope_con, "trailblazers stats last 10 games 3 point average 1st quarter", slots, reads_player=True) == []
     assert slots == {"team": "Portland Trail Blazers", "period": 1}
 
 
@@ -1012,7 +1030,7 @@ def test_a_run_together_name_reaches_the_team_it_spells(scope_con: duckdb.DuckDB
     two-word CITY, and "goldenstate" resolved to nothing either - so a
     question setting a subject against one lost the opponent outright."""
     slots: dict[str, Any] = {"player": "Jaylen Brown"}
-    scope_from_question(scope_con, "jaylen brown last 10 games vs goldenstate", slots, reads_player=True)
+    _scope(scope_con, "jaylen brown last 10 games vs goldenstate", slots, reads_player=True)
     assert slots["opponent"] == "Golden State Warriors"
     for spelling in ("trailblazers", "portlandtrailblazers", "goldenstate", "newyork", "laclippers"):
         assert isinstance(resolve_team(scope_con, spelling), Entity), spelling
@@ -1073,13 +1091,13 @@ def test_a_real_head_to_head_is_left_exactly_as_it_was(scope_con: duckdb.DuckDBP
 
 def test_a_team_nickname_names_an_opponent(scope_con: duckdb.DuckDBPyConnection) -> None:
     slots: dict[str, Any] = {"player": "Jaylen Brown"}
-    scope_from_question(scope_con, "jaylen brown against the sixers", slots, reads_player=True)
+    _scope(scope_con, "jaylen brown against the sixers", slots, reads_player=True)
     assert slots["opponent"] == "Philadelphia 76ers"
 
 
 def test_a_player_is_only_restored_where_a_template_reads_one(scope_con: duckdb.DuckDBPyConnection) -> None:
     slots: dict[str, Any] = {"team": "Boston Celtics"}
-    scope_from_question(scope_con, "jaylen brown last 8 games vs pistons", slots, reads_player=False)
+    _scope(scope_con, "jaylen brown last 8 games vs pistons", slots, reads_player=False)
     assert slots == {"team": "Boston Celtics", "opponent": "Detroit Pistons"}
 
 
@@ -1088,10 +1106,10 @@ def test_a_player_left_out_is_restored_only_where_one_is_required(scope_con: duc
     player slot left empty means the league, so only a template that needs one
     gets it back."""
     slots: dict[str, Any] = {"stat": "points", "threshold": 36}
-    scope_from_question(scope_con, "Sga record 36 plus points", slots, reads_player=True, needs_player=True)
+    _scope(scope_con, "Sga record 36 plus points", slots, reads_player=True, needs_player=True)
     assert slots["player"] == "Shai Gilgeous-Alexander"
     optional: dict[str, Any] = {"stat": "points", "threshold": 36}
-    scope_from_question(scope_con, "Sga record 36 plus points", optional, reads_player=True)
+    _scope(scope_con, "Sga record 36 plus points", optional, reads_player=True)
     assert "player" not in optional
 
 
@@ -1104,12 +1122,12 @@ def test_a_subject_named_with_no_verb_is_restored_for_single_game_high(scope_con
     him back from the question the same way `needs_player` already does for
     a template with no league reading at all."""
     slots: dict[str, Any] = {"stat": "threePointFieldGoalsMade"}
-    scope_from_question(scope_con, "kawhi most threes in a game", slots, reads_player=True, restore_subject=True)
+    _scope(scope_con, "kawhi most threes in a game", slots, reads_player=True, restore_subject=True)
     assert slots["player"] == "Kawhi Leonard"
     # Off by default, same as needs_player: a caller that does not ask for it
     # (an intent outside SUBJECT_RESTORABLE_INTENTS) gets the league reading.
     unrestored: dict[str, Any] = {"stat": "threePointFieldGoalsMade"}
-    scope_from_question(scope_con, "kawhi most threes in a game", unrestored, reads_player=True)
+    _scope(scope_con, "kawhi most threes in a game", unrestored, reads_player=True)
     assert "player" not in unrestored
 
 
@@ -1129,7 +1147,7 @@ def test_a_subject_named_with_no_verb_is_restored_for_single_game_high(scope_con
 )
 def test_a_common_english_word_is_not_restored_as_a_player(scope_con: duckdb.DuckDBPyConnection, question: str) -> None:
     slots: dict[str, Any] = {"stat": "ts_pct"}
-    scope_from_question(scope_con, question, slots, reads_player=True, restore_subject=True)
+    _scope(scope_con, question, slots, reads_player=True, restore_subject=True)
     assert "player" not in slots
 
 
@@ -1143,14 +1161,14 @@ def test_a_team_named_beside_a_player_with_no_season_is_his_tenure(scope_con: du
     entities._scope_from_question_own_team's own docstring for why a
     router-supplied `team` is not safe to trust directly."""
     slots: dict[str, Any] = {"player": "LeBron James", "stat": "points", "season": 2026, "split": "starter"}
-    notes = scope_from_question(scope_con, "lebron stats as a starter for the lakers", slots, reads_player=True, restore_team=True)
+    notes = _scope(scope_con, "lebron stats as a starter for the lakers", slots, reads_player=True, restore_team=True)
     assert slots["own_team"] == "Los Angeles Lakers"
     assert slots["span"] == "career"
     assert "season" not in slots
     assert any("Los Angeles Lakers" in note for note in notes)
     # A season the question DOES name still wins - no career override.
     named: dict[str, Any] = {"player": "LeBron James", "stat": "points", "season": 2026, "split": "starter"}
-    scope_from_question(scope_con, "lebron stats as a starter for the lakers in 2026", named, reads_player=True, restore_team=True)
+    _scope(scope_con, "lebron stats as a starter for the lakers in 2026", named, reads_player=True, restore_team=True)
     assert named["own_team"] == "Los Angeles Lakers"
     assert named.get("span") != "career"
     assert named["season"] == 2026
@@ -1159,7 +1177,7 @@ def test_a_team_named_beside_a_player_with_no_season_is_his_tenure(scope_con: du
     # `own_team` alone, since nothing on that relation could honor it either
     # way.
     unrestored: dict[str, Any] = {"player": "LeBron James", "stat": "points", "season": 2026}
-    scope_from_question(scope_con, "lebron stats as a starter for the lakers", unrestored, reads_player=True)
+    _scope(scope_con, "lebron stats as a starter for the lakers", unrestored, reads_player=True)
     assert "own_team" not in unrestored
 
 
@@ -1169,10 +1187,10 @@ def test_an_own_team_is_not_restored_with_no_player_or_over_an_existing_opponent
     reading) is not overwritten by a coincidental "for" phrase elsewhere in
     the question."""
     no_player: dict[str, Any] = {"stat": "points"}
-    scope_from_question(scope_con, "points scored for the lakers this season", no_player, reads_player=True, restore_team=True)
+    _scope(scope_con, "points scored for the lakers this season", no_player, reads_player=True, restore_team=True)
     assert "own_team" not in no_player
     has_opponent: dict[str, Any] = {"player": "LeBron James", "opponent": "Boston Celtics"}
-    scope_from_question(scope_con, "lebron vs celtics stats for the lakers", has_opponent, reads_player=True, restore_team=True)
+    _scope(scope_con, "lebron vs celtics stats for the lakers", has_opponent, reads_player=True, restore_team=True)
     assert "own_team" not in has_opponent and has_opponent["opponent"] == "Boston Celtics"
 
 
@@ -1187,7 +1205,7 @@ def test_a_router_supplied_team_is_not_trusted_as_a_tenure_narrowing(scope_con: 
     outright, so `own_team` is never written and the recorded `team` value
     is left exactly as it was."""
     slots: dict[str, Any] = {"player": "LeBron James", "team": "Los Angeles Lakers", "opponent": "Utah Jazz", "span": "career"}
-    scope_from_question(scope_con, "lebron james 2 3 pointers all-time vs jazz on tuesdays", slots, reads_player=True, restore_team=True)
+    _scope(scope_con, "lebron james 2 3 pointers all-time vs jazz on tuesdays", slots, reads_player=True, restore_team=True)
     assert "own_team" not in slots
     assert slots["team"] == "Los Angeles Lakers"
 
@@ -1287,7 +1305,7 @@ def test_scope_from_question_restores_a_dropped_team_subject_for_leaderboard(sco
     rather than let `leaderboard` rank players "on" a team that was meant to
     be the whole subject."""
     slots: dict[str, Any] = {"stat": "threePointFieldGoalsMade", "season": 2026, "season_type": 2}
-    notes = scope_from_question(scope_con, "how many 3 pointers have the magic made so far this season", slots, reads_player=False, restore_team_subject=True, intent="leaderboard")
+    notes = _scope(scope_con, "how many 3 pointers have the magic made so far this season", slots, reads_player=False, restore_team_subject=True, intent="leaderboard")
     assert slots["team"] == "Orlando Magic"
     assert slots["team_restored"] is True
     assert any("Orlando Magic" in note for note in notes)
@@ -1300,7 +1318,7 @@ def test_scope_from_question_restores_a_dropped_team_subject_for_team_stat_with_
     `leaderboard`, which has its own, different, legitimate reading of
     `team` that must keep answering directly."""
     slots: dict[str, Any] = {"stat": "pace"}
-    scope_from_question(scope_con, "knicks pace this season", slots, reads_player=False, restore_team_subject=True, intent="team_stat")
+    _scope(scope_con, "knicks pace this season", slots, reads_player=False, restore_team_subject=True, intent="team_stat")
     assert slots["team"] == "New York Knicks"
     assert "team_restored" not in slots
 
@@ -1311,7 +1329,7 @@ def test_restore_team_subject_does_not_fire_with_a_player_already_present(scope_
     team of its own is the F111 refusal-by-name shape; this restore must not
     quietly paper over either one."""
     slots: dict[str, Any] = {"stat": "points", "player": "LeBron James"}
-    scope_from_question(scope_con, "lebron points for the lakers this season", slots, reads_player=True, restore_team_subject=True, intent="leaderboard")
+    _scope(scope_con, "lebron points for the lakers this season", slots, reads_player=True, restore_team_subject=True, intent="leaderboard")
     assert "team" not in slots and "team_restored" not in slots
 
 
@@ -1320,10 +1338,10 @@ def test_restore_team_subject_does_not_fire_on_an_ambiguous_or_absent_team(scope
     untouched and the question falls through exactly as it did before this
     restore existed."""
     none_named: dict[str, Any] = {"stat": "points"}
-    scope_from_question(scope_con, "who led the league in scoring", none_named, reads_player=False, restore_team_subject=True, intent="leaderboard")
+    _scope(scope_con, "who led the league in scoring", none_named, reads_player=False, restore_team_subject=True, intent="leaderboard")
     assert "team" not in none_named
     two_named: dict[str, Any] = {"stat": "points"}
-    scope_from_question(scope_con, "76ers vs magic total points", two_named, reads_player=False, restore_team_subject=True, intent="leaderboard")
+    _scope(scope_con, "76ers vs magic total points", two_named, reads_player=False, restore_team_subject=True, intent="leaderboard")
     assert "team" not in two_named
 
 
@@ -1332,7 +1350,7 @@ def test_restore_team_subject_is_off_by_default(scope_con: duckdb.DuckDBPyConnec
     not ask for it (an intent outside TEAM_SUBJECT_RESTORABLE_INTENTS)
     leaves `team` alone."""
     slots: dict[str, Any] = {"stat": "points"}
-    scope_from_question(scope_con, "how many 3 pointers have the magic made so far this season", slots, reads_player=False, intent="leaderboard")
+    _scope(scope_con, "how many 3 pointers have the magic made so far this season", slots, reads_player=False, intent="leaderboard")
     assert "team" not in slots
 
 
@@ -1349,7 +1367,7 @@ def test_a_player_in_the_team_slot_becomes_the_subject(scope_con: duckdb.DuckDBP
     """Measured: team='Podziemski', player='Curry' for "Podziemski game log without curry"."""
     scope_con.execute("INSERT INTO players VALUES ('9','Brandin Podziemski')")
     slots: dict[str, Any] = {"player": "Curry", "team": "Podziemski", "without": ["curry"]}
-    scope_from_question(scope_con, "Podziemski game log without curry", slots, reads_player=True)
+    _scope(scope_con, "Podziemski game log without curry", slots, reads_player=True)
     assert slots["player"] == "Brandin Podziemski" and "team" not in slots and slots["without"] == ["curry"]
 
 
@@ -1361,7 +1379,7 @@ def test_an_ambiguous_fragment_in_the_team_slot_is_settled_by_the_question(scope
     invented outright rather than merely truncated."""
     scope_con.execute("INSERT INTO players VALUES ('9','Eric Riley'),('10','Riley Minix'),('11','Will Riley')")
     slots: dict[str, Any] = {"team": "Riley", "order": "recent", "limit": 5}
-    notes = scope_from_question(scope_con, "Will Riley last 5 game s", slots, reads_player=True)
+    notes = _scope(scope_con, "Will Riley last 5 game s", slots, reads_player=True)
     assert slots == {"order": "recent", "limit": 5, "player": "Will Riley"}
     assert notes == ["'Riley' is a player, not a team; the subject is 'Will Riley'"]
 
@@ -1371,7 +1389,7 @@ def test_the_fragment_fallback_does_not_borrow_an_unrelated_name(scope_con: duck
     happens to name elsewhere must not borrow that name - only a fragment
     that is actually part of the recovered name is safe to trust."""
     slots: dict[str, Any] = {"team": "Zqx", "order": "recent"}
-    notes = scope_from_question(scope_con, "Zqx last 5 games, a Luka Doncic fan favorite", slots, reads_player=True)
+    notes = _scope(scope_con, "Zqx last 5 games, a Luka Doncic fan favorite", slots, reads_player=True)
     assert slots["team"] == "Zqx" and "player" not in slots
     assert notes == []
 
@@ -1391,6 +1409,7 @@ def franchises() -> duckdb.DuckDBPyConnection:
     """
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR, location VARCHAR, name VARCHAR)")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute(
         "INSERT INTO teams VALUES "
         "('17','BKN','Brooklyn Nets','Brooklyn','Nets'),('3','NO','New Orleans Pelicans','New Orleans','Pelicans'),"
@@ -1481,9 +1500,11 @@ def test_the_questions_own_opponent_beats_one_the_router_could_not_ground(franch
     "duren v nets" it found the Brooklyn Nets - and then only used it when the
     `opponent` slot was EMPTY. A router string that resolves to nothing, or to a
     team the question never names, counted as filled, so it won. Same rule as
-    subject.apply_subject: the question is the source."""
-    slots: dict[str, Any] = {"player": "X", "opponent": held}
-    scope_from_question(franchises, question, slots, reads_player=True)
+    subject.apply_subject: the question is the source. The player is the
+    question's own first word: a router name the question never held is
+    refused by name before any opponent matters."""
+    slots: dict[str, Any] = {"player": question.split()[0], "opponent": held}
+    _scope(franchises, question, slots, reads_player=True)
     assert slots["opponent"] == want
 
 
@@ -1495,7 +1516,7 @@ def test_a_team_after_vs_filed_in_teams_is_a_players_opponent(franchises: duckdb
     never reads `teams`, answered his whole season instead of his games against
     Portland. With a player as the subject it is his opponent."""
     slots: dict[str, Any] = {"player": "Keyonte George", "teams": ["Portland Blazers"]}
-    scope_from_question(franchises, "Keyonte George against blazers", slots, reads_player=True)
+    _scope(franchises, "Keyonte George against blazers", slots, reads_player=True)
     assert slots.get("opponent") == "Portland Trail Blazers" and "teams" not in slots
 
 
@@ -1503,7 +1524,7 @@ def test_two_teams_with_no_player_stay_a_head_to_head(franchises: duckdb.DuckDBP
     """The case the carried-team rule exists for, and must keep: no player, so
     `teams` are the two sides and nothing is an opponent."""
     slots: dict[str, Any] = {"teams": ["Sacramento Kings", "Portland Trail Blazers"]}
-    scope_from_question(franchises, "kings vs blazers", slots, reads_player=False)
+    _scope(franchises, "kings vs blazers", slots, reads_player=False)
     assert slots == {"teams": ["Sacramento Kings", "Portland Trail Blazers"]}
 
 
@@ -1515,7 +1536,7 @@ def test_a_player_swapped_into_the_opponent_slot_is_replaced_by_the_questions_te
     the opponent."""
     franchises.execute("INSERT INTO teams VALUES ('9','GS','Golden State Warriors','Golden State','Warriors')")
     slots: dict[str, Any] = {"player": "Andrew Wiggins", "opponent": "Andrew Wiggins"}
-    scope_from_question(franchises, "andrew wiggins last 15 games vs warriors", slots, reads_player=True)
+    _scope(franchises, "andrew wiggins last 15 games vs warriors", slots, reads_player=True)
     assert slots["opponent"] == "Golden State Warriors"
 
 
@@ -1526,8 +1547,8 @@ def test_a_team_named_before_the_player_is_not_his_tenure(scope_con: duckdb.Duck
     the player named BEFORE the "for <team>" phrase, the order a tenure is
     asked in ("lebron ... for Miami")."""
     slots: dict[str, Any] = {"player": "Alperen Sengun", "stat": "points", "season": 2026}
-    scope_from_question(scope_con, "show me stats for the celtics when sengun scored 20+ points", slots, reads_player=True, restore_team=True)
+    _scope(scope_con, "show me stats for the celtics when sengun scored 20+ points", slots, reads_player=True, restore_team=True)
     assert "own_team" not in slots
     tenure: dict[str, Any] = {"player": "Alperen Sengun", "stat": "points", "season": 2026}
-    scope_from_question(scope_con, "sengun stats as a starter for the celtics", tenure, reads_player=True, restore_team=True)
+    _scope(scope_con, "sengun stats as a starter for the celtics", tenure, reads_player=True, restore_team=True)
     assert tenure["own_team"] == "Boston Celtics"

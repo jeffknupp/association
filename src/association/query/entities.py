@@ -1266,6 +1266,10 @@ def _scope_from_question_team_subject(con: duckdb.DuckDBPyConnection, question: 
     if slots.get("team") or slots.get("player") or slots.get("players") or slots.get("opponent"):
         return
     season = slots.get("season") if isinstance(slots.get("season"), int) else None
+    if _team_after_versus(con, question, season) is not None:
+        # Read here rather than from `opponent`, which the subject reading
+        # now fills AFTER this runs (subject.apply_subject).
+        return
     teams = teams_named_in(con, question, season)
     if len(teams) != 1:
         return
@@ -1443,20 +1447,6 @@ def _named_only_by_a_team_word(con: duckdb.DuckDBPyConnection, question: str, pl
     return bool(supporting) and all(_team_named(con, w) is not None for w in supporting)
 
 
-def _scope_from_question_team_in_players(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], notes: list[str], versus: Entity | None, season: int | None) -> None:
-    """Take the team the question plays against out of ``players``."""
-    listed = slots.get("players")
-    if versus is not None and isinstance(listed, list):
-        kept = [name for name in listed if not ((found := _team_named(con, name, season)) is not None and found.id == versus.id)]
-        if len(kept) != len(listed):
-            notes.append(f"{versus.name!r} is a team, not a player to compare")
-            if len(kept) == 1:
-                slots.pop("players", None)
-                slots["player"] = kept[0]
-            else:
-                slots["players"] = kept
-
-
 def _scope_from_question_restore_player(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], notes: list[str]) -> None:
     """Put back the one player the question names, where the router left the player out."""
     player = _scope_from_question_only_player(con, question)
@@ -1529,63 +1519,6 @@ def _scope_from_question_own_team(con: duckdb.DuckDBPyConnection, question: str,
         slots["span"] = "career"
         slots.pop("season", None)
         notes.append("span 'career' (a team named with no season is a tenure, not \"now\")")
-
-
-def _scope_from_question_drop_opposing_team(slots: dict[str, Any], notes: list[str], team: Entity) -> None:
-    """Drop the team the question plays against from ``team``, where it sits beside a player."""
-    # The team the question plays AGAINST, filed as the subject's team
-    # beside a player the router kept. Left there, nothing reads it: the
-    # check below leaves a team already in `team` alone, which is how
-    # head_to_head carries its own side, so no opponent was set and
-    # check_scope had nothing to refuse. Measured: "compare curry and
-    # lebron vs the celtics" came back with team='Boston Celtics'.
-    slots.pop("team", None)
-    notes.append(f"{team.name!r} is the team the question plays against, not the subject's")
-
-
-def _scope_from_question_unheld_opponent(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], notes: list[str], versus: Entity, season: int | None, *, carries_player: bool) -> None:
-    """Fill an empty ``opponent`` with the team the question plays against, unless the slots already carry that team as a side."""
-    listed_teams = [name for name in slots.get("teams") or [] if isinstance(name, str)]
-    if carries_player and any((found := _team_named(con, name, season)) is not None and found.id == versus.id for name in listed_teams):
-        # A player is the subject, so the team after "vs" is his opponent even
-        # when the router filed it in `teams`. The "already carried" rule
-        # below exists for head_to_head, which reads `teams` as its two sides;
-        # player_stat and game_log never read that slot, so leaving it there
-        # answers every opponent. "Keyonte George against blazers" arrived as
-        # teams=["Portland Blazers"] and was answered correctly only while
-        # that name failed to resolve - resolving it answered his whole
-        # 54-game season instead of his 2 games against Portland.
-        kept = [name for name in listed_teams if not ((found := _team_named(con, name, season)) is not None and found.id == versus.id)]
-        if kept:
-            slots["teams"] = kept
-        else:
-            slots.pop("teams", None)
-        slots["opponent"] = versus.name
-        notes.append(f"opponent {versus.name!r} (the question plays against it; the router filed it as a team)")
-        return
-    carried = [slots.get("team"), *(slots.get("teams") or [])]
-    if not any((found := _team_named(con, name, season)) is not None and found.id == versus.id for name in carried):
-        slots["opponent"] = versus.name
-        notes.append(f"opponent {versus.name!r} (from the question)")
-
-
-def _scope_from_question_opponent(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], notes: list[str], versus: Entity | None, season: int | None, *, carries_player: bool) -> None:
-    """Set ``opponent`` to the team the question plays against, where the slots do not already carry it.
-    ``carries_player`` is whether a player-reading template has a player as its subject."""
-    held = slots.get("opponent")
-    held_team = _team_named(con, held, season) if held else None
-    if versus is not None and held and (held_team is None or (held_team.id != versus.id and not _team_grounded(con, question, held_team))):
-        # The router filled `opponent`, and what it wrote is either no team at
-        # all or a team the question never mentions - while the question names
-        # one outright. The question wins. This used to fill the slot only when
-        # it was EMPTY, so an unresolvable string beat a team the question
-        # named: "duren v nets 1h gameloh" arrived as opponent="New Jersey
-        # Nets", this read "nets" as the Brooklyn Nets correctly, and threw it
-        # away. Same rule as subject.apply_subject, for the other entity.
-        slots["opponent"] = versus.name
-        notes.append(f"opponent {held!r} -> {versus.name!r} (the question names it; the router's {'resolves to no team' if held_team is None else 'is not in the question'})")
-    elif versus is not None and not held:
-        _scope_from_question_unheld_opponent(con, slots, notes, versus, season, carries_player=carries_player)
 
 
 def scope_from_question(
@@ -1687,16 +1620,9 @@ def scope_from_question(
     if team is not None and not has_player and reads_player:
         team = _scope_from_question_displaced_player(con, question, slots, notes, team, versus)
 
-    _scope_from_question_team_in_players(con, slots, notes, versus, season)
-
     if (needs_player or restore_subject) and not slots.get("player") and not slots.get("players"):
         _scope_from_question_restore_player(con, question, slots, notes)
 
-    if reads_player and has_player and team is not None and versus is not None and team.id == versus.id and not slots.get("opponent"):
-        _scope_from_question_drop_opposing_team(slots, notes, team)
-
-    _scope_from_question_opponent(con, question, slots, notes, versus, season, carries_player=reads_player and has_player)
-    _scope_from_question_opponent_is_a_subject(con, slots, notes)
     _scope_from_question_own_team_if_asked(con, question, slots, notes, restore_team=restore_team, has_player=has_player)
     _scope_from_question_team_subject_if_asked(con, question, slots, notes, restore_team_subject=restore_team_subject, intent=intent)
     return notes
@@ -1718,31 +1644,6 @@ def _scope_from_question_own_team_if_asked(con: duckdb.DuckDBPyConnection, quest
     player is a team question, not this one."""
     if restore_team and (has_player or slots.get("player")):
         _scope_from_question_own_team(con, question, slots, notes)
-
-
-def _scope_from_question_opponent_is_a_subject(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], notes: list[str]) -> None:
-    """Drop an ``opponent`` that names a player the slots already ask about.
-
-    "sga vs tyrese maxey fingerprint" put Maxey in ``opponent``;
-    :func:`restore_dropped_players` then correctly rebuilt the pair, and
-    ``check_scope`` refused the leftover slot, so a question the system
-    answers under other words ("compare sga and tyrese maxey fingerprint")
-    had no answer at all.
-
-    Narrow on purpose. The slot goes only when it names no team AND the
-    person it names is already a subject - the router filing one of the
-    question's own players twice, which narrows nothing. An ``opponent`` that
-    names a player the slots do NOT carry is left exactly where it is, so a
-    template that cannot honor it still refuses rather than silently widening
-    to every opponent, which is the trade this module exists to make.
-    """
-    held = slots.get("opponent")
-    if not (isinstance(held, str) and held.strip()) or _team_named(con, held) is not None:
-        return
-    subjects = [name for name in [slots.get("player"), *(slots.get("players") or [])] if isinstance(name, str) and name.strip()]
-    if any(_shares_word(subject, held) for subject in subjects):
-        slots.pop("opponent", None)
-        notes.append(f"opponent {held!r} is a player the question already asks about, not a team")
 
 
 def teammate_names(value: Any) -> list[str]:
