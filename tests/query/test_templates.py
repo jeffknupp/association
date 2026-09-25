@@ -2019,6 +2019,11 @@ def test_single_game_high_defaulted_season_redirects_to_a_retired_players_range(
     # it is glued onto the same sentence, but it answers a second question
     # (where else to look) the headline itself does not ask.
     assert result.data["headline"] == f"Old Timer has no {s} regular season games in the warehouse."
+    # ... but it is not lost either - single_game_high's own caption is
+    # `question_shape`, never the raw text, so a page reading `notes` (rather
+    # than falling back to parsing text, which would see one unbroken line
+    # here and find nothing after it) still needs the redirect somewhere.
+    assert result.data["notes"] == [f"He last appears in {past}. The warehouse holds his {past} regular season; name one, or ask for his career."]
 
 
 def test_single_game_high_a_named_season_keeps_the_plain_refusal(sgh_ctx: TemplateContext) -> None:

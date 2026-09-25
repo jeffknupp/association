@@ -358,8 +358,13 @@ def test_a_named_stat_answers_that_stat_with_its_rank(team_ctx: TemplateContext)
     result = team_stat(team_ctx, {"team": "Knicks", "stat": "defensiveRating"})
     answer = result.answer
     assert answer.startswith(f"The New York Knicks' defensive rating (points allowed per 100 possessions) was 111.2 in the {S} regular season (3 games), 3rd-best of 5 teams.")
-    assert result.data["notes"] == ["Ratings and pace count possessions as FGA - OREB + TOV + 0.44 x FTA."]
-    assert result.data["headline"] == answer.replace(f" {result.data['notes'][0]}", "")  # the sentence alone, without the note glued onto it
+    # The rating note is glued onto the same sentence, not a separate line -
+    # `headline` matches it whole (the same string `firstLine(text)` would
+    # give) rather than excluding the note into `notes`, which would print it
+    # a second time on a page that shows both (measured on the rendered
+    # page, 2026-09-24: this exact case, before the fix).
+    assert result.data["headline"] == answer
+    assert result.data["notes"] == []
 
 
 def test_a_singular_team_name_takes_an_apostrophe_s(team_ctx: TemplateContext) -> None:

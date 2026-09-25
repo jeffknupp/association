@@ -1345,13 +1345,18 @@ def _team_stat_single(key: str, stats: dict[str, dict[str, Any]], period: str, t
     if entry["rank"] is not None:
         order = "best" if metric.lower_is_better is not None else "highest"
         where = f", {_ordinal(entry['rank'])}-{order} of {entry['of']} teams"
-    headline = f"The {_possessive(team.name)} {metric.label} was {_metric_cell(metric, entry['value'])} in the {period} ({mine.games} games){where}."
-    answer = headline
-    notes = []
+    answer = f"The {_possessive(team.name)} {metric.label} was {_metric_cell(metric, entry['value'])} in the {period} ({mine.games} games){where}."
     if _uses_possessions([key]):
         answer += f" {RATING_NOTE}"
-        notes.append(RATING_NOTE)
-    return TemplateResult(data={"team": team.name, "season": season, "games": mine.games, "stats": stats, "headline": headline, "notes": notes}, answer=answer)
+    # `headline` matches the page's own firstLine(text) fallback exactly (the
+    # whole thing - this answer is one line even with the rating note glued
+    # on) rather than the note-free sentence alone: the renderer's own
+    # `caption` is `firstLine(text)`, and a shorter headline here would make
+    # the two disagree and print the caption a second time, duplicating the
+    # note (measured on the rendered page, 2026-09-24). No separate `notes`
+    # entry either, for the same reason - the note is already inside
+    # `headline`, and `notes` has no way here to say it is the same text.
+    return TemplateResult(data={"team": team.name, "season": season, "games": mine.games, "stats": stats, "headline": answer, "notes": []}, answer=answer)
 
 
 def _team_stat_summary(stats: dict[str, dict[str, Any]], wanted: list[str], team: Entity, period: str, mine: TeamLine, season: int) -> TemplateResult:

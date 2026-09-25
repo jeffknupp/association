@@ -1951,11 +1951,23 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     # refusal that names a decision beats one that implies missing data.
     withheld = 0 if games or column in REBUILT_STATS else _rebuilt_in_scope(ctx.con, season, season_type, named_player.id if named_player else None)
     headline = _single_game_high_answer(games, label, span, who, empty=empty, withheld=withheld)
-    answer = headline + _single_game_high_redirect(ctx.con, defaulted, named_player, games, empty, withheld, season_type)
-    return TemplateResult(
-        data={"question_shape": shape, "season": season, "span": "career" if career else None, "stat": stat, "games": games, "empty_box_scores": empty[0], "headline": headline},
-        answer=answer,
-    )
+    redirect = _single_game_high_redirect(ctx.con, defaulted, named_player, games, empty, withheld, season_type)
+    data = {"question_shape": shape, "season": season, "span": "career" if career else None, "stat": stat, "games": games, "empty_box_scores": empty[0]}
+    return TemplateResult(data=_single_game_high_result_data(data, headline, redirect), answer=headline + redirect)
+
+
+def _single_game_high_result_data(data: dict[str, Any], headline: str, redirect: str) -> dict[str, Any]:
+    """``single_game_high``'s own ``headline``/``notes`` - split out to keep
+    the caller under the complexity gate. ``redirect`` is glued onto the
+    same line as ``headline``, not a separate one, so it is carried in
+    ``notes`` too rather than lost entirely for having been excluded from
+    ``headline`` - this template's own ``caption`` is ``question_shape``,
+    never the raw text, so a page reading ``notes`` has no other way to
+    reach it.
+
+    .. versionadded:: 4.4.0
+    """
+    return {**data, "headline": headline, "notes": [redirect.strip()] if redirect else []}
 
 
 def _single_game_high_scope(ctx: TemplateContext, column: str, season: int | None, season_type: int, player_text: Any) -> tuple[Narrowed, Entity | None, bool] | TemplateResult:

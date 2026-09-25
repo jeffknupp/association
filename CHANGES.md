@@ -2065,6 +2065,18 @@ had no published version to be compatible with.
   rebuilt-line caveat, a leaderboard's trade note, a comparison's "has no
   numbers" line for a missing player. `shot_distance` carries `headline` too,
   though its answer is already one unbroken sentence.
+- Fixed two duplicate-caption regressions the `headline`/`notes` sweep above
+  introduced (measured on the rendered page before this commit, both cases
+  in the report): `team_stat`'s single-stat answer excluded its rating note
+  from `headline` while the renderer's own `caption` is `firstLine(text)`
+  (which includes the note), so the two disagreed and the whole sentence
+  printed a second time; `headline` now matches the full sentence exactly,
+  the same way every other template's does where nothing follows the
+  sentence on a new line. `single_game_high`'s defaulted-season redirect was
+  excluded from `headline` with nowhere else to go - its `caption` is
+  `question_shape`, never the raw text, so the redirect vanished from the
+  page entirely rather than merely duplicating; it is carried in `notes`
+  instead.
 
 ## 4.2.0 - 2026-09-18
 - **A NetPoints name ESPN spells with a generational suffix, or hyphenates
