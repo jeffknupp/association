@@ -4539,3 +4539,41 @@ those were found.
   and re-check `PREAMBLE_TOKEN_BUDGET` headroom, since this text is charged on
   every agent call.
 - **GitHub:** #128
+
+### Two NetPoints columns have a different type from the same column everywhere else
+- **Found:** 2026-09-25, while checking the warehouse's structure for join
+  performance.
+- **Evidence:** measured on `/home/jeff/code/association/nba.duckdb` (DuckDB
+  1.5.5). Every table stores `athlete_id` as VARCHAR and `season` as BIGINT,
+  except for two columns:
+  - `net_points_player.athlete_id` is BIGINT. All 26 Parquet files are
+    `int64`, because `parse_net_points_player` stores NetPoints' numeric
+    `dot_com_id` as it arrives (`fetch/parse.py:808`).
+  - `net_points_player_fingerprint.season` is DOUBLE (`2021.0`). All 8 files
+    are `double`, because `parse_net_points_fingerprint` adds 1 to a source
+    value that is already a float (`fetch/parse.py:1248`).
+
+  Nothing is broken today. DuckDB casts implicitly on comparison, so all three
+  cross-type joins return rows: `net_points_player` x `players` on
+  `athlete_id` (6,837), `net_points_player_fingerprint` x `player_season_stats`
+  on `(athlete_id, season)` (7,658), and `net_points_player` x
+  `net_points_player_fingerprint` (6,802). The templates filter
+  `net_points_player` with a bound string parameter, which also casts. No
+  reader in `src/` selects `net_points_player.athlete_id` into Python.
+- **User sees:** nothing yet. The risk is in Python: a row read from
+  `net_points_player` carries an `int` `athlete_id`. A dict keyed by the `str`
+  ids every other table returns would miss it, and the reader would answer "no
+  match" with no error.
+- **Next step:** cast the two columns in the warehouse build
+  (`fetch/warehouse.py`, the per-table `CREATE TABLE ... AS SELECT`):
+  `athlete_id` to VARCHAR and `season` to BIGINT. Better still, fix the two
+  parsers so a fresh pull writes the same types. The parser fix only reaches
+  files already on disk after a `--force` re-pull, so it needs the load-time
+  cast as well. Then run `data load --tables net_points_player
+  net_points_player_fingerprint` and re-run the three joins above. Do not
+  convert ids to integers across the warehouse to make joins faster: measured
+  on in-memory copies, integer ids made typical joins about 2x faster, but
+  those joins took 7-82 ms against a router call of over a second. The switch
+  would also mean changing every place the Python code binds or looks up a
+  string id, and any place missed would fail as a silent "no match".
+- **Source:** ours.
