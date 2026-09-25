@@ -2045,6 +2045,11 @@ had no published version to be compatible with.
   already, absent from `data` until now - and `period_split`/
   `team_quarter_points` carry `data["average"]` beside the total they
   already had.
+- `player_splits`, `with_without`, `record_when` and `streak` carry
+  `data["headline"]` and `data["notes"]` too - each already built its own
+  notes list (what "played" means, a coverage-floor caveat, the "only games
+  he played count" rule for a streak) and joined it into the answer text on
+  one line without ever handing the list itself to a caller.
 
 ## 4.2.0 - 2026-09-18
 - **A NetPoints name ESPN spells with a generational suffix, or hyphenates

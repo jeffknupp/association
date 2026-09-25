@@ -322,6 +322,8 @@ def test_splits_count_only_games_he_played(league: TemplateContext) -> None:
     rows = _rows(result, "home_away")
     assert (rows["home"]["games"], rows["away"]["games"]) == (1, 2)
     assert rows["away"]["points"] == pytest.approx(33.0)  # e4 35, e7 31
+    assert result.data["headline"] == (result.answer or "").split("\n")[0].rstrip(":")
+    assert "Played means he appeared in the game" in " ".join(result.data["notes"])
 
 
 def test_a_month_is_the_eastern_date_the_game_was_played(league: TemplateContext) -> None:
@@ -566,6 +568,8 @@ def test_a_player_subject_gets_his_averages_in_each_group(league: TemplateContex
     assert groups[True]["player_games"] == 3 and groups[True]["points"] == pytest.approx(14.0)
     assert groups[False]["player_games"] == 2 and groups[False]["points"] == pytest.approx(21.5)
     assert result.data["player"] == "Jaylen Brown"
+    assert result.data["headline"] == (result.answer or "").split("\n")[0].rstrip(":")
+    assert result.data["notes"]  # at least the "Played means ..." caveat
 
 
 def test_the_teammate_repeated_in_the_player_slot_is_not_a_subject(league: TemplateContext) -> None:
@@ -592,6 +596,8 @@ def test_record_when_divides_his_games_by_the_threshold(league: TemplateContext)
     assert (result.data["reached"]["wins"], result.data["reached"]["losses"]) == (1, 1)
     assert (result.data["fell_short"]["wins"], result.data["fell_short"]["losses"]) == (1, 0)
     assert result.answer.startswith(f"Boston Celtics record when Jayson Tatum had 31+ points, {S} regular season:")
+    assert result.data["headline"] == f"Boston Celtics record when Jayson Tatum had 31+ points, {S} regular season"
+    assert result.data["notes"] and result.data["notes"][0].startswith("Over the")
 
 
 def test_record_when_refuses_what_it_cannot_whitelist(league: TemplateContext) -> None:
@@ -970,11 +976,15 @@ def test_the_league_streak_reports_a_tie_as_a_tie(league: TemplateContext) -> No
 def test_the_leagues_longest_winning_streak_names_the_team(league: TemplateContext) -> None:
     result = streak(league, _slots(kind="win"))
     assert result.answer.startswith(f"Boston Celtics had the longest winning streak of the {S} regular season: 3 games.")
+    assert result.data["headline"] == f"Boston Celtics had the longest winning streak of the {S} regular season: 3 games."
+    assert result.data["notes"]  # the "only games he played count" rule, at minimum
 
 
 def test_a_losing_streak_is_a_run_of_losses(league: TemplateContext) -> None:
     result = streak(league, _slots(team="Philadelphia 76ers", kind="loss"))
     assert result.data["streaks"][0]["length"] == 2
+    assert result.data["headline"] == (result.answer or "").split("\n")[0]
+    assert result.data["notes"]
 
 
 def test_a_stat_without_a_threshold_is_not_read_as_a_winning_streak(league: TemplateContext) -> None:
