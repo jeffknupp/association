@@ -23,7 +23,7 @@ from association.query.metrics import PER_GAME_MIN_GAMES
 from association.query.templates.common import TemplateResult
 
 from .adapt import DEFAULT_SINGLE_GAME_LIMIT, _clamp, _named_player, to_query
-from .core import COLUMNS, DERIVED, LINE, Query, Refused, Unsupported
+from .core import BOOLEAN_MEASURES, COLUMNS, DERIVED, LINE, Query, Refused, Unsupported
 from .team import GAME_MEASURES, SEASON_MEASURES, TeamQuery, team_named_in
 
 #: The router's own stat names that are not relation columns, as measures.
@@ -76,13 +76,6 @@ WORD_MEASURES: list[tuple[str, str]] = [
 .. versionadded:: 4.4.0
 """
 
-#: Measures that are conditions rather than counted quantities - "how many
-#: triple-doubles" counts games where the measure is true.
-BOOLEAN_MEASURES: frozenset[str] = frozenset({"triple_double", "double_double", "won", "fouled_out"})
-"""Measures read as a per-game condition rather than a counted quantity.
-
-.. versionadded:: 4.4.0
-"""
 
 _TOP_IN_A_GAME = re.compile(r"\b(most|highest|best|career[- ]high|record)\b.*\b(in a\b.*\bgame|single[- ]game|career[- ]high)\b|\bcareer[- ]high\b", re.I)
 # Not this relation's question: a team as the subject, an opponent's or
@@ -594,8 +587,15 @@ def _move_how_many_won(slots: dict[str, Any], question: str, measure: str | None
 
 
 def _move_boolean_count(question: str, measure: str | None, intent: str, career: dict[str, Any]) -> Query | None:
-    """A boolean measure ("triple-doubles") asked "how many": a count with that predicate."""
-    if not (measure in BOOLEAN_MEASURES and measure != "won" and (_HOW_MANY_OR_OFTEN.search(question) or intent in ("threshold_count", "player_stat", "other"))):
+    """A boolean measure ("triple-doubles") asked "how many": a count with that predicate.
+
+    Also the reading for a boolean measure on a one-figure intent with no
+    "how many" at all - "sengun double-doubles vs southeast division career
+    away" (yardstick-v2 F055) routed ``player_splits``, whose figure is a
+    per-game line, and a condition has no per-game line: its count is the
+    only figure there is (``core._agg`` refuses the average).
+    """
+    if not (measure in BOOLEAN_MEASURES and measure != "won" and (_HOW_MANY_OR_OFTEN.search(question) or intent in ("threshold_count", "player_stat", "player_splits", "other"))):
         return None
     return Query(career, "scalar", [], "count", "none", [(measure, "=", True)])
 

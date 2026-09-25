@@ -254,9 +254,29 @@ def measure_sql(name: str, *, rebuilt: bool = False) -> str:
     raise Unsupported(f"no measure {name!r} on the player-games relation")
 
 
+#: Measures that are conditions rather than counted quantities - "how many
+#: triple-doubles" counts games where the measure is true.
+BOOLEAN_MEASURES: frozenset[str] = frozenset({"triple_double", "double_double", "won", "fouled_out"})
+"""Measures read as a per-game condition rather than a counted quantity.
+
+.. versionadded:: 4.4.0
+"""
+
+
 def _agg(name: str, aggregate: str, *, rebuilt: bool = False) -> str:
-    """One aggregate SELECT expression for ``name``, labeled with its own name."""
+    """One aggregate SELECT expression for ``name``, labeled with its own name.
+
+    A boolean measure has no per-game average or total: it is a condition
+    the games satisfy or not, and the count of them is the ``count``
+    aggregate with the measure as a predicate (``_move_boolean_count``).
+    Averaging one is refused here rather than sent to DuckDB, which throws
+    ``avg(BOOLEAN)`` - "sengun double-doubles vs southeast division" reached
+    that as a ``player_splits`` line once the router kept the division's
+    name (#213), and a crash is the one shape worse than a wrong answer.
+    """
     expr = measure_sql(name, rebuilt=rebuilt)
+    if name in BOOLEAN_MEASURES and aggregate in ("per_game", "total"):
+        raise Unsupported(f"{name!r} is a condition, not a quantity - it is counted, never averaged or summed")
     if aggregate == "per_game":
         if name in RATES:
             num, den = RATES[name]

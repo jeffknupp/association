@@ -1062,7 +1062,14 @@ _SITUATION = re.compile(
     # "in the month of march" as well as "in march" (F096) - the calendar
     # reader (calendar._IN_MONTH) already takes both.
     r"\bin\s+(?:the\s+month\s+of\s+)?(?:october|november|december|january|february|march|april|may|june)\b|"
-    r"\b(?:east(?:ern)?|west(?:ern)?)\s+conference\b|\bvs\.?\s+the\s+(?:east|west)\b|\bdivision\b|\ball[- ]star\s+break\b|"
+    # A conference or division, kept WITH its name and its "vs"/"against"/"in"
+    # so `calendar.parse_alignment` reads it whole: "vs southeast division"
+    # used to be captured as the word "division" alone (#213), and the
+    # relation - which answers the phrase - refused the bare word. The bare
+    # forms stay as the last resort, still refused honestly by name.
+    r"\b(?:vs\.?|against|in)\s+(?:the\s+)?(?:east(?:ern)?|west(?:ern)?|atlantic|central|southeast|northwest|southwest|pacific|midwest)(?:\s+(?:conference|division))?(?:\s+teams?)?\b|"
+    r"\b(?:atlantic|central|southeast|northwest|southwest|pacific|midwest)\s+division\b|"
+    r"\b(?:east(?:ern)?|west(?:ern)?)\s+conference\b|\bdivision\b|\ball[- ]star\s+break\b|"
     # A day of the week: 8 of the 14, and the most common shape in the feed.
     r"\b(?:mon|tues|wednes|thurs|fri|satur|sun)days?\b|"
     # A calendar holiday. "on christmas" answered with a whole season average.

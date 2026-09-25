@@ -16,6 +16,7 @@ had no published version to be compatible with.
 
 ## Unreleased
 
+- "Vs southeast division", "against eastern conference teams", "in the west": the router keeps the conference or division's name with the word as the `situation`, so the relation reads it (it captured the bare word "division", which the alignment reader refused by name - #213, yardstick-v2 F055). A bare word still captures and is still refused honestly. The question then reached the compiler as a `player_splits` line over a boolean measure, which built `AVG(<boolean>)` and crashed in DuckDB: a boolean measure on a one-figure intent is now its count (8 road double-doubles against the division, the key), and `core._agg` refuses to average or sum a condition at all rather than send it to the database.
 - Saving an edited note again replaces the earlier one in the history file instead of appending a second: `POST /api/notes` returns the line it wrote, and a save passing it back as `replaces` rewrites that line in place (`append_note(replacing=...)`; a line no longer in the file appends, so a correction is never lost). The page's note box holds the line its last save wrote and passes it back, so editing a note and saving again is a correction, not a second note.
 - "Who attempted the most three pointers" ranks attempts, not makes (the question's own word decides the column), and a championship question is refused before a team ranking answers it fluently and wrongly - titles are not on record as such.
 - The web page shows every rendered answer's sentence first and at reading

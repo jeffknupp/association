@@ -325,6 +325,27 @@ def test_how_many_won_is_a_career_count_with_a_predicate(cx_ctx: TemplateContext
     assert out["rows"][0]["games"] == 4  # g1, g3, g5, g7 - every win across both seasons (g4 DNP excluded)
 
 
+def test_a_boolean_measure_on_a_per_game_intent_is_counted_never_averaged(cx_ctx: TemplateContext) -> None:
+    """yardstick-v2 F055 "alperen sengun double-doubles vs southeast division
+    career away" routes ``player_splits``, whose figure is a per-game line;
+    a double-double is a condition, so its only figure is the count. Before
+    this the compiler built ``AVG(<boolean>)`` and DuckDB threw - a crash,
+    the one shape worse than a wrong answer - so ``_agg`` refuses the
+    average outright, whatever move asked for it."""
+    from association.query.compose import answer
+    from association.query.compose.core import Unsupported, _agg
+
+    slots = {"player": "Brandin Podziemski", "stat": "double_double", "venue": "away", "span": "career"}
+    q = move_point(cx_ctx.con, "player_splits", dict(slots), "Podziemski double-doubles career away")
+    assert isinstance(q, Query) and q.skeleton == "scalar" and q.aggregate == "count" and ("double_double", "=", True) in q.predicates
+    result = answer(cx_ctx, "player_splits", dict(slots), "Podziemski double-doubles career away")
+    assert result is not None and "double-double" in result.answer
+    with pytest.raises(Unsupported):
+        _agg("double_double", "per_game")
+    with pytest.raises(Unsupported):
+        _agg("triple_double", "total")
+
+
 def test_career_slots_forces_a_career_span_only_when_nothing_else_scoped_it() -> None:
     """The helper ``_move_how_many_won``/``_move_boolean_count`` share: no
     season, span or since means "his career"; any of the three left alone."""

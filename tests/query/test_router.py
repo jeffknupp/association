@@ -1309,6 +1309,31 @@ def test_a_situation_no_template_filters_on_is_a_scoping_slot(question: str) -> 
 
 
 @pytest.mark.parametrize(
+    ("question", "want"),
+    [
+        # yardstick-v2 F055 (#213): the situation was the word "division" alone,
+        # and the relation, which reads the whole phrase, refused it honestly.
+        ("alperen sengun double-doubles vs southeast division career away", "vs southeast division"),
+        ("lebron record against eastern conference teams", "against eastern conference teams"),
+        ("Knicks record vs the east", "vs the east"),
+        ("jokic ppg in the west", "in the west"),
+        ("celtics record in the atlantic division", "in the atlantic division"),
+        # A bare word still captures - and is still refused by name downstream.
+        ("lebron in the division these days", "division"),
+    ],
+)
+def test_a_conference_or_division_is_captured_with_its_name(question: str, want: str) -> None:
+    """The alignment reader (`calendar.parse_alignment`) takes the phrase -
+    "vs southeast division", "against eastern conference teams" - so the
+    router keeps the phrase, the way a month keeps "in the month of march"."""
+    from association.query.calendar import parse_alignment
+
+    got = _ask(question, '{"intent":"player_splits","player":"X"}').slots.get("situation")
+    assert got == want
+    assert (parse_alignment(got) is not None) == (want != "division")
+
+
+@pytest.mark.parametrize(
     "question",
     [
         # Every one of these is verbatim from the 261-query StatMuse feed

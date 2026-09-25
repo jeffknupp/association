@@ -495,6 +495,8 @@ CASES: list[tuple[str, str, dict]] = [
     # yardstick-v2 F096: a count of "games" over the line 0 is his game log,
     # Bam restored and "in the month of march" read as a month.
     ("bam adebayo career games in the month of march", "game_log", {"player": frozenset({"bam adebayo", "Bam Adebayo"}), "situation": "in the month of march", "span": "career"}),
+    # yardstick-v2 F055 (#213): the division's name travels with the word.
+    ("alperen sengun double-doubles vs southeast division career away", "player_splits", {"player": "Alperen Sengun", "situation": "vs southeast division", "venue": "away"}),
     # yardstick-v2 F110: routed team_record with an invented `team='Toronto
     # Raptors'`. The routing is left as the model files it; what changed is
     # after it - a team the question never names no longer counts as the
