@@ -372,6 +372,25 @@ honest refusals that a fuller system would answer. By cause:
    to take a team (plan item 4). **Next:** a day4 live yardstick run to
    measure what steps 1-3e bought; then plan item 3 (the player condition
    `(player, side, predicate)` - F114's remainder) or plan item 2.
+8. **2026-09-25, `live_day4.jsonl` on `91d1461`: 161/175 (92.0%), families
+   150/166 - the total unchanged, as a structural step should leave it;
+   wrong 4 -> 3, partial 5 -> 6** (F114 from the Rockets' with/without
+   record to Curry-vs-LeBron meetings, partial for the default season and
+   an unsaid empty tenure). Seven rows moved, five of them the career-span
+   rewording (33d3315), all still right. Then plan item 2 was MEASURED
+   before any code (`~/association-research/intent-shrink/RESULT.md`):
+   folding a child intent into a parent through the pipeline is a dead end
+   (the parent's template answers first, fluently, its own question); the
+   compiler alone reproduces the child's NUMBERS under its own intent
+   (K1 holds) but not its presentation, and does not recover the skeleton
+   from the words for a named subject under a parent. The route that
+   shrinks the prompt without a compiler port is the roadmap's own
+   `CODE_ASSIGNED_INTENTS`: seven word grammars gated on the subject
+   reading's kind reach 83-100% recall and **zero false positives** on 352
+   recorded (question, intent) pairs. **Next:** the grammars into the
+   reading's `_decide_intent` (a no-op while the children stay in the
+   enum - golden-neutral), then one schema/prompt edit removing the group,
+   `check_routing` and a live run - the first prompt shrink.
 
 ## The current plan: what buys the most correctness next
 
