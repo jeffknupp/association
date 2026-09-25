@@ -5,11 +5,13 @@ for the question that needed it."""
 
 from __future__ import annotations
 
+import pathlib
 from typing import Any
 
 import duckdb
 import pytest
 
+from association.query import subject
 from association.query.subject import SUBJECT_KINDS, Subject, question_supports, read_subject
 
 
@@ -95,6 +97,29 @@ def test_an_ordinary_word_that_is_also_a_whole_name_is_not_a_player(con: duckdb.
     assert _read(con, "How far was Curry average three pointer?", "shot_distance", player="Stephen Curry").players == ("Stephen Curry",)
     assert _read(con, "steph curry record vs lebron without kd", "with_without").players == ("Stephen Curry", "LeBron James")
     assert _read(con, "travis best career points", player="Travis Best").players == ("Travis Best",)
+
+
+def test_the_ordinary_words_do_not_depend_on_the_machine(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The word list ships with the package. It was read from
+    /usr/share/dict/words, which GitHub's runner lacks, so "Best record ..."
+    above was Travis Best's question there and nobody's here. Hide the system
+    file and the list must still be whole."""
+    real_read_text = pathlib.Path.read_text
+
+    def no_system_word_list(self: pathlib.Path, *args: Any, **kwargs: Any) -> str:
+        if str(self).startswith("/usr/share/dict"):
+            raise FileNotFoundError(self)
+        return real_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(pathlib.Path, "read_text", no_system_word_list)
+    subject._dictionary.cache_clear()
+    try:
+        words = subject._dictionary()
+    finally:
+        subject._dictionary.cache_clear()
+    assert {"best", "head", "pointer", "curry", "sept"} <= words
+    assert "jordan" not in words
+    assert len(words) > 60_000
 
 
 def test_a_word_that_names_a_team_here_is_the_team_not_a_player(con: duckdb.DuckDBPyConnection) -> None:
