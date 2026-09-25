@@ -3113,6 +3113,40 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
+### `team_record`'s standings/games-record card renderer always duplicates its own caption
+- **Found:** 2026-09-25, the "look nice" data-shape sweep, screenshotting
+  answers through the real page rather than only diffing `data`.
+- **Evidence:** `RENDERERS.team_record` (`web/static/index.html`) has two
+  shapes; the wins/losses-card one sets `caption: text` - the WHOLE answer,
+  every line, not `firstLine(text)` the way every other card-shaped renderer
+  here does it. Its own comment says why: "The sentence carries the seed
+  and the streak, which are NOT in data. Dropping it for the card alone
+  would lose them, so it stays whole." `renderAnswer`'s dedup
+  (`out.caption !== headline`) only suppresses the caption when it EQUALS
+  the headline, and a multi-line `caption: text` can never equal a
+  single-line `headline` - so the full sentence, the home/road split, the
+  points-per-game line and any coverage-gap note all print a second time,
+  in gray, under the headline. Screenshotted: "Celtics record this season"
+  showed the record sentence, then the entire same block again verbatim,
+  then the record card, then the gap/detail notes a third time.
+  `templates/teams.py`'s `_standings_season` and `_games_record` (this
+  session, `git log` "teams.py templates carry a headline...") now carry
+  `data["seed"]`, `data["streak"]`, `data["home"]`/`data["road"]`,
+  `data["last_ten"]`, `data["games_behind"]`, `data["points_for"]`/
+  `data["points_against"]` and `data["notes"]` - the reason `caption: text`
+  gave for staying whole no longer holds, but the renderer was not this
+  session's file to change.
+- **User sees:** a correct answer, twice - the sentence, its full detail and
+  any note each print once as the caption block and, for the note, a third
+  time in the notes list. Not new information withheld or wrong, just
+  visual noise the record card was supposed to replace.
+- **Next step:** in `web/static/index.html`, drop `caption: text` for the
+  card branch (its comment is stale) and build the card from `data.seed`/
+  `data.streak`/etc. directly, the way `data.headline`/`data.notes` are
+  already read elsewhere on this page; keep `caption` only for a shape
+  (a `months` table) that still needs one.
+- **Source:** ours.
+
 ### `team_alignment` is not declared in every `TEMPLATE_SOURCES` tuple that can now read it
 - **Found:** 2026-09-24, landing the K3-2 conference/division narrowing.
 - **Evidence:** `situation` reaching `Narrowed.narrow_alignment`/
