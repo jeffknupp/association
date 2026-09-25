@@ -14,6 +14,7 @@ from typing import Any
 import ollama
 
 from .answer import Answer, AnsweredBy, Artifact, FallthroughDisabled, Timing
+from .decisions import Decision
 from .entities import (
     collect_name_readings,
     compared_but_unmatched,
@@ -33,6 +34,7 @@ from .models import AGENT_BUDGET_SECONDS, DEFAULT_ROUTER_MODEL
 from .prompt import AGENT_NUM_CTX, TOOLS, build_system_prompt
 from .refusals import by_question, pair_from_opponent, unanswerable
 from .router import Route, RouterUnavailable, route
+from .subject import read_subject
 from .templates import TEMPLATES
 from .templates.common import (
     OWN_TEAM_RESTORABLE_INTENTS,
@@ -292,6 +294,7 @@ class Agent:
             intent=intent,
             data=data,
             artifacts=list(artifacts or []) + self.toolbox.take_artifacts(),
+            decisions=tuple(history.decisions),
         )
 
     @staticmethod
@@ -338,6 +341,13 @@ class Agent:
             history.log(f"  -> (nickname) {was!r} -> {now!r} (from the question, overriding the router)")
         handler = TEMPLATES.get(routed.intent)
         history.log(f"  -> (router) intent={routed.intent!r} slots={routed.slots}" + ("" if handler else " - not ported yet, falling through"))
+        # One reading of WHO the question is about, recorded as a decision
+        # beside the repair chain below - which still writes every slot. The
+        # reading writes none yet: measured against the chain on 290 recorded
+        # questions it agreed on 278 and was right on the five where the chain
+        # was wrong (query/subject.py); each chain step becomes a no-op, then
+        # goes, as the reading takes over the field it settled.
+        self._record_subject(question, routed, history)
         settled = self._settled_before_template(question, routed, handler, history)
         if settled is not None:
             return settled
@@ -420,6 +430,24 @@ class Agent:
                 history.log(f"  -> (player) {message}")
                 return routed.intent, TemplateResult(data={"message": message, "named_player": named_player}, answer=message)
         return self._run_scoped_template(question, routed, handler, history)
+
+    def _record_subject(self, question: str, routed: Route, history: RunHistory) -> None:
+        """The subject reading (query/subject.py) as decisions - who the
+        question was read to be about, from its own words - recorded beside
+        the repair chain, which still writes every slot. Split out of
+        _try_fast_path for the complexity gate."""
+        subject = read_subject(self.toolbox.con, question, routed.intent, routed.slots)
+        history.record_decision(Decision("subject", "kind", None, subject.kind, "; ".join(subject.evidence)))
+        for name, value in (
+            ("players", subject.players),
+            ("teams", subject.teams),
+            ("opponent", subject.opponent),
+            ("own_team", subject.own_team),
+            ("companions", subject.companions),
+            ("position", subject.position),
+        ):
+            if value:
+                history.record_decision(Decision("subject", name, None, list(value) if isinstance(value, tuple) else value, "from the question's own words"))
 
     def _settled_before_template(self, question: str, routed: Route, handler: Callable[..., TemplateResult] | None, history: RunHistory) -> tuple[str, TemplateResult] | None:
         """What is decided before any template runs: a shape the question's

@@ -1812,6 +1812,14 @@
       // The text is never lost when a table replaced it - it is the same
       // answer the CLI prints, one click away, beside the trace.
       if (rendered) meta.appendChild(disclosure("text", a.text));
+      // What was decided on the way: each reading of the question and
+      // override of a routed field, as values off the answer event rather
+      // than parsed back out of the trace's prose.
+      if (a.decisions && a.decisions.length) {
+        const fmt = v => v == null ? "" : (Array.isArray(v) ? v.join(", ") : String(v));
+        const rows = a.decisions.map(d => `${d.stage} ${d.field}: ${d.before == null ? "" : fmt(d.before) + " -> "}${fmt(d.after)}${d.reason ? "  (" + d.reason + ")" : ""}`);
+        meta.appendChild(disclosure("decisions", rows.join("\n"), "trace"));
+      }
       if (lines.length) meta.appendChild(disclosure("trace", lines.join("\n"), "trace"));
       answer.appendChild(meta);
       // `history_file` is missing only when nothing that looked like a

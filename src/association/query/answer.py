@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from association.query.decisions import Decision
+
 AnsweredBy = Literal["fast", "agent"]
 """Which of the two paths produced an answer.
 
@@ -139,3 +141,9 @@ class Answer:
     #:
     #: .. versionadded:: 4.4.0
     history_file: str | None = None
+    #: What was decided on the way to this answer - every reading of the
+    #: question and override of a routed field, as values
+    #: (:class:`~association.query.decisions.Decision`), in the order made.
+    #:
+    #: .. versionadded:: 4.4.0
+    decisions: tuple[Decision, ...] = ()

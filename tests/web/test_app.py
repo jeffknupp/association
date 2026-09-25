@@ -80,6 +80,25 @@ def test_ask_returns_the_whole_answer_not_just_the_text(tmp_path: Path) -> None:
     assert body["timing"]["total_seconds"] == 1.4
 
 
+def test_the_answer_carries_its_decisions_as_values(tmp_path: Path) -> None:
+    """What was decided on the way - the subject reading, an override of a
+    routed field - reaches the client as values off the answer, never parsed
+    back out of the trace's prose (Jeff's ask, 2026-09-25). An answer with
+    none says so with an empty list, not a missing key."""
+    from association.query.decisions import Decision
+
+    decided = replace(
+        _answer("the answer"),
+        decisions=(Decision("subject", "kind", None, "player", "question names players ['Nikola Jokic']"), Decision("scope", "team", "Boston Celtics", None, "the team after 'vs' is the opponent")),
+    )
+    body = _client(StubAnswerer(decided), tmp_path).post("/api/ask", json={"question": "jokic vs boston"}).json()
+    assert body["decisions"] == [
+        {"stage": "subject", "field": "kind", "before": None, "after": "player", "reason": "question names players ['Nikola Jokic']"},
+        {"stage": "scope", "field": "team", "before": "Boston Celtics", "after": None, "reason": "the team after 'vs' is the opponent"},
+    ]
+    assert _client(StubAnswerer(), tmp_path).post("/api/ask", json={"question": "q"}).json()["decisions"] == []
+
+
 def test_the_answer_names_the_history_file_it_was_recorded_to(tmp_path: Path) -> None:
     """What a note gets attached to. `AgentRunner.ask` reads this off the real
     Agent's own `[history] ...` trace line; a stub reports it directly, but the

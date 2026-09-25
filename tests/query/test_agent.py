@@ -258,7 +258,13 @@ def _agent(tmp_path: Path, **kwargs: Any) -> Agent:
     import duckdb
 
     db_path = tmp_path / "test.duckdb"
-    duckdb.connect(str(db_path)).close()
+    con = duckdb.connect(str(db_path))
+    # The two tables every warehouse has, empty: the subject reading
+    # (query/subject.py) asks them who the question names on every fast-path
+    # answer, where the older repairs only asked once a slot gave them a name.
+    con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    con.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    con.close()
     return Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history", **kwargs)
 
 
@@ -296,6 +302,25 @@ def test_the_fast_path_replaces_a_player_the_question_never_named(monkeypatch: p
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_compare": record})
     _agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic").ask("compare sga and embiid")
     assert seen == ["Shai Gilgeous-Alexander", "Joel Embiid"]
+
+
+def test_the_fast_path_records_who_the_question_was_read_to_be_about(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The subject reading (query/subject.py) runs on every fast-path answer
+    and is recorded as decisions - values on the Answer and a `decisions:`
+    section of the history record - beside the repair chain that still
+    writes the slots. It writes none itself yet."""
+    from association.query.router import Route
+    from association.query.templates.common import TemplateResult
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="player_compare", slots={"players": ["Shai Gilgeous-Alexander", "Jusuf Nurkic"]}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_compare": lambda ctx, slots: TemplateResult(data={}, answer="templated")})
+    agent = _agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic")
+    answer = agent.ask("compare sga and embiid")
+    stages = [(d.stage, d.field, d.after) for d in answer.decisions]
+    assert ("subject", "kind", "pair") in stages
+    assert ("subject", "players", ["Shai Gilgeous-Alexander", "Joel Embiid"]) in stages  # in the question's own order; Nurkic, whom it never names, is not there
+    record = next(iter((tmp_path / ".history").glob("*.log"))).read_text()
+    assert "decisions:\n" in record and '"stage": "subject"' in record and "  -> (decision) subject kind: 'pair'" in record
 
 
 def test_a_team_only_intent_naming_one_player_refuses_rather_than_answering_the_league(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
