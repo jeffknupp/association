@@ -461,6 +461,8 @@ def test_leaderboard_shows_each_players_team_when_asked(lb_con: TemplateContext)
     assert rows == {"Luka Doncic": "Dallas Mavericks", "Stephen Curry": "Dallas Mavericks"}
     assert "team" in result.answer.splitlines()[1]  # the header row
     assert "Team is each player's most recent team that season." in result.answer
+    assert result.data["notes"] == ["Team is each player's most recent team that season."]
+    assert result.data["headline"] == result.answer.splitlines()[0].rstrip(":")
 
 
 def test_leaderboard_team_field_says_nothing_when_nobody_was_traded(lb_con: TemplateContext) -> None:
@@ -562,6 +564,8 @@ def test_threshold_count_honors_playoffs(con: TemplateContext) -> None:
     result = threshold_count(con, {"stat": "points", "threshold": 40, "season_type": 3})
     assert "postseason" in (result.answer or "")
     assert result.data["leaders"] == [{"player": "Bench Guy", "games": 9}]
+    assert result.data["headline"] == result.answer
+    assert result.data["notes"] == []
 
 
 @pytest.fixture
@@ -720,6 +724,13 @@ def ps_con(tmp_path: Path) -> TemplateContext:
 def test_player_stat_reports_one_named_stat_with_its_total(ps_con: TemplateContext) -> None:
     result = player_stat(ps_con, {"player": "Luka Doncic", "stat": "points"})
     assert result.answer == (f"Luka Doncic averaged 33.5 points per game in 64 games in the {current_season()} regular season. That is 2,143 in total.")
+    # The page's own label table maps BOTH "avgPoints" and "points" to "PTS"
+    # (LABELS, web/static/index.html) - two tiles that would read identically
+    # while one is a per-game average and the other a season total in the
+    # thousands (seen live on the rendered page, 2026-09-24). `data["labels"]`
+    # names each explicitly so a renderer does not have to guess them apart.
+    assert result.data["stats"] == {"gamesPlayed": 64, "avgPoints": 33.5, "points": 2143}
+    assert result.data["labels"] == {"avgPoints": "points per game", "points": "points total"}
 
 
 def test_player_stat_with_no_stat_gives_a_stat_line(ps_con: TemplateContext) -> None:
@@ -1094,6 +1105,7 @@ def test_game_log_tallies_the_record_over_exactly_the_rows_shown(gl_con: Templat
     result = game_log(gl_con, {"team": "Knicks"})
     assert result.data["wins"] == 1
     assert "(1-1)" in (result.answer or "")
+    assert result.data["headline"] == (result.answer or "").splitlines()[0].rstrip(":")
 
 
 def test_game_log_order_first_is_ascending(gl_con: TemplateContext) -> None:
@@ -1708,8 +1720,11 @@ def test_player_compare_needs_two_distinct_players(ps_con: TemplateContext) -> N
 
 def test_player_compare_reports_a_player_with_no_rows_rather_than_dropping_them(ps_con: TemplateContext) -> None:
     ps_con.con.execute("INSERT INTO players VALUES ('9','Shai Gilgeous-Alexander')")
-    answer = player_compare(ps_con, {"players": ["Luka Doncic", "Shai Gilgeous-Alexander"]}).answer or ""
+    result = player_compare(ps_con, {"players": ["Luka Doncic", "Shai Gilgeous-Alexander"]})
+    answer = result.answer or ""
     assert "has no" in answer and "Shai Gilgeous-Alexander" in answer
+    assert result.data["notes"] == [answer.splitlines()[-1]]
+    assert result.data["headline"] == answer.splitlines()[0].rstrip(":")
 
 
 def test_player_compare_is_capped(ps_con: TemplateContext) -> None:
@@ -1997,8 +2012,18 @@ def test_single_game_high_defaulted_season_redirects_to_a_retired_players_range(
     s, past = current_season(), current_season() - 16
     sgh_ctx.con.execute("INSERT INTO players VALUES ('3','Old Timer')")
     sgh_ctx.con.execute("INSERT INTO player_game_log VALUES ('3',?,2,'Old Timer','2010-04-12T00:30Z','BOS',5,20,32,'e8',FALSE)", [past])
-    answer = single_game_high(sgh_ctx, {"stat": "points", "player": "Old Timer"}).answer or ""
+    result = single_game_high(sgh_ctx, {"stat": "points", "player": "Old Timer"})
+    answer = result.answer or ""
     assert answer == (f"Old Timer has no {s} regular season games in the warehouse. He last appears in {past}. The warehouse holds his {past} regular season; name one, or ask for his career.")
+    # The redirect ("He last appears in ...") is not part of the headline -
+    # it is glued onto the same sentence, but it answers a second question
+    # (where else to look) the headline itself does not ask.
+    assert result.data["headline"] == f"Old Timer has no {s} regular season games in the warehouse."
+    # ... but it is not lost either - single_game_high's own caption is
+    # `question_shape`, never the raw text, so a page reading `notes` (rather
+    # than falling back to parsing text, which would see one unbroken line
+    # here and find nothing after it) still needs the redirect somewhere.
+    assert result.data["notes"] == [f"He last appears in {past}. The warehouse holds his {past} regular season; name one, or ask for his career."]
 
 
 def test_single_game_high_a_named_season_keeps_the_plain_refusal(sgh_ctx: TemplateContext) -> None:
@@ -2084,8 +2109,10 @@ def test_a_team_log_leaves_out_rows_that_are_not_games(gl_con: TemplateContext) 
 
 
 def test_head_to_head_reports_the_series_record(gl_con: TemplateContext) -> None:
-    answer = head_to_head(gl_con, {"teams": ["Knicks", "Celtics"], "season": current_season()}).answer or ""
+    result = head_to_head(gl_con, {"teams": ["Knicks", "Celtics"], "season": current_season()})
+    answer = result.answer or ""
     assert "met 2 times" in answer and "splitting them 1-1" in answer
+    assert result.data["headline"] == answer  # one sentence, no table beneath it
 
 
 def test_head_to_head_applies_the_season_to_the_whole_matchup(gl_con: TemplateContext) -> None:
@@ -2442,6 +2469,8 @@ def test_team_quarter_points_reads_each_games_own_side_of_linescores(tq_con: Tem
     result = team_quarter_points(tq_con, {"team": "Knicks", "period": 1, "season": current_season()})
     assert result.data["total"] == 60  # 30 (home in e1) + 20 (away in e2) + 10 (home in e3)
     assert len(result.data["games"]) == 3
+    assert result.data["average"] == pytest.approx(20.0)  # 60 / 3 - the text says it, data now carries it too
+    assert result.data["headline"] == (result.answer or "").splitlines()[0].rstrip(":")
 
 
 def test_team_quarter_points_reads_a_bare_limit_as_the_newest_games(tq_con: TemplateContext) -> None:
@@ -3782,6 +3811,9 @@ def test_game_log_lists_only_games_he_played_and_says_what_it_left_out(pg_ctx: T
     result = game_log(pg_ctx, {"player": "Brandin Podziemski"})
     assert len(result.data["games"]) == 3
     assert "Not counted: 1 game in this span whose box score lists him with no minutes and no stats." in result.answer
+    # The note is in the answer's text either way; `data["notes"]` is what
+    # lets the page show it without falling back to guessing at the text.
+    assert "Not counted: 1 game in this span whose box score lists him with no minutes and no stats." in result.data["notes"]
 
 
 def test_game_log_averages_exactly_the_games_it_lists(pg_ctx: TemplateContext) -> None:
@@ -3801,6 +3833,13 @@ def test_game_log_says_how_many_games_the_window_cut_from(pg_ctx: TemplateContex
     result = game_log(pg_ctx, {"player": "Brandin Podziemski", "limit": 2})
     assert result.data["qualifying_games"] == 3
     assert result.answer.splitlines()[0].startswith("Brandin Podziemski, last 2 of 3 games")
+    # The page's headline (renderAnswer) - the answer's own first line, with
+    # the trailing ":" a table heading carries stripped, so a table-less
+    # page still shows the same words a table-drawing one would.
+    assert result.data["headline"] == result.answer.splitlines()[0].rstrip(":")
+    # Not a truncation note - Podziemski's e6 empty box score is outside
+    # this window either way, so the same note attaches regardless of limit.
+    assert result.data["notes"] == ["Not counted: 1 game in this span whose box score lists him with no minutes and no stats."]
     # No truncation, no "of N": every qualifying game fit inside the window.
     full = game_log(pg_ctx, {"player": "Brandin Podziemski", "limit": 10})
     assert full.data["qualifying_games"] == 3

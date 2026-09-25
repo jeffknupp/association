@@ -161,7 +161,7 @@ def _grouped_sentence(q: Query, out: dict[str, Any]) -> str:
     span = _span_phrase(out["span"])
     if not rows:
         return f"No games for {who}{where} in the {span}."
-    head = f"{who}{where}, {span}, by {q.group}"
+    head = f"{who}{where}, {span}{_predicates(q)}, by {q.group}"
     if q.measures:
         head += f" ({LABELS.get(q.measures[0], q.measures[0])} {'per game' if q.aggregate == 'per_game' else q.aggregate}" + (f", minimum {q.minimum_games} games" if q.minimum_games else "") + ")"
     lines = []

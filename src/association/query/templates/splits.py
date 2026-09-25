@@ -465,10 +465,11 @@ def _player_splits_answer(con: duckdb.DuckDBPyConnection, found: _SplitSubject, 
         notes.append("Played means he appeared in the game, and W-L is his team's record in those games.")
     if "month" in kinds:
         notes.append("Months go by the US Eastern date of the game.")
-    answer = _table(f"{found.subject}, {what}, {label} ({found.counted}):", ["G", "W-L", *(h for _, h, _ in found.line)], rows)
+    headline = f"{found.subject}, {what}, {label} ({found.counted}):"
+    answer = _table(headline, ["G", "W-L", *(h for _, h, _ in found.line)], rows)
     notes += [note.strip() for note in (found.floor_note, found.caveat) if note]
     answer += "\n" + " ".join(notes)
-    return TemplateResult(data={**found.data, "span": label, "games": found.games, "splits": splits}, answer=answer.strip())
+    return TemplateResult(data={**found.data, "span": label, "games": found.games, "splits": splits, "headline": headline.rstrip(":"), "notes": notes}, answer=answer.strip())
 
 
 @dataclass(frozen=True)
@@ -775,7 +776,7 @@ def _with_without_windows(con: duckdb.DuckDBPyConnection, mates: list[Entity], s
         # Named, rather than reported as "one of them": which player the
         # warehouse has never seen is the fact that is missing.
         message = f"{absent.name} has no box-score appearance in the warehouse, so there is no time on a team to count games in."
-        return TemplateResult(data={"teammate": absent.name, "teammates": named, "groups": []}, answer=message)
+        return TemplateResult(data={"teammate": absent.name, "teammates": named, "groups": [], "headline": message}, answer=message)
     windows = stints[0]
     for spells in stints[1:]:
         windows = _overlaps(windows, spells)
@@ -796,7 +797,7 @@ def _with_without_empty_windows(team: Entity | None, subject: Entity | None, mat
         whom = _joined([subject.name, *named]) if subject is not None else all_of
         played_phrase = "he played" if len(mates) == 1 else "they all played"
         message = f"{whom} were never on{on or ' the same team'} together in the box scores on record, so there are no games to divide by whether {played_phrase}."
-    return TemplateResult(data={"teammate": all_of, "teammates": named, "player": subject.name if subject else None, "groups": []}, answer=message)
+    return TemplateResult(data={"teammate": all_of, "teammates": named, "player": subject.name if subject else None, "groups": [], "headline": message}, answer=message)
 
 
 def _with_without_stint_team(w: Any, team_names: dict[str, str]) -> str:
@@ -816,7 +817,7 @@ def _with_without_empty_games(subject: Entity | None, mates: list[Entity], named
         # Inside the time, but every game of it without a box score - a
         # different fact from the time missing the season altogether.
         message = f"All {unknown} games inside {whose[0].lower() + whose[1:]} on the team in the {scope.label()} have no box score in the warehouse, so whether {all_of} played them cannot be told."
-    return TemplateResult(data={"teammate": all_of, "teammates": named, "player": subject.name if subject else None, "groups": []}, answer=message)
+    return TemplateResult(data={"teammate": all_of, "teammates": named, "player": subject.name if subject else None, "groups": [], "headline": message}, answer=message)
 
 
 def _with_without_played(game: dict[str, Any], asked_without: bool, n_mates: int) -> bool:
@@ -885,7 +886,17 @@ def _with_without_answer(
     notes = _with_without_notes(whose, spell_text, mates, asked_without, all_of, unknown, subject)
     answer = _table(title, headers, rows) + "\n" + " ".join(notes)
     tenure = [{"team": team_names[w.team_id], "from": str(w.first), "to": str(w.last)} for w in used]
-    data = {"teammate": all_of, "teammates": named, "player": subject.name if subject else None, "teams": [team_names[t] for t in team_order], "span": label, "groups": groups, "tenure": tenure}
+    data = {
+        "teammate": all_of,
+        "teammates": named,
+        "player": subject.name if subject else None,
+        "teams": [team_names[t] for t in team_order],
+        "span": label,
+        "groups": groups,
+        "tenure": tenure,
+        "headline": title.rstrip(":"),
+        "notes": notes,
+    }
     return TemplateResult(data=data, answer=answer)
 
 
@@ -1066,8 +1077,19 @@ def _record_when_answer(
     rows = [(f"{threshold}+ {unit}", reached), (f"under {threshold} {unit}", short), ("all his games", every)]
     table = _table(title, ["G", "W-L", "Win%", "Margin"], [(name, [str(g["games"]), f"{g['wins']}-{g['losses']}", _win_pct(g["wins"], g["games"]), _margin(g["avg_margin"])]) for name, g in rows])
     caveat = _unseen_note(_unseen(con, scope, base, params, box_source(con)))
-    answer = f"{table}\nOver the {every['games']} games he played; a game he missed is in neither row.{scope.floor_note(min(r[4] for r in found))}{caveat}"
-    data = {"player": player.name, "teams": teams, "stat": stat, "threshold": threshold, "span": label, "reached": reached, "fell_short": short}
+    trailer = f"Over the {every['games']} games he played; a game he missed is in neither row.{scope.floor_note(min(r[4] for r in found))}{caveat}"
+    answer = f"{table}\n{trailer}"
+    data = {
+        "player": player.name,
+        "teams": teams,
+        "stat": stat,
+        "threshold": threshold,
+        "span": label,
+        "reached": reached,
+        "fell_short": short,
+        "headline": title.rstrip(":"),
+        "notes": [trailer],
+    }
     return TemplateResult(data=data, answer=answer)
 
 
@@ -1219,8 +1241,18 @@ def _record_when_team_answer_table(con: duckdb.DuckDBPyConnection, span: _Span, 
     rows = [(f"{threshold}+ {unit}", reached), (f"under {threshold} {unit}", short), ("all their games", every)]
     table = _table(title, ["G", "W-L", "Win%", "Margin"], [(name, [str(g["games"]), f"{g['wins']}-{g['losses']}", _win_pct(g["wins"], g["games"]), _margin(g["avg_margin"])]) for name, g in rows])
     caveat = "" if stat == "points" else _record_when_team_unseen_note(_record_when_team_unseen(con, narrowed, column), unit)
-    answer = f"{table}\nOver the {every['games']} games with a result.{_team_span_floor_note(span, min(r[4] for r in found))}{caveat}"
-    data = {"team": team.name, "stat": stat, "threshold": threshold, "span": label, "reached": reached, "fell_short": short}
+    trailer = f"Over the {every['games']} games with a result.{_team_span_floor_note(span, min(r[4] for r in found))}{caveat}"
+    answer = f"{table}\n{trailer}"
+    data = {
+        "team": team.name,
+        "stat": stat,
+        "threshold": threshold,
+        "span": label,
+        "reached": reached,
+        "fell_short": short,
+        "headline": title.rstrip(":"),
+        "notes": [trailer],
+    }
     return TemplateResult(data=data, answer=answer)
 
 
@@ -1417,7 +1449,8 @@ def _streak_player(
     rule += _UNSEEN_ENDS_RUN if _unseen(con, scope, base, {**params, **scope.params()}, box_source(con)) else ""
     if not runs:
         never = f"never had a game with {threshold}+ {unit}" if by_stat else f"never {'won' if want_win else 'lost'} a game he played"
-        return TemplateResult(data={"player": player.name, "span": label, "streaks": []}, answer=f"{player.name} {never}{narrowed.filters()} in the {label}.")
+        message = f"{player.name} {never}{narrowed.filters()} in the {label}."
+        return TemplateResult(data={"player": player.name, "span": label, "streaks": [], "headline": message}, answer=message)
     subject_text = (f"{player.name}'s longest run of {what}" if by_stat else f"{player.name}'s longest {what}") + narrowed.filters()
     return _single_streak(subject_text, label, runs, rule, scope, {"player": player.name})
 
@@ -1471,7 +1504,8 @@ def _streak_team(
     label = _team_span_label(scope, first, last)
     runs = _longest_runs(con, base, {**params, **condition}, ("team_id", "season"), hit, 3, best_per_partition=False)
     if not runs:
-        return TemplateResult(data={"team": team.name, "span": label, "streaks": []}, answer=f"The {team.name} did not {'win' if want_win else 'lose'} a game{narrowed.filters()} in the {label}.")
+        message = f"The {team.name} did not {'win' if want_win else 'lose'} a game{narrowed.filters()} in the {label}."
+        return TemplateResult(data={"team": team.name, "span": label, "streaks": [], "headline": message}, answer=message)
     return _single_streak(
         (f"The {team.name}' longest {result}" if team.name.endswith("s") else f"The {team.name}'s longest {result}") + narrowed.filters(),
         label,
@@ -1602,7 +1636,8 @@ def _streak_league(
     runs, what, who, rule, label, where_in_text = found
     if not runs:
         nobody = f"No player had a game with {threshold}+ {unit}" if by_stat else "No team has a game with a result"
-        return TemplateResult(data={"span": label, "streaks": []}, answer=f"{nobody} {where_in_text}.")
+        message = f"{nobody} {where_in_text}."
+        return TemplateResult(data={"span": label, "streaks": [], "headline": message}, answer=message)
     streaks = [
         {"name": n, "season": r["first_season"] if not by_stat else None, "length": r["length"], "from": str(r["first_day"]), "to": str(r["last_day"]), "open": bool(r["open"])}
         for n, r in zip(who, runs, strict=True)
@@ -1624,6 +1659,7 @@ def _streak_league(
             "threshold": threshold if by_stat else None,
             "kind": None if by_stat else ("win" if want_win else "loss"),
             "streaks": streaks,
+            "headline": headline,
             "notes": _streak_league_notes(rule, footnote),
         },
         answer=answer,
@@ -1651,4 +1687,4 @@ def _single_streak(subject: str, label: str, runs: list[dict[str, Any]], rule: s
     if top["open"] and (scope.season is None or scope.season == current_season()):
         answer += " It was still going at the last game on record."
     streaks = [{"length": r["length"], "from": str(r["first_day"]), "to": str(r["last_day"]), "open": bool(r["open"])} for r in [top, *ties]]
-    return TemplateResult(data={**who, "span": label, "streaks": streaks}, answer=f"{answer}\n{rule}")
+    return TemplateResult(data={**who, "span": label, "streaks": streaks, "headline": answer, "notes": [rule.strip()]}, answer=f"{answer}\n{rule}")

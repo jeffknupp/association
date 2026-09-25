@@ -2045,6 +2045,78 @@ had no published version to be compatible with.
   slot beside it, and `leaderboard` refuses on that sentinel before either
   wrong-cause path can run, pointing at `shot_distance` for one named player
   instead (#114).
+- `player_stat` and `player_history` carry `data["labels"]` (a stat's key ->
+  the short word a page should print beside it) beside `data["stats"]` /
+  `data["seasons"]`, and `player_stat`'s stats keys for a shooting percentage
+  (`twoPointFieldGoalPct` and, incidentally, the three ESPN-stored ones) are
+  now stable names rather than, for the two-point case, the raw SQL
+  expression the value was read through - that expression used to reach
+  `data["stats"]` and `data["seasons"]` as a dict key directly, which a page
+  cannot look up a stat by (seen live on the rendered page, 2026-09-24: a
+  column headed with the whole SQL expression and no value under it). A
+  multi-stat `player_stat` line's per-game and season-total figures also get
+  distinct labels ("points per game" / "points total") rather than sharing
+  one abbreviation.
+- `team_outlook` carries `data["headline"]` and `data["notes"]` (the BPI
+  line, the record, the title chances, strength of schedule and a note about
+  the season's other snapshots, each its own line) instead of leaving them
+  only in the answer's prose.
+- The compiler's `data["headline"]` (the sentence's own first line) and, for
+  a by-player count a window cut short, `data["total"]` (the real count
+  behind the listed rows - `core.run`'s `_grouped_total` already computed
+  it; `_point_data` was dropping it). A grouped read's sentence now states
+  its predicates too ("... with a triple-double, by player"), not only its
+  span - before this a team's boolean-count table ("oklahoma city thunder
+  all-time triple doubles") had no subject in its own heading.
+- The compiler refuses by name, rather than silently ranking by points, when
+  a league-wide ranking or single-game-high question named a real stat this
+  relation has no measure for ("who had the highest netpoint game this
+  season" used to rank by points instead, with nothing to tell the two
+  apart from the answer).
+- `game_log`, `period_split`, `period_leaderboard`, `head_to_head`,
+  `team_quarter_points` and `player_matchup` carry `data["headline"]` (the
+  answer's own first line, whatever the rest of it goes on to say) and, for
+  every template that already computed one, `data["notes"]` (a truncation
+  note, a box-score caveat, an accuracy caveat, a cross-season redirect,
+  an unseen-meeting count) as a list of lines rather than only text glued
+  onto the sentence. A team's game log also carries `data["total_points"]`
+  or `data["differential"]`/`data["differential_per_game"]` when the
+  question asked for one (F128/F129) - narrowed and stated in the text
+  already, absent from `data` until now - and `period_split`/
+  `team_quarter_points` carry `data["average"]` beside the total they
+  already had.
+- `player_splits`, `with_without`, `record_when` and `streak` carry
+  `data["headline"]` and `data["notes"]` too - each already built its own
+  notes list (what "played" means, a coverage-floor caveat, the "only games
+  he played count" rule for a streak) and joined it into the answer text on
+  one line without ever handing the list itself to a caller.
+- `team_record`, `team_stat` and `team_leaderboard` carry `data["headline"]`
+  and, where they already had one, `data["notes"]` (the possessions-rating
+  note, the "1st is best" note, a coverage gap). `team_record`'s season line
+  now carries `data["seed"]` and `data["streak"]` too - "4th seed" and "won 3
+  straight" were named only in the sentence, which the record card is why
+  the renderer kept whole instead of drawing from `data` alone.
+- `threshold_count`, `leaderboard`, `single_game_high` and `player_compare`
+  carry `data["headline"]` (the sentence alone, with a trailing "Next: ..."
+  list stripped the same way the page's own fallback already strips it, and
+  a defaulted-season redirect left out where it answers a second question
+  rather than the one asked) and `data["notes"]` for the caveats each
+  already built but only glued onto the answer text - a league-wide count's
+  rebuilt-line caveat, a leaderboard's trade note, a comparison's "has no
+  numbers" line for a missing player. `shot_distance` carries `headline` too,
+  though its answer is already one unbroken sentence.
+- Fixed two duplicate-caption regressions the `headline`/`notes` sweep above
+  introduced (measured on the rendered page before this commit, both cases
+  in the report): `team_stat`'s single-stat answer excluded its rating note
+  from `headline` while the renderer's own `caption` is `firstLine(text)`
+  (which includes the note), so the two disagreed and the whole sentence
+  printed a second time; `headline` now matches the full sentence exactly,
+  the same way every other template's does where nothing follows the
+  sentence on a new line. `single_game_high`'s defaulted-season redirect was
+  excluded from `headline` with nowhere else to go - its `caption` is
+  `question_shape`, never the raw text, so the redirect vanished from the
+  page entirely rather than merely duplicating; it is carried in `notes`
+  instead.
 
 ## 4.2.0 - 2026-09-18
 - **A NetPoints name ESPN spells with a generational suffix, or hyphenates

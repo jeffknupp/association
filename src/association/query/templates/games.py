@@ -601,6 +601,24 @@ def _team_game_log_total_line(games: list[dict[str, Any]], stat: Any) -> str | N
     return f"\n  Point differential: {diff:+,} ({diff / len(games):+.2f} per game)."
 
 
+def _team_game_log_total_data(games: list[dict[str, Any]], stat: Any) -> dict[str, Any]:
+    """The same total or differential :func:`_team_game_log_total_line`
+    states, as plain values rather than a sentence fragment - the text has
+    it (F128/F129), and until this the page's table did not: no renderer
+    slot carried a "Total points" or "point differential" row to draw
+    beside the games.
+
+    .. versionadded:: 4.4.0
+    """
+    kind = _TEAM_GAME_LOG_STAT_TOTALS.get(stat) if isinstance(stat, str) else None
+    if kind is None or not games:
+        return {}
+    if kind == "points":
+        return {"total_points": sum(g["team_score"] for g in games)}
+    diff = sum(g["team_score"] - g["opponent_score"] for g in games)
+    return {"differential": diff, "differential_per_game": round(diff / len(games), 2)}
+
+
 def _team_game_log_rows(team: Entity, span: _Span, rows: list[tuple[Any, ...]], *, narrowed: str, date: str | None, ascending: bool, stat: Any = None) -> TemplateResult:
     """The games listing, headed by the single season type ``span`` names."""
     games, wins, losses, record, lines = _team_game_log_games(rows)
@@ -612,7 +630,8 @@ def _team_game_log_rows(team: Entity, span: _Span, rows: list[tuple[Any, ...]], 
         where = f" ({years})" if date else f" (all-time, {years})"
     header = f"{team.name}{narrowed}, {_scope(len(games), ascending, date)}{where} ({record}):"
     total_line = _team_game_log_total_line(games, stat) or ""
-    return TemplateResult(data={"team": team.name, "wins": wins, "losses": losses, "games": games}, answer="\n".join([header, *lines]) + total_line)
+    data = {"team": team.name, "wins": wins, "losses": losses, "games": games, "headline": header.rstrip(":"), **_team_game_log_total_data(games, stat)}
+    return TemplateResult(data=data, answer="\n".join([header, *lines]) + total_line)
 
 
 def _team_game_log(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, narrowed: TeamNarrowed, *, limit: int, ascending: bool, stat: Any = None) -> TemplateResult:
@@ -661,7 +680,8 @@ def _team_game_log_mixed(con: duckdb.DuckDBPyConnection, team: Entity, season: i
     games, wins, losses, record, lines = _team_game_log_games(rows)
     header = f"{team.name}{narrowed_text}, {_scope(len(games), False, None)}{_game_log_mixed_where(season, counts)} ({record}):"
     total_line = _team_game_log_total_line(games, stat) or ""
-    return TemplateResult(data={"team": team.name, "wins": wins, "losses": losses, "games": games}, answer="\n".join([header, *lines]) + total_line)
+    data = {"team": team.name, "wins": wins, "losses": losses, "games": games, "headline": header.rstrip(":"), **_team_game_log_total_data(games, stat)}
+    return TemplateResult(data=data, answer="\n".join([header, *lines]) + total_line)
 
 
 def _pct(made: Any, attempted: Any) -> float | None:
@@ -864,7 +884,7 @@ def _player_game_log(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span
     table = _player_game_log_table(headers, games, averages)
     notes = _player_game_log_notes(con, player, span, narrowed, games, asked=asked, rebuilt=rebuilt)
     return TemplateResult(
-        data={**scope, "columns": headers, "games": games, "averages": averages, "qualifying_games": total},
+        data={**scope, "columns": headers, "games": games, "averages": averages, "qualifying_games": total, "headline": header.rstrip(":"), "notes": notes},
         answer="\n".join([header, *table, *notes]),
     )
 
@@ -958,7 +978,7 @@ def _player_game_log_mixed(
     table = _player_game_log_table(headers, games, averages)
     notes = _player_game_log_mixed_notes(con, player, per_type, games, asked=asked, rebuilt=rebuilt)
     return TemplateResult(
-        data={**scope, "columns": headers, "games": games, "averages": averages},
+        data={**scope, "columns": headers, "games": games, "averages": averages, "headline": header.rstrip(":"), "notes": notes},
         answer="\n".join([header, *table, *notes]),
     )
 
@@ -1123,7 +1143,6 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
 
     a_wins = sum(1 for (won,) in rows if won)
     b_wins = sum(1 for (won,) in rows if won is False)
-    data = {"teams": [a.name, b.name], "games": len(rows), "wins": {a.name: a_wins, b.name: b_wins}, "venue": venue, "date": date}
     if venue or date:
         answer = _head_to_head_narrowed_phrase(a.name, b.name, len(rows), a_wins, b_wins, venue=venue, date=date, season=season, season_type=season_type)
     else:
@@ -1131,6 +1150,7 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         # replaced it, and the branch above already took that case, so this
         # one always has a season - `cast` says that to the type checker.
         answer = _phrase_head_to_head(a.name, b.name, len(rows), a_wins, b_wins, _period(cast(int, season), season_type))
+    data = {"teams": [a.name, b.name], "games": len(rows), "wins": {a.name: a_wins, b.name: b_wins}, "venue": venue, "date": date, "headline": answer}
     return TemplateResult(data=data, answer=answer)
 
 
@@ -1164,11 +1184,21 @@ def _head_to_head_span_result(
     b_wins = sum(1 for won, _ in rows if won is False)
     years = [int(yr) for _, yr in rows]
     first, last = (min(years), max(years)) if years else (None, None)
-    data = {"teams": [a.name, b.name], "games": len(rows), "wins": {a.name: a_wins, b.name: b_wins}, "venue": venue, "date": None, "since": since, "until": until, "span": "career" if career else None}
     if venue:
         answer = _head_to_head_narrowed_phrase(a.name, b.name, len(rows), a_wins, b_wins, venue=venue, date=None, season=None, season_type=season_type, since=since, until=until, career=career)
     else:
         answer = _head_to_head_span_phrase(a.name, b.name, len(rows), a_wins, b_wins, span, first, last)
+    data = {
+        "teams": [a.name, b.name],
+        "games": len(rows),
+        "wins": {a.name: a_wins, b.name: b_wins},
+        "venue": venue,
+        "date": None,
+        "since": since,
+        "until": until,
+        "span": "career" if career else None,
+        "headline": answer,
+    }
     return TemplateResult(data=data, answer=answer)
 
 
@@ -1550,13 +1580,13 @@ def _team_quarter_points_answer(
     opponent_name = opponent.name if opponent else None
     if not games:
         answer = f"The warehouse has no {period_str} games for the {team.name}{vs}{extra}."
-        return TemplateResult(data={"team": team.name, "opponent": opponent_name, "games": []}, answer=answer)
+        return TemplateResult(data={"team": team.name, "opponent": opponent_name, "games": [], "headline": answer}, answer=answer)
 
     played = [g for g in games if g["points"] is not None]
     if not played:
         plural = "game" if len(games) == 1 else "games"
         answer = f"None of the {team.name}'s {len(games)} {period_str} {plural}{vs}{extra} went to the {period_label}."
-        return TemplateResult(data={"team": team.name, "opponent": opponent_name, "games": games}, answer=answer)
+        return TemplateResult(data={"team": team.name, "opponent": opponent_name, "games": games, "headline": answer}, answer=answer)
 
     total = sum(g["points"] for g in played)
     data = {"team": team.name, "opponent": opponent_name, "period": periods[0] if len(periods) == 1 else None, "period_label": period_label, "games": played, "total": total}
@@ -1570,8 +1600,9 @@ def _team_quarter_points_answer(
         how = "most" if rank == "most" else "fewest"
         where = " and ".join(f"vs the {g['opponent']} on {g['date']}" for g in tied)
         answer = f"The {team.name} scored {best} in the {period_label} {where}, their {how} in the {period_str}{vs}{dateless_extra}."
-        return TemplateResult(data={**data, "rank": rank, "extreme": best, "extreme_games": tied}, answer=answer)
-    return TemplateResult(data=data, answer=_phrase_team_quarter_points(team.name, opponent_name, period_label, period_str, extra, dateless_extra, played, total))
+        return TemplateResult(data={**data, "rank": rank, "extreme": best, "extreme_games": tied, "headline": answer}, answer=answer)
+    answer = _phrase_team_quarter_points(team.name, opponent_name, period_label, period_str, extra, dateless_extra, played, total)
+    return TemplateResult(data={**data, "average": round(total / len(played), 2), "headline": answer.split("\n")[0].rstrip(":")}, answer=answer)
 
 
 def _phrase_team_quarter_points(team: str, opponent: str | None, period_label: str, period_str: str, extra: str, dateless_extra: str, games: list[dict[str, Any]], total: int) -> str:
@@ -1799,7 +1830,8 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     average = total / len(games)
     data |= {"total": total, "average": average}
     header = _period_split_header(player, period_label, scope, vs, at, total, average, games, slots, slots.get("order"))
-    return TemplateResult(data=data, answer=header + _period_split_caveat(season, PERIOD_RECONCILIATION.get(season)))
+    caveat = _period_split_caveat(season, PERIOD_RECONCILIATION.get(season))
+    return _period_split_result(data, header, caveat)
 
 
 def period_leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
@@ -1945,12 +1977,22 @@ def _period_leaderboard_answer(rows: list[tuple[Any, ...]], period_label: str, s
     leaders = [{"player": name, "games": int(games), "points": int(total), "average": round(float(average), 1)} for name, games, total, average in rows]
     top = leaders[0]
     rest = ", ".join(f"{row['player']} ({row['average']})" for row in leaders[1:])
-    answer = f"{top['player']} led {led} in {period_label} points per game in the {scope} (minimum {minimum} games), at {top['average']} over {top['games']} games."
+    headline = f"{top['player']} led {led} in {period_label} points per game in the {scope} (minimum {minimum} games), at {top['average']} over {top['games']} games."
+    answer = headline
     if rest:
         answer += f" Next: {rest}."
+    caveat = _period_split_caveat(season, agreement)
     return TemplateResult(
-        data={"period": period_label, "season": season, "team": team.name if team else None, "minimum_games": minimum, "leaders": leaders},
-        answer=answer + _period_split_caveat(season, agreement),
+        data={
+            "period": period_label,
+            "season": season,
+            "team": team.name if team else None,
+            "minimum_games": minimum,
+            "leaders": leaders,
+            "headline": headline,
+            "notes": [caveat.strip()] if caveat else [],
+        },
+        answer=answer + caveat,
     )
 
 
@@ -2162,7 +2204,7 @@ def _period_split_empty(
     if redirect is not None:
         return redirect
     message = f"No {scope} games found for {player.name}{vs}{at}."
-    return TemplateResult(data={**data, "message": message}, answer=message)
+    return TemplateResult(data={**data, "message": message, "headline": message}, answer=message)
 
 
 def _period_split_cross_season_redirect(
@@ -2245,8 +2287,9 @@ def _period_split_cross_season_redirect(
         "average": average,
     }
     header = _period_split_header(player, period_label, scope, vs, at, total, average, games, slots, slots.get("order"))
-    redirect_note = f"\nNo games this season, so these are his most recent {len(games)}{at}, from the {scope}."
-    return TemplateResult(data=data, answer=header + redirect_note + _period_split_caveat(season, PERIOD_RECONCILIATION.get(season)))
+    redirect_note = f"No games this season, so these are his most recent {len(games)}{at}, from the {scope}."
+    caveat = _period_split_caveat(season, PERIOD_RECONCILIATION.get(season))
+    return _period_split_result(data, header, caveat, extra_note=redirect_note)
 
 
 def _period_split_header(player: Entity, period_label: str, scope: str, vs: str, at: str, total: int, average: float, games: list[dict[str, Any]], slots: dict[str, Any], order: Any = None) -> str:
@@ -2287,6 +2330,24 @@ def _period_split_caveat(season: int, agreement: float | None) -> str:
         f"\n  (Summed from shot data rather than an official per-quarter box score. In {season} that sum matches ESPN's own "
         f"quarter scores {agreement:.0f}% of the time, so treat a single game as approximate.)"
     )
+
+
+def _period_split_result(data: dict[str, Any], header: str, caveat: str, *, extra_note: str | None = None) -> TemplateResult:
+    """``period_split``'s own return, wherever it lands: ``headline`` is the
+    header's own first line (it grows a per-game table of its own for a
+    "log"/"by game" question - see ``_period_split_header``'s ``per_game``
+    branch - so only the first line is the sentence), and ``notes`` carries
+    ``extra_note`` (the cross-season redirect, when the caller has one) and
+    the reconciliation caveat, each its own line, exactly as the answer text
+    already joins them. Split out of the two callers to keep each under the
+    complexity gate.
+
+    .. versionadded:: 4.4.0
+    """
+    data["headline"] = header.split("\n")[0]
+    data["notes"] = [*([extra_note] if extra_note else []), *([caveat.strip()] if caveat else [])]
+    body = header + (f"\n{extra_note}" if extra_note else "") + caveat
+    return TemplateResult(data=data, answer=body)
 
 
 _DEFAULT_MEETINGS_LOGGED = 5
@@ -2494,7 +2555,7 @@ def _player_matchup_no_meetings(con: duckdb.DuckDBPyConnection, scope: _Scope, a
         message = f"No meetings between {a.name} and {b.name} in {a.name}'s games{narrowing} {_where_in(scope)}{teammates}.{caveat}"
     else:
         message = f"{a.name} and {b.name} never played against each other {_where_in(scope)}{teammates}.{caveat}"
-    return TemplateResult(data={"players": [a.name, b.name], "meetings": 0, "teammate_games": together}, answer=message)
+    return TemplateResult(data={"players": [a.name, b.name], "meetings": 0, "teammate_games": together, "headline": message}, answer=message)
 
 
 def _player_matchup_summary(a: Entity, b: Entity, meetings: list[dict[str, Any]]) -> tuple[int, dict[str, dict[str, Any]], int, list[tuple[str, list[str]]]]:
@@ -2561,5 +2622,14 @@ def _player_matchup_answer(
     answer += "\n\n" + _table(f"Most recent {len(shown)} of {count} (points/rebounds/assists):", ["score", a.name, b.name], log)
     answer += f"\n{caveat.strip()}" if caveat else ""
     games = [{"date": str(m["day"]), "won": m["won"], "team_score": m["team_score"], "opponent_score": m["opponent_score"], a.name: m["a"], b.name: m["b"]} for m in shown]
-    data = {"players": [a.name, b.name], "span": label, "meetings": count, "wins": {a.name: wins, b.name: count - wins}, "averages": lines, "games": games}
+    data = {
+        "players": [a.name, b.name],
+        "span": label,
+        "meetings": count,
+        "wins": {a.name: wins, b.name: count - wins},
+        "averages": lines,
+        "games": games,
+        "headline": title,
+        "notes": [caveat.strip()] if caveat else [],
+    }
     return TemplateResult(data=data, answer=answer)

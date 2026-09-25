@@ -1197,13 +1197,33 @@ PLAYER_STAT_COLUMNS: dict[str, tuple[str, str | None, str]] = {
 }
 
 
-# Per-season history columns: stat -> (label, [(column, header), ...]).
+# Per-season history columns: stat -> (label, [(column, header, key), ...]).
 # A percentage is reported with its makes and attempts, because a percentage
 # without volume behind it is the thing people ask "out of how many?" about.
-HISTORY_COLUMNS: dict[str, tuple[str, list[tuple[str, str]]]] = {
-    "threePointFieldGoalPct": ("3PT%", [("threePointFieldGoalPct", "3PT%"), ("threePointFieldGoalsMade", "3PM"), ("threePointFieldGoalsAttempted", "3PA")]),
-    "fieldGoalPct": ("FG%", [("fieldGoalPct", "FG%"), ("fieldGoalsMade", "FGM"), ("fieldGoalsAttempted", "FGA")]),
-    "freeThrowPct": ("FT%", [("freeThrowPct", "FT%"), ("freeThrowsMade", "FTM"), ("freeThrowsAttempted", "FTA")]),
+#
+# `key` is the STABLE name `player_history`'s `data["seasons"]` rows carry
+# each column under - identical to `column` for every entry but
+# `twoPointFieldGoalPct`'s, whose `column` is a SQL expression (see its own
+# comment below), not a valid key. Before `key` existed, that expression WAS
+# the dict key: the page looked up "twoPointFieldGoalPct" by its own slot
+# name, found nothing under a key that long, and printed the raw SQL as a
+# column header with an empty column beneath it and a flat sparkline (seen
+# live on the rendered page, 2026-09-24, on "lebron's 2-pt percentage over
+# the last 10 years").
+HISTORY_COLUMNS: dict[str, tuple[str, list[tuple[str, str, str]]]] = {
+    "threePointFieldGoalPct": (
+        "3PT%",
+        [
+            ("threePointFieldGoalPct", "3PT%", "threePointFieldGoalPct"),
+            ("threePointFieldGoalsMade", "3PM", "threePointFieldGoalsMade"),
+            ("threePointFieldGoalsAttempted", "3PA", "threePointFieldGoalsAttempted"),
+        ],
+    ),
+    "fieldGoalPct": ("FG%", [("fieldGoalPct", "FG%", "fieldGoalPct"), ("fieldGoalsMade", "FGM", "fieldGoalsMade"), ("fieldGoalsAttempted", "FGA", "fieldGoalsAttempted")]),
+    "freeThrowPct": (
+        "FT%",
+        [("freeThrowPct", "FT%", "freeThrowPct"), ("freeThrowsMade", "FTM", "freeThrowsMade"), ("freeThrowsAttempted", "FTA", "freeThrowsAttempted")],
+    ),
     # No stored 2-point percentage column (checked against the warehouse: only
     # fieldGoalPct and threePointFieldGoalPct exist) - ESPN's season table has
     # a total and a 3-point split, not a 2-point one. Computed the same way a
@@ -1216,18 +1236,18 @@ HISTORY_COLUMNS: dict[str, tuple[str, list[tuple[str, str]]]] = {
     "twoPointFieldGoalPct": (
         "2PT%",
         [
-            ("100.0 * (fieldGoalsMade - threePointFieldGoalsMade) / NULLIF(fieldGoalsAttempted - threePointFieldGoalsAttempted, 0)", "2PT%"),
-            ("(fieldGoalsMade - threePointFieldGoalsMade)", "2PM"),
-            ("(fieldGoalsAttempted - threePointFieldGoalsAttempted)", "2PA"),
+            ("100.0 * (fieldGoalsMade - threePointFieldGoalsMade) / NULLIF(fieldGoalsAttempted - threePointFieldGoalsAttempted, 0)", "2PT%", "twoPointFieldGoalPct"),
+            ("(fieldGoalsMade - threePointFieldGoalsMade)", "2PM", "twoPointFieldGoalsMade"),
+            ("(fieldGoalsAttempted - threePointFieldGoalsAttempted)", "2PA", "twoPointFieldGoalsAttempted"),
         ],
     ),
-    "points": ("points per game", [("avgPoints", "PPG")]),
-    "rebounds": ("rebounds per game", [("avgRebounds", "RPG")]),
-    "assists": ("assists per game", [("avgAssists", "APG")]),
-    "steals": ("steals per game", [("avgSteals", "SPG")]),
-    "blocks": ("blocks per game", [("avgBlocks", "BPG")]),
-    "minutes": ("minutes per game", [("avgMinutes", "MPG")]),
-    "threePointFieldGoalsMade": ("3-pointers per game", [("avgThreePointFieldGoalsMade", "3PM/G")]),
+    "points": ("points per game", [("avgPoints", "PPG", "avgPoints")]),
+    "rebounds": ("rebounds per game", [("avgRebounds", "RPG", "avgRebounds")]),
+    "assists": ("assists per game", [("avgAssists", "APG", "avgAssists")]),
+    "steals": ("steals per game", [("avgSteals", "SPG", "avgSteals")]),
+    "blocks": ("blocks per game", [("avgBlocks", "BPG", "avgBlocks")]),
+    "minutes": ("minutes per game", [("avgMinutes", "MPG", "avgMinutes")]),
+    "threePointFieldGoalsMade": ("3-pointers per game", [("avgThreePointFieldGoalsMade", "3PM/G", "avgThreePointFieldGoalsMade")]),
 }
 
 

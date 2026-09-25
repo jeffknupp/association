@@ -2586,6 +2586,31 @@ those were found.
 
 ## P3: refusal or gap
 
+### The compiler has no NetPoints measure, so a single-game NetPoints ranking has nowhere to land but the agent
+- **Found:** 2026-09-24, fixing a live finding on the rendered page
+  (`/tmp/claude-1000/preview6`): "who had the highest netpoint game this
+  season?" and "... highest total netpoint game ..." routed `single_game_high`
+  with a NetPoints stat, which the `single_game_high` template refuses (no
+  such column), and the compiler (`query/compose`) then silently answered a
+  ranking of POINTS instead - `_everyone_ranking` (`compose/move.py`)
+  defaulted an unmapped measure to `"points"` the same way it does for a
+  genuinely stat-less ranking ("top scorers"), with no way to tell the two
+  apart from the answer. Fixed in this commit: a `stat` that was NAMED but
+  does not map to a measure this relation knows is now a named `Refused`
+  ("No ranking reads 'netpoints' on the player-games relation ...") rather
+  than a silent substitution - see `test_a_stat_this_relation_cannot_read_is_refused_not_defaulted_to_points`
+  (`tests/query/test_compose.py`).
+- **User sees:** the refusal now names the real cause instead of a fluent,
+  wrong ranking; the question itself still has no fast answer and falls
+  through to the agent, slower.
+- **Next step:** `net_points_player_game` (per-player-per-game NetPoints,
+  `DATA.md`) is a real table the compiler does not read at all - a second
+  relation, or a narrow addition to this one, would let a NetPoints
+  single-game ranking answer as fast as a points one does. Not attempted
+  here: it is a new relation, not a one-line fix, and outside this session's
+  scope (the "look nice" data-shape pass).
+- **Source:** ours.
+
 ### `team_leaderboard` excludes `situation`, so "best record since <day>" still falls through
 - **Found:** 2026-09-24, fixing yardstick-v2 F104's routing.
 - **Evidence:** "Best NBA record since January 31st 201" now routes
@@ -3177,6 +3202,40 @@ those were found.
 - **GitHub:** #192
 
 ## P4: tooling, docs, low impact
+
+### `team_record`'s standings/games-record card renderer always duplicates its own caption
+- **Found:** 2026-09-25, the "look nice" data-shape sweep, screenshotting
+  answers through the real page rather than only diffing `data`.
+- **Evidence:** `RENDERERS.team_record` (`web/static/index.html`) has two
+  shapes; the wins/losses-card one sets `caption: text` - the WHOLE answer,
+  every line, not `firstLine(text)` the way every other card-shaped renderer
+  here does it. Its own comment says why: "The sentence carries the seed
+  and the streak, which are NOT in data. Dropping it for the card alone
+  would lose them, so it stays whole." `renderAnswer`'s dedup
+  (`out.caption !== headline`) only suppresses the caption when it EQUALS
+  the headline, and a multi-line `caption: text` can never equal a
+  single-line `headline` - so the full sentence, the home/road split, the
+  points-per-game line and any coverage-gap note all print a second time,
+  in gray, under the headline. Screenshotted: "Celtics record this season"
+  showed the record sentence, then the entire same block again verbatim,
+  then the record card, then the gap/detail notes a third time.
+  `templates/teams.py`'s `_standings_season` and `_games_record` (this
+  session, `git log` "teams.py templates carry a headline...") now carry
+  `data["seed"]`, `data["streak"]`, `data["home"]`/`data["road"]`,
+  `data["last_ten"]`, `data["games_behind"]`, `data["points_for"]`/
+  `data["points_against"]` and `data["notes"]` - the reason `caption: text`
+  gave for staying whole no longer holds, but the renderer was not this
+  session's file to change.
+- **User sees:** a correct answer, twice - the sentence, its full detail and
+  any note each print once as the caption block and, for the note, a third
+  time in the notes list. Not new information withheld or wrong, just
+  visual noise the record card was supposed to replace.
+- **Next step:** in `web/static/index.html`, drop `caption: text` for the
+  card branch (its comment is stale) and build the card from `data.seed`/
+  `data.streak`/etc. directly, the way `data.headline`/`data.notes` are
+  already read elsewhere on this page; keep `caption` only for a shape
+  (a `months` table) that still needs one.
+- **Source:** ours.
 
 ### `team_alignment` is not declared in every `TEMPLATE_SOURCES` tuple that can now read it
 - **Found:** 2026-09-24, landing the K3-2 conference/division narrowing.
