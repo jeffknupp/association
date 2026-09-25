@@ -585,6 +585,6 @@ def shot_distance(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult
     if span.career and span.since is None:  # see the matching note in shot_chart's own call
         answer += _career_shot_note(con, player, season_type, found=attempts > 0)
     return TemplateResult(
-        data={"player": player.name, "season": span.season, "shot_value": shot_value, "avg_feet": average, "attempts": attempts},
+        data={"player": player.name, "season": span.season, "shot_value": shot_value, "avg_feet": average, "attempts": attempts, "headline": answer},
         answer=answer,
     )

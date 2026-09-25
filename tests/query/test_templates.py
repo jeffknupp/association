@@ -461,6 +461,8 @@ def test_leaderboard_shows_each_players_team_when_asked(lb_con: TemplateContext)
     assert rows == {"Luka Doncic": "Dallas Mavericks", "Stephen Curry": "Dallas Mavericks"}
     assert "team" in result.answer.splitlines()[1]  # the header row
     assert "Team is each player's most recent team that season." in result.answer
+    assert result.data["notes"] == ["Team is each player's most recent team that season."]
+    assert result.data["headline"] == result.answer.splitlines()[0].rstrip(":")
 
 
 def test_leaderboard_team_field_says_nothing_when_nobody_was_traded(lb_con: TemplateContext) -> None:
@@ -562,6 +564,8 @@ def test_threshold_count_honors_playoffs(con: TemplateContext) -> None:
     result = threshold_count(con, {"stat": "points", "threshold": 40, "season_type": 3})
     assert "postseason" in (result.answer or "")
     assert result.data["leaders"] == [{"player": "Bench Guy", "games": 9}]
+    assert result.data["headline"] == result.answer
+    assert result.data["notes"] == []
 
 
 @pytest.fixture
@@ -1716,8 +1720,11 @@ def test_player_compare_needs_two_distinct_players(ps_con: TemplateContext) -> N
 
 def test_player_compare_reports_a_player_with_no_rows_rather_than_dropping_them(ps_con: TemplateContext) -> None:
     ps_con.con.execute("INSERT INTO players VALUES ('9','Shai Gilgeous-Alexander')")
-    answer = player_compare(ps_con, {"players": ["Luka Doncic", "Shai Gilgeous-Alexander"]}).answer or ""
+    result = player_compare(ps_con, {"players": ["Luka Doncic", "Shai Gilgeous-Alexander"]})
+    answer = result.answer or ""
     assert "has no" in answer and "Shai Gilgeous-Alexander" in answer
+    assert result.data["notes"] == [answer.splitlines()[-1]]
+    assert result.data["headline"] == answer.splitlines()[0].rstrip(":")
 
 
 def test_player_compare_is_capped(ps_con: TemplateContext) -> None:
@@ -2005,8 +2012,13 @@ def test_single_game_high_defaulted_season_redirects_to_a_retired_players_range(
     s, past = current_season(), current_season() - 16
     sgh_ctx.con.execute("INSERT INTO players VALUES ('3','Old Timer')")
     sgh_ctx.con.execute("INSERT INTO player_game_log VALUES ('3',?,2,'Old Timer','2010-04-12T00:30Z','BOS',5,20,32,'e8',FALSE)", [past])
-    answer = single_game_high(sgh_ctx, {"stat": "points", "player": "Old Timer"}).answer or ""
+    result = single_game_high(sgh_ctx, {"stat": "points", "player": "Old Timer"})
+    answer = result.answer or ""
     assert answer == (f"Old Timer has no {s} regular season games in the warehouse. He last appears in {past}. The warehouse holds his {past} regular season; name one, or ask for his career.")
+    # The redirect ("He last appears in ...") is not part of the headline -
+    # it is glued onto the same sentence, but it answers a second question
+    # (where else to look) the headline itself does not ask.
+    assert result.data["headline"] == f"Old Timer has no {s} regular season games in the warehouse."
 
 
 def test_single_game_high_a_named_season_keeps_the_plain_refusal(sgh_ctx: TemplateContext) -> None:

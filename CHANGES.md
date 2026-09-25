@@ -2056,6 +2056,15 @@ had no published version to be compatible with.
   now carries `data["seed"]` and `data["streak"]` too - "4th seed" and "won 3
   straight" were named only in the sentence, which the record card is why
   the renderer kept whole instead of drawing from `data` alone.
+- `threshold_count`, `leaderboard`, `single_game_high` and `player_compare`
+  carry `data["headline"]` (the sentence alone, with a trailing "Next: ..."
+  list stripped the same way the page's own fallback already strips it, and
+  a defaulted-season redirect left out where it answers a second question
+  rather than the one asked) and `data["notes"]` for the caveats each
+  already built but only glued onto the answer text - a league-wide count's
+  rebuilt-line caveat, a leaderboard's trade note, a comparison's "has no
+  numbers" line for a missing player. `shot_distance` carries `headline` too,
+  though its answer is already one unbroken sentence.
 
 ## 4.2.0 - 2026-09-18
 - **A NetPoints name ESPN spells with a generational suffix, or hyphenates

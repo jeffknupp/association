@@ -299,20 +299,36 @@ def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResu
     # the rebuild could not reach either. Counting the rest would disclaim the
     # very games the count was built from.
     empty = _empty_box_scores(con, season, season_type, player_id, covered_by_rebuild=from_rebuilt)
-    answer = span.preface + _phrase_threshold_count(rows, scope_text, span.when, player_name)
+    phrase = span.preface + _phrase_threshold_count(rows, scope_text, span.when, player_name)
+    # The trailing "Next: ..." list restates the table in prose beside it -
+    # not the sentence itself, the same discipline the page's own headline
+    # fallback (firstLine, web/static/index.html) already keeps.
+    headline = phrase.split(" Next: ")[0]
+    answer = phrase
+    notes = []
     if span.league_note:
-        answer += f" Box scores begin in {span.since}, so these are not all-time counts: a career that began earlier is counted only from {span.since}."
+        league_note = f"Box scores begin in {span.since}, so these are not all-time counts: a career that began earlier is counted only from {span.since}."
+        answer += f" {league_note}"
+        notes.append(league_note)
     # Only when nothing was counted AND the stat was deliberately withheld: a
     # count of none that names a decision beats one that implies missing data.
     withheld = 0 if (rows and rows[0][1]) or column in REBUILT_STATS else _rebuilt_in_scope(con, season, season_type, player_id)
     if withheld:
-        answer += (
-            f" {withheld:,} of the games in that span were rebuilt from play-by-play, but a {label} is not counted from a rebuilt line: "
+        withheld_note = (
+            f"{withheld:,} of the games in that span were rebuilt from play-by-play, but a {label} is not counted from a rebuilt line: "
             f"rebuilt fouls are wrong in about one game in six, and turnovers in one in thirteen, against one in sixty for points."
         )
+        answer += f" {withheld_note}"
+        notes.append(withheld_note)
     else:
-        answer += _empty_note(empty, player_name, "the count may be low" if player else "these counts may be low")
-    answer += _threshold_count_rebuilt_note(rows, player is not None)
+        empty_note = _empty_note(empty, player_name, "the count may be low" if player else "these counts may be low")
+        answer += empty_note
+        if empty_note:
+            notes.append(empty_note.strip())
+    rebuilt_note = _threshold_count_rebuilt_note(rows, player is not None)
+    answer += rebuilt_note
+    if rebuilt_note:
+        notes.append(rebuilt_note.strip())
     leaders = [{"player": name, "games": games} for name, games, _ in rows]
     return TemplateResult(
         data={
@@ -322,6 +338,8 @@ def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResu
             "leaders": leaders,
             "empty_box_scores": empty[0],
             "rebuilt_games": rows[0][2] if rows else 0,
+            "headline": headline,
+            "notes": notes,
         },
         answer=answer,
     )
@@ -535,7 +553,7 @@ def _leaderboard_no_such_rate(rate: Any, metric: str) -> TemplateResult:
         forms.append("per 100 possessions")
     asked = "per 90 minutes" if "90" in str(rate) else str(rate).replace("_", " ")
     message = f"No leaderboard ranks {metric.replace('_', ' ')} {asked} - the warehouse stores it only {' or '.join(forms)}."
-    return TemplateResult(data={"message": message}, answer=message)
+    return TemplateResult(data={"message": message, "headline": message}, answer=message)
 
 
 def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
@@ -582,7 +600,7 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         # wrong cause, since no leaderboard metric exists either way. Neither
         # check below gets a chance to name the wrong cause now.
         message = "Shot distance is not ranked league-wide yet - ask about one named player's average shot distance instead."
-        return TemplateResult(data={"message": message}, answer=message)
+        return TemplateResult(data={"message": message, "headline": message}, answer=message)
     career = _career_span("leaderboard", slots.get("span"), slots.get("season"))
     metric = resolve_metric(slots.get("stat"), career=career)
     if metric is None:
@@ -635,10 +653,23 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         if fields
         else _phrase_leaderboard(result.rows, result.label, where, period, _qualifier(result.min_sample_applied, result.min_sample_column), ratio)
     )
-    return TemplateResult(
-        data={"question_shape": summary, "season": result.season, "fields": fields, "min_sample": result.min_sample_applied, "leaders": result.rows},
-        answer=answer + trade_note,
-    )
+    data = {"question_shape": summary, "season": result.season, "fields": fields, "min_sample": result.min_sample_applied, "leaders": result.rows}
+    return TemplateResult(data=_leaderboard_result_data(data, answer, trade_note), answer=answer + trade_note)
+
+
+def _leaderboard_result_data(data: dict[str, Any], answer: str, trade_note: str) -> dict[str, Any]:
+    """``leaderboard``'s own ``headline``/``notes`` - split out to keep the
+    caller under the complexity gate. ``answer`` is the table or sentence
+    BEFORE ``trade_note`` (``_leaderboard_show_teams``) is glued on: the
+    trade note is already its own line (a leading ``"\\n"``), so it becomes
+    the only entry in ``notes``, and ``headline`` is stripped of the trailing
+    "Next: ..." list the same way the page's own fallback already reads it
+    (``firstLine``, ``web/static/index.html``).
+
+    .. versionadded:: 4.4.0
+    """
+    headline = answer.split("\n")[0].rstrip(":").split(" Next: ")[0]
+    return {**data, "headline": headline, "notes": [trade_note.strip()] if trade_note else []}
 
 
 def _leaderboard_fields(slots: dict[str, Any], metric: str) -> list[str]:
@@ -738,6 +769,7 @@ def _career_leaderboard(con: duckdb.DuckDBPyConnection, metric: str, slots: dict
     label = f"career {result.label.removeprefix('total ')}"
     since = _season_label(result.pool_first_season)
     qualifier = _qualifier(result.min_sample_applied, result.min_sample_column)
+    answer = _phrase_career_leaderboard(result.rows, label, kind, since, qualifier, LEADERBOARD_METRICS[metric].ratio)
     return TemplateResult(
         data={
             "question_shape": f"{label}, {kind}, players active since {since}",
@@ -747,8 +779,9 @@ def _career_leaderboard(con: duckdb.DuckDBPyConnection, metric: str, slots: dict
             "fields": [],
             "min_sample": result.min_sample_applied,
             "leaders": result.rows,
+            "headline": answer.split("\n")[0].rstrip(":").split(" Next: ")[0],
         },
-        answer=_phrase_career_leaderboard(result.rows, label, kind, since, qualifier, LEADERBOARD_METRICS[metric].ratio),
+        answer=answer,
     )
 
 
@@ -1917,10 +1950,10 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     # Only when the answer is empty AND the stat was deliberately withheld: a
     # refusal that names a decision beats one that implies missing data.
     withheld = 0 if games or column in REBUILT_STATS else _rebuilt_in_scope(ctx.con, season, season_type, named_player.id if named_player else None)
-    answer = _single_game_high_answer(games, label, span, who, empty=empty, withheld=withheld)
-    answer += _single_game_high_redirect(ctx.con, defaulted, named_player, games, empty, withheld, season_type)
+    headline = _single_game_high_answer(games, label, span, who, empty=empty, withheld=withheld)
+    answer = headline + _single_game_high_redirect(ctx.con, defaulted, named_player, games, empty, withheld, season_type)
     return TemplateResult(
-        data={"question_shape": shape, "season": season, "span": "career" if career else None, "stat": stat, "games": games, "empty_box_scores": empty[0]},
+        data={"question_shape": shape, "season": season, "span": "career" if career else None, "stat": stat, "games": games, "empty_box_scores": empty[0], "headline": headline},
         answer=answer,
     )
 
@@ -2076,9 +2109,15 @@ def player_compare(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
 
     net = _compare_netpoints(con, resolved, season, season_type)
     period = _period(season, season_type)
+    answer = _phrase_compare(rows, wanted, period, net)
+    lines = answer.split("\n")
+    # `_phrase_compare`'s own last line, and only when it added one: "(X has
+    # no {period} numbers in the warehouse.)" - a caveat about a missing
+    # player's row, not part of the table itself.
+    missing_note = lines[-1] if lines[-1].startswith("(") and lines[-1].endswith(")") else None
     return TemplateResult(
-        data={"season": season, "players": rows, "netpoints": net},
-        answer=_phrase_compare(rows, wanted, period, net),
+        data={"season": season, "players": rows, "netpoints": net, "headline": lines[0].rstrip(":"), "notes": [missing_note] if missing_note else []},
+        answer=answer,
     )
 
 
