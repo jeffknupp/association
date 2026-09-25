@@ -2050,6 +2050,12 @@ had no published version to be compatible with.
   notes list (what "played" means, a coverage-floor caveat, the "only games
   he played count" rule for a streak) and joined it into the answer text on
   one line without ever handing the list itself to a caller.
+- `team_record`, `team_stat` and `team_leaderboard` carry `data["headline"]`
+  and, where they already had one, `data["notes"]` (the possessions-rating
+  note, the "1st is best" note, a coverage gap). `team_record`'s season line
+  now carries `data["seed"]` and `data["streak"]` too - "4th seed" and "won 3
+  straight" were named only in the sentence, which the record card is why
+  the renderer kept whole instead of drawing from `data` alone.
 
 ## 4.2.0 - 2026-09-18
 - **A NetPoints name ESPN spells with a generational suffix, or hyphenates

@@ -578,6 +578,7 @@ def _standings_season(con: duckdb.DuckDBPyConnection, team: Entity, season: int,
     if streak:
         extras.append(f"{'won' if streak > 0 else 'lost'} {abs(int(streak))} straight")
     answer += f", {', '.join(extras)}." if extras else "."
+    headline = answer
     answer += _standings_season_detail(split, neutral_note, last_ten, behind)
     if points_for is not None and points_against is not None:
         answer += f"\n  {points_for:.1f} points per game, {points_against:.1f} allowed ({(differential if differential is not None else points_for - points_against):+.1f})."
@@ -589,8 +590,16 @@ def _standings_season(con: duckdb.DuckDBPyConnection, team: Entity, season: int,
             "games_behind": behind,
             "points_for": points_for,
             "points_against": points_against,
+            # The sentence names these only when non-zero ("3rd seed",
+            # "won 4 straight") but the data key is worth carrying either
+            # way - None reads as "not seeded"/"no active streak" rather
+            # than "the page never asked".
+            "seed": int(seed) if seed else None,
+            "streak": int(streak) if streak else None,
+            "headline": headline,
         }
     )
+    data["notes"] = [gap] if gap else []
     return TemplateResult(data=data, answer=f"{answer}\n  {gap}" if gap else answer)
 
 
@@ -934,10 +943,8 @@ def _games_record(
     }
 
     if not games:
-        return TemplateResult(
-            data={**data, "games": []},
-            answer=_no_team_games(con, team, opponent, season, season_type, month, since=since, until=until, game_n=game_n, calendar_narrowing=calendar_narrowing),
-        )
+        none_message = _no_team_games(con, team, opponent, season, season_type, month, since=since, until=until, game_n=game_n, calendar_narrowing=calendar_narrowing)
+        return TemplateResult(data={**data, "games": [], "headline": none_message}, answer=none_message)
 
     answer = _games_record_answer(team, opponent, season, season_type, venue, games, shown, month, since=since, until=until, narrowed=narrowed)
     if opponent is not None and season_type == 2:
@@ -948,6 +955,8 @@ def _games_record(
     if gap:
         answer += f"\n  {gap}"
     data["games"] = shown
+    data["headline"] = answer.split("\n")[0]
+    data["notes"] = [gap] if gap else []
     return TemplateResult(data=data, answer=answer)
 
 
@@ -1307,7 +1316,7 @@ def _team_stat_missing(con: duckdb.DuckDBPyConnection, team: Entity, season: int
         answer = f"The {team.name} did not play in the {period}."
     else:
         answer = f"The warehouse has no {period} team stats for the {team.name}."
-    return TemplateResult(data={"team": team.name, "season": season, "stats": {}}, answer=answer)
+    return TemplateResult(data={"team": team.name, "season": season, "stats": {}, "headline": answer}, answer=answer)
 
 
 def _team_stat_table(lines: list[TeamLine], wanted: list[str], team: Entity, mine: TeamLine) -> dict[str, dict[str, Any]]:
@@ -1336,10 +1345,13 @@ def _team_stat_single(key: str, stats: dict[str, dict[str, Any]], period: str, t
     if entry["rank"] is not None:
         order = "best" if metric.lower_is_better is not None else "highest"
         where = f", {_ordinal(entry['rank'])}-{order} of {entry['of']} teams"
-    answer = f"The {_possessive(team.name)} {metric.label} was {_metric_cell(metric, entry['value'])} in the {period} ({mine.games} games){where}."
+    headline = f"The {_possessive(team.name)} {metric.label} was {_metric_cell(metric, entry['value'])} in the {period} ({mine.games} games){where}."
+    answer = headline
+    notes = []
     if _uses_possessions([key]):
         answer += f" {RATING_NOTE}"
-    return TemplateResult(data={"team": team.name, "season": season, "games": mine.games, "stats": stats}, answer=answer)
+        notes.append(RATING_NOTE)
+    return TemplateResult(data={"team": team.name, "season": season, "games": mine.games, "stats": stats, "headline": headline, "notes": notes}, answer=answer)
 
 
 def _team_stat_summary(stats: dict[str, dict[str, Any]], wanted: list[str], team: Entity, period: str, mine: TeamLine, season: int) -> TemplateResult:
@@ -1358,7 +1370,7 @@ def _team_stat_summary(stats: dict[str, dict[str, Any]], wanted: list[str], team
     elif any(e["rank"] is None for e in stats.values()):
         notes.append("A rank is left out where ESPN's game list is short for other teams that season.")
     return TemplateResult(
-        data={"team": team.name, "season": season, "games": mine.games, "stats": stats},
+        data={"team": team.name, "season": season, "games": mine.games, "stats": stats, "headline": lines_out[0].rstrip(":"), "notes": notes},
         answer="\n".join([*lines_out, *notes]),
     )
 
@@ -1476,7 +1488,7 @@ def team_leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
     title = f"{metric.label.capitalize()}{f' {VENUE_WORDS[venue]}' if venue else ''}, {period}"
     if not values:
         answer = f"The warehouse has no {period} numbers to rank teams by {metric.label}."
-        return TemplateResult(data={"question_shape": title, "season": None if since is not None else season, "teams": []}, answer=answer)
+        return TemplateResult(data={"question_shape": title, "season": None if since is not None else season, "teams": [], "headline": answer}, answer=answer)
 
     order = ranked(values, descending)
     end = _team_leaderboard_order_label(metric, key, rank_word, descending)
@@ -1604,11 +1616,12 @@ def _team_leaderboard_result(order: list[tuple[int, str, float]], display: dict[
     rows_out = [f"{rank:>2}  {team.ljust(name_width)}  {display[team].rjust(value_width)}" for rank, team, _ in shown]
     if extra:
         rows_out += ["    ...", *(f"{rank:>2}  {team.ljust(name_width)}  {display[team].rjust(value_width)}" for rank, team, _ in extra)]
-    lines_out = [f"{title} - {end}, of {len(order)} teams:", *rows_out]
-    if _uses_possessions([key]):
-        lines_out.append(RATING_NOTE)
+    headline = f"{title} - {end}, of {len(order)} teams:"
+    lines_out = [headline, *rows_out]
+    notes = [RATING_NOTE] if _uses_possessions([key]) else []
+    lines_out += notes
     teams = [{"rank": rank, "team": team, "value": value, "display": display[team]} for rank, team, value in [*shown, *extra]]
-    return TemplateResult(data={"question_shape": title, "season": season, "order": end, "teams": teams}, answer="\n".join(lines_out))
+    return TemplateResult(data={"question_shape": title, "season": season, "order": end, "teams": teams, "headline": headline.rstrip(":"), "notes": notes}, answer="\n".join(lines_out))
 
 
 # ESPN's season types, as the power index uses them. 5 is not in the rest of

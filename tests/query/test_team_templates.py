@@ -166,13 +166,22 @@ def team_ctx(tmp_path: Path) -> TemplateContext:
 
 
 def test_a_season_record_is_the_standings_line(team_ctx: TemplateContext) -> None:
-    answer = team_record(team_ctx, {"team": "Knicks"}).answer
+    result = team_record(team_ctx, {"team": "Knicks"})
+    answer = result.answer
     # standings stores these as DOUBLE; "53.0-29.0" makes a correct answer look untrustworthy.
     assert "53-29" in answer and "53.0" not in answer
     assert "(.646)" in answer and "4th seed" in answer and "won 3 straight" in answer
     assert "Home 30-10, road 22-19 (1 neutral-site game counts as neither home nor away)" in answer
     assert "last 10: 6-4" in answer and "7 games back" in answer
     assert "116.5 points per game, 110.1 allowed (+6.4)" in answer
+    # The sentence names the seed and the streak only when they're worth
+    # naming ("4th seed", "won 3 straight") - the page's record card had
+    # nowhere to read them from before this, since the full sentence is
+    # what team_record's renderer keeps as its caption regardless.
+    assert result.data["seed"] == 4
+    assert result.data["streak"] == 3
+    assert result.data["headline"].startswith("The New York Knicks were 53-29")
+    assert "116.5 points per game" not in result.data["headline"]  # that line is beneath the headline, not part of it
 
 
 def test_a_missing_season_is_reported_honestly(team_ctx: TemplateContext) -> None:
@@ -213,6 +222,7 @@ def test_a_record_against_a_team_counts_each_real_game_once(team_ctx: TemplateCo
     result = team_record(team_ctx, {"team": "Knicks", "opponent": "San Antonio Spurs"})
     assert f"went 1-1 (.500) against the San Antonio Spurs in the {S} regular season" in result.answer
     assert (result.data["wins"], result.data["losses"], len(result.data["games"])) == (1, 1, 2)
+    assert result.data["headline"] == result.answer.split("\n")[0]
 
 
 def test_the_cup_final_is_mentioned_but_not_counted(team_ctx: TemplateContext) -> None:
@@ -333,17 +343,23 @@ def test_team_record_honors_situation_and_split_at_the_check_scope_level() -> No
 
 
 def test_a_team_line_is_a_table_with_league_ranks(team_ctx: TemplateContext) -> None:
-    answer = team_stat(team_ctx, {"team": "Knicks"}).answer
+    result = team_stat(team_ctx, {"team": "Knicks"})
+    answer = result.answer
     assert answer.startswith(f"New York Knicks, {S} regular season (3 games):")
     # 100 * 343 points allowed / (270 - 30 + 42 + 0.44 * 60) possessions.
     assert "111.2  3rd of 5" in answer
     assert "122.6" in answer  # offensive rating: 100 * 378 / 308.4
     assert "FGA - OREB + TOV + 0.44 x FTA" in answer
+    assert result.data["headline"] == f"New York Knicks, {S} regular season (3 games)"
+    assert any("FGA - OREB + TOV + 0.44 x FTA" in note for note in result.data["notes"])
 
 
 def test_a_named_stat_answers_that_stat_with_its_rank(team_ctx: TemplateContext) -> None:
-    answer = team_stat(team_ctx, {"team": "Knicks", "stat": "defensiveRating"}).answer
+    result = team_stat(team_ctx, {"team": "Knicks", "stat": "defensiveRating"})
+    answer = result.answer
     assert answer.startswith(f"The New York Knicks' defensive rating (points allowed per 100 possessions) was 111.2 in the {S} regular season (3 games), 3rd-best of 5 teams.")
+    assert result.data["notes"] == ["Ratings and pace count possessions as FGA - OREB + TOV + 0.44 x FTA."]
+    assert result.data["headline"] == answer.replace(f" {result.data['notes'][0]}", "")  # the sentence alone, without the note glued onto it
 
 
 def test_a_singular_team_name_takes_an_apostrophe_s(team_ctx: TemplateContext) -> None:
@@ -389,9 +405,11 @@ def _first_row(answer: str) -> str:
 
 def test_which_team_scores_the_most(team_ctx: TemplateContext) -> None:
     """Answered with the players' scoring leaders before this existed."""
-    answer = team_leaderboard(team_ctx, {"stat": "points", "rank": "most"}).answer
+    result = team_leaderboard(team_ctx, {"stat": "points", "rank": "most"})
+    answer = result.answer
     assert answer.startswith(f"Points per game, {S} regular season - highest first, of 5 teams:")
     assert _first_row(answer).split() == ["1", "New", "York", "Knicks", "126.0"]
+    assert result.data["headline"] == f"Points per game, {S} regular season - highest first, of 5 teams"
 
 
 def test_the_lowest_defensive_rating_comes_first(team_ctx: TemplateContext) -> None:
