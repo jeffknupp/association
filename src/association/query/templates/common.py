@@ -429,7 +429,7 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # `opponent` narrows BOTH rows of the split to one opponent's games, and
     # the title says so - "Embiid career record vs boston" is his record in the
     # games his team played Boston, not overall (#163).
-    "with_without": frozenset({"span", "without", "opponent"}),
+    "with_without": frozenset({"span", "without", "opponent", "conditions"}),
     "record_when": _relation_scoping("record_when"),
     # `opponent` and `without` are honored only for the one-name-and-a-team
     # shape that is really a player-vs-team question in disguise - see the
@@ -2116,7 +2116,7 @@ def _condition_from_slot(con: duckdb.DuckDBPyConnection, entry: Any, player: Ent
         column = THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
         if column is None or not isinstance(stat, str) or not isinstance(threshold, int) or isinstance(threshold, bool) or threshold < 1:
             raise TemplateUnsupported(f"a reached condition needs a known stat and a positive threshold, got {stat!r}/{threshold!r}")
-        line = (column, ">=", threshold, f"{threshold}+ {STAT_LABELS.get(stat, stat)}")
+        line = (column, ">=", threshold, f"{threshold}+ {STAT_LABELS.get(stat, stat)}s")
     tenure = _relation_tenure_clause(con, found, span.season) if side == "own" and predicate == "absent" else None
     return Condition(found, side, predicate, line, tenure)
 

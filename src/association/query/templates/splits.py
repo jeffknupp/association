@@ -684,10 +684,7 @@ def with_without(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        the first of them.
     """
     con = ctx.con
-    mate_texts = teammate_names(slots.get("without"))
-    asked_without = bool(mate_texts)
-    if not asked_without:
-        mate_texts = teammate_names(slots.get("with_player"))
+    mate_texts, asked_without, roles = _with_without_named(slots)
     players = slots.get("players")
     listed: list[Any] = players if isinstance(players, list) else []
     texts = list(dict.fromkeys(n.strip() for n in [slots.get("player"), *listed] if isinstance(n, str) and n.strip()))
@@ -718,14 +715,90 @@ def with_without(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     against = _optional_team(con, slots.get("opponent"), season=_slot_season(slots))
     if isinstance(against, TemplateResult):
         return against
-    games, unknown = _with_without_games(con, scope, windows, [m.id for m in mates], subject.id if subject else None, against.id if against else None)
+    predicates = _with_without_predicates(con, mates, roles, scope)
+    games, unknown = _with_without_games(con, scope, windows, [m.id for m in mates], subject.id if subject else None, against.id if against else None, predicates)
     team_names = _names(con, "teams", "team_id", {w.team_id for w in windows})
     spell_text = "; ".join(f"{_with_without_stint_team(w, team_names)} {w.first} to {w.last}" for w in windows)
     if not games:
         return _with_without_empty_games(subject, mates, named, all_of, scope, spell_text, unknown)
 
-    groups, rows, team_order = _with_without_rows(games, team_names, asked_without, len(mates), subject, all_of, any_of)
+    groups, rows, team_order = _with_without_rows(games, team_names, asked_without, len(mates), subject, all_of, any_of, verbs=_with_without_verbs(predicates))
     return _with_without_answer(scope, games, team_names, team_order, windows, subject, mates, named, all_of, asked_without, unknown, groups, rows, against)
+
+
+def _with_without_named(slots: dict[str, Any]) -> tuple[list[str], bool, dict[str, tuple[str, tuple[str, int] | None]]]:
+    """The teammates the question named - ``without``'s, else
+    ``with_player``'s, else the ones a ``conditions`` entry gives a role -
+    whether it asked "without", and each name's role.
+
+    .. versionadded:: 4.5.0
+    """
+    mate_texts = teammate_names(slots.get("without"))
+    asked_without = bool(mate_texts)
+    if not asked_without:
+        mate_texts = teammate_names(slots.get("with_player"))
+    roles = _with_without_roles(slots.get("conditions"))
+    if not mate_texts and roles:
+        mate_texts = list(roles)
+    return mate_texts, asked_without, roles
+
+
+def _with_without_roles(conditions: Any) -> dict[str, tuple[str, tuple[str, int] | None]]:
+    """The role each ``conditions`` entry gives its player - ``started``,
+    ``bench``, ``reached`` (with its column and threshold) - by the name as
+    written, for :func:`_with_without_predicates` to pair with the resolved
+    teammates. A ``played``/``absent`` entry adds nothing the ``with_player``
+    and ``without`` lists do not already say.
+
+    .. versionadded:: 4.5.0
+    """
+    roles: dict[str, tuple[str, tuple[str, int] | None]] = {}
+    for entry in conditions if isinstance(conditions, list) else []:
+        if not isinstance(entry, dict) or not isinstance(entry.get("player"), str):
+            continue
+        predicate, stat, threshold = entry.get("predicate"), entry.get("stat"), entry.get("threshold")
+        if predicate in ("started", "bench"):
+            roles[entry["player"]] = (predicate, None)
+        elif predicate == "reached" and isinstance(stat, str) and isinstance(threshold, int) and not isinstance(threshold, bool) and threshold >= 1:
+            column = THRESHOLD_STAT_COLUMNS.get(stat)
+            if column is not None:
+                roles[entry["player"]] = ("reached", (column, threshold))
+    return roles
+
+
+def _with_without_predicates(con: duckdb.DuckDBPyConnection, mates: list[Entity], roles: dict[str, tuple[str, tuple[str, int] | None]], scope: _Scope) -> list[tuple[str, tuple[str, int] | None]]:
+    """Each resolved teammate's predicate: the role a ``conditions`` entry
+    naming him gives, else ``played``.
+
+    .. versionadded:: 4.5.0
+    """
+    by_id: dict[str, tuple[str, tuple[str, int] | None]] = {}
+    for text, role in roles.items():
+        found = _resolved_player(con, text, available=_BOX_SCORES, season=scope.season, through=_career_end(scope.season))
+        if not isinstance(found, TemplateResult):
+            by_id[found.id] = role
+    return [by_id.get(m.id, ("played", None)) for m in mates]
+
+
+def _with_without_verbs(predicates: list[tuple[str, tuple[str, int] | None]]) -> tuple[str, str]:
+    """How the two rows name their side: "played"/"out" for appearances,
+    "started"/"did not start" for starts, "came off the bench"/"started or
+    out" for the bench, "had 20+ points"/"did not" for a line - the words
+    the question used, never "played" for a start it asked about.
+
+    .. versionadded:: 4.5.0
+    """
+    kinds = {p for p, _ in predicates}
+    if kinds == {"started"}:
+        return "started", "did not start"
+    if kinds == {"bench"}:
+        return "came off the bench", "started or out"
+    if kinds == {"reached"}:
+        lines = [f"{line[1]}+ {STAT_LABELS.get(line[0], line[0])}s" for _, line in predicates if line is not None]
+        return f"had {_joined(sorted(set(lines)))}", "did not"
+    if kinds == {"played"}:
+        return "played", "out"
+    return "met the condition", "did not"
 
 
 def _with_without_infer_teammate(team: Entity | None, texts: list[str]) -> tuple[list[str], list[str]]:
@@ -834,7 +907,7 @@ def _with_without_played(game: dict[str, Any], asked_without: bool, n_mates: int
 
 
 def _with_without_rows(
-    games: list[dict[str, Any]], team_names: dict[str, str], asked_without: bool, n_mates: int, subject: Entity | None, all_of: str, any_of: str
+    games: list[dict[str, Any]], team_names: dict[str, str], asked_without: bool, n_mates: int, subject: Entity | None, all_of: str, any_of: str, verbs: tuple[str, str] = ("played", "out")
 ) -> tuple[list[dict[str, Any]], list[tuple[str, list[str]]], list[str]]:
     """The table's groups and rows, team by team and side by side - the teams in
     the order the games were actually played, so a career reads forwards."""
@@ -855,7 +928,7 @@ def _with_without_rows(
             # "A and B out" against "A or B played": the row label says which
             # of the two it is, since with two names they are not opposites.
             whom = (any_of if asked_without else all_of) if played else (all_of if asked_without else any_of)
-            rows.append((f"{prefix}{whom} {'played' if played else 'out'}", cells))
+            rows.append((f"{prefix}{whom} {verbs[0] if played else verbs[1]}", cells))
     return groups, rows, team_order
 
 

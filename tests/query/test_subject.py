@@ -608,9 +608,9 @@ def test_a_start_or_a_line_is_written_as_a_condition_where_the_template_honors_i
     # An absence stays the router's `without`; the comparison templates read it as the split's two sides.
     intent, slots = _assigned(con, "celtics record without tatum", "with_without", team="Boston Celtics", without=["tatum"])
     assert "conditions" not in slots and slots["without"] == ["tatum"]
-    # A template not on the relation gets nothing to refuse.
+    # with_without reads a start as the split's own side (step C).
     intent, slots = _assigned(con, "celtics record when tatum starts", "with_without", team="Boston Celtics", with_player=["tatum"])
-    assert "conditions" not in slots
+    assert slots["conditions"] == [{"player": "Jayson Tatum", "side": "own", "predicate": "started"}] and slots["with_player"] == ["tatum"]
 
 
 def test_a_team_with_a_companions_line_is_record_when_with_him_as_the_player(con: duckdb.DuckDBPyConnection) -> None:

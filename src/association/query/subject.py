@@ -1339,10 +1339,11 @@ def _apply_conditions(subject: Subject, slots: dict[str, Any], intent: str) -> l
     start, the bench, a line reached ("when Embiid starts", "in games Maxey
     had 20+ points") - as the ``conditions`` slot the relation reads
     (:func:`~association.query.templates.common._condition_from_slot`),
-    where the intent's template honors it. An absence and a played
+    where the intent's template honors it - the relation templates as a
+    filter, ``with_without`` as the split's own side ("record when Embiid
+    and Paul George start": started against not). An absence and a played
     companion stay in the router's ``without``/``with_player``, which every
-    template reads today (the comparison templates read them as the split's
-    two sides, not as a filter) - ROADMAP plan item 3, step B."""
+    template reads today - ROADMAP plan item 3, steps B and C."""
     if "conditions" not in HONORED_SCOPING.get(intent, frozenset()) or slots.get("conditions"):
         return []
     # Never on the subject of the read himself: record_when's player IS the

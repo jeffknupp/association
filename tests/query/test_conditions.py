@@ -1539,3 +1539,24 @@ def test_a_matchup_emptied_by_an_absence_says_what_it_counted(league: TemplateCo
     # ... and where the narrowed set holds a meeting, there is a matchup to show and no context.
     result = player_matchup(league, _slots(players=["Jayson Tatum", "LeBron James"], without=["Jaylen Brown"], span="career"))
     assert result.data["meetings"] == 2 and "they met" not in result.answer
+
+
+def test_a_record_when_teammates_start_splits_by_the_start(league: TemplateContext) -> None:
+    """ "celtics record when tatum starts" (ROADMAP plan item 3): the split's
+    sides are the games he started against the rest, not played against
+    out. This season Tatum started e1 (W) and e7 (L), came off the bench in
+    e4 (W), sat e2 (L) and has no line in e3 (W)."""
+    result = with_without(league, _slots(team="Boston Celtics", with_player=["Jayson Tatum"], conditions=[{"player": "Jayson Tatum", "side": "own", "predicate": "started"}], season=S))
+    groups = {g["teammate_played"]: (g["games"], g["wins"], g["losses"]) for g in result.data["groups"]}
+    assert groups[True] == (2, 1, 1) and groups[False] == (3, 2, 1)
+    assert "Jayson Tatum started" in result.answer and "Jayson Tatum did not start" in result.answer
+    # The same question with no role is the plain played/out split.
+    plain = with_without(league, _slots(team="Boston Celtics", with_player=["Jayson Tatum"], season=S))
+    plain_groups = {g["teammate_played"]: (g["games"], g["wins"], g["losses"]) for g in plain.data["groups"]}
+    assert plain_groups[True] == (3, 2, 1) and "Jayson Tatum played" in plain.answer
+    # A line as the role: the games he had 30+ points (e1 30, e7 31, e4 35) against the rest.
+    lined = with_without(
+        league, _slots(team="Boston Celtics", with_player=["Jayson Tatum"], conditions=[{"player": "Jayson Tatum", "side": "own", "predicate": "reached", "stat": "points", "threshold": 31}], season=S)
+    )
+    lined_groups = {g["teammate_played"]: g["games"] for g in lined.data["groups"]}
+    assert lined_groups[True] == 2 and "had 31+ points" in lined.answer

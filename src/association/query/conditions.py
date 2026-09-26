@@ -651,8 +651,41 @@ def _with_without_team_games(scope: _Scope, teams: Sequence[str]) -> TeamNarrowe
     return TeamNarrowed(base=["list_contains(?, tg.team_id)", "tg.season_type = ?", clause], base_params=[list(teams), scope.season_type, *params])
 
 
+def _with_without_held(mates: Sequence[str], predicates: Sequence[tuple[str, tuple[str, int] | None]] | None, params: dict[str, Any]) -> str:
+    """The SQL deciding which of the named teammates a game counts on the
+    "held" side: each by his own predicate (ROADMAP plan item 3 - "record
+    when Embiid, Maxey and Edgecombe start"), binding ``$c<i>``/``$v<i>``
+    into ``params``; or, with none stated, that he appeared - the one clause
+    :func:`_with_without_games` always had, over ``$mates``.
+
+    .. versionadded:: 4.5.0
+    """
+    if not predicates or all(p == ("played", None) for p in predicates):
+        return "list_contains($mates, m.athlete_id)"
+    held_parts = []
+    for index, (mate, (predicate, line)) in enumerate(zip(mates, predicates, strict=True)):
+        params[f"c{index}"] = mate
+        own = f"m.athlete_id = $c{index}"
+        if predicate == "started":
+            own += " AND m.starter"
+        elif predicate == "bench":
+            own += " AND NOT m.starter"
+        elif predicate == "reached" and line is not None:
+            params[f"v{index}"] = line[1]
+            own += f" AND m.{line[0]} >= $v{index}"
+        held_parts.append(f"({own})")
+    params.pop("mates")  # DuckDB refuses a named parameter the statement no longer uses
+    return "(" + " OR ".join(held_parts) + ")"
+
+
 def _with_without_games(
-    con: duckdb.DuckDBPyConnection, scope: _Scope, windows: Sequence[_Stint], mates: Sequence[str], subject: str | None, opponent: str | None = None
+    con: duckdb.DuckDBPyConnection,
+    scope: _Scope,
+    windows: Sequence[_Stint],
+    mates: Sequence[str],
+    subject: str | None,
+    opponent: str | None = None,
+    predicates: Sequence[tuple[str, tuple[str, int] | None]] | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """Every game a window's team played inside that window, marked with HOW
     MANY of the named teammates played it, and the subject's line where he did
@@ -691,12 +724,17 @@ def _with_without_games(
     params: dict[str, Any] = {**base_params, "mates": list(mates)}
     if subject is not None:
         params["subject"] = subject
+    # Which of the named teammates the game counts on the "held" side: each
+    # by his own predicate (ROADMAP plan item 3 - "record when Embiid, Maxey
+    # and Edgecombe start"), or, with none stated, that he appeared, which is
+    # the one clause this always had.
+    held = _with_without_held(mates, predicates, params)
     rows = con.execute(
         f"""
         WITH t AS ({base_sql})
         SELECT t.team_id, t.season, t.eastern_date, t.won, t.team_score - t.opponent_score,
                (SELECT COUNT(*) FROM {box.table} m
-                 WHERE m.event_id = t.event_id AND m.season = t.season AND m.team_id = t.team_id AND list_contains($mates, m.athlete_id) AND {_played("m", box)}) AS mates_played,
+                 WHERE m.event_id = t.event_id AND m.season = t.season AND m.team_id = t.team_id AND {held} AND {_played("m", box)}) AS mates_played,
                {"s.athlete_id IS NOT NULL" if subject else "FALSE"} AS subject_played,
                {"s.minutes, s.points, s.rebounds, s.assists, s.fieldGoalsMade, s.fieldGoalsAttempted" if subject else "NULL, NULL, NULL, NULL, NULL, NULL"},
                EXISTS (
