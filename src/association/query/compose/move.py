@@ -861,6 +861,16 @@ def move_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any
        subject, the team the router left out, the position.
     """
     subject = _subject(con, question, slots, subject, intent)
+    if intent == "leaderboard" and slots.get("stat") in ("triple_double", "double_double") and subject.kind in ("team", "team_players") and not subject.players:
+        # A TEAM's total of its players' triple-doubles ("oklahoma city
+        # thunder all-time triple doubles vs west", leaderboard with the team
+        # filed - day5): not a ranking this relation lacks a measure for, but
+        # a team aggregate nothing reads. Declined here, where the subject
+        # is in hand (`repair` reads "vs west" as the team's opponent below),
+        # so the refusals module names that cause
+        # (refusals._team_boolean_count) rather than the ranking's sentence
+        # naming the wrong one.
+        raise Unsupported(f"a team's total of its players' {slots['stat']} is not read")
     slots = _drop_position_only_player(slots, subject)
     slots = _drop_filler_or_team_player(slots, subject)
     if not _named_player(slots):

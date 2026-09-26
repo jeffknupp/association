@@ -1280,3 +1280,22 @@ def test_a_log_reads_a_rebuilt_game_with_its_minutes_blank(cx_ctx: TemplateConte
     assert newest["points"] == 10 and newest["minutes"] is None and newest["reconstructed"]
     template, composed = _parity(cx_ctx, "game_log", {"player": "Brandin Podziemski"}, "podziemski's game log")
     assert composed.answer == template.answer
+
+
+def test_a_teams_total_of_triple_doubles_is_declined_for_the_refusals_module(cx_ctx: TemplateContext) -> None:
+    """ "oklahoma city thunder all-time triple doubles vs west" (day5): a team
+    subject on a leaderboard with a boolean stat is a team aggregate nothing
+    reads - declined here, so refusals._team_boolean_count names that cause
+    instead of the ranking's "no ranking reads triple_double"."""
+    from association.query.compose.core import Unsupported
+    from association.query.compose.move import move_point
+    from association.query.subject import Subject
+
+    with pytest.raises(Unsupported, match="team's total"):
+        move_point(
+            cx_ctx.con,
+            "leaderboard",
+            {"stat": "triple_double", "team": "Golden State Warriors", "span": "career"},
+            "golden state warriors all-time triple doubles vs west",
+            Subject("team", teams=("Golden State Warriors",), question="golden state warriors all-time triple doubles vs west"),
+        )
