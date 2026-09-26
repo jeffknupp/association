@@ -434,6 +434,28 @@ honest refusals that a fuller system would answer. By cause:
    (P1). The day5 score with those rows graded is below day4; 2c-ii stays
    on the `subject-kinds` branch until that batch lands and a fourth run
    grades it - master holds 2c-i (e8a255c), which is golden-neutral.
+12. **2026-09-26, days 6-8: back to 161/175 (92.0%), families 150/166 -
+   day4's numbers exactly, on the 16-intent prompt - and merged to master
+   (c34609e).** Three more passes, each moving only the rows its rules
+   targeted (6, then 3, then 1 against the run before): the drift batch
+   (`_route_pair_over_seasons`, a series game's filler order, a team log
+   for "the last N games" with no teammate, ties at a ranking's cut, the
+   differential under the model's spellings, "including playoffs" vs a
+   team as a career, a team's triple-double total refused for its cause),
+   and step 2a from an Opus agent in parallel: `compose/present.py` says
+   `threshold_count`, `single_game_high` and `record_when` in their
+   templates' words (18/18, 10/10, 10/10 on the recorded corpus,
+   `~/association-research/intent-shrink/parity.py`), `game_log` for the
+   player subject (19/26), narrowed `player_stat` (6/29); `player_history`
+   and unnarrowed `player_stat` read the season line, a second relation,
+   not a presenter (#228). No template deleted yet. What the shrink cost
+   and bought, net: the prompt is 21% shorter, the router's own drift is
+   met by nineteen text rules plus seven, F130 and "how far away was
+   Stephen Curry shooting from" answer where they did not, and the two
+   rows still below day4 are the `check_routing` GAP case (F142) against
+   F130's gain. **Next:** plan item 3 (the player condition), or 2a's
+   remainder (the season line as a relation) - and a merge-conflict gate
+   is the 17th hook, after a merge landed markers twice.
 
 ## The current plan: what buys the most correctness next
 
