@@ -78,9 +78,10 @@ def _adapt_game_log(slots: dict[str, Any]) -> Query:
 
 
 def _adapt_player_stat(slots: dict[str, Any]) -> Query:
-    """``player_stat``'s default point: a per-game average over box scores -
-    only where a narrowing (or a date) sends the read there; an unnarrowed
-    season or career reads the season line, another relation entirely."""
+    """``player_stat``'s default point: a per-game average over box scores
+    where a narrowing (or a date) sends the read there, and the season line
+    (``source="seasons"``) for an unnarrowed season or career - the same
+    split ``templates.players.player_stat`` makes."""
     if not _named_player(slots):
         raise Unsupported("player_stat needs a player")
     from association.query.templates.common import measure_filters
@@ -88,10 +89,10 @@ def _adapt_player_stat(slots: dict[str, Any]) -> Query:
 
     col = _stat_column(slots.get("stat"))
     measures = [col] if col else list(STAT_LINE)
-    if not (_player_stat_reads_box_scores(slots, measure_filters(slots.get("below"), slots.get("above"))) or slots.get("date")):
-        raise Unsupported("an unnarrowed player_stat reads the season line - another relation")
     if slots.get("limit") or slots.get("order"):
         raise Unsupported("player_stat hands a limit or an order to game_log - a log, not an average")
+    if not (_player_stat_reads_box_scores(slots, measure_filters(slots.get("below"), slots.get("above"))) or slots.get("date")):
+        return Query(slots, "scalar", measures, "per_game", "none", [], source="seasons")
     date = slots.get("date") if isinstance(slots.get("date"), str) and len(slots["date"]) == 10 else None
     return Query(slots, "scalar", measures, "per_game", "none", [], span="career" if date else slots.get("span"), season=None if date else slots.get("season"))
 
@@ -154,6 +155,10 @@ def to_query(intent: str, slots: dict[str, Any]) -> Query:
     :func:`association.query.compose.move.move_point`).
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.5.0
+       An unnarrowed ``player_stat`` is a point on the season line
+       (``source="seasons"``) rather than :class:`~association.query.compose.core.Unsupported`.
 
     .. versionchanged:: 4.5.0
        ``game_log`` with ``season_type_unstated`` ("his last 5 games") is a
