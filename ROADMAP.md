@@ -481,6 +481,14 @@ honest refusals that a fuller system would answer. By cause:
    leading word, in the question's spelling, where it is a whole word of
    some player's name and not an ordinary word (`_unrouted_companions`) -
    one recorded route of 277 moved, F087's, and day10 confirmed it live.
+   **Re-graded the same evening:** F088 ("Embiid's record against Boston
+   this year", five wordings) is wrong, not correct - a with/without split
+   of the 76ers over the regular season, where the question is his own
+   games and "this year" includes the playoffs (key 4-2 in the 6 he played);
+   the blind grader had passed it for stating its scope. Day10 is
+   **160/175 (91.4%), families 150/166** after the re-grade. ISSUES.md has
+   the entry; it is the first case for the parser (the reroute rule is the
+   wrong shape; the unstated-season-type default is a policy to settle).
    Not done: an opponent-side condition from the reading ("vs lakers
    without lebron" - the relation reads `side="opponent"`, nothing writes
    it), the N-way matchup. **Next:** plan item 4 (the period relation),
