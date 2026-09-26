@@ -419,6 +419,21 @@ honest refusals that a fuller system would answer. By cause:
    route moves. **Next:** the live yardstick run (day5) on this tree, which
    grades which parent the 3B model actually picks for each child's
    wordings.
+11. **2026-09-25, day5 on the 2c-ii tree, three passes (e4b0abe, 95a7603,
+   e8c68ba; `~/association-research/intent-shrink/RESULT.md`).** The
+   children reach their templates through the parents the model now
+   picks (0 false positives on recorded routes at every pass, golden
+   308/308, `check_routing` 140/140), and nineteen text rules met the
+   model's new habits under the shorter prompt without touching it again
+   (`Subject.filler`, `_route_one_player_intents`, `_route_team_total`,
+   `_names_a_period_subject`, the invented opponent, ...). What remains is
+   drift the reading cannot see - a `since` comparison filed as
+   `player_compare`, a differential as `with_without`, a `limit: 1` on
+   "which team"/"game 4" - filed as one ISSUES.md entry with a text rule
+   each as the next step, and a compiler usage-rate bug the drift exposed
+   (P1). The day5 score with those rows graded is below day4; 2c-ii stays
+   on the `subject-kinds` branch until that batch lands and a fourth run
+   grades it - master holds 2c-i (e8a255c), which is golden-neutral.
 
 ## The current plan: what buys the most correctness next
 

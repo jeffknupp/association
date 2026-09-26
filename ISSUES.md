@@ -46,6 +46,18 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### The compiler prints a per-game usage rate as "2435.5%"
+- **Found:** 2026-09-25, plan item 2 step 2c-ii, yardstick-v2 F159 on `live_day5.jsonl` (e8c68ba).
+- **Evidence:** "Quentin grimes individual gamelog usage rating without joel embiid" arrives as `game_log` with `stat: usage_pct` (day4's route was `player_splits`, whose USG% column read 26.7% for the same games); the compiler's per-game rows print `usage 2435.5%`, `usage 1714.9%` (`query/compose`, the measure formatter for `usage_pct` on a single game - the season formula's inputs are per-game totals here, so the ratio is a hundredfold off or built on the wrong denominator).
+- **User sees:** a fluent log with an impossible number in every row.
+- **Next step:** compute a single-game usage the same way `player_splits`' USG% column does (`templates/splits.py`), or refuse the measure per game; a test on one game's row against the split's figure.
+
+### The shorter router prompt (4.5.0, the seven children out) moved eight day5 rows that no text rule meets yet
+- **Found:** 2026-09-25, plan item 2 step 2c-ii, `live_day5.jsonl` (e8c68ba) against `live_day4.jsonl` (91d1461); `~/association-research/intent-shrink/RESULT.md` has the full list.
+- **Evidence:** the 3B router, with 16 intents instead of 23 in its prompt, files these differently and nothing in `route()` or the subject reading moves them back: "jokic vs cade since 2022" as `player_compare` (which does not honor `since`; day4 `player_matchup`) - fell through; "KNICKS point differential over the last 7 games" as `with_without` with `order`/`limit` (day4 `game_log`) - answers the last 7 REGULAR-season games, +46, where the last 7 were the Finals, +62; "Ayton stats in game 4 playoff games" and "nba team with least playoff wins since 2022" with `limit: 1` ("game 4" reads as naming one game, so the filler survives; the ranking hides a three-way tie at zero); "Payton Prichard ... including playoffs game log" with `season_ref: current` (day4 a career); "show me splits for the sixers when maxey scores 20+ points" with an invented Joel Embiid (refused by that name); "oklahoma city thunder all-time triple doubles vs west" as `leaderboard` with the team (the refusal now names a stat nothing ranks, not the team-aggregate shape); "jay huff game log vs Embiid" as `game_log` with a career span (the pair reading's `player_matchup` refuses the span - the `check_routing` GAP case).
+- **User sees:** two wrong answers (the differential, the usage log above), three fall-throughs, two partials, two refusals naming the wrong cause - 9 of the 175 primary wordings, against 3 wrong / 6 partial on day4.
+- **Next step:** one text rule each, the way the first eleven were met (`_route_one_player_intents`, `_route_team_total`, `_names_a_period_subject`): `with_without` with `order`+`limit` and no with/without word is `game_log`; `_names_one_game` should not count a `game_n` phrase; a `team_leaderboard` limit of 1 keeps tied rows; `player_compare` honors `since` (or "X vs Y since" with no compare word is the pair relation). Then a live run, since a text rule cannot be measured on recorded routes the model no longer produces.
+
 ### "For the <team>" beside a player is read as his own-team tenure even when the team is the subject: "show me stats for sixers when maxey scored 20+ points"
 - **Found:** 2026-09-23, grading `live_sweep.jsonl` (yardstick-v2 F087) after
   the sweep merged (`28dfb9d`).
@@ -492,7 +504,10 @@ those were found.
 - **GitHub:** #200
 
 ### A question with zero valid readings gets a fluent, self-chosen answer: "25-26 knicks playoff statistics vs other historic teams"
-- **Found:** 2026-09-23, same session, yardstick-v2 F097.
+- **Found:** 2026-09-23, same session, yardstick-v2 F097. On `live_day5.jsonl`
+  (e8c68ba, the shorter router prompt) it routes `team_outlook` instead and
+  answers the Knicks' BPI snapshot - a different self-chosen framing, the
+  same fault.
 - **Evidence:** routes `team_leaderboard {'stat': 'win_percentage', 'team':
   'New York Knicks', 'season_type': 3}` and answers a 16-team postseason
   win-percentage ranking - a real, computed answer, but to a framing the
