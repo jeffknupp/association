@@ -1149,7 +1149,7 @@ _SHOT_WORDS = re.compile(r"\bshots?\b|\bthrees\b|\b3s\b|\b(?:3|three)[- ]?pointe
 
 # A per-game threshold, stated in the question ("scores 30 points", "36 plus
 # points", "40 point games"). "3 point" is a shot type, not a threshold of three.
-_THRESHOLD_INTENTS = frozenset({"threshold_count", "record_when", "streak"})
+_THRESHOLD_INTENTS = frozenset({"threshold_count", "record_when", "streak", "single_game_high"})
 
 # Every condition a question states as "N+ <stat>", in order. ROUTER_SCHEMA
 # carries ONE `threshold`, so a second condition survived only as a `fields`

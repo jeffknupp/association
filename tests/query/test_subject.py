@@ -477,6 +477,10 @@ def test_a_teams_record_when_a_player_reached_a_threshold_is_assigned(con: duckd
     for parent in ("team_record", "game_log", "player_stat"):
         intent, slots = _assigned(con, "how many playoff games has embiid won?", parent, stat="wins", team="Philadelphia 76ers", season_type=3)
         assert intent == "record_when" and slots["player"] == "Joel Embiid" and slots["season_type"] == 3 and "threshold" not in slots, (parent, slots)
+    # ... and as an outlook for a "team" named Joel Embiid (day5): the
+    # subject himself leaves the team slot, and the stat is the compiler's.
+    intent, slots = _assigned(con, "how many playoff games has embiid won?", "team_outlook", stat="playoff_wins", team="Joel Embiid", season_type=3)
+    assert intent == "record_when" and slots["player"] == "Joel Embiid" and "team" not in slots and slots["stat"] == "wins"
     intent, _ = _assigned(con, "how many games have the celtics won this season", "team_record", stat="wins", team="Boston Celtics", season=2026, season_type=2)
     assert intent == "team_record"
 

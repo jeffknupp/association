@@ -949,6 +949,15 @@ def _apply_child_intent(subject: Subject, slots: dict[str, Any], intent: str) ->
     # threes in a game" under a game log names nobody to a game log, and the
     # single-game high the words settle is Kawhi's.
     decisions.extend(_apply_restored_player(subject, slots, subject.intent))
+    team = slots.get("team")
+    if isinstance(team, str) and any(_same_person(team, [p]) for p in subject.players):
+        # The subject himself, filed as the TEAM by a team-only parent: "how
+        # many playoff games has embiid won?" arrived as an outlook for a
+        # "team" named Joel Embiid (day5), and left there it refused the
+        # compiler's read ("no team matching") once the child's template
+        # stepped aside.
+        slots.pop("team", None)
+        decisions.append(Decision("subject", "team", team, None, "the subject himself, filed as a team by the router"))
     return decisions, subject.intent
 
 
