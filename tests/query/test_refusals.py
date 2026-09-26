@@ -165,3 +165,11 @@ def test_a_championship_question_is_refused_before_a_ranking_answers_it() -> Non
     assert refusal is not None and "not on record as such" in refusal.answer
     assert by_question("what are the sixers title odds?", "team_outlook") is None
     assert by_question("best record from 2010-11 to 2018-19", "team_leaderboard") is None
+
+
+def test_a_teams_total_of_triple_doubles_is_refused_for_that_cause(con: duckdb.DuckDBPyConnection) -> None:
+    from association.query.refusals import unanswerable
+
+    result = unanswerable(con, "leaderboard", {"stat": "triple_double", "team": "Los Angeles Lakers", "span": "career"}, "los angeles lakers all-time triple doubles vs west")
+    assert result is not None and result.data["refused"] == "team_boolean_count" and "team's total" in result.answer
+    assert unanswerable(con, "leaderboard", {"stat": "triple_double"}, "who has the most triple doubles this season") is None

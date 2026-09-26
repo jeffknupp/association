@@ -55,7 +55,7 @@ def unanswerable(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, A
     """
     if subject is None:
         subject = read_subject(con, question, intent, slots)
-    for check in (_playoff_round, _non_calendar_situation, _period_stat, _team_period_stat, _bench_points, _team_where_a_player_belongs):
+    for check in (_playoff_round, _non_calendar_situation, _period_stat, _team_period_stat, _bench_points, _team_where_a_player_belongs, _team_boolean_count):
         message = check(con, intent, slots, question, subject)
         if message is not None:
             return TemplateResult(data={"message": message, "refused": check.__name__.lstrip("_"), "intent": intent}, answer=message)
@@ -124,6 +124,21 @@ def _team_where_a_player_belongs(con: duckdb.DuckDBPyConnection, intent: str, sl
     if subject.kind not in ("team", "team_players") or subject.players:
         return None
     return f"'{player}' is a team, and this was read as a question about one player's {slots.get('stat') or 'stats'}. Name a player, or ask for the team's own record or stats."
+
+
+def _team_boolean_count(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject) -> str | None:
+    """A team's count of its players' triple-doubles or double-doubles, as a
+    ranking with the team filed: "oklahoma city thunder all-time triple
+    doubles vs west" arrives as ``leaderboard`` with ``team`` and
+    ``stat: triple_double`` (day5, after the 4.5.0 prompt shrink), and the
+    compiler's decline said "no ranking reads triple_double" - the wrong
+    cause, since one player's triple-doubles ARE counted; what is not read
+    is the team's aggregate of them."""
+    stat = slots.get("stat")
+    if intent != "leaderboard" or stat not in ("triple_double", "double_double") or subject.kind not in ("team", "team_players") or not slots.get("team"):
+        return None
+    label = "triple-doubles" if stat == "triple_double" else "double-doubles"
+    return f"A team's total of its players' {label} is not read yet - one player's {label} are (ask '<player> triple doubles this season'), and so is the team's own record. Ask one of those."
 
 
 def _team_period_stat(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject) -> str | None:

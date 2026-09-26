@@ -575,10 +575,23 @@ def _team_game_log_games(rows: list[tuple[Any, ...]]) -> tuple[list[dict[str, An
 #: narrowed correctly by the log already but never STATED: the games were
 #: right and the question's own number was still missing, which is a
 #: wrong-shape answer wearing a right one's clothes.
-_TEAM_GAME_LOG_STAT_TOTALS: dict[str, str] = {"points": "points", "pointsDifference": "differential"}
+_TEAM_GAME_LOG_STAT_TOTALS: dict[str, str] = {
+    "points": "points",
+    "pointsDifference": "differential",
+    # The model's other spellings of the same thing, seen live once the
+    # router's prompt shrank (day6, F129: the right seven games with no
+    # differential line under `points_differential`).
+    "points_differential": "differential",
+    "point_differential": "differential",
+    "differential": "differential",
+}
 """``stat`` -> which total :func:`_team_game_log_total_line` states.
 
 .. versionadded:: 4.4.0
+
+.. versionchanged:: 4.5.0
+   The differential under its other spellings (``points_differential``,
+   ``point_differential``, ``differential``).
 """
 
 

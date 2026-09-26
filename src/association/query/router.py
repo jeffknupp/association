@@ -2559,10 +2559,16 @@ def _route_subject_slots(intent: str, slots: dict[str, Any], question: str) -> N
     if (
         intent == "game_log"
         and _VERSUS_WORDS.search(question)
-        and (isinstance(slots.get("limit"), int) or re.search(r"\blast\b", question, re.IGNORECASE))
+        and (isinstance(slots.get("limit"), int) or re.search(r"\blast\b", question, re.IGNORECASE) or _BOTH_SEASON_TYPES_WORDS.search(question))
         and season_from_text(question) is None
         and not _SEASON_WORDS.search(question)
     ):
+        # "including playoffs" joins "last N": a log against one team that
+        # asks for both season types and names no year is his meetings
+        # wherever they fall - "Payton Prichard stats vs 76ers at home
+        # including playoffs game log" read the model's default season on
+        # day5/6 (6 games) where the key's 16 span 2024-2026, and day4's
+        # career came only from the model omitting season_ref that day.
         slots["span"] = "career"
         slots.pop("season", None)
     if intent in _SUBJECT_RESTORED_INTENTS and not slots.get("player") and not slots.get("players"):

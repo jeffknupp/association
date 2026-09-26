@@ -2624,3 +2624,18 @@ def test_two_players_vs_over_a_span_of_seasons_is_the_pairs_meetings() -> None:
     assert settle("player_compare", {"players": ["Nikola Jokic", "Cade Cunningham"]}, "jokic vs cade since 2022").intent == "player_matchup"
     assert settle("player_compare", {"players": ["Luka Doncic", "Giannis Antetokounmpo"]}, "Luka vs Giannis this year").intent == "player_compare"
     assert settle("player_compare", {"players": ["Nikola Jokic", "Cade Cunningham"]}, "compare jokic and cade since 2022").intent == "player_compare"
+
+
+def test_a_log_against_one_team_including_playoffs_with_no_year_is_a_career() -> None:
+    from association.query.router import settle
+
+    settled = settle(
+        "game_log",
+        {"stat": "points", "player": "Payton Prichard", "opponent": "Philadelphia 76ers", "season": current_season(), "venue": "home"},
+        "Payton Prichard stats vs 76ers at home including playoffs game log",
+    )
+    assert settled.slots["span"] == "career" and "season" not in settled.slots and settled.slots["season_type_unstated"] is True
+    assert (
+        settle("game_log", {"player": "Payton Pritchard", "opponent": "Philadelphia 76ers", "season": current_season()}, "Payton Pritchard vs 76ers this season game log").slots["season"]
+        == current_season()
+    )
