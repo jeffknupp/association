@@ -452,8 +452,11 @@ def test_answer_returns_none_for_a_question_the_compiler_cannot_say(cx_ctx: Temp
 
 def test_answer_composes_a_sentence_and_the_point_it_rests_on(cx_ctx: TemplateContext) -> None:
     """``answer()``'s ``TemplateResult`` carries a sentence and the point's
-    own values - what a caller checks an answer against."""
-    result = compose_answer(cx_ctx, "player_stat", {"player": "Brandin Podziemski", "opponent": "Boston Celtics"}, "Podziemski's points vs Boston")
+    own values - what a caller checks an answer against. The question's
+    "plus-minus" moves the point off ``player_stat``'s own line, so this is
+    the compiler's sentence rather than the template's (``compose.present``,
+    step 2a - ``test_an_intents_own_point_reads_as_its_template``)."""
+    result = compose_answer(cx_ctx, "player_stat", {"player": "Brandin Podziemski", "opponent": "Boston Celtics"}, "Podziemski's plus-minus vs Boston")
     assert result is not None
     assert "Brandin Podziemski" in result.answer
     assert result.data["skeleton"] == "scalar"
@@ -468,11 +471,13 @@ def test_a_closed_range_is_named_as_one_and_counted_as_one(cx_ctx: TemplateConte
     scope matches the number (yardstick-v2 F036, where a 2024-2026 count read
     "2024 on"). One season named at both ends is named once."""
     s = current_season()
-    both = compose_answer(cx_ctx, "player_stat", {"player": "Brandin Podziemski", "stat": "points", "since": s - 1, "until": s}, "Podziemski's points")
+    # "PRA" moves the point off player_stat's own line, so the compiler's
+    # own span phrase is what answers (compose.present, step 2a).
+    both = compose_answer(cx_ctx, "player_stat", {"player": "Brandin Podziemski", "stat": "points", "since": s - 1, "until": s}, "Podziemski's PRA")
     assert both is not None
     assert f"({s - 1}-{s})" in both.answer and "on)" not in both.answer
     assert both.data["rows"][0]["games"] == 6
-    one = compose_answer(cx_ctx, "player_stat", {"player": "Brandin Podziemski", "stat": "points", "since": s - 1, "until": s - 1}, "Podziemski's points")
+    one = compose_answer(cx_ctx, "player_stat", {"player": "Brandin Podziemski", "stat": "points", "since": s - 1, "until": s - 1}, "Podziemski's PRA")
     assert one is not None
     assert f"career ({s - 1})" in one.answer
     assert one.data["rows"][0]["games"] == 2
@@ -494,13 +499,21 @@ def test_a_plain_career_names_the_players_own_seasons_not_the_floor(cx_ctx: Temp
     rows). A league-wide career - no one player's seasons to substitute -
     still reads the floor, so ``player_seasons`` stays unset for it."""
     s = current_season()
-    result = compose_answer(cx_ctx, "threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15, "span": "career"}, "Podziemski's games with 15+ points in his whole career")
+    # A count against an opponent - a slot threshold_count's template does
+    # not take - so the compiler's own sentence names the span (step 2a:
+    # the template's own point reads in the template's words instead).
+    result = compose_answer(
+        cx_ctx,
+        "threshold_count",
+        {"player": "Brandin Podziemski", "stat": "points", "threshold": 15, "span": "career", "opponent": "Detroit Pistons"},
+        "Podziemski's 15+ point games vs Detroit in his career",
+    )
     assert result is not None
     assert f"({s - 1}-{s})" in result.answer
     assert "1994" not in result.answer
-    # g1 (20), g2 (15), g3 (28), g7 (18) clear 15; g5 (10) and g6 (12) do
-    # not, and g4's DNP is not a game at all (see the `_box` inserts above).
-    assert result.data["rows"][0]["games"] == 4
+    # Against Detroit: g2 (15), g3 (28) and g7 (18) all clear 15 (see the
+    # `_box` inserts above).
+    assert result.data["rows"][0]["games"] == 3
     assert result.data["span"] == f"regular season career ({s - 1}-{s})"
 
     q = move_point(cx_ctx.con, "threshold_count", {"threshold": 10, "stat": "rebounds", "span": "career"}, "players with 10 points career")
@@ -1073,3 +1086,197 @@ def test_a_grouped_by_player_count_carries_the_whole_total_a_window_cut(cx_ctx: 
     assert result is not None
     assert result.data["total"] == 56
     assert "56" in result.answer and "listed" in result.answer
+
+
+# ---------------------------------------------------------------------------
+# Plan item 2, step 2a: an intent's own default point is said the way its
+# template says it (compose.present) - text and data both, checked here
+# against the template itself on the same slots.
+# ---------------------------------------------------------------------------
+
+
+def _add_condition_tables(con: duckdb.DuckDBPyConnection) -> None:
+    """The two tables the condition templates (``record_when``,
+    ``player_splits``) read beside the relation and ``cx_ctx`` does not
+    build: ``real_games`` (``real_games.build_table``, as every team fixture
+    here builds it) and a ``team_box_stats`` row per team per game - the
+    unseen-games count joins them."""
+    con.execute("ALTER TABLE games ADD COLUMN neutral_site BOOLEAN")
+    con.execute("ALTER TABLE games ADD COLUMN venue_city VARCHAR")
+    real_games.build_table(con, {"games", "teams"})
+    con.execute(
+        "CREATE TABLE team_box_stats AS SELECT event_id, season, season_type, home_team_id AS team_id, away_team_id AS opponent_team_id FROM games "
+        "UNION ALL SELECT event_id, season, season_type, away_team_id, home_team_id FROM games"
+    )
+
+
+def _parity(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: str) -> tuple[Any, Any]:
+    """The template's answer and the compiler's for the same slots, the
+    compiler's with no template in front of it."""
+    from association.query.templates import TEMPLATES
+
+    _add_condition_tables(ctx.con)
+
+    template = TEMPLATES[intent](ctx, dict(slots))
+    composed = compose_answer(ctx, intent, dict(slots), question)
+    assert composed is not None
+    return template, composed
+
+
+@pytest.mark.parametrize(
+    ("intent", "slots", "question"),
+    [
+        ("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15}, "how many 15+ point games did podziemski have"),
+        ("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15, "span": "career"}, "how many 15+ point games has podziemski had in his career"),
+        ("threshold_count", {"stat": "points", "threshold": 25}, "who had the most 25+ point games"),
+        ("threshold_count", {"stat": "points", "threshold": 20, "above": ["20+ point", "5+ rebound"]}, "who had the most 20+ point 5+ rebound games"),
+        ("threshold_count", {"player": "Brandin Podziemski", "stat": "fouls", "threshold": 6, "span": "career"}, "how many times has podziemski fouled out"),
+        ("single_game_high", {"player": "Stephen Curry", "stat": "points"}, "stephen curry's most points in a game"),
+        ("single_game_high", {"stat": "points"}, "most points in a single game"),
+        ("single_game_high", {"stat": "rebounds"}, "what was the highest rebounding game this year"),
+        ("game_log", {"player": "Brandin Podziemski", "limit": 2}, "podziemski's last 2 games"),
+        ("game_log", {"player": "Brandin Podziemski", "opponent": "Boston Celtics", "span": "career"}, "podziemski's games against boston"),
+        ("player_stat", {"player": "Brandin Podziemski", "opponent": "Boston Celtics"}, "podziemski's stats vs boston"),
+        ("record_when", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15}, "warriors record when podziemski scores 15+"),
+    ],
+)
+def test_an_intents_own_point_reads_as_its_template(cx_ctx: TemplateContext, intent: str, slots: dict[str, Any], question: str) -> None:
+    """Step 2a's parity, per intent: the compiler's answer to the intent's
+    own default point is the template's, word for word and key for key -
+    what folding the template into the compiler needs. The numbers are the
+    compiler's own settled player, span and narrowing; the sentence and
+    ``data`` are the template's own helpers (``compose.present``)."""
+    template, composed = _parity(cx_ctx, intent, slots, question)
+    assert composed.answer == template.answer
+    assert composed.data == template.data
+
+
+def test_a_point_the_words_moved_keeps_the_compilers_own_sentence(cx_ctx: TemplateContext) -> None:
+    """A measure the question's words add ("PRA", which player_stat's line
+    does not carry) is not the intent's own point, so the compiler's own
+    sentence and point data answer it, as before step 2a."""
+    result = compose_answer(cx_ctx, "player_stat", {"player": "Brandin Podziemski", "opponent": "Boston Celtics"}, "Podziemski's PRA vs Boston")
+    assert result is not None
+    assert result.data["skeleton"] == "scalar" and result.data["measures"] == ["pra"]
+    assert result.data["rows"][0]["games"] == 2
+
+
+def test_a_slot_the_template_refuses_keeps_the_compilers_own_sentence(cx_ctx: TemplateContext) -> None:
+    """``check_scope`` gates the template's presentation: an opponent is a
+    slot ``threshold_count`` does not honor, so the count against Boston is
+    the compiler's point, said the compiler's way."""
+    result = compose_answer(cx_ctx, "threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15, "opponent": "Boston Celtics"}, "podziemski 15+ point games vs boston")
+    assert result is not None
+    assert result.data["skeleton"] == "scalar"
+    assert result.data["rows"][0]["games"] == 1  # g1 (20) - g5 (10) does not clear the line
+
+
+def test_a_single_game_high_question_is_one_game_even_without_in_a_game(cx_ctx: TemplateContext) -> None:
+    """ "What was the highest scoring game against Detroit" names no "in a
+    game", and the league-wide read ranked per-game AVERAGES for it - the
+    intent itself names one game: Curry's 40 in g3. (An opponent is a slot
+    ``single_game_high`` refuses, which is how such a question reaches the
+    compiler at all, so the compiler's own rows answer it.)"""
+    result = compose_answer(cx_ctx, "single_game_high", {"stat": "points", "opponent": "Detroit Pistons"}, "what was the highest scoring game against detroit")
+    assert result is not None
+    assert result.data["skeleton"] == "rows" and result.data["rows"][0]["points"] == 40
+
+
+def test_a_league_count_on_the_routers_own_line_is_answered(cx_ctx: TemplateContext) -> None:
+    """ "Most games with 10+ assists": the router's stat and threshold are
+    the whole line, and the league-wide count declined for want of one
+    (``_everyone_threshold_predicates`` adds none on the measure it would
+    rank by). Counted now - Podziemski's g3 (11 assists) is the only one."""
+    result = compose_answer(cx_ctx, "threshold_count", {"stat": "assists", "threshold": 10}, "most games with 10+ assists this season")
+    assert result is not None
+    assert result.data["leaders"] == [{"player": "Brandin Podziemski", "games": 1}]
+
+
+def test_a_history_by_season_keeps_the_newest_seasons(cx_ctx: TemplateContext) -> None:
+    """``player_history`` over the relation, limited to one season, is his
+    NEWEST one, newest first - it ordered by the label ascending and kept the
+    oldest, so "the past 4 seasons" was answered with a career's first four."""
+    s = current_season()
+    result = compose_answer(cx_ctx, "player_history", {"player": "Brandin Podziemski", "stat": "points", "limit": 1}, "podziemski's points over the past season")
+    assert result is not None
+    assert [r["group"] for r in result.data["rows"]] == [s]
+    assert "most recent 1 seasons" in result.answer
+    both = compose_answer(cx_ctx, "player_history", {"player": "Brandin Podziemski", "stat": "points", "limit": 5}, "podziemski's points by season")
+    assert both is not None
+    assert [r["group"] for r in both.data["rows"]] == [s, s - 1]
+    assert "most recent" not in both.answer  # the whole career fit
+
+
+def test_own_team_narrows_a_composed_average(cx_ctx: TemplateContext) -> None:
+    """``own_team`` ("lebron stats as a starter for Miami") narrows the
+    compiler's read exactly as it narrows ``player_stat``'s: Curry never
+    played for Boston, so his games "for Boston" are none - the compiler
+    ignored the slot and averaged every game he played."""
+    q = to_query("player_stat", {"player": "Stephen Curry", "opponent": "Detroit Pistons", "own_team": "Boston Celtics"})
+    assert _run(cx_ctx.con, q)["rows"][0]["games"] == 0
+    q = to_query("player_stat", {"player": "Stephen Curry", "opponent": "Detroit Pistons", "own_team": "Golden State Warriors"})
+    assert _run(cx_ctx.con, q)["rows"][0]["games"] == 1  # g3
+
+
+def test_a_composed_answer_carries_no_coverage_caveat_of_its_own(cx_ctx: TemplateContext) -> None:
+    """The agent appends ``coverage_caveat`` to a composed answer exactly as
+    to a template's (``agent._try_compose``); the compiler appending it too
+    printed ESPN's 2001-playoffs note twice. The note is the agent's to add."""
+    result = compose_answer(cx_ctx, "game_log", {"player": "Brandin Podziemski", "season": 2001, "season_type": 3}, "podziemski plus-minus game log 2001 playoffs")
+    assert result is not None
+    assert "Note:" not in result.answer
+    assert not any("Note:" in note for note in result.data.get("notes", []))
+
+
+def test_a_single_games_usage_is_the_percent_the_split_averages(cx_ctx: TemplateContext) -> None:
+    """#222: ``usage_pct`` is stored as a percent (``player_advanced_stats``
+    computes ``100.0 * ...``), not a fraction - one game's 24.35 printed as
+    "2435.0%". The per-game row now reads the figure ``player_splits``' USG%
+    column averages: Podziemski's only away game this season is g1, so the
+    split's away USG% IS g1's usage, and the log's g1 row says the same."""
+    from association.query.templates import player_splits
+
+    _add_condition_tables(cx_ctx.con)
+    cx_ctx.con.execute("ALTER TABLE player_box_stats ADD COLUMN usage_pct DOUBLE")
+    cx_ctx.con.execute("UPDATE player_box_stats SET usage_pct = CASE event_id WHEN 'g1' THEN 24.35 ELSE 18.0 END WHERE athlete_id = ?", [PODZ])
+    split = player_splits(cx_ctx, {"player": "Brandin Podziemski", "stat": "usage_pct", "split": "home_away"})
+    away = next(row for row in split.data["splits"]["home_away"] if row["group"] == "away")
+    assert away["games"] == 1 and away["usage_pct"] == pytest.approx(24.35)
+    log = compose_answer(cx_ctx, "game_log", {"player": "Brandin Podziemski", "stat": "usage_pct"}, "podziemski usage game log")
+    assert log is not None
+    g1 = next(row for row in log.data["rows"] if row["opponent"] == "BOS" and not row["home"])
+    assert g1["usage_pct"] == pytest.approx(away["usage_pct"])
+    assert f"usage {away['usage_pct']:.1f}%" in log.answer
+    assert "2435" not in log.answer
+
+
+def test_a_player_beside_a_team_subject_is_not_read_as_the_team(cx_ctx: TemplateContext) -> None:
+    """ "show me stats for the warriors when podziemski scored 15+ points"
+    reads as a TEAM subject with Podziemski beside it; the router's
+    ``player`` slot holds him, and moving it into ``team`` resolved a team
+    called "Podziemski" and declined the question (measured live on "... for
+    sixers when maxey scored 20+ points"). It stays his, and the record is
+    the template's own table."""
+    _add_condition_tables(cx_ctx.con)
+    result = compose_answer(cx_ctx, "record_when", {"stat": "points", "player": "Podziemski", "threshold": 15}, "show me stats for the warriors when podziemski scored 15+ points")
+    assert result is not None
+    assert result.answer.startswith("Golden State Warriors record when Brandin Podziemski had 15+ points")
+
+
+def test_a_log_reads_a_rebuilt_game_with_its_minutes_blank(cx_ctx: TemplateContext) -> None:
+    """A listing's rebuilt-line rule is ``game_log``'s own
+    (``templates.games._rebuilt_readable``): ``minutes`` is exempt - play-by-
+    play cannot recover it, so a rebuilt row shows it blank - and the other
+    columns shown are ones a rebuild gets right. The compiler held minutes
+    against the rule and so never listed a rebuilt game on its default line:
+    Podziemski's g5, rebuilt here, was missing from his log."""
+    con = cx_ctx.con
+    con.execute("ALTER TABLE player_box_stats ADD COLUMN reconstructed BOOLEAN")
+    con.execute("UPDATE player_box_stats SET reconstructed = FALSE")
+    con.execute("UPDATE player_box_stats SET minutes = NULL, reconstructed = TRUE WHERE event_id = 'g5' AND athlete_id = ?", [PODZ])
+    con.execute("CREATE VIEW player_box_stats_filled AS SELECT * FROM player_box_stats")
+    out = run(con, to_query("game_log", {"player": "Brandin Podziemski"}))
+    newest = out["rows"][0]
+    assert newest["points"] == 10 and newest["minutes"] is None and newest["reconstructed"]
+    template, composed = _parity(cx_ctx, "game_log", {"player": "Brandin Podziemski"}, "podziemski's game log")
+    assert composed.answer == template.answer

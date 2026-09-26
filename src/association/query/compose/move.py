@@ -19,7 +19,7 @@ import duckdb
 
 from association.query.measures import MEASURE_WORDS
 from association.query.metrics import PER_GAME_MIN_GAMES
-from association.query.templates.common import FILLER_PLAYER_WORDS, POSITIONS, TEAM_ONLY_INTENTS, TemplateResult
+from association.query.templates.common import DEFAULT_LIMIT, FILLER_PLAYER_WORDS, POSITIONS, TEAM_ONLY_INTENTS, TemplateResult
 
 from .adapt import DEFAULT_SINGLE_GAME_LIMIT, _clamp, _named_player, to_query
 from .core import BOOLEAN_MEASURES, COLUMNS, DERIVED, LINE, Query, Refused, Unsupported
@@ -209,9 +209,24 @@ def _drop_filler_or_team_player(slots: dict[str, Any], subject: Subject) -> dict
         return slots
     if text.strip().lower() in FILLER_PLAYER_WORDS:
         return {**slots, "player": None}
-    if not slots.get("team") and subject.kind in ("team", "team_players") and not subject.players:
+    if not slots.get("team") and subject.kind in ("team", "team_players") and not subject.players and not _drop_filler_or_team_player_is_companion(text, subject):
         return {**slots, "player": None, "team": text}
     return slots
+
+
+def _drop_filler_or_team_player_is_companion(text: str, subject: Subject) -> bool:
+    """Whether the ``player`` slot's text is one of the players the reading
+    placed BESIDE the team (``subject.companions``) - "show me stats for
+    sixers when maxey scored 20+ points" reads as kind team with Maxey
+    beside it, and moved into ``team`` the slot was resolved as a team called
+    "Maxey" and the question declined. A call-time import, for the same
+    cycle :func:`_subject` avoids.
+
+    .. versionadded:: 4.5.0
+    """
+    from association.query.subject import question_supports
+
+    return any(question_supports(text, companion) for companion in subject.companions)
 
 
 def _drop_position_only_player(slots: dict[str, Any], subject: Subject) -> dict[str, Any]:
@@ -326,9 +341,18 @@ def _everyone_threshold_predicates(slots: dict[str, Any], question: str, measure
     return predicates
 
 
-def _everyone_single_game(slots: dict[str, Any], question: str, measure: str | None, predicates: list[tuple[str, str, Any]], position: str | None) -> Query | None:
-    """ "Most ... in a game" over everyone: rows by measure, league-wide."""
-    if not (_TOP_IN_A_GAME.search(question) and measure):
+def _everyone_single_game(intent: str, slots: dict[str, Any], question: str, measure: str | None, predicates: list[tuple[str, str, Any]], position: str | None) -> Query | None:
+    """ "Most ... in a game" over everyone: rows by measure, league-wide.
+
+    .. versionchanged:: 4.5.0
+       Also for a ``single_game_high`` question whose words do not say "in a
+       game" - the intent names the shape itself. "What was the highest
+       scoring game by a player this year?" used to fall to
+       :func:`_everyone_ranking` and answer with a ranking of per-game
+       AVERAGES (Luka Doncic, 33.5) where the question, and the template,
+       name one game (Bam Adebayo's 83).
+    """
+    if not ((_TOP_IN_A_GAME.search(question) or intent == "single_game_high") and measure):
         return None
     return Query(
         slots,
@@ -447,14 +471,39 @@ def _everyone_multi_line_games(intent: str, slots: dict[str, Any], question: str
     stands aside for it, below).
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.5.0
+       Stands aside for a ranking word ("who had the MOST 30+ point 10+
+       rebound games"): that asks who cleared every line most often - the
+       per-player count :func:`_everyone_threshold_count` gives, with the
+       lines the relation already narrows by (``below``/``above``) - not
+       which games did. It used to list the last 25 such games under a
+       heading naming no leader at all, where the template names Nikola
+       Jokic's 20.
     """
-    if intent != "threshold_count":
+    if intent != "threshold_count" or _RANKING.search(question):
         return None
     text_lines = _numbered_stat_lines(question)
     lines = text_lines if len(text_lines) > len(predicates) else predicates
     if len(lines) < 2:
         return None
     return Query(slots, "rows", [name for name, _, _ in lines], "none", "none", lines, "date", "desc", _clamp(slots.get("limit"), 25), subject="everyone", position=position)
+
+
+def _everyone_threshold_count_line(slots: dict[str, Any]) -> list[tuple[str, str, Any]]:
+    """The router's own ``stat`` at its own ``threshold``, as the one line a
+    league-wide count counts - where :func:`_everyone_threshold_predicates`
+    added nothing because the line is on the very measure it would rank by.
+    "Most games with 15+ assists in 2024?" declined for want of a line until
+    this existed: the line was the whole question.
+
+    .. versionadded:: 4.5.0
+    """
+    column = _stat_measure(slots.get("stat"))
+    threshold = slots.get("threshold")
+    if column is None or column in BOOLEAN_MEASURES or not isinstance(threshold, int) or isinstance(threshold, bool) or threshold < 1:
+        return []
+    return [(column, ">=", threshold)]
 
 
 def _everyone_threshold_count(intent: str, slots: dict[str, Any], predicates: list[tuple[str, str, Any]], position: str | None) -> Query | None:
@@ -466,9 +515,15 @@ def _everyone_threshold_count(intent: str, slots: dict[str, Any], predicates: li
         # yardstick-v2 F152) is this count too, whatever intent the router
         # filed - the team narrows the league read to its roster's games.
         return None
+    if not predicates and intent == "threshold_count":
+        predicates = _everyone_threshold_count_line(slots)
     if not predicates:
         raise Unsupported("a league-wide count needs the line(s) it counts; none could be read from the question")
-    return Query(slots, "grouped", [], "count", "player", predicates, "measure", "desc", _clamp(slots.get("limit"), 10), subject="everyone", position=position)
+    # threshold_count's own leaderboard length (DEFAULT_LIMIT, five names)
+    # where it is that intent's question; ten for a team's roster count
+    # (F152), which also states the whole count beneath the ones listed.
+    listed = DEFAULT_LIMIT if intent == "threshold_count" else 10
+    return Query(slots, "grouped", [], "count", "player", predicates, "measure", "desc", _clamp(slots.get("limit"), listed), subject="everyone", position=position)
 
 
 def _everyone_ranking(intent: str, slots: dict[str, Any], question: str, measure: str | None, predicates: list[tuple[str, str, Any]], position: str | None) -> Query | None:
@@ -561,7 +616,7 @@ def _everyone_point(intent: str, slots: dict[str, Any], question: str, measure: 
     words = _measure_words(question)
     measure, predicates = _measure_and_predicates(words, measure if measure not in BOOLEAN_MEASURES else None)
     predicates = _everyone_threshold_predicates(slots, question, measure, predicates)
-    single = _everyone_single_game(slots, question, measure, predicates, position)
+    single = _everyone_single_game(intent, slots, question, measure, predicates, position)
     if single is not None:
         return single
     boolean_ranked = _everyone_boolean_game_ranking(question, slots, predicates, position)
@@ -622,7 +677,23 @@ def _move_boolean_count(question: str, measure: str | None, intent: str, career:
     """
     if not (measure in BOOLEAN_MEASURES and measure != "won" and (_HOW_MANY_OR_OFTEN.search(question) or intent in ("threshold_count", "player_stat", "player_splits", "other"))):
         return None
+    if intent == "threshold_count" and _move_boolean_count_is_line(measure, career):
+        # "how many times has embiid fouled out?" arrived as fouls >= 6 - the
+        # very line ``fouled_out`` is defined as (DERIVED) - so the router's
+        # own count is this one, and threshold_count's default point says it.
+        return None
     return Query(career, "scalar", [], "count", "none", [(measure, "=", True)])
+
+
+def _move_boolean_count_is_line(measure: str, slots: dict[str, Any]) -> bool:
+    """Whether a boolean measure is, by its one definition in
+    :data:`~association.query.compose.core.DERIVED`, exactly the router's own
+    ``stat``/``threshold`` line (``fouled_out`` is ``fouls >= 6``)."""
+    column = _stat_measure(slots.get("stat"))
+    threshold = slots.get("threshold")
+    if column is None or not isinstance(threshold, int) or isinstance(threshold, bool):
+        return False
+    return DERIVED.get(measure, "").strip("()") == f"pgl.{column} >= {threshold}"
 
 
 def _move_player_history(intent: str, slots: dict[str, Any], career: dict[str, Any], measure: str | None) -> Query | None:

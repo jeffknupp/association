@@ -97,17 +97,27 @@ def _span_phrase(span: Any, player_seasons: tuple[int, int] | None = None) -> st
     return f"{season} {kind}"
 
 
-_FRACTION_COLUMNS = frozenset({"ts_pct", "efg_pct", "usage_pct"})
+#: The view's rates stored as fractions (0.57). ``usage_pct`` is NOT one:
+#: ``player_advanced_stats`` computes it as ``100.0 * ...`` - already a
+#: percent, the figure ``player_splits``' USG% column averages and prints as
+#: it is (``templates.splits.SPLIT_EXTRA_STATS``). Scaled again here, one
+#: game's 24.4 printed as "2435.5%" (#222).
+_FRACTION_COLUMNS = frozenset({"ts_pct", "efg_pct"})
 
 
 def _fmt(v: Any, name: str) -> str:
-    """One cell of an answer's table: a fixed decimal for a float, a percent sign for a rate."""
+    """One cell of an answer's table: a fixed decimal for a float, a percent sign for a rate.
+
+    .. versionchanged:: 4.5.0
+       ``usage_pct`` prints as the percent it is stored as (24.4%), not
+       scaled by 100 a second time (#222).
+    """
     if v is None:
         return "-"
     if isinstance(v, float):
         if name in _FRACTION_COLUMNS:
             # The view stores these as fractions (0.57); the derived rates
-            # (fg_pct, three_pct, ft_pct) are already scaled to percent.
+            # (fg_pct, three_pct, ft_pct) and usage_pct are already percents.
             return f"{v * 100:.1f}%"
         return f"{v:.1f}" if not name.endswith("_pct") else f"{v:.1f}%"
     return str(v)
@@ -180,6 +190,10 @@ def _grouped_sentence(q: Query, out: dict[str, Any]) -> str:
     head = f"{who}{where}, {span}{_predicates(q)}, by {q.group}"
     if q.measures:
         head += f" ({LABELS.get(q.measures[0], q.measures[0])} {'per game' if q.aggregate == 'per_game' else q.aggregate}" + (f", minimum {q.minimum_games} games" if q.minimum_games else "") + ")"
+    if q.group == "season" and q.limit and len(rows) >= q.limit:
+        # The span names the whole career; the rows are its newest N (the
+        # limit cut them - core._compile_grouped), which the heading says.
+        head += f" - {'first' if q.direction == 'asc' else 'most recent'} {len(rows)} seasons"
     lines = []
     for r in rows:
         cells = [f"{r.get('games')} G"]
@@ -232,7 +246,7 @@ def team_sentence(q: TeamQuery, result: TeamResult) -> str:
     if result.value is None:
         return f"The warehouse has no {label} on record for the {result.team.name} in the {span}."
     if result.from_season_line:
-        return f"The {result.team.name} had {result.value:,.0f} {label} over the complete {span} ({result.games} games).{result.note}{result.coverage_note}"
+        return f"The {result.team.name} had {result.value:,.0f} {label} over the complete {span} ({result.games} games).{result.note}"
     value = f"{result.value:+,.0f}" if q.measure == "differential" else f"{result.value:,.0f}"
     record = f" ({result.wins}-{result.losses})" if result.wins is not None else ""
     per_game = f" ({result.value / result.games:+.2f} per game)" if q.measure == "differential" and result.games else ""
@@ -240,7 +254,7 @@ def team_sentence(q: TeamQuery, result: TeamResult) -> str:
     # narrowed the read (TeamNarrowed.filters()) - saying the count again
     # here would read as "over 10 games over their last 10 games".
     games_phrase = "" if "game" in result.narrowed_text else f" over {result.games} games"
-    return f"The {result.team.name} {'are' if label == 'point differential' else 'had'} {value} {label}{per_game}{games_phrase}{result.narrowed_text}{record}.{result.coverage_note}"
+    return f"The {result.team.name} {'are' if label == 'point differential' else 'had'} {value} {label}{per_game}{games_phrase}{result.narrowed_text}{record}."
 
 
 def sentence(q: Query, out: dict[str, Any]) -> str:

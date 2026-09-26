@@ -57,7 +57,7 @@ from typing import Any
 
 import duckdb
 
-from association.nba.coverage import caveat, unavailable
+from association.nba.coverage import unavailable
 from association.nba.season import current_season
 from association.query.entities import _TEAM_NICKNAMES, Entity
 from association.query.team_games import TeamNarrowed
@@ -171,6 +171,12 @@ class TeamResult:
     plays for the player subject.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.5.0
+       No ``coverage_note``: the agent appends
+       :func:`~association.query.templates.common.coverage_caveat` to a
+       composed answer as it does to a template's, and this carrying one too
+       printed ESPN's 2001-playoffs note twice.
     """
 
     team: Entity
@@ -186,10 +192,6 @@ class TeamResult:
     #: A note appended past the number - the season-total reader's own
     #: postseason addendum (F127: "...and added 78 more in the playoffs").
     note: str = ""
-    #: A season that is covered but only partly (`association.nba.coverage.caveat`)
-    #: - #197, the same note `templates.common.coverage_caveat` gives a
-    #: template's own answer.
-    coverage_note: str = ""
 
 
 def _team_narrowed(slots: dict[str, Any]) -> bool:
@@ -355,22 +357,6 @@ def team_coverage_refusal(q: TeamQuery) -> TemplateResult | None:
     return TemplateResult(data={"season": season}, answer=message)
 
 
-def _team_coverage_note(q: TeamQuery) -> str:
-    """A note for a season this team question can reach but only partly, or
-    ``""`` - the team subject's counterpart of
-    :func:`~association.query.templates.common.coverage_caveat` (#197,
-    ISSUES.md).
-
-    .. versionadded:: 4.4.0
-    """
-    season = _team_season_int(q.slots)
-    if season is None:
-        return ""
-    season_type = q.slots.get("season_type") or 2
-    note = caveat(_team_coverage_tables(q), season, season_type)
-    return f" {note}" if note else ""
-
-
 def run_team(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
     """``q`` answered: the unnarrowed season total, or a narrowed sum over
     the team-games relation - whichever the question's own slots ask for.
@@ -384,6 +370,10 @@ def run_team(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
     .. versionchanged:: 4.4.0
        Checks the coverage floor first, and carries a partial-season caveat
        on the result (#197, ISSUES.md).
+
+    .. versionchanged:: 4.5.0
+       Carries no partial-season caveat: the agent appends the same note to
+       every composed answer, and it printed twice.
     """
     refusal = team_coverage_refusal(q)
     if refusal is not None:
@@ -396,5 +386,4 @@ def run_team(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
             result = _compile_team_season(con, q, team)
     except TemplateUnsupported as exc:
         raise Unsupported(f"relation: {exc}") from exc
-    result.coverage_note = _team_coverage_note(q)
     return result
