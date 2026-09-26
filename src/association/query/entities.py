@@ -845,7 +845,12 @@ def undo_name_completion(con: duckdb.DuckDBPyConnection, question: str, slots: d
         if derived is not None and derived.name.casefold() == name.casefold():
             return None
         fragment = " ".join(matched)
-        return fragment if len(find_players(con, fragment)) > 1 else None
+        # A completion that resolves to NOBODY is not a completion at all:
+        # "derozan career points vs knicks" arrived as 'Derozan Valenčić'
+        # (day5, after the 4.5.0 prompt shrink) and fell through on a
+        # surname no player has; the part the question carries reaches
+        # DeMar DeRozan by itself.
+        return fragment if len(find_players(con, fragment)) > 1 or not find_players(con, name) else None
 
     changed: list[tuple[str, str]] = []
     listed = slots.get("players")

@@ -2582,3 +2582,21 @@ def test_a_teams_season_total_steps_aside_from_the_per_game_line() -> None:
     assert settle("team_stat", {"stat": "threePointFieldGoalsMade", "team": "Orlando Magic"}, "how many 3 pointers have the magic made so far this season").slots["rate"] == "total"
     assert "rate" not in settle("team_stat", {"stat": "points", "team": "Boston Celtics"}, "how many points per game do the celtics score").slots
     assert "rate" not in settle("team_stat", {"stat": "points", "team": "Boston Celtics"}, "celtics points this season").slots
+
+
+def test_a_players_games_won_is_record_when_on_wins() -> None:
+    from association.query.router import settle
+
+    settled = settle("record_when", {"stat": "playoff_wins", "player": "Joel Embiid", "season_type": 3}, "how many playoff games has embiid won?")
+    assert settled.intent == "record_when" and settled.slots["stat"] == "wins" and "threshold" not in settled.slots
+    assert settle("record_when", {"stat": "points", "player": "Joel Embiid"}, "how many games has embiid lost this season").slots["stat"] == "losses"
+
+
+def test_a_limit_that_is_a_lines_own_number_is_dropped_from_a_named_log() -> None:
+    from association.query.router import settle
+
+    q = "mikal bridges game log with less than 15 fga and with less than 35 minutes"
+    assert "limit" not in settle("game_log", {"stat": "fieldGoalsAttempted", "player": "Mikal Bridges", "order": "recent", "limit": 15}, q).slots
+    # A count the question names stays, and so does a model default that is no line's number.
+    assert settle("game_log", {"player": "Mikal Bridges", "order": "recent", "limit": 5}, "mikal bridges last 5 games log").slots["limit"] == 5
+    assert settle("game_log", {"player": "Mikal Bridges", "order": "recent", "limit": 10}, "mikal bridges game log with less than 15 fga").slots["limit"] == 10

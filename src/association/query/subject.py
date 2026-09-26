@@ -49,6 +49,7 @@ from association.query.entities import (
     Entity,
     _edit_budget,
     _initials,
+    _named_only_by_a_team_word,
     _question_derived_player,
     _shares_word,
     _team_after_for,
@@ -263,6 +264,14 @@ class Subject:
     #: The question this is a reading of - what :func:`apply_subject` settles
     #: a kind-assigned intent's slots from (:func:`~association.query.router.settle`).
     question: str = ""
+    #: The router's player names that are no name at all - a rank word or
+    #: a phrase of the question ("most", "most 30+ point games";
+    #: :func:`_not_a_name`), or a name the question holds only by a TEAM's
+    #: word ("magic vs nets" is not Magic Johnson;
+    #: :func:`~association.query.entities._named_only_by_a_team_word`) -
+    #: which :func:`apply_subject` takes out of the slots rather than leaves
+    #: for a template to resolve ("No player found matching 'most'").
+    filler: tuple[str, ...] = ()
 
 
 _MONTH_ABBREVIATIONS = frozenset({"jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec"})
@@ -504,6 +513,12 @@ def _routed_names(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], questio
     return supported, [p for p in routed if p not in supported]
 
 
+def _filler_names(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], question: str) -> tuple[str, ...]:
+    """The router's player names that are no name (:func:`_not_a_name`) or
+    that the question holds only by a team's word - :attr:`Subject.filler`."""
+    return tuple(p for p in _routed_player_slots(slots) if _not_a_name(p) or (not _is_a_team(con, p) and _named_only_by_a_team_word(con, question, p)))
+
+
 def _not_a_name(text: str) -> bool:
     """A router ``player`` that is no name at all: a position phrase ("shooting
     guard" on "highest 3 point percentage ... by a shooting guard", F056 - the
@@ -615,6 +630,8 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, slo
     teams_here = {t for t in (opponent, own[0].name if own is not None else None, team_word) if t}
 
     routed, invented = _routed_names(con, slots, question, routed_opponent)
+    filler = _filler_names(con, slots, question)
+    routed = [p for p in routed if p not in filler]
     named = _question_players(con, question, routed, teams_here)
     spellings = _spellings(con, question, routed)
     players = _merge_names([spellings.get(r, r) for r in routed], named)
@@ -637,6 +654,7 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, slo
         named_season=season_from_text(question),
         intent=settled,
         question=question,
+        filler=filler,
         evidence=(*evidence, f"the words {words!r} name {settled}") if words else evidence,
     )
 
@@ -798,6 +816,7 @@ def apply_subject(subject: Subject, slots: dict[str, Any], *, con: duckdb.DuckDB
     decisions.extend(_apply_opponent_team(subject, slots, con, intent))
     decisions.extend(_apply_own_team(subject, slots, intent))
     decisions.extend(_apply_team_subject(subject, slots, intent))
+    decisions.extend(_apply_position(subject, slots, intent))
     rewritten, settled = _apply_intent(subject, slots, intent)
     decisions.extend(rewritten)
     return Applied(decisions, [], settled)
@@ -1009,9 +1028,18 @@ def _apply_team_subject(subject: Subject, slots: dict[str, Any], intent: str) ->
     Lakers?") keeps its direct answer. ``team_stat`` needs no marker: an
     empty ``team`` there already raises, so the restore is a strict
     improvement."""
-    if intent not in TEAM_SUBJECT_RESTORABLE_INTENTS or subject.kind not in ("team", "team_players") or subject.opponent is not None or len(subject.teams) != 1:
+    if intent not in TEAM_SUBJECT_RESTORABLE_INTENTS | {"game_log"} or subject.kind not in ("team", "team_players") or len(subject.teams) != 1:
         return []
-    if slots.get("team") or slots.get("player") or slots.get("players") or slots.get("opponent"):
+    if slots.get("team") or slots.get("player") or slots.get("players"):
+        return []
+    if intent == "game_log":
+        # A team's games against another, with the team read as a PLAYER
+        # and dropped as one: "magic vs nets last 10" arrived as Magic
+        # Johnson's log (day5) - the reading's team, beside the opponent the
+        # opponent pass already wrote, is the log's own subject.
+        if subject.opponent is None or slots.get("opponent") is None:
+            return []
+    elif subject.opponent is not None or slots.get("opponent"):
         return []
     slots["team"] = subject.teams[0]
     if intent == "leaderboard":
@@ -1019,11 +1047,31 @@ def _apply_team_subject(subject: Subject, slots: dict[str, Any], intent: str) ->
     return [Decision("subject", "team", None, subject.teams[0], "from the question; the router left it out")]
 
 
+def _apply_filler_players(subject: Subject, slots: dict[str, Any]) -> tuple[list[Decision], list[str]]:
+    """Take the router's no-names (:attr:`Subject.filler`) out of the player
+    slots - "most", "most 30+ point games" (what the model files as the
+    player for a ranking once nothing in its prompt shows one with none),
+    or a team's word read as a player ("magic vs nets" as Magic Johnson) -
+    rather than leave them for a template to resolve into "No player found
+    matching 'most'". Returns the decisions and the names still routed."""
+    routed = _routed_player_slots(slots)
+    if not any(r in subject.filler for r in routed):
+        return [], routed
+    field = "players" if isinstance(slots.get("players"), list) else "player"
+    kept = [r for r in routed if r not in subject.filler]
+    decisions = [Decision("subject", field, r, None, "no player's name - a rank word, a phrase of the question, or a team's word") for r in routed if r in subject.filler]
+    if field == "players" and kept:
+        slots["players"] = kept
+    else:
+        slots.pop(field, None)
+    return decisions, kept
+
+
 def _apply_players(subject: Subject, slots: dict[str, Any]) -> tuple[list[Decision], list[str]]:
     """The ``player``/``players`` half of :func:`apply_subject`."""
-    routed = _routed_player_slots(slots)
+    decisions, routed = _apply_filler_players(subject, slots)
     if not routed:
-        return [], []
+        return decisions, []
     # Whatever kind the subject is: "compare the two best centers" reads as a
     # position group, and the two players the router put in its slots are
     # still nobody the question named. A companion the router filed among
@@ -1037,13 +1085,13 @@ def _apply_players(subject: Subject, slots: dict[str, Any]) -> tuple[list[Decisi
         return [], dropped
     field = "players" if isinstance(slots.get("players"), list) else "player"
     replacement = dict(zip(dropped, spare, strict=True)) if dropped else {}  # a spare name with nothing dropped is a player the router omitted: not put back here
-    decisions = [Decision("subject", field, was, now, "the question never names the router's player; it names this one") for was, now in replacement.items()]
+    decisions.extend(Decision("subject", field, was, now, "the question never names the router's player; it names this one") for was, now in replacement.items())
     respelled = _respellings(kept, subject.players)
     replacement.update(respelled)
     decisions.extend(Decision("subject", field, was, now, "spelled as the question names the player") for was, now in respelled.items())
     new = [replacement.get(r, r) for r in routed]
     if new == routed:
-        return [], []
+        return decisions, []
     if field == "players":
         slots["players"] = new
     else:
@@ -1111,7 +1159,58 @@ def _apply_opponent_team(subject: Subject, slots: dict[str, Any], con: duckdb.Du
         if any(_shares_word(subject_name, held) for subject_name in subjects):
             slots.pop("opponent", None)
             decisions.append(Decision("subject", "opponent", held, None, "a player the question already asks about, not a team"))
+    else:
+        decisions.extend(_apply_invented_opponent(subject, slots, con, held, season))
+    decisions.extend(_apply_opponents_word_as_team(slots, con, versus, season))
     return decisions
+
+
+def _apply_opponents_word_as_team(slots: dict[str, Any], con: duckdb.DuckDBPyConnection, versus: Entity | None, season: int | None) -> list[Decision]:
+    """The opponent's own word, expanded by the router into a ``team`` that
+    is not one here: "Centers stats game log vs kings" arrived with
+    team='Los Angeles Kings' beside the reading's Sacramento Kings."""
+    team_text = slots.get("team")
+    if versus is None or not isinstance(team_text, str) or not team_text.strip() or _team_named(con, team_text, season) is not None or not _shares_word(team_text, versus.name):
+        return []
+    slots.pop("team", None)
+    return [Decision("subject", "team", team_text, None, "no such team; the word is the opponent's")]
+
+
+def _apply_invented_opponent(subject: Subject, slots: dict[str, Any], con: duckdb.DuckDBPyConnection, held: Any, season: int | None) -> list[Decision]:
+    """A team the question never names, filed as the opponent, on a question
+    that sets its subject against nobody at all: "PHI record when Embiid and
+    Paul George play" arrived with the Pacers (day5, after the 4.5.0 prompt
+    shrink) and the split was narrowed to four games against them. Only
+    where the question holds no "vs"/"against" - "curry vs lebron" with the
+    Lakers filed is the router grounding the second name, which the tests
+    keep."""
+    if not isinstance(held, str) or not held.strip() or subject.opponent is not None or not subject.question or _AGAINST.search(subject.question):
+        return []
+    opponent_team = _team_named(con, held, season)
+    if opponent_team is None or _team_grounded(con, subject.question, opponent_team):
+        return []
+    slots.pop("opponent", None)
+    return [Decision("subject", "opponent", held, None, "the question sets its subject against nobody; the router's opponent is invented")]
+
+
+def _apply_position(subject: Subject, slots: dict[str, Any], intent: str) -> list[Decision]:
+    """A position group as the subject of a template that reads one player:
+    the group's phrase goes into ``player``, where the template refuses it
+    and the compiler reads it (``compose.move._drop_position_only_player``,
+    ``_everyone_point``'s position filter) - the path "highest 3 point
+    percentage ... by a shooting guard" took while the model filed the
+    phrase itself; after the 4.5.0 prompt shrink it arrived with no player
+    and the leaderboard ranked the whole league (day5, F056)."""
+    if subject.kind != "position" or slots.get("player") or slots.get("players") or intent != "leaderboard" or not subject.question:
+        # leaderboard only: it RAISES on a named player, which is what
+        # reaches the compiler; a game log resolves the phrase and answers
+        # a clarification ("No player found matching 'Centers'").
+        return []
+    phrase = next((match.group(0) for pattern, _ in POSITIONS if (match := re.search(pattern, subject.question, re.IGNORECASE))), None)
+    if phrase is None:
+        return []
+    slots["player"] = phrase
+    return [Decision("subject", "player", None, phrase, "the position group the question is about; the template steps aside and the compiler reads it")]
 
 
 def _apply_opponent_team_out_of_players(slots: dict[str, Any], con: duckdb.DuckDBPyConnection, versus: Entity, season: int | None) -> list[Decision]:

@@ -515,3 +515,57 @@ def test_a_child_the_router_chose_itself_stands(con: duckdb.DuckDBPyConnection) 
     under a child moves (the golden's 308 rows are the proof at scale)."""
     intent, slots = _assigned(con, "PODZIEMSKI career most points in a game", "threshold_count", stat="points", threshold=-1, player="PODZIEMSKI", season_type=2, span="career")
     assert intent == "threshold_count" and slots["threshold"] == -1
+
+
+def test_a_router_name_that_is_no_name_leaves_the_slots(con: duckdb.DuckDBPyConnection) -> None:
+    """Day5 after the 4.5.0 prompt shrink: with no count or ranking example
+    in its prompt, the model files the ranking's own words as the player."""
+    intent, slots = _assigned(con, "who had the most 30 pt games in 2024", "leaderboard", stat="points", player="most", season=2024, season_type=2)
+    assert intent == "threshold_count" and "player" not in slots and slots["threshold"] == 30
+    intent, slots = _assigned(con, "Who had the most 30+ point games this season?", "leaderboard", stat="threePointFieldGoalsMade", player="most 30+ point games", limit=1, season=2026, season_type=2)
+    assert intent == "threshold_count" and "player" not in slots and slots["stat"] == "points" and slots["threshold"] == 30 and "limit" not in slots
+    s = _read(con, "Most points in 15th season played", "player_stat", player="Most Player in 15th Season Played", stat="points")
+    assert s.kind == "everyone" and s.filler == ("Most Player in 15th Season Played",)
+    # A real name ending in a rank word is still a name.
+    assert _read(con, "travis best career stats", "player_stat", player="Travis Best").filler == ()
+
+
+def test_a_team_word_read_as_a_player_is_the_team(con: duckdb.DuckDBPyConnection) -> None:
+    """ "magic vs lakers last 10" arrived as Magic Johnson's games (day5)."""
+    intent, slots = _assigned(con, "magic vs lakers last 10", "game_log", stat="points", player="Magic Johnson", opponent="Los Angeles Lakers", order="recent", limit=10, season_type=2, span="career")
+    assert intent == "game_log" and "player" not in slots and slots["opponent"] == "Los Angeles Lakers" and slots.get("team") == "Orlando Magic"
+
+
+def test_an_opponent_the_question_never_names_is_dropped(con: duckdb.DuckDBPyConnection) -> None:
+    intent, slots = _assigned(
+        con, "PHI record when Embiid and Paul George play", "with_without", team="Philadelphia 76ers", opponent="Atlanta Hawks", season=2026, season_type=2, with_player=["Embiid", "Paul George"]
+    )
+    assert intent == "with_without" and "opponent" not in slots and slots["team"] == "Philadelphia 76ers"
+    # ... and one it does name stays.
+    _, slots = _assigned(con, "PHI record vs the hawks when Embiid plays", "with_without", team="Philadelphia 76ers", opponent="Atlanta Hawks", season=2026, season_type=2)
+    assert slots["opponent"] == "Atlanta Hawks"
+
+
+def test_a_position_group_is_handed_to_the_compiler_as_the_player(con: duckdb.DuckDBPyConnection) -> None:
+    intent, slots = _assigned(con, "highest 3 point percentage in a season by a shooting guard with at least 400 attempts", "leaderboard", stat="threePointFieldGoalPct", limit=1, season_type=2)
+    assert intent == "leaderboard" and slots["player"] == "shooting guard"
+    # A team-only intent reads no player, so nothing is written there.
+    _, slots = _assigned(con, "which team has the best centers", "team_leaderboard", stat="record", season_type=2)
+    assert "player" not in slots
+
+
+def test_a_non_team_in_the_team_slot_that_is_the_opponents_word_is_dropped(con: duckdb.DuckDBPyConnection) -> None:
+    intent, slots = _assigned(con, "Centers stats game log vs kings", "game_log", stat="fieldGoalsMade", team="Los Angeles Kings", order="recent", season_type=2, span="career")
+    assert intent == "game_log" and "team" not in slots and slots["opponent"] == "Sacramento Kings" and "player" not in slots
+
+
+def test_a_completion_that_resolves_to_nobody_is_cut_back(con: duckdb.DuckDBPyConnection) -> None:
+    """ "derozan career points vs knicks" arrived as 'Derozan Valenčić' (day5)
+    - a surname no player has, on a part the question carries that reaches
+    DeMar DeRozan by itself."""
+    from association.query.entities import undo_name_completion
+
+    slots: dict[str, Any] = {"player": "Derozan Valenčić"}
+    assert undo_name_completion(con, "derozan career points vs knicks", slots) == [("Derozan Valenčić", "Derozan")] and slots["player"] == "Derozan"
+    kept: dict[str, Any] = {"player": "DeMar DeRozan"}
+    assert undo_name_completion(con, "derozan career points vs knicks", kept) == [] and kept["player"] == "DeMar DeRozan"

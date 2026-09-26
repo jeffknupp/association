@@ -1687,7 +1687,7 @@ def _names_a_count(question: str) -> bool:
     belong to a line on a box-score stat ("under 14 fta", "with 25 minutes"),
     to a game of a series ("game 4"), or to a count of SEASONS rather than
     games ("past two seasons" - see _PAST_N_SEASONS) are set aside."""
-    stripped = _GAME_N.sub(" ", _ABOVE.sub(" ", _BELOW.sub(" ", _PAST_N_SEASONS.sub(" ", question))))
+    stripped = _GAME_N.sub(" ", _ABOVE.sub(" ", _BELOW.sub(" ", _PAST_N_SEASONS.sub(" ", _THRESHOLD_PAIR.sub(" ", question)))))
     return _COUNT_WORDS.search(stripped) is not None
 
 
@@ -2466,6 +2466,9 @@ def _route_team_slots(intent: str, slots: dict[str, Any], question: str) -> None
 _HOW_MANY = re.compile(r"\bhow\s+many\b", re.IGNORECASE)
 
 
+_GAMES_WON = re.compile(r"\bgames\b.{0,20}\b(won|lost|wins?|los[es]+)\b", re.IGNORECASE)
+
+
 def _route_record_when_threshold(intent: str, slots: dict[str, Any], question: str) -> None:
     """Read a ``record_when`` question's threshold off its own words.
 
@@ -2488,6 +2491,15 @@ def _route_record_when_threshold(intent: str, slots: dict[str, Any], question: s
     other question's routing.
     """
     if intent not in ("record_when", "threshold_count"):
+        return
+    won = _GAMES_WON.search(question)
+    if intent == "record_when" and won is not None and not isinstance(slots.get("threshold"), int):
+        # A player's games won or lost - his team's record in the games he
+        # played, with no threshold at all: the compiler's read once the
+        # template steps aside, and it reads "wins"/"losses", not the
+        # model's own word for it ("playoff_wins", day5).
+        slots["stat"] = "losses" if won.group(1).lower().startswith("los") else "wins"
+        slots.pop("threshold", None)
         return
     pairs = list(_THRESHOLD_PAIR.finditer(question))
     if len(pairs) != 1:
@@ -2604,9 +2616,24 @@ def _route_side_and_order(intent: str, slots: dict[str, Any], question: str) -> 
     _drop_filler_limit(intent, slots, question)
 
 
+def _line_numbers(question: str) -> set[int]:
+    """The numbers that belong to a below/above line ("under 14 fta", "with
+    25 minutes") - a limit equal to one of them is the line's number, not a
+    count of games."""
+    return {int(number) for match in (*_BELOW.finditer(question), *_ABOVE.finditer(question)) for number in re.findall(r"\d+", match.group(0))}
+
+
 def _drop_filler_limit(intent: str, slots: dict[str, Any], question: str) -> None:
     """A ``limit`` the model filled on a question that names no number of games."""
-    if intent == "game_log" and isinstance(slots.get("limit"), int) and _LOG_WORDS.search(question) and not _names_a_count(question) and not _SINGLE_GAME.search(question):
+    limit = slots.get("limit")
+    if (
+        intent == "game_log"
+        and isinstance(limit, int)
+        and (limit == 1 or limit in _line_numbers(question))
+        and _LOG_WORDS.search(question)
+        and not _names_a_count(question)
+        and not _SINGLE_GAME.search(question)
+    ):
         # A log asked for by name (_LOG_WORDS: "gamelog", "by game"), with a
         # limit the question never set: "paul reed gamelog with 25
         # minutes" arrived with order='recent', limit=1 and answered his most
