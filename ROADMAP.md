@@ -457,6 +457,37 @@ honest refusals that a fuller system would answer. By cause:
    remainder (the season line as a relation) - and a merge-conflict gate
    is the 17th hook, after a merge landed markers twice.
 
+13. **2026-09-26, plan item 3 (the player condition) landed and merged
+   (29fc1b4, then bcf30a8): day9 161/175 (92.0%), families 150/166; day10
+   161/175, families 151/166 (91.0%).** A condition is
+   `player_games.Condition(player, side, predicate, line, tenure)` -
+   played / absent / started / bench / reached - and the relation is
+   narrowed by all of a list of them through the shared step
+   (`Narrowed.conditions`; `without` and `tenure` are views of it). The
+   reading gives every companion his role off the phrase's own words
+   (`Subject.conditions`, `Companion(name, predicate, stat, threshold)`),
+   `apply_subject` writes the roles the router's slots cannot carry as the
+   `conditions` slot where the template honors it, a team subject with a
+   reached companion is `record_when` under any of seven router intents,
+   `with_without` splits by each teammate's own predicate ("celtics
+   record when tatum starts"), a pair's "record" with no season spans
+   their careers, and a matchup an absence empties says what it counted
+   (F114 "steph curry record vs lebron regular season without kd": 27
+   meetings, 4 with Durant beside Curry, none he missed as a teammate -
+   still partial, since the key reads "without KD" as every game Durant
+   was not on Curry's team). The last half of F087 ("show me splits for
+   the sixers when maxey scores 20+ points") needed one more rule: a
+   companion the router named nobody for is read from the phrase's own
+   leading word, in the question's spelling, where it is a whole word of
+   some player's name and not an ordinary word (`_unrouted_companions`) -
+   one recorded route of 277 moved, F087's, and day10 confirmed it live.
+   Not done: an opponent-side condition from the reading ("vs lakers
+   without lebron" - the relation reads `side="opponent"`, nothing writes
+   it), the N-way matchup. **Next:** plan item 4 (the period relation),
+   then re-plan from the fourteen families still not good (the quarter
+   questions F048/F049, the two active "Curry" namesakes F002/F003, the
+   no-valid-reading refusals F097/F112/F104, the singles).
+
 ## The current plan: what buys the most correctness next
 
 In order of lift per unit of structural change, each measured on the
@@ -498,7 +529,10 @@ yardstick before the next starts:
    subject reading's `companions` are these names with their stated role,
    so this follows subject kinds directly. The true N-way matchup (three
    players on court across teams) is an N-way event join and stays
-   two-sided.
+   two-sided. **Landed 2026-09-26** (item 13 above): the condition on
+   the relation, the roles off the reading, `record_when` for a team under
+   a companion's line, `with_without` by predicate; the opponent side and
+   the N-way join remain.
 4. **The period relation.** Per-quarter figures beyond points, rebuilt from
    plays the way points are, as one relation the compiler can read - a
    player's or a team's quarter as a narrowing rather than three templates.
