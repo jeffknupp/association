@@ -2639,3 +2639,14 @@ def test_a_log_against_one_team_including_playoffs_with_no_year_is_a_career() ->
         settle("game_log", {"player": "Payton Pritchard", "opponent": "Philadelphia 76ers", "season": current_season()}, "Payton Pritchard vs 76ers this season game log").slots["season"]
         == current_season()
     )
+
+
+def test_a_pairs_record_with_no_season_named_is_their_careers() -> None:
+    from association.query.router import settle
+
+    settled = settle(
+        "player_matchup", {"stat": "points", "players": ["Stephen Curry", "LeBron James"], "season": current_season(), "without": ["kd"]}, "steph curry record vs lebron regular season without kd"
+    )
+    assert settled.slots["span"] == "career" and "season" not in settled.slots
+    assert settle("player_matchup", {"players": ["Stephen Curry", "LeBron James"], "season": current_season()}, "curry record vs lebron this season").slots["season"] == current_season()
+    assert "span" not in settle("player_matchup", {"players": ["Stephen Curry", "LeBron James"], "season": current_season()}, "curry vs lebron game log").slots

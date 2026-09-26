@@ -2449,7 +2449,7 @@ def player_matchup(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
         else ""
     )
     if not meetings:
-        return _player_matchup_no_meetings(con, scope, a, b, together, caveat, narrowed.filters())
+        return _player_matchup_no_meetings(con, scope, a, b, together, caveat + _player_matchup_absence_context(con, a, b, slots, narrowed), narrowed.filters())
 
     wins, lines, count, summary = _player_matchup_summary(a, b, meetings)
     shown, log = _player_matchup_log(con, meetings, slots.get("limit"), a, b)
@@ -2549,6 +2549,38 @@ def _player_matchup_resolve(con: duckdb.DuckDBPyConnection, texts: list[str], sc
     if a.id == b.id:
         raise TemplateUnsupported("the named players resolved to the same person")
     return a, b
+
+
+def _player_matchup_absence_context(con: duckdb.DuckDBPyConnection, a: Entity, b: Entity, slots: dict[str, Any], narrowed: _Narrowed) -> str:
+    """Why a matchup narrowed by a teammate's absence holds no meetings, in
+    the numbers that answer the question a reader probably meant: "steph
+    curry record vs lebron regular season without kd" (yardstick-v2 F114)
+    is "no meetings" because "without Durant" counts only the games inside
+    Durant's time as Curry's teammate (2017-2019), and Durant played every
+    Curry-LeBron meeting in it - while over their careers the two met many
+    more times, most of them with Durant on neither team. Both figures are
+    said, so the reader has the other reading without re-asking. Empty
+    where no absence was named.
+
+    .. versionadded:: 4.5.0
+    """
+    if not narrowed.without:
+        return ""
+    unconditioned = {k: v for k, v in slots.items() if k not in ("without", "conditions")}
+    everywhere = _player_matchup_narrowed(con, a, b, unconditioned)
+    if isinstance(everywhere, TemplateResult):
+        return ""
+    all_meetings, _ = _meetings(con, everywhere, b.id)
+    if not all_meetings:
+        return ""
+    names = _joined([mate.name for mate in narrowed.without])
+    beside = _player_matchup_narrowed(con, a, b, {**unconditioned, "conditions": [{"player": mate.name, "side": "own", "predicate": "played"} for mate in narrowed.without]})
+    with_them = len(_meetings(con, beside, b.id)[0]) if not isinstance(beside, TemplateResult) else 0
+    first, last = min(m["season"] for m in all_meetings), max(m["season"] for m in all_meetings)
+    return (
+        f" Over {first}-{last} they met {len(all_meetings)} time{'s' if len(all_meetings) != 1 else ''} in all, {with_them} of them with {names} playing beside {a.name}; "
+        f"'without {names}' counts only the games he missed while on {a.name}'s team, and there were none among their meetings."
+    )
 
 
 def _player_matchup_no_meetings(con: duckdb.DuckDBPyConnection, scope: _Scope, a: Entity, b: Entity, together: int, caveat: str, narrowing: str = "") -> TemplateResult:

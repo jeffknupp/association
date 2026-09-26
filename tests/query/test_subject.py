@@ -611,3 +611,21 @@ def test_a_start_or_a_line_is_written_as_a_condition_where_the_template_honors_i
     # A template not on the relation gets nothing to refuse.
     intent, slots = _assigned(con, "celtics record when tatum starts", "with_without", team="Boston Celtics", with_player=["tatum"])
     assert "conditions" not in slots
+
+
+def test_a_team_with_a_companions_line_is_record_when_with_him_as_the_player(con: duckdb.DuckDBPyConnection) -> None:
+    """yardstick-v2 F087, "show me splits for the sixers when maxey scores 20+
+    points": the 76ers' record in the games Maxey reached 20 - record_when
+    with Maxey as its player, whatever the router filed (the player's own
+    splits; a line for an invented Joel Embiid)."""
+    intent, slots = _assigned(con, "show me splits for the sixers when maxey scores 20+ points", "player_splits", stat="points", player="Maxey", season=2026, season_type=2)
+    assert (
+        intent == "record_when" and "maxey" in slots["player"].lower() and slots["team"] == "Philadelphia 76ers" and (slots["stat"], slots["threshold"]) == ("points", 20) and slots["season"] == 2026
+    )
+    intent, slots = _assigned(
+        con, "show me splits for the sixers when maxey scores 20+ points", "record_when", stat="points", player="Joel Embiid", opponent="Philadelphia 76ers", season=2026, season_type=2, threshold=20
+    )
+    assert intent == "record_when" and "maxey" in slots["player"].lower() and slots["team"] == "Philadelphia 76ers" and "opponent" not in slots
+    # A player subject keeps his own question: his splits, the condition beside him.
+    intent, slots = _assigned(con, "jaylen brown splits when tatum scores 30+ points", "player_splits", stat="points", player="Jaylen Brown", season=2026, season_type=2)
+    assert intent == "player_splits" and slots["player"] == "Jaylen Brown"

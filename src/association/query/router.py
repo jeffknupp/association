@@ -2431,8 +2431,23 @@ def _route_intent_slots(intent: str, slots: dict[str, Any], question: str, witho
         team_slot = slots.get("team")
         if isinstance(team_slot, str) and any(pattern.fullmatch(team_slot.strip()) for _, pattern in RANK_WORDS):
             slots.pop("team", None)
+    _route_relation_intent_slots(intent, slots, question)
+
+
+def _route_relation_intent_slots(intent: str, slots: dict[str, Any], question: str) -> None:
+    """A streak's kind, a count's filler limit and a pair's career - the
+    relation templates' own slots, split out of :func:`_route_intent_slots`
+    for the complexity gate."""
     if intent == "streak":
         slots["kind"] = "loss" if _LOSING_STREAK.search(question) else "win"
+    if intent == "player_matchup" and _RECORD.search(question) and season_from_text(question) is None and not _SEASON_WORDS.search(question):
+        # "steph curry record vs lebron regular season without kd"
+        # (yardstick-v2 F114): a pair's record with no season named is
+        # their meetings across their careers, not the model's default
+        # season - in which Durant was not Curry's teammate and the answer
+        # was "no meetings". Said in the answer's own span line.
+        slots["span"] = "career"
+        slots.pop("season", None)
     if intent in ("threshold_count", "single_game_high") and isinstance(slots.get("limit"), int) and not _names_a_count(question):
         # The model's `limit: 1` for "who had the most" under a leaderboard
         # (its parent since 4.5.0) is filler here: the count's and the

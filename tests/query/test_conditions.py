@@ -1523,3 +1523,19 @@ def test_a_condition_the_relation_cannot_read_refuses(league: TemplateContext) -
         _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "reached", "stat": "vibes", "threshold": 3})
     with pytest.raises(TemplateUnsupported, match="conditions"):
         check_scope("player_history", {"player": "Jaylen Brown", "stat": "points", "conditions": [{"player": "Jayson Tatum"}]})
+
+
+def test_a_matchup_emptied_by_an_absence_says_what_it_counted(league: TemplateContext) -> None:
+    """yardstick-v2 F114: "curry record vs lebron without kd" holds no
+    meetings because "without" counts only the games the teammate missed
+    while on the subject's team - so the answer says how many meetings there
+    were in all, how many with the teammate beside him, and why the narrowed
+    set is empty. This season Tatum met LeBron in e1 and e7 (e2 he sat), and
+    Brown played both; last season Brown missed both meetings, so a career
+    read has 2 to show."""
+    result = player_matchup(league, _slots(players=["Jayson Tatum", "LeBron James"], without=["Jaylen Brown"], season=S))
+    assert result.data["meetings"] == 0
+    assert f"Over {S}-{S} they met 2 times in all, 2 of them with Jaylen Brown playing beside Jayson Tatum" in result.answer and "there were none among their meetings" in result.answer
+    # ... and where the narrowed set holds a meeting, there is a matchup to show and no context.
+    result = player_matchup(league, _slots(players=["Jayson Tatum", "LeBron James"], without=["Jaylen Brown"], span="career"))
+    assert result.data["meetings"] == 2 and "they met" not in result.answer
