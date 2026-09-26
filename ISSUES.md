@@ -2533,6 +2533,7 @@ those were found.
   non-calendar-situation refusal should quote the question's own phrase,
   not the slot's one word.
 - **Source:** ours, not ESPN's.
+- **GitHub:** #229
 
 ## P3: refusal or gap
 
@@ -3213,6 +3214,7 @@ those were found.
   `season_from_slots: bool`) and read it in `_resolve_named`; a
   `test_compose.py` case on a dated `player_stat` against the template.
 - **Source:** ours, not ESPN's.
+- **GitHub:** #230
 
 ### `team_alignment` is not declared in every `TEMPLATE_SOURCES` tuple that can now read it
 - **Found:** 2026-09-24, landing the K3-2 conference/division narrowing.
