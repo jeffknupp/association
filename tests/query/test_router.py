@@ -2498,3 +2498,68 @@ def test_an_attempted_shot_stat_is_the_attempted_column() -> None:
     assert made.slots["stat"] == "threePointFieldGoalsMade"
     ratio = _asking('{"intent":"leaderboard","stat":"fieldGoalsMade","season":2026}', "most field goals made per attempt")
     assert ratio.slots["stat"] == "fieldGoalsMade"
+
+
+def test_settle_reproduces_a_route_under_its_own_intent() -> None:
+    """`settle` is the post-processing run again: over a settled route's own
+    slots and intent it changes nothing, which is what lets the subject
+    reading hand it a route to re-settle under a child intent."""
+    from association.query.router import settle
+
+    for intent, slots, question in (
+        ("game_log", {"stat": "points", "player": "Stephen Curry", "season": current_season(), "season_type": 2, "order": "recent", "limit": 5, "season_type_unstated": True}, "Curry's last 5 games"),
+        ("threshold_count", {"stat": "points", "threshold": 30, "player": "Nikola Jokic", "season": 2024, "season_type": 2}, "How many 30+ point games did Jokic have in 2024?"),
+        ("player_history", {"stat": "twoPointFieldGoalPct", "player": "LeBron James", "limit": 10, "season_type": 2}, "show me lebron's 2pt percentage for the past 10 years"),
+        ("player_stat", {"player": "Nikola Jokic", "season_type": 2, "span": "career"}, "Jokic career averages"),
+    ):
+        again = settle(intent, dict(slots), question)
+        assert (again.intent, again.slots) == (intent, slots), question
+
+
+def test_settle_reads_a_childs_slots_off_the_text_and_drops_the_parents_derived_ones() -> None:
+    from association.query.router import settle
+
+    # A game log read "the past 4 seasons" as `since`; a history reads it as
+    # `limit`, and the `since` the game log derived must not survive.
+    given = {"stat": "threePointFieldGoalPct", "player": "Klay Thompson", "season_type": 2, "since": current_season() - 3}
+    settled = settle("player_history", given, "Klay Thompson's 3pt percentage over the past 4 seasons")
+    assert settled.intent == "player_history" and settled.slots["limit"] == 4 and "since" not in settled.slots
+    # A season the model resolved from "this season" survives the re-run.
+    settled = settle("threshold_count", {"stat": "points", "player": "Nikola Jokic", "season": current_season(), "season_type": 2}, "How many 30+ point games did Jokic have this season?")
+    assert settled.slots["threshold"] == 30 and settled.slots["season"] == current_season()
+    # The stages may settle elsewhere: a count with no threshold is a ranking.
+    assert settle("threshold_count", {"stat": "threePointFieldGoalsMade"}, "who has the most threes").intent == "leaderboard"
+    assert settle("record_when", {"stat": "points", "team": "Philadelphia 76ers"}, "PHI record when Embiid and Paul George played").intent == "with_without"
+
+
+def test_the_kind_assigned_intents_all_have_templates() -> None:
+    """A child the reading assigns is one a template answers - the same
+    reachability test the schema's enum and CODE_ASSIGNED_INTENTS get."""
+    from association.query.subject import KIND_ASSIGNED_INTENTS
+
+    assert set(TEMPLATES) >= KIND_ASSIGNED_INTENTS
+    assert KIND_ASSIGNED_INTENTS.isdisjoint(CODE_ASSIGNED_INTENTS)
+
+
+def test_a_threshold_without_a_plus_reads_every_spelling_the_pair_grammar_does() -> None:
+    """`_THRESHOLD` used to be a second hand-kept alternation that lacked
+    "pt", "reb" and "ast", so "30 pt games" read no threshold and became a
+    ranking."""
+    from association.query.router import _threshold_from_text
+
+    assert _threshold_from_text("who had the most 30 pt games in 2024") == 30
+    assert _threshold_from_text("games with 15 reb this season") == 15
+    assert _threshold_from_text("3 pt shots") is None and _threshold_from_text("3 point shots") is None
+
+
+def test_a_shot_value_the_question_names_is_read_for_a_distance_or_a_chart() -> None:
+    """The shot_distance worked example taught the model `shot_value`; with the
+    intent assigned from the text, the value is read from the text too - and
+    only where the model left it empty and the question names exactly one."""
+    from association.query.router import settle
+
+    assert settle("shot_distance", {"stat": "points", "player": "Stephen Curry"}, "what was steph curry's avg 3pt shot distance").slots["shot_value"] == 3
+    assert settle("shot_distance", {"stat": "points", "player": "Stephen Curry"}, "how far does curry shoot his twos from").slots["shot_value"] == 2
+    assert settle("shot_distance", {"stat": "points", "player": "Stephen Curry", "shot_value": 2}, "curry's 3pt shot distance").slots["shot_value"] == 2
+    assert "shot_value" not in settle("shot_distance", {"stat": "points", "player": "Stephen Curry"}, "curry's twos and threes by distance").slots
+    assert "shot_value" not in settle("player_stat", {"stat": "points", "player": "Stephen Curry"}, "curry's 3pt percentage").slots

@@ -391,6 +391,18 @@ honest refusals that a fuller system would answer. By cause:
    reading's `_decide_intent` (a no-op while the children stay in the
    enum - golden-neutral), then one schema/prompt edit removing the group,
    `check_routing` and a live run - the first prompt shrink.
+9. **2026-09-25, plan item 2 step 2c-i landed: the seven children are
+   assigned from the question's words, gated on the subject's kind**
+   (`subject.KIND_ASSIGNED_INTENTS`, `_CHILD_GRAMMARS`), their slots from
+   the router's own stages run again under the child (`router.settle`,
+   which `route()` now shares) - so the threshold, the seasons count, a
+   streak's kind and a split have one reader, not one per child. Measured
+   (`~/association-research/intent-shrink/RESULT.md`): 0 false positives
+   on 261 non-child recorded rows, 83-100% recall per child across every
+   parent it might arrive as, `settle` idempotent on 271/277 live rows (the
+   rest code drift), golden 308/308 unchanged - a no-op while the children
+   stay in the enum, by construction. **Next:** 2c-ii, the group out of the
+   prompt and schema, `check_routing`, a live run.
 
 ## The current plan: what buys the most correctness next
 

@@ -341,11 +341,6 @@ class Agent:
         # was wrong (query/subject.py); each chain step becomes a no-op, then
         # goes, as the reading takes over the field it settled.
         subject = self._record_subject(question, routed, history)
-        settled = self._settled_before_template(question, routed, handler, history, subject)
-        if settled is not None:
-            return settled
-        if handler is None:
-            return None
         # A fingerprint draws as many polygons as it is given, and the router
         # drops the second name often enough that "compare fingerprints for
         # embiid vs jokic" arrived as one player, answered as half the
@@ -356,20 +351,30 @@ class Agent:
                 history.log(f"  -> (player) {restored[0]!r} -> {restored[1]!r} (the question names more players than the router returned)")
         # The reading writes the slots a template reads - who the question
         # is about, in the router's own slot shape - and settles the intent
-        # where the router's cannot be about that subject. The router invents
+        # where the router's cannot be about that subject, or where the
+        # question's own words name a child of it (subject.KIND_ASSIGNED_INTENTS:
+        # a count of 30+ point games under a game log). The router invents
         # whole names, not only nicknames: "compare sga and embiid" came back
         # with Jusuf Nurkic in the second slot, and every stage after this one
         # would have answered about him perfectly; a name nothing in the
         # question can replace is refused by name here.
-        misread_result = self._ground_players(routed, subject, history)
+        settled_intent, misread_result = self._ground_players(routed, subject, history)
         if misread_result is not None:
             return routed.intent, misread_result
-        if subject.intent and subject.intent != routed.intent and subject.intent in TEMPLATES:
+        if settled_intent != routed.intent and settled_intent in TEMPLATES:
             # The handler goes with the intent. Resolving them apart is how a
             # reroute shipped broken once: the intent said with_without, the
-            # trace said with_without, and head_to_head ran.
-            routed.intent = subject.intent
+            # trace said with_without, and head_to_head ran. Before the
+            # no-template check below, since the router's `other` is a
+            # parent the words assign under.
+            routed.intent = settled_intent
             handler = TEMPLATES[routed.intent]
+            history.log(f"  -> (subject) intent={routed.intent!r} slots={routed.slots}")
+        settled = self._settled_before_template(question, routed, handler, history, subject)
+        if settled is not None:
+            return settled
+        if handler is None:
+            return None
         # Completing a bare surname is the prominence tiebreak this project
         # measured and rejected, arriving through the model instead of through
         # code. "brown" is ten players and has to ask, as it always did.
@@ -389,14 +394,15 @@ class Agent:
                 return routed.intent, TemplateResult(data={"message": message, "named_player": named_player}, answer=message)
         return self._run_scoped_template(question, routed, handler, history, subject)
 
-    def _ground_players(self, routed: Route, subject: Subject, history: RunHistory) -> TemplateResult | None:
+    def _ground_players(self, routed: Route, subject: Subject, history: RunHistory) -> tuple[str, TemplateResult | None]:
         """Every player name a template will read is one the question holds:
         the subject reading writes the names it read (query/subject.py,
         apply_subject) - the router's players and a player filed as the
         opponent, each write a recorded decision - and a router name the
         question never held that nothing in the question can replace is
-        refused by name (the result returned here). Split out of
-        _try_fast_path for the complexity gate."""
+        refused by name (the result returned here, beside the intent the
+        reading settled the slots for). Split out of _try_fast_path for the
+        complexity gate."""
         applied = apply_subject(subject, routed.slots, con=self.toolbox.con, intent=routed.intent)
         for decision in applied.decisions:
             history.record_decision(decision)
@@ -409,8 +415,8 @@ class Agent:
         if dropped and routed.intent in PLAYER_INTENTS:
             misread = misread_players(dropped)
             history.log(f"  -> (player) {misread}")
-            return TemplateResult(data={"message": misread, "misread": dropped}, answer=misread)
-        return None
+            return applied.intent, TemplateResult(data={"message": misread, "misread": dropped}, answer=misread)
+        return applied.intent, None
 
     def _record_subject(self, question: str, routed: Route, history: RunHistory) -> Subject:
         """The subject reading (query/subject.py) as decisions - who the

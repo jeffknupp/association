@@ -1114,8 +1114,11 @@ def test_a_player_left_out_is_restored_only_where_one_is_required(scope_con: duc
     slots: dict[str, Any] = {"stat": "points", "threshold": 36}
     _scope(scope_con, "Sga record 36 plus points", slots, reads_player=True, needs_player=True)
     assert slots["player"] == "Shai Gilgeous-Alexander"
+    # A game log's player is optional - and the question has to be one the
+    # words leave a game log: "Sga record 36 plus points" itself is the
+    # record question, which the reading assigns (subject.KIND_ASSIGNED_INTENTS).
     optional: dict[str, Any] = {"stat": "points", "threshold": 36}
-    _scope(scope_con, "Sga record 36 plus points", optional, reads_player=True)
+    _scope(scope_con, "Sga game log with 36 plus points", optional, reads_player=True)
     assert "player" not in optional
 
 
@@ -1132,8 +1135,11 @@ def test_a_subject_named_with_no_verb_is_restored_for_single_game_high(scope_con
     assert slots["player"] == "Kawhi Leonard"
     # Off by default, same as needs_player: a caller that does not ask for it
     # (an intent outside SUBJECT_RESTORABLE_INTENTS) gets the league reading.
+    # ... and a question the words leave at that intent: "kawhi most threes
+    # in a game" IS the single-game high, which the reading assigns under a
+    # game log (subject.KIND_ASSIGNED_INTENTS).
     unrestored: dict[str, Any] = {"stat": "threePointFieldGoalsMade"}
-    _scope(scope_con, "kawhi most threes in a game", unrestored, reads_player=True)
+    _scope(scope_con, "kawhi threes game log", unrestored, reads_player=True)
     assert "player" not in unrestored
 
 

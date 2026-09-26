@@ -603,7 +603,7 @@ PLAYER_INTENTS: frozenset[str] = frozenset(
 """
 
 
-PLAYER_REQUIRED_INTENTS: frozenset[str] = frozenset({"record_when", "period_split"})
+PLAYER_REQUIRED_INTENTS: frozenset[str] = frozenset({"record_when", "period_split", "shot_distance", "player_history"})
 """Intents whose template cannot answer at all without a player, so a player the
 router left out is worth restoring from the question.
 
@@ -612,16 +612,20 @@ Deliberately not every intent that reads one: where the player is optional -
 filling it would turn a league question into a question about somebody the
 question may only appear to name ("best" is Travis Best).
 
-``record_when`` left this set once it grew a team branch (ISSUES.md #144): a
-threshold on a TEAM's own scoring is a real, player-less question now, not an
-unanswerable one, so restoring a stray name found elsewhere in the question
-onto it would risk narrowing a team question into a player's. The player half
-still restores a name the router dropped - through ``router.py``'s own
-``_SUBJECT_RESTORED_INTENTS``, which reads the "X scored" grammar at routing
-time, before this set is ever consulted - so nothing here was relied on for
-that case in the first place.
+``record_when`` has a team branch too (ISSUES.md #144) - a threshold on a
+TEAM's own scoring is a real, player-less question - which is why the restore
+that reads this set (``subject._apply_restored_player``) puts a name back
+only where the reading settled on exactly ONE player, subject or companion,
+and never a stray name found elsewhere in the question.
 
 .. versionadded:: 2.1.0
+
+.. versionchanged:: 4.5.0
+   ``shot_distance`` and ``player_history`` added: each refuses outright
+   without a player ("shot_distance needs a player name"), and each is now
+   assigned from the question's words under a parent whose own stages may
+   have dropped the player (``subject.KIND_ASSIGNED_INTENTS``: a
+   ``leaderboard`` drops the filler player a distance question arrives with).
 """
 
 

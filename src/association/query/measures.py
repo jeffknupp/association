@@ -20,6 +20,7 @@ MEASURE_WORDS: dict[str, str] = {
     "points": "points",
     "point": "points",
     "pts": "points",
+    "pt": "points",
     "rebounds": "rebounds",
     "rebound": "rebounds",
     "reb": "rebounds",

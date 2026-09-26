@@ -268,7 +268,7 @@ def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResu
     """
     con = ctx.con
     stat = slots.get("stat")
-    column, threshold = _threshold_count_ask(stat, slots.get("threshold"))
+    column, threshold = _threshold_count_ask(slots)
     lines, counted, scope_text = _threshold_count_lines(stat, threshold, slots.get("below"), slots.get("above"))
 
     career = _career_span("threshold_count", slots.get("span"), slots.get("season"))
@@ -345,12 +345,20 @@ def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResu
     )
 
 
-def _threshold_count_ask(stat: Any, threshold: Any) -> tuple[str, int]:
+def _threshold_count_ask(slots: dict[str, Any]) -> tuple[str, int | None]:
     """The box-score column and the threshold a count is over; raises for a
-    stat this does not know or a threshold that counts every game."""
+    stat this does not know or a threshold that counts every game. A
+    below/above phrase carries a line of its own, in which case the count
+    may have no threshold at all ("Sga games with under 14 fta" - the phrase
+    IS the count, and once nothing asks the model for a threshold on this
+    shape, none arrives)."""
+    stat, threshold = slots.get("stat"), slots.get("threshold")
+    lined = bool(slots.get("below") or slots.get("above"))
     column = THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
-    if column is None or not isinstance(threshold, int):
+    if column is None or (not isinstance(threshold, int) and not (threshold is None and lined)):
         raise TemplateUnsupported(f"threshold_count needs a known stat and an integer threshold, got {stat!r}/{threshold!r}")
+    if threshold is None:
+        return column, None
     if threshold < 1:
         # ">= 0" counts every game, which is never the question: measured, "most 3
         # pointers made since 2020" arrived as threshold 0 and was answered as
@@ -401,7 +409,7 @@ def _threshold_count_subject(con: duckdb.DuckDBPyConnection, text: Any, season_n
     return player, settled.season, settled.ordinal
 
 
-def _threshold_count_lines(stat: Any, threshold: int, below: Any, above: Any) -> tuple[list[MeasureFilter], int | None, str]:
+def _threshold_count_lines(stat: Any, threshold: int | None, below: Any, above: Any) -> tuple[list[MeasureFilter], int | None, str]:
     """The lines a count keeps games under or over, the model's own threshold
     if it is still one of them (None when a phrase carries it), and the
     wording of all of them: "30+ points and under 5 turnovers".

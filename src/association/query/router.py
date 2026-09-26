@@ -1130,7 +1130,6 @@ _SHOT_WORDS = re.compile(r"\bshots?\b|\bthrees\b|\b3s\b|\b(?:3|three)[- ]?pointe
 
 # A per-game threshold, stated in the question ("scores 30 points", "36 plus
 # points", "40 point games"). "3 point" is a shot type, not a threshold of three.
-_THRESHOLD = re.compile(r"\b(\d{1,3})\s*(?:\+|plus|or\s+more)?\s*(points?|pts|rebounds?|boards|assists?|steals?|blocks?|turnovers?|threes|3s)\b", re.IGNORECASE)
 _THRESHOLD_INTENTS = frozenset({"threshold_count", "record_when", "streak"})
 
 # Every condition a question states as "N+ <stat>", in order. ROUTER_SCHEMA
@@ -1159,7 +1158,7 @@ _THRESHOLD_INTENTS = frozenset({"threshold_count", "record_when", "streak"})
 # A spelling dropped from MEASURE_WORDS raises KeyError at import rather than
 # silently narrowing what this grammar understands.
 _THRESHOLD_SPELLINGS = (
-    "points", "point", "pts",
+    "points", "point", "pts", "pt",
     "rebounds", "rebound", "rebs", "reb", "boards",
     "assists", "assist", "asts", "ast",
     "steals", "steal", "stl",
@@ -1170,6 +1169,15 @@ _THRESHOLD_SPELLINGS = (
 _THRESHOLD_WORDS: dict[str, str] = {word: MEASURE_WORDS[word] for word in _THRESHOLD_SPELLINGS}
 _THRESHOLD_PAIR = re.compile(
     r"\b(\d{1,3})\s*(?:\+|plus|or\s+more)\s*(" + "|".join(sorted((re.escape(w) for w in _THRESHOLD_WORDS), key=len, reverse=True)) + r")\b",
+    re.IGNORECASE,
+)
+# The same spellings with the "+" optional - a threshold the model left out,
+# read only under the intents that carry one (_THRESHOLD_INTENTS), where a
+# bare "30 pt games" is a threshold and not a ranking. Built from the one
+# list, so "30 pt games" reads the 30 the way "30+ pt games" does: this used
+# to be a second hand-kept alternation without "pt", "reb" or "ast".
+_THRESHOLD = re.compile(
+    r"\b(\d{1,3})\s*(?:\+|plus|or\s+more)?\s*(" + "|".join(sorted((re.escape(w) for w in _THRESHOLD_WORDS), key=len, reverse=True)) + r")\b",
     re.IGNORECASE,
 )
 
@@ -1322,6 +1330,35 @@ def _route_attempted_stat(slots: dict[str, Any], question: str) -> None:
     if stat not in _MADE_TO_ATTEMPTED or not _ATTEMPTED.search(question) or re.search(r"\b(?:made|makes?|hit|hits)\b", question, re.IGNORECASE):
         return
     slots["stat"] = _MADE_TO_ATTEMPTED[stat]
+
+
+# Which shots a distance or a chart is about, from the question's own words.
+# The intents that read `shot_value` (templates.shots._shot_value: a
+# shot_distance and a shot_chart) used to have the model taught it by their
+# own worked examples in ROUTER_PROMPT; with shot_distance assigned from the
+# text instead (subject.KIND_ASSIGNED_INTENTS), "avg 3pt shot distance" has
+# to read its 3 here - the same discipline `_validate_side` follows, and for
+# the same reason: a value read off the question cannot move any other slot.
+_SHOT_VALUE_WORDS: tuple[tuple[int, re.Pattern[str]], ...] = (
+    (3, re.compile(r"\b(?:3|three)[- ]?(?:pt|pts|point(?:er)?s?)\b|\bthrees\b|\b3s\b", re.IGNORECASE)),
+    (2, re.compile(r"\b(?:2|two)[- ]?(?:pt|pts|point(?:er)?s?)\b|\btwos\b", re.IGNORECASE)),
+    (1, re.compile(r"\bfree[- ]throws?\b|\bfts?\b", re.IGNORECASE)),
+)
+_SHOT_VALUE_INTENTS = frozenset({"shot_distance", "shot_chart"})
+
+
+def _route_shot_value(intent: str, slots: dict[str, Any], question: str) -> None:
+    """The shot value a distance or chart question names, where the model
+    left the slot empty - never over a value it did fill, and only where
+    exactly one value is named ("twos and threes" is neither).
+
+    .. versionadded:: 4.5.0
+    """
+    if intent not in _SHOT_VALUE_INTENTS or isinstance(slots.get("shot_value"), int):
+        return
+    named = [value for value, pattern in _SHOT_VALUE_WORDS if pattern.search(question)]
+    if len(named) == 1:
+        slots["shot_value"] = named[0]
 
 
 def _route_leaderboard_shot_distance(intent: str, slots: dict[str, Any], question: str) -> None:
@@ -1562,8 +1599,8 @@ def _threshold_from_text(question: str) -> int | None:
     """The first per-game threshold the question states, or None."""
     for match in _THRESHOLD.finditer(question):
         number = int(match.group(1))
-        if number == 3 and match.group(2).casefold().startswith("point"):
-            continue
+        if number == 3 and match.group(2).casefold().startswith(("point", "pt")):
+            continue  # "3 point" / "3 pt" names the shot, not a threshold
         if number >= 1:
             return number
     return None
@@ -1691,7 +1728,7 @@ def _validate_order(slots: dict[str, Any], question: str) -> str | None:
 # opposed to asking who is better. Loose on purpose, and safe because of where
 # it is used: see :func:`_named_a_stat`.
 _STAT_WORDS = re.compile(
-    r"\b(points?|scor\w*|pts|rebound\w*|boards|reb|assist\w*|passing|dimes|ast|steal\w*|stl|block\w*|blk|"
+    r"\b(points?|scor\w*|pts?|rebound\w*|boards|reb|assist\w*|passing|dimes|ast|steal\w*|stl|block\w*|blk|"
     r"turnover\w*|giveaways?|fouls?|minutes?|mins?|shoot\w*|shots?|three\w*|3pt|3-point\w*|field goals?|free throws?|"
     r"percentage|efficien\w*|usage|double-doubles?|triple-doubles?|td3s?|ppg|rpg|apg|spg|bpg|fg|ft|3p|ts|efg)\b",
     re.IGNORECASE,
@@ -2092,10 +2129,12 @@ def _route_threshold(raw: dict[str, Any], slots: dict[str, Any], question: str) 
         subject = None if slots.get("player") or slots.get("players") else _subject_named_in(question)
         if subject is not None:
             slots["player"] = subject
-    if raw["intent"] == "threshold_count" and not isinstance(slots.get("threshold"), int):
+    if raw["intent"] == "threshold_count" and not isinstance(slots.get("threshold"), int) and not _BELOW.search(question):
         # A count of games needs a threshold. Without one, "who has the most
         # threes" is a season ranking - measured, it arrived here with none and
-        # fell through.
+        # fell through. A ceiling IS the count's line ("Sga games with under
+        # 14 fta": _threshold_count_lines reads the phrase as the count), so
+        # a count stated as one keeps its intent with no threshold at all.
         raw["intent"] = "leaderboard"
 
 
@@ -2571,6 +2610,59 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     raw = _route_ask_model(model, question, previous_question)
     if raw is None:
         return None
+    return _settle(raw, question)
+
+
+#: The slot keys the model can emit - what :func:`settle` keeps of a settled
+#: route before running the stages again, since every other key is one the
+#: stages themselves read off the question for the intent they were run
+#: under (``since`` for a ``game_log``, ``limit``-as-seasons for a
+#: ``player_history``), and would otherwise survive into an intent whose
+#: template refuses it.
+_MODEL_SLOTS: frozenset[str] = frozenset(ROUTER_SCHEMA["properties"]) - {"intent"}
+
+
+def settle(intent: str, slots: dict[str, Any], question: str) -> Route:
+    """The route :func:`route` would have returned had the model replied with
+    ``intent`` - the same stages, run again over the slots the model could
+    have emitted, for an intent assigned after the model answered.
+
+    That is how :mod:`association.query.subject` assigns a child intent
+    the router's prompt no longer describes (``threshold_count`` under a
+    ``game_log``, ``player_history`` under a ``player_stat``: its
+    ``KIND_ASSIGNED_INTENTS``): the question's words name the intent, and
+    the slots the child's own schema line used to teach the model
+    (``threshold`` from "30+", ``limit`` as a count of seasons from "the
+    past 4 seasons", ``kind`` of a streak, a ``split``) are the ones these
+    stages already read off the text - so re-running them under the child
+    is the whole recovery, and one definition of each slot rather than a
+    second reader per child. ``slots`` is a settled route's, so the keys the
+    stages derive are dropped first (:data:`_MODEL_SLOTS`) and a season the
+    model resolved from a relative reference is put back as that reference,
+    since :func:`_validate_season` keeps a bare ``season`` only where the
+    question names one. The stages may settle on a DIFFERENT intent than
+    asked - a count with no threshold is a ranking, a "when X and Y played"
+    record is ``with_without`` - and the caller reads the returned intent
+    rather than assuming its own.
+
+    .. versionadded:: 4.5.0
+    """
+    raw: dict[str, Any] = {key: value for key, value in slots.items() if key in _MODEL_SLOTS}
+    raw["intent"] = intent
+    season = slots.get("season")
+    if isinstance(season, int) and season_from_text(question) is None and "season_ref" not in raw:
+        # The model said "current" or "previous" and the first run resolved
+        # it; a bare year nothing in the question names is dropped by the
+        # season stage, so the reference is restored for it to resolve again.
+        if season == current_season():
+            raw["season_ref"] = "current"
+        elif season == current_season() - 1:
+            raw["season_ref"] = "previous"
+    return _settle(raw, question)
+
+
+def _settle(raw: dict[str, Any], question: str) -> Route:
+    """The post-processing stages, over the model's reply or a reassigned one (:func:`settle`)."""
     # A coach question is refused whatever the model said, and carries no
     # slots, so it short-circuits before any of the stages below run.
     if _route_coach_intent(raw, question):
@@ -2592,6 +2684,7 @@ def route(model: str, question: str, previous_question: str | None = None) -> Ro
     _route_game_score(raw["intent"], slots, question)
     _route_two_point_pct(raw["intent"], slots, question)
     _route_leaderboard_shot_distance(raw["intent"], slots, question)
+    _route_shot_value(raw["intent"], slots, question)
     _route_attempted_stat(slots, question)
     _route_ranked_boolean_games(raw["intent"], slots, question)
     _route_team_slots(raw["intent"], slots, question)
