@@ -212,6 +212,13 @@ class Query:
     available: Any = None
     span: Any = None
     season: Any = None
+    #: ``"games"`` - the player-games relation, one row per player per game -
+    #: or ``"seasons"``, the season line (``player_season_stats_deduped``, one
+    #: row per player per season) an unnarrowed player line or a per-season
+    #: history reads. Only :mod:`~association.query.compose.present` says a
+    #: season-line point, through the templates' own readers; :func:`compile_query`
+    #: compiles the game-level relation alone.
+    source: str = "games"
     #: ``"player"`` (the named one) or ``"everyone"`` - the league-wide read of
     #: the same relation (:func:`~association.query.templates.common.league_games`).
     subject: str = "player"
@@ -559,6 +566,8 @@ def compile_query(con: duckdb.DuckDBPyConnection, q: Query) -> Compiled:
 
     .. versionadded:: 4.4.0
     """
+    if q.source != "games":
+        raise Unsupported(f"the {q.source} source is read by the templates' own readers, not compiled")
     _check_relation_scoping(q.slots, q.subject)
     _check_split_category(q)
     player, span, narrowed = _resolve_subject(con, q)

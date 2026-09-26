@@ -1193,18 +1193,94 @@ def test_a_league_count_on_the_routers_own_line_is_answered(cx_ctx: TemplateCont
 
 
 def test_a_history_by_season_keeps_the_newest_seasons(cx_ctx: TemplateContext) -> None:
-    """``player_history`` over the relation, limited to one season, is his
-    NEWEST one, newest first - it ordered by the label ascending and kept the
-    oldest, so "the past 4 seasons" was answered with a career's first four."""
+    """``player_history``'s game-level reading (``move.games_reading``, for a
+    stat the season line has no per-season column for), limited to one
+    season, is his NEWEST one, newest first - it ordered by the label
+    ascending and kept the oldest, so "the past 4 seasons" was answered with
+    a career's first four."""
     s = current_season()
-    result = compose_answer(cx_ctx, "player_history", {"player": "Brandin Podziemski", "stat": "points", "limit": 1}, "podziemski's points over the past season")
+    result = compose_answer(cx_ctx, "player_history", {"player": "Brandin Podziemski", "stat": "turnovers", "limit": 1}, "podziemski's turnovers over the past season")
     assert result is not None
     assert [r["group"] for r in result.data["rows"]] == [s]
     assert "most recent 1 seasons" in result.answer
-    both = compose_answer(cx_ctx, "player_history", {"player": "Brandin Podziemski", "stat": "points", "limit": 5}, "podziemski's points by season")
+    both = compose_answer(cx_ctx, "player_history", {"player": "Brandin Podziemski", "stat": "turnovers", "limit": 5}, "podziemski's turnovers by season")
     assert both is not None
     assert [r["group"] for r in both.data["rows"]] == [s, s - 1]
     assert "most recent" not in both.answer  # the whole career fit
+
+
+# ---------------------------------------------------------------------------
+# The season line as a second source (#228): an unnarrowed player_stat and a
+# per-season player_history read player_season_stats_deduped, through the
+# templates' own readers - text and data the template's, on the same slots.
+# ---------------------------------------------------------------------------
+
+
+def _add_season_line(con: duckdb.DuckDBPyConnection) -> None:
+    """``player_season_stats_deduped`` with the columns the season-line
+    readers select, replacing ``cx_ctx``'s games-only stub: Podziemski and
+    Curry over two seasons, numbers of their own (not the fixture's box
+    scores - the season line is a separate source, and a reading that summed
+    the games instead would show here as a different number)."""
+    s = current_season()
+    con.execute("DROP TABLE player_season_stats_deduped")
+    con.execute(
+        "CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER, gamesPlayed INTEGER, "
+        "avgPoints DOUBLE, points DOUBLE, avgRebounds DOUBLE, totalRebounds DOUBLE, avgAssists DOUBLE, assists DOUBLE, "
+        "threePointFieldGoalPct DOUBLE, threePointFieldGoalsMade DOUBLE, threePointFieldGoalsAttempted DOUBLE)"
+    )
+    con.executemany(
+        "INSERT INTO player_season_stats_deduped VALUES (?, ?, 2, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (PODZ, s - 1, 60, 9.5, 570, 4.0, 240, 3.0, 180, 35.0, 70, 200),
+            (PODZ, s, 70, 12.5, 875, 5.0, 350, 3.5, 245, 38.0, 95, 250),
+            (CURRY, s - 1, 70, 24.5, 1715, 4.5, 315, 6.0, 420, 40.0, 280, 700),
+            (CURRY, s, 43, 26.0, 1118, 4.0, 172, 5.0, 215, 39.3, 190, 484),
+        ],
+    )
+
+
+@pytest.mark.parametrize(
+    ("intent", "slots", "question"),
+    [
+        ("player_stat", {"player": "Stephen Curry", "stat": "points"}, "how many points does curry average"),
+        ("player_stat", {"player": "Stephen Curry"}, "what are curry's numbers this season"),
+        ("player_stat", {"player": "Stephen Curry", "span": "career"}, "curry career averages"),
+        ("player_stat", {"player": "Stephen Curry", "stat": "threePointFieldGoalPct", "span": "career"}, "curry career 3pt percentage"),
+        ("player_history", {"player": "Stephen Curry", "stat": "threePointFieldGoalPct", "limit": 4}, "curry's 3pt percentage over the past 4 seasons"),
+        ("player_history", {"player": "Brandin Podziemski", "stat": "points", "limit": 1}, "podziemski's ppg over the past season"),
+        ("player_history", {"player": "Stephen Curry", "stat": "points", "span": "career"}, "curry's ppg every season of his career"),
+    ],
+)
+def test_the_season_line_reads_as_its_template(cx_ctx: TemplateContext, intent: str, slots: dict[str, Any], question: str) -> None:
+    """The season line as the compiler's second source: an unnarrowed
+    ``player_stat`` and a ``player_history`` are the template's own answer,
+    word for word and key for key - the numbers from the season line
+    (Curry's 26.0 this season is not his box scores' average), where the
+    compiler declined the first and answered the second from box scores
+    grouped by season, in its own words, before (#228)."""
+    _add_season_line(cx_ctx.con)
+    template, composed = _parity(cx_ctx, intent, slots, question)
+    assert composed.answer == template.answer
+    assert composed.data == template.data
+
+
+def test_a_season_line_point_the_words_moved_is_not_the_templates(cx_ctx: TemplateContext) -> None:
+    """A measure the question's words add ("PRA") to an unnarrowed line is a
+    point the season line's reader does not say, so the compiler declines it
+    exactly as it declined every unnarrowed line before - never the default
+    stat line in its place."""
+    _add_season_line(cx_ctx.con)
+    assert compose_answer(cx_ctx, "player_stat", {"player": "Stephen Curry"}, "curry's PRA this season") is None
+
+
+def test_the_season_source_is_never_compiled_over_games() -> None:
+    """A season-line point reaching the game-level compiler is refused, not
+    read over box scores under the season line's name."""
+    q = to_query("player_stat", {"player": "Stephen Curry", "stat": "points"})
+    assert q.source == "seasons"
+    with pytest.raises(Unsupported, match="seasons source"):
+        compile_query(duckdb.connect(":memory:"), q)
 
 
 def test_own_team_narrows_a_composed_average(cx_ctx: TemplateContext) -> None:

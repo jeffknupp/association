@@ -36,9 +36,9 @@ import duckdb
 
 from association.nba.season import eastern_date
 from association.query.conditions import _PLAYER_GAME_TABLES
-from association.query.entities import Entity
 from association.query.player_games import REBUILT_STATS
 from association.query.templates.common import (
+    HISTORY_COLUMNS,
     STAT_LABELS,
     THRESHOLD_STAT_COLUMNS,
     TemplateResult,
@@ -56,20 +56,23 @@ from association.query.templates.players import (
     SHOOTING_STATS,
     _box_score_player_stat,
     _empty_box_scores,
-    _empty_note,
     _game_span,
     _phrase_threshold_count,
+    _player_history_read,
+    _player_history_subject,
+    _player_stat_season_line,
+    _player_stat_season_line_subject,
     _rebuilt_in_scope,
     _single_game_high_answer,
     _single_game_high_redirect,
     _single_game_high_result_data,
     _threshold_count_lines,
-    _threshold_count_rebuilt_note,
+    _threshold_count_notes,
     _wanted_stats,
 )
 from association.query.templates.splits import _record_when_answer, _record_when_query
 
-from .adapt import DEFAULT_GAME_LOG_LIMIT, _clamp
+from .adapt import DEFAULT_GAME_LOG_LIMIT, _clamp, to_query
 from .core import LINE, Query, Unsupported, compile_query, run
 from .move import _stat_measure
 
@@ -164,9 +167,12 @@ def _present_record_when(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], 
 def _present_player_stat(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], q: Query) -> TemplateResult | None:
     """``player_stat``'s own narrowed average (``templates.players._box_score_player_stat``)
     over the compiler's settled player, span and narrowing. An advanced rate
-    reads its own table and is left to the compiler's sentence."""
+    reads its own table and is left to the compiler's sentence. An
+    unnarrowed line is the season-line source's (:func:`_present_player_stat_season_line`)."""
     if q.skeleton != "scalar" or q.aggregate != "per_game" or q.subject != "player" or q.predicates:
         return None
+    if q.source == "seasons":
+        return _present_player_stat_season_line(con, slots, q)
     stat = slots.get("stat")
     if isinstance(stat, str) and stat in ADVANCED_STATS:
         return None
@@ -181,6 +187,62 @@ def _present_player_stat(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], 
     if compiled.player is None:
         return None
     return _box_score_player_stat(con, compiled.player, compiled.span, compiled.narrowed, wanted, shooting)
+
+
+def _present_player_stat_season_line(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], q: Query) -> TemplateResult | None:
+    """``player_stat``'s unnarrowed line - a season or a career, read from
+    the season line (``player_season_stats_deduped``) - over the player and
+    span the template settles for it (``_player_stat_season_line_subject``)
+    and read by its own reader (``_player_stat_season_line``): the second
+    relation, never re-derived from box scores.
+
+    Only where the question's own words left the router's stat alone (the
+    adapter's own measures): a measure the words moved in is a point the
+    season line does not say, and the compiler declines it as before."""
+    stat = slots.get("stat")
+    try:
+        own = to_query("player_stat", slots)
+    except Unsupported:
+        return None
+    # The router's own stat, whichever way the point carries it: the
+    # adapter's measures, or the question's word for that same stat ("3pt
+    # percentage" is three_pct, which the router filed threePointFieldGoalPct).
+    stat_measure = _stat_measure(stat)
+    if own.source != "seasons" or (q.measures != own.measures and (stat_measure is None or q.measures != [stat_measure])):
+        return None
+    if not (isinstance(stat, str) and (stat in ADVANCED_STATS or stat in SHOOTING_STATS)):
+        try:
+            _wanted_stats(slots)
+        except TemplateUnsupported:
+            return None
+    subject = _player_stat_season_line_subject(con, slots)
+    if isinstance(subject, TemplateResult):
+        return subject
+    return _player_stat_season_line(con, *subject, slots)
+
+
+def _present_player_history(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], q: Query) -> TemplateResult | None:
+    """``player_history``'s own table - the stat season by season from the
+    season line, newest first, the default four or the count asked for, and
+    the career line under a career - over the player the template settles
+    (``_player_history_subject``) and read by its own reader
+    (``_player_history_read``).
+
+    Only where the point is a season-line history of the router's own stat:
+    a stat with no per-season column, a span the template refuses, or a
+    measure the question's words moved in is the game-level reading's
+    (``move.games_reading``), answered by the compiler's sentence."""
+    stat = slots.get("stat")
+    if q.source != "seasons" or q.group != "season" or not isinstance(stat, str) or stat not in HISTORY_COLUMNS:
+        return None
+    if slots.get("span") not in (None, "", "career"):
+        return None
+    if _stat_measure(stat) not in (None, *q.measures[:1]):
+        return None
+    player = _player_history_subject(con, slots)
+    if isinstance(player, TemplateResult):
+        return player
+    return _player_history_read(con, player, slots)
 
 
 def _count_season(slots: dict[str, Any], span: _Span) -> tuple[int | None, int, int | None]:
@@ -263,7 +325,7 @@ def _present_threshold_count(con: duckdb.DuckDBPyConnection, slots: dict[str, An
     game_span = _game_span(con, season, season_type, player, ordinal=ordinal)
     empty = _empty_box_scores(con, season, season_type, player.id if player is not None else None, covered_by_rebuild=bool(out["rebuilt"]))
     phrase = game_span.preface + _phrase_threshold_count(rows, scope_text, game_span.when, player_name)
-    notes = _present_threshold_count_notes(con, (season, season_type), player, rows, column, STAT_LABELS.get(stat, stat), game_span, empty)
+    notes = _threshold_count_notes(con, (season, season_type), player, rows, column, STAT_LABELS.get(stat, stat), game_span, empty)
     data = {
         "question_shape": f"games with {scope_text}, {game_span.caption}",
         "season": season,
@@ -290,45 +352,6 @@ def _present_threshold_count_rows(q: Query, out: dict[str, Any]) -> list[tuple[A
     return [(r["group"], int(r["games"]), rebuilt) for r, rebuilt in zip(out["rows"], out["rebuilt_by_row"], strict=True)]
 
 
-def _present_threshold_count_notes(
-    con: duckdb.DuckDBPyConnection,
-    seasons: tuple[int | None, int],
-    player: Entity | None,
-    rows: list[tuple[Any, int, int]],
-    column: str,
-    label: str,
-    game_span: Any,
-    empty: tuple[int, int | None, int | None],
-) -> list[str]:
-    """``threshold_count``'s notes past its sentence, in its order: a
-    league-wide career is not all-time, a stat withheld from rebuilt lines
-    (else the empty box scores), and the leader's rebuilt games.
-
-    The first two sentences are written inline in the template
-    (``templates.players.threshold_count``) and so are restated here word
-    for word - ISSUES.md, "threshold_count's league and withheld notes are
-    written twice"; the rest are the template's own helpers."""
-    season, season_type = seasons
-    player_id = player.id if player is not None else None
-    notes: list[str] = []
-    if game_span.league_note:
-        notes.append(f"Box scores begin in {game_span.since}, so these are not all-time counts: a career that began earlier is counted only from {game_span.since}.")
-    withheld = 0 if (rows and rows[0][1]) or column in REBUILT_STATS else _rebuilt_in_scope(con, season, season_type, player_id)
-    if withheld:
-        notes.append(
-            f"{withheld:,} of the games in that span were rebuilt from play-by-play, but a {label} is not counted from a rebuilt line: "
-            f"rebuilt fouls are wrong in about one game in six, and turnovers in one in thirteen, against one in sixty for points."
-        )
-    else:
-        empty_note = _empty_note(empty, player.name if player is not None else None, "the count may be low" if player is not None else "these counts may be low")
-        if empty_note:
-            notes.append(empty_note.strip())
-    rebuilt_note = _threshold_count_rebuilt_note(rows, player is not None)
-    if rebuilt_note:
-        notes.append(rebuilt_note.strip())
-    return notes
-
-
 #: Intent -> the presenter for its own default point.
 PRESENTERS: dict[str, Presenter] = {
     "game_log": _present_game_log,
@@ -336,6 +359,7 @@ PRESENTERS: dict[str, Presenter] = {
     "single_game_high": _present_single_game_high,
     "threshold_count": _present_threshold_count,
     "record_when": _present_record_when,
+    "player_history": _present_player_history,
 }
 """The intents whose own default point the compiler answers in that intent's
 template's words - see the module docstring.

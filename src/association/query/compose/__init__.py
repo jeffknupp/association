@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Any
 from association.query.templates.common import TemplateContext, TemplateResult, check_coverage
 
 from .core import Query, Refused, Unsupported, run
-from .move import move_point
+from .move import games_reading, move_point
 from .present import present
 from .sentence import _span_phrase
 from .sentence import sentence as _sentence
@@ -141,6 +141,13 @@ def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: s
        the agent appends :func:`~association.query.templates.common.coverage_caveat`
        to a composed answer as it does to a template's, and this appending it
        as well printed the note twice.
+
+    .. versionchanged:: 4.5.0
+       Reads the season line as a second source: an unnarrowed player line
+       and a per-season history are said by the templates' own season-line
+       readers (``source="seasons"``, :mod:`~association.query.compose.present`),
+       and a history they decline falls back to the game-level reading
+       (:func:`~association.query.compose.move.games_reading`).
     """
     try:
         query = move_point(ctx.con, intent, slots, question, subject)
@@ -155,6 +162,13 @@ def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: s
         own = present(ctx.con, intent, query.slots, query)
         if own is not None:
             return own
+        if query.source != "games":
+            # The season line's own reader declined: the game-level reading,
+            # checked against its own floor, or nothing.
+            query = games_reading(query)
+            refusal = check_coverage(intent, query.slots)
+            if refusal is not None:
+                raise Refused(TemplateResult(data={"season": query.slots.get("season")}, answer=refusal))
         out = run(ctx.con, query)
     except Unsupported:
         return None

@@ -2506,6 +2506,35 @@ those were found.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #183
 
+### A double-double count routed player_stat with no stat is answered with the default line, and "career" is lost
+- **Found:** 2026-09-26, the season-line parity run (`parity.py`, the
+  `subject-kinds` tree, the main warehouse).
+- **Evidence:** yardstick-v2 F055 "alperen sengun double-doubles vs
+  southeast division career away", on its recorded day2 route
+  (`player_stat`, `situation: "vs southeast division"`, `venue: "away"`, no
+  `stat`, no `span`): `player_stat` answers "Alperen Sengun averaged 16.6
+  points, 8 rebounds and 4.2 assists per game in 5 games on the road against
+  the Southeast Division in the 2026 regular season" - the default line for
+  one season, where the question asked for a count of double-doubles over a
+  career. The compiler on the same slots says "had 8 games with a
+  double-double ... in the regular season career (2022-2026)", the key's
+  answer (the 8 of 22 verified under the K3-2 conference/division fix). The recorded HISTORY route
+  of the same question (`player_splits`, `situation: "division"`) refuses
+  instead with "'division' names a conference or division, but not in a
+  shape this reads - try ... \"vs the southeast division\"", which asks the
+  user to type what they typed.
+- **User sees:** a wrong answer, fluently, on the day2 route; a refusal
+  naming the wrong cause on the history route. Which route the current
+  router gives is a live-run question (not measured here: no ollama).
+- **Next step:** `player_stat` (and `game_log`) should raise
+  `TemplateUnsupported` when the question's words name a boolean measure
+  its line does not carry (`compose.move.BOOLEAN_MEASURES` via
+  `_measure_words`), so the compiler's count answers it; and the
+  non-calendar-situation refusal should quote the question's own phrase,
+  not the slot's one word.
+- **Source:** ours, not ESPN's.
+- **GitHub:** #229
+
 ## P3: refusal or gap
 
 ### The compiler has no NetPoints measure, so a single-game NetPoints ranking has nowhere to land but the agent
@@ -3135,37 +3164,57 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
-### threshold_count's league and withheld notes are written twice, and two templates have no reader over a settled narrowing
-- **Found:** 2026-09-25, plan item 2 step 2a (`query/compose/present.py`).
+### player_splits has no reader over a settled narrowing, and single_game_high's orchestration is restated in compose.present
+- **Found:** 2026-09-25, plan item 2 step 2a (`query/compose/present.py`);
+  rewritten 2026-09-26 when the season line became the compiler's second
+  source (the season-line half and the duplicated `threshold_count` notes
+  are fixed - see `CHANGES.md`, "The season line is the compiler's second
+  source").
 - **Evidence:** `compose.present` says an intent's own point in its
-  template's words by calling the template's helpers. Three places could
-  not be reached that way from `query/compose` alone (the step's branch was
-  scoped away from `templates/`):
-  (1) `threshold_count`'s "Box scores begin in ..., so these are not
-  all-time counts" and its withheld-stat sentence are inline in
-  `templates/players.py::threshold_count` and restated word for word in
-  `present._present_threshold_count_notes` - one sentence, two copies, which
-  drift the first time either is edited; the parity test
-  (`test_an_intents_own_point_reads_as_its_template`) catches a drift only on
-  the fixture's cases. `single_game_high`'s and `threshold_count`'s
-  orchestration (span, empty box scores, withheld, redirect) is likewise
-  restated in `present.py` around their helpers.
-  (2) `player_splits` has no function over an already-settled narrowing:
+  template's words by calling the template's helpers. Two places still
+  cannot be reached that way:
+  (1) `player_splits` has no function over an already-settled narrowing:
   `_player_splits_player` resolves the player itself (`condition_player`),
   so reaching parity means copying its tail (`games_subquery`, `_totals`,
-  `_SplitSubject`); it stays 0/3 on the corpus.
-  (3) `player_history` and an unnarrowed `player_stat` read the season line
-  (`player_season_stats_deduped`), not the player-games relation - 0/20 and
-  0/23; no presentation can make box-score sums equal a season table.
+  `_SplitSubject`); it is 0/5 on the recorded corpus (`parity.py`,
+  2026-09-26, the `subject-kinds` tree, the main warehouse).
+  (2) `single_game_high`'s orchestration (the span, the empty box scores,
+  the withheld count, the redirect, the `data` dict) and `threshold_count`'s
+  outside its notes (the headline split, the `data` dict) are restated in
+  `present._present_single_game_high`/`_present_threshold_count` around the
+  templates' helpers. Parity holds today (10/10, 18/18), and the parity
+  tests in `tests/query/test_compose.py` catch a drift only on the fixture's
+  cases.
 - **User sees:** nothing today.
-- **Next step:** when a template is folded into the compiler, move its
-  notes into named helpers in the same commit (`_threshold_count_league_note`,
-  `_threshold_count_withheld_note`) and delete the copies in `present.py`;
-  give `player_splits` a `_player_splits_from(con, player, narrowed, scope,
-  ...)` both it and `present.py` call. The season-line intents need the
-  season line as a second relation the compiler reads, not a presenter.
+- **Next step:** give `player_splits` a `_player_splits_from(con, player,
+  narrowed, scope, ...)` both it and `present.py` call; split
+  `single_game_high` and `threshold_count` into a settle step and a
+  read-and-say step over the settled player and span (the shape
+  `_player_history_subject`/`_player_history_read` took), so the presenter
+  calls the second instead of restating it.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #228
+
+### The compiler cannot unset a slot's season, so a dated player_stat declines
+- **Found:** 2026-09-26, the season-line parity run (`parity.py`).
+- **Evidence:** "Bam adebeyo jan 19" (slots `season: 2026, date:
+  2026-01-19`): the template answers from that night's box score, settling
+  the name with `span="career", season=None`. The compiler's adapter sets
+  `Query(span="career", season=None)` the same way, but
+  `core._resolve_named` reads `q.season if q.season is not None else
+  slots.get("season")`, so `None` cannot mean "no season" and the slot's
+  2026 comes back: `scoped_player` raises "a career span and the 2026
+  season at once" and the compiler declines. 1 of the 30 `player_stat` rows
+  the template answers on the recorded corpus; `game_log`'s adapter has the
+  same `season=None if date` line and the same read.
+- **User sees:** nothing today (the template answers first). When
+  `player_stat` is folded into the compiler, a dated question would fall
+  through to the agent.
+- **Next step:** give `Query` an explicit "season unset" (a sentinel, or
+  `season_from_slots: bool`) and read it in `_resolve_named`; a
+  `test_compose.py` case on a dated `player_stat` against the template.
+- **Source:** ours, not ESPN's.
+- **GitHub:** #230
 
 ### `team_alignment` is not declared in every `TEMPLATE_SOURCES` tuple that can now read it
 - **Found:** 2026-09-24, landing the K3-2 conference/division narrowing.

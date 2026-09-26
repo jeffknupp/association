@@ -304,31 +304,8 @@ def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResu
     # not the sentence itself, the same discipline the page's own headline
     # fallback (firstLine, web/static/index.html) already keeps.
     headline = phrase.split(" Next: ")[0]
-    answer = phrase
-    notes = []
-    if span.league_note:
-        league_note = f"Box scores begin in {span.since}, so these are not all-time counts: a career that began earlier is counted only from {span.since}."
-        answer += f" {league_note}"
-        notes.append(league_note)
-    # Only when nothing was counted AND the stat was deliberately withheld: a
-    # count of none that names a decision beats one that implies missing data.
-    withheld = 0 if (rows and rows[0][1]) or column in REBUILT_STATS else _rebuilt_in_scope(con, season, season_type, player_id)
-    if withheld:
-        withheld_note = (
-            f"{withheld:,} of the games in that span were rebuilt from play-by-play, but a {label} is not counted from a rebuilt line: "
-            f"rebuilt fouls are wrong in about one game in six, and turnovers in one in thirteen, against one in sixty for points."
-        )
-        answer += f" {withheld_note}"
-        notes.append(withheld_note)
-    else:
-        empty_note = _empty_note(empty, player_name, "the count may be low" if player else "these counts may be low")
-        answer += empty_note
-        if empty_note:
-            notes.append(empty_note.strip())
-    rebuilt_note = _threshold_count_rebuilt_note(rows, player is not None)
-    answer += rebuilt_note
-    if rebuilt_note:
-        notes.append(rebuilt_note.strip())
+    notes = _threshold_count_notes(con, (season, season_type), player, rows, column, label, span, empty)
+    answer = " ".join([phrase, *notes])
     leaders = [{"player": name, "games": games} for name, games, _ in rows]
     return TemplateResult(
         data={
@@ -343,6 +320,47 @@ def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResu
         },
         answer=answer,
     )
+
+
+def _threshold_count_notes(
+    con: duckdb.DuckDBPyConnection,
+    seasons: tuple[int | None, int],
+    player: Entity | None,
+    rows: list[tuple[Any, ...]],
+    column: str,
+    label: str,
+    span: _GameSpan,
+    empty: tuple[int, int | None, int | None],
+) -> list[str]:
+    """``threshold_count``'s notes past its sentence, in its order: a
+    league-wide career is not all-time, a stat withheld from rebuilt lines
+    (else the empty box scores), and the leader's rebuilt games.
+
+    One definition for the template and for the compiler's presentation of
+    the same count (``compose.present._present_threshold_count``), which
+    restated the first two sentences word for word until this existed.
+    """
+    season, season_type = seasons
+    player_id = player.id if player is not None else None
+    notes: list[str] = []
+    if span.league_note:
+        notes.append(f"Box scores begin in {span.since}, so these are not all-time counts: a career that began earlier is counted only from {span.since}.")
+    # Only when nothing was counted AND the stat was deliberately withheld: a
+    # count of none that names a decision beats one that implies missing data.
+    withheld = 0 if (rows and rows[0][1]) or column in REBUILT_STATS else _rebuilt_in_scope(con, season, season_type, player_id)
+    if withheld:
+        notes.append(
+            f"{withheld:,} of the games in that span were rebuilt from play-by-play, but a {label} is not counted from a rebuilt line: "
+            f"rebuilt fouls are wrong in about one game in six, and turnovers in one in thirteen, against one in sixty for points."
+        )
+    else:
+        empty_note = _empty_note(empty, player.name if player is not None else None, "the count may be low" if player is not None else "these counts may be low")
+        if empty_note:
+            notes.append(empty_note.strip())
+    rebuilt_note = _threshold_count_rebuilt_note(rows, player is not None)
+    if rebuilt_note:
+        notes.append(rebuilt_note.strip())
+    return notes
 
 
 def _threshold_count_ask(slots: dict[str, Any]) -> tuple[str, int | None]:
@@ -925,16 +943,37 @@ def player_history(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
        actually asked for ("show me sga's career 2pt percentage") without
        ever stating it (F041, ISSUES.md).
     """
-    con = ctx.con
+    player = _player_history_subject(ctx.con, slots)
+    if isinstance(player, TemplateResult):
+        return player
+    return _player_history_read(ctx.con, player, slots)
+
+
+def _player_history_subject(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> Entity | TemplateResult:
+    """The player a history is about, settled the one way both
+    ``player_history`` and the compiler's season-line source
+    (``compose.present._present_player_history``) settle him.
+
+    .. versionadded:: 4.5.0
+    """
     # A named season anchors the range's END rather than replacing it, so
     # "3pt% over the 4 seasons through 2024" still spans four rows.
     latest = slots.get("season") or current_season()
     # Narrowed over every season the history could read, not the last N: the
     # query takes each player's last seasons up to `latest` wherever they fall,
     # so a player who retired a decade earlier still has an answer here.
-    player = _resolved_player(con, slots.get("player"), "player_history needs a player name", available=_SEASON_LINES, through=latest)
-    if isinstance(player, TemplateResult):
-        return player
+    return _resolved_player(con, slots.get("player"), "player_history needs a player name", available=_SEASON_LINES, through=latest)
+
+
+def _player_history_read(con: duckdb.DuckDBPyConnection, player: Entity, slots: dict[str, Any]) -> TemplateResult:
+    """``player_history``'s table over a settled player: the stat's columns
+    season by season from ``player_season_stats_deduped``, and the career
+    line under a career. Raises :class:`TemplateUnsupported` for a stat with
+    no per-season column or a span other than a career.
+
+    .. versionadded:: 4.5.0
+    """
+    latest = slots.get("season") or current_season()
 
     stat = slots.get("stat")
     if not isinstance(stat, str) or stat not in HISTORY_COLUMNS:
@@ -1329,10 +1368,6 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        refusal, because it is the correct answer.
     """
     con = ctx.con
-    # Settled before the name is resolved: the span, and the table it is read
-    # from, are what narrow an ambiguous name to the players who could be the
-    # answer - a career keeps Dell Curry, this season does not.
-    season_type = slots.get("season_type") or 2
     # Refused here, before any name is resolved, if a line names no column.
     measures = measure_filters(slots.get("below"), slots.get("above"))
     # One date is one game, read from the box score of that game - the same
@@ -1352,18 +1387,49 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
 
         return game_log(ctx, slots)
     # The order those steps have to run in lives in scoped_player, with why.
+    # Settled before the name is resolved: the span, and the table it is read
+    # from, are what narrow an ambiguous name to the players who could be the
+    # answer - a career keeps Dell Curry, this season does not.
+    if not from_box_scores:
+        season_line = _player_stat_season_line_subject(con, slots)
+        if isinstance(season_line, TemplateResult):
+            return season_line
+        return _player_stat_season_line(con, *season_line, slots)
     subject = scoped_player(
-        con,
-        slots,
-        "player_stat needs a player name",
-        table="player_game_log" if from_box_scores else "player_season_stats_deduped",
-        available=_GAME_LOGS if from_box_scores else _SEASON_LINES,
-        span="career" if date else slots.get("span"),
-        season=None if date else slots.get("season"),
+        con, slots, "player_stat needs a player name", table="player_game_log", available=_GAME_LOGS, span="career" if date else slots.get("span"), season=None if date else slots.get("season")
     )
     if isinstance(subject, TemplateResult):
         return subject
     player, span = subject
+    stat = slots.get("stat")
+    # Before the ESPN-served columns - see _player_stat_season_line's own comment.
+    if isinstance(stat, str) and stat in ADVANCED_STATS:
+        return _player_stat_advanced(con, player, span, stat, from_box_scores)
+
+    shooting = SHOOTING_STATS.get(stat) if isinstance(stat, str) else None
+    wanted = [] if shooting else _wanted_stats(slots)
+    narrowed = scoped_games(con, player, span, slots, opponent=slots.get("opponent"), measures=measures, date=date, team=slots.get("own_team"))
+    if isinstance(narrowed, TemplateResult):
+        return narrowed
+    return _box_score_player_stat(con, player, span, narrowed, wanted, shooting)
+
+
+def _player_stat_season_line_subject(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> tuple[Entity, _Span] | TemplateResult:
+    """The player and span an unnarrowed ``player_stat`` reads the season
+    line over, settled the one way both the template and the compiler's
+    season-line source (``compose.present._present_player_stat``) settle them.
+
+    .. versionadded:: 4.5.0
+    """
+    return scoped_player(con, slots, "player_stat needs a player name", table="player_season_stats_deduped", available=_SEASON_LINES, span=slots.get("span"), season=slots.get("season"))
+
+
+def _player_stat_season_line(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, slots: dict[str, Any]) -> TemplateResult:
+    """An unnarrowed ``player_stat``: one season's line or a career, read
+    from ``player_season_stats_deduped`` over a settled player and span.
+
+    .. versionadded:: 4.5.0
+    """
     stat = slots.get("stat")
     # Before the ESPN-served columns, because these carry their own table, their
     # own floor and their own career arithmetic - and because _wanted_stats
@@ -1371,20 +1437,14 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     # shooting percentage career" fell through while the leaderboard ranked the
     # same stat happily.
     if isinstance(stat, str) and stat in ADVANCED_STATS:
-        return _player_stat_advanced(con, player, span, stat, from_box_scores)
+        return _player_stat_advanced(con, player, span, stat, False)
 
     shooting = SHOOTING_STATS.get(stat) if isinstance(stat, str) else None
     wanted = [] if shooting else _wanted_stats(slots)
-
-    if from_box_scores:
-        narrowed = scoped_games(con, player, span, slots, opponent=slots.get("opponent"), measures=measures, date=date, team=slots.get("own_team"))
-        if isinstance(narrowed, TemplateResult):
-            return narrowed
-        return _box_score_player_stat(con, player, span, narrowed, wanted, shooting)
     if span.career:
         return _career_player_stat(con, player, span, wanted, shooting)
 
-    return _season_player_stat(con, player, span, season_type, wanted, shooting)
+    return _season_player_stat(con, player, span, slots.get("season_type") or 2, wanted, shooting)
 
 
 def _player_stat_reads_box_scores(slots: dict[str, Any], measures: list[MeasureFilter]) -> bool:

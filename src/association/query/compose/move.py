@@ -13,6 +13,7 @@ the router dropped, and player names the router filed as the ``opponent``.
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 import duckdb
@@ -697,10 +698,32 @@ def _move_boolean_count_is_line(measure: str, slots: dict[str, Any]) -> bool:
 
 
 def _move_player_history(intent: str, slots: dict[str, Any], career: dict[str, Any], measure: str | None) -> Query | None:
-    """``player_history``: a per-season history is a career grouped by season, newest first."""
+    """``player_history``: a per-season history, read from the season line
+    (``source="seasons"``) over the question's own slots - the template's own
+    read. Where the season line does not say it, :func:`games_reading` turns
+    it into a career of games grouped by season, newest first."""
     if intent != "player_history":
         return None
-    return Query(career, "grouped", [measure or "points"], "per_game", "season", [], "date", "desc", _clamp(slots.get("limit"), 10))
+    del career  # the season line reads the question's own span; games_reading widens it
+    return Query(slots, "grouped", [measure or "points"], "per_game", "season", [], "date", "desc", _clamp(slots.get("limit"), 10), source="seasons")
+
+
+def games_reading(q: Query) -> Query:
+    """A season-line point (``source="seasons"``) the season line's own
+    readers declined, as the game-level relation reads it: a per-season
+    history becomes his career's games grouped by season (the reading the
+    compiler gave every history before the season line was a source). An
+    unnarrowed ``player_stat`` has no game-level reading that answers the
+    same question, so it raises :class:`~association.query.compose.core.Unsupported`,
+    as it did before.
+
+    .. versionadded:: 4.5.0
+    """
+    if q.source != "seasons":
+        return q
+    if q.group == "season":
+        return replace(q, slots=_career_slots(q.slots), source="games")
+    raise Unsupported("an unnarrowed player line the season line's reader did not say")
 
 
 def _move_default(intent: str, slots: dict[str, Any], measure: str | None) -> Query:
