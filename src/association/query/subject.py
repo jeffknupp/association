@@ -48,6 +48,7 @@ from association.query.entities import (
     PLAYER_NICKNAMES,
     Entity,
     _edit_budget,
+    _exact_name_span,
     _initials,
     _named_only_by_a_team_word,
     _question_derived_player,
@@ -636,13 +637,65 @@ def _conditions(question: str, players: tuple[str, ...], slots: dict[str, Any]) 
        Returns :class:`Companion` tuples with the predicate, not names.
     """
     found: list[Companion] = []
-    routed = [r for r in list(slots.get("without") or []) + list(slots.get("with_player") or []) if isinstance(r, str)]
     for match in _COMPANION.finditer(question):
         word, text = match.group(1).lower(), match.group(2)
         predicate, stat, threshold = _condition_role(word, text)
-        names = [p for p in players if question_supports(p, text)]
-        names += [r for r in routed if not _same_person(r, names) and _near(r, text)]
+        names = _companion_names(text, players, slots)
         found.extend(Companion(name, predicate, stat, threshold) for name in names if not any(_same_person(name, [c.name]) for c in found))
+    return tuple(found)
+
+
+def _companion_names(text: str, players: tuple[str, ...], slots: dict[str, Any]) -> list[str]:
+    """Who one companion phrase names: the players the question holds that
+    its words support, then a router ``without``/``with_player`` name the
+    phrase misspells."""
+    routed = [r for r in list(slots.get("without") or []) + list(slots.get("with_player") or []) if isinstance(r, str)]
+    names = [p for p in players if question_supports(p, text)]
+    names += [r for r in routed if not _same_person(r, names) and _near(r, text)]
+    return names
+
+
+_COMPANION_WORD = re.compile(r"[a-z][a-z'.-]+")
+
+
+def _unrouted_companions(con: duckdb.DuckDBPyConnection, question: str, players: tuple[str, ...], slots: dict[str, Any]) -> tuple[str, ...]:
+    """A companion the router named nobody for, read from the phrase's own
+    leading words: "show me splits for the sixers when maxey scores 20+
+    points" arrived with an invented Joel Embiid and no Maxey anywhere in
+    the slots (yardstick-v2 F087), and a companion was only ever read from
+    the router's names - so the reading refused by Embiid's name where the
+    question had an answer (the 76ers' record, 35-28).
+
+    The phrase's leading run of up to two words that are not ordinary words
+    ("brown", "best" - the same dictionary guard :func:`_question_players`
+    keeps), not a team's word, not a stat's, and not a number, taken as a
+    name only where it is a whole word of some player's name (the pair first,
+    then the first word alone: "jalen brunson" before every Jalen). What is
+    kept is the QUESTION's spelling, never a resolution: the template
+    resolves it the way it resolves any open name and says how, so a bare
+    "maxey" is Tyrese because he is the one who still plays - visible and
+    correctable - and a word two active players share is asked about.
+    Fuzzy matching is deliberately not tried (the module docstring's
+    "season is one edit from Tari Eason").
+    """
+    dictionary = _dictionary()
+    found: list[str] = []
+    for match in _COMPANION.finditer(question):
+        text = match.group(2)
+        if _companion_names(text, players, slots):
+            continue
+        run: list[str] = []
+        for token in text.casefold().split():
+            word = token.strip("'.,-")
+            if not _COMPANION_WORD.fullmatch(word) or len(word) < 3 or word in dictionary or word in _THRESHOLD_WORDS or word in TEAM_SINGULARS or team_named_in(con, word):
+                break
+            run.append(word)
+            if len(run) == 2:
+                break
+        for span in ([run] if len(run) == 2 else []) + ([run[:1]] if run else []):
+            if _exact_name_span(con, span, limit=1) and not any(_same_person(" ".join(span), [p]) for p in (*players, *found)):
+                found.append(" ".join(span))
+                break
     return tuple(found)
 
 
@@ -709,7 +762,8 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, slo
     named = _question_players(con, question, routed, teams_here)
     spellings = _spellings(con, question, routed)
     players = _merge_names([spellings.get(r, r) for r in routed], named)
-    conditions = _conditions(question, players, slots)
+    unrouted = _unrouted_companions(con, question, players, slots)
+    conditions = _conditions(question, (*players, *unrouted), slots)
     companions = tuple(dict.fromkeys(c.name for c in conditions))
     players = tuple(p for p in players if p not in companions)
     # "for the Heat" is a player's OWN team only beside a player subject
@@ -720,6 +774,8 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, slo
     own_team = own[0].name if own is not None and players and _named_before(question, players, own[1]) else None
     teams = _team_names(con, question, slots, team_word, opponent, own_team)
     evidence = _evidence(named, routed, spellings, invented, team_word, opponent)
+    if unrouted:
+        evidence = (*evidence, f"companions the router named nobody for {list(unrouted)}")
     subject = replace(_decide(players, teams, position, opponent, own_team, companions, evidence, intent, question), conditions=conditions)
     settled, words = _decide_intent(subject, routed_opponent, intent, question, slots)
     return replace(
@@ -1197,9 +1253,11 @@ def _apply_filler_players(subject: Subject, slots: dict[str, Any]) -> tuple[list
 def _spare_names(subject: Subject, kept: list[str], intent: str) -> list[str]:
     """The question's own names not yet in the slots, which replace a router
     invention one for one: the subject's players, and for ``record_when`` -
-    whose player IS the condition's - a reached companion too."""
+    whose player IS the condition's - a reached companion too, whether the
+    router chose ``record_when`` or the reading settled it (the team's
+    question with a companion's line, under an invented player)."""
     spare = [p for p in subject.players if not _same_person(p, kept)]
-    if intent == "record_when":
+    if "record_when" in (intent, subject.intent):
         spare += [c.name for c in subject.conditions if c.predicate == "reached" and not _same_person(c.name, [*kept, *spare])]
     return spare
 

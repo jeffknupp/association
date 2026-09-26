@@ -48,9 +48,9 @@ before that commit needs re-checking against the current warehouse.
 
 ### The shorter router prompt (4.5.0, the seven children out) moved eight day5 rows that no text rule meets yet
 - **Found:** 2026-09-25, plan item 2 step 2c-ii, `live_day5.jsonl` (e8c68ba) against `live_day4.jsonl` (91d1461); `~/association-research/intent-shrink/RESULT.md` has the full list.
-- **Evidence:** the 3B router, with 16 intents instead of 23 in its prompt, files these differently and nothing in `route()` or the subject reading moves them back: "jokic vs cade since 2022" as `player_compare` (which does not honor `since`; day4 `player_matchup`) - fell through; "KNICKS point differential over the last 7 games" as `with_without` with `order`/`limit` (day4 `game_log`) - answers the last 7 REGULAR-season games, +46, where the last 7 were the Finals, +62; "Ayton stats in game 4 playoff games" and "nba team with least playoff wins since 2022" with `limit: 1` ("game 4" reads as naming one game, so the filler survives; the ranking hides a three-way tie at zero); "Payton Prichard ... including playoffs game log" with `season_ref: current` (day4 a career); "show me splits for the sixers when maxey scores 20+ points" with an invented Joel Embiid (refused by that name); "oklahoma city thunder all-time triple doubles vs west" as `leaderboard` with the team (the refusal now names a stat nothing ranks, not the team-aggregate shape); "jay huff game log vs Embiid" as `game_log` with a career span (the pair reading's `player_matchup` refuses the span - the `check_routing` GAP case).
-- **User sees:** two wrong answers (the differential, the usage log above), three fall-throughs, two partials, two refusals naming the wrong cause - 9 of the 175 primary wordings, against 3 wrong / 6 partial on day4.
-- **Next step:** one text rule each, the way the first eleven were met (`_route_one_player_intents`, `_route_team_total`, `_names_a_period_subject`): `with_without` with `order`+`limit` and no with/without word is `game_log`; `_names_one_game` should not count a `game_n` phrase; a `team_leaderboard` limit of 1 keeps tied rows; `player_compare` honors `since` (or "X vs Y since" with no compare word is the pair relation). Then a live run, since a text rule cannot be measured on recorded routes the model no longer produces.
+- **Evidence:** the 3B router, with 16 intents instead of 23 in its prompt, files these differently and nothing in `route()` or the subject reading moves them back: "jokic vs cade since 2022" as `player_compare` (which does not honor `since`; day4 `player_matchup`) - fell through; "KNICKS point differential over the last 7 games" as `with_without` with `order`/`limit` (day4 `game_log`) - answers the last 7 REGULAR-season games, +46, where the last 7 were the Finals, +62; "Ayton stats in game 4 playoff games" and "nba team with least playoff wins since 2022" with `limit: 1` ("game 4" reads as naming one game, so the filler survives; the ranking hides a three-way tie at zero); "Payton Prichard ... including playoffs game log" with `season_ref: current` (day4 a career); "oklahoma city thunder all-time triple doubles vs west" as `leaderboard` with the team (the refusal now names a stat nothing ranks, not the team-aggregate shape); "jay huff game log vs Embiid" as `game_log` with a career span (the pair reading's `player_matchup` refuses the span - the `check_routing` GAP case).
+- **User sees:** re-measured on `live_day9.jsonl` (29fc1b4, 161/175): of the eight, six are met (F087's Maxey read from its own words after day9, the differential, the series game's filler, the tie at the cut, the career for "including playoffs", the team total's cause) and two remain - "jokic vs cade since 2022" (`player_compare` does not honor `since`; falls through) and F142 "jay huff game log vs Embiid" (the pair reading refuses the career span; the `check_routing` GAP case).
+- **Next step:** `player_compare` honors `since` (or "X vs Y since" with no compare word is the pair relation), and the pair reading over a career span for F142. Then a live run, since a text rule cannot be measured on recorded routes the model no longer produces.
 - **GitHub:** #223
 ### The web page scales a composed usage rate by 100 a second time: "USG% 2435.5%"
 - **Found:** 2026-09-25, fixing #222 (plan item 2, step 2a).
@@ -74,33 +74,6 @@ before that commit needs re-checking against the current warehouse.
   case to `tests/web/test_renderers.py`, and run `scripts/check_web_ui.py`.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #225
-
-### "For the <team>" beside a player is read as his own-team tenure even when the team is the subject: "show me stats for sixers when maxey scored 20+ points"
-- **Found:** 2026-09-23, grading `live_sweep.jsonl` (yardstick-v2 F087) after
-  the sweep merged (`28dfb9d`).
-- **Evidence:** routes to `player_stat` with `player='Maxey', season=2026`
-  (the `record_when` shape - a TEAM's record in the games a player reached a
-  threshold - is never chosen), and now the "for/with the <team>" reading
-  (`entities._scope_from_question_own_team`, F166's fix) fires on "for
-  sixers", answering "Tyrese Maxey averaged 21.1 points per game in 387
-  games with the Philadelphia 76ers over his career (2021-2026 regular
-  seasons)". Before the sweep it answered his 2026 average. The key: the
-  76ers are 35-28 in 2025-26 regular-season games where Maxey scored 20+
-  (39-32 with the playoffs).
-- **User sees:** a fluent line about the wrong subject (the player's
-  average, where the team's record under a condition was asked) - the scope
-  it did use is stated, which is why it is a different wrong answer and not
-  a hidden one.
-- **Next step:** two halves. The router: "stats for <team> when <player>
-  scored N+" is `record_when` (the team is the subject, the player is the
-  condition) - `_names_a_count`/the threshold grammar already sees the "20+";
-  route it by the text (`CODE_ASSIGNED_INTENTS`-style) and add the case to
-  `check_routing.py`. The own-team reading: do not fire it when the team is
-  the grammatical subject of the sentence ("stats for sixers when ..." - the
-  team precedes "when"/"in games"), only when it follows the player ("lebron
-  ... for Miami", "westbrook ... for kings").
-- **Source:** ours, not ESPN's.
-- **GitHub:** #198
 
 ### The agent fall-through answers 1 question in 23, and does not finish 61% of the time
 - **Found:** 2026-09-18, the first measurement of the agent path in this project

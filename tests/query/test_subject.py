@@ -629,3 +629,28 @@ def test_a_team_with_a_companions_line_is_record_when_with_him_as_the_player(con
     # A player subject keeps his own question: his splits, the condition beside him.
     intent, slots = _assigned(con, "jaylen brown splits when tatum scores 30+ points", "player_splits", stat="points", player="Jaylen Brown", season=2026, season_type=2)
     assert intent == "player_splits" and slots["player"] == "Jaylen Brown"
+
+
+def test_a_companion_the_router_named_nobody_for_is_read_from_the_question(con: duckdb.DuckDBPyConnection) -> None:
+    """F087 arrived with an invented Joel Embiid and no Maxey in any slot; the
+    companion phrase's own word names him, in the question's spelling, and
+    the settled record_when takes him as the spare name that replaces the
+    invention. An ordinary word ("brown"), a stat's ("fga") and a number
+    name nobody; a two-word name is tried as the pair first."""
+    from association.query.subject import Companion, apply_subject
+
+    # A namesake each: "maxey" and "jalen williams" are whole words of two
+    # players' names, so players_named_in names nobody and only the
+    # companion phrase's own word reaches them.
+    con.executemany("INSERT INTO players VALUES (?, ?)", [("28", "Marlon Maxey"), ("29", "Jalen Williams"), ("30", "Jalen Williams")])
+    slots: dict[str, Any] = {"stat": "points", "player": "Joel Embiid", "opponent": "Philadelphia 76ers", "season": 2026, "season_type": 2}
+    s = _read(con, "show me splits for the sixers when maxey scores 20+ points", "player_stat", **slots)
+    assert s.kind == "team" and s.teams == ("Philadelphia 76ers",) and s.conditions == (Companion("maxey", "reached", "points", 20),) and s.intent == "record_when"
+    assert "companions the router named nobody for ['maxey']" in s.evidence
+    applied = apply_subject(s, slots, con=con, intent="player_stat")
+    assert applied.intent == "record_when" and applied.dropped == [] and slots["player"] == "maxey" and slots["team"] == "Philadelphia 76ers" and slots["threshold"] == 20
+    s = _read(con, "thunder record with jalen williams out", "team_record", team="Oklahoma City Thunder")
+    assert s.conditions == (Companion("jalen williams", "absent", None, None),)
+    for question in ("mikal bridges game log with less than 15 fga", "celtics record with brown out", "celtics record with 3 starters out"):
+        s = _read(con, question, "team_record", team="Boston Celtics")
+        assert not any(c.name in ("maxey", "brown", "less", "fga") for c in s.conditions), (question, s.conditions)
