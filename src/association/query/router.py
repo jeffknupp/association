@@ -2077,6 +2077,17 @@ def _route_team_and_player_intents(raw: dict[str, Any], question: str) -> None:
     _route_matchup_against_team(raw, question, listed)
 
 
+def _route_pair_over_seasons(raw: dict[str, Any], question: str, listed: list[str]) -> None:
+    """ "jokic vs cade since 2022": two players "vs" over a span of seasons,
+    with no compare word, is the pair relation's meetings (player_matchup
+    honors ``since``; a comparison does not, and fell through - day5).
+    "Luka vs Giannis this year" stays a comparison."""
+    if raw["intent"] != "player_compare" or len(listed) != 2 or not _VERSUS_WORDS.search(question) or _COMPARE_WORDS.search(question):
+        return
+    if _validate_range(question) is not None or _PAST_N_SEASONS.search(question):
+        raw["intent"] = "player_matchup"
+
+
 def _route_one_player_intents(raw: dict[str, Any], question: str, listed: list[str]) -> None:
     """A comparison of one player, a line that is a log, and a line with no
     player that ranks the league - split out of
@@ -2091,6 +2102,7 @@ def _route_one_player_intents(raw: dict[str, Any], question: str, listed: list[s
         raw.pop("players", None)
     if raw["intent"] == "player_stat" and _LOG_WORDS.search(question):
         raw["intent"] = "game_log"
+    _route_pair_over_seasons(raw, question, listed)
     if raw["intent"] == "game_log" and _HOW_MANY.search(question) and raw.get("stat") in _GAMES_STATS and not any(p.search(question) for p in ORDER_WORDS.values()):
         # "how many games did embid play" arrived as a log of his most
         # recent game (order recent, limit 1) after the 4.5.0 prompt shrink;
@@ -2107,6 +2119,7 @@ def _route_one_player_intents(raw: dict[str, Any], question: str, listed: list[s
 
 
 _GAMES_STATS = frozenset({"games", "game", "games_played", "gamesPlayed", "gp"})
+_COMPARE_WORDS = re.compile(r"\bcompar(?:e[ds]?|ing|ison)\b|\bbetter\b|\bwho scores more\b|\bside by side\b", re.IGNORECASE)
 
 
 def _named_player(raw: dict[str, Any]) -> bool:
@@ -2156,6 +2169,13 @@ def _route_line_and_record_intents(raw: dict[str, Any], question: str) -> bool:
         # "derozan career points vs knicks" refused on its opponent.
         raw["intent"] = "player_stat"
         rerouted_to_line = True
+    if raw["intent"] == "with_without" and not _names_after(_WITHOUT, question) and not _played_together(question) and any(pattern.search(question) for pattern in ORDER_WORDS.values()):
+        # No teammate named, and "the last 7 games": a team's log, not a
+        # split. "KNICKS point differential over the last 7 games" arrived
+        # as with_without after the 4.5.0 prompt shrink (day5) and answered
+        # the last seven REGULAR-season games where the last seven were the
+        # Finals - game_log reads both types for "last N" (_route_game_log_recent_span).
+        raw["intent"] = "game_log"
     if raw["intent"] in _PLAYED_TOGETHER_REROUTABLE and _RECORD.search(question) and _threshold_from_text(question) is None and _played_together(question):
         # "PHI record when Embiid and Paul George play" arrived as
         # head_to_head, the Pacers invented as the opponent, after the 4.5.0
@@ -2623,6 +2643,15 @@ def _line_numbers(question: str) -> set[int]:
     return {int(number) for match in (*_BELOW.finditer(question), *_ABOVE.finditer(question)) for number in re.findall(r"\d+", match.group(0))}
 
 
+def _drop_filler_order_on_a_series_game(intent: str, slots: dict[str, Any], question: str) -> None:
+    """ "Ayton stats in game 4 playoff games" arrived with order recent, limit 1
+    (day5): the game of each series already picks the games, and a filler
+    pair on top showed one of the two."""
+    if intent == "game_log" and slots.get("game_n") and slots.get("limit") == 1 and slots.get("order") and not _names_one_game(question):
+        slots.pop("limit", None)
+        slots.pop("order", None)
+
+
 def _drop_filler_limit(intent: str, slots: dict[str, Any], question: str) -> None:
     """A ``limit`` the model filled on a question that names no number of games."""
     limit = slots.get("limit")
@@ -2645,6 +2674,7 @@ def _drop_filler_limit(intent: str, slots: dict[str, Any], question: str) -> Non
         # so the limit is the only thing to drop; a real single game ("his
         # last game") or a count ("last 5 games") keeps it.
         slots.pop("limit", None)
+    _drop_filler_order_on_a_series_game(intent, slots, question)
     if _SINGLE_GAME.search(question) and season_from_text(question) is None and not _SEASON_WORDS.search(question) and isinstance(slots.get("season"), int) and slots["season"] != current_season():
         # "show a shot chart of steph curry's last regular season game" came
         # back as season 2025: the model read "last regular season" as the

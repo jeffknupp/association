@@ -2600,3 +2600,27 @@ def test_a_limit_that_is_a_lines_own_number_is_dropped_from_a_named_log() -> Non
     # A count the question names stays, and so does a model default that is no line's number.
     assert settle("game_log", {"player": "Mikal Bridges", "order": "recent", "limit": 5}, "mikal bridges last 5 games log").slots["limit"] == 5
     assert settle("game_log", {"player": "Mikal Bridges", "order": "recent", "limit": 10}, "mikal bridges game log with less than 15 fga").slots["limit"] == 10
+
+
+def test_a_last_n_games_with_no_teammate_named_is_a_log_not_a_split() -> None:
+    from association.query.router import settle
+
+    settled = settle("with_without", {"stat": "points_differential", "team": "New York Knicks", "order": "recent", "limit": 7}, "KNICKS point differential over the last 7 games")
+    assert settled.intent == "game_log" and settled.slots["limit"] == 7 and settled.slots["order"] == "recent"
+    assert settle("with_without", {"team": "Boston Celtics"}, "Celtics record without Tatum in the last 10 games").intent == "with_without"
+
+
+def test_a_game_of_each_series_drops_a_filler_order_and_limit() -> None:
+    from association.query.router import settle
+
+    settled = settle("game_log", {"stat": "all", "player": "Deandre Ayton", "order": "recent", "limit": 1, "season_type": "playoffs"}, "Ayton stats in game 4 playoff games")
+    assert settled.slots["game_n"] == 4 and "limit" not in settled.slots and "order" not in settled.slots
+    assert settle("game_log", {"player": "Deandre Ayton", "order": "recent", "limit": 1}, "Ayton's last game 4 of the series").slots.get("limit") == 1
+
+
+def test_two_players_vs_over_a_span_of_seasons_is_the_pairs_meetings() -> None:
+    from association.query.router import settle
+
+    assert settle("player_compare", {"players": ["Nikola Jokic", "Cade Cunningham"]}, "jokic vs cade since 2022").intent == "player_matchup"
+    assert settle("player_compare", {"players": ["Luka Doncic", "Giannis Antetokounmpo"]}, "Luka vs Giannis this year").intent == "player_compare"
+    assert settle("player_compare", {"players": ["Nikola Jokic", "Cade Cunningham"]}, "compare jokic and cade since 2022").intent == "player_compare"

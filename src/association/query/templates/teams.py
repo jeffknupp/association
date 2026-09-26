@@ -1634,7 +1634,11 @@ def _team_leaderboard_result(order: list[tuple[int, str, float]], display: dict[
     named team's own row appended past it where it would otherwise be cut.
     ``season`` is None for a since-bounded ranking, which spans more than one."""
     shown = order[:limit]
-    extra = [row for row in order[limit:] if named is not None and row[1] == named.name]
+    # A tie at the cut is shown whole: "nba team with least playoff wins
+    # since 2022" with the model's limit of 1 listed the Nets alone where
+    # the Hornets and Wizards share the zero (day5, F100).
+    shown += [row for row in order[limit:] if shown and row[0] == shown[-1][0]]
+    extra = [row for row in order[len(shown) :] if named is not None and row[1] == named.name]
     name_width = max(len(team) for _, team, _ in [*shown, *extra])
     value_width = max(len(display[team]) for _, team, _ in [*shown, *extra])
     rows_out = [f"{rank:>2}  {team.ljust(name_width)}  {display[team].rjust(value_width)}" for rank, team, _ in shown]
