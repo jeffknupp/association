@@ -1140,6 +1140,10 @@ _WHEN_REACHES = re.compile(
 # asking for one. Measured: "Plot Curry's threes from last season" came back as
 # `fingerprint` under two different prompt revisions, having routed correctly
 # only while the prompt happened to be a particular length.
+#: The fingerprint itself, by name - not the looser words above ("netpoints"
+#: is also a leaderboard's metric and player_netpoints' whole subject).
+_FINGERPRINT_NAMED = re.compile(r"\bfinger\s?prints?\b|\bradar\b", re.IGNORECASE)
+_FINGERPRINT_REROUTABLE = frozenset({"player_compare", "player_stat", "player_netpoints", "other", "game_log"})
 _FINGERPRINT_WORDS = re.compile(r"\bfinger\s?prints?\b|\bradar\b|\bnet\s?points?\b|\bplay[- ]types?\b", re.IGNORECASE)
 _SHOT_WORDS = re.compile(r"\bshots?\b|\bthrees\b|\b3s\b|\b(?:3|three)[- ]?pointers?\b|\bjumpers?\b|\blayups?\b|\bdunks?\b|\bchart\b", re.IGNORECASE)
 
@@ -1585,6 +1589,13 @@ def _route_rate(intent: str, slots: dict[str, Any], question: str) -> None:
     refuses rather than ranking the wrong unit."""
     if intent != "leaderboard":
         return
+    stat = slots.get("stat")
+    if isinstance(stat, str) and stat in ("netpoints", "netpoints_per_100", "netpoints_total"):
+        # "who are the top 10 in adjusted offensive netpoints" arrived as
+        # the total after the 4.5.0 prompt shrink; the side word decides.
+        sides = [name for name, pattern in SIDE_WORDS.items() if pattern.search(question)]
+        if len(sides) == 1:
+            slots["stat"] = f"netpoints_{sides[0]}" + ("_per_100" if stat.endswith("_per_100") else "")
     per_90 = _PER_90.search(question)
     if per_90 is not None:
         slots["rate"] = per_90.group(0).casefold()
@@ -2047,6 +2058,12 @@ def _route_team_and_player_intents(raw: dict[str, Any], question: str) -> None:
         raw["intent"] = "record_when"
     if raw["intent"] == "fingerprint" and not _FINGERPRINT_WORDS.search(question):
         raw["intent"] = "shot_chart" if _SHOT_WORDS.search(question) else "other"
+    if raw["intent"] in _FINGERPRINT_REROUTABLE and _FINGERPRINT_NAMED.search(question):
+        # The reverse: "compare fingerprints for embiid vs jokic in 2026"
+        # arrived as player_compare after the 4.5.0 prompt shrink, and a
+        # table of averages is not the radar the word asks for. The word
+        # is as unmistakable as "coach"; nothing else here is named it.
+        raw["intent"] = "fingerprint"
     listed = [name for name in raw.get("players") or [] if isinstance(name, str)]
     if raw["intent"] == "player_compare" and sum(map(_is_team_name, listed)) == 1 and len(listed) == 2:
         # One player compared with a team is his games against it. Measured:
@@ -2074,11 +2091,22 @@ def _route_one_player_intents(raw: dict[str, Any], question: str, listed: list[s
         raw.pop("players", None)
     if raw["intent"] == "player_stat" and _LOG_WORDS.search(question):
         raw["intent"] = "game_log"
+    if raw["intent"] == "game_log" and _HOW_MANY.search(question) and raw.get("stat") in _GAMES_STATS and not any(p.search(question) for p in ORDER_WORDS.values()):
+        # "how many games did embid play" arrived as a log of his most
+        # recent game (order recent, limit 1) after the 4.5.0 prompt shrink;
+        # the count is the line's ("... in 38 games"), which player_stat
+        # states, and a log of one game states nothing of the kind.
+        raw["intent"] = "player_stat"
+        for key in ("stat", "order", "limit", "fields"):
+            raw.pop(key, None)
     if raw["intent"] == "player_stat" and not _named_player(raw) and _WHO_RANKS.search(question):
         # No player named and "who ... the most": the league's ranking, not
         # one player's line - "who attempted the most three pointers this
         # season?" arrived as player_stat after the 4.5.0 prompt shrink.
         raw["intent"] = "leaderboard"
+
+
+_GAMES_STATS = frozenset({"games", "game", "games_played", "gamesPlayed", "gp"})
 
 
 def _named_player(raw: dict[str, Any]) -> bool:
@@ -2114,6 +2142,9 @@ def _route_matchup_against_team(raw: dict[str, Any], question: str, listed: list
             raw["intent"] = "game_log" if _LOG_WORDS.search(question) or _GAMES_WORDS.search(question) else "player_stat"
 
 
+_PLAYED_TOGETHER_REROUTABLE = frozenset({"head_to_head", "team_record", "team_stat", "game_log", "other"})
+
+
 def _route_line_and_record_intents(raw: dict[str, Any], question: str) -> bool:
     """A history that is really a line, a record ranking, and a career high.
     Returns whether a history was rerouted to a line."""
@@ -2125,6 +2156,12 @@ def _route_line_and_record_intents(raw: dict[str, Any], question: str) -> bool:
         # "derozan career points vs knicks" refused on its opponent.
         raw["intent"] = "player_stat"
         rerouted_to_line = True
+    if raw["intent"] in _PLAYED_TOGETHER_REROUTABLE and _RECORD.search(question) and _threshold_from_text(question) is None and _played_together(question):
+        # "PHI record when Embiid and Paul George play" arrived as
+        # head_to_head, the Pacers invented as the opponent, after the 4.5.0
+        # prompt shrink; with no threshold it is the with/without split
+        # (#156's reading, which `_route_threshold` makes for record_when).
+        raw["intent"] = "with_without"
     if raw["intent"] == "team_record" and _BEST_WORST_RECORD.search(question) and not _TEAM_WORD.search(question):
         raw["intent"] = "team_leaderboard"
         raw["stat"] = "record"
@@ -2376,6 +2413,12 @@ def _route_intent_slots(intent: str, slots: dict[str, Any], question: str, witho
             slots.pop("team", None)
     if intent == "streak":
         slots["kind"] = "loss" if _LOSING_STREAK.search(question) else "win"
+    if intent in ("threshold_count", "single_game_high") and isinstance(slots.get("limit"), int) and not _names_a_count(question):
+        # The model's `limit: 1` for "who had the most" under a leaderboard
+        # (its parent since 4.5.0) is filler here: the count's and the
+        # high's answers name the runner-ups, which the model's prompt for
+        # the child never asked it to cut.
+        slots.pop("limit", None)
 
 
 def _route_line_stat(intent: str, slots: dict[str, Any], question: str, rerouted_to_line: bool) -> None:
@@ -2563,14 +2606,17 @@ def _route_side_and_order(intent: str, slots: dict[str, Any], question: str) -> 
 
 def _drop_filler_limit(intent: str, slots: dict[str, Any], question: str) -> None:
     """A ``limit`` the model filled on a question that names no number of games."""
-    if intent == "game_log" and slots.get("limit") == 1 and _LOG_WORDS.search(question) and not _names_a_count(question) and not _SINGLE_GAME.search(question):
+    if intent == "game_log" and isinstance(slots.get("limit"), int) and _LOG_WORDS.search(question) and not _names_a_count(question) and not _SINGLE_GAME.search(question):
         # A log asked for by name (_LOG_WORDS: "gamelog", "by game"), with a
-        # limit of one the question never set: "paul reed gamelog with 25
+        # limit the question never set: "paul reed gamelog with 25
         # minutes" arrived with order='recent', limit=1 and answered his most
-        # recent game where his log was asked. A model `order` on game_log is
-        # kept whatever the patterns miss (_validate_order), so the limit is
-        # the only thing to drop; a real single game ("his last game") or a
-        # count ("last 5 games") keeps it.
+        # recent game where his log was asked; "mikal bridges game log with
+        # less than 15 fga ..." arrived with limit=15 (day5, after the 4.5.0
+        # prompt shrink) and listed fifteen games across two season types
+        # where the line's own number was read as a count. A model `order`
+        # on game_log is kept whatever the patterns miss (_validate_order),
+        # so the limit is the only thing to drop; a real single game ("his
+        # last game") or a count ("last 5 games") keeps it.
         slots.pop("limit", None)
     if _SINGLE_GAME.search(question) and season_from_text(question) is None and not _SEASON_WORDS.search(question) and isinstance(slots.get("season"), int) and slots["season"] != current_season():
         # "show a shot chart of steph curry's last regular season game" came

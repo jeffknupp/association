@@ -629,9 +629,12 @@ and never a stray name found elsewhere in the question.
 """
 
 
-SUBJECT_RESTORABLE_INTENTS: frozenset[str] = frozenset({"single_game_high", "threshold_count"})
+SUBJECT_RESTORABLE_INTENTS: frozenset[str] = frozenset({"single_game_high", "threshold_count", "player_splits"})
 """Intents where a player left out changes the answer, but is not required -
-an empty slot means "the league" - so a name is restored only where the
+an empty slot means "the league" (or, for ``player_splits``, the team's own
+splits: "show me Embiid's splits against boston" arrived as the 76ers and
+the Celtics meeting with Embiid dropped, once the intent left the router's
+prompt in 4.5.0) - so a name is restored only where the
 question's own words name exactly one player and that naming survives
 :func:`~association.query.entities._named_only_by_a_team_word` and
 :func:`~association.query.entities._named_only_by_a_common_word`.

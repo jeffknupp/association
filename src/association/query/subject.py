@@ -142,7 +142,7 @@ _CHILD_GRAMMARS: tuple[tuple[str, re.Pattern[str], frozenset[str], frozenset[str
         "record_when",
         re.compile(r"\bhow many\b.{0,40}\bgames\b.{0,20}\b(?:won|lost|win|lose)\b", re.IGNORECASE),
         frozenset({"player"}),
-        frozenset({"team_record", "team_stat", "with_without", "head_to_head"}) | _PLAYER_RELATION_PARENTS,
+        frozenset({"team_record", "team_stat", "team_outlook", "with_without", "head_to_head"}) | _PLAYER_RELATION_PARENTS,
     ),
     (
         "threshold_count",
@@ -168,7 +168,9 @@ _CHILD_GRAMMARS: tuple[tuple[str, re.Pattern[str], frozenset[str], frozenset[str
         "player_splits",
         re.compile(r"\bsplits?\b|\bby month\b|\bhome and away\b|\bhome/away\b|\bhome vs\.? away\b|\bmonthly\b", re.IGNORECASE),
         _PLAYER_OR_PAIR,
-        frozenset({"with_without", "player_compare"}) | _PLAYER_RELATION_PARENTS,
+        # head_to_head and team_record too: "show me Embiid's splits against
+        # boston" arrived as the two teams meeting, Embiid dropped (day5).
+        frozenset({"with_without", "player_compare", "head_to_head", "team_record"}) | _PLAYER_RELATION_PARENTS,
     ),
 )
 
@@ -509,7 +511,20 @@ def _not_a_name(text: str) -> bool:
     router's filler word ("player" on "Most points in 15th season played",
     F099). Neither is a player to read, replace or report."""
     stripped = text.strip()
+    if _NO_NAME_HAS.search(stripped):
+        # "most 30+ point games", "most", "Most Player in 15th Season Played"
+        # - what the model files as the player once nothing in its prompt
+        # shows a count or a ranking with none (the 4.5.0 prompt shrink).
+        # No player's name holds a digit, a plus sign, a rank word or the
+        # word "player"; a phrase the question literally contains is not a
+        # name for holding it.
+        return True
     return stripped.lower() in FILLER_PLAYER_WORDS or any(re.fullmatch(pattern, stripped, re.IGNORECASE) for pattern, _ in POSITIONS)
+
+
+#: Anchored to the START for the rank words, since a real name can end in
+#: one ("Travis Best" - the trap AGENTS.md records) and none begins so.
+_NO_NAME_HAS = re.compile(r"\d|\+|^(?:most|fewest|least|top|best|worst|highest|lowest)\b|\bplayers?\b", re.IGNORECASE)
 
 
 def _team_slot_player(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> str | None:
