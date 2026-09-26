@@ -52,6 +52,7 @@ before that commit needs re-checking against the current warehouse.
 - **User sees:** a fluent table about a different question, with the right numbers for the narrower scope it states - which is why the blind grader passed all five wordings; re-graded wrong on Jeff's call (overrides run day10). Day10 is 160/175 and families 150/166 after the re-grade.
 - **Next step:** two decisions for the parser (ROADMAP: the consolidation). Shape: a player set against a team is his games narrowed by opponent - the player-games relation, rows with W/L and his line plus the tally - never the team's with/without split (the reroute rule goes; the compiler's rows shape with a record summary is the nearest thing today). Scope: "this year" / "this season" with no type named reads both types and says so, the way `season_type_unstated` already does for "last N games" - a policy for every question, to confirm with Jeff, since the regular-season default is what every per-game average answers under today.
 - **Source:** ours, not ESPN's.
+- **GitHub:** #231
 
 ### The shorter router prompt (4.5.0, the seven children out) moved eight day5 rows that no text rule meets yet
 - **Found:** 2026-09-25, plan item 2 step 2c-ii, `live_day5.jsonl` (e8c68ba) against `live_day4.jsonl` (91d1461); `~/association-research/intent-shrink/RESULT.md` has the full list.
