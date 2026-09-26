@@ -67,6 +67,7 @@ before that commit needs re-checking against the current warehouse.
   `web/static/index.html` (ts_pct/efg_pct ARE fractions and stay), add the
   case to `tests/web/test_renderers.py`, and run `scripts/check_web_ui.py`.
 - **Source:** ours, not ESPN's.
+- **GitHub:** #225
 
 ### "For the <team>" beside a player is read as his own-team tenure even when the team is the subject: "show me stats for sixers when maxey scored 20+ points"
 - **Found:** 2026-09-23, grading `live_sweep.jsonl` (yardstick-v2 F087) after
@@ -314,6 +315,7 @@ those were found.
   does for the league-wide player read; a fixture test with a postseason game
   inside the window.
 - **Source:** ours, not ESPN's.
+- **GitHub:** #226
 
 ### A composed team season total carries a caveat about a different table: "88 3-pointers over the complete 2001 postseason (23 games). Note: ... Philadelphia's run reads 16 games against the 23"
 - **Found:** 2026-09-25, checking the compiler's partial-season caveat while
@@ -337,6 +339,7 @@ those were found.
   instead of the intent's.
 - **Source:** ours, not ESPN's - the missing 2001 games themselves are
   `DATA.md`'s ("The 2000 and 2001 playoffs stop before the Finals").
+- **GitHub:** #227
 
 ### Template data the page cannot render from
 - **Found:** 2026-09-24/25, building the web page's typeset tables and going
@@ -3153,6 +3156,7 @@ those were found.
   ...)` both it and `present.py` call. The season-line intents need the
   season line as a second relation the compiler reads, not a presenter.
 - **Source:** ours, not ESPN's.
+- **GitHub:** #228
 
 ### `team_alignment` is not declared in every `TEMPLATE_SOURCES` tuple that can now read it
 - **Found:** 2026-09-24, landing the K3-2 conference/division narrowing.
