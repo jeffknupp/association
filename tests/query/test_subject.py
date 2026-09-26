@@ -573,3 +573,41 @@ def test_a_completion_that_resolves_to_nobody_is_cut_back(con: duckdb.DuckDBPyCo
     assert undo_name_completion(con, "derozan career points vs knicks", slots) == [("Derozan Valenčić", "Derozan")] and slots["player"] == "Derozan"
     kept: dict[str, Any] = {"player": "DeMar DeRozan"}
     assert undo_name_completion(con, "derozan career points vs knicks", kept) == [] and kept["player"] == "DeMar DeRozan"
+
+
+# ---------------------------------------------------------------------------
+# ROADMAP plan item 3, step B: a companion carries the role the question
+# gives him (Companion), and the roles the router's own slots cannot carry
+# are written as the `conditions` slot where the template honors it.
+
+
+def test_a_companions_role_is_read_off_its_phrase(con: duckdb.DuckDBPyConnection) -> None:
+    from association.query.subject import Companion
+
+    s = _read(con, "76ers record when maxey scores 20+ points", "record_when", team="Philadelphia 76ers", stat="points", threshold=20)
+    assert s.kind == "team" and s.conditions == (Companion("Tyrese Maxey", "reached", "points", 20),) and s.companions == ("Tyrese Maxey",)
+    s = _read(con, "PHI record when Embiid and Paul George start", "with_without", team="Philadelphia 76ers", with_player=["Embiid", "Paul George"])
+    assert [(c.name, c.predicate) for c in s.conditions] == [("Joel Embiid", "started"), ("Paul George", "started")]
+    s = _read(con, "de'aaron fox game log without wembyanama", "game_log", players=["De'Aaron Fox", "Victor Wembanyama"], without=["wembyanama"])
+    assert [(c.name, c.predicate) for c in s.conditions] == [("Victor Wembanyama", "absent")] and s.players == ("De'Aaron Fox",)
+    s = _read(con, "celtics record with tatum out", "with_without", team="Boston Celtics", with_player=["tatum"])
+    assert [(c.name, c.predicate) for c in s.conditions] == [("Jayson Tatum", "absent")]
+    s = _read(con, "jaylen brown stats with tatum off the bench", "player_stat", player="Jaylen Brown", with_player=["tatum"])
+    assert [(c.name, c.predicate) for c in s.conditions] == [("Jayson Tatum", "bench")]
+    s = _read(con, "hornets record when lebron and kawhi play this year", "with_without", team="Charlotte Hornets", with_player=["lebron", "kawhi"])
+    assert [(c.name, c.predicate) for c in s.conditions] == [("LeBron James", "played"), ("Kawhi Leonard", "played")]
+
+
+def test_a_start_or_a_line_is_written_as_a_condition_where_the_template_honors_it(con: duckdb.DuckDBPyConnection) -> None:
+    intent, slots = _assigned(con, "jaylen brown game log with tatum starting", "game_log", player="Jaylen Brown", with_player=["tatum"])
+    assert intent == "game_log" and slots["conditions"] == [{"player": "Jayson Tatum", "side": "own", "predicate": "started"}]
+    intent, slots = _assigned(con, "jaylen brown stats in games tatum scored 30+ points", "player_stat", player="Jaylen Brown", stat="points")
+    assert "conditions" not in slots  # "in games" is not a companion phrase the reading knows yet
+    intent, slots = _assigned(con, "jaylen brown ppg when tatum scores 30+ points", "player_stat", player="Jaylen Brown", stat="points")
+    assert slots["conditions"] == [{"player": "Jayson Tatum", "side": "own", "predicate": "reached", "stat": "points", "threshold": 30}]
+    # An absence stays the router's `without`; the comparison templates read it as the split's two sides.
+    intent, slots = _assigned(con, "celtics record without tatum", "with_without", team="Boston Celtics", without=["tatum"])
+    assert "conditions" not in slots and slots["without"] == ["tatum"]
+    # A template not on the relation gets nothing to refuse.
+    intent, slots = _assigned(con, "celtics record when tatum starts", "with_without", team="Boston Celtics", with_player=["tatum"])
+    assert "conditions" not in slots

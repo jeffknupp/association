@@ -62,10 +62,11 @@ from association.query.entities import (
     nicknames_in,
     players_named_in,
 )
-from association.query.router import settle
+from association.query.router import _THRESHOLD_WORDS, settle
 from association.query.season_text import season_from_text
 from association.query.templates.common import (
     FILLER_PLAYER_WORDS,
+    HONORED_SCOPING,
     OWN_TEAM_RESTORABLE_INTENTS,
     PLAYER_INTENTS,
     PLAYER_REQUIRED_INTENTS,
@@ -264,6 +265,9 @@ class Subject:
     #: The question this is a reading of - what :func:`apply_subject` settles
     #: a kind-assigned intent's slots from (:func:`~association.query.router.settle`).
     question: str = ""
+    #: Every companion with the role the question states (:class:`Companion`);
+    #: ``companions`` above is their names.
+    conditions: tuple[Companion, ...] = ()
     #: The router's player names that are no name at all - a rank word or
     #: a phrase of the question ("most", "most 30+ point games";
     #: :func:`_not_a_name`), or a name the question holds only by a TEAM's
@@ -280,7 +284,36 @@ _MONTH_ABBREVIATIONS = frozenset({"jan", "feb", "mar", "apr", "jun", "jul", "aug
 #: "without" / "with" / "when" / "while", up to the next scoping word.
 #: Loose on purpose - the names it holds are still checked against the
 #: players the question names.
-_COMPANION = re.compile(r"\b(?:without|with|when|while)\s+((?:(?!\b(?:vs\.?|versus|against|in|for|this|last|the)\b)[\w'.+-]+\s*){1,7})", re.IGNORECASE)
+_COMPANION = re.compile(r"\b(without|with|when|while)\s+((?:(?!\b(?:vs\.?|versus|against|in|for|this|last|the)\b)[\w'.,+-]+\s*){1,9})", re.IGNORECASE)
+
+#: What a companion phrase says the player DID in the games asked about,
+#: read off the phrase's own words: a threshold ("scores 20+ points"), a
+#: start, the bench, an absence ("out", "injured", "without"), else played.
+_CONDITION_THRESHOLD = re.compile(r"\b(\d{1,3})\s*(?:\+|plus|or\s+more)?\s*(" + "|".join(sorted((re.escape(w) for w in _THRESHOLD_WORDS), key=len, reverse=True)) + r")\b", re.IGNORECASE)
+_CONDITION_STARTED = re.compile(r"\bstart(?:s|ed|ing)?\b|\bin the starting lineup\b", re.IGNORECASE)
+# "off" alone too: the phrase stops at "the" (a stop word), so "with tatum
+# off the bench" reaches here as "tatum off".
+_CONDITION_BENCH = re.compile(r"\bbench\b|\boff\b|\bas a reserve\b", re.IGNORECASE)
+_CONDITION_ABSENT = re.compile(r"\b(?:out|injured|hurt|sidelined|missing|absent|sat|resting|did ?n[o']t play|dnp)\b", re.IGNORECASE)
+
+
+class Companion(NamedTuple):
+    """A player named beside the subject with the role the question gives
+    him in the games asked about: ``predicate`` is one of
+    :data:`~association.query.player_games.CONDITION_PREDICATES` (``played``,
+    ``absent``, ``started``, ``bench``, ``reached``), and a ``reached`` role
+    carries its ``stat`` and ``threshold`` ("when Maxey scores 20+ points").
+    The reading's side of the relation's :class:`~association.query.player_games.Condition`;
+    :func:`apply_subject` writes it as the ``conditions`` slot.
+
+    .. versionadded:: 4.5.0
+    """
+
+    name: str
+    predicate: str
+    stat: str | None = None
+    threshold: int | None = None
+
 
 #: The singular of a team's nickname names the team: "a hawk player", "a
 #: laker". :data:`association.query.entities._TEAM_NICKNAMES` holds the
@@ -571,22 +604,46 @@ def _spellings(con: duckdb.DuckDBPyConnection, question: str, routed: list[str])
     return out
 
 
-def _companions(question: str, players: tuple[str, ...], slots: dict[str, Any]) -> tuple[str, ...]:
+def _conditions(question: str, players: tuple[str, ...], slots: dict[str, Any]) -> tuple[Companion, ...]:
     """The players whose ROLE the question states beside the subject -
-    "without X", "with X on the floor", "when X scored" - read from the
-    question's own words, never from the router's ``without`` slot (which
-    filed Embiid under it on "Embiid's record against Boston"). The router's
-    slot is consulted only for a companion the question misspells
-    ("without wembyanama"), where its phrase is a near spelling of the
-    router's name."""
-    text = " ".join(m.group(1) for m in _COMPANION.finditer(question))
-    if not text:
-        return ()
-    found = [p for p in players if question_supports(p, text)]
-    for r in list(slots.get("without") or []) + list(slots.get("with_player") or []):
-        if isinstance(r, str) and not _same_person(r, found) and _near(r, text):
-            found.append(r)
+    "without X", "with X on the floor", "when X scored 20+" - each with that
+    role (:class:`Companion`), read from the question's own words, never
+    from the router's ``without`` slot (which filed Embiid under it on
+    "Embiid's record against Boston"). The router's ``without``/``with_player``
+    slots are consulted only for a companion the question misspells
+    ("without wembyanama"), where the phrase is a near spelling of the
+    router's name. One phrase, one role: "when Embiid and Paul George
+    start" is two ``started`` companions.
+
+    .. versionchanged:: 4.5.0
+       Returns :class:`Companion` tuples with the predicate, not names.
+    """
+    found: list[Companion] = []
+    routed = [r for r in list(slots.get("without") or []) + list(slots.get("with_player") or []) if isinstance(r, str)]
+    for match in _COMPANION.finditer(question):
+        word, text = match.group(1).lower(), match.group(2)
+        predicate, stat, threshold = _condition_role(word, text)
+        names = [p for p in players if question_supports(p, text)]
+        names += [r for r in routed if not _same_person(r, names) and _near(r, text)]
+        found.extend(Companion(name, predicate, stat, threshold) for name in names if not any(_same_person(name, [c.name]) for c in found))
     return tuple(found)
+
+
+def _condition_role(word: str, text: str) -> tuple[str, str | None, int | None]:
+    """The predicate a companion phrase states, from its keyword and its
+    words: a threshold pair wins ("scores 20+ points" is ``reached`` whatever
+    the keyword), then a start, the bench, an absence ("without", "out",
+    "injured"), else ``played`` ("with", "when ... play")."""
+    pair = _CONDITION_THRESHOLD.search(text)
+    if pair is not None and int(pair.group(1)) >= 1 and not (int(pair.group(1)) == 3 and pair.group(2).lower().startswith(("point", "pt"))):
+        return "reached", _THRESHOLD_WORDS[pair.group(2).lower()], int(pair.group(1))
+    if _CONDITION_STARTED.search(text):
+        return "started", None, None
+    if _CONDITION_BENCH.search(text):
+        return "bench", None, None
+    if word == "without" or _CONDITION_ABSENT.search(text):
+        return "absent", None, None
+    return "played", None, None
 
 
 def _team_names(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], team_word: str | None, opponent: str | None, own_team: str | None) -> list[str]:
@@ -635,7 +692,8 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, slo
     named = _question_players(con, question, routed, teams_here)
     spellings = _spellings(con, question, routed)
     players = _merge_names([spellings.get(r, r) for r in routed], named)
-    companions = _companions(question, players, slots)
+    conditions = _conditions(question, players, slots)
+    companions = tuple(dict.fromkeys(c.name for c in conditions))
     players = tuple(p for p in players if p not in companions)
     # "for the Heat" is a player's OWN team only beside a player subject
     # named BEFORE it - the order a tenure is asked in ("lebron ... for
@@ -655,6 +713,7 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, slo
         intent=settled,
         question=question,
         filler=filler,
+        conditions=conditions,
         evidence=(*evidence, f"the words {words!r} name {settled}") if words else evidence,
     )
 
@@ -817,6 +876,7 @@ def apply_subject(subject: Subject, slots: dict[str, Any], *, con: duckdb.DuckDB
     decisions.extend(_apply_own_team(subject, slots, intent))
     decisions.extend(_apply_team_subject(subject, slots, intent))
     decisions.extend(_apply_position(subject, slots, intent))
+    decisions.extend(_apply_conditions(subject, slots, intent))
     rewritten, settled = _apply_intent(subject, slots, intent)
     decisions.extend(rewritten)
     return Applied(decisions, [], settled)
@@ -1200,6 +1260,33 @@ def _apply_invented_opponent(subject: Subject, slots: dict[str, Any], con: duckd
         return []
     slots.pop("opponent", None)
     return [Decision("subject", "opponent", held, None, "the question sets its subject against nobody; the router's opponent is invented")]
+
+
+def _apply_conditions(subject: Subject, slots: dict[str, Any], intent: str) -> list[Decision]:
+    """Write the companions' roles the router's own slots cannot carry - a
+    start, the bench, a line reached ("when Embiid starts", "in games Maxey
+    had 20+ points") - as the ``conditions`` slot the relation reads
+    (:func:`~association.query.templates.common._condition_from_slot`),
+    where the intent's template honors it. An absence and a played
+    companion stay in the router's ``without``/``with_player``, which every
+    template reads today (the comparison templates read them as the split's
+    two sides, not as a filter) - ROADMAP plan item 3, step B."""
+    if "conditions" not in HONORED_SCOPING.get(intent, frozenset()) or slots.get("conditions"):
+        return []
+    # Never on the subject of the read himself: record_when's player IS the
+    # companion of "sixers record when maxey scored 15+" (the template
+    # groups his games by that line), and a condition on him would keep only
+    # the games above it - the "under" row gone (found by the golden).
+    own = [name for name in [slots.get("player"), *(slots.get("players") or [])] if isinstance(name, str)]
+    written = [
+        {"player": c.name, "side": "own", "predicate": c.predicate, **({"stat": c.stat, "threshold": c.threshold} if c.predicate == "reached" else {})}
+        for c in subject.conditions
+        if c.predicate in ("started", "bench", "reached") and not _same_person(c.name, own)
+    ]
+    if not written:
+        return []
+    slots["conditions"] = written
+    return [Decision("subject", "conditions", None, written, "the role the question gives each player named beside the subject")]
 
 
 def _apply_position(subject: Subject, slots: dict[str, Any], intent: str) -> list[Decision]:
