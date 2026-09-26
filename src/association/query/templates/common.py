@@ -30,8 +30,10 @@ from ..player_games import (  # noqa: F401 - the relation's names, re-exported f
     _RECORDED,
     _RECORDED_OR_REBUILT,
     BOTH_SEASON_TYPES,
+    CONDITION_PREDICATES,
     REBUILT_STATS,
     STARTER_SIDES,
+    Condition,
     Narrowed,
     _joined,
     _log_carries_rebuilt,
@@ -175,6 +177,7 @@ SCOPING_SLOTS = frozenset(
         "game_n",
         "season_n",
         "situation",
+        "conditions",
         "rate",
         "season_type_unstated",
         "team_restored",
@@ -204,7 +207,7 @@ SCOPING_SLOTS = frozenset(
 # to one template at a time, which is the O(templates x slots) matrix the
 # algebra port exists to remove. A template on the relation that cannot honor
 # one of these says so in RELATION_SCOPING_EXCLUDED, with the reason.
-RELATION_SCOPING = frozenset({"order", "date", "opponent", "venue", "span", "without", "split", "since", "until", "below", "above", "game_n", "season_n", "situation"})
+RELATION_SCOPING = frozenset({"order", "date", "opponent", "venue", "span", "without", "split", "since", "until", "below", "above", "game_n", "season_n", "situation", "conditions"})
 """The scoping slots every template on the player-games relation honors.
 
 .. versionadded:: 4.4.0
@@ -775,7 +778,7 @@ RANKING_INTENTS = frozenset({"leaderboard", "threshold_count", "single_game_high
 # The slots that turn player_stat from a season-line lookup into a sum over box
 # scores, and the tables that sum reads. Kept here so _sources_for and the
 # template cannot disagree about which question needs which floor.
-_BOX_SCORE_SCOPING = ("opponent", "venue", "without")
+_BOX_SCORE_SCOPING = ("opponent", "venue", "without", "conditions")
 
 
 _PLAYER_BOX_SOURCES = ("player_game_log", "player_box_stats", "games")
@@ -1462,7 +1465,7 @@ def _checked_venue(venue: Any) -> str:
 
 
 def _narrow_player_games(
-    con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, *, opponent: Any, venue: Any, without: Any, split: Any = None, game_n: Any = None, team: Any = None
+    con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, *, opponent: Any, venue: Any, without: Any, split: Any = None, game_n: Any = None, team: Any = None, conditions: Any = None
 ) -> Narrowed | TemplateResult:
     """``player``'s games in ``span``, narrowed to an opponent, a venue, a
     teammate's absence and a starter/bench half where the question named them.
@@ -1538,13 +1541,15 @@ def _narrow_player_games(
         mate = _resolved_teammate(con, text, player, span)
         if isinstance(mate, TemplateResult):
             return mate
-        if any(mate.id == held.id for held in narrowed.without):
-            continue  # the same man named twice narrows nothing
-        tenure, tenure_params = _relation_tenure_clause(con, mate, span.season)
-        narrowed.without.append(mate)
-        narrowed.tenure.append((tenure, tenure_params))
-        narrowed.extra += [tenure, f"NOT {_teammate_played(box_source(con))}"]
-        narrowed.extra_params += [*tenure_params, mate.id]
+        narrowed.add_condition(Condition(mate, "own", "absent", None, _relation_tenure_clause(con, mate, span.season)), box_source(con))
+    # The general shape of the same thing (ROADMAP plan item 3): any
+    # player, on either side, under any predicate - "when Embiid and Paul
+    # George start", "vs LeBron without Durant", "in games Maxey had 20+".
+    for entry in conditions if isinstance(conditions, list) else []:
+        condition = _condition_from_slot(con, entry, player, span)
+        if isinstance(condition, TemplateResult):
+            return condition
+        narrowed.add_condition(condition, box_source(con))
     if game_n:
         narrowed.narrow_series_game(int(game_n))
     return narrowed
@@ -1729,7 +1734,18 @@ def scoped_games(
     .. versionchanged:: 4.4.0
        Takes ``team``.
     """
-    narrowed = _narrow_player_games(con, player, span, opponent=opponent, venue=slots.get("venue"), without=slots.get("without"), split=slots.get("split"), game_n=slots.get("game_n"), team=team)
+    narrowed = _narrow_player_games(
+        con,
+        player,
+        span,
+        opponent=opponent,
+        venue=slots.get("venue"),
+        without=slots.get("without"),
+        split=slots.get("split"),
+        game_n=slots.get("game_n"),
+        team=team,
+        conditions=slots.get("conditions"),
+    )
     if isinstance(narrowed, TemplateResult):
         return narrowed
     narrow_measures(narrowed, measures)
@@ -2070,6 +2086,39 @@ def _teammates_among(con: duckdb.DuckDBPyConnection, candidates: list[Entity], p
     ).fetchall()
     have = {str(row[0]) for row in rows}
     return [c for c in candidates if c.id in have]
+
+
+def _condition_from_slot(con: duckdb.DuckDBPyConnection, entry: Any, player: Entity, span: _Span) -> Condition | TemplateResult:
+    """One ``conditions`` slot entry - ``{"player": text, "side": "own" |
+    "opponent", "predicate": ..., "stat": ..., "threshold": ...}`` - as a
+    :class:`~association.query.player_games.Condition` with its player
+    resolved: a teammate the way "without" resolves one (narrowed to who
+    shared a team with the subject), an opponent-side player against the
+    box scores in the span. A predicate or stat this does not read refuses
+    rather than narrowing to nothing.
+
+    .. versionadded:: 4.5.0
+    """
+    if not isinstance(entry, dict) or not isinstance(entry.get("player"), str) or not entry["player"].strip():
+        raise TemplateUnsupported(f"a condition needs a player, got {entry!r}")
+    side, predicate = entry.get("side", "own"), entry.get("predicate", "played")
+    if side not in ("own", "opponent") or predicate not in CONDITION_PREDICATES:
+        raise TemplateUnsupported(f"no condition reads side {side!r} with predicate {predicate!r}")
+    if side == "own":
+        found = _resolved_teammate(con, entry["player"], player, span)
+    else:
+        found = _resolved_player(con, entry["player"], f"no player named {entry['player']!r}", available=_BOX_SCORES, season=span.season, through=_career_end(span.season))
+    if isinstance(found, TemplateResult):
+        return found
+    line: tuple[str, str, int, str] | None = None
+    if predicate == "reached":
+        stat, threshold = entry.get("stat"), entry.get("threshold")
+        column = THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
+        if column is None or not isinstance(stat, str) or not isinstance(threshold, int) or isinstance(threshold, bool) or threshold < 1:
+            raise TemplateUnsupported(f"a reached condition needs a known stat and a positive threshold, got {stat!r}/{threshold!r}")
+        line = (column, ">=", threshold, f"{threshold}+ {STAT_LABELS.get(stat, stat)}")
+    tenure = _relation_tenure_clause(con, found, span.season) if side == "own" and predicate == "absent" else None
+    return Condition(found, side, predicate, line, tenure)
 
 
 def _resolved_teammate(con: duckdb.DuckDBPyConnection, text: Any, player: Entity, span: _Span) -> Entity | TemplateResult:

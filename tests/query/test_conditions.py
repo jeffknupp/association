@@ -27,7 +27,7 @@ from association.fetch.repairs import real_games
 from association.fetch.repairs.reconstructed_box import _FILLED_COLUMNS as FILLED_COLUMNS
 from association.nba.season import current_season
 from association.query.conditions import RAW_BOX, UNGATED_ON_REBUILD, box_source
-from association.query.templates.common import REBUILT_STATS, TemplateContext, TemplateResult, TemplateUnsupported, check_coverage
+from association.query.templates.common import REBUILT_STATS, TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, check_scope
 from association.query.templates.games import player_matchup
 from association.query.templates.splits import SPLIT_KINDS, player_splits, record_when, streak, with_without
 
@@ -1479,3 +1479,47 @@ def test_a_matchup_whose_second_player_is_the_absent_teammate_says_so(league: Te
     played against each other" would be a false sentence. Said instead."""
     result = player_matchup(league, _slots(players=["LeBron James", "Jayson Tatum"], without=["Jayson Tatum"]))
     assert "both the player" in result.answer and result.data["message"]
+
+
+# ---------------------------------------------------------------------------
+# ROADMAP plan item 3, step A: the player condition `(player, side, predicate)`
+# on the relation, read by every relation template through the shared step
+# as a `conditions` slot. Brown's regular-season games in the fixture: e1
+# (Tatum started, 30), e2 (Tatum DNP), e3 (vs PHI, no Tatum line), e4 (Tatum
+# off the bench, 35), e5 (blank for both), e7 (Tatum started, 31); LeBron is
+# on the other side in e1, e2, e5, e7.
+
+
+def _brown_games(league: TemplateContext, *conditions: dict[str, Any]) -> int:
+    return player_splits(league, _slots(player="Jaylen Brown", split="home_away", conditions=list(conditions))).data["games"]
+
+
+def test_a_teammates_start_bench_and_line_are_conditions(league: TemplateContext) -> None:
+    assert _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "started"}) == 2  # e1, e7
+    assert _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "bench"}) == 1  # e4
+    assert _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "played"}) == 3  # e1, e4, e7
+    assert _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "reached", "stat": "points", "threshold": 31}) == 2  # e4 (35), e7 (31)
+
+
+def test_an_opponent_side_condition_reads_the_other_teams_box_score(league: TemplateContext) -> None:
+    assert _brown_games(league, {"player": "LeBron James", "side": "opponent", "predicate": "played"}) == 3  # e1, e2, e7
+    assert _brown_games(league, {"player": "LeBron James", "side": "opponent", "predicate": "absent"}) == 2  # e3, e4 vs PHI
+    # ANDed: LeBron on the other side and Tatum starting beside him.
+    assert _brown_games(league, {"player": "LeBron James", "side": "opponent", "predicate": "played"}, {"player": "Jayson Tatum", "side": "own", "predicate": "started"}) == 2
+
+
+def test_the_absent_condition_is_the_without_slot_word_for_word(league: TemplateContext) -> None:
+    """The teammate absence every template read before is the own-side
+    absent condition: the same games, the same phrase, tenure included."""
+    old = player_splits(league, _slots(player="Jaylen Brown", split="home_away", without=["Jayson Tatum"]))
+    new = player_splits(league, _slots(player="Jaylen Brown", split="home_away", conditions=[{"player": "Jayson Tatum", "side": "own", "predicate": "absent"}]))
+    assert old.data["games"] == new.data["games"] == 2 and old.answer == new.answer  # e2 (DNP), e3 (no line)
+
+
+def test_a_condition_the_relation_cannot_read_refuses(league: TemplateContext) -> None:
+    with pytest.raises(TemplateUnsupported, match="predicate"):
+        _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "dunked"})
+    with pytest.raises(TemplateUnsupported, match="reached condition"):
+        _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "reached", "stat": "vibes", "threshold": 3})
+    with pytest.raises(TemplateUnsupported, match="conditions"):
+        check_scope("player_history", {"player": "Jaylen Brown", "stat": "points", "conditions": [{"player": "Jayson Tatum"}]})

@@ -191,6 +191,86 @@ def _joined(names: list[str], word: str = "and") -> str:
     return f"{', '.join(names[:-1])} {word} {names[-1]}"
 
 
+#: The predicates a :class:`Condition` can state about its player in a game.
+CONDITION_PREDICATES: frozenset[str] = frozenset({"played", "absent", "started", "bench", "reached"})
+"""Every value :attr:`Condition.predicate` takes.
+
+.. versionadded:: 4.5.0
+"""
+
+
+@dataclass
+class Condition:
+    """A player condition on a game: ``player`` on the subject's ``side``
+    (``"own"`` - a teammate - or ``"opponent"``) with a ``predicate`` that
+    held in that game - he ``played``, was ``absent``, ``started``, came off
+    the ``bench``, or ``reached`` a line (``column op value``, said as
+    ``label``). "Without Durant", "when Embiid and Paul George play", "when
+    Maxey scores 20+", "vs LeBron" are each one of these; a list of them is
+    ANDed. ROADMAP plan item 3: the one shape ``Narrowed.without`` (own,
+    absent), the starter half (the subject's own ``started``), record_when's
+    threshold (own, reached) and the pair relation's second player
+    (opponent, played) were special cases of.
+
+    ``tenure`` bounds an OWN-side absence to the games inside the player's
+    time on the subject's team (:func:`_teammate_stints`): "Nets record
+    without KD" must not count the decades before he arrived.
+
+    .. versionadded:: 4.5.0
+    """
+
+    player: Entity
+    side: str
+    predicate: str
+    line: tuple[str, str, int, str] | None = None
+    tenure: tuple[str, list[Any]] | None = None
+
+    def phrase(self) -> str:
+        """How the answer says this condition after the subject's name."""
+        name = self.player.name
+        if self.predicate == "absent":
+            return f"without {name}" + ("" if self.side == "own" else " on the other side")
+        if self.predicate == "played":
+            return f"with {name}" if self.side == "own" else f"vs {name}"
+        if self.predicate == "started":
+            return f"with {name} starting"
+        if self.predicate == "bench":
+            return f"with {name} off the bench"
+        label = self.line[3] if self.line else "the line"
+        return f"in games {name} had {label}"
+
+
+def condition_clause(condition: Condition, box: BoxSource) -> tuple[list[str], list[Any]]:
+    """The WHERE clauses (ANDed) and their parameters for one
+    :class:`Condition` over the box source ``box`` - one EXISTS over the
+    player's own row in the same game, on the stated side, with the
+    predicate; an absence is its negation, bounded by the tenure clause
+    where one is carried.
+
+    .. versionadded:: 4.5.0
+    """
+    if condition.predicate == "absent" and condition.tenure is not None:
+        # Word for word the clause pair `Narrowed.without` has always added:
+        # the tenure first, then the negated appearance - the same rows.
+        tenure, tenure_params = condition.tenure
+        return [tenure, f"NOT {_teammate_played(box)}"], [*tenure_params, condition.player.id]
+    appeared = "(m.minutes IS NOT NULL OR m.reconstructed)" if box.rebuilt else "m.minutes IS NOT NULL"
+    side = "m.team_id = pgl.team_id" if condition.side == "own" else "m.team_id = pgl.opponent_team_id"
+    inner = [f"m.athlete_id = ? AND m.event_id = pgl.event_id AND m.season = pgl.season AND NOT m.did_not_play AND {appeared} AND {side}"]
+    params: list[Any] = [condition.player.id]
+    if condition.predicate == "started":
+        inner.append("m.starter")
+    elif condition.predicate == "bench":
+        inner.append("NOT m.starter")
+    elif condition.predicate == "reached":
+        assert condition.line is not None, "a reached condition carries its line"
+        column, op, value, _ = condition.line
+        inner.append(f"m.{column} {op} ?")
+        params.append(value)
+    exists = f"EXISTS (SELECT 1 FROM {box.table} m WHERE {' AND '.join(inner)})"
+    return [f"NOT {exists}" if condition.predicate == "absent" else exists], params
+
+
 @dataclass
 class Narrowed:
     """One player's games in a span, and whatever the question narrowed them
@@ -212,11 +292,12 @@ class Narrowed:
     #: True for a log of starts, False for one off the bench, None when the
     #: question named neither half.
     started: bool | None = None
-    # Every teammate the question named, with that teammate's tenure clause
-    # beside it. All of them at once: a game is "without" them only when none
-    # of them played it, so a dropped name would answer a wider question.
-    without: list[Entity] = field(default_factory=list)
-    tenure: list[tuple[str, list[Any]]] = field(default_factory=list)
+    #: Every player condition the question stated (:class:`Condition`), all
+    #: of them at once: "without Tatum and Brown" is the games NEITHER
+    #: played, so a dropped one would answer a wider question. ``without``
+    #: and ``tenure`` below are views over the own-side absences, for the
+    #: readers that phrase and count them.
+    conditions: list[Condition] = field(default_factory=list)
     date: str | None = None
     #: Each box-score line the games were kept under or over, as the answer
     #: says it: ``"under 14 free throw attempts"``.
@@ -242,6 +323,39 @@ class Narrowed:
     #: read as one or the other, never both, by :func:`association.query.calendar.parse_situation`/
     #: :func:`~association.query.calendar.parse_alignment` in that order.
     alignment: AlignmentNarrowing | None = None
+
+    @property
+    def without(self) -> list[Entity]:
+        """The teammates whose absence the games were narrowed to - the
+        own-side ``absent`` conditions' players, in order.
+
+        .. versionchanged:: 4.5.0
+           A view over :attr:`conditions`, not a field of its own.
+        """
+        return [c.player for c in self.conditions if c.side == "own" and c.predicate == "absent"]
+
+    @property
+    def tenure(self) -> list[tuple[str, list[Any]]]:
+        """Each absent teammate's tenure clause, aligned with :attr:`without`.
+
+        .. versionchanged:: 4.5.0
+           A view over :attr:`conditions`.
+        """
+        return [c.tenure or ("TRUE", []) for c in self.conditions if c.side == "own" and c.predicate == "absent"]
+
+    def add_condition(self, condition: Condition, box: BoxSource) -> None:
+        """Narrow to the games ``condition`` held in - its clauses joined to
+        ``extra`` - unless the same player is already held under the same
+        predicate and side (the same man named twice narrows nothing).
+
+        .. versionadded:: 4.5.0
+        """
+        if any(c.player.id == condition.player.id and c.predicate == condition.predicate and c.side == condition.side for c in self.conditions):
+            return
+        clauses, params = condition_clause(condition, box)
+        self.conditions.append(condition)
+        self.extra += clauses
+        self.extra_params += params
 
     def clauses(self, *, narrowed: bool = True, recorded: bool = True, rebuilt: bool = False) -> tuple[str, list[Any]]:
         """The WHERE body and its parameters - without the narrowing when
@@ -276,6 +390,12 @@ class Narrowed:
         if self.alignment is not None:
             return self.alignment.label
         return None
+
+    def _condition_parts(self) -> list[str]:
+        """The absent teammates as one phrase ("without A and B"), then every
+        other condition's own - a list so :meth:`filters` adds no branch."""
+        parts = [f"without {_joined([mate.name for mate in self.without])}"] if self.without else []
+        return parts + [c.phrase() for c in self.conditions if not (c.side == "own" and c.predicate == "absent")]
 
     def _ordinal_parts(self) -> list[str]:
         """``["in their 15th season"]`` for a league read narrowed to each
@@ -318,8 +438,7 @@ class Narrowed:
             # starts headed only "last 50 games" is the silent narrowing this
             # module exists to stop - it reads as his last 50 games played.
             parts.append("as a starter" if self.started else "off the bench")
-        if self.without:
-            parts.append(f"without {_joined([mate.name for mate in self.without])}")
+        parts.extend(self._condition_parts())
         if self.measures:
             parts.append(f"with {_joined(self.measures)}")
         parts.extend(self._ordinal_parts())
