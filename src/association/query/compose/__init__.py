@@ -28,10 +28,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from association.query.templates.common import TemplateContext, TemplateResult, check_coverage, coverage_caveat
+from association.query.templates.common import TemplateContext, TemplateResult, check_coverage
 
 from .core import Query, Refused, Unsupported, run
 from .move import move_point
+from .present import present
 from .sentence import _span_phrase
 from .sentence import sentence as _sentence
 from .sentence import team_sentence as _team_sentence
@@ -132,6 +133,14 @@ def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: s
        ``TeamQuery`` carries none, since the team relation has no box-score
        equivalent to check (:mod:`association.query.compose.team` reads
        ``games``/``team_season_stats``, never a player's box score).
+
+    .. versionchanged:: 4.5.0
+       An intent's own default point is answered in its template's own words
+       and ``data`` (:func:`~association.query.compose.present.present`,
+       plan item 2 step 2a), and no partial-season caveat is appended here:
+       the agent appends :func:`~association.query.templates.common.coverage_caveat`
+       to a composed answer as it does to a template's, and this appending it
+       as well printed the note twice.
     """
     try:
         query = move_point(ctx.con, intent, slots, question, subject)
@@ -141,6 +150,11 @@ def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: s
         refusal = check_coverage(intent, query.slots)
         if refusal is not None:
             raise Refused(TemplateResult(data={"season": query.slots.get("season")}, answer=refusal))
+        # The intent's own default point is said the way its template says
+        # it (compose.present, plan item 2 step 2a) - None for any other.
+        own = present(ctx.con, intent, query.slots, query)
+        if own is not None:
+            return own
         out = run(ctx.con, query)
     except Unsupported:
         return None
@@ -151,9 +165,11 @@ def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: s
     # alone, before any note is glued on below - the same "head:" line a rows
     # or grouped read prints before its table, or a scalar's one line whole.
     headline = answer_text.split("\n")[0].rstrip(":")
-    note = coverage_caveat(intent, query.slots)
-    if note:
-        out["notes"] = [*out["notes"], note]
+    # No coverage caveat here: the one caller (agent._try_compose) appends
+    # coverage_caveat to a composed answer exactly as it does to a template's,
+    # and this appending it too printed the same note twice, in the sentence
+    # and in data["notes"] - measured on "allen iverson usage game log vs
+    # milwaukee 2001 playoffs".
     # Each note on its own line: glued to the sentence with a space, a caveat
     # landed on the last row of a table ("... points 26.9 5 of these games
     # have no box score ...") - seen on the rendered page, 2026-09-24.

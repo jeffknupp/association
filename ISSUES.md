@@ -46,6 +46,28 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### The web page scales a composed usage rate by 100 a second time: "USG% 2435.5%"
+- **Found:** 2026-09-25, fixing #222 (plan item 2, step 2a).
+- **Evidence:** `usage_pct` is stored as a percent - `fetch/advanced_stats.py`
+  computes it as `100.0 * (...)` - and #222's fix made the compiler's TEXT
+  say so (`compose/sentence.py`, `_FRACTION_COLUMNS`). The page's composed
+  renderer still lists it as a fraction: `web/static/index.html:1635`,
+  `const FRACTIONS = new Set(["ts_pct", "efg_pct", "usage_pct"])`, and
+  `measureCell` prints `(v * 100).toFixed(1) + "%"` for it (line 1638).
+  Measured on the real warehouse at this branch: "Quentin grimes individual
+  gamelog usage rating without joel embiid" (`game_log`, `stat: usage_pct`;
+  the template refuses - "a game log has no per-game column for
+  'usage_pct'" - and `compose` answers) carries `data["rows"][0]["usage_pct"]
+  = 24.355`, which the text prints as "usage 24.4%" and the page's table as
+  "2435.5%". `player_splits`' USG% for the same games is 21.1/21.8.
+- **User sees:** on the web page, a fluent game log with an impossible
+  usage figure in every row - #222's symptom, still there for every web
+  user; the CLI's text is right.
+- **Next step:** drop `usage_pct` from `FRACTIONS` in
+  `web/static/index.html` (ts_pct/efg_pct ARE fractions and stay), add the
+  case to `tests/web/test_renderers.py`, and run `scripts/check_web_ui.py`.
+- **Source:** ours, not ESPN's.
+
 ### "For the <team>" beside a player is read as his own-team tenure even when the team is the subject: "show me stats for sixers when maxey scored 20+ points"
 - **Found:** 2026-09-23, grading `live_sweep.jsonl` (yardstick-v2 F087) after
   the sweep merged (`28dfb9d`).
@@ -266,6 +288,55 @@ those were found.
 - **GitHub:** #169
 
 ## P2: misleading or incomplete
+
+### The compiler's team total ignores "no season type named": "total points by the raptors in the last 10 games" reads the regular season only
+- **Found:** 2026-09-25, plan item 2 step 2a's parity harness
+  (`~/association-research/intent-shrink/parity.py`, compiler alone against
+  the template on the same slots).
+- **Evidence:** `game_log` with `team`, `order: recent`, `limit: 10` and
+  `season_type_unstated: True` (the router's "last N games, no type named").
+  The template merges both types by date - "Toronto Raptors, last 10 games
+  (3 regular season and 7 postseason) (5-5)" - while `compose/team.py`'s
+  narrowed total reads one type: "The Toronto Raptors had 1,198 points over
+  their last 10 games (6-4)", a different ten games, and the sentence does
+  not say "regular season". Same for "KNICKS point differential over the
+  last 7 games": +62 (6-1, all postseason) against the compiler's +46 (5-2).
+  `_team_narrowed` counts the window as a narrowing but nothing in the team
+  path reads `season_type_unstated` (the player path now honors it, through
+  `scoped_player`).
+- **User sees:** today nothing on the recorded corpus - the template answers
+  these first. It is what the compiler would say for them the moment
+  `game_log`'s team half is folded into it, and what it says for any team
+  total the template refuses: a fluent total over the wrong games.
+- **Next step:** read both types in `_compile_team_games_total` when
+  `season_type_unstated` is set (the team-games relation's own
+  `season_type` clause), or refuse it by name there as `_check_relation_scoping`
+  does for the league-wide player read; a fixture test with a postseason game
+  inside the window.
+- **Source:** ours, not ESPN's.
+
+### A composed team season total carries a caveat about a different table: "88 3-pointers over the complete 2001 postseason (23 games). Note: ... Philadelphia's run reads 16 games against the 23"
+- **Found:** 2026-09-25, checking the compiler's partial-season caveat while
+  removing its duplicate (plan item 2 step 2a).
+- **Evidence:** "how many 3 pointers did the sixers make in the 2001
+  playoffs" composed as `team_stat` reads `team_season_stats` - ESPN's own
+  23-game season line, complete - and the agent then appends
+  `coverage_caveat("team_stat", slots)` (`agent._try_compose`), which is
+  keyed by the INTENT's tables (`TEMPLATE_SOURCES`), not the table the
+  compiler read, and says the run "reads 16 games against the 23". The
+  compiler's own table-accurate note (`compose/team.py`'s
+  `_team_coverage_note`, over `team_season_stats`: none) was removed in the
+  same change because every composed answer printed the intent's note twice
+  over it; the misfit itself predates that.
+- **User sees:** a correct total beside a note contradicting its game count.
+  Reached only where the `team_stat` template refuses and the compiler
+  answers.
+- **Next step:** let a composed result name the tables it read (a
+  `TemplateResult.data` key the agent reads before `coverage_caveat`), and
+  have `_try_compose` call `association.nba.coverage.caveat` over those
+  instead of the intent's.
+- **Source:** ours, not ESPN's - the missing 2001 games themselves are
+  `DATA.md`'s ("The 2000 and 2001 playoffs stop before the Finals").
 
 ### Template data the page cannot render from
 - **Found:** 2026-09-24/25, building the web page's typeset tables and going
@@ -3051,6 +3122,37 @@ those were found.
 - **GitHub:** #192
 
 ## P4: tooling, docs, low impact
+
+### threshold_count's league and withheld notes are written twice, and two templates have no reader over a settled narrowing
+- **Found:** 2026-09-25, plan item 2 step 2a (`query/compose/present.py`).
+- **Evidence:** `compose.present` says an intent's own point in its
+  template's words by calling the template's helpers. Three places could
+  not be reached that way from `query/compose` alone (the step's branch was
+  scoped away from `templates/`):
+  (1) `threshold_count`'s "Box scores begin in ..., so these are not
+  all-time counts" and its withheld-stat sentence are inline in
+  `templates/players.py::threshold_count` and restated word for word in
+  `present._present_threshold_count_notes` - one sentence, two copies, which
+  drift the first time either is edited; the parity test
+  (`test_an_intents_own_point_reads_as_its_template`) catches a drift only on
+  the fixture's cases. `single_game_high`'s and `threshold_count`'s
+  orchestration (span, empty box scores, withheld, redirect) is likewise
+  restated in `present.py` around their helpers.
+  (2) `player_splits` has no function over an already-settled narrowing:
+  `_player_splits_player` resolves the player itself (`condition_player`),
+  so reaching parity means copying its tail (`games_subquery`, `_totals`,
+  `_SplitSubject`); it stays 0/3 on the corpus.
+  (3) `player_history` and an unnarrowed `player_stat` read the season line
+  (`player_season_stats_deduped`), not the player-games relation - 0/20 and
+  0/23; no presentation can make box-score sums equal a season table.
+- **User sees:** nothing today.
+- **Next step:** when a template is folded into the compiler, move its
+  notes into named helpers in the same commit (`_threshold_count_league_note`,
+  `_threshold_count_withheld_note`) and delete the copies in `present.py`;
+  give `player_splits` a `_player_splits_from(con, player, narrowed, scope,
+  ...)` both it and `present.py` call. The season-line intents need the
+  season line as a second relation the compiler reads, not a presenter.
+- **Source:** ours, not ESPN's.
 
 ### `team_alignment` is not declared in every `TEMPLATE_SOURCES` tuple that can now read it
 - **Found:** 2026-09-24, landing the K3-2 conference/division narrowing.

@@ -320,12 +320,20 @@ def _iso_date(slots: dict[str, Any]) -> str | None:
 COMPILER_SLOTS: frozenset[str] = frozenset({"ranked_by", "team_restored"})
 
 
-def _check_relation_scoping(slots: dict[str, Any]) -> None:
+def _check_relation_scoping(slots: dict[str, Any], subject: str = "player") -> None:
     """``check_scope``'s rule, for the relation: a scoping slot the relation
     does not narrow by (``situation`` when it names no calendar, ``round``,
     ``rate`` ...) is refused, never dropped - answering "on Tuesdays" for
-    every day is the silent widening the templates exist to stop."""
-    unhonored = sorted(k for k in SCOPING_SLOTS - RELATION_SCOPING - COMPILER_SLOTS if slots.get(k) not in (None, "", [], False))
+    every day is the silent widening the templates exist to stop.
+
+    ``season_type_unstated`` (a question that asked for both season types,
+    "including the playoffs") is honored for a named player: ``scoped_player``
+    settles his span over both (``templates.common._player_relation_season_type``),
+    the reading ``game_log``, ``player_stat`` and ``threshold_count`` all
+    declare. The league-wide read settles one type (:func:`_resolve_everyone`)
+    and still refuses it rather than answer the regular season alone."""
+    honored = RELATION_SCOPING | COMPILER_SLOTS | ({"season_type_unstated"} if subject == "player" else set())
+    unhonored = sorted(k for k in SCOPING_SLOTS - honored if slots.get(k) not in (None, "", [], False))
     if unhonored:
         raise Unsupported(f"the relation cannot honor {unhonored} - it would answer for a different span than was asked")
 
@@ -373,7 +381,13 @@ def _resolve_named(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | N
     if isinstance(subject, TemplateResult):
         raise Refused(subject)
     player, span = subject
-    narrowed = scoped_games(con, player, span, slots, opponent=slots.get("opponent"), measures=measure_filters(slots.get("below"), slots.get("above")), date=_iso_date(slots))
+    # ``own_team`` ("lebron stats as a starter for Miami" - his games for
+    # that team, written by subject._apply_own_team) narrows exactly as it
+    # does for player_stat, the one template that reads it; ignored here, the
+    # same question averaged his whole career's starts (1,612 games for 294).
+    narrowed = scoped_games(
+        con, player, span, slots, opponent=slots.get("opponent"), measures=measure_filters(slots.get("below"), slots.get("above")), date=_iso_date(slots), team=slots.get("own_team")
+    )
     if isinstance(narrowed, TemplateResult):
         raise Refused(narrowed)
     return player, span, narrowed
@@ -414,7 +428,9 @@ def _apply_team_slot(con: duckdb.DuckDBPyConnection, q: Query, player: Entity | 
         if isinstance(resolved_opponent, TemplateResult):
             raise Refused(resolved_opponent)
         if resolved_opponent is not None and narrowed.opponent is None:
-            rescoped = scoped_games(con, player, span, slots, opponent=resolved_opponent, measures=measure_filters(slots.get("below"), slots.get("above")), date=_iso_date(slots))
+            rescoped = scoped_games(
+                con, player, span, slots, opponent=resolved_opponent, measures=measure_filters(slots.get("below"), slots.get("above")), date=_iso_date(slots), team=slots.get("own_team")
+            )
             if isinstance(rescoped, TemplateResult):
                 raise Refused(rescoped)
             narrowed = rescoped
@@ -454,6 +470,15 @@ def _rebuilt_for(box: BoxSource, q: Query) -> bool:
     does not fill; a scalar over measures or a count widens only when every
     column read (measures AND predicate columns) is one a rebuild gets right."""
     read = [*q.measures, *(name for name, _, _ in q.predicates)]
+    if q.skeleton == "rows":
+        # A listing's own rule (``templates.games._rebuilt_readable``, which
+        # ``game_log`` reads by): ``minutes`` is exempt rather than a
+        # failure - play-by-play cannot recover it, so a rebuilt row prints
+        # it blank - and every other column shown must be one a rebuild gets
+        # right. Before this, a log or a top-games read carrying the default
+        # line never showed a rebuilt game at all, since that line carries
+        # minutes.
+        read = [m for m in read if m != "minutes"]
     return box.rebuilt and ((q.skeleton == "grouped" or q.aggregate == "record") or (bool(read) and all(m in REBUILT_STATS for m in read)))
 
 
@@ -514,6 +539,12 @@ def _compile_grouped(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity
     if q.order == "measure":
         target = "games" if q.aggregate == "count" or not q.measures else f'"{q.measures[0]}"'
         order = f"{target} {'ASC' if q.direction == 'asc' else 'DESC'} NULLS LAST, 1"
+    elif q.group == "season":
+        # A history by season in date order, newest first unless asked
+        # otherwise, so its limit keeps the LAST N seasons: ordered by the
+        # label alone, "3pt% over the past 4 seasons" listed his first four
+        # (Klay Thompson's 2012-2015 for 2023-2026).
+        order = f"1 {'ASC' if q.direction == 'asc' else 'DESC'}"
     else:
         order = "1"
     having = f"COUNT(*) >= {int(q.minimum_games)}" if q.minimum_games else None
@@ -528,7 +559,7 @@ def compile_query(con: duckdb.DuckDBPyConnection, q: Query) -> Compiled:
 
     .. versionadded:: 4.4.0
     """
-    _check_relation_scoping(q.slots)
+    _check_relation_scoping(q.slots, q.subject)
     _check_split_category(q)
     player, span, narrowed = _resolve_subject(con, q)
     _apply_predicates(narrowed, q)
@@ -658,6 +689,12 @@ def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
        Carries ``player_seasons`` (:func:`_player_own_seasons`), so a plain
        career sentence names the player's own seasons rather than the
        relation's floor.
+
+    .. versionchanged:: 4.5.0
+       Carries ``entity`` (the resolved player, or ``None`` for the league)
+       and ``rebuilt_by_row`` (each row's own rebuilt-game count), which
+       :mod:`association.query.compose.present` phrases a template's own
+       answer from.
     """
     try:
         c = compile_query(con, q)
@@ -666,9 +703,15 @@ def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
     cur = con.execute(c.sql, c.params)
     names = [d[0] for d in cur.description]
     rows = [dict(zip(names, r, strict=True)) for r in cur.fetchall()]
+    # Each grouped row's own rebuilt count, read before _box_notes pops the
+    # scratch column - a by-player count says how many of the LEADER's games
+    # were rebuilt (compose.present, threshold_count's own note).
+    rebuilt_by_row = [int(r.get("rebuilt_shown") or 0) for r in rows]
     notes = _box_notes(con, q, c, rows)
     return {
         "rows": rows,
+        "entity": c.player,
+        "rebuilt_by_row": rebuilt_by_row,
         "total": _grouped_total(con, q, c, rows),
         "player": c.player.name if c.player else _everyone_label(q.position),
         "span": c.span,

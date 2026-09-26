@@ -54,8 +54,10 @@ def _adapt_game_log(slots: dict[str, Any]) -> Query:
     """``game_log``'s default point: the newest games, in date order."""
     if not _named_player(slots):
         raise Unsupported("a team's log is the team relation's")
-    if slots.get("season_type_unstated"):
-        raise Unsupported("the mixed-season reader is not a point on one relation")
+    # ``season_type_unstated`` ("his last 5 games", no season type named) is
+    # read over both types at once - ``scoped_player`` settles the span with
+    # ``_player_relation_season_type`` - and ``compose.present`` says it the
+    # way ``game_log`` does, one type at a time merged by date.
     # A team beside the player is settled in compile_query through game_log's own _team_slot_for_player.
     date = slots.get("date") if isinstance(slots.get("date"), str) and len(slots["date"]) == 10 else None
     # game_log settles the name in a career span when a date is given (the
@@ -152,6 +154,11 @@ def to_query(intent: str, slots: dict[str, Any]) -> Query:
     :func:`association.query.compose.move.move_point`).
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.5.0
+       ``game_log`` with ``season_type_unstated`` ("his last 5 games") is a
+       point - both season types, which the relation reads at once - rather
+       than :class:`~association.query.compose.core.Unsupported`.
     """
     adapter = _ADAPTERS.get(intent)
     if adapter is None:
