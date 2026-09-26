@@ -27,19 +27,10 @@ Reply with JSON only.
 intent must be one of:
   leaderboard      - rank players by a SEASON stat: a per-game average or a
                      season total ("top 5 scorers", "who leads in assists")
-  single_game_high - the highest single-GAME total, and which game it was
-                     ("most assists in a single game", "highest scoring game",
-                     "career high this season") - never use leaderboard for
-                     these, a season average is a different question
-  threshold_count  - count a player's games meeting a per-game threshold
-                     ("most 30+ point games", "most games with 20+ rebounds")
   player_stat      - one named player's numbers for ONE season ("how many points
                      did Curry average", "what are Jokic's numbers") - set player
   player_netpoints - one named player's NetPoints and play-type fingerprint
                      ("SGA's netpoint stats", "Jokic NetPoints breakdown")
-  player_history   - one named player's stat across SEVERAL seasons ("3pt% over
-                     the past 4 seasons", "Jokic's scoring by year") - set
-                     player, stat, and limit to the number of seasons
   game_log         - list a player's or team's games, or one specific game
                      ("Lakers last 5 games", "Curry's first game of the season")
                      - set opponent for games against one named team
@@ -59,26 +50,21 @@ intent must be one of:
                      and set side to "offense", "defense" or "total". Set
                      players instead of player to plot two on one radar
                      ("compare SGA and Jokic's fingerprints")
-  shot_distance    - how FAR a player's shots were ("average 3pt shot distance",
-                     "how far away does Curry shoot from")
   player_compare   - two or more named players side by side ("Luka vs SGA",
                      "compare Curry and Lillard") - set players, not player
   team_stat        - one TEAM's numbers ("Celtics points per game") - set team
   team_leaderboard - rank TEAMS by a stat ("best defense", "best record")
   team_outlook     - a team's BPI, playoff or title odds, projections - set team
-  player_splits    - one player's home/away, starter/bench, wins/losses or monthly splits
   with_without     - a record or stats with or without a teammate
-  record_when      - a team's record in games a player reached a stat threshold
   player_matchup   - games two named players played AGAINST each other
-  streak           - longest winning/losing streak, or straight games with N+ of a stat
   other            - anything else, including a named PLAYER's per-quarter
                      scoring (team_quarter_points is only for a TEAM's)
 
 stat names a box-score category: points, rebounds, assists, steals, blocks,
 turnovers, minutes, fouls, threePointFieldGoalsMade, fieldGoalsMade, freeThrowsMade,
 or a shooting percentage: threePointFieldGoalPct, fieldGoalPct, freeThrowPct.
-Set it whenever the question names one - for threshold_count, leaderboard and
-player_stat alike. Omit it only when the question asks for overall numbers.
+Set it whenever the question names one - for leaderboard and player_stat
+alike. Omit it only when the question asks for overall numbers.
 
 NetPoints for ONE named player is player_netpoints, not leaderboard - a
 leaderboard ranks the league. Its fingerprint is reported per 100 possessions;
@@ -101,14 +87,6 @@ with order covers that ONE game rather than the whole season. Set date as YYYY-M
 when the question names an exact calendar day.
 
 Examples:
-Q: Who had the most 30+ point games this season?
-{"intent":"threshold_count","stat":"points","threshold":30,"season_ref":"current"}
-Q: Most games with 20+ rebounds in 2024?
-{"intent":"threshold_count","stat":"rebounds","threshold":20,"season":2024}
-Q: Who had the most assists in a single game and how many did he have?
-{"intent":"single_game_high","stat":"assists","season_ref":"current"}
-Q: What was the highest scoring game by a player this year?
-{"intent":"single_game_high","stat":"points","season_ref":"current"}
 Q: Who were the top 10 in netpoints/100 possessions?
 {"intent":"leaderboard","stat":"netpoints_per_100","limit":10}
 Q: How many points did Jokic score in the 3rd quarter against Boston?
@@ -123,8 +101,6 @@ Q: Who scores more, Wemby or Jokic?
 {"intent":"player_compare","players":["Victor Wembanyama","Nikola Jokic"],"stat":"points"}
 Q: What were SGA's netpoint stats this season?
 {"intent":"player_netpoints","player":"Shai Gilgeous-Alexander","season_ref":"current"}
-Q: What was Klay Thompson's 3pt percentage over the past 4 seasons?
-{"intent":"player_history","player":"Klay Thompson","stat":"threePointFieldGoalPct","limit":4}
 Q: How many points did Luka Doncic average in 2024?
 {"intent":"player_stat","player":"Luka Doncic","stat":"points","season":2024}
 Q: What are Jokic's numbers this season?
@@ -147,8 +123,6 @@ Q: Who led the playoffs in rebounding?
 {"intent":"leaderboard","stat":"rebounds","season_type":"playoffs","limit":1}
 Q: Show me Steph Curry's threes from last season
 {"intent":"shot_chart","player":"Stephen Curry","shot_value":3,"season_ref":"previous"}
-Q: What was Steph Curry's avg 3pt shot distance?
-{"intent":"shot_distance","player":"Stephen Curry","shot_value":3,"season_ref":"current"}
 Q: Create a shot chart of Steph Curry's last regular season game
 {"intent":"shot_chart","player":"Stephen Curry","order":"recent","season_ref":"current"}
 Q: Show me Wembanyama's shot chart
@@ -163,14 +137,10 @@ Q: What were SGA's netpoints by play type?
 {"intent":"player_netpoints","player":"Shai Gilgeous-Alexander","season_ref":"current"}
 Q: jaylen brown last 8 games vs pistons
 {"intent":"game_log","player":"Jaylen Brown","opponent":"Detroit Pistons","order":"recent","limit":8}
-Q: Nikola Jokic home and away splits
-{"intent":"player_splits","player":"Nikola Jokic","season_ref":"current"}
 Q: Celtics record without Tatum
 {"intent":"with_without","team":"Boston Celtics","season_ref":"current"}
 Q: lebron vs kawhi head to head
 {"intent":"player_matchup","players":["LeBron James","Kawhi Leonard"]}
-Q: Lakers longest winning streak this season
-{"intent":"streak","team":"Los Angeles Lakers","season_ref":"current"}
 """
 
 # Passed as ollama's `format`, so decoding is CONSTRAINED to a well-formed
@@ -184,10 +154,7 @@ ROUTER_SCHEMA: dict[str, Any] = {
             "type": "string",
             "enum": [
                 "leaderboard",
-                "single_game_high",
-                "threshold_count",
                 "player_stat",
-                "player_history",
                 "player_netpoints",
                 "player_compare",
                 "game_log",
@@ -196,15 +163,11 @@ ROUTER_SCHEMA: dict[str, Any] = {
                 "team_quarter_points",
                 "shot_chart",
                 "fingerprint",
-                "shot_distance",
                 "team_stat",
                 "team_leaderboard",
                 "team_outlook",
-                "player_splits",
                 "with_without",
-                "record_when",
                 "player_matchup",
-                "streak",
                 "other",
             ],
         },
@@ -259,9 +222,10 @@ ROUTER_SCHEMA: dict[str, Any] = {
 ROUTER_NUM_CTX = 4096
 """The router's context window.
 
-The prompt is ~2,500 tokens of it (9,989 characters at the ~4 characters a
+The prompt is ~2,000 tokens of it (7,852 characters at the ~4 characters a
 token measured for the agent's prompt; a comment here said "~430" for a long
-time after the intent list outgrew it). The rest holds the question, the
+time after the intent list outgrew it, and it was ~2,500 until the seven
+kind-assigned intents left it in 4.5.0 - ``subject.KIND_ASSIGNED_INTENTS``). The rest holds the question, the
 chat template and a reply of under 100 tokens of JSON. ollama truncates an
 over-length prompt head-first and silently, which for this prompt means the
 instructions go first and the examples stay, so

@@ -125,7 +125,7 @@ _CHILD_GRAMMARS: tuple[tuple[str, re.Pattern[str], frozenset[str], frozenset[str
         "streak",
         re.compile(r"\bstreaks?\b|\bwin ?streak\b|\bstraight (?:games|wins|losses)\b|\bin a row\b|\bconsecutive\b", re.IGNORECASE),
         SUBJECT_KINDS,
-        frozenset({"team_record", "team_stat", "team_leaderboard", "head_to_head"}) | _PLAYER_RELATION_PARENTS,
+        frozenset({"team_record", "team_stat", "team_leaderboard", "team_outlook", "head_to_head"}) | _PLAYER_RELATION_PARENTS,
     ),
     (
         "record_when",
@@ -168,7 +168,7 @@ _CHILD_GRAMMARS: tuple[tuple[str, re.Pattern[str], frozenset[str], frozenset[str
         "player_splits",
         re.compile(r"\bsplits?\b|\bby month\b|\bhome and away\b|\bhome/away\b|\bhome vs\.? away\b|\bmonthly\b", re.IGNORECASE),
         _PLAYER_OR_PAIR,
-        frozenset({"with_without"}) | _PLAYER_RELATION_PARENTS,
+        frozenset({"with_without", "player_compare"}) | _PLAYER_RELATION_PARENTS,
     ),
 )
 

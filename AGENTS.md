@@ -565,6 +565,22 @@ slower SQL-writing agent; that is by design, not a bug.
   ("nurse" and "rivers" are ordinary words, the substring trap
   `players_named_in` exists for). Such a template declares no tables, so it
   goes in `TABLELESS_INTENTS` or the coverage gate fails.
+
+  The second route is one step later, where the subject's KIND is known:
+  `subject.KIND_ASSIGNED_INTENTS` (`_CHILD_GRAMMARS`). A child of a parent
+  the router still routes to - a count of 30+ point games under `game_log`,
+  a history over the past 4 seasons under `player_stat`, a streak under
+  `team_record` - is named by its words AND gated on the kind the reading
+  settled, which is what keeps "how many times did the 76ers play boston"
+  (two teams) off `threshold_count` and "who lead the league in avg 3 point
+  distance" (no player) off `shot_distance`. Measured before the seven left
+  the prompt: 0 false positives over 261 recorded questions of other
+  intents. The child's slots are the router's own stages run again under it
+  (`router.settle`), never a second reader per child; and the stages may
+  decline (a count with no threshold is a ranking), in which case the
+  router's intent stands. Add a case to `port_check.py`'s corpus
+  (`~/association-research/intent-shrink/`) and to
+  `tests/query/test_subject.py` for each wording a grammar gains.
 - **Refusing beats falling through wherever the agent has nothing to read.**
   That is `check_coverage`'s reasoning, and it applies past the floors: a coach
   question reached an agent that queried tables with no coach column and was

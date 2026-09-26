@@ -401,8 +401,24 @@ honest refusals that a fuller system would answer. By cause:
    on 261 non-child recorded rows, 83-100% recall per child across every
    parent it might arrive as, `settle` idempotent on 271/277 live rows (the
    rest code drift), golden 308/308 unchanged - a no-op while the children
-   stay in the enum, by construction. **Next:** 2c-ii, the group out of the
-   prompt and schema, `check_routing`, a live run.
+   stay in the enum, by construction.
+10. **2026-09-25, 2c-ii: the seven children left `ROUTER_PROMPT` and
+   `ROUTER_SCHEMA`** - 23 intents to 16, 9,989 to 7,852 characters, ~2,500
+   to ~1,960 tokens (prompt sha256 `8c6dd731...` to `b24de459...`, schema
+   `2bc79a93...` to `b44332c0...`). The first prompt edit since the
+   warning above, and it moved slots exactly as warned: `check_routing`
+   came back 129/140, with the model now filing a quarter question as the
+   team's (#170's shape again), "who attempted the most" as `player_stat`,
+   a one-player `player_compare`, "td3s" as a shot chart, a streak under
+   `team_outlook` and a team's "how many ... made" total as `team_stat`'s
+   per-game line - each fixed by a text rule in `route()` or a parent
+   added to a grammar (`_names_a_period_subject`, `_WHO_RANKS`,
+   `_route_one_player_intents`, `_DRAW_WORDS`, `_route_team_total` with
+   `team_stat` stepping aside for the compiler's season total), none by
+   touching the prompt again; 140/140 after, golden 308/308, no recorded
+   route moves. **Next:** the live yardstick run (day5) on this tree, which
+   grades which parent the 3B model actually picks for each child's
+   wordings.
 
 ## The current plan: what buys the most correctness next
 

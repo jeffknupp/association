@@ -1294,6 +1294,12 @@ def team_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     if isinstance(team, TemplateResult):
         return team
     stat = slots.get("stat")
+    if slots.get("rate") == "total":
+        # "how many 3 pointers have the magic made": a season total, which
+        # the compiler's team subject reads (compose/team.py) - this line
+        # is per game, and answering it here is the right stat to the wrong
+        # question (`router._route_team_total`).
+        raise TemplateUnsupported(f"a season total of {stat!r} is asked for, not the per-game line")
     key = resolve_team_metric(stat)
     if key is None and isinstance(stat, str) and stat.strip():
         raise TemplateUnsupported(f"no team metric for stat {stat!r}")

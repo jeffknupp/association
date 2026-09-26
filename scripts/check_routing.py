@@ -294,7 +294,7 @@ CASES: list[tuple[str, str, dict]] = [
     # The model drops the player here and the slot is optional, so nothing
     # downstream restored it: the answer was the league's high, to a question
     # about one man. Read from the question's grammar - see _subject_named_in.
-    ("most points curry scored in a game this season", "single_game_high", {"stat": "points", "player": "curry"}),
+    ("most points curry scored in a game this season", "single_game_high", {"stat": "points", "player": frozenset({"curry", "Stephen Curry"})}),
     # #138: the same drop, for threshold_count. "how many times has embiid
     # fouled out?" arrived with no player at all and answered the league's
     # leader in 6+-foul games (Karl-Anthony Towns) to a question about Joel
@@ -321,7 +321,7 @@ CASES: list[tuple[str, str, dict]] = [
     (
         "jamal murray games with 2 threes including playoffs",
         "threshold_count",
-        {"stat": "threePointFieldGoalsMade", "threshold": 2, "player": "jamal murray", "season_type_unstated": True},
+        {"stat": "threePointFieldGoalsMade", "threshold": 2, "player": frozenset({"jamal murray", "Jamal Murray"}), "season_type_unstated": True},
     ),
     # yardstick-v2 F156: the same misreading on a career game_log - "stats vs
     # 76ers at home including playoffs" answered only the 7 playoff meetings,
@@ -386,7 +386,10 @@ CASES: list[tuple[str, str, dict]] = [
     # of leaderboard quietly ranking players "on" what was meant to be the
     # whole subject. See tests/query/test_templates.py for the check_scope
     # half and tests/query/test_entities.py for teams_named_in itself.
-    ("how many 3 pointers have the magic made so far this season", "leaderboard", {"team": "Orlando Magic", "team_restored": True}),
+    # team_stat with `rate: "total"` since the 4.5.0 prompt shrink (before it,
+    # leaderboard with no team, which the reading restored): either way the
+    # template steps aside and the compiler reads the season total.
+    ("how many 3 pointers have the magic made so far this season", "team_stat", {"team": "Orlando Magic", "rate": "total"}),
     ("zach lavine vs nuggets last 8 games home", "game_log", {"venue": "home"}),
     ("how did curry do against the celtics this year", "player_stat", {}),
     # Came back as player_compare with the Celtics as the second "player".
@@ -496,7 +499,11 @@ CASES: list[tuple[str, str, dict]] = [
     # Bam restored and "in the month of march" read as a month.
     ("bam adebayo career games in the month of march", "game_log", {"player": frozenset({"bam adebayo", "Bam Adebayo"}), "situation": "in the month of march", "span": "career"}),
     # yardstick-v2 F055 (#213): the division's name travels with the word.
-    ("alperen sengun double-doubles vs southeast division career away", "player_splits", {"player": "Alperen Sengun", "situation": "vs southeast division", "venue": "away"}),
+    # player_stat since the 4.5.0 prompt shrink (the model filed player_splits
+    # while that intent was in its enum, and one player in player_compare
+    # after): either way the compiler counts the double-doubles under the
+    # narrowing - the intent that matters is one whose refusal reaches it.
+    ("alperen sengun double-doubles vs southeast division career away", "player_stat", {"player": "Alperen Sengun", "situation": "vs southeast division", "venue": "away"}),
     # yardstick-v2 F110: routed team_record with an invented `team='Toronto
     # Raptors'`. The routing is left as the model files it; what changed is
     # after it - a team the question never names no longer counts as the

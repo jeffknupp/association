@@ -255,21 +255,29 @@ def test_every_intent_the_prompt_describes_is_emittable() -> None:
 
 
 def test_every_ported_template_has_an_intent_in_the_schema() -> None:
-    """Every template must be REACHABLE, by one of exactly two routes: the model
-    emits its intent, or `route()` assigns it from the question text. A template
-    in neither list is dead code that no question can ever reach."""
+    """Every template must be REACHABLE, by one of exactly three routes: the
+    model emits its intent, `route()` assigns it from the question text, or
+    the subject reading assigns it from the text gated on the subject's kind
+    (`subject.KIND_ASSIGNED_INTENTS`). A template in none of the lists is
+    dead code that no question can ever reach."""
+    from association.query.subject import KIND_ASSIGNED_INTENTS
     from association.query.templates import TEMPLATES
 
-    assert set(TEMPLATES) <= set(ROUTER_SCHEMA["properties"]["intent"]["enum"]) | CODE_ASSIGNED_INTENTS
+    assert set(TEMPLATES) <= set(ROUTER_SCHEMA["properties"]["intent"]["enum"]) | CODE_ASSIGNED_INTENTS | KIND_ASSIGNED_INTENTS
 
 
 def test_a_code_assigned_intent_is_kept_out_of_the_models_grammar() -> None:
     """The exemption above must not become a place to park intents the model
     should be emitting. These are the ones read from the question's own words,
     and adding them to the schema or the prompt would move slots on unrelated
-    questions for no gain."""
-    assert CODE_ASSIGNED_INTENTS.isdisjoint(ROUTER_SCHEMA["properties"]["intent"]["enum"])
-    assert not any(intent in ROUTER_PROMPT for intent in CODE_ASSIGNED_INTENTS)
+    questions for no gain. The kind-assigned children (ROADMAP plan item 2)
+    left the prompt for exactly that reason: each line was ~40 tokens the 3B
+    router paid on every question."""
+    from association.query.subject import KIND_ASSIGNED_INTENTS
+
+    for assigned in (CODE_ASSIGNED_INTENTS, KIND_ASSIGNED_INTENTS):
+        assert assigned.isdisjoint(ROUTER_SCHEMA["properties"]["intent"]["enum"])
+        assert not any(intent in ROUTER_PROMPT for intent in assigned)
 
 
 def test_array_slots_are_bounded() -> None:
@@ -2563,3 +2571,14 @@ def test_a_shot_value_the_question_names_is_read_for_a_distance_or_a_chart() -> 
     assert settle("shot_distance", {"stat": "points", "player": "Stephen Curry", "shot_value": 2}, "curry's 3pt shot distance").slots["shot_value"] == 2
     assert "shot_value" not in settle("shot_distance", {"stat": "points", "player": "Stephen Curry"}, "curry's twos and threes by distance").slots
     assert "shot_value" not in settle("player_stat", {"stat": "points", "player": "Stephen Curry"}, "curry's 3pt percentage").slots
+
+
+def test_a_teams_season_total_steps_aside_from_the_per_game_line() -> None:
+    """ "how many 3 pointers have the magic made" is a season total, which the
+    compiler's team subject reads; team_stat's line is per game. Filed as
+    `rate: "total"` so the template refuses and the compiler answers."""
+    from association.query.router import settle
+
+    assert settle("team_stat", {"stat": "threePointFieldGoalsMade", "team": "Orlando Magic"}, "how many 3 pointers have the magic made so far this season").slots["rate"] == "total"
+    assert "rate" not in settle("team_stat", {"stat": "points", "team": "Boston Celtics"}, "how many points per game do the celtics score").slots
+    assert "rate" not in settle("team_stat", {"stat": "points", "team": "Boston Celtics"}, "celtics points this season").slots

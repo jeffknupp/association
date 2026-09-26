@@ -8,7 +8,7 @@ that misses the KV prefix cache every iteration because the truncation offset
 slides. Measured: ~70s per call, with the schema among the discarded tokens.
 
 This module does only the first job. Its prompt carries no schema, no SQL and
-no gotchas - an intent list, its slots and worked examples, ~2,500 tokens
+no gotchas - an intent list, its slots and worked examples, ~2,000 tokens
 against a 4,096-token window (see :mod:`association.query.router_prompt`, which holds it) - so it
 fits, stays cached, and answers in ~1-2s warm. Recognized intents go to a template in
 the templates package; everything else falls through to the agent unchanged.
@@ -69,6 +69,7 @@ _AGENT_ONLY = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+(?:
 # game at home. The compiler's own measure words already read "td3s"
 # (compose/move.py), so only the slots have to say it.
 _TRIPLE_DOUBLE_ABBREVIATION = re.compile(r"\btd3s?\b", re.IGNORECASE)
+_DRAW_WORDS = re.compile(r"\b(?:plot|chart|draw|render|visuali[sz]e|graph|show me a)\b", re.IGNORECASE)
 
 # A half is never a quarter. team_quarter_points reads a period number and the
 # model maps "first half" onto period 1, which is wrong for a TEAM the same way
@@ -100,6 +101,20 @@ _PERIOD_LEADERS = re.compile(r"\bleaders?\b|\bwho\b|\bwhich\s+player\b|\bleading
 # override below sends it there instead of forcing it to the agent.
 def _is_team_quarter_points(raw: dict[str, Any]) -> bool:
     return raw.get("intent") == "team_quarter_points" and not (isinstance(raw.get("player"), str) and raw["player"].strip())
+
+
+def _names_a_period_subject(question: str) -> bool:
+    """Whether the question's own grammar names a PLAYER as the scorer ("did
+    Jokic score in the 3rd quarter") - the #170 shape, which the model files
+    as the team's quarter with no player at all, and which the exemption for
+    a team's own quarter must not cover: measured after the 4.5.0 prompt
+    shrink, "How many points did Jokic score in the 3rd quarter against
+    Boston?" arrived as ``team_quarter_points`` for the Nuggets and the
+    exemption kept it there. The same reader and the same team guard as
+    :func:`_recover_period_subject`, so "did the 76ers score" stays the
+    team's."""
+    candidate = _subject_named_in(question)
+    return candidate is not None and not _is_team_name(candidate)
 
 
 # A coach question, which has no answer here and is refused rather than left to
@@ -1584,6 +1599,29 @@ def _route_rate(intent: str, slots: dict[str, Any], question: str) -> None:
         slots["rate"] = rate.group(0).casefold()
 
 
+#: A team's season TOTAL asked for by "how many ... made/scored/have" or
+#: "total", with no per-game word beside it - the compiler's unnarrowed team
+#: read (compose/team.py), never team_stat's per-game line.
+_TEAM_TOTAL = re.compile(r"\bhow\s+many\b.{0,60}\b(?:made|scored|have|has|had|hit|grabbed|dished)\b|\btotal\b", re.IGNORECASE)
+_PER_GAME_WORDS = re.compile(r"\bper\s+game\b|\bppg\b|\brpg\b|\bapg\b|\baverages?\b|\bavg\b", re.IGNORECASE)
+
+
+def _route_team_total(intent: str, slots: dict[str, Any], question: str) -> None:
+    """A season total asked of a team's own stat is filed as ``rate: "total"``
+    (the schema's own word for it, which NetPoints already uses), so
+    ``team_stat`` steps aside and the compiler reads the season's raw total.
+    "how many 3 pointers have the magic made so far this season" arrived as
+    ``team_stat`` after the 4.5.0 prompt shrink (it was ``leaderboard`` with
+    no team before, which the reading restored and the compiler answered)
+    and was answered "11.7 per game" - the right stat, the wrong question.
+
+    .. versionadded:: 4.5.0
+    """
+    if intent != "team_stat" or slots.get("rate") or not _TEAM_TOTAL.search(question) or _PER_GAME_WORDS.search(question):
+        return
+    slots["rate"] = "total"
+
+
 def _team_metric_in(question: str) -> str | None:
     """The longest team-metric alias the question names ("defensive rating"),
     or None. The model invents team stats ("usage_pct_defense" for "lowest
@@ -1877,7 +1915,7 @@ def _route_period_intents(raw: dict[str, Any], question: str) -> None:
         raw["stat"] = "fouls"
         raw["threshold"] = FOUL_OUT_THRESHOLD
     ranks_players = _PERIOD_LEADERS.search(low) is not None
-    if (_AGENT_ONLY.search(low) and (ranks_players or not _is_team_quarter_points(raw))) or _HALF_WORDS.search(low):
+    if (_AGENT_ONLY.search(low) and (ranks_players or not _is_team_quarter_points(raw) or _names_a_period_subject(question))) or _HALF_WORDS.search(low):
         # A named player's quarter or half now HAS a template, so the override
         # sends it there instead of to the agent - but only when the question
         # names one and the period is legible, since `period_split` answers
@@ -1968,7 +2006,11 @@ def _route_triple_double_abbreviation(raw: dict[str, Any], question: str) -> Non
         return
     raw["stat"] = "triple_double"
     raw.pop("shot_value", None)
-    if raw["intent"] == "other" and isinstance(raw.get("player"), str) and raw["player"].strip():
+    # `shot_chart` too, since the 4.5.0 prompt shrink: the "3" reads as a
+    # shot to the model ("luka td3s home" arrived as a chart of his twos),
+    # and a count of triple-doubles is never a chart unless the question
+    # asks for one to be drawn.
+    if raw["intent"] in ("other", "shot_chart") and isinstance(raw.get("player"), str) and raw["player"].strip() and not _DRAW_WORDS.search(question):
         raw["intent"] = "player_stat"
 
 
@@ -2014,9 +2056,39 @@ def _route_team_and_player_intents(raw: dict[str, Any], question: str) -> None:
         # through to the agent while player_stat answers it exactly. Two
         # players and a team stay a comparison, and refuse the opponent.
         raw["intent"] = "player_stat"
+    _route_one_player_intents(raw, question, listed)
+    _route_matchup_against_team(raw, question, listed)
+
+
+def _route_one_player_intents(raw: dict[str, Any], question: str, listed: list[str]) -> None:
+    """A comparison of one player, a line that is a log, and a line with no
+    player that ranks the league - split out of
+    :func:`_route_team_and_player_intents` for the complexity gate."""
+    if raw["intent"] == "player_compare" and len(listed) == 1 and not raw.get("player"):
+        # One player "compared" with nobody is his own line (or log):
+        # "alperen sengun double-doubles vs southeast division career away"
+        # arrived so after the 4.5.0 prompt shrink, and player_compare needs
+        # two. The name moves to the slot the line reads.
+        raw["intent"] = "game_log" if _LOG_WORDS.search(question) or _GAMES_WORDS.search(question) else "player_stat"
+        raw["player"] = listed[0]
+        raw.pop("players", None)
     if raw["intent"] == "player_stat" and _LOG_WORDS.search(question):
         raw["intent"] = "game_log"
-    _route_matchup_against_team(raw, question, listed)
+    if raw["intent"] == "player_stat" and not _named_player(raw) and _WHO_RANKS.search(question):
+        # No player named and "who ... the most": the league's ranking, not
+        # one player's line - "who attempted the most three pointers this
+        # season?" arrived as player_stat after the 4.5.0 prompt shrink.
+        raw["intent"] = "leaderboard"
+
+
+def _named_player(raw: dict[str, Any]) -> bool:
+    """Whether the model filed a player, in either slot shape."""
+    return bool((isinstance(raw.get("player"), str) and raw["player"].strip()) or raw.get("players"))
+
+
+#: A ranking asked of the league - "who attempted the most", "who leads",
+#: "top 10" - on an intent that answers for one player.
+_WHO_RANKS = re.compile(r"\bwho\b.{0,30}\b(?:most|fewest|highest|lowest|best|worst|leads?|led)\b|\btop\s+\d+\b|\bleaders?\b", re.IGNORECASE)
 
 
 def _route_matchup_against_team(raw: dict[str, Any], question: str, listed: list[str]) -> None:
@@ -2372,11 +2444,16 @@ def _route_record_when_threshold(intent: str, slots: dict[str, Any], question: s
     ``ROUTER_PROMPT`` and ``ROUTER_SCHEMA`` are untouched, so this can move no
     other question's routing.
     """
-    if intent != "record_when":
+    if intent not in ("record_when", "threshold_count"):
         return
     pairs = list(_THRESHOLD_PAIR.finditer(question))
     if len(pairs) != 1:
         return
+    # threshold_count too, since 4.5.0: assigned from the words under a
+    # parent (subject.KIND_ASSIGNED_INTENTS), its stat is whatever the model
+    # filed for the PARENT - "Who had the most 30+ point games" arrived
+    # under leaderboard with threePointFieldGoalsMade - and the pair's own
+    # word is the one fact the question states.
     slots["stat"] = _THRESHOLD_WORDS[pairs[0].group(2).casefold()]
     slots["threshold"] = int(pairs[0].group(1))
 
@@ -2689,6 +2766,7 @@ def _settle(raw: dict[str, Any], question: str) -> Route:
     _route_ranked_boolean_games(raw["intent"], slots, question)
     _route_team_slots(raw["intent"], slots, question)
     _route_rate(raw["intent"], slots, question)
+    _route_team_total(raw["intent"], slots, question)
     _route_subject_slots(raw["intent"], slots, question)
     _route_record_when_threshold(raw["intent"], slots, question)
     _route_side_and_order(raw["intent"], slots, question)

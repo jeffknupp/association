@@ -177,7 +177,8 @@ surprising answer can be diagnosed after the fact:
 
    $ association query --verbose "most games with 20+ rebounds this season?"
      [timing] model inference #1: 1.46s
-     -> (router) intent='threshold_count' slots={'stat': 'rebounds', 'threshold': 20, 'season': 2026, 'season_type': 2}
+     -> (router) intent='leaderboard' slots={'stat': 'rebounds', 'season': 2026, 'season_type': 2}
+     -> (subject) intent='threshold_count' slots={'stat': 'rebounds', 'season': 2026, 'season_type': 2, 'threshold': 20}
      [timing] template threshold_count: 0.02s
    Nikola Jokic had the most games with 20+ rebounds in the 2026 regular season, with
    5. Next: Karl-Anthony Towns (3), Donovan Clingan (2), Andre Drummond (1), Bam Adebayo (1).
