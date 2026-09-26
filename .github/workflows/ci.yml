@@ -68,6 +68,9 @@ jobs:
         # no web-extra imports in the core. Contracts in [tool.importlinter].
         run: uv run lint-imports
 
+      - name: No merge-conflict markers
+        run: scripts/check_conflict_markers.sh
+
       - name: Shell scripts (shellcheck)
         # Through pre-commit, so CI selects exactly the files the hook does
         # (anything with a shell shebang, not only *.sh). Checks: .shellcheckrc.

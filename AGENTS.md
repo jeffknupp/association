@@ -25,7 +25,7 @@ we do about it. Read `DATA.md` before trusting a column.
 ## Before you commit
 
 ```bash
-uv run pre-commit run --all-files   # all sixteen gates
+uv run pre-commit run --all-files   # all seventeen gates
 uv run pytest -q -n auto            # fully offline: no network, no ollama
 ```
 
@@ -1035,6 +1035,13 @@ The habits that caught real bugs here, in rough order of how often they paid:
   `no-redef` and ruff's F811 catch it, but only when the gates run on the
   merged tree. After merging parallel work, scan for duplicated top-level
   names before reading anything into either side's green tests.
+- **Chain a merge's resolver, its `git add` and the commit with `&&`, never
+  `;`.** A resolver script that asserted and stopped, followed by `;`, let a
+  merge commit land with `<<<<<<< HEAD` inside `CHANGES.md` and `ISSUES.md` -
+  twice in one week, on merges of parallel agents' branches - and every gate
+  passed, because a marker is valid Markdown. `scripts/check_conflict_markers.sh`
+  now refuses any tracked file holding a start or end marker (a bare
+  `=======` is a Markdown underline, so only those two).
 - **Never rewrite `CLAUDE.md` in place.** It is a symlink to `AGENTS.md`, and
   `git ls-files` lists it, so a `sed -i` or `perl -pi` over a file list
   replaces the link with a regular copy (`git status` shows `T CLAUDE.md`). The
