@@ -18,17 +18,14 @@ from association.query.entities import (
     misread_players,
     nicknames_in,
     no_match,
-    override_nicknames,
     player_named_on_a_team_only_question,
     players_named_in,
     read_near_spelling,
     resolve_player,
     resolve_team,
-    restore_dropped_players,
     suggest_players,
     team_only_question_names_a_player,
     teams_named_in,
-    undo_name_completion,
 )
 
 
@@ -50,7 +47,7 @@ def con() -> duckdb.DuckDBPyConnection:
         # Blossomgame and "with" starts Withey, so an ordinary question reads
         # as naming both unless a span has to equal a whole word.
         "('16','Jaron Blossomgame'),('17','Jeff Withey'),"
-        # 18 is the false positive that gates restore_dropped_players: "best"
+        # 18 is the false positive a comparison gate exists for: "best"
         # really is somebody's whole surname.
         "('18','Travis Best')"
     )
@@ -350,67 +347,6 @@ def test_nicknames_are_found_in_the_question_as_whole_words(con: duckdb.DuckDBPy
     assert nicknames_in("ant man log vs portland") == ["Anthony Edwards"]
 
 
-def test_override_replaces_a_player_the_router_invented() -> None:
-    """The reason this exists. Measured against qwen2.5:3b, "Show me The
-    Answer's avg points" routed to `player='Klay Thompson'` - a real player,
-    resolving cleanly, answered confidently. The nickname is gone by then, so
-    nothing downstream of the router can catch it; the question is the only
-    place it still exists."""
-    slots = {"stat": "points", "player": "Klay Thompson"}
-    changed = override_nicknames("Show me The Answer's avg points", slots)
-    assert changed == [("Klay Thompson", "Allen Iverson")]
-    assert slots["player"] == "Allen Iverson"
-
-
-def test_override_is_a_no_op_when_the_router_already_agrees() -> None:
-    slots = {"player": "Luka Doncic"}
-    assert override_nicknames("Show me luka's avg points", slots) == []
-    assert slots["player"] == "Luka Doncic"
-
-
-def test_override_leaves_a_single_slot_alone_when_the_question_names_two_players() -> None:
-    """Nothing says which of two nicknames a single `player` slot refers to,
-    and guessing wrong is the same bug this is here to fix."""
-    slots = {"player": "Klay Thompson"}
-    assert override_nicknames("Compare SGA and Wemby", slots) == []
-    assert slots["player"] == "Klay Thompson"
-
-
-def test_override_fills_a_players_list_positionally_when_the_counts_match() -> None:
-    slots = {"players": ["SGA", "Klay Thompson"]}
-    changed = override_nicknames("Compare SGA and Wemby", slots)
-    assert slots["players"] == ["Shai Gilgeous-Alexander", "Victor Wembanyama"]
-    assert changed == [("SGA", "Shai Gilgeous-Alexander"), ("Klay Thompson", "Victor Wembanyama")]
-
-
-def test_override_leaves_a_players_list_alone_when_the_counts_disagree() -> None:
-    slots = {"players": ["Kobe Bryant", "Michael Jordan", "Somebody Else"]}
-    assert override_nicknames("Compare Kobe and MJ", slots) == []
-    assert slots["players"] == ["Kobe Bryant", "Michael Jordan", "Somebody Else"]
-
-
-def test_override_does_nothing_without_a_nickname() -> None:
-    slots = {"player": "Jaylen Brown"}
-    assert override_nicknames("How many points does Jaylen Brown average?", slots) == []
-    assert slots["player"] == "Jaylen Brown"
-
-
-def test_a_nickname_another_slot_already_holds_is_not_the_subject() -> None:
-    """ "myles turner bucks stats without giannis last 10" routed to
-    player='Myles Turner', without=['giannis'], and the one nickname in the
-    question rewrote the subject to Giannis - who could not play without
-    himself. The nickname is spoken for by the slot the router put it in."""
-    slots = {"player": "Myles Turner", "team": "Bucks", "without": ["giannis"]}
-    assert override_nicknames("myles turner bucks stats without giannis last 10", slots) == []
-    assert slots["player"] == "Myles Turner"
-    # Spelled out by the router rather than left as the nickname: still spoken for.
-    resolved = {"player": "Myles Turner", "without": ["Giannis Antetokounmpo"]}
-    assert override_nicknames("myles turner stats without giannis", resolved) == []
-    # With nothing else claiming it, the nickname still corrects the subject.
-    alone = {"player": "Jayson Tatum"}
-    assert override_nicknames("how many points does giannis average", alone) == [("Jayson Tatum", "Giannis Antetokounmpo")]
-
-
 # ---------------- the question's own span, not the router's spelling ----------------
 #
 # The subject reading's "any one word is enough" support check passes every
@@ -620,9 +556,7 @@ def test_a_stray_possessive_letter_does_not_narrow_an_ambiguous_surname(span_con
 
 def test_an_ambiguous_span_is_left_for_the_clarification_to_ask(span_con: duckdb.DuckDBPyConnection) -> None:
     """ "who is better, tatum or brown" - 'brown' alone resolves to three
-    real players here, so the window must not guess between them; the
-    existing undo_name_completion trims the router's completed 'Jaylen
-    Brown' back to the ambiguous 'brown' afterward, unaffected by this."""
+    real players here, so the window must not guess between them."""
     slots = {"players": ["Jayson Tatum", "Jaylen Brown"]}
     assert _apply(span_con, "who is better, tatum or brown", slots) == ([], [])
     assert slots["players"] == ["Jayson Tatum", "Jaylen Brown"]
@@ -808,46 +742,6 @@ def test_no_match_says_only_that_when_nothing_is_near(con: duckdb.DuckDBPyConnec
 # ---------------- players the router dropped ----------------
 
 
-def test_a_question_naming_two_players_is_not_a_fingerprint_of_one(con: duckdb.DuckDBPyConnection) -> None:
-    """ "compare fingerprints for embiid vs jokic in 2026" came back as a single
-    `player` slot. One polygon is not a narrower answer to that - it is a
-    different question, answered without saying so."""
-    slots = {"player": "Jusuf Nurkic"}
-    assert restore_dropped_players(con, "compare fingerprints for embiid vs klay thompson", slots) == ("Jusuf Nurkic", "Joel Embiid and Klay Thompson")
-
-
-def test_a_held_name_ambiguous_alone_still_lets_its_partner_in(con: duckdb.DuckDBPyConnection) -> None:
-    """ISSUES.md #143: "show a fingerprint for maxey vs jaylen brown in 2026"
-    held one name ("Maxey") and players_named_in found a DIFFERENT one
-    ("Jaylen Brown") - "Maxey" alone names two players in the real warehouse
-    (Tyrese and Marlon), so players_named_in's own strictness (a span counts
-    only when it names EXACTLY one player) drops it, and the two lists being
-    the same LENGTH used to read as nothing to restore, even though they name
-    two different people. A fresh connection, not the shared `con` fixture:
-    its own "Jaylen Brown Jr." makes "jaylen brown" ambiguous too, which would
-    hide the very bug this pins."""
-    c = duckdb.connect(":memory:")
-    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
-    c.execute("INSERT INTO players VALUES ('1', 'Tyrese Maxey'), ('2', 'Marlon Maxey'), ('3', 'Jaylen Brown')")
-    slots: dict[str, Any] = {"player": "Maxey"}
-    assert restore_dropped_players(c, "show a fingerprint for maxey vs jaylen brown in 2026", slots) == ("Maxey", "Maxey and Jaylen Brown")
-    assert slots == {"players": ["Maxey", "Jaylen Brown"]}
-
-
-def test_slots_that_already_hold_every_name_are_left_alone(con: duckdb.DuckDBPyConnection) -> None:
-    slots = {"players": ["Joel Embiid", "Klay Thompson"]}
-    assert restore_dropped_players(con, "compare fingerprints for embiid and klay thompson", slots) is None
-    assert restore_dropped_players(con, "plot embiid's fingerprint", {"player": "Joel Embiid"}) is None
-
-
-def test_restoring_players_clears_the_single_slot_it_replaces(con: duckdb.DuckDBPyConnection) -> None:
-    """The template prefers `players`, so a stale `player` would sit in the
-    trace saying something the answer did not do."""
-    slots = {"player": "Jusuf Nurkic"}
-    restore_dropped_players(con, "compare fingerprints for embiid vs klay thompson", slots)
-    assert "player" not in slots and slots["players"] == ["Joel Embiid", "Klay Thompson"]
-
-
 def test_a_vs_question_that_matched_one_player_is_flagged(con: duckdb.DuckDBPyConnection) -> None:
     """ "generate fingerprints for embiid vs jolic" drew Joel Embiid alone. The
     typo cannot be repaired - measured, a near-spelling search over leftover
@@ -872,8 +766,8 @@ def test_a_name_that_resolves_is_never_called_a_warehouse_miss(con: duckdb.DuckD
     Brown, whom `players` holds. A name that DOES resolve against the roster
     must get a sentence that says so - never the one that claims the
     warehouse does not have him. `held` is deliberately left at one name here
-    (as if some future restoration bug dropped the second again) so this
-    branch is pinned on its own, independent of restore_dropped_players."""
+    (as if a reading had dropped the second) so this branch is pinned on
+    its own."""
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute("INSERT INTO players VALUES ('1', 'Tyrese Maxey'), ('2', 'Marlon Maxey'), ('3', 'Jaylen Brown')")
@@ -881,57 +775,9 @@ def test_a_name_that_resolves_is_never_called_a_warehouse_miss(con: duckdb.DuckD
     assert note == "Note: the question also names Jaylen Brown, who was not included in this answer."
 
 
-def test_a_question_that_compares_nothing_does_not_gain_a_player(con: duckdb.DuckDBPyConnection) -> None:
-    """players_named_in is strict but not infallible - "best" is Travis Best
-    and "boston" is Brandon Boston Jr. Without a comparison in the question,
-    "plot jokic's fingerprint from his best season" drew Travis Best a
-    polygon."""
-    slots = {"player": "Nikola Jokic"}
-    assert restore_dropped_players(con, "plot embiid's fingerprint from his best season", slots) is None
-    assert slots == {"player": "Nikola Jokic"}
-
-
-def test_a_comparison_that_does_not_say_vs_still_restores(con: duckdb.DuckDBPyConnection) -> None:
-    slots = {"player": "Jusuf Nurkic"}
-    assert restore_dropped_players(con, "compare fingerprints for embiid and klay thompson", slots) is not None
-
-
 def test_a_refusal_with_no_names_is_still_a_sentence() -> None:
     """Public and typed, so it may not depend on its caller never passing []."""
     assert misread_players([]).endswith("it was not answered.")
-
-
-# ---------------- ambiguity the router resolved on its own ----------------
-
-
-def test_a_bare_surname_asks_even_when_the_router_completed_it(con: duckdb.DuckDBPyConnection) -> None:
-    """The canonical case. "who is better, tatum or brown" routed to Jaylen
-    Brown, and a bare surname is exactly what this project asks about - it
-    stopped asking as soon as the router started completing it."""
-    slots = {"players": ["Luka Doncic", "Jaylen Brown"]}
-    assert undo_name_completion(con, "who is better, doncic or brown", slots) == [("Jaylen Brown", "Brown")]
-    assert isinstance(resolve_player(con, slots["players"][1]), Ambiguous)
-
-
-def test_a_surname_only_one_player_has_is_left_completed(con: duckdb.DuckDBPyConnection) -> None:
-    """Completing "embiid" changes no answer, so undoing it would only cost a
-    question its answer."""
-    slots = {"player": "Joel Embiid"}
-    assert undo_name_completion(con, "compare sga and embiid", slots) == []
-    assert slots == {"player": "Joel Embiid"}
-
-
-def test_a_name_the_question_spells_in_full_is_not_a_part_of_one(con: duckdb.DuckDBPyConnection) -> None:
-    slots = {"player": "Jaylen Brown"}
-    assert undo_name_completion(con, "plot jaylen brown's shot chart", slots) == []
-
-
-def test_a_nickname_the_table_holds_is_a_resolution_not_a_guess(con: duckdb.DuckDBPyConnection) -> None:
-    """PLAYER_NICKNAMES is an audited list; the router's completion is not.
-    Cutting "Stephen Curry" back to "Curry" for a question that said "steph"
-    would ask about something the question already answered."""
-    slots = {"player": "Stephen Curry"}
-    assert undo_name_completion(con, "what was steph curry's 3pt percentage", slots) == []
 
 
 # ---------------- scope_from_question: the team a question plays against ----------------

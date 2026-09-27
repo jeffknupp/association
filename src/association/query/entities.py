@@ -173,9 +173,9 @@ def nicknames_in(question: str) -> list[str]:
     in the order they appear, without repeats.
 
     Matched against the user's own words, which is the only place a nickname
-    still exists: by the time the router has filled a slot it has usually
+    still exists: by the time a model has filled a slot it has usually
     rewritten the nickname, and when it rewrites one wrongly there is nothing
-    downstream to notice - see :func:`override_nicknames`.
+    downstream to notice.
 
     .. versionadded:: 2.1.0
     """
@@ -185,71 +185,6 @@ def nicknames_in(question: str) -> list[str]:
         if name not in seen:
             seen.append(name)
     return seen
-
-
-def override_nicknames(question: str, slots: dict[str, Any]) -> list[tuple[str, str]]:
-    """Replace router-supplied player slots with what the question's nicknames
-    actually mean. Mutates ``slots``; returns the ``(was, now)`` pairs changed.
-
-    The router rewrites a nickname it recognizes, and *invents* one it does not:
-    measured against qwen2.5:3b, "The Answer" became `player='Klay Thompson'`
-    and "The Glove" became `player='Jayson Tatum'` - each a real player, each
-    resolving cleanly, each producing a confident answer about the wrong person.
-    Nothing after the router can catch that, because the nickname is already
-    gone. So the question itself is the authority, and this runs before any
-    template sees the slots.
-
-    Deliberately conservative, because a wrong override is the same class of bug
-    as the one being fixed. A single ``player`` slot is only overridden when the
-    question names exactly one nickname; a ``players`` list only when it names
-    exactly as many as the list holds, and then positionally, since nothing else
-    says which name belongs to which slot. Anything else is left alone.
-
-    .. versionadded:: 2.1.0
-    """
-    names = [name for name in nicknames_in(question) if name not in _players_other_slots_hold(slots)]
-    if not names:
-        return []
-
-    changed: list[tuple[str, str]] = []
-    players = slots.get("players")
-    if isinstance(players, list) and players:
-        if len(names) != len(players):
-            return []
-        for i, (was, now) in enumerate(zip(players, names, strict=True)):
-            if was != now:
-                players[i] = now
-                changed.append((str(was), now))
-        return changed
-
-    if len(names) != 1:
-        return []
-    was = slots.get("player")
-    if isinstance(was, str) and was.strip() and was != names[0]:
-        slots["player"] = names[0]
-        changed.append((was, names[0]))
-    return changed
-
-
-def _players_other_slots_hold(slots: dict[str, Any]) -> set[str]:
-    """The players named by every slot but the subject's, as the nickname
-    table reads them - "giannis" in ``without`` is Giannis Antetokounmpo.
-
-    A nickname the router has already put somewhere else is spoken for, and
-    not the subject: "myles turner bucks stats without giannis last 10" routed
-    to ``player='Myles Turner', without=['giannis']``, and the override, seeing
-    exactly one nickname in the question, rewrote the subject to Giannis - who
-    then could not play without himself. The question named its subject in
-    full; the nickname was the teammate.
-    """
-    held: set[str] = set()
-    for key, value in slots.items():
-        if key in ("player", "players"):
-            continue
-        for item in value if isinstance(value, list) else [value]:
-            if isinstance(item, str):
-                held.add(PLAYER_NICKNAMES.get(item.casefold(), item))
-    return held
 
 
 def _fold(text: str) -> str:
@@ -321,33 +256,6 @@ def players_named_in(con: duckdb.DuckDBPyConnection, question: str) -> list[str]
         if name not in seen:
             seen.append(name)
     return seen
-
-
-def _grounded(con: duckdb.DuckDBPyConnection, question: str, name: str) -> bool:
-    """Whether ``question`` shows any trace of ``name`` at all.
-
-    Any one word is enough, because half a name is how a question usually
-    carries one ("Jokic", "Luka"), and the router is expected to supply the
-    other half. What this catches is a name with no half in the question at
-    all.
-
-    Four ways to leave a trace, all of them things the router legitimately does
-    to a name: the word itself, a near spelling of it (the user's typo, which
-    the router often silently corrects), a nickname, or the initials.
-    """
-    asked = _words(question)
-    lowered = {w.casefold() for w in asked}
-    if _initials(name) in lowered or name in nicknames_in(question):
-        return True
-    for word in _words(name):
-        if word.casefold() in lowered:
-            return True
-        if len(word) < 3:
-            continue  # a near spelling of a word this short is a different word
-        nearest = con.execute("SELECT list_min(list_transform(?::VARCHAR[], q -> damerau_levenshtein(lower(q), ?)))", [asked, word.casefold()]).fetchone()
-        if nearest is not None and nearest[0] is not None and nearest[0] <= _edit_budget(word):
-            return True
-    return False
 
 
 def _exact_name_span(con: duckdb.DuckDBPyConnection, span: list[str], limit: int = 2) -> list[Entity]:
@@ -422,9 +330,10 @@ def _question_derived_player(con: duckdb.DuckDBPyConnection, question: str, name
     wherever ``name`` (the router's guess, right or wrong) itself appears -
     plausibly names, when that is confident enough to act on.
 
-    Two faults this repairs, both structural, and both invisible to
-    :func:`_grounded`'s "any one word is enough" check because that check is
-    deliberately generous: the router TRUNCATES a name the question spells in
+    Two faults this repairs, both structural, and both invisible to the
+    "any one word is enough" check a name is otherwise held to
+    (:func:`~association.query.subject.question_supports`), because that check
+    is deliberately generous: the router TRUNCATES a name the question spells in
     full ("dennis schröder", typed correctly, arrived as just ``'Dennis'`` -
     grounded, and a 7-way surname), and it FABRICATES a word next to a real
     one ("tatum rec home" arrived as ``'Jaylen Tatum'``, the league's only
@@ -479,8 +388,8 @@ def _question_derived_player(con: duckdb.DuckDBPyConnection, question: str, name
       the identical reason - Kareem Abdul-Jabbar is the other player these
       two corpus rows have in common, and neither he nor Bob Lanier has a
       row in `players` at all. A router-supplied given name with nothing
-      else in the question corroborating it is left alone here, for
-      :func:`_grounded` to judge as it always has.
+      else in the question corroborating it is left alone here, for the
+      "any one word" check to judge as it always has.
 
     Returns:
         The one player the question's own words resolve to, or ``None`` when
@@ -561,73 +470,6 @@ def _question_derived_player_search(con: duckdb.DuckDBPyConnection, window: list
     return None
 
 
-def restore_dropped_players(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any]) -> tuple[str, str] | None:
-    """Put back players a fingerprint's slots lost. Mutates ``slots``.
-
-    A fingerprint draws as many polygons as it is given, so a question naming
-    two players and a slot holding one is not a narrower question - it is half
-    of the one asked, answered without saying so. Measured: "compare
-    fingerprints for embiid vs jokic in 2026" came back as a single
-    ``player`` slot, and "generate fingerprints for embiid vs jolic in 2026"
-    rendered Joel Embiid alone with the second name simply gone.
-
-    Gated on the question saying it compares something at all, which is what
-    keeps players_named_in's few false positives out of a radar: "plot jokic's
-    fingerprint from his best season" names Travis Best by its rules, and
-    without the gate would have drawn him a polygon. The cost is a question
-    that compares without saying so - "plot jokic and embiid fingerprints" -
-    still losing the second name, which is what it did before this existed.
-
-    Only for the fingerprint intent, and only in this direction. Two polygons
-    on shared axes IS the comparison there, whereas turning a ``player_stat``
-    question into a comparison because the question mentioned somebody else
-    would be answering a different question.
-
-    Returns:
-        The ``(was, now)`` pair, or None when the slots already carry every
-        player the question names.
-
-    .. versionadded:: 2.1.0
-    .. versionchanged:: 4.4.0
-       Compares NAMES rather than counts. "show a fingerprint for maxey vs
-       jaylen brown in 2026" held one name (``"Maxey"``) and
-       :func:`players_named_in` found one too (``"Jaylen Brown"``) - equal
-       counts read as nothing to restore, while the two names are different
-       people. "Maxey" alone is ambiguous - ``players`` holds both Tyrese
-       Maxey and Marlon Maxey - so :func:`players_named_in`'s own strictness
-       (a span counts only when it names EXACTLY one player) drops it, and
-       the surviving count no longer means what the count comparison
-       assumed. Now a held name is kept only when :func:`_grounded` finds a
-       trace of it in the question at all - the same test the subject
-       reading (:func:`association.query.subject.question_supports`) applies
-       to a router invention - and
-       whatever :func:`players_named_in` finds that shares no word with a
-       kept name is added rather than used to replace the whole list, so an
-       already-correct name is never swapped for a mere spelling of itself.
-    """
-    if not _COMPARISON.search(question):
-        return None
-    named = players_named_in(con, question)
-    listed = slots.get("players")
-    raw = listed if isinstance(listed, list) else [slots.get("player")]
-    held = [name for name in raw if isinstance(name, str) and name.strip()]
-    # A held name the question shows no trace of at all is the router's own
-    # invention (the same shape subject.apply_subject guards against) and
-    # is dropped rather than kept; `named`, read straight from the question,
-    # can replace it outright. A held name WITH a trace is kept, even where
-    # players_named_in itself could not confirm it (an ambiguous bare
-    # surname), so restoring one dropped player never costs another his
-    # already-correct slot.
-    kept = [name for name in held if _grounded(con, question, name)]
-    spare = [name for name in named if not any(_shares_word(name, k) for k in kept)]
-    restored = kept + spare
-    if not restored or restored == held:
-        return None
-    slots["players"] = restored
-    slots.pop("player", None)
-    return " and ".join(held) or "nobody", " and ".join(restored)
-
-
 # The question saying it compares things at all. Restoring a dropped player
 # needs this, because players_named_in is strict but not infallible: "best" is
 # Travis Best and "boston" is Brandon Boston Jr., so "plot jokic's fingerprint
@@ -661,9 +503,8 @@ def compared_but_unmatched(con: duckdb.DuckDBPyConnection, question: str, held: 
     ``net_points_player_fingerprint`` has a 2026 row for - he was simply never
     carried into the answer. That is the mirror-image bug AGENTS.md calls out
     under "a refusal that names the wrong cause", so before blaming a
-    spelling, the leftover name is resolved against the roster the same way
-    :func:`restore_dropped_players` itself resolves one - and where it
-    resolves, the sentence says the player was dropped, never that he is
+    spelling, the leftover name is resolved against the roster - and where
+    it resolves, the sentence says the player was dropped, never that he is
     missing from the warehouse.
 
     .. versionadded:: 2.1.0
@@ -778,95 +619,6 @@ def team_only_question_names_a_player(named_player: str, intent: str) -> str:
         f"it would have answered the league's or a team's own numbers instead. Ask about {named_player}'s own stats, "
         "or name a team if a team's record was meant."
     )
-
-
-def undo_name_completion(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any]) -> list[tuple[str, str]]:
-    """Give back the ambiguity the router resolved on its own. Mutates ``slots``.
-
-    "Who is better, tatum or brown" routed to ``['Jayson Tatum', 'Jaylen
-    Brown']``. Tatum is one player and that completion is free; "brown" is ten,
-    and the router choosing Jaylen is exactly the prominence tiebreak measured
-    and rejected above :data:`PLAYER_NICKNAMES` - arriving through the model's
-    guess instead of through code, where nothing downstream can see it. Which
-    Brown is meant is for :func:`resolve_player` to settle - by who still
-    plays, said in the answer, or by asking when more than one does - and it
-    never got the chance once the router started completing the name.
-
-    So a name the question carries only PART of is cut back to that part, and
-    normal resolution decides: ``find_players`` applies the nickname table
-    first, so "luka" still answers Luka Doncic, and :func:`resolve_player`
-    returns :class:`Ambiguous` for "brown", which is the question being asked.
-
-    Only where the part is ambiguous, which is what keeps this from undoing the
-    router's useful work. Completing "jokic", "embiid" or "wembanyama" changes
-    no answer, and a name the question spells in full is not a part at all.
-    Measured over the ``check_routing.py`` corpus, no slot moves.
-
-    A name :func:`_question_derived_player` already resolved is the same kind
-    of settled case as a nickname, for the same reason: "Dylon harper" typos
-    the given name, and matching ``asked`` exactly (this function's own job,
-    everywhere else) reads the CORRECTED "Dylan" as absent from the question
-    - not typo'd, invented - and would cut a right answer back to the
-    ambiguous "Harper" over a misspelling nobody asked to have undone.
-
-    Deliberately not extended to trust a bare fragment's own exact
-    uniqueness the way :func:`_question_derived_player` does: "Kon" and
-    "Gui" are each, by themselves, an exact and globally unique match
-    ("Kon Knueppel", "Gui Santos") the same way "Kareem" is ("Kareem Rush") -
-    and "Kareem" is a coincidence, not an answer, measured directly against
-    this function (`test_two_anchored_words_that_fail_together_do_not_fall_back_to_one`'s
-    shape, reached through here instead of :func:`_question_derived_player`,
-    named Kareem Rush for "Kareem Abdul-Jabbar" before this line existed).
-    Nothing here can tell a real player's mangled surname from a fabricated
-    one apart from the position check :func:`_question_derived_player`
-    already applies, so a bare matched fragment is left exactly as
-    ambiguous as :func:`find_players` says it is.
-
-    Returns:
-        The ``(was, now)`` pairs cut back, for the trace.
-
-    .. versionchanged:: 4.3.0
-       Also leaves alone a name :func:`_question_derived_player` resolves to
-       from the question's own span - see above.
-    """
-    asked = {word.casefold() for word in _words(question)}
-    nicknamed = nicknames_in(question)
-
-    def part_only(name: str) -> str | None:
-        """The part of ``name`` the question carries, when that part is all it
-        carries and it reaches more than one player."""
-        words = _words(name)
-        matched = [word for word in words if word.casefold() in asked]
-        # A nickname the question actually used is a resolution the curated
-        # table made, not one the router guessed: "steph curry" is Stephen.
-        if not matched or len(matched) == len(words) or name in nicknamed:
-            return None
-        derived = _question_derived_player(con, question, name)
-        if derived is not None and derived.name.casefold() == name.casefold():
-            return None
-        fragment = " ".join(matched)
-        # A completion that resolves to NOBODY is not a completion at all:
-        # "derozan career points vs knicks" arrived as 'Derozan Valenčić'
-        # (day5, after the 4.5.0 prompt shrink) and fell through on a
-        # surname no player has; the part the question carries reaches
-        # DeMar DeRozan by itself.
-        return fragment if len(find_players(con, fragment)) > 1 or not find_players(con, name) else None
-
-    changed: list[tuple[str, str]] = []
-    listed = slots.get("players")
-    if isinstance(listed, list):
-        for index, value in enumerate(listed):
-            fragment = part_only(value) if isinstance(value, str) else None
-            if fragment is not None:
-                listed[index] = fragment
-                changed.append((str(value), fragment))
-        return changed
-    value = slots.get("player")
-    fragment = part_only(value) if isinstance(value, str) else None
-    if fragment is not None:
-        slots["player"] = fragment
-        changed.append((value if isinstance(value, str) else "", fragment))
-    return changed
 
 
 # What a question calls a team beyond the words of its ESPN name. Only the
@@ -1159,6 +911,9 @@ def _team_after_for(con: duckdb.DuckDBPyConnection, question: str, season: int |
         words = _words(span_text)[:3]
         for size in (3, 2, 1):
             if size <= len(words) and len(" ".join(words[:size])) >= 2:
+                if size == 1 and words[0].casefold() in _COMMON_WORDS_THAT_NAME_TEAMS:
+                    # "for me" is the asker, not the Memphis Grizzlies.
+                    continue
                 team = _team_named(con, " ".join(words[:size]), season)
                 if team is not None:
                     return team, match.start()
@@ -1172,14 +927,18 @@ def _team_after_for(con: duckdb.DuckDBPyConnection, question: str, season: int |
 #: own (`abbreviation ILIKE ?`), so a bare three-letter word run through it
 #: directly can resolve to a team nobody meant: "was" is the Washington
 #: Wizards ("What was the highest scoring game by a player this year?"),
-#: "min" is the Minnesota Timberwolves (a plausible box-score "20+ min").
-#: Unlike the player list, this one is checked against the SPAN actually
+#: "min" is the Minnesota Timberwolves (a plausible box-score "20+ min"),
+#: and "me" is the Memphis Grizzlies, whose name starts with it ("show kat's
+#: average points for me" read Memphis as his own team, and answered that he
+#: never played for them - plan item 6, step (d), part 3c, where the day10
+#: paraphrases found it once nothing rewrote "kat" to a name the question
+#: does not hold). Unlike the player list, this one is checked against the SPAN actually
 #: tried rather than the team's own name, because a team's matched span is
 #: often not a word of its display name at all (an abbreviation matches
 #: nothing in "Washington Wizards" except by lookup).
 #:
 #: .. versionadded:: 4.4.0
-_COMMON_WORDS_THAT_NAME_TEAMS: frozenset[str] = frozenset({"was", "min"})
+_COMMON_WORDS_THAT_NAME_TEAMS: frozenset[str] = frozenset({"was", "min", "me"})
 
 
 def teams_named_in(con: duckdb.DuckDBPyConnection, question: str, season: int | None = None) -> list[Entity]:
@@ -1194,7 +953,7 @@ def teams_named_in(con: duckdb.DuckDBPyConnection, question: str, season: int | 
     never tried (the same floor :func:`players_named_in` applies, for the
     same reason: "in", "la", "no" match something by accident), and a span
     equal to :data:`_COMMON_WORDS_THAT_NAME_TEAMS` is skipped outright even
-    at three letters, since those two are real words dense enough in
+    at three letters, since those are real words dense enough in
     ordinary questions that the floor alone does not clear them.
 
     .. versionadded:: 4.4.0
@@ -1231,7 +990,8 @@ def teams_named_in(con: duckdb.DuckDBPyConnection, question: str, season: int | 
 
 def _team_grounded(con: duckdb.DuckDBPyConnection, question: str, team: Entity) -> bool:
     """Whether the question shows any trace of ``team`` - a word of its name,
-    its abbreviation, or a nickname. The team counterpart of :func:`_grounded`."""
+    its abbreviation, or a nickname: the team counterpart of the check a
+    player's name is held to (:func:`~association.query.subject.question_supports`)."""
     row = con.execute("SELECT abbreviation, display_name FROM teams WHERE team_id = ?", [team.id]).fetchone()
     if row is None:
         return True  # nothing to check it against; leave it alone

@@ -252,8 +252,9 @@ def test_apply_subject_writes_the_players_the_question_names_in_the_routers_own_
     assert apply_subject(read_subject(con, "deron williams career points", "player_stat", right), right, con=con, intent="player_stat")[:2] == ([], []) and right == {"player": "Deron Williams"}
 
     # A player the router left OUT (the question names two, the slot holds
-    # one) is not put back here - restore_dropped_players' job still - and
-    # must not trip anything: the golden crashed on this shape twice.
+    # one) is not put back here - the parser reads every name the question
+    # holds - and must not trip anything: the golden crashed on this shape
+    # twice.
     omitted: dict[str, Any] = {"player": "Nikola Jokic"}
     assert apply_subject(read_subject(con, "compare jokic and embiid", "player_compare", omitted), omitted, con=con, intent="player_compare")[:2] == ([], []) and omitted == {"player": "Nikola Jokic"}
 
@@ -575,18 +576,6 @@ def test_a_position_group_is_handed_to_the_compiler_as_the_player(con: duckdb.Du
 def test_a_non_team_in_the_team_slot_that_is_the_opponents_word_is_dropped(con: duckdb.DuckDBPyConnection) -> None:
     intent, slots = _assigned(con, "Centers stats game log vs kings", "game_log", stat="fieldGoalsMade", team="Los Angeles Kings", order="recent", season_type=2, span="career")
     assert intent == "game_log" and "team" not in slots and slots["opponent"] == "Sacramento Kings" and "player" not in slots
-
-
-def test_a_completion_that_resolves_to_nobody_is_cut_back(con: duckdb.DuckDBPyConnection) -> None:
-    """ "derozan career points vs knicks" arrived as 'Derozan Valenčić' (day5)
-    - a surname no player has, on a part the question carries that reaches
-    DeMar DeRozan by itself."""
-    from association.query.entities import undo_name_completion
-
-    slots: dict[str, Any] = {"player": "Derozan Valenčić"}
-    assert undo_name_completion(con, "derozan career points vs knicks", slots) == [("Derozan Valenčić", "Derozan")] and slots["player"] == "Derozan"
-    kept: dict[str, Any] = {"player": "DeMar DeRozan"}
-    assert undo_name_completion(con, "derozan career points vs knicks", kept) == [] and kept["player"] == "DeMar DeRozan"
 
 
 # ---------------------------------------------------------------------------

@@ -19,11 +19,8 @@ from .entities import (
     collect_name_readings,
     compared_but_unmatched,
     misread_players,
-    override_nicknames,
     player_named_on_a_team_only_question,
-    restore_dropped_players,
     team_only_question_names_a_player,
-    undo_name_completion,
 )
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .keepalive import KEEP_ALIVE
@@ -359,10 +356,6 @@ class Agent:
             history.log(f"  -> (scope) {exc}, falling through to the agent")
             self.fell_through = f"a slot the Reading cannot hold: {exc}"
             return None
-        # Before anything reads a slot: the router rewrites nicknames, and
-        # rewrites some of them to the wrong player. See entities.override_nicknames.
-        for was, now in override_nicknames(question, routed.slots):
-            history.log(f"  -> (nickname) {was!r} -> {now!r} (from the question, overriding the router)")
         handler = TEMPLATES.get(routed.intent)
         history.log(f"  -> (router) intent={routed.intent!r} slots={routed.slots}" + ("" if handler else " - not ported yet, falling through"))
         # One reading of WHO the question is about, recorded as a decision
@@ -372,14 +365,6 @@ class Agent:
         # was wrong (query/subject.py); each chain step becomes a no-op, then
         # goes, as the reading takes over the field it settled.
         subject = self._record_subject(question, routed, history)
-        # A fingerprint draws as many polygons as it is given, and the router
-        # drops the second name often enough that "compare fingerprints for
-        # embiid vs jokic" arrived as one player, answered as half the
-        # question with nothing saying so.
-        if routed.intent == "fingerprint":
-            restored = restore_dropped_players(self.toolbox.con, question, routed.slots)
-            if restored is not None:
-                history.log(f"  -> (player) {restored[0]!r} -> {restored[1]!r} (the question names more players than the router returned)")
         # The reading writes the slots a template reads - who the question
         # is about, in the router's own slot shape - and settles the intent
         # where the router's cannot be about that subject, or where the
@@ -406,11 +391,6 @@ class Agent:
             return settled
         if handler is None:
             return None
-        # Completing a bare surname is the prominence tiebreak this project
-        # measured and rejected, arriving through the model instead of through
-        # code. "brown" is ten players and has to ask, as it always did.
-        for was, now in undo_name_completion(self.toolbox.con, question, routed.slots):
-            history.log(f"  -> (player) {was!r} -> {now!r} (the question names only part of it, and that part is ambiguous)")
         # AGENTS.md, "Refuse by name where the intent cannot be about the
         # subject": a question naming exactly one real player and no team,
         # routed to an intent with no player reading at all, is about a
@@ -574,9 +554,8 @@ class Agent:
                     result.answer = f"{result.answer} {note}"
                     _note(result, note)
                 # A "vs" question that produced one polygon answered half of
-                # itself. entities.compared_but_unmatched tells a name nothing
-                # can repair from one restore_dropped_players simply missed -
-                # see its docstring - and phrases each case correctly.
+                # itself: entities.compared_but_unmatched says which name the
+                # question compares matched nobody - see its docstring.
                 if routed.intent == "fingerprint":
                     unmatched_note = compared_but_unmatched(self.toolbox.con, question, self._named_in(routed.slots))
                     if unmatched_note:

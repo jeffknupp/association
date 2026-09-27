@@ -949,9 +949,8 @@ def apply_subject(subject: Subject, slots: dict[str, Any], *, con: duckdb.DuckDB
     own spare name where there is exactly one per dropped name, else dropped
     and reported. An unsupported opponent with no spare is deleted rather
     than reported: the refusal would name him. A player the router left OUT
-    is not put back here yet - that stays
-    :func:`~association.query.entities.restore_dropped_players`' and
-    ``scope_from_question``'s until the golden says the reading may.
+    is not put back here: the parser's reading takes every name from the
+    question itself.
 
     .. versionadded:: 4.4.0
 

@@ -469,25 +469,6 @@ def test_a_stray_name_on_a_question_no_template_reads_one_for_changes_nothing(mo
     assert _agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic").ask("Lakers vs Celtics record").text == "templated"
 
 
-def test_a_fingerprint_keeps_every_player_the_question_named(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """ "compare fingerprints for embiid vs jokic in 2026" arrived as a single
-    player slot, and one polygon is not half an answer - it is a different
-    question, answered without saying so."""
-    from association.query.router import Route
-    from association.query.templates.common import TemplateResult
-
-    seen: list[str] = []
-
-    def record(ctx: Any, reading: Reading) -> TemplateResult:
-        seen.extend(reading.scope.players)
-        return TemplateResult(data={}, answer="rendered")
-
-    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="fingerprint", slots={"player": "Ben Simmons"}))
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"fingerprint": record})
-    _agent_with_players(tmp_path, "Joel Embiid", "Nikola Jokic", "Ben Simmons").ask("compare fingerprints for embiid vs jokic in 2026")
-    assert seen == ["Joel Embiid", "Nikola Jokic"]
-
-
 def test_a_fingerprint_that_lost_a_player_to_a_typo_says_so(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """ "generate fingerprints for embiid vs jolic in 2026" drew Joel Embiid
     alone. The typo cannot be repaired, so the half-answer has to be stated -
@@ -500,24 +481,6 @@ def test_a_fingerprint_that_lost_a_player_to_a_typo_says_so(monkeypatch: pytest.
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"fingerprint": lambda ctx, slots: TemplateResult(data={}, answer="Rendered.")})
     answer = _agent_with_players(tmp_path, "Joel Embiid").ask("generate fingerprints for embiid vs jolic in 2026").text
     assert answer.startswith("Rendered.") and "only one of them matches" in answer
-
-
-def test_the_fast_path_asks_about_a_surname_the_router_completed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """End to end, because the value of this is that the template sees the
-    question's own word and asks - not that a helper returned a string."""
-    from association.query.router import Route
-    from association.query.templates.common import TemplateResult
-
-    seen: list[str | None] = []
-
-    def record(ctx: Any, reading: Reading) -> TemplateResult:
-        seen.append(reading.scope.player)
-        return TemplateResult(data={}, answer="answered")
-
-    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="player_stat", slots={"player": "Jaylen Brown"}))
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": record})
-    _agent_with_players(tmp_path, "Jaylen Brown", "Bobby Brown", "Kwame Brown").ask("how many points does brown average?")
-    assert seen == ["Brown"]
 
 
 def test_the_fast_path_says_how_it_read_a_name_the_question_left_open(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

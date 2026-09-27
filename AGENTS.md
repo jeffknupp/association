@@ -292,9 +292,9 @@ looks wrong. "Compare sga and embiid" routed to
 `['Shai Gilgeous-Alexander', 'Jusuf Nurkic']` and produced a correct table of
 two real players, one of whom the question never mentioned - every check after
 the router passed, because "Jusuf Nurkic" is a real person who resolves
-cleanly. The nickname version of this was already known
-(`override_nicknames`: "The Answer" became Klay Thompson); the general version
-is that **any** router-supplied name may be fiction.
+cleanly. The nickname version of this was known first (the router filled "The
+Answer" in as Klay Thompson); the general version is that **any** name a model
+supplies may be fiction - the router's then, the normalizer's now.
 
 So a name is checked against the question before a template reads it:
 `subject.read_subject` reads who the question is about from its own spans,
@@ -311,7 +311,7 @@ what this catches is a name with no half in the question at all. Three rules
 about what happens next, and the third is the one that was got wrong first:
 
 - **Replace only from what the question itself names, and only when the count
-  is exact** - the same discipline `override_nicknames` uses. `players_named_in`
+  is exact.** `players_named_in`
   is strict about what naming somebody means: a span must equal a *whole word*
   of exactly one player's name. Substring matching reads "the highest scoring
   game" as naming Jaron Blossomgame; word-boundary matching reads "with" as
@@ -326,11 +326,16 @@ about what happens next, and the third is the one that was got wrong first:
   completion is the prominence tiebreak measured and rejected above
   `PLAYER_NICKNAMES`, arriving through the model's guess where nothing
   downstream can see it. The model choosing between ten Browns is still a
-  guess nothing can see, so the completion is still undone.
-  `undo_name_completion` cuts those back and lets normal resolution decide;
-  `find_players` applies the nickname table first, so a shorthand the curated
-  list holds ("luka", "steph curry") still resolves rather than asking.
-  Measured over the routing corpus, no slot moves.
+  guess nothing can see, so the completion is still undone. The parser cuts
+  a model's completion back to the part the question holds and lets normal
+  resolution decide (`parse._as_typed_part`); a nickname the question used
+  ("steph curry") and a name the question's own span resolves to are left
+  alone, and `find_players` applies the nickname table first, so "luka" still
+  resolves rather than asking. The cut runs on the model's own spelling,
+  before the reading respells it: run after the reading instead, as the
+  router-era `entities.undo_name_completion` was, it read a typo'd "Bam
+  Adeyebu" - corrected to Bam Adebayo - as a question holding only "Bam",
+  and asked which Bam (ROADMAP plan item 6, step (d), part 3c).
 - **When it cannot be repaired, say so - do not hand it to the agent.** This
   one shipped wrong first, on the reasoning that the agent at least reads the
   question. Measured, that is far worse: "compare fingerprints for embiid vs
@@ -344,20 +349,18 @@ about what happens next, and the third is the one that was got wrong first:
   stray name on a `head_to_head` question changes no answer, and refusing over
   it would break a question that works.
 
-**The router also drops names, not only invents them.** "Compare fingerprints
-for embiid vs jokic" arrived as a single `player` slot, so the answer was one
-polygon where two were asked for - a narrower question, answered without saying
-so. `restore_dropped_players` puts them back, and only for `fingerprint`, where
-two polygons on shared axes IS the comparison. The same move on `player_stat`
-would turn a question about one player into a question about two.
-
-Restoring is gated on the question saying it compares something, because
-`players_named_in` is strict but not infallible: "best" is Travis Best and
-"boston" is Brandon Boston Jr., so "plot jokic's fingerprint from his best
-season" names two players by its rules and drew Travis Best a polygon until
-that gate existed. The gate costs the questions that compare without saying so
-("plot jokic and embiid fingerprints"), which lose the second name exactly as
-they always did.
+**A model drops names, not only invents them.** "Compare fingerprints for
+embiid vs jokic" arrived from the router as a single `player` slot, so the
+answer was one polygon where two were asked for - a narrower question,
+answered without saying so. The parser's reading takes the names from the
+question itself (`subject.read_subject`), so a normalizer reply that drops the
+second name still draws both, with or without a comparison word; and it reads
+an ordinary word as nobody, so "plot jokic's fingerprint from his best season"
+does not draw Travis Best a polygon, though "best" is his whole surname by
+`players_named_in`'s rules (`tests/query/test_one_writer.py`). The router-era
+`restore_dropped_players` put a dropped name back only for a question that
+said it compared something, for exactly that reason, and so lost the second
+name of "plot jokic and embiid fingerprints".
 
 What none of this can do is repair a name nobody typed correctly. "embiid vs
 jolic" loses Jokic, and **fuzzy-matching the question's leftover words to find

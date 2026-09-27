@@ -32,7 +32,7 @@ import duckdb
 from association.query.compose.core import Refused, Unsupported
 from association.query.compose.move import read_point
 from association.query.compose.team import team_named_in
-from association.query.entities import _edit_budget, find_players, find_teams, suggest_players
+from association.query.entities import _edit_budget, _question_derived_player, _words, find_players, find_teams, nicknames_in, suggest_players
 from association.query.measures import MEASURE_WORDS
 from association.query.metrics import EXTRA_FIELD_COLUMNS
 from association.query.reading import Reading, Scope
@@ -358,9 +358,44 @@ def _as_typed(question: str, name: str) -> str:
         # Completed AND corrected: "webanyama" came back "Victor Wembanyama".
         # The surname's own near spelling is what the question typed; a
         # surname the question holds as typed is a completion, which
-        # `undo_name_completion` reads, not a correction.
+        # `_as_typed_part` reads, not a correction.
         runs = _as_typed_runs(words, wanted[-1:])
     return " ".join(runs[0]) if wanted and len(runs) == 1 else name
+
+
+def _as_typed_part(con: duckdb.DuckDBPyConnection, question: str, name: str) -> str:
+    """``name`` cut back to the part the question holds, where the model
+    COMPLETED a name the question gives only part of and that part names
+    more than one player. "who is better, tatum or brown" came back with
+    "Jaylen Brown": "brown" is ten players, and the model choosing Jaylen is
+    the prominence tiebreak this project measured and rejected (above
+    :data:`~association.query.entities.PLAYER_NICKNAMES`), arriving through a
+    guess nothing downstream can see. Cut back, normal resolution decides -
+    by who still plays, said in the answer, or by asking.
+
+    Only where the part is ambiguous: completing "jokic" or "embiid" changes
+    no answer. Left alone besides: a name the question spells in full, a
+    nickname the question used (the curated table's resolution, "steph
+    curry" as Stephen), and a name the question's own span resolves to
+    (:func:`~association.query.entities._question_derived_player` - "Dylon
+    harper" typos the given name, and the corrected "Dylan" is not a word
+    the question lacks). A completion that resolves to nobody is cut back
+    whatever the part reaches ("derozan" came back "Derozan Valenčić", a
+    surname no player has). The router-era repair
+    ``entities.undo_name_completion`` made this cut after every stage; it is
+    the parser's now, on the model's own names, before the reading respells
+    them - which is what keeps a typo'd surname ("Bam Adeyebu", read as Bam
+    Adebayo) from being cut back to the ambiguous "Bam"."""
+    words = _words(name)
+    asked = {word.casefold() for word in _words(question)}
+    held = [word for word in words if word.casefold() in asked]
+    if not held or len(held) == len(words) or name in nicknames_in(question):
+        return name
+    derived = _question_derived_player(con, question, name)
+    if derived is not None and derived.name.casefold() == name.casefold():
+        return name
+    part = " ".join(held)
+    return part if len(find_players(con, part)) > 1 or not find_players(con, name) else name
 
 
 def _as_typed_runs(words: list[str], wanted: list[str]) -> list[list[str]]:
@@ -506,7 +541,7 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
 
     .. versionadded:: 4.5.0
     """
-    slots = _with_measure(question, _slots_from_names(con, [_as_typed(question, name) for name in names or []], stat))
+    slots = _with_measure(question, _slots_from_names(con, [_as_typed_part(con, question, _as_typed(question, name)) for name in names or []], stat))
     subject = _two_teams(read_subject(con, question, "other", dict(slots)), question, slots)
     slots = _read_route_names(subject, slots)
     parent = parent_intent(question, subject.kind, bool(subject.conditions))

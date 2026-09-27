@@ -3,9 +3,9 @@ the intent's default point; the question's own words - read in code, the way
 ``route()``'s ``CODE_ASSIGNED_INTENTS`` and its ``_validate_*`` helpers read
 them, never through the router prompt - may move the measure, the skeleton or
 the aggregate. Two slot repairs are included because the question text
-supports them exactly (the ``subject.apply_subject`` /
-``restore_dropped_players`` discipline described in ``AGENTS.md``): a subject
-the router dropped, and player names the router filed as the ``opponent``.
+supports them exactly (the ``subject.apply_subject`` discipline described in
+``AGENTS.md``): a subject the router dropped, and player names the router
+filed as the ``opponent``.
 
 .. versionadded:: 4.4.0
 """

@@ -1477,16 +1477,6 @@ those were found.
   would need a lower bound it does not take today.
 - **GitHub:** #19
 
-### Two fingerprints asked for without "vs" or "compare" draw one
-- **Found:** documented in `AGENTS.md` as an accepted cost; listed by the repo audit
-- **Evidence:** `restore_dropped_players` acts only on a comparison word, and
-  `compared_but_unmatched` only on "vs".
-- **User sees:** "plot jokic and embiid fingerprints" draws one polygon, with no
-  note that a second name was dropped.
-- **Next step:** when two players are named and only one is drawn, say so,
-  without restoring the second.
-- **GitHub:** #20
-
 ### The NetPoints season fingerprint matches players mid-pull, so a name can be lost
 - **Found:** 2026-09-11, comparing a fresh full pull against the existing warehouse
 - **Evidence:** `fetch_net_points_fingerprint(season)` runs inside the season
