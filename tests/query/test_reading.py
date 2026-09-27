@@ -134,6 +134,8 @@ def test_a_slot_dict_round_trips_through_the_scope() -> None:
         ({"season_type": 1}, "one of"),
         ({"limit": 0}, "below 1"),
         ({"span": "decade"}, "one of"),
+        ({"date": "last night"}, "calendar day"),
+        ({"date": "2026-02-30"}, "calendar day"),
         ({"conditions": [{"player": "Jayson Tatum", "predicate": "dunked"}]}, "predicate"),
         ({"conditions": [{"side": "own"}]}, "names no player"),
     ],

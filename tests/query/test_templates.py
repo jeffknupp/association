@@ -1130,9 +1130,12 @@ def test_game_log_filters_an_exact_calendar_date(gl_con: TemplateContext) -> Non
     assert [g["date"] for g in games] == ["2026-04-12"]
 
 
-def test_game_log_ignores_a_malformed_date_rather_than_matching_nothing(gl_con: TemplateContext) -> None:
-    games = game_log(gl_con, Reading.from_slots({"team": "Knicks", "date": "April 12"})).data["games"]
-    assert len(games) == 2
+def test_a_malformed_date_never_reaches_the_game_log() -> None:
+    """``game_log`` used to ignore a date it could not read and answer the
+    whole log - a narrowing silently dropped. The Reading's door refuses a
+    date that is not a calendar day instead."""
+    with pytest.raises(ValueError, match="calendar day"):
+        Reading.from_slots({"team": "Knicks", "date": "April 12"})
 
 
 def test_game_log_ambiguous_team_asks(gl_con: TemplateContext) -> None:

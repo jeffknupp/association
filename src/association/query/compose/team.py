@@ -283,12 +283,12 @@ def _team_games_narrowed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> tuple[
     together - the same order every other team template keeps."""
     scope = q.scope
     # The shared steps read the slot dict until they take the Scope.
-    settled = scoped_team(con, scope.to_slots(), "no team named", span=scope.span, season=scope.season)
+    settled = scoped_team(con, scope, "no team named", span=scope.span, season=scope.season)
     if isinstance(settled, TemplateResult):
         raise Refused(settled)
     team, span = settled
     date = scope.date if scope.date is not None and len(scope.date) == 10 else None
-    narrowed = narrow_team_games(con, team, span, scope.to_slots(), opponent=scope.opponent, date=date)
+    narrowed = narrow_team_games(con, team, span, scope, opponent=scope.opponent, date=date)
     if isinstance(narrowed, TemplateResult):
         raise Refused(narrowed)
     return narrowed, team, span

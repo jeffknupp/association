@@ -1216,3 +1216,18 @@ def test_the_parser_reads_the_question_when_it_is_the_reader(monkeypatch: pytest
 def test_an_unknown_reader_is_refused(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="reader must be one of"):
         _agent(tmp_path, reader="oracle")
+
+
+def test_a_slot_the_reading_cannot_hold_falls_through_rather_than_crashing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """ "stephen curry last 0 games" reads as a window of 0, and a model can
+    return a shot value of 0: the typed Scope refuses both, and the question
+    falls through the way a template's refusal does - never an uncaught
+    error out of ``Agent.ask``."""
+    from association.query.answer import FallthroughDisabled
+    from association.query.router import Route
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="game_log", slots={"player": "Stephen Curry", "limit": 0}))
+    agent = _agent(tmp_path, fallthrough=False)
+    with pytest.raises(FallthroughDisabled):
+        agent.ask("stephen curry last 0 games")
+    assert agent.fell_through is not None and "limit" in agent.fell_through

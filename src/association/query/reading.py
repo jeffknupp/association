@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, fields
+from datetime import date
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
@@ -69,6 +70,17 @@ Split = Literal["home_away", "starter_bench", "wins_losses", "month", "starter",
 """
 
 
+class ScopeError(ValueError):
+    """A slot value the Scope cannot hold - a key nothing types, a value of
+    the wrong type or outside its closed set, a window of fewer than one
+    game. Raised where a slot dict comes in (:meth:`Scope.from_slots`), so
+    the question falls through the way a template's refusal does rather than
+    an answer quietly leaving the narrowing out.
+
+    .. versionadded:: 4.5.0
+    """
+
+
 @dataclass(frozen=True, kw_only=True)
 class ConditionSpec:
     """One player named beside the subject and the role the question gives
@@ -94,10 +106,10 @@ class ConditionSpec:
         .. versionadded:: 4.5.0
         """
         if not isinstance(entry, Mapping) or set(entry) - {"player", "side", "predicate", "stat", "threshold"}:
-            raise ValueError(f"scope condition {entry!r} is not a player, side, predicate and line")
+            raise ScopeError(f"scope condition {entry!r} is not a player, side, predicate and line")
         player = entry.get("player")
         if not isinstance(player, str) or not player.strip():
-            raise ValueError(f"scope condition {entry!r} names no player")
+            raise ScopeError(f"scope condition {entry!r} names no player")
         side = _one_of("own", "opponent")("condition side", entry.get("side", "own"))
         predicate = _one_of("played", "absent", "started", "bench", "reached")("condition predicate", entry.get("predicate", "played"))
         stat = entry.get("stat")
@@ -186,7 +198,7 @@ class Scope:
         # no window at all (the templates clamp it to their default), so a
         # producer writing one has a bug to say out loud.
         if self.limit is not None and self.limit < 1:
-            raise ValueError(f"scope limit {self.limit} is below 1")
+            raise ScopeError(f"scope limit {self.limit} is below 1")
 
     @classmethod
     def from_slots(cls, slots: Mapping[str, Any]) -> Scope:
@@ -199,7 +211,7 @@ class Scope:
         """
         unknown = sorted(set(slots) - _SCOPE_FIELDS)
         if unknown:
-            raise ValueError(f"no scope field for slot(s) {unknown}")
+            raise ScopeError(f"no scope field for slot(s) {unknown}")
         values: dict[str, Any] = {}
         for name, raw in slots.items():
             if raw is None or raw is False or (isinstance(raw, (str, list, tuple)) and not raw):
@@ -227,7 +239,7 @@ class Scope:
 
 def _text(name: str, raw: Any) -> str:
     if not isinstance(raw, str):
-        raise ValueError(f"scope {name}={raw!r} is not text")
+        raise ScopeError(f"scope {name}={raw!r} is not text")
     return raw
 
 
@@ -238,25 +250,38 @@ def _texts(name: str, raw: Any) -> tuple[str, ...]:
     if isinstance(raw, str):
         return (raw,)
     if not isinstance(raw, (list, tuple)) or not all(isinstance(item, str) for item in raw):
-        raise ValueError(f"scope {name}={raw!r} is not a list of text")
+        raise ScopeError(f"scope {name}={raw!r} is not a list of text")
     return tuple(raw)
+
+
+def _iso_day(name: str, raw: Any) -> str:
+    # One calendar day as the router writes it (router._validate_date): an
+    # ISO date and nothing else - "last night" would pass a text check and
+    # then fail in whichever reader got it first.
+    try:
+        valid = isinstance(raw, str) and len(raw) == 10 and date.fromisoformat(raw).isoformat() == raw
+    except ValueError:
+        valid = False
+    if not valid:
+        raise ScopeError(f"scope {name}={raw!r} is not a calendar day (YYYY-MM-DD)")
+    return raw
 
 
 def _whole(name: str, raw: Any) -> int:
     if not isinstance(raw, int) or isinstance(raw, bool):
-        raise ValueError(f"scope {name}={raw!r} is not a whole number")
+        raise ScopeError(f"scope {name}={raw!r} is not a whole number")
     return raw
 
 
 def _flag(name: str, raw: Any) -> bool:
     if not isinstance(raw, bool):
-        raise ValueError(f"scope {name}={raw!r} is not a flag")
+        raise ScopeError(f"scope {name}={raw!r} is not a flag")
     return raw
 
 
 def _conditions(name: str, raw: Any) -> tuple[ConditionSpec, ...]:
     if not isinstance(raw, (list, tuple)):
-        raise ValueError(f"scope {name}={raw!r} is not a list of conditions")
+        raise ScopeError(f"scope {name}={raw!r} is not a list of conditions")
     return tuple(entry if isinstance(entry, ConditionSpec) else ConditionSpec.from_slot(entry) for entry in raw)
 
 
@@ -264,14 +289,15 @@ def _one_of(*allowed: object) -> Callable[[str, Any], Any]:
     def check(name: str, raw: Any) -> Any:
         """``raw`` when it is one of ``allowed``, else the reason it is not."""
         if isinstance(raw, bool) or raw not in allowed:
-            raise ValueError(f"scope {name}={raw!r} is not one of {allowed}")
+            raise ScopeError(f"scope {name}={raw!r} is not one of {allowed}")
         return raw
 
     return check
 
 
 _CHECKS: dict[str, Callable[[str, Any], Any]] = {
-    **dict.fromkeys(("player", "team", "opponent", "own_team", "stat", "ranked_by", "rate", "kind", "date", "situation", "round"), _text),
+    **dict.fromkeys(("player", "team", "opponent", "own_team", "stat", "ranked_by", "rate", "kind", "situation", "round"), _text),
+    "date": _iso_day,
     **dict.fromkeys(("players", "teams", "with_player", "without", "above", "below", "fields"), _texts),
     **dict.fromkeys(("threshold", "season", "since", "until", "game_n", "season_n", "period", "limit"), _whole),
     **dict.fromkeys(("team_restored", "per_game", "season_type_unstated"), _flag),

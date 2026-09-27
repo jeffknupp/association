@@ -256,7 +256,7 @@ def _count_season(scope: Scope, span: _Span) -> tuple[int | None, int, int | Non
     career), the season type named in its sentence, and the ordinal that
     named the season, if one did - read off the compiler's settled span,
     since that is the span the rows were counted over."""
-    return span.season, _player_relation_season_type(scope.to_slots()), span.ordinal
+    return span.season, _player_relation_season_type(scope), span.ordinal
 
 
 def _present_single_game_high(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
@@ -392,7 +392,7 @@ def present(con: duckdb.DuckDBPyConnection, intent: str, q: Query) -> TemplateRe
         # slot it refuses (a league-wide ordinal season on single_game_high,
         # an opponent on threshold_count) is exactly a point that is NOT its
         # own, and the compiler's sentence says what was read.
-        check_scope(intent, q.scope.to_slots())
+        check_scope(intent, q.scope)
     except TemplateUnsupported:
         return None
     try:

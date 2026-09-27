@@ -374,7 +374,7 @@ def _resolve_everyone(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity 
         season = current_season()
     span = _span_of("career" if season is None else None, season, season_type, "player_game_log")
     # The shared steps read the slot dict until they take the Scope.
-    narrowed = league_games(con, span, scope.to_slots(), position=q.position)
+    narrowed = league_games(con, span, scope, position=q.position)
     if isinstance(narrowed, TemplateResult):
         raise Refused(narrowed)
     return None, span, narrowed
@@ -388,7 +388,7 @@ def _resolve_named(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | N
     scope = q.scope
     subject = scoped_player(
         con,
-        scope.to_slots(),
+        scope,
         "no player named",
         table="player_game_log",
         available=q.available or _GAME_LOGS,
@@ -402,7 +402,7 @@ def _resolve_named(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | N
     # that team, written by subject._apply_own_team) narrows exactly as it
     # does for player_stat, the one template that reads it; ignored here, the
     # same question averaged his whole career's starts (1,612 games for 294).
-    narrowed = scoped_games(con, player, span, scope.to_slots(), opponent=scope.opponent, measures=measure_filters(scope.below, scope.above), date=_iso_date(scope), team=scope.own_team)
+    narrowed = scoped_games(con, player, span, scope, opponent=scope.opponent, measures=measure_filters(scope.below, scope.above), date=_iso_date(scope), team=scope.own_team)
     if isinstance(narrowed, TemplateResult):
         raise Refused(narrowed)
     return player, span, narrowed
@@ -442,7 +442,7 @@ def _apply_team_slot(con: duckdb.DuckDBPyConnection, q: Query, player: Entity | 
         if isinstance(resolved_opponent, TemplateResult):
             raise Refused(resolved_opponent)
         if resolved_opponent is not None and narrowed.opponent is None:
-            rescoped = scoped_games(con, player, span, scope.to_slots(), opponent=resolved_opponent, measures=measure_filters(scope.below, scope.above), date=_iso_date(scope), team=scope.own_team)
+            rescoped = scoped_games(con, player, span, scope, opponent=resolved_opponent, measures=measure_filters(scope.below, scope.above), date=_iso_date(scope), team=scope.own_team)
             if isinstance(rescoped, TemplateResult):
                 raise Refused(rescoped)
             narrowed = rescoped

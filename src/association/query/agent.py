@@ -29,7 +29,7 @@ from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .keepalive import KEEP_ALIVE
 from .models import AGENT_BUDGET_SECONDS, DEFAULT_ROUTER_MODEL
 from .prompt import AGENT_NUM_CTX, TOOLS, build_system_prompt
-from .reading import Reading
+from .reading import Reading, Scope, ScopeError
 from .refusals import by_question, unanswerable
 from .router import Route, RouterUnavailable, route
 from .subject import Subject, apply_subject, read_subject
@@ -351,6 +351,17 @@ class Agent:
         if routed is None:
             history.log("  -> (router) no usable classification, falling through to the agent")
             self.fell_through = "the router returned no usable classification"
+            return None
+        # A slot nothing can hold - "stephen curry last 0 games" reads as a
+        # window of 0, a model can return a shot value of 0 - is a question
+        # the fast path cannot read: it falls through here, the way a
+        # template's refusal does, rather than crashing where the Reading is
+        # built (reading.Scope.from_slots).
+        try:
+            Scope.from_slots(routed.slots)
+        except ScopeError as exc:
+            history.log(f"  -> (scope) {exc}, falling through to the agent")
+            self.fell_through = f"a slot the Reading cannot hold: {exc}"
             return None
         # Before anything reads a slot: the router rewrites nicknames, and
         # rewrites some of them to the wrong player. See entities.override_nicknames.

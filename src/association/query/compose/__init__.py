@@ -180,7 +180,7 @@ def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: s
             result = run_team(ctx.con, query)
             return TemplateResult(data=_team_point_data(query, result), answer=_team_sentence(query, result), artifacts=[])
         # The shared checks read the slot dict until they take the Scope.
-        refusal = check_coverage(intent, query.scope.to_slots())
+        refusal = check_coverage(intent, query.scope)
         if refusal is not None:
             raise Refused(TemplateResult(data={"message": refusal, "season": query.scope.season}, answer=refusal))
         # The intent's own default point is said the way its template says
@@ -192,7 +192,7 @@ def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: s
             # The season line's own reader declined: the game-level reading,
             # checked against its own floor, or nothing.
             query = games_reading(query)
-            refusal = check_coverage(intent, query.scope.to_slots())
+            refusal = check_coverage(intent, query.scope)
             if refusal is not None:
                 raise Refused(TemplateResult(data={"message": refusal, "season": query.scope.season}, answer=refusal))
         out = run(ctx.con, query)
