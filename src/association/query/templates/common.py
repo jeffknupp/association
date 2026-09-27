@@ -158,10 +158,6 @@ SEASON_TYPE_NAMES = {0: "regular season and postseason", 1: "preseason", 2: "reg
 # measure ("highest scoring triple doubles" - yardstick-v2 F124), the same
 # slots as the count "most triple doubles" otherwise. No template honors it,
 # so check_scope refuses and the compiler's boolean-game ranking answers.
-_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-"""A ``date`` slot worth reading: the router's calendar form, ``YYYY-MM-DD``."""
-
-
 SCOPING_SLOTS = frozenset(
     {
         "order",

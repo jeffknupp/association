@@ -15,7 +15,7 @@ from association.nba.coverage import POSTSEASON
 from association.nba.franchises import season_name, season_name_sql
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date
-from association.query.reading import ConditionSpec, Reading, Scope
+from association.query.reading import ConditionSpec, Reading, Scope, Split
 
 from ..conditions import _PLAYER_GAME_TABLES, _cell, _matchup_line, _meetings, _names, _player_games, _Scope, _table, _totals, _unseen_meetings, box_source
 from ..entities import Entity, find_players, resolve_team, teammate_names
@@ -29,7 +29,6 @@ from ..team_games import rows_sql as team_rows_sql
 from .common import (
     _BOX_SCORES,
     _GAME_LOGS,
-    _ISO_DATE,
     HISTORY_COLUMNS,
     PLAYER_STAT_COLUMNS,
     REBUILT_STATS,
@@ -250,9 +249,9 @@ def game_log(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     con = ctx.con
     season_type = scope.season_type or 2
     limit = _clamp_limit(scope.limit, default=DEFAULT_GAME_LOG_LIMIT)
-    asked = scope.limit if scope.limit is not None and scope.limit >= 1 else None
+    asked = scope.limit
     ascending = scope.order == "first"
-    date = scope.date if scope.date is not None and _ISO_DATE.match(scope.date) else None
+    date = scope.date
     opponent, venue, span, without = scope.opponent, scope.venue, scope.span, scope.without
     game_n = scope.game_n
     measures = _game_log_lines(scope.below, scope.above, scope.threshold)
@@ -1068,16 +1067,6 @@ def _head_to_head_narrowed(
     return team_games(con, a, span, Scope(venue=venue), opponent=b), season
 
 
-def _head_to_head_since(since: Any) -> int | None:
-    """The validated ``since`` slot - the same int-or-None reading
-    ``team_record``'s own ``_team_record_since`` and ``team_leaderboard``
-    already give it.
-
-    .. versionadded:: 4.4.0
-    """
-    return since if isinstance(since, int) and since and not isinstance(since, bool) else None
-
-
 def _head_to_head_span_slots(scope: Scope, date: str | None) -> tuple[int | None, int | None, bool]:
     """``head_to_head``'s ``since``/``until``/``span`` reading and the
     conflicts that are its own (a date and a since-bounded or career span at
@@ -1087,7 +1076,7 @@ def _head_to_head_span_slots(scope: Scope, date: str | None) -> tuple[int | None
 
     .. versionadded:: 4.4.0
     """
-    since = _head_to_head_since(scope.since)
+    since = scope.since or None
     until = _validated_until(scope.until, since)
     career = scope.span == "career"
     if (since is not None or career or until is not None) and date:
@@ -1140,7 +1129,7 @@ def head_to_head(ctx: TemplateContext, reading: Reading) -> TemplateResult:
         return teams
     a, b = teams
     season_type = scope.season_type or 2
-    date = scope.date if scope.date is not None and _ISO_DATE.match(scope.date) else None
+    date = scope.date
     # Home or away and nothing else: the Scope's own type (it was checked
     # here, against the slot dict, before the Reading was typed).
     venue = scope.venue
@@ -1400,7 +1389,7 @@ def team_quarter_points(ctx: TemplateContext, reading: Reading) -> TemplateResul
         raise TemplateUnsupported("team_quarter_points cannot answer for a named player")
     _team_quarter_points_check_stat(scope.stat)
 
-    date = scope.date if scope.date is not None and _ISO_DATE.match(scope.date) else None
+    date = scope.date
     settled = _team_quarter_points_team_and_span(con, scope, date)
     if isinstance(settled, TemplateResult):
         return settled
@@ -1673,15 +1662,6 @@ def _period_scope(scope: Scope, intent: str = "period_split") -> tuple[tuple[int
     raise TemplateUnsupported(f"{intent} needs a period 1-10 or a half 1-2, got period={scope.period!r} half={half!r}")
 
 
-def _period_split_date(scope: Scope) -> str | None:
-    """The ``date`` slot as ``YYYY-MM-DD``, or ``None`` for anything else -
-    split out of :func:`period_split` to keep it inside the complexity gate.
-
-    .. versionadded:: 4.4.0
-    """
-    return scope.date if scope.date is not None and _ISO_DATE.match(scope.date) else None
-
-
 def _period_split_reconciliation_refusal(season: int) -> TemplateResult | None:
     """:func:`_period_split_refusal` for ``season``, over
     :data:`PERIOD_RECONCILIATION` - the one line :func:`period_split` runs
@@ -1782,7 +1762,7 @@ def period_split(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     # the same discipline player_stat's own measures follow.
     measures = measure_filters(scope.below, scope.above)
 
-    date = _period_split_date(scope)
+    date = scope.date
     season, season_type = scope.season or current_season(), scope.season_type or 2
     if date is None:
         refusal = _period_split_reconciliation_refusal(season)
@@ -2043,7 +2023,7 @@ def _period_split_narrowing_said(
     return said
 
 
-def _period_split_narrowing(venue: Any, split: Any) -> tuple[str | None, bool | None]:
+def _period_split_narrowing(venue: Literal["home", "away"] | None, split: Split | None) -> tuple[str | None, bool | None]:
     """The venue and the starter/bench half this question narrows to.
 
     Split out of :func:`period_split` to keep it inside the complexity gate.
@@ -2052,8 +2032,7 @@ def _period_split_narrowing(venue: Any, split: Any) -> tuple[str | None, bool | 
     ``test_every_template_honoring_a_scope_slot_actually_reads_it`` reads back
     out of it. Only a NAMED half of the split filters (:data:`common.STARTER_SIDES`).
     """
-    checked = venue if venue in ("home", "away") else None
-    return checked, (STARTER_SIDES.get(split) if isinstance(split, str) else None)
+    return venue, (STARTER_SIDES.get(split) if split is not None else None)
 
 
 def _period_split_rows(

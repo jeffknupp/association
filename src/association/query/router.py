@@ -1630,8 +1630,9 @@ _PER_GAME_WORDS = re.compile(r"\bper\s+game\b|\bppg\b|\brpg\b|\bapg\b|\baverages
 
 def _route_team_total(intent: str, slots: dict[str, Any], question: str) -> None:
     """A season total asked of a team's own stat is filed as ``rate: "total"``
-    (the schema's own word for it, which NetPoints already uses), so
-    ``team_stat`` steps aside and the compiler reads the season's raw total.
+    (the schema's own word for it, which NetPoints already uses), which
+    ``team_stat`` does not honor - ``check_scope`` refuses it - so the
+    compiler reads the season's raw total.
     "how many 3 pointers have the magic made so far this season" arrived as
     ``team_stat`` after the 4.5.0 prompt shrink (it was ``leaderboard`` with
     no team before, which the reading restored and the compiler answered)

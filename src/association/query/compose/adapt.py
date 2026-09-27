@@ -21,7 +21,7 @@ from association.query.templates.common import _BOX_SCORES, MAX_LIMIT
 from association.query.templates.games import DEFAULT_GAME_LOG_LIMIT
 from association.query.templates.players import DEFAULT_SINGLE_GAME_LIMIT, STAT_LINE
 
-from .core import COLUMNS, LINE, Query, Unsupported, _iso_date
+from .core import COLUMNS, LINE, Query, Unsupported
 from .plan import plan
 
 #: The line a splits read carries, beyond the four :data:`~association.query.compose.core.LINE` measures.
@@ -68,7 +68,7 @@ def _adapt_game_log(scope: Scope) -> Reading:
     # ``_player_relation_season_type`` - and ``compose.present`` says it the
     # way ``game_log`` does, one type at a time merged by date.
     # A team beside the player is settled in compile_query through game_log's own _team_slot_for_player.
-    date = _iso_date(scope)
+    date = scope.date
     # game_log settles the name in a career span when a date is given (the
     # date is the scope), and in the named or defaulted season otherwise.
     return Reading(
@@ -102,7 +102,7 @@ def _adapt_player_stat(scope: Scope) -> Reading:
         raise Unsupported("player_stat hands a limit or an order to game_log - a log, not an average")
     if not (_player_stat_reads_box_scores(scope, measure_filters(scope.below, scope.above)) or scope.date):
         return Reading(scope=scope, shape="scalar", measures=measures, aggregate="per_game", group="none", predicates=[], source="seasons")
-    date = _iso_date(scope)
+    date = scope.date
     return Reading(
         scope=scope,
         shape="scalar",

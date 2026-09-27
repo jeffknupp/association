@@ -37,7 +37,6 @@ from ..entities import Ambiguous, Entity, no_match
 from ..player_games import games_subquery, named
 from ..shotchart import DERIVED_SHOT_VALUES, SHOT_AVAILABILITY, SHOT_VALUE_SQL, UNSEPARABLE_SHOT_VALUES, render_for_player, resolve_chart_player
 from .common import (
-    _ISO_DATE,
     SEASON_TYPE_NAMES,
     MeasureFilter,
     TemplateContext,
@@ -278,8 +277,7 @@ def shot_chart(ctx: TemplateContext, reading: Reading) -> TemplateResult:
         raise TemplateUnsupported("shot_chart needs a player name")
     shot_value = _shot_value(scope)
     con = ctx.con
-    raw_date = scope.date
-    date = raw_date if raw_date is not None and _ISO_DATE.match(raw_date) else None
+    date = scope.date
     # Read here, not inside a step it calls, so this function's own source
     # names every scoping slot it honors (`test_every_template_honoring_a_scope_slot_actually_reads_it`).
     measures = measure_filters(scope.below, scope.above)
@@ -548,8 +546,7 @@ def shot_distance(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """
     scope = reading.scope
     con = ctx.con
-    raw_date = scope.date
-    date = raw_date if raw_date is not None and _ISO_DATE.match(raw_date) else None
+    date = scope.date
     # Read here, not inside a step it calls, so this function's own source
     # names every scoping slot it honors (`test_every_template_honoring_a_scope_slot_actually_reads_it`).
     measures = measure_filters(scope.below, scope.above)

@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, Literal
 
 import duckdb
 
@@ -24,7 +24,6 @@ from ..player_games import Narrowed, aggregate_sql, grouped_sql, league, rows_sq
 from .common import (
     _BOX_SCORES,
     _GAME_LOGS,
-    _ISO_DATE,
     HISTORY_COLUMNS,
     PLAYER_STAT_COLUMNS,
     REBUILT_STATS,
@@ -70,9 +69,9 @@ DEFAULT_LEADERBOARD_LIMIT = 10
 _SEASON_LINES = Availability("player_season_stats_deduped")
 
 
-def _career_span(intent: str, span: Any, season: Any) -> bool:
+def _career_span(intent: str, span: Literal["career"] | None, season: int | None) -> bool:
     """True for a career question, False for a one-season one; raises for a
-    span this template cannot honor.
+    career with a year named.
 
     A career with a year named is refused rather than read. The router keeps a
     year the question named alongside "career", so "most points ever in a game
@@ -81,27 +80,15 @@ def _career_span(intent: str, span: Any, season: Any) -> bool:
     any of them as one of the others is the substitution this module exists to
     prevent.
 
-    Deliberately not `_span_of` (`common.py`, step 3/C1): the wording differs
-    ("cannot honor span" vs. "no span called"; "cannot tell whether a career
-    span ... means" vs. "a career span and the ... season at once") and so does
-    an edge case - this raises on `season == 0` where `_span_of`'s `and season`
-    check would not. Swapping in `_span_of` here was measured (golden snapshot,
-    460 cases across `threshold_count` and `single_game_high`): the corpus does
-    not happen to exercise either divergent path today, so the diff came back
-    clean, but that proves only that these 460 cases do not ask a malformed
-    span - not that the messages agree. `threshold_count` and `single_game_high`
-    stay on their own validation for that reason: the ONE thing this function
-    could share with `scoped_player` (the "a good span turns into a `_Span`"
-    step) is already shared - both templates already build their `_Span` through
-    `_span_of` once a player and season are settled (`_threshold_count_rows`,
-    `_single_game_high_scope`) - so this pre-check is the only piece left
-    outside `common.py`, and it cannot move without changing what a malformed
-    question is told."""
-    if not span:
+    Not `_span_of` (`common.py`, step 3/C1) for the refusal's wording ("cannot
+    tell whether a career span ... means" vs. "a career span and the ... season
+    at once") and one edge: this refuses `season == 0`, where `_span_of`'s
+    `and season` check would not. A span other than a career no longer
+    reaches either - the Scope's door refuses it (``ScopeError``), and the
+    question falls through before a template runs."""
+    if span is None:
         return False
-    if span != "career":
-        raise TemplateUnsupported(f"{intent} cannot honor span {span!r}")
-    if isinstance(season, int):
+    if season is not None:
         raise TemplateUnsupported(f"{intent} cannot tell whether a career span with {season} named means that season, since it, or through it")
     return True
 
@@ -977,7 +964,7 @@ def _player_history_read(con: duckdb.DuckDBPyConnection, player: Entity, scope: 
     """``player_history``'s table over a settled player: the stat's columns
     season by season from ``player_season_stats_deduped``, and the career
     line under a career. Raises :class:`TemplateUnsupported` for a stat with
-    no per-season column or a span other than a career.
+    no per-season column.
 
     .. versionadded:: 4.5.0
     """
@@ -988,13 +975,10 @@ def _player_history_read(con: duckdb.DuckDBPyConnection, player: Entity, scope: 
         raise TemplateUnsupported(f"no per-season history for stat {stat!r}")
     label, columns = HISTORY_COLUMNS[stat]
 
-    span = scope.span
-    if span and span != "career":
-        raise TemplateUnsupported(f"no span called {span!r}")
-    career = span == "career"
+    career = scope.span == "career"
     season_type = scope.season_type or 2
     limit = scope.limit
-    seasons = limit if limit is not None and 1 <= limit <= MAX_HISTORY_SEASONS else DEFAULT_HISTORY_SEASONS
+    seasons = limit if limit is not None and limit <= MAX_HISTORY_SEASONS else DEFAULT_HISTORY_SEASONS
 
     # A career is every season, however many - not the default four, and not a
     # count the model put in `limit`, which the router asks it for on this
@@ -1384,8 +1368,7 @@ def player_stat(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     # night's line. A date replaces the season: the router's season is usually
     # its "current" default, and a date from last season looked for in this
     # one finds nothing.
-    raw_date = scope.date
-    date = raw_date if raw_date is not None and _ISO_DATE.match(raw_date) else None
+    date = scope.date
     from_box_scores = _player_stat_reads_box_scores(scope, measures) or bool(date)
     if scope.limit or scope.order:
         # "Jokic averages last 10 games" answered with his season line would be

@@ -309,17 +309,6 @@ def _agg(name: str, aggregate: str, *, rebuilt: bool = False) -> str:
     raise Unsupported(f"aggregate {aggregate!r}")
 
 
-def _iso_date(scope: Scope) -> str | None:
-    """The ``date`` slot, read only where it is the router's calendar form
-    (``YYYY-MM-DD``) - the same check every reader of this slot makes
-    (``player_stat``'s own ``_ISO_DATE``), so a non-date value the router
-    sometimes files there (``"TUESDAY"``, a weekday word meant for
-    ``situation``) is never handed to :func:`eastern_day_utc_range` as though
-    it were one."""
-    raw = scope.date
-    return raw if raw is not None and len(raw) == 10 else None
-
-
 #: Scoping slots the router files FOR the compiler - markers a template refuses
 #: on so the question reaches here, which the compiler then reads itself:
 #: ``ranked_by`` (the games that satisfy a boolean stat, ranked by another
@@ -402,7 +391,7 @@ def _resolve_named(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | N
     # that team, written by subject._apply_own_team) narrows exactly as it
     # does for player_stat, the one template that reads it; ignored here, the
     # same question averaged his whole career's starts (1,612 games for 294).
-    narrowed = scoped_games(con, player, span, scope, opponent=scope.opponent, measures=measure_filters(scope.below, scope.above), date=_iso_date(scope), team=scope.own_team)
+    narrowed = scoped_games(con, player, span, scope, opponent=scope.opponent, measures=measure_filters(scope.below, scope.above), date=scope.date, team=scope.own_team)
     if isinstance(narrowed, TemplateResult):
         raise Refused(narrowed)
     return player, span, narrowed
@@ -442,7 +431,7 @@ def _apply_team_slot(con: duckdb.DuckDBPyConnection, q: Query, player: Entity | 
         if isinstance(resolved_opponent, TemplateResult):
             raise Refused(resolved_opponent)
         if resolved_opponent is not None and narrowed.opponent is None:
-            rescoped = scoped_games(con, player, span, scope, opponent=resolved_opponent, measures=measure_filters(scope.below, scope.above), date=_iso_date(scope), team=scope.own_team)
+            rescoped = scoped_games(con, player, span, scope, opponent=resolved_opponent, measures=measure_filters(scope.below, scope.above), date=scope.date, team=scope.own_team)
             if isinstance(rescoped, TemplateResult):
                 raise Refused(rescoped)
             narrowed = rescoped
