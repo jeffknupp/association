@@ -101,7 +101,7 @@ whose template the compiler reproduces exactly on every recorded case
 words, and as the fallback where the compiler declines. ROADMAP plan item
 6, step (a): the Reading is the record for these four first.
 
-.. versionadded:: 4.6.0
+.. versionadded:: 4.5.0
 """
 
 
@@ -158,7 +158,7 @@ def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: s
        to a composed answer as it does to a template's, and this appending it
        as well printed the note twice.
 
-    .. versionchanged:: 4.6.0
+    .. versionchanged:: 4.5.0
        Reads the question once into a :class:`~association.query.reading.Reading`
        (:func:`~association.query.compose.move.read_point`), hands it to
        ``trace`` when given - the agent logs it as the decision record - and

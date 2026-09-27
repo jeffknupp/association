@@ -275,6 +275,12 @@ those were found.
   `player_stat`.
 - **GitHub:** #169
 
+### `player_stat` given a `team` slot answers this season and never mentions the team: "lebron stats as a starter for Miami"
+- **Found:** 2026-09-27, the step (c) rehearsal (the whole agent with the parser as reader and the normalizer's recorded replies, `~/association-research/yardstick-v2/run_offline_parser.py`), on an intermediate parser that wrote the player's own team into `team`.
+- **Evidence:** slots `{'player': 'LeBron James', 'team': 'Miami Heat', 'season_type': 2, 'split': 'starter'}` answered "LeBron James averaged 20.9 points, 6.1 rebounds and 7.2 assists per game in 60 games as a starter in the 2026 regular season." - his Lakers season, with Miami nowhere in the sentence. With no `team` slot the subject stage reads the own team and the span it implies, and the same question answers "... in 294 games with the Miami Heat as a starter over his career (2011-2014 ...)". The parser no longer writes the own team (`parse._read_route_names`), so it does not reach this; the router path does whenever its model files the team, which it did not for this wording in day10.
+- **User sees:** a fluent, correct-looking line about a different team's season.
+- **Next step:** find why `check_scope` lets `team` through for `player_stat` when the template does not narrow by it - either honor it as the own-team narrowing the subject stage already builds, or refuse it; warehouse-verified test on this question.
+
 ## P2: misleading or incomplete
 
 ### The compiler's team total ignores "no season type named": "total points by the raptors in the last 10 games" reads the regular season only

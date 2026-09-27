@@ -45,6 +45,12 @@ from .templates.common import (
 )
 from .toolbox import Toolbox
 
+READERS: tuple[str, ...] = ("router", "parser")
+"""What :class:`Agent` accepts as ``reader``.
+
+.. versionadded:: 4.5.0
+"""
+
 MAX_TOOL_ITERATIONS = 8
 MAX_AUTO_SQL_RECOVERIES = 2  # cap on auto-executing SQL the model wrote instead of calling run_sql
 MAX_ERROR_RECOVERIES = 2  # cap on nudging a retry after a tool error, instead of letting it fabricate an answer
@@ -125,9 +131,18 @@ class Agent:
         trace: Callable[[str], None] = echo_to_stderr,
         fallthrough: bool = True,
         budget_seconds: float = AGENT_BUDGET_SECONDS,
+        reader: str = "router",
     ):
+        if reader not in READERS:
+            raise ValueError(f"reader must be one of {READERS}, not {reader!r}")
         self.model = model
         self.router_model = router_model
+        #: Who reads the question for the fast path: ``"router"`` (the model
+        #: classifies it, :func:`~association.query.router.route`) or
+        #: ``"parser"`` (the model only copies names and picks a stat,
+        #: :mod:`~association.query.normalizer`, and
+        #: :func:`~association.query.parse.read_route` reads the rest).
+        self.reader = reader
         self.verbose = verbose
         self.think = think
         self.history_dir = history_dir
@@ -314,7 +329,7 @@ class Agent:
             return None
         t0 = time.monotonic()
         try:
-            routed = route(self.router_model, question, previous_question=self.last_question)
+            routed = self._read_question(question, history) if self.reader == "parser" else route(self.router_model, question, previous_question=self.last_question)
         except RouterUnavailable as exc:
             # The fast path is gone for this question, but so is the agent's
             # own model, most likely - falling through is still right, and the
@@ -393,6 +408,28 @@ class Agent:
                 history.log(f"  -> (player) {message}")
                 return routed.intent, TemplateResult(data={"message": message, "named_player": named_player}, answer=message)
         return self._run_scoped_template(question, routed, handler, history, subject)
+
+    def _read_question(self, question: str, history: RunHistory) -> Route | None:
+        """The route the parser reads (ROADMAP plan item 6, step c): the model
+        copies the names out of the question and picks a stat key
+        (:func:`~association.query.normalizer.normalize`), and
+        :func:`~association.query.parse.read_route` checks both and reads the
+        intent and every other slot from the words. None when the model's
+        reply is unusable, as for the router. What follows is the router's
+        path unchanged: the same subject reading, repairs and templates.
+
+        The previous question is not passed: the normalizer copies spans of
+        THIS question, and a follow-up's missing name is not one of them."""
+        from association.query.normalizer import normalize
+        from association.query.parse import read_route
+
+        normalized = normalize(self.router_model, question)
+        if normalized is None:
+            return None
+        history.log(f"  -> (normalizer) names={normalized.names} stat={normalized.stat!r}")
+        routed, subject, parent = read_route(self.toolbox.con, question, normalized.names, normalized.stat)
+        history.log(f"  -> (parser) parent={parent!r} kind={subject.kind!r} intent={routed.intent!r}")
+        return routed
 
     def _ground_players(self, routed: Route, subject: Subject, history: RunHistory) -> tuple[str, TemplateResult | None]:
         """Every player name a template will read is one the question holds:

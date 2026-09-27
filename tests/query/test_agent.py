@@ -1161,3 +1161,43 @@ def test_a_compiler_first_intent_is_read_planned_and_answered_before_its_templat
     monkeypatch.setattr("association.query.compose.answer", declining)
     assert agent.ask("how many 30 point games did embiid have?").text == "the template answered"
     assert calls == ["compose", "template"]
+
+
+def test_the_parser_reads_the_question_when_it_is_the_reader(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """``reader="parser"`` (ROADMAP plan item 6, step c): the model only
+    copies the names and picks a stat, the route comes from the words, and
+    the router is never asked. The model's span is the question's own word,
+    and the name the template gets is the index's reading of it - the subject
+    reading, not the model, writes "Joel Embiid"."""
+    import duckdb
+
+    from association.query.normalizer import Normalized
+    from association.query.templates.common import TemplateResult
+
+    seen: dict[str, Any] = {}
+
+    def record(ctx: Any, slots: dict[str, Any]) -> TemplateResult:
+        seen.update(slots)
+        return TemplateResult(data={}, answer="templated")
+
+    def no_router(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("the router was asked")
+
+    monkeypatch.setattr("association.query.agent.route", no_router)
+    monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: Normalized(["embiid"], "points"))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": record})
+    db_path = tmp_path / "test.duckdb"
+    con = duckdb.connect(str(db_path))
+    con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    con.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    con.execute("INSERT INTO players VALUES ('1', 'Joel Embiid')")
+    con.close()
+    agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history", reader="parser")
+    answer = agent.ask("how many points does embiid average")
+    assert (answer.text, answer.intent) == ("templated", "player_stat")
+    assert (seen["player"], seen["stat"]) == ("Joel Embiid", "points")
+
+
+def test_an_unknown_reader_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="reader must be one of"):
+        _agent(tmp_path, reader="oracle")

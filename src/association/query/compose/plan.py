@@ -5,7 +5,7 @@ over the player-games relation (one player, or everyone), or
 relation. A copy, not a decision: nothing here reads the question, and a
 field the Reading did not settle is not settled here either.
 
-.. versionadded:: 4.6.0
+.. versionadded:: 4.5.0
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from .team import TeamQuery
 def plan(reading: Reading) -> Query | TeamQuery:
     """The point ``reading`` names, on the relation it names.
 
-    .. versionadded:: 4.6.0
+    .. versionadded:: 4.5.0
     """
     if reading.relation == "team":
         return TeamQuery(dict(reading.scope), measure=reading.measures[0], aggregate=reading.aggregate)

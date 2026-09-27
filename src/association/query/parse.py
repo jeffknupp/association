@@ -18,7 +18,7 @@ Nothing here reaches a model, and nothing here trusts a name it was given:
 a span that is no player's and no team's is dropped, never made a subject
 (ISSUES.md #236).
 
-.. versionadded:: 4.6.0
+.. versionadded:: 4.5.0
 """
 
 from __future__ import annotations
@@ -35,8 +35,8 @@ from association.query.compose.team import team_named_in
 from association.query.entities import find_players, find_teams, suggest_players
 from association.query.measures import MEASURE_WORDS
 from association.query.reading import Reading
-from association.query.router import settle
-from association.query.subject import KIND_ASSIGNED_INTENTS, TEAM_SINGULARS, Subject, read_subject
+from association.query.router import Route, _period_asked, settle
+from association.query.subject import KIND_ASSIGNED_INTENTS, TEAM_SINGULARS, Subject, question_supports, read_subject
 
 _PAIR_MEETING = (
     r"(?!.*\b(compare|compared|comparing|contrast|evaluate|who scores more|who is better|who was better)\b)"
@@ -94,7 +94,7 @@ kind and whose words the question matches names the parent. The children
 (:data:`~association.query.subject.KIND_ASSIGNED_INTENTS`) are assigned
 under it by the subject reading, as they are on the router's parent today.
 
-.. versionadded:: 4.6.0
+.. versionadded:: 4.5.0
 """
 
 MEASURE_GRAMMAR: tuple[tuple[str, str], ...] = (
@@ -135,7 +135,7 @@ depends on the model - the NetPoints family above all (the 3B misses most
 of it), then the derived rates and the words :data:`~association.query.measures.MEASURE_WORDS`
 does not hold.
 
-.. versionadded:: 4.6.0
+.. versionadded:: 4.5.0
 """
 
 
@@ -186,7 +186,7 @@ WINDOW_GRAMMAR: tuple[tuple[str, str | None, int | None], ...] = (
 for, read from its own words ("last 10 games", "top 5", "his last game",
 "who led the league in ...") where the router used to fill them in.
 
-.. versionadded:: 4.6.0
+.. versionadded:: 4.5.0
 """
 
 _LOG_OR_WINDOW_WORDS = re.compile(r"\b(log|gamelog|game log|last \d+|past \d+|first \d+)\b", re.IGNORECASE)
@@ -246,7 +246,7 @@ def classify_span(con: duckdb.DuckDBPyConnection, text: str) -> str | None:
     player holds as whole words; else nothing (a division, a typo, the word
     "team" - none of them a subject, ISSUES.md #236)."""
     low = text.lower().strip().removesuffix("'s").rstrip("'")
-    if low in TEAM_SINGULARS or team_named_in(con, low) is not None:
+    if low in TEAM_SINGULARS or team_named_in(con, low) is not None or _classify_span_abbreviation(con, low):
         return "team"
     teams = find_teams(con, text)
     players = find_players(con, text)
@@ -262,6 +262,15 @@ def classify_span(con: duckdb.DuckDBPyConnection, text: str) -> str | None:
         if spelling and len(suggest_players(con, spelling)) == 1:
             return "player"
     return None
+
+
+def _classify_span_abbreviation(con: duckdb.DuckDBPyConnection, low: str) -> bool:
+    """Whether ``low`` is a team's abbreviation exactly ("phi", "gsw"): "PHI"
+    is also inside Phil Handy's name, and a span that IS a team's code names
+    the team."""
+    if not 2 <= len(low) <= 4 or not low.isalpha():
+        return False
+    return con.execute("SELECT count(*) FROM teams WHERE lower(abbreviation) = ?", [low]).fetchone() != (0,)
 
 
 def _slots_from_names(con: duckdb.DuckDBPyConnection, names: list[str], stat: str) -> dict[str, Any]:
@@ -302,27 +311,97 @@ def _two_teams(subject: Subject, question: str, slots: dict[str, Any]) -> Subjec
     return replace(subject, kind="teams", teams=(subject.teams[0], other), opponent=None)
 
 
-def parse(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None = None, stat: str = "") -> Reading:
-    """``question`` as a :class:`~association.query.reading.Reading`. ``names``
-    are the spans the normalizer copied out of the question and ``stat`` its
-    stat key - both checked here, never trusted.
+def _read_route_names(subject: Subject, slots: dict[str, Any]) -> dict[str, Any]:
+    """The name slots as the subject reading read them from the question's
+    own words - its players (never a companion: "without joel embiid" is a
+    narrowing), the team it is about or plays for, the opponent - in place of
+    the model's spans, which are only where the reading started. A player
+    span the reading did not settle on and that is none of its names is kept
+    as typed ("brown" beside Tatum is ten players; the template asks), so a
+    name the model found is never lost; a name the model DROPPED that the
+    question holds is the reading's ("Nikola Jokic" with ``names=[]``).
+    A reading that settled on no one leaves the slots as they were."""
+    if not (subject.players or subject.teams or subject.opponent or subject.own_team):
+        return slots
+    out = {key: value for key, value in slots.items() if key not in ("player", "players", "team", "opponent")}
+    players = _read_route_players(subject, slots)
+    if len(players) == 1:
+        out["player"] = players[0]
+    elif players:
+        out["players"] = players
+    # A player's own team stays the subject stage's to write, as for a routed
+    # question: the templates read it with the span it implies ("lebron as a
+    # starter for Miami" is his Heat years, not this season). A team the
+    # reading placed nowhere stays as the model filed it.
+    placed = subject.opponent or subject.own_team
+    team = subject.teams[0] if subject.teams and subject.kind in ("team", "teams", "team_players", "everyone", "position") else (None if placed else slots.get("team"))
+    if team:
+        out["team"] = team
+    opponent = subject.teams[1] if subject.kind == "teams" and len(subject.teams) > 1 else subject.opponent
+    if opponent:
+        out["opponent"] = opponent
+    return out
 
-    .. versionadded:: 4.6.0
+
+def _read_route_players(subject: Subject, slots: dict[str, Any]) -> list[str]:
+    """The subject's players, then each player span of the model's that is
+    none of the reading's names or companions (``question_supports``, so
+    "lebron" is LeBron James and "embid" Joel Embiid)."""
+    read = (*subject.players, *subject.companions)
+    typed = [slots["player"]] if isinstance(slots.get("player"), str) else list(slots.get("players") or [])
+    return [*subject.players, *(span for span in typed if not any(question_supports(name, span) for name in read))]
+
+
+def _read_route_period(intent: str, slots: dict[str, Any], question: str) -> dict[str, Any]:
+    """A team's quarter or half from the words ("first quarter", "2nd
+    half") - a slot the router's model filled and the stages only read for
+    the intents they assign themselves."""
+    if intent != "team_quarter_points" or "period" in slots or "half" in slots:
+        return slots
+    asked = _period_asked(question)
+    return {**slots, **asked} if asked else slots
+
+
+def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None = None, stat: str = "") -> tuple[Route, Subject, str]:
+    """The route the parser settles on for ``question`` - the intent and the
+    slots a template reads, in the router's own shape - beside the subject
+    it was read about and the parent the words named. ``names`` are the
+    spans the normalizer copied out of the question and ``stat`` its stat
+    key, both checked here, never trusted. This is what the agent answers
+    from when the parser reads the question in place of the router (step c):
+    the slots before the compiler's own repairs, exactly as a routed
+    question's are.
+
+    .. versionadded:: 4.5.0
     """
     slots = _with_measure(question, _slots_from_names(con, list(names or []), stat))
     subject = _two_teams(read_subject(con, question, "other", dict(slots)), question, slots)
+    slots = _read_route_names(subject, slots)
     parent = parent_intent(question, subject.kind, bool(subject.conditions))
-    route = settle(parent, dict(slots), question)
+    # The window before the stages: they read ``order``/``limit`` as the
+    # model's (a bare "last 10 games" reads both season types only beside
+    # them, ``_route_game_log_recent_span``).
+    route = settle(parent, window(question, slots), question)
     settled = read_subject(con, question, route.intent, dict(route.slots))
     final = settled.intent or route.intent
     point_slots = dict(route.slots)
     if final != route.intent and final in KIND_ASSIGNED_INTENTS:
         again = settle(final, dict(route.slots), question)
         final, point_slots = again.intent, dict(again.slots)
-    point_slots = window(question, point_slots)
+    point_slots = _read_route_period(final, window(question, point_slots), question)
     subject = replace(subject, intent=final, teams=subject.teams if subject.kind == "teams" else settled.teams, opponent=subject.opponent if subject.kind == "teams" else settled.opponent)
+    return Route(final, point_slots), subject, parent
+
+
+def parse(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None = None, stat: str = "") -> Reading:
+    """``question`` as a :class:`~association.query.reading.Reading`: the
+    route :func:`read_route` settles, read into the compiler's point.
+
+    .. versionadded:: 4.5.0
+    """
+    route, subject, parent = read_route(con, question, names, stat)
     try:
-        reading = read_point(con, final, point_slots, question, subject)
+        reading = read_point(con, route.intent, dict(route.slots), question, subject)
     except (Unsupported, Refused):
-        reading = Reading(point_slots, intent=final, subject=subject)
-    return replace(reading, intent=final, subject=subject, evidence=(*reading.evidence, f"parent {parent!r} from the words under kind {subject.kind!r}"))
+        reading = Reading(dict(route.slots), intent=route.intent, subject=subject)
+    return replace(reading, intent=route.intent, subject=subject, evidence=(*reading.evidence, f"parent {parent!r} from the words under kind {subject.kind!r}"))

@@ -10,7 +10,7 @@ from typing import Any
 import duckdb
 import pytest
 
-from association.query.parse import classify_span, measure, parent_intent, parse, window
+from association.query.parse import classify_span, measure, parent_intent, parse, read_route, window
 
 
 @pytest.fixture
@@ -104,3 +104,32 @@ def test_parse_with_no_names_and_no_stat_still_reads_the_question(con: duckdb.Du
     assert r.intent == "record_when"
     slots: dict[str, Any] = r.scope
     assert slots.get("threshold") == 20
+
+
+def test_read_route_takes_the_names_from_the_subject_reading(con: duckdb.DuckDBPyConnection) -> None:
+    """The model's spans are where the reading starts, not what the slots
+    hold (ROADMAP plan item 6, step c): a name it dropped that the question
+    holds is the reading's; a companion is a narrowing, never a second
+    player; a team beside a player is his opponent; a team code is the
+    team; an ambiguous span the reading could not settle is kept as typed,
+    for the template to ask about."""
+    dropped, _, _ = read_route(con, "plot the fingerprint for Nikola Jokic for the 2025 season", [], "")
+    assert dropped.slots["player"] == "Nikola Jokic"
+    companion, subject, _ = read_route(con, "Tyrese Maxey game log without Joel Embiid", ["Tyrese Maxey", "Joel Embiid"], "")
+    assert companion.slots["player"] == "Tyrese Maxey" and "players" not in companion.slots and subject.companions
+    against, _, _ = read_route(con, "show maxey's games against boston", ["maxey", "boston"], "")
+    assert against.slots["opponent"] == "Boston Celtics" and "team" not in against.slots
+    code, _, _ = read_route(con, "PHI record 2026", ["PHI"], "")
+    assert (code.intent, code.slots.get("team"), code.slots.get("player")) == ("team_record", "Philadelphia 76ers", None)
+    kept, _, _ = read_route(con, "who is better, tatum or nikola", ["tatum", "nikola"], "")
+    assert kept.slots["players"] == ["Jayson Tatum", "nikola"]
+
+
+def test_read_route_reads_the_window_before_the_stages_and_the_quarter_from_the_words(con: duckdb.DuckDBPyConnection) -> None:
+    """A bare "last 10 games" reads both season types, which the stages
+    decide only beside the window (``_route_game_log_recent_span``); a
+    team's quarter is a slot the router's model used to fill."""
+    recent, _, _ = read_route(con, "How did the Celtics do in their last 10 games?", ["Celtics"], "")
+    assert (recent.intent, recent.slots["limit"], recent.slots.get("season_type_unstated")) == ("game_log", 10, True)
+    quarter, _, _ = read_route(con, "show sixers first quarter scoring for their last 10 games", ["sixers"], "points")
+    assert (quarter.intent, quarter.slots.get("period")) == ("team_quarter_points", 1)

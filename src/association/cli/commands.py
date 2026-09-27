@@ -317,7 +317,16 @@ def data_check(seasons: str | None, season_types: str | None, data_dir: str, rat
 @cli.command("query")
 @click.argument("question")
 @_query_engine_options
-def query(question: str, model: str, router_model: str, db_path: str, out_dir: str, verbose: bool, think: bool, no_fast_path: bool, disable_fallthrough: bool, agent_budget: float) -> None:
+@click.option(
+    "--reader",
+    type=click.Choice(["router", "parser"]),
+    default="router",
+    show_default=True,
+    help="Who reads the question for the fast path: the router model classifies it, or the parser reads it and the model only copies names and picks a stat (ROADMAP plan item 6, being measured).",
+)
+def query(
+    question: str, model: str, router_model: str, db_path: str, out_dir: str, verbose: bool, think: bool, no_fast_path: bool, disable_fallthrough: bool, agent_budget: float, reader: str
+) -> None:
     """Ask one natural-language question about the local data."""
     import shlex
     import sys
@@ -327,7 +336,18 @@ def query(question: str, model: str, router_model: str, db_path: str, out_dir: s
 
     if no_fast_path and disable_fallthrough:
         raise click.UsageError("--no-fast-path sends every question to the agent and --disable-fallthrough refuses to; pick one.")
-    agent = Agent(model, db_path, Path(out_dir), verbose=verbose, think=think, fast_path=not no_fast_path, router_model=router_model, fallthrough=not disable_fallthrough, budget_seconds=agent_budget)
+    agent = Agent(
+        model,
+        db_path,
+        Path(out_dir),
+        verbose=verbose,
+        think=think,
+        fast_path=not no_fast_path,
+        router_model=router_model,
+        fallthrough=not disable_fallthrough,
+        budget_seconds=agent_budget,
+        reader=reader,
+    )
     # Agent.ask no longer reads sys.argv - a caller says what the request was,
     # and for this caller that really is the command line.
     try:

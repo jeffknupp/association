@@ -88,7 +88,7 @@ def team_named_in(con: duckdb.DuckDBPyConnection, question: str) -> str | None:
 
     .. versionadded:: 4.4.0
 
-    .. versionchanged:: 4.6.0
+    .. versionchanged:: 4.5.0
        A possessive ("the Sixers' record") names the team as the bare word does.
     """
     for found in _WORD.findall(question.lower()):

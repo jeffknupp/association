@@ -852,7 +852,7 @@ def team_move_point(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], quest
     """:func:`team_read_point`, planned - the team's point as the team
     compiler runs it, or ``None`` where the team is not the subject.
 
-    .. versionchanged:: 4.6.0
+    .. versionchanged:: 4.5.0
        Plans :func:`team_read_point`'s :class:`~association.query.reading.Reading`.
     """
     reading = team_read_point(con, slots, question, subject)
@@ -900,7 +900,7 @@ def read_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any
        position group, the filler and the team in ``player``, the dropped
        subject, the team the router left out, the position.
 
-    .. versionchanged:: 4.6.0
+    .. versionchanged:: 4.5.0
        Returns the :class:`~association.query.reading.Reading` (the record of
        what was read) rather than the planned query; :func:`move_point` is
        the two together.
@@ -938,7 +938,7 @@ def _read_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, An
 def move_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None) -> Query | TeamQuery:
     """:func:`read_point`, planned - the point as the compiler runs it.
 
-    .. versionchanged:: 4.6.0
+    .. versionchanged:: 4.5.0
        The reading and the plan are two steps: :func:`read_point` builds the
        :class:`~association.query.reading.Reading` from the words, and
        :func:`~association.query.compose.plan.plan` turns it into the query.

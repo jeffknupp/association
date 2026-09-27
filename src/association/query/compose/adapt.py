@@ -177,7 +177,7 @@ def to_query(intent: str, slots: dict[str, Any]) -> Query:
     """:func:`to_reading`, planned: the default point as the compiler's own
     :class:`~association.query.compose.core.Query`.
 
-    .. versionchanged:: 4.6.0
+    .. versionchanged:: 4.5.0
        Plans :func:`to_reading`; the adapters build
        :class:`~association.query.reading.Reading` records.
     """

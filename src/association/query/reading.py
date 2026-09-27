@@ -16,7 +16,7 @@ the parser that builds it from the question directly is step (b), and the
 relations reading it in place of a slot dict is step (d). Until then
 :attr:`Reading.scope` carries the slot dict the relations read today.
 
-.. versionadded:: 4.6.0
+.. versionadded:: 4.5.0
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ class Reading:
     :class:`~association.query.compose.core.Query` on purpose: the planner
     is a copy, not a second decision.
 
-    .. versionadded:: 4.6.0
+    .. versionadded:: 4.5.0
     """
 
     #: The scoping the relation narrows by - today the question's slot dict,
