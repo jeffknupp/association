@@ -619,6 +619,12 @@ with nothing to read fills the silence from its own weights), and more data
    (the normalizer may correct, or the index defaults visibly on a single
    near spelling), and where "this year" stops (deferred). Design doc:
    `~/association-research/parser-greenfield/DESIGN.md`.
+   **Step (a) landed 2026-09-26 (43eca0c):** `query/reading.py` and
+   `compose/plan.py`; the compiler's word reading builds the Reading, the
+   planner copies it into the point; `-> (reading) ...` in every composed
+   trace; the four parity intents are compiler-first. Golden 631/631 over
+   the routing corpus and the day10 routes (a stronger check than a live
+   run for a refactor: the same routes, byte-identical answers).
 
 ## The rules a spike keeps
 
