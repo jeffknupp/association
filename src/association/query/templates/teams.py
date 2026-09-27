@@ -14,7 +14,7 @@ import duckdb
 from association.nba.coverage import unavailable
 from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
-from association.query.reading import Reading
+from association.query.reading import Reading, Scope
 
 from ..calendar import CalendarNarrowing, parse_situation
 from ..conditions import _MONTH_NAMES, _season_month_order, _table
@@ -108,16 +108,14 @@ def coach(ctx: TemplateContext, reading: Reading) -> TemplateResult:
 
     .. versionadded:: 4.0.0
     """
-    slots = reading.scope.to_slots()
-    del ctx, slots  # A refusal needs neither a connection nor a slot.
+    del ctx, reading  # A refusal needs neither a connection nor a slot.
     return TemplateResult(data={"message": COACH_REFUSAL, "unanswerable": "coach"}, answer=COACH_REFUSAL)
 
 
-def _conference_refusal(slots: dict[str, Any]) -> TemplateResult | None:
+def _conference_refusal(scope: Scope) -> TemplateResult | None:
     """A refusal naming the real cause, if any team slot holds a conference or a
     division rather than a team."""
-    listed: list[Any] = slots["teams"] if isinstance(slots.get("teams"), list) else []
-    named = next((c for c in [slots.get("team"), slots.get("opponent"), *listed] if isinstance(c, str) and _CONFERENCE_WORDS.search(c)), None)
+    named = next((c for c in (scope.team, scope.opponent, *scope.teams) if c and _CONFERENCE_WORDS.search(c)), None)
     if named is None:
         return None
     message = (
@@ -168,7 +166,7 @@ _MONTH_SITUATION = re.compile(
 )
 
 
-def _team_record_month(situation: Any) -> int | None:
+def _team_record_month(situation: str | None) -> int | None:
     """The calendar month ``situation`` names ("in october" -> 10), or None for
     anything else - including a value naming no month at all. A real column
     (the game's own Eastern date) can filter to a month; nothing here can
@@ -176,7 +174,7 @@ def _team_record_month(situation: Any) -> int | None:
 
     .. versionadded:: 4.3.0
     """
-    if not isinstance(situation, str):
+    if situation is None:
         return None
     match = _MONTH_SITUATION.fullmatch(situation.strip())
     if match is None:
@@ -184,7 +182,7 @@ def _team_record_month(situation: Any) -> int | None:
     return [name.lower() for name in _MONTH_NAMES].index(match.group(1).lower()) + 1
 
 
-def _team_record_month_and_split(split: Any, situation: Any, limit: Any) -> tuple[str | None, int | None, CalendarNarrowing | None]:
+def _team_record_month_and_split(split: str | None, situation: str | None, limit: int | None) -> tuple[str | None, int | None, CalendarNarrowing | None]:
     """The validated ``split``, the calendar ``month`` a question narrows to,
     and - step 3, K1 - the fuller calendar narrowing (a weekday, a fixed
     holiday, or "since <month day>") ``situation`` names when it is not a bare
@@ -194,8 +192,8 @@ def _team_record_month_and_split(split: Any, situation: Any, limit: Any) -> tupl
     further one-weekday-or-holiday reading built), or a bare ``limit`` with
     none of the three. Pulled out of ``team_record`` itself so that function
     reads as one linear sequence of steps rather than growing a branch for
-    each of these; called with the slots themselves (``slots.get("split")``
-    and so on), not the whole dict, so team_record's own source still names
+    each of these; called with the scope's fields themselves (``scope.split``
+    and so on), not the whole Scope, so team_record's own source still names
     every slot it honors - test_every_template_honoring_a_scope_slot_actually_reads_it
     checks that literally.
 
@@ -254,7 +252,7 @@ def _calendar_phrase(month: int | None, narrowing: CalendarNarrowing | None) -> 
     return f" in {_MONTH_NAMES[month - 1]}" if month is not None else ""
 
 
-def _team_record_since(since: Any, career: bool, season: int | None) -> int | None:
+def _team_record_since(since: int | None, career: bool, season: int | None) -> int | None:
     """The validated ``since`` slot, the same int-or-None reading
     ``team_leaderboard`` already gives it, plus the two conflicts that are
     ``team_record``'s own: ``since`` and a single named season are two
@@ -264,7 +262,7 @@ def _team_record_since(since: Any, career: bool, season: int | None) -> int | No
 
     .. versionadded:: 4.4.0
     """
-    if not (isinstance(since, int) and since and not isinstance(since, bool)):
+    if not since:
         return None
     if season is not None:
         raise TemplateUnsupported(f"since {since} and the {season} season at once")
@@ -319,29 +317,29 @@ def team_record(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        (:func:`_team_record_by_month_span`) - "Knicks record by month 2024
        2025" (ISSUES.md).
     """
-    slots = reading.scope.to_slots()
+    scope = reading.scope
     con = ctx.con
-    refused = _conference_refusal(slots)
+    refused = _conference_refusal(scope)
     if refused is not None:
         return refused
-    split, month, calendar_narrowing = _team_record_month_and_split(slots.get("split"), slots.get("situation"), slots.get("limit"))
+    split, month, calendar_narrowing = _team_record_month_and_split(scope.split, scope.situation, scope.limit)
 
-    teams = _team_record_teams(con, slots, slots.get("opponent"))
+    teams = _team_record_teams(con, scope, scope.opponent)
     if isinstance(teams, TemplateResult):
         return teams
     team, opponent = teams
 
-    season_type = slots.get("season_type") or 2
-    venue = slots.get("venue") if slots.get("venue") in VENUE_WORDS else None
-    career = slots.get("span") == "career"
-    season = slots.get("season") if isinstance(slots.get("season"), int) else None
+    season_type = scope.season_type or 2
+    venue = scope.venue
+    career = scope.span == "career"
+    season = scope.season
     if career and season is not None:
         # "all-time ... in 2020" is either a slip or a range this cannot read.
         raise TemplateUnsupported("a career span and a single season at once")
-    since = _team_record_since(slots.get("since"), career, season)
-    until = _validated_until(slots.get("until"), since)
-    game_n = slots.get("game_n")
-    if slots.get("season_type_unstated"):
+    since = _team_record_since(scope.since, career, season)
+    until = _validated_until(scope.until, since)
+    game_n = scope.game_n
+    if scope.season_type_unstated:
         # "including the playoffs"/"and the playoffs" - router._BOTH_SEASON_TYPES_WORDS
         # reuses this flag (c9930ad, the player relation's own fix); checked
         # before the game_n/season_type conflict below, which assumes one
@@ -376,7 +374,7 @@ def _team_record_combined_types(
     season: int | None,
     since: int | None,
     until: int | None,
-    game_n: Any,
+    game_n: int | None,
     calendar_narrowing: CalendarNarrowing | None,
 ) -> TemplateResult:
     """Both season types combined - "including the playoffs"/"and the
@@ -461,7 +459,7 @@ def _team_record_route(
     season: int | None,
     since: int | None,
     until: int | None,
-    game_n: Any,
+    game_n: int | None,
     calendar_narrowing: CalendarNarrowing | None,
 ) -> TemplateResult:
     """``team_record``'s last step: which of the four answer shapes the
@@ -491,36 +489,36 @@ def _team_record_route(
     return _games_record(con, team, opponent, None if career else (season or current_season()), season_type, venue, month, game_n=game_n, calendar_narrowing=calendar_narrowing)
 
 
-def _team_record_teams(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], opponent_text: Any) -> tuple[Entity, Entity | None] | TemplateResult:
+def _team_record_teams(con: duckdb.DuckDBPyConnection, scope: Scope, opponent_text: str | None) -> tuple[Entity, Entity | None] | TemplateResult:
     """The team a record is for and the opponent it is against, if any - or the
     clarifying question one of the names needs. ``opponent_text`` is the
     ``opponent`` slot."""
-    team_text = slots.get("team")
-    listed = [n for n in slots.get("teams") or [] if isinstance(n, str) and n.strip()] if isinstance(slots.get("teams"), list) else []
-    if not (isinstance(team_text, str) and team_text.strip()) and listed:
+    team_text = scope.team
+    listed = [n for n in scope.teams if n.strip()]
+    if not (team_text and team_text.strip()) and listed:
         # "celtics vs bulls record" can land both teams in `teams`, which
         # subject.apply_subject leaves alone; the first is the subject.
         team_text, listed = listed[0], listed[1:]
-    team = _resolved_team(con, team_text, season=_slot_season(slots))
+    team = _resolved_team(con, team_text, season=_slot_season(scope))
     if isinstance(team, TemplateResult):
         return team
-    opponent = _team_record_opponent(con, slots, team, listed, opponent_text)
+    opponent = _team_record_opponent(con, scope, team, listed, opponent_text)
     if isinstance(opponent, TemplateResult):
         return opponent
     return team, opponent
 
 
-def _team_record_opponent(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], team: Entity, listed: list[str], opponent_text: Any) -> Entity | TemplateResult | None:
+def _team_record_opponent(con: duckdb.DuckDBPyConnection, scope: Scope, team: Entity, listed: list[str], opponent_text: str | None) -> Entity | TemplateResult | None:
     """The ``opponent`` slot's team, or else the first other team in ``teams``."""
-    if isinstance(opponent_text, str) and opponent_text.strip():
-        found = _resolved_team(con, opponent_text, season=_slot_season(slots))
+    if opponent_text and opponent_text.strip():
+        found = _resolved_team(con, opponent_text, season=_slot_season(scope))
         if isinstance(found, TemplateResult):
             return found
         if found.id == team.id:
             raise TemplateUnsupported("team_record's opponent must differ from the team")
         return found
     for text in listed:
-        found = _resolved_team(con, text, season=_slot_season(slots))
+        found = _resolved_team(con, text, season=_slot_season(scope))
         if isinstance(found, TemplateResult):
             return found
         if found.id != team.id:
@@ -835,7 +833,7 @@ def _no_team_games(
     *,
     since: int | None = None,
     until: int | None = None,
-    game_n: Any = None,
+    game_n: int | None = None,
     calendar_narrowing: CalendarNarrowing | None = None,
 ) -> str:
     """Why a tally found nothing. Three different facts, and three sentences:
@@ -904,7 +902,7 @@ def _games_record(
     *,
     since: int | None = None,
     until: int | None = None,
-    game_n: Any = None,
+    game_n: int | None = None,
     calendar_narrowing: CalendarNarrowing | None = None,
 ) -> TemplateResult:
     """A record tallied from ``games``: against one team, or in a postseason,
@@ -985,7 +983,7 @@ def _games_record_games(
     *,
     since: int | None = None,
     until: int | None = None,
-    game_n: Any = None,
+    game_n: int | None = None,
     calendar_narrowing: CalendarNarrowing | None = None,
 ) -> tuple[list[dict[str, Any]], TeamNarrowed]:
     """The team's games in scope, against ``opponent`` and/or in ``month`` (or
@@ -1020,7 +1018,7 @@ def _games_record_games(
     if game_n:
         if season_type != 3:
             raise TemplateUnsupported(f"game {game_n} names a game of a playoff series, and this is a regular-season question")
-        narrowed.narrow_series_game(int(game_n))
+        narrowed.narrow_series_game(game_n)
     select = f"tg.eastern_date, tg.side, tg.neutral, tg.team_score, tg.opponent_score, tg.won, {season_name_sql('o.team_id', 'tg.season', 'o.display_name')}"
     sql, params = team_rows_sql(narrowed, select, order="tg.eastern_date", join=" JOIN teams o ON o.team_id = tg.opponent_id")
     rows = con.execute(sql, params).fetchall()
@@ -1289,26 +1287,26 @@ def team_stat(ctx: TemplateContext, reading: Reading) -> TemplateResult:
 
     .. versionadded:: 2.1.0
     """
-    slots = reading.scope.to_slots()
+    scope = reading.scope
     con = ctx.con
-    refused = _conference_refusal(slots)
+    refused = _conference_refusal(scope)
     if refused is not None:
         return refused
-    team = _resolved_team(con, slots.get("team"), season=_slot_season(slots))
+    team = _resolved_team(con, scope.team, season=_slot_season(scope))
     if isinstance(team, TemplateResult):
         return team
-    stat = slots.get("stat")
-    if slots.get("rate") == "total":
+    stat = scope.stat
+    if scope.rate == "total":
         # "how many 3 pointers have the magic made": a season total, which
         # the compiler's team subject reads (compose/team.py) - this line
         # is per game, and answering it here is the right stat to the wrong
         # question (`router._route_team_total`).
         raise TemplateUnsupported(f"a season total of {stat!r} is asked for, not the per-game line")
     key = resolve_team_metric(stat)
-    if key is None and isinstance(stat, str) and stat.strip():
+    if key is None and stat and stat.strip():
         raise TemplateUnsupported(f"no team metric for stat {stat!r}")
-    season = slots.get("season") or current_season()
-    season_type = slots.get("season_type") or 2
+    season = scope.season or current_season()
+    season_type = scope.season_type or 2
     period = _period(season, season_type)
 
     if key is not None and TEAM_METRICS[key].expression is None:
@@ -1440,7 +1438,7 @@ def _venue_records(con: duckdb.DuckDBPyConnection, season: int, season_type: int
     return [TeamRecord(team=name, wins=int(w), losses=int(lost)) for name, w, lost in rows]
 
 
-def _team_leaderboard_span(slots: dict[str, Any], season: int, season_type: int) -> tuple[int | None, int | None, str]:
+def _team_leaderboard_span(scope: Scope, season: int, season_type: int) -> tuple[int | None, int | None, str]:
     """team_leaderboard's ``since``/``until`` reading and the period phrase
     they produce ("seasons since 2022", "seasons 2011-2019", or a single
     season's own name) - pulled out of ``team_leaderboard`` itself so that
@@ -1449,11 +1447,10 @@ def _team_leaderboard_span(slots: dict[str, Any], season: int, season_type: int)
 
     .. versionadded:: 4.4.0
     """
-    since = slots.get("since")
-    since = since if isinstance(since, int) and since and not isinstance(since, bool) else None
-    if since is not None and isinstance(slots.get("season"), int) and slots["season"]:
-        raise TemplateUnsupported(f"since {since} and the {slots['season']} season at once")
-    until = _validated_until(slots.get("until"), since)
+    since = scope.since or None
+    if since is not None and scope.season:
+        raise TemplateUnsupported(f"since {since} and the {scope.season} season at once")
+    until = _validated_until(scope.until, since)
     period = f"seasons {since}-{until}" if until is not None else (f"seasons since {since}" if since is not None else _period(season, season_type))
     return since, until, period
 
@@ -1484,12 +1481,12 @@ def team_leaderboard(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        2010-11 to 2018-19" now names a bounded range ("2011-2019") rather than
        reading only its open-ended first half.
     """
-    slots = reading.scope.to_slots()
+    scope = reading.scope
     con = ctx.con
-    refused = _conference_refusal(slots)
+    refused = _conference_refusal(scope)
     if refused is not None:
         return refused
-    stat = slots.get("stat")
+    stat = scope.stat
     key = resolve_team_metric(stat)
     if key is None:
         raise TemplateUnsupported(f"no team metric for stat {stat!r}")
@@ -1497,15 +1494,15 @@ def team_leaderboard(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     # `season` still settles to a real year even under `since` - unread by
     # _team_leaderboard_values' since-bounded path, and here only for the
     # named team's own-season name lookup below, which stays "now" either way.
-    season = slots.get("season") or current_season()
-    season_type = slots.get("season_type") or 2
-    since, until, period = _team_leaderboard_span(slots, season, season_type)
-    rank_word = slots.get("rank") if slots.get("rank") in ("most", "fewest", "best", "worst") else None
+    season = scope.season or current_season()
+    season_type = scope.season_type or 2
+    since, until, period = _team_leaderboard_span(scope, season, season_type)
+    rank_word = scope.rank
     descending = descending_for(metric, rank_word)
-    limit = _clamp_limit(slots.get("limit"), default=DEFAULT_TEAM_LEADERBOARD_LIMIT)
-    venue = slots.get("venue") if slots.get("venue") in VENUE_WORDS else None
+    limit = _clamp_limit(scope.limit, default=DEFAULT_TEAM_LEADERBOARD_LIMIT)
+    venue = scope.venue
 
-    named = _team_leaderboard_named(con, slots)
+    named = _team_leaderboard_named(con, scope)
     if isinstance(named, TemplateResult):
         return named
 
@@ -1524,12 +1521,12 @@ def team_leaderboard(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     return _team_leaderboard_result(order, display, limit, named, title, None if since is not None else season, end, key)
 
 
-def _team_leaderboard_named(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> Entity | TemplateResult | None:
+def _team_leaderboard_named(con: duckdb.DuckDBPyConnection, scope: Scope) -> Entity | TemplateResult | None:
     """team_leaderboard's named team, resolved so its own row can be appended
     past the limit where it would otherwise be cut off; None where the
     question named none."""
-    if isinstance(slots.get("team"), str) and slots["team"].strip():
-        return _resolved_team(con, slots["team"], season=_slot_season(slots))
+    if scope.team and scope.team.strip():
+        return _resolved_team(con, scope.team, season=_slot_season(scope))
     return None
 
 
@@ -1760,16 +1757,16 @@ def team_outlook(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        ``ISSUES.md``, "A regular-season BPI question answers from the play-in
        snapshot in 2023, 2025 and 2026" (#88).
     """
-    slots = reading.scope.to_slots()
+    scope = reading.scope
     con = ctx.con
-    refused = _conference_refusal(slots)
+    refused = _conference_refusal(scope)
     if refused is not None:
         return refused
-    team = _resolved_team(con, slots.get("team"), season=_slot_season(slots))
+    team = _resolved_team(con, scope.team, season=_slot_season(scope))
     if isinstance(team, TemplateResult):
         return team
-    season = slots.get("season") or current_season()
-    postseason = (slots.get("season_type") or 2) == 3
+    season = scope.season or current_season()
+    postseason = (scope.season_type or 2) == 3
 
     # Ordered by date, then with a PRESEASON snapshot pushed behind any other of
     # the same date, because `candidates[-1]` below takes the last row. Measured
