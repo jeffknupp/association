@@ -415,6 +415,13 @@ def test_render_fingerprint_compares_two_names(con: duckdb.DuckDBPyConnection, t
     assert "Ada Star vs Bo Wall" in render_fingerprint(con, tmp_path, "Ada vs Bo", season=2026).message
 
 
+def test_render_fingerprint_says_how_it_read_a_near_spelling(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
+    """The agent-tool entry point, with nobody above it collecting readings."""
+    message = render_fingerprint(con, tmp_path, "Ada Stat vs Bo", season=2026).message
+    assert "Ada Star vs Bo Wall" in message
+    assert message.endswith("('Ada Stat' matches no player exactly and was read as Ada Star, the only near spelling on record - spell the name exactly to ask about someone else.)")
+
+
 def test_render_fingerprint_reports_an_unknown_name_rather_than_raising(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
     assert render_fingerprint(con, tmp_path, "Nobody At All", season=2026) == RenderResult("No player found matching 'Nobody At All'.", None)
 

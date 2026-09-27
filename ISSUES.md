@@ -2899,8 +2899,10 @@ those were found.
   undercounts foul-outs". Victor Wembanyama has 3 box-score games with 6 fouls
   (one in 2024, two in the 2026 regular season) and
   `player_season_stats.disqualifications` sums to 1.
-- **User sees:** nothing confirmed wrong yet - "How many times has webanyama
-  fouled out of a game" asks for a clarification of the typo in the run.
+- **User sees:** nothing wrong - "How many times has webanyama fouled out of a
+  game" asked for a clarification of the typo in the run; since the
+  near-spelling default (2026-09-27) the fast path answers "Victor Wembanyama
+  had 3 games with 6+ fouls in his regular season career", the box-score count.
 - **Next step:** confirm `threshold_count`'s "fouled out" reads
   `player_box_stats.fouls >= 6` and not the season column, with a test pinning
   Wembanyama's 3.
@@ -3143,6 +3145,42 @@ those were found.
   read gets the same "seasons left out" sentence a plain career already does.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #192
+
+### A typo of a common surname suggests nobody: "crry" is "No player found"
+- **Found:** 2026-09-27, measuring the near-spelling default (ROADMAP plan
+  item 6, step (c))
+- **Evidence:** `/home/jeff/association-research/typo-default/measure.py`,
+  read-only on `nba.duckdb`, `entities.py` at the near-spelling-default
+  commit: of 10,602 one-letter drops, doubles and adjacent swaps of the 591
+  2026 players' surnames, **2,584** are near more than
+  `MAX_CLARIFY_CANDIDATES` players, so `suggest_players` drops the list and
+  `read_near_spelling` has nothing to take. "crry" (six Currys within one
+  edit) is `No player found matching 'crry'.`; "stephen crry" resolves.
+- **User sees:** a refusal that reads as "no such player" for a typo of a
+  real one. Once the normalizer copies names verbatim (step (c)), a bare typo'd
+  surname reaches this where the router used to correct it silently.
+- **Next step:** narrow an over-long near-spelling list the way
+  `resolve_player` narrows namesakes - to who played in the season asked about,
+  else the latest - before dropping it, and ask (or default visibly, one
+  survivor) over what is left. Measure how many of the 2,584 then land on
+  exactly the player misspelled.
+- **Source:** ours.
+
+### A typo inside a hyphenated surname reaches nobody: "Gilgeous-Alexandr"
+- **Found:** 2026-09-27, measuring the near-spelling default
+- **Evidence:** `entities._NEAREST_WORD` splits the DISPLAY NAME on non-letters
+  but compares the typed token whole, so "Gilgeous-Alexandr" is measured
+  against "Gilgeous" and "Alexander" separately and is near neither;
+  "Gilgeous Alexandr" (a space) resolves to Shai Gilgeous-Alexander. Of the 98
+  one-letter drops of the nine punctuated 2026 surnames that no substring
+  matches, 97 have no near spelling at all
+  (`/home/jeff/association-research/typo-default/hyphen.py`).
+- **User sees:** "No player found matching 'Jackson-Davs'." for Trayce
+  Jackson-Davis.
+- **Next step:** split the typed tokens on the same non-letter class before
+  the near-spelling pass (every piece must be near some word, as now), and
+  re-run the measurement.
+- **Source:** ours.
 
 ## P4: tooling, docs, low impact
 
@@ -4526,3 +4564,35 @@ those were found.
   string id, and any place missed would fail as a silent "no match".
 - **Source:** ours.
 - **GitHub:** #224
+
+### A right name that is not on record reads as a near-spelled one: "Willis Reed" is Willie Reed
+- **Found:** 2026-09-27, measuring the near-spelling default
+- **Evidence:** of 36 famous pre-1994 names absent from `players`
+  (`/home/jeff/association-research/typo-default/famous.py`), two are within
+  the edit budget of exactly one player and now resolve to him: "Willis Reed"
+  to Willie Reed and "Bernard King" to Gerard King. The other 34 read nobody
+  (none of them has a single near spelling). Each answer ends "('Willis Reed'
+  matches no player exactly and was read as Willie Reed, the only near
+  spelling on record - ...)", so the reading is visible; before, the first
+  asked "did you mean Davon Reed, ... or Willie Reed?" and the second "did you
+  mean Gerard King?".
+- **User sees:** an answer about a different, visible player where the real
+  one is out of the warehouse's reach (#123's shape).
+- **Next step:** none unless it recurs in a live run; if it does, #123's
+  coverage-floor sentence is the fix, not a narrower edit budget, which would
+  lose real typos (3,597 of the 10,602 measured surname typos default, all to
+  the right player).
+- **Source:** ours; DATA.md "Coverage floors" for why the players are absent.
+
+### Version directives name 4.6.0 while the next release is 4.5.0
+- **Found:** 2026-09-27, choosing the directive for `entities.read_near_spelling`
+- **Evidence:** `pyproject.toml` is 4.4.0, the latest tag is `v4.4.0`,
+  `CHANGES.md` has no 4.5.0 heading and `## Unreleased` records no breaking
+  change - so the next release is 4.5.0. `git grep -n 'version\(added\|changed\):: 4.6.0' src`
+  finds 16 (compose/__init__.py, adapt.py, move.py, plan.py, team.py,
+  parse.py) beside 56 naming 4.5.0.
+- **User sees:** nothing; the published API pages would name a version that
+  never shipped.
+- **Next step:** the pre-release audit rewrites them to the number actually
+  released (AGENTS.md, "Mark public API changes").
+- **Source:** ours.

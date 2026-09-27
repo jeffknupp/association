@@ -386,10 +386,30 @@ buried a player the warehouse holds. `entities.suggest_players` backs a
 multi-word name off to its surname - exact matching on one fewer token, not
 fuzzy - and then looks for near spellings, which is the only thing that reaches
 the user's own typo ("embid" is not a substring of "Embiid", so no ILIKE finds
-it). Two things keep it honest: it never substitutes, it only asks, and a
-suggestion naming more than `MAX_CLARIFY_CANDIDATES` players is dropped
+it). A suggestion naming more than `MAX_CLARIFY_CANDIDATES` players is dropped
 entirely, because a name near 25 players narrowed nothing and reading out a
 directory is not a suggestion.
+
+**Typos are the entity index's job, never the model's**, so one near spelling
+is an answer, not a question. Once names reach resolution as the question typed
+them (ROADMAP plan item 6, step (c)), every typo would otherwise become a "did
+you mean". `entities.read_near_spelling` takes the near-spelling pass's result
+when it holds exactly ONE player, for `resolve_player` and the chart resolver
+alike, and says so under the rule below: "('embid' matches no player exactly
+and was read as Joel Embiid, the only near spelling on record - spell the name
+exactly to ask about someone else.)" Three things still ask. Two or more near
+spellings ("jolic": Jokic or Jovic). The surname back-off: in "Jemel Embiid" or
+"Larry Bird" the given name is somebody else's, and the one player a surname
+lands on is as likely to be the wrong man (Larry Bird is not in `players`;
+Jabari Bird is) as the right one - only the near-spelling pass, which needs
+EVERY word close, defaults. And a team's name ("Hawks" is one edit from Spencer
+Hawes). It is for a span already given as a name slot, never for the
+question's leftover words ("season" is one edit from Tari Eason, above). Measured: of 10,602 one-letter
+drops, doubles and swaps of the 591 2026 players' surnames, 3,597 default -
+every one to the player misspelled - and 2,731 still ask. The cost is a name
+that is right but not on record reading as one that is: of 36 famous pre-1994
+names absent from `players`, "Willis Reed" reads as Willie Reed and "Bernard
+King" as Gerard King, each saying so.
 
 **A reasonable default beats a question, where the default is visible and can
 be corrected.** Jeff's rule, 2026-09-21, and it supersedes the older stance

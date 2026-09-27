@@ -1460,23 +1460,39 @@ def suggest_players(con: duckdb.DuckDBPyConnection, text: str) -> list[Entity]:
         # to explain that with; guessing a person here can only mislead it.
         return []
 
-    if len(tokens) > 1 and len(tokens[-1]) > 2:
-        # Word-boundary matches only. find_players falls back to incidental
-        # substring hits when nothing starts with the token, which is fine for
-        # a name somebody typed and wrong for one being guessed at: backing
-        # "Nobody At All" off to "All" otherwise suggests Bo Wall.
-        start = re.compile(_WORD_START + re.escape(tokens[-1]), re.IGNORECASE)
-        kept = [player for player in find_players(con, tokens[-1]) if start.search(player.name)]
-        if kept and len(kept) <= MAX_CLARIFY_CANDIDATES:
-            return kept
-        # Otherwise more than MAX_CLARIFY_CANDIDATES share the surname alone,
-        # or none do - either way this pass answers nothing on its own, and
-        # falls through to the near-spelling pass below rather than giving up.
-        # That pass is stricter (every token has to be close, not just the
-        # last one), which is exactly what a common surname needs: "Dylon
-        # Harper" backs off to 6 Harpers here - too many to suggest - but only
-        # one of them, Dylan, is also close on the given name.
+    backed_off = _suggest_players_by_surname(con, tokens)
+    if backed_off:
+        return backed_off
+    # Otherwise more than MAX_CLARIFY_CANDIDATES share the surname alone, or
+    # none do - either way that pass answers nothing on its own, and falls
+    # through to the near-spelling pass rather than giving up. That pass is
+    # stricter (every token has to be close, not just the last one), which is
+    # exactly what a common surname needs: "Dylon Harper" backs off to 6
+    # Harpers - too many to suggest - but only one of them, Dylan, is also
+    # close on the given name.
+    return _suggest_players_by_spelling(con, tokens)
 
+
+def _suggest_players_by_surname(con: duckdb.DuckDBPyConnection, tokens: list[str]) -> list[Entity]:
+    """:func:`suggest_players`' first pass: a multi-word name backed off to its
+    last word, matched exactly at a word boundary. Empty when the name is one
+    word, when nobody matches, and when more than ``MAX_CLARIFY_CANDIDATES``
+    do - each of which leaves the near-spelling pass to try."""
+    if len(tokens) < 2 or len(tokens[-1]) <= 2:
+        return []
+    # Word-boundary matches only. find_players falls back to incidental
+    # substring hits when nothing starts with the token, which is fine for a
+    # name somebody typed and wrong for one being guessed at: backing "Nobody
+    # At All" off to "All" otherwise suggests Bo Wall.
+    start = re.compile(_WORD_START + re.escape(tokens[-1]), re.IGNORECASE)
+    kept = [player for player in find_players(con, tokens[-1]) if start.search(player.name)]
+    return kept if len(kept) <= MAX_CLARIFY_CANDIDATES else []
+
+
+def _suggest_players_by_spelling(con: duckdb.DuckDBPyConnection, tokens: list[str]) -> list[Entity]:
+    """:func:`suggest_players`' second pass: the players every one of whose
+    ``tokens`` is within :func:`_edit_budget` of some word of the name,
+    closest first - or nobody, when more than ``MAX_CLARIFY_CANDIDATES`` are."""
     gaps = ", ".join(f"{_NEAREST_WORD} AS gap{i}" for i in range(len(tokens)))
     where = " AND ".join(f"gap{i} <= ?" for i in range(len(tokens)))
     order = " + ".join(f"gap{i}" for i in range(len(tokens)))
@@ -1485,6 +1501,48 @@ def suggest_players(con: duckdb.DuckDBPyConnection, text: str) -> list[Entity]:
         [*tokens, *(_edit_budget(t) for t in tokens)],
     ).fetchall()
     return [] if len(rows) > MAX_CLARIFY_CANDIDATES else [Entity(id=str(r[0]), name=r[1]) for r in rows]
+
+
+def read_near_spelling(con: duckdb.DuckDBPyConnection, text: str) -> Entity | None:
+    """The one player ``text`` is a near spelling of, taken as the answer and
+    said so - or None, and the caller asks or refuses as it always did.
+
+    For a name slot that matched nobody exactly. Typos are the entity index's
+    job, never the router model's: once names reach resolution as the question
+    typed them, "embid" arrives as "embid", and asking "did you mean Joel
+    Embiid?" of every typo would turn each one into a clarification. Jeff's
+    rule (AGENTS.md, "A reasonable default beats a question") allows a default
+    where the value used is shown and a wording reaches the alternative, so a
+    single candidate is taken and :func:`note_typo_reading` puts both in the
+    answer: who the text was read as, and that spelling the name exactly asks
+    about somebody else.
+
+    Only :func:`suggest_players`' near-spelling pass can default, and only when
+    it holds exactly one player. That pass needs EVERY word of ``text`` within
+    :func:`_edit_budget` of the chosen name, so "Stephen Cury" and "Dylon
+    Harper" are misspellings of one real player. The surname back-off is not
+    a misspelling: in "Jemel Embiid" or "Larry Bird" the given name is a
+    different person's, and when the surname alone lands on one player the
+    text is as likely to mean somebody the warehouse does not hold (Larry
+    Bird is not in ``players``) as the one it does - so it still asks. Two or
+    more near spellings ("jolic": Jokic or Jovic) still ask, and a team's name
+    is never read as a player's ("Hawks" is one edit from Spencer Hawes).
+
+    Never call this on words a question merely contains. It is for a span
+    already given as a NAME: fuzzy-matching the question's leftover words finds
+    somebody in most questions ("season" is one edit from Tari Eason), which
+    is measured and recorded in AGENTS.md.
+
+    .. versionadded:: 4.5.0
+    """
+    tokens = [t for t in text.split() if t]
+    if not tokens or _team_named(con, text) is not None:
+        return None
+    near = _suggest_players_by_spelling(con, tokens)
+    if len(near) != 1:
+        return None
+    note_typo_reading(text, near[0])
+    return near[0]
 
 
 def no_match(con: duckdb.DuckDBPyConnection, text: str, kind: str = "player") -> str:
@@ -1739,21 +1797,29 @@ def note_typo_reading(text: str, chosen: Entity) -> None:
     :func:`suggest_players`' OWN single-candidate result. Jeff's rule
     (AGENTS.md, "A reasonable default beats a question"): a near spelling
     with exactly one candidate is taken rather than asked about, and the
-    answer says so - "'wembyanama' was read as Victor Wembanyama" - so a
-    wrong guess is visible and a real ambiguity (more than one candidate,
-    which :func:`suggest_players` would have to be asked about instead of
-    called with) is never silently picked.
+    answer says so - "'wembyanama' matches no player exactly and was read as
+    Victor Wembanyama" - so a wrong guess is visible and a real ambiguity
+    (more than one candidate, which :func:`suggest_players` would have to be
+    asked about instead of called with) is never silently picked. The second
+    half of the sentence is the correction: spelled exactly, a name that is
+    somebody's reaches him, and one that is nobody's gets the plain "no player
+    found" instead of this reading.
 
     Public, unlike :func:`_note_name_reading`: written from
     :mod:`association.query.templates.common`, which has no other way to
     reach the :data:`_NAME_READINGS` context.
 
     .. versionadded:: 4.4.0
+    .. versionchanged:: 4.5.0
+       The sentence says how to reach anybody else - it used to name the
+       reading alone - and :func:`read_near_spelling` writes it for every name
+       slot :func:`resolve_player` and the chart resolver settle, not only a
+       teammate's.
     """
     notes = _NAME_READINGS.get()
     if notes is None:
         return
-    note = f"({text!r} was read as {chosen.name} - a near spelling with no other match.)"
+    note = f"({text!r} matches no player exactly and was read as {chosen.name}, the only near spelling on record - spell the name exactly to ask about someone else.)"
     if note not in notes:
         notes.append(note)
 
@@ -1844,12 +1910,17 @@ def resolve_player(
        season is the answer rather than a question, and a name given in full
        yields to the one namesake with data where its owner has none. Both are
        reported through :func:`collect_name_readings`.
+
+    .. versionchanged:: 4.5.0
+       A name that matches nobody but is a near spelling of exactly one player
+       is that player, reported the same way (:func:`read_near_spelling`),
+       where it used to be :class:`NotFound`.
     """
     if not available:
-        return _resolve(find_players(con, text), text, ("name",))
+        return _resolve_player_unnarrowed(con, find_players(con, text), text)
     everyone = find_players(con, text, limit=None)
     if len(everyone) < 2:
-        return _resolve(everyone, text, ("name",))
+        return _resolve_player_unnarrowed(con, everyone, text)
     # The season a name left open is settled by: the one asked about, else the
     # last season of the span, else now.
     latest = season if season is not None else through if through is not None else current_season()
@@ -1872,6 +1943,18 @@ def resolve_player(
     in_season = {c.id for c in current}
     ordered = current + [c for c in narrowed if c.id not in in_season]
     return Ambiguous(query=text, candidates=[c.name for c in ordered], active=len(current))
+
+
+def _resolve_player_unnarrowed(con: duckdb.DuckDBPyConnection, candidates: list[Entity], text: str) -> Resolution:
+    """:func:`resolve_player` with nothing to narrow by: the one candidate, a
+    question about several, or - with nobody by that name - the one player it
+    is a near spelling of, said in the answer ("embid" is Joel Embiid; see
+    :func:`read_near_spelling`)."""
+    if not candidates:
+        near = read_near_spelling(con, text)
+        if near is not None:
+            return near
+    return _resolve(candidates, text, ("name",))
 
 
 def _named_in_full(

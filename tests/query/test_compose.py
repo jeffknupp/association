@@ -426,10 +426,13 @@ def test_an_opponents_or_allowed_figure_is_refused_not_ranked(cx_ctx: TemplateCo
 
 
 def test_refused_carries_the_relations_own_wording(cx_ctx: TemplateContext) -> None:
-    """A near-miss spelling ("Podzemski") is a handled refusal - the
-    relation's own suggestion - not a bare "cannot answer": it comes back as
-    :class:`Refused`, carrying the template-shaped result."""
-    q = to_query("game_log", {"player": "Podzemski"})
+    """A near miss the index will not settle alone ("Jemel Podziemski": a
+    given name that is nobody's, beside one player's surname) is a handled
+    refusal - the relation's own suggestion - not a bare "cannot answer": it
+    comes back as :class:`Refused`, carrying the template-shaped result. A
+    plain typo of one player ("Podzemski") is no longer this shape: it is read
+    as him (entities.read_near_spelling)."""
+    q = to_query("game_log", {"player": "Jemel Podziemski"})
     with pytest.raises(Refused) as excinfo:
         run(cx_ctx.con, q)
     assert "podziemski" in excinfo.value.result.answer.lower()

@@ -1699,9 +1699,24 @@ def test_player_compare_suggests_the_player_a_fabricated_name_meant(ps_con: Temp
 
 def test_player_compare_answers_a_near_miss_rather_than_falling_through(ps_con: TemplateContext) -> None:
     """Handled here for the same reason ambiguity is: the agent would resolve
-    the same name against the same table, more slowly."""
-    answer = player_compare(ps_con, {"players": ["Luka Doncic", "Nikoal Jokic"]}).answer or ""
+    the same name against the same table, more slowly. "Jemel Jokic" is the
+    surname back-off - a given name that is nobody's beside a surname that is
+    one player's - which asks rather than defaults: see
+    entities.read_near_spelling."""
+    answer = player_compare(ps_con, {"players": ["Luka Doncic", "Jemel Jokic"]}).answer or ""
     assert "did you mean Nikola Jokic?" in answer
+
+
+def test_player_compare_reads_a_single_near_spelling_as_that_player(ps_con: TemplateContext) -> None:
+    """A typo of exactly one player's name is that player, and the answer says
+    so (entities.read_near_spelling): "Nikoal Jokic" used to ask "did you mean
+    Nikola Jokic?", and once the router copies names as typed, every typo
+    would."""
+    with collect_name_readings() as readings:
+        answer = player_compare(ps_con, {"players": ["Luka Doncic", "Nikoal Jokic"]}).answer or ""
+    assert "did you mean" not in answer
+    assert "Nikola Jokic" in answer
+    assert readings == ["('Nikoal Jokic' matches no player exactly and was read as Nikola Jokic, the only near spelling on record - spell the name exactly to ask about someone else.)"]
 
 
 def test_a_name_with_nothing_near_it_still_falls_through(ps_con: TemplateContext) -> None:
@@ -4432,7 +4447,18 @@ def test_a_near_spelling_of_without_is_taken_and_the_reading_is_visible(pg_ctx: 
     with collect_name_readings() as readings:
         result = game_log(pg_ctx, {"player": "Brandin Podziemski", "opponent": "Detroit Pistons", "without": ["Stephen Cury"]})
     assert "without Stephen Curry" in result.answer
-    assert readings == ["('Stephen Cury' was read as Stephen Curry - a near spelling with no other match.)"]
+    assert readings == ["('Stephen Cury' matches no player exactly and was read as Stephen Curry, the only near spelling on record - spell the name exactly to ask about someone else.)"]
+
+
+def test_a_surname_backoff_in_without_asks_as_it_does_everywhere(pg_ctx: TemplateContext) -> None:
+    """ "Jemel Kuminga" is a given name that is nobody's beside one player's
+    surname - the back-off, not a misspelling - and `without` used to take it
+    where every other name slot asked. It asks here too now, and reads
+    nothing."""
+    with collect_name_readings() as readings:
+        result = game_log(pg_ctx, {"player": "Brandin Podziemski", "without": ["Jemel Kuminga"]})
+    assert "did you mean Jonathan Kuminga?" in result.answer
+    assert readings == []
 
 
 # ---------------- a narrowed reading over a whole empty-box-score season (#72) ----------------

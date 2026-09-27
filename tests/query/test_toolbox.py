@@ -283,6 +283,14 @@ def test_render_shot_chart_nickname_matching(toolbox: Toolbox) -> None:
     assert "Rendered shot chart for Stephen Curry" in result
 
 
+def test_render_shot_chart_says_how_it_read_a_near_spelling(toolbox: Toolbox) -> None:
+    """The agent calls this as a tool, with nobody above it collecting name
+    readings - so the entry point says it itself, or the default is silent."""
+    result = toolbox.render_shot_chart(player_name="Stephen Cury")
+    assert "Rendered shot chart for Stephen Curry" in result
+    assert result.endswith("('Stephen Cury' matches no player exactly and was read as Stephen Curry, the only near spelling on record - spell the name exactly to ask about someone else.)")
+
+
 def test_render_shot_chart_no_match(toolbox: Toolbox) -> None:
     result = toolbox.render_shot_chart(player_name="Nobody Real")
     assert "No player found" in result
