@@ -1088,13 +1088,42 @@ def _record_when_query(
     return found, names, base, params
 
 
-def _record_when_group(by_hit: dict[bool, Any], hit: bool | None) -> dict[str, Any]:
-    """The team's record in the games he reached the threshold (True), fell short (False), or both (None)."""
-    rows = [by_hit[h] for h in ((hit,) if hit is not None else (True, False)) if h in by_hit]
+def _record_when_group(by_hit: dict[bool | None, Any], hit: bool | None) -> dict[str, Any]:
+    """The record in the games the threshold was reached (True), fell short of
+    with a known value (False), or every game regardless of whether the value
+    is known at all (None) - shared by the player branch (:func:`_record_when_answer`)
+    and the team branch (:func:`_record_when_team_answer_table`), whose own
+    query structurally excludes a blank value from ``by_hit`` rather than
+    grouping it (:func:`_record_when_team_base`), so ``None`` never appears
+    there and this falls back to summing True and False alone.
+
+    .. versionchanged:: 4.5.0
+       Keys on the value's own presence (``True``/``False``/``None``) - a
+       blank-stat game still has a real result, so "every game" (``hit=None``)
+       now counts it too, where it used to be reachable only through the
+       collision :func:`_record_when_answer` fixed.
+    """
+    rows = [by_hit[h] for h in ((hit,) if hit is not None else (True, False, None)) if h in by_hit]
     games = sum(int(r[1]) for r in rows)
     wins = sum(int(r[2]) for r in rows)
     margin = sum((r[3] or 0) * int(r[1]) for r in rows) / games if games else None
     return {"games": games, "wins": wins, "losses": games - wins, "avg_margin": margin}
+
+
+def _record_when_blank_note(count: int, unit: str) -> str:
+    """The player counterpart to :func:`_record_when_team_unseen_note`: how
+    many of his games in this span carry a box score but no usable figure for
+    this stat at all - a rebuilt row blanks a column it was never measured for
+    (:data:`~association.query.conditions.UNGATED_ON_REBUILD`), and 20,218
+    regular-season player-games are rebuilt this way, all in 2013-2018. Such a
+    game still has a real result, so it is counted in "all his games" but in
+    neither threshold row.
+
+    .. versionadded:: 4.5.0
+    """
+    if not count:
+        return ""
+    return f" {count} of his games in that span have no {unit} figure on record, so they are in neither row."
 
 
 def _record_when_answer(
@@ -1111,14 +1140,28 @@ def _record_when_answer(
     scope: Scope,
 ) -> TemplateResult:
     """The two-row table - reached the threshold, fell short - and the caveats
-    beside it: games with no box score, and the coverage floor.
+    beside it: games with no box score, a blank stat on a rebuilt row, and the
+    coverage floor.
 
     ``narrowed.filters()`` says what else the pool was narrowed to (an
     opponent, a venue, an absent teammate, a starter/bench half, a game of
     each series, a box-score line) beside the threshold itself - the "20+
     points AND 5+ assists" shape, where the threshold is the split and a
-    ``below``/``above`` line narrows the pool it is read over."""
-    by_hit = {bool(row[0]): row for row in found}
+    ``below``/``above`` line narrows the pool it is read over.
+
+    .. versionchanged:: 4.5.0
+       Keys the threshold groups on the raw tri-state comparison
+       (``True``/``False``/``None``) rather than ``bool(row[0])``, which
+       folded a blank-stat game (NULL on a rebuilt row) into the same key as a
+       real "fell short" game - whichever one DuckDB's parallel GROUP BY
+       happened to return last silently won, so the same question answered a
+       different "fell short" row from one asking to the next (ISSUES.md:
+       "Curry's record when he makes 5+ threes" read as 32 games or 640). A
+       blank game now lands in neither threshold row, counted instead in a new
+       caveat (:func:`_record_when_blank_note`) - the same discipline the team
+       branch's :func:`_record_when_team_unseen_note` already applied.
+    """
+    by_hit: dict[bool | None, Any] = {row[0]: row for row in found}
     unit = f"{STAT_LABELS.get(stat or '', stat or '')}s"
     reached, short, every = _record_when_group(by_hit, True), _record_when_group(by_hit, False), _record_when_group(by_hit, None)
     label = _condition_span_label(covered, scope, min(r[4] for r in found), max(r[5] for r in found))
@@ -1127,7 +1170,8 @@ def _record_when_answer(
     title = f"{whose} when {player.name} had {threshold}+ {unit}{narrowed.filters()}, {label}:"
     rows = [(f"{threshold}+ {unit}", reached), (f"under {threshold} {unit}", short), ("all his games", every)]
     table = _table(title, ["G", "W-L", "Win%", "Margin"], [(name, [str(g["games"]), f"{g['wins']}-{g['losses']}", _win_pct(g["wins"], g["games"]), _margin(g["avg_margin"])]) for name, g in rows])
-    caveat = _unseen_note(_unseen(con, covered, base, params, box_source(con)))
+    blank = by_hit.get(None)
+    caveat = _unseen_note(_unseen(con, covered, base, params, box_source(con))) + _record_when_blank_note(int(blank[1]) if blank is not None else 0, unit)
     trailer = f"Over the {every['games']} games he played; a game he missed is in neither row.{covered.floor_note(min(r[4] for r in found))}{caveat}"
     answer = f"{table}\n{trailer}"
     data = {
@@ -1283,8 +1327,11 @@ def _record_when_team_query(con: duckdb.DuckDBPyConnection, base: str, params: d
 def _record_when_team_answer_table(con: duckdb.DuckDBPyConnection, span: _Span, team: Entity, narrowed: TeamNarrowed, stat: Any, column: str, threshold: int, found: list[Any]) -> TemplateResult:
     """The two-row table for a team's own record above/below its threshold -
     the team counterpart to _record_when_answer, with no player to key on and
-    a team pronoun in place of a player's."""
-    by_hit = {bool(row[0]): row for row in found}
+    a team pronoun in place of a player's. Keyed by ``bool(row[0])``, never
+    ``None``: the query behind ``found`` (:func:`_record_when_team_base`)
+    excludes a blank stat in its own join rather than grouping it, so there is
+    no blank group here to collide with - see :func:`_record_when_group`."""
+    by_hit: dict[bool | None, Any] = {bool(row[0]): row for row in found}
     unit = f"{STAT_LABELS.get(stat or '', stat or '')}s"
     reached, short, every = _record_when_group(by_hit, True), _record_when_group(by_hit, False), _record_when_group(by_hit, None)
     label = _team_span_label(span, min(r[4] for r in found), max(r[5] for r in found))

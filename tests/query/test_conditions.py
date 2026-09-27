@@ -30,7 +30,7 @@ from association.query.conditions import RAW_BOX, UNGATED_ON_REBUILD, box_source
 from association.query.reading import Reading
 from association.query.templates.common import REBUILT_STATS, TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, check_scope
 from association.query.templates.games import player_matchup
-from association.query.templates.splits import SPLIT_KINDS, player_splits, record_when, streak, with_without
+from association.query.templates.splits import SPLIT_KINDS, _record_when_group, player_splits, record_when, streak, with_without
 
 S = current_season()
 BOS, LAL, PHI = "2", "13", "20"
@@ -302,6 +302,47 @@ def test_a_warehouse_without_the_filled_view_reads_as_it_always_did(league: Temp
     Same escape as `_log_carries_rebuilt`."""
     assert box_source(league.con) == RAW_BOX
     assert player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum", split="home_away"))).data["games"] == 3
+
+
+def test_record_when_group_sums_every_game_regardless_of_order(league: TemplateContext) -> None:
+    """`_record_when_group`'s own half of the fix: "every game" (``hit=None``)
+    now sums all three groups - reached, fell short, and a blank-stat game,
+    which still has a real result even though it counts in neither threshold
+    row. Built by hand, in two insertion orders, since the bug this guards
+    was exactly a `by_hit` dict whose key depended on which order DuckDB's
+    parallel GROUP BY happened to return the groups in (ISSUES.md)."""
+    del league  # unused; a pure-Python check of the grouping helper alone
+    reached_row = (True, 5, 3, 2.5, S, S, ["2"])
+    short_row = (False, 10, 4, -1.0, S, S, ["2"])
+    blank_row = (None, 2, 1, 0.5, S, S, ["2"])
+    for found in ([reached_row, short_row, blank_row], [blank_row, reached_row, short_row], [short_row, blank_row, reached_row]):
+        by_hit = {row[0]: row for row in found}
+        assert _record_when_group(by_hit, True) == {"games": 5, "wins": 3, "losses": 2, "avg_margin": 2.5}
+        assert _record_when_group(by_hit, False) == {"games": 10, "wins": 4, "losses": 6, "avg_margin": -1.0}
+        every = _record_when_group(by_hit, None)
+        assert (every["games"], every["wins"], every["losses"]) == (17, 8, 9)
+        assert every["avg_margin"] == pytest.approx((5 * 2.5 + 10 * -1.0 + 2 * 0.5) / 17)
+
+
+def test_record_when_keeps_a_blank_stat_game_off_both_threshold_rows(rebuilt_league: TemplateContext) -> None:
+    """The P1 this fixes (ISSUES.md): `_record_when_answer` used to key its
+    threshold groups by `bool(row[0])`, so a blank-stat game (NULL on a
+    rebuilt row) collided with the "fell short" group - `bool(None) ==
+    bool(False)` - and whichever one DuckDB's parallel GROUP BY happened to
+    return last silently won, so the same question answered a different
+    "under threshold" row from one asking to the next.
+
+    Tatum's turnovers are 0 in every one of his real games this season (e1 W,
+    e4 W, e7 L) and blanked on the rebuilt e5 (a win) - turnovers is one of
+    `UNGATED_ON_REBUILD`'s columns, never trusted on a rebuilt row. A
+    threshold of 1 turnover puts every real game "under" and leaves e5 in
+    neither threshold row, still counted in "all his games" since it has a
+    real result."""
+    result = record_when(rebuilt_league, Reading.from_slots(_slots(player="Jayson Tatum", stat="turnovers", threshold=1)))
+    assert result.data["reached"] == {"games": 0, "wins": 0, "losses": 0, "avg_margin": None}
+    assert result.data["fell_short"] == {"games": 3, "wins": 2, "losses": 1, "avg_margin": pytest.approx(1 / 3)}
+    assert "Over the 4 games he played" in (result.answer or "")
+    assert "1 of his games in that span have no turnovers figure on record, so they are in neither row." in (result.answer or "")
 
 
 def test_the_ungated_rebuild_columns_are_the_ones_no_template_may_read() -> None:
