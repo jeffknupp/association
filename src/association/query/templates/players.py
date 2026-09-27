@@ -1460,6 +1460,17 @@ def _player_stat_reads_box_scores(scope: Scope, measures: list[MeasureFilter]) -
        ``subject._apply_own_team``, and not the router's own
        ``team`` slot - see that function's docstring for the recorded case
        that slot silently narrowed before this distinction existed.
+
+    .. versionchanged:: 4.5.0
+       Also true for ``conditions`` - a teammate's role ("maxey points when
+       embiid starts") is a narrowing of the GAMES the same as an absent
+       teammate already was, and the season line has no column for it either.
+       ``check_scope`` already lets ``conditions`` through (``player_stat``
+       honors the whole relation's ``RELATION_SCOPING``), so a question
+       narrowed by nothing else silently read the season line with the
+       teammate's role nowhere in it - "maxey points when embiid starts"
+       answered his whole season (26.3 in 52 games) rather than the 16 games
+       Embiid actually started (23.8).
     """
     split_side = scope.split if scope.split in STARTER_SIDES else None
     # A `situation` (a weekday, a month, a holiday, "since <day>") is a
@@ -1476,6 +1487,7 @@ def _player_stat_reads_box_scores(scope: Scope, measures: list[MeasureFilter]) -
             scope.situation,
             scope.season_type_unstated,
             scope.own_team,
+            scope.conditions,
         )
     )
 

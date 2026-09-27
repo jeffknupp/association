@@ -2403,7 +2403,7 @@ def player_matchup(ctx: TemplateContext, reading: Reading) -> TemplateResult:
         # real two-player matchup that still has one left over has to refuse
         # it itself - it names no third team to narrow the meetings by.
         raise TemplateUnsupported("player_matchup cannot narrow a two-player matchup to one opponent")
-    covered = _condition_scope(scope.season, scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
+    covered = _player_matchup_covered(scope)
     resolved = _player_matchup_resolve(con, texts, covered)
     if isinstance(resolved, TemplateResult):
         return resolved
@@ -2427,6 +2427,17 @@ def player_matchup(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     return _player_matchup_answer(a, b, covered, meetings, wins, lines, count, summary, shown, log, caveat, narrowed.filters())
 
 
+def _player_matchup_covered(scope: Scope) -> _Scope:
+    """The span both names resolve over: the question's own - or, where a
+    date names the game, the career, since a date replaces the season the
+    way ``game_log``'s own date does (the season is usually the "current"
+    default, and a date from an earlier season looked for in that one finds
+    nothing)."""
+    if scope.date:
+        return _condition_scope(None, "career", scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
+    return _condition_scope(scope.season, scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
+
+
 def _player_matchup_narrowed(con: duckdb.DuckDBPyConnection, a: Entity, b: Entity, scope: Scope) -> _Narrowed | TemplateResult:
     """The first player's games under every row-level narrowing the question
     carries - a teammate's absence ("curry vs lebron without kd", yardstick-v2
@@ -2440,9 +2451,15 @@ def _player_matchup_narrowed(con: duckdb.DuckDBPyConnection, a: Entity, b: Entit
     golden the day ``without`` landed on the pair relation).
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.5.0
+       Hands ``scoped_games`` the date: "curry vs lebron on 2025-04-03" used
+       to answer every meeting of the season, the date reaching every other
+       relation cell here but never the one-day filter. A date names its
+       game, so it replaces the season here too, the way ``game_log``'s does.
     """
-    span = _span_of(scope.span, scope.season, _player_relation_season_type(scope), "player_game_log", since=scope.since, until=scope.until)
-    narrowed = scoped_games(con, a, span, replace(scope, limit=None, order=None, opponent=None), opponent=None, measures=measure_filters(scope.below, scope.above))
+    span = _span_of("career" if scope.date else scope.span, None if scope.date else scope.season, _player_relation_season_type(scope), "player_game_log", since=scope.since, until=scope.until)
+    narrowed = scoped_games(con, a, span, replace(scope, limit=None, order=None, opponent=None), opponent=None, measures=measure_filters(scope.below, scope.above), date=scope.date)
     if isinstance(narrowed, TemplateResult):
         return narrowed
     narrowed = whole_span(narrowed)

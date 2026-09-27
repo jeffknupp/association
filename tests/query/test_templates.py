@@ -1666,10 +1666,33 @@ def _source_a_template_reads_slots_in(handler: Any) -> str:
 
 
 def _reads_slot(source: str, slot: str) -> bool:
-    """Whether ``source`` reads ``slot``: the slot dict's key, quoted, or the
-    typed Scope's field - ``scope.venue``, and ``reading.scope.venue`` - with
-    a word boundary, so ``scope.players`` is not a read of ``player``."""
-    return f'"{slot}"' in source or re.search(rf"\bscope\.{slot}\b", source) is not None
+    """Whether ``source`` reads ``slot``: the typed Scope's field
+    (``scope.venue``, and ``reading.scope.venue``, with a word boundary so
+    ``scope.players`` is not a read of ``player``), a slot-dict GET
+    (``slots.get("venue")``, ``slots["venue"]``), or the slot handed to a
+    shared step as its own keyword argument (``venue=venue``) at a call site.
+
+    Not a bare ``f'"{slot}"' in source`` any more (4.5.0): that matched ANY
+    quoted occurrence of the word, including one built into a piece of OUTPUT
+    data that has nothing to do with reading the slot -
+    ``player_matchup``'s own ``_player_matchup_answer`` builds
+    ``{"date": str(m["day"]), ...}`` for its answer's rows, which satisfied
+    the old check for ``date`` although ``_player_matchup_narrowed`` never
+    read the slot at all and so never applied its filter ("curry vs lebron on
+    2025-04-03" answered every meeting of the season). Checked against every
+    (intent, slot) pair in HONORED_SCOPING before this landed: identical to
+    the old check on all of them except that one, which flips from a false
+    True to the correct False."""
+    scope_field = re.search(rf"\bscope\.{slot}\b", source) is not None
+    slot_get = re.search(rf'slots(?:\.get\(|\[)\s*["\']{slot}["\']', source) is not None
+    # No space before `=`: a plain assignment (`date = raw_date`) is written
+    # WITH one (ruff format), so this matches a call site's keyword argument
+    # (`date=date`) and not a local variable merely named the same as the
+    # slot. An annotated parameter default (`date: str | None = None`) is
+    # written with spaces too, for the same reason, so a function's own
+    # signature does not fool this either.
+    kwarg = re.search(rf"\b{slot}=(?!=)", source) is not None
+    return scope_field or slot_get or kwarg
 
 
 def test_no_template_outside_player_intents_reads_a_player_slot() -> None:
@@ -4460,6 +4483,106 @@ def test_a_surname_backoff_in_without_asks_as_it_does_everywhere(pg_ctx: Templat
         result = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "without": ["Jemel Kuminga"]}))
     assert "did you mean Jonathan Kuminga?" in result.answer
     assert readings == []
+
+
+# ---------------- player_matchup honors a date (#231 follow-up) ----------------
+
+
+@pytest.fixture
+def pm_ctx(tmp_path: Path) -> TemplateContext:
+    """Two Warriors/Lakers meetings, Stephen Curry (athlete ``1``) and LeBron
+    James (athlete ``2``) both playing in each, in season ``s - 1`` - not the
+    current one, so a bug that silently defaults the season back to "now"
+    (the router's usual default) is caught rather than coincidentally
+    answered right:
+
+    ====  ==================  ==========  =======================
+    game  date                 winner      points (Curry / LeBron)
+    ====  ==================  ==========  =======================
+    g1    {s-2}-11-10          Warriors    30 / 25
+    g2    {s-1}-01-15          Lakers      20 / 35
+    ====  ==================  ==========  =======================
+
+    Both dates fall in season ``s - 1`` ("a season is named for the year it
+    ends"). Naming g1's date must narrow to it alone - not average it with
+    g2, which is the bug ("curry vs lebron on 2025-04-03" answered every
+    meeting of the season): `_player_matchup_narrowed` read every other
+    relation cell but never passed `date` to `scoped_games` at all.
+    """
+    s = current_season()
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO players VALUES ('1','Stephen Curry'),('2','LeBron James')")
+    c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    c.execute("INSERT INTO teams VALUES ('9','GS','Golden State Warriors'),('13','LAL','Los Angeles Lakers')")
+    c.execute(
+        "CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR, home_team_id VARCHAR, away_team_id VARCHAR, "
+        "home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR)"
+    )
+    c.executemany(
+        "INSERT INTO games VALUES (?, ?, 2, ?, ?, ?, ?, ?, ?)",
+        [
+            ("g1", s - 1, f"{s - 2}-11-10T23:00Z", "9", "13", 120, 110, "9"),
+            ("g2", s - 1, f"{s - 1}-01-15T23:00Z", "13", "9", 118, 105, "13"),
+        ],
+    )
+    c.execute(f"CREATE TABLE player_box_stats ({_BOX_COLUMNS})")
+    c.executemany(
+        f"INSERT INTO player_box_stats VALUES ({', '.join('?' for _ in range(24))})",
+        [
+            _box("g1", s - 1, "9", "13", "1", pts=30),
+            _box("g1", s - 1, "13", "9", "2", pts=25),
+            _box("g2", s - 1, "13", "9", "1", pts=20),
+            _box("g2", s - 1, "9", "13", "2", pts=35),
+        ],
+    )
+    c.execute(
+        "CREATE VIEW player_game_log AS SELECT pbs.*, p.display_name AS player_name, g.date AS game_date, t.abbreviation AS team_abbr, o.abbreviation AS opponent_abbr "
+        "FROM player_box_stats pbs LEFT JOIN players p ON p.athlete_id = pbs.athlete_id LEFT JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season "
+        "LEFT JOIN teams t ON t.team_id = pbs.team_id LEFT JOIN teams o ON o.team_id = pbs.opponent_team_id"
+    )
+    # Empty: `player_matchup` always asks `_unseen_meetings` (conditions.py)
+    # for team-games with no box score, which joins this table unconditionally
+    # - it only needs to exist. No row in it here means none of this
+    # fixture's meetings are ever "unseen", which is correct: both players
+    # have a real box-score row in both games.
+    c.execute("CREATE TABLE team_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, opponent_team_id VARCHAR, home_away VARCHAR)")
+    real_games.build_table(c, {"games", "teams"})
+    return TemplateContext(con=c, out_dir=tmp_path / "out")
+
+
+def test_player_matchup_honors_date_over_a_season_full_of_meetings(pm_ctx: TemplateContext) -> None:
+    """The core bug: with the season given correctly (matching where the
+    games actually are), a `date` naming g1 must narrow to it alone, not
+    the season's 2 meetings averaged together."""
+    s = current_season()
+    result = player_matchup(pm_ctx, Reading.from_slots({"players": ["Stephen Curry", "LeBron James"], "date": f"{s - 2}-11-10", "season": s - 1}))
+    assert result.data["meetings"] == 1
+    assert result.data["averages"]["Stephen Curry"]["points"] == 30
+    assert result.data["averages"]["LeBron James"]["points"] == 25
+    assert f"on {s - 2}-11-10" in result.answer
+
+
+def test_player_matchup_date_replaces_even_an_explicitly_wrong_season(pm_ctx: TemplateContext) -> None:
+    """The same override `game_log`'s own date handling makes (its
+    `test_player_stat_on_one_date_is_that_games_line` proves the identical
+    shape for `player_stat`): a date names its game outright, so it replaces
+    the season - and resolves the names over the career - even where the
+    router's season slot (usually its "current" default) disagrees outright.
+    Without the override, `_condition_scope`/`_player_matchup_narrowed` both
+    default a missing-or-defeated season to `current_season()`, which holds
+    neither game here at all."""
+    s = current_season()
+    result = player_matchup(pm_ctx, Reading.from_slots({"players": ["Stephen Curry", "LeBron James"], "date": f"{s - 2}-11-10", "season": s}))
+    assert result.data["meetings"] == 1
+    assert result.data["averages"]["Stephen Curry"]["points"] == 30
+    assert result.data["averages"]["LeBron James"]["points"] == 25
+    # The heading names the date and the date's OWN season - never the
+    # current one the (wrong) `season` slot asked for, which is what the
+    # override this pins is for: `label()` says the season the meeting it
+    # counted actually came from.
+    assert f"on {s - 2}-11-10, {s - 1} regular season" in result.answer
+    assert f"{s} regular season" not in result.answer
 
 
 # ---------------- a narrowed reading over a whole empty-box-score season (#72) ----------------

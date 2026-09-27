@@ -37,6 +37,7 @@ from ..entities import Ambiguous, Entity, no_match
 from ..player_games import games_subquery, named
 from ..shotchart import DERIVED_SHOT_VALUES, SHOT_AVAILABILITY, SHOT_VALUE_SQL, UNSEPARABLE_SHOT_VALUES, render_for_player, resolve_chart_player
 from .common import (
+    RELATION_SCOPING,
     SEASON_TYPE_NAMES,
     MeasureFilter,
     TemplateContext,
@@ -86,12 +87,51 @@ def _shots_windowed(scope: Scope) -> bool:
     return scope.order is not None or scope.limit is not None
 
 
+#: Every relation-scoping cell that means "these particular games, not the
+#: whole span" for a shot read - :data:`~association.query.templates.common.RELATION_SCOPING`
+#: (no cell is excluded for either template here - see ``HONORED_SCOPING``)
+#: less the three already decided before :func:`_shots_other_narrowing` ever
+#: runs: ``order`` is windowing, :func:`_shots_windowed`'s own question, not
+#: "other" narrowing; ``span`` and ``season_n`` are settled into a concrete
+#: season, or a bare career, by :func:`common.scoped_player`/
+#: :func:`_shot_chart_settle_player` before this is called, so
+#: ``render_for_player``/the distance query already read either directly, by
+#: season, with no event-id narrowing needed. ``date`` and ``below``/``above``
+#: are read here as the already-extracted ``date``/``measures`` parameters
+#: rather than read off the Scope again, since each template builds them
+#: itself before calling this.
+#:
+#: Derived rather than hand-listed so the next slot RELATION_SCOPING gains
+#: reaches this function automatically: ``situation`` and ``conditions``
+#: joined the relation after this list was first written and were never
+#: added here, so a shot chart or distance narrowed only by a calendar
+#: ``situation`` ("on tuesdays") or a companion's role/absence
+#: (``conditions``, "when embiid starts") silently read the whole span
+#: instead - the same failure shape as reading `date` too. `until` joins for
+#: the same reason, though it never arrives without `since` beside it
+#: (``common._validated_until``), so this is a no-op addition for it alone.
+#:
+#: .. versionadded:: 4.5.0
+_SHOTS_GAME_NARROWING_SLOTS = RELATION_SCOPING - {"order", "span", "season_n", "date", "below", "above"}
+
+
 def _shots_other_narrowing(scope: Scope, date: str | None, measures: list[MeasureFilter]) -> bool:
     """Whether this question narrows which games a shot read draws from by
     anything BESIDES a window - an opponent, a venue, a teammate's absence, a
     starter/bench half, one game of a series, a line on a box-score column,
-    one Eastern date, or ``since``."""
-    return bool(scope.opponent or scope.venue or scope.without or scope.split or scope.game_n or scope.since or date or measures)
+    one Eastern date, ``since``, a calendar ``situation``, or a companion's
+    role (``conditions``) - see :data:`_SHOTS_GAME_NARROWING_SLOTS`.
+
+    .. versionchanged:: 4.5.0
+       Derived from :data:`~association.query.templates.common.RELATION_SCOPING`
+       rather than a hand-written list that predated ``situation`` and
+       ``conditions`` joining it - both silently answered the whole span:
+       "stephen curry shot chart on christmas" (a `situation`) and "stephen
+       curry shot chart when draymond green starts" (a `conditions`) each
+       drew every shot of the season rather than the games actually asked
+       for.
+    """
+    return bool(any(getattr(scope, slot) for slot in _SHOTS_GAME_NARROWING_SLOTS) or date or measures)
 
 
 def _shots_has_narrowing(scope: Scope, date: str | None, measures: list[MeasureFilter]) -> bool:
