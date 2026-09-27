@@ -10,6 +10,7 @@ import pytest
 from ollama import ChatResponse, Message
 
 from association.query.agent import MAX_AUTO_SQL_RECOVERIES, MAX_ERROR_RECOVERIES, MAX_HISTORY_MESSAGES, MAX_TOOL_ITERATIONS, Agent, _extract_unrun_sql
+from association.query.reading import Reading
 
 
 def test_extract_sql_from_fenced_sql_block() -> None:
@@ -297,8 +298,8 @@ def test_the_fast_path_replaces_a_player_the_question_never_named(monkeypatch: p
 
     seen: list[str] = []
 
-    def record(ctx: Any, slots: dict[str, Any]) -> TemplateResult:
-        seen.extend(slots["players"])
+    def record(ctx: Any, reading: Reading) -> TemplateResult:
+        seen.extend(reading.scope.players)
         return TemplateResult(data={}, answer="templated")
 
     monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="player_compare", slots={"players": ["Shai Gilgeous-Alexander", "Jusuf Nurkic"]}))
@@ -337,7 +338,7 @@ def test_a_team_only_intent_naming_one_player_refuses_rather_than_answering_the_
 
     reached = False
 
-    def record(ctx: Any, slots: dict[str, Any]) -> Any:
+    def record(ctx: Any, reading: Reading) -> Any:
         nonlocal reached
         reached = True
         raise AssertionError("team_leaderboard should not run at all")
@@ -414,11 +415,11 @@ def test_a_rerouted_intent_runs_the_template_it_was_rerouted_to(monkeypatch: pyt
 
     ran: list[str] = []
 
-    def head_to_head(ctx: Any, slots: dict[str, Any]) -> TemplateResult:
+    def head_to_head(ctx: Any, reading: Reading) -> TemplateResult:
         ran.append("head_to_head")
         raise TemplateUnsupported("head_to_head needs two team names")
 
-    def with_without(ctx: Any, slots: dict[str, Any]) -> TemplateResult:
+    def with_without(ctx: Any, reading: Reading) -> TemplateResult:
         ran.append("with_without")
         return TemplateResult(data={}, answer="templated")
 
@@ -477,8 +478,8 @@ def test_a_fingerprint_keeps_every_player_the_question_named(monkeypatch: pytest
 
     seen: list[str] = []
 
-    def record(ctx: Any, slots: dict[str, Any]) -> TemplateResult:
-        seen.extend(slots["players"])
+    def record(ctx: Any, reading: Reading) -> TemplateResult:
+        seen.extend(reading.scope.players)
         return TemplateResult(data={}, answer="rendered")
 
     monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="fingerprint", slots={"player": "Ben Simmons"}))
@@ -507,10 +508,10 @@ def test_the_fast_path_asks_about_a_surname_the_router_completed(monkeypatch: py
     from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
-    seen: list[str] = []
+    seen: list[str | None] = []
 
-    def record(ctx: Any, slots: dict[str, Any]) -> TemplateResult:
-        seen.append(slots["player"])
+    def record(ctx: Any, reading: Reading) -> TemplateResult:
+        seen.append(reading.scope.player)
         return TemplateResult(data={}, answer="answered")
 
     monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="player_stat", slots={"player": "Jaylen Brown"}))
@@ -530,7 +531,7 @@ def test_the_fast_path_says_how_it_read_a_name_the_question_left_open(monkeypatc
     from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
-    def reads_a_name(ctx: Any, slots: dict[str, Any]) -> TemplateResult:
+    def reads_a_name(ctx: Any, reading: Reading) -> TemplateResult:
         _note_name_reading("maxey", Entity("1", "Tyrese Maxey"), [Entity("0", "Marlon Maxey")], 2026, named_in_full=False)
         return TemplateResult(data={}, answer="Tyrese Maxey averaged 28.0 points.")
 
@@ -583,7 +584,7 @@ def test_with_fallthrough_disabled_a_question_no_template_answers_is_an_error_na
     with pytest.raises(FallthroughDisabled, match="intent 'other' has no template yet"):
         agent.ask("who had the most triple-doubles?")
 
-    def refusing(ctx: Any, slots: dict[str, Any]) -> TemplateResult:
+    def refusing(ctx: Any, reading: Reading) -> TemplateResult:
         raise TemplateUnsupported("record_when needs a known stat and a positive threshold, got 'wins'/20")
 
     monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="record_when", slots={"team": "Philadelphia 76ers"}))
@@ -605,7 +606,7 @@ def test_with_fallthrough_disabled_a_question_no_template_answers_is_an_error_na
 # ---------------- the compiled step between a refusal and the fall-through agent ----------------
 
 
-def _refusing_template(ctx: Any, slots: dict[str, Any]) -> NoReturn:
+def _refusing_template(ctx: Any, reading: Reading) -> NoReturn:
     """A template stand-in that always raises TemplateUnsupported, the way
     check_scope or a template's own validation does - the only trigger that
     reaches association.query.compose.answer (agent._try_compose)."""
@@ -626,7 +627,7 @@ def test_a_templates_refusal_that_compose_answers_is_returned_as_fast_with_the_t
     def composed_answer(ctx: Any, intent: str, slots: dict[str, Any], question: str, subject: Any = None, trace: Any = None) -> TemplateResult:
         return TemplateResult(data={"skeleton": "aggregate", "measures": ["points"], "rows": [{"points": 30.0}]}, answer="Joel Embiid has averaged 30.0 points since 2024.")
 
-    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="player_stat", slots={"player": "Joel Embiid", "since": "2024"}))
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="player_stat", slots={"player": "Joel Embiid", "since": 2024}))
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": _refusing_template})
     monkeypatch.setattr("association.query.compose.answer", composed_answer)
 
@@ -679,7 +680,7 @@ def test_a_compose_refusal_is_returned_as_the_answer_not_a_fall_through(monkeypa
     def chat_must_not_run(**kw: Any) -> None:
         raise AssertionError("the agent must not be asked - the compiler already answered")
 
-    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="player_stat", slots={"player": "Joel Embiid", "since": "the last few"}))
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="player_stat", slots={"player": "Joel Embiid", "since": 2024}))
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": _refusing_template})
     monkeypatch.setattr("association.query.compose.answer", composed_refusal)
     monkeypatch.setattr(ollama, "chat", chat_must_not_run)
@@ -702,7 +703,7 @@ def test_a_composed_answer_carries_the_name_reading_it_noted(monkeypatch: pytest
         _note_name_reading("maxey", Entity("1", "Tyrese Maxey"), [Entity("0", "Marlon Maxey")], 2026, named_in_full=False)
         return TemplateResult(data={}, answer="Tyrese Maxey has averaged 28.0 points since 2024.")
 
-    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="player_stat", slots={"player": "maxey", "since": "2024"}))
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="player_stat", slots={"player": "maxey", "since": 2024}))
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": _refusing_template})
     monkeypatch.setattr("association.query.compose.answer", composed_with_reading)
 
@@ -1123,7 +1124,7 @@ def test_a_compiler_first_intent_is_read_planned_and_answered_before_its_templat
     exactly (compose.COMPILER_FIRST) are answered from the Reading first; the
     trace carries the record ("-> (reading) ...") and the template is never
     called. Where the compiler declines (None) the template runs as before."""
-    from association.query.reading import Reading, Scope
+    from association.query.reading import Scope
     from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
@@ -1145,7 +1146,7 @@ def test_a_compiler_first_intent_is_read_planned_and_answered_before_its_templat
             )
         return TemplateResult(data={"count": 9}, answer="Joel Embiid had 9 games with 30+ points.")
 
-    def never_template(ctx: Any, slots: dict[str, Any]) -> TemplateResult:
+    def never_template(ctx: Any, reading: Reading) -> TemplateResult:
         calls.append("template")
         return TemplateResult(data={}, answer="the template answered")
 
@@ -1190,8 +1191,8 @@ def test_the_parser_reads_the_question_when_it_is_the_reader(monkeypatch: pytest
 
     seen: dict[str, Any] = {}
 
-    def record(ctx: Any, slots: dict[str, Any]) -> TemplateResult:
-        seen.update(slots)
+    def record(ctx: Any, reading: Reading) -> TemplateResult:
+        seen.update(reading.scope.to_slots())
         return TemplateResult(data={}, answer="templated")
 
     def no_router(*args: Any, **kwargs: Any) -> None:

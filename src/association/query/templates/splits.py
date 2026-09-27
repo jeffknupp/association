@@ -13,6 +13,7 @@ import duckdb
 
 from association.nba.franchises import season_name
 from association.nba.season import current_season
+from association.query.reading import Reading
 
 from ..conditions import (
     _PLAYER_GAME_TABLES,
@@ -342,7 +343,7 @@ def _team_season_range(con: duckdb.DuckDBPyConnection, base: str, params: Params
     return (int(row[0]), row[1], row[2]) if row else (0, None, None)
 
 
-def player_splits(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def player_splits(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """A player's per-game averages divided by one condition of the game:
     home or away, starting or off the bench, won or lost, or the month.
 
@@ -377,6 +378,7 @@ def player_splits(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult
        shown stays the one it always was - both groups side by side, folded
        back from the half the question named.
     """
+    slots = reading.scope.to_slots()
     con = ctx.con
     split = slots.get("split")
     if split is not None and split not in SPLIT_KINDS and split not in _STARTER_BENCH_SIDES:
@@ -647,7 +649,7 @@ def _player_splits_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], s
     return _SplitSubject(_team_span_label(scope, first, last), _team_span_floor_note(scope, first), base, params, games, first, last, subject, alias, line, counted, data, caveat)
 
 
-def with_without(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def with_without(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """A team's record in the games a teammate played against the games he
     missed - and, when the subject is a player, that player's averages in each.
 
@@ -683,6 +685,7 @@ def with_without(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        Divides by every teammate the question names at once, rather than by
        the first of them.
     """
+    slots = reading.scope.to_slots()
     con = ctx.con
     mate_texts, asked_without, roles = _with_without_named(slots)
     players = slots.get("players")
@@ -1012,7 +1015,7 @@ def _with_without_notes(whose: str, spell_text: str, mates: list[Entity], asked_
     return notes
 
 
-def record_when(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def record_when(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """A team's record above and below a stat threshold, beside its record the
     other side of it.
 
@@ -1044,6 +1047,7 @@ def record_when(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        naming which, instead of quietly answering as though it had been
        applied (ISSUES.md).
     """
+    slots = reading.scope.to_slots()
     con = ctx.con
     if not slots.get("player"):
         return _record_when_team_answer(con, slots)
@@ -1383,7 +1387,7 @@ def _record_when_team_answer(con: duckdb.DuckDBPyConnection, slots: dict[str, An
     return _record_when_team_answer_table(con, span, team, narrowed, stat, column, threshold, found)
 
 
-def streak(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def streak(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """The longest run of consecutive games meeting a condition.
 
     For a team, its longest winning or losing run (``kind``) - within one
@@ -1422,6 +1426,7 @@ def streak(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        each other, so a run over them would not be the run the question asked
        for.
     """
+    slots = reading.scope.to_slots()
     con = ctx.con
     want_win = slots.get("kind") != "loss"
     stat, threshold = slots.get("stat"), slots.get("threshold")

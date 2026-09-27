@@ -14,6 +14,7 @@ from association.nba.coverage import POSTSEASON
 from association.nba.franchises import season_name, season_name_sql
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date
+from association.query.reading import Reading
 
 from ..conditions import _PLAYER_GAME_TABLES, _cell, _matchup_line, _meetings, _names, _player_games, _Scope, _table, _totals, _unseen_meetings, box_source
 from ..entities import Entity, find_players, resolve_team, teammate_names
@@ -194,7 +195,7 @@ def _log_extras(stat: Any) -> tuple[str, ...]:
     return ()
 
 
-def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def game_log(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """A team's or a player's games. Both orderings are explicit: "first game"
     and "last game" differ only by ORDER BY direction, and LIMIT 1 without one
     returns an arbitrary row rather than either.
@@ -245,6 +246,7 @@ def game_log(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        ``router._route_game_log_recent_span`` and ``_game_log_team``'s and
        ``_game_log_player``'s own ``mixed`` handling.
     """
+    slots = reading.scope.to_slots()
     con = ctx.con
     season_type = slots.get("season_type") or 2
     limit = _clamp_limit(slots.get("limit"), default=DEFAULT_GAME_LOG_LIMIT)
@@ -1098,7 +1100,7 @@ def _head_to_head_span_slots(slots: dict[str, Any], date: str | None) -> tuple[i
     return since, until, career
 
 
-def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def head_to_head(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """ "How many times did the 76ers play Boston?" - games between two teams.
 
     That question was answered "they did not play" (they played four times).
@@ -1128,6 +1130,7 @@ def head_to_head(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        Honors ``until`` beside ``since`` (step 3, K1): "meetings from 2011 to
        2019" reads a bounded range rather than an open-ended "since 2011".
     """
+    slots = reading.scope.to_slots()
     con = ctx.con
     teams_slot = slots.get("teams")
     team_slot = slots.get("team")
@@ -1347,7 +1350,7 @@ def _period_label(period: int) -> str:
     return "overtime" if ot == 1 else f"{_ordinal(ot)} overtime"
 
 
-def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def team_quarter_points(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """A team's total points in ONE quarter/period, narrowed to an opponent,
     a venue, one Eastern date, one game of each playoff series, a window of
     its newest or oldest N games, or a career that starts partway through -
@@ -1391,6 +1394,7 @@ def team_quarter_points(ctx: TemplateContext, slots: dict[str, Any]) -> Template
        two cells step 3, K1 adds to :data:`common.TEAM_RELATION_SCOPING`,
        reached the same "for free" way through :func:`common.team_games`.
     """
+    slots = reading.scope.to_slots()
     con = ctx.con
     periods, period_label = _period_scope(slots, "team_quarter_points")
     if isinstance(slots.get("player"), str) and slots["player"].strip():
@@ -1723,7 +1727,7 @@ def _period_split_subject(con: duckdb.DuckDBPyConnection, slots: dict[str, Any],
     )
 
 
-def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def period_split(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """A named player's points in ONE quarter or half, per game and averaged.
 
     The counterpart to :func:`team_quarter_points`, which answers a TEAM's
@@ -1781,6 +1785,7 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        while still heading them "the 2026 regular season", one of the years
        actually summed and not the range.
     """
+    slots = reading.scope.to_slots()
     con = ctx.con
     periods, period_label = _period_scope(slots)
     stat = slots.get("stat")
@@ -1847,7 +1852,7 @@ def period_split(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     return _period_split_result(data, header, caveat)
 
 
-def period_leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def period_leaderboard(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """Players ranked by their points in ONE quarter or half, per game.
 
     The league-wide counterpart to :func:`period_split`, which answers the
@@ -1906,6 +1911,7 @@ def period_leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateR
 
     .. versionadded:: 4.4.0
     """
+    slots = reading.scope.to_slots()
     con = ctx.con
     periods, period_label = _period_scope(slots, "period_leaderboard")
     stat = slots.get("stat")
@@ -2366,7 +2372,7 @@ def _period_split_result(data: dict[str, Any], header: str, caveat: str, *, extr
 _DEFAULT_MEETINGS_LOGGED = 5
 
 
-def player_matchup(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def player_matchup(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """The games two named players both played, on opposite teams: the
     head-to-head record, each one's averages in those games, and the most
     recent meetings.
@@ -2411,6 +2417,7 @@ def player_matchup(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
 
     .. versionadded:: 2.1.0
     """
+    slots = reading.scope.to_slots()
     con = ctx.con
     players = slots.get("players")
     listed: list[Any] = players if isinstance(players, list) else []
@@ -2424,7 +2431,7 @@ def player_matchup(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
         # by the same code game_log uses for "player vs opponent", not
         # reimplemented: it is the same question, however it got routed here.
         # `without` rides along unchanged - game_log already reads it.
-        return game_log(ctx, {**slots, "player": texts[0]})
+        return game_log(ctx, Reading.from_slots({**slots, "player": texts[0]}, intent="game_log", subject=reading.subject))
     if len(texts) != 2:
         raise TemplateUnsupported(f"player_matchup needs exactly two players, got {texts!r}")
     if opponent:

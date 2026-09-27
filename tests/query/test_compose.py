@@ -27,6 +27,7 @@ from association.query.compose.adapt import to_query
 from association.query.compose.core import Query, Refused, Unsupported, compile_query, run
 from association.query.compose.move import _asc_or_desc, _career_slots, _drop_position_only_player, _everyone_career_slots, _position_only_player, _ranking_minimum, move_point, team_move_point
 from association.query.compose.team import TeamQuery, run_team
+from association.query.reading import Reading
 from association.query.templates.common import TemplateContext
 
 #: Box-score columns, in the order ``_box`` below fills them - the same shape
@@ -1120,7 +1121,7 @@ def _parity(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: 
 
     _add_condition_tables(ctx.con)
 
-    template = TEMPLATES[intent](ctx, dict(slots))
+    template = TEMPLATES[intent](ctx, Reading.from_slots(dict(slots)))
     composed = compose_answer(ctx, intent, dict(slots), question)
     assert composed is not None
     return template, composed
@@ -1318,7 +1319,7 @@ def test_a_single_games_usage_is_the_percent_the_split_averages(cx_ctx: Template
     _add_condition_tables(cx_ctx.con)
     cx_ctx.con.execute("ALTER TABLE player_box_stats ADD COLUMN usage_pct DOUBLE")
     cx_ctx.con.execute("UPDATE player_box_stats SET usage_pct = CASE event_id WHEN 'g1' THEN 24.35 ELSE 18.0 END WHERE athlete_id = ?", [PODZ])
-    split = player_splits(cx_ctx, {"player": "Brandin Podziemski", "stat": "usage_pct", "split": "home_away"})
+    split = player_splits(cx_ctx, Reading.from_slots({"player": "Brandin Podziemski", "stat": "usage_pct", "split": "home_away"}))
     away = next(row for row in split.data["splits"]["home_away"] if row["group"] == "away")
     assert away["games"] == 1 and away["usage_pct"] == pytest.approx(24.35)
     log = compose_answer(cx_ctx, "game_log", {"player": "Brandin Podziemski", "stat": "usage_pct"}, "podziemski usage game log")

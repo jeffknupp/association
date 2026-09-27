@@ -14,6 +14,7 @@ import duckdb
 from association.nba.coverage import unavailable
 from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
+from association.query.reading import Reading
 
 from ..calendar import CalendarNarrowing, parse_situation
 from ..conditions import _MONTH_NAMES, _season_month_order, _table
@@ -94,7 +95,7 @@ COACH_REFUSAL: str = (
 """
 
 
-def coach(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def coach(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """Refuse a question about a coach, naming the real cause.
 
     Assigned by :func:`association.query.router.route` from the question's own
@@ -107,6 +108,7 @@ def coach(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
 
     .. versionadded:: 4.0.0
     """
+    slots = reading.scope.to_slots()
     del ctx, slots  # A refusal needs neither a connection nor a slot.
     return TemplateResult(data={"message": COACH_REFUSAL, "unanswerable": "coach"}, answer=COACH_REFUSAL)
 
@@ -271,7 +273,7 @@ def _team_record_since(since: Any, career: bool, season: int | None) -> int | No
     return since
 
 
-def team_record(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def team_record(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """A team's win-loss record: for a season, at home or on the road, against
     one team, in a postseason, since a season, in game N of each playoff
     series, in one calendar month, broken out by month, or across every
@@ -317,6 +319,7 @@ def team_record(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        (:func:`_team_record_by_month_span`) - "Knicks record by month 2024
        2025" (ISSUES.md).
     """
+    slots = reading.scope.to_slots()
     con = ctx.con
     refused = _conference_refusal(slots)
     if refused is not None:
@@ -1275,7 +1278,7 @@ def _metric_key(metric: TeamMetric) -> str:
     return next(key for key, candidate in TEAM_METRICS.items() if candidate is metric)
 
 
-def team_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def team_stat(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """One team's season numbers, each with its rank in the league.
 
     With a ``stat`` it answers that one metric; with none, a compact line -
@@ -1286,6 +1289,7 @@ def team_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
 
     .. versionadded:: 2.1.0
     """
+    slots = reading.scope.to_slots()
     con = ctx.con
     refused = _conference_refusal(slots)
     if refused is not None:
@@ -1454,7 +1458,7 @@ def _team_leaderboard_span(slots: dict[str, Any], season: int, season_type: int)
     return since, until, period
 
 
-def team_leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def team_leaderboard(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """Every team ranked by one metric from team_metrics.TEAM_METRICS - "which
     team scores the most points per game", "lowest defensive rating", "best
     record".
@@ -1480,6 +1484,7 @@ def team_leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
        2010-11 to 2018-19" now names a bounded range ("2011-2019") rather than
        reading only its open-ended first half.
     """
+    slots = reading.scope.to_slots()
     con = ctx.con
     refused = _conference_refusal(slots)
     if refused is not None:
@@ -1721,7 +1726,7 @@ def _team_outlook_choose(snapshots: list[tuple[Any, ...]], postseason: bool) -> 
     return candidates[-1] if candidates else None
 
 
-def team_outlook(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def team_outlook(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """A team's ESPN Basketball Power Index: its rating and where it sits,
     projected record, playoff and title chances, and strength of schedule.
 
@@ -1755,6 +1760,7 @@ def team_outlook(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        ``ISSUES.md``, "A regular-season BPI question answers from the play-in
        snapshot in 2023, 2025 and 2026" (#88).
     """
+    slots = reading.scope.to_slots()
     con = ctx.con
     refused = _conference_refusal(slots)
     if refused is not None:

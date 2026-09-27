@@ -11,6 +11,7 @@ from ollama import ChatResponse, Message
 
 from association.nba.season import current_season
 from association.query.prompt import estimate_tokens
+from association.query.reading import Reading
 from association.query.router import CODE_ASSIGNED_INTENTS, ORDER_INTENTS, ORDER_WORDS, SIDE_VALUES, Route, RouterUnavailable, route
 from association.query.router_prompt import ROUTER_NUM_CTX, ROUTER_PROMPT, ROUTER_PROMPT_TOKEN_BUDGET, ROUTER_SCHEMA
 from association.query.templates import TEMPLATES, TemplateContext
@@ -2312,7 +2313,7 @@ def test_the_coach_refusal_names_the_source_rather_than_blaming_it() -> None:
     2026-09-17 and is false: it serves two coach collections, both unusable.
     Saying the source has none would be the wrong-cause refusal this project
     keeps producing, so the sentence says what is actually wrong with them."""
-    answer = TEMPLATES["coach"](cast("TemplateContext", None), {}).answer
+    answer = TEMPLATES["coach"](cast("TemplateContext", None), Reading()).answer
     assert "No table here holds a coach" in answer
     assert "ESPN does publish coaches" in answer
     assert "Player and team questions are unaffected" in answer

@@ -15,6 +15,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
+from association.query.reading import Reading
 from association.query.templates import TemplateContext, TemplateUnsupported, check_coverage
 from association.query.templates.common import _ADVANCED_STAT_NAMES, _sources_for
 from association.query.templates.players import ADVANCED_STATS, player_stat
@@ -69,7 +70,7 @@ def test_a_career_rate_is_weighted_by_its_own_volume_not_averaged(advanced_ctx: 
     (.5 x 100 + .7 x 900 + .9 x 50) / 1,050 = .690. The mean of .500, .700 and
     .900 is .700 - a number no reader could reproduce from the volumes printed
     beside it, and the one an average of averages would give."""
-    result = player_stat(advanced_ctx, {"player": "Klay Thompson", "stat": "ts_pct", "span": "career"})
+    result = player_stat(advanced_ctx, Reading.from_slots({"player": "Klay Thompson", "stat": "ts_pct", "span": "career"}))
     assert result.data["stats"]["ts_pct"] == pytest.approx(725 / 1050)
     assert ".690 true shooting percentage" in result.answer
     assert ".700" not in result.answer
@@ -79,7 +80,7 @@ def test_a_career_rate_excludes_the_phantom_season(advanced_ctx: TemplateContext
     """1993's rows are identical copies of 1994's. Counted, they would add 50
     attempts at .900 twice and pull the career figure up; excluded, the career
     covers 1994-2025 and the 1994 row is counted once."""
-    result = player_stat(advanced_ctx, {"player": "Klay Thompson", "stat": "ts_pct", "span": "career"})
+    result = player_stat(advanced_ctx, Reading.from_slots({"player": "Klay Thompson", "stat": "ts_pct", "span": "career"}))
     assert result.data["seasons"] == [1994, 2025]
     # 1,050 attempts, not 1,100: (.5 x 100 + .7 x 900 + .9 x 50) / 1050.
     assert "on 1,050 true-shooting attempts" in result.answer
@@ -88,14 +89,14 @@ def test_a_career_rate_excludes_the_phantom_season(advanced_ctx: TemplateContext
 def test_efg_is_weighted_by_field_goal_attempts_not_true_shooting_ones(advanced_ctx: TemplateContext) -> None:
     """Each rate takes its OWN denominator. Weighting eFG% by true-shooting
     attempts would give .6857 here; by field-goal attempts it is .6860."""
-    result = player_stat(advanced_ctx, {"player": "Klay Thompson", "stat": "efg_pct", "span": "career"})
+    result = player_stat(advanced_ctx, Reading.from_slots({"player": "Klay Thompson", "stat": "efg_pct", "span": "career"}))
     assert "field-goal attempts" in result.answer
     assert result.data["stats"]["efg_pct"] == pytest.approx((0.4 * 80 + 0.6 * 720 + 0.9 * 40) / 840)
 
 
 def test_a_season_figure_is_read_rather_than_recomputed(advanced_ctx: TemplateContext) -> None:
     for stat, expected in (("ts_pct", ".700 true shooting percentage"), ("usage_pct", "31.0 usage rate"), ("game_score", "19.0 game score")):
-        answer = player_stat(advanced_ctx, {"player": "Klay Thompson", "stat": stat, "season": 2025}).answer
+        answer = player_stat(advanced_ctx, Reading.from_slots({"player": "Klay Thompson", "stat": stat, "season": 2025})).answer
         assert expected in answer, stat
         assert "in the 2025 regular season" in answer, stat
 
@@ -106,7 +107,7 @@ def test_a_stat_with_no_volume_column_refuses_a_career_rather_than_averaging(adv
     per-game composite; neither has a denominator the seasons can be weighted
     by, so a career figure would be the mean of means the test above rejects."""
     with pytest.raises(TemplateUnsupported, match="no career figure"):
-        player_stat(advanced_ctx, {"player": "Klay Thompson", "stat": stat, "span": "career"})
+        player_stat(advanced_ctx, Reading.from_slots({"player": "Klay Thompson", "stat": stat, "span": "career"}))
 
 
 def test_a_narrowed_set_of_games_is_refused_not_answered_with_the_season(advanced_ctx: TemplateContext) -> None:
@@ -114,7 +115,7 @@ def test_a_narrowed_set_of_games_is_refused_not_answered_with_the_season(advance
     is the substitution the module's own docstring exists to stop, and the
     refusal names the real cause rather than claiming no data."""
     with pytest.raises(TemplateUnsupported, match="narrowed set of games"):
-        player_stat(advanced_ctx, {"player": "Klay Thompson", "stat": "ts_pct", "opponent": "Boston Celtics"})
+        player_stat(advanced_ctx, Reading.from_slots({"player": "Klay Thompson", "stat": "ts_pct", "opponent": "Boston Celtics"}))
 
 
 def test_an_advanced_stat_is_charged_its_own_floor_not_the_season_lines() -> None:
@@ -144,7 +145,7 @@ def test_a_career_says_which_seasons_it_could_not_see(advanced_ctx: TemplateCont
     no attempts and a NULL rate. Counting its games would credit the rate with
     60 games it never saw, and naming the span 2014-2016 without a word about
     the hole is the fluent-but-narrower answer this project refuses."""
-    result = player_stat(advanced_ctx, {"player": "Joakim Noah", "stat": "ts_pct", "span": "career"})
+    result = player_stat(advanced_ctx, Reading.from_slots({"player": "Joakim Noah", "stat": "ts_pct", "span": "career"}))
     assert "in 120 games" in result.answer, "the empty season's 60 games must not be counted"
     assert "180 games" not in result.answer
     assert result.data["seasons_missing"] == 1
@@ -155,7 +156,7 @@ def test_a_career_says_which_seasons_it_could_not_see(advanced_ctx: TemplateCont
 def test_a_career_with_nothing_missing_says_nothing_about_it(advanced_ctx: TemplateContext) -> None:
     """The note is a caveat, not a disclaimer: a complete career does not carry
     a sentence about seasons that are all present."""
-    assert "not counted" not in player_stat(advanced_ctx, {"player": "Klay Thompson", "stat": "ts_pct", "span": "career"}).answer
+    assert "not counted" not in player_stat(advanced_ctx, Reading.from_slots({"player": "Klay Thompson", "stat": "ts_pct", "span": "career"})).answer
 
 
 def test_the_span_named_is_the_span_the_figure_covers(advanced_ctx: TemplateContext) -> None:
@@ -163,7 +164,7 @@ def test_the_span_named_is_the_span_the_figure_covers(advanced_ctx: TemplateCont
     years the answer claims. Gibson has data for 2014 and 2016 only; saying
     "2013-2017" would name two years the rate never saw, which is the same
     fluent overreach as counting their games."""
-    result = player_stat(advanced_ctx, {"player": "Taj Gibson", "stat": "ts_pct", "span": "career"})
+    result = player_stat(advanced_ctx, Reading.from_slots({"player": "Taj Gibson", "stat": "ts_pct", "span": "career"}))
     assert result.data["seasons"] == [2014, 2016]
     assert "(2014-2016 regular seasons)" in result.answer
     assert "2013" not in result.answer

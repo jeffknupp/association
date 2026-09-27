@@ -13,6 +13,7 @@ import duckdb
 from association.nba.netpoints import FINGERPRINT_CATEGORIES
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date
+from association.query.reading import Reading
 
 from ..entities import Ambiguous, Availability, Entity, no_match
 from ..fingerprint import FINGERPRINT_AVAILABILITY, FINGERPRINT_VIEWS, GAME_FINGERPRINT_AVAILABILITY, FingerprintUnavailable, render_for_players
@@ -47,7 +48,7 @@ FINGERPRINT_SUMMARY_CATEGORY = "total"
 FINGERPRINT_PARTITION = ("two_pt", "three_pt", "free_throw", "turnover", "rebound", "foul")
 
 
-def player_netpoints(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def player_netpoints(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """One player's NetPoints, with the play-type fingerprint.
 
     NetPoints existed only as leaderboard metrics - ways to rank the league - so
@@ -63,6 +64,7 @@ def player_netpoints(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
        nothing of his at all. A season the question named outright is
        unaffected.
     """
+    slots = reading.scope.to_slots()
     con = ctx.con
     # Settled before the name is resolved: the season is what narrows an
     # ambiguous name to the players with NetPoints in it.
@@ -373,7 +375,7 @@ def _phrase_netpoints_detail(detail_rows: list[dict[str, Any]], units: str, widt
     return lines
 
 
-def fingerprint(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def fingerprint(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """Renders one or more players' NetPoints fingerprints to a static HTML
     radar plot.
 
@@ -382,6 +384,7 @@ def fingerprint(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
     match on sight, which is what makes best-match safe here and not in a
     template reporting numbers.
     """
+    slots = reading.scope.to_slots()
     # "compare their fingerprints" arrives as `players`, one name as `player`.
     # Both draw one plot; two polygons on shared axes IS the comparison, so
     # this does not need a second intent.

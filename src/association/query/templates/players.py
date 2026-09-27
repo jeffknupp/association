@@ -15,6 +15,7 @@ from association.nba.coverage import COVERAGE, POSTSEASON
 from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date
+from association.query.reading import Reading
 
 from ..entities import Availability, Entity
 from ..leaderboard import SEASON_TOTAL_OF, LeaderboardError, LeaderboardResult, not_a_postseason_copy, resolve_metric, run_career_leaderboard, run_leaderboard
@@ -244,7 +245,7 @@ def _empty_note(found: tuple[int, int | None, int | None], name: str | None, con
     return f" {whose} {between} {'has' if count == 1 else 'have'} an empty box score in this warehouse, so {consequence}."
 
 
-def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def threshold_count(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """ "Most games with N+ of some stat" - the shape that motivated this split.
 
     A KNOWLEDGE_BASE entry covered it, but sat in the truncated-away head of the
@@ -266,6 +267,7 @@ def threshold_count(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResu
        alone, and a count of none then says the rebuilt lines were held back
        rather than implying there is nothing to read.
     """
+    slots = reading.scope.to_slots()
     con = ctx.con
     stat = slots.get("stat")
     column, threshold = _threshold_count_ask(slots)
@@ -590,7 +592,7 @@ def _leaderboard_no_such_rate(rate: Any, metric: str) -> TemplateResult:
     return TemplateResult(data={"message": message, "headline": message}, answer=message)
 
 
-def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def leaderboard(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """ "Top N players by X" for the metrics in LEADERBOARD_METRICS.
 
     Thin on purpose: run_leaderboard owns the season default, minimum-sample
@@ -621,6 +623,7 @@ def leaderboard(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        rather than built here, since the ranking needs its own qualifying
        floor measured (not simply plugged into `LEADERBOARD_METRICS`).
     """
+    slots = reading.scope.to_slots()
     con = ctx.con
     if slots.get("stat") == "shot_distance":
         # router._route_leaderboard_shot_distance's sentinel - see the
@@ -922,7 +925,7 @@ DEFAULT_HISTORY_SEASONS = 4
 MAX_HISTORY_SEASONS = 20
 
 
-def player_history(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def player_history(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """One player's stat across several seasons: the last four by default, a
     number of them the question named, or every one of them for a career.
 
@@ -945,6 +948,7 @@ def player_history(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResul
        actually asked for ("show me sga's career 2pt percentage") without
        ever stating it (F041, ISSUES.md).
     """
+    slots = reading.scope.to_slots()
     player = _player_history_subject(ctx.con, slots)
     if isinstance(player, TemplateResult):
         return player
@@ -1324,7 +1328,7 @@ _CAREER_TOTALS: dict[str, str | None] = {
 }
 
 
-def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def player_stat(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """One named player's numbers: a season line, a career, or the games a
     question narrowed to.
 
@@ -1369,6 +1373,7 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        1997-2010 range. A season the question named outright keeps the plain
        refusal, because it is the correct answer.
     """
+    slots = reading.scope.to_slots()
     con = ctx.con
     # Refused here, before any name is resolved, if a line names no column.
     measures = measure_filters(slots.get("below"), slots.get("above"))
@@ -1387,7 +1392,7 @@ def player_stat(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
         # question has, so it is handed there rather than refused.
         from .games import game_log
 
-        return game_log(ctx, slots)
+        return game_log(ctx, Reading.from_slots(slots, intent="game_log", subject=reading.subject))
     # The order those steps have to run in lives in scoped_player, with why.
     # Settled before the name is resolved: the span, and the table it is read
     # from, are what narrow an ambiguous name to the players who could be the
@@ -1955,7 +1960,7 @@ def _phrase_player_stat(name: str, period: str, values: dict[str, Any], wanted: 
 DEFAULT_SINGLE_GAME_LIMIT = 3
 
 
-def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def single_game_high(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """ "Most assists in a single game" - a per-game MAXIMUM, not a season
     ranking.
 
@@ -1979,6 +1984,7 @@ def single_game_high(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateRes
        games", true of the wrong year. A season the question named outright
        is unaffected.
     """
+    slots = reading.scope.to_slots()
     stat = slots.get("stat")
     column = THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
     if column is None:
@@ -2164,12 +2170,13 @@ def _phrase_single_game_high(
 MAX_COMPARED_PLAYERS = 4
 
 
-def player_compare(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def player_compare(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """Two or more named players' season numbers side by side.
 
     The agent wrote correct SQL but expanded "SGA" to '%Scottie G. Allen%' and
     compared Luka Doncic to Luka Garza. Nickname resolution is a lookup, not
     something to hope a 7B model knows - see entities.PLAYER_NICKNAMES."""
+    slots = reading.scope.to_slots()
     con = ctx.con
     names = slots.get("players")
     if not isinstance(names, list) or len({n for n in names if isinstance(n, str) and n.strip()}) < 2:

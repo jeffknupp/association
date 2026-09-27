@@ -19,7 +19,8 @@ The templates live in one module per subject; this package holds the registry,
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+
+from association.query.reading import Reading
 
 from .common import HONORED_SCOPING as HONORED_SCOPING
 from .common import PLAYER_INTENTS as PLAYER_INTENTS
@@ -39,7 +40,7 @@ from .shots import shot_chart, shot_distance
 from .splits import player_splits, record_when, streak, with_without
 from .teams import coach, team_leaderboard, team_outlook, team_record, team_stat
 
-TEMPLATES: dict[str, Callable[[TemplateContext, dict[str, Any]], TemplateResult]] = {
+TEMPLATES: dict[str, Callable[[TemplateContext, Reading], TemplateResult]] = {
     "threshold_count": threshold_count,
     "leaderboard": leaderboard,
     "player_stat": player_stat,

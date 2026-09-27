@@ -23,6 +23,7 @@ import duckdb
 import pytest
 
 from association.nba.netpoints import FINGERPRINT_CATEGORIES
+from association.query.reading import Reading
 from association.query.templates import TEMPLATES
 from association.query.templates.common import TemplateContext
 from association.web.app import INDEX_HTML
@@ -282,7 +283,7 @@ def test_every_key_a_renderer_reads_is_a_key_its_template_produces(ctx: Template
     page silently falling back to text; this fails instead."""
     for intent, needs in sorted(_renderers().items()):
         with subtests.test(intent=intent):
-            result = TEMPLATES[intent](ctx, CASES[intent])
+            result = TEMPLATES[intent](ctx, Reading.from_slots(CASES[intent]))
             missing = [key for key in needs if result.data.get(key) is None]
             assert missing == [], f"{intent} no longer produces {missing} - the page's renderer would fall back to text"
 
@@ -293,7 +294,7 @@ def test_the_data_a_renderer_reads_is_json_serializable_as_is(ctx: TemplateConte
     formats as a number would quietly become left-aligned text. So this
     serializes strictly: anything needing a fallback raises here instead."""
     for intent, needs in sorted(_renderers().items()):
-        data = TEMPLATES[intent](ctx, CASES[intent]).data
+        data = TEMPLATES[intent](ctx, Reading.from_slots(CASES[intent])).data
         json.dumps({key: data[key] for key in needs})  # no default= on purpose
 
 

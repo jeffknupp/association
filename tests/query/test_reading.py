@@ -114,10 +114,13 @@ def test_a_slot_dict_round_trips_through_the_scope() -> None:
         ({"sesaon": 2026}, "no scope field"),
         ({"season": "2026"}, "whole number"),
         ({"season": True}, "whole number"),
-        ({"players": "Joel Embiid"}, "list of text"),
+        ({"players": ["Joel Embiid", 7]}, "list of text"),
         ({"venue": "neutral"}, "one of"),
         ({"season_type": 1}, "one of"),
         ({"limit": 0}, "below 1"),
+        ({"span": "decade"}, "one of"),
+        ({"conditions": [{"player": "Jayson Tatum", "predicate": "dunked"}]}, "predicate"),
+        ({"conditions": [{"side": "own"}]}, "names no player"),
     ],
 )
 def test_a_slot_nothing_types_is_refused_out_loud(slots: dict[str, Any], match: str) -> None:

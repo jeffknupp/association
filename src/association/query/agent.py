@@ -29,6 +29,7 @@ from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .keepalive import KEEP_ALIVE
 from .models import AGENT_BUDGET_SECONDS, DEFAULT_ROUTER_MODEL
 from .prompt import AGENT_NUM_CTX, TOOLS, build_system_prompt
+from .reading import Reading
 from .refusals import by_question, unanswerable
 from .router import Route, RouterUnavailable, route
 from .subject import Subject, apply_subject, read_subject
@@ -505,7 +506,7 @@ class Agent:
         return None
 
     def _run_scoped_template(
-        self, question: str, routed: Route, handler: Callable[[TemplateContext, dict[str, Any]], TemplateResult], history: RunHistory, subject: Subject
+        self, question: str, routed: Route, handler: Callable[[TemplateContext, Reading], TemplateResult], history: RunHistory, subject: Subject
     ) -> tuple[str, TemplateResult] | None:
         """Check scope and coverage, run the template, and attach the notes
         every fast-path answer carries. On a scoping refusal
@@ -537,7 +538,7 @@ class Agent:
                 history.log(f"  -> (coverage) {refused}")
                 result = TemplateResult(data={"message": refused, "season": routed.slots.get("season")}, answer=refused)
             else:
-                result = self._run_template(handler, routed.slots, history)
+                result = self._run_template(handler, Reading.from_slots(routed.slots, intent=routed.intent, subject=subject), history)
                 # A season that IS covered but only partly says so, rather than
                 # reporting half a year as a whole one.
                 note = coverage_caveat(routed.intent, routed.slots)
@@ -624,20 +625,20 @@ class Agent:
         history.log(f"  -> (compose) intent={intent!r} point={point}")
         return composed
 
-    def _run_template(self, handler: Callable[[TemplateContext, dict[str, Any]], TemplateResult], slots: dict[str, Any], history: RunHistory) -> TemplateResult:
+    def _run_template(self, handler: Callable[[TemplateContext, Reading], TemplateResult], reading: Reading, history: RunHistory) -> TemplateResult:
         """The template's answer, with how it read any name the question left
         open. "maxey" is Tyrese because he is the only Maxey who still plays -
         a default, and a default is allowed only where it is visible and can be
         corrected, so the sentence naming who else matched and what to type for
         him is part of the answer (entities.collect_name_readings)."""
-        with collect_name_readings() as readings:
-            result = handler(TemplateContext(con=self.toolbox.con, out_dir=self.toolbox.out_dir), slots)
-        for reading in readings:
-            history.log(f"  -> (player) {reading}")
-            result.answer = f"{result.answer} {reading}"
-            _note(result, reading)
-        if readings:
-            result.data["name_readings"] = list(readings)
+        with collect_name_readings() as name_readings:
+            result = handler(TemplateContext(con=self.toolbox.con, out_dir=self.toolbox.out_dir), reading)
+        for name_reading in name_readings:
+            history.log(f"  -> (player) {name_reading}")
+            result.answer = f"{result.answer} {name_reading}"
+            _note(result, name_reading)
+        if name_readings:
+            result.data["name_readings"] = list(name_readings)
         return result
 
     def _ask_inner_chat(self, history: RunHistory) -> ollama.Message:

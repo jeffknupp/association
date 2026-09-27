@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from association.query.entities import Availability
-    from association.query.subject import Companion, Subject
+    from association.query.subject import Subject
 
 Shape = Literal["rows", "scalar", "grouped"]
 """Which reader answers the point: rows, one number, or one row per group.
@@ -70,6 +70,56 @@ Split = Literal["home_away", "starter_bench", "wins_losses", "month", "starter",
 
 
 @dataclass(frozen=True, kw_only=True)
+class ConditionSpec:
+    """One player named beside the subject and the role the question gives
+    him in the games asked about - one ``conditions`` entry, as the relation
+    reads it (``templates.common._condition_from_slot``): "when Embiid and
+    Paul George start", "in games Maxey had 20+ points". ``stat`` and
+    ``threshold`` belong to a ``reached`` role.
+
+    .. versionadded:: 4.5.0
+    """
+
+    player: str
+    side: Literal["own", "opponent"] = "own"
+    predicate: Literal["played", "absent", "started", "bench", "reached"] = "played"
+    stat: str | None = None
+    threshold: int | None = None
+
+    @classmethod
+    def from_slot(cls, entry: Any) -> ConditionSpec:
+        """One ``conditions`` slot entry, a dict, as a typed record - raising
+        on a shape the relation could not read.
+
+        .. versionadded:: 4.5.0
+        """
+        if not isinstance(entry, Mapping) or set(entry) - {"player", "side", "predicate", "stat", "threshold"}:
+            raise ValueError(f"scope condition {entry!r} is not a player, side, predicate and line")
+        player = entry.get("player")
+        if not isinstance(player, str) or not player.strip():
+            raise ValueError(f"scope condition {entry!r} names no player")
+        side = _one_of("own", "opponent")("condition side", entry.get("side", "own"))
+        predicate = _one_of("played", "absent", "started", "bench", "reached")("condition predicate", entry.get("predicate", "played"))
+        stat = entry.get("stat")
+        threshold = entry.get("threshold")
+        return cls(
+            player=player,
+            side=side,
+            predicate=predicate,
+            stat=None if stat is None else _text("condition stat", stat),
+            threshold=None if threshold is None else _whole("condition threshold", threshold),
+        )
+
+    def to_slot(self) -> dict[str, Any]:
+        """The ``conditions`` entry the relation reads.
+
+        .. versionadded:: 4.5.0
+        """
+        line = {key: value for key, value in (("stat", self.stat), ("threshold", self.threshold)) if value is not None}
+        return {"player": self.player, "side": self.side, "predicate": self.predicate, **line}
+
+
+@dataclass(frozen=True, kw_only=True)
 class Scope:
     """What narrows the answer, one typed field per scoping slot. A field at
     its default (None, empty, False) is the slot absent - the reading every
@@ -91,8 +141,8 @@ class Scope:
     team_restored: bool = False
     with_player: tuple[str, ...] = ()
     without: tuple[str, ...] = ()
-    #: Each companion with the role the question gives him (``subject.Companion``).
-    conditions: tuple[Companion, ...] = ()
+    #: Each player named beside the subject, with his role.
+    conditions: tuple[ConditionSpec, ...] = ()
     #: What is measured.
     stat: str | None = None
     threshold: int | None = None
@@ -168,7 +218,10 @@ class Scope:
             value = getattr(self, f.name)
             if value is None or value is False or value == ():
                 continue
-            out[f.name] = list(value) if isinstance(value, tuple) else value
+            if f.name == "conditions":
+                out[f.name] = [condition.to_slot() for condition in value]
+            else:
+                out[f.name] = list(value) if isinstance(value, tuple) else value
         return out
 
 
@@ -179,6 +232,11 @@ def _text(name: str, raw: Any) -> str:
 
 
 def _texts(name: str, raw: Any) -> tuple[str, ...]:
+    # A bare string is one item: the readers have always taken it so
+    # (``templates.common.teammate_names``: slot values are advisory, and a
+    # reader of one shape would be one stray route from answering nothing).
+    if isinstance(raw, str):
+        return (raw,)
     if not isinstance(raw, (list, tuple)) or not all(isinstance(item, str) for item in raw):
         raise ValueError(f"scope {name}={raw!r} is not a list of text")
     return tuple(raw)
@@ -196,10 +254,10 @@ def _flag(name: str, raw: Any) -> bool:
     return raw
 
 
-def _companions(name: str, raw: Any) -> tuple[Any, ...]:
-    if not isinstance(raw, (list, tuple)) or not all(hasattr(item, "predicate") for item in raw):
-        raise ValueError(f"scope {name}={raw!r} is not a list of companions")
-    return tuple(raw)
+def _conditions(name: str, raw: Any) -> tuple[ConditionSpec, ...]:
+    if not isinstance(raw, (list, tuple)):
+        raise ValueError(f"scope {name}={raw!r} is not a list of conditions")
+    return tuple(entry if isinstance(entry, ConditionSpec) else ConditionSpec.from_slot(entry) for entry in raw)
 
 
 def _one_of(*allowed: object) -> Callable[[str, Any], Any]:
@@ -217,7 +275,7 @@ _CHECKS: dict[str, Callable[[str, Any], Any]] = {
     **dict.fromkeys(("players", "teams", "with_player", "without", "above", "below", "fields"), _texts),
     **dict.fromkeys(("threshold", "season", "since", "until", "game_n", "season_n", "period", "limit"), _whole),
     **dict.fromkeys(("team_restored", "per_game", "season_type_unstated"), _flag),
-    "conditions": _companions,
+    "conditions": _conditions,
     "side": _one_of("offense", "defense", "total"),
     "shot_value": _one_of(1, 2, 3),
     "rank": _one_of("most", "fewest", "best", "worst"),
@@ -273,6 +331,17 @@ class Reading:
     subject: Subject | None = None
     #: One line per finding, for the trace.
     evidence: tuple[str, ...] = ()
+
+    @classmethod
+    def from_slots(cls, slots: Mapping[str, Any], *, intent: str = "", subject: Subject | None = None) -> Reading:
+        """A Reading holding nothing but the scope ``slots`` names (through
+        :meth:`Scope.from_slots`), for the readers that still build one from a
+        slot dict: the agent's dispatch of a routed question to its template,
+        a template handing a question to another, and the tests.
+
+        .. versionadded:: 4.5.0
+        """
+        return cls(scope=Scope.from_slots(slots), intent=intent, subject=subject)
 
     def describe(self) -> str:
         """The one trace line: every field that decides the answer."""

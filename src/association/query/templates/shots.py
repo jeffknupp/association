@@ -29,6 +29,7 @@ from typing import Any
 import duckdb
 
 from association.nba.coverage import COVERAGE
+from association.query.reading import Reading
 
 from ..conditions import box_source
 from ..court import HAS_POSITION_SQL, SHOT_DISTANCE_SQL
@@ -237,7 +238,7 @@ def _shot_chart_message(ctx: TemplateContext, *, career: bool, defaulted: bool, 
     return rendered_message
 
 
-def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def shot_chart(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """Renders one player's shots to a static HTML court plot.
 
     Uses shotchart.render_shot_chart, the same function the agent tool calls,
@@ -270,6 +271,7 @@ def shot_chart(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
        used to draw the whole season (374 shots) because ``limit`` was never
        read; it now draws the two games.
     """
+    slots = reading.scope.to_slots()
     name = slots.get("player")
     if not isinstance(name, str) or not name.strip():
         raise TemplateUnsupported("shot_chart needs a player name")
@@ -512,7 +514,7 @@ def _shot_distance_answer(player: Entity, kind: str, period: str, game_note: str
     return answer
 
 
-def shot_distance(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult:
+def shot_distance(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """Average shot distance for one player, optionally by shot value.
 
     The agent wrote a distance formula, then dropped both the 3-point filter
@@ -544,6 +546,7 @@ def shot_distance(ctx: TemplateContext, slots: dict[str, Any]) -> TemplateResult
        on a box-score column, one Eastern date and ``since`` all narrow which
        games the average is taken over.
     """
+    slots = reading.scope.to_slots()
     con = ctx.con
     raw_date = slots.get("date")
     date = raw_date if isinstance(raw_date, str) and _ISO_DATE.match(raw_date) else None
