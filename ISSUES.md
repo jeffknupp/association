@@ -4634,3 +4634,17 @@ those were found.
 - **Source:** ours; DATA.md "Coverage floors" for why the players are absent.
 - **GitHub:** #245
 
+### A slot value the Scope refuses is an uncaught ValueError: "stephen curry last 0 games" raises out of `Agent.ask`
+- **Found:** 2026-09-27, plan item 6 step (d), moving `templates.common`'s shared steps onto the typed Scope.
+- **Evidence:** `Scope.from_slots` (`query/reading.py`) raises ValueError on a limit below 1 or a value outside a closed set, and nothing between the reader and the template catches it: `agent._run_scoped_template` catches only `TemplateUnsupported`, and `Agent.ask` re-raises. The parser reads "stephen curry last 0 games" as `game_log {'player': 'Stephen Curry', 'order': 'recent', 'limit': 0, ...}` and "top 0 scorers this season" as `leaderboard {'limit': 0, ...}`; the router reader's `_settle` passes a model's `limit: 0`, `limit: -3` or `shot_value: 0` through unchanged. Probed through the fast path with the route fixed (`~/association-research/golden/probe_A.py`, on 3aaa755 and on the commit that converted the shared steps): 5 of 6 such routes raise `ValueError: scope limit 0 is below 1` (or `shot_value=0 is not one of (1, 2, 3)`) on both trees. The sixth moved with that commit, the only answer it moved: `game_log` with `limit: 0` and season 1980 answered 3aaa755's coverage refusal ("Player game logs only go back to 1994 ..."), because `check_coverage` read the raw dict before `Reading.from_slots` typed it; `check_scope` now types the dict first and raises the same ValueError. Before 1f344e4 the templates clamped a limit below 1 to their default (`_clamp_limit`). None of the 631 golden routes or the 277 rehearsal questions carries such a value.
+- **User sees:** an error (the CLI's traceback, the web page's error event) instead of an answer or a refusal, for a count typed as zero or less.
+- **Next step:** type the route once, where the agent first reads it - `Reading.from_slots` before `check_scope` - and answer the ValueError with a refusal naming the value ("a window of 0 games names no games"), or have both readers drop a limit below 1 as the templates used to; then the templates' own `_clamp_limit` guards can go.
+- **Source:** ours.
+
+### `condition_player` lifts a resolved opponent out of `player_splits`' slot dict until that template passes `reading.scope`
+- **Found:** 2026-09-27, plan item 6 step (d), moving `templates.common`'s shared steps onto the typed Scope.
+- **Evidence:** `splits._player_splits_player` (`templates/splits.py:541-555`) resolves the opponent before the player, so a clarification about the team comes first, and hands `condition_player` a slot dict holding that `Entity` under `opponent`. `Scope.from_slots` refuses an Entity (`scope opponent=Entity(...) is not text`), so `common._condition_player_opponent` takes it out before typing the rest and carries it to `scoped_games` as it always was. The typed route is `condition_player(..., opponent=<Entity>)`, added in the same commit (`test_condition_player_reads_a_scope_beside_the_opponent_its_caller_resolved`).
+- **User sees:** nothing.
+- **Next step:** when `splits.py` moves onto `reading.scope`, pass the resolved team as `opponent=` rather than its name in the Scope: resolved again from text, it would be read for the settled span's season (an ordinal season's year, say) rather than the season the question named, and a franchise's name is a fact about a season. Then delete `_condition_player_opponent` with the Mapping half of `_as_scope`.
+- **Source:** ours.
+

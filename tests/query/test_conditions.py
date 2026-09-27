@@ -1281,6 +1281,37 @@ def test_venue_and_opponent_narrow_together(league: TemplateContext) -> None:
     assert "1 game he played" in (result.answer or ""), "not '1 games' - the pluralization a venue/opponent narrowing exposes"
 
 
+def test_condition_player_reads_a_scope_beside_the_opponent_its_caller_resolved(league: TemplateContext) -> None:
+    """The shared step under player_splits, record_when and streak reads the
+    typed Scope (ROADMAP plan item 6, step (d)). player_splits resolves the
+    opponent before the player and hands the Entity over inside its slot
+    dict; a Scope holds names, so the same team goes beside one instead. All
+    three narrow Tatum's games to his two against the Lakers (e1, e7)."""
+    from dataclasses import replace
+
+    from association.query.conditions import _PLAYER_GAME_TABLES
+    from association.query.entities import Entity
+    from association.query.player_games import games_subquery
+    from association.query.reading import Scope
+    from association.query.templates.common import _condition_scope, _resolved_team, condition_player
+
+    lakers = _resolved_team(league.con, "Los Angeles Lakers")
+    assert isinstance(lakers, Entity)
+    within = _condition_scope(None, None, 2, _PLAYER_GAME_TABLES)
+    scope = Scope.from_slots(_slots(player="Jayson Tatum"))
+    reads = [
+        condition_player(league.con, {**_slots(player="Jayson Tatum"), "opponent": lakers}, "needs a player", within),
+        condition_player(league.con, scope, "needs a player", within, opponent=lakers),
+        condition_player(league.con, replace(scope, opponent="Los Angeles Lakers"), "needs a player", within),
+    ]
+    for read in reads:
+        assert not isinstance(read, TemplateResult)
+        player, narrowed = read
+        assert (player.name, narrowed.opponent) == ("Jayson Tatum", lakers)
+        sql, params = games_subquery(narrowed, box_source(league.con))
+        assert league.con.execute(f"SELECT COUNT(*) FROM ({sql})", params).fetchone() == (2,)
+
+
 def test_a_venue_narrows_a_teams_own_games_too(league: TemplateContext) -> None:
     """The Celtics' three home games this season (e1, e3, e5) are all wins."""
     result = player_splits(league, Reading.from_slots(_slots(team="Boston Celtics", venue="home")))
