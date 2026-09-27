@@ -16,7 +16,7 @@ from association.nba.season import eastern_date as _eastern_date
 from association.query.reading import Reading
 
 from ..entities import Ambiguous, Availability, Entity, no_match
-from ..fingerprint import FINGERPRINT_AVAILABILITY, FINGERPRINT_VIEWS, GAME_FINGERPRINT_AVAILABILITY, FingerprintUnavailable, render_for_players
+from ..fingerprint import FINGERPRINT_AVAILABILITY, GAME_FINGERPRINT_AVAILABILITY, FingerprintUnavailable, render_for_players
 from ..metrics import SEASON_TYPE_LABELS
 from ..shotchart import resolve_chart_player
 from .common import SEASON_TYPE_NAMES, TemplateContext, TemplateResult, TemplateUnsupported, _clarify, _defaulted_season_note, _period, _resolved_player, _table_cell
@@ -64,16 +64,17 @@ def player_netpoints(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        nothing of his at all. A season the question named outright is
        unaffected.
     """
-    slots = reading.scope.to_slots()
     con = ctx.con
-    # Settled before the name is resolved: the season is what narrows an
-    # ambiguous name to the players with NetPoints in it.
-    raw_season = slots.get("season")
-    defaulted = not (isinstance(raw_season, int) and raw_season)
-    season = raw_season or current_season()
-    season_type = slots.get("season_type") or 2
-    one_game = slots.get("order") in ("recent", "first")
-    player = _resolved_player(con, slots.get("player"), "player_netpoints needs a player name", available=_NET_POINTS_GAMES if one_game else _NET_POINTS, season=season)
+    # The Reading's scope is read as `reading.scope.<field>`, not bound to a
+    # local: `scope` is this function's name for the possessions phrase below
+    # (`_netpoints_units`). Settled before the name is resolved: the season is
+    # what narrows an ambiguous name to the players with NetPoints in it.
+    defaulted = not reading.scope.season
+    season = reading.scope.season or current_season()
+    season_type = reading.scope.season_type or 2
+    # A named order ("recent", "first") is one game.
+    order = reading.scope.order
+    player = _resolved_player(con, reading.scope.player, "player_netpoints needs a player name", available=_NET_POINTS_GAMES if order else _NET_POINTS, season=season)
     if isinstance(player, TemplateResult):
         return player
 
@@ -81,8 +82,8 @@ def player_netpoints(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     # season - 43 games - because nothing scoped it. Per-game NetPoints live in
     # their own table, with no fingerprint breakdown, so this is a different
     # answer rather than a filtered one.
-    if one_game:
-        return _single_game_netpoints(ctx, player, season, season_type, slots["order"])
+    if order:
+        return _single_game_netpoints(ctx, player, season, season_type, order)
 
     # net_points_player uses its OWN string season_type; filtering it with the
     # numeric one every other table uses silently matches nothing.
@@ -104,7 +105,7 @@ def player_netpoints(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     # and season totals mostly rank by playing time. Totals stay in `data`, and
     # the `rate` slot asks for them.
     possessions = fingerprint[0] if fingerprint else None
-    per_100 = slots.get("rate") != "total" and bool(possessions)
+    per_100 = reading.scope.rate != "total" and bool(possessions)
     scale = 100.0 / possessions if per_100 and possessions else 1.0
 
     breakdown = _netpoints_breakdown(fingerprint, categories, scale) if fingerprint is not None else []
@@ -384,11 +385,11 @@ def fingerprint(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     match on sight, which is what makes best-match safe here and not in a
     template reporting numbers.
     """
-    slots = reading.scope.to_slots()
+    scope = reading.scope
     # "compare their fingerprints" arrives as `players`, one name as `player`.
     # Both draw one plot; two polygons on shared axes IS the comparison, so
     # this does not need a second intent.
-    names = _fingerprint_names(slots.get("players"), slots.get("player"))
+    names = _fingerprint_names(scope.players, scope.player)
 
     # A question about one game draws that game, from the long per-game table
     # rather than the season file - see fingerprint.load_game_fingerprints for
@@ -396,16 +397,15 @@ def fingerprint(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     # `date` is not honored the same way: the router gives a calendar date and
     # the loader picks a player's first or last game, which are different
     # questions, so a dated request still says it cannot answer.
-    order = slots.get("order") if slots.get("order") in ("recent", "first") else None
-    if slots.get("date") and not order:
+    order = scope.order
+    if scope.date and not order:
         message = "A fingerprint can be drawn for a player's first or most recent game of a season, but not yet for a particular date - ask for their last game instead."
         return TemplateResult(data={"message": message}, answer=message)
 
     # Settled before any name is resolved: the season is what narrows an
     # ambiguous name to the players who have a fingerprint in it.
-    season = slots.get("season") or current_season()
-    requested_type = slots.get("season_type")
-    season_type = requested_type if isinstance(requested_type, int) else 2
+    season = scope.season or current_season()
+    season_type = scope.season_type or 2
     # A one-game plot is narrowed against the table it will actually be drawn
     # from. Availability in the season file does not imply a row per game, and
     # the season file has no season_type at all.
@@ -419,20 +419,19 @@ def fingerprint(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     # The router's word for it is `side`, which is what a question says ("his
     # defensive fingerprint"); the renderer's is `view`, because each skill
     # already carries the side it is measured on and this only picks which
-    # skills are drawn.
-    view = slots.get("side")
-    if view not in FINGERPRINT_VIEWS:
-        view = "total"
+    # skills are drawn. A side is one of the renderer's views - offense,
+    # defense or total - by the time it is read here: the Reading's door
+    # refuses any other, so only an absent one needs the default.
+    view = scope.side or "total"
     return _fingerprint_render(ctx, players, ambiguous, season, view=view, season_type=season_type, order=order)
 
 
-def _fingerprint_names(players_slot: Any, player_slot: Any) -> list[str]:
+def _fingerprint_names(players_slot: tuple[str, ...], player_slot: str | None) -> list[str]:
     """The player name(s) asked for, from the `players` slot (a comparison) or
     the `player` slot (one name)."""
-    names = players_slot if isinstance(players_slot, list) else None
-    names = [n for n in names if isinstance(n, str) and n.strip()] if names else []
+    names = [n for n in players_slot if n.strip()]
     if not names:
-        if not isinstance(player_slot, str) or not player_slot.strip():
+        if player_slot is None or not player_slot.strip():
             raise TemplateUnsupported("fingerprint needs a player name")
         names = [player_slot]
     return names[:MAX_FINGERPRINT_PLAYERS]
