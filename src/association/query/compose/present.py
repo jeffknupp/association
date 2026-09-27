@@ -182,7 +182,7 @@ def _present_player_stat(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateRe
         return None
     shooting = SHOOTING_STATS.get(stat) if stat is not None else None
     try:
-        wanted = [] if shooting else _wanted_stats(q.scope.to_slots())
+        wanted = [] if shooting else _wanted_stats(q.scope)
     except TemplateUnsupported:
         return None
     if not shooting and sorted(q.measures) != sorted(wanted):
@@ -217,13 +217,13 @@ def _present_player_stat_season_line(con: duckdb.DuckDBPyConnection, q: Query) -
         return None
     if not (stat is not None and (stat in ADVANCED_STATS or stat in SHOOTING_STATS)):
         try:
-            _wanted_stats(scope.to_slots())
+            _wanted_stats(scope)
         except TemplateUnsupported:
             return None
-    subject = _player_stat_season_line_subject(con, scope.to_slots())
+    subject = _player_stat_season_line_subject(con, scope)
     if isinstance(subject, TemplateResult):
         return subject
-    return _player_stat_season_line(con, *subject, scope.to_slots())
+    return _player_stat_season_line(con, *subject, scope)
 
 
 def _present_player_history(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
@@ -245,10 +245,10 @@ def _present_player_history(con: duckdb.DuckDBPyConnection, q: Query) -> Templat
         return None
     if _stat_measure(stat) not in (None, *q.measures[:1]):
         return None
-    player = _player_history_subject(con, scope.to_slots())
+    player = _player_history_subject(con, scope)
     if isinstance(player, TemplateResult):
         return player
-    return _player_history_read(con, player, scope.to_slots())
+    return _player_history_read(con, player, scope)
 
 
 def _count_season(scope: Scope, span: _Span) -> tuple[int | None, int, int | None]:

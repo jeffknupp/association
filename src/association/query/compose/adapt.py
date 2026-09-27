@@ -100,8 +100,7 @@ def _adapt_player_stat(scope: Scope) -> Reading:
     measures = [col] if col else list(STAT_LINE)
     if scope.limit or scope.order:
         raise Unsupported("player_stat hands a limit or an order to game_log - a log, not an average")
-    # The template's own test reads the slot dict until it takes the Scope.
-    if not (_player_stat_reads_box_scores(scope.to_slots(), measure_filters(scope.below, scope.above)) or scope.date):
+    if not (_player_stat_reads_box_scores(scope, measure_filters(scope.below, scope.above)) or scope.date):
         return Reading(scope=scope, shape="scalar", measures=measures, aggregate="per_game", group="none", predicates=[], source="seasons")
     date = _iso_date(scope)
     return Reading(
