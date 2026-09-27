@@ -687,6 +687,43 @@ with nothing to read fills the silence from its own weights), and more data
    times (measure words six, months six, number words five - the parser's
    now one table). Next: (d) - templates read the Reading, the router's
    slot writers and `ROUTER_PROMPT` go.
+   **Step (d), in progress 2026-09-27** (Jeff: typed dataclasses, not
+   pydantic - the Reading is built by our own code, so the type checkers
+   catch the mistakes before commit at no runtime cost; a `__post_init__`
+   holds the one range rule, limit >= 1). Proven step by step with golden
+   631/631 and the parser rehearsal, each a pure refactor until the last:
+   (1) done, 1f344e4 - `Scope`, frozen and keyword-only, one typed field
+   per slot, `Literal` where the values are a closed set; `Reading` the
+   same; `Scope.from_slots` the one door a slot dict comes in by (raises on
+   a key or value it does not type - all 1,185 recorded routes pass and
+   round-trip). (2a) done, 3aaa755 - every template takes the Reading,
+   flipped mechanically (25 templates, 762 test calls), bodies still on
+   `to_slots()`; `conditions` typed (`ConditionSpec`); nonsense values
+   refused at the door. (2b) in flight - round 1: `templates/common.py`'s
+   shared steps and the compiler's `Query` read the typed Scope (two
+   agents, disjoint files); round 2: one agent per template module; then
+   the transition shims go. (3) one writer: the parser builds the Scope
+   directly, and the router reader (`route()`, `ROUTER_PROMPT`, the model
+   classification) and the slot-repair chain that exists to correct it
+   (`apply_subject`, `override_nicknames`, `restore_dropped_players`,
+   `undo_name_completion`) are deleted - measured, because it can move
+   answers, with the rehearsal, the hold-out and a live run; golden moves
+   from replaying recorded router routes to replaying recorded Readings.
+   Measured first (`yardstick-v2/repair_ablation.py`: each repair step
+   patched to a no-op, 352 questions - day10 and the hold-out - answered by
+   the parser with recorded replies): `override_nicknames`,
+   `restore_dropped_players` and `undo_name_completion` move 0 answers, so
+   they go; `apply_subject` moves 6, and each is a writer the parser still
+   lacks rather than a repair - the reroute to `record_when` ("76ers record
+   with 20+ points from tyrese maxey"), the own team and the career span it
+   implies ("lebron stats as a starter for Miami"), the position group
+   ("Centers stats game log vs kings", "... by a shooting guard with at
+   least 400 attempts") - so those parts move into the parser and the rest
+   of it goes. By sub-step: `_apply_own_team` 2, `_apply_players` 2,
+   `_apply_position` 1, the other eight 0 each - the `record_when` reroute
+   moves only with the whole of it gone, so two sub-steps overlap there and
+   the move is re-measured end to end.
+   (4) the four parity templates the compiler answers retire.
 
 ## The rules a spike keeps
 
