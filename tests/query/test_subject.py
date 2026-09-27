@@ -677,3 +677,35 @@ def test_compare_x_with_y_reads_a_pair_not_a_companion(con: duckdb.DuckDBPyConne
     # A real companion after a compare verb, further along, is still one.
     s = _read(con, "compare luka and sga without kyrie", "player_compare", players=["Luka Doncic", "Shai Gilgeous-Alexander"], without=["Kyrie Irving"])
     assert s.kind == "pair" and s.players == ("Luka Doncic", "Shai Gilgeous-Alexander")
+
+
+def test_the_paraphrases_wordings_of_the_children_are_assigned(con: duckdb.DuckDBPyConnection) -> None:
+    """Held-out paraphrases (parser-greenfield, step b, v3) the children's
+    grammars missed: "in one match", a hyphen in "30-point" and "36-plus",
+    "at least 2", "from year to year" - each measured at 0 false positives
+    over the recorded corpus (``intent-shrink/port_check.py``)."""
+    intent, _ = _assigned(con, "in this season's games, who recorded the highest number of assists in one match?", "leaderboard", stat="assists", season=2026, season_type=2)
+    assert intent == "single_game_high"
+    intent, slots = _assigned(con, "who had the highest number of 30-point games in 2024", "leaderboard", stat="points", season=2024, season_type=2)
+    assert intent == "threshold_count" and slots["threshold"] == 30
+    intent, slots = _assigned(con, "games where Klay Thompson made at least 2 threes including playoffs", "game_log", stat="threePointFieldGoalsMade", player="Klay Thompson", season_type=2)
+    assert intent == "threshold_count" and slots["threshold"] == 2
+    intent, _ = _assigned(con, "Display Luka's average assists from year to year", "player_stat", stat="assists", player="Luka Doncic", season_type=2)
+    assert intent == "player_history"
+    intent, slots = _assigned(con, "36-plus points SGA record", "player_stat", stat="points", season_type=2)
+    assert intent == "record_when" and slots["threshold"] == 36 and slots["player"] == "Shai Gilgeous-Alexander"
+    # "per game" is an average, never one game: the season ranking stands.
+    intent, _ = _assigned(con, "which player has the highest points per game average in the league?", "leaderboard", stat="points", season_type=2)
+    assert intent == "leaderboard"
+
+
+def test_excluding_featuring_and_a_fronted_without_are_companion_phrases(con: duckdb.DuckDBPyConnection) -> None:
+    """ "excluding" is "without" and "featuring" is "with", reworded; and a
+    question word ends a companion phrase, so a fronted "Without Kevin
+    Durant, what is Steph Curry's record" names Durant alone."""
+    s = _read(con, "this season's luka game log excluding kawhi and lebron", "game_log", player="Luka Doncic")
+    assert s.kind == "player" and [(c.name, c.predicate) for c in s.conditions] == [("Kawhi Leonard", "absent"), ("LeBron James", "absent")]
+    s = _read(con, "Without Kevin Durant, what is Steph Curry's record against Lebron in the regular season?", "other", players=["steph curry", "lebron"])
+    assert s.kind == "pair" and [(c.name, c.predicate) for c in s.conditions] == [("Kevin Durant", "absent")]
+    s = _read(con, "display the PHI record featuring Embiid and Maxey", "with_without", team="Philadelphia 76ers")
+    assert s.kind == "team" and [(c.name, c.predicate) for c in s.conditions] == [("Joel Embiid", "played"), ("Tyrese Maxey", "played")]

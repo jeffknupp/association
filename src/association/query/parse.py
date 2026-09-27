@@ -47,7 +47,7 @@ _PAIR_MEETING = (
 _PLAYER_LOG = (
     r"\b(game ?log|gamelog|logs?|last (\d+|ten|five) games|each game|game by game|box scores?|games? (with|where|in which|against|vs)"
     r"|how many (games|times)|highest|most .* in a game|career high|best game|single game"
-    r"|first game|last game|first \d+ games|game \d|month of|\d+/\d+|march|january|february|april|december|november|october)\b"
+    r"|first game|last game|(most recent|latest|previous|final) (\d+ )?games?|first \d+ games|game \d|month of|\d+/\d+|march|january|february|april|december|november|october)\b"
 )
 """A player's games rather than his line: a log word, a window, one game, a date."""
 
@@ -57,7 +57,8 @@ ANY = frozenset({"player", "pair", "team", "teams", "team_players", "position", 
 PARENT_GRAMMAR: tuple[tuple[frozenset[str], str, str], ...] = (
     # (kinds the row applies to, the words, the parent intent) - first match wins.
     (ANY, r"\bfingerprint", "fingerprint"),
-    (ANY, r"\bshot (chart|map|plot)|\bplot\b.*\b(shots?|threes)\b|\bshots?\b.*\b(chart|plot|map)\b|\bwhere .* shoot", "shot_chart"),
+    # "plot" and the shots in either order: "threes by Plot Curry" is "plot curry's threes" reworded.
+    (ANY, r"\bshot (chart|map|plot)|\bplot\b.*\b(shots?|threes)\b|\b(shots?|threes)\b.*\bplot\b|\bshots?\b.*\b(chart|plot|map)\b|\bwhere .* shoot", "shot_chart"),
     (frozenset({"team", "teams"}), r"\b(1st|2nd|3rd|4th|first|second|third|fourth) (quarter|half)|\bquarter\b|\b[1-4]h\b|\b[1-4]q\b|\bovertime\b|\bclutch\b", "team_quarter_points"),
     (frozenset({"everyone"}), r"\b(1st|2nd|3rd|4th|first|second|third|fourth) (quarter|half)|\bquarter\b|\b[1-4]h\b|\b[1-4]q\b|\bovertime\b|\bclutch\b", "period_leaderboard"),
     (ANY, r"\b(1st|2nd|3rd|4th|first|second|third|fourth) (quarter|half)|\bquarter\b|\b[1-4]h\b|\b[1-4]q\b|\bovertime\b|\bclutch\b", "period_split"),
@@ -71,12 +72,20 @@ PARENT_GRAMMAR: tuple[tuple[frozenset[str], str, str], ...] = (
     (frozenset({"team"}), r"\b(game ?log|(last|past|previous|most recent) (\d+|ten|five)\b|first \d+ games|each game|game by game|differential)", "game_log"),
     (frozenset({"team"}), r"\bstreak", "team_record"),
     (frozenset({"team"}), r"(?=.*\b(record|standings?|wins?|losses|w-?l|win.loss|won|lost|rec)\b)(?!.*\b(most|fewest|least|best|worst|top|rank)\b)", "team_record"),
-    (frozenset({"team"}), r"\b(outlook|projection|on pace|schedule|vs other)\b", "team_outlook"),
+    (frozenset({"team"}), r"\b(outlook|projection|on pace|schedule|(vs\.?|versus|against|compared (to|with)) other)\b", "team_outlook"),
+    # A team's triple-doubles are its PLAYERS' (a boolean player line), which
+    # the players' ranking reads under the team - not a team box-score total.
+    (frozenset({"team"}), r"\b(triple|double)[ -]?doubles?\b", "leaderboard"),
     (frozenset({"team"}), r".", "team_stat"),
     (frozenset({"player"}), r"\bnet ?po?i?nts?\b|\bnetpts\b", "player_netpoints"),
     (frozenset({"player"}), _PLAYER_LOG, "game_log"),
-    (frozenset({"player"}), r"\b(record|splits?)\b", "with_without"),
     (frozenset({"player+companions"}), r"\b(with|without|while|when)\b", "with_without"),
+    # A player's own record is the W-L of HIS games, which player_splits
+    # answers (F088, "Embiid's record against Boston this year"; ISSUES.md
+    # #231) - never the team's with/without split, which needs a companion.
+    # Not with a line in it: "Sga record 36 plus points" is record_when, a
+    # child player_stat's reading assigns.
+    (frozenset({"player"}), r"(?=.*\b(record|splits?)\b)(?!.*\b\d{1,3}[\s-]*(\+|plus\b|or more\b))", "player_splits"),
     (frozenset({"player"}), r".", "player_stat"),
     (frozenset({"position"}), r"\b(log|game ?log)\b", "game_log"),
     (frozenset({"position"}), r".", "leaderboard"),
@@ -127,6 +136,19 @@ MEASURE_GRAMMAR: tuple[tuple[str, str], ...] = (
     (r"\b(2|two)[ -]?(pt|point|pointer)s?\b.{0,12}\b(percentage|pct|%)|\b2p%|\b2pt%", "twoPointFieldGoalPct"),
     (r"\bfg ?%|\bfg percentage\b|\bfield goal percentage\b", "fieldGoalPct"),
     (r"\bft ?%|\bfree throw percentage\b", "freeThrowPct"),
+    # What a team gives up is the opponent's line, never its own: "rebounds
+    # allowed per team" read as the teams' own rebounds and was answered with
+    # them, best first. Points allowed is a team metric; the rest name a key
+    # no template ranks, which refuses rather than answering the team's own.
+    (r"\b(points?|pts)\b.{0,12}\b(allowed|given up|conceded)\b|\b(allowed|gave up|conceded)\b.{0,12}\b(points?|pts)\b|\bopponents?'? (points|ppg)\b", "points allowed"),
+    (r"\b(rebounds?|boards)\b.{0,12}\b(allowed|given up|conceded)\b|\b(allowed|gave up|conceded)\b.{0,12}\b(rebounds?|boards)\b", "rebounds allowed"),
+    (r"\bassists?\b.{0,12}\b(allowed|given up|conceded)\b", "assists allowed"),
+    (r"\b(threes|3s|(3|three)[ -]?(pt|point|pointer)s?)\b.{0,12}\b(allowed|given up|conceded)\b", "threes allowed"),
+    # A three is its own column: "3 point stats", "three points made" and
+    # "3-point average" are threes made (a percentage is read above), never
+    # the "point" in them read as points.
+    (r"\b(3|three)[ -]?(pt|point|pointer)s?\b.{0,12}\b(attempts?|attempted|tries)\b|\b3pa\b", "threePointFieldGoalsAttempted"),
+    (r"\b(3|three)[ -]?(pt|point|pointer)s?\b(?!.{0,20}\b(distance|range|shots?)\b)", "threePointFieldGoalsMade"),
     (r"\bscorers?\b|\bscores\b|\bscoring\b", "points"),
 )
 """The measure grammar: the stat a question names in its own words, read
@@ -139,13 +161,19 @@ does not hold.
 """
 
 
+_MEASURE_ORDINARY_WORDS = frozenset({"to", "min"})
+"""Abbreviations in :data:`~association.query.measures.MEASURE_WORDS` that are
+also ordinary words ("compared to other teams" is no turnover count): read
+only where the question writes them in capitals ("TO", "MIN")."""
+
+
 def measure(question: str) -> str | None:
     """The measure :data:`MEASURE_GRAMMAR` or :data:`~association.query.measures.MEASURE_WORDS` names in ``question``, or ``None``."""
     for pattern, key in MEASURE_GRAMMAR:
         if re.search(pattern, question, re.IGNORECASE):
             return key
     words = " " + re.sub(r"[^a-z0-9%/+]+", " ", question.lower()) + " "
-    hits = [(w, c) for w, c in MEASURE_WORDS.items() if f" {w} " in words]
+    hits = [(w, c) for w, c in MEASURE_WORDS.items() if f" {w} " in words and (w not in _MEASURE_ORDINARY_WORDS or re.search(rf"\b{w.upper()}S?\b", question))]
     return max(hits, key=lambda x: len(x[0]))[1] if hits else None
 
 
@@ -170,26 +198,31 @@ _NUMBERS = {
 }
 WINDOW_GRAMMAR: tuple[tuple[str, str | None, int | None], ...] = (
     # (the words, the order, the limit - 0 means "the number in the words") - first match wins.
-    (rf"\b(last|past|previous|most recent|latest)\s+{_COUNT}\s+(games?|outings?|contests?|starts?)\b", "recent", 0),
+    (rf"\b(last|past|previous|most recent|latest|final)\s+{_COUNT}\s+((home|road|away|regular[- ]season|playoff|postseason)\s+){{0,2}}(games?|outings?|contests?|starts?)\b", "recent", 0),
+    # A bare count closing the question is games: "magic vs nets last 10".
+    (rf"\b(last|past|previous)\s+{_COUNT}\s*[?.!]*\s*\Z", "recent", 0),
     (rf"\bfirst\s+{_COUNT}\s+games?\b", "first", 0),
     (r"\b(last|most recent|latest|final)\s+(regular[- ]season\s+|postseason\s+|playoff\s+)?game\b", "recent", 1),
     (r"\bfirst\s+(regular[- ]season\s+|postseason\s+|playoff\s+)?game\b", "first", 1),
     (rf"\b(top|bottom)\s+{_COUNT}\b", None, 0),
-    (
-        r"\b(who|which (player|team|guard|forward|center))\b.*\b(led|leads|lead|has|had|have|is|was|were)\b.*\b(most|highest|best|fewest|least|lowest|top|worst"
-        r"|longest|biggest|largest)\b|\b(who|which (player|team))\b.*\b(led|leads|lead)\s+(the\s+)?(league|nba|team|\w+)\s+in\b",
-        None,
-        1,
-    ),
+    # Deliberately no "who led the league in ..." -> 1: a ranking with no
+    # limit already leads with the one asked about and adds "Next: ..."
+    # (leaderboard, threshold_count, single_game_high), and a limit of 1
+    # cost those answers their runners-up (the lead's offline run of the
+    # agent, 2026-09-27) - though the router's references hold it.
 )
 """The window grammar: the count and the end of the rows a question asks
-for, read from its own words ("last 10 games", "top 5", "his last game",
-"who led the league in ...") where the router used to fill them in.
+for, read from its own words ("last 10 games", "top 5", "his last game")
+where the router used to fill them in.
 
 .. versionadded:: 4.5.0
 """
 
 _LOG_OR_WINDOW_WORDS = re.compile(r"\b(log|gamelog|game log|last \d+|past \d+|first \d+)\b", re.IGNORECASE)
+# A window over two teams meeting is still their meetings when a record is
+# asked for ("lakers vs mavs record last 10 home games"); a log word never is.
+_TWO_TEAMS_LOG_WORDS = re.compile(r"\b(log|gamelog|game log)\b", re.IGNORECASE)
+_TWO_TEAMS_RECORD_WORDS = re.compile(r"\b(record|rec|w-?l|win.loss)\b", re.IGNORECASE)
 
 
 def _count(word: str) -> int:
@@ -240,12 +273,23 @@ def parent_intent(question: str, kind: str, companions: bool = False) -> str:
     return "other"
 
 
+#: Spans the normalizer may emit that name nobody here: a conference ("vs
+#: west" - David, Delonte, Doug and Mario West are players, so the index alone
+#: reads it as one) and the indefinite pronouns ("someone" is one near
+#: spelling from Simone Fontecchio, and a single near spelling defaults).
+_NEVER_A_NAME: frozenset[str] = frozenset(
+    {"west", "east", "western", "eastern", "someone", "somebody", "anyone", "anybody", "everyone", "everybody", "nobody", "no one", "who", "whoever", "player", "players"}
+)
+
+
 def classify_span(con: duckdb.DuckDBPyConnection, text: str) -> str | None:
     """``"team"``, ``"player"`` or ``None`` for a span the model copied out of
     the question: a team's word, nickname or name first; then a name some
     player holds as whole words; else nothing (a division, a typo, the word
     "team" - none of them a subject, ISSUES.md #236)."""
     low = text.lower().strip().removesuffix("'s").rstrip("'")
+    if low.removeprefix("the ") in _NEVER_A_NAME:
+        return None
     if low in TEAM_SINGULARS or team_named_in(con, low) is not None or _classify_span_abbreviation(con, low):
         return "team"
     teams = find_teams(con, text)
@@ -306,7 +350,8 @@ def _two_teams(subject: Subject, question: str, slots: dict[str, Any]) -> Subjec
     if subject.kind != "team" or subject.players or not subject.teams:
         return subject
     other = subject.opponent or (slots.get("opponent") if isinstance(slots.get("opponent"), str) else None)
-    if not other or other == subject.teams[0] or not _MEETING.search(question) or _LOG_OR_WINDOW_WORDS.search(question):
+    one_teams_games = _TWO_TEAMS_LOG_WORDS.search(question) or (_LOG_OR_WINDOW_WORDS.search(question) and not _TWO_TEAMS_RECORD_WORDS.search(question))
+    if not other or other == subject.teams[0] or not _MEETING.search(question) or one_teams_games:
         return subject
     return replace(subject, kind="teams", teams=(subject.teams[0], other), opponent=None)
 
@@ -321,7 +366,7 @@ def _read_route_names(subject: Subject, slots: dict[str, Any]) -> dict[str, Any]
     name the model found is never lost; a name the model DROPPED that the
     question holds is the reading's ("Nikola Jokic" with ``names=[]``).
     A reading that settled on no one leaves the slots as they were."""
-    if not (subject.players or subject.teams or subject.opponent or subject.own_team):
+    if not (subject.players or subject.teams or subject.opponent or subject.own_team or subject.companions):
         return slots
     out = {key: value for key, value in slots.items() if key not in ("player", "players", "team", "opponent")}
     players = _read_route_players(subject, slots)

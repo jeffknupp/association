@@ -72,6 +72,11 @@ def test_a_line_below_a_number_counts_the_games_under_it_on_the_stat_the_words_n
     both = threshold_count(con, {"stat": "points", "threshold": 30, "player": "Luka Doncic", "below": ["under 10 rebounds"]})
     assert both.data["leaders"] == [{"player": "Luka Doncic", "games": 4}]
     assert "30+ points and under 10 rebounds" in (both.answer or "")
+    # A stat no threshold is kept on beside one line and no threshold (the
+    # parser reads "fta" as freeThrowsAttempted, which has no count column):
+    # the line IS the count, on its own column - never a refusal.
+    lined = threshold_count(con, {"stat": "freeThrowsAttempted", "player": "Luka Doncic", "below": ["under 20 points"]})
+    assert lined.data["leaders"] == [{"player": "Luka Doncic", "games": 3}]
 
 
 def test_a_line_whose_words_name_no_stat_refuses_rather_than_filtering_on_a_guess(con: TemplateContext) -> None:

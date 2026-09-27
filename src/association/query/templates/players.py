@@ -372,9 +372,11 @@ def _threshold_count_ask(slots: dict[str, Any]) -> tuple[str, int | None]:
     shape, none arrives)."""
     stat, threshold = slots.get("stat"), slots.get("threshold")
     lined = bool(slots.get("below") or slots.get("above"))
-    if not isinstance(stat, str) and lined:
+    if lined and (not isinstance(stat, str) or stat not in THRESHOLD_STAT_COLUMNS):
         # No stat from the model at all (under a player_stat parent, "fta"
-        # names none of its words): the one line's own column is the count's.
+        # names none of its words), or one no threshold is kept on (the
+        # parser's "freeThrowsAttempted", read off the same "fta"): the one
+        # line's own column is the count's.
         lines = measure_filters(slots.get("below"), slots.get("above"))
         if len(lines) == 1:
             return lines[0].column, None

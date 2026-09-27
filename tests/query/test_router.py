@@ -852,6 +852,14 @@ def test_all_season_type_games_reads_as_a_career_span() -> None:
     assert his.slots["span"] == "career"
 
 
+def test_alltime_written_as_one_word_reads_as_a_career_span() -> None:
+    """yardstick-v2 F111, "alperen şengün alltime record": read by the parser
+    it answered his 2026 season alone, since "all[- ]time" needed the hyphen
+    or the space."""
+    got = _ask("alperen şengün alltime record", '{"intent":"player_splits","player":"Alperen Sengun"}')
+    assert got.slots.get("span") == "career"
+
+
 def test_since_he_joined_the_league_reads_as_a_career_span() -> None:
     """yardstick-v2 F031: "Show me luka's avg assists since he joined the
     league" routed with no ``span`` at all - none of ``_SPAN_WORDS`` is in
