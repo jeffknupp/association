@@ -2518,23 +2518,6 @@ those were found.
 
 ## P3: refusal or gap
 
-### The subject reading does not strip a possessive from a team word: "the Sixers' record this season" reads no team
-- **Found:** 2026-09-26, the paraphrase robustness run (`~/association-research/parser-greenfield/robustness_v2.log`), 11 of 277 rewrites.
-- **Evidence:** `read_subject(con, "the Sixers' record this season", "team_record", {"team": "Philadelphia 76ers", ...})` reads kind `everyone`, teams `()`; with "sixers record" it reads `team`. Today the router's `team` slot survives `apply_subject`, so the answer is right and only the trace's kind is wrong; the moment the reading decides alone (ROADMAP plan item 6) these become league-wide questions. "Quentin Grimes's" is read correctly by the player reader.
-- **User sees:** nothing today; a leaderboard where a team's record was asked, once the parser owns the kind.
-- **Next step:** strip a trailing `'` / `'s` in `_team_word` and `team_named_in` before matching; add the 11 rewrites to the parser's held-out cases.
-- **Source:** ours.
-- **GitHub:** #232
-
-### "compare luka with sga" reads "with sga" as a companion, so the pair is read as one player
-- **Found:** 2026-09-26, the same robustness run ("contrast luka with sga", 2 rewrites).
-- **Evidence:** `read_subject(con, "compare luka with sga", "player_compare", {"players": [...]})` gives kind `player`, players `('Luka Doncic',)`, companions `('Shai Gilgeous-Alexander',)`: `_COMPANION` takes "with" after a compare verb as a role phrase. Today the router's `players` list survives and `player_compare` answers both; the trace says the subject is one player.
-- **User sees:** nothing today; a one-player line for a comparison once the reading decides alone.
-- **Next step:** in `_conditions`, "with" directly after compare/contrast/versus words is the second subject, not a companion; a `test_subject.py` case.
-- **Source:** ours.
-- **GitHub:** #233
-
-
 ### The compiler has no NetPoints measure, so a single-game NetPoints ranking has nowhere to land but the agent
 - **Found:** 2026-09-24, fixing a live finding on the rendered page
   (`/tmp/claude-1000/preview6`): "who had the highest netpoint game this

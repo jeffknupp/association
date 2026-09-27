@@ -654,3 +654,26 @@ def test_a_companion_the_router_named_nobody_for_is_read_from_the_question(con: 
     for question in ("mikal bridges game log with less than 15 fga", "celtics record with brown out", "celtics record with 3 starters out"):
         s = _read(con, question, "team_record", team="Boston Celtics")
         assert not any(c.name in ("maxey", "brown", "less", "fga") for c in s.conditions), (question, s.conditions)
+
+
+def test_a_possessive_team_word_names_the_team(con: duckdb.DuckDBPyConnection) -> None:
+    """ISSUES.md #232: "the Sixers' record" and "the Knicks' previous 5 games"
+    read the team the way the bare word does (11 of 277 paraphrases read no
+    team at all)."""
+    s = _read(con, "the Sixers' record this season", "team_record")
+    assert s.kind == "team" and s.teams == ("Philadelphia 76ers",)
+    s = _read(con, "the Hawks' previous 5 games", "game_log")
+    assert s.kind == "team" and s.teams == ("Atlanta Hawks",)
+    s = _read(con, "the Celtics's record", "team_record")
+    assert s.kind == "team" and s.teams == ("Boston Celtics",)
+
+
+def test_compare_x_with_y_reads_a_pair_not_a_companion(con: duckdb.DuckDBPyConnection) -> None:
+    """ISSUES.md #233: the "with" a compare verb owns joins the two subjects."""
+    s = _read(con, "compare luka with sga", "player_compare", players=["Luka Doncic", "Shai Gilgeous-Alexander"])
+    assert s.kind == "pair" and s.players == ("Luka Doncic", "Shai Gilgeous-Alexander") and s.companions == ()
+    s = _read(con, "contrast tatum with jaylen brown this season", "player_compare", players=["Jayson Tatum", "Jaylen Brown"])
+    assert s.kind == "pair" and s.companions == ()
+    # A real companion after a compare verb, further along, is still one.
+    s = _read(con, "compare luka and sga without kyrie", "player_compare", players=["Luka Doncic", "Shai Gilgeous-Alexander"], without=["Kyrie Irving"])
+    assert s.kind == "pair" and s.players == ("Luka Doncic", "Shai Gilgeous-Alexander")

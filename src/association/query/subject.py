@@ -291,6 +291,9 @@ _MONTH_ABBREVIATIONS = frozenset({"jan", "feb", "mar", "apr", "jun", "jul", "aug
 #: "without" / "with" / "when" / "while", up to the next scoping word.
 #: Loose on purpose - the names it holds are still checked against the
 #: players the question names.
+_COMPARED_WITH = re.compile(r"\b(?:compare|compared|comparing|contrast|contrasted|contrasting)\b[^,;?]{0,40}?\bwith\b", re.IGNORECASE)
+"""A "with" that follows a compare verb closely ("compare luka with sga")
+joins the two subjects; it is not a companion phrase (ISSUES.md #233)."""
 _COMPANION = re.compile(r"\b(without|with|when|while)\s+((?:(?!\b(?:vs\.?|versus|against|in|for|this|last|the)\b)[\w'.,+-]+\s*){1,9})", re.IGNORECASE)
 
 #: What a companion phrase says the player DID in the games asked about,
@@ -637,12 +640,20 @@ def _conditions(question: str, players: tuple[str, ...], slots: dict[str, Any]) 
        Returns :class:`Companion` tuples with the predicate, not names.
     """
     found: list[Companion] = []
-    for match in _COMPANION.finditer(question):
+    for match in _companion_phrases(question):
         word, text = match.group(1).lower(), match.group(2)
         predicate, stat, threshold = _condition_role(word, text)
         names = _companion_names(text, players, slots)
         found.extend(Companion(name, predicate, stat, threshold) for name in names if not any(_same_person(name, [c.name]) for c in found))
     return tuple(found)
+
+
+def _companion_phrases(question: str) -> list[re.Match[str]]:
+    """The companion phrases of ``question`` (:data:`_COMPANION`), minus a
+    "with" that a compare verb owns - "compare luka with sga" names two
+    subjects and no companion (:data:`_COMPARED_WITH`)."""
+    compared = [m.span() for m in _COMPARED_WITH.finditer(question)]
+    return [m for m in _COMPANION.finditer(question) if not any(a <= m.start() < b for a, b in compared)]
 
 
 def _companion_names(text: str, players: tuple[str, ...], slots: dict[str, Any]) -> list[str]:
@@ -680,7 +691,7 @@ def _unrouted_companions(con: duckdb.DuckDBPyConnection, question: str, players:
     """
     dictionary = _dictionary()
     found: list[str] = []
-    for match in _COMPANION.finditer(question):
+    for match in _companion_phrases(question):
         text = match.group(2)
         if _companion_names(text, players, slots):
             continue

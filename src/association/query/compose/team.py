@@ -87,8 +87,15 @@ def team_named_in(con: duckdb.DuckDBPyConnection, question: str) -> str | None:
     already makes for a dropped player, in :func:`association.query.compose.move.repair`.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.6.0
+       A possessive ("the Sixers' record") names the team as the bare word does.
     """
-    for word in _WORD.findall(question.lower()):
+    for found in _WORD.findall(question.lower()):
+        # "the Sixers' record", "the Knicks' last 5 games": the possessive
+        # is the question's, not the name's (ISSUES.md #232 - 11 of 277
+        # paraphrases read no team at all).
+        word = found.removesuffix("'s").rstrip("'")
         if len(word) < 4:
             continue
         nickname = _TEAM_NICKNAMES.get(word)
