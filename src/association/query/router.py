@@ -887,10 +887,26 @@ def _validate_span(question: str) -> str | None:
 # The question words are here for the same reason the prepositions are: each
 # can follow a name, and none of them is one - without them "without Tatum and
 # how many wins" reads "how many wins" as a second teammate and refuses a
-# question that used to answer.
+# question that used to answer. The absence words end one too: "with draymond
+# green out" read "draymond green out" as the name, and the answer asked
+# whether Bo or Travis Outlaw was meant ("hurt" is not one: it is Matt Hurt's
+# name).
 _NAME_STOPWORDS = frozenset(
     "this last in on since during for vs vs. versus against at when while game games season seasons record stats stat playing played plays from over the a an any his her their "
-    "how what who whose why many much did does do is are was were has have had than to of by not no".split()
+    "how what who whose why many much did does do is are was were has have had than to of by not no "
+    "out injured sidelined resting rested rests sitting sits sat missing misses missed absent inactive dnp "
+    "doesn't didn't don't isn't wasn't aren't weren't doesnt didnt dont isnt wasnt arent werent".split()  # codespell:ignore doesnt,didnt,isnt,wasnt,arent,werent - typed without the apostrophe
+)
+
+# What a phrase naming a player says about one who sat the games out: "with
+# Embiid out", "when Tatum is injured", "when Embiid doesn't play", "in games
+# Brown missed". One list, a regex fragment with no groups of its own, read
+# here for the names it follows (`_ABSENT_NAMED`) and by the subject reading
+# for the role (`subject._CONDITION_ABSENT`), so the two cannot disagree about
+# who sat.
+_ABSENCE_WORDS = (
+    r"(?:out|injured|sidelined|inactive|absent|missing|dnp|rest(?:s|ed|ing)|sits?(?:\s+out)?|sitting(?:\s+out)?|sat(?:\s+out)?|miss(?:es|ed)"
+    r"|(?:does|do|did)\s*n[o']?t\s+play|(?:is|are|was|were)\s*n[o']?t\s+playing|not\s+playing)"
 )
 
 # What separates one name from the next INSIDE the phrase, rather than ending
@@ -921,13 +937,43 @@ _WHEN_PLAYED = re.compile(rf"\bwhen\s+(?:both\s+)?({_NAME_PHRASE}?)\s+(?:are\s+p
 # and B" form the reader below already handles, rather than parsed twice.
 _WHEN_WITH = re.compile(rf"\bwhen\s+(?:both\s+)?({_NAME_PHRASE}?)\s+with\s+({_NAME_PHRASE})", re.IGNORECASE)
 
+# "with Embiid out", "when Tatum and Brown are injured", "in games Brown
+# missed": the names before an absence word, which sat those games out - the
+# same teammates "without" names, written the other way round. "stephen curry
+# game log with draymond green out" answered his whole log, and "... stats with
+# draymond green out" asked whether Bo or Travis Outlaw was meant ("with" read
+# "draymond green out" as a name that PLAYED). The names are runs of words that
+# are no stop word, so the absence word must follow them directly - "with
+# Embiid playing and Maxey out" names nobody absent rather than Embiid - and a
+# pronoun names nobody ("when he is out" is the subject's own absence).
+_NAME_WORD = r"(?!(?:" + "|".join(sorted((re.escape(w) for w in _NAME_STOPWORDS), key=len, reverse=True)) + r"|he|she|they|him|them|it|we|you)(?![A-Za-z.'\-]))[A-Za-z][A-Za-z.'\-]*"
+_ABSENT_NAMED = re.compile(
+    rf"\b(?:with|when|while|in\s+(?:the\s+)?games?(?:\s+(?:that|where|in\s+which))?)\s+(?:both\s+)?({_NAME_WORD}(?:[\s,&+]+{_NAME_WORD}){{0,8}})\s+(?:(?:is|are|was|were)\s+)?{_ABSENCE_WORDS}(?![A-Za-z])",
+    re.IGNORECASE,
+)
+
 
 def _played_together(question: str) -> list[str]:
     """Every player a record question says played TOGETHER, in order - "with A
     and B", "when both A and B played", "when A with B". Empty when it names
-    none, which leaves the question where the model put it."""
+    none, which leaves the question where the model put it. A name the
+    question says sat out ("with A out", :data:`_ABSENT_NAMED`) is no player
+    who played, and is left out."""
     rewritten = _WHEN_WITH.sub(lambda m: f"with {m.group(1)} and {m.group(2)}", question)
-    return _names_after(_WITH, rewritten) or _names_after(_WHEN_PLAYED, question)
+    absent = {name.casefold() for name in _names_after(_ABSENT_NAMED, question)}
+
+    def _played(names: list[str]) -> list[str]:
+        return [name for name in names if name.casefold() not in absent]
+
+    return _played(_names_after(_WITH, rewritten)) or _played(_names_after(_WHEN_PLAYED, question))
+
+
+def _played_together_absent(question: str) -> list[str]:
+    """Every player the question says sat the games out, in order: "without A
+    and B" and "with A and B out" alike - the ``without`` slot's names."""
+    without = _names_after(_WITHOUT, question)
+    seen = {name.casefold() for name in without}
+    return [*without, *(name for name in _names_after(_ABSENT_NAMED, question) if name.casefold() not in seen)]
 
 
 _NAME_TOKENS = re.compile(r"[A-Za-z][A-Za-z.'\-]*|[,&+]")
@@ -1209,6 +1255,17 @@ _THRESHOLD_PAIR = re.compile(
 # to be a second hand-kept alternation without "pt", "reb" or "ast".
 _THRESHOLD = re.compile(
     r"\b(\d{1,3})[\s-]*(?:\+|plus|or\s+more)?[\s-]*(" + "|".join(sorted((re.escape(w) for w in _THRESHOLD_WORDS), key=len, reverse=True)) + r")\b",
+    re.IGNORECASE,
+)
+# A number after a scoring verb is a line on points, stat word or not: "celtics
+# record when jayson tatum scores 30" read no threshold, and was refused as a
+# question about a team named Jayson Tatum. Not where a stat word follows the
+# number ("scored 30 points" is _THRESHOLD's; "scored 3 threes" is not points),
+# nor a rate ("scores 30 a game" is an average, not a line), a percentage, a
+# decimal or a year.
+_SCORED = re.compile(
+    r"\bscor(?:e|es|ed|ing)\s+(\d{1,3})(?![\d.,%])(?:\s*\+|[\s-]*plus\b|\s+or\s+more\b)?"
+    r"(?![\s-]*(?:%|percent\b|a\s+game\b|a\s+night\b|per\s+game\b|on\s+average\b|ppg\b|" + "|".join(sorted((re.escape(w) + r"\b" for w in MEASURE_WORDS), key=len, reverse=True)) + r"))",
     re.IGNORECASE,
 )
 
@@ -1673,14 +1730,27 @@ _GIVEN_UP = re.compile(r"\s+(?:allowed|given\s+up|conceded)\b")
 
 
 def _threshold_from_text(question: str) -> int | None:
-    """The first per-game threshold the question states, or None."""
+    """The first per-game threshold the question states, or None: a number
+    with its stat word ("30+ points", "15 reb"), else a number after a
+    scoring verb (:func:`_threshold_from_text_scored`)."""
     for match in _THRESHOLD.finditer(question):
         number = int(match.group(1))
         if number == 3 and match.group(2).casefold().startswith(("point", "pt")):
             continue  # "3 point" / "3 pt" names the shot, not a threshold
         if number >= 1:
             return number
-    return None
+    return _threshold_from_text_scored(question)
+
+
+def _threshold_from_text_scored(question: str) -> int | None:
+    """The line a scoring verb states with no stat word after it ("scores
+    30", "scored 40+"), which is points (:data:`_SCORED`) - or None, and
+    None too where the question also states a line WITH its stat word, which
+    is the one :func:`_threshold_from_text` reads."""
+    if any(int(m.group(1)) >= 1 and not (int(m.group(1)) == 3 and m.group(2).casefold().startswith(("point", "pt"))) for m in _THRESHOLD.finditer(question)):
+        return None
+    match = _SCORED.search(question)
+    return int(match.group(1)) if match is not None and int(match.group(1)) >= 1 else None
 
 
 # How a question names one end of a season's games. Deliberately tight - the
@@ -2155,18 +2225,19 @@ def _route_line_and_record_intents(raw: dict[str, Any], question: str) -> bool:
         # "derozan career points vs knicks" refused on its opponent.
         raw["intent"] = "player_stat"
         rerouted_to_line = True
-    if raw["intent"] == "with_without" and not _names_after(_WITHOUT, question) and not _played_together(question) and any(pattern.search(question) for pattern in ORDER_WORDS.values()):
+    if raw["intent"] == "with_without" and not _played_together_absent(question) and not _played_together(question) and any(pattern.search(question) for pattern in ORDER_WORDS.values()):
         # No teammate named, and "the last 7 games": a team's log, not a
         # split. "KNICKS point differential over the last 7 games" arrived
         # as with_without after the 4.5.0 prompt shrink (day5) and answered
         # the last seven REGULAR-season games where the last seven were the
         # Finals - game_log reads both types for "last N" (_route_game_log_recent_span).
         raw["intent"] = "game_log"
-    if raw["intent"] in _PLAYED_TOGETHER_REROUTABLE and _RECORD.search(question) and _threshold_from_text(question) is None and _played_together(question):
+    if raw["intent"] in _PLAYED_TOGETHER_REROUTABLE and _RECORD.search(question) and _threshold_from_text(question) is None and (_played_together(question) or _names_after(_ABSENT_NAMED, question)):
         # "PHI record when Embiid and Paul George play" arrived as
         # head_to_head, the Pacers invented as the opponent, after the 4.5.0
         # prompt shrink; with no threshold it is the with/without split
         # (#156's reading, which `_route_threshold` makes for record_when).
+        # "record with Embiid out" is the same split, from the other side.
         raw["intent"] = "with_without"
     if raw["intent"] == "team_record" and _BEST_WORST_RECORD.search(question) and not _TEAM_WORD.search(question):
         raw["intent"] = "team_leaderboard"
@@ -2216,6 +2287,9 @@ def _route_threshold(raw: dict[str, Any], slots: dict[str, Any], question: str) 
         threshold = _threshold_from_text(question)
         if threshold is not None:
             slots["threshold"] = threshold
+            if _threshold_from_text_scored(question) == threshold:
+                # "scores 30": the verb names the stat, whatever the model filed.
+                slots["stat"] = "points"
     if raw["intent"] == "record_when" and not isinstance(slots.get("threshold"), int):
         # A record "when X and Y played" is a with_without question - the
         # games they were all in, beside the ones they were not - and not a
@@ -2223,10 +2297,13 @@ def _route_threshold(raw: dict[str, Any], slots: dict[str, Any], question: str) 
         # reached. With no threshold there is no number to divide by, and
         # record_when refused all four phrasings the web session asked (#156).
         # A question that does name a threshold keeps its intent, so "Sixers
-        # record when Embiid scores 30 points" is untouched.
+        # record when Embiid scores 30 points" is untouched. "When Embiid is
+        # out" is the same split from the other side: `without`, which
+        # `_route_filter_slots` reads.
         together = _played_together(question)
-        if together:
+        if together or _names_after(_ABSENT_NAMED, question):
             raw["intent"] = "with_without"
+        if together:
             slots["with_player"] = together
     if raw["intent"] == "threshold_count" and slots.get("stat") in ("games", "game") and not slots.get("threshold"):
         # "bam adebayo career games in the month of march" (yardstick-v2 F096)
@@ -2269,7 +2346,10 @@ def _route_filter_slots(slots: dict[str, Any], question: str) -> tuple[str | Non
     venue = _validate_venue(question)
     if venue is not None:
         slots["venue"] = venue
-    without = _names_after(_WITHOUT, question)
+    # "with Embiid out" is "without Embiid" written the other way round, for
+    # every intent the way "without" is: a template that cannot narrow by it
+    # refuses (check_scope), never answers the games he played too.
+    without = _played_together_absent(question)
     if without:
         slots["without"] = without
     # Every one, not the first: "less than 15 fga and with less than 35
@@ -2382,9 +2462,19 @@ def _route_calendar_slots(intent: str, slots: dict[str, Any], question: str, spa
     # Measured: "Joe Ingles stats when starting vs coming off the bench" was
     # answered with his season minutes, "Giannis stats by month" with his points
     # by season.
+    split = _route_calendar_slots_split(question)
+    if split is not None:
+        slots["split"] = split
+
+
+def _route_calendar_slots_split(question: str) -> str | None:
+    """The one split ``question`` names (:data:`SPLIT_WORDS`), narrowed to the
+    half it names where it names one (:func:`_split_side`); None for none, or
+    for two. The parser reads it again over the question with a teammate's
+    start blanked out ("maxey points when embiid starts" is Embiid's start,
+    not Maxey's own starter split)."""
     splits = [name for name, pattern in SPLIT_WORDS.items() if pattern.search(question)]
-    if len(splits) == 1:
-        slots["split"] = _split_side(splits[0], question)
+    return _split_side(splits[0], question) if len(splits) == 1 else None
 
 
 def _route_since_dated(slots: dict[str, Any], named_date: re.Match[str]) -> None:

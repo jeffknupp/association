@@ -279,20 +279,6 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #238
 
-### The parser reads a teammate's start as the subject's own split: "maxey points when embiid starts" falls through, "maxey points in games embiid started" compares the two
-- **Found:** 2026-09-27, plan item 6 step (d), round 2, probing the entry above on the default reader.
-- **Evidence:** the agent reading with the parser and the normalizer's reply stubbed as the model gives it (names `["maxey", "embiid"]`, stat `points` - the way `yardstick-v2/run_offline_parser.py` replays recorded replies), read-only against the main warehouse on the round-2 tree: "maxey points when embiid starts" and "how many points does maxey average when embiid starts" parse as `with_without` with `split: 'starter'` - Embiid's start filed as Maxey's own split - while the subject stage writes `conditions: [{Joel Embiid, started}]` beside it; `with_without` refuses `split` and the question falls through. "maxey stats when embiid comes off the bench" does the same with `split: 'bench'`. "maxey points in games embiid started" parses as `player_compare` (kind `pair`) and answers a table of Maxey (28.3 in 70 games) against Embiid (26.9 in 38).
-- **User sees:** a fall-through for the "when X starts" wordings; for "in games X started", a fluent comparison of the two players - a different question.
-- **Next step:** a teammate's role word ("starts", "started", "comes off the bench") beside a player subject reads as that teammate's `conditions` entry on the subject's own intent (`player_stat`, or `game_log` for a log) - never as the subject's `split`, never as a pair. The entry above has to land first, or `player_stat` answers the season line. A `tests/query/test_parser.py` case per wording, and the hold-out comparison (`holdout_compare.py`).
-- **Source:** ours.
-
-### A companion given as "with X out" or "when X plays" beside one player is read, then written to no slot
-- **Found:** 2026-09-27, plan item 6 step (d) round 2, probing the shot templates' narrowing on the parser path.
-- **Evidence:** parser path, normalizer stubbed with the two names, on 0a7140a and the round-2 branch (identical): "stephen curry shot chart when draymond green plays" and "... with draymond green out" trace `(decision) subject companions: ['Draymond Green']`, but the route is `{'player': 'Stephen Curry', 'season_type': 2}` - no `without`, `with_player` or `conditions` - and the chart is the whole season (374/803). "stephen curry game log with draymond green out" answers his last 10 games with Draymond ignored. "stephen curry stats with draymond green out" routes `with_without` with `with_player: ['draymond green out']` and answers "No player found matching 'draymond green out' - did you mean Bo Outlaw or Travis Outlaw?". `subject._apply_conditions` writes only a started, bench or reached role and leaves an absent or played companion to "the router's `without`/`with_player`", which the parser's route does not fill for these wordings ("stephen curry shot chart without draymond green" does fill `without` and draws his 4 games without Draymond, 39/79). Related, same probe: "stephen curry average shot distance when draymond green starts" reads parent `with_without` with `split: starter` and falls through ("with_without cannot honor ['split']").
-- **User sees:** the unnarrowed answer to a question about the games a teammate missed or played, or a clarification naming the Outlaws.
-- **Next step:** have the parser write an absent companion to `without` and a played one to `with_player` wherever the intent honors them, with "out" kept out of the name span; a case per wording in `tests/query/test_parser.py`, watched to fail first.
-- **Source:** ours.
-
 ### A team's `record_when` misreads "they score N points when X starts" as X's own threshold, dropping the start
 - **Found:** 2026-09-27, closing the #144 entry above this replaces: checking whether its own "companion bends it the other way" example ("76ers record when they score 120 points when embiid starts") survived the compiler-decline fix below.
 - **Evidence:** measured read-only against `/home/jeff/code/association/nba.duckdb`. `subject.read_subject(con, "76ers record when they score 120 points when embiid starts", "record_when", {"team": "Philadelphia 76ers", "stat": "points", "threshold": 120, "season_type": 2})` returns `subject.conditions = (Companion(name='Joel Embiid', predicate='reached', stat='points', threshold=120),)` - the team's own "they score 120 points" is folded into Embiid's condition, and "starts" is not read at all. `_apply_team_record_when` (`subject.py:1064`) then fires as designed - its own rule is "the TEAM's record in the games a companion reached a line" ("Sixers record when Embiid scores 30", a real, correctly-answered shape) - and rewrites the slots to `{'player': 'Joel Embiid', 'stat': 'points', 'threshold': 120, 'team': 'Philadelphia 76ers'}` on the strength of that misread condition. `record_when` (and `compose.answer`, identically) then answers "Philadelphia 76ers record when Joel Embiid had 120+ points, 2026 regular season: 120+ points 0 0-0 ... under 120 points 38 24-14" - a real player's real 0-for-120 record, for a question about the TEAM's own scoring with Embiid's start as its actual (and separately dropped) condition. Neither of this session's `record_when` fixes touches it: a `player` slot is already set by the time the question reaches `record_when`, so it never reaches `compose.team`'s `TeamQuery` or the team branch's own `conditions` refusal at all - confirmed by re-running both after the fixes, identical output.
@@ -305,6 +291,13 @@ those were found.
 - **Evidence:** the parser path offline on 33cfd60 (and before it on 96b4b65), the normalizer stubbed with the question's own name spans (what the model is told to copy, and what `parse._as_typed` puts back when it corrects one), read-only on the main warehouse: "gui last 5 games vs sours" routes `{'player': 'Gui Santos', 'order': 'recent', 'limit': 5, ...}` with no `opponent` and lists his last 5 games (LAC, SAC, HOU, CLE, DEN), where "gui last 5 games vs spurs" lists his last 4 against San Antonio; "jalen brunson points vs the celtcs this season" answers his season average (26 points in 74 games); "lakers record vs the nuggest" answers the Lakers' season record (53-29). `parse.classify_span` reads a span as a team only by its exact word, nickname, code or name (`team_named_in`, `find_teams`), and the index's near-spelling pass is for players only, so the typo'd span is nobody's and is dropped, and nothing says a word of the question went unread.
 - **User sees:** a fluent answer to the un-narrowed question - the player's or team's whole window or season - with the opponent it names nowhere in it.
 - **Next step:** a near spelling of exactly one franchise's word or nickname (within the index's edit budget, against the 30 franchises' words only) reads as that team and says so, the way `entities.read_near_spelling` does for a player; a span near nothing refuses by name rather than vanishing. A `tests/query/test_parser.py` case per wording above, watched to fail, and the hold-out comparison.
+- **Source:** ours.
+
+### A start the question denies reads as a start: "maxey game log when embiid doesn't start" lists his games WITH Embiid starting
+- **Found:** 2026-09-27, plan item 6 step (d) follow-ups, probing negated roles beside the teammate-role fix.
+- **Evidence:** `subject._condition_role` finds "start" in "embiid doesn't start" and returns `started`; it has no negation, and the relation has no "did not start" predicate (`player_games.CONDITION_PREDICATES`: played, absent, started, bench, reached). On a relation template the condition narrows to the opposite games: the agent (parser reader, normalizer stubbed, main warehouse), identical on `0a7140a` and this branch, answers "maxey game log when embiid doesn't start" with "Tyrese Maxey with Joel Embiid starting, last 10 of 35 games of the 2026 regular season" - the 35 games Embiid started, where the question asked for the 35 he did not (38 started of the 76ers' 82 per `with_without`'s own split, of which Maxey played 35). The parser keeps a denied start on `with_without` for a stat question ("maxey points when embiid doesn't start" shows both halves), but the log row, the chart row and a record's `player_splits` row come first.
+- **User sees:** the inverse of the question, labeled with the condition it inverted ("with Joel Embiid starting").
+- **Next step:** read a denied start or bench in `_condition_role` (the parser's `parse._DENIED_ROLE` is the pattern) and either refuse it on a filter or add a `not_started` predicate to the relation (NOT EXISTS over the started clause, bounded by the tenure an absence already carries); a test per wording.
 - **Source:** ours.
 
 ## P2: misleading or incomplete
@@ -2398,13 +2391,6 @@ those were found.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #229
 
-### "celtics record when jayson tatum scores 30" refuses saying "'jayson tatum' is a team"
-- **Found:** 2026-09-27, plan item 6 step (d) round 2, probing the condition templates through the whole agent (parser reader, normalizer stubbed with `["celtics", "jayson tatum"]` and `points`, fall-through off). Identical on `0a7140a`.
-- **Evidence:** the route is `record_when {'stat': 'points', 'team': 'Boston Celtics', 'season_type': 2, 'player': 'jayson tatum'}` - no `threshold`: "scores 30" with no "points" after it is not read as a line ("celtics record when jayson tatum scores 30 points" is, and answers his 30+ point games, 1-0 in one). The answer is `refusals._team_where_a_player_belongs`'s "'jayson tatum' is a team, and this was read as a question about one player's points. Name a player, or ask for the team's own record or stats." - that refusal fires on the subject's kind (a team, no `subject.players`) without checking that the `player` slot names a team, and here it names a player. The same with "since 2022" or "between 2020 and 2022" appended.
-- **User sees:** a refusal claiming a player is a team, which sends the reader to rename someone who was named correctly.
-- **Next step:** read "scores 30" (a number after a scoring verb) as the threshold where the stat is points, and make `_team_where_a_player_belongs` check the slot against the team index before saying it is a team - otherwise say which fact is missing (the line).
-- **Source:** ours.
-
 ### A league ranking by 2-point percentage is refused as an outside figure; five other box-score keys the normalizer can emit rank only through the compiler, under raw column names
 - **Found:** 2026-09-27, plan item 6 step (d) part 3, re-aiming `tests/query/test_career_spans.py`'s vocabulary test from the router's prompt to `NORMALIZER_STATS`.
 - **Evidence:** six player keys in `NORMALIZER_STATS` resolve to no leaderboard metric (`leaderboard.resolve_metric` returns None): `fieldGoalsAttempted`, `freeThrowsAttempted`, `threePointFieldGoalsAttempted`, `offensiveRebounds`, `defensiveRebounds`, `twoPointFieldGoalPct`. Parser path offline on 33cfd60 (and before it on 96b4b65), normalizer stubbed with the key, read-only on the main warehouse: the template refuses each and the compiler ranks five from box scores - "who leads the league in offensive rebounds this season" answers "every player, 2026 regular season, by player (offensiveRebounds per game, minimum 20 games): Steven Adams ... 4.5", the column's own name as the label (the attempts read "FTA", "FGA", "3PA") - and refuses the sixth: "who has the best 2 point percentage this season" answers "No ranking reads 'twoPointFieldGoalPct' on the player-games relation - it only ranks the box-score measures it knows, not a NetPoints or other outside figure." A 2-point percentage is a box-score figure (field goals less threes; `player_history` and `player_stat` already compute it), so the refusal names the wrong cause.
@@ -3044,6 +3030,13 @@ those were found.
 - **Next step:** give `player_stat` the attempted columns (per game and total, from the same box-score join), or answer an attempted stat from the made line with the attempts per game computed; a warehouse-verified test on Embiid's career line.
 - **Source:** ours.
 - **GitHub:** #243
+
+### "while X plays" names no teammate: "maxey points while embiid plays" falls through
+- **Found:** 2026-09-27, plan item 6 step (d) follow-ups, probing played companions.
+- **Evidence:** the parser reads Embiid as a `played` companion and routes `with_without` ("while" is a companion keyword), but the stage that writes `with_player` reads "with X" and "when X plays" only (`router._WHEN_PLAYED` is anchored on "when"), and `with_without` reads a played teammate from `with_player` alone - so the template has no teammate: "with_without needs exactly one teammate, got ['maxey']", a fall-through, on `0a7140a` and this branch alike. "maxey points when embiid plays" answers.
+- **User sees:** the agent's answer, or with fall-through off none, where "when" would have answered.
+- **Next step:** let `_WHEN_PLAYED` (and `_WHEN_WITH`) take "while"; a parser test on the wording.
+- **Source:** ours.
 
 ## P4: tooling, docs, low impact
 
@@ -4337,4 +4330,11 @@ those were found.
 - **Evidence:** `query/agent.py` sets it in `__init__`, `reset_conversation` and twice in `_ask_inner`; nothing in `src/` reads it - only two assertions in `tests/query/test_agent.py` and the web runner test's stand-in, which is what keeps vulture quiet (AGENTS.md: delete such code rather than rely on that). Left in place because step 3c owns the rest of `agent.py` at the same time.
 - **User sees:** nothing.
 - **Next step:** once 3c merges, delete it, its four writes and the tests' assertions, and reword `reset_conversation`'s docstring: the conversation the fall-through agent reads is what a stranger's question leaks through now.
+- **Source:** ours.
+
+### A composed count under a condition prints its line raw: "had 34 games points >= 30 with Joel Embiid starting"
+- **Found:** 2026-09-27, plan item 6 step (d) follow-ups, once a teammate's start reached the compiler-first counts as a condition.
+- **Evidence:** "how many 30 point games did maxey have when embiid started" (parser reader, main warehouse) answers "Tyrese Maxey had 34 games points >= 30 with Joel Embiid starting in the regular season career (2021-2026)", where the same count unnarrowed reads "Tyrese Maxey had 86 games with 30+ points in his regular season career (2020-21 through 2025-26)". The number is right (34, checked against `player_game_log` directly); the narrowed sentence (`compose/sentence.py`) prints the predicate as `points >= 30` and drops "with ... in his".
+- **User sees:** a right count in an awkward sentence.
+- **Next step:** say the line the way the unnarrowed count does ("with 30+ points") before the narrowing's own phrase.
 - **Source:** ours.
