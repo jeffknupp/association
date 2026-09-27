@@ -30,7 +30,7 @@ from association.query.conditions import RAW_BOX, UNGATED_ON_REBUILD, box_source
 from association.query.reading import Reading
 from association.query.templates.common import REBUILT_STATS, TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, check_scope
 from association.query.templates.games import player_matchup
-from association.query.templates.splits import SPLIT_KINDS, player_splits, record_when, streak, with_without
+from association.query.templates.splits import SPLIT_KINDS, _record_when_group, player_splits, record_when, streak, with_without
 
 S = current_season()
 BOS, LAL, PHI = "2", "13", "20"
@@ -304,6 +304,47 @@ def test_a_warehouse_without_the_filled_view_reads_as_it_always_did(league: Temp
     assert player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum", split="home_away"))).data["games"] == 3
 
 
+def test_record_when_group_sums_every_game_regardless_of_order(league: TemplateContext) -> None:
+    """`_record_when_group`'s own half of the fix: "every game" (``hit=None``)
+    now sums all three groups - reached, fell short, and a blank-stat game,
+    which still has a real result even though it counts in neither threshold
+    row. Built by hand, in two insertion orders, since the bug this guards
+    was exactly a `by_hit` dict whose key depended on which order DuckDB's
+    parallel GROUP BY happened to return the groups in (ISSUES.md)."""
+    del league  # unused; a pure-Python check of the grouping helper alone
+    reached_row = (True, 5, 3, 2.5, S, S, ["2"])
+    short_row = (False, 10, 4, -1.0, S, S, ["2"])
+    blank_row = (None, 2, 1, 0.5, S, S, ["2"])
+    for found in ([reached_row, short_row, blank_row], [blank_row, reached_row, short_row], [short_row, blank_row, reached_row]):
+        by_hit = {row[0]: row for row in found}
+        assert _record_when_group(by_hit, True) == {"games": 5, "wins": 3, "losses": 2, "avg_margin": 2.5}
+        assert _record_when_group(by_hit, False) == {"games": 10, "wins": 4, "losses": 6, "avg_margin": -1.0}
+        every = _record_when_group(by_hit, None)
+        assert (every["games"], every["wins"], every["losses"]) == (17, 8, 9)
+        assert every["avg_margin"] == pytest.approx((5 * 2.5 + 10 * -1.0 + 2 * 0.5) / 17)
+
+
+def test_record_when_keeps_a_blank_stat_game_off_both_threshold_rows(rebuilt_league: TemplateContext) -> None:
+    """The P1 this fixes (ISSUES.md): `_record_when_answer` used to key its
+    threshold groups by `bool(row[0])`, so a blank-stat game (NULL on a
+    rebuilt row) collided with the "fell short" group - `bool(None) ==
+    bool(False)` - and whichever one DuckDB's parallel GROUP BY happened to
+    return last silently won, so the same question answered a different
+    "under threshold" row from one asking to the next.
+
+    Tatum's turnovers are 0 in every one of his real games this season (e1 W,
+    e4 W, e7 L) and blanked on the rebuilt e5 (a win) - turnovers is one of
+    `UNGATED_ON_REBUILD`'s columns, never trusted on a rebuilt row. A
+    threshold of 1 turnover puts every real game "under" and leaves e5 in
+    neither threshold row, still counted in "all his games" since it has a
+    real result."""
+    result = record_when(rebuilt_league, Reading.from_slots(_slots(player="Jayson Tatum", stat="turnovers", threshold=1)))
+    assert result.data["reached"] == {"games": 0, "wins": 0, "losses": 0, "avg_margin": None}
+    assert result.data["fell_short"] == {"games": 3, "wins": 2, "losses": 1, "avg_margin": pytest.approx(1 / 3)}
+    assert "Over the 4 games he played" in (result.answer or "")
+    assert "1 of his games in that span have no turnovers figure on record, so they are in neither row." in (result.answer or "")
+
+
 def test_the_ungated_rebuild_columns_are_the_ones_no_template_may_read() -> None:
     """`UNGATED_ON_REBUILD` is a third hand-maintained list beside
     `REBUILT_STATS` and the view's own substitutions, which is the shape this
@@ -394,6 +435,34 @@ def test_a_team_subject_refuses_without_rather_than_silently_dropping_it(league:
     way a starter/bench split already is for a team."""
     with pytest.raises(TemplateUnsupported, match="without"):
         player_splits(league, Reading.from_slots(_slots(team="Boston Celtics", without="Jayson Tatum")))
+
+
+def test_a_team_split_honors_until(league: TemplateContext) -> None:
+    """``until`` (ISSUES.md): before this, `_player_splits_team` never passed
+    it to `_span_of`, so bounding the range to just `last` (the fixture's
+    ``since=until={S - 1}``) silently answered the same 11-game pool an
+    open-ended ``since={S - 1}`` reaches instead - the Celtics' games both
+    last season (e0z-e0d, 5 games) and this one (e1-e7, 6 games). Bounded to
+    just `last`, only those first 5 count, and the label says the real range
+    rather than an open-ended "since"."""
+    bounded = player_splits(league, Reading.from_slots(_slots(team="Boston Celtics", split="wins_losses", since=S - 1, until=S - 1)))
+    unbounded = player_splits(league, Reading.from_slots(_slots(team="Boston Celtics", split="wins_losses", since=S - 1)))
+    assert bounded.data["games"] == 5
+    assert unbounded.data["games"] == 11
+    bounded_rows, unbounded_rows = _rows(bounded, "wins_losses"), _rows(unbounded, "wins_losses")
+    assert (bounded_rows["wins"]["games"], bounded_rows["losses"]["games"]) == (4, 1)
+    assert (unbounded_rows["wins"]["games"], unbounded_rows["losses"]["games"]) == (8, 3)
+    assert f"from {S - 1} through {S - 1}" in (bounded.answer or "")
+    assert f"since {S - 1} ({S - 1}-{S}" in (unbounded.answer or "")
+
+
+def test_a_team_subject_refuses_a_condition_rather_than_silently_dropping_it(league: TemplateContext) -> None:
+    """The same discipline as ``without`` just above (ISSUES.md): a
+    ``conditions`` entry names a role - a start, a bench game, a line
+    reached - for one specific player, and the team branch has no settled
+    player to check it against."""
+    with pytest.raises(TemplateUnsupported, match="conditions"):
+        player_splits(league, Reading.from_slots(_slots(team="Boston Celtics", conditions=[{"player": "Jayson Tatum", "predicate": "started"}])))
 
 
 def test_an_unknown_split_is_refused(league: TemplateContext) -> None:
@@ -667,6 +736,20 @@ def test_record_when_honors_since_and_says_so(league: TemplateContext) -> None:
     assert result.answer.startswith(f"Boston Celtics record when Jayson Tatum had 25+ points, since {S - 1} ({S - 1}-{S} regular seasons):")
 
 
+def test_record_when_honors_since_and_until_together_and_says_so(league: TemplateContext) -> None:
+    """``_condition_span_label`` used to read ``since`` only (ISSUES.md), so
+    a range with both ends named ("from 2019-20 to 2021-22") was labeled as
+    though it were still open-ended - even though the player branch's own
+    narrowing (``condition_player``/``scoped_player``) already bounded the
+    games correctly; only the LABEL lagged. Bounded to just `last`
+    (``since=until={S - 1}``), only Tatum's 4 games that season count -
+    e0b (20, L), e0c (25, W), e0a (30, W), e0d (28, W) - against 7 across
+    both seasons with no upper bound (the test just above)."""
+    bounded = record_when(league, Reading.from_slots(_slots(player="Jayson Tatum", stat="points", threshold=25, since=S - 1, until=S - 1)))
+    assert (bounded.data["reached"]["games"], bounded.data["fell_short"]["games"]) == (3, 1)
+    assert bounded.answer.startswith(f"Boston Celtics record when Jayson Tatum had 25+ points, from {S - 1} through {S - 1} ({S - 1} regular season):")
+
+
 def test_record_when_settles_season_n_and_says_so(league: TemplateContext) -> None:
     """Tatum's 1st season on record (player_season_stats_deduped) is last
     season: e0b (20, L), e0c (25, W), e0a (30, W), e0d (28, W)."""
@@ -722,6 +805,33 @@ def test_a_team_only_threshold_honors_since(league: TemplateContext) -> None:
     assert result.data["team"] == "Boston Celtics"
     assert result.data["reached"]["games"] + result.data["fell_short"]["games"] > 4
     assert f"since {S - 1}" in (result.answer or "")
+
+
+def test_a_team_only_threshold_honors_until(league: TemplateContext) -> None:
+    """``until`` (ISSUES.md): before this, `_record_when_team_answer` never
+    passed it to `_span_of`, so bounding the range to just `last` (the
+    fixture's ``since=until={S - 1}``) silently answered the same 11-game
+    pool an open-ended ``since={S - 1}`` reaches instead. Bounded to just
+    `last` (e0z-e0d), only 5 games count, and the label says the real range
+    rather than an open-ended "since"."""
+    bounded = record_when(league, Reading.from_slots(_slots(team="Boston Celtics", stat="points", threshold=100, since=S - 1, until=S - 1)))
+    unbounded = record_when(league, Reading.from_slots(_slots(team="Boston Celtics", stat="points", threshold=100, since=S - 1)))
+    assert bounded.data["reached"]["games"] + bounded.data["fell_short"]["games"] == 5
+    assert unbounded.data["reached"]["games"] + unbounded.data["fell_short"]["games"] == 11
+    assert f"from {S - 1} through {S - 1}" in (bounded.answer or "")
+    assert f"since {S - 1} ({S - 1}-{S}" in (unbounded.answer or "")
+
+
+def test_a_team_only_threshold_refuses_a_condition(league: TemplateContext) -> None:
+    """The team branch settles no player, so a ``conditions`` entry (a
+    teammate's start, bench game or line) has no subject to check it
+    against - refused by name rather than silently answering the team's
+    whole span as though the condition were never named (ISSUES.md)."""
+    with pytest.raises(TemplateUnsupported, match=r"record_when cannot honor \['conditions'\]"):
+        record_when(
+            league,
+            Reading.from_slots(_slots(team="Boston Celtics", stat="points", threshold=100, conditions=[{"player": "Jayson Tatum", "predicate": "started"}])),
+        )
 
 
 # ---------------- record_when, the team branch (ISSUES.md #144) ----------------
@@ -849,6 +959,22 @@ def test_a_league_wide_streak_still_refuses_venue_and_opponent(league: TemplateC
         streak(league, Reading.from_slots(_slots(kind="win", venue="home")))
     with pytest.raises(TemplateUnsupported, match=r"streak cannot honor \['opponent'\] without a named team or player"):
         streak(league, Reading.from_slots(_slots(kind="win", opponent="Boston Celtics")))
+
+
+def test_a_league_streak_honors_until(league: TemplateContext) -> None:
+    """``until`` (ISSUES.md): before this, `_streak_league_team_branch` never
+    passed it to `_span_of` either, so a league-wide search bounded to just
+    `last` (the fixture's ``since=until={S - 1}``) silently searched every
+    season since instead, surfacing the Celtics' tied 3-game streak this
+    season (2025-11-04 to 2025-11-08) alongside their real, in-range one -
+    turning a lone leader into a tie the range never asked about."""
+    bounded = streak(league, Reading.from_slots(_slots(kind="win", since=S - 1, until=S - 1)))
+    unbounded = streak(league, Reading.from_slots(_slots(kind="win", since=S - 1)))
+    assert len(bounded.data["streaks"]) == 2
+    assert len(unbounded.data["streaks"]) == 4
+    assert f"from {S - 1} through {S - 1}" in (bounded.answer or "")
+    assert "shared" not in bounded.answer.split("\n")[0]
+    assert "shared" in unbounded.answer.split("\n")[0]
 
 
 def test_a_team_turnovers_threshold_reads_totalturnovers() -> None:
@@ -1106,6 +1232,29 @@ def test_a_team_streak_honors_since(league: TemplateContext) -> None:
     assert result.data["streaks"]
     assert result.data["streaks"][0]["length"] == 3
     assert f"since {S - 1}" in (result.answer or "")
+
+
+def test_a_team_streak_honors_until(league: TemplateContext) -> None:
+    """``until`` (ISSUES.md): before this, `_streak_team` never passed it to
+    `_span_of`, so a run bounded to just `last` (the fixture's
+    ``since=until={S - 1}``) silently searched every season since instead,
+    surfacing the tied 3-game streak this season also has (e3, e4, e5) as a
+    "Matched by" line that a range ending at `last` should never see."""
+    bounded = streak(league, Reading.from_slots(_slots(team="Boston Celtics", kind="win", since=S - 1, until=S - 1)))
+    unbounded = streak(league, Reading.from_slots(_slots(team="Boston Celtics", kind="win", since=S - 1)))
+    assert len(bounded.data["streaks"]) == 1
+    assert len(unbounded.data["streaks"]) == 2
+    assert f"from {S - 1} through {S - 1}" in (bounded.answer or "")
+    assert "Matched by" not in (bounded.answer or "")
+    assert "Matched by" in (unbounded.answer or "")
+
+
+def test_a_team_streak_refuses_a_condition(league: TemplateContext) -> None:
+    """Team and league streaks settle no player, so a ``conditions`` entry
+    has no subject to check it against - refused by name rather than
+    silently narrowing nothing (ISSUES.md)."""
+    with pytest.raises(TemplateUnsupported, match=r"streak cannot honor \['conditions'\]"):
+        streak(league, Reading.from_slots(_slots(team="Boston Celtics", kind="win", conditions=[{"player": "Jayson Tatum", "predicate": "started"}])))
 
 
 # ---------------- what the checks around the templates see ----------------

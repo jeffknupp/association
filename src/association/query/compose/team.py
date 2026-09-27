@@ -372,7 +372,24 @@ def run_team(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
     .. versionchanged:: 4.5.0
        Carries no partial-season caveat: the agent appends the same note to
        every composed answer, and it printed twice.
+
+    .. versionchanged:: 4.5.0
+       Declines a point whose scope carries a ``threshold`` (ISSUES.md #144),
+       rather than silently answering the season or narrowed-window total
+       with the threshold dropped. "What was the celtics record when they
+       scored 120 points" reaches here with a team, no player and a
+       ``threshold`` - a record above and below a line, which neither reader
+       this module has (a season sum, or a window sum) can represent - only
+       because :func:`~association.query.compose.move.team_read_point`
+       settles a team subject before ``record_when``'s own per-intent default
+       (:func:`~association.query.compose.adapt._adapt_record_when`, which
+       already refuses a team with no player) ever sees the question.
+       Declining sends the question back to ``record_when``'s own team
+       branch (:func:`~association.query.templates.splits._record_when_team_answer`),
+       which answers a threshold record for real.
     """
+    if q.scope.threshold is not None:
+        raise Unsupported("a threshold names a record above and below a line, not a total - this module has no reader for one")
     refusal = team_coverage_refusal(q)
     if refusal is not None:
         raise Refused(refusal)
