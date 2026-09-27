@@ -496,6 +496,42 @@ honest refusals that a fuller system would answer. By cause:
    questions F048/F049, the two active "Curry" namesakes F002/F003, the
    no-valid-reading refusals F097/F112/F104, the singles).
 
+14. **2026-09-26, the architecture review: are we back in rules-engine
+   territory? Measured yes, and measured what to do about it.** Jeff's
+   worry: the router picks a parent intent and a growing post-processing
+   pipeline corrects it, and agents cannot say where a value came from.
+   Counted on day10: the final intent is the router's on 72% of rows (66 of
+   the 78 moves are the seven children, by design); code rewrites a slot on
+   91/277 rows; ~70 post-model rewrite points across five writers (settle's
+   26 stages and 96 regexes, the reading, `apply_subject`'s 14 steps, the
+   leftover repairs, the compiler's `move_point`), against ~40 across three
+   before the compiler (2026-09-22). Withholding the router on the 277
+   recorded routes (`~/association-research/router-withheld/RESULT.md`):
+   intent only 95/277 answers reproduced; intent + its names/stat 223; a
+   40-rule kind+words grammar for the intent with the router's slots 254.
+   Greenfield measurements (`~/association-research/parser-greenfield/RESULT.md`):
+   the 3B at a names+stat-only job copies names verbatim 299/302, ~97%
+   recall, 0.8s; the 7B adds nothing on names, +13/162 on the stat (the
+   2pt/3pt confusion), +1s - the 3B keeps the job and the netpoints family
+   goes in the measure table; a no-router pipeline built from today's
+   settle stages reproduces only 167/277, and the gap is five nameable
+   things (window words, the measure vocabulary, typo policy, name-vs-team
+   by context, per-intent slot shapes); on 277 faithful 7B paraphrases the
+   deterministic parse holds ~89% (kind 250, parent 231 raw; 50
+   disagreements read by hand), ~93% with the possessive-name fix. The
+   literature says this is the known shape - PRECISE's semantically
+   tractable questions (Popescu, Etzioni, Kautz, IUI 2003), the Overnight
+   grammar (Wang, Berant, Liang, ACL 2015), grammar-constrained decoding
+   for small models (Geng et al., EMNLP 2023), Tableau's Eviza/Ask Data
+   compiling to an intermediate language. The walkthrough page (three
+   pipelines, four questions):
+   https://claude.ai/artifact/XQCA4A4knDotv6KAndnqML. Grading note from
+   the same review: the blind grader passes an answer that states a
+   narrower scope than the question (F088), so a stated narrower scope is
+   partial at best from now on. **Decision: the parser consolidation is
+   plan item 6, and next.** Deferred product change, Jeff's: a bare "this
+   year" (and stats generally) reading the playoffs in by default.
+
 ## The current plan: what buys the most correctness next
 
 In order of lift per unit of structural change, each measured on the
@@ -518,7 +554,11 @@ yardstick before the next starts:
    two relations; each template it reproduces exactly is one the router no
    longer needs an intent for. Fewer intents means a shorter prompt, and the
    prompt is the router's ceiling. `CODE_ASSIGNED_INTENTS` is the route for
-   any shape the question's own words name.
+   any shape the question's own words name. **Status 2026-09-26:** 2c
+   done (23 -> 16 intents); 2a at parity for threshold_count 18/18,
+   single_game_high 10/10, record_when 10/10, player_history 20/20 -
+   none deleted yet; folded into item 6, which deletes them behind the
+   Reading rather than behind the slots.
 3. **The pair relation.** Done as a template, 2026-09-24: `player_matchup`
    narrows the first player's games through the shared step, so a
    teammate's absence, a venue, a date, a starter half and a calendar are
@@ -553,6 +593,32 @@ Not on the list: a bigger router (measured: does not fix names, and the
 latency fear was overstated), improving the agent fall-through (an agent
 with nothing to read fills the silence from its own weights), and more data
 (every structural gap added up comes to under 14% of questions).
+
+6. **The parser: one Reading, one writer of slots - next (item 14 above).**
+   The model's job shrinks to a names+stat normalizer on the 3B (names as
+   spans of the question, one key from a closed measure table, no intent
+   enum, ~300 tokens - the prompt-length drift class goes with the enum).
+   One parser module reads the question into a typed Reading: kind,
+   subject, opponent, companions with roles, measures, predicates, scope,
+   window, shape, with the words each field came from - today's settle
+   stages, the subject reading and the compiler's `move_point` become its
+   grammar tables, each row a test case. A planner turns the Reading into a
+   point on a relation and refuses a narrowing the relation lacks (it
+   replaces `check_scope`); the compiler answers it; a template survives
+   only for a shape of its own (chart, fingerprint, streak, matchup,
+   quarter) and reads the Reading, never slots. The relations, the
+   coverage floors, name resolution with the recency rule and the caveats
+   do not change. Steps, each proven before the next: (a) the IR and the
+   planner in front of the compiler for the four shapes already at
+   parity, golden-neutral; (b) the grammar tables, measured on the 277
+   day10 wordings and on the 277 paraphrases as the held-out set (never
+   tuned on; `parser-greenfield/paraphrases_7b_v2.jsonl`); (c) the
+   normalizer replaces the router prompt - a live run, merge at >= 160/175
+   (day10 after the F088 re-grade); (d) the templates read the Reading and
+   the five slot writers are deleted. Two decisions before (b): typo policy
+   (the normalizer may correct, or the index defaults visibly on a single
+   near spelling), and where "this year" stops (deferred). Design doc:
+   `~/association-research/parser-greenfield/DESIGN.md`.
 
 ## The rules a spike keeps
 
