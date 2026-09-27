@@ -32,12 +32,12 @@ import duckdb
 from association.query.compose.core import Refused, Unsupported
 from association.query.compose.move import read_point
 from association.query.compose.team import team_named_in
-from association.query.entities import find_players, find_teams, suggest_players
+from association.query.entities import _edit_budget, find_players, find_teams, suggest_players
 from association.query.measures import MEASURE_WORDS
 from association.query.metrics import EXTRA_FIELD_COLUMNS
 from association.query.reading import Reading
 from association.query.router import Route, _period_asked, settle
-from association.query.subject import KIND_ASSIGNED_INTENTS, TEAM_SINGULARS, Subject, question_supports, read_subject
+from association.query.subject import KIND_ASSIGNED_INTENTS, TEAM_SINGULARS, Subject, _levenshtein, question_supports, read_subject
 
 _PAIR_MEETING = (
     r"(?!.*\b(compare|compared|comparing|contrast|evaluate|who scores more|who is better|who was better)\b)"
@@ -337,6 +337,44 @@ def _classify_span_abbreviation(con: duckdb.DuckDBPyConnection, low: str) -> boo
     return con.execute("SELECT count(*) FROM teams WHERE lower(abbreviation) = ?", [low]).fetchone() != (0,)
 
 
+def _as_typed(question: str, name: str) -> str:
+    """``name`` as the question spells it. The model is told to copy names
+    exactly and mostly does (299 of 302 measured), but it corrects a typo now
+    and then - "how many points does embid average" came back as "embiid" -
+    and a correction nothing shows is the model deciding who a name is, which
+    is the entity index's job, said in the answer
+    (:func:`~association.query.entities.read_near_spelling`). So a name the
+    question does not hold is put back to the one run of the question's own
+    words that is a near spelling of it, word for word; with none, or with
+    two, the model's spelling stands (an expansion, "sga" as Shai
+    Gilgeous-Alexander, is the nickname reading's to check)."""
+    if name.casefold() in question.casefold():
+        return name
+    wanted = [w.casefold() for w in _AS_TYPED_WORD.findall(name)]
+    words = _AS_TYPED_WORD.findall(question)
+    runs = _as_typed_runs(words, wanted)
+    if not runs and len(wanted) > 1 and wanted[-1] not in {w.casefold() for w in words}:
+        # Completed AND corrected: "webanyama" came back "Victor Wembanyama".
+        # The surname's own near spelling is what the question typed; a
+        # surname the question holds as typed is a completion, which
+        # `undo_name_completion` reads, not a correction.
+        runs = _as_typed_runs(words, wanted[-1:])
+    return " ".join(runs[0]) if wanted and len(runs) == 1 else name
+
+
+def _as_typed_runs(words: list[str], wanted: list[str]) -> list[list[str]]:
+    """Every run of ``words`` that is ``wanted`` word for word, each within
+    the entity index's edit budget (three letters or more)."""
+    return [
+        words[i : i + len(wanted)]
+        for i in range(len(words) - len(wanted) + 1)
+        if all(len(t) >= 3 and _levenshtein(t.casefold(), w) <= _edit_budget(w) for t, w in zip(words[i : i + len(wanted)], wanted, strict=True))
+    ]
+
+
+_AS_TYPED_WORD = re.compile(r"[\w'.-]+")
+
+
 def _slots_from_names(con: duckdb.DuckDBPyConnection, names: list[str], stat: str) -> dict[str, Any]:
     """The names as the slot shape the readers take today: ``player`` /
     ``players``, ``team`` and a second team as ``opponent``, ``stat``."""
@@ -467,7 +505,7 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
 
     .. versionadded:: 4.5.0
     """
-    slots = _with_measure(question, _slots_from_names(con, list(names or []), stat))
+    slots = _with_measure(question, _slots_from_names(con, [_as_typed(question, name) for name in names or []], stat))
     subject = _two_teams(read_subject(con, question, "other", dict(slots)), question, slots)
     slots = _read_route_names(subject, slots)
     parent = parent_intent(question, subject.kind, bool(subject.conditions))

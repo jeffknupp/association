@@ -220,3 +220,17 @@ def test_read_route_reads_the_columns_a_ranking_asks_to_see(con: duckdb.DuckDBPy
     assert team.slots.get("fields") == ["team"]
     plain, _, _ = read_route(con, "who led the league in scoring", [], "points")
     assert "fields" not in plain.slots
+
+
+def test_a_name_the_model_corrected_is_put_back_as_the_question_typed_it(con: duckdb.DuckDBPyConnection) -> None:
+    """The model copies names exactly 299 times in 302 and corrects the
+    rest: "how many points does embid average" came back "embiid", and the
+    answer read Joel Embiid with nothing saying a typo was read. A typo is
+    the entity index's to read, visibly, so the question's own spelling goes
+    back in; a completion of a surname typed as-is is left alone."""
+    typo, _, _ = read_route(con, "how many points does embid average", ["embiid"], "points")
+    assert typo.slots["player"] == "embid"
+    both, _, _ = read_route(con, "how many points does embidd average", ["Joel Embiid"], "points")
+    assert both.slots["player"] == "embidd"
+    completed, _, _ = read_route(con, "how many points does embiid average", ["Joel Embiid"], "points")
+    assert completed.slots["player"] in ("Joel Embiid", "embiid")
