@@ -594,7 +594,7 @@ latency fear was overstated), improving the agent fall-through (an agent
 with nothing to read fills the silence from its own weights), and more data
 (every structural gap added up comes to under 14% of questions).
 
-6. **The parser: one Reading, one writer of slots - next (item 14 above).**
+6. **The parser: one Reading, one writer of slots - (a)-(c) done, (d) next (item 14 above).**
    The model's job shrinks to a names+stat normalizer on the 3B (names as
    spans of the question, one key from a closed measure table, no intent
    enum, ~300 tokens - the prompt-length drift class goes with the enum).
@@ -644,6 +644,49 @@ with nothing to read fills the silence from its own weights), and more data
    the 35 misses are the paraphrase changing the meaning). Nothing live
    calls it yet; golden 631/631. Remaining before (c): the 90% held-out
    intent target, the scope/window tables settle still owns.
+   **Step (b) done, step (c) done, 2026-09-27 (2b2e9d3 .. fe53c72): the
+   parser reads the question by default.** (b): held-out (v3) intent
+   251/277 = 90.6%, kind 268; DEV kind 275, intent 261 (the DEV loss is
+   the F088 rows whose reference holds the with/without reading Jeff ruled
+   wrong). (c): `query/normalizer.py` (the measured prompt, names verbatim
+   + one stat key) and `parse.read_route`, which writes the name slots from
+   the subject reading, reads the window before the stages, a team's
+   quarter, a ranking's `fields` and re-anchors a name the model corrected
+   to the question's spelling; the entity index reads a single near
+   spelling visibly (`entities.read_near_spelling`). Live runs, graded
+   with the season type as the regular-season default (Jeff, deferred):
+   **162/175 (92.6%), families 151/166, 3 wrong** (`live_parser3.jsonl`,
+   efef90d) against the router's 160/175, 150/166, 4 wrong (day10) - at
+   1.08s a question median against 2.28s, 5.3 minutes a run against 11.3.
+   The recorded replies reproduce live exactly (three live runs, 0 answers
+   moved against their offline rehearsal), so
+   `yardstick-v2/run_offline_parser.py` is the loop and a live run the
+   record. A hold-out the fixes were not found on - the recorded corpus's
+   75 questions outside day10, both readers, no model
+   (`holdout_compare.py`) - found six parser-only wrong answers (efef90d);
+   of the 34 answers still differing, 30 compare against a recorded route
+   missing its name slot and the other 4 are the parser's equal or better.
+   `Agent`, `association query` and `association web` default to
+   `reader="parser"`; `--reader router` is the rollback. Lessons: a
+   tuning set flatters (the yardstick alone would have shipped six wrong
+   answers the hold-out found); a slot the router's model filled has to be
+   read from the words or it is silently absent; and a replay tool that
+   stubs one reader silently runs the other once the default moves
+   (`preview_answers.py` pins the router now).
+   **Package review (2026-09-27, Jeff: prefer well-used packages):** one
+   adoption recommended - rapidfuzz's `DamerauLevenshtein` under
+   `subject.question_supports`, one edit metric with the index's DuckDB
+   `damerau_levenshtein` (ISSUES: the swapped-letter entry); hypothesis as
+   a dev-extra trial for compiler properties; DuckDB's own
+   `json_serialize_sql` instead of sqlglot for a structural SQL check.
+   Rejected with reasons: lark (keyword spotting, not a CFG), spaCy (20
+   dependencies, splits "30+"), dateparser/dateutil (fuzzy-read stat
+   numbers as dates), pydantic in `query` (the core contract),
+   sqlglot/ibis/pypika (DuckDB-only syntax, allowlisted strings already).
+   The real maintenance cost it found is one vocabulary written several
+   times (measure words six, months six, number words five - the parser's
+   now one table). Next: (d) - templates read the Reading, the router's
+   slot writers and `ROUTER_PROMPT` go.
 
 ## The rules a spike keeps
 

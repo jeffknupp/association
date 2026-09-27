@@ -50,7 +50,7 @@ before that commit needs re-checking against the current warehouse.
 - **Found:** 2026-09-26, Jeff reviewing the pipeline walkthrough page (yardstick-v2 F088, all five wordings; blind key 4-2).
 - **Evidence:** `live_day10.jsonl` (bcf30a8): the router files `head_to_head` (team PHI, opponent BOS); the reading's rule "a player's record against a team, not two teams meeting" (`subject._decide_intent`) reroutes to `with_without` with `without=[Joel Embiid]`, and the template answers "Philadelphia 76ers with and without Joel Embiid vs the Boston Celtics, 2026 regular season: out 2 1-1, played 2 1-1". The key (blind, reading a, dominant): the 76ers went 4-2 in the 6 games Embiid played vs Boston in 2025-26 - 2 regular-season meetings and playoff Games 4-7 (he has no box row for Games 1-3). Two faults: the SHAPE (a split with an "out" row nobody asked for, where the question is his games and their record - dates, outcomes, and reasonably his line in each), and the SCOPE ("this year" narrowed to the regular season by the unstated-season-type default, `_validate_season_type`; `season_type_unstated` widens only "last N games" and "including playoffs" wordings today).
 - **User sees:** a fluent table about a different question, with the right numbers for the narrower scope it states - which is why the blind grader passed all five wordings; re-graded wrong on Jeff's call (overrides run day10). Day10 is 160/175 and families 150/166 after the re-grade.
-- **Parser path (2026-09-27, plan item 6 step b):** the SHAPE is met on the parser path only - `query/parse.py`'s `PARENT_GRAMMAR` reads a player's record with no companion as `player_splits` ("Joel Embiid vs the Boston Celtics, splits, 2026 regular season (2 games he played): Home 1 0-1 ... Away 1 1-0"), measured on all seven day10 wordings and the five v3 paraphrases that keep "record". Nothing live calls the parser yet, so the router path still answers the with/without split, and the SCOPE half (regular season only) is unchanged on both paths - Jeff's call, deferred past step (c). The day10 reference still holds `with_without` for these rows; the parser's measurement counts them as reference-wrong.
+- **Parser path (2026-09-27, plan item 6 steps b-c):** the SHAPE is fixed on the default reader - the parser reads a player's record with no companion as `player_splits` ("Joel Embiid vs the Boston Celtics, splits, 2026 regular season (2 games he played) ... W-L 1-1"), graded correct in `live_parser1`-`3` under Jeff's 2026-09-27 instruction to score the season type as the regular-season default. The router reader (`--reader router`, the rollback) still answers the with/without split, and goes when step (d) retires it. The SCOPE half (regular season only) is the deferred season-type decision, unchanged on both readers.
 - **Next step:** two decisions for the parser (ROADMAP: the consolidation). Shape: a player set against a team is his games narrowed by opponent - the player-games relation, rows with W/L and his line plus the tally - never the team's with/without split (the reroute rule goes; the compiler's rows shape with a record summary is the nearest thing today). Scope: "this year" / "this season" with no type named reads both types and says so, the way `season_type_unstated` already does for "last N games" - a policy for every question, to confirm with Jeff, since the regular-season default is what every per-game average answers under today.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #231
@@ -281,6 +281,13 @@ those were found.
 - **Evidence:** slots `{'player': 'LeBron James', 'team': 'Miami Heat', 'season_type': 2, 'split': 'starter'}` answered "LeBron James averaged 20.9 points, 6.1 rebounds and 7.2 assists per game in 60 games as a starter in the 2026 regular season." - his Lakers season, with Miami nowhere in the sentence. With no `team` slot the subject stage reads the own team and the span it implies, and the same question answers "... in 294 games with the Miami Heat as a starter over his career (2011-2014 ...)". The parser no longer writes the own team (`parse._read_route_names`), so it does not reach this; the router path does whenever its model files the team, which it did not for this wording in day10.
 - **User sees:** a fluent, correct-looking line about a different team's season.
 - **Next step:** find why `check_scope` lets `team` through for `player_stat` when the template does not narrow by it - either honor it as the own-team narrowing the subject stage already builds, or refuse it; warehouse-verified test on this question.
+
+### Holidays answer the wrong day or none: "on mlk day" is every January 15, "on valentine's day" narrows nothing
+- **Found:** 2026-09-27, the package review of plan item 6's steps (a)-(d) (a read-only agent; spot-checked by the lead).
+- **Evidence:** `calendar.HOLIDAYS` holds `"mlk day": (1, 15)` (calendar.py:41) and the day clause matches every January 15 - MLK Day is the third Monday of January, on the 15th in 5 of the 33 seasons 1994-2026 (2026's was January 19). "valentine's day"/"valentines day" are keys of `HOLIDAYS`, but the router's holiday alternation (router.py:1100) never captures them, so no `situation` is set. "new year's eve" is captured as "new year's" (January 1) and "christmas eve" as "christmas" (December 25). "new years day" (no apostrophe) and "martin luther king day" are captured but have no key, and are refused.
+- **User sees:** "lebron stats on mlk day" answers January 15's games labeled "on MLK Day"; "on valentine's day" answers his season line with nothing narrowed; "on new year's eve" answers January 1 labeled New Year's Day.
+- **Next step:** build the router's holiday alternation from the `HOLIDAYS` keys (longest first), give the Eves their own keys or refuse them, and compute MLK Day per season in SQL (`make_date(y,1,15) + CAST((8 - isodow(make_date(y,1,15))) % 7 AS INTEGER)`, checked for 2024-2026); a test per wording, watched to fail.
+- **Source:** ours.
 
 ## P2: misleading or incomplete
 
@@ -2523,6 +2530,13 @@ those were found.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #229
 
+### A swapped-letter typo fails the grounding check, and the answer names the wrong cause: "jokci stats"
+- **Found:** 2026-09-27, the package review of plan item 6's steps (a)-(d); reproduced by the lead.
+- **Evidence:** `subject._levenshtein` (subject.py:406) is plain Levenshtein, where the entity index (entities.py:347, :397, :1400) uses DuckDB's `damerau_levenshtein`: a transposition costs 2 against a budget of 1 for a five- or six-letter word. `question_supports("Nikola Jokic", "jokci stats")`, `("Tyrese Maxey", "maxye last 5 games")` and `("LeBron James", "leborn stats")` are all False; `("Nikola Jokic", "jokc stats")` is True.
+- **User sees:** on the router reader, where the model corrects the typo, "This was read as a question about Nikola Jokic, who the question does not mention" (the misread-name refusal) for a question that names him with two letters swapped. The parser reader keeps the typo as typed and the index reads it, so it is mostly spared.
+- **Next step:** one edit metric for both - rapidfuzz's `DamerauLevenshtein` (the package review's one recommended adoption: MIT, typed, no dependencies) under `question_supports`, after confirming it scores `'ca'`/`'abc'` as DuckDB does; swapped-letter tests and a golden run.
+- **Source:** ours.
+
 ## P3: refusal or gap
 
 ### The compiler has no NetPoints measure, so a single-game NetPoints ranking has nowhere to land but the agent
@@ -3204,6 +3218,19 @@ those were found.
 - **Source:** ours.
 
 ## P4: tooling, docs, low impact
+
+### Package review leftovers: one fold, one ordinal, one month list, and an untested third of the parent grammar
+- **Found:** 2026-09-27, the package review of plan item 6's steps (a)-(d) (read-only agent; not each re-verified by the lead).
+- **Evidence:**
+  - `entities._fold` (entities.py:255) drops letters with no decomposition: "Aşık" -> "Ask", "Đorđević" -> "orevic", "Søren" -> "Sren"; `fetch/parse.py:975` folds differently, keeping them. A 10-entry `str.maketrans` (or anyascii, ISC) fixes it.
+  - The ordinal suffix is written four times: `templates/common.py:1430` `ordinal_word` and `:2299` `_ordinal` (identical, same module), `player_games.py:407`, `fingerprint.py:727`. All agree today.
+  - Month names are defined six times (router.py:501, :511, :1084; calendar.py:44; conditions.py:451; subject.py:301), and `parse._PLAYER_LOG` omits May and June; number words were five copies until fe53c72 gave the parser one table (router.py:469, :477, :1706 and subject.py:111 still hold their own).
+  - 13 of `PARENT_GRAMMAR`'s 30 rows have no direct `parent_intent` case in tests/query/test_parser.py (period_leaderboard, period_split, coach, team_players, the team top-N leaderboard, team streak, the team_stat fallback, player_netpoints, player+companions, both position rows, the everyone streak, everyone finals/game_log); the measurement that exercises them lives outside the repo.
+  - `pyproject.toml`'s import-linter comment says pydantic comes from `association[web]`; it is in every core install through ollama (uv.lock), which imports it at load.
+  - `nba/season.py:40` says every day 1970-2040 is checked against zoneinfo; the test covers 1976-01-01 to 2039-12-31.
+- **User sees:** "Ömer Aşık" typed with the Turkish letter matches nobody; the rest is maintenance - a vocabulary fixed in one copy and not the others, or a grammar row deleted with no repo test failing.
+- **Next step:** one table per concept (months, ordinals, number words) imported everywhere; a parametrized `parent_intent` table with a meta-assert that every row is hit, watched to fail; the fold's translate table; the two comments corrected.
+- **Source:** ours.
 
 ### Two decisions share the label "subject kind": a streak's `kind` slot is recorded as the subject's kind
 - **Found:** 2026-09-27, the step (b) audit agent, reading day10 traces.
