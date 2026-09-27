@@ -13,7 +13,7 @@ import duckdb
 
 from association.nba.franchises import season_name
 from association.nba.season import current_season
-from association.query.reading import Reading
+from association.query.reading import ConditionSpec, Reading, Scope
 
 from ..conditions import (
     _PLAYER_GAME_TABLES,
@@ -66,7 +66,6 @@ from .common import (
     _optional_team,
     _period,
     _resolved_player,
-    _slot_season,
     _Span,
     _span_of,
     _team_span_clause,
@@ -116,7 +115,7 @@ SPLIT_EXTRA_STATS: dict[str, tuple[str, str, str]] = {
 """
 
 
-def _player_splits_line(stat: Any, base_line: tuple[tuple[str, str, str], ...], *, alias: str) -> tuple[tuple[str, str, str], ...]:
+def _player_splits_line(stat: str | None, base_line: tuple[tuple[str, str, str], ...], *, alias: str) -> tuple[tuple[str, str, str], ...]:
     """``base_line`` (:data:`_PLAYER_LINE` or :data:`_TEAM_LINE`), with a
     named ``stat`` the table does not already carry added as its own column -
     or a refusal naming the stat, never a table that quietly leaves it out
@@ -125,7 +124,7 @@ def _player_splits_line(stat: Any, base_line: tuple[tuple[str, str, str], ...], 
 
     .. versionadded:: 4.4.0
     """
-    if not isinstance(stat, str) or not stat.strip():
+    if stat is None or not stat.strip():
         return base_line
     if stat in _SPLIT_LINE_STATS.get(alias, frozenset()):
         return base_line
@@ -166,7 +165,7 @@ def _misfiled_postseason(scope: _Scope) -> TemplateResult | None:
     return TemplateResult(data={"message": message, "season": scope.season}, answer=message)
 
 
-def _condition_span_label(scope: _Scope, slots: dict[str, Any], first: Any, last: Any) -> str:
+def _condition_span_label(covered: _Scope, scope: Scope, first: Any, last: Any) -> str:
     """The season(s) a condition answer covers, in words: "since 2022
     (2022-2026 regular seasons)" or "in his 18th season (2021 regular
     season)" when the question named it that way - the same phrasing
@@ -174,22 +173,21 @@ def _condition_span_label(scope: _Scope, slots: dict[str, Any], first: Any, last
     ``_Span.ordinal``).
 
     record_when and streak build their heading off the relation's own
-    ``_Scope`` rather than the ``_Span`` ``condition_player`` resolves
-    internally (its docstring: "the one place the two readers of a player's
-    games disagreed, and not this refactor's to settle"), so the phrase is
-    composed here from the same slots instead. ``first``/``last`` already
-    carry the real narrowing - the caller's ``scope`` has its own ``season``
-    forced to None wherever ``since`` or ``season_n`` apply (the same
-    "career"-shaped outer scope ``scoped_player`` builds internally for
-    ``season_n``), so :meth:`_Scope.label` reads the actual seasons the
-    narrowed games came from rather than defaulting to "now"."""
-    label = scope.label(first, last)
-    since = slots.get("since")
-    if isinstance(since, int) and since and not isinstance(since, bool):
-        return f"since {since} ({label})"
-    season_n = slots.get("season_n")
-    if season_n:
-        return f"in his {ordinal_word(int(season_n))} season ({label})"
+    ``_Scope`` (``covered``) rather than the ``_Span`` ``condition_player``
+    resolves internally (its docstring: "the one place the two readers of a
+    player's games disagreed, and not this refactor's to settle"), so the
+    phrase is composed here from the question's own ``since`` and
+    ``season_n`` instead. ``first``/``last`` already carry the real
+    narrowing - ``covered`` has its own ``season`` forced to None wherever
+    ``since`` or ``season_n`` apply (the same "career"-shaped outer scope
+    ``scoped_player`` builds internally for ``season_n``), so
+    :meth:`_Scope.label` reads the actual seasons the narrowed games came
+    from rather than defaulting to "now"."""
+    label = covered.label(first, last)
+    if scope.since:
+        return f"since {scope.since} ({label})"
+    if scope.season_n:
+        return f"in his {ordinal_word(scope.season_n)} season ({label})"
     return label
 
 
@@ -227,7 +225,7 @@ def _condition_span_label(scope: _Scope, slots: dict[str, Any], first: Any, last
 _CONDITION_PLAYER_ONLY_CELLS: tuple[str, ...] = ("without", "split", "season_n", "below", "above")
 
 
-def _condition_needs_player_refusal(intent: str, slots: dict[str, Any], *extra: str) -> None:
+def _condition_needs_player_refusal(intent: str, scope: Scope, *extra: str) -> None:
     """Raise if a team-only or league-wide question set a relation cell that
     needs a named player to honor - see :data:`_CONDITION_PLAYER_ONLY_CELLS`.
     ``extra`` adds cells refused for this call site only (see ``streak``'s own
@@ -237,18 +235,18 @@ def _condition_needs_player_refusal(intent: str, slots: dict[str, Any], *extra: 
        Takes ``*extra`` (step 3, C4b), so the two intents' team branches no
        longer have to agree on exactly the same refused set.
     """
-    claimed = sorted(cell for cell in (*_CONDITION_PLAYER_ONLY_CELLS, *extra) if slots.get(cell))
+    claimed = sorted(cell for cell in (*_CONDITION_PLAYER_ONLY_CELLS, *extra) if getattr(scope, cell))
     if claimed:
         raise TemplateUnsupported(f"{intent} cannot honor {claimed} without a named player - only his own games can be narrowed that way")
 
 
-def _streak_league_needs_named_subject(slots: dict[str, Any]) -> None:
+def _streak_league_needs_named_subject(scope: Scope) -> None:
     """Raise if a league-wide streak (nobody named at all) set ``opponent`` or
     ``venue`` - cells only a named team's or player's games can be narrowed by.
     A league-wide streak has no single subject for either to narrow against,
     unlike ``_streak_team`` (a real team, now on the relation) or
     ``_streak_player`` (``condition_player`` reads both)."""
-    claimed = sorted(cell for cell in ("opponent", "venue") if slots.get(cell))
+    claimed = sorted(cell for cell in ("opponent", "venue") if getattr(scope, cell))
     if claimed:
         raise TemplateUnsupported(f"streak cannot honor {claimed} without a named team or player - the league-wide streak has no single subject to narrow")
 
@@ -378,13 +376,12 @@ def player_splits(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        shown stays the one it always was - both groups side by side, folded
        back from the half the question named.
     """
-    slots = reading.scope.to_slots()
+    scope = reading.scope
     con = ctx.con
-    split = slots.get("split")
+    split = scope.split
     if split is not None and split not in SPLIT_KINDS and split not in _STARTER_BENCH_SIDES:
         raise TemplateUnsupported(f"no split named {split!r}")
-    limit = slots.get("limit")
-    if isinstance(limit, int) and not isinstance(limit, bool) and limit > 1:
+    if scope.limit is not None and scope.limit > 1:
         # This divides a whole span into groups; it has no notion of "his last
         # N games" the way game_log does, and answering the whole span under
         # that framing would be the exact silent substitution check_scope
@@ -398,7 +395,7 @@ def player_splits(ctx: TemplateContext, reading: Reading) -> TemplateResult:
         # full either way, so a real "last one" and the router's filler 1
         # produce the same table.
         raise TemplateUnsupported("player_splits has no notion of a limited number of recent games")
-    venue = _checked_venue(slots["venue"]) if slots.get("venue") else None
+    venue = _checked_venue(scope.venue) if scope.venue else None
     if split == "home_away" and venue is not None:
         # Breaking games out by home/away while also narrowing to one of the
         # two asks the same axis twice; the narrowing wins rather than showing
@@ -406,22 +403,20 @@ def player_splits(ctx: TemplateContext, reading: Reading) -> TemplateResult:
         raise TemplateUnsupported("a home/away split conflicts with a venue already narrowed to one")
     # Refused here, before any name is resolved, if a line names no column -
     # the same discipline player_stat's own measures follow.
-    measures = measure_filters(slots.get("below"), slots.get("above"))
-    team = _optional_team(con, slots.get("team"), season=_slot_season(slots))
+    measures = measure_filters(scope.below, scope.above)
+    team = _optional_team(con, scope.team, season=scope.season)
     if isinstance(team, TemplateResult):
         return team
-    opponent = _optional_team(con, slots.get("opponent"), season=_slot_season(slots))
+    opponent = _optional_team(con, scope.opponent, season=scope.season)
     if isinstance(opponent, TemplateResult):
         return opponent
 
-    span = slots.get("span")
-    name = slots.get("player")
-    if isinstance(name, str) and name.strip():
-        found = _player_splits_player(con, name, slots, span, team, venue, opponent, measures)
+    if scope.player and scope.player.strip():
+        found = _player_splits_player(con, scope, team, venue, opponent, measures)
     else:
         if team is None:
             raise TemplateUnsupported("player_splits needs a player or a team")
-        if measures or slots.get("game_n") or slots.get("season_n") or slots.get("without"):
+        if measures or scope.game_n or scope.season_n or scope.without:
             # A team's own splits read the team tables directly, not the
             # player-games relation these narrow - so a line on a box-score
             # column, a playoff-series game, an ordinal season or a
@@ -435,7 +430,7 @@ def player_splits(ctx: TemplateContext, reading: Reading) -> TemplateResult:
             # - a real fix teaches `_player_splits_team` the same
             # teammate-absence filter `with_without` already has.
             raise TemplateUnsupported("player_splits cannot honor below/above, game_n, season_n or without for a team with no player named")
-        found = _player_splits_team(con, slots, span, team, split, opponent)
+        found = _player_splits_team(con, scope, team, split, opponent)
     if isinstance(found, TemplateResult):
         return found
     return _player_splits_answer(con, found, split)
@@ -505,7 +500,7 @@ class _SplitSubject:
 
 
 def _player_splits_player(
-    con: duckdb.DuckDBPyConnection, name: str, slots: dict[str, Any], span: Any, team: Entity | None, venue: str | None, opponent: Entity | None, measures: list[MeasureFilter]
+    con: duckdb.DuckDBPyConnection, scope: Scope, team: Entity | None, venue: str | None, opponent: Entity | None, measures: list[MeasureFilter]
 ) -> _SplitSubject | TemplateResult:
     """A named player's own games, optionally narrowed to one team, one venue and/or one opponent.
 
@@ -525,51 +520,35 @@ def _player_splits_player(
     # Checked before any name is resolved, the same discipline player_stat's
     # own measures follow: a stat this cannot show is a fact about the
     # question, not about which player it names.
-    line = _player_splits_line(slots.get("stat"), _PLAYER_LINE, alias="p")
+    line = _player_splits_line(scope.stat, _PLAYER_LINE, alias="p")
     # `since` narrows this player's OWN scope the same way it narrows the
-    # relation inside condition_player (below) - both read the slot
-    # independently, so the label this scope renders and the rows the
+    # relation inside condition_player (below) - both read the question's
+    # `since` independently, so the label `covered` renders and the rows the
     # relation returns agree on which seasons are in view.
-    scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), _PLAYER_GAME_TABLES, since=slots.get("since"))
+    covered = _condition_scope(scope.season, scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
     # The opponent was resolved above (a clarification about it comes before
-    # one about the player, as it always did); the shared step resolves a
-    # name, and an exact name resolves back to the same team. `without` and
-    # `split` are the real slots now, not a stripped copy - a named half of
-    # `split` (STARTER_SIDES) narrows the games in `_narrow_player_games`
-    # while the bare category it was validated against above is what
-    # `_player_splits_answer` still shows.
-    found = condition_player(
-        con,
-        {
-            **slots,
-            "player": name,
-            "venue": venue,
-            "opponent": opponent,
-            "without": slots.get("without"),
-            "split": slots.get("split"),
-            "since": slots.get("since"),
-            "season_n": slots.get("season_n"),
-            "game_n": slots.get("game_n"),
-        },
-        "player_splits needs a player",
-        scope,
-        team=team,
-        measures=measures,
-    )
+    # one about the player, as it always did), and goes beside the scope as
+    # that team rather than being resolved a second time - the scope's own
+    # text is left out, so a blank one the resolution above read as nobody
+    # narrows nothing here either. `without` and `split` reach the relation
+    # as the question gave them - a named half of `split` (STARTER_SIDES)
+    # narrows the games in `_narrow_player_games` while the bare category it
+    # was validated against above is what `_player_splits_answer` still shows.
+    found = condition_player(con, replace(scope, opponent=None), "player_splits needs a player", covered, team=team, measures=measures, opponent=opponent)
     if isinstance(found, TemplateResult):
         return found
     player, narrowed = found
     base, base_params = games_subquery(narrowed, box_source(con))
     games, first, last = _totals(con, base, base_params)
     if not games:
-        return _no_games(con, player, scope, team)
-    if slots.get("season_n") and first is not None and first == last and scope.season != first:
+        return _no_games(con, player, covered, team)
+    if scope.season_n and first is not None and first == last and covered.season != first:
         # An ordinal season ("his 18th season") is not a year until the player
-        # is known, so this scope - built before condition_player resolved
+        # is known, so `covered` - built before condition_player resolved
         # him - could not carry it; the narrowed rows just settled it, and the
         # label has to agree with what they actually cover rather than with
-        # the "current season" this scope defaulted to.
-        scope = replace(scope, season=int(first))
+        # the "current season" `covered` defaulted to.
+        covered = replace(covered, season=int(first))
     subject_text = player.name + (f" for the {team.name}" if team else "") + narrowed.filters()
     alias, counted = "p", f"{games} game{'s' if games != 1 else ''} he played"
     data: dict[str, Any] = {
@@ -582,8 +561,8 @@ def _player_splits_player(
         "measures": list(narrowed.measures),
         "series_game": narrowed.series_game,
     }
-    caveat = _unseen_note(_unseen(con, scope, base, base_params, box_source(con)))
-    return _SplitSubject(scope.label(first, last), scope.floor_note(first), base, base_params, games, first, last, subject_text, alias, line, counted, data, caveat)
+    caveat = _unseen_note(_unseen(con, covered, base, base_params, box_source(con)))
+    return _SplitSubject(covered.label(first, last), covered.floor_note(first), base, base_params, games, first, last, subject_text, alias, line, counted, data, caveat)
 
 
 #: A team's games under a condition template, over the relation
@@ -609,7 +588,7 @@ _TEAM_SPLIT_SELECT: tuple[str, ...] = (
 )
 
 
-def _player_splits_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], span: Any, team: Entity, split: Any, opponent: Any) -> _SplitSubject | TemplateResult:
+def _player_splits_team(con: duckdb.DuckDBPyConnection, scope: Scope, team: Entity, split: Any, opponent: Any) -> _SplitSubject | TemplateResult:
     """A named team's own games, with no player named, narrowed to an
     opponent and/or a venue the same way :func:`common.team_games` narrows
     every other team-facing template - a hand-rolled clause of its own no
@@ -628,17 +607,17 @@ def _player_splits_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], s
         # question from any this template answers. True of one named half as
         # much as of the category.
         raise TemplateUnsupported("a team has no starter/bench split of its own")
-    line = _player_splits_line(slots.get("stat"), _TEAM_LINE, alias="t")
-    scope = _span_of(span, slots.get("season"), slots.get("season_type") or 2, "games", since=slots.get("since"))
-    narrowed = team_games(con, team, scope, slots, opponent=opponent)
+    line = _player_splits_line(scope.stat, _TEAM_LINE, alias="t")
+    span = _span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since)
+    narrowed = team_games(con, team, span, scope, opponent=opponent)
     if isinstance(narrowed, TemplateResult):
         return narrowed
     # A split, a record, a run: read over every game in the span (common.whole_span).
     whole_span(narrowed)
     base, params = team_aggregate_sql(narrowed, list(_TEAM_SPLIT_SELECT), join=_TEAM_SPLIT_JOIN)
-    games, first, last = _team_season_range(con, base, params, scope)
+    games, first, last = _team_season_range(con, base, params, span)
     if not games:
-        return _condition_team_no_games(con, team, scope, narrowed)
+        return _condition_team_no_games(con, team, span, narrowed)
     subject, alias, counted = f"The {team.name}" + narrowed.filters(), "t", f"{games} game{'s' if games != 1 else ''}"
     data: dict[str, Any] = {"player": None, "team": team.name, "venue": narrowed.venue, "opponent": narrowed.opponent.name if narrowed.opponent else None}
     # The score of a game with no box score is still on record, but its
@@ -646,7 +625,7 @@ def _player_splits_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], s
     blank = con.execute(f"SELECT COUNT(*) FILTER (WHERE fieldGoalsAttempted IS NULL) FROM ({base})", params).fetchone()
     blanks = int(blank[0]) if blank else 0
     caveat = f" Rebounds, assists, 3-pointers and FG% are missing from {blanks} of those games' box scores and are averaged over the rest." if blanks else ""
-    return _SplitSubject(_team_span_label(scope, first, last), _team_span_floor_note(scope, first), base, params, games, first, last, subject, alias, line, counted, data, caveat)
+    return _SplitSubject(_team_span_label(span, first, last), _team_span_floor_note(span, first), base, params, games, first, last, subject, alias, line, counted, data, caveat)
 
 
 def with_without(ctx: TemplateContext, reading: Reading) -> TemplateResult:
@@ -685,27 +664,25 @@ def with_without(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        Divides by every teammate the question names at once, rather than by
        the first of them.
     """
-    slots = reading.scope.to_slots()
+    scope = reading.scope
     con = ctx.con
-    mate_texts, asked_without, roles = _with_without_named(slots)
-    players = slots.get("players")
-    listed: list[Any] = players if isinstance(players, list) else []
-    texts = list(dict.fromkeys(n.strip() for n in [slots.get("player"), *listed] if isinstance(n, str) and n.strip()))
-    team = _optional_team(con, slots.get("team"), season=_slot_season(slots))
+    mate_texts, asked_without, roles = _with_without_named(scope)
+    texts = list(dict.fromkeys(n.strip() for n in (scope.player, *scope.players) if n is not None and n.strip()))
+    team = _optional_team(con, scope.team, season=scope.season)
     if isinstance(team, TemplateResult):
         return team
     if not mate_texts:
         mate_texts, texts = _with_without_infer_teammate(team, texts)
 
-    scope = _condition_scope(slots.get("season"), slots.get("span"), slots.get("season_type"), _PLAYER_GAME_TABLES)
-    resolved = _with_without_resolve(con, mate_texts, texts, scope)
+    covered = _condition_scope(scope.season, scope.span, scope.season_type, _PLAYER_GAME_TABLES)
+    resolved = _with_without_resolve(con, mate_texts, texts, covered)
     if isinstance(resolved, TemplateResult):
         return resolved
     mates, subject = resolved
 
     named = [m.name for m in mates]
     all_of, any_of = _joined(named), _joined(named, "or")
-    windows = _with_without_windows(con, mates, subject, team, scope)
+    windows = _with_without_windows(con, mates, subject, team, covered)
     if isinstance(windows, TemplateResult):
         return windows
     if not windows:
@@ -715,57 +692,57 @@ def with_without(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     # is his record in the games his team played BOSTON, not overall. Narrowing
     # is honest here because both rows narrow together - the split is still
     # played against missed, over the same pool (#163).
-    against = _optional_team(con, slots.get("opponent"), season=_slot_season(slots))
+    against = _optional_team(con, scope.opponent, season=scope.season)
     if isinstance(against, TemplateResult):
         return against
-    predicates = _with_without_predicates(con, mates, roles, scope)
-    games, unknown = _with_without_games(con, scope, windows, [m.id for m in mates], subject.id if subject else None, against.id if against else None, predicates)
+    predicates = _with_without_predicates(con, mates, roles, covered)
+    games, unknown = _with_without_games(con, covered, windows, [m.id for m in mates], subject.id if subject else None, against.id if against else None, predicates)
     team_names = _names(con, "teams", "team_id", {w.team_id for w in windows})
     spell_text = "; ".join(f"{_with_without_stint_team(w, team_names)} {w.first} to {w.last}" for w in windows)
     if not games:
-        return _with_without_empty_games(subject, mates, named, all_of, scope, spell_text, unknown)
+        return _with_without_empty_games(subject, mates, named, all_of, covered, spell_text, unknown)
 
     groups, rows, team_order = _with_without_rows(games, team_names, asked_without, len(mates), subject, all_of, any_of, verbs=_with_without_verbs(predicates))
-    return _with_without_answer(scope, games, team_names, team_order, windows, subject, mates, named, all_of, asked_without, unknown, groups, rows, against)
+    return _with_without_answer(covered, games, team_names, team_order, windows, subject, mates, named, all_of, asked_without, unknown, groups, rows, against)
 
 
-def _with_without_named(slots: dict[str, Any]) -> tuple[list[str], bool, dict[str, tuple[str, tuple[str, int] | None]]]:
+def _with_without_named(scope: Scope) -> tuple[list[str], bool, dict[str, tuple[str, tuple[str, int] | None]]]:
     """The teammates the question named - ``without``'s, else
     ``with_player``'s, else the ones a ``conditions`` entry gives a role -
     whether it asked "without", and each name's role.
 
     .. versionadded:: 4.5.0
     """
-    mate_texts = teammate_names(slots.get("without"))
+    # Lists, as the slots always were: teammate_names reads a list or one
+    # bare name, and a tuple would be neither - every teammate dropped.
+    mate_texts = teammate_names(list(scope.without))
     asked_without = bool(mate_texts)
     if not asked_without:
-        mate_texts = teammate_names(slots.get("with_player"))
-    roles = _with_without_roles(slots.get("conditions"))
+        mate_texts = teammate_names(list(scope.with_player))
+    roles = _with_without_roles(scope.conditions)
     if not mate_texts and roles:
         mate_texts = list(roles)
     return mate_texts, asked_without, roles
 
 
-def _with_without_roles(conditions: Any) -> dict[str, tuple[str, tuple[str, int] | None]]:
-    """The role each ``conditions`` entry gives its player - ``started``,
-    ``bench``, ``reached`` (with its column and threshold) - by the name as
-    written, for :func:`_with_without_predicates` to pair with the resolved
-    teammates. A ``played``/``absent`` entry adds nothing the ``with_player``
-    and ``without`` lists do not already say.
+def _with_without_roles(conditions: tuple[ConditionSpec, ...]) -> dict[str, tuple[str, tuple[str, int] | None]]:
+    """The role each ``conditions`` entry (a
+    :class:`~association.query.reading.ConditionSpec`) gives its player -
+    ``started``, ``bench``, ``reached`` (with its column and threshold) - by
+    the name as written, for :func:`_with_without_predicates` to pair with
+    the resolved teammates. A ``played``/``absent`` entry adds nothing the
+    ``with_player`` and ``without`` lists do not already say.
 
     .. versionadded:: 4.5.0
     """
     roles: dict[str, tuple[str, tuple[str, int] | None]] = {}
-    for entry in conditions if isinstance(conditions, list) else []:
-        if not isinstance(entry, dict) or not isinstance(entry.get("player"), str):
-            continue
-        predicate, stat, threshold = entry.get("predicate"), entry.get("stat"), entry.get("threshold")
-        if predicate in ("started", "bench"):
-            roles[entry["player"]] = (predicate, None)
-        elif predicate == "reached" and isinstance(stat, str) and isinstance(threshold, int) and not isinstance(threshold, bool) and threshold >= 1:
-            column = THRESHOLD_STAT_COLUMNS.get(stat)
+    for entry in conditions:
+        if entry.predicate in ("started", "bench"):
+            roles[entry.player] = (entry.predicate, None)
+        elif entry.predicate == "reached" and entry.stat is not None and entry.threshold is not None and entry.threshold >= 1:
+            column = THRESHOLD_STAT_COLUMNS.get(entry.stat)
             if column is not None:
-                roles[entry["player"]] = ("reached", (column, threshold))
+                roles[entry.player] = ("reached", (column, entry.threshold))
     return roles
 
 
@@ -1047,48 +1024,48 @@ def record_when(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        naming which, instead of quietly answering as though it had been
        applied (ISSUES.md).
     """
-    slots = reading.scope.to_slots()
+    scope = reading.scope
     con = ctx.con
-    if not slots.get("player"):
-        return _record_when_team_answer(con, slots)
-    stat = slots.get("stat")
-    column, threshold = _record_when_stat(stat, slots.get("threshold"))
+    if not scope.player:
+        return _record_when_team_answer(con, scope)
+    stat = scope.stat
+    column, threshold = _record_when_stat(stat, scope.threshold)
     # Refused here, before any name is resolved, if a line names no column -
     # the same discipline player_stat's own measures follow.
-    measures = measure_filters(slots.get("below"), slots.get("above"))
+    measures = measure_filters(scope.below, scope.above)
     # `season_n` is forced to a career-shaped outer scope the same way
     # `scoped_player` treats it internally (`"career" if season_n else span`),
     # so the label below reads the real narrowed season rather than "now" -
     # see _condition_span_label.
-    scope = _condition_scope(slots.get("season"), "career" if slots.get("season_n") else slots.get("span"), slots.get("season_type"), _PLAYER_GAME_TABLES, since=slots.get("since"))
+    covered = _condition_scope(scope.season, "career" if scope.season_n else scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
     # The player before the team, as it always was: a clarification about
-    # him comes before one about the team. `slots` goes in whole, so
+    # him comes before one about the team. The scope goes in whole, so
     # condition_player's own scoped_games reads "opponent", "venue",
     # "without", "split" and "game_n" off it directly (common._narrow_player_games)
     # and narrows the games before any of this function's own SQL runs.
-    subject = condition_player(con, slots, "record_when needs a player", scope, measures=measures)
+    subject = condition_player(con, scope, "record_when needs a player", covered, measures=measures)
     if isinstance(subject, TemplateResult):
         return subject
     player, narrowed = subject
-    team = _optional_team(con, slots.get("team"), season=_slot_season(slots))
+    team = _optional_team(con, scope.team, season=scope.season)
     if isinstance(team, TemplateResult):
         return team
     if team is not None:
         narrowed.narrow("pgl.team_id = ?", team.id)
 
-    query = _record_when_query(con, scope, player, team, column, threshold, narrowed)
+    query = _record_when_query(con, covered, player, team, column, threshold, narrowed)
     if isinstance(query, TemplateResult):
         return query
     found, names, base, params = query
-    return _record_when_answer(con, scope, player, stat, threshold, found, names, base, params, narrowed, slots)
+    return _record_when_answer(con, covered, player, stat, threshold, found, names, base, params, narrowed, scope)
 
 
-def _record_when_stat(stat: Any, threshold: Any) -> tuple[str, int]:
+def _record_when_stat(stat: str | None, threshold: int | None) -> tuple[str, int]:
     """The box-score column a whitelisted stat reads, and the threshold
     narrowed to ``int`` - or the refusal for an unknown stat or a threshold
     that is not a positive integer."""
-    column = THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
-    if column is None or not isinstance(threshold, int) or isinstance(threshold, bool) or threshold < 1:
+    column = THRESHOLD_STAT_COLUMNS.get(stat) if stat is not None else None
+    if column is None or threshold is None or threshold < 1:
         raise TemplateUnsupported(f"record_when needs a known stat and a positive threshold, got {stat!r}/{threshold!r}")
     return column, threshold
 
@@ -1125,7 +1102,7 @@ def _record_when_group(by_hit: dict[bool, Any], hit: bool | None) -> dict[str, A
 
 def _record_when_answer(
     con: duckdb.DuckDBPyConnection,
-    scope: _Scope,
+    covered: _Scope,
     player: Entity,
     stat: Any,
     threshold: int,
@@ -1134,7 +1111,7 @@ def _record_when_answer(
     base: str,
     params: Params,
     narrowed: Narrowed,
-    slots: dict[str, Any],
+    scope: Scope,
 ) -> TemplateResult:
     """The two-row table - reached the threshold, fell short - and the caveats
     beside it: games with no box score, and the coverage floor.
@@ -1147,14 +1124,14 @@ def _record_when_answer(
     by_hit = {bool(row[0]): row for row in found}
     unit = f"{STAT_LABELS.get(stat or '', stat or '')}s"
     reached, short, every = _record_when_group(by_hit, True), _record_when_group(by_hit, False), _record_when_group(by_hit, None)
-    label = _condition_span_label(scope, slots, min(r[4] for r in found), max(r[5] for r in found))
+    label = _condition_span_label(covered, scope, min(r[4] for r in found), max(r[5] for r in found))
     teams = sorted(names.values())
     whose = f"{teams[0]} record" if len(teams) == 1 else f"Record of {player.name}'s teams ({', '.join(teams)})"
     title = f"{whose} when {player.name} had {threshold}+ {unit}{narrowed.filters()}, {label}:"
     rows = [(f"{threshold}+ {unit}", reached), (f"under {threshold} {unit}", short), ("all his games", every)]
     table = _table(title, ["G", "W-L", "Win%", "Margin"], [(name, [str(g["games"]), f"{g['wins']}-{g['losses']}", _win_pct(g["wins"], g["games"]), _margin(g["avg_margin"])]) for name, g in rows])
-    caveat = _unseen_note(_unseen(con, scope, base, params, box_source(con)))
-    trailer = f"Over the {every['games']} games he played; a game he missed is in neither row.{scope.floor_note(min(r[4] for r in found))}{caveat}"
+    caveat = _unseen_note(_unseen(con, covered, base, params, box_source(con)))
+    trailer = f"Over the {every['games']} games he played; a game he missed is in neither row.{covered.floor_note(min(r[4] for r in found))}{caveat}"
     answer = f"{table}\n{trailer}"
     data = {
         "player": player.name,
@@ -1207,16 +1184,16 @@ _RECORD_WHEN_TEAM_STAT_COLUMNS: dict[str, str] = {
 }
 
 
-def _record_when_team_stat(stat: Any, threshold: Any) -> tuple[str, int]:
+def _record_when_team_stat(stat: str | None, threshold: int | None) -> tuple[str, int]:
     """The SQL a team's threshold reads, and the threshold narrowed to
     ``int`` - or the refusal, which names the real cause rather than
     record_when's player-only "needs a player" message (AGENTS.md, "the same
     bug has a mirror image"): an unrecognized stat or bad threshold reads the
     same as the player branch's own refusal, and a stat that is only ever a
     PLAYER's (a team has no minutes total) says so by name."""
-    if not isinstance(threshold, int) or isinstance(threshold, bool) or threshold < 1:
+    if threshold is None or threshold < 1:
         raise TemplateUnsupported(f"record_when needs a known stat and a positive threshold, got {stat!r}/{threshold!r}")
-    if not isinstance(stat, str) or stat not in THRESHOLD_STAT_COLUMNS:
+    if stat is None or stat not in THRESHOLD_STAT_COLUMNS:
         raise TemplateUnsupported(f"record_when needs a known stat and a positive threshold, got {stat!r}/{threshold!r}")
     column = _RECORD_WHEN_TEAM_STAT_COLUMNS.get(stat)
     if column is None:
@@ -1333,7 +1310,7 @@ def _record_when_team_answer_table(con: duckdb.DuckDBPyConnection, span: _Span, 
     return TemplateResult(data=data, answer=answer)
 
 
-def _record_when_team_answer(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> TemplateResult:
+def _record_when_team_answer(con: duckdb.DuckDBPyConnection, scope: Scope) -> TemplateResult:
     """The team half of ``record_when``: a record above/below a threshold of
     the TEAM's own scoring or another box-score stat, reached when the
     question names no player at all ("what was the celtics record when they
@@ -1359,16 +1336,16 @@ def _record_when_team_answer(con: duckdb.DuckDBPyConnection, slots: dict[str, An
        player-only refusal :func:`_condition_needs_player_refusal` used to
        give them (ISSUES.md).
     """
-    _condition_needs_player_refusal("record_when", slots)
-    team = _optional_team(con, slots.get("team"), season=_slot_season(slots))
+    _condition_needs_player_refusal("record_when", scope)
+    team = _optional_team(con, scope.team, season=scope.season)
     if isinstance(team, TemplateResult):
         return team
     if team is None:
         raise TemplateUnsupported("record_when needs a player or a team")
-    stat = slots.get("stat")
-    column, threshold = _record_when_team_stat(stat, slots.get("threshold"))
-    span = _span_of(slots.get("span"), slots.get("season"), slots.get("season_type") or 2, "games", since=slots.get("since"))
-    narrowed = team_games(con, team, span, slots, opponent=slots.get("opponent"))
+    stat = scope.stat
+    column, threshold = _record_when_team_stat(stat, scope.threshold)
+    span = _span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since)
+    narrowed = team_games(con, team, span, scope, opponent=scope.opponent)
     if isinstance(narrowed, TemplateResult):
         return narrowed
     # A split, a record, a run: read over every game in the span (common.whole_span).
@@ -1426,38 +1403,36 @@ def streak(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        each other, so a run over them would not be the run the question asked
        for.
     """
-    slots = reading.scope.to_slots()
+    scope = reading.scope
     con = ctx.con
-    want_win = slots.get("kind") != "loss"
-    stat, threshold = slots.get("stat"), slots.get("threshold")
+    want_win = scope.kind != "loss"
+    stat, threshold = scope.stat, scope.threshold
     column, by_stat, unit = _streak_kind(stat, threshold)
     result = "winning streak" if want_win else "losing streak"
     # A player's rows carry the stat as `value` (see conditions._player_streak_rows); a team's carry only `won`.
     hit = "x.value >= $threshold" if by_stat else "x.won = $want"
     condition: dict[str, Any] = {"threshold": threshold} if by_stat else {"want": want_win}
-    span = slots.get("span")
-    team = _optional_team(con, slots.get("team"), season=_slot_season(slots))
+    team = _optional_team(con, scope.team, season=scope.season)
     if isinstance(team, TemplateResult):
         return team
 
-    name = slots.get("player")
-    if isinstance(name, str) and name.strip():
-        return _streak_player(con, name, slots, span, team, by_stat, column, threshold, unit, want_win, result, hit, condition)
+    if scope.player and scope.player.strip():
+        return _streak_player(con, scope, team, by_stat, column, threshold, unit, want_win, result, hit, condition)
 
     # `game_n` stays refused for the team and league branches (both reach
     # this one call site) - see _CONDITION_PLAYER_ONLY_CELLS's comment: one
     # numbered game of each series is not a run of CONSECUTIVE games.
-    _condition_needs_player_refusal("streak", slots, "game_n")
+    _condition_needs_player_refusal("streak", scope, "game_n")
     if team is not None:
-        return _streak_team(con, slots, span, team, by_stat, want_win, result, hit, condition, slots.get("opponent"))
+        return _streak_team(con, scope, team, by_stat, want_win, result, hit, condition)
 
     # Nobody named: the league's longest, each team-season or player once -
     # and no single team or player for `opponent`/`venue` to narrow against.
-    _streak_league_needs_named_subject(slots)
-    return _streak_league(con, slots, span, by_stat, column, stat, threshold, unit, want_win, result, hit, condition)
+    _streak_league_needs_named_subject(scope)
+    return _streak_league(con, scope, by_stat, column, stat, threshold, unit, want_win, result, hit, condition)
 
 
-def _streak_kind(stat: Any, threshold: Any) -> tuple[str | None, bool, str]:
+def _streak_kind(stat: str | None, threshold: int | None) -> tuple[str | None, bool, str]:
     """Validate a streak's stat/threshold pair and derive its per-game column,
     whether it is a stat streak at all (as against one of wins or losses), and
     the unit its threshold is counted in.
@@ -1465,12 +1440,12 @@ def _streak_kind(stat: Any, threshold: Any) -> tuple[str | None, bool, str]:
     Raises :class:`TemplateUnsupported` for a named stat with no per-game
     column, or a stat/threshold pair that only half-names a condition -
     "most consecutive double-doubles" must not come back as a win streak."""
-    column = THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
-    named_stat = isinstance(stat, str) and bool(stat.strip()) and stat.strip().casefold() not in _RESULT_STATS
-    has_threshold = isinstance(threshold, int) and not isinstance(threshold, bool)
+    column = THRESHOLD_STAT_COLUMNS.get(stat) if stat is not None else None
+    named_stat = stat is not None and bool(stat.strip()) and stat.strip().casefold() not in _RESULT_STATS
+    has_threshold = threshold is not None
     if named_stat and column is None:
         raise TemplateUnsupported(f"no per-game column for stat {stat!r}")
-    if has_threshold != (column is not None) or (isinstance(threshold, int) and threshold < 1):
+    if has_threshold != (column is not None) or (threshold is not None and threshold < 1):
         raise TemplateUnsupported(f"a streak of a stat needs both a known stat and a positive threshold, got {stat!r}/{threshold!r}")
     by_stat = column is not None
     unit = f"{STAT_LABELS.get(stat or '', stat or '')}s"
@@ -1479,9 +1454,7 @@ def _streak_kind(stat: Any, threshold: Any) -> tuple[str | None, bool, str]:
 
 def _streak_player(
     con: duckdb.DuckDBPyConnection,
-    name: str,
-    slots: dict[str, Any],
-    span: Any,
+    scope: Scope,
     team: Entity | None,
     by_stat: bool,
     column: str | None,
@@ -1497,40 +1470,40 @@ def _streak_player(
     is a run over his Boston games only, said so beside the run."""
     # Refused here, before any name is resolved, if a line names no column -
     # the same discipline player_stat's own measures follow.
-    measures = measure_filters(slots.get("below"), slots.get("above"))
+    measures = measure_filters(scope.below, scope.above)
     # `season_n` forces a career-shaped outer scope the same way
     # `scoped_player` treats it internally, so the label below reads the real
     # narrowed season rather than "now" - see _condition_span_label.
-    scope = _condition_scope(slots.get("season"), "career" if slots.get("season_n") else span, slots.get("season_type"), _PLAYER_GAME_TABLES, since=slots.get("since"))
-    # `slots` goes in whole (bar `player`, resolved above), so
-    # condition_player's own scoped_games reads "opponent", "venue",
-    # "without", "split" and "game_n" off it directly (common._narrow_player_games)
-    # and narrows the run's games before any of this function's own SQL runs.
-    subject = condition_player(con, {**slots, "player": name}, "streak needs a player", scope, team=team, measures=measures)
+    covered = _condition_scope(scope.season, "career" if scope.season_n else scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
+    # The scope goes in whole, so condition_player's own scoped_games reads
+    # "opponent", "venue", "without", "split" and "game_n" off it directly
+    # (common._narrow_player_games) and narrows the run's games before any of
+    # this function's own SQL runs.
+    subject = condition_player(con, scope, "streak needs a player", covered, team=team, measures=measures)
     if isinstance(subject, TemplateResult):
         return subject
     player, narrowed = subject
     # Named parameters here: the played subquery is nested twice in the
     # streak rows (once for the games, once for the spells they span) beside
-    # the scope's own $season/$first, and the condition binds $threshold.
+    # `covered`'s own $season/$first, and the condition binds $threshold.
     base, params = named(*games_subquery(narrowed, box_source(con)))
     games, first, last = _totals(con, base, params)
     if not games:
-        return _no_games(con, player, scope, team)
-    rows_sql = _player_streak_rows(scope, base, f"p.{column}" if by_stat else "NULL", box_source(con))
-    # The scope's own names bind only where the rows SQL uses them (the
+        return _no_games(con, player, covered, team)
+    rows_sql = _player_streak_rows(covered, base, f"p.{column}" if by_stat else "NULL", box_source(con))
+    # `covered`'s own names bind only where the rows SQL uses them (the
     # missing-box half); DuckDB rejects a name a statement never reads.
-    runs = _longest_runs(con, rows_sql, {**params, **scope.params(), **condition}, ("athlete_id",), hit, 3, best_per_partition=False)
-    label = _condition_span_label(scope, slots, first, last)
+    runs = _longest_runs(con, rows_sql, {**params, **covered.params(), **condition}, ("athlete_id",), hit, 3, best_per_partition=False)
+    label = _condition_span_label(covered, scope, first, last)
     what = f"consecutive games with {threshold}+ {unit}" if by_stat else f"{result} in games he played"
-    rule = "Only games he played count: a game he missed neither extends the run nor ends it" + (", and a run carries on from one season into the next." if scope.season is None else ".")
-    rule += _UNSEEN_ENDS_RUN if _unseen(con, scope, base, {**params, **scope.params()}, box_source(con)) else ""
+    rule = "Only games he played count: a game he missed neither extends the run nor ends it" + (", and a run carries on from one season into the next." if covered.season is None else ".")
+    rule += _UNSEEN_ENDS_RUN if _unseen(con, covered, base, {**params, **covered.params()}, box_source(con)) else ""
     if not runs:
         never = f"never had a game with {threshold}+ {unit}" if by_stat else f"never {'won' if want_win else 'lost'} a game he played"
         message = f"{player.name} {never}{narrowed.filters()} in the {label}."
         return TemplateResult(data={"player": player.name, "span": label, "streaks": [], "headline": message}, answer=message)
     subject_text = (f"{player.name}'s longest run of {what}" if by_stat else f"{player.name}'s longest {what}") + narrowed.filters()
-    return _single_streak(subject_text, label, runs, rule, scope, {"player": player.name})
+    return _single_streak(subject_text, label, runs, rule, covered, {"player": player.name})
 
 
 #: A team's games for a streak, over the relation - `team_id`, `season`,
@@ -1543,15 +1516,13 @@ _TEAM_STREAK_SELECT: tuple[str, ...] = ("tg.team_id", "tg.season", "tg.event_id"
 
 def _streak_team(
     con: duckdb.DuckDBPyConnection,
-    slots: dict[str, Any],
-    span: Any,
+    scope: Scope,
     team: Entity,
     by_stat: bool,
     want_win: bool,
     result: str,
     hit: str,
     condition: dict[str, Any],
-    opponent: Any,
 ) -> TemplateResult:
     """A named team's longest run of wins or losses in a season, narrowed to
     an opponent and/or a venue where the question named them.
@@ -1569,17 +1540,17 @@ def _streak_team(
     """
     if by_stat:
         raise TemplateUnsupported("a team's streak is of wins or losses, not of a stat")
-    scope = _span_of(span, slots.get("season"), slots.get("season_type") or 2, "games", since=slots.get("since"))
-    narrowed = team_games(con, team, scope, slots, opponent=opponent)
+    span = _span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since)
+    narrowed = team_games(con, team, span, scope, opponent=scope.opponent)
     if isinstance(narrowed, TemplateResult):
         return narrowed
     # A split, a record, a run: read over every game in the span (common.whole_span).
     whole_span(narrowed)
     base, params = team_named(*team_aggregate_sql(narrowed, list(_TEAM_STREAK_SELECT)))
-    games, first, last = _team_season_range(con, base, params, scope)
+    games, first, last = _team_season_range(con, base, params, span)
     if not games:
-        return _condition_team_no_games(con, team, scope, narrowed)
-    label = _team_span_label(scope, first, last)
+        return _condition_team_no_games(con, team, span, narrowed)
+    label = _team_span_label(span, first, last)
     runs = _longest_runs(con, base, {**params, **condition}, ("team_id", "season"), hit, 3, best_per_partition=False)
     if not runs:
         message = f"The {team.name} did not {'win' if want_win else 'lose'} a game{narrowed.filters()} in the {label}."
@@ -1589,7 +1560,7 @@ def _streak_team(
         label,
         runs,
         "Streaks are counted within one season.",
-        scope,
+        span,
         {"team": team.name},
     )
 
@@ -1652,30 +1623,30 @@ for the pre-1994 misfiled-postseason refusal."""
 
 
 def _streak_league_stat_branch(
-    con: duckdb.DuckDBPyConnection, slots: dict[str, Any], span: Any, column: str | None, threshold: Any, unit: str, hit: str, condition: dict[str, Any], limit: int
+    con: duckdb.DuckDBPyConnection, scope: Scope, column: str | None, threshold: Any, unit: str, hit: str, condition: dict[str, Any], limit: int
 ) -> _StreakLeagueFound | TemplateResult:
     """The by-stat half of :func:`_streak_league`: each player's longest run
     meeting the threshold, one per player - unchanged by step 3, C4, still a
     ``_Scope`` over the player relation's own tables."""
-    scope = _condition_scope(slots.get("season"), span, slots.get("season_type"), _PLAYER_GAME_TABLES)
-    misfiled = _misfiled_postseason(scope)
+    covered = _condition_scope(scope.season, scope.span, scope.season_type, _PLAYER_GAME_TABLES)
+    misfiled = _misfiled_postseason(covered)
     if misfiled is not None:
         return misfiled
-    base, runs, what, who, rule = _streak_league_by_stat(con, scope, column, threshold, unit, hit, condition, limit)
+    base, runs, what, who, rule = _streak_league_by_stat(con, covered, column, threshold, unit, hit, condition, limit)
     # The span searched, not the seasons the leaders' runs happen to fall in:
     # "1997-2023" under a question about every season reads as a narrower search.
-    _, first, last = _totals(con, base, scope.params())
-    return runs, what, who, rule, scope.label(first, last), _where_in(scope)
+    _, first, last = _totals(con, base, covered.params())
+    return runs, what, who, rule, covered.label(first, last), _where_in(covered)
 
 
-def _streak_league_team_branch(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], span: Any, result: str, hit: str, condition: dict[str, Any], limit: int) -> _StreakLeagueFound | TemplateResult:
+def _streak_league_team_branch(con: duckdb.DuckDBPyConnection, scope: Scope, result: str, hit: str, condition: dict[str, Any], limit: int) -> _StreakLeagueFound | TemplateResult:
     """The win-loss half of :func:`_streak_league`: each team's longest run
     in a season, one per team-season - settles its span as a ``_Span`` and
     reads the team-games relation (step 3, C4): a postseason before 1993-94
     is selected by the calendar year it was played in, not ESPN's own-year
     label, and a career span reaches its real 1989 floor rather than 1994.
     Honors ``since`` the same way (step 3, C4b)."""
-    team_span = _span_of(span, slots.get("season"), slots.get("season_type") or 2, "games", since=slots.get("since"))
+    team_span = _span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since)
     base, params, runs, what, who, rule = _streak_league_by_result(con, team_span, result, hit, condition, limit)
     _, first, last = _team_season_range(con, base, params, team_span)
     return runs, what, who, rule, _team_span_label(team_span, first, last), _team_where_in(team_span)
@@ -1683,8 +1654,7 @@ def _streak_league_team_branch(con: duckdb.DuckDBPyConnection, slots: dict[str, 
 
 def _streak_league(
     con: duckdb.DuckDBPyConnection,
-    slots: dict[str, Any],
-    span: Any,
+    scope: Scope,
     by_stat: bool,
     column: str | None,
     stat: Any,
@@ -1707,8 +1677,8 @@ def _streak_league(
        objects, the same split ``condition_player``'s docstring already
        carries for record_when/streak's player branches.
     """
-    limit = _clamp_limit(slots.get("limit"), _DEFAULT_STREAK_LIMIT)
-    found = _streak_league_stat_branch(con, slots, span, column, threshold, unit, hit, condition, limit) if by_stat else _streak_league_team_branch(con, slots, span, result, hit, condition, limit)
+    limit = _clamp_limit(scope.limit, _DEFAULT_STREAK_LIMIT)
+    found = _streak_league_stat_branch(con, scope, column, threshold, unit, hit, condition, limit) if by_stat else _streak_league_team_branch(con, scope, result, hit, condition, limit)
     if isinstance(found, TemplateResult):
         return found
     runs, what, who, rule, label, where_in_text = found

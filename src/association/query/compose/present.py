@@ -165,7 +165,7 @@ def _present_record_when(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateRe
     if isinstance(found, TemplateResult):
         return found
     rows, names, base, params = found
-    return _record_when_answer(con, covered, compiled.player, stat, threshold, rows, names, base, params, compiled.narrowed, scope.to_slots())
+    return _record_when_answer(con, covered, compiled.player, stat, threshold, rows, names, base, params, compiled.narrowed, scope)
 
 
 def _present_player_stat(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
