@@ -2582,6 +2582,7 @@ those were found.
   (one clause on `Narrowed` and `TeamNarrowed`), and a numeric-date reading
   ("1/26/20") in `route()`; then this is record_when/player_splits-shaped.
 - **Priority note:** P3 - one corpus question, refused rather than wrong.
+- **Addendum (2026-09-27, the step (b) audit):** two readers disagree about the subject. With the recorded router slots, `read_subject` at c1812e2 returns kind `everyone` and no players (the ordinary-word filter drops "towns" when the router names no Towns), while `players_named_in` finds Karl-Anthony Towns and the refusal at `entities.py` names him. The fix has to make the reading and the refusal agree.
 - **GitHub:** #215
 
 ### `game_log`'s "last 10 of N games" heading misses the without branch
@@ -3144,6 +3145,28 @@ those were found.
 - **GitHub:** #192
 
 ## P4: tooling, docs, low impact
+
+### Two decisions share the label "subject kind": a streak's `kind` slot is recorded as the subject's kind
+- **Found:** 2026-09-27, the step (b) audit agent, reading day10 traces.
+- **Evidence:** `subject._apply_child_intent` records every settled slot as `Decision("subject", key, ...)`, and a streak's `kind` slot ("win"/"loss") is one of them. On day10's "what was the sixers longest winstreak this year?" the trace holds `subject kind: 'team'` and then `subject kind: 'win' (read for streak)`. The web page's decisions fold shows both, and any reader keyed on (stage, field) takes the wrong one; `~/association-research/parser-greenfield/measure.py` had to filter by `SUBJECT_KINDS`.
+- **User sees:** two contradictory "kind" lines in the decisions fold of a streak answer.
+- **Next step:** give slot rewrites their own field prefix or stage ("slot", key), and keep "kind" for the subject alone.
+- **Source:** ours.
+
+### The two-teams kind depends on the routed intent, which the parser will not have
+- **Found:** 2026-09-27, the step (b) audit agent (`IR_AUDIT.md`, `RESULT_b_baseline.md`).
+- **Evidence:** `read_subject` returns kind `teams` only when passed `head_to_head` (its docstring: the intent "is read only to tell two teams meeting from a team set against another"). Passed "other", all 5 two-team day10 questions ("how many times did the 76ers play boston?", "Lakers vs Celtics record this season") read as `team`. Baseline harness, DEV: 0 of 5 two-team questions read as `teams` with the router withheld.
+- **User sees:** nothing today (the router supplies the intent); once the parser owns the kind (ROADMAP plan item 6, step b), a two-teams question reads as one team against an opponent.
+- **Next step:** the parser decides `teams` from the words ("X vs Y", "X play Y", "how many times did X play Y") with both teams named and no player.
+- **Source:** ours.
+
+### The reading accepts a name no player has once the names come from the normalizer
+- **Found:** 2026-09-27, the step (b) audit agent, the baseline harness on the 3B normalizer's names.
+- **Evidence:** `read_subject` counts any name slot whose words appear in the question as a player. From the normalizer, "southeast division" makes "alperen sengun double-doubles vs southeast division career away" a pair, "jolic" (a typo) makes "generate fingerprints for embiid vs jolic in 2026" a pair, and "team" becomes a player on "most opponent bench points allowed ... by team this month".
+- **User sees:** nothing today (the router's names resolve); once the normalizer feeds names (plan item 6, step c), a non-name in the slot becomes a subject.
+- **Next step:** the entity index classifies each span (player / team / alignment / none) before it becomes a subject; the typo policy (a single near spelling defaults visibly) covers "jolic".
+- **Source:** ours.
+
 
 ### player_splits has no reader over a settled narrowing, and single_game_high's orchestration is restated in compose.present
 - **Found:** 2026-09-25, plan item 2 step 2a (`query/compose/present.py`);

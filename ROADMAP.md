@@ -625,6 +625,14 @@ with nothing to read fills the silence from its own weights), and more data
    trace; the four parity intents are compiler-first. Golden 631/631 over
    the routing corpus and the day10 routes (a stronger check than a live
    run for a refactor: the same routes, byte-identical answers).
+   **Step (b) inputs, 2026-09-27 (an Opus agent; `IR_AUDIT.md`,
+   `RESULT_b_baseline.md`, `measure.py` in `parser-greenfield/`):** the
+   Reading as designed expresses 223/277 day10 wordings, 46 need one
+   addition (a period 18, both season types 13, a series game 3, ...), 7
+   need a clarification; 20 families have no dominant key reading and the
+   answer states its default. Baseline with the router withheld: DEV kind
+   267/277, intent 256/277, window 186/277, stat 152/203; held-out kind
+   257, intent 223. Two reading gaps it surfaced are fixed (c1812e2).
 
 ## The rules a spike keeps
 
