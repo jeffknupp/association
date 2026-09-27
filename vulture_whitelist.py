@@ -62,10 +62,8 @@ attrs
 # tests, and vulture would otherwise report it dead code.
 answer
 
-# association/query/reading.py, Scope: two fields read by name, never by
-# attribute - each is a marker that makes check_scope refuse (it reads every
-# name in SCOPING_SLOTS with getattr), so the compiler answers instead
-# (compose.core.COMPILER_SLOTS): `team_restored` on a team the subject reading
-# wrote back onto `leaderboard`, `ranked_by` on a triple-double ranking.
-team_restored
+# association/query/reading.py, Scope: a field read by name, never by
+# attribute - a marker that makes check_scope refuse (it reads every name in
+# SCOPING_SLOTS with getattr), so the compiler answers a triple-double
+# ranking instead (compose.core.COMPILER_SLOTS).
 ranked_by

@@ -457,7 +457,7 @@ class Agent:
         refused by name (the result returned here, beside the intent the
         reading settled the slots for). Split out of _try_fast_path for the
         complexity gate."""
-        applied = apply_subject(subject, routed.slots, con=self.toolbox.con, intent=routed.intent)
+        applied = apply_subject(subject, routed.slots, intent=routed.intent)
         for decision in applied.decisions:
             history.record_decision(decision)
         dropped = applied.dropped

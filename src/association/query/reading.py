@@ -150,8 +150,6 @@ class Scope:
     teams: tuple[str, ...] = ()
     opponent: str | None = None
     own_team: str | None = None
-    #: The team was put back from the question beside a dropped player.
-    team_restored: bool = False
     with_player: tuple[str, ...] = ()
     without: tuple[str, ...] = ()
     #: Each player named beside the subject, with his role.
@@ -302,7 +300,7 @@ _CHECKS: dict[str, Callable[[str, Any], Any]] = {
     "date": _iso_day,
     **dict.fromkeys(("players", "teams", "with_player", "without", "above", "below", "fields"), _texts),
     **dict.fromkeys(("threshold", "season", "since", "until", "game_n", "season_n", "period", "limit"), _whole),
-    **dict.fromkeys(("team_restored", "per_game", "season_type_unstated"), _flag),
+    **dict.fromkeys(("per_game", "season_type_unstated"), _flag),
     "conditions": _conditions,
     "side": _one_of("offense", "defense", "total"),
     "shot_value": _one_of(1, 2, 3),

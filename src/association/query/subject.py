@@ -53,7 +53,6 @@ from association.query.entities import (
     _initials,
     _named_only_by_a_team_word,
     _question_derived_player,
-    _shares_word,
     _team_after_for,
     _team_after_versus,
     _team_grounded,
@@ -70,11 +69,9 @@ from association.query.templates.common import (
     FILLER_PLAYER_WORDS,
     HONORED_SCOPING,
     OWN_TEAM_RESTORABLE_INTENTS,
-    PLAYER_INTENTS,
     PLAYER_REQUIRED_INTENTS,
     POSITIONS,
     SUBJECT_RESTORABLE_INTENTS,
-    TEAM_SUBJECT_RESTORABLE_INTENTS,
 )
 
 #: The kinds a subject can be. ``team_players`` is "a Hawks player" - the
@@ -928,136 +925,52 @@ def _decide(
     return Subject("everyone", (), (), position, opponent, own_team, companions, evidence)
 
 
-def apply_subject(subject: Subject, slots: dict[str, Any], *, con: duckdb.DuckDBPyConnection, intent: str) -> Applied:
-    """Write the players the subject was read to be about into the slots a
-    template reads - ``player`` or ``players``, whichever shape the router
-    used - and report the router's names the question never held, which the
-    caller refuses by name rather than answers about (AGENTS.md: "when it
-    cannot be repaired, say so - do not hand it to the agent"). Mutates
-    ``slots``; returns the decisions made, the names dropped, and the intent
-    the subject settled on (:attr:`Subject.intent`), with the slots rewritten
-    for it where it differs from the router's.
+def apply_subject(subject: Subject, slots: dict[str, Any], *, intent: str) -> Applied:
+    """Write what the subject reading settled into the slots a template
+    reads, once the parser has read the question: the players the question
+    is about, in the shape the route already uses (``player`` or
+    ``players``); the one player a template that needs one was left
+    without; a player's own team, and the tenure it implies; a position
+    group; the companions' roles; and a team's record in the games a
+    companion reached a line. A name the question never held is replaced by
+    the question's own spare name where there is exactly one per name, else
+    reported, and the caller refuses by name rather than answering about it
+    (AGENTS.md: "when it cannot be repaired, say so - do not hand it to the
+    agent"). Mutates ``slots``; returns the decisions made, the names
+    dropped, and the intent the subject settled on (:attr:`Subject.intent`),
+    with the slots rewritten for it where it differs.
 
-    The first fields the reading settles in place of the repair chain, and
-    what ``entities.override_invented_players`` did until 4.5.0: "compare sga
-    and embiid" arriving as Nurkic, "jay huff game log vs Embiid" arriving
-    with Jokic as the ``opponent``. A name the router filed that the question
-    supports is kept as the router spelled it - or as the question's own span
-    spells it where the two differ (:func:`_spellings`), so a template reads
-    "Jay Huff" and "Seth Curry" where the router wrote "Jaylen Huff" and
-    "Stephen Curry"; a name it does not support is replaced by the question's
-    own spare name where there is exactly one per dropped name, else dropped
-    and reported. An unsupported opponent with no spare is deleted rather
-    than reported: the refusal would name him. A player the router left OUT
-    is not put back here: the parser's reading takes every name from the
-    question itself.
+    A kept name is respelled as the question's own span spells it
+    (:func:`_spellings`), so a template reads "Jay Huff" and "Seth Curry"
+    where a model wrote "Jaylen Huff" and "Stephen Curry". Every step here is
+    one the parser's output reaches: measured over the 628 questions with a
+    recorded normalizer reply (ROADMAP plan item 6, step (d), part 3c), the
+    router-era repairs that never fired there - a player filed in ``team``,
+    a team that displaced the player, a player or a team filed as the
+    opponent, a team subject the router dropped - are gone.
 
     .. versionadded:: 4.4.0
 
-    ``con`` and ``intent`` are what the opponent-TEAM pass needs: a team is
-    the same team under any of its names only by id, and whether a team
-    beside the subject is his opponent or the question's own side depends
-    on whether the template reads a player
-    (:data:`~association.query.templates.common.PLAYER_INTENTS`).
-
     .. versionchanged:: 4.5.0
-       Writes ``opponent`` too, when it holds a player's name, and respells a
-       kept name from the anchored span (a question's own typo, "Seph
-       Curry", included) rather than from a whole-word match. Takes ``con``
-       and ``intent``, and writes the opponent TEAM - into ``opponent``, and
-       out of ``players``, ``team`` and ``teams`` beside a player - the
-       restored player, the own team, the team subject, a player filed in
-       ``team`` and a team that displaced the player, all of which were
-       ``entities.scope_from_question``'s; and returns :class:`Applied`,
-       whose ``intent`` is the reroute ``player_record_against_a_team`` and
-       ``refusals.pair_from_opponent`` used to make.
+       Respells a kept name from the anchored span (a question's own typo,
+       "Seph Curry", included) rather than from a whole-word match; writes
+       the restored player, the own team and the companions' roles, which
+       were ``entities.scope_from_question``'s; takes ``intent`` and returns
+       :class:`Applied`, whose ``intent`` is the reroute
+       ``player_record_against_a_team`` and ``refusals.pair_from_opponent``
+       used to make.
     """
-    decisions = _apply_team_slot_player(subject, slots, con, intent)
-    decisions.extend(_apply_displaced_team(subject, slots, con, intent))
     players, dropped = _apply_players(subject, slots, intent)
     if dropped:
         return Applied([], dropped, intent)
-    decisions.extend(players)
-    decisions.extend(_apply_opponent(subject, slots))
+    decisions = list(players)
     decisions.extend(_apply_restored_player(subject, slots, intent))
-    decisions.extend(_apply_opponent_team(subject, slots, con, intent))
     decisions.extend(_apply_own_team(subject, slots, intent))
-    decisions.extend(_apply_team_subject(subject, slots, intent))
     decisions.extend(_apply_position(subject, slots, intent))
     decisions.extend(_apply_conditions(subject, slots, intent))
     rewritten, settled = _apply_intent(subject, slots, intent)
     decisions.extend(rewritten)
     return Applied(decisions, [], settled)
-
-
-def _apply_team_slot_player(subject: Subject, slots: dict[str, Any], con: duckdb.DuckDBPyConnection, intent: str) -> list[Decision]:
-    """Move a player's name out of ``team`` and into ``player``, for a
-    template that reads one. "Podziemski game log without curry" arrived as
-    ``team='Podziemski'``, ``player='Curry'`` - the subject in the team slot
-    and the absent teammate in the player slot - and "Will Riley last 5 game
-    s" as ``team='Riley'``, a fragment three players share that the
-    question's own "will riley" settles (:func:`_spellings`). The player
-    slot gives way only when empty or holding a companion; a garbled
-    ``team`` beside some OTHER player the question names cannot borrow that
-    name."""
-    team = slots.get("team")
-    if intent not in PLAYER_INTENTS or not isinstance(team, str) or not team.strip() or _team_named(con, team) is not None or not find_players(con, team):
-        return []
-    name = next((p for p in subject.players if _same_person(team, (p,))), None)
-    held = slots.get("player")
-    if name is None or (held and not (isinstance(held, str) and _same_person(held, subject.companions))):
-        return []
-    slots.pop("team", None)
-    slots["player"] = name
-    return [Decision("subject", "player", held or None, name, f"{team!r} is a player, not a team; the subject is {name!r}")]
-
-
-def _apply_displaced_team(subject: Subject, slots: dict[str, Any], con: duckdb.DuckDBPyConnection, intent: str) -> list[Decision]:
-    """Put back the player a team in ``team`` displaced, for a template that
-    reads one, and put the team where it belongs. The team there is the
-    opponent (the team after "vs") or one the question never mentions (the
-    router's guess at the player's own); either way the player it displaced
-    is the subject, and:
-
-    - the opponent stays an opponent: "karl towns stats vs netslast 5 games"
-      arrived as ``team='Brooklyn Nets'``, and dropping the team with Towns
-      restored answered his last five games against anybody.
-    - a team's question against another is put back in the order the
-      question gives: "magic vs nets last 10" arrived with the sides swapped
-      (and "magic" is Orlando, never Magic Johnson).
-    - a team the question never names goes even when nobody was found:
-      "stating centers vs phoenix suns log" arrived as the Lakers, whose log
-      it then was. A subject the question does not name is for the template
-      to refuse, not for the router's guess to supply."""
-    team = _team_named(con, slots.get("team"), slots.get("season") if isinstance(slots.get("season"), int) else None)
-    if intent not in PLAYER_INTENTS or team is None or slots.get("player") or slots.get("players"):
-        return []
-    versus = _team_named(con, subject.opponent) if subject.opponent else None
-    displaced = versus is not None and team.id == versus.id
-    grounded = any((found := _team_named(con, name)) is not None and found.id == team.id for name in (*subject.teams, subject.own_team) if name)
-    if not displaced and grounded:
-        return []
-    slots.pop("team", None)
-    if subject.kind in ("player", "pair"):
-        return [_apply_displaced_team_player(subject, slots, team, displaced)]
-    if displaced and subject.kind in ("team", "team_players") and subject.teams:
-        slots["team"], slots["opponent"] = subject.teams[0], team.name
-        return [Decision("subject", "team", team.name, subject.teams[0], f"{subject.teams[0]!r} is the subject and {team.name!r} the opponent, as the question orders them")]
-    if displaced:
-        slots.setdefault("opponent", team.name)
-        return [Decision("subject", "team", team.name, None, "the team the question plays against; the question names no subject")]
-    return [Decision("subject", "team", team.name, None, "not in the question, and the question names no player; dropped")]
-
-
-def _apply_displaced_team_player(subject: Subject, slots: dict[str, Any], team: Entity, displaced: bool) -> Decision:
-    """The player(s) the team in ``team`` displaced, put back in the router's own shape."""
-    field = "player" if subject.kind == "player" else "players"
-    if subject.kind == "player":
-        slots["player"] = subject.players[0]
-    else:
-        slots["players"] = list(subject.players)
-    why = "the opponent" if displaced else "not in the question"
-    return Decision("subject", field, None, list(subject.players), f"{team.name!r} was {why}; the subject is {list(subject.players)!r}")
 
 
 def _apply_team_record_when(subject: Subject, slots: dict[str, Any], intent: str) -> tuple[list[Decision], str]:
@@ -1220,45 +1133,6 @@ def _apply_own_team(subject: Subject, slots: dict[str, Any], intent: str) -> lis
     return decisions
 
 
-def _apply_team_subject(subject: Subject, slots: dict[str, Any], intent: str) -> list[Decision]:
-    """Put back a team the question names as its OWN subject, where the
-    router routed a team-shaped question to ``leaderboard`` or ``team_stat``
-    and dropped the team entirely - yardstick-v2 F127, "how many 3 pointers
-    have the magic made so far this season" arrived at ``leaderboard`` with
-    no team slot at all and ranked the league's leaders in makes
-    (:data:`~association.query.templates.common.TEAM_SUBJECT_RESTORABLE_INTENTS`).
-
-    Only a team the reading settled as the subject itself - not one beside a
-    player (that is ``own_team``'s), not one set against another ("76ers vs
-    magic total points" is a comparison, not one team's total), and not a
-    team-only intent naming a player, which is the F111 refusal-by-name
-    shape this must not paper over. For ``leaderboard`` the restored team
-    is ALSO marked ``team_restored``, a slot ``HONORED_SCOPING`` never lists
-    for it, so ``check_scope`` refuses and ``query.compose`` answers the
-    team's own total instead of ``leaderboard`` ranking players "on" it -
-    while a ``team`` the router itself supplied ("Top 5 scorers on the
-    Lakers?") keeps its direct answer. ``team_stat`` needs no marker: an
-    empty ``team`` there already raises, so the restore is a strict
-    improvement."""
-    if intent not in TEAM_SUBJECT_RESTORABLE_INTENTS | {"game_log"} or subject.kind not in ("team", "team_players") or len(subject.teams) != 1:
-        return []
-    if slots.get("team") or slots.get("player") or slots.get("players"):
-        return []
-    if intent == "game_log":
-        # A team's games against another, with the team read as a PLAYER
-        # and dropped as one: "magic vs nets last 10" arrived as Magic
-        # Johnson's log (day5) - the reading's team, beside the opponent the
-        # opponent pass already wrote, is the log's own subject.
-        if subject.opponent is None or slots.get("opponent") is None:
-            return []
-    elif subject.opponent is not None or slots.get("opponent"):
-        return []
-    slots["team"] = subject.teams[0]
-    if intent == "leaderboard":
-        slots["team_restored"] = True
-    return [Decision("subject", "team", None, subject.teams[0], "from the question; the router left it out")]
-
-
 def _apply_filler_players(subject: Subject, slots: dict[str, Any]) -> tuple[list[Decision], list[str]]:
     """Take the router's no-names (:attr:`Subject.filler`) out of the player
     slots - "most", "most 30+ point games" (what the model files as the
@@ -1327,100 +1201,6 @@ def _apply_players(subject: Subject, slots: dict[str, Any], intent: str = "") ->
     return decisions, []
 
 
-def _apply_opponent(subject: Subject, slots: dict[str, Any]) -> list[Decision]:
-    """The ``opponent`` half of :func:`apply_subject`, run after the players'
-    so their names are spoken for. A player there the question never held is
-    replaced by the one player the question names that no subject slot
-    claims, or dropped rather than answered about - never reported for the
-    refusal, since the refusal would name him (#206). One the question does
-    support stays as the router spelled him: the pair template resolves it."""
-    opponent = subject.routed_opponent
-    if opponent is None or slots.get("opponent") != opponent or opponent not in subject.invented:
-        return []
-    held = _routed_player_slots(slots)
-    spare = [p for p in subject.players if not _same_person(p, held)]
-    if len(spare) == 1:
-        slots["opponent"] = spare[0]
-        return [Decision("subject", "opponent", opponent, spare[0], "the question never names the router's opponent; it names this player")]
-    del slots["opponent"]
-    return [Decision("subject", "opponent", opponent, None, "the question never names the router's opponent, and names no one else to put there")]
-
-
-def _apply_opponent_team(subject: Subject, slots: dict[str, Any], con: duckdb.DuckDBPyConnection, intent: str) -> list[Decision]:
-    """The opponent-TEAM half of :func:`apply_subject`: put the team the
-    subject is set against where a template will see it - ``opponent`` - and
-    take it out of the slots the router filed it in instead. Measured against
-    real StatMuse questions, the single most common repair there is (a third
-    of the feed): "how did curry do against the celtics" put the Celtics in
-    ``players`` (where "boston" is Brandon Boston Jr.); "compare curry and
-    lebron vs the celtics" put them in ``team``, where no template read it
-    and nothing refused; "Keyonte George against blazers" put them in
-    ``teams``, which only ``head_to_head`` reads. The resulting ``opponent``
-    is a scoping slot: a template that cannot narrow to one refuses it
-    (``check_scope``) rather than answering about every opponent.
-
-    A team the slots already carry as a SIDE - both of ``head_to_head``'s
-    ``teams``, the ``team`` of a team question - stays where it is; only
-    beside a player a template reads (``intent`` in
-    :data:`~association.query.templates.common.PLAYER_INTENTS`) is the team
-    after "vs" his opponent rather than a side. And an ``opponent`` naming
-    a player the slots already ask about ("sga vs tyrese maxey fingerprint"
-    put Maxey there beside himself) narrows nothing and goes."""
-    season = slots.get("season") if isinstance(slots.get("season"), int) else None
-    versus = _team_named(con, subject.opponent, season) if subject.opponent else None
-    decisions: list[Decision] = []
-    if versus is not None:
-        decisions.extend(_apply_opponent_team_out_of_players(slots, con, versus, season))
-        carries_player = intent in PLAYER_INTENTS and (bool(slots.get("player")) or bool(slots.get("players")))
-        team = _team_named(con, slots.get("team"), season)
-        if carries_player and team is not None and team.id == versus.id and not slots.get("opponent"):
-            # The team the question plays AGAINST, filed as the subject's
-            # own team beside him; left there, nothing reads it and nothing
-            # refuses. "compare curry and lebron vs the celtics" came back
-            # with team='Boston Celtics'.
-            slots.pop("team", None)
-            decisions.append(Decision("subject", "team", team.name, None, "the team the question plays against, not the subject's"))
-        decisions.extend(_apply_opponent_team_slot(slots, con, versus, season, carries_player=carries_player))
-    held = slots.get("opponent")
-    if isinstance(held, str) and held.strip() and _team_named(con, held) is None:
-        subjects = [name for name in [slots.get("player"), *(slots.get("players") or [])] if isinstance(name, str) and name.strip()]
-        if any(_shares_word(subject_name, held) for subject_name in subjects):
-            slots.pop("opponent", None)
-            decisions.append(Decision("subject", "opponent", held, None, "a player the question already asks about, not a team"))
-    else:
-        decisions.extend(_apply_invented_opponent(subject, slots, con, held, season))
-    decisions.extend(_apply_opponents_word_as_team(slots, con, versus, season))
-    return decisions
-
-
-def _apply_opponents_word_as_team(slots: dict[str, Any], con: duckdb.DuckDBPyConnection, versus: Entity | None, season: int | None) -> list[Decision]:
-    """The opponent's own word, expanded by the router into a ``team`` that
-    is not one here: "Centers stats game log vs kings" arrived with
-    team='Los Angeles Kings' beside the reading's Sacramento Kings."""
-    team_text = slots.get("team")
-    if versus is None or not isinstance(team_text, str) or not team_text.strip() or _team_named(con, team_text, season) is not None or not _shares_word(team_text, versus.name):
-        return []
-    slots.pop("team", None)
-    return [Decision("subject", "team", team_text, None, "no such team; the word is the opponent's")]
-
-
-def _apply_invented_opponent(subject: Subject, slots: dict[str, Any], con: duckdb.DuckDBPyConnection, held: Any, season: int | None) -> list[Decision]:
-    """A team the question never names, filed as the opponent, on a question
-    that sets its subject against nobody at all: "PHI record when Embiid and
-    Paul George play" arrived with the Pacers (day5, after the 4.5.0 prompt
-    shrink) and the split was narrowed to four games against them. Only
-    where the question holds no "vs"/"against" - "curry vs lebron" with the
-    Lakers filed is the router grounding the second name, which the tests
-    keep."""
-    if not isinstance(held, str) or not held.strip() or subject.opponent is not None or not subject.question or _AGAINST.search(subject.question):
-        return []
-    opponent_team = _team_named(con, held, season)
-    if opponent_team is None or _team_grounded(con, subject.question, opponent_team):
-        return []
-    slots.pop("opponent", None)
-    return [Decision("subject", "opponent", held, None, "the question sets its subject against nobody; the router's opponent is invented")]
-
-
 def _apply_conditions(subject: Subject, slots: dict[str, Any], intent: str) -> list[Decision]:
     """Write the companions' roles the router's own slots cannot carry - a
     start, the bench, a line reached ("when Embiid starts", "in games Maxey
@@ -1467,69 +1247,6 @@ def _apply_position(subject: Subject, slots: dict[str, Any], intent: str) -> lis
         return []
     slots["player"] = phrase
     return [Decision("subject", "player", None, phrase, "the position group the question is about; the template steps aside and the compiler reads it")]
-
-
-def _apply_opponent_team_out_of_players(slots: dict[str, Any], con: duckdb.DuckDBPyConnection, versus: Entity, season: int | None) -> list[Decision]:
-    """Take the team the question plays against out of ``players``."""
-    listed = slots.get("players")
-    if not isinstance(listed, list):
-        return []
-    kept = [name for name in listed if not ((found := _team_named(con, name, season)) is not None and found.id == versus.id)]
-    if len(kept) == len(listed):
-        return []
-    if len(kept) == 1:
-        slots.pop("players", None)
-        slots["player"] = kept[0]
-    else:
-        slots["players"] = kept
-    return [Decision("subject", "players", listed, kept, f"{versus.name} is a team, not a player to compare")]
-
-
-def _apply_opponent_team_slot(slots: dict[str, Any], con: duckdb.DuckDBPyConnection, versus: Entity, season: int | None, *, carries_player: bool) -> list[Decision]:
-    """Write ``opponent`` itself: over a router value that is no team the
-    question holds (the reading already chose the question's own, so the
-    two differ only then), or into an empty slot the sides do not already
-    carry - unless a player is the subject, when a team after "vs" filed in
-    ``teams`` is his opponent even though ``head_to_head`` would read
-    ``teams`` as its sides ("Keyonte George against blazers" answered his
-    whole season, not his two games against Portland, while it sat there)."""
-    held = slots.get("opponent")
-    held_team = _team_named(con, held, season) if isinstance(held, str) and held.strip() else None
-    if held:
-        if held_team is not None and held_team.id == versus.id:
-            return []
-        slots["opponent"] = versus.name
-        return [
-            Decision(
-                "subject",
-                "opponent",
-                held,
-                versus.name,
-                "the question names it; the router's resolves to no team" if held_team is None else "the question names it; the router's is not in the question",
-            )
-        ]
-    listed_teams = [name for name in slots.get("teams") or [] if isinstance(name, str)]
-    if carries_player and _apply_opponent_team_from_teams(slots, con, versus, season, listed_teams):
-        return [Decision("subject", "opponent", None, versus.name, "the question plays against it; the router filed it as a team")]
-    carried = [slots.get("team"), *listed_teams]
-    if any((found := _team_named(con, name, season)) is not None and found.id == versus.id for name in carried):
-        return []
-    slots["opponent"] = versus.name
-    return [Decision("subject", "opponent", None, versus.name, "from the question")]
-
-
-def _apply_opponent_team_from_teams(slots: dict[str, Any], con: duckdb.DuckDBPyConnection, versus: Entity, season: int | None, listed_teams: list[str]) -> bool:
-    """Move the team after "vs" out of ``teams`` and into ``opponent``, beside
-    a player. Returns whether it was there to move."""
-    kept = [name for name in listed_teams if not ((found := _team_named(con, name, season)) is not None and found.id == versus.id)]
-    if len(kept) == len(listed_teams):
-        return False
-    if kept:
-        slots["teams"] = kept
-    else:
-        slots.pop("teams", None)
-    slots["opponent"] = versus.name
-    return True
 
 
 def _routed_player_slots(slots: dict[str, Any]) -> list[str]:

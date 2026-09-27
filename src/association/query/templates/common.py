@@ -146,14 +146,7 @@ SEASON_TYPE_NAMES = {0: "regular season and postseason", 1: "preseason", 2: "reg
 # alone, so a template honors it only by honoring `since` and reading `until`
 # beside it (`_span_of`/`_validated_until`); one not wired to `until` at all
 # would otherwise silently read only the range's first half.
-# `team_restored` is not read by anything: it marks a `team` value
-# subject._apply_team_subject wrote back onto `leaderboard`
-# after the router dropped it, so check_scope refuses on its presence alone
-# and query.compose gets the question instead of `leaderboard` quietly
-# ranking players "on" a team that was meant to be the whole subject
-# (yardstick-v2 F127). No HONORED_SCOPING entry lists it, so it always
-# refuses; a team the router supplies itself never carries the marker.
-# `ranked_by` is read by nothing either: the router files it when a
+# `ranked_by` is read by nothing: the router files it when a
 # `leaderboard` question ranks the GAMES that satisfy a boolean stat by another
 # measure ("highest scoring triple doubles" - yardstick-v2 F124), the same
 # slots as the count "most triple doubles" otherwise. No template honors it,
@@ -178,7 +171,6 @@ SCOPING_SLOTS = frozenset(
         "conditions",
         "rate",
         "season_type_unstated",
-        "team_restored",
         "ranked_by",
     }
 )
@@ -728,34 +720,6 @@ own reroute for a player's record against a team
 (``subject.Subject.intent``, #163), and ``coach`` is
 TABLELESS_INTENTS and already refuses on its own terms - neither needs a
 second, more general check that could only disagree with the first.
-
-.. versionadded:: 4.4.0
-"""
-
-
-TEAM_SUBJECT_RESTORABLE_INTENTS: frozenset[str] = frozenset({"leaderboard", "team_stat"})
-"""Intents where a team the question names as its own subject, and the
-router dropped outright, is worth restoring into ``team`` -
-the subject reading's team-subject write (``subject._apply_team_subject``,
-yardstick-v2 F127).
-
-"how many 3 pointers have the magic made so far this season" routed to
-``leaderboard`` with no ``team`` slot at all - `stat` and `season` only -
-and ranked the league's individual leaders in makes, the Magic never named.
-``leaderboard`` already reads a router-supplied ``team`` to rank players
-WITHIN it ("Top 5 scorers on the Lakers?"), a different question this must
-not disturb, so only the value this restore itself writes is ALSO marked
-with ``team_restored`` (:data:`SCOPING_SLOTS`, absent from every
-``HONORED_SCOPING`` entry), forcing ``check_scope`` to refuse a
-``leaderboard`` this function touched and hand the question to
-``query.compose``, which composes the team's own total rather than a
-per-player ranking.
-
-``team_stat`` gets no marker: an empty ``team`` there already raises
-``TemplateUnsupported("no team named")`` on its own
-(``templates.common._resolved_team``), so restoring the team there is a
-strict improvement - the template answers directly, using the team as the
-single subject it was always meant to be.
 
 .. versionadded:: 4.4.0
 """

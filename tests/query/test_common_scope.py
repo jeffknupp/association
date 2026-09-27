@@ -49,8 +49,8 @@ def _outcome(step: Callable[..., Any], *args: Any) -> Any:
 
 # One slot dict per branch the steps take: nothing at all, a player's and a
 # team's own reads, an advanced stat, a record's tally, a career ranking, a
-# starter/bench category, a window, both season types, a condition, the
-# restored-team marker, and every other scoping slot at once.
+# starter/bench category, a window, both season types, a condition, a
+# team's own count, and every other scoping slot at once.
 _SLOTS: list[dict[str, Any]] = [
     {},
     {"player": "Jayson Tatum", "season": 1990, "season_type": 3, "stat": "points", "threshold": 30},
@@ -62,7 +62,7 @@ _SLOTS: list[dict[str, Any]] = [
     {"player": "Joe Ingles", "split": "starter_bench", "order": "recent", "limit": 5},
     {"player": "Stephen Curry", "limit": 2, "season_type_unstated": True},
     {"player": "Jaylen Brown", "conditions": [{"player": "Jayson Tatum", "side": "own", "predicate": "absent"}], "situation": "on christmas"},
-    {"team": "Orlando Magic", "team_restored": True, "stat": "threePointFieldGoalsMade", "season": 2026},
+    {"team": "Orlando Magic", "stat": "threePointFieldGoalsMade", "season": 2026},
     {
         "stat": "triple_double",
         "ranked_by": "points",

@@ -312,13 +312,12 @@ def _agg(name: str, aggregate: str, *, rebuilt: bool = False) -> str:
 #: Scoping slots the router files FOR the compiler - markers a template refuses
 #: on so the question reaches here, which the compiler then reads itself:
 #: ``ranked_by`` (the games that satisfy a boolean stat, ranked by another
-#: measure - move.py reads the measure off the question) and ``team_restored``
-#: (a team the question named as its own subject - the team path's marker).
-#: Neither narrows the relation, so neither is "unhonored" here; measured
-#: live on yardstick-v2 F124, the marker alone sent the question to the agent.
+#: measure - move.py reads the measure off the question). It narrows nothing,
+#: so it is not "unhonored" here; measured live on yardstick-v2 F124 ("highest
+#: scoring triple doubles"), the marker alone sent the question to the agent.
 #:
 #: .. versionadded:: 4.4.0
-COMPILER_SLOTS: frozenset[str] = frozenset({"ranked_by", "team_restored"})
+COMPILER_SLOTS: frozenset[str] = frozenset({"ranked_by"})
 
 
 def _check_relation_scoping(scope: Scope, subject: str = "player") -> None:

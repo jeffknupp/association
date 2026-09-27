@@ -872,7 +872,7 @@ def test_a_named_player_beats_the_team_branch_end_to_end(league: TemplateContext
 
     def answered(question: str, **slots: Any) -> str:
         given = _slots(**slots)
-        apply_subject(read_subject(league.con, question, "record_when", given), given, con=league.con, intent="record_when")
+        apply_subject(read_subject(league.con, question, "record_when", given), given, intent="record_when")
         return (record_when(league, Reading.from_slots(given)).answer or "").splitlines()[0]
 
     named = answered("celtics record with 20+ points from jayson tatum", stat="points", threshold=20, team="Boston Celtics")

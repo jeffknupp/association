@@ -922,7 +922,7 @@ def _team_after_for(con: duckdb.DuckDBPyConnection, question: str, season: int |
 
 #: Ordinary English words that collide with a real NBA team abbreviation,
 #: found the same way :data:`_COMMON_WORDS_THAT_NAME_PLAYERS` was - measured
-#: against the full routing corpus before :func:`teams_named_in` shipped.
+#: against the full routing corpus.
 #: :func:`_team_named` matches an abbreviation with no length floor of its
 #: own (`abbreviation ILIKE ?`), so a bare three-letter word run through it
 #: directly can resolve to a team nobody meant: "was" is the Washington
@@ -939,53 +939,6 @@ def _team_after_for(con: duckdb.DuckDBPyConnection, question: str, season: int |
 #:
 #: .. versionadded:: 4.4.0
 _COMMON_WORDS_THAT_NAME_TEAMS: frozenset[str] = frozenset({"was", "min", "me"})
-
-
-def teams_named_in(con: duckdb.DuckDBPyConnection, question: str, season: int | None = None) -> list[Entity]:
-    """Teams the question itself names, in the order it names them - the team
-    counterpart of :func:`players_named_in`, built for
-    :data:`~association.query.templates.common.TEAM_SUBJECT_RESTORABLE_INTENTS`
-    (yardstick-v2 F127).
-
-    Spans of three words down to one are tried left to right, the same as
-    :func:`players_named_in`, so "trail blazers" is read as one team rather
-    than two failed one-word lookups. A span shorter than three letters is
-    never tried (the same floor :func:`players_named_in` applies, for the
-    same reason: "in", "la", "no" match something by accident), and a span
-    equal to :data:`_COMMON_WORDS_THAT_NAME_TEAMS` is skipped outright even
-    at three letters, since those are real words dense enough in
-    ordinary questions that the floor alone does not clear them.
-
-    .. versionadded:: 4.4.0
-    """
-    words = _words(question)
-    found: list[Entity] = []
-    index = 0
-    while index < len(words):
-        matched = False
-        for size in (3, 2, 1):
-            if index + size > len(words):
-                continue
-            span_words = words[index : index + size]
-            if any(len(w) < 3 for w in span_words):
-                continue
-            if size == 1 and span_words[0].casefold() in _COMMON_WORDS_THAT_NAME_TEAMS:
-                continue
-            team = _team_named(con, " ".join(span_words), season)
-            if team is not None:
-                found.append(team)
-                index += size
-                matched = True
-                break
-        if not matched:
-            index += 1
-    seen: set[str] = set()
-    unique: list[Entity] = []
-    for team in found:
-        if team.id not in seen:
-            seen.add(team.id)
-            unique.append(team)
-    return unique
 
 
 def _team_grounded(con: duckdb.DuckDBPyConnection, question: str, team: Entity) -> bool:

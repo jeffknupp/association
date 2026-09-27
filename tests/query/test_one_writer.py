@@ -151,3 +151,83 @@ def test_for_me_is_the_asker_not_the_memphis_grizzlies(monkeypatch: pytest.Monke
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, q: Normalized(["kat"], "points"))
     Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history", fallthrough=False).ask("Display kat's average points for me")
     assert seen == [None]
+
+
+@pytest.fixture
+def league() -> duckdb.DuckDBPyConnection:
+    """Players and teams enough for the shapes the router used to scramble."""
+    con = duckdb.connect(":memory:")
+    con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    con.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    players = [
+        "Stephen Curry",
+        "Seth Curry",
+        "Jaylen Brown",
+        "Luka Doncic",
+        "Steven Adams",
+        "Jayson Tatum",
+        "Jay Huff",
+        "Joel Embiid",
+        "De'Aaron Fox",
+        "Victor Wembanyama",
+        "Magic Johnson",
+        "Brandon Boston Jr.",
+    ]
+    con.executemany("INSERT INTO players VALUES (?, ?)", [(str(i), name) for i, name in enumerate(players)])
+    teams = [
+        ("2", "BOS", "Boston Celtics"),
+        ("19", "ORL", "Orlando Magic"),
+        ("17", "BKN", "Brooklyn Nets"),
+        ("9", "GS", "Golden State Warriors"),
+        ("23", "SAC", "Sacramento Kings"),
+        ("13", "LAL", "Los Angeles Lakers"),
+        ("8", "DET", "Detroit Pistons"),
+    ]
+    con.executemany("INSERT INTO teams VALUES (?, ?, ?)", teams)
+    return con
+
+
+_SIDES = ("player", "players", "team", "opponent", "without")
+
+
+@pytest.mark.parametrize(
+    ("question", "names", "intent", "sides"),
+    [
+        # A team the question plays against, never a second player to compare:
+        # "boston" alone is Brandon Boston Jr.'s whole surname.
+        ("how did curry do against the celtics this year", ["curry", "celtics"], "player_stat", {"player": "curry", "opponent": "Boston Celtics"}),
+        # Nobody named: two teams, and "magic" is the Magic, not Magic Johnson.
+        ("magic vs nets last 10", ["magic", "nets"], "game_log", {"team": "Orlando Magic", "opponent": "Brooklyn Nets"}),
+        # A city written as one word still reaches its team.
+        ("jaylen brown last 10 games vs goldenstate", ["jaylen brown", "goldenstate"], "game_log", {"player": "Jaylen Brown", "opponent": "Golden State Warriors"}),
+        # An accented name reaches the plain-letter spelling the warehouse holds.
+        ("luka dončić last 15 games vs. magic", ["luka dončić", "magic"], "game_log", {"player": "Luka Doncic", "opponent": "Orlando Magic"}),
+        ("steve adam's vs kings last 10 games", ["steve adam's", "kings"], "game_log", {"player": "Steven Adams", "opponent": "Sacramento Kings"}),
+        ("jaylen brown last 8 games vs pistons", ["jaylen brown", "pistons"], "game_log", {"player": "Jaylen Brown", "opponent": "Detroit Pistons"}),
+        # Two players set against each other are the pair, whatever "vs" joins.
+        ("jay huff game log vs Embiid", ["jay huff", "Embiid"], "player_matchup", {"players": ("Jay Huff", "Joel Embiid")}),
+        # A teammate named with "without" narrows; the team is the opponent.
+        (
+            "de'aaron fox vs magic last five games without wembyanama",
+            ["de'aaron fox", "magic", "wembyanama"],
+            "game_log",
+            {"player": "De'Aaron Fox", "opponent": "Orlando Magic", "without": ("wembyanama",)},
+        ),
+    ],
+)
+def test_the_parser_files_each_side_where_the_router_scrambled_it(league: duckdb.DuckDBPyConnection, question: str, names: list[str], intent: str, sides: dict[str, Any]) -> None:
+    """The team-and-opponent shapes the router got wrong - a team in
+    ``players``, the two sides swapped, a player in ``team``, a player
+    displaced by his own team - each once had a repair after the router
+    (``subject.apply_subject``'s opponent-team, team-slot and team-subject
+    passes). Measured over 628 recorded questions, the parser's output never
+    needed one (ROADMAP plan item 6, step (d), part 3c), because it files
+    each side from its own reading; these are those questions, read here."""
+    from association.query.parse import read_route
+    from association.query.subject import apply_subject, read_subject
+
+    route, _, _ = read_route(league, question, names, "")
+    slots = dict(route.slots)
+    applied = apply_subject(read_subject(league, question, route.intent, slots), slots, intent=route.intent)
+    got = {key: tuple(value) if isinstance(value, list) else value for key, value in slots.items() if key in _SIDES}
+    assert (applied.intent, got, applied.dropped) == (intent, sides, [])

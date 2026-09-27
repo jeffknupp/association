@@ -127,7 +127,7 @@ def test_a_player_in_the_opponent_slot_becomes_the_second_of_two_players(con: du
     nothing, is left alone."""
 
     def paired(question: str, intent: str, slots: dict[str, Any]) -> str:
-        return apply_subject(read_subject(con, question, intent, slots), slots, con=con, intent=intent).intent
+        return apply_subject(read_subject(con, question, intent, slots), slots, intent=intent).intent
 
     slots: dict[str, Any] = {"player": "LeBron James", "opponent": "Kawhi Leonard", "limit": 5}
     assert paired("lebron vs kawhi head to head", "game_log", slots) == "player_matchup"

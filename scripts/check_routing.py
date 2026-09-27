@@ -550,7 +550,7 @@ def main() -> int:
             # The same order agent.py applies them in: the reading writes
             # the slots a template reads, and the intent where the router's
             # cannot be about the subject.
-            got.intent = apply_subject(subject, got.slots, con=con, intent=got.intent).intent
+            got.intent = apply_subject(subject, got.slots, intent=got.intent).intent
         if got is None:
             print(f"FAIL  {elapsed:5.2f}s  {question}\n        router returned nothing", flush=True)
             failures += 1
