@@ -109,7 +109,11 @@ def answer_without_the_router(db_path: str, out_dir: Path, question: str, intent
     original_route, original_chat = agent_module.route, ollama.chat
     agent_module.route, ollama.chat = fixed_route, never  # type: ignore[assignment]
     try:
-        agent = Agent("preview", db_path, out_dir, history_dir=out_dir / ".history", trace=lambda line: None, fallthrough=False)
+        # The router, pinned: this replays a RECORDED route, which only the
+        # router reader consults - under the parser (the default since step
+        # (c)) the fixed route above would never be asked, and the preview
+        # would silently be the parser's own reading instead.
+        agent = Agent("preview", db_path, out_dir, history_dir=out_dir / ".history", trace=lambda line: None, fallthrough=False, reader="router")
         try:
             answer = agent.ask(question, label="preview")
         except FallthroughDisabled as exc:

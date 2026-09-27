@@ -45,8 +45,28 @@ _PAIR_MEETING = (
 )
 """A pair meeting - "vs", "against", a matchup - unless a compare verb owns the pair."""
 
+# Every count a question can spell, one to ninety-nine and a hundred, in one
+# table every count pattern here is built from: the words were written out
+# three times, and "last twelve games" read as a season line while "last 12
+# games" read the log (the package review, 2026-09-27; word2number is
+# unmaintained, and text2num's rewrite of the whole question would move
+# every other reading).
+_ONES = ("one", "two", "three", "four", "five", "six", "seven", "eight", "nine")
+_TEENS = ("ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen")
+_TENS = ("twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety")
+_NUMBERS: dict[str, int] = {
+    **{word: n for n, word in enumerate(_ONES, 1)},
+    **{word: n for n, word in enumerate(_TEENS, 10)},
+    **{word: n * 10 for n, word in enumerate(_TENS, 2)},
+    **{f"{ten} {one}": t * 10 + o for t, ten in enumerate(_TENS, 2) for o, one in enumerate(_ONES, 1)},
+    "hundred": 100,
+    "a hundred": 100,
+}
+_COUNT = r"(\d{1,3}|" + "|".join(re.escape(w).replace(r"\ ", r"[\s-]+") for w in sorted(_NUMBERS, key=len, reverse=True)) + ")"
+
+
 _PLAYER_LOG = (
-    r"\b(game ?log|gamelog|logs?|last (\d+|ten|five) games|each game|game by game|box scores?|games? (with|where|in which|against|vs)"
+    r"\b(game ?log|gamelog|logs?|last " + _COUNT + r" games|each game|game by game|box scores?|games? (with|where|in which|against|vs)"
     r"|how many (games|times)|highest|most .* in a game|career high|best game|single game"
     r"|first game|last game|(most recent|latest|previous|final) (\d+ )?games?|first \d+ games|game \d|month of|\d+/\d+|march|january|february|april|december|november|october)\b"
 )
@@ -72,7 +92,7 @@ PARENT_GRAMMAR: tuple[tuple[frozenset[str], str, str], ...] = (
     (frozenset({"team+companions"}), r"\b(with|without|when|while)\b", "with_without"),
     (
         frozenset({"team"}),
-        r"\b(game ?log|(last|past|previous|most recent) (\d+|ten|five)\b|first \d+ games|each game|game by game|differential"
+        r"\b(game ?log|(last|past|previous|most recent) " + _COUNT + r"\b|first \d+ games|each game|game by game|differential"
         r"|(first|opening|last|latest|most recent|final) game|(season )?opener)",
         "game_log",
     ),
@@ -197,25 +217,6 @@ def measure(question: str) -> str | None:
     return max(hits, key=lambda x: len(x[0]))[1] if hits else None
 
 
-_COUNT = r"(\d{1,3}|one|two|three|four|five|six|seven|eight|nine|ten|fifteen|twenty|twenty-five|thirty|fifty|hundred)"
-_NUMBERS = {
-    "one": 1,
-    "two": 2,
-    "three": 3,
-    "four": 4,
-    "five": 5,
-    "six": 6,
-    "seven": 7,
-    "eight": 8,
-    "nine": 9,
-    "ten": 10,
-    "fifteen": 15,
-    "twenty": 20,
-    "twenty-five": 25,
-    "thirty": 30,
-    "fifty": 50,
-    "hundred": 100,
-}
 WINDOW_GRAMMAR: tuple[tuple[str, str | None, int | None], ...] = (
     # (the words, the order, the limit - 0 means "the number in the words") - first match wins.
     (rf"\b(last|past|previous|most recent|latest|final)\s+{_COUNT}\s+((home|road|away|regular[- ]season|playoff|postseason)\s+){{0,2}}(games?|outings?|contests?|starts?)\b", "recent", 0),
@@ -246,7 +247,7 @@ _TWO_TEAMS_RECORD_WORDS = re.compile(r"\b(record|rec|w-?l|win.loss)\b", re.IGNOR
 
 
 def _count(word: str) -> int:
-    return int(word) if word.isdigit() else _NUMBERS[word.lower()]
+    return int(word) if word.isdigit() else _NUMBERS[" ".join(word.lower().replace("-", " ").split())]
 
 
 def window(question: str, slots: dict[str, Any]) -> dict[str, Any]:

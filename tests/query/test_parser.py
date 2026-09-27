@@ -234,3 +234,13 @@ def test_a_name_the_model_corrected_is_put_back_as_the_question_typed_it(con: du
     assert both.slots["player"] == "embidd"
     completed, _, _ = read_route(con, "how many points does embiid average", ["Joel Embiid"], "points")
     assert completed.slots["player"] in ("Joel Embiid", "embiid")
+
+
+def test_a_count_spelled_out_is_the_count(con: duckdb.DuckDBPyConnection) -> None:
+    """One number table, every count pattern built from it: "last twelve
+    games" read as a season line while "last 12 games" read the log (the
+    package review's F2)."""
+    for spelled, n in (("twelve", 12), ("eleven", 11), ("twenty five", 25), ("twenty-five", 25), ("fifty", 50)):
+        route, _, _ = read_route(con, f"tyrese maxey last {spelled} games", ["tyrese maxey"], "")
+        assert (route.intent, route.slots.get("order"), route.slots.get("limit")) == ("game_log", "recent", n), spelled
+    assert window("top twelve scorers", {}) == {"limit": 12}
