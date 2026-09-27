@@ -127,7 +127,7 @@ def _present_game_log(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResul
             con,
             compiled.player,
             compiled.span.season,
-            scope.to_slots(),
+            scope,
             opponent=compiled.narrowed.opponent,
             measures=_game_log_lines(scope.below, scope.above, scope.threshold),
             extras=extras,

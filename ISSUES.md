@@ -291,6 +291,13 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #238
 
+### A two-player `player_matchup` drops `date`: "curry vs lebron on 2025-04-03" answers every meeting of the season
+- **Found:** 2026-09-27, ROADMAP plan item 6 step (d), round 2 (`templates/games.py` onto the typed Scope), reading what each template hands the shared steps.
+- **Evidence:** `HONORED_SCOPING["player_matchup"]` declares `date` (`_relation_scoping`), so `check_scope` lets it through, but `_player_matchup_narrowed` (`query/templates/games.py`) calls `scoped_games` with no `date=`, and `scoped_games` reads a date only from that parameter, never from the scope. The same on the base tree (0a7140a) as after the refactor. Measured read-only against the warehouse: `players=[Stephen Curry, LeBron James]`, `season=2025` gives 4 meetings (2025-04-03, 2025-02-06, 2025-01-25, 2024-12-25); adding `date=2025-04-03` gives the same 4, headed "Stephen Curry vs LeBron James, 2025 regular season: 4 meetings, Stephen Curry's team won 1." No recorded route carries the shape yet: none of the 5 `player_matchup` rows among the golden corpus's 354, and none in `live_day10` or `live_parser3`. No guard caught it because `test_every_template_honoring_a_scope_slot_actually_reads_it` accepts any quoted `"date"` in the source it walks, and `_player_matchup_answer` builds `{"date": str(m["day"]), ...}` for its games. Of every `HONORED_SCOPING` claim, this is the only one that passes on a bare quoted key alone, with no `scope.date`, no slot-dict read and no `date=` handed on.
+- **User sees:** a fluent answer about a whole season of meetings to a question about one game, with the date nowhere in it.
+- **Next step:** hand `scoped_games` the validated date the way `game_log` does (a date names its game, so it replaces the season and the names resolve over the career), let the title say it (`Narrowed.filters()` already names a date once one is set), and add a warehouse-verified test on the Curry/LeBron case above, watched to fail. Tighten the guard to require a read (`scope.X`, a slot-dict get, or `X=` handed to a step) rather than any quoted key.
+- **Source:** ours.
+
 ## P2: misleading or incomplete
 
 ### The compiler's team total ignores "no season type named": "total points by the raptors in the last 10 games" reads the regular season only
@@ -4641,3 +4648,9 @@ those were found.
 - **Next step:** when `splits.py` moves onto `reading.scope`, pass the resolved team as `opponent=` rather than its name in the Scope: resolved again from text, it would be read for the settled span's season (an ordinal season's year, say) rather than the season the question named, and a franchise's name is a fact about a season. Then delete `_condition_player_opponent` with the Mapping half of `_as_scope`.
 - **Source:** ours.
 
+### The wall-clock budget test fails under load: its 10ms budget is spent building the prompt, before the first call
+- **Found:** 2026-09-27, running `scripts/check_fast.sh` for plan item 6 step (d) round 2, with four other agents' gates on the same 8 cores (load average 17).
+- **Evidence:** `test_the_agent_gives_up_on_a_wall_clock_budget_rather_than_on_tool_calls` (`tests/query/test_agent.py:1015`) failed once in 2,291 (`assert 1 <= len(calls)`, 0 calls, the run's timing line 0.04s) and passed 5 of 5 run alone. Its docstring says the first call always runs, but `Agent` takes `started` before `build_system_prompt(question)` and checks the budget before every call, the first included (`query/agent.py`, the loop after `started = time.monotonic()`), so with `budget_seconds=0.01` the first call runs only when the prompt builds in under 10ms.
+- **User sees:** nothing - the real budget is 120s (`models.AGENT_BUDGET_SECONDS`). A red gate for whoever runs the suite on a loaded machine, which is how parallel agents run it.
+- **Next step:** make the code keep the docstring's promise (skip the check before the first call, or start the clock after the prompt is built) and let the test assert that; or, if the check before the first call is wanted, give the test a budget above prompt-building time and say so in its docstring.
+- **Source:** ours.
