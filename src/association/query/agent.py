@@ -234,7 +234,7 @@ class Agent:
         self.messages = [self.messages[0], *self.messages[cut:]]
         self._turn_starts = [start - cut + 1 for start in self._turn_starts if start >= cut]
 
-    def ask(self, question: str, label: str = "") -> Answer:
+    def ask(self, question: str, label: str = "", *, route: Route | None = None) -> Answer:
         """Answer one question.
 
         Wraps _ask_inner so a RunHistory is ALWAYS written on the way out -
@@ -249,6 +249,9 @@ class Agent:
                 A caller says what the request was; this used to be
                 ``shlex.join(sys.argv)``, which is only true of a CLI and says
                 nothing useful about a server handling many questions.
+            route: Answer this route instead of reading the question - the
+                replay of a recorded one (golden, previews). The rest of the
+                path is the one a read question takes; no model is asked.
 
         Returns:
             An :class:`association.query.answer.Answer`. ``answer.text`` is
@@ -258,13 +261,17 @@ class Agent:
            Returns an :class:`association.query.answer.Answer` rather than the
            answer text alone, and takes ``label`` rather than reading
            ``sys.argv``.
+
+        .. versionchanged:: 4.5.0
+           Takes ``route``, a recorded route to answer in place of reading
+           the question.
         """
         history = RunHistory(self.verbose, self.history_dir, sink=self.trace)
         self.toolbox.take_artifacts()  # anything left by a previous question is not this one's
         recorded = ""
         answer: Answer | None = None
         try:
-            answer = self._ask_inner(question, history)
+            answer = self._ask_inner(question, history, route)
             recorded = answer.text
         except Exception:
             recorded = "EXCEPTION:\n" + traceback.format_exc()
@@ -321,7 +328,7 @@ class Agent:
         raw = listed if isinstance(listed, list) else [slots.get("player")]
         return [name for name in raw if isinstance(name, str) and name.strip()]
 
-    def _try_fast_path(self, question: str, history: RunHistory) -> tuple[str, TemplateResult] | None:
+    def _try_fast_path(self, question: str, history: RunHistory, given: Route | None = None) -> tuple[str, TemplateResult] | None:
         """Route -> deterministic template -> answer, returning the intent
         alongside the template's whole result. Returns None to fall through to
         the agent: an unported intent, slots that fail validation, or any
@@ -336,21 +343,10 @@ class Agent:
         if not self.fast_path:
             self.fell_through = "the fast path is off (--no-fast-path)"
             return None
-        t0 = time.monotonic()
-        try:
-            routed = self._read_question(question, history) if self.reader == "parser" else route(self.router_model, question, previous_question=self.last_question)
-        except RouterUnavailable as exc:
-            # The fast path is gone for this question, but so is the agent's
-            # own model, most likely - falling through is still right, and the
-            # reason has to name the server rather than the question.
-            history.record_model_call(time.monotonic() - t0)
-            history.log(f"  -> (router) {exc}, falling through to the agent")
-            self.fell_through = str(exc)
-            return None
-        history.record_model_call(time.monotonic() - t0)
+        # A recorded route is answered as given (a copy: the stages after this
+        # one write into the slots); otherwise the question is read.
+        routed = Route(intent=given.intent, slots=dict(given.slots)) if given is not None else self._read_or_fall_through(question, history)
         if routed is None:
-            history.log("  -> (router) no usable classification, falling through to the agent")
-            self.fell_through = "the router returned no usable classification"
             return None
         # A slot nothing can hold - "stephen curry last 0 games" reads as a
         # window of 0, a model can return a shot value of 0 - is a question
@@ -428,6 +424,27 @@ class Agent:
                 history.log(f"  -> (player) {message}")
                 return routed.intent, TemplateResult(data={"message": message, "named_player": named_player}, answer=message)
         return self._run_scoped_template(question, routed, handler, history, subject)
+
+    def _read_or_fall_through(self, question: str, history: RunHistory) -> Route | None:
+        """The route the reader gives ``question``, or None with the reason the
+        fast path is falling through recorded. Split out of
+        :meth:`_try_fast_path` so a recorded route can skip it."""
+        t0 = time.monotonic()
+        try:
+            routed = self._read_question(question, history) if self.reader == "parser" else route(self.router_model, question, previous_question=self.last_question)
+        except RouterUnavailable as exc:
+            # The fast path is gone for this question, but so is the agent's
+            # own model, most likely - falling through is still right, and the
+            # reason has to name the server rather than the question.
+            history.record_model_call(time.monotonic() - t0)
+            history.log(f"  -> (router) {exc}, falling through to the agent")
+            self.fell_through = str(exc)
+            return None
+        history.record_model_call(time.monotonic() - t0)
+        if routed is None:
+            history.log("  -> (router) no usable classification, falling through to the agent")
+            self.fell_through = "the router returned no usable classification"
+        return routed
 
     def _read_question(self, question: str, history: RunHistory) -> Route | None:
         """The route the parser reads (ROADMAP plan item 6, step c): the model
@@ -801,8 +818,8 @@ class Agent:
             self.messages.append({"role": "tool", "content": result})
         return pending_error, pending_error_tool
 
-    def _ask_inner(self, question: str, history: RunHistory) -> Answer:
-        fast = self._try_fast_path(question, history)
+    def _ask_inner(self, question: str, history: RunHistory, given: Route | None = None) -> Answer:
+        fast = self._try_fast_path(question, history, given)
         if fast is not None:
             intent, templated = fast
             # Record the turn in the conversation even though the tool loop

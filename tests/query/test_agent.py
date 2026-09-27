@@ -1231,3 +1231,26 @@ def test_a_slot_the_reading_cannot_hold_falls_through_rather_than_crashing(monke
     with pytest.raises(FallthroughDisabled):
         agent.ask("stephen curry last 0 games")
     assert agent.fell_through is not None and "limit" in agent.fell_through
+
+
+def test_a_recorded_route_is_answered_as_given_without_reading_the_question(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """``Agent.ask(..., route=)`` is the replay of a recorded route (golden,
+    previews): the reader never runs - neither the router nor the parser -
+    and the rest of the path is the one a read question takes."""
+    from association.query.router import Route
+    from association.query.templates.common import TemplateResult
+
+    def no_reader(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("the question was read although a route was given")
+
+    seen: list[str | None] = []
+
+    def record(ctx: Any, reading: Reading) -> TemplateResult:
+        seen.append(reading.scope.player)
+        return TemplateResult(data={}, answer="answered")
+
+    monkeypatch.setattr("association.query.agent.route", no_reader)
+    monkeypatch.setattr("association.query.normalizer.normalize", no_reader)
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": record})
+    answer = _agent_with_players(tmp_path, "Joel Embiid").ask("how many points does embiid average", route=Route(intent="player_stat", slots={"player": "Joel Embiid"}))
+    assert (answer.text, answer.intent, seen) == ("answered", "player_stat", ["Joel Embiid"])

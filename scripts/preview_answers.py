@@ -94,28 +94,23 @@ def answer_without_the_router(db_path: str, out_dir: Path, question: str, intent
     never called. A fall-through is reported as one rather than raised."""
     import ollama
 
-    from association.query import agent as agent_module
     from association.query.agent import Agent
     from association.query.answer import FallthroughDisabled
     from association.query.router import Route
     from association.web.app import as_response
 
-    def fixed_route(model: str, q: str, previous_question: str | None = None) -> Route:
-        return Route(intent=intent, slots=dict(slots))
-
     def never(**kw: Any) -> None:
         raise AssertionError("the model must not be called: this preview runs the fast path from a recorded route")
 
-    original_route, original_chat = agent_module.route, ollama.chat
-    agent_module.route, ollama.chat = fixed_route, never  # type: ignore[assignment]
+    original_chat = ollama.chat
+    ollama.chat = never  # type: ignore[assignment]
     try:
-        # The router, pinned: this replays a RECORDED route, which only the
-        # router reader consults - under the parser (the default since step
-        # (c)) the fixed route above would never be asked, and the preview
-        # would silently be the parser's own reading instead.
-        agent = Agent("preview", db_path, out_dir, history_dir=out_dir / ".history", trace=lambda line: None, fallthrough=False, reader="router")
+        # The recorded route is answered as given (Agent.ask's `route`): no
+        # reader runs, so the preview is the same whichever reader is the
+        # default, and no model is asked.
+        agent = Agent("preview", db_path, out_dir, history_dir=out_dir / ".history", trace=lambda line: None, fallthrough=False)
         try:
-            answer = agent.ask(question, label="preview")
+            answer = agent.ask(question, label="preview", route=Route(intent=intent, slots=dict(slots)))
         except FallthroughDisabled as exc:
             return {
                 "question": question,
@@ -129,7 +124,7 @@ def answer_without_the_router(db_path: str, out_dir: Path, question: str, intent
             }
         return as_response(answer, history_file=answer.history_file).model_dump(mode="json")
     finally:
-        agent_module.route, ollama.chat = original_route, original_chat  # type: ignore[assignment]
+        ollama.chat = original_chat  # type: ignore[assignment]
 
 
 STUB = """
