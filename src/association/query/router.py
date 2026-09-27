@@ -516,6 +516,15 @@ _CALENDAR_DATE = re.compile(
 )
 
 
+# The same range written in numbers: "since 1/26/20", "from 12/25/2019".
+# Only after a range word, so a shooting line ("7/14") or the 50/40/90 club is
+# never a date; it becomes a `situation`, which the calendar reading narrows by
+# (`calendar.parse_situation`) or refuses by value - never a narrowing dropped.
+# yardstick-v2 F110, "towns home rec including playoffs since 1/26/20 vs spurs",
+# read without it answered his whole career at home against San Antonio.
+_NUMERIC_DATE_RANGE = re.compile(r"\b(?:since|after|from)\s+(?:the\s+)?(?:0?[1-9]|1[0-2])/(?:0?[1-9]|[12]\d|3[01])(?:/(?P<year>(?:19|20)?\d\d))?\b", re.IGNORECASE)
+
+
 def _validate_date(question: str, season: int | None) -> str | None:
     """A calendar day as ``YYYY-MM-DD``, or None if the question names none.
 
@@ -1636,12 +1645,25 @@ def _route_team_total(intent: str, slots: dict[str, Any], question: str) -> None
 def _team_metric_in(question: str) -> str | None:
     """The longest team-metric alias the question names ("defensive rating"),
     or None. The model invents team stats ("usage_pct_defense" for "lowest
-    defensive rating"), and the question says which one it meant."""
+    defensive rating"), and the question says which one it meant. An alias
+    the question qualifies as given up comes back as asked ("rebounds
+    allowed"), for the template to refuse by name - see :data:`_GIVEN_UP`."""
     text = question.casefold()
     for alias in sorted(STAT_ALIASES, key=len, reverse=True):
-        if re.search(r"(?<![a-z0-9])" + re.escape(alias) + r"(?![a-z0-9])", text):
-            return alias
+        found = re.search(r"(?<![a-z0-9])" + re.escape(alias) + r"(?![a-z0-9])", text)
+        if found:
+            return f"{alias} allowed" if _GIVEN_UP.match(text, found.end()) else alias
     return None
+
+
+# A team metric's word qualified as the OTHER side's: "rebounds allowed per
+# team" is what a team gives up, and reading it as the alias `rebounds`
+# answered the teams' own rebounds, best first (yardstick-v2 F101). It is
+# named as asked instead, which no team metric is, so the template refuses by
+# name rather than ranking a different column. A metric whose own alias holds
+# the qualifier ("points allowed") matches whole first, being longer. Not
+# "against": "rebounds against the knicks" is the team's own.
+_GIVEN_UP = re.compile(r"\s+(?:allowed|given\s+up|conceded)\b")
 
 
 def _threshold_from_text(question: str) -> int | None:
@@ -2374,9 +2396,11 @@ def _route_calendar_slots(intent: str, slots: dict[str, Any], question: str, spa
         # _validate_season). Dropped so the normal (whole-season) default
         # applies, unconditionally - `date` is set nowhere else in this module.
         slots.pop("date", None)
-        if _CALENDAR_DATE.search(question) and "situation" not in slots:
+        named_date = _CALENDAR_DATE.search(question) or _NUMERIC_DATE_RANGE.search(question)
+        if named_date is not None and "situation" not in slots:
             # A date that named itself but could not be pinned to one day.
-            slots["situation"] = _CALENDAR_DATE.search(question).group(0).casefold()  # type: ignore[union-attr]
+            slots["situation"] = named_date.group(0).casefold()
+            _route_since_dated(slots, named_date)
     playoff_round = _ROUND_WORDS.search(question)
     if playoff_round is not None:
         slots["round"] = playoff_round.group(0).casefold()
@@ -2397,6 +2421,23 @@ def _route_calendar_slots(intent: str, slots: dict[str, Any], question: str, spa
     splits = [name for name, pattern in SPLIT_WORDS.items() if pattern.search(question)]
     if len(splits) == 1:
         slots["split"] = _split_side(splits[0], question)
+
+
+def _route_since_dated(slots: dict[str, Any], named_date: re.Match[str]) -> None:
+    """A range opened on a date WITH a year ("since 1/26/20") spans every
+    season from it on, so the seasons start at the date's own calendar year:
+    the season labeled that year ends in it, so no game on or after the date
+    is in an earlier one, and the date itself (the ``situation``) makes the
+    exact cut. Without this the default season applied, and "since January
+    26, 2020" was read inside 2025-26 alone. A span or a ``since`` the
+    question already named stands."""
+    year = named_date.groupdict().get("year")
+    if not year or "since" in slots or slots.get("span"):
+        return
+    stated = int(year)
+    # Two digits the way strptime's %y reads them: 69-99 are the 1900s.
+    slots["since"] = stated if stated > 99 else (1900 + stated if stated >= 69 else 2000 + stated)
+    slots.pop("season", None)
 
 
 def _route_intent_slots(intent: str, slots: dict[str, Any], question: str, without: list[str]) -> None:

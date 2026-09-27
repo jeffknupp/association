@@ -78,14 +78,20 @@ PARENT_GRAMMAR: tuple[tuple[frozenset[str], str, str], ...] = (
     (frozenset({"team"}), r"\b(triple|double)[ -]?doubles?\b", "leaderboard"),
     (frozenset({"team"}), r".", "team_stat"),
     (frozenset({"player"}), r"\bnet ?po?i?nts?\b|\bnetpts\b", "player_netpoints"),
-    (frozenset({"player"}), _PLAYER_LOG, "game_log"),
-    (frozenset({"player+companions"}), r"\b(with|without|while|when)\b", "with_without"),
     # A player's own record is the W-L of HIS games, which player_splits
     # answers (F088, "Embiid's record against Boston this year"; ISSUES.md
     # #231) - never the team's with/without split, which needs a companion.
     # Not with a line in it: "Sga record 36 plus points" is record_when, a
-    # child player_stat's reading assigns.
-    (frozenset({"player"}), r"(?=.*\b(record|splits?)\b)(?!.*\b\d{1,3}[\s-]*(\+|plus\b|or more\b))", "player_splits"),
+    # child player_stat's reading assigns. Before the log row, whose window
+    # and date words ("since 1/26/20", "last 10 games") narrow a record as
+    # much as a log - but not over a log word: a game log is its games.
+    (
+        frozenset({"player"}),
+        r"(?=.*\b(record|rec|w-?l|win.loss|splits?)\b)(?!.*\b\d{1,3}[\s-]*(\+|plus\b|or more\b))(?!.*\b(game ?log|gamelog|logs?|each game|game by game|box scores?)\b)",
+        "player_splits",
+    ),
+    (frozenset({"player"}), _PLAYER_LOG, "game_log"),
+    (frozenset({"player+companions"}), r"\b(with|without|while|when)\b", "with_without"),
     (frozenset({"player"}), r".", "player_stat"),
     (frozenset({"position"}), r"\b(log|game ?log)\b", "game_log"),
     (frozenset({"position"}), r".", "leaderboard"),

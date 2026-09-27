@@ -25,6 +25,14 @@ from association.query.calendar import AlignmentNarrowing, CalendarNarrowing, al
         ("Christmas Day", "day", (12, 25)),
         ("since january 31st", "since_day", (1, 31)),
         ("from January 31", "since_day", (1, 31)),
+        # Written in numbers (yardstick-v2 F110, "... since 1/26/20 vs spurs"):
+        # with a year, every game from that calendar date on; without one, the
+        # same day-of-the-season reading the month name gets.
+        ("since 1/26/20", "since_date", "2020-01-26"),
+        ("from 12/25/2019", "since_date", "2019-12-25"),
+        ("since 1/26/98", "since_date", "1998-01-26"),
+        ("since 1/26", "since_day", (1, 26)),
+        ("after 2/29", "since_day", (2, 29)),
     ],
 )
 def test_parse_situation_reads_the_calendar_shapes(text: str, kind: str, value: object) -> None:
@@ -33,7 +41,7 @@ def test_parse_situation_reads_the_calendar_shapes(text: str, kind: str, value: 
     assert (narrowing.kind, narrowing.value) == (kind, value)
 
 
-@pytest.mark.parametrize("text", ["18 year old", "western conference", "since returning", "before turning 27", "", "   ", None, 42])
+@pytest.mark.parametrize("text", ["18 year old", "western conference", "since returning", "before turning 27", "since 2/30/20", "since 13/1/20", "", "   ", None, 42])
 def test_parse_situation_returns_none_for_anything_else(text: object) -> None:
     assert parse_situation(text) is None
 
@@ -85,6 +93,18 @@ def test_calendar_clause_reads_a_since_day_within_the_games_own_season() -> None
     con.executemany("INSERT INTO g VALUES (?, ?)", [("2025-12-15", 2026), ("2026-01-15", 2026), ("2025-11-15", 2026)])
     rows = con.execute(f"SELECT eastern_date FROM g WHERE {sql}", params).fetchall()
     assert sorted(str(r[0]) for r in rows) == ["2025-12-15", "2026-01-15"]
+
+
+def test_calendar_clause_reads_a_since_date_across_seasons() -> None:
+    """A dated "since" is one calendar cut, whatever season each game is in -
+    unlike a since_day, which repeats inside every season."""
+    narrowing = CalendarNarrowing("since_date", "2020-01-26", "since January 26, 2020")
+    sql, params = calendar_clause(narrowing, "g.eastern_date", "g.season")
+    con = duckdb.connect(":memory:")
+    con.execute("CREATE TABLE g (eastern_date DATE, season INTEGER)")
+    con.executemany("INSERT INTO g VALUES (?, ?)", [("2020-01-25", 2020), ("2020-01-26", 2020), ("2020-10-11", 2020), ("2025-12-16", 2026), ("2021-01-20", 2021)])
+    rows = con.execute(f"SELECT eastern_date FROM g WHERE {sql}", params).fetchall()
+    assert sorted(str(r[0]) for r in rows) == ["2020-01-26", "2020-10-11", "2021-01-20", "2025-12-16"]
 
 
 def test_calendar_clause_rejects_an_unwritten_kind() -> None:

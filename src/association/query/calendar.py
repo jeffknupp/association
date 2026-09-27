@@ -16,7 +16,9 @@ is not dropped.
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 from association.query.conditions import _MONTH_NAMES
@@ -43,6 +45,7 @@ _MONTH = "(?P<month>january|february|march|april|may|june|july|august|september|
 _WEEKDAY = re.compile(r"^(?:on\s+)?(?P<day>monday|tuesday|wednesday|thursday|friday|saturday|sunday)s?$", re.IGNORECASE)
 _IN_MONTH = re.compile(rf"^(?:in\s+)?(?:the\s+month\s+of\s+)?{_MONTH}$", re.IGNORECASE)
 _SINCE_DAY = re.compile(rf"^(?:since|from|after)\s+(?:the\s+)?{_MONTH}\s+(?P<num>\d{{1,2}})(?:st|nd|rd|th)?$", re.IGNORECASE)  # codespell:ignore nd - an ordinal suffix
+_SINCE_NUMERIC = re.compile(r"^(?:since|from|after)\s+(?:the\s+)?(?P<date>\d{1,2}/\d{1,2}(?:/\d{2}(?:\d{2})?)?)$", re.IGNORECASE)
 _HOLIDAY = re.compile(r"^(?:on\s+)?(?P<name>.+?)$", re.IGNORECASE)
 
 #: A ``situation`` word naming a conference or division, mapped to
@@ -77,13 +80,18 @@ _ALIGNMENT = re.compile(
 @dataclass(frozen=True)
 class CalendarNarrowing:
     """One calendar narrowing: ``kind`` is ``"weekday"`` (``value`` 1-7, ISO),
-    ``"month"`` (1-12), ``"day"`` (``(month, day)``) or ``"since_day"``
+    ``"month"`` (1-12), ``"day"`` (``(month, day)``), ``"since_day"``
     (``(month, day)`` - every game from that day of the season on, in the
-    calendar year that day falls in for the season). ``label`` is how an
+    calendar year that day falls in for the season) or ``"since_date"`` (an
+    ISO date - every game from that calendar date on, across seasons: "since
+    1/26/20"). ``label`` is how an
     answer says it: "on Tuesdays", "in October", "on Christmas Day", "since
     January 31".
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.5.0
+       ``"since_date"``: a "since" written with a year, one cut across seasons.
     """
 
     kind: str
@@ -127,6 +135,10 @@ def parse_situation(text: Any) -> CalendarNarrowing | None:
     :func:`parse_alignment`.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.5.0
+       Reads a "since" written in numbers: "since 1/26/20" (a ``since_date``)
+       and "since 1/26" (a ``since_day``, as "since January 26").
     """
     if not isinstance(text, str) or not text.strip():
         return None
@@ -146,11 +158,41 @@ def parse_situation(text: Any) -> CalendarNarrowing | None:
         if not 1 <= day <= 31:
             return None
         return CalendarNarrowing("since_day", (month, day), f"since {_MONTH_NAMES[month - 1]} {day}")
+    m = _SINCE_NUMERIC.fullmatch(words)
+    if m:
+        return _since_numeric(m.group("date"))
     m = _HOLIDAY.fullmatch(words)
     if m and m.group("name") in HOLIDAYS:
         month, day, label = HOLIDAYS[m.group("name")]
         return CalendarNarrowing("day", (month, day), f"on {label}")
     return None
+
+
+def _since_numeric(text: str) -> CalendarNarrowing | None:
+    """ "1/26/20" or "1/26/2020" as every game from that calendar date on
+    (``"since_date"``), and "1/26" with no year as ``"since_day"`` - the same
+    day-of-the-season reading "since January 26" gets. US month-first order,
+    parsed by :func:`time.strptime`; a day no calendar has
+    ("2/30/20") names nothing, and is refused by value by the caller."""
+    for fmt in ("%m/%d/%y", "%m/%d/%Y"):
+        try:
+            day = _calendar_day(text, fmt)
+        except ValueError:
+            continue
+        return CalendarNarrowing("since_date", day.isoformat(), f"since {_MONTH_NAMES[day.month - 1]} {day.day}, {day.year}")
+    try:
+        # A leap year, so February 29 parses; the year itself is never used.
+        undated = _calendar_day(f"{text}/2000", "%m/%d/%Y")
+    except ValueError:
+        return None
+    return CalendarNarrowing("since_day", (undated.month, undated.day), f"since {_MONTH_NAMES[undated.month - 1]} {undated.day}")
+
+
+def _calendar_day(text: str, fmt: str) -> date:
+    """``text`` as the calendar day ``fmt`` spells, by :func:`time.strptime` -
+    a day the question typed, never a moment, so no clock or zone is read."""
+    parsed = time.strptime(text, fmt)
+    return date(parsed.tm_year, parsed.tm_mon, parsed.tm_mday)
 
 
 def calendar_clause(narrowing: CalendarNarrowing, eastern_date: str, season: str) -> tuple[str, list[Any]]:
@@ -175,6 +217,8 @@ def calendar_clause(narrowing: CalendarNarrowing, eastern_date: str, season: str
         month, day = narrowing.value
         year = f"CASE WHEN ? >= 10 THEN {season} - 1 ELSE {season} END"
         return f"{eastern_date} >= make_date({year}, ?, ?)", [month, month, day]
+    if narrowing.kind == "since_date":
+        return f"{eastern_date} >= CAST(? AS DATE)", [narrowing.value]
     raise ValueError(f"no calendar narrowing called {narrowing.kind!r}")  # written in code, so a programming error
 
 

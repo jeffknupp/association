@@ -178,3 +178,14 @@ def test_read_route_reads_the_window_before_the_stages_and_the_quarter_from_the_
     assert (recent.intent, recent.slots["limit"], recent.slots.get("season_type_unstated")) == ("game_log", 10, True)
     quarter, _, _ = read_route(con, "show sixers first quarter scoring for their last 10 games", ["sixers"], "points")
     assert (quarter.intent, quarter.slots.get("period")) == ("team_quarter_points", 1)
+
+
+def test_a_players_record_reads_his_splits_through_a_window_but_not_over_a_log_word() -> None:
+    """ "rec" is a record, and a record narrowed by a date or a window is still
+    his record (yardstick-v2 F110, "towns home rec including playoffs since
+    1/26/20 vs spurs" read as a game log); a game log asked for is a log."""
+    assert parent_intent("towns home rec including playoffs since 1/26/20 vs spurs", "player") == "player_splits"
+    assert parent_intent("embiid's record in his last 10 games", "player") == "player_splits"
+    assert parent_intent("embiid game log since 1/26/20", "player") == "game_log"
+    assert parent_intent("embiid's game log and record vs boston since 1/26/20", "player") == "game_log"
+    assert parent_intent("Sga record 36 plus points", "player") != "player_splits"

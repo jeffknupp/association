@@ -860,6 +860,33 @@ def test_alltime_written_as_one_word_reads_as_a_career_span() -> None:
     assert got.slots.get("span") == "career"
 
 
+def test_a_numeric_date_opening_a_range_is_a_situation_and_its_year_the_first_season() -> None:
+    """yardstick-v2 F110, "towns home rec including playoffs since 1/26/20 vs
+    spurs": nothing read the date, and the answer was his whole career at
+    home against San Antonio. It is a `situation` now (the calendar reading
+    narrows by it, or refuses it by value), and its year starts the seasons."""
+    got = _ask("towns home rec including playoffs since 1/26/20 vs spurs", '{"intent":"game_log","player":"Karl-Anthony Towns"}')
+    assert (got.slots.get("situation"), got.slots.get("since")) == ("since 1/26/20", 2020)
+    assert "season" not in got.slots
+    undated = _ask("embiid games since 1/26", '{"intent":"game_log","player":"Joel Embiid"}')
+    assert undated.slots.get("situation") == "since 1/26" and "since" not in undated.slots
+    # A shooting line is never a date: only a range word opens one.
+    line = _ask("curry games where he went 7/14 from three", '{"intent":"game_log","player":"Stephen Curry"}')
+    assert "situation" not in line.slots and "since" not in line.slots
+
+
+def test_a_team_metric_given_up_is_named_as_asked() -> None:
+    """yardstick-v2 F101, "rebounds allowed per team": the alias `rebounds`
+    ranked the teams' own rebounds. Named as asked, no team metric holds it
+    and the template refuses by name; "points allowed" is an alias of its own,
+    and "against the knicks" is the team's own side."""
+    from association.query.router import _team_metric_in
+
+    assert _team_metric_in("rebounds allowed per team") == "rebounds allowed"
+    assert _team_metric_in("which team has given up the most points allowed") == "points allowed"
+    assert _team_metric_in("celtics rebounds against the knicks") == "rebounds"
+
+
 def test_since_he_joined_the_league_reads_as_a_career_span() -> None:
     """yardstick-v2 F031: "Show me luka's avg assists since he joined the
     league" routed with no ``span`` at all - none of ``_SPAN_WORDS`` is in
