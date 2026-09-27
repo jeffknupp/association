@@ -19,7 +19,7 @@ from association.nba.season import current_season, eastern_day_utc_range
 from ..answer import Artifact
 from ..calendar import parse_alignment, parse_situation
 from ..conditions import _PLAYER_GAME_TABLES, _TEAM_GAME_TABLES, _game_scope, _Scope, box_source
-from ..entities import Ambiguous, Availability, Entity, clarification, find_players, note_typo_reading, resolve_player, resolve_team, suggest_players, suggestion, teammate_names
+from ..entities import Ambiguous, Availability, Entity, clarification, find_players, resolve_player, resolve_team, suggest_players, suggestion, teammate_names
 from ..leaderboard import resolve_metric
 from ..measures import MEASURE_WORDS
 from ..metrics import LEADERBOARD_METRICS
@@ -668,9 +668,10 @@ alone already clears the measured corpus with zero false positives. The
 :func:`~association.query.entities._named_only_by_a_common_word` as a
 forward-looking gate, since a future question in either intent could still
 collide with one of them; the typo case is not addressed here (a wrong
-candidate, not an ungrounded one - :func:`~association.query.entities.suggest_players`'
-own near-spelling pass is the tool for that, and it only ever ASKS, never
-substitutes).
+candidate, not an ungrounded one - the entity index's near-spelling pass is
+the tool for that: :func:`~association.query.entities.read_near_spelling`
+reads a single near spelling as that player and says so, and asks about two
+or more).
 
 .. versionadded:: 4.4.0
 """
@@ -2137,6 +2138,12 @@ def _resolved_teammate(con: duckdb.DuckDBPyConnection, text: Any, player: Entity
        refuse "did you mean Victor Wembanyama?" over a typo the question's own
        key note says resolves cleanly - the true reason the question falls
        short is a game count, not a name that failed to resolve.
+
+    .. versionchanged:: 4.5.0
+       The near spelling is read by :func:`~association.query.entities.resolve_player`
+       itself (:func:`~association.query.entities.read_near_spelling`), as for
+       every other name slot, and a surname back-off with one survivor ("Jemel
+       Embiid") asks here as it does everywhere else rather than being taken.
     """
     if not isinstance(text, str) or not text.strip():
         raise TemplateUnsupported("'without' names nobody")
@@ -2155,15 +2162,12 @@ def _resolved_teammate(con: duckdb.DuckDBPyConnection, text: Any, player: Entity
             return TemplateResult(data={"unmatched": text, "candidates": [c.name for c in candidates]}, answer=message)
         resolved = shared[0]
     if not isinstance(resolved, Entity):
-        near = suggest_players(con, text)
-        if len(near) == 1:
-            note_typo_reading(text, near[0])
-            resolved = near[0]
-        else:
-            found = _resolved_player(con, text, available=_BOX_SCORES)  # a suggestion, or a refusal
-            if isinstance(found, TemplateResult):
-                return found
-            resolved = found
+        # Nothing by that name and no single near spelling (resolve_player
+        # already reads one): a suggestion, or a refusal.
+        found = _resolved_player(con, text, available=_BOX_SCORES)
+        if isinstance(found, TemplateResult):
+            return found
+        resolved = found
     if resolved.id == player.id:
         raise TemplateUnsupported(f"{player.name} cannot play without himself")
     return resolved

@@ -14,7 +14,7 @@ import duckdb
 
 from .answer import Artifact, RenderResult
 from .court import BEYOND_THE_ARC_SQL, HAS_POSITION_SQL, render_court_html
-from .entities import MAX_CANDIDATES, Ambiguous, Availability, Entity, clarification, find_players, narrow_to_available, no_match
+from .entities import MAX_CANDIDATES, Ambiguous, Availability, Entity, clarification, collect_name_readings, find_players, narrow_to_available, no_match, read_near_spelling
 from .game_label import game_label
 
 UNSEPARABLE_SHOT_VALUES: dict[int, str] = {
@@ -144,6 +144,12 @@ def resolve_chart_player(con: duckdb.DuckDBPyConnection, player_name: str, avail
        page cut by name drew Anthony Davis for "Davis" while JD Davison, Nigel
        Hayes-Davis and Trayce Jackson-Davis also had 2026 shots, and 22 more
        names did the same that season.
+
+    .. versionchanged:: 4.5.0
+       A name that matches nobody but is a near spelling of exactly one player
+       resolves to him rather than None, and the reading is reported through
+       :func:`association.query.entities.collect_name_readings`. See
+       :func:`association.query.entities.read_near_spelling`.
     """
     # Every match, not find_players' first page. Narrowing a page cut
     # alphabetically chooses by name rather than eliminating: Anthony Davis was
@@ -151,7 +157,12 @@ def resolve_chart_player(con: duckdb.DuckDBPyConnection, player_name: str, avail
     # who had them sorted past it.
     candidates = find_players(con, player_name, limit=None)
     if not candidates:
-        return None
+        # One near spelling is that player, and the reading is said in the
+        # answer - the same default resolve_player takes. Not narrowed to who
+        # has chart rows: a single candidate has nobody to be eliminated in
+        # favor of, and the renderer's own message says what he lacks.
+        near = read_near_spelling(con, player_name)
+        return None if near is None else (near, [])
     if len(candidates) > 1:
         narrowed = narrow_to_available(con, candidates, available, season)
         # Narrowing that eliminates EVERYBODY is not a reason to ask which one
@@ -201,17 +212,25 @@ def render_shot_chart(
        the best match. See :func:`resolve_chart_player`. ``shot_value`` now
        reaches unlabeled shots, and may be refused for a season that cannot
        separate them; see :func:`render_for_player`.
+
+    .. versionchanged:: 4.5.0
+       A near spelling of exactly one player is drawn for him, and the message
+       ends with the sentence saying so. See :func:`resolve_chart_player`.
     """
     # `season` is passed through as given, None included: an unscoped chart
     # covers a whole career, so narrowing the name to one year would filter by
-    # something the question never said.
-    resolved = resolve_chart_player(con, player_name, SHOT_AVAILABILITY, season)
+    # something the question never said. The readings are collected here
+    # because nothing above this entry point listens for them: the agent calls
+    # it as a tool, and a near spelling drawn without saying so is a silent
+    # default.
+    with collect_name_readings() as readings:
+        resolved = resolve_chart_player(con, player_name, SHOT_AVAILABILITY, season)
     if resolved is None:
         return RenderResult(no_match(con, player_name), None)
     if isinstance(resolved, Ambiguous):
         return RenderResult(clarification(player_name, resolved.candidates, active=resolved.active), None)
     player, ambiguous = resolved
-    return render_for_player(
+    rendered = render_for_player(
         con,
         out_dir,
         player,
@@ -223,6 +242,7 @@ def render_shot_chart(
         shot_value=shot_value,
         made_only=made_only,
     )
+    return RenderResult(" ".join([rendered.message, *readings]), rendered.artifact)
 
 
 def _render_for_player_refusal(shot_value: int | None, season: int | None, resolved_name: str) -> str | None:

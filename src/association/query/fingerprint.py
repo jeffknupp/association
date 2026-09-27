@@ -38,7 +38,7 @@ import duckdb
 from association.nba.season import current_season, eastern_date
 
 from .answer import Artifact, RenderResult
-from .entities import Ambiguous, Availability, Entity, clarification, no_match
+from .entities import Ambiguous, Availability, Entity, clarification, collect_name_readings, no_match
 from .game_label import game_label
 from .radar import VALUE_ZERO_FRACTION, Axis, Cell, Series, render_fingerprint_html
 
@@ -1075,6 +1075,10 @@ def render_fingerprint(
        before the best match is taken, and an ambiguity that survives that is
        answered with a clarifying question rather than a plot. See
        :func:`association.query.shotchart.resolve_chart_player`.
+
+    .. versionchanged:: 4.5.0
+       A near spelling of exactly one player is drawn for him, and the message
+       ends with the sentence saying so.
     """
     # Imported here, not at module scope: shotchart imports nothing from this
     # module, and a top-level import in the other direction would still be a
@@ -1086,8 +1090,14 @@ def render_fingerprint(
     # in 2005.
     season = season if season is not None else current_season()
     resolved, ambiguous = [], []
+    # Collected here because nothing above this entry point listens: the agent
+    # calls it as a tool, and a near spelling drawn without saying so is a
+    # silent default (see render_shot_chart).
+    readings: list[str] = []
     for name in player_name.split(" vs "):
-        found = resolve_chart_player(con, name.strip(), FINGERPRINT_AVAILABILITY, season)
+        with collect_name_readings() as read:
+            found = resolve_chart_player(con, name.strip(), FINGERPRINT_AVAILABILITY, season)
+        readings.extend(read)
         if found is None:
             return RenderResult(no_match(con, name.strip()), None)
         if isinstance(found, Ambiguous):
@@ -1098,5 +1108,5 @@ def render_fingerprint(
     try:
         rendered = render_for_players(con, out_dir, resolved, ambiguous, season, view=view, scale=scale)
     except FingerprintUnavailable as exc:
-        return RenderResult(str(exc), None)
-    return rendered
+        return RenderResult(" ".join([str(exc), *readings]), None)
+    return RenderResult(" ".join([rendered.message, *readings]), rendered.artifact)

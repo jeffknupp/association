@@ -8,8 +8,10 @@ import pytest
 
 from association.query.entities import (
     Ambiguous,
+    Availability,
     Entity,
     NotFound,
+    collect_name_readings,
     compared_but_unmatched,
     find_players,
     find_teams,
@@ -19,6 +21,7 @@ from association.query.entities import (
     override_nicknames,
     player_named_on_a_team_only_question,
     players_named_in,
+    read_near_spelling,
     resolve_player,
     resolve_team,
     restore_dropped_players,
@@ -712,6 +715,86 @@ def test_a_team_name_is_not_suggested_as_a_player() -> None:
     con.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
     con.execute("INSERT INTO teams VALUES ('1','ATL','Atlanta Hawks')")
     assert suggest_players(con, "Hawks") == []
+
+
+EMBID_READING = "('embid' matches no player exactly and was read as Joel Embiid, the only near spelling on record - spell the name exactly to ask about someone else.)"
+
+
+def test_a_single_near_spelling_is_that_player_and_the_answer_says_so(con: duckdb.DuckDBPyConnection) -> None:
+    """Typos are the index's job: once names reach resolution as typed,
+    asking "did you mean Joel Embiid?" of every typo turns each one into a
+    clarification. One near spelling is a default, and a default is allowed
+    only where it is visible and correctable - the sentence names what was
+    typed, who it was read as, and how to ask about anybody else."""
+    with collect_name_readings() as readings:
+        assert resolve_player(con, "embid") == Entity(id="12", name="Joel Embiid")
+    assert readings == [EMBID_READING]
+    # The same with `available`: the default comes before any narrowing, and
+    # the sentence is said once however many times the name is resolved.
+    con.execute("CREATE TABLE shot_chart (athlete_id VARCHAR, season INTEGER)")
+    with collect_name_readings() as readings:
+        assert resolve_player(con, "embid", Availability("shot_chart"), 2026) == Entity(id="12", name="Joel Embiid")
+        assert read_near_spelling(con, "embid") == Entity(id="12", name="Joel Embiid")
+    assert readings == [EMBID_READING]
+    # A possessive typed without its apostrophe: "embids" is two edits from
+    # Embiid, one of them the "s".
+    with collect_name_readings() as readings:
+        assert resolve_player(con, "joel embids") == Entity(id="12", name="Joel Embiid")
+    assert len(readings) == 1 and "'joel embids'" in readings[0]
+
+
+def test_a_near_spelling_of_two_players_still_asks() -> None:
+    """ "jolic" is one edit from Jokic and from Jovic. Choosing between them
+    is a guess nothing downstream can see, so resolution stays NotFound, says
+    nothing, and the caller's suggestion names both."""
+    con = duckdb.connect(":memory:")
+    con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    con.execute("INSERT INTO players VALUES ('1','Nikola Jokic'),('2','Nikola Jovic')")
+    con.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    with collect_name_readings() as readings:
+        assert resolve_player(con, "jolic") == NotFound(query="jolic")
+    assert readings == []
+    assert no_match(con, "jolic") == "No player found matching 'jolic' - did you mean Nikola Jokic or Nikola Jovic?"
+
+
+def test_an_exact_match_is_unchanged_and_says_nothing(con: duckdb.DuckDBPyConnection) -> None:
+    with collect_name_readings() as readings:
+        assert resolve_player(con, "Joel Embiid") == Entity(id="12", name="Joel Embiid")
+        assert resolve_player(con, "embiid") == Entity(id="12", name="Joel Embiid")
+        assert isinstance(resolve_player(con, "Curry"), Ambiguous)
+    assert readings == []
+
+
+def test_the_surname_backoff_still_asks(con: duckdb.DuckDBPyConnection) -> None:
+    """A given name that is nobody's beside one player's surname is not a
+    misspelling of him: "Larry Bird" backs off to whichever Bird the warehouse
+    holds, and Larry is not one of them. Only the near-spelling pass, which
+    needs every word close, defaults."""
+    with collect_name_readings() as readings:
+        assert resolve_player(con, "Jemel Embiid") == NotFound(query="Jemel Embiid")
+    assert readings == []
+    assert no_match(con, "Jemel Embiid") == "No player found matching 'Jemel Embiid' - did you mean Joel Embiid?"
+
+
+def test_a_team_name_is_not_read_as_a_near_spelling() -> None:
+    con = duckdb.connect(":memory:")
+    con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    con.execute("INSERT INTO players VALUES ('1','Spencer Hawes')")
+    con.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    con.execute("INSERT INTO teams VALUES ('1','ATL','Atlanta Hawks')")
+    with collect_name_readings() as readings:
+        assert resolve_player(con, "Hawks") == NotFound(query="Hawks")
+    assert readings == []
+
+
+def test_a_chart_reads_a_single_near_spelling_the_same_way(con: duckdb.DuckDBPyConnection) -> None:
+    from association.query.shotchart import resolve_chart_player
+
+    con.execute("CREATE TABLE shot_chart (athlete_id VARCHAR, season INTEGER)")
+    with collect_name_readings() as readings:
+        assert resolve_chart_player(con, "embid", Availability("shot_chart"), 2026) == (Entity(id="12", name="Joel Embiid"), [])
+        assert resolve_chart_player(con, "Jemel Embiid", Availability("shot_chart"), 2026) is None
+    assert readings == [EMBID_READING]
 
 
 def test_no_match_names_the_near_miss(con: duckdb.DuckDBPyConnection) -> None:
