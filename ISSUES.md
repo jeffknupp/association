@@ -291,6 +291,20 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #238
 
+### A shot chart or shot distance narrowed only by a `situation` or a companion's `conditions` answers the whole season
+- **Found:** 2026-09-27, plan item 6 step (d) round 2 (moving `templates/shots.py` onto the typed Scope), by the direct-call golden; confirmed on the parser path.
+- **Evidence:** `templates/shots.py`'s `_shots_other_narrowing` counts an opponent, a venue, `without`, `split`, `game_n`, `since`, a date and a box-score line, but not `situation` or `conditions` - both of which `HONORED_SCOPING` declares honored for `shot_chart` and `shot_distance` (`_relation_scoping`) and `common.scoped_games` applies. With no window and none of the counted narrowings, `_shots_has_narrowing` is False, the relation is never read, and the whole span is drawn or averaged. Measured on 0a7140a and on the round-2 branch (identical), the real warehouse, parser path with the normalizer stubbed (`~/association-research/golden/probe_shots_situation.py`): "steph curry shot chart on christmas", "stephen curry shot chart on tuesdays", "... vs the west" and "... in december" route `shot_chart` with `situation` set and answer "Rendered shot chart for Stephen Curry (374/803 made, 46.6%)" - the unscoped 2026 regular season; "stephen curry average shot distance on christmas" and "... in march" route `shot_distance` with `situation` set and answer "20.1 feet, over 803 attempts" - the whole season. Called directly, `{"player": "Stephen Curry", "conditions": [{"player": "Draymond Green", "predicate": "absent"}]}` draws the same 374/803. With a window beside it the relation is read and the narrowing applies, but `shot_distance`'s one-game note is chosen by the same helper and leaves the condition out: `{"conditions": [Draymond Green started], "order": "recent"}` says "in his most recent game (2026-04-10)", where his most recent game was 2026-04-12 - it is his most recent game with Draymond starting.
+- **User sees:** a whole-season chart or average, labeled as the season, for a question about Christmas, Tuesdays, the West, a month or a teammate's role - nothing says the narrowing was dropped.
+- **Next step:** count `scope.situation` and `scope.conditions` in `_shots_other_narrowing`, with a warehouse-verified test per template for each, watched to fail first; better, derive "does this question narrow the games" from `RELATION_SCOPING` itself, so the next relation cell cannot drift out of this hand list the way `situation` and `conditions`, both added to the relation after it was written, did.
+- **Source:** ours.
+
+### A companion given as "with X out" or "when X plays" beside one player is read, then written to no slot
+- **Found:** 2026-09-27, plan item 6 step (d) round 2, probing the shot templates' narrowing on the parser path.
+- **Evidence:** parser path, normalizer stubbed with the two names, on 0a7140a and the round-2 branch (identical): "stephen curry shot chart when draymond green plays" and "... with draymond green out" trace `(decision) subject companions: ['Draymond Green']`, but the route is `{'player': 'Stephen Curry', 'season_type': 2}` - no `without`, `with_player` or `conditions` - and the chart is the whole season (374/803). "stephen curry game log with draymond green out" answers his last 10 games with Draymond ignored. "stephen curry stats with draymond green out" routes `with_without` with `with_player: ['draymond green out']` and answers "No player found matching 'draymond green out' - did you mean Bo Outlaw or Travis Outlaw?". `subject._apply_conditions` writes only a started, bench or reached role and leaves an absent or played companion to "the router's `without`/`with_player`", which the parser's route does not fill for these wordings ("stephen curry shot chart without draymond green" does fill `without` and draws his 4 games without Draymond, 39/79). Related, same probe: "stephen curry average shot distance when draymond green starts" reads parent `with_without` with `split: starter` and falls through ("with_without cannot honor ['split']").
+- **User sees:** the unnarrowed answer to a question about the games a teammate missed or played, or a clarification naming the Outlaws.
+- **Next step:** have the parser write an absent companion to `without` and a played one to `with_player` wherever the intent honors them, with "out" kept out of the name span; a case per wording in `tests/query/test_parser.py`, watched to fail first.
+- **Source:** ours.
+
 ## P2: misleading or incomplete
 
 ### The compiler's team total ignores "no season type named": "total points by the raptors in the last 10 games" reads the regular season only
@@ -4641,3 +4655,23 @@ those were found.
 - **Next step:** when `splits.py` moves onto `reading.scope`, pass the resolved team as `opponent=` rather than its name in the Scope: resolved again from text, it would be read for the settled span's season (an ordinal season's year, say) rather than the season the question named, and a franchise's name is a fact about a season. Then delete `_condition_player_opponent` with the Mapping half of `_as_scope`.
 - **Source:** ours.
 
+### `player_netpoints`' season-totals reading (`rate: "total"`) cannot be reached through the agent
+- **Found:** 2026-09-27, plan item 6 step (d) round 2 (moving `templates/netpoints.py` onto the typed Scope).
+- **Evidence:** `HONORED_SCOPING["player_netpoints"]` is `{"order"}` and `rate` is in `SCOPING_SLOTS`, so `check_scope("player_netpoints", {"rate": "total"})` raises "player_netpoints cannot honor ['rate']" before the template runs (measured on 0a7140a). The parser writes no `rate` for "shai gilgeous-alexander netpoints season totals" or "... total netpoints this season" either (route `{'stat': 'netpoints', 'player': 'Shai Gilgeous-Alexander', 'season_type': 2}`), so both answer the play-type categories per 100 possessions. The template's `rate != "total"` branch ("Totals stay in `data`, and the `rate` slot asks for them") is reached only by a direct call - the shape `leaderboard`'s `rate` had before it was listed.
+- **User sees:** per-100 category tables for a totals question. The headline carries the season totals ("468.3 overall (403.9 offense, 64.4 defense)"), so the number asked for is there; only the breakdown is in the other unit.
+- **Next step:** decide whether per 100 possessions is the right breakdown for "total netpoints". If totals should be reachable, list `rate` for `player_netpoints` and have the parser read "total(s)" beside NetPoints as `rate: "total"`, with a test through the agent path; if not, delete the branch.
+- **Source:** ours.
+
+### The Scope's door admits a float for an integer closed set: `shot_value` 3.0, `season_type` 3.0, `half` 2.0
+- **Found:** 2026-09-27, plan item 6 step (d) round 2, checking which values the removed template fallbacks could still meet.
+- **Evidence:** `reading._one_of` checks membership by equality, so `Scope.from_slots({"shot_value": 3.0})` keeps 3.0 - a float against `Literal[1, 2, 3]` - and `season_type` 3.0 and `half` 2.0 likewise, while `_whole` refuses `season` 2025.0 and `limit` 2.0 (measured on 0a7140a). The typed readers trust the Literal: `shots._shot_value` returns the float where the slot-dict code returned `int(3.0)`, `fingerprint` reads a season type of 3.0 as 3.0 where the slot-dict code fell back to the regular season, and `common._player_relation_season_type` passes it on the same way.
+- **User sees:** nothing today: `ROUTER_SCHEMA` types `shot_value` as an integer, and nothing else writes these slots from a float.
+- **Next step:** make `_one_of` refuse a value whose type is not the matching allowed member's type (bool is already refused), with a test per closed-set field, watched to fail first.
+- **Source:** ours.
+
+### A multi-game shot chart's markup order changes from run to run
+- **Found:** 2026-09-27, plan item 6 step (d) round 2, diffing the charts a direct-call golden wrote.
+- **Evidence:** `shotchart.py:513` selects the shots with no `ORDER BY`. Drawing the same games twice on 0a7140a gave six multi-game charts (Stephen Curry's 14, 23, 28, 41, 187 and 194 games) different bytes that are identical as sorted markup fragments: the same shots, in another order.
+- **User sees:** nothing, beyond which of two overlapping markers is drawn on top.
+- **Next step:** order the read (event, period, clock) so a chart is byte-reproducible, and a golden can compare chart contents rather than only file names.
+- **Source:** ours.

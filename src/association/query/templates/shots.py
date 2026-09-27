@@ -29,7 +29,7 @@ from typing import Any
 import duckdb
 
 from association.nba.coverage import COVERAGE
-from association.query.reading import Reading
+from association.query.reading import Reading, Scope
 
 from ..conditions import box_source
 from ..court import HAS_POSITION_SQL, SHOT_DISTANCE_SQL
@@ -68,7 +68,7 @@ from .common import (
 # template on the relation gets it, not just these two.
 
 
-def _shots_windowed(slots: dict[str, Any]) -> bool:
+def _shots_windowed(scope: Scope) -> bool:
     """Whether ``order``/``limit`` narrows this question to a window of
     games - the same reading :func:`common.scoped_games`'s own
     ``_relation_window`` applies inside the relation. Checked here only to
@@ -80,25 +80,26 @@ def _shots_windowed(slots: dict[str, Any]) -> bool:
     "Create a shot chart for Steph Curry's last two games of the regular
     season" (step 3, C5's finding): four separate runs, three different
     builds, all emit ``{'limit': 2, ...}`` with no ``order`` at all, so a
-    rule gated on ``order`` alone would never reach the real question.
+    rule gated on ``order`` alone would never reach the real question. A
+    limit, when set, is 1 or more (the Scope's own range rule), so either
+    field set is a window.
     """
-    limit = slots.get("limit")
-    return slots.get("order") in ("recent", "first") or (isinstance(limit, int) and not isinstance(limit, bool) and limit >= 1)
+    return scope.order is not None or scope.limit is not None
 
 
-def _shots_other_narrowing(slots: dict[str, Any], date: str | None, measures: list[MeasureFilter]) -> bool:
+def _shots_other_narrowing(scope: Scope, date: str | None, measures: list[MeasureFilter]) -> bool:
     """Whether this question narrows which games a shot read draws from by
     anything BESIDES a window - an opponent, a venue, a teammate's absence, a
     starter/bench half, one game of a series, a line on a box-score column,
     one Eastern date, or ``since``."""
-    return bool(slots.get("opponent") or slots.get("venue") or slots.get("without") or slots.get("split") or slots.get("game_n") or slots.get("since") or date or measures)
+    return bool(scope.opponent or scope.venue or scope.without or scope.split or scope.game_n or scope.since or date or measures)
 
 
-def _shots_has_narrowing(slots: dict[str, Any], date: str | None, measures: list[MeasureFilter]) -> bool:
+def _shots_has_narrowing(scope: Scope, date: str | None, measures: list[MeasureFilter]) -> bool:
     """Whether this question needs its games from the relation at all -
     either kind of narrowing - rather than straight off ``shot_chart`` by
     season alone."""
-    return _shots_other_narrowing(slots, date, measures) or _shots_windowed(slots)
+    return _shots_other_narrowing(scope, date, measures) or _shots_windowed(scope)
 
 
 def _shot_narrowed_rows(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: Any) -> tuple[list[str], list[str]] | TemplateResult:
@@ -156,7 +157,7 @@ class _ShotChartGames:
         return self.event_id is not None or self.event_ids is not None
 
 
-def _shot_chart_settle_player(con: duckdb.DuckDBPyConnection, name: str, slots: dict[str, Any]) -> tuple[Entity, list[str], _Span, bool] | TemplateResult:
+def _shot_chart_settle_player(con: duckdb.DuckDBPyConnection, name: str, scope: Scope) -> tuple[Entity, list[str], _Span, bool] | TemplateResult:
     """The player, the other names that also matched, the span, and whether
     the season was defaulted (not named) - ``shot_chart``'s own version of
     :func:`common.scoped_player`.
@@ -171,30 +172,30 @@ def _shot_chart_settle_player(con: duckdb.DuckDBPyConnection, name: str, slots: 
     narrows an ambiguous name (a career keeps Dell Curry, this season does
     not), and ``season_n`` is read the same way.
     """
-    season_n = slots.get("season_n")
-    scope = _span_of(
-        "career" if season_n else slots.get("span"),
-        None if season_n else slots.get("season"),
-        slots.get("season_type") or 2,
+    season_n = scope.season_n
+    seasons = _span_of(
+        "career" if season_n else scope.span,
+        None if season_n else scope.season,
+        scope.season_type or 2,
         "player_game_log",
-        since=slots.get("since"),
-        until=slots.get("until"),
+        since=scope.since,
+        until=scope.until,
     )
-    resolved = resolve_chart_player(con, name, SHOT_AVAILABILITY, scope.season)
+    resolved = resolve_chart_player(con, name, SHOT_AVAILABILITY, seasons.season)
     if resolved is None:
         message = no_match(con, name)
         return TemplateResult(data={"message": message}, answer=message)
     if isinstance(resolved, Ambiguous):
         return _clarify(name, resolved.candidates, active=resolved.active)
     player, ambiguous = resolved
-    settled = settle_ordinal_season(con, player, season_n, scope)
+    settled = settle_ordinal_season(con, player, season_n, seasons)
     if isinstance(settled, TemplateResult):
         return settled
-    return player, ambiguous, settled, scope.defaulted
+    return player, ambiguous, settled, seasons.defaulted
 
 
 def _shot_chart_games(
-    con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, slots: dict[str, Any], season_type: int, date: str | None, measures: list[MeasureFilter], has_narrowing: bool
+    con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, scope: Scope, season_type: int, date: str | None, measures: list[MeasureFilter], has_narrowing: bool
 ) -> _ShotChartGames | TemplateResult:
     """Which games :func:`shot_chart` draws from: nothing pinned at all (the
     whole span, read straight off ``shot_chart`` by season) when
@@ -206,7 +207,7 @@ def _shot_chart_games(
     ``test_every_template_honoring_a_scope_slot_actually_reads_it`` checks."""
     if not has_narrowing:
         return _ShotChartGames()
-    narrowed = scoped_games(con, player, span, slots, opponent=slots.get("opponent"), measures=measures, date=date)
+    narrowed = scoped_games(con, player, span, scope, opponent=scope.opponent, measures=measures, date=date)
     if isinstance(narrowed, TemplateResult):
         return narrowed
     found = _shot_narrowed_rows(con, player, span, narrowed)
@@ -271,27 +272,27 @@ def shot_chart(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        used to draw the whole season (374 shots) because ``limit`` was never
        read; it now draws the two games.
     """
-    slots = reading.scope.to_slots()
-    name = slots.get("player")
-    if not isinstance(name, str) or not name.strip():
+    scope = reading.scope
+    name = scope.player
+    if name is None or not name.strip():
         raise TemplateUnsupported("shot_chart needs a player name")
-    shot_value = _shot_value(slots)
+    shot_value = _shot_value(scope)
     con = ctx.con
-    raw_date = slots.get("date")
-    date = raw_date if isinstance(raw_date, str) and _ISO_DATE.match(raw_date) else None
+    raw_date = scope.date
+    date = raw_date if raw_date is not None and _ISO_DATE.match(raw_date) else None
     # Read here, not inside a step it calls, so this function's own source
     # names every scoping slot it honors (`test_every_template_honoring_a_scope_slot_actually_reads_it`).
-    measures = measure_filters(slots.get("below"), slots.get("above"))
-    has_narrowing = _shots_has_narrowing(slots, date, measures)
+    measures = measure_filters(scope.below, scope.above)
+    has_narrowing = _shots_has_narrowing(scope, date, measures)
 
     # Settled before the shots are read, because the season is what narrows
     # an ambiguous name to the players who could have taken these shots.
-    subject = _shot_chart_settle_player(con, name, slots)
+    subject = _shot_chart_settle_player(con, name, scope)
     if isinstance(subject, TemplateResult):
         return subject
     player, ambiguous, span, defaulted = subject
 
-    if span.career and _shots_windowed(slots):
+    if span.career and _shots_windowed(scope):
         # "his last game" picks ONE game (or N) inside one season, where a
         # career asks for every one of them, and nothing here decides which
         # was meant - the same conflict a career span and a named season
@@ -300,7 +301,7 @@ def shot_chart(ctx: TemplateContext, reading: Reading) -> TemplateResult:
         raise TemplateUnsupported("shot_chart cannot combine a career span with a single game's order")
 
     season_type = span.season_type
-    games = _shot_chart_games(con, player, span, slots, season_type, date, measures, has_narrowing)
+    games = _shot_chart_games(con, player, span, scope, season_type, date, measures, has_narrowing)
     if isinstance(games, TemplateResult):
         return games
 
@@ -353,15 +354,15 @@ def shot_chart(ctx: TemplateContext, reading: Reading) -> TemplateResult:
 SHOT_VALUE_FROM_STAT = {"threePointFieldGoalsMade": 3, "freeThrowsMade": 1}
 
 
-def _shot_value(slots: dict[str, Any]) -> int | None:
+def _shot_value(scope: Scope) -> int | None:
     """Which shots a question meant. "Curry's threes" arrives either as
     shot_value 3 or as the equivalent box-score stat depending on wording; both
-    mean the same thing, so read both rather than fight the router over which."""
-    raw = slots.get("shot_value")
-    if raw in (1, 2, 3):
-        return int(raw)
-    stat = slots.get("stat")
-    return SHOT_VALUE_FROM_STAT.get(stat) if isinstance(stat, str) else None
+    mean the same thing, so read both rather than fight the router over which.
+    A shot value is 1, 2 or 3 by the time it is read here: the Reading's door
+    (:meth:`~association.query.reading.Scope.from_slots`) refuses any other."""
+    if scope.shot_value is not None:
+        return scope.shot_value
+    return SHOT_VALUE_FROM_STAT.get(scope.stat) if scope.stat is not None else None
 
 
 def _career_shot_span(con: duckdb.DuckDBPyConnection, athlete_id: str, season_type: int) -> tuple[int, int] | None:
@@ -457,7 +458,7 @@ def _shot_distance_where(athlete_id: str, season: int | None, season_type: int, 
 
 
 def _shot_distance_games(
-    con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, slots: dict[str, Any], season_type: int, date: str | None, measures: list[MeasureFilter], has_narrowing: bool
+    con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, scope: Scope, season_type: int, date: str | None, measures: list[MeasureFilter], has_narrowing: bool
 ) -> tuple[str | None, list[Any], str] | TemplateResult:
     """The extra WHERE clause pinning a distance read to particular games, its
     parameters, and the ``game_note`` an answer appends after "distance" -
@@ -478,7 +479,7 @@ def _shot_distance_games(
     """
     if not has_narrowing:
         return None, [], ""
-    narrowed = scoped_games(con, player, span, slots, opponent=slots.get("opponent"), measures=measures, date=date)
+    narrowed = scoped_games(con, player, span, scope, opponent=scope.opponent, measures=measures, date=date)
     if isinstance(narrowed, TemplateResult):
         return narrowed
     found = _shot_narrowed_rows(con, player, span, narrowed)
@@ -493,9 +494,8 @@ def _shot_distance_games(
     # apart, so the shape is avoided rather than argued with.
     marks = ", ".join("?" for _ in ids)
     clause = f"event_id IN ({marks})"
-    if len(ids) == 1 and not _shots_other_narrowing(slots, date, measures):
-        order = slots.get("order") if slots.get("order") in ("recent", "first") else "recent"
-        game_note = f" in his {'first' if order == 'first' else 'most recent'} game ({dates[0]})"
+    if len(ids) == 1 and not _shots_other_narrowing(scope, date, measures):
+        game_note = f" in his {'first' if scope.order == 'first' else 'most recent'} game ({dates[0]})"
     else:
         prefix = _shots_span_prefix(span, season_type)
         game_note = f" {prefix}{narrowed.filters(windowed=True)}"
@@ -546,25 +546,25 @@ def shot_distance(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        on a box-score column, one Eastern date and ``since`` all narrow which
        games the average is taken over.
     """
-    slots = reading.scope.to_slots()
+    scope = reading.scope
     con = ctx.con
-    raw_date = slots.get("date")
-    date = raw_date if isinstance(raw_date, str) and _ISO_DATE.match(raw_date) else None
+    raw_date = scope.date
+    date = raw_date if raw_date is not None and _ISO_DATE.match(raw_date) else None
     # Read here, not inside a step it calls, so this function's own source
     # names every scoping slot it honors (`test_every_template_honoring_a_scope_slot_actually_reads_it`).
-    measures = measure_filters(slots.get("below"), slots.get("above"))
-    has_narrowing = _shots_has_narrowing(slots, date, measures)
+    measures = measure_filters(scope.below, scope.above)
+    has_narrowing = _shots_has_narrowing(scope, date, measures)
 
-    subject = scoped_player(con, slots, "shot_distance needs a player name", table="player_game_log", available=SHOT_AVAILABILITY, span=slots.get("span"), season=slots.get("season"))
+    subject = scoped_player(con, scope, "shot_distance needs a player name", table="player_game_log", available=SHOT_AVAILABILITY, span=scope.span, season=scope.season)
     if isinstance(subject, TemplateResult):
         return subject
     player, span = subject
 
-    if span.career and _shots_windowed(slots):
+    if span.career and _shots_windowed(scope):
         raise TemplateUnsupported("shot_distance cannot combine a career span with a single game's order")
 
     season_type = span.season_type
-    shot_value = _shot_value(slots)
+    shot_value = _shot_value(scope)
     if shot_value == 1:
         raise TemplateUnsupported("free throws have no meaningful shot distance")
     period = _shot_distance_period(player, span.season, season_type, career=span.career)
@@ -574,7 +574,7 @@ def shot_distance(ctx: TemplateContext, reading: Reading) -> TemplateResult:
         return refusal
 
     where, params = _shot_distance_where(player.id, span.season, season_type, shot_value)
-    extra = _shot_distance_games(con, player, span, slots, season_type, date, measures, has_narrowing)
+    extra = _shot_distance_games(con, player, span, scope, season_type, date, measures, has_narrowing)
     if isinstance(extra, TemplateResult):
         return extra
     clause, extra_params, game_note = extra
