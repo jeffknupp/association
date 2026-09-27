@@ -2524,6 +2524,7 @@ those were found.
 - **User sees:** nothing today; a leaderboard where a team's record was asked, once the parser owns the kind.
 - **Next step:** strip a trailing `'` / `'s` in `_team_word` and `team_named_in` before matching; add the 11 rewrites to the parser's held-out cases.
 - **Source:** ours.
+- **GitHub:** #232
 
 ### "compare luka with sga" reads "with sga" as a companion, so the pair is read as one player
 - **Found:** 2026-09-26, the same robustness run ("contrast luka with sga", 2 rewrites).
@@ -2531,6 +2532,7 @@ those were found.
 - **User sees:** nothing today; a one-player line for a comparison once the reading decides alone.
 - **Next step:** in `_conditions`, "with" directly after compare/contrast/versus words is the second subject, not a companion; a `test_subject.py` case.
 - **Source:** ours.
+- **GitHub:** #233
 
 
 ### The compiler has no NetPoints measure, so a single-game NetPoints ranking has nowhere to land but the agent
