@@ -42,6 +42,7 @@ from typing import Any, NamedTuple
 import duckdb
 from rapidfuzz.distance import DamerauLevenshtein
 
+from association.query.compose import COMPILER_FIRST
 from association.query.compose.team import team_named_in
 from association.query.decisions import Decision
 from association.query.entities import (
@@ -63,7 +64,7 @@ from association.query.entities import (
     nicknames_in,
     players_named_in,
 )
-from association.query.router import _THRESHOLD_WORDS, settle
+from association.query.router import _ABSENCE_WORDS, _THRESHOLD_WORDS, _threshold_from_text_scored, settle
 from association.query.season_text import season_from_text
 from association.query.templates.common import (
     FILLER_PLAYER_WORDS,
@@ -309,16 +310,35 @@ joins the two subjects; it is not a companion phrase (ISSUES.md #233)."""
 # fronted "Without Kevin Durant, what is Steph Curry's record" names Durant
 # alone, not Curry with him.
 _COMPANION = re.compile(r"\b(without|excluding|with|featuring|when|while)\s+((?:(?!\b(?:vs\.?|versus|against|in|for|this|last|the|what|who|how|which|where)\b)[\w'.,+-]+\s*){1,9})", re.IGNORECASE)
+# "in games Embiid started", "in the games Brown missed": the role stated after
+# the games it narrows, with no "when" or "with" before the name - "maxey
+# points in games embiid started" compared the two players, since nothing read
+# Embiid as anything but a second subject. The name (one to three words) must
+# be followed directly by what he did in those games - started, came off,
+# played, scored or had a line, sat out - so "in games against Boston" and "in
+# games he started" (the subject's own) name no companion here.
+_COMPANION_STOP = r"vs\.?|versus|against|in|for|this|last|the|what|who|how|which|where|with|without|when|while"
+_COMPANION_IN_GAMES = re.compile(
+    r"\b(in\s+(?:the\s+)?games?(?:\s+(?:that|where|in\s+which))?)\s+"
+    rf"((?:(?!\b(?:{_COMPANION_STOP}|he|she|they|his|her|their)\b)[\w'.-]+\s+){{1,3}}"
+    rf"(?:start(?:s|ed)?|(?:comes?|came)\s+off|play(?:s|ed)?|scor(?:e|es|ed)|had|has|got|{_ABSENCE_WORDS})(?![A-Za-z])"
+    rf"(?:\s+(?!(?:{_COMPANION_STOP})\b)[\w'.,+-]+){{0,4}})",
+    re.IGNORECASE,
+)
 
 #: What a companion phrase says the player DID in the games asked about,
-#: read off the phrase's own words: a threshold ("scores 20+ points"), a
-#: start, the bench, an absence ("out", "injured", "without"), else played.
+#: read off the phrase's own words: a threshold ("scores 20+ points", or
+#: "scores 30", a line on points), a start, the bench, an absence ("out",
+#: "injured", "without"), else played.
 _CONDITION_THRESHOLD = re.compile(r"\b(\d{1,3})[\s-]*(?:\+|plus|or\s+more)?[\s-]*(" + "|".join(sorted((re.escape(w) for w in _THRESHOLD_WORDS), key=len, reverse=True)) + r")\b", re.IGNORECASE)
 _CONDITION_STARTED = re.compile(r"\bstart(?:s|ed|ing)?\b|\bin the starting lineup\b", re.IGNORECASE)
 # "off" alone too: the phrase stops at "the" (a stop word), so "with tatum
 # off the bench" reaches here as "tatum off".
 _CONDITION_BENCH = re.compile(r"\bbench\b|\boff\b|\bas a reserve\b", re.IGNORECASE)
-_CONDITION_ABSENT = re.compile(r"\b(?:out|injured|hurt|sidelined|missing|absent|sat|resting|did ?n[o']t play|dnp)\b", re.IGNORECASE)
+# The router's absence words (one list, so the `without` it reads and the role
+# read here agree), and "hurt", which the router cannot end a name at - it is
+# Matt Hurt's - and a role reader, which never cuts a name, can take.
+_CONDITION_ABSENT = re.compile(rf"\b(?:{_ABSENCE_WORDS}|hurt)(?![A-Za-z])", re.IGNORECASE)
 
 
 class Companion(NamedTuple):
@@ -667,9 +687,13 @@ def _conditions(question: str, players: tuple[str, ...], slots: dict[str, Any]) 
 def _companion_phrases(question: str) -> list[re.Match[str]]:
     """The companion phrases of ``question`` (:data:`_COMPANION`), minus a
     "with" that a compare verb owns - "compare luka with sga" names two
-    subjects and no companion (:data:`_COMPARED_WITH`)."""
+    subjects and no companion (:data:`_COMPARED_WITH`) - and the "in games
+    X started" ones (:data:`_COMPANION_IN_GAMES`) no keyword phrase already
+    covers, in the order the question gives them."""
     compared = [m.span() for m in _COMPARED_WITH.finditer(question)]
-    return [m for m in _COMPANION.finditer(question) if not any(a <= m.start() < b for a, b in compared)]
+    phrases = [m for m in _COMPANION.finditer(question) if not any(a <= m.start() < b for a, b in compared)]
+    in_games = [m for m in _COMPANION_IN_GAMES.finditer(question) if not any(p.start() < m.end() and m.start() < p.end() for p in phrases)]
+    return sorted([*phrases, *in_games], key=lambda m: m.start())
 
 
 def _companion_names(text: str, players: tuple[str, ...], slots: dict[str, Any]) -> list[str]:
@@ -729,11 +753,15 @@ def _unrouted_companions(con: duckdb.DuckDBPyConnection, question: str, players:
 def _condition_role(word: str, text: str) -> tuple[str, str | None, int | None]:
     """The predicate a companion phrase states, from its keyword and its
     words: a threshold pair wins ("scores 20+ points" is ``reached`` whatever
-    the keyword), then a start, the bench, an absence ("without", "out",
-    "injured"), else ``played`` ("with", "when ... play")."""
+    the keyword, and so is "scores 30", a line on points), then a start, the
+    bench, an absence ("without", "out", "injured"), else ``played``
+    ("with", "when ... play")."""
     pair = _CONDITION_THRESHOLD.search(text)
     if pair is not None and int(pair.group(1)) >= 1 and not (int(pair.group(1)) == 3 and pair.group(2).lower().startswith(("point", "pt"))):
         return "reached", _THRESHOLD_WORDS[pair.group(2).lower()], int(pair.group(1))
+    scored = _threshold_from_text_scored(text)
+    if scored is not None:
+        return "reached", "points", scored
     if _CONDITION_STARTED.search(text):
         return "started", None, None
     if _CONDITION_BENCH.search(text):
@@ -1201,6 +1229,14 @@ def _apply_players(subject: Subject, slots: dict[str, Any], intent: str = "") ->
     return decisions, []
 
 
+def _apply_conditions_honored(intent: str) -> bool:
+    """Whether a companion's role reaches ``intent``'s answer as a
+    ``conditions`` entry (:func:`_apply_conditions`): its template honors
+    the slot, or the compiler answers it first and narrows its relation by
+    every condition (``compose.COMPILER_FIRST``)."""
+    return "conditions" in HONORED_SCOPING.get(intent, frozenset()) or intent in COMPILER_FIRST
+
+
 def _apply_conditions(subject: Subject, slots: dict[str, Any], intent: str) -> list[Decision]:
     """Write the companions' roles the router's own slots cannot carry - a
     start, the bench, a line reached ("when Embiid starts", "in games Maxey
@@ -1208,20 +1244,30 @@ def _apply_conditions(subject: Subject, slots: dict[str, Any], intent: str) -> l
     (:func:`~association.query.templates.common._condition_from_slot`),
     where the intent's template honors it - the relation templates as a
     filter, ``with_without`` as the split's own side ("record when Embiid
-    and Paul George start": started against not). An absence and a played
-    companion stay in the router's ``without``/``with_player``, which every
-    template reads today - ROADMAP plan item 3, steps B and C."""
-    if "conditions" not in HONORED_SCOPING.get(intent, frozenset()) or slots.get("conditions"):
+    and Paul George start": started against not). A played companion ("when
+    Draymond plays", "with Draymond playing") is a condition too, on the
+    relation templates: ``with_player`` is read by ``with_without`` alone,
+    so on a game log or a shot chart it narrowed nothing and nothing
+    refused it. ``with_without`` keeps reading its ``with_player`` (the
+    router's stage reads it from the same words), and an absence stays the
+    router's ``without`` ("with Draymond out" included) - ROADMAP plan item
+    3, steps B and C. The compiler-first intents too (``compose.COMPILER_FIRST``):
+    the compiler answers them first and narrows its relation by every
+    condition, so "how many 30 point games did maxey have when embiid
+    started" counts his games with Embiid starting (34) - with nothing
+    written it counted all of them (86), the start gone without a word."""
+    if not _apply_conditions_honored(intent) or slots.get("conditions"):
         return []
     # Never on the subject of the read himself: record_when's player IS the
     # companion of "sixers record when maxey scored 15+" (the template
     # groups his games by that line), and a condition on him would keep only
     # the games above it - the "under" row gone (found by the golden).
     own = [name for name in [slots.get("player"), *(slots.get("players") or [])] if isinstance(name, str)]
+    roles = ("started", "bench", "reached") if intent == "with_without" else ("started", "bench", "reached", "played")
     written = [
         {"player": c.name, "side": "own", "predicate": c.predicate, **({"stat": c.stat, "threshold": c.threshold} if c.predicate == "reached" else {})}
         for c in subject.conditions
-        if c.predicate in ("started", "bench", "reached") and not _same_person(c.name, own)
+        if c.predicate in roles and not _same_person(c.name, own)
     ]
     if not written:
         return []

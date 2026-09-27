@@ -577,8 +577,9 @@ def test_a_companions_role_is_read_off_its_phrase(con: duckdb.DuckDBPyConnection
 def test_a_start_or_a_line_is_written_as_a_condition_where_the_template_honors_it(con: duckdb.DuckDBPyConnection) -> None:
     intent, slots = _assigned(con, "jaylen brown game log with tatum starting", "game_log", player="Jaylen Brown", with_player=["tatum"])
     assert intent == "game_log" and slots["conditions"] == [{"player": "Jayson Tatum", "side": "own", "predicate": "started"}]
+    # "in games X did something" is a companion phrase too, the role after the name.
     intent, slots = _assigned(con, "jaylen brown stats in games tatum scored 30+ points", "player_stat", player="Jaylen Brown", stat="points")
-    assert "conditions" not in slots  # "in games" is not a companion phrase the reading knows yet
+    assert slots["conditions"] == [{"player": "Jayson Tatum", "side": "own", "predicate": "reached", "stat": "points", "threshold": 30}]
     intent, slots = _assigned(con, "jaylen brown ppg when tatum scores 30+ points", "player_stat", player="Jaylen Brown", stat="points")
     assert slots["conditions"] == [{"player": "Jayson Tatum", "side": "own", "predicate": "reached", "stat": "points", "threshold": 30}]
     # An absence stays the router's `without`; the comparison templates read it as the split's two sides.

@@ -36,8 +36,19 @@ from association.query.entities import _edit_budget, _question_derived_player, _
 from association.query.measures import MEASURE_WORDS
 from association.query.metrics import EXTRA_FIELD_COLUMNS
 from association.query.reading import Reading, Scope
-from association.query.router import Route, _period_asked, settle
-from association.query.subject import KIND_ASSIGNED_INTENTS, TEAM_SINGULARS, Subject, _edit_distance, question_supports, read_subject
+from association.query.router import Route, _period_asked, _route_calendar_slots_split, settle
+from association.query.subject import (
+    KIND_ASSIGNED_INTENTS,
+    TEAM_SINGULARS,
+    Subject,
+    _apply_conditions_honored,
+    _companion_phrases,
+    _condition_role,
+    _edit_distance,
+    _near,
+    question_supports,
+    read_subject,
+)
 
 _PAIR_MEETING = (
     r"(?!.*\b(compare|compared|comparing|contrast|evaluate|who scores more|who is better|who was better)\b)"
@@ -529,6 +540,82 @@ def _read_route_period(intent: str, slots: dict[str, Any], question: str) -> dic
     return {**slots, **asked} if asked else slots
 
 
+#: The roles a companion can have that narrow the subject's OWN games as a
+#: condition (``subject._apply_conditions``) rather than divide them into a
+#: with/without split: "maxey points when embiid starts" is Maxey's line in
+#: Embiid's starts.
+_OWN_READ_ROLES = frozenset({"started", "bench"})
+
+# A start or a bench role the phrase denies - "when embiid doesn't start" -
+# reads as `started` to the role reader, which has no predicate for "did not":
+# as a condition that would narrow to the very games the question excludes.
+# The with/without split shows both halves, so a denied role stays there.
+_DENIED_ROLE = re.compile(r"(?:\bnot|n'?t|\bnever)\s+(?:be\s+|been\s+|get\s+|gets\s+)?(?:start|come|came|coming)", re.IGNORECASE)
+
+# "off" ends a companion phrase before "the bench" ("the" stops it), so the
+# role's words run past the phrase by that much.
+_ROLE_TAIL = re.compile(r"\s*the\s+(?:bench|pine)\b", re.IGNORECASE)
+
+
+def _read_route_role_phrases(subject: Subject, question: str) -> list[tuple[re.Match[str], str]]:
+    """Each companion phrase of ``question`` (``subject._companion_phrases``)
+    that names one of the reading's companions, with the role it gives him
+    (``subject._condition_role``) - the reading's own phrases, never a second
+    reader of them."""
+    phrases: list[tuple[re.Match[str], str]] = []
+    for match in _companion_phrases(question):
+        predicate = _condition_role(match.group(1).lower(), match.group(2))[0]
+        if any(c.predicate == predicate and _near(c.name, match.group(2)) for c in subject.conditions):
+            phrases.append((match, predicate))
+    return phrases
+
+
+def _read_route_beside(subject: Subject, question: str) -> bool:
+    """Whether a companion stands beside the subject for the ``<kind>+companions``
+    rows of :data:`PARENT_GRAMMAR` - the with/without split. Not a player's
+    teammate whose only role is a start or the bench: that narrows the
+    player's own games ("maxey points when embiid starts", "in games embiid
+    started"), so the player's own row names the parent (``player_stat``,
+    ``game_log``, a shot template) and the role is a ``conditions`` entry on
+    it - where the split's ``when`` row sent it to ``with_without``, and a
+    missing "when" to a pair of players compared."""
+    if not subject.conditions:
+        return False
+    if subject.kind != "player" or any(c.predicate not in _OWN_READ_ROLES for c in subject.conditions):
+        return True
+    return any(_DENIED_ROLE.search(match.group(2)) for match, _ in _read_route_role_phrases(subject, question))
+
+
+def _read_route_split(subject: Subject, question: str, intent: str, slots: dict[str, Any]) -> dict[str, Any]:
+    """``slots`` with the split read again from ``question`` with every
+    teammate's start or bench phrase blanked out: "maxey points when embiid
+    starts" filed Embiid's start as Maxey's own starter split, which
+    ``with_without`` refused, and "stephen curry shot chart when draymond
+    green starts" drew Curry's starts. The subject's own split still reads
+    ("maxey points as a starter when embiid comes off the bench").
+
+    Only where the teammate's role is written in its place, as a condition
+    (``subject._apply_conditions_honored``): "sixers first quarter points
+    when embiid starts" has no reading of either, and the misread split is
+    what refuses it - taken away with nothing written, the quarter would be
+    answered for every game, the start gone without a word."""
+    phrases = [match for match, predicate in _read_route_role_phrases(subject, question) if predicate in _OWN_READ_ROLES]
+    if not phrases or not _apply_conditions_honored(intent):
+        return slots
+    blanked = question
+    for match in phrases:
+        tail = _ROLE_TAIL.match(question, match.end(2))
+        end = tail.end() if tail is not None else match.end(2)
+        blanked = blanked[: match.start()] + " " * (end - match.start()) + blanked[end:]
+    split = _route_calendar_slots_split(blanked)
+    out = {key: value for key, value in slots.items() if key != "split"}
+    if split is not None:
+        out["split"] = split
+        if intent == "player_splits" and split == "home_away":
+            out.pop("venue", None)  # a split over venues is not a filter to one (router._route_intent_slots)
+    return out
+
+
 def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None = None, stat: str = "") -> tuple[Route, Subject, str]:
     """The route the parser settles on for ``question`` - the intent and the
     slots a template reads, in the router's own shape - beside the subject
@@ -544,7 +631,7 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     slots = _with_measure(question, _slots_from_names(con, [_as_typed_part(con, question, _as_typed(question, name)) for name in names or []], stat))
     subject = _two_teams(read_subject(con, question, "other", dict(slots)), question, slots)
     slots = _read_route_names(subject, slots)
-    parent = parent_intent(question, subject.kind, bool(subject.conditions))
+    parent = parent_intent(question, subject.kind, _read_route_beside(subject, question))
     # The window before the stages: they read ``order``/``limit`` as the
     # model's (a bare "last 10 games" reads both season types only beside
     # them, ``_route_game_log_recent_span``).
@@ -556,6 +643,9 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
         again = settle(final, dict(route.slots), question)
         final, point_slots = again.intent, dict(again.slots)
     point_slots = _read_route_fields(final, _read_route_period(final, window(question, point_slots), question), question)
+    # A teammate's start is his, never the subject's own split: the stages
+    # read the split from the whole question.
+    point_slots = _read_route_split(subject, question, final, point_slots)
     subject = replace(subject, intent=final, teams=subject.teams if subject.kind == "teams" else settled.teams, opponent=subject.opponent if subject.kind == "teams" else settled.opponent)
     return Route(final, point_slots), subject, parent
 

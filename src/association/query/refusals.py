@@ -33,6 +33,7 @@ from typing import Any
 import duckdb
 
 from association.query.calendar import parse_alignment, parse_situation
+from association.query.entities import find_teams
 from association.query.subject import Subject, read_subject
 from association.query.templates.common import PLAYER_INTENTS, TemplateResult
 
@@ -117,13 +118,39 @@ def _team_where_a_player_belongs(con: duckdb.DuckDBPyConnection, intent: str, sl
     """A team in the ``player`` slot of a template that answers for one
     player - the reading says the subject is the team and names no player:
     ask which player was meant, or send the team's own question to the team
-    templates."""
+    templates.
+
+    Only where the slot does name a team, by the team index: a team's record
+    split by a PLAYER beside it ("celtics record when jayson tatum scores")
+    reads as a team subject with Tatum in the ``player`` slot, and was
+    refused as "'jayson tatum' is a team". There the fact missing is the line
+    the record is split by, and the refusal says that
+    (:func:`_team_where_a_player_belongs_line`) - or nothing, for a shape it
+    has no sentence for. A word that is a team's and a player's both
+    ("magic") is the team here: the reading already chose it over the
+    player."""
     player = slots.get("player")
     if intent not in PLAYER_INTENTS or not isinstance(player, str) or not player.strip():
         return None
     if subject.kind not in ("team", "team_players") or subject.players:
         return None
+    if not find_teams(con, player):
+        return _team_where_a_player_belongs_line(intent, slots, player)
     return f"'{player}' is a team, and this was read as a question about one player's {slots.get('stat') or 'stats'}. Name a player, or ask for the team's own record or stats."
+
+
+def _team_where_a_player_belongs_line(intent: str, slots: dict[str, Any], player: str) -> str | None:
+    """The refusal for a player named beside a team where ``record_when`` has
+    no line to split the team's games by: the number and the stat together,
+    which is what the template needs and the question did not give."""
+    threshold = slots.get("threshold")
+    if intent != "record_when" or (isinstance(threshold, int) and not isinstance(threshold, bool) and threshold >= 1 and slots.get("stat")):
+        return None
+    team = f" {slots['team']}" if isinstance(slots.get("team"), str) and slots["team"].strip() else " team's"
+    return (
+        f"A record split by '{player}' needs a line - a number and a stat, as in \"when {player} scores 30+ points\" - and this question gives none it can read. "
+        f"Ask with the line, or for the{team} record with and without {player}."
+    )
 
 
 def _team_boolean_count(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject) -> str | None:
