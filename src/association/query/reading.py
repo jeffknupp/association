@@ -13,9 +13,10 @@ ROADMAP plan item 6. Step (a) made the record and planned the compiler's
 point from it; step (b) made the parser that builds it; step (d) types it -
 :class:`Scope` is the scoping as fields rather than a slot dict, every field
 a closed type the checkers hold every construction to - and moves the
-templates onto it. Until the templates read it, :meth:`Scope.to_slots` is the
-slot dict they and the compiler read, and :meth:`Scope.from_slots` the one
-door a slot dict comes in by, refusing a key or a value nothing here types.
+templates onto it: every template and the compiler read the Scope's fields.
+:meth:`Scope.from_slots` is the one door a slot dict comes in by, refusing a
+key or a value nothing here types, and :meth:`Scope.to_slots` the way back to
+the slot shape a route is recorded and traced in.
 
 .. versionadded:: 4.5.0
 """
@@ -220,8 +221,9 @@ class Scope:
         return cls(**values)
 
     def to_slots(self) -> dict[str, Any]:
-        """The slot dict the readers not yet on the Reading take: every field
-        away from its default, sequences as lists.
+        """The Scope as a slot dict - every field away from its default,
+        sequences as lists: the shape a route is recorded in and the trace
+        prints (:meth:`Reading.describe`).
 
         .. versionadded:: 4.5.0
         """

@@ -62,10 +62,10 @@ attrs
 # tests, and vulture would otherwise report it dead code.
 answer
 
-# association/query/reading.py, Scope: two fields nothing reads by attribute
-# yet - they reach their readers through Scope.to_slots (subject.py's
-# restored-team check reads `team_restored`, the leaderboard's triple-double
-# ranking reads `ranked_by`) until the templates read the Reading (ROADMAP plan
-# item 6, step d). Delete both lines when they do.
+# association/query/reading.py, Scope: two fields read by name, never by
+# attribute - each is a marker that makes check_scope refuse (it reads every
+# name in SCOPING_SLOTS with getattr), so the compiler answers instead
+# (compose.core.COMPILER_SLOTS): `team_restored` on a team the subject reading
+# wrote back onto `leaderboard`, `ranked_by` on a triple-double ranking.
 team_restored
 ranked_by

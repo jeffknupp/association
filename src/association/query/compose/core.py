@@ -452,7 +452,7 @@ def _apply_window_rule(q: Query, narrowed: Narrowed) -> None:
     ``threshold_count`` reads it as the ranking's size), and only ``rows``
     reads it as a row count."""
     scope = q.scope
-    if (q.aggregate in ("count", "record") or q.skeleton == "grouped") and scope.order not in ("recent", "first"):
+    if (q.aggregate in ("count", "record") or q.skeleton == "grouped") and scope.order is None:
         limit = scope.limit
         # A limit on a grouped read by a SCOPE (season, month) is the number
         # of groups (grouped_sql applies it after grouping); on a split by

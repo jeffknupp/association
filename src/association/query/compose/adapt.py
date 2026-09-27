@@ -12,7 +12,7 @@ from typing import Any
 
 from association.query.measures import MEASURE_WORDS
 from association.query.reading import Group, Reading, Scope
-from association.query.templates.common import _BOX_SCORES, MAX_LIMIT
+from association.query.templates.common import _BOX_SCORES, _clamp_limit
 
 # One concept, one definition (scripts/check_duplicate_names.py): the default
 # row counts and the default stat line are the same constants the real
@@ -30,11 +30,6 @@ SPLIT_LINE: tuple[str, ...] = ("minutes", "points", "rebounds", "assists", "stea
 
 .. versionadded:: 4.4.0
 """
-
-
-def _clamp(limit: int | None, default: int) -> int:
-    """A router ``limit`` clamped to :data:`~association.query.templates.common.MAX_LIMIT`, or ``default`` for anything else."""
-    return min(limit, MAX_LIMIT) if limit is not None and limit >= 1 else default
 
 
 def _stat_column(stat: str | None) -> str | None:
@@ -80,7 +75,7 @@ def _adapt_game_log(scope: Scope) -> Reading:
         predicates=[],
         order="date",
         direction="asc" if scope.order == "first" else "desc",
-        limit=_clamp(scope.limit, DEFAULT_GAME_LOG_LIMIT),
+        limit=_clamp_limit(scope.limit, DEFAULT_GAME_LOG_LIMIT),
         span="career" if date else scope.span,
         season=None if date else scope.season,
     )
@@ -144,7 +139,7 @@ def _adapt_single_game_high(scope: Scope) -> Reading:
         predicates=[],
         order="measure",
         direction="desc",
-        limit=_clamp(scope.limit, DEFAULT_SINGLE_GAME_LIMIT),
+        limit=_clamp_limit(scope.limit, DEFAULT_SINGLE_GAME_LIMIT),
     )
 
 

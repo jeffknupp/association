@@ -1284,9 +1284,9 @@ def test_venue_and_opponent_narrow_together(league: TemplateContext) -> None:
 def test_condition_player_reads_a_scope_beside_the_opponent_its_caller_resolved(league: TemplateContext) -> None:
     """The shared step under player_splits, record_when and streak reads the
     typed Scope (ROADMAP plan item 6, step (d)). player_splits resolves the
-    opponent before the player and hands the Entity over inside its slot
-    dict; a Scope holds names, so the same team goes beside one instead. All
-    three narrow Tatum's games to his two against the Lakers (e1, e7)."""
+    opponent before the player; a Scope holds names, so the team it resolved
+    goes beside the Scope. That and the Scope's own opponent name both narrow
+    Tatum's games to his two against the Lakers (e1, e7)."""
     from dataclasses import replace
 
     from association.query.conditions import _PLAYER_GAME_TABLES
@@ -1300,7 +1300,6 @@ def test_condition_player_reads_a_scope_beside_the_opponent_its_caller_resolved(
     within = _condition_scope(None, None, 2, _PLAYER_GAME_TABLES)
     scope = Scope.from_slots(_slots(player="Jayson Tatum"))
     reads = [
-        condition_player(league.con, {**_slots(player="Jayson Tatum"), "opponent": lakers}, "needs a player", within),
         condition_player(league.con, scope, "needs a player", within, opponent=lakers),
         condition_player(league.con, replace(scope, opponent="Los Angeles Lakers"), "needs a player", within),
     ]

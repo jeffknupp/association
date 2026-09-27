@@ -44,6 +44,7 @@ from association.query.templates.common import (
     THRESHOLD_STAT_COLUMNS,
     TemplateResult,
     TemplateUnsupported,
+    _clamp_limit,
     _condition_scope,
     _optional_team,
     _player_relation_season_type,
@@ -72,14 +73,13 @@ from association.query.templates.players import (
 )
 from association.query.templates.splits import _record_when_answer, _record_when_query
 
-from .adapt import DEFAULT_GAME_LOG_LIMIT, _clamp, _to_reading_scope
+from .adapt import DEFAULT_GAME_LOG_LIMIT, _to_reading_scope
 from .core import LINE, Query, Unsupported, compile_query, run
 from .move import _stat_measure
 
 #: A presenter: the connection and the compiled point (its scope the intent's
 #: slots, typed), to the template's own answer - or ``None`` where the point
-#: is not the intent's own. The templates' own helpers below still take the
-#: slot dict, handed ``q.scope.to_slots()`` until they read the Scope.
+#: is not the intent's own. The templates' own helpers below take the Scope.
 Presenter = Callable[[duckdb.DuckDBPyConnection, Query], TemplateResult | None]
 
 
@@ -114,8 +114,8 @@ def _present_game_log(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResul
     compiled = compile_query(con, q)
     if compiled.player is None:
         return None
-    limit = _clamp(scope.limit, DEFAULT_GAME_LOG_LIMIT)
-    asked = scope.limit if scope.limit is not None and scope.limit >= 1 else None
+    limit = _clamp_limit(scope.limit, DEFAULT_GAME_LOG_LIMIT)
+    asked = scope.limit
     if scope.season_type_unstated and not compiled.narrowed.date and not scope.span and not scope.game_n:
         # "His last N games" naming no season type: the template reads each
         # type on its own and merges them by date, saying how many of each
@@ -234,14 +234,12 @@ def _present_player_history(con: duckdb.DuckDBPyConnection, q: Query) -> Templat
     (``_player_history_read``).
 
     Only where the point is a season-line history of the router's own stat:
-    a stat with no per-season column, a span the template refuses, or a
-    measure the question's words moved in is the game-level reading's
+    a stat with no per-season column or a measure the question's words moved
+    in is the game-level reading's
     (``move.games_reading``), answered by the compiler's sentence."""
     scope = q.scope
     stat = scope.stat
     if q.source != "seasons" or q.group != "season" or stat is None or stat not in HISTORY_COLUMNS:
-        return None
-    if scope.span not in (None, "career"):
         return None
     if _stat_measure(stat) not in (None, *q.measures[:1]):
         return None

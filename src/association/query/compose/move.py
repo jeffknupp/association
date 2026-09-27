@@ -21,9 +21,9 @@ import duckdb
 from association.query.measures import MEASURE_WORDS
 from association.query.metrics import PER_GAME_MIN_GAMES
 from association.query.reading import Aggregate, Reading, Scope
-from association.query.templates.common import DEFAULT_LIMIT, FILLER_PLAYER_WORDS, POSITIONS, TEAM_ONLY_INTENTS, TemplateResult
+from association.query.templates.common import DEFAULT_LIMIT, FILLER_PLAYER_WORDS, POSITIONS, TEAM_ONLY_INTENTS, TemplateResult, _clamp_limit
 
-from .adapt import DEFAULT_SINGLE_GAME_LIMIT, _clamp, _named_player, _named_player_in, _to_reading_scope
+from .adapt import DEFAULT_SINGLE_GAME_LIMIT, _named_player, _named_player_in, _to_reading_scope
 from .core import BOOLEAN_MEASURES, COLUMNS, DERIVED, LINE, Query, Refused, Unsupported
 from .plan import plan
 from .team import GAME_MEASURES, SEASON_MEASURES, TeamQuery
@@ -365,7 +365,7 @@ def _everyone_single_game(intent: str, scope: Scope, question: str, measure: str
         predicates=predicates,
         order="measure",
         direction=_asc_or_desc(question),
-        limit=_clamp(scope.limit, DEFAULT_SINGLE_GAME_LIMIT),
+        limit=_clamp_limit(scope.limit, DEFAULT_SINGLE_GAME_LIMIT),
         relation="everyone",
         position=position,
     )
@@ -424,7 +424,7 @@ def _everyone_boolean_game_ranking(question: str, scope: Scope, predicates: list
         predicates=predicates,
         order="measure",
         direction=_asc_or_desc(question),
-        limit=_clamp(scope.limit, DEFAULT_SINGLE_GAME_LIMIT),
+        limit=_clamp_limit(scope.limit, DEFAULT_SINGLE_GAME_LIMIT),
         relation="everyone",
         position=position,
     )
@@ -498,7 +498,7 @@ def _everyone_multi_line_games(intent: str, scope: Scope, question: str, predica
         predicates=lines,
         order="date",
         direction="desc",
-        limit=_clamp(scope.limit, 25),
+        limit=_clamp_limit(scope.limit, 25),
         relation="everyone",
         position=position,
     )
@@ -546,7 +546,7 @@ def _everyone_threshold_count(intent: str, scope: Scope, predicates: list[tuple[
         predicates=predicates,
         order="measure",
         direction="desc",
-        limit=_clamp(scope.limit, listed),
+        limit=_clamp_limit(scope.limit, listed),
         relation="everyone",
         position=position,
     )
@@ -606,7 +606,7 @@ def _everyone_ranking(intent: str, scope: Scope, question: str, measure: str | N
         predicates=predicates,
         order="measure",
         direction=_asc_or_desc(question),
-        limit=_clamp(scope.limit, 10),
+        limit=_clamp_limit(scope.limit, 10),
         minimum_games=minimum_games,
         relation="everyone",
         position=position,
@@ -626,7 +626,7 @@ def _everyone_position_log(scope: Scope, question: str, position: str | None) ->
         predicates=[],
         order="date",
         direction="desc",
-        limit=_clamp(scope.limit, 10),
+        limit=_clamp_limit(scope.limit, 10),
         relation="everyone",
         position=position,
     )
@@ -702,7 +702,7 @@ def _move_single_game(scope: Scope, question: str, measure: str | None) -> Readi
         predicates=[],
         order="measure",
         direction="desc",
-        limit=_clamp(scope.limit, DEFAULT_SINGLE_GAME_LIMIT),
+        limit=_clamp_limit(scope.limit, DEFAULT_SINGLE_GAME_LIMIT),
     )
 
 
@@ -760,7 +760,7 @@ def _move_player_history(intent: str, scope: Scope, career: Scope, measure: str 
         predicates=[],
         order="date",
         direction="desc",
-        limit=_clamp(scope.limit, 10),
+        limit=_clamp_limit(scope.limit, 10),
         source="seasons",
     )
 

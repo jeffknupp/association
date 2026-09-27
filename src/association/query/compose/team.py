@@ -215,7 +215,7 @@ def _team_narrowed(scope: Scope) -> bool:
     # sends the read to the game-level relation rather than the season line.
     if any((scope.opponent, scope.venue, scope.date, scope.since, scope.until, scope.game_n, scope.situation)):
         return True
-    return scope.order in ("recent", "first") or (scope.limit is not None and scope.limit >= 1)
+    return scope.order is not None or scope.limit is not None
 
 
 def _resolved_team_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> Entity:

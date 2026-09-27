@@ -4697,13 +4697,6 @@ those were found.
 - **Source:** ours; DATA.md "Coverage floors" for why the players are absent.
 - **GitHub:** #245
 
-### `condition_player`'s lift of a resolved opponent out of a slot dict is dead code
-- **Found:** 2026-09-27, plan item 6 step (d), moving `templates.common`'s shared steps onto the typed Scope; narrowed the same day by round 2, when `templates/splits.py` moved onto `reading.scope`.
-- **Evidence:** `common._condition_player_opponent` takes an `Entity` out of a slot dict's `opponent` before typing the rest. Its one source, `splits._player_splits_player`, now passes the team it resolved (for the season the question named, before the player, so a clarification about the team still comes first) as `condition_player(..., opponent=<Entity>)`, beside `replace(scope, opponent=None)` - the Scope's own text cleared, so a blank name `_optional_team` read as nobody is not resolved a second time and refused. The three `condition_player` calls in `src/` (all in `splits.py`) pass a `Scope`; only tests still hand it a dict holding an Entity (the first read in `test_conditions.py::test_condition_player_reads_a_scope_beside_the_opponent_its_caller_resolved`, and `test_common_scope.py`'s `_condition_player_opponent` test).
-- **User sees:** nothing.
-- **Next step:** delete `_condition_player_opponent` (and the dict half of `condition_player`'s `scope` parameter) with the Mapping half of `_as_scope`, and those two test reads with it.
-- **Source:** ours.
-
 ### The wall-clock budget test fails under load: its 10ms budget is spent building the prompt, before the first call
 - **Found:** 2026-09-27, running `scripts/check_fast.sh` for plan item 6 step (d) round 2, with four other agents' gates on the same 8 cores (load average 17).
 - **Evidence:** `test_the_agent_gives_up_on_a_wall_clock_budget_rather_than_on_tool_calls` (`tests/query/test_agent.py:1015`) failed once in 2,291 (`assert 1 <= len(calls)`, 0 calls, the run's timing line 0.04s) and passed 5 of 5 run alone. Its docstring says the first call always runs, but `Agent` takes `started` before `build_system_prompt(question)` and checks the budget before every call, the first included (`query/agent.py`, the loop after `started = time.monotonic()`), so with `budget_seconds=0.01` the first call runs only when the prompt builds in under 10ms.

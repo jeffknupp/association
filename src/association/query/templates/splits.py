@@ -58,7 +58,6 @@ from .common import (
     TemplateResult,
     TemplateUnsupported,
     _career_end,
-    _checked_venue,
     _clamp_limit,
     _condition_scope,
     _joined,
@@ -379,8 +378,6 @@ def player_splits(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     scope = reading.scope
     con = ctx.con
     split = scope.split
-    if split is not None and split not in SPLIT_KINDS and split not in _STARTER_BENCH_SIDES:
-        raise TemplateUnsupported(f"no split named {split!r}")
     if scope.limit is not None and scope.limit > 1:
         # This divides a whole span into groups; it has no notion of "his last
         # N games" the way game_log does, and answering the whole span under
@@ -395,7 +392,7 @@ def player_splits(ctx: TemplateContext, reading: Reading) -> TemplateResult:
         # full either way, so a real "last one" and the router's filler 1
         # produce the same table.
         raise TemplateUnsupported("player_splits has no notion of a limited number of recent games")
-    venue = _checked_venue(scope.venue) if scope.venue else None
+    venue = scope.venue
     if split == "home_away" and venue is not None:
         # Breaking games out by home/away while also narrowing to one of the
         # two asks the same axis twice; the narrowing wins rather than showing
