@@ -138,7 +138,7 @@ _CHILD_GRAMMARS: tuple[tuple[str, re.Pattern[str], frozenset[str], frozenset[str
     ),
     (
         "record_when",
-        re.compile(rf"\brecord\b.*\b(?:when|with)\b.*{_N_PLUS}|\brecord\b.*{_N_PLUS}|\brecord\b.*\b(?:when|with)\b.*\b(?:scored|scores|had|has)\b.*\d+", re.IGNORECASE),
+        re.compile(rf"\brecord\b.*\b(?:when|with)\b.*{_N_PLUS}|\brecord\b.*{_N_PLUS}|\brecord\b.*\b(?:when|with)\b.*\b(?:scored|scores|had|has)\b.*\d+|{_N_PLUS}\s*\w*.*\brecord\b", re.IGNORECASE),
         SUBJECT_KINDS,
         frozenset({"team_record", "team_stat", "with_without", "head_to_head"}) | _PLAYER_RELATION_PARENTS,
     ),
@@ -156,8 +156,11 @@ _CHILD_GRAMMARS: tuple[tuple[str, re.Pattern[str], frozenset[str], frozenset[str
     (
         "threshold_count",
         re.compile(
-            rf"\b(?:how many|most|fewest)\b.*\b(?:games?|times)\b.*{_N_PLUS}|\b(?:how many|most|fewest)\b.*{_N_PLUS}.*\bgames?\b|\bhow many times\b|\bgames? with\b.*\b\d+\s+\w+"
-            r"|\b\d{1,3}\s*(?:pts?|points?|rebs?|rebounds?|asts?|assists?|steals?|blocks?|threes|3s)\s+games?\b",
+            rf"\b(?:how many|most|fewest)\b.*\b(?:games?|times)\b.*{_N_PLUS}|\b(?:how many|most|fewest)\b.*{_N_PLUS}.*\bgames?\b|\bhow many (?:times|occasions)\b|\bgames? with\b.*\b\d+\s+\w+"
+            r"|\b\d{1,3}\s*(?:pts?|points?|rebs?|rebounds?|asts?|assists?|steals?|blocks?|threes|3s)\s+games?\b"
+            # The paraphrases' shapes (parser-greenfield, step b): "which games had 15 or more assists", "the highest number of
+            # 30+ point games", "how many games did he score 30 points or more in".
+            rf"|\b(?:which|what) games?\b.*{_N_PLUS}|\bnumber of\b.*{_N_PLUS}.*\bgames?\b|\bhow many\b.*\bgames?\b.*\b\d{{1,3}}\s+\w+\s+or more\b",
             re.IGNORECASE,
         ),
         _NOT_A_TEAM,
