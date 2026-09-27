@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypeVar
@@ -43,6 +44,7 @@ from ..player_games import (  # noqa: F401 - the relation's names, re-exported f
     season_type_clause,
 )
 from ..player_games import _tenure_clause as _relation_tenure_clause
+from ..reading import ConditionSpec, Scope
 from ..team_games import TeamNarrowed
 from ..team_metrics import TEAM_METRICS, resolve_team_metric
 
@@ -791,7 +793,20 @@ _PLAYER_BOX_SOURCES = ("player_game_log", "player_box_stats", "games")
 _ADVANCED_STAT_NAMES = frozenset({"ts_pct", "efg_pct", "usage_pct", "game_score"})
 
 
-def _sources_for_player_stat(slots: dict[str, Any]) -> tuple[str, ...]:
+def _as_scope(value: Scope | Mapping[str, Any]) -> Scope:
+    """The typed scope a shared step reads: a :class:`Scope` as given, and a
+    slot dict through :meth:`Scope.from_slots` - the one door a slot dict
+    comes in by, so a key or a value nothing types is refused here exactly as
+    it is where the agent builds the Reading.
+
+    For the transition (ROADMAP plan item 6, step (d)): every step in this
+    module reads the typed fields, while the templates, ``agent.py`` and
+    ``query.compose`` still hand most of them the slot dict until each caller
+    passes ``reading.scope``."""
+    return value if isinstance(value, Scope) else Scope.from_slots(value)
+
+
+def _sources_for_player_stat(scope: Scope) -> tuple[str, ...]:
     """The table one player's numbers would come from.
 
     An advanced stat is charged its own floor (1994, from box scores) rather
@@ -799,84 +814,84 @@ def _sources_for_player_stat(slots: dict[str, Any]) -> tuple[str, ...]:
     because that stat is not computed that far back, and refusing it in the
     season line's words would name a floor the question does not depend on.
     """
-    if isinstance(slots.get("stat"), str) and slots["stat"] in _ADVANCED_STAT_NAMES:
+    if scope.stat in _ADVANCED_STAT_NAMES:
         return ("player_season_advanced_stats",)
-    return _PLAYER_BOX_SOURCES if any(slots.get(s) for s in _BOX_SCORE_SCOPING) else ("player_season_stats_deduped",)
+    return _PLAYER_BOX_SOURCES if any(getattr(scope, name) for name in _BOX_SCORE_SCOPING) else ("player_season_stats_deduped",)
 
 
-def _sources_for(intent: str, slots: dict[str, Any]) -> tuple[str, ...]:
+def _sources_for(intent: str, scope: Scope | Mapping[str, Any]) -> tuple[str, ...]:
     """The tables an answer would be built from, resolved per question because
     a leaderboard's depends on which metric was asked for."""
+    scope = _as_scope(scope)
     if intent == "game_log":
-        return _sources_for_game_log(slots)
+        return _sources_for_game_log(scope)
     if intent == "player_stat":
-        return _sources_for_player_stat(slots)
+        return _sources_for_player_stat(scope)
     if intent in ("player_splits", "streak"):
-        return _sources_for_splits_or_streak(intent, slots)
+        return _sources_for_splits_or_streak(intent, scope)
     if intent == "record_when":
-        return _sources_for_record_when(slots)
+        return _sources_for_record_when(scope)
     if intent == "team_record":
-        return _sources_for_team_record(slots)
+        return _sources_for_team_record(scope)
     if intent == "team_leaderboard":
-        return _sources_for_team_leaderboard(slots)
+        return _sources_for_team_leaderboard(scope)
     if intent != "leaderboard":
         return TEMPLATE_SOURCES.get(intent, ())
-    return _sources_for_leaderboard(slots)
+    return _sources_for_leaderboard(scope)
 
 
-def _sources_for_game_log(slots: dict[str, Any]) -> tuple[str, ...]:
+def _sources_for_game_log(scope: Scope) -> tuple[str, ...]:
     """A player's log reads the box scores; a team's, the team tables."""
-    named_player = isinstance(slots.get("player"), str) and slots["player"].strip()
+    named_player = bool(scope.player and scope.player.strip())
     return _PLAYER_BOX_SOURCES if named_player else ("games", "team_box_stats")
 
 
-def _sources_for_record_when(slots: dict[str, Any]) -> tuple[str, ...]:
+def _sources_for_record_when(scope: Scope) -> tuple[str, ...]:
     """A named player's threshold reads the player tables; a team's own
     threshold (no ``player`` slot) reads only the team tables - the same split
     _sources_for_splits_or_streak makes, and for the same reason: a team
     question refused in player box scores' words names the wrong cause."""
-    named_player = isinstance(slots.get("player"), str) and slots["player"].strip()
+    named_player = bool(scope.player and scope.player.strip())
     return _PLAYER_GAME_TABLES if named_player else _TEAM_GAME_TABLES
 
 
-def _sources_for_splits_or_streak(intent: str, slots: dict[str, Any]) -> tuple[str, ...]:
+def _sources_for_splits_or_streak(intent: str, scope: Scope) -> tuple[str, ...]:
     """The player tables for a player's splits or streak, the team tables otherwise."""
     # A team's splits or streak never touch a player box score, and
     # charging them that table's floor would refuse a 1990 playoff question
     # with a sentence about player box scores - the wrong cause.
-    named_player = isinstance(slots.get("player"), str) and slots["player"].strip()
-    by_player = named_player or (intent == "streak" and isinstance(slots.get("threshold"), int))
+    named_player = bool(scope.player and scope.player.strip())
+    by_player = named_player or (intent == "streak" and scope.threshold is not None)
     return _PLAYER_GAME_TABLES if by_player else _TEAM_GAME_TABLES
 
 
-def _sources_for_team_record(slots: dict[str, Any]) -> tuple[str, ...]:
+def _sources_for_team_record(scope: Scope) -> tuple[str, ...]:
     """The standings for a season's record, ``games`` for a tally."""
     # A season's record, and its home/road split, are the standings'; a
     # record against one team, or in a postseason, can only be tallied
     # from `games`, whose regular seasons start later.
-    against = bool(slots.get("opponent")) or (isinstance(slots.get("teams"), list) and len(slots["teams"]) > 1)
-    return ("games",) if against or slots.get("season_type") == 3 else ("standings",)
+    against = bool(scope.opponent) or len(scope.teams) > 1
+    return ("games",) if against or scope.season_type == 3 else ("standings",)
 
 
-def _sources_for_team_leaderboard(slots: dict[str, Any]) -> tuple[str, ...]:
+def _sources_for_team_leaderboard(scope: Scope) -> tuple[str, ...]:
     """The record metrics read standings (or ``games`` for a postseason); the rest, the team season stats."""
-    key = resolve_team_metric(slots.get("stat"))
+    key = resolve_team_metric(scope.stat)
     if key is not None and TEAM_METRICS[key].expression is None:
-        return ("games",) if slots.get("season_type") == 3 else ("standings",)
+        return ("games",) if scope.season_type == 3 else ("standings",)
     return TEMPLATE_SOURCES["team_leaderboard"]
 
 
-def _sources_for_leaderboard(slots: dict[str, Any]) -> tuple[str, ...]:
+def _sources_for_leaderboard(scope: Scope) -> tuple[str, ...]:
     """The table the asked-for leaderboard metric is ranked from."""
-    stat = slots.get("stat")
-    metric = resolve_metric(stat, career=slots.get("span") == "career") if isinstance(stat, str) else None
+    metric = resolve_metric(scope.stat, career=scope.span == "career")
     spec = LEADERBOARD_METRICS.get(metric) if metric else None
     # An unrecognized metric is left to the template, which refuses it with a
     # better message than a coverage floor could.
     return (spec.table,) if spec else ()
 
 
-def check_coverage(intent: str, slots: dict[str, Any]) -> str | None:
+def check_coverage(intent: str, scope: Scope | Mapping[str, Any]) -> str | None:
     """Why this question's season is out of reach, or None.
 
     Returned rather than raised, which is the opposite of :func:`check_scope`
@@ -886,28 +901,38 @@ def check_coverage(intent: str, slots: dict[str, Any]) -> str | None:
     from its own weights. The refusal IS the answer.
 
     .. versionadded:: 2.1.0
+
+    .. versionchanged:: 4.5.0
+       Reads the typed :class:`~association.query.reading.Scope`. A slot dict
+       is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
+       until every caller passes ``reading.scope``.
     """
-    season = slots.get("season")
-    if not isinstance(season, int):
+    scope = _as_scope(scope)
+    if scope.season is None:
         # No season means the current one, which every table covers.
         return None
-    season_type = slots.get("season_type")
     return unavailable(
-        _sources_for(intent, slots),
-        season,
-        season_type if isinstance(season_type, int) else 2,
+        _sources_for(intent, scope),
+        scope.season,
+        scope.season_type or 2,
         ranking=intent in RANKING_INTENTS,
     )
 
 
-def coverage_caveat(intent: str, slots: dict[str, Any]) -> str | None:
+def coverage_caveat(intent: str, scope: Scope | Mapping[str, Any]) -> str | None:
     """A note for a season this question can reach but only partly, or None.
 
     .. versionadded:: 2.1.0
+
+    .. versionchanged:: 4.5.0
+       Reads the typed :class:`~association.query.reading.Scope`. A slot dict
+       is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
+       until every caller passes ``reading.scope``.
     """
-    season = slots.get("season")
-    season_type = slots.get("season_type") or REGULAR_SEASON
-    return caveat(_sources_for(intent, slots), season, season_type) if isinstance(season, int) else None
+    scope = _as_scope(scope)
+    if scope.season is None:
+        return None
+    return caveat(_sources_for(intent, scope), scope.season, scope.season_type or REGULAR_SEASON)
 
 
 #: Templates that honor one NAMED half of the starter/bench split and refuse
@@ -1005,16 +1030,28 @@ def narrow_measures(narrowed: Narrowed, filters: list[MeasureFilter]) -> None:
         narrowed.narrow_measure(line.column, line.op, line.value, line.label)
 
 
-def check_scope(intent: str, slots: dict[str, Any]) -> None:
+def check_scope(intent: str, scope: Scope | Mapping[str, Any]) -> None:
     """Raise if the question scoped to particular games and this template
     cannot honor that. Falling through is slow; answering a different question
-    quickly is worse."""
-    ignored = sorted(s for s in SCOPING_SLOTS if slots.get(s) and s not in HONORED_SCOPING.get(intent, frozenset()))
+    quickly is worse.
+
+    A scoping slot is set when its :class:`~association.query.reading.Scope`
+    field is truthy: a field at its default (None, an empty tuple, False) is
+    the slot absent, the reading this has always taken of a falsy slot.
+
+    .. versionchanged:: 4.5.0
+       Reads the typed :class:`~association.query.reading.Scope`. A slot dict
+       is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
+       until every caller passes ``reading.scope``.
+    """
+    scope = _as_scope(scope)
+    honored = HONORED_SCOPING.get(intent, frozenset())
+    ignored = sorted(name for name in SCOPING_SLOTS if getattr(scope, name) and name not in honored)
     # `split` is honored by the filtering templates only for a NAMED half. The
     # bare category means "show me both groups", which is player_splits' whole
     # answer and something they cannot do - so it is refused here rather than
     # quietly filtered to one side or quietly ignored.
-    if slots.get("split") == "starter_bench" and intent in _SPLIT_SIDE_ONLY:
+    if scope.split == "starter_bench" and intent in _SPLIT_SIDE_ONLY:
         ignored = sorted({*ignored, "split"})
     if ignored:
         raise TemplateUnsupported(f"{intent} cannot honor {ignored} - it would answer for a different span than was asked")
@@ -1159,11 +1196,10 @@ def _resolved_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None
             raise TemplateUnsupported(f"no team matching {text!r}")
 
 
-def _slot_season(slots: dict[str, Any]) -> int | None:
+def _slot_season(scope: Scope | Mapping[str, Any]) -> int | None:
     """The season a question's team names are read for: the one it named, or
     None for "now" - the same default every template applies."""
-    season = slots.get("season")
-    return season if isinstance(season, int) else None
+    return _as_scope(scope).season
 
 
 def _period(season: int, season_type: int) -> str:
@@ -1466,7 +1502,17 @@ def _checked_venue(venue: Any) -> str:
 
 
 def _narrow_player_games(
-    con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, *, opponent: Any, venue: Any, without: Any, split: Any = None, game_n: Any = None, team: Any = None, conditions: Any = None
+    con: duckdb.DuckDBPyConnection,
+    player: Entity,
+    span: _Span,
+    *,
+    opponent: Any,
+    venue: Any,
+    without: Any,
+    split: Any = None,
+    game_n: Any = None,
+    team: Any = None,
+    conditions: Sequence[ConditionSpec] = (),
 ) -> Narrowed | TemplateResult:
     """``player``'s games in ``span``, narrowed to an opponent, a venue, a
     teammate's absence and a starter/bench half where the question named them.
@@ -1477,7 +1523,9 @@ def _narrow_player_games(
     is why they compose: a new one becomes available to every caller at once
     rather than being taught to each template separately. ``split`` was the
     fourth, and it reaches both `game_log` and `player_stat` through this one
-    change.
+    change. ``conditions`` are the scope's typed entries
+    (:class:`~association.query.reading.ConditionSpec`), each read by
+    :func:`_condition_from_slot`.
 
     .. versionchanged:: 4.3.0
        Honors one half of the starter/bench split (``split``), and one game of
@@ -1546,7 +1594,7 @@ def _narrow_player_games(
     # The general shape of the same thing (ROADMAP plan item 3): any
     # player, on either side, under any predicate - "when Embiid and Paul
     # George start", "vs LeBron without Durant", "in games Maxey had 20+".
-    for entry in conditions if isinstance(conditions, list) else []:
+    for entry in conditions:
         condition = _condition_from_slot(con, entry, player, span)
         if isinstance(condition, TemplateResult):
             return condition
@@ -1556,7 +1604,7 @@ def _narrow_player_games(
     return narrowed
 
 
-def _player_relation_season_type(slots: dict[str, Any]) -> int:
+def _player_relation_season_type(scope: Scope | Mapping[str, Any]) -> int:
     """The ``season_type`` to read the player relation for: ``BOTH_SEASON_TYPES``
     when the question asked for both explicitly ("including the playoffs") or
     named none at all in a "last N games" question
@@ -1575,15 +1623,15 @@ def _player_relation_season_type(slots: dict[str, Any]) -> int:
 
     .. versionadded:: 4.4.0
     """
-    if slots.get("season_type_unstated"):
+    scope = _as_scope(scope)
+    if scope.season_type_unstated:
         return BOTH_SEASON_TYPES
-    season_type = slots.get("season_type")
-    return season_type if isinstance(season_type, int) and not isinstance(season_type, bool) else REGULAR_SEASON
+    return scope.season_type or REGULAR_SEASON
 
 
 def scoped_player(
     con: duckdb.DuckDBPyConnection,
-    slots: dict[str, Any],
+    scope: Scope | Mapping[str, Any],
     missing: str,
     *,
     table: str,
@@ -1608,13 +1656,19 @@ def scoped_player(
     question's and are read here.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.5.0
+       Reads the typed :class:`~association.query.reading.Scope`. A slot dict
+       is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
+       until every caller passes ``reading.scope``.
     """
-    season_n = slots.get("season_n")
-    scope = _span_of("career" if season_n else span, None if season_n else season, _player_relation_season_type(slots), table, since=slots.get("since"), until=slots.get("until"))
-    player = _resolved_player(con, slots.get("player"), missing, available=available, season=scope.season, through=_career_end(scope.season))
+    scope = _as_scope(scope)
+    season_n = scope.season_n
+    seasons = _span_of("career" if season_n else span, None if season_n else season, _player_relation_season_type(scope), table, since=scope.since, until=scope.until)
+    player = _resolved_player(con, scope.player, missing, available=available, season=seasons.season, through=_career_end(seasons.season))
     if isinstance(player, TemplateResult):
         return player
-    settled = settle_ordinal_season(con, player, season_n, scope)
+    settled = settle_ordinal_season(con, player, season_n, seasons)
     if isinstance(settled, TemplateResult):
         return settled
     return player, settled
@@ -1657,7 +1711,7 @@ def _apply_situation(narrowed: _NarrowedT, situation: str) -> None:
     )
 
 
-def _relation_window(slots: dict[str, Any]) -> tuple[str, int] | None:
+def _relation_window(scope: Scope | Mapping[str, Any]) -> tuple[str, int] | None:
     """The WINDOW :func:`scoped_games` cuts the narrowed games to - the
     newest or oldest N, after every other filter
     (:attr:`association.query.player_games.Narrowed.window`) - or ``None``
@@ -1675,20 +1729,21 @@ def _relation_window(slots: dict[str, Any]) -> tuple[str, int] | None:
 
     .. versionadded:: 4.4.0
     """
-    order = slots.get("order")
-    if order not in ("recent", "first"):
-        limit = slots.get("limit")
-        if not (isinstance(limit, int) and not isinstance(limit, bool) and limit >= 1):
+    scope = _as_scope(scope)
+    order: str | None = scope.order
+    if order is None:
+        # A limit, when set, is 1 or more: the Scope's own range rule.
+        if scope.limit is None:
             return None
         order = "recent"
-    return order, _clamp_limit(slots.get("limit"), default=1)
+    return order, _clamp_limit(scope.limit, default=1)
 
 
 def scoped_games(
     con: duckdb.DuckDBPyConnection,
     player: Entity,
     span: _Span,
-    slots: dict[str, Any],
+    scope: Scope | Mapping[str, Any],
     *,
     opponent: Any,
     measures: list[MeasureFilter],
@@ -1702,7 +1757,7 @@ def scoped_games(
 
     Each is a filter over the same rows, so each means the same thing whatever
     the template then does with the rows - list them, average them, count them.
-    That is why they are read from ``slots`` HERE and not by each template: a
+    That is why they are read from ``scope`` HERE and not by each template: a
     slot this does not read is one no template on the relation can honor, and a
     slot it does read reaches all of them at once. ``check_scope`` has already
     refused any the calling template does not declare, so nothing arrives here
@@ -1715,7 +1770,7 @@ def scoped_games(
     name is resolved. ``team`` is passed the same way, but stays ``None`` for
     every caller except ``player_stat`` - see
     :func:`_narrow_player_games`'s own note on why this is a caller's explicit
-    choice rather than a plain read of ``slots["team"]`` here.
+    choice rather than a plain read of ``scope.team`` here.
 
     .. versionadded:: 4.4.0
 
@@ -1734,18 +1789,26 @@ def scoped_games(
 
     .. versionchanged:: 4.4.0
        Takes ``team``.
+
+    .. versionchanged:: 4.5.0
+       Reads the typed :class:`~association.query.reading.Scope`. A slot dict
+       is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
+       until every caller passes ``reading.scope``.
     """
+    scope = _as_scope(scope)
     narrowed = _narrow_player_games(
         con,
         player,
         span,
         opponent=opponent,
-        venue=slots.get("venue"),
-        without=slots.get("without"),
-        split=slots.get("split"),
-        game_n=slots.get("game_n"),
+        venue=scope.venue,
+        # A list, as the slot always was: teammate_names reads a list or one
+        # bare name, and a tuple would be neither - every teammate dropped.
+        without=list(scope.without),
+        split=scope.split,
+        game_n=scope.game_n,
         team=team,
-        conditions=slots.get("conditions"),
+        conditions=scope.conditions,
     )
     if isinstance(narrowed, TemplateResult):
         return narrowed
@@ -1755,13 +1818,12 @@ def scoped_games(
         narrowed.extra.append("g.date >= ? AND g.date < ?")
         narrowed.extra_params += [start, end]
         narrowed.date = date
-    situation = slots.get("situation")
-    if situation:
+    if scope.situation:
         # Honored where it names the calendar or a conference/division, and
         # refused BY VALUE where it names anything else (an age, "since
         # returning") - see _apply_situation.
-        _apply_situation(narrowed, situation)
-    narrowed.window = _relation_window(slots)
+        _apply_situation(narrowed, scope.situation)
+    narrowed.window = _relation_window(scope)
     return narrowed
 
 
@@ -1806,7 +1868,7 @@ them as a player, and the compiler clears the slot.
 """
 
 
-def league_games(con: duckdb.DuckDBPyConnection, span: _Span, slots: dict[str, Any], *, position: str | None) -> Narrowed | TemplateResult:
+def league_games(con: duckdb.DuckDBPyConnection, span: _Span, scope: Scope | Mapping[str, Any], *, position: str | None) -> Narrowed | TemplateResult:
     """Every player's games in ``span`` - the league-wide read a question with
     no player subject narrows the same way one player's games are: an
     opponent, a venue, a team's roster, lines on box-score columns and the
@@ -1826,33 +1888,37 @@ def league_games(con: duckdb.DuckDBPyConnection, span: _Span, slots: dict[str, A
     fixed date over the league still resolves a player first.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.5.0
+       Reads the typed :class:`~association.query.reading.Scope`. A slot dict
+       is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
+       until every caller passes ``reading.scope``.
     """
+    scope = _as_scope(scope)
     season_clause, season_params = span.clause("pgl.season")
     narrowed = league(season_clause, season_params, span.season_type)
     # The log LEFT JOINs players; a box score for an athlete missing there
     # would otherwise be counted under a NULL name (the same guard
     # _threshold_count_rows keeps for the same reason).
     narrowed.narrow("pgl.player_name IS NOT NULL")
-    opponent = slots.get("opponent")
-    if isinstance(opponent, str) and opponent.strip():
-        team = _resolved_team(con, opponent, season=span.season)
+    if scope.opponent and scope.opponent.strip():
+        team = _resolved_team(con, scope.opponent, season=span.season)
         if isinstance(team, TemplateResult):
             return team
         narrowed.opponent = team
         narrowed.narrow("pgl.opponent_team_id = ?", team.id)
-    team_text = slots.get("team")
-    if isinstance(team_text, str) and team_text.strip():
-        team = _resolved_team(con, team_text, season=span.season)
+    if scope.team and scope.team.strip():
+        team = _resolved_team(con, scope.team, season=span.season)
         if isinstance(team, TemplateResult):
             return team
         narrowed.team = team
         narrowed.narrow("pgl.team_id = ?", team.id)
-    if slots.get("venue") in ("home", "away"):
-        narrowed.venue = slots["venue"]
-        narrowed.narrow("(g.home_team_id = pgl.team_id) = ?", slots["venue"] == "home")
-    narrow_measures(narrowed, measure_filters(slots.get("below"), slots.get("above")))
-    season_n = slots.get("season_n")
-    if isinstance(season_n, int) and season_n > 0 and not isinstance(season_n, bool):
+    if scope.venue in ("home", "away"):
+        narrowed.venue = scope.venue
+        narrowed.narrow("(g.home_team_id = pgl.team_id) = ?", scope.venue == "home")
+    narrow_measures(narrowed, measure_filters(scope.below, scope.above))
+    season_n = scope.season_n
+    if season_n is not None and season_n > 0:
         # Each player's Nth regular season, counted the way settle_ordinal_season
         # counts one player's: distinct regular seasons on the per-player season
         # table, in order. "Most points in 15th season played" (yardstick-v2
@@ -1864,9 +1930,8 @@ def league_games(con: duckdb.DuckDBPyConnection, span: _Span, slots: dict[str, A
             season_n,
         )
         narrowed.ordinal = season_n
-    situation = slots.get("situation")
-    if situation:
-        _apply_situation(narrowed, situation)
+    if scope.situation:
+        _apply_situation(narrowed, scope.situation)
     if position:
         codes = POSITION_CODES.get(position, [position])
         narrowed.narrow(f"pgl.athlete_id IN (SELECT athlete_id FROM players WHERE position_abbr IN ({', '.join('?' for _ in codes)}))", *codes)
@@ -1874,15 +1939,22 @@ def league_games(con: duckdb.DuckDBPyConnection, span: _Span, slots: dict[str, A
 
 
 def condition_player(
-    con: duckdb.DuckDBPyConnection, slots: dict[str, Any], missing: str, scope: _Scope, *, team: Entity | None = None, measures: list[MeasureFilter] | None = None
+    con: duckdb.DuckDBPyConnection,
+    scope: Scope | Mapping[str, Any],
+    missing: str,
+    condition_scope: _Scope,
+    *,
+    team: Entity | None = None,
+    measures: list[MeasureFilter] | None = None,
+    opponent: Entity | None = None,
 ) -> tuple[Entity, Narrowed] | TemplateResult:
-    """The player a condition template is about, and his games in ``scope``
-    under the question's row-level narrowings - for the templates that group a
-    player's games by a condition (splits, a record above a threshold, a
-    streak, with/without) and read them as a subquery
-    (:func:`association.query.player_games.games_subquery`).
+    """The player a condition template is about, and his games in
+    ``condition_scope`` under the question's row-level narrowings, read off
+    ``scope``: for the templates that group a player's games by a condition
+    (splits, a record above a threshold, a streak, with/without) and read
+    them as a subquery (:func:`association.query.player_games.games_subquery`).
 
-    ``scope`` is the template's own ``_Scope``, kept because it reads "career
+    ``condition_scope`` is the template's own ``_Scope``, kept because it reads "career
     ... in 2015" as 2015 where ``_span_of`` refuses the pair - the one place
     the two readers of a player's games disagreed, and not this refactor's to
     settle. ``team`` narrows to the games he played for that team. ``measures``
@@ -1890,19 +1962,46 @@ def condition_player(
     :func:`measure_filters` - built in the template body, before any name is
     resolved, the same way :func:`player_stat` does it - and defaults to none
     so a caller that does not pass any keeps reading every game in scope.
+    ``opponent`` is the team the games are against when the caller has
+    already resolved it - ``player_splits`` does, so that a clarification
+    about the team comes before one about the player - and is handed to
+    :func:`scoped_games` as it is, never resolved a second time; left None,
+    the scope's own ``opponent`` is read.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.5.0
+       Reads the typed :class:`~association.query.reading.Scope`. A slot dict
+       is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
+       until every caller passes ``reading.scope``. Takes ``opponent``: a
+       Scope holds names, so a team already resolved goes beside it - a slot
+       dict may still carry one as the Entity under ``opponent``, as
+       ``player_splits``' does. The template's own ``_Scope`` is
+       ``condition_scope``.
     """
-    subject = scoped_player(con, slots, missing, table="player_game_log", available=_BOX_SCORES, span=None if scope.season else "career", season=scope.season)
+    carried, typed = _condition_player_opponent(scope)
+    subject = scoped_player(con, typed, missing, table="player_game_log", available=_BOX_SCORES, span=None if condition_scope.season else "career", season=condition_scope.season)
     if isinstance(subject, TemplateResult):
         return subject
     player, span = subject
-    narrowed = scoped_games(con, player, span, slots, opponent=slots.get("opponent"), measures=measures or [])
+    narrowed = scoped_games(con, player, span, typed, opponent=carried if opponent is None else opponent, measures=measures or [])
     if isinstance(narrowed, TemplateResult):
         return narrowed
     if team is not None:
         narrowed.narrow("pgl.team_id = ?", team.id)
     return player, whole_span(narrowed)
+
+
+def _condition_player_opponent(value: Scope | Mapping[str, Any]) -> tuple[Entity | str | None, Scope]:
+    """:func:`condition_player`'s opponent and its typed scope. A slot dict may
+    carry the opponent as an Entity its caller already resolved; a Scope holds
+    names, so that Entity is taken out before the rest is typed, and handed to
+    :func:`scoped_games` as the resolved team it is - read as it always was,
+    never resolved a second time."""
+    if isinstance(value, Mapping) and isinstance(value.get("opponent"), Entity):
+        return value["opponent"], _as_scope({key: item for key, item in value.items() if key != "opponent"})
+    scope = _as_scope(value)
+    return scope.opponent, scope
 
 
 def whole_span(narrowed: _NarrowedT) -> _NarrowedT:
@@ -1923,7 +2022,7 @@ def whole_span(narrowed: _NarrowedT) -> _NarrowedT:
     return narrowed
 
 
-def scoped_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], missing: str, *, span: Any, season: Any) -> tuple[Entity, _Span] | TemplateResult:
+def scoped_team(con: duckdb.DuckDBPyConnection, scope: Scope | Mapping[str, Any], missing: str, *, span: Any, season: Any) -> tuple[Entity, _Span] | TemplateResult:
     """The team a question is about and the seasons it covers - the team
     counterpart of :func:`scoped_player`. A franchise's name is a fact about a
     season (see :func:`_resolved_team`: "Hornets" is New Orleans in 2008 and
@@ -1932,7 +2031,8 @@ def scoped_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], missing: 
     even though a team's name (unlike an ambiguous player's) never needs the
     span to disambiguate it.
 
-    Takes: ``con``; ``slots`` (read here for ``team`` and ``season_type``);
+    Takes: ``con``; ``scope`` (read here for ``team``, ``season_type``,
+    ``since`` and ``until``);
     ``missing`` (the :class:`TemplateUnsupported` message when no team was
     named); ``span`` and ``season`` (the raw ``span``/``season`` slot values -
     passed rather than read, the same as ``scoped_player``'s own, so a caller
@@ -1945,15 +2045,20 @@ def scoped_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], missing: 
     inclusive last season of a range, read by :func:`_span_of`.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.5.0
+       Reads the typed :class:`~association.query.reading.Scope`. A slot dict
+       is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
+       until every caller passes ``reading.scope``.
     """
-    scope = _span_of(span, season, slots.get("season_type") or 2, "games", since=slots.get("since"), until=slots.get("until"))
-    text = slots.get("team")
-    if not isinstance(text, str) or not text.strip():
+    scope = _as_scope(scope)
+    seasons = _span_of(span, season, scope.season_type or 2, "games", since=scope.since, until=scope.until)
+    if not scope.team or not scope.team.strip():
         raise TemplateUnsupported(missing)
-    team = _resolved_team(con, text, season=scope.season)
+    team = _resolved_team(con, scope.team, season=seasons.season)
     if isinstance(team, TemplateResult):
         return team
-    return team, scope
+    return team, seasons
 
 
 def _team_span_clause(span: _Span) -> tuple[str, list[Any]]:
@@ -1986,7 +2091,7 @@ def _team_span_clause(span: _Span) -> tuple[str, list[Any]]:
     return span.clause("tg.season")
 
 
-def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, slots: dict[str, Any], *, opponent: Any, date: str | None = None) -> TeamNarrowed | TemplateResult:
+def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, scope: Scope | Mapping[str, Any], *, opponent: Any, date: str | None = None) -> TeamNarrowed | TemplateResult:
     """``team``'s games in ``span``, narrowed to an opponent, a venue, one
     Eastern date, one game of each playoff series (``game_n``) and a window of
     the newest or oldest N (``order``/``limit``) where the question named
@@ -1999,16 +2104,16 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, slots:
     cup final is a real game the team played, the same reasoning
     ``team_record``'s own cup-final mention already carries.
 
-    ``opponent`` is passed rather than read from ``slots`` because a caller
+    ``opponent`` is passed rather than read from ``scope`` because a caller
     that has already resolved the team (it needs the name for its answer
     before the games are read) passes the Entity, exactly as
     :func:`_narrow_player_games` does for a player's opponent; text is
     resolved here, so a clarification about the team comes back as the answer
     either way. ``venue``, ``game_n`` and ``order``/``limit`` are read from
-    ``slots`` because no caller has a reason to resolve any of them first - a
+    ``scope`` because no caller has a reason to resolve any of them first - a
     caller that must NOT honor one (``game_log``'s team half already lists its
     own games with its own LIMIT; ``head_to_head`` counts every meeting rather
-    than a window of them) passes a slot dict without it, the same way both
+    than a window of them) passes a scope without it, the same way both
     already do for every cell but ``venue``.
 
     .. versionchanged:: 4.4.0
@@ -2033,7 +2138,13 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, slots:
        southeast division"), over
        :meth:`association.query.team_games.TeamNarrowed.narrow_alignment` -
        see :func:`_apply_situation`.
+
+    .. versionchanged:: 4.5.0
+       Reads the typed :class:`~association.query.reading.Scope`. A slot dict
+       is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
+       until every caller passes ``reading.scope``.
     """
+    scope = _as_scope(scope)
     clause, params = _team_span_clause(span)
     narrowed = TeamNarrowed(base=["tg.team_id = ?", "tg.season_type = ?", clause], base_params=[team.id, span.season_type, *params], team=team)
     if opponent:
@@ -2044,29 +2155,26 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, slots:
             raise TemplateUnsupported("a team cannot be its own opponent")
         narrowed.opponent = rival
         narrowed.narrow("tg.opponent_id = ?", rival.id)
-    venue = slots.get("venue")
-    if venue:
-        checked = _checked_venue(venue)
+    if scope.venue:
+        checked = _checked_venue(scope.venue)
         narrowed.venue = checked
         narrowed.narrow("tg.side = ?", checked)
     if date:
         narrowed.narrow("tg.eastern_date = ?", date)
         narrowed.date = date
-    game_n = slots.get("game_n")
-    if game_n:
+    if scope.game_n:
         if span.season_type != 3:
             # A series has games 1-7; a regular season has nothing "game 4" names.
-            raise TemplateUnsupported(f"game {game_n} names a game of a playoff series, and this is a {span.kind} question")
-        narrowed.narrow_series_game(int(game_n))
-    situation = slots.get("situation")
-    if situation:
+            raise TemplateUnsupported(f"game {scope.game_n} names a game of a playoff series, and this is a {span.kind} question")
+        narrowed.narrow_series_game(scope.game_n)
+    if scope.situation:
         # Same discipline as scoped_games: honored where it names the
         # calendar or a conference/division, refused BY VALUE (never
         # silently dropped) otherwise - see _apply_situation.
-        _apply_situation(narrowed, situation)
+        _apply_situation(narrowed, scope.situation)
     # The same window rule as the player relation's - a named order, or a
     # bare limit read as the newest N (see _relation_window).
-    narrowed.window = _relation_window(slots)
+    narrowed.window = _relation_window(scope)
     return narrowed
 
 
@@ -2089,9 +2197,10 @@ def _teammates_among(con: duckdb.DuckDBPyConnection, candidates: list[Entity], p
     return [c for c in candidates if c.id in have]
 
 
-def _condition_from_slot(con: duckdb.DuckDBPyConnection, entry: Any, player: Entity, span: _Span) -> Condition | TemplateResult:
-    """One ``conditions`` slot entry - ``{"player": text, "side": "own" |
-    "opponent", "predicate": ..., "stat": ..., "threshold": ...}`` - as a
+def _condition_from_slot(con: duckdb.DuckDBPyConnection, entry: ConditionSpec, player: Entity, span: _Span) -> Condition | TemplateResult:
+    """One ``conditions`` entry - a :class:`~association.query.reading.ConditionSpec`:
+    a player, his side (``"own"`` or ``"opponent"``), a predicate, and the
+    line a ``reached`` one names - as a
     :class:`~association.query.player_games.Condition` with its player
     resolved: a teammate the way "without" resolves one (narrowed to who
     shared a team with the subject), an opponent-side player against the
@@ -2100,22 +2209,22 @@ def _condition_from_slot(con: duckdb.DuckDBPyConnection, entry: Any, player: Ent
 
     .. versionadded:: 4.5.0
     """
-    if not isinstance(entry, dict) or not isinstance(entry.get("player"), str) or not entry["player"].strip():
+    if not entry.player.strip():
         raise TemplateUnsupported(f"a condition needs a player, got {entry!r}")
-    side, predicate = entry.get("side", "own"), entry.get("predicate", "played")
+    side, predicate = entry.side, entry.predicate
     if side not in ("own", "opponent") or predicate not in CONDITION_PREDICATES:
         raise TemplateUnsupported(f"no condition reads side {side!r} with predicate {predicate!r}")
     if side == "own":
-        found = _resolved_teammate(con, entry["player"], player, span)
+        found = _resolved_teammate(con, entry.player, player, span)
     else:
-        found = _resolved_player(con, entry["player"], f"no player named {entry['player']!r}", available=_BOX_SCORES, season=span.season, through=_career_end(span.season))
+        found = _resolved_player(con, entry.player, f"no player named {entry.player!r}", available=_BOX_SCORES, season=span.season, through=_career_end(span.season))
     if isinstance(found, TemplateResult):
         return found
     line: tuple[str, str, int, str] | None = None
     if predicate == "reached":
-        stat, threshold = entry.get("stat"), entry.get("threshold")
-        column = THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
-        if column is None or not isinstance(stat, str) or not isinstance(threshold, int) or isinstance(threshold, bool) or threshold < 1:
+        stat, threshold = entry.stat, entry.threshold
+        column = THRESHOLD_STAT_COLUMNS.get(stat) if stat is not None else None
+        if column is None or stat is None or threshold is None or threshold < 1:
             raise TemplateUnsupported(f"a reached condition needs a known stat and a positive threshold, got {stat!r}/{threshold!r}")
         line = (column, ">=", threshold, f"{threshold}+ {STAT_LABELS.get(stat, stat)}s")
     tenure = _relation_tenure_clause(con, found, span.season) if side == "own" and predicate == "absent" else None

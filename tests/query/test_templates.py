@@ -1654,7 +1654,11 @@ def _source_a_template_reads_slots_in(handler: Any) -> str:
     them, once, for every template that calls them - so "does this template
     read the slot" has to follow that call. It follows ONLY a call the template
     actually makes: one that neither reads a slot nor calls the step that does
-    still fails, which is the drift these guards exist for."""
+    still fails, which is the drift these guards exist for.
+
+    A slot is read either off the slot dict (``slots.get("venue")``) or, once
+    a step reads the typed Scope (plan item 6, step (d)), as its field
+    (``scope.venue``) - :func:`_reads_slot` accepts both."""
     import inspect
 
     from association.query.templates import common
@@ -1680,6 +1684,13 @@ def _source_a_template_reads_slots_in(handler: Any) -> str:
     return source
 
 
+def _reads_slot(source: str, slot: str) -> bool:
+    """Whether ``source`` reads ``slot``: the slot dict's key, quoted, or the
+    typed Scope's field - ``scope.venue``, and ``reading.scope.venue`` - with
+    a word boundary, so ``scope.players`` is not a read of ``player``."""
+    return f'"{slot}"' in source or re.search(rf"\bscope\.{slot}\b", source) is not None
+
+
 def test_no_template_outside_player_intents_reads_a_player_slot() -> None:
     """PLAYER_INTENTS decides whether a name the question does not support is
     refused or ignored, so a template drifting into reading a player slot
@@ -1692,7 +1703,7 @@ def test_no_template_outside_player_intents_reads_a_player_slot() -> None:
 
     for intent, handler in TEMPLATES.items():
         source = _source_a_template_reads_slots_in(handler)
-        reads = 'slots.get("player' in source or 'slots["player' in source
+        reads = 'slots.get("player' in source or 'slots["player' in source or re.search(r"\bscope\.players?\b", source) is not None
         assert reads == (intent in PLAYER_INTENTS), f"{intent} reads a player slot: {reads}, listed: {intent in PLAYER_INTENTS}"
 
 
@@ -3237,7 +3248,7 @@ def test_every_template_honoring_a_scope_slot_actually_reads_it() -> None:
     for intent, honored in HONORED_SCOPING.items():
         source = _source_a_template_reads_slots_in(module.TEMPLATES[intent])
         for slot in honored:
-            assert f'"{slot}"' in source, f"{intent} claims to honor {slot} but never reads it"
+            assert _reads_slot(source, slot), f"{intent} claims to honor {slot} but never reads it"
 
 
 def test_shot_distance_scopes_to_one_game(sc_ctx: TemplateContext) -> None:
@@ -4994,8 +5005,10 @@ def test_the_scoping_slots_this_template_filters_on_are_declared_honored() -> No
        needs no clause of its own. ``span`` and ``since`` moved the other way
        - see the next assertion.
     """
-    for slot in ("opponent", "venue", "without", "order", "date"):
-        check_scope("period_split", {"player": "Stephen Curry", "period": 1, slot: "home"})
+    # A value each slot can hold: the scope is typed at the door, and "home"
+    # is no order (Scope.from_slots refuses it before check_scope reads it).
+    for slot, given in (("opponent", "Boston Celtics"), ("venue", "home"), ("without", "Klay Thompson"), ("order", "recent"), ("date", "2026-01-02")):
+        check_scope("period_split", {"player": "Stephen Curry", "period": 1, slot: given})
     # Two slots it still does not filter on, for the same reason: the accuracy
     # caveat (PERIOD_RECONCILIATION) is measured per season, and this reads
     # only one - see RELATION_SCOPING_EXCLUDED["period_split"].
