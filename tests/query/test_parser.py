@@ -48,6 +48,19 @@ def test_the_measure_grammar_reads_the_words_before_the_models_key() -> None:
     assert measure("Top 5 scorers on the Lakers?") == "points"
     assert measure("who had the highest avg rebounds") == "rebounds"
     assert measure("what did Nikola Jokic do in his last game?") is None
+    # A three is its own column, never the "point" in it.
+    assert measure("davion mitchell 3 point stats") == "threePointFieldGoalsMade"
+    assert measure("vj edgecombe three points made per game") == "threePointFieldGoalsMade"
+    assert measure("Trailblazers 3-point average in the first quarter") == "threePointFieldGoalsMade"
+    assert measure("klay thompson 3 point attempts per game") == "threePointFieldGoalsAttempted"
+    assert measure("show me lebron's 3pt percentage for the past 5 years") == "threePointFieldGoalPct"
+    # What a team gives up is the opponent's line.
+    assert measure("rebounds allowed per team") == "rebounds allowed"
+    assert measure("which team allowed the most points per game") == "points allowed"
+    assert measure("derozan's total points against the knicks") == "points"
+    # "to" is a word before it is a turnover count.
+    assert measure("25-26 Knicks playoff stats compared to other historical teams") is None
+    assert measure("who averages the most TO per game") == "turnovers"
 
 
 def test_the_window_grammar_reads_the_count_and_the_end() -> None:
@@ -55,7 +68,12 @@ def test_the_window_grammar_reads_the_count_and_the_end() -> None:
     assert window("what did Nikola Jokic do in his last game?", {}) == {"order": "recent", "limit": 1}
     assert window("What was Curry's first game of the season?", {}) == {"order": "first", "limit": 1}
     assert window("top 5 rebounders on the Lakers in the playoffs", {}) == {"limit": 5}
-    assert window("who led the league in assists this season?", {}) == {"limit": 1}
+    # "who led the league" sets no limit: the ranking leads with the one and names the next.
+    assert window("who led the league in assists this season?", {}) == {}
+    assert window("magic vs nets last 10", {}) == {"order": "recent", "limit": 10}
+    assert window("lakers vs mavs record last 10 home games played", {}) == {"order": "recent", "limit": 10}
+    assert window("Steph Curry's final two regular season games", {}) == {"order": "recent", "limit": 2}
+    assert window("Luka's ppg over the last 10 seasons", {}) == {}
     assert window("Jrue holiday last fifty games as a starter", {}) == {"order": "recent", "limit": 50}
     # A limit the stages already set stands.
     assert window("show the top 50 in total adjusted netpoints", {"limit": 3}) == {"limit": 3}
@@ -64,7 +82,16 @@ def test_the_window_grammar_reads_the_count_and_the_end() -> None:
 
 def test_the_parent_grammar_by_kind_and_words() -> None:
     assert parent_intent("show sga fingerprint for this season", "player") == "fingerprint"
-    assert parent_intent("Embiid's record against Boston this year", "player") == "with_without"
+    # A player's own record is his games' W-L (F088, "Embiid's record against Boston this year"): player_splits, never
+    # the team's with/without split; a line in it is record_when, which player_stat's reading assigns.
+    assert parent_intent("Embiid's record against Boston this year", "player") == "player_splits"
+    assert parent_intent("Sga record 36 plus points", "player") == "player_stat"
+    assert parent_intent("36-plus points SGA record", "player") == "player_stat"
+    assert parent_intent("In his most recent game, what did Nikola Jokic accomplish?", "player") == "game_log"
+    assert parent_intent("Last season's threes by Plot Curry", "everyone") == "shot_chart"
+    assert parent_intent("25-26 Knicks playoff stats compared to other historical teams", "team") == "team_outlook"
+    # A team's triple-doubles are its players'.
+    assert parent_intent("oklahoma city thunder all-time triple doubles vs west", "team") == "leaderboard"
     assert parent_intent("how many points does embiid average", "player") == "player_stat"
     assert parent_intent("what did Nikola Jokic do in his last 5 games?", "player") == "game_log"
     assert parent_intent("lebron vs kawhi 2015", "pair") == "player_matchup"
@@ -89,6 +116,11 @@ def test_parse_reads_a_question_into_a_reading(con: duckdb.DuckDBPyConnection) -
     assert r.scope.get("threshold") == 30 and r.scope.get("stat") == "points"
     r = parse(con, "Lakers vs Celtics record this season", names=["Lakers", "Celtics"], stat="")
     assert r.intent == "head_to_head" and r.subject is not None and r.subject.kind == "teams"
+    # A window over the two teams' meetings is still their meetings when a record is asked for; a log word is one team's games.
+    r = parse(con, "lakers vs celtics record last 10 home games played", names=["lakers", "celtics"], stat="")
+    assert r.intent == "head_to_head" and r.subject is not None and r.subject.kind == "teams"
+    r = parse(con, "lakers game log vs celtics last 10", names=["lakers", "celtics"], stat="")
+    assert r.subject is not None and r.subject.kind == "team"
     r = parse(con, "who were the top 10 in defensive netpoints / 100 possessions", names=[], stat="")
     assert r.subject is not None and r.subject.kind == "everyone" and r.scope.get("stat") == "netpoints_defense_per_100" and r.scope.get("limit") == 10
     # A span no player or team has never becomes a subject.

@@ -891,8 +891,8 @@ _NAME_JOINERS = frozenset({"and", "or", "nor", "&", "+", ","})
 # nobody; the repetition is bounded because an unbounded one would read half a
 # sentence as a name.
 _NAME_PHRASE = r"[A-Za-z][A-Za-z.'\-]*(?:[\s,&+]+[A-Za-z][A-Za-z.'\-]*){0,8}"
-_WITHOUT = re.compile(rf"\bwithout\s+({_NAME_PHRASE})", re.IGNORECASE)
-_WITH = re.compile(rf"\bwith\s+({_NAME_PHRASE})", re.IGNORECASE)
+_WITHOUT = re.compile(rf"\b(?:without|excluding)\s+({_NAME_PHRASE})", re.IGNORECASE)
+_WITH = re.compile(rf"\b(?:with|featuring)\s+({_NAME_PHRASE})", re.IGNORECASE)
 
 # "when both Embiid and Paul George played", "when Embiid and Paul George
 # play". The same question as "record WITH X", written the other way, and
@@ -1187,7 +1187,7 @@ _THRESHOLD_SPELLINGS = (
 )  # fmt: skip
 _THRESHOLD_WORDS: dict[str, str] = {word: MEASURE_WORDS[word] for word in _THRESHOLD_SPELLINGS}
 _THRESHOLD_PAIR = re.compile(
-    r"\b(\d{1,3})\s*(?:\+|plus|or\s+more)\s*(" + "|".join(sorted((re.escape(w) for w in _THRESHOLD_WORDS), key=len, reverse=True)) + r")\b",
+    r"\b(\d{1,3})[\s-]*(?:\+|plus|or\s+more)[\s-]*(" + "|".join(sorted((re.escape(w) for w in _THRESHOLD_WORDS), key=len, reverse=True)) + r")\b",
     re.IGNORECASE,
 )
 # The same spellings with the "+" optional - a threshold the model left out,
@@ -1196,7 +1196,7 @@ _THRESHOLD_PAIR = re.compile(
 # list, so "30 pt games" reads the 30 the way "30+ pt games" does: this used
 # to be a second hand-kept alternation without "pt", "reb" or "ast".
 _THRESHOLD = re.compile(
-    r"\b(\d{1,3})\s*(?:\+|plus|or\s+more)?\s*(" + "|".join(sorted((re.escape(w) for w in _THRESHOLD_WORDS), key=len, reverse=True)) + r")\b",
+    r"\b(\d{1,3})[\s-]*(?:\+|plus|or\s+more)?[\s-]*(" + "|".join(sorted((re.escape(w) for w in _THRESHOLD_WORDS), key=len, reverse=True)) + r")\b",
     re.IGNORECASE,
 )
 

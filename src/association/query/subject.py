@@ -105,7 +105,9 @@ _RECORD_WHEN_PARENTS: frozenset[str] = frozenset({"player_stat", "player_splits"
 #: on two players is the pair relation's meetings, not a comparison.
 _COMPARES = re.compile(r"\bcompar(?:e[ds]?|ing|ison)\b", re.IGNORECASE)
 
-_N_PLUS = r"\d{1,3}\s*(?:\+|plus|or more)"
+# A line at or above a number, however it is written: "30+", "36-plus",
+# "30 or more", "at least 2" (the paraphrases' spellings, parser-greenfield).
+_N_PLUS = r"(?:\d{1,3}[\s-]*(?:\+|plus\b|or more\b)|\bat least \d{1,3})"
 _N_SEASONS = r"(?:\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:seasons?|years?)"
 _NOT_A_TEAM: frozenset[str] = SUBJECT_KINDS - {"team", "teams", "team_players"}
 _PLAYER_OR_PAIR: frozenset[str] = frozenset({"player", "pair"})
@@ -128,7 +130,14 @@ _PLAYER_RELATION_PARENTS: frozenset[str] = frozenset({"game_log", "player_stat",
 #: is a single-game high before it is a count, and "how many 20+ point games
 #: ... in the past two seasons" a count before it is a history.
 _CHILD_GRAMMARS: tuple[tuple[str, re.Pattern[str], frozenset[str], frozenset[str]], ...] = (
-    ("single_game_high", re.compile(r"\bin (?:a|one) (?:single )?game\b|\bcareer[- ]high\b|\bhighest\b.{0,60}\bgame\b", re.IGNORECASE), _NOT_A_TEAM, _PLAYER_RELATION_PARENTS),
+    # "per game" is an average, never one game: "the highest points per game
+    # average" is a season ranking.
+    (
+        "single_game_high",
+        re.compile(r"\bin (?:a|one) (?:single )?(?:game|match|contest|outing)\b|\bcareer[- ]high\b|\bhighest\b.{0,60}(?<!per )\bgame\b", re.IGNORECASE),
+        _NOT_A_TEAM,
+        _PLAYER_RELATION_PARENTS,
+    ),
     ("shot_distance", re.compile(r"\bhow far\b|\bdistance\b", re.IGNORECASE), _PLAYER_OR_PAIR, _PLAYER_RELATION_PARENTS | {"shot_chart"}),
     (
         "streak",
@@ -156,8 +165,9 @@ _CHILD_GRAMMARS: tuple[tuple[str, re.Pattern[str], frozenset[str], frozenset[str
     (
         "threshold_count",
         re.compile(
-            rf"\b(?:how many|most|fewest)\b.*\b(?:games?|times)\b.*{_N_PLUS}|\b(?:how many|most|fewest)\b.*{_N_PLUS}.*\bgames?\b|\bhow many (?:times|occasions)\b|\bgames? with\b.*\b\d+\s+\w+"
-            r"|\b\d{1,3}\s*(?:pts?|points?|rebs?|rebounds?|asts?|assists?|steals?|blocks?|threes|3s)\s+games?\b"
+            rf"\b(?:how many|most|fewest)\b.*\b(?:games?|times)\b.*{_N_PLUS}|\b(?:how many|most|fewest)\b.*{_N_PLUS}.*\bgames?\b|\bhow many (?:times|occasions)\b"
+            r"|\bgames? (?:with|where|in which)\b.*\b\d+\s+\w+"
+            r"|\b\d{1,3}[\s-]*(?:pts?|points?|rebs?|rebounds?|asts?|assists?|steals?|blocks?|threes|3s)[\s-]+games?\b"
             # The paraphrases' shapes (parser-greenfield, step b): "which games had 15 or more assists", "the highest number of
             # 30+ point games", "how many games did he score 30 points or more in".
             rf"|\b(?:which|what) games?\b.*{_N_PLUS}|\bnumber of\b.*{_N_PLUS}.*\bgames?\b|\bhow many\b.*\bgames?\b.*\b\d{{1,3}}\s+\w+\s+or more\b",
@@ -170,7 +180,7 @@ _CHILD_GRAMMARS: tuple[tuple[str, re.Pattern[str], frozenset[str], frozenset[str
         "player_history",
         re.compile(
             rf"\b(?:over|for|in|during) the (?:past|last) {_N_SEASONS}\b|\b(?:last|past) {_N_SEASONS}\b|\bby (?:season|year)\b|\b(?:each|every) (?:season|year)\b"
-            r"|\bseason[- ](?:by|over)[- ]season\b|\byear[- ](?:by|over)[- ]year\b",
+            r"|\bseason[- ](?:by|over)[- ]season\b|\byear[- ](?:by|over)[- ]year\b|\bfrom (?:year|season) to (?:year|season)\b",
             re.IGNORECASE,
         ),
         _PLAYER_OR_PAIR,
@@ -297,12 +307,15 @@ _MONTH_ABBREVIATIONS = frozenset({"jan", "feb", "mar", "apr", "jun", "jul", "aug
 _COMPARED_WITH = re.compile(r"\b(?:compare|compared|comparing|contrast|contrasted|contrasting)\b[^,;?]{0,40}?\bwith\b", re.IGNORECASE)
 """A "with" that follows a compare verb closely ("compare luka with sga")
 joins the two subjects; it is not a companion phrase (ISSUES.md #233)."""
-_COMPANION = re.compile(r"\b(without|with|when|while)\s+((?:(?!\b(?:vs\.?|versus|against|in|for|this|last|the)\b)[\w'.,+-]+\s*){1,9})", re.IGNORECASE)
+# "excluding" is "without" reworded and "featuring" is "with"; a question word ends the phrase, so a
+# fronted "Without Kevin Durant, what is Steph Curry's record" names Durant
+# alone, not Curry with him.
+_COMPANION = re.compile(r"\b(without|excluding|with|featuring|when|while)\s+((?:(?!\b(?:vs\.?|versus|against|in|for|this|last|the|what|who|how|which|where)\b)[\w'.,+-]+\s*){1,9})", re.IGNORECASE)
 
 #: What a companion phrase says the player DID in the games asked about,
 #: read off the phrase's own words: a threshold ("scores 20+ points"), a
 #: start, the bench, an absence ("out", "injured", "without"), else played.
-_CONDITION_THRESHOLD = re.compile(r"\b(\d{1,3})\s*(?:\+|plus|or\s+more)?\s*(" + "|".join(sorted((re.escape(w) for w in _THRESHOLD_WORDS), key=len, reverse=True)) + r")\b", re.IGNORECASE)
+_CONDITION_THRESHOLD = re.compile(r"\b(\d{1,3})[\s-]*(?:\+|plus|or\s+more)?[\s-]*(" + "|".join(sorted((re.escape(w) for w in _THRESHOLD_WORDS), key=len, reverse=True)) + r")\b", re.IGNORECASE)
 _CONDITION_STARTED = re.compile(r"\bstart(?:s|ed|ing)?\b|\bin the starting lineup\b", re.IGNORECASE)
 # "off" alone too: the phrase stops at "the" (a stop word), so "with tatum
 # off the bench" reaches here as "tatum off".
@@ -725,7 +738,7 @@ def _condition_role(word: str, text: str) -> tuple[str, str | None, int | None]:
         return "started", None, None
     if _CONDITION_BENCH.search(text):
         return "bench", None, None
-    if word == "without" or _CONDITION_ABSENT.search(text):
+    if word in ("without", "excluding") or _CONDITION_ABSENT.search(text):
         return "absent", None, None
     return "played", None, None
 
