@@ -281,6 +281,7 @@ those were found.
 - **Evidence:** slots `{'player': 'LeBron James', 'team': 'Miami Heat', 'season_type': 2, 'split': 'starter'}` answered "LeBron James averaged 20.9 points, 6.1 rebounds and 7.2 assists per game in 60 games as a starter in the 2026 regular season." - his Lakers season, with Miami nowhere in the sentence. With no `team` slot the subject stage reads the own team and the span it implies, and the same question answers "... in 294 games with the Miami Heat as a starter over his career (2011-2014 ...)". The parser no longer writes the own team (`parse._read_route_names`), so it does not reach this; the router path does whenever its model files the team, which it did not for this wording in day10.
 - **User sees:** a fluent, correct-looking line about a different team's season.
 - **Next step:** find why `check_scope` lets `team` through for `player_stat` when the template does not narrow by it - either honor it as the own-team narrowing the subject stage already builds, or refuse it; warehouse-verified test on this question.
+- **GitHub:** #237
 
 ### Holidays answer the wrong day or none: "on mlk day" is every January 15, "on valentine's day" narrows nothing
 - **Found:** 2026-09-27, the package review of plan item 6's steps (a)-(d) (a read-only agent; spot-checked by the lead).
@@ -288,6 +289,7 @@ those were found.
 - **User sees:** "lebron stats on mlk day" answers January 15's games labeled "on MLK Day"; "on valentine's day" answers his season line with nothing narrowed; "on new year's eve" answers January 1 labeled New Year's Day.
 - **Next step:** build the router's holiday alternation from the `HOLIDAYS` keys (longest first), give the Eves their own keys or refuse them, and compute MLK Day per season in SQL (`make_date(y,1,15) + CAST((8 - isodow(make_date(y,1,15))) % 7 AS INTEGER)`, checked for 2024-2026); a test per wording, watched to fail.
 - **Source:** ours.
+- **GitHub:** #238
 
 ## P2: misleading or incomplete
 
@@ -2536,6 +2538,7 @@ those were found.
 - **User sees:** on the router reader, where the model corrects the typo, "This was read as a question about Nikola Jokic, who the question does not mention" (the misread-name refusal) for a question that names him with two letters swapped. The parser reader keeps the typo as typed and the index reads it, so it is mostly spared.
 - **Next step:** one edit metric for both - rapidfuzz's `DamerauLevenshtein` (the package review's one recommended adoption: MIT, typed, no dependencies) under `question_supports`, after confirming it scores `'ca'`/`'abc'` as DuckDB does; swapped-letter tests and a golden run.
 - **Source:** ours.
+- **GitHub:** #239
 
 ## P3: refusal or gap
 
@@ -3186,6 +3189,7 @@ those were found.
   survivor) over what is left. Measure how many of the 2,584 then land on
   exactly the player misspelled.
 - **Source:** ours.
+- **GitHub:** #240
 
 ### A typo inside a hyphenated surname reaches nobody: "Gilgeous-Alexandr"
 - **Found:** 2026-09-27, measuring the near-spelling default
@@ -3202,6 +3206,7 @@ those were found.
   the near-spelling pass (every piece must be near some word, as now), and
   re-run the measurement.
 - **Source:** ours.
+- **GitHub:** #241
 
 ### "rebounds allowed per team" has no team metric to rank, and falls through
 - **Found:** 2026-09-27, plan item 6 step (b) (the lead's offline run of the agent with the parser; the parser measurement's DEV row "rebounds allowed per team" and its paraphrase "per team rebounds allowed").
@@ -3209,6 +3214,7 @@ those were found.
 - **User sees:** the agent's answer, or with fall-through off, no answer - to a question the warehouse can answer (`team_box_stats` holds both sides of every game).
 - **Next step:** opponent box-score metrics in `TEAM_METRICS` (the opponent's row of the same game, the way `opponent_points` reads points against), then the aliases "rebounds allowed", "assists allowed", "threes allowed" that `MEASURE_GRAMMAR` already emits; until then a refusal naming the missing metric beats the fall-through.
 - **Source:** ours, not ESPN's.
+- **GitHub:** #242
 
 ### `player_stat` has no per-game line for attempts: "embiid 3pt attempts per game" falls through
 - **Found:** 2026-09-27, the step (c) hold-out comparison (the 75 recorded routing-corpus questions outside day10, `~/association-research/yardstick-v2/holdout_compare.py`).
@@ -3216,6 +3222,7 @@ those were found.
 - **User sees:** a fall-through (the SQL agent, or with fall-through off an error) for a per-game attempts question, where the made line would have answered it in passing. Asking for both ("3pt attempts and made") answers, from the made line.
 - **Next step:** give `player_stat` the attempted columns (per game and total, from the same box-score join), or answer an attempted stat from the made line with the attempts per game computed; a warehouse-verified test on Embiid's career line.
 - **Source:** ours.
+- **GitHub:** #243
 
 ## P4: tooling, docs, low impact
 
@@ -3231,6 +3238,7 @@ those were found.
 - **User sees:** "Ömer Aşık" typed with the Turkish letter matches nobody; the rest is maintenance - a vocabulary fixed in one copy and not the others, or a grammar row deleted with no repo test failing.
 - **Next step:** one table per concept (months, ordinals, number words) imported everywhere; a parametrized `parent_intent` table with a meta-assert that every row is hit, watched to fail; the fold's translate table; the two comments corrected.
 - **Source:** ours.
+- **GitHub:** #244
 
 ### Two decisions share the label "subject kind": a streak's `kind` slot is recorded as the subject's kind
 - **Found:** 2026-09-27, the step (b) audit agent, reading day10 traces.
@@ -4631,4 +4639,5 @@ those were found.
   lose real typos (3,597 of the 10,602 measured surname typos default, all to
   the right player).
 - **Source:** ours; DATA.md "Coverage floors" for why the players are absent.
+- **GitHub:** #245
 
