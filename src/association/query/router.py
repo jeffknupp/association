@@ -1355,7 +1355,9 @@ def _route_attempted_stat(slots: dict[str, Any], question: str) -> None:
     .. versionadded:: 4.4.0
     """
     stat = slots.get("stat")
-    if stat not in _MADE_TO_ATTEMPTED or not _ATTEMPTED.search(question) or re.search(r"\b(?:made|makes?|hit|hits)\b", question, re.IGNORECASE):
+    # "mad" too: "show embiid's 3pt attempts and 3pts mad for his career" asks
+    # for both, which the made line reports ("585 of 1,727").
+    if stat not in _MADE_TO_ATTEMPTED or not _ATTEMPTED.search(question) or re.search(r"\b(?:made|mad|makes?|hit|hits)\b", question, re.IGNORECASE):
         return
     slots["stat"] = _MADE_TO_ATTEMPTED[stat]
 

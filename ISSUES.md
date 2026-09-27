@@ -3196,6 +3196,13 @@ those were found.
 - **Next step:** opponent box-score metrics in `TEAM_METRICS` (the opponent's row of the same game, the way `opponent_points` reads points against), then the aliases "rebounds allowed", "assists allowed", "threes allowed" that `MEASURE_GRAMMAR` already emits; until then a refusal naming the missing metric beats the fall-through.
 - **Source:** ours, not ESPN's.
 
+### `player_stat` has no per-game line for attempts: "embiid 3pt attempts per game" falls through
+- **Found:** 2026-09-27, the step (c) hold-out comparison (the 75 recorded routing-corpus questions outside day10, `~/association-research/yardstick-v2/holdout_compare.py`).
+- **Evidence:** `player_stat: no per-game column for stat 'threePointFieldGoalsAttempted'` - `templates.common.PLAYER_STAT_COLUMNS` holds the made columns, whose line reports the attempts beside them ("585 of 1,727 (33.9%)"), and no attempted column; `router._route_attempted_stat` rewrites a made stat to the attempted one whenever the question says "attempts" and not "made", on both readers.
+- **User sees:** a fall-through (the SQL agent, or with fall-through off an error) for a per-game attempts question, where the made line would have answered it in passing. Asking for both ("3pt attempts and made") answers, from the made line.
+- **Next step:** give `player_stat` the attempted columns (per game and total, from the same box-score join), or answer an attempted stat from the made line with the attempts per game computed; a warehouse-verified test on Embiid's career line.
+- **Source:** ours.
+
 ## P4: tooling, docs, low impact
 
 ### Two decisions share the label "subject kind": a streak's `kind` slot is recorded as the subject's kind

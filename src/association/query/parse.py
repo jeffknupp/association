@@ -34,6 +34,7 @@ from association.query.compose.move import read_point
 from association.query.compose.team import team_named_in
 from association.query.entities import find_players, find_teams, suggest_players
 from association.query.measures import MEASURE_WORDS
+from association.query.metrics import EXTRA_FIELD_COLUMNS
 from association.query.reading import Reading
 from association.query.router import Route, _period_asked, settle
 from association.query.subject import KIND_ASSIGNED_INTENTS, TEAM_SINGULARS, Subject, question_supports, read_subject
@@ -69,10 +70,15 @@ PARENT_GRAMMAR: tuple[tuple[frozenset[str], str, str], ...] = (
     (frozenset({"team_players"}), r".", "leaderboard"),
     (frozenset({"team"}), r"(?=.*\b(top \d+|scorers?|rebounders?|passers?|leaders?|players?)\b)(?=.*\b(top|most|best|leaders?)\b)", "leaderboard"),
     (frozenset({"team+companions"}), r"\b(with|without|when|while)\b", "with_without"),
-    (frozenset({"team"}), r"\b(game ?log|(last|past|previous|most recent) (\d+|ten|five)\b|first \d+ games|each game|game by game|differential)", "game_log"),
+    (
+        frozenset({"team"}),
+        r"\b(game ?log|(last|past|previous|most recent) (\d+|ten|five)\b|first \d+ games|each game|game by game|differential"
+        r"|(first|opening|last|latest|most recent|final) game|(season )?opener)",
+        "game_log",
+    ),
     (frozenset({"team"}), r"\bstreak", "team_record"),
     (frozenset({"team"}), r"(?=.*\b(record|standings?|wins?|losses|w-?l|win.loss|won|lost|rec)\b)(?!.*\b(most|fewest|least|best|worst|top|rank)\b)", "team_record"),
-    (frozenset({"team"}), r"\b(outlook|projection|on pace|schedule|(vs\.?|versus|against|compared (to|with)) other)\b", "team_outlook"),
+    (frozenset({"team"}), r"\b(outlook|projections?|projected|on pace|schedule|odds|chances|(vs\.?|versus|against|compared (to|with)) other)\b", "team_outlook"),
     # A team's triple-doubles are its PLAYERS' (a boolean player line), which
     # the players' ranking reads under the team - not a team box-score total.
     (frozenset({"team"}), r"\b(triple|double)[ -]?doubles?\b", "leaderboard"),
@@ -100,6 +106,9 @@ PARENT_GRAMMAR: tuple[tuple[frozenset[str], str, str], ...] = (
         r"(?=.*\b(team|teams|franchise|nba)\b)(?!.*\bplayers?\b)(?=.*\b(record|wins|best|worst|most|fewest|per team|allowed)\b)(?!.*\b(leaders?|points|assists|rebounds|netpoints|netpts)\b)",
         "team_leaderboard",
     ),
+    # A record with no player in it is a team's: "worst record 2025-26" read
+    # as the league's scorers, the everyone row below.
+    (frozenset({"everyone"}), r"(?=.*\b(record|standings?|w-?l)\b)(?!.*\b(players?|who scored|scorers?)\b)", "team_leaderboard"),
     (frozenset({"everyone"}), r"\bstreak", "team_record"),
     (frozenset({"everyone"}), r"\b(finals|game ?log)\b", "game_log"),
     (frozenset({"everyone"}), r".", "leaderboard"),
@@ -138,8 +147,10 @@ MEASURE_GRAMMAR: tuple[tuple[str, str], ...] = (
     (r"\bgame score\b", "game_score"),
     (r"\btriple[ -]?doubles?\b|\btd3s?\b|\btds\b", "triple_double"),
     (r"\bdouble[ -]?doubles?\b|\bdd\b", "double_double"),
-    (r"\b(3|three)[ -]?(pt|point|pointer)s?\b.{0,12}\b(percentage|pct|%)|\b3p%|\b3pt%", "threePointFieldGoalPct"),
-    (r"\b(2|two)[ -]?(pt|point|pointer)s?\b.{0,12}\b(percentage|pct|%)|\b2p%|\b2pt%", "twoPointFieldGoalPct"),
+    # "%" is not a word character, so it takes no \b: "who had the highest
+    # 3pt % this season" read as 3-pointers made while it did.
+    (r"\b(3|three)[ -]?(pt|point|pointer)s?\b.{0,12}(\bpercentage\b|\bpct\b|%)|\b3p%|\b3pt%", "threePointFieldGoalPct"),
+    (r"\b(2|two)[ -]?(pt|point|pointer)s?\b.{0,12}(\bpercentage\b|\bpct\b|%)|\b2p%|\b2pt%", "twoPointFieldGoalPct"),
     (r"\bfg ?%|\bfg percentage\b|\bfield goal percentage\b", "fieldGoalPct"),
     (r"\bft ?%|\bfree throw percentage\b", "freeThrowPct"),
     # What a team gives up is the opponent's line, never its own: "rebounds
@@ -153,6 +164,9 @@ MEASURE_GRAMMAR: tuple[tuple[str, str], ...] = (
     # A three is its own column: "3 point stats", "three points made" and
     # "3-point average" are threes made (a percentage is read above), never
     # the "point" in them read as points.
+    # Both asked for: the made line already says "585 of 1,727", and no
+    # per-game line reads the attempted column alone.
+    (r"(?=.*\b(3|three)[ -]?(pt|point|pointer)s?\b)(?=.*\b(attempts?|attempted|tries|3pa)\b)(?=.*\b(made|makes|mad|hit)\b)", "threePointFieldGoalsMade"),
     (r"\b(3|three)[ -]?(pt|point|pointer)s?\b.{0,12}\b(attempts?|attempted|tries)\b|\b3pa\b", "threePointFieldGoalsAttempted"),
     (r"\b(3|three)[ -]?(pt|point|pointer)s?\b(?!.{0,20}\b(distance|range|shots?)\b)", "threePointFieldGoalsMade"),
     (r"\bscorers?\b|\bscores\b|\bscoring\b", "points"),
@@ -209,7 +223,7 @@ WINDOW_GRAMMAR: tuple[tuple[str, str | None, int | None], ...] = (
     (rf"\b(last|past|previous)\s+{_COUNT}\s*[?.!]*\s*\Z", "recent", 0),
     (rf"\bfirst\s+{_COUNT}\s+games?\b", "first", 0),
     (r"\b(last|most recent|latest|final)\s+(regular[- ]season\s+|postseason\s+|playoff\s+)?game\b", "recent", 1),
-    (r"\bfirst\s+(regular[- ]season\s+|postseason\s+|playoff\s+)?game\b", "first", 1),
+    (r"\b(first|opening)\s+(regular[- ]season\s+|postseason\s+|playoff\s+)?game\b|\b(season\s+)?opener\b", "first", 1),
     (rf"\b(top|bottom)\s+{_COUNT}\b", None, 0),
     # Deliberately no "who led the league in ..." -> 1: a ranking with no
     # limit already leads with the one asked about and adds "Next: ..."
@@ -403,6 +417,34 @@ def _read_route_players(subject: Subject, slots: dict[str, Any]) -> list[str]:
     return [*subject.players, *(span for span in typed if not any(question_supports(name, span) for name in read))]
 
 
+# Columns asked for beside a ranking - "top 5 scorers with their rebounds and
+# assists", "... and the team they play for" (yardstick-v2 F017): the
+# leaderboard's `fields`, a slot the router's model filled from the words.
+_FIELDS_AFTER = re.compile(r"\b(?:with|alongside|and|plus|including)\s+(?:their|his|the)\s+(?P<rest>.+)$", re.IGNORECASE)
+_TEAM_FIELD = re.compile(r"\bteams?\s+(?:they|he)\s+plays?(?:ed)?\s+for\b|\b(?:with|and|plus)\s+(?:the|their)\s+teams?\b", re.IGNORECASE)
+
+
+def _read_route_fields(intent: str, slots: dict[str, Any], question: str) -> dict[str, Any]:
+    """The columns a leaderboard question asks to see beside its ranking:
+    each stat word after "with their" / "alongside their" that the
+    leaderboard shows (:data:`~association.query.metrics.EXTRA_FIELD_COLUMNS`),
+    and "team" for the team each player plays for. Only for the leaderboard,
+    the one template that reads them; a word it cannot show is left out, and
+    the answer is the ranking the question also asked for."""
+    if intent != "leaderboard" or slots.get("fields"):
+        return slots
+    fields: list[str] = []
+    after = _FIELDS_AFTER.search(question)
+    if after:
+        for word in re.findall(r"[a-z]+", after.group("rest").lower()):
+            key = MEASURE_WORDS.get(word)
+            if key in EXTRA_FIELD_COLUMNS and key not in fields:
+                fields.append(key)
+    if _TEAM_FIELD.search(question):
+        fields.append("team")
+    return {**slots, "fields": fields} if fields else slots
+
+
 def _read_route_period(intent: str, slots: dict[str, Any], question: str) -> dict[str, Any]:
     """A team's quarter or half from the words ("first quarter", "2nd
     half") - a slot the router's model filled and the stages only read for
@@ -439,7 +481,7 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     if final != route.intent and final in KIND_ASSIGNED_INTENTS:
         again = settle(final, dict(route.slots), question)
         final, point_slots = again.intent, dict(again.slots)
-    point_slots = _read_route_period(final, window(question, point_slots), question)
+    point_slots = _read_route_fields(final, _read_route_period(final, window(question, point_slots), question), question)
     subject = replace(subject, intent=final, teams=subject.teams if subject.kind == "teams" else settled.teams, opponent=subject.opponent if subject.kind == "teams" else settled.opponent)
     return Route(final, point_slots), subject, parent
 

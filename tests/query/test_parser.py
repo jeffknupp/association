@@ -189,3 +189,34 @@ def test_a_players_record_reads_his_splits_through_a_window_but_not_over_a_log_w
     assert parent_intent("embiid game log since 1/26/20", "player") == "game_log"
     assert parent_intent("embiid's game log and record vs boston since 1/26/20", "player") == "game_log"
     assert parent_intent("Sga record 36 plus points", "player") != "player_splits"
+
+
+def test_the_hold_out_rows_the_router_answered_and_the_parser_did_not(con: duckdb.DuckDBPyConnection) -> None:
+    """The recorded routing corpus outside day10 (75 questions no step (b) or
+    (c) fix was tuned on), answered by both paths: each of these was a
+    fluent wrong answer or a fall-through on the parser's alone."""
+    # "%" takes no \b: "3pt %" read as 3-pointers made.
+    assert measure("who had the highest 3pt % this season") == "threePointFieldGoalPct"
+    # Attempts AND makes asked for: the made line reports both.
+    assert measure("show embiid's 3pt attempts and 3pts mad for his career") == "threePointFieldGoalsMade"
+    assert measure("embiid 3pt attempts per game") == "threePointFieldGoalsAttempted"
+    # A team's opener is one game of its log, not its season line.
+    assert parent_intent("Lakers opening game of the season", "team") == "game_log"
+    assert window("Lakers opening game of the season", {}) == {"order": "first", "limit": 1}
+    # A team's odds are its outlook, not its postseason stats.
+    assert parent_intent("what are the sixers playoff odds?", "team") == "team_outlook"
+    # A record with nobody named is the teams', not the league's scorers.
+    assert parent_intent("worst record 2025-26", "everyone") == "team_leaderboard"
+    assert parent_intent("who scored the most points this season", "everyone") == "leaderboard"
+
+
+def test_read_route_reads_the_columns_a_ranking_asks_to_see(con: duckdb.DuckDBPyConnection) -> None:
+    """ "with their rebounds and assists" and "the team they play for"
+    (yardstick-v2 F017) are the leaderboard's `fields`, which the router's
+    model used to fill; a ranking that asks for none gets none."""
+    extra, _, _ = read_route(con, "Top 5 scorers with their rebounds and assists", [], "points")
+    assert (extra.intent, extra.slots.get("fields"), extra.slots.get("limit")) == ("leaderboard", ["rebounds", "assists"], 5)
+    team, _, _ = read_route(con, "show the top 50 in total adjusted netpoints and the team they play for", [], "netpoints")
+    assert team.slots.get("fields") == ["team"]
+    plain, _, _ = read_route(con, "who led the league in scoring", [], "points")
+    assert "fields" not in plain.slots

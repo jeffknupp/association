@@ -887,6 +887,14 @@ def test_a_team_metric_given_up_is_named_as_asked() -> None:
     assert _team_metric_in("celtics rebounds against the knicks") == "rebounds"
 
 
+def test_attempts_and_a_misspelled_made_keep_the_made_line() -> None:
+    """Held-out routing corpus: "show embiid's 3pt attempts and 3pts mad for
+    his career" asks for both; the made line reports both, and the attempted
+    column has no per-game line to answer from."""
+    got = _ask("show embiid's 3pt attempts and 3pts mad for his career", '{"intent":"player_stat","player":"Joel Embiid","stat":"threePointFieldGoalsMade"}')
+    assert got.slots["stat"] == "threePointFieldGoalsMade"
+
+
 def test_since_he_joined_the_league_reads_as_a_career_span() -> None:
     """yardstick-v2 F031: "Show me luka's avg assists since he joined the
     league" routed with no ``span`` at all - none of ``_SPAN_WORDS`` is in
