@@ -3152,6 +3152,7 @@ those were found.
 - **User sees:** two contradictory "kind" lines in the decisions fold of a streak answer.
 - **Next step:** give slot rewrites their own field prefix or stage ("slot", key), and keep "kind" for the subject alone.
 - **Source:** ours.
+- **GitHub:** #234
 
 ### The two-teams kind depends on the routed intent, which the parser will not have
 - **Found:** 2026-09-27, the step (b) audit agent (`IR_AUDIT.md`, `RESULT_b_baseline.md`).
@@ -3159,6 +3160,7 @@ those were found.
 - **User sees:** nothing today (the router supplies the intent); once the parser owns the kind (ROADMAP plan item 6, step b), a two-teams question reads as one team against an opponent.
 - **Next step:** the parser decides `teams` from the words ("X vs Y", "X play Y", "how many times did X play Y") with both teams named and no player.
 - **Source:** ours.
+- **GitHub:** #235
 
 ### The reading accepts a name no player has once the names come from the normalizer
 - **Found:** 2026-09-27, the step (b) audit agent, the baseline harness on the 3B normalizer's names.
@@ -3166,6 +3168,7 @@ those were found.
 - **User sees:** nothing today (the router's names resolve); once the normalizer feeds names (plan item 6, step c), a non-name in the slot becomes a subject.
 - **Next step:** the entity index classifies each span (player / team / alignment / none) before it becomes a subject; the typo policy (a single near spelling defaults visibly) covers "jolic".
 - **Source:** ours.
+- **GitHub:** #236
 
 
 ### player_splits has no reader over a settled narrowing, and single_game_high's orchestration is restated in compose.present
