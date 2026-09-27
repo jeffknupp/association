@@ -4634,3 +4634,10 @@ those were found.
 - **Source:** ours; DATA.md "Coverage floors" for why the players are absent.
 - **GitHub:** #245
 
+### The Scope's door takes any text as a `date`, and its readers re-check it two different ways
+- **Found:** 2026-09-27, plan item 6 step (d), moving the compiler onto the typed `Scope`.
+- **Evidence:** `reading._CHECKS` types `date` with `_text`, so `Scope.from_slots({"date": "last night"})` is accepted although the field's comment says `YYYY-MM-DD`. Each reader then re-checks it: the compiler by length (`compose.core._iso_date`, and inline in `compose.team._team_games_narrowed`: `len(date) == 10`), the templates by `templates.common._ISO_DATE` (`^\d{4}-\d{2}-\d{2}$`, seven call sites in games, players and shots). A 10-character non-date splits them: measured, `_iso_date(Scope(date="last night"))` returns `"last night"`, `_ISO_DATE.match` returns None, and the relation's `eastern_day_utc_range("last night")` raises `ValueError: Invalid isoformat string` - which `compose.answer` does not catch, so the question would crash rather than fall through. `core._iso_date`'s docstring claims "the same check every reader of this slot makes"; it is not.
+- **User sees:** nothing today: `router._validate_date` writes only a calendar day read from the question (or drops the slot), on both readers, and none of the 213 golden or 86 offline-rehearsal inputs that reached `compose.answer` carries a `date` at all.
+- **Next step:** check `date` at the door (`_CHECKS["date"]` against `_ISO_DATE`, in `reading.py`), so a non-date is refused where the Reading is built; then the readers' re-checks - the compiler's two length tests and the templates' seven regex matches - can go.
+- **Source:** ours.
+

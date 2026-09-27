@@ -37,6 +37,7 @@ import duckdb
 from association.nba.season import eastern_date
 from association.query.conditions import _PLAYER_GAME_TABLES
 from association.query.player_games import REBUILT_STATS
+from association.query.reading import Scope
 from association.query.templates.common import (
     HISTORY_COLUMNS,
     STAT_LABELS,
@@ -46,7 +47,6 @@ from association.query.templates.common import (
     _condition_scope,
     _optional_team,
     _player_relation_season_type,
-    _slot_season,
     _Span,
     check_scope,
 )
@@ -72,23 +72,24 @@ from association.query.templates.players import (
 )
 from association.query.templates.splits import _record_when_answer, _record_when_query
 
-from .adapt import DEFAULT_GAME_LOG_LIMIT, _clamp, to_query
+from .adapt import DEFAULT_GAME_LOG_LIMIT, _clamp, _to_reading_scope
 from .core import LINE, Query, Unsupported, compile_query, run
 from .move import _stat_measure
 
-#: A presenter: the connection, the intent's slots and the compiled point, to
-#: the template's own answer - or ``None`` where the point is not the intent's own.
-Presenter = Callable[[duckdb.DuckDBPyConnection, dict[str, Any], Query], TemplateResult | None]
+#: A presenter: the connection and the compiled point (its scope the intent's
+#: slots, typed), to the template's own answer - or ``None`` where the point
+#: is not the intent's own. The templates' own helpers below still take the
+#: slot dict, handed ``q.scope.to_slots()`` until they read the Scope.
+Presenter = Callable[[duckdb.DuckDBPyConnection, Query], TemplateResult | None]
 
 
-def _stat_column(slots: dict[str, Any]) -> str | None:
+def _stat_column(scope: Scope) -> str | None:
     """The router's ``stat`` as the box-score column the count and single-game
     templates whitelist (:data:`~association.query.templates.common.THRESHOLD_STAT_COLUMNS`)."""
-    stat = slots.get("stat")
-    return THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
+    return THRESHOLD_STAT_COLUMNS.get(scope.stat) if scope.stat is not None else None
 
 
-def _present_game_log(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], q: Query) -> TemplateResult | None:
+def _present_game_log(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
     """``game_log``'s own listing, over the compiler's settled player, span
     and narrowing: its columns (``_log_extras``), its rebuilt-line rule, its
     heading, table, averages and notes (``templates.games._player_game_log``).
@@ -100,21 +101,22 @@ def _present_game_log(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], q: 
     words moved in are the compiler's own point, answered by its own sentence."""
     if q.skeleton != "rows" or q.order != "date" or q.subject != "player" or q.predicates or q.group != "none":
         return None
+    scope = q.scope
     try:
-        extras = _log_extras(slots.get("stat"))
-        _game_log_lines(slots.get("below"), slots.get("above"), slots.get("threshold"))
+        extras = _log_extras(scope.stat)
+        _game_log_lines(scope.below, scope.above, scope.threshold)
     except TemplateUnsupported:
         return None
     # The router's own stat, which the log shows as its extra columns; a
     # measure the question's words moved in instead is the compiler's point.
-    if [m for m in q.measures if m not in LINE] not in ([], [_stat_measure(slots.get("stat"))]):
+    if [m for m in q.measures if m not in LINE] not in ([], [_stat_measure(scope.stat)]):
         return None
     compiled = compile_query(con, q)
     if compiled.player is None:
         return None
-    limit = _clamp(slots.get("limit"), DEFAULT_GAME_LOG_LIMIT)
-    asked = slots["limit"] if isinstance(slots.get("limit"), int) and slots["limit"] >= 1 else None
-    if slots.get("season_type_unstated") and not compiled.narrowed.date and not slots.get("span") and not slots.get("game_n"):
+    limit = _clamp(scope.limit, DEFAULT_GAME_LOG_LIMIT)
+    asked = scope.limit if scope.limit is not None and scope.limit >= 1 else None
+    if scope.season_type_unstated and not compiled.narrowed.date and not scope.span and not scope.game_n:
         # "His last N games" naming no season type: the template reads each
         # type on its own and merges them by date, saying how many of each
         # it kept (``_player_game_log_mixed``) - over the season the
@@ -125,9 +127,9 @@ def _present_game_log(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], q: 
             con,
             compiled.player,
             compiled.span.season,
-            slots,
+            scope.to_slots(),
             opponent=compiled.narrowed.opponent,
-            measures=_game_log_lines(slots.get("below"), slots.get("above"), slots.get("threshold")),
+            measures=_game_log_lines(scope.below, scope.above, scope.threshold),
             extras=extras,
             limit=limit,
             asked=asked,
@@ -135,36 +137,38 @@ def _present_game_log(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], q: 
     return _player_game_log(con, compiled.player, compiled.span, compiled.narrowed, extras, limit=limit, asked=asked, ascending=q.direction == "asc")
 
 
-def _present_record_when(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], q: Query) -> TemplateResult | None:
+def _present_record_when(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
     """``record_when``'s own table - his team's record in the games he
     reached the line, the games he fell short, and all of them, with the
     margin, the teams' names and the unseen-games note - read by the
     template's own ``_record_when_query``/``_record_when_answer`` over the
     compiler's settled player and his games (the line itself taken off, since
     the table groups by it rather than keeping only one side)."""
-    column = _stat_column(slots)
-    threshold = slots.get("threshold")
-    if column is None or not isinstance(threshold, int) or isinstance(threshold, bool) or threshold < 1:
+    scope = q.scope
+    stat = scope.stat
+    column = _stat_column(scope)
+    threshold = scope.threshold
+    if stat is None or column is None or threshold is None or threshold < 1:
         return None
     if q.skeleton != "scalar" or q.aggregate != "record" or q.subject != "player" or q.predicates != [(column, ">=", threshold)] or [m for m in q.measures if m != column]:
         return None
     # The template's own scope - it names the span in the heading, the floor
     # note and the unseen-games count - read off the same slots the same way.
-    scope = _condition_scope(slots.get("season"), "career" if slots.get("season_n") else slots.get("span"), slots.get("season_type"), _PLAYER_GAME_TABLES, since=slots.get("since"))
+    covered = _condition_scope(scope.season, "career" if scope.season_n else scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
     compiled = compile_query(con, replace(q, predicates=[], measures=[]))
     if compiled.player is None:
         return None
-    team = _optional_team(con, slots.get("team"), season=_slot_season(slots))
+    team = _optional_team(con, scope.team, season=scope.season)
     if isinstance(team, TemplateResult):
         return team
-    found = _record_when_query(con, scope, compiled.player, team, column, threshold, compiled.narrowed)
+    found = _record_when_query(con, covered, compiled.player, team, column, threshold, compiled.narrowed)
     if isinstance(found, TemplateResult):
         return found
     rows, names, base, params = found
-    return _record_when_answer(con, scope, compiled.player, slots["stat"], threshold, rows, names, base, params, compiled.narrowed, slots)
+    return _record_when_answer(con, covered, compiled.player, stat, threshold, rows, names, base, params, compiled.narrowed, scope.to_slots())
 
 
-def _present_player_stat(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], q: Query) -> TemplateResult | None:
+def _present_player_stat(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
     """``player_stat``'s own narrowed average (``templates.players._box_score_player_stat``)
     over the compiler's settled player, span and narrowing. An advanced rate
     reads its own table and is left to the compiler's sentence. An
@@ -172,13 +176,13 @@ def _present_player_stat(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], 
     if q.skeleton != "scalar" or q.aggregate != "per_game" or q.subject != "player" or q.predicates:
         return None
     if q.source == "seasons":
-        return _present_player_stat_season_line(con, slots, q)
-    stat = slots.get("stat")
-    if isinstance(stat, str) and stat in ADVANCED_STATS:
+        return _present_player_stat_season_line(con, q)
+    stat = q.scope.stat
+    if stat is not None and stat in ADVANCED_STATS:
         return None
-    shooting = SHOOTING_STATS.get(stat) if isinstance(stat, str) else None
+    shooting = SHOOTING_STATS.get(stat) if stat is not None else None
     try:
-        wanted = [] if shooting else _wanted_stats(slots)
+        wanted = [] if shooting else _wanted_stats(q.scope.to_slots())
     except TemplateUnsupported:
         return None
     if not shooting and sorted(q.measures) != sorted(wanted):
@@ -189,7 +193,7 @@ def _present_player_stat(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], 
     return _box_score_player_stat(con, compiled.player, compiled.span, compiled.narrowed, wanted, shooting)
 
 
-def _present_player_stat_season_line(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], q: Query) -> TemplateResult | None:
+def _present_player_stat_season_line(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
     """``player_stat``'s unnarrowed line - a season or a career, read from
     the season line (``player_season_stats_deduped``) - over the player and
     span the template settles for it (``_player_stat_season_line_subject``)
@@ -199,9 +203,10 @@ def _present_player_stat_season_line(con: duckdb.DuckDBPyConnection, slots: dict
     Only where the question's own words left the router's stat alone (the
     adapter's own measures): a measure the words moved in is a point the
     season line does not say, and the compiler declines it as before."""
-    stat = slots.get("stat")
+    scope = q.scope
+    stat = scope.stat
     try:
-        own = to_query("player_stat", slots)
+        own = _to_reading_scope("player_stat", scope)
     except Unsupported:
         return None
     # The router's own stat, whichever way the point carries it: the
@@ -210,18 +215,18 @@ def _present_player_stat_season_line(con: duckdb.DuckDBPyConnection, slots: dict
     stat_measure = _stat_measure(stat)
     if own.source != "seasons" or (q.measures != own.measures and (stat_measure is None or q.measures != [stat_measure])):
         return None
-    if not (isinstance(stat, str) and (stat in ADVANCED_STATS or stat in SHOOTING_STATS)):
+    if not (stat is not None and (stat in ADVANCED_STATS or stat in SHOOTING_STATS)):
         try:
-            _wanted_stats(slots)
+            _wanted_stats(scope.to_slots())
         except TemplateUnsupported:
             return None
-    subject = _player_stat_season_line_subject(con, slots)
+    subject = _player_stat_season_line_subject(con, scope.to_slots())
     if isinstance(subject, TemplateResult):
         return subject
-    return _player_stat_season_line(con, *subject, slots)
+    return _player_stat_season_line(con, *subject, scope.to_slots())
 
 
-def _present_player_history(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], q: Query) -> TemplateResult | None:
+def _present_player_history(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
     """``player_history``'s own table - the stat season by season from the
     season line, newest first, the default four or the count asked for, and
     the career line under a career - over the player the template settles
@@ -232,42 +237,44 @@ def _present_player_history(con: duckdb.DuckDBPyConnection, slots: dict[str, Any
     a stat with no per-season column, a span the template refuses, or a
     measure the question's words moved in is the game-level reading's
     (``move.games_reading``), answered by the compiler's sentence."""
-    stat = slots.get("stat")
-    if q.source != "seasons" or q.group != "season" or not isinstance(stat, str) or stat not in HISTORY_COLUMNS:
+    scope = q.scope
+    stat = scope.stat
+    if q.source != "seasons" or q.group != "season" or stat is None or stat not in HISTORY_COLUMNS:
         return None
-    if slots.get("span") not in (None, "", "career"):
+    if scope.span not in (None, "career"):
         return None
     if _stat_measure(stat) not in (None, *q.measures[:1]):
         return None
-    player = _player_history_subject(con, slots)
+    player = _player_history_subject(con, scope.to_slots())
     if isinstance(player, TemplateResult):
         return player
-    return _player_history_read(con, player, slots)
+    return _player_history_read(con, player, scope.to_slots())
 
 
-def _count_season(slots: dict[str, Any], span: _Span) -> tuple[int | None, int, int | None]:
+def _count_season(scope: Scope, span: _Span) -> tuple[int | None, int, int | None]:
     """The season a count or a single-game high covers (``None`` for a
     career), the season type named in its sentence, and the ordinal that
     named the season, if one did - read off the compiler's settled span,
     since that is the span the rows were counted over."""
-    return span.season, _player_relation_season_type(slots), span.ordinal
+    return span.season, _player_relation_season_type(scope.to_slots()), span.ordinal
 
 
-def _present_single_game_high(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], q: Query) -> TemplateResult | None:
+def _present_single_game_high(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
     """``single_game_high``'s own sentence and ``data`` over the compiler's
     top games by the stat: the leader, the date and opponent, "Next: ..."
     for the league, and the template's span, empty-box-score, withheld-stat,
     rebuilt-line and defaulted-season notes, each from its own helper."""
-    column = _stat_column(slots)
-    if column is None or q.skeleton != "rows" or q.order != "measure" or q.direction != "desc" or q.predicates or q.position or not q.measures or q.measures[0] != column:
+    scope = q.scope
+    stat = scope.stat
+    column = _stat_column(scope)
+    if stat is None or column is None or q.skeleton != "rows" or q.order != "measure" or q.direction != "desc" or q.predicates or q.position or not q.measures or q.measures[0] != column:
         return None
     out = run(con, q)
     span: _Span = out["span"]
     player = out["entity"]
-    stat = slots["stat"]
-    season, season_type, _ = _count_season(slots, span)
+    season, season_type, _ = _count_season(scope, span)
     career = season is None
-    defaulted = not career and not (isinstance(slots.get("season"), int) and slots.get("season"))
+    defaulted = not career and not scope.season
     from_rebuilt = bool(out["rebuilt"])
     label = STAT_LABELS.get(stat, stat)
     name = player.name if player is not None else None
@@ -287,14 +294,14 @@ def _present_single_game_high(con: duckdb.DuckDBPyConnection, slots: dict[str, A
     return TemplateResult(data=_single_game_high_result_data(data, headline, redirect), answer=headline + redirect)
 
 
-def _threshold_count_is_own_point(slots: dict[str, Any], q: Query, column: str) -> bool:
+def _threshold_count_is_own_point(q: Query, column: str) -> bool:
     """Whether ``q`` counts exactly the games ``threshold_count`` counts: the
     router's own stat at its own threshold (or a below/above line carrying
     that threshold instead, which the template reads as the count), for one
     player or grouped by player over the league - nothing the question's
     words added."""
-    threshold = slots.get("threshold")
-    counted = [(column, ">=", threshold)] if isinstance(threshold, int) and not isinstance(threshold, bool) else []
+    threshold = q.scope.threshold
+    counted = [(column, ">=", threshold)] if threshold is not None else []
     if q.predicates not in (counted, []) or q.position:
         return False
     if q.subject == "player":
@@ -302,24 +309,25 @@ def _threshold_count_is_own_point(slots: dict[str, Any], q: Query, column: str) 
     return q.skeleton == "grouped" and q.aggregate == "count" and q.group == "player"
 
 
-def _present_threshold_count(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], q: Query) -> TemplateResult | None:
+def _present_threshold_count(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
     """``threshold_count``'s own sentence and ``data`` over the compiler's
     count - one player's, or the league's by player - with the template's
     span, empty-box-score, withheld-stat and rebuilt-line notes, each from
     its own helper."""
-    column = _stat_column(slots)
-    threshold = slots.get("threshold")
-    if column is None or not isinstance(threshold, int) or isinstance(threshold, bool) or threshold < 1 or not _threshold_count_is_own_point(slots, q, column):
+    scope = q.scope
+    stat = scope.stat
+    column = _stat_column(scope)
+    threshold = scope.threshold
+    if stat is None or column is None or threshold is None or threshold < 1 or not _threshold_count_is_own_point(q, column):
         return None
-    stat = slots["stat"]
     try:
-        _, _, scope_text = _threshold_count_lines(stat, threshold, slots.get("below"), slots.get("above"))
+        _, _, scope_text = _threshold_count_lines(stat, threshold, scope.below, scope.above)
     except TemplateUnsupported:
         return None
     out = run(con, q)
     span: _Span = out["span"]
     player = out["entity"]
-    season, season_type, ordinal = _count_season(slots, span)
+    season, season_type, ordinal = _count_season(scope, span)
     rows = _present_threshold_count_rows(q, out)
     player_name = player.name if player is not None else None
     game_span = _game_span(con, season, season_type, player, ordinal=ordinal)
@@ -368,10 +376,11 @@ template's words - see the module docstring.
 """
 
 
-def present(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], q: Query) -> TemplateResult | None:
+def present(con: duckdb.DuckDBPyConnection, intent: str, q: Query) -> TemplateResult | None:
     """``q`` answered as ``intent``'s template answers its own default point,
     or ``None`` where ``q`` is not that point (or the intent has no presenter)
-    and the compiler's own sentence should answer instead.
+    and the compiler's own sentence should answer instead. The intent's slots
+    are ``q``'s own scope.
 
     .. versionadded:: 4.5.0
     """
@@ -383,11 +392,11 @@ def present(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], 
         # slot it refuses (a league-wide ordinal season on single_game_high,
         # an opponent on threshold_count) is exactly a point that is NOT its
         # own, and the compiler's sentence says what was read.
-        check_scope(intent, slots)
+        check_scope(intent, q.scope.to_slots())
     except TemplateUnsupported:
         return None
     try:
-        return presenter(con, slots, q)
+        return presenter(con, q)
     except TemplateUnsupported as exc:
         # The relation refusing a slot while the point was settled - the
         # same outcome core.run gives the compiler's own sentence.

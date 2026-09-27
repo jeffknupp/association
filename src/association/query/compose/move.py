@@ -23,7 +23,7 @@ from association.query.metrics import PER_GAME_MIN_GAMES
 from association.query.reading import Aggregate, Reading, Scope
 from association.query.templates.common import DEFAULT_LIMIT, FILLER_PLAYER_WORDS, POSITIONS, TEAM_ONLY_INTENTS, TemplateResult
 
-from .adapt import DEFAULT_SINGLE_GAME_LIMIT, _clamp, _named_player, to_reading
+from .adapt import DEFAULT_SINGLE_GAME_LIMIT, _clamp, _named_player, _named_player_in, _to_reading_scope
 from .core import BOOLEAN_MEASURES, COLUMNS, DERIVED, LINE, Query, Refused, Unsupported
 from .plan import plan
 from .team import GAME_MEASURES, SEASON_MEASURES, TeamQuery
@@ -113,10 +113,10 @@ def _measure_words(question: str) -> list[str]:
     return found
 
 
-def _stat_measure(stat: Any) -> str | None:
+def _stat_measure(stat: str | None) -> str | None:
     """A router ``stat`` as a measure this package knows, through
     :data:`MEASURE_ALIASES` and then :data:`~association.query.measures.MEASURE_WORDS`."""
-    if not isinstance(stat, str) or not stat.strip():
+    if stat is None or not stat.strip():
         return None
     if stat in MEASURE_ALIASES:
         return MEASURE_ALIASES[stat]
@@ -266,9 +266,9 @@ def _asc_or_desc(question: str) -> Literal["asc", "desc"]:
 _EVER = re.compile(r"\bever\b|\ball[- ]time\b", re.I)
 
 
-def _everyone_career_slots(slots: dict[str, Any], question: str) -> dict[str, Any]:
+def _everyone_career_scope(scope: Scope, question: str) -> Scope:
     """ "Ever"/"all-time" in the question is a career span for a league-wide
-    read, the way :func:`_career_slots` gives a named player's own unscoped
+    read, the way :func:`_career_scope` gives a named player's own unscoped
     count his whole career - stated because a league-wide read with no
     season named otherwise defaults to the CURRENT season
     (:func:`~association.query.compose.core._resolve_everyone`), not "every
@@ -276,9 +276,9 @@ def _everyone_career_slots(slots: dict[str, Any], question: str) -> dict[str, An
 
     .. versionadded:: 4.4.0
     """
-    if _EVER.search(question) and not isinstance(slots.get("season"), int):
-        return {**slots, "span": "career"}
-    return slots
+    if _EVER.search(question) and scope.season is None:
+        return replace(scope, span="career")
+    return scope
 
 
 _AT_LEAST = re.compile(r"\bat least\s+(\d+)\s+([a-z]+)", re.I)
@@ -312,21 +312,20 @@ def _everyone_guard(intent: str, question: str, position: str | None) -> None:
         raise Unsupported("a team's own question is not the player relation's")
 
 
-def _everyone_opponent(slots: dict[str, Any], question: str) -> dict[str, Any]:
+def _everyone_opponent(scope: Scope, question: str) -> Scope:
     """A team beside no player, with "vs"/"against", is the opponent."""
-    slots = dict(slots)
-    if isinstance(slots.get("team"), str) and slots["team"].strip() and not slots.get("opponent") and _VS.search(question):
-        slots["opponent"], slots["team"] = slots["team"], None
-    return slots
+    if scope.team is not None and scope.team.strip() and not scope.opponent and _VS.search(question):
+        return replace(scope, opponent=scope.team, team=None)
+    return scope
 
 
-def _everyone_threshold_predicates(slots: dict[str, Any], question: str, measure: str | None, predicates: list[tuple[str, str, Any]]) -> list[tuple[str, str, Any]]:
+def _everyone_threshold_predicates(scope: Scope, question: str, measure: str | None, predicates: list[tuple[str, str, Any]]) -> list[tuple[str, str, Any]]:
     """The number's own words in the question name its column ("a 30 point
     triple double game" is points >= 30, whatever stat the router filed
     beside the threshold); the router's stat is read only when the question
     carries no such phrase."""
-    threshold = slots.get("threshold")
-    if not (isinstance(threshold, int) and not isinstance(threshold, bool) and threshold > 0):
+    threshold = scope.threshold
+    if threshold is None or threshold <= 0:
         return predicates
     phrase = re.search(rf"\b{threshold}\s*\+?\s*[-]?\s*([a-z][a-z ]{{0,24}}?)\b(?=\s|$)", question, re.I)
     column = None
@@ -337,14 +336,14 @@ def _everyone_threshold_predicates(slots: dict[str, Any], question: str, measure
             if candidate in MEASURE_WORDS:
                 column = MEASURE_WORDS[candidate]
                 break
-    if column is None and slots.get("stat"):
-        column = _stat_measure(slots["stat"])
+    if column is None and scope.stat:
+        column = _stat_measure(scope.stat)
     if column and column != measure:
         return [*predicates, (column, ">=", threshold)]
     return predicates
 
 
-def _everyone_single_game(intent: str, slots: dict[str, Any], question: str, measure: str | None, predicates: list[tuple[str, str, Any]], position: str | None) -> Reading | None:
+def _everyone_single_game(intent: str, scope: Scope, question: str, measure: str | None, predicates: list[tuple[str, str, Any]], position: str | None) -> Reading | None:
     """ "Most ... in a game" over everyone: rows by measure, league-wide.
 
     .. versionchanged:: 4.5.0
@@ -358,7 +357,7 @@ def _everyone_single_game(intent: str, slots: dict[str, Any], question: str, mea
     if not ((_TOP_IN_A_GAME.search(question) or intent == "single_game_high") and measure):
         return None
     return Reading(
-        scope=Scope.from_slots(slots),
+        scope=scope,
         shape="rows",
         measures=[measure, *(m for m in LINE if m != measure)],
         aggregate="none",
@@ -366,7 +365,7 @@ def _everyone_single_game(intent: str, slots: dict[str, Any], question: str, mea
         predicates=predicates,
         order="measure",
         direction=_asc_or_desc(question),
-        limit=_clamp(slots.get("limit"), DEFAULT_SINGLE_GAME_LIMIT),
+        limit=_clamp(scope.limit, DEFAULT_SINGLE_GAME_LIMIT),
         relation="everyone",
         position=position,
     )
@@ -398,7 +397,7 @@ def _boolean_game_measure(question: str) -> str:
     return "points"
 
 
-def _everyone_boolean_game_ranking(question: str, slots: dict[str, Any], predicates: list[tuple[str, str, Any]], position: str | None) -> Reading | None:
+def _everyone_boolean_game_ranking(question: str, scope: Scope, predicates: list[tuple[str, str, Any]], position: str | None) -> Reading | None:
     """ "players with the highest scoring triple doubles", "biggest triple
     double", "most rebounds in a double double" (#199, F124): a RANKING OF
     THE GAMES that satisfy a boolean measure (:data:`BOOLEAN_MEASURES`) by
@@ -417,7 +416,7 @@ def _everyone_boolean_game_ranking(question: str, slots: dict[str, Any], predica
         return None
     measure = _boolean_game_measure(question)
     return Reading(
-        scope=Scope.from_slots(slots),
+        scope=scope,
         shape="rows",
         measures=[measure, *(m for m in LINE if m != measure)],
         aggregate="none",
@@ -425,7 +424,7 @@ def _everyone_boolean_game_ranking(question: str, slots: dict[str, Any], predica
         predicates=predicates,
         order="measure",
         direction=_asc_or_desc(question),
-        limit=_clamp(slots.get("limit"), DEFAULT_SINGLE_GAME_LIMIT),
+        limit=_clamp(scope.limit, DEFAULT_SINGLE_GAME_LIMIT),
         relation="everyone",
         position=position,
     )
@@ -465,7 +464,7 @@ def _numbered_stat_lines(question: str) -> list[tuple[str, str, Any]]:
     return predicates
 
 
-def _everyone_multi_line_games(intent: str, slots: dict[str, Any], question: str, predicates: list[tuple[str, str, Any]], position: str | None) -> Reading | None:
+def _everyone_multi_line_games(intent: str, scope: Scope, question: str, predicates: list[tuple[str, str, Any]], position: str | None) -> Reading | None:
     """Several "<N> <stat>" lines named in one question at once (F161) are
     all conditions on the SAME game, so the answer is which GAMES cleared
     every line and who had them - rows over everyone, the predicates
@@ -491,7 +490,7 @@ def _everyone_multi_line_games(intent: str, slots: dict[str, Any], question: str
     if len(lines) < 2:
         return None
     return Reading(
-        scope=Scope.from_slots(slots),
+        scope=scope,
         shape="rows",
         measures=[name for name, _, _ in lines],
         aggregate="none",
@@ -499,13 +498,13 @@ def _everyone_multi_line_games(intent: str, slots: dict[str, Any], question: str
         predicates=lines,
         order="date",
         direction="desc",
-        limit=_clamp(slots.get("limit"), 25),
+        limit=_clamp(scope.limit, 25),
         relation="everyone",
         position=position,
     )
 
 
-def _everyone_threshold_count_line(slots: dict[str, Any]) -> list[tuple[str, str, Any]]:
+def _everyone_threshold_count_line(scope: Scope) -> list[tuple[str, str, Any]]:
     """The router's own ``stat`` at its own ``threshold``, as the one line a
     league-wide count counts - where :func:`_everyone_threshold_predicates`
     added nothing because the line is on the very measure it would rank by.
@@ -514,24 +513,24 @@ def _everyone_threshold_count_line(slots: dict[str, Any]) -> list[tuple[str, str
 
     .. versionadded:: 4.5.0
     """
-    column = _stat_measure(slots.get("stat"))
-    threshold = slots.get("threshold")
-    if column is None or column in BOOLEAN_MEASURES or not isinstance(threshold, int) or isinstance(threshold, bool) or threshold < 1:
+    column = _stat_measure(scope.stat)
+    threshold = scope.threshold
+    if column is None or column in BOOLEAN_MEASURES or threshold is None or threshold < 1:
         return []
     return [(column, ">=", threshold)]
 
 
-def _everyone_threshold_count(intent: str, slots: dict[str, Any], predicates: list[tuple[str, str, Any]], position: str | None) -> Reading | None:
+def _everyone_threshold_count(intent: str, scope: Scope, predicates: list[tuple[str, str, Any]], position: str | None) -> Reading | None:
     """A league-wide count: who had games clearing the line(s). Without a
     line to count there is nothing to rank - refused, never turned into a
     per-game ranking."""
-    if intent != "threshold_count" and not (predicates and slots.get("team")):
+    if intent != "threshold_count" and not (predicates and scope.team):
         # A TEAM's players' boolean games ("thunder all-time triple doubles",
         # yardstick-v2 F152) is this count too, whatever intent the router
         # filed - the team narrows the league read to its roster's games.
         return None
     if not predicates and intent == "threshold_count":
-        predicates = _everyone_threshold_count_line(slots)
+        predicates = _everyone_threshold_count_line(scope)
     if not predicates:
         raise Unsupported("a league-wide count needs the line(s) it counts; none could be read from the question")
     # threshold_count's own leaderboard length (DEFAULT_LIMIT, five names)
@@ -539,7 +538,7 @@ def _everyone_threshold_count(intent: str, slots: dict[str, Any], predicates: li
     # (F152), which also states the whole count beneath the ones listed.
     listed = DEFAULT_LIMIT if intent == "threshold_count" else 10
     return Reading(
-        scope=Scope.from_slots(slots),
+        scope=scope,
         shape="grouped",
         measures=[],
         aggregate="count",
@@ -547,13 +546,13 @@ def _everyone_threshold_count(intent: str, slots: dict[str, Any], predicates: li
         predicates=predicates,
         order="measure",
         direction="desc",
-        limit=_clamp(slots.get("limit"), listed),
+        limit=_clamp(scope.limit, listed),
         relation="everyone",
         position=position,
     )
 
 
-def _everyone_ranking(intent: str, slots: dict[str, Any], question: str, measure: str | None, predicates: list[tuple[str, str, Any]], position: str | None) -> Reading | None:
+def _everyone_ranking(intent: str, scope: Scope, question: str, measure: str | None, predicates: list[tuple[str, str, Any]], position: str | None) -> Reading | None:
     """A ranking word, or a leaderboard/single-game-high intent: grouped by
     player. A "with at least N games" phrase in the question replaces the
     default minimum sample (:data:`~association.query.metrics.PER_GAME_MIN_GAMES`)
@@ -581,8 +580,8 @@ def _everyone_ranking(intent: str, slots: dict[str, Any], question: str, measure
     if not (_RANKING.search(question) or intent in ("leaderboard", "single_game_high")):
         return None
     if measure is None:
-        stat = slots.get("stat")
-        if isinstance(stat, str) and stat.strip():
+        stat = scope.stat
+        if stat is not None and stat.strip():
             message = f"No ranking reads {stat!r} on the player-games relation - it only ranks the box-score measures it knows, not a NetPoints or other outside figure."
             raise Refused(TemplateResult(data={"message": message, "stat": stat}, answer=message))
     aggregate: Aggregate = "total" if _TOTAL.search(question) else "per_game"
@@ -599,7 +598,7 @@ def _everyone_ranking(intent: str, slots: dict[str, Any], question: str, measure
             raise Refused(TemplateResult(data={"message": message, "floor": {"unit": unit, "count": count}}, answer=message))
         minimum_games = count
     return Reading(
-        scope=Scope.from_slots(slots),
+        scope=scope,
         shape="grouped",
         measures=[measure or "points"],
         aggregate=aggregate,
@@ -607,19 +606,19 @@ def _everyone_ranking(intent: str, slots: dict[str, Any], question: str, measure
         predicates=predicates,
         order="measure",
         direction=_asc_or_desc(question),
-        limit=_clamp(slots.get("limit"), 10),
+        limit=_clamp(scope.limit, 10),
         minimum_games=minimum_games,
         relation="everyone",
         position=position,
     )
 
 
-def _everyone_position_log(slots: dict[str, Any], question: str, position: str | None) -> Reading | None:
+def _everyone_position_log(scope: Scope, question: str, position: str | None) -> Reading | None:
     """A log word with a position: rows, over that position group."""
     if not (position and _LOG.search(question)):
         return None
     return Reading(
-        scope=Scope.from_slots(slots),
+        scope=scope,
         shape="rows",
         measures=list(LINE),
         aggregate="none",
@@ -627,13 +626,13 @@ def _everyone_position_log(slots: dict[str, Any], question: str, position: str |
         predicates=[],
         order="date",
         direction="desc",
-        limit=_clamp(slots.get("limit"), 10),
+        limit=_clamp(scope.limit, 10),
         relation="everyone",
         position=position,
     )
 
 
-def _everyone_point(intent: str, slots: dict[str, Any], question: str, measure: str | None, position: str | None = None) -> Reading:
+def _everyone_point(intent: str, scope: Scope, question: str, measure: str | None, position: str | None = None) -> Reading:
     """No player named: the league-wide read of the same relation. A ranking
     word makes it grouped by player; a log word with a position makes it
     rows; "most ... in a game" is rows by measure over everyone; a
@@ -643,60 +642,59 @@ def _everyone_point(intent: str, slots: dict[str, Any], question: str, measure: 
 
     .. versionchanged:: 4.4.0
        "Ever"/"all-time" moves the default current-season span to a career
-       one (:func:`_everyone_career_slots`), and tries
+       one (:func:`_everyone_career_scope`), and tries
        :func:`_everyone_boolean_game_ranking` (#199) and
        :func:`_everyone_multi_line_games` (F161) before the per-player count
        and ranking moves, since both are more specific readings of a
        ``threshold_count``/ranking question than either of those.
     """
     _everyone_guard(intent, question, position)
-    slots = _everyone_opponent(slots, question)
-    slots = _everyone_career_slots(slots, question)
+    scope = _everyone_opponent(scope, question)
+    scope = _everyone_career_scope(scope, question)
     words = _measure_words(question)
     measure, predicates = _measure_and_predicates(words, measure if measure not in BOOLEAN_MEASURES else None)
-    predicates = _everyone_threshold_predicates(slots, question, measure, predicates)
-    single = _everyone_single_game(intent, slots, question, measure, predicates, position)
+    predicates = _everyone_threshold_predicates(scope, question, measure, predicates)
+    single = _everyone_single_game(intent, scope, question, measure, predicates, position)
     if single is not None:
         return single
-    boolean_ranked = _everyone_boolean_game_ranking(question, slots, predicates, position)
+    boolean_ranked = _everyone_boolean_game_ranking(question, scope, predicates, position)
     if boolean_ranked is not None:
         return boolean_ranked
-    multi_line = _everyone_multi_line_games(intent, slots, question, predicates, position)
+    multi_line = _everyone_multi_line_games(intent, scope, question, predicates, position)
     if multi_line is not None:
         return multi_line
-    counted = _everyone_threshold_count(intent, slots, predicates, position)
+    counted = _everyone_threshold_count(intent, scope, predicates, position)
     if counted is not None:
         return counted
-    ranked = _everyone_ranking(intent, slots, question, measure, predicates, position)
+    ranked = _everyone_ranking(intent, scope, question, measure, predicates, position)
     if ranked is not None:
         return ranked
-    logged = _everyone_position_log(slots, question, position)
+    logged = _everyone_position_log(scope, question, position)
     if logged is not None:
         return logged
     raise Unsupported("no player subject and no ranking or position-group reading of the question")
 
 
-def _measure_for_named(slots: dict[str, Any], question: str) -> str | None:
+def _measure_for_named(scope: Scope, question: str) -> str | None:
     """The measure a named-player question moves to: the question's own word first, the router's stat otherwise."""
     words = _measure_words(question)
-    stat = _stat_measure(slots.get("stat"))
+    stat = _stat_measure(scope.stat)
     return words[0] if words else stat
 
 
-def _career_slots(slots: dict[str, Any]) -> dict[str, Any]:
+def _career_scope(scope: Scope) -> Scope:
     """``route()``'s own rule for a count by a player (``_HOW_MANY_OR_OFTEN``, step 2
     B5): with no season named, "how many ... has he" is his career."""
-    unscoped = not isinstance(slots.get("season"), int) and not slots.get("span") and not slots.get("since")
-    return {**slots, "span": "career"} if unscoped else slots
+    unscoped = scope.season is None and not scope.span and not scope.since
+    return replace(scope, span="career") if unscoped else scope
 
 
-def _move_single_game(slots: dict[str, Any], question: str, measure: str | None) -> Reading | None:
+def _move_single_game(scope: Scope, question: str, measure: str | None) -> Reading | None:
     """ "Most ... in a game" for a named player: rows by measure."""
     if not (_TOP_IN_A_GAME.search(question) and measure and measure not in BOOLEAN_MEASURES):
         return None
-    limit = slots.get("limit") if slots.get("limit", 0) > 0 else None
     return Reading(
-        scope=Scope.from_slots(slots),
+        scope=scope,
         shape="rows",
         measures=[measure, *(m for m in LINE if m != measure)],
         aggregate="none",
@@ -704,18 +702,18 @@ def _move_single_game(slots: dict[str, Any], question: str, measure: str | None)
         predicates=[],
         order="measure",
         direction="desc",
-        limit=_clamp(limit, DEFAULT_SINGLE_GAME_LIMIT),
+        limit=_clamp(scope.limit, DEFAULT_SINGLE_GAME_LIMIT),
     )
 
 
-def _move_how_many_won(slots: dict[str, Any], question: str, measure: str | None, intent: str, career: dict[str, Any]) -> Reading | None:
+def _move_how_many_won(scope: Scope, question: str, measure: str | None, intent: str, career: Scope) -> Reading | None:
     """ "How many ... has he won" - a count with the ``won`` predicate."""
     if not (_HOW_MANY_OR_OFTEN.search(question) and _WON.search(question) and (measure in (None, "won", "points") or intent in ("record_when", "threshold_count"))):
         return None
-    return Reading(scope=Scope.from_slots(career), shape="scalar", measures=[], aggregate="count", group="none", predicates=[("won", "=", True)])
+    return Reading(scope=career, shape="scalar", measures=[], aggregate="count", group="none", predicates=[("won", "=", True)])
 
 
-def _move_boolean_count(question: str, measure: str | None, intent: str, career: dict[str, Any]) -> Reading | None:
+def _move_boolean_count(question: str, measure: str | None, intent: str, career: Scope) -> Reading | None:
     """A boolean measure ("triple-doubles") asked "how many": a count with that predicate.
 
     Also the reading for a boolean measure on a one-figure intent with no
@@ -731,21 +729,21 @@ def _move_boolean_count(question: str, measure: str | None, intent: str, career:
         # very line ``fouled_out`` is defined as (DERIVED) - so the router's
         # own count is this one, and threshold_count's default point says it.
         return None
-    return Reading(scope=Scope.from_slots(career), shape="scalar", measures=[], aggregate="count", group="none", predicates=[(measure, "=", True)])
+    return Reading(scope=career, shape="scalar", measures=[], aggregate="count", group="none", predicates=[(measure, "=", True)])
 
 
-def _move_boolean_count_is_line(measure: str, slots: dict[str, Any]) -> bool:
+def _move_boolean_count_is_line(measure: str, scope: Scope) -> bool:
     """Whether a boolean measure is, by its one definition in
     :data:`~association.query.compose.core.DERIVED`, exactly the router's own
     ``stat``/``threshold`` line (``fouled_out`` is ``fouls >= 6``)."""
-    column = _stat_measure(slots.get("stat"))
-    threshold = slots.get("threshold")
-    if column is None or not isinstance(threshold, int) or isinstance(threshold, bool):
+    column = _stat_measure(scope.stat)
+    threshold = scope.threshold
+    if column is None or threshold is None:
         return False
     return DERIVED.get(measure, "").strip("()") == f"pgl.{column} >= {threshold}"
 
 
-def _move_player_history(intent: str, slots: dict[str, Any], career: dict[str, Any], measure: str | None) -> Reading | None:
+def _move_player_history(intent: str, scope: Scope, career: Scope, measure: str | None) -> Reading | None:
     """``player_history``: a per-season history, read from the season line
     (``source="seasons"``) over the question's own slots - the template's own
     read. Where the season line does not say it, :func:`games_reading` turns
@@ -754,7 +752,7 @@ def _move_player_history(intent: str, slots: dict[str, Any], career: dict[str, A
         return None
     del career  # the season line reads the question's own span; games_reading widens it
     return Reading(
-        scope=Scope.from_slots(slots),
+        scope=scope,
         shape="grouped",
         measures=[measure or "points"],
         aggregate="per_game",
@@ -762,7 +760,7 @@ def _move_player_history(intent: str, slots: dict[str, Any], career: dict[str, A
         predicates=[],
         order="date",
         direction="desc",
-        limit=_clamp(slots.get("limit"), 10),
+        limit=_clamp(scope.limit, 10),
         source="seasons",
     )
 
@@ -781,39 +779,39 @@ def games_reading(q: Query) -> Query:
     if q.source != "seasons":
         return q
     if q.group == "season":
-        return replace(q, slots=_career_slots(q.slots), source="games")
+        return replace(q, scope=_career_scope(q.scope), source="games")
     raise Unsupported("an unnarrowed player line the season line's reader did not say")
 
 
-def _move_default(intent: str, slots: dict[str, Any], measure: str | None) -> Reading:
+def _move_default(intent: str, scope: Scope, measure: str | None) -> Reading:
     """The intent's default point, with the measure the question named added on."""
-    base = to_reading(intent, slots)
+    base = _to_reading_scope(intent, scope)
     if measure and measure not in base.measures:
         return replace(base, measures=[measure, *base.measures] if base.shape == "rows" else [measure])
     return base
 
 
-def _move_named(intent: str, slots: dict[str, Any], question: str) -> Reading:
+def _move_named(intent: str, scope: Scope, question: str) -> Reading:
     """The moves that apply once a player is named, tried in order - a
     single-game high, a career win count, a career boolean count, a
     per-season history, and finally the intent's own default point."""
     if _PERIOD.search(question):
         raise Unsupported("a quarter or half is the period relation's question")
-    measure = _measure_for_named(slots, question)
-    single = _move_single_game(slots, question, measure)
+    measure = _measure_for_named(scope, question)
+    single = _move_single_game(scope, question, measure)
     if single is not None:
         return single
-    career = _career_slots(slots)
-    how_many_won = _move_how_many_won(slots, question, measure, intent, career)
+    career = _career_scope(scope)
+    how_many_won = _move_how_many_won(scope, question, measure, intent, career)
     if how_many_won is not None:
         return how_many_won
     boolean_count = _move_boolean_count(question, measure, intent, career)
     if boolean_count is not None:
         return boolean_count
-    history = _move_player_history(intent, slots, career, measure)
+    history = _move_player_history(intent, scope, career, measure)
     if history is not None:
         return history
-    return _move_default(intent, slots, measure)
+    return _move_default(intent, scope, measure)
 
 
 #: A word in the question naming a team's own measure directly - the team
@@ -843,7 +841,7 @@ or :data:`~association.query.compose.team.SEASON_MEASURES` directly.
 _TEAM_NOT_SUBJECT = re.compile(r"\bwho\b|\bwhich player\b|\bwhich\b.{0,15}\bplayer\b", re.I)
 
 
-def _team_measure(slots: dict[str, Any], question: str) -> str | None:
+def _team_measure(scope: Scope, question: str) -> str | None:
     """The team measure a question names - the question's own word first
     (the same priority :func:`_measure_for_named` gives a player's), the
     router's ``stat`` slot otherwise, when it is a column
@@ -856,8 +854,8 @@ def _team_measure(slots: dict[str, Any], question: str) -> str | None:
     for pattern, name in _TEAM_WORD_MEASURES:
         if re.search(pattern, ql):
             return name
-    stat = slots.get("stat")
-    if isinstance(stat, str) and (stat in GAME_MEASURES or stat in SEASON_MEASURES):
+    stat = scope.stat
+    if stat is not None and (stat in GAME_MEASURES or stat in SEASON_MEASURES):
         return stat
     return None
 
@@ -896,10 +894,11 @@ def team_read_point(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], quest
         if subject.kind not in ("team", "team_players") or not subject.teams:
             return None
         slots = {**slots, "team": subject.teams[0]}
-    measure = _team_measure(slots, question)
+    scope = Scope.from_slots(slots)
+    measure = _team_measure(scope, question)
     if measure is None:
         return None
-    return Reading(scope=Scope.from_slots(slots), shape="scalar", measures=[measure], aggregate="total", relation="team")
+    return Reading(scope=scope, shape="scalar", measures=[measure], aggregate="total", relation="team")
 
 
 def team_move_point(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], question: str, subject: Subject | None = None) -> TeamQuery | None:
@@ -983,10 +982,12 @@ def _read_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, An
         team_reading = team_read_point(con, slots, question, subject)
         if team_reading is not None:
             return team_reading
-    slots = repair(con, slots, question, subject)
-    if not _named_player(slots):
-        return _everyone_point(intent, slots, question, _stat_measure(slots.get("stat")), subject.position)
-    return _move_named(intent, slots, question)
+    # The repairs above and repair() edit the router's slot dict; the moves
+    # below read the scope those edits settle, through its one door.
+    scope = Scope.from_slots(repair(con, slots, question, subject))
+    if not _named_player_in(scope):
+        return _everyone_point(intent, scope, question, _stat_measure(scope.stat), subject.position)
+    return _move_named(intent, scope, question)
 
 
 def move_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None) -> Query | TeamQuery:

@@ -53,13 +53,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any
 
 import duckdb
 
 from association.nba.coverage import unavailable
 from association.nba.season import current_season
 from association.query.entities import _TEAM_NICKNAMES, Entity
+from association.query.reading import Scope
 from association.query.team_games import TeamNarrowed
 from association.query.team_games import aggregate_sql as team_aggregate_sql
 from association.query.templates.common import TemplateResult, TemplateUnsupported, _resolved_team, _Span, scoped_team
@@ -146,23 +146,23 @@ SEASON_MEASURES: dict[str, str] = {
 .. versionadded:: 4.4.0
 """
 
-#: The slots that narrow the games a team question reads - anything here
-#: sends the read to the game-level relation rather than the season line.
-_NARROWING_KEYS: tuple[str, ...] = ("opponent", "venue", "date", "since", "until", "game_n", "situation")
 
-
-@dataclass
+@dataclass(kw_only=True)
 class TeamQuery:
     """A point over the team-games relation, for a team as the subject - the
     team counterpart of :class:`~association.query.compose.core.Query`, kept
     as its own dataclass rather than a third mode of it: the two relations
-    share no columns and no reader.
+    share no columns and no reader. Every construction names its fields.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.5.0
+       Holds the typed :class:`~association.query.reading.Scope` as ``scope``
+       in place of the ``slots`` dict, and every field is keyword-only.
     """
 
-    #: The question's slot dict, forwarded whole to the relation.
-    slots: dict[str, Any]
+    #: The question's scoping, forwarded whole to the relation.
+    scope: Scope
     #: A key of :data:`GAME_MEASURES` and/or :data:`SEASON_MEASURES`.
     measure: str = "points"
     #: ``"total"`` (the only aggregate this module computes today) or
@@ -201,7 +201,7 @@ class TeamResult:
     note: str = ""
 
 
-def _team_narrowed(slots: dict[str, Any]) -> bool:
+def _team_narrowed(scope: Scope) -> bool:
     """Whether the question narrows the games at all - the team counterpart
     of ``player_stat``'s own ``_player_stat_reads_box_scores``: an opponent,
     a venue, a date, ``since``/``until``, a game of a series, a calendar
@@ -211,20 +211,19 @@ def _team_narrowed(slots: dict[str, Any]) -> bool:
 
     .. versionadded:: 4.4.0
     """
-    if any(slots.get(k) for k in _NARROWING_KEYS):
+    # The fields that narrow the games a team question reads - any of them
+    # sends the read to the game-level relation rather than the season line.
+    if any((scope.opponent, scope.venue, scope.date, scope.since, scope.until, scope.game_n, scope.situation)):
         return True
-    order = slots.get("order")
-    limit = slots.get("limit")
-    return order in ("recent", "first") or (isinstance(limit, int) and not isinstance(limit, bool) and limit >= 1)
+    return scope.order in ("recent", "first") or (scope.limit is not None and scope.limit >= 1)
 
 
-def _resolved_team_subject(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> Entity:
+def _resolved_team_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> Entity:
     """The team a question names, or the refusal wrapped as :class:`~association.query.compose.core.Refused`."""
-    team_text = slots.get("team")
-    if not (isinstance(team_text, str) and team_text.strip()):
+    team_text = scope.team
+    if team_text is None or not team_text.strip():
         raise Unsupported("no team named")
-    raw_season = slots.get("season")
-    season: int = raw_season if isinstance(raw_season, int) and not isinstance(raw_season, bool) else current_season()
+    season: int = scope.season if scope.season is not None else current_season()
     team = _resolved_team(con, team_text, season=season)
     if isinstance(team, TemplateResult):
         raise Refused(team)
@@ -262,9 +261,8 @@ def _compile_team_season(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Ent
     ``team_season_stats`` - F127's shape."""
     if q.measure not in SEASON_MEASURES:
         raise Unsupported(f"no season total on record for {q.measure!r}")
-    season_type = q.slots.get("season_type") or 2
-    raw_season = q.slots.get("season")
-    season: int = raw_season if isinstance(raw_season, int) and not isinstance(raw_season, bool) else current_season()
+    season_type = q.scope.season_type or 2
+    season: int = q.scope.season if q.scope.season is not None else current_season()
     column = SEASON_MEASURES[q.measure]
     found = _season_total(con, team, season, season_type, column)
     if found is None:
@@ -283,14 +281,14 @@ def _team_games_narrowed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> tuple[
     :func:`_resolved_team_subject`'s separate lookup), so the name and the
     span it is read against always come from the one call that settles both
     together - the same order every other team template keeps."""
-    slots = q.slots
-    settled = scoped_team(con, slots, "no team named", span=slots.get("span"), season=slots.get("season"))
+    scope = q.scope
+    # The shared steps read the slot dict until they take the Scope.
+    settled = scoped_team(con, scope.to_slots(), "no team named", span=scope.span, season=scope.season)
     if isinstance(settled, TemplateResult):
         raise Refused(settled)
     team, span = settled
-    raw_date = slots.get("date")
-    date = raw_date if isinstance(raw_date, str) and len(raw_date) == 10 else None
-    narrowed = narrow_team_games(con, team, span, slots, opponent=slots.get("opponent"), date=date)
+    date = scope.date if scope.date is not None and len(scope.date) == 10 else None
+    narrowed = narrow_team_games(con, team, span, scope.to_slots(), opponent=scope.opponent, date=date)
     if isinstance(narrowed, TemplateResult):
         raise Refused(narrowed)
     return narrowed, team, span
@@ -332,16 +330,7 @@ def _team_coverage_tables(q: TeamQuery) -> tuple[str, ...]:
 
     .. versionadded:: 4.4.0
     """
-    return ("games",) if _team_narrowed(q.slots) else ("team_season_stats",)
-
-
-def _team_season_int(slots: dict[str, Any]) -> int | None:
-    """The ``season`` slot, read only where it is a real int - the same
-    guard :func:`~association.query.templates.common.check_coverage` applies
-    before charging a floor: no season named means the current one, which
-    every table covers."""
-    season = slots.get("season")
-    return season if isinstance(season, int) and not isinstance(season, bool) else None
+    return ("games",) if _team_narrowed(q.scope) else ("team_season_stats",)
 
 
 def team_coverage_refusal(q: TeamQuery) -> TemplateResult | None:
@@ -354,10 +343,12 @@ def team_coverage_refusal(q: TeamQuery) -> TemplateResult | None:
 
     .. versionadded:: 4.4.0
     """
-    season = _team_season_int(q.slots)
+    # No season named means the current one, which every table covers - the
+    # same guard check_coverage applies before charging a floor.
+    season = q.scope.season
     if season is None:
         return None
-    season_type = q.slots.get("season_type") or 2
+    season_type = q.scope.season_type or 2
     message = unavailable(_team_coverage_tables(q), season, season_type)
     if message is None:
         return None
@@ -386,10 +377,10 @@ def run_team(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
     if refusal is not None:
         raise Refused(refusal)
     try:
-        if _team_narrowed(q.slots):
+        if _team_narrowed(q.scope):
             result = _compile_team_games_total(con, q)
         else:
-            team = _resolved_team_subject(con, q.slots)
+            team = _resolved_team_subject(con, q.scope)
             result = _compile_team_season(con, q, team)
     except TemplateUnsupported as exc:
         raise Unsupported(f"relation: {exc}") from exc
