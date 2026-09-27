@@ -212,7 +212,7 @@ def test_ask_writes_history_file_even_without_verbose(monkeypatch: pytest.Monkey
     db_path = tmp_path / "test.duckdb"
     duckdb.connect(str(db_path)).close()
     history_dir = tmp_path / ".history"
-    agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=history_dir)
+    agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=history_dir, reader="router")
 
     def fake_chat(**kwargs: Any) -> ChatResponse:
         return ChatResponse(model="qwen2.5:7b", created_at="", done=True, message=Message(role="assistant", content="Final answer."))
@@ -238,7 +238,7 @@ def test_ask_writes_history_file_even_when_it_raises(monkeypatch: pytest.MonkeyP
     db_path = tmp_path / "test.duckdb"
     duckdb.connect(str(db_path)).close()
     history_dir = tmp_path / ".history"
-    agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=history_dir)
+    agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=history_dir, reader="router")
 
     def fake_chat(**kwargs: Any) -> ChatResponse:
         raise RuntimeError("simulated ollama connection failure")
@@ -265,6 +265,9 @@ def _agent(tmp_path: Path, **kwargs: Any) -> Agent:
     con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     con.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
     con.close()
+    # The router, pinned: these tests stub `route` and exercise what follows
+    # it; the parser's own reading is tested apart (reader="parser" below).
+    kwargs.setdefault("reader", "router")
     return Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history", **kwargs)
 
 
@@ -282,7 +285,7 @@ def _agent_with_players(tmp_path: Path, *names: str) -> Agent:
     for i, name in enumerate(names):
         con.execute("INSERT INTO players VALUES (?, ?)", [str(i), name])
     con.close()
-    return Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history")
+    return Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history", reader="router")
 
 
 def test_the_fast_path_replaces_a_player_the_question_never_named(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -366,7 +369,7 @@ def test_a_team_only_intent_with_a_team_named_is_unaffected(monkeypatch: pytest.
     con.execute("CREATE TABLE teams (team_id VARCHAR, display_name VARCHAR, abbreviation VARCHAR)")
     con.execute("INSERT INTO teams VALUES ('2', 'Houston Rockets', 'HOU')")
     con.close()
-    agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history")
+    agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history", reader="router")
 
     monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="team_leaderboard", slots={"stat": "record", "team": "Houston Rockets"}))
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"team_leaderboard": lambda ctx, slots: TemplateResult(data={}, answer="templated")})
@@ -428,7 +431,7 @@ def test_a_rerouted_intent_runs_the_template_it_was_rerouted_to(monkeypatch: pyt
     con.execute("CREATE TABLE teams (team_id VARCHAR, display_name VARCHAR, abbreviation VARCHAR)")
     con.execute("INSERT INTO teams VALUES ('2', 'Boston Celtics', 'BOS')")
     con.close()
-    agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history")
+    agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history", reader="router")
 
     monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="head_to_head", slots={"teams": ["Joel Embiid", "Boston Celtics"], "span": "career"}))
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"head_to_head": head_to_head, "with_without": with_without})
@@ -574,7 +577,7 @@ def test_with_fallthrough_disabled_a_question_no_template_answers_is_an_error_na
     con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     con.execute("CREATE TABLE teams (team_id VARCHAR, display_name VARCHAR, abbreviation VARCHAR)")
     con.close()
-    agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history", fallthrough=False)
+    agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history", fallthrough=False, reader="router")
 
     monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="other", slots={}))
     with pytest.raises(FallthroughDisabled, match="intent 'other' has no template yet"):
@@ -1048,7 +1051,7 @@ def test_giving_up_names_what_the_fast_path_could_not_answer(monkeypatch: pytest
     calls: list[int] = []
     monkeypatch.setattr(ollama, "chat", _always_tool_calls(calls))
     monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="other", slots={}))
-    agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history", budget_seconds=0)
+    agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history", budget_seconds=0, reader="router")
     answer = agent.ask("who had the most triple-doubles?")
     assert "No template answered it either: intent 'other' has no template yet" in answer.text
 

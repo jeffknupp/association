@@ -228,10 +228,10 @@ def test_query_passes_the_engine_options_through(monkeypatch: pytest.MonkeyPatch
     assert captured["fast_path"] is True
     assert captured["fallthrough"] is True
     assert captured["budget_seconds"] == AGENT_BUDGET_SECONDS
-    assert captured["reader"] == "router"
-    result = runner.invoke(query, ["--reader", "parser", "who led the league in blocks"])
-    assert result.exit_code == 0, result.output
     assert captured["reader"] == "parser"
+    result = runner.invoke(query, ["--reader", "router", "who led the league in blocks"])
+    assert result.exit_code == 0, result.output
+    assert captured["reader"] == "router"
 
     assert captured["router_model"] == "qwen2.5:3b"
     assert captured["model"] != captured["router_model"]

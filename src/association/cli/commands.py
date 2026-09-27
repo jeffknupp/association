@@ -139,6 +139,11 @@ AGENT_BUDGET_HELP = (
     "questions never finished and one ran past 17 minutes, so this bounds the wait rather than the tool calls. 0 removes the bound."
 )
 
+READER_HELP = (
+    "Who reads the question for the fast path: the parser (the model copies the names and picks a stat; the words decide the rest) "
+    "or the router (the model classifies the whole question - the previous path, kept until its slot writers are retired)."
+)
+
 DISABLE_FALLTHROUGH_HELP = (
     "DEVELOPMENT ONLY. When no template can answer a question, return an error saying why instead of handing it to the "
     "SQL-writing agent, which iterates for minutes and rarely gets it right. For testing the fast path, not for answering questions."
@@ -317,13 +322,7 @@ def data_check(seasons: str | None, season_types: str | None, data_dir: str, rat
 @cli.command("query")
 @click.argument("question")
 @_query_engine_options
-@click.option(
-    "--reader",
-    type=click.Choice(["router", "parser"]),
-    default="router",
-    show_default=True,
-    help="Who reads the question for the fast path: the router model classifies it, or the parser reads it and the model only copies names and picks a stat (ROADMAP plan item 6, being measured).",
-)
+@click.option("--reader", type=click.Choice(["parser", "router"]), default="parser", show_default=True, help=READER_HELP)
 def query(
     question: str, model: str, router_model: str, db_path: str, out_dir: str, verbose: bool, think: bool, no_fast_path: bool, disable_fallthrough: bool, agent_budget: float, reader: str
 ) -> None:
@@ -365,14 +364,15 @@ def query(
 @click.option("--out-dir", default=DEFAULT_OUT_DIR, show_default=True, help="Directory for rendered charts.")
 @click.option("--disable-fallthrough", is_flag=True, help=DISABLE_FALLTHROUGH_HELP)
 @click.option("--agent-budget", type=float, default=AGENT_BUDGET_SECONDS, show_default=True, help=AGENT_BUDGET_HELP)
-def web(port: int, host: str, model: str, router_model: str, db_path: str, out_dir: str, disable_fallthrough: bool, agent_budget: float) -> None:
+@click.option("--reader", type=click.Choice(["parser", "router"]), default="parser", show_default=True, help=READER_HELP)
+def web(port: int, host: str, model: str, router_model: str, db_path: str, out_dir: str, disable_fallthrough: bool, agent_budget: float, reader: str) -> None:
     """Serve a local web interface for asking questions, until interrupted.
 
     Needs the `web` extra: pip install 'association[web]'
     """
     from association.web.serve import serve
 
-    serve(host, port, db_path, Path(out_dir), model=model, router_model=router_model, fallthrough=not disable_fallthrough, budget_seconds=agent_budget)
+    serve(host, port, db_path, Path(out_dir), model=model, router_model=router_model, fallthrough=not disable_fallthrough, budget_seconds=agent_budget, reader=reader)
 
 
 def main() -> None:

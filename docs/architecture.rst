@@ -9,7 +9,7 @@ against that warehouse. Nothing later in the chain needs the network.
 
    ESPN endpoints ──► fetch/ ──► data/parquet/ ──► warehouse ──► nba.duckdb
                                                                      │
-                                     question ──► router ──► template┤
+                                     question ──► reader ──► template┤
                                                      │               │
                                                      └──► agent ─────┘
 
@@ -165,9 +165,24 @@ compiler reproduces exactly on every recorded case (``compose.COMPILER_FIRST``:
 ``threshold_count``, ``single_game_high``, ``record_when``, ``player_history``)
 are read and planned *before* their template runs; the template is their
 presenter and the fallback where the compiler declines. That is ROADMAP plan
-item 6 taking its first step: one record of the decision, built today from
-the router's slots by the compiler's own word reading, built next from the
-question by the parser.
+item 6 taking its first step: one record of the decision, built from the
+routed slots by the compiler's own word reading.
+
+**Who reads the question.** By default the parser does
+(``Agent(reader="parser")``, ROADMAP plan item 6, step (c)): the model's whole
+job is :func:`association.query.normalizer.normalize` - copy the names out of
+the question exactly as typed and pick one stat key, under a two-field
+schema - and :func:`association.query.parse.read_route` checks both (every
+span against the entity index, which reads a single near spelling as that
+player and says so; the stat against the question's own words) and reads the
+intent and every other slot from grammar tables keyed on the subject's kind.
+What it returns is a route in the router's own shape, so everything after it -
+the subject reading, the repairs, the templates, the compiler - is the path a
+routed question takes. ``reader="router"`` (``--reader router``) is that path
+with the router model classifying the question instead, kept as the rollback
+until step (d) retires the router's slot writers. Measured on yardstick-v2's
+live runs: the parser 162/175 against the router's 160, with fewer wrong
+answers, in half the time (1.1s a question against 2.3s median).
 
 The subject need not be a player. :mod:`association.query.compose.team` is a
 second, separate compiler over :mod:`association.query.team_games` instead -

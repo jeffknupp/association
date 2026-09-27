@@ -455,9 +455,28 @@ rejected.
 
 ## Working on the query path
 
-The pipeline is router → template → deterministic answer, with the agent as
-fall-through. A question the router cannot classify falls through to the
+The pipeline is reader → template → deterministic answer, with the agent as
+fall-through. A question the fast path cannot answer falls through to the
 slower SQL-writing agent; that is by design, not a bug.
+
+**The reader is the parser by default, not the router** (ROADMAP plan item 6,
+step (c); `Agent(reader="parser")`, `--reader router` to roll back). The model
+only copies names verbatim and picks a stat (`query/normalizer.py`);
+`parse.read_route` reads everything else from the words and hands the rest of
+the path a route in the router's own shape, so the router-era bullets below
+still describe what happens after it. Two things differ, and both matter when
+you add a shape:
+
+- **A slot the router's model used to fill has to be read from the words
+  now,** or it is silently absent: `fields` ("with their rebounds and
+  assists"), a team's quarter, the window ("last 10 games" - read before the
+  stages, which decide the season type beside it). The hold-out comparison
+  that found those (`~/association-research/yardstick-v2/holdout_compare.py`:
+  the recorded corpus's questions outside day10, both readers, no model) is
+  the check to rerun after a table change, beside the yardstick.
+- **Names arrive as typed.** A typo reaches the entity index, which reads a
+  single near spelling as that player and says so
+  (`entities.read_near_spelling`); nothing corrects it upstream any more.
 
 - **A template's `TemplateUnsupported` gets one more deterministic try before
   the agent does.** `query/compose` sits between the two: when `check_scope`

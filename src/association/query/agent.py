@@ -116,6 +116,13 @@ class Agent:
        would have been asked, for development. Takes ``budget_seconds``,
        the wall clock the fall-through agent may spend before it gives up
        and says what the fast path could not answer.
+
+    .. versionchanged:: 4.5.0
+       Takes ``reader``, and the parser reads the question by default: the
+       model copies names and picks a stat (:mod:`~association.query.normalizer`)
+       and :func:`~association.query.parse.read_route` reads the rest.
+       ``reader="router"`` is the previous path, kept until the router's slot
+       writers are retired (ROADMAP plan item 6, step d).
     """
 
     def __init__(
@@ -131,17 +138,18 @@ class Agent:
         trace: Callable[[str], None] = echo_to_stderr,
         fallthrough: bool = True,
         budget_seconds: float = AGENT_BUDGET_SECONDS,
-        reader: str = "router",
+        reader: str = "parser",
     ):
         if reader not in READERS:
             raise ValueError(f"reader must be one of {READERS}, not {reader!r}")
         self.model = model
         self.router_model = router_model
-        #: Who reads the question for the fast path: ``"router"`` (the model
-        #: classifies it, :func:`~association.query.router.route`) or
-        #: ``"parser"`` (the model only copies names and picks a stat,
-        #: :mod:`~association.query.normalizer`, and
-        #: :func:`~association.query.parse.read_route` reads the rest).
+        #: Who reads the question for the fast path: ``"parser"`` (the model
+        #: only copies names and picks a stat, :mod:`~association.query.normalizer`,
+        #: and :func:`~association.query.parse.read_route` reads the rest - the
+        #: default since yardstick-v2 scored it 162/175 against the router's
+        #: 160, at half the latency) or ``"router"`` (the model classifies it,
+        #: :func:`~association.query.router.route`).
         self.reader = reader
         self.verbose = verbose
         self.think = think
