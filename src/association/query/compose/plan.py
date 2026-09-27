@@ -22,23 +22,23 @@ def plan(reading: Reading) -> Query | TeamQuery:
     .. versionadded:: 4.5.0
     """
     if reading.relation == "team":
-        return TeamQuery(reading.scope.to_slots(), measure=reading.measures[0], aggregate=reading.aggregate)
+        return TeamQuery(scope=reading.scope, measure=reading.measures[0], aggregate=reading.aggregate)
     return Query(
-        reading.scope.to_slots(),
-        reading.shape,
-        list(reading.measures),
-        reading.aggregate,
-        reading.group,
-        list(reading.predicates),
-        reading.order,
-        reading.direction,
-        reading.limit,
-        reading.offset,
-        reading.minimum_games,
-        reading.available,
-        reading.span,
-        reading.season,
-        reading.source,
-        "everyone" if reading.relation == "everyone" else "player",
-        reading.position,
+        scope=reading.scope,
+        skeleton=reading.shape,
+        measures=list(reading.measures),
+        aggregate=reading.aggregate,
+        group=reading.group,
+        predicates=list(reading.predicates),
+        order=reading.order,
+        direction=reading.direction,
+        limit=reading.limit,
+        offset=reading.offset,
+        minimum_games=reading.minimum_games,
+        available=reading.available,
+        span=reading.span,
+        season=reading.season,
+        source=reading.source,
+        subject="everyone" if reading.relation == "everyone" else "player",
+        position=reading.position,
     )

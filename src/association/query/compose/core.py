@@ -41,6 +41,7 @@ from association.query.conditions import UNGATED_ON_REBUILD, BoxSource, box_sour
 from association.query.entities import Entity
 from association.query.measures import MEASURE_WORDS
 from association.query.player_games import REBUILT_STATS, Narrowed, aggregate_sql, grouped_sql, rows_sql
+from association.query.reading import Scope
 from association.query.templates.common import (
     _GAME_LOGS,
     RELATION_SCOPING,
@@ -172,19 +173,23 @@ class Refused(Exception):
         self.result = result
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Query:
-    """A point over the player-games relation. ``slots`` is the question's own
-    slot dict (subject, span, and every scoping slot), handed whole to the
+    """A point over the player-games relation. ``scope`` is the question's own
+    scoping (subject, span, and every scoping slot), handed whole to the
     relation - the same discipline :func:`~association.query.templates.common.scoped_games`
     already keeps: a slot read here and not passed through would be a second,
-    quieter way to narrow by hand.
+    quieter way to narrow by hand. Every construction names its fields.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.5.0
+       Holds the typed :class:`~association.query.reading.Scope` as ``scope``
+       in place of the ``slots`` dict, and every field is keyword-only.
     """
 
-    #: The question's slot dict, forwarded whole to the relation.
-    slots: dict[str, Any]
+    #: The question's scoping, forwarded whole to the relation.
+    scope: Scope
     #: ``"rows"``, ``"scalar"`` or ``"grouped"`` - which reader answers the point.
     skeleton: str = "rows"
     #: The box-score columns (or derived measures) the point reads.
@@ -304,15 +309,15 @@ def _agg(name: str, aggregate: str, *, rebuilt: bool = False) -> str:
     raise Unsupported(f"aggregate {aggregate!r}")
 
 
-def _iso_date(slots: dict[str, Any]) -> str | None:
+def _iso_date(scope: Scope) -> str | None:
     """The ``date`` slot, read only where it is the router's calendar form
     (``YYYY-MM-DD``) - the same check every reader of this slot makes
     (``player_stat``'s own ``_ISO_DATE``), so a non-date value the router
     sometimes files there (``"TUESDAY"``, a weekday word meant for
     ``situation``) is never handed to :func:`eastern_day_utc_range` as though
     it were one."""
-    raw = slots.get("date")
-    return raw if isinstance(raw, str) and len(raw) == 10 else None
+    raw = scope.date
+    return raw if raw is not None and len(raw) == 10 else None
 
 
 #: Scoping slots the router files FOR the compiler - markers a template refuses
@@ -327,7 +332,7 @@ def _iso_date(slots: dict[str, Any]) -> str | None:
 COMPILER_SLOTS: frozenset[str] = frozenset({"ranked_by", "team_restored"})
 
 
-def _check_relation_scoping(slots: dict[str, Any], subject: str = "player") -> None:
+def _check_relation_scoping(scope: Scope, subject: str = "player") -> None:
     """``check_scope``'s rule, for the relation: a scoping slot the relation
     does not narrow by (``situation`` when it names no calendar, ``round``,
     ``rate`` ...) is refused, never dropped - answering "on Tuesdays" for
@@ -338,9 +343,13 @@ def _check_relation_scoping(slots: dict[str, Any], subject: str = "player") -> N
     settles his span over both (``templates.common._player_relation_season_type``),
     the reading ``game_log``, ``player_stat`` and ``threshold_count`` all
     declare. The league-wide read settles one type (:func:`_resolve_everyone`)
-    and still refuses it rather than answer the regular season alone."""
+    and still refuses it rather than answer the regular season alone.
+
+    Every name in ``SCOPING_SLOTS`` is a :class:`~association.query.reading.Scope`
+    field (``tests/query/test_reading.py`` holds the two to it), and a field
+    at its default - None, an empty tuple, False - is the slot absent."""
     honored = RELATION_SCOPING | COMPILER_SLOTS | ({"season_type_unstated"} if subject == "player" else set())
-    unhonored = sorted(k for k in SCOPING_SLOTS - honored if slots.get(k) not in (None, "", [], False))
+    unhonored = sorted(k for k in SCOPING_SLOTS - honored if getattr(scope, k) not in (None, "", (), False))
     if unhonored:
         raise Unsupported(f"the relation cannot honor {unhonored} - it would answer for a different span than was asked")
 
@@ -350,7 +359,7 @@ def _check_split_category(q: Query) -> None:
     ``starter_bench`` is a table of both halves, which only a grouped read by
     starter answers - the templates' ``_SPLIT_SIDE_ONLY`` rule. Anything else
     would list every game under a heading that promised the split."""
-    if q.slots.get("split") == "starter_bench" and not (q.skeleton == "grouped" and q.group == "starter"):
+    if q.scope.split == "starter_bench" and not (q.skeleton == "grouped" and q.group == "starter"):
         raise Unsupported("a starter/bench split is a table of both halves, not a filter - a grouped read answers it")
 
 
@@ -358,13 +367,14 @@ def _resolve_everyone(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity 
     """The league-wide subject: every player's games in the span settled the
     way ``threshold_count``'s and ``single_game_high``'s no-player modes
     settle it, narrowed by :func:`~association.query.templates.common.league_games`."""
-    slots = q.slots
-    season_type = slots.get("season_type") or 2
-    season = slots.get("season") if isinstance(slots.get("season"), int) else None
-    if season is None and slots.get("span") != "career":
+    scope = q.scope
+    season_type = scope.season_type or 2
+    season = scope.season
+    if season is None and scope.span != "career":
         season = current_season()
     span = _span_of("career" if season is None else None, season, season_type, "player_game_log")
-    narrowed = league_games(con, span, slots, position=q.position)
+    # The shared steps read the slot dict until they take the Scope.
+    narrowed = league_games(con, span, scope.to_slots(), position=q.position)
     if isinstance(narrowed, TemplateResult):
         raise Refused(narrowed)
     return None, span, narrowed
@@ -375,15 +385,15 @@ def _resolve_named(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | N
     relation templates settle and narrow their own - through
     :func:`~association.query.templates.common.scoped_player` and
     :func:`~association.query.templates.common.scoped_games`."""
-    slots = q.slots
+    scope = q.scope
     subject = scoped_player(
         con,
-        slots,
+        scope.to_slots(),
         "no player named",
         table="player_game_log",
         available=q.available or _GAME_LOGS,
-        span=q.span if q.span is not None else slots.get("span"),
-        season=q.season if q.season is not None else slots.get("season"),
+        span=q.span if q.span is not None else scope.span,
+        season=q.season if q.season is not None else scope.season,
     )
     if isinstance(subject, TemplateResult):
         raise Refused(subject)
@@ -392,9 +402,7 @@ def _resolve_named(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | N
     # that team, written by subject._apply_own_team) narrows exactly as it
     # does for player_stat, the one template that reads it; ignored here, the
     # same question averaged his whole career's starts (1,612 games for 294).
-    narrowed = scoped_games(
-        con, player, span, slots, opponent=slots.get("opponent"), measures=measure_filters(slots.get("below"), slots.get("above")), date=_iso_date(slots), team=slots.get("own_team")
-    )
+    narrowed = scoped_games(con, player, span, scope.to_slots(), opponent=scope.opponent, measures=measure_filters(scope.below, scope.above), date=_iso_date(scope), team=scope.own_team)
     if isinstance(narrowed, TemplateResult):
         raise Refused(narrowed)
     return player, span, narrowed
@@ -425,26 +433,23 @@ def _apply_team_slot(con: duckdb.DuckDBPyConnection, q: Query, player: Entity | 
     template ignores it outright, since :func:`~association.query.templates.common.scoped_games`
     itself carries no such narrowing, and treating it as a filter there would
     answer a narrower question than the template does."""
-    slots = q.slots
-    team_text = slots.get("team")
-    if not (isinstance(team_text, str) and team_text.strip()) or player is None:
+    scope = q.scope
+    team_text = scope.team
+    if team_text is None or not team_text.strip() or player is None:
         return narrowed
     if q.skeleton == "rows":
-        season = slots.get("season") if isinstance(slots.get("season"), int) else None
-        resolved_opponent = _team_slot_for_player(con, player, team_text, season=season, opponent=slots.get("opponent"))
+        resolved_opponent = _team_slot_for_player(con, player, team_text, season=scope.season, opponent=scope.opponent)
         if isinstance(resolved_opponent, TemplateResult):
             raise Refused(resolved_opponent)
         if resolved_opponent is not None and narrowed.opponent is None:
-            rescoped = scoped_games(
-                con, player, span, slots, opponent=resolved_opponent, measures=measure_filters(slots.get("below"), slots.get("above")), date=_iso_date(slots), team=slots.get("own_team")
-            )
+            rescoped = scoped_games(con, player, span, scope.to_slots(), opponent=resolved_opponent, measures=measure_filters(scope.below, scope.above), date=_iso_date(scope), team=scope.own_team)
             if isinstance(rescoped, TemplateResult):
                 raise Refused(rescoped)
             narrowed = rescoped
         return narrowed
     if not (q.aggregate in ("count", "record") or q.skeleton == "grouped"):
         return narrowed
-    team = _resolved_team(con, team_text, season=slots.get("season") if isinstance(slots.get("season"), int) else None)
+    team = _resolved_team(con, team_text, season=scope.season)
     if isinstance(team, TemplateResult):
         raise Refused(team)
     narrowed.narrow("pgl.team_id = ?", team.id)
@@ -457,13 +462,13 @@ def _apply_window_rule(q: Query, narrowed: Narrowed) -> None:
     is filler on those skeletons (:func:`~association.query.templates.common.whole_span`;
     ``threshold_count`` reads it as the ranking's size), and only ``rows``
     reads it as a row count."""
-    slots = q.slots
-    if (q.aggregate in ("count", "record") or q.skeleton == "grouped") and slots.get("order") not in ("recent", "first"):
-        limit = slots.get("limit")
+    scope = q.scope
+    if (q.aggregate in ("count", "record") or q.skeleton == "grouped") and scope.order not in ("recent", "first"):
+        limit = scope.limit
         # A limit on a grouped read by a SCOPE (season, month) is the number
         # of groups (grouped_sql applies it after grouping); on a split by
         # venue/starter or a record it can only mean a games window.
-        if q.aggregate != "count" and q.group not in ("season", "month", "season_type", "opponent", "player") and isinstance(limit, int) and not isinstance(limit, bool) and limit > 1:
+        if q.aggregate != "count" and q.group not in ("season", "month", "season_type", "opponent", "player") and limit is not None and limit > 1:
             # The templates' rule (player_splits, record_when): a real limit
             # with no order is "his last N games" - a window they refuse
             # rather than answer for the whole span.
@@ -568,7 +573,7 @@ def compile_query(con: duckdb.DuckDBPyConnection, q: Query) -> Compiled:
     """
     if q.source != "games":
         raise Unsupported(f"the {q.source} source is read by the templates' own readers, not compiled")
-    _check_relation_scoping(q.slots, q.subject)
+    _check_relation_scoping(q.scope, q.subject)
     _check_split_category(q)
     player, span, narrowed = _resolve_subject(con, q)
     _apply_predicates(narrowed, q)

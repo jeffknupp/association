@@ -26,7 +26,8 @@ def test_the_default_point_is_a_reading_and_its_plan_is_the_query_it_always_was(
     planned = plan(reading)
     assert isinstance(planned, Query)
     assert planned == to_query("threshold_count", slots)
-    assert planned.slots == slots and planned.skeleton == "scalar" and planned.aggregate == "count"
+    assert planned.scope == Scope.from_slots(slots) and planned.scope.to_slots() == slots
+    assert planned.skeleton == "scalar" and planned.aggregate == "count"
 
 
 def test_the_planner_copies_and_never_decides() -> None:
@@ -51,6 +52,7 @@ def test_the_planner_copies_and_never_decides() -> None:
     )
     q = plan(reading)
     assert isinstance(q, Query)
+    assert q.scope == reading.scope
     assert (q.skeleton, q.measures, q.aggregate, q.group, q.predicates) == ("grouped", ["points"], "per_game", "player", [("won", "=", True)])
     assert (q.order, q.direction, q.limit, q.offset, q.minimum_games, q.subject, q.position, q.source) == ("measure", "asc", 7, 2, 20, "everyone", "C", "games")
     assert q.available is None and q.span is None and q.season is None
@@ -67,7 +69,20 @@ def test_a_team_reading_plans_to_the_team_relation() -> None:
     reading = Reading(scope=Scope.from_slots({"team": "Orlando Magic", "season": 2026}), shape="scalar", measures=["threePointFieldGoalsMade"], aggregate="total", relation="team")
     q = plan(reading)
     assert isinstance(q, TeamQuery)
-    assert (q.slots, q.measure, q.aggregate) == ({"team": "Orlando Magic", "season": 2026}, "threePointFieldGoalsMade", "total")
+    assert (q.scope, q.measure, q.aggregate) == (Scope(team="Orlando Magic", season=2026), "threePointFieldGoalsMade", "total")
+
+
+def test_the_compilers_points_are_keyword_only() -> None:
+    """``Query`` and ``TeamQuery`` are built by naming every field, as
+    ``Reading`` is: a positional construction would bind a value to whatever
+    field sits in that place, and the two records mirror the Reading's
+    fields in a different order."""
+    with pytest.raises(TypeError):
+        Query(Scope(player="Joel Embiid"), "rows")  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        TeamQuery(Scope(team="Orlando Magic"), "points")  # type: ignore[call-arg]
+    assert Query(scope=Scope(player="Joel Embiid"), skeleton="rows").scope.player == "Joel Embiid"
+    assert TeamQuery(scope=Scope(team="Orlando Magic"), measure="points").scope.team == "Orlando Magic"
 
 
 def test_describe_names_every_deciding_field_and_drops_empty_scope() -> None:

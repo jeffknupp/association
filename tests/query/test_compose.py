@@ -25,9 +25,9 @@ from association.nba.season import current_season
 from association.query.compose import answer as compose_answer
 from association.query.compose.adapt import to_query
 from association.query.compose.core import Query, Refused, Unsupported, compile_query, run
-from association.query.compose.move import _asc_or_desc, _career_slots, _drop_position_only_player, _everyone_career_slots, _position_only_player, _ranking_minimum, move_point, team_move_point
+from association.query.compose.move import _asc_or_desc, _career_scope, _drop_position_only_player, _everyone_career_scope, _position_only_player, _ranking_minimum, move_point, team_move_point
 from association.query.compose.team import TeamQuery, run_team
-from association.query.reading import Reading
+from association.query.reading import Reading, Scope
 from association.query.templates.common import TemplateContext
 
 #: Box-score columns, in the order ``_box`` below fills them - the same shape
@@ -333,7 +333,7 @@ def test_how_many_won_is_a_career_count_with_a_predicate(cx_ctx: TemplateContext
     unscoped-count-is-career rule, read here in code."""
     q = move_point(cx_ctx.con, "record_when", {"player": "Brandin Podziemski"}, "how many games has Podziemski's team won?")
     assert isinstance(q, Query)  # a named player never returns a TeamQuery
-    assert q.slots.get("span") == "career"  # Query.span (a binding-parity override) is unset; the slot itself carries it
+    assert q.scope.span == "career"  # Query.span (a binding-parity override) is unset; the scope itself carries it
     out = _run(cx_ctx.con, q)
     assert out["rows"][0]["games"] == 4  # g1, g3, g5, g7 - every win across both seasons (g4 DNP excluded)
 
@@ -359,13 +359,13 @@ def test_a_boolean_measure_on_a_per_game_intent_is_counted_never_averaged(cx_ctx
         _agg("triple_double", "total")
 
 
-def test_career_slots_forces_a_career_span_only_when_nothing_else_scoped_it() -> None:
+def test_career_scope_forces_a_career_span_only_when_nothing_else_scoped_it() -> None:
     """The helper ``_move_how_many_won``/``_move_boolean_count`` share: no
     season, span or since means "his career"; any of the three left alone."""
-    assert _career_slots({"player": "X"})["span"] == "career"
-    assert _career_slots({"player": "X", "season": 2024}).get("span") is None
-    assert _career_slots({"player": "X", "span": "career"})["span"] == "career"
-    assert _career_slots({"player": "X", "since": 2020}).get("span") is None
+    assert _career_scope(Scope(player="X")) == Scope(player="X", span="career")
+    assert _career_scope(Scope(player="X", season=2024)) == Scope(player="X", season=2024)
+    assert _career_scope(Scope(player="X", span="career")) == Scope(player="X", span="career")
+    assert _career_scope(Scope(player="X", since=2020)) == Scope(player="X", since=2020)
 
 
 def test_a_ranking_word_with_no_player_groups_by_player_league_wide(cx_ctx: TemplateContext) -> None:
@@ -609,7 +609,7 @@ def test_team_move_point_finds_a_team_the_router_dropped(team_cx_ctx: TemplateCo
     makes for a dropped PLAYER."""
     q = team_move_point(team_cx_ctx.con, {"stat": "threePointFieldGoalsMade"}, "how many 3 pointers have the magic made so far this season")
     assert isinstance(q, TeamQuery)
-    assert q.slots["team"] == "Orlando Magic"
+    assert q.scope.team == "Orlando Magic"
 
 
 def test_team_move_point_is_not_fooled_by_magic_johnson(team_cx_ctx: TemplateContext) -> None:
@@ -620,7 +620,7 @@ def test_team_move_point_is_not_fooled_by_magic_johnson(team_cx_ctx: TemplateCon
     function's)."""
     q = move_point(team_cx_ctx.con, "leaderboard", {"stat": "threePointFieldGoalsMade", "season_type": 2}, "how many 3 pointers have the magic made so far this season")
     assert isinstance(q, TeamQuery)
-    assert q.slots.get("player") is None
+    assert q.scope.player is None
 
 
 def test_team_move_point_reads_a_narrowed_total(team_cx_ctx: TemplateContext) -> None:
@@ -777,17 +777,17 @@ def test_biggest_with_no_stat_word_defaults_to_points(cx_ctx: TemplateContext) -
     q = move_point(cx_ctx.con, "leaderboard", {"stat": "triple_double", "season_type": 2}, "biggest triple double ever")
     assert isinstance(q, Query)
     assert q.measures[0] == "points"
-    assert q.slots.get("span") == "career"  # "ever" moved the default current-season span
+    assert q.scope.span == "career"  # "ever" moved the default current-season span
 
 
-def test_everyone_career_slots_reads_ever_and_all_time_only_with_no_season_named() -> None:
-    """:func:`_everyone_career_slots`: "ever"/"all-time" is a career span for
+def test_everyone_career_scope_reads_ever_and_all_time_only_with_no_season_named() -> None:
+    """:func:`_everyone_career_scope`: "ever"/"all-time" is a career span for
     a league-wide read UNLESS the question also named a season - the same
     "do not silently override a named year" discipline
     :func:`~association.query.compose.core._span_of` keeps for ``since``."""
-    assert _everyone_career_slots({}, "the best triple double ever") == {"span": "career"}
-    assert _everyone_career_slots({}, "the best triple double this season") == {}
-    assert _everyone_career_slots({"season": 2024}, "the best triple double of all time") == {"season": 2024}  # a named season is not overridden
+    assert _everyone_career_scope(Scope(), "the best triple double ever") == Scope(span="career")
+    assert _everyone_career_scope(Scope(), "the best triple double this season") == Scope()
+    assert _everyone_career_scope(Scope(season=2024), "the best triple double of all time") == Scope(season=2024)  # a named season is not overridden
 
 
 # ---------------------------------------------------------------------------
