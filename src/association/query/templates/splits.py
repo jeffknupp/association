@@ -181,10 +181,18 @@ def _condition_span_label(covered: _Scope, scope: Scope, first: Any, last: Any) 
     ``since`` or ``season_n`` apply (the same "career"-shaped outer scope
     ``scoped_player`` builds internally for ``season_n``), so
     :meth:`_Scope.label` reads the actual seasons the narrowed games came
-    from rather than defaulting to "now"."""
+    from rather than defaulting to "now".
+
+    .. versionchanged:: 4.5.0
+       Says "from X through Y" once ``scope.until`` bounds the other end too,
+       matching :meth:`_Span.during`'s wording (see :func:`_team_span_label`,
+       fixed the same way) - before this, "from 2019-20 to 2021-22" was
+       labeled "since 2019 (...)", with the range's real upper bound nowhere
+       in the sentence (ISSUES.md).
+    """
     label = covered.label(first, last)
     if scope.since:
-        return f"since {scope.since} ({label})"
+        return f"from {scope.since} through {scope.until} ({label})" if scope.until else f"since {scope.since} ({label})"
     if scope.season_n:
         return f"in his {ordinal_word(scope.season_n)} season ({label})"
     return label
@@ -221,7 +229,15 @@ def _condition_span_label(covered: _Scope, scope: Scope, first: Any, last: Any) 
 # series" picks out are not consecutive to each other - a streak over them
 # would silently answer a run over a scattered, non-adjacent subset rather
 # than the real games in between.
-_CONDITION_PLAYER_ONLY_CELLS: tuple[str, ...] = ("without", "split", "season_n", "below", "above")
+#
+# `conditions` is here (added 4.5.0, ISSUES.md) for the same reason as
+# `without`/`split`/`below`/`above`: a companion's role - he started, came off
+# the bench, or reached a line - is a fact about a named PLAYER's game, and a
+# team or league branch has no such player settled to check it against.
+# Silently dropping it answered a team's or the league's whole span as though
+# "76ers record when they score 120 when embiid starts" had named no
+# condition at all.
+_CONDITION_PLAYER_ONLY_CELLS: tuple[str, ...] = ("without", "split", "season_n", "below", "above", "conditions")
 
 
 def _condition_needs_player_refusal(intent: str, scope: Scope, *extra: str) -> None:
@@ -266,11 +282,19 @@ def _team_span_label(span: _Span, first: Any = None, last: Any = None) -> str:
        Reads ``span.since`` (step 3, C4b) - before this, a since-bounded team
        span rendered the same label as a plain career one, with nothing
        saying the question had named a starting year at all.
+
+    .. versionchanged:: 4.5.0
+       Says "from X through Y" once ``span.until`` bounds the other end too -
+       :meth:`_Span.during`'s own wording. Before this, a team's own record
+       "from 2019-20 to 2021-22" was labeled "since 2020 (2020-2026 ...)",
+       the range's real upper bound nowhere in the sentence, because
+       ``span.until`` never reached here at all (ISSUES.md).
     """
     if span.season is not None:
         return _period(span.season, span.season_type)
     if span.since is not None:
-        return f"since {span.since} ({span.years(first, last) if isinstance(first, int) and isinstance(last, int) else f'{span.kind}s'})"
+        years = span.years(first, last) if isinstance(first, int) and isinstance(last, int) else f"{span.kind}s"
+        return f"from {span.since} through {span.until} ({years})" if span.until is not None else f"since {span.since} ({years})"
     if isinstance(first, int) and isinstance(last, int):
         return span.years(first, last)
     return f"every {span.kind} on record ({span.first} onward)"
@@ -374,6 +398,14 @@ def player_splits(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        ``"bench"``) now narrows the games the same way, while the CATEGORY
        shown stays the one it always was - both groups side by side, folded
        back from the half the question named.
+
+    .. versionchanged:: 4.5.0
+       A team with no player named honors ``until`` too, bounding a since
+       range's other end ("splits from 2019-20 to 2021-22") rather than
+       reading every season since - and refuses a ``conditions`` entry by
+       name (it needs a settled player to check a role against) instead of
+       silently answering the team's whole span as though none had been
+       named (ISSUES.md).
     """
     scope = reading.scope
     con = ctx.con
@@ -413,20 +445,21 @@ def player_splits(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     else:
         if team is None:
             raise TemplateUnsupported("player_splits needs a player or a team")
-        if measures or scope.game_n or scope.season_n or scope.without:
+        if measures or scope.game_n or scope.season_n or scope.without or scope.conditions:
             # A team's own splits read the team tables directly, not the
             # player-games relation these narrow - so a line on a box-score
             # column, a playoff-series game, an ordinal season or a
-            # teammate's absence have nowhere to apply (ISSUES.md: "76ers
-            # splits without Embiid" answered his team's whole 82-game season,
-            # identical to the same call with no `without` at all - a silent
-            # narrowing check_scope exists to stop, missed here only because
-            # the slot IS declared honored, by the other subject the intent
-            # can have). Refused by name rather than silently ignored, the
-            # same way a starter/bench split is refused for a team just below
-            # - a real fix teaches `_player_splits_team` the same
-            # teammate-absence filter `with_without` already has.
-            raise TemplateUnsupported("player_splits cannot honor below/above, game_n, season_n or without for a team with no player named")
+            # teammate's absence (or role: started, bench, reached a line)
+            # have nowhere to apply (ISSUES.md: "76ers splits without Embiid"
+            # answered his team's whole 82-game season, identical to the same
+            # call with no `without` at all - a silent narrowing check_scope
+            # exists to stop, missed here only because the slot IS declared
+            # honored, by the other subject the intent can have). Refused by
+            # name rather than silently ignored, the same way a starter/bench
+            # split is refused for a team just below - a real fix teaches
+            # `_player_splits_team` the same teammate-absence filter
+            # `with_without` already has.
+            raise TemplateUnsupported("player_splits cannot honor below/above, game_n, season_n, without or conditions for a team with no player named")
         found = _player_splits_team(con, scope, team, split, opponent)
     if isinstance(found, TemplateResult):
         return found
@@ -605,7 +638,7 @@ def _player_splits_team(con: duckdb.DuckDBPyConnection, scope: Scope, team: Enti
         # much as of the category.
         raise TemplateUnsupported("a team has no starter/bench split of its own")
     line = _player_splits_line(scope.stat, _TEAM_LINE, alias="t")
-    span = _span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since)
+    span = _span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since, until=scope.until)
     narrowed = team_games(con, team, span, scope, opponent=opponent)
     if isinstance(narrowed, TemplateResult):
         return narrowed
@@ -1020,6 +1053,22 @@ def record_when(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        :func:`_record_when_team_answer`); a question setting one refuses,
        naming which, instead of quietly answering as though it had been
        applied (ISSUES.md).
+
+    .. versionchanged:: 4.5.0
+       A blank stat on a rebuilt row (2013-2018) no longer collides with the
+       "fell short" row - it now lands in neither threshold row, counted
+       instead in a caveat, and "all his games" includes it (a rebuilt game
+       still has a real result). Before this, the same question could answer
+       a different "under threshold" row from one asking to the next, keyed
+       on whichever order DuckDB's parallel GROUP BY happened to return the
+       groups in (ISSUES.md).
+
+    .. versionchanged:: 4.5.0
+       The team branch (no ``player`` named) honors ``until`` too, bounding a
+       since range's other end ("record from 2019-20 to 2021-22" rather than
+       reading every season since), and refuses a ``conditions`` entry by
+       name - it needs a settled player to check a role against - rather
+       than silently dropping it (ISSUES.md).
     """
     scope = reading.scope
     con = ctx.con
@@ -1388,7 +1437,7 @@ def _record_when_team_answer(con: duckdb.DuckDBPyConnection, scope: Scope) -> Te
         raise TemplateUnsupported("record_when needs a player or a team")
     stat = scope.stat
     column, threshold = _record_when_team_stat(stat, scope.threshold)
-    span = _span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since)
+    span = _span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since, until=scope.until)
     narrowed = team_games(con, team, span, scope, opponent=scope.opponent)
     if isinstance(narrowed, TemplateResult):
         return narrowed
@@ -1446,6 +1495,13 @@ def streak(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        stays refused for both: the games it numbers are not consecutive to
        each other, so a run over them would not be the run the question asked
        for.
+
+    .. versionchanged:: 4.5.0
+       The team and league branches also honor ``until``, bounding a since
+       range's other end ("longest streak from 2019-20 to 2021-22" rather
+       than reading every season since) - and refuse a ``conditions`` entry
+       by name, needing a settled player to check a role against, rather
+       than silently dropping it (ISSUES.md).
     """
     scope = reading.scope
     con = ctx.con
@@ -1584,7 +1640,7 @@ def _streak_team(
     """
     if by_stat:
         raise TemplateUnsupported("a team's streak is of wins or losses, not of a stat")
-    span = _span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since)
+    span = _span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since, until=scope.until)
     narrowed = team_games(con, team, span, scope, opponent=scope.opponent)
     if isinstance(narrowed, TemplateResult):
         return narrowed
@@ -1690,7 +1746,7 @@ def _streak_league_team_branch(con: duckdb.DuckDBPyConnection, scope: Scope, res
     is selected by the calendar year it was played in, not ESPN's own-year
     label, and a career span reaches its real 1989 floor rather than 1994.
     Honors ``since`` the same way (step 3, C4b)."""
-    team_span = _span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since)
+    team_span = _span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since, until=scope.until)
     base, params, runs, what, who, rule = _streak_league_by_result(con, team_span, result, hit, condition, limit)
     _, first, last = _team_season_range(con, base, params, team_span)
     return runs, what, who, rule, _team_span_label(team_span, first, last), _team_where_in(team_span)
