@@ -35,7 +35,7 @@ from association.query.compose.team import team_named_in
 from association.query.entities import _edit_budget, find_players, find_teams, suggest_players
 from association.query.measures import MEASURE_WORDS
 from association.query.metrics import EXTRA_FIELD_COLUMNS
-from association.query.reading import Reading
+from association.query.reading import Reading, Scope
 from association.query.router import Route, _period_asked, settle
 from association.query.subject import KIND_ASSIGNED_INTENTS, TEAM_SINGULARS, Subject, _edit_distance, question_supports, read_subject
 
@@ -535,5 +535,5 @@ def parse(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None
     try:
         reading = read_point(con, route.intent, dict(route.slots), question, subject)
     except (Unsupported, Refused):
-        reading = Reading(dict(route.slots), intent=route.intent, subject=subject)
+        reading = Reading(scope=Scope.from_slots(dict(route.slots)), intent=route.intent, subject=subject)
     return replace(reading, intent=route.intent, subject=subject, evidence=(*reading.evidence, f"parent {parent!r} from the words under kind {subject.kind!r}"))

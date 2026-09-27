@@ -22,9 +22,9 @@ def plan(reading: Reading) -> Query | TeamQuery:
     .. versionadded:: 4.5.0
     """
     if reading.relation == "team":
-        return TeamQuery(dict(reading.scope), measure=reading.measures[0], aggregate=reading.aggregate)
+        return TeamQuery(reading.scope.to_slots(), measure=reading.measures[0], aggregate=reading.aggregate)
     return Query(
-        dict(reading.scope),
+        reading.scope.to_slots(),
         reading.shape,
         list(reading.measures),
         reading.aggregate,

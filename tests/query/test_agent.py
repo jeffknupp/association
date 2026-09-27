@@ -1123,7 +1123,7 @@ def test_a_compiler_first_intent_is_read_planned_and_answered_before_its_templat
     exactly (compose.COMPILER_FIRST) are answered from the Reading first; the
     trace carries the record ("-> (reading) ...") and the template is never
     called. Where the compiler declines (None) the template runs as before."""
-    from association.query.reading import Reading
+    from association.query.reading import Reading, Scope
     from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
@@ -1132,7 +1132,17 @@ def test_a_compiler_first_intent_is_read_planned_and_answered_before_its_templat
     def composed_first(ctx: Any, intent: str, slots: dict[str, Any], question: str, subject: Any = None, trace: Any = None) -> TemplateResult:
         calls.append("compose")
         if trace is not None:
-            trace(Reading({"player": "Joel Embiid", "threshold": 30, "stat": "points"}, "scalar", [], "count", "none", [("points", ">=", 30)], intent=intent))
+            trace(
+                Reading(
+                    scope=Scope.from_slots({"player": "Joel Embiid", "threshold": 30, "stat": "points"}),
+                    shape="scalar",
+                    measures=[],
+                    aggregate="count",
+                    group="none",
+                    predicates=[("points", ">=", 30)],
+                    intent=intent,
+                )
+            )
         return TemplateResult(data={"count": 9}, answer="Joel Embiid had 9 games with 30+ points.")
 
     def never_template(ctx: Any, slots: dict[str, Any]) -> TemplateResult:
@@ -1153,7 +1163,8 @@ def test_a_compiler_first_intent_is_read_planned_and_answered_before_its_templat
     assert calls == ["compose"]
     reading_lines = [line for line in seen if "(reading)" in line]
     expected = "  -> (reading) relation=player subject=? shape=scalar measures=[] aggregate=count group=none predicates=[('points', '>=', 30)] window=date/desc source=games"
-    assert reading_lines == [f"{expected} scope={{'player': 'Joel Embiid', 'threshold': 30, 'stat': 'points'}}"]
+    # The scope prints in the Scope's field order, whatever order the slots came in.
+    assert reading_lines == [f"{expected} scope={{'player': 'Joel Embiid', 'stat': 'points', 'threshold': 30}}"]
 
     # Declining hands the question to the template, exactly as before.
     calls.clear()

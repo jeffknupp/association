@@ -5,8 +5,6 @@ rules' own cases on the small fixture warehouse."""
 
 from __future__ import annotations
 
-from typing import Any
-
 import duckdb
 import pytest
 
@@ -113,7 +111,7 @@ def test_parse_reads_a_question_into_a_reading(con: duckdb.DuckDBPyConnection) -
     read, the window and the measure from the words, the child assigned."""
     r = parse(con, "How many 30+ point games did Jokic have this season?", names=["Jokic"], stat="points")
     assert r.intent == "threshold_count" and r.subject is not None and r.subject.kind == "player" and r.subject.players == ("Nikola Jokic",)
-    assert r.scope.get("threshold") == 30 and r.scope.get("stat") == "points"
+    assert r.scope.threshold == 30 and r.scope.stat == "points"
     r = parse(con, "Lakers vs Celtics record this season", names=["Lakers", "Celtics"], stat="")
     assert r.intent == "head_to_head" and r.subject is not None and r.subject.kind == "teams"
     # A window over the two teams' meetings is still their meetings when a record is asked for; a log word is one team's games.
@@ -122,7 +120,7 @@ def test_parse_reads_a_question_into_a_reading(con: duckdb.DuckDBPyConnection) -
     r = parse(con, "lakers game log vs celtics last 10", names=["lakers", "celtics"], stat="")
     assert r.subject is not None and r.subject.kind == "team"
     r = parse(con, "who were the top 10 in defensive netpoints / 100 possessions", names=[], stat="")
-    assert r.subject is not None and r.subject.kind == "everyone" and r.scope.get("stat") == "netpoints_defense_per_100" and r.scope.get("limit") == 10
+    assert r.subject is not None and r.subject.kind == "everyone" and r.scope.stat == "netpoints_defense_per_100" and r.scope.limit == 10
     # A span no player or team has never becomes a subject.
     r = parse(con, "alperen sengun double-doubles vs southeast division career away", names=["alperen sengun", "southeast division"], stat="")
     assert r.subject is not None and r.subject.kind != "pair"
@@ -134,8 +132,7 @@ def test_parse_with_no_names_and_no_stat_still_reads_the_question(con: duckdb.Du
     r = parse(con, "what was the sixers record when maxey scored 20+ points?")
     assert r.subject is not None and r.subject.kind == "team" and r.subject.teams == ("Philadelphia 76ers",)
     assert r.intent == "record_when"
-    slots: dict[str, Any] = r.scope
-    assert slots.get("threshold") == 20
+    assert r.scope.threshold == 20
 
 
 def test_read_route_takes_the_names_from_the_subject_reading(con: duckdb.DuckDBPyConnection) -> None:

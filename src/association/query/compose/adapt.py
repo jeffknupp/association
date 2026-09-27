@@ -11,7 +11,7 @@ from collections.abc import Callable
 from typing import Any
 
 from association.query.measures import MEASURE_WORDS
-from association.query.reading import Reading
+from association.query.reading import Group, Reading, Scope
 from association.query.templates.common import _BOX_SCORES, MAX_LIMIT
 
 # One concept, one definition (scripts/check_duplicate_names.py): the default
@@ -65,15 +65,15 @@ def _adapt_game_log(slots: dict[str, Any]) -> Reading:
     # game_log settles the name in a career span when a date is given (the
     # date is the scope), and in the named or defaulted season otherwise.
     return Reading(
-        slots,
-        "rows",
-        list(LINE),
-        "none",
-        "none",
-        [],
-        "date",
-        "asc" if slots.get("order") == "first" else "desc",
-        _clamp(slots.get("limit"), DEFAULT_GAME_LOG_LIMIT),
+        scope=Scope.from_slots(slots),
+        shape="rows",
+        measures=list(LINE),
+        aggregate="none",
+        group="none",
+        predicates=[],
+        order="date",
+        direction="asc" if slots.get("order") == "first" else "desc",
+        limit=_clamp(slots.get("limit"), DEFAULT_GAME_LOG_LIMIT),
         span="career" if date else slots.get("span"),
         season=None if date else slots.get("season"),
     )
@@ -94,9 +94,18 @@ def _adapt_player_stat(slots: dict[str, Any]) -> Reading:
     if slots.get("limit") or slots.get("order"):
         raise Unsupported("player_stat hands a limit or an order to game_log - a log, not an average")
     if not (_player_stat_reads_box_scores(slots, measure_filters(slots.get("below"), slots.get("above"))) or slots.get("date")):
-        return Reading(slots, "scalar", measures, "per_game", "none", [], source="seasons")
+        return Reading(scope=Scope.from_slots(slots), shape="scalar", measures=measures, aggregate="per_game", group="none", predicates=[], source="seasons")
     date = slots.get("date") if isinstance(slots.get("date"), str) and len(slots["date"]) == 10 else None
-    return Reading(slots, "scalar", measures, "per_game", "none", [], span="career" if date else slots.get("span"), season=None if date else slots.get("season"))
+    return Reading(
+        scope=Scope.from_slots(slots),
+        shape="scalar",
+        measures=measures,
+        aggregate="per_game",
+        group="none",
+        predicates=[],
+        span="career" if date else slots.get("span"),
+        season=None if date else slots.get("season"),
+    )
 
 
 def _adapt_threshold_count(slots: dict[str, Any]) -> Reading:
@@ -111,7 +120,7 @@ def _adapt_threshold_count(slots: dict[str, Any]) -> Reading:
     # misread as a threshold (threshold_count's own _threshold_count_lines).
     lines = [str(x) for k in ("below", "above") for x in (slots.get(k) or [])]
     predicates = [] if any(str(threshold) in line for line in lines) else [(col, ">=", threshold)]
-    return Reading(slots, "scalar", [], "count", "none", predicates, available=_BOX_SCORES)
+    return Reading(scope=Scope.from_slots(slots), shape="scalar", measures=[], aggregate="count", group="none", predicates=predicates, available=_BOX_SCORES)
 
 
 def _adapt_single_game_high(slots: dict[str, Any]) -> Reading:
@@ -119,15 +128,25 @@ def _adapt_single_game_high(slots: dict[str, Any]) -> Reading:
     col = _stat_column(slots.get("stat"))
     if not _named_player(slots) or col is None:
         raise Unsupported("single_game_high needs a player and a known stat here")
-    return Reading(slots, "rows", [col], "none", "none", [], "measure", "desc", _clamp(slots.get("limit"), DEFAULT_SINGLE_GAME_LIMIT))
+    return Reading(
+        scope=Scope.from_slots(slots),
+        shape="rows",
+        measures=[col],
+        aggregate="none",
+        group="none",
+        predicates=[],
+        order="measure",
+        direction="desc",
+        limit=_clamp(slots.get("limit"), DEFAULT_SINGLE_GAME_LIMIT),
+    )
 
 
 def _adapt_player_splits(slots: dict[str, Any]) -> Reading:
     """``player_splits``'s default point: a record by venue, or by starter/bench."""
     if not _named_player(slots):
         raise Unsupported("a team's splits are the team relation's")
-    group = "starter" if slots.get("split") == "starter_bench" else "venue"
-    return Reading(slots, "grouped", list(SPLIT_LINE), "record", group, [], available=_BOX_SCORES)
+    group: Group = "starter" if slots.get("split") == "starter_bench" else "venue"
+    return Reading(scope=Scope.from_slots(slots), shape="grouped", measures=list(SPLIT_LINE), aggregate="record", group=group, predicates=[], available=_BOX_SCORES)
 
 
 def _adapt_record_when(slots: dict[str, Any]) -> Reading:
@@ -136,7 +155,7 @@ def _adapt_record_when(slots: dict[str, Any]) -> Reading:
     threshold = slots.get("threshold")
     if not _named_player(slots) or col is None or not isinstance(threshold, int) or isinstance(threshold, bool):
         raise Unsupported("record_when needs a player, a stat and a threshold here")
-    return Reading(slots, "scalar", [], "record", "none", [(col, ">=", threshold)], available=_BOX_SCORES)
+    return Reading(scope=Scope.from_slots(slots), shape="scalar", measures=[], aggregate="record", group="none", predicates=[(col, ">=", threshold)], available=_BOX_SCORES)
 
 
 #: Intent -> its default-point adapter. Kept as a mapping rather than an

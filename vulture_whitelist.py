@@ -61,3 +61,11 @@ attrs
 # only the package itself, so nothing in this tree calls it besides its own
 # tests, and vulture would otherwise report it dead code.
 answer
+
+# association/query/reading.py, Scope: two fields nothing reads by attribute
+# yet - they reach their readers through Scope.to_slots (subject.py's
+# restored-team check reads `team_restored`, the leaderboard's triple-double
+# ranking reads `ranked_by`) until the templates read the Reading (ROADMAP plan
+# item 6, step d). Delete both lines when they do.
+team_restored
+ranked_by
