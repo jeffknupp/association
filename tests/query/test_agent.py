@@ -620,7 +620,7 @@ def test_a_templates_refusal_that_compose_answers_is_returned_as_fast_with_the_t
     from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
-    def composed_answer(ctx: Any, intent: str, slots: dict[str, Any], question: str, subject: Any = None) -> TemplateResult:
+    def composed_answer(ctx: Any, intent: str, slots: dict[str, Any], question: str, subject: Any = None, trace: Any = None) -> TemplateResult:
         return TemplateResult(data={"skeleton": "aggregate", "measures": ["points"], "rows": [{"points": 30.0}]}, answer="Joel Embiid has averaged 30.0 points since 2024.")
 
     monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="player_stat", slots={"player": "Joel Embiid", "since": "2024"}))
@@ -670,7 +670,7 @@ def test_a_compose_refusal_is_returned_as_the_answer_not_a_fall_through(monkeypa
     from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
-    def composed_refusal(ctx: Any, intent: str, slots: dict[str, Any], question: str, subject: Any = None) -> TemplateResult:
+    def composed_refusal(ctx: Any, intent: str, slots: dict[str, Any], question: str, subject: Any = None, trace: Any = None) -> TemplateResult:
         return TemplateResult(data={"ambiguous": "since"}, answer="I can't tell which span 'the last few' means - a number of games, or a number of seasons?")
 
     def chat_must_not_run(**kw: Any) -> None:
@@ -695,7 +695,7 @@ def test_a_composed_answer_carries_the_name_reading_it_noted(monkeypatch: pytest
     from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
-    def composed_with_reading(ctx: Any, intent: str, slots: dict[str, Any], question: str, subject: Any = None) -> TemplateResult:
+    def composed_with_reading(ctx: Any, intent: str, slots: dict[str, Any], question: str, subject: Any = None, trace: Any = None) -> TemplateResult:
         _note_name_reading("maxey", Entity("1", "Tyrese Maxey"), [Entity("0", "Marlon Maxey")], 2026, named_in_full=False)
         return TemplateResult(data={}, answer="Tyrese Maxey has averaged 28.0 points since 2024.")
 
@@ -734,6 +734,9 @@ def test_fast_path_answer_is_recorded_in_conversation_for_later_followups(monkey
 
     monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="threshold_count", slots={"stat": "points", "threshold": 30}))
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"threshold_count": lambda con, slots: TemplateResult(data={"leaders": []}, answer="template answer")})
+    # threshold_count is read and planned by the compiler first (compose.COMPILER_FIRST);
+    # here it declines, so the stub template answers as it did before that order.
+    monkeypatch.setattr("association.query.compose.answer", lambda *a, **k: None)
     # No ollama.chat stub: reaching one would itself be the bug. The router is
     # stubbed out above, and a template answers without a model call.
     # threshold_count is in SUBJECT_RESTORABLE_INTENTS (F093), so scope_from_question
@@ -1110,3 +1113,51 @@ def test_an_answer_names_the_history_file_it_was_recorded_to(monkeypatch: pytest
     written = [p.name for p in history_dir.glob("*.log")]
     assert answer.history_file is not None and answer.history_file in written
     assert "/" not in answer.history_file
+
+
+def test_a_compiler_first_intent_is_read_planned_and_answered_before_its_template(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """ROADMAP plan item 6, step (a): the four intents the compiler reproduces
+    exactly (compose.COMPILER_FIRST) are answered from the Reading first; the
+    trace carries the record ("-> (reading) ...") and the template is never
+    called. Where the compiler declines (None) the template runs as before."""
+    from association.query.reading import Reading
+    from association.query.router import Route
+    from association.query.templates.common import TemplateResult
+
+    calls: list[str] = []
+
+    def composed_first(ctx: Any, intent: str, slots: dict[str, Any], question: str, subject: Any = None, trace: Any = None) -> TemplateResult:
+        calls.append("compose")
+        if trace is not None:
+            trace(Reading({"player": "Joel Embiid", "threshold": 30, "stat": "points"}, "scalar", [], "count", "none", [("points", ">=", 30)], intent=intent))
+        return TemplateResult(data={"count": 9}, answer="Joel Embiid had 9 games with 30+ points.")
+
+    def never_template(ctx: Any, slots: dict[str, Any]) -> TemplateResult:
+        calls.append("template")
+        return TemplateResult(data={}, answer="the template answered")
+
+    monkeypatch.setattr("association.query.agent.route", lambda *a, **k: Route(intent="threshold_count", slots={"player": "Joel Embiid", "stat": "points", "threshold": 30}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"threshold_count": never_template})
+    monkeypatch.setattr("association.query.compose.answer", composed_first)
+
+    seen: list[str] = []
+    agent = _agent_with_players(tmp_path, "Joel Embiid")
+    agent.trace = seen.append
+    agent.verbose = True
+    answer = agent.ask("how many 30 point games did embiid have?")
+
+    assert answer.text == "Joel Embiid had 9 games with 30+ points." and answer.answered_by == "fast" and answer.intent == "threshold_count"
+    assert calls == ["compose"]
+    reading_lines = [line for line in seen if "(reading)" in line]
+    expected = "  -> (reading) relation=player subject=? shape=scalar measures=[] aggregate=count group=none predicates=[('points', '>=', 30)] window=date/desc source=games"
+    assert reading_lines == [f"{expected} scope={{'player': 'Joel Embiid', 'threshold': 30, 'stat': 'points'}}"]
+
+    # Declining hands the question to the template, exactly as before.
+    calls.clear()
+
+    def declining(*a: Any, **k: Any) -> None:
+        calls.append("compose")
+
+    monkeypatch.setattr("association.query.compose.answer", declining)
+    assert agent.ask("how many 30 point games did embiid have?").text == "the template answered"
+    assert calls == ["compose", "template"]

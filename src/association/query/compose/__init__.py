@@ -26,12 +26,14 @@ a connection, an already-routed intent and slots, and the question's own text.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from association.query.templates.common import TemplateContext, TemplateResult, check_coverage
 
 from .core import Query, Refused, Unsupported, run
-from .move import games_reading, move_point
+from .move import games_reading, read_point
+from .plan import plan
 from .present import present
 from .sentence import _span_phrase
 from .sentence import sentence as _sentence
@@ -39,6 +41,7 @@ from .sentence import team_sentence as _team_sentence
 from .team import TeamQuery, TeamResult, run_team
 
 if TYPE_CHECKING:
+    from association.query.reading import Reading
     from association.query.subject import Subject
 
 __all__ = ["answer"]
@@ -89,7 +92,20 @@ def _team_point_data(query: TeamQuery, result: TeamResult) -> dict[str, Any]:
     }
 
 
-def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None) -> TemplateResult | None:
+COMPILER_FIRST: frozenset[str] = frozenset({"threshold_count", "single_game_high", "record_when", "player_history"})
+"""The intents the compiler answers BEFORE their template runs - the four
+whose template the compiler reproduces exactly on every recorded case
+(``~/association-research/intent-shrink/parity.py``: 18/18, 10/10, 10/10,
+20/20). Their templates still exist, as the presenters
+(:mod:`~association.query.compose.present`) that say the point in their
+words, and as the fallback where the compiler declines. ROADMAP plan item
+6, step (a): the Reading is the record for these four first.
+
+.. versionadded:: 4.6.0
+"""
+
+
+def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None, trace: Callable[[Reading], None] | None = None) -> TemplateResult | None:
     """A router-classified question, answered by the compiler where a
     template refused it - or ``None``, meaning the question is not a point on
     this relation at all and should fall through to the agent.
@@ -142,6 +158,12 @@ def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: s
        to a composed answer as it does to a template's, and this appending it
        as well printed the note twice.
 
+    .. versionchanged:: 4.6.0
+       Reads the question once into a :class:`~association.query.reading.Reading`
+       (:func:`~association.query.compose.move.read_point`), hands it to
+       ``trace`` when given - the agent logs it as the decision record - and
+       plans it (:func:`~association.query.compose.plan.plan`).
+
     .. versionchanged:: 4.5.0
        Reads the season line as a second source: an unnarrowed player line
        and a per-season history are said by the templates' own season-line
@@ -150,13 +172,16 @@ def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: s
        (:func:`~association.query.compose.move.games_reading`).
     """
     try:
-        query = move_point(ctx.con, intent, slots, question, subject)
+        reading = read_point(ctx.con, intent, slots, question, subject)
+        if trace is not None:
+            trace(reading)
+        query = plan(reading)
         if isinstance(query, TeamQuery):
             result = run_team(ctx.con, query)
             return TemplateResult(data=_team_point_data(query, result), answer=_team_sentence(query, result), artifacts=[])
         refusal = check_coverage(intent, query.slots)
         if refusal is not None:
-            raise Refused(TemplateResult(data={"season": query.slots.get("season")}, answer=refusal))
+            raise Refused(TemplateResult(data={"message": refusal, "season": query.slots.get("season")}, answer=refusal))
         # The intent's own default point is said the way its template says
         # it (compose.present, plan item 2 step 2a) - None for any other.
         own = present(ctx.con, intent, query.slots, query)
@@ -168,7 +193,7 @@ def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: s
             query = games_reading(query)
             refusal = check_coverage(intent, query.slots)
             if refusal is not None:
-                raise Refused(TemplateResult(data={"season": query.slots.get("season")}, answer=refusal))
+                raise Refused(TemplateResult(data={"message": refusal, "season": query.slots.get("season")}, answer=refusal))
         out = run(ctx.con, query)
     except Unsupported:
         return None

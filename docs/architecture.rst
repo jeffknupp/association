@@ -155,6 +155,20 @@ clarification, a "no match" - is answered, not passed along: it looked at the
 question and had something to say. Nothing here reaches ollama; it is another
 deterministic step, not a smaller agent.
 
+The compiler reads the question once, into a :class:`association.query.reading.Reading`
+- the relation, the subject, the shape, the measures, the predicates, the
+window, the scope - and plans that record into its point
+(:func:`association.query.compose.plan.plan`) without reading the question
+again. The agent logs the record as ``-> (reading) ...``, the trace line that
+says where every value in a composed answer came from. Four intents the
+compiler reproduces exactly on every recorded case (``compose.COMPILER_FIRST``:
+``threshold_count``, ``single_game_high``, ``record_when``, ``player_history``)
+are read and planned *before* their template runs; the template is their
+presenter and the fallback where the compiler declines. That is ROADMAP plan
+item 6 taking its first step: one record of the decision, built today from
+the router's slots by the compiler's own word reading, built next from the
+question by the parser.
+
 The subject need not be a player. :mod:`association.query.compose.team` is a
 second, separate compiler over :mod:`association.query.team_games` instead -
 "how many 3-pointers have the Magic made this season", "total points scored

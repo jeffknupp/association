@@ -470,6 +470,17 @@ class Agent:
         it is one coherent step: "run what the router found, and cope with it
         refusing"."""
         t0 = time.monotonic()
+        # The four intents the compiler reproduces exactly are read and
+        # planned first (compose.COMPILER_FIRST): the Reading is their record,
+        # the template their presenter. Where the compiler declines, the
+        # template runs as it always did.
+        from association.query.compose import COMPILER_FIRST
+
+        if routed.intent in COMPILER_FIRST:
+            composed = self._try_compose(question, routed.intent, routed.slots, history, subject)
+            if composed is not None:
+                history.record_tool_call(f"compose {routed.intent}", time.monotonic() - t0)
+                return routed.intent, composed
         try:
             check_scope(routed.intent, routed.slots)
             # Returned as the answer rather than raised past this point. A
@@ -544,7 +555,14 @@ class Agent:
         from . import compose
 
         with collect_name_readings() as readings:
-            composed = compose.answer(TemplateContext(con=self.toolbox.con, out_dir=self.toolbox.out_dir), intent, slots, question, subject)
+            composed = compose.answer(
+                TemplateContext(con=self.toolbox.con, out_dir=self.toolbox.out_dir),
+                intent,
+                slots,
+                question,
+                subject,
+                trace=lambda reading: history.log(f"  -> (reading) {reading.describe()}"),
+            )
         if composed is None:
             return None
         for reading in readings:
