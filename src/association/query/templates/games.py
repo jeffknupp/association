@@ -6,7 +6,8 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from dataclasses import replace
+from typing import Any, Literal, cast
 
 import duckdb
 
@@ -14,7 +15,7 @@ from association.nba.coverage import POSTSEASON
 from association.nba.franchises import season_name, season_name_sql
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date
-from association.query.reading import Reading
+from association.query.reading import ConditionSpec, Reading, Scope
 
 from ..conditions import _PLAYER_GAME_TABLES, _cell, _matchup_line, _meetings, _names, _player_games, _Scope, _table, _totals, _unseen_meetings, box_source
 from ..entities import Entity, find_players, resolve_team, teammate_names
@@ -41,7 +42,6 @@ from .common import (
     TemplateUnsupported,
     _box_score_notes,
     _career_end,
-    _checked_venue,
     _clamp_limit,
     _condition_scope,
     _log_carries_rebuilt,
@@ -246,31 +246,30 @@ def game_log(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        ``router._route_game_log_recent_span`` and ``_game_log_team``'s and
        ``_game_log_player``'s own ``mixed`` handling.
     """
-    slots = reading.scope.to_slots()
+    scope = reading.scope
     con = ctx.con
-    season_type = slots.get("season_type") or 2
-    limit = _clamp_limit(slots.get("limit"), default=DEFAULT_GAME_LOG_LIMIT)
-    asked = slots["limit"] if isinstance(slots.get("limit"), int) and slots["limit"] >= 1 else None
-    ascending = slots.get("order") == "first"
-    raw_date = slots.get("date")
-    date = raw_date if isinstance(raw_date, str) and _ISO_DATE.match(raw_date) else None
-    opponent, venue, span, without = slots.get("opponent"), slots.get("venue"), slots.get("span"), slots.get("without")
-    game_n = slots.get("game_n")
-    measures = _game_log_lines(slots.get("below"), slots.get("above"), slots.get("threshold"))
+    season_type = scope.season_type or 2
+    limit = _clamp_limit(scope.limit, default=DEFAULT_GAME_LOG_LIMIT)
+    asked = scope.limit if scope.limit is not None and scope.limit >= 1 else None
+    ascending = scope.order == "first"
+    date = scope.date if scope.date is not None and _ISO_DATE.match(scope.date) else None
+    opponent, venue, span, without = scope.opponent, scope.venue, scope.span, scope.without
+    game_n = scope.game_n
+    measures = _game_log_lines(scope.below, scope.above, scope.threshold)
     # A date names its game outright, so it replaces the season rather than
     # being filtered inside it: the router's season is usually its "current"
     # default, and a date from last season looked for in this one finds nothing.
-    season = None if date else slots.get("season")
+    season = None if date else scope.season
     span = "career" if date else span
     # "Last N games" naming no season type: router._route_game_log_recent_span
     # only ever sets this beside `order="recent"` and a real `limit`, with no
     # `date`, `span`, `since` or `game_n` - guaranteed there, checked again
     # here rather than trusted blindly.
-    mixed = bool(slots.get("season_type_unstated")) and not date and not span and not game_n
-    slot_season = _slot_season(slots)
+    mixed = scope.season_type_unstated and not date and not span and not game_n
+    slot_season = _slot_season(scope)
 
-    team_text = slots.get("team")
-    if team_text and not slots.get("player"):
+    team_text = scope.team
+    if team_text and not scope.player:
         return _game_log_team(
             con,
             team_text,
@@ -287,12 +286,12 @@ def game_log(ctx: TemplateContext, reading: Reading) -> TemplateResult:
             limit=limit,
             ascending=ascending,
             mixed=mixed,
-            stat=slots.get("stat"),
-            since=slots.get("since"),
-            until=slots.get("until"),
+            stat=scope.stat,
+            since=scope.since,
+            until=scope.until,
         )
     return _game_log_player(
-        con, slots, team_text, slot_season=slot_season, span=span, season=season, opponent=opponent, measures=measures, date=date, limit=limit, ascending=ascending, mixed=mixed, asked=asked
+        con, scope, team_text, slot_season=slot_season, span=span, season=season, opponent=opponent, measures=measures, date=date, limit=limit, ascending=ascending, mixed=mixed, asked=asked
     )
 
 
@@ -346,7 +345,7 @@ def _game_log_team(
             raise TemplateUnsupported("a career span has no single season to read both season types within")
         return _team_game_log_mixed(con, team, resolved_season, opponent=opponent, venue=venue, limit=limit, stat=stat)
     scope = _span_of(span, season, season_type, "games", since=since, until=until)
-    narrowed = team_games(con, team, scope, {"venue": venue}, opponent=opponent, date=date)
+    narrowed = team_games(con, team, scope, Scope(venue=venue), opponent=opponent, date=date)
     if isinstance(narrowed, TemplateResult):
         return narrowed
     return _team_game_log(con, team, scope, narrowed, limit=limit, ascending=ascending, stat=stat)
@@ -354,7 +353,7 @@ def _game_log_team(
 
 def _game_log_player(
     con: duckdb.DuckDBPyConnection,
-    slots: dict[str, Any],
+    scope: Scope,
     team_text: str | None,
     *,
     slot_season: int | None,
@@ -381,10 +380,10 @@ def _game_log_player(
     # season only once _span_of reads it - and passed through as it was, it
     # narrowed "curry's last 5 games" over every season and asked about all six
     # Currys again. The order those steps run in lives in scoped_player.
-    subject = scoped_player(con, slots, "game_log needs a team or a player", table="player_game_log", available=_GAME_LOGS, span=span, season=season)
+    subject = scoped_player(con, scope, "game_log needs a team or a player", table="player_game_log", available=_GAME_LOGS, span=span, season=season)
     if isinstance(subject, TemplateResult):
         return subject
-    player, scope = subject
+    player, seasons = subject
     if team_text:
         # A `team` beside a named `player` used to win outright at the check
         # above and answer the TEAM's log instead of his - see AGENTS.md,
@@ -393,15 +392,15 @@ def _game_log_player(
         # narrows nothing, a different one is his opponent, and a name
         # nothing resolves to is dropped exactly like an invented player name.
         opponent = _team_slot_for_player(con, player, team_text, season=slot_season, opponent=opponent)
-    extras = _log_extras(slots.get("stat"))
+    extras = _log_extras(scope.stat)
     if mixed:
-        if scope.season is None:
+        if seasons.season is None:
             raise TemplateUnsupported("a career span has no single season to read both season types within")
-        return _player_game_log_mixed(con, player, scope.season, slots, opponent=opponent, measures=measures, extras=extras, limit=limit, asked=asked)
-    narrowed = scoped_games(con, player, scope, slots, opponent=opponent, measures=measures, date=date)
+        return _player_game_log_mixed(con, player, seasons.season, scope, opponent=opponent, measures=measures, extras=extras, limit=limit, asked=asked)
+    narrowed = scoped_games(con, player, seasons, scope, opponent=opponent, measures=measures, date=date)
     if isinstance(narrowed, TemplateResult):
         return narrowed
-    return _player_game_log(con, player, scope, narrowed, extras, limit=limit, asked=asked, ascending=ascending)
+    return _player_game_log(con, player, seasons, narrowed, extras, limit=limit, asked=asked, ascending=ascending)
 
 
 def _game_log_lines(below: Any, above: Any, threshold: Any) -> list[MeasureFilter]:
@@ -680,7 +679,7 @@ def _team_game_log_mixed(con: duckdb.DuckDBPyConnection, team: Entity, season: i
     narrowed_text = ""
     for season_type in (2, 3):
         type_span = _Span(season, season_type)
-        narrowed = team_games(con, team, type_span, {"venue": venue}, opponent=opponent)
+        narrowed = team_games(con, team, type_span, Scope(venue=venue), opponent=opponent)
         if isinstance(narrowed, TemplateResult):
             return narrowed
         narrowed_text = narrowed.filters()
@@ -935,7 +934,7 @@ def _player_game_log_mixed(
     con: duckdb.DuckDBPyConnection,
     player: Entity,
     season: int,
-    slots: dict[str, Any],
+    scope: Scope,
     *,
     opponent: Any,
     measures: list[MeasureFilter],
@@ -960,7 +959,7 @@ def _player_game_log_mixed(
     per_type: dict[int, tuple[_Span, _Narrowed]] = {}
     for season_type in (2, 3):
         type_scope = _Span(season, season_type)
-        narrowed = scoped_games(con, player, type_scope, slots, opponent=opponent, measures=measures)
+        narrowed = scoped_games(con, player, type_scope, scope, opponent=opponent, measures=measures)
         if isinstance(narrowed, TemplateResult):
             return narrowed
         per_type[season_type] = (type_scope, narrowed)
@@ -973,7 +972,7 @@ def _player_game_log_mixed(
     rows, counts = _game_log_merge_season_types(rows_by_type, limit=limit, ascending=False)
     _, narrowed_2 = per_type[2]
     narrowed_text = narrowed_2.filters(dated=False)
-    scope: dict[str, Any] = {
+    about: dict[str, Any] = {
         "player": player.name,
         "season": season,
         "span": None,
@@ -986,19 +985,19 @@ def _player_game_log_mixed(
         # this season" - the same sentence a single-type refusal gives, with
         # no season type to (wrongly) blame it on.
         message = f"{player.name} has no games recorded in the {season} season{narrowed_text}."
-        return TemplateResult(data={**scope, "games": [], "message": message}, answer=message)
+        return TemplateResult(data={**about, "games": [], "message": message}, answer=message)
     games, raws = _player_game_log_rows(rows, needed, headers)
     averages = _player_game_log_averages(headers, raws)
     header = f"{player.name}{narrowed_text}, {_scope(len(games), False, None)}{_game_log_mixed_where(season, counts)}:"
     table = _player_game_log_table(headers, games, averages)
     notes = _player_game_log_mixed_notes(con, player, per_type, games, asked=asked, rebuilt=rebuilt)
     return TemplateResult(
-        data={**scope, "columns": headers, "games": games, "averages": averages, "headline": header.rstrip(":"), "notes": notes},
+        data={**about, "columns": headers, "games": games, "averages": averages, "headline": header.rstrip(":"), "notes": notes},
         answer="\n".join([header, *table, *notes]),
     )
 
 
-def _head_to_head_names(teams_slot: Any, team_slot: Any, opponent_slot: Any) -> list[str]:
+def _head_to_head_names(teams_slot: tuple[str, ...], team_slot: str | None, opponent_slot: str | None) -> list[str]:
     """The team names asked for, merged from `teams`, `team` and `opponent`.
 
     A city name rather than a nickname ("...play Boston?") makes the router
@@ -1008,10 +1007,10 @@ def _head_to_head_names(teams_slot: Any, team_slot: Any, opponent_slot: Any) -> 
     The router also writes the other side as `opponent` ("Celtics vs Bulls
     head to head" arrives as team + opponent): it is one of the two teams.
     """
-    names = [n for n in teams_slot if isinstance(n, str) and n.strip()] if isinstance(teams_slot, list) else []
-    if isinstance(team_slot, str) and team_slot.strip() and team_slot not in names:
+    names = [n for n in teams_slot if n.strip()]
+    if team_slot is not None and team_slot.strip() and team_slot not in names:
         names = [team_slot, *names]
-    if isinstance(opponent_slot, str) and opponent_slot.strip() and opponent_slot not in names:
+    if opponent_slot is not None and opponent_slot.strip() and opponent_slot not in names:
         names = [*names, opponent_slot]
     if len(set(names)) < 2:
         raise TemplateUnsupported("head_to_head needs two team names")
@@ -1037,7 +1036,7 @@ def _head_to_head_teams(con: duckdb.DuckDBPyConnection, names: list[str], season
 
 
 def _head_to_head_narrowed(
-    con: duckdb.DuckDBPyConnection, a: Entity, b: Entity, venue: str | None, date: str | None, season_slot: Any, season_type: int
+    con: duckdb.DuckDBPyConnection, a: Entity, b: Entity, venue: Literal["home", "away"] | None, date: str | None, season_slot: int | None, season_type: int
 ) -> tuple[TeamNarrowed | TemplateResult, int | None]:
     """``a``'s games against ``b``, from ``a``'s own row of the team relation
     (:func:`association.query.templates.common.team_games`) - which already
@@ -1059,14 +1058,14 @@ def _head_to_head_narrowed(
     """
     if date:
         span = _Span(None, season_type)
-        return team_games(con, a, span, {"venue": venue}, opponent=b, date=date), None
+        return team_games(con, a, span, Scope(venue=venue), opponent=b, date=date), None
     # No season named means the CURRENT one, as everywhere else. "All time" is
     # a defensible reading here, but silently answering a different span than
     # the rest of the system is the substitution this design exists to prevent.
     # The answer names the season, so another one is a follow-up away.
     season = season_slot or current_season()
     span = _Span(season, season_type)
-    return team_games(con, a, span, {"venue": venue}, opponent=b), season
+    return team_games(con, a, span, Scope(venue=venue), opponent=b), season
 
 
 def _head_to_head_since(since: Any) -> int | None:
@@ -1079,7 +1078,7 @@ def _head_to_head_since(since: Any) -> int | None:
     return since if isinstance(since, int) and since and not isinstance(since, bool) else None
 
 
-def _head_to_head_span_slots(slots: dict[str, Any], date: str | None) -> tuple[int | None, int | None, bool]:
+def _head_to_head_span_slots(scope: Scope, date: str | None) -> tuple[int | None, int | None, bool]:
     """``head_to_head``'s ``since``/``until``/``span`` reading and the
     conflicts that are its own (a date and a since-bounded or career span at
     once; ``since`` and ``career`` together) - pulled out of ``head_to_head``
@@ -1088,9 +1087,9 @@ def _head_to_head_span_slots(slots: dict[str, Any], date: str | None) -> tuple[i
 
     .. versionadded:: 4.4.0
     """
-    since = _head_to_head_since(slots.get("since"))
-    until = _validated_until(slots.get("until"), since)
-    career = slots.get("span") == "career"
+    since = _head_to_head_since(scope.since)
+    until = _validated_until(scope.until, since)
+    career = scope.span == "career"
     if (since is not None or career or until is not None) and date:
         raise TemplateUnsupported("a date and a since-bounded or career span of meetings at once")
     if since is not None and career:
@@ -1130,28 +1129,26 @@ def head_to_head(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        Honors ``until`` beside ``since`` (step 3, K1): "meetings from 2011 to
        2019" reads a bounded range rather than an open-ended "since 2011".
     """
-    slots = reading.scope.to_slots()
+    scope = reading.scope
     con = ctx.con
-    teams_slot = slots.get("teams")
-    team_slot = slots.get("team")
     # The router also writes the other side as `opponent` ("Celtics vs Bulls
     # head to head" arrives as team + opponent): it is one of the two teams.
-    opponent_slot = slots.get("opponent")
-    names = _head_to_head_names(teams_slot, team_slot, opponent_slot)
+    names = _head_to_head_names(scope.teams, scope.team, scope.opponent)
 
-    teams = _head_to_head_teams(con, names, _slot_season(slots))
+    teams = _head_to_head_teams(con, names, _slot_season(scope))
     if isinstance(teams, TemplateResult):
         return teams
     a, b = teams
-    season_type = slots.get("season_type") or 2
-    raw_date = slots.get("date")
-    date = raw_date if isinstance(raw_date, str) and _ISO_DATE.match(raw_date) else None
-    venue = _checked_venue(slots["venue"]) if slots.get("venue") else None
-    since, until, career = _head_to_head_span_slots(slots, date)
+    season_type = scope.season_type or 2
+    date = scope.date if scope.date is not None and _ISO_DATE.match(scope.date) else None
+    # Home or away and nothing else: the Scope's own type (it was checked
+    # here, against the slot dict, before the Reading was typed).
+    venue = scope.venue
+    since, until, career = _head_to_head_span_slots(scope, date)
     if since is not None or career or until is not None:
         return _head_to_head_span_result(con, a, b, venue, season_type, since=since, until=until, career=career)
 
-    narrowed, season = _head_to_head_narrowed(con, a, b, venue, date, slots.get("season"), season_type)
+    narrowed, season = _head_to_head_narrowed(con, a, b, venue, date, scope.season, season_type)
     if isinstance(narrowed, TemplateResult):
         return narrowed
     sql, params = team_rows_sql(narrowed, "tg.won", order="tg.eastern_date")
@@ -1171,7 +1168,7 @@ def head_to_head(ctx: TemplateContext, reading: Reading) -> TemplateResult:
 
 
 def _head_to_head_span_result(
-    con: duckdb.DuckDBPyConnection, a: Entity, b: Entity, venue: str | None, season_type: int, *, since: int | None, until: int | None = None, career: bool
+    con: duckdb.DuckDBPyConnection, a: Entity, b: Entity, venue: Literal["home", "away"] | None, season_type: int, *, since: int | None, until: int | None = None, career: bool
 ) -> TemplateResult:
     """``head_to_head``'s answer for a since-bounded or whole-career span
     (step 3, team cells): every meeting between ``a`` and ``b`` in the span,
@@ -1190,7 +1187,7 @@ def _head_to_head_span_result(
        Honors ``until`` beside ``since`` (step 3, K1).
     """
     span = _span_of("career" if career else None, None, season_type, "games", since=since, until=until)
-    narrowed = team_games(con, a, span, {"venue": venue}, opponent=b)
+    narrowed = team_games(con, a, span, Scope(venue=venue), opponent=b)
     if isinstance(narrowed, TemplateResult):
         return narrowed
     select = f"tg.won, {'year(tg.eastern_date)' if season_type == 3 else 'tg.season'}"
@@ -1394,28 +1391,27 @@ def team_quarter_points(ctx: TemplateContext, reading: Reading) -> TemplateResul
        two cells step 3, K1 adds to :data:`common.TEAM_RELATION_SCOPING`,
        reached the same "for free" way through :func:`common.team_games`.
     """
-    slots = reading.scope.to_slots()
+    scope = reading.scope
     con = ctx.con
-    periods, period_label = _period_scope(slots, "team_quarter_points")
-    if isinstance(slots.get("player"), str) and slots["player"].strip():
+    periods, period_label = _period_scope(scope, "team_quarter_points")
+    if scope.player is not None and scope.player.strip():
         # A named player's quarter or half is period_split's job, not this
         # template's - see the docstring.
         raise TemplateUnsupported("team_quarter_points cannot answer for a named player")
-    _team_quarter_points_check_stat(slots.get("stat"))
+    _team_quarter_points_check_stat(scope.stat)
 
-    raw_date = slots.get("date")
-    date = raw_date if isinstance(raw_date, str) and _ISO_DATE.match(raw_date) else None
-    settled = _team_quarter_points_team_and_span(con, slots, date)
+    date = scope.date if scope.date is not None and _ISO_DATE.match(scope.date) else None
+    settled = _team_quarter_points_team_and_span(con, scope, date)
     if isinstance(settled, TemplateResult):
         return settled
     team, span = settled
-    # Named explicitly (rather than handing `slots` on whole) so every cell
+    # Named explicitly (rather than handing the scope on whole) so every cell
     # this template honors is visible in its own body, not only inside the
     # shared step - `venue`, `game_n`, `situation` (step 3, K1) and the
     # `order`/`limit` window all narrow through `team_games` itself, which
-    # reads them off exactly these keys (see its own docstring).
-    narrowing = {"venue": slots.get("venue"), "game_n": slots.get("game_n"), "situation": slots.get("situation"), "order": slots.get("order"), "limit": slots.get("limit")}
-    narrowed = team_games(con, team, span, narrowing, opponent=slots.get("opponent"), date=date)
+    # reads them off exactly these fields (see its own docstring).
+    narrowing = Scope(venue=scope.venue, game_n=scope.game_n, situation=scope.situation, order=scope.order, limit=scope.limit)
+    narrowed = team_games(con, team, span, narrowing, opponent=scope.opponent, date=date)
     if isinstance(narrowed, TemplateResult):
         return narrowed
 
@@ -1428,13 +1424,13 @@ def team_quarter_points(ctx: TemplateContext, reading: Reading) -> TemplateResul
         periods=periods,
         period_label=period_label,
         period_str=period_str,
-        rank=slots.get("rank"),
+        rank=scope.rank,
         extra=narrowed.filters(opponent=False),
         dateless_extra=narrowed.filters(opponent=False, date=False),
     )
 
 
-def _team_quarter_points_team_and_span(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], date: str | None) -> tuple[Entity, _Span] | TemplateResult:
+def _team_quarter_points_team_and_span(con: duckdb.DuckDBPyConnection, scope: Scope, date: str | None) -> tuple[Entity, _Span] | TemplateResult:
     """The team and the seasons its games come from - through
     :func:`common.scoped_team`, the same order every other team template
     settles them in, unless a ``date`` already names one game outright: the
@@ -1445,18 +1441,12 @@ def _team_quarter_points_team_and_span(con: duckdb.DuckDBPyConnection, slots: di
     K1) are named explicitly, for the same reason ``narrowing`` is built by
     hand in the caller."""
     if date:
-        team = _resolved_team(con, slots.get("team"), season=_slot_season(slots))
+        team = _resolved_team(con, scope.team, season=_slot_season(scope))
         if isinstance(team, TemplateResult):
             return team
-        return team, _Span(None, slots.get("season_type") or 2)
-    scoped = {
-        "team": slots.get("team"),
-        "season": slots.get("season"),
-        "season_type": slots.get("season_type"),
-        "since": slots.get("since"),
-        "until": slots.get("until"),
-    }
-    return scoped_team(con, scoped, "team_quarter_points needs a team", span=slots.get("span"), season=slots.get("season"))
+        return team, _Span(None, scope.season_type or 2)
+    scoped = Scope(team=scope.team, season=scope.season, season_type=scope.season_type, since=scope.since, until=scope.until)
+    return scoped_team(con, scoped, "team_quarter_points needs a team", span=scope.span, season=scope.season)
 
 
 def _team_quarter_points_check_stat(stat: Any) -> None:
@@ -1672,25 +1662,24 @@ quarter of its quarters is not an answer at all.
 _HALF_PERIODS: dict[int, tuple[int, ...]] = {1: (1, 2), 2: (3, 4)}
 
 
-def _period_scope(slots: dict[str, Any], intent: str = "period_split") -> tuple[tuple[int, ...], str]:
+def _period_scope(scope: Scope, intent: str = "period_split") -> tuple[tuple[int, ...], str]:
     """The periods a question asks for, and how to name them in an answer."""
-    half = slots.get("half")
-    if isinstance(half, int) and half in _HALF_PERIODS:
+    half = scope.half
+    if half is not None and half in _HALF_PERIODS:
         return _HALF_PERIODS[half], f"{_ordinal(half)} half"
-    period = slots.get("period")
-    if isinstance(period, int) and 1 <= period <= 10:
+    period = scope.period
+    if period is not None and 1 <= period <= 10:
         return (period,), _period_label(period)
-    raise TemplateUnsupported(f"{intent} needs a period 1-10 or a half 1-2, got period={slots.get('period')!r} half={half!r}")
+    raise TemplateUnsupported(f"{intent} needs a period 1-10 or a half 1-2, got period={scope.period!r} half={half!r}")
 
 
-def _period_split_date(slots: dict[str, Any]) -> str | None:
+def _period_split_date(scope: Scope) -> str | None:
     """The ``date`` slot as ``YYYY-MM-DD``, or ``None`` for anything else -
     split out of :func:`period_split` to keep it inside the complexity gate.
 
     .. versionadded:: 4.4.0
     """
-    raw_date = slots.get("date")
-    return raw_date if isinstance(raw_date, str) and _ISO_DATE.match(raw_date) else None
+    return scope.date if scope.date is not None and _ISO_DATE.match(scope.date) else None
 
 
 def _period_split_reconciliation_refusal(season: int) -> TemplateResult | None:
@@ -1705,7 +1694,7 @@ def _period_split_reconciliation_refusal(season: int) -> TemplateResult | None:
     return _period_split_refusal(season, PERIOD_RECONCILIATION.get(season))
 
 
-def _period_split_subject(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], date: str | None) -> tuple[Entity, _Span] | TemplateResult:
+def _period_split_subject(con: duckdb.DuckDBPyConnection, scope: Scope, date: str | None) -> tuple[Entity, _Span] | TemplateResult:
     """The player a period question is about, and the seasons it covers -
     split out of :func:`period_split` to keep it inside the complexity gate.
 
@@ -1722,9 +1711,7 @@ def _period_split_subject(con: duckdb.DuckDBPyConnection, slots: dict[str, Any],
 
     .. versionadded:: 4.4.0
     """
-    return scoped_player(
-        con, slots, "no player named", table="player_game_log", available=SHOT_AVAILABILITY, span="career" if date else slots.get("span"), season=None if date else slots.get("season")
-    )
+    return scoped_player(con, scope, "no player named", table="player_game_log", available=SHOT_AVAILABILITY, span="career" if date else scope.span, season=None if date else scope.season)
 
 
 def period_split(ctx: TemplateContext, reading: Reading) -> TemplateResult:
@@ -1785,34 +1772,34 @@ def period_split(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        while still heading them "the 2026 regular season", one of the years
        actually summed and not the range.
     """
-    slots = reading.scope.to_slots()
+    scope = reading.scope
     con = ctx.con
-    periods, period_label = _period_scope(slots)
-    stat = slots.get("stat")
-    if isinstance(stat, str) and stat.strip() and stat not in ("points", "all"):
+    periods, period_label = _period_scope(scope)
+    stat = scope.stat
+    if stat is not None and stat.strip() and stat not in ("points", "all"):
         raise TemplateUnsupported(f"period_split answers points only, not {stat!r} - no other stat is recorded per period")
     # Refused here, before any name is resolved, if a line names no column -
     # the same discipline player_stat's own measures follow.
-    measures = measure_filters(slots.get("below"), slots.get("above"))
+    measures = measure_filters(scope.below, scope.above)
 
-    date = _period_split_date(slots)
-    season, season_type = slots.get("season") or current_season(), slots.get("season_type") or 2
+    date = _period_split_date(scope)
+    season, season_type = scope.season or current_season(), scope.season_type or 2
     if date is None:
         refusal = _period_split_reconciliation_refusal(season)
         if refusal is not None:
             return refusal
 
-    subject = _period_split_subject(con, slots, date)
+    subject = _period_split_subject(con, scope, date)
     if isinstance(subject, TemplateResult):
         return subject
     player, span = subject
 
-    opponent = _optional_team(con, slots.get("opponent"), season=_slot_season(slots))
+    opponent = _optional_team(con, scope.opponent, season=_slot_season(scope))
     if isinstance(opponent, TemplateResult):
         return opponent
 
-    venue, started = _period_split_narrowing(slots.get("venue"), slots.get("split"))
-    narrowed_rows = _period_split_rows(con, player, span, periods, slots, opponent, measures, date)
+    venue, started = _period_split_narrowing(scope.venue, scope.split)
+    narrowed_rows = _period_split_rows(con, player, span, periods, scope, opponent, measures, date)
     if isinstance(narrowed_rows, TemplateResult):
         return narrowed_rows
     rows, narrowed_mates, narrowed_measures, series_game = narrowed_rows
@@ -1826,7 +1813,7 @@ def period_split(ctx: TemplateContext, reading: Reading) -> TemplateResult:
         if refusal is not None:
             return refusal
 
-    scope = _period(season, season_type)
+    season_label = _period(season, season_type)
     vs = f" against the {opponent.name}" if opponent else ""
     at = _period_split_narrowing_said(venue, started, narrowed_mates, narrowed_measures, date, series_game=series_game, one_series=opponent is not None)
     games = [{"date": _eastern_date(d), "opponent": name, "home_away": side, "points": int(pts or 0)} for d, _game_season, side, name, pts in rows]
@@ -1842,12 +1829,12 @@ def period_split(ctx: TemplateContext, reading: Reading) -> TemplateResult:
         "games_played": len(games),
     }
     if not games:
-        return _period_split_empty(con, player, span, periods, period_label, slots, opponent, measures, venue, started, data, scope, vs, at)
+        return _period_split_empty(con, player, span, periods, period_label, scope, opponent, measures, venue, started, data, season_label, vs, at)
 
     total = sum(g["points"] for g in games)
     average = total / len(games)
     data |= {"total": total, "average": average}
-    header = _period_split_header(player, period_label, scope, vs, at, total, average, games, slots, slots.get("order"))
+    header = _period_split_header(player, period_label, season_label, vs, at, total, average, games, scope, scope.order)
     caveat = _period_split_caveat(season, PERIOD_RECONCILIATION.get(season))
     return _period_split_result(data, header, caveat)
 
@@ -1911,29 +1898,29 @@ def period_leaderboard(ctx: TemplateContext, reading: Reading) -> TemplateResult
 
     .. versionadded:: 4.4.0
     """
-    slots = reading.scope.to_slots()
+    scope = reading.scope
     con = ctx.con
-    periods, period_label = _period_scope(slots, "period_leaderboard")
-    stat = slots.get("stat")
-    if isinstance(stat, str) and stat.strip() and stat not in ("points", "all"):
+    periods, period_label = _period_scope(scope, "period_leaderboard")
+    stat = scope.stat
+    if stat is not None and stat.strip() and stat not in ("points", "all"):
         raise TemplateUnsupported(f"period_leaderboard ranks points only, not {stat!r} - no other stat is recorded per period")
 
-    season = slots.get("season") or current_season()
-    season_type = slots.get("season_type") or 2
+    season = scope.season or current_season()
+    season_type = scope.season_type or 2
     agreement = PERIOD_RECONCILIATION.get(season)
     refusal = _period_split_refusal(season, agreement)
     if refusal is not None:
         return refusal
 
     team: Entity | None = None
-    if isinstance(slots.get("team"), str) and slots["team"].strip():
-        resolved = _resolved_team(con, slots["team"], season=_slot_season(slots))
+    if scope.team is not None and scope.team.strip():
+        resolved = _resolved_team(con, scope.team, season=_slot_season(scope))
         if isinstance(resolved, TemplateResult):
             return resolved
         team = resolved
 
     minimum = PER_GAME_MIN_POSTSEASON_GAMES if season_type == POSTSEASON else PER_GAME_MIN_GAMES
-    limit = _clamp_limit(slots.get("limit"))
+    limit = _clamp_limit(scope.limit)
     rows = _period_leaderboard_rows(con, season, season_type, periods, periods_team=team, minimum=minimum, limit=limit)
     return _period_leaderboard_answer(rows, period_label, _period(season, season_type), team, minimum, agreement, season)
 
@@ -2060,7 +2047,7 @@ def _period_split_narrowing(venue: Any, split: Any) -> tuple[str | None, bool | 
     """The venue and the starter/bench half this question narrows to.
 
     Split out of :func:`period_split` to keep it inside the complexity gate.
-    Takes the slot VALUES rather than the slots dict, so `period_split`'s own
+    Takes the slot VALUES rather than the Scope, so `period_split`'s own
     source still names every scoping slot it honors - which is what
     ``test_every_template_honoring_a_scope_slot_actually_reads_it`` reads back
     out of it. Only a NAMED half of the split filters (:data:`common.STARTER_SIDES`).
@@ -2074,7 +2061,7 @@ def _period_split_rows(
     player: Entity,
     span: _Span,
     periods: tuple[int, ...],
-    slots: dict[str, Any],
+    scope: Scope,
     opponent: Entity | None,
     measures: list[MeasureFilter] | None = None,
     date: str | None = None,
@@ -2161,10 +2148,10 @@ def _period_split_rows(
        ``scoped_games``'s own note on why ``.window`` is a no-op here), and
        changing that default would move the answer for every one of them.
     """
-    # The question's own slots, whole - not a dict built here. A dict built
+    # The question's own scope, whole - not one built here. A dict built
     # here carried venue, without and split and nothing else, so `game_n` was
     # declared honored and never reached the relation (ISSUES.md, closed).
-    narrowed = scoped_games(con, player, span, slots, opponent=opponent, measures=measures or [], date=date)
+    narrowed = scoped_games(con, player, span, scope, opponent=opponent, measures=measures or [], date=date)
     if isinstance(narrowed, TemplateResult):
         return narrowed
     rebuilt = box_source(con).rebuilt
@@ -2205,13 +2192,13 @@ def _period_split_empty(
     span: _Span,
     periods: tuple[int, ...],
     period_label: str,
-    slots: dict[str, Any],
+    scope: Scope,
     opponent: Entity | None,
     measures: list[MeasureFilter] | None,
     venue: str | None,
     started: bool | None,
     data: dict[str, Any],
-    scope: str,
+    season_label: str,
     vs: str,
     at: str,
 ) -> TemplateResult:
@@ -2219,10 +2206,10 @@ def _period_split_empty(
     function inside the complexity gate. Tries
     :func:`_period_split_cross_season_redirect` first (yardstick-v2 F050);
     the plain refusal, unchanged, is what it falls back to."""
-    redirect = _period_split_cross_season_redirect(con, player, span, periods, period_label, slots, opponent, measures, venue, started)
+    redirect = _period_split_cross_season_redirect(con, player, span, periods, period_label, scope, opponent, measures, venue, started)
     if redirect is not None:
         return redirect
-    message = f"No {scope} games found for {player.name}{vs}{at}."
+    message = f"No {season_label} games found for {player.name}{vs}{at}."
     return TemplateResult(data={**data, "message": message, "headline": message}, answer=message)
 
 
@@ -2232,7 +2219,7 @@ def _period_split_cross_season_redirect(
     span: _Span,
     periods: tuple[int, ...],
     period_label: str,
-    slots: dict[str, Any],
+    scope: Scope,
     opponent: Entity | None,
     measures: list[MeasureFilter] | None,
     venue: str | None,
@@ -2270,12 +2257,12 @@ def _period_split_cross_season_redirect(
 
     .. versionadded:: 4.4.0
     """
-    window = _relation_window(slots)
+    window = _relation_window(scope)
     if not span.defaulted or window is None or window[0] != "recent":
         return None
     _, count = window
     career = _span_of("career", None, span.season_type, "player_game_log")
-    widened = _period_split_rows(con, player, career, periods, slots, opponent, measures, limit=count)
+    widened = _period_split_rows(con, player, career, periods, scope, opponent, measures, limit=count)
     if isinstance(widened, TemplateResult) or not widened[0]:
         return None
     rows, narrowed_mates, narrowed_measures, series_game = widened
@@ -2286,7 +2273,7 @@ def _period_split_cross_season_redirect(
     refusal = _period_split_reconciliation_refusal(season)
     if refusal is not None:
         return refusal
-    scope = _period(season, span.season_type)
+    season_label = _period(season, span.season_type)
     vs = f" against the {opponent.name}" if opponent else ""
     at = _period_split_narrowing_said(venue, started, narrowed_mates, narrowed_measures, None, series_game=series_game, one_series=opponent is not None)
     games = [{"date": _eastern_date(d), "opponent": name, "home_away": side, "points": int(pts or 0)} for d, _game_season, side, name, pts in rows]
@@ -2305,23 +2292,23 @@ def _period_split_cross_season_redirect(
         "total": total,
         "average": average,
     }
-    header = _period_split_header(player, period_label, scope, vs, at, total, average, games, slots, slots.get("order"))
-    redirect_note = f"No games this season, so these are his most recent {len(games)}{at}, from the {scope}."
+    header = _period_split_header(player, period_label, season_label, vs, at, total, average, games, scope, scope.order)
+    redirect_note = f"No games this season, so these are his most recent {len(games)}{at}, from the {season_label}."
     caveat = _period_split_caveat(season, PERIOD_RECONCILIATION.get(season))
     return _period_split_result(data, header, caveat, extra_note=redirect_note)
 
 
-def _period_split_header(player: Entity, period_label: str, scope: str, vs: str, at: str, total: int, average: float, games: list[dict[str, Any]], slots: dict[str, Any], order: Any = None) -> str:
+def _period_split_header(player: Entity, period_label: str, season_label: str, vs: str, at: str, total: int, average: float, games: list[dict[str, Any]], scope: Scope, order: Any = None) -> str:
     """The headline sentence: one game's own wording when there is only one,
     the recent-games log appended when ``per_game`` asked for it, or the
     plain season average otherwise."""
     plural = "game" if len(games) == 1 else "games"
-    header = f"{player.name} scored {total} points in the {period_label} over {len(games)} {plural} of the {scope}{vs}{at}, averaging {average:.1f}."
+    header = f"{player.name} scored {total} points in the {period_label} over {len(games)} {plural} of the {season_label}{vs}{at}, averaging {average:.1f}."
     if len(games) == 1:
         g = games[0]
         against = f"the {g['opponent']}" if g["opponent"] else "their opponent"
-        header = f"{player.name} scored {total} points in the {period_label} {'vs' if g['home_away'] == 'home' else 'at'} {against} on {g['date']} ({scope})."
-    elif slots.get("per_game"):
+        header = f"{player.name} scored {total} points in the {period_label} {'vs' if g['home_away'] == 'home' else 'at'} {against} on {g['date']} ({season_label})."
+    elif scope.per_game:
         # The router sets this when the question said "log", "by game" or "each
         # game". The total and average stay over EVERY game, so the header
         # answers the season; the rows are the most recent games, capped like
@@ -2330,7 +2317,7 @@ def _period_split_header(player: Entity, period_label: str, scope: str, vs: str,
         # `order` picks the END of the season the rows come from, the way it
         # does for game_log. Without reading it, "his first 5 games" showed
         # his last five - a different five games, with nothing saying so.
-        count = _clamp_limit(slots.get("limit"), default=DEFAULT_GAME_LOG_LIMIT)
+        count = _clamp_limit(scope.limit, default=DEFAULT_GAME_LOG_LIMIT)
         earliest = order == "first"
         shown = games[:count] if earliest else games[-count:]
         rows_out = [f"  {g['date']}  {'vs' if g['home_away'] == 'home' else '@ '} {g['opponent'] or '?':<24} {g['points']:>3}" for g in (shown if earliest else reversed(shown))]
@@ -2417,21 +2404,19 @@ def player_matchup(ctx: TemplateContext, reading: Reading) -> TemplateResult:
 
     .. versionadded:: 2.1.0
     """
-    slots = reading.scope.to_slots()
+    scope = reading.scope
     con = ctx.con
-    players = slots.get("players")
-    listed: list[Any] = players if isinstance(players, list) else []
-    texts = list(dict.fromkeys(n.strip() for n in [*listed, slots.get("player")] if isinstance(n, str) and n.strip()))
-    opponent, without = slots.get("opponent"), slots.get("without")
+    texts = list(dict.fromkeys(n.strip() for n in [*scope.players, scope.player] if n is not None and n.strip()))
+    opponent = scope.opponent
     if len(texts) == 2 and opponent:
-        texts = _player_matchup_drop_fabricated_second(con, texts, without, slots.get("season"), slots.get("span"), slots.get("season_type"))
+        texts = _player_matchup_drop_fabricated_second(con, texts, scope)
     if len(texts) == 1 and opponent:
         # One name and a team opponent - not a fabricated second player, an
         # actual player-vs-team question that named itself that way. Answered
         # by the same code game_log uses for "player vs opponent", not
         # reimplemented: it is the same question, however it got routed here.
         # `without` rides along unchanged - game_log already reads it.
-        return game_log(ctx, Reading.from_slots({**slots, "player": texts[0]}, intent="game_log", subject=reading.subject))
+        return game_log(ctx, replace(reading, scope=replace(scope, player=texts[0]), intent="game_log"))
     if len(texts) != 2:
         raise TemplateUnsupported(f"player_matchup needs exactly two players, got {texts!r}")
     if opponent:
@@ -2439,31 +2424,31 @@ def player_matchup(ctx: TemplateContext, reading: Reading) -> TemplateResult:
         # real two-player matchup that still has one left over has to refuse
         # it itself - it names no third team to narrow the meetings by.
         raise TemplateUnsupported("player_matchup cannot narrow a two-player matchup to one opponent")
-    scope = _condition_scope(slots.get("season"), slots.get("span"), slots.get("season_type"), _PLAYER_GAME_TABLES, since=slots.get("since"))
-    resolved = _player_matchup_resolve(con, texts, scope)
+    covered = _condition_scope(scope.season, scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
+    resolved = _player_matchup_resolve(con, texts, covered)
     if isinstance(resolved, TemplateResult):
         return resolved
     a, b = resolved
-    narrowed = _player_matchup_narrowed(con, a, b, slots)
+    narrowed = _player_matchup_narrowed(con, a, b, scope)
     if isinstance(narrowed, TemplateResult):
         return narrowed
 
     meetings, together = _meetings(con, narrowed, b.id)
-    unseen = _unseen_meetings(con, scope, a.id, b.id)
+    unseen = _unseen_meetings(con, covered, a.id, b.id)
     caveat = (
         f" {unseen} game{'' if unseen == 1 else 's'} between their teams while both were playing for them {'has' if unseen == 1 else 'have'} no box score, so a meeting there is not counted."
         if unseen
         else ""
     )
     if not meetings:
-        return _player_matchup_no_meetings(con, scope, a, b, together, caveat + _player_matchup_absence_context(con, a, b, slots, narrowed), narrowed.filters())
+        return _player_matchup_no_meetings(con, covered, a, b, together, caveat + _player_matchup_absence_context(con, a, b, scope, narrowed), narrowed.filters())
 
     wins, lines, count, summary = _player_matchup_summary(a, b, meetings)
-    shown, log = _player_matchup_log(con, meetings, slots.get("limit"), a, b)
-    return _player_matchup_answer(a, b, scope, meetings, wins, lines, count, summary, shown, log, caveat, narrowed.filters())
+    shown, log = _player_matchup_log(con, meetings, scope.limit, a, b)
+    return _player_matchup_answer(a, b, covered, meetings, wins, lines, count, summary, shown, log, caveat, narrowed.filters())
 
 
-def _player_matchup_narrowed(con: duckdb.DuckDBPyConnection, a: Entity, b: Entity, slots: dict[str, Any]) -> _Narrowed | TemplateResult:
+def _player_matchup_narrowed(con: duckdb.DuckDBPyConnection, a: Entity, b: Entity, scope: Scope) -> _Narrowed | TemplateResult:
     """The first player's games under every row-level narrowing the question
     carries - a teammate's absence ("curry vs lebron without kd", yardstick-v2
     F114), a venue, a date, a starter half, a calendar - read through the
@@ -2477,8 +2462,8 @@ def _player_matchup_narrowed(con: duckdb.DuckDBPyConnection, a: Entity, b: Entit
 
     .. versionadded:: 4.4.0
     """
-    span = _span_of(slots.get("span"), slots.get("season"), _player_relation_season_type(slots), "player_game_log", since=slots.get("since"), until=slots.get("until"))
-    narrowed = scoped_games(con, a, span, {k: v for k, v in slots.items() if k not in ("limit", "order", "opponent")}, opponent=None, measures=measure_filters(slots.get("below"), slots.get("above")))
+    span = _span_of(scope.span, scope.season, _player_relation_season_type(scope), "player_game_log", since=scope.since, until=scope.until)
+    narrowed = scoped_games(con, a, span, replace(scope, limit=None, order=None, opponent=None), opponent=None, measures=measure_filters(scope.below, scope.above))
     if isinstance(narrowed, TemplateResult):
         return narrowed
     narrowed = whole_span(narrowed)
@@ -2488,7 +2473,7 @@ def _player_matchup_narrowed(con: duckdb.DuckDBPyConnection, a: Entity, b: Entit
     return narrowed
 
 
-def _player_matchup_drop_fabricated_second(con: duckdb.DuckDBPyConnection, texts: list[str], without: Any, season: Any, span: Any, season_type: Any) -> list[str]:
+def _player_matchup_drop_fabricated_second(con: duckdb.DuckDBPyConnection, texts: list[str], scope: Scope) -> list[str]:
     """``texts`` down to one name when the "second player" was never a second
     player - a one-player-vs-a-team question the router dressed as a
     two-player matchup, the shape ISSUES #34 describes. Two ways that
@@ -2513,8 +2498,10 @@ def _player_matchup_drop_fabricated_second(con: duckdb.DuckDBPyConnection, texts
     Tried in both name orders, since nothing here says which of the two texts
     is the real subject and which is the noise.
     """
-    without_names = teammate_names(without)
-    teammate_span = _span_of(span, season, season_type or 2, "player_game_log")
+    # A list, as the slot always was: teammate_names reads a list or one
+    # bare name, and a tuple would be neither - every teammate dropped.
+    without_names = teammate_names(list(scope.without))
+    teammate_span = _span_of(scope.span, scope.season, scope.season_type or 2, "player_game_log")
     for primary, other in ((texts[0], texts[1]), (texts[1], texts[0])):
         other_matches = find_players(con, other, limit=2)
         if not other_matches:
@@ -2558,7 +2545,7 @@ def _player_matchup_resolve(con: duckdb.DuckDBPyConnection, texts: list[str], sc
     return a, b
 
 
-def _player_matchup_absence_context(con: duckdb.DuckDBPyConnection, a: Entity, b: Entity, slots: dict[str, Any], narrowed: _Narrowed) -> str:
+def _player_matchup_absence_context(con: duckdb.DuckDBPyConnection, a: Entity, b: Entity, scope: Scope, narrowed: _Narrowed) -> str:
     """Why a matchup narrowed by a teammate's absence holds no meetings, in
     the numbers that answer the question a reader probably meant: "steph
     curry record vs lebron regular season without kd" (yardstick-v2 F114)
@@ -2573,7 +2560,7 @@ def _player_matchup_absence_context(con: duckdb.DuckDBPyConnection, a: Entity, b
     """
     if not narrowed.without:
         return ""
-    unconditioned = {k: v for k, v in slots.items() if k not in ("without", "conditions")}
+    unconditioned = replace(scope, without=(), conditions=())
     everywhere = _player_matchup_narrowed(con, a, b, unconditioned)
     if isinstance(everywhere, TemplateResult):
         return ""
@@ -2581,7 +2568,8 @@ def _player_matchup_absence_context(con: duckdb.DuckDBPyConnection, a: Entity, b
     if not all_meetings:
         return ""
     names = _joined([mate.name for mate in narrowed.without])
-    beside = _player_matchup_narrowed(con, a, b, {**unconditioned, "conditions": [{"player": mate.name, "side": "own", "predicate": "played"} for mate in narrowed.without]})
+    playing = tuple(ConditionSpec(player=mate.name, side="own", predicate="played") for mate in narrowed.without)
+    beside = _player_matchup_narrowed(con, a, b, replace(unconditioned, conditions=playing))
     with_them = len(_meetings(con, beside, b.id)[0]) if not isinstance(beside, TemplateResult) else 0
     first, last = min(m["season"] for m in all_meetings), max(m["season"] for m in all_meetings)
     return (
