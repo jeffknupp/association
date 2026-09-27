@@ -99,6 +99,20 @@ def test_a_near_spelling_initials_and_a_nickname_support_a_router_name(con: duck
     assert question_supports("Kevin Durant", "without kd") and not question_supports("Kevin Durant", "without the ball")
 
 
+def test_a_swapped_pair_of_letters_is_one_edit(con: duckdb.DuckDBPyConnection) -> None:
+    """ISSUES #239: plain Levenshtein charged a transposition twice, past
+    the one-edit budget of a five- or six-letter word, so a question that
+    typed "jokci" did not support the router's Nikola Jokic - while the
+    entity index, measuring Damerau-Levenshtein in DuckDB, read "jokci" as
+    him - and the answer was the misread-name refusal. One metric now."""
+    assert question_supports("Nikola Jokic", "jokci stats")
+    assert question_supports("Tyrese Maxey", "maxye last 5 games")
+    assert question_supports("LeBron James", "leborn stats")
+    # Two separate edits in a short word are still a different word.
+    assert not question_supports("Nikola Jokic", "jkoci stats")
+    assert _read(con, "jokci career averages", player="Nikola Jokic").players == ("Nikola Jokic",)
+
+
 def test_an_ordinary_word_that_is_also_a_whole_name_is_not_a_player(con: duckdb.DuckDBPyConnection) -> None:
     """ "best" is Travis Best, "head" is Luther Head and "pointer" is
     Sir'Dominic Pointer to players_named_in; a question is about them only

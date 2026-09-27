@@ -302,7 +302,10 @@ and `subject.apply_subject` writes those names into the slots (until 4.5.0 this
 was `entities.override_invented_players`). What counts as the question
 supporting a name (`subject.question_supports`) is deliberately generous, because the router's expansions are usually the
 useful kind: the word itself, a near spelling of it (the router silently
-corrects typos), a nickname, or the initials ("KAT", "SGA"). Any ONE word of
+corrects typos; measured as Damerau-Levenshtein, rapidfuzz's, the metric the
+entity index uses in DuckDB - a swapped pair of letters is one edit, and a
+second metric here once refused "jokci stats" that the index read as Jokic),
+a nickname, or the initials ("KAT", "SGA"). Any ONE word of
 the name is enough, since half a name is how a question normally carries one -
 what this catches is a name with no half in the question at all. Three rules
 about what happens next, and the third is the one that was got wrong first:

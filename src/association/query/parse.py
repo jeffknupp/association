@@ -37,7 +37,7 @@ from association.query.measures import MEASURE_WORDS
 from association.query.metrics import EXTRA_FIELD_COLUMNS
 from association.query.reading import Reading
 from association.query.router import Route, _period_asked, settle
-from association.query.subject import KIND_ASSIGNED_INTENTS, TEAM_SINGULARS, Subject, _levenshtein, question_supports, read_subject
+from association.query.subject import KIND_ASSIGNED_INTENTS, TEAM_SINGULARS, Subject, _edit_distance, question_supports, read_subject
 
 _PAIR_MEETING = (
     r"(?!.*\b(compare|compared|comparing|contrast|evaluate|who scores more|who is better|who was better)\b)"
@@ -369,7 +369,7 @@ def _as_typed_runs(words: list[str], wanted: list[str]) -> list[list[str]]:
     return [
         words[i : i + len(wanted)]
         for i in range(len(words) - len(wanted) + 1)
-        if all(len(t) >= 3 and _levenshtein(t.casefold(), w) <= _edit_budget(w) for t, w in zip(words[i : i + len(wanted)], wanted, strict=True))
+        if all(len(t) >= 3 and _edit_distance(t.casefold(), w) <= _edit_budget(w) for t, w in zip(words[i : i + len(wanted)], wanted, strict=True))
     ]
 
 

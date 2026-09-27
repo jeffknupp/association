@@ -40,6 +40,7 @@ from importlib import resources
 from typing import Any, NamedTuple
 
 import duckdb
+from rapidfuzz.distance import DamerauLevenshtein
 
 from association.query.compose.team import team_named_in
 from association.query.decisions import Decision
@@ -403,14 +404,16 @@ def _dictionary() -> frozenset[str]:
     return frozenset(words.split()) | _MONTH_ABBREVIATIONS
 
 
-def _levenshtein(a: str, b: str) -> int:
-    """Edit distance, for a near spelling the router silently corrected."""
-    prev = list(range(len(b) + 1))
-    for i, ca in enumerate(a, 1):
-        cur = [i]
-        cur.extend(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)) for j, cb in enumerate(b, 1))
-        prev = cur
-    return prev[-1]
+def _edit_distance(a: str, b: str) -> int:
+    """Edit distance for a near spelling, a swapped pair of letters counted as
+    one edit: rapidfuzz's Damerau-Levenshtein, the metric the entity index
+    measures with in SQL (DuckDB's ``damerau_levenshtein``, entities.py) -
+    the two agree on every ASCII pair measured (142,880 word pairs from the
+    corpora and the player table; DuckDB counts UTF-8 bytes where this counts
+    letters). Plain Levenshtein here, until 4.5.0, charged a transposition
+    twice, so "jokci stats" did not support Nikola Jokic while the index
+    read "jokci" as him."""
+    return DamerauLevenshtein.distance(a, b)
 
 
 def question_supports(name: str, question: str) -> bool:
@@ -428,7 +431,7 @@ def question_supports(name: str, question: str) -> bool:
     if any(w in q for w in words):
         return True
     # A near spelling of a word under three letters is a different word.
-    if any(len(w) >= 3 and any(len(x) >= 3 and _levenshtein(w, x) <= _edit_budget(w) for x in q) for w in words):
+    if any(len(w) >= 3 and any(len(x) >= 3 and _edit_distance(w, x) <= _edit_budget(w) for x in q) for w in words):
         return True
     if name in nicknames_in(question):
         return True
@@ -442,7 +445,7 @@ def _near(name: str, text: str) -> bool:
     if question_supports(name, text):
         return True
     t = [w.casefold() for w in _words(text) if len(w) >= 6]
-    return any(len(w) >= 6 and any(_levenshtein(w.casefold(), x) <= 2 for x in t) for w in _words(name))
+    return any(len(w) >= 6 and any(_edit_distance(w.casefold(), x) <= 2 for x in t) for w in _words(name))
 
 
 def _is_a_team(con: duckdb.DuckDBPyConnection, name: str) -> bool:
