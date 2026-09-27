@@ -1312,6 +1312,18 @@ def test_condition_player_reads_a_scope_beside_the_opponent_its_caller_resolved(
         assert league.con.execute(f"SELECT COUNT(*) FROM ({sql})", params).fetchone() == (2,)
 
 
+def test_a_blank_opponent_narrows_a_players_splits_to_nothing(league: TemplateContext) -> None:
+    """player_splits resolves the opponent before the player and hands
+    condition_player the team it found beside a Scope with its own opponent
+    cleared (plan item 6, step (d)). A blank name is nobody to the first
+    resolution; left in the Scope, the shared step would read it a second time
+    and refuse ("no team named") where the answer has always been his splits
+    with no opponent narrowing."""
+    plain = player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum")))
+    blank = player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum", opponent=" ")))
+    assert (blank.answer, blank.data) == (plain.answer, plain.data)
+
+
 def test_a_venue_narrows_a_teams_own_games_too(league: TemplateContext) -> None:
     """The Celtics' three home games this season (e1, e3, e5) are all wins."""
     result = player_splits(league, Reading.from_slots(_slots(team="Boston Celtics", venue="home")))
