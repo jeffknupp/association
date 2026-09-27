@@ -643,10 +643,10 @@ def test_a_malformed_ask_is_rejected_rather_than_asked(payload: dict[str, Any], 
 
 def test_every_request_gets_its_own_conversation(tmp_path: Path) -> None:
     """One Agent reused across requests shared ONE history with every browser
-    that connected - and `last_question` with it, which the router reads as
-    `previous_question`, so a follow-up was resolved against whatever a
-    stranger had asked. The docs already said each message is a new question;
-    this is what makes that true."""
+    that connected - and `last_question` with it, which the router's model was
+    shown as the previous question until 4.5.0 - so a follow-up was resolved
+    against whatever a stranger had asked. The docs already said each message
+    is a new question; this is what makes that true."""
     from association.web.runner import AgentRunner
 
     class Recording:

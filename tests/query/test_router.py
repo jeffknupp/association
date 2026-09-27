@@ -1,37 +1,26 @@
-"""Tests for the intent router's validation layer - the part that decides what
-the model is and is not trusted to have gotten right."""
+"""Tests for the router's stages - the part that decides what a raw route's
+slots are and are not trusted to have gotten right, read against the
+question's own words.
 
-import re
-from typing import Any, cast
-from unittest.mock import patch
+Most cases hand the stages a reply the router's model gave, recorded; the
+model call that decoded it is gone (4.5.0), so they run the stages directly
+over the same reply (:func:`_ask`)."""
 
-import ollama
+import json
+from typing import Any, cast, get_args, get_type_hints
+
 import pytest
-from ollama import ChatResponse, Message
 
 from association.nba.season import current_season
-from association.query.prompt import estimate_tokens
-from association.query.reading import Reading
-from association.query.router import CODE_ASSIGNED_INTENTS, ORDER_INTENTS, ORDER_WORDS, SIDE_VALUES, Route, RouterUnavailable, route
-from association.query.router_prompt import ROUTER_NUM_CTX, ROUTER_PROMPT, ROUTER_PROMPT_TOKEN_BUDGET, ROUTER_SCHEMA
+from association.query.reading import Reading, Scope
+from association.query.router import CODE_ASSIGNED_INTENTS, ORDER_INTENTS, ORDER_WORDS, SIDE_VALUES, Route, _settle
 from association.query.templates import TEMPLATES, TemplateContext
 
 
-def _reply(payload: str) -> ChatResponse:
-    return ChatResponse(model="m", message=Message(role="assistant", content=payload))
-
-
-def _route(payload: str, **kwargs: Any) -> Route | None:
-    with patch("association.query.router.ollama.chat", return_value=_reply(payload)):
-        return route("m", "q", **kwargs)
-
-
-def _routed(payload: str, **kwargs: Any) -> Route:
-    """_route for the cases that must produce a Route - asserts rather than
-    leaving every caller to narrow away the None."""
-    got = _route(payload, **kwargs)
-    assert got is not None
-    return got
+def _route(payload: str) -> Route:
+    """The stages over a model reply ``payload``, for a question they do not
+    read ("q") - see :func:`_ask`."""
+    return _ask("q", payload)
 
 
 def test_parses_intent_and_slots() -> None:
@@ -40,7 +29,7 @@ def test_parses_intent_and_slots() -> None:
 
 
 def test_season_type_defaults_to_regular_season() -> None:
-    assert _routed('{"intent":"leaderboard","stat":"points"}').slots["season_type"] == 2
+    assert _route('{"intent":"leaderboard","stat":"points"}').slots["season_type"] == 2
 
 
 def test_playoffs_maps_to_the_numeric_season_type_every_table_uses() -> None:
@@ -51,7 +40,7 @@ def test_playoffs_maps_to_the_numeric_season_type_every_table_uses() -> None:
 
 
 def test_unknown_season_type_falls_back_to_regular_season() -> None:
-    assert _routed('{"intent":"leaderboard","season_type":"summer league"}').slots["season_type"] == 2
+    assert _route('{"intent":"leaderboard","season_type":"summer league"}').slots["season_type"] == 2
 
 
 def test_a_bare_season_with_no_textual_support_is_dropped() -> None:
@@ -60,9 +49,9 @@ def test_a_bare_season_with_no_textual_support_is_dropped() -> None:
     named a year. Measured live: "show me stats for sixers when maxey scored
     20+ points" arrived with season=2023 - nothing in the text but "20+" - and
     answered a real player's real average for a season nobody asked about.
-    ROUTER_PROMPT only ever asks the model to set `season` when the question
-    names one (its own worked examples all have the year in the question
-    text), so a value that survives with nothing in the text to back it is the
+    The router's prompt only ever asked the model to set `season` when the
+    question named one (its own worked examples all had the year in the
+    question text), so a value that survives with nothing in the text to back it is the
     model inventing one, not reading one - see
     test_question_text_beats_a_wrong_season_slot for the case where the text
     DOES name a year."""
@@ -78,8 +67,8 @@ def test_nonsense_season_is_dropped_not_passed_to_sql() -> None:
 
 
 def test_season_ref_is_resolved_in_code_not_by_the_model() -> None:
-    assert _routed('{"intent":"threshold_count","season_ref":"current"}').slots["season"] == current_season()
-    assert _routed('{"intent":"threshold_count","season_ref":"previous"}').slots["season"] == current_season() - 1
+    assert _route('{"intent":"threshold_count","season_ref":"current"}').slots["season"] == current_season()
+    assert _route('{"intent":"threshold_count","season_ref":"previous"}').slots["season"] == current_season() - 1
 
 
 def test_season_ref_never_leaks_through_as_a_slot() -> None:
@@ -154,8 +143,7 @@ def test_season_keep_cases_are_unaffected_by_the_invented_season_fix() -> None:
     named = _ask("who led the league in 2024?", '{"intent":"leaderboard","season":2019}')
     assert named.slots["season"] == 2024
     # "last season".
-    with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"leaderboard","stat":"ts_pct","season_ref":"previous"}')):
-        last = route("m", "Best true shooting percentage last season?")
+    last = _ask("Best true shooting percentage last season?", '{"intent":"leaderboard","stat":"ts_pct","season_ref":"previous"}')
     assert last is not None and last.slots["season"] == current_season() - 1
     # An ordinal season: the misread year drops, season_n survives.
     ordinal = _ask(
@@ -163,42 +151,6 @@ def test_season_keep_cases_are_unaffected_by_the_invented_season_fix() -> None:
         '{"intent":"threshold_count","stat":"points","threshold":40,"player":"LeBron James","season":2018}',
     )
     assert ordinal.slots.get("season_n") == 18 and "season" not in ordinal.slots
-
-
-def test_unparseable_reply_returns_none_to_fall_through() -> None:
-    assert _route("not json at all") is None
-
-
-def test_missing_intent_returns_none_to_fall_through() -> None:
-    assert _route('{"stat":"points"}') is None
-
-
-def test_an_unreachable_model_raises_rather_than_reading_as_a_bad_reply() -> None:
-    """This asserted `route()` returns None for an unreachable model, on the
-    rule that a router failure costs a round trip and never an answer. That
-    rule still holds, one level up: `Agent._ask_inner` catches this and falls
-    through exactly as it did - see
-    test_a_router_that_could_not_be_asked_falls_through_saying_why.
-
-    What changed is the sentence. Returning None here made "ollama cannot
-    serve this model" indistinguishable from "the model replied with
-    nonsense", and the caller reported the second: every question on a laptop
-    without the router model pulled came back "the router returned no usable
-    classification", which reads as a fault in the question."""
-    with patch("association.query.router.ollama.chat", side_effect=ollama.ResponseError("down")), pytest.raises(RouterUnavailable):
-        route("m", "q")
-
-
-def test_previous_question_is_passed_as_context_for_repl_followups() -> None:
-    with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"other"}')) as chat:
-        route("m", "what about 2025?", previous_question="who led in points?")
-    user_message = chat.call_args.kwargs["messages"][1]["content"]
-    assert "who led in points?" in user_message and "what about 2025?" in user_message
-
-
-def test_schema_constrains_intent_to_the_known_set() -> None:
-    assert "other" in ROUTER_SCHEMA["properties"]["intent"]["enum"]
-    assert "intent" in ROUTER_SCHEMA["required"]
 
 
 @pytest.mark.parametrize("payload", ['{"intent":"other"}', '{"intent":"leaderboard","limit":10}'])
@@ -211,11 +163,6 @@ def test_blank_required_stat_is_dropped_rather_than_passed_along() -> None:
     a question with no stat answers with "", which must not reach a template."""
     got = _route('{"intent":"player_stat","stat":"","player":"Nikola Jokic"}')
     assert got is not None and "stat" not in got.slots and got.slots["player"] == "Nikola Jokic"
-
-
-def test_schema_requires_stat_so_the_decoder_emits_it() -> None:
-    assert "stat" in ROUTER_SCHEMA["required"]
-    assert ROUTER_SCHEMA["additionalProperties"] is False
 
 
 def test_explicit_year_still_wins_over_a_required_season_ref() -> None:
@@ -231,64 +178,28 @@ def test_explicit_year_still_wins_over_a_required_season_ref() -> None:
 def test_season_ref_wins_when_the_question_names_no_year_at_all() -> None:
     """The mirror case, added alongside the #95 fix: with nothing in the text,
     the enum-bounded `season_ref` is still trusted - the model can only set it
-    to "previous"/"current", never a free year, and ROUTER_PROMPT already
-    instructs "current" for anything that does not say "last season" - but the
+    to "previous"/"current", never a free year, and the router's prompt
+    instructed "current" for anything that did not say "last season" - but the
     bare `season` integer beside it is not."""
     got = _route('{"intent":"leaderboard","stat":"points","season":2024,"season_ref":"current"}')
     assert got is not None and got.slots["season"] == current_season()
 
 
-def test_schema_requires_only_the_slot_that_pays_for_itself() -> None:
-    """Requiring season_ref as well was measured and reverted - it crowded out
-    other slots and started dropping explicitly named years."""
-    assert ROUTER_SCHEMA["required"] == ["intent", "stat"]
-
-
-def test_every_intent_the_prompt_describes_is_emittable() -> None:
-    """Regression: player_compare was added to the prompt and given a slot, but
-    not to the schema enum - so constrained decoding could never emit it, and
-    every comparison silently routed to player_stat instead."""
-    # An intent line is `  name  - description`; wrapped continuation lines are
-    # indented further and must not be mistaken for intent names.
-    described = set(re.findall(r"^  (\w+)\s+- ", ROUTER_PROMPT, re.MULTILINE))
-    assert described, "no intents parsed out of the prompt"
-    assert described <= set(ROUTER_SCHEMA["properties"]["intent"]["enum"])
-
-
-def test_every_ported_template_has_an_intent_in_the_schema() -> None:
+def test_every_template_is_reachable_from_the_reader() -> None:
     """Every template must be REACHABLE, by one of exactly three routes: the
-    model emits its intent, `route()` assigns it from the question text, or
+    parser's grammar names it as a parent (``parse.PARENT_GRAMMAR``), the
+    stages assign it from the question text (``CODE_ASSIGNED_INTENTS``), or
     the subject reading assigns it from the text gated on the subject's kind
-    (`subject.KIND_ASSIGNED_INTENTS`). A template in none of the lists is
-    dead code that no question can ever reach."""
-    from association.query.subject import KIND_ASSIGNED_INTENTS
-    from association.query.templates import TEMPLATES
+    (``subject.KIND_ASSIGNED_INTENTS``). A template in none of the lists is
+    dead code that no question can ever reach.
 
-    assert set(TEMPLATES) <= set(ROUTER_SCHEMA["properties"]["intent"]["enum"]) | CODE_ASSIGNED_INTENTS | KIND_ASSIGNED_INTENTS
-
-
-def test_a_code_assigned_intent_is_kept_out_of_the_models_grammar() -> None:
-    """The exemption above must not become a place to park intents the model
-    should be emitting. These are the ones read from the question's own words,
-    and adding them to the schema or the prompt would move slots on unrelated
-    questions for no gain. The kind-assigned children (ROADMAP plan item 2)
-    left the prompt for exactly that reason: each line was ~40 tokens the 3B
-    router paid on every question."""
+    Until 4.5.0 the first route was the router's schema enum, and this read
+    ``test_every_ported_template_has_an_intent_in_the_schema``."""
+    from association.query.parse import PARENT_GRAMMAR
     from association.query.subject import KIND_ASSIGNED_INTENTS
 
-    for assigned in (CODE_ASSIGNED_INTENTS, KIND_ASSIGNED_INTENTS):
-        assert assigned.isdisjoint(ROUTER_SCHEMA["properties"]["intent"]["enum"])
-        assert not any(intent in ROUTER_PROMPT for intent in assigned)
-
-
-def test_array_slots_are_bounded() -> None:
-    """An unbounded array is a generation-length hazard under constrained
-    decoding: the grammar permits "one more item" forever, and at ~10 tok/s on
-    CPU a looping array stalls a call for minutes (confirmed live)."""
-    for name in ("players", "fields"):
-        schema = ROUTER_SCHEMA["properties"][name]
-        assert schema["type"] == "array"
-        assert schema.get("maxItems"), f"{name} has no maxItems"
+    parents = {parent for _, _, parent in PARENT_GRAMMAR}
+    assert set(TEMPLATES) <= parents | CODE_ASSIGNED_INTENTS | KIND_ASSIGNED_INTENTS
 
 
 def test_question_text_beats_a_dropped_season_slot() -> None:
@@ -296,14 +207,12 @@ def test_question_text_beats_a_dropped_season_slot() -> None:
     deferring to it silently answered for the current season."""
     got = _route('{"intent":"leaderboard","stat":"ts_pct"}')
     assert got is not None and "season" not in got.slots
-    with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"leaderboard","stat":"ts_pct"}')):
-        got = route("m", "Best true shooting percentage last season?")
+    got = _ask("Best true shooting percentage last season?", '{"intent":"leaderboard","stat":"ts_pct"}')
     assert got is not None and got.slots["season"] == current_season() - 1
 
 
 def test_question_text_beats_a_wrong_season_slot() -> None:
-    with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"leaderboard","season":2019}')):
-        got = route("m", "who led the league in 2024?")
+    got = _ask("who led the league in 2024?", '{"intent":"leaderboard","season":2019}')
     assert got is not None and got.slots["season"] == 2024
 
 
@@ -315,23 +224,19 @@ def test_the_model_slot_no_longer_applies_when_the_text_names_no_season() -> Non
     in the text, exactly the shape of "show me stats for sixers when maxey
     scored 20+ points" (season=2023 from nothing but "20+"). The model's guess
     now drops and the template's own current-season default applies."""
-    with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"leaderboard","season":2021}')):
-        got = route("m", "who led in his rookie year?")
+    got = _ask("who led in his rookie year?", '{"intent":"leaderboard","season":2021}')
     assert got is not None and "season" not in got.slots
 
 
 def _fingerprint(payload: str, question: str) -> Route:
-    with patch("association.query.router.ollama.chat", return_value=_reply(payload)):
-        got = route("m", question)
-    assert got is not None
-    return got
+    return _ask(question, payload)
 
 
 def test_question_text_beats_a_dropped_side_slot() -> None:
     """The measured failure, verbatim. `stat` is the one required slot, so a
     constrained decoder spends the adjective on stat="defensive" and omits
-    `side` - 6/6 at temperature 0, for a question that appears in ROUTER_PROMPT
-    as a worked example with the right answer beside it. Unset, the template
+    `side` - 6/6 at temperature 0, for a question that appeared in the
+    router's prompt as a worked example with the right answer beside it. Unset, the template
     draws the whole radar: a broader answer than the question asked for, with
     nothing saying so."""
     got = _fingerprint(
@@ -389,11 +294,19 @@ def test_the_side_is_only_added_to_a_fingerprint() -> None:
     assert "side" not in got.slots
 
 
-def test_the_side_values_match_the_router_schema() -> None:
+def _scope_values(field: str) -> set[object]:
+    """The closed set of values the typed Scope's ``field`` holds."""
+    (literal,) = (arg for arg in get_args(get_type_hints(Scope)[field]) if arg is not type(None))
+    return set(get_args(literal))
+
+
+def test_the_side_values_match_the_scope() -> None:
     """Two hand-maintained lists of the same names is the shape that produced
-    the player_compare bug - a value here the schema cannot emit would be
-    unreachable, and one the schema emits that is missing here gets dropped."""
-    assert set(SIDE_VALUES) == set(ROUTER_SCHEMA["properties"]["side"]["enum"])
+    the player_compare bug - a value here the Scope refuses falls the question
+    through, and one the Scope holds that is missing here gets dropped. The
+    other list was the router's schema enum until 4.5.0; every route now
+    passes the Scope's door (``Scope.from_slots``)."""
+    assert set(SIDE_VALUES) == _scope_values("side")
 
 
 @pytest.mark.parametrize("question", ["points per quarter for Luka", "Jokic points by quarter"])
@@ -403,8 +316,7 @@ def test_questions_no_template_computes_are_forced_to_the_agent(question: str) -
     so was a named player's single quarter until `period_split` earned one -
     which is the intended lifecycle for this list. What is left here is the
     breakdown across ALL four quarters, which is a different shape."""
-    with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"player_stat","player":"Stephen Curry"}')):
-        got = route("m", question)
+    got = _ask(question, '{"intent":"player_stat","player":"Stephen Curry"}')
     assert got is not None and got.intent == "other"
 
 
@@ -413,8 +325,7 @@ def test_a_named_players_single_quarter_earned_its_own_template() -> None:
     score in the 3rd quarter?" was forced to the agent because nothing answered
     it; `period_split` does, by summing the value of his made shots in that
     period out of `shot_chart`."""
-    with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"player_stat","player":"Nikola Jokic"}')):
-        got = route("m", "How many points did Jokic score in the 3rd quarter?")
+    got = _ask("How many points did Jokic score in the 3rd quarter?", '{"intent":"player_stat","player":"Nikola Jokic"}')
     assert got is not None and got.intent == "period_split" and got.slots["period"] == 3
 
 
@@ -429,8 +340,7 @@ def test_a_team_quarter_question_is_exempted_from_the_agent_only_override() -> N
     team_quarter_points - so this compound shape is exempted rather than
     routed to the agent."""
     payload = '{"intent":"team_quarter_points","team":"Philadelphia 76ers","period":4,"opponent":"Boston Celtics"}'
-    with patch("association.query.router.ollama.chat", return_value=_reply(payload)):
-        got = route("m", "How many points did the 76ers score in the 4th quarter against Boston this season?")
+    got = _ask("How many points did the 76ers score in the 4th quarter against Boston this season?", payload)
     assert got is not None and got.intent == "team_quarter_points"
     assert got.slots["team"] == "Philadelphia 76ers" and got.slots["opponent"] == "Boston Celtics"
 
@@ -442,8 +352,7 @@ def test_a_player_quarter_question_never_answers_from_the_teams_linescore() -> N
     on `period_split`, which answers about the player, rather than on the
     team's linescore, which would answer about the 76ers."""
     payload = '{"intent":"team_quarter_points","team":"Philadelphia 76ers","period":4,"player":"Joel Embiid"}'
-    with patch("association.query.router.ollama.chat", return_value=_reply(payload)):
-        got = route("m", "How many points did Embiid score in the 4th quarter against Boston?")
+    got = _ask("How many points did Embiid score in the 4th quarter against Boston?", payload)
     assert got is not None and got.intent == "period_split"
 
 
@@ -454,7 +363,7 @@ def test_a_dropped_player_still_reaches_period_split_over_a_team_only_reading() 
     (`team='Boston Celtics'`, `opponent='Denver Nuggets'`, neither one asked
     for by name) - which fit the "team's own half" shape exactly and routed to
     `team_quarter_points`, a template with no player column, for a question
-    about one man. `scripts/check_routing.py` pinned this to `other` before
+    about one man. The routing check pinned this to `other` before
     `period_split` existed for the shape; now it answers it.
 
     The question's own grammar still names Jokic (`_subject_named_in`), so
@@ -488,13 +397,8 @@ def test_a_dropped_player_recovery_never_steals_a_teams_own_quarter_or_half() ->
     assert still_a_team.intent == "team_quarter_points" and still_a_team.slots.get("team") == "Boston Celtics"
 
 
-def test_team_quarter_points_is_in_the_schema_enum() -> None:
-    assert "team_quarter_points" in ROUTER_SCHEMA["properties"]["intent"]["enum"]
-
-
 def test_an_ordinary_question_is_not_forced_to_the_agent() -> None:
-    with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"player_stat","player":"Stephen Curry"}')):
-        got = route("m", "how many points does Curry average?")
+    got = _ask("how many points does Curry average?", '{"intent":"player_stat","player":"Stephen Curry"}')
     assert got is not None and got.intent == "player_stat"
 
 
@@ -510,23 +414,18 @@ def test_fouling_out_is_normalized_to_six_fouls(question: str) -> None:
     """Six personal fouls is an NBA rule, not a judgment call. Confirmed live:
     the router got the shape right but emitted stat "fouls committed" with
     threshold 1, and the question then hung in the agent until it was aborted."""
-    with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"player_stat","stat":"fouls committed","threshold":1}')):
-        got = route("m", question)
+    got = _ask(question, '{"intent":"player_stat","stat":"fouls committed","threshold":1}')
     assert got is not None and got.intent == "threshold_count"
     assert got.slots["stat"] == "fouls" and got.slots["threshold"] == 6
 
 
 def test_an_ordinary_foul_question_is_not_rewritten() -> None:
-    with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"leaderboard","stat":"fouls"}')):
-        got = route("m", "who commits the most fouls?")
+    got = _ask("who commits the most fouls?", '{"intent":"leaderboard","stat":"fouls"}')
     assert got is not None and got.intent == "leaderboard" and "threshold" not in got.slots
 
 
 def _compare(question: str, payload: str = '{"intent":"player_compare","stat":"points","players":["Shai Gilgeous-Alexander","Joel Embiid"]}') -> Route:
-    with patch("association.query.router.ollama.chat", return_value=_reply(payload)):
-        got = route("m", question)
-    assert got is not None
-    return got
+    return _ask(question, payload)
 
 
 def test_a_comparison_that_named_no_stat_does_not_keep_one() -> None:
@@ -552,39 +451,15 @@ def test_only_a_comparison_drops_an_unasked_stat() -> None:
 
 
 def _asking(payload: str, question: str) -> Route:
-    """_routed, but for the checks that read the question text rather than only
+    """_route, but for the checks that read the question text rather than only
     the payload."""
-    with patch("association.query.router.ollama.chat", return_value=_reply(payload)):
-        got = route("m", question)
-    assert got is not None
-    return got
-
-
-def test_a_router_that_could_not_be_asked_says_so_rather_than_blaming_the_question() -> None:
-    """Reported from a laptop where the router model was not pulled: EVERY
-    question came back "the router returned no usable classification", which
-    reads as a fault in the question and sent the reader to look at it. The
-    model was never asked at all. With --disable-fallthrough that sentence is
-    the whole error, so it has to name the server and the model.
-
-    Only an unusable REPLY is still "no usable classification" - that one is
-    about what the model said, and route() keeps returning None for it so the
-    question still falls through."""
-    import json as _json
-
-    missing = ollama.ResponseError("model 'qwen2.5:3b' not found")
-    with patch("association.query.router.ollama.chat", side_effect=missing), pytest.raises(RouterUnavailable, match=re.escape("could not serve the router model 'qwen2.5:3b'")):
-        route("qwen2.5:3b", "who leads the league in assists?")
-    with patch("association.query.router.ollama.chat", side_effect=ConnectionError("refused")), pytest.raises(RouterUnavailable, match="ollama is not answering"):
-        route("qwen2.5:3b", "who leads the league in assists?")
-    with patch("association.query.router.ollama.chat", side_effect=_json.JSONDecodeError("bad", "", 0)):
-        assert route("qwen2.5:3b", "who leads the league in assists?") is None
+    return _ask(question, payload)
 
 
 def test_question_text_beats_a_dropped_order_slot() -> None:
-    """The measured failure, verbatim. ROUTER_PROMPT instructs `order` for
-    game_log and shot_chart only, so a fingerprint question carries no
-    instruction to fill it: "show me a fingerprint for steph curry's last game
+    """The measured failure, verbatim. The router's prompt instructed
+    `order` for game_log and shot_chart only, so a fingerprint question
+    carried no instruction to fill it: "show me a fingerprint for steph curry's last game
     in 2026" came back with no `order` 3/3 at temperature 0. With the slot
     missing there was nothing for the template to refuse, so a question about
     one game was answered with the whole season's radar."""
@@ -646,8 +521,8 @@ def test_a_bogus_model_order_is_not_trusted_as_a_phrasing_this_missed() -> None:
 def test_a_single_game_asked_of_player_stat_carries_its_order_and_a_limit_of_one() -> None:
     """ "his last game" is one game at one end of the span: player_stat hands it
     to game_log, which needs BOTH slots - an order alone would list his last
-    ten. The model emits neither reliably here, so route() sets the pair from
-    the question's own words (#142)."""
+    ten. The model emitted neither reliably here, so the stages set the pair
+    from the question's own words (#142)."""
     got = _asking('{"intent":"player_stat","stat":"points","player":"Stephen Curry"}', "how many points did curry score in his last game")
     assert (got.slots.get("order"), got.slots.get("limit")) == ("recent", 1)
     first = _asking('{"intent":"player_stat","stat":"points","player":"Stephen Curry"}', "curry's stats in his first game of 2026")
@@ -672,10 +547,11 @@ def test_a_filler_limit_on_player_stat_goes_whatever_its_size_when_the_question_
     assert top.slots.get("limit") == 5
 
 
-def test_the_order_values_match_the_router_schema() -> None:
-    """Same shape as the side check above: a value here the schema cannot emit
-    would be unreachable, and one it emits that is missing here gets dropped."""
-    assert set(ORDER_WORDS) == set(ROUTER_SCHEMA["properties"]["order"]["enum"])
+def test_the_order_values_match_the_scope() -> None:
+    """Same shape as the side check above: a value here the Scope refuses
+    falls the question through, and one it holds that is missing here gets
+    dropped."""
+    assert set(ORDER_WORDS) == _scope_values("order")
 
 
 def test_the_order_intents_are_the_ones_that_honor_order() -> None:
@@ -687,7 +563,7 @@ def test_the_order_intents_are_the_ones_that_honor_order() -> None:
     from association.query.templates.common import HONORED_SCOPING
 
     # player_stat honors an order only beside a limit of one (a single game
-    # handed to game_log), so route() sets the pair together for it rather
+    # handed to game_log), so the stages set the pair together for it rather
     # than filling order alone - see _ORDER_ON_A_SINGLE_GAME.
     assert frozenset(intent for intent, honored in HONORED_SCOPING.items() if "order" in honored) == ORDER_INTENTS | _ORDER_ON_A_SINGLE_GAME
 
@@ -695,16 +571,16 @@ def test_the_order_intents_are_the_ones_that_honor_order() -> None:
 # ---------------- scoping read from the question text ----------------
 #
 # Each of these existed because a real StatMuse query was answered fast, fluently
-# and about something else. None is in ROUTER_SCHEMA - they are read from the
-# text - so the model's answer is given here only to show it is not consulted.
+# and about something else. None was in the router's schema - they are read
+# from the text - so the model's answer is given here only to show it is not
+# consulted.
 
 
 def _ask(question: str, payload: str) -> Route:
-    """route() on a real question, with the model's reply fixed."""
-    with patch("association.query.router.ollama.chat", return_value=_reply(payload)):
-        got = route("m", question)
-    assert got is not None
-    return got
+    """The stages on a real question, over a fixed model reply: what the
+    router returned for it, since its model call (deleted in 4.5.0) only
+    decoded the reply before handing it to them."""
+    return _settle(json.loads(payload), question)
 
 
 def test_the_postseason_comes_from_the_question_not_the_model() -> None:
@@ -820,8 +696,9 @@ def test_a_career_is_every_season_so_the_models_default_year_is_dropped() -> Non
 
 
 def test_a_career_high_in_a_named_season_is_that_seasons_best() -> None:
-    """ "career high this season" is a worked example of single_game_high in
-    ROUTER_PROMPT - it means the season's best, and must not become a career."""
+    """ "career high this season" was a worked example of single_game_high in
+    the router's prompt - it means the season's best, and must not become a
+    career."""
     assert "span" not in _ask("what is his career high this season", '{"intent":"single_game_high","stat":"points"}').slots
     assert _ask("Diabate career high assists", '{"intent":"single_game_high","stat":"assists"}').slots["span"] == "career"
 
@@ -1047,8 +924,8 @@ def test_a_team_half_is_the_two_quarters_of_its_own_linescore() -> None:
 
 def test_a_team_asked_for_its_most_or_fewest_carries_that_rank() -> None:
     """ "Detroit Pistons most points in a first half this season" asks for ONE
-    game, not the season's average. The rank words route() already reads for
-    team_leaderboard say which end, and the template answers that game."""
+    game, not the season's average. The rank words the stages already read
+    for team_leaderboard say which end, and the template answers that game."""
     most = _ask("Detroit Pistons most points in a first half this season", '{"intent":"team_quarter_points","team":"Detroit Pistons","period":1,"season":2026}')
     assert most.intent == "team_quarter_points" and most.slots.get("half") == 1 and most.slots.get("rank") == "most"
     least = _ask("least points scored by the wizards in the first half this season", '{"intent":"team_quarter_points","team":"Washington Wizards","period":1,"season":2026}')
@@ -1403,9 +1280,10 @@ def test_a_conference_or_division_is_captured_with_its_name(question: str, want:
 )
 def test_a_narrowing_the_schema_has_no_slot_for_still_reaches_check_scope(question: str) -> None:
     """The P1 from the feed replay: `check_scope` can only refuse a slot the
-    router emits, and ROUTER_SCHEMA has no slot for a weekday, a holiday, an
-    age, a minutes condition or "since returning from injury" - so the words
-    never reached it and the template answered the un-narrowed question.
+    route carries, and the router's schema had no slot for a weekday, a
+    holiday, an age, a minutes condition or "since returning from injury" - so
+    the words never reached it and the template answered the un-narrowed
+    question.
 
     "lebron james 2 3 pointers all-time vs jazz on tuesdays" returned his
     career average against Utah over 48 games. Read into `situation`, which no
@@ -1487,8 +1365,8 @@ def test_one_game_at_the_end_of_a_span_is_this_season_unless_the_question_says_o
     ],
 )
 def test_both_conditions_of_a_two_condition_count_are_read(question: str, want: list[str]) -> None:
-    """#139: ROUTER_SCHEMA carries one `threshold`, so the second condition
-    survived only as a `fields` entry the template ignores - "the most 30+
+    """#139: the router's schema carried one `threshold`, so the second
+    condition survived only as a `fields` entry the template ignores - "the most 30+
     point 10+ rebound games" answered the 30+ point leader."""
     got = _ask(question, '{"intent":"threshold_count","stat":"points","threshold":20,"fields":["rebounds"]}')
     assert got.slots.get("above") == want
@@ -2164,8 +2042,8 @@ def test_a_named_players_quarter_now_routes_to_a_template(question: str, want: d
     """These were forced to the agent because no template answered them - 21 of
     261 feed queries, the largest content gap in the sample. `period_split`
     answers them now, and the period is read from the question text: `period`
-    is in ROUTER_SCHEMA but only ever taught for a TEAM's quarter score, so on
-    a player's question the model leaves it empty."""
+    was in the router's schema but only ever taught for a TEAM's quarter
+    score, so on a player's question the model left it empty."""
     got = _ask(question, '{"intent":"game_log","player":"Duncan Robinson"}')
     assert got.intent == "period_split"
     assert all(got.slots.get(k) == v for k, v in want.items()), got.slots
@@ -2226,9 +2104,10 @@ def test_a_period_ranking_with_a_player_named_is_still_that_players_split() -> N
     ],
 )
 def test_a_stat_the_question_never_named_does_not_reach_period_split(question: str, payload: str) -> None:
-    """`stat` is REQUIRED in ROUTER_SCHEMA, so the model fills it on a question
-    that names none - "none" and "minutes" here, both measured - and
-    period_split refused both as asking for a stat it cannot give."""
+    """`stat` was REQUIRED in the router's schema (and is in the
+    normalizer's), so the model fills it on a question that names none -
+    "none" and "minutes" here, both measured - and period_split refused both
+    as asking for a stat it cannot give."""
     got = _ask(question, payload)
     assert got.intent == "period_split" and "stat" not in got.slots
 
@@ -2249,24 +2128,6 @@ def test_a_log_is_asked_for_by_the_question_not_assumed(question: str, per_game:
     assert bool(got.slots.get("per_game")) is per_game
 
 
-def test_the_router_prompt_leaves_room_for_the_question_and_the_reply() -> None:
-    """ollama truncates an over-length prompt head-first and silently, and the
-    router's prompt has no per-question assembly step to raise at, the way
-    `PreambleTooLarge` does for the agent. The prompt is a constant, so this
-    is the guard: it fails when `ROUTER_PROMPT` plus the longest user line the
-    code builds (a previous question and a long question) costs more than
-    three quarters of `ROUTER_NUM_CTX`. The prompt was documented as "~430
-    tokens" for months after it passed 2,400; what this asserts is measured
-    at the same ~4 characters a token as the agent's budget, not with the
-    model's tokenizer."""
-    long_question = "what was the record of the los angeles lakers against the boston celtics at home in the 2024 regular season, and how many games did they win by ten or more points? " * 2
-    user_line = f"(previous question, for context only: {long_question})\nQ: {long_question}"
-    cost = estimate_tokens(ROUTER_PROMPT) + estimate_tokens(user_line)
-    assert cost <= ROUTER_PROMPT_TOKEN_BUDGET, f"router prompt plus a long question is ~{cost} tokens, over the {ROUTER_PROMPT_TOKEN_BUDGET} budget: shorten ROUTER_PROMPT or raise ROUTER_NUM_CTX"
-    # The quarter left over is the chat template and a reply of under 100 tokens of JSON.
-    assert ROUTER_NUM_CTX - ROUTER_PROMPT_TOKEN_BUDGET >= 1024
-
-
 @pytest.mark.parametrize(
     "question",
     [
@@ -2282,8 +2143,7 @@ def test_a_coach_question_is_refused_rather_than_handed_to_the_agent(question: s
     failure check_coverage exists to stop. The intent is assigned from the
     question's own words, so no model reply can avoid it: the reply below asks
     for something else entirely and is overridden."""
-    with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"player_stat","player":"Nick Nurse","stat":"points"}')):
-        got = route("m", question)
+    got = _ask(question, '{"intent":"player_stat","player":"Nick Nurse","stat":"points"}')
     assert got is not None and got.intent == "coach"
     # No slots: the model's are for a question that cannot be answered, and a
     # team or player name reaching the refusal would only invite a wrong cause.
@@ -2303,8 +2163,7 @@ def test_a_coach_question_is_refused_rather_than_handed_to_the_agent(question: s
     ],
 )
 def test_an_ordinary_question_is_not_taken_for_a_coach_question(question: str) -> None:
-    with patch("association.query.router.ollama.chat", return_value=_reply('{"intent":"player_stat","player":"Joel Embiid","stat":"points"}')):
-        got = route("m", question)
+    got = _ask(question, '{"intent":"player_stat","player":"Joel Embiid","stat":"points"}')
     assert got is not None and got.intent != "coach"
 
 
@@ -2340,11 +2199,11 @@ def test_two_point_percentage_overrides_the_models_guess(question: str) -> None:
     stat='fieldGoalPct' and answered OVERALL shooting (55.3, 51.9, 53.5, 51.0,
     45.3) under a question that asked for the 2-point split (60.2, 57.1, 57.6,
     53.3, 51.4 - measured against player_season_stats_deduped, makes and
-    attempts less the threes). `stat` has no enum in ROUTER_SCHEMA, so the
-    model sometimes gets "twoPointFieldGoalPct" right on its own (3 of 10
-    times in that session) and sometimes substitutes the nearest one
-    ROUTER_PROMPT actually teaches - fieldGoalPct here - which this overrides
-    either way, the same discipline _route_game_score uses."""
+    attempts less the threes). `stat` had no enum in the router's schema, so
+    the model sometimes got "twoPointFieldGoalPct" right on its own (3 of 10
+    times in that session) and sometimes substituted the nearest one the
+    router's prompt actually taught - fieldGoalPct here - which this
+    overrides either way, the same discipline _route_game_score uses."""
     got = _ask(question, '{"intent":"player_history","stat":"fieldGoalPct"}')
     assert got.slots["stat"] == "twoPointFieldGoalPct"
 
@@ -2514,7 +2373,7 @@ def test_an_opponent_that_is_the_without_list_is_dropped() -> None:
 
 
 def test_a_teams_half_named_only_by_nickname_is_team_quarter_points() -> None:
-    """The one check_routing.py gap after step 3: "Celtics 2nd half scoring
+    """The one routing-check gap after step 3: "Celtics 2nd half scoring
     this season" arrived with no `team` slot at all and became `other`. The
     nickname the question holds is the team; two nicknames are a matchup and
     file nothing."""

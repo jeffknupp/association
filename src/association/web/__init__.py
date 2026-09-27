@@ -1,6 +1,6 @@
 """A local web interface over the query pipeline.
 
-Served by ``association web``: a chat-shaped page over the same router →
+Served by ``association web``: a chat-shaped page over the same reader →
 template → answer path the CLI uses, with the tool-calling agent as
 fall-through. It binds to localhost, has no authentication and is not meant to
 be reachable by anything but the person who started it.

@@ -140,11 +140,7 @@ min_confidence = 60
 # Everything that imports a package: the shipped code, the maintenance scripts
 # and the Sphinx config. tests/ stays excluded (deptry's default), since it
 # imports dev-only packages by design.
-known_first_party = [
-    "association",
-    # scripts/bench_router_models.py imports its sibling script.
-    "check_routing",
-]
+known_first_party = ["association"]
 # Tools that are run rather than imported (pytest, mypy, sphinx, ...) are
 # never reported as unused, and importing one from src would be reported.
 optional_dependencies_dev_groups = ["dev", "docs"]

@@ -82,7 +82,7 @@ failures each setting fixes). A **partial** rebuild (``--tables``) writes
 ``db_path`` in place, since it depends on tables already there that it is not
 reloading.
 
-Query: a router in front of an agent
+Query: a reader in front of an agent
 ------------------------------------
 
 The query engine's design is the product of one measurement. A single model was
@@ -96,11 +96,22 @@ answered the wrong thing.
 
 So the two jobs are now separate.
 
-**The router** (:mod:`association.query.router`) does only the language half:
-it classifies a question into an intent and slots, under a JSON schema passed
-as ollama's ``format``, so decoding is *constrained* rather than merely
-prompted. Its prompt carries no schema and no SQL, which keeps it small enough
-to stay in the KV cache — typically one model call of 1–2 seconds.
+**The reader** does only the language half, and the model does the least of
+it. Its whole job is :func:`association.query.normalizer.normalize`: copy the
+names out of the question exactly as typed and pick one stat key, under a
+two-field JSON schema passed as ollama's ``format``, so decoding is
+*constrained* rather than merely prompted. The prompt is about 300 tokens and
+carries no schema and no SQL - one model call of about a second.
+:func:`association.query.parse.read_route` checks both (every span against the
+entity index, which reads a single near spelling as that player and says so;
+the stat against the question's own words) and reads the intent and every
+other slot from grammar tables keyed on the subject's kind, then settles the
+slots through the stages in :mod:`association.query.router`. It replaced a
+router whose model classified the whole question into an intent and its slots:
+measured on yardstick-v2's live runs over the same 277 wordings, the parser
+scored 162/175 against the router's 160, with fewer wrong answers, in half the
+time (1.1s a question against 2.3s median), and the router's classification
+went in 4.5.0 (ROADMAP plan item 6).
 
 **Templates** (:mod:`association.query.templates`) do the deterministic half.
 Each owns one question shape. The ones that read a player's box scores - game
@@ -168,22 +179,6 @@ presenter and the fallback where the compiler declines. That is ROADMAP plan
 item 6 taking its first step: one record of the decision, built from the
 routed slots by the compiler's own word reading.
 
-**Who reads the question.** By default the parser does
-(``Agent(reader="parser")``, ROADMAP plan item 6, step (c)): the model's whole
-job is :func:`association.query.normalizer.normalize` - copy the names out of
-the question exactly as typed and pick one stat key, under a two-field
-schema - and :func:`association.query.parse.read_route` checks both (every
-span against the entity index, which reads a single near spelling as that
-player and says so; the stat against the question's own words) and reads the
-intent and every other slot from grammar tables keyed on the subject's kind.
-What it returns is a route in the router's own shape, so everything after it -
-the subject reading, the repairs, the templates, the compiler - is the path a
-routed question takes. ``reader="router"`` (``--reader router``) is that path
-with the router model classifying the question instead, kept as the rollback
-until step (d) retires the router's slot writers. Measured on yardstick-v2's
-live runs: the parser 162/175 against the router's 160, with fewer wrong
-answers, in half the time (1.1s a question against 2.3s median).
-
 The subject need not be a player. :mod:`association.query.compose.team` is a
 second, separate compiler over :mod:`association.query.team_games` instead -
 "how many 3-pointers have the Magic made this season", "total points scored
@@ -225,7 +220,7 @@ What an answer is
 the CLI prints and is the whole of what the CLI ever showed; everything beside
 it is what the pipeline had already computed and thrown away.
 
-The important field is ``answered_by``: ``"fast"`` for router → template, and
+The important field is ``answered_by``: ``"fast"`` for reader → template, and
 ``"agent"`` for the fall-through. That distinction is not bookkeeping. It is the
 single most useful thing a reader can know about an answer's reliability —
 whether a template built the sentence from code, or a 7B model wrote the SQL —
@@ -252,16 +247,22 @@ terminal forward the trace somewhere else.
 Two models
 ----------
 
-Routing and SQL generation want different models. Benchmarked over the routing
-cases in ``scripts/check_routing.py``, every model from 1.5B to 8B landed within
-a case or two of the rest — constrained decoding does the structural work, so the
-model only classifies and fills slots. The router therefore runs a 3B (``--router-model``)
-while the agent keeps a 7B (``--model``) for hand-written SQL. Reproduce with
-``scripts/bench_router_models.py``.
+Reading a question and writing SQL want different models. The normalizer only
+copies names and picks one stat key, and constrained decoding does the
+structural work: measured over the 277 day10 wordings, qwen2.5:3b copies 299
+of 302 names verbatim at 0.82s a question median, and qwen2.5:7b adds nothing
+on names and 13 of 162 on the stat - almost all of it the 2-point/3-point
+confusion, which the parser's measure grammar reads from the words instead -
+at 1.84s. So the normalizer runs a 3B (``--router-model``, named for the
+router it replaced) while the agent keeps a 7B (``--model``) for hand-written
+SQL. The same held for the router's classification before it: over its
+routing cases, every model from 1.5B to 8B landed within a case or two of the
+rest.
 
-Thinking models are disqualified on latency rather than accuracy: qwen3:4b
-spent about 20 seconds per question reasoning before emitting the same small
-JSON object that qwen2.5:3b produces in about one.
+Thinking models are disqualified on latency rather than accuracy: on the
+router's classification, qwen3:4b spent about 20 seconds per question
+reasoning before emitting the same small JSON object that qwen2.5:3b produces
+in about one.
 
 The tool budget
 ---------------
@@ -334,7 +335,7 @@ that:
   (:func:`association.query.templates.check_coverage`). The refusal is returned
   as the answer rather than raised, because the agent would query the same
   empty tables and is then free to fill the silence from its own weights.
-* Slots the router drops or files in the wrong place are read from the
+* Slots the model drops or files in the wrong place are read from the
   question text, and a player name the question does not support is refused
   rather than answered about
   (:func:`association.query.subject.apply_subject`).
@@ -352,5 +353,5 @@ Auditing
 :mod:`association.check.report` compares what is on disk against what the
 endpoints say should exist, per season and season type, and can cross-check
 live with ``--live``. Every question, from ``query`` or ``association web``, also writes a full trace to
-``.history/`` — the command, the routing decision, every tool call, per-call
+``.history/`` — the command, the reading, every tool call, per-call
 timings, and the final answer — whether or not ``--verbose`` was passed.

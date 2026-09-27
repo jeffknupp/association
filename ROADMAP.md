@@ -724,6 +724,28 @@ with nothing to read fills the silence from its own weights), and more data
    moves only with the whole of it gone, so two sub-steps overlap there and
    the move is re-measured end to end.
    (4) the four parity templates the compiler answers retire.
+   **(3), the router reader, done 2026-09-27 (1240612, on 33cfd60's 3c):**
+   `route()` and its model call, `router_prompt.py` (`ROUTER_PROMPT`,
+   `ROUTER_SCHEMA`, `ROUTER_NUM_CTX`), `Agent(reader=)`, `READERS` and
+   `--reader`, and `scripts/check_routing.py` and `bench_router_models.py`
+   are gone; the stages stay (`settle` runs them over the parser's raw
+   route), `_MODEL_SLOTS` is a literal (the schema's 18 slot properties,
+   checked equal before the schema went), and `router.py` no longer imports
+   ollama. Proven with no model, on 33cfd60: golden 631/631 identical against
+   `out_lead_3c2` (it replays recorded routes through `Agent.ask(route=)`,
+   which never reached the reader); the parser's offline rehearsal 0 moved,
+   its routes, traces, answers and fall-through reasons identical on all 277
+   rows; the hold-out's 75 questions unchanged on both sides (38 identical
+   answers before and after). Tests 2251 -> 2239: 17 deleted (the router's
+   model call, its prompt against its schema, the reader choice) and 5 where
+   the property still binds (every template reachable from the parser's
+   grammar, the stages or the subject reading; the stages' side and order
+   values against the typed Scope; the normalizer's schema and window). The
+   routing check's 140 cases live on frozen in the research corpus
+   (`intent-shrink/routing_cases.py`), so golden and the hold-out keep their
+   354 corpus rows. Found on the way: the parser drops a misspelled team
+   name and answers without it ("gui last 5 games vs sours" lists his last 5
+   games, none against the Spurs - ISSUES P1).
 
 ## The rules a spike keeps
 

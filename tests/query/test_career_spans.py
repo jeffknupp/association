@@ -19,9 +19,9 @@ import pytest
 from association.nba.season import current_season
 from association.query.leaderboard import resolve_metric
 from association.query.metrics import BOX_SCORE_METRIC_NAMES, CORE_METRIC_NAMES, LEADERBOARD_METRICS
+from association.query.normalizer import NORMALIZER_STATS
 from association.query.prompt import TOOLS, build_system_prompt
 from association.query.reading import Reading
-from association.query.router_prompt import ROUTER_PROMPT
 from association.query.templates.common import TemplateContext, TemplateUnsupported, check_scope
 from association.query.templates.players import leaderboard, single_game_high, threshold_count
 
@@ -40,23 +40,39 @@ def _context(tmp_path: Path, players: list[tuple[str, str]], stats: list[tuple[A
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
-# ---------------- the router's vocabulary, and the agent's budget ----------------
+# ---------------- the model's stat vocabulary, and the agent's budget ----------------
+
+#: The box-score categories the router's prompt taught its model - its `stat`
+#: line, read out of the prompt by this test until the model classification
+#: went in 4.5.0.
+_BOX_SCORE_STAT_NAMES = (
+    "points",
+    "rebounds",
+    "assists",
+    "steals",
+    "blocks",
+    "turnovers",
+    "minutes",
+    "fouls",
+    "threePointFieldGoalsMade",
+    "fieldGoalsMade",
+    "freeThrowsMade",
+    "threePointFieldGoalPct",
+    "fieldGoalPct",
+    "freeThrowPct",
+)
 
 
-def _router_stat_names() -> list[str]:
-    """The stat names ROUTER_PROMPT teaches, read out of the prompt itself."""
-    paragraph = ROUTER_PROMPT.split("stat names a box-score category:", 1)[1].split("Set it whenever", 1)[0]
-    return [word for word in re.findall(r"[A-Za-z]+", paragraph) if word not in {"or", "a", "shooting", "percentage"}]
-
-
-def test_every_stat_name_the_router_is_taught_ranks_by_a_metric() -> None:
+def test_every_box_score_stat_the_model_may_name_ranks_by_a_metric() -> None:
     """Turnovers, minutes, fouls, the three makes and the three percentages were
     all taught to the router and none had a metric, so every leaderboard
-    question naming one fell through to the agent. Read from the prompt so a
-    name added there without a metric here fails."""
-    names = _router_stat_names()
+    question naming one fell through to the agent. The normalizer's
+    vocabulary (``NORMALIZER_STATS``) holds every one of them, so each still
+    needs a metric, and a career form."""
+    names = _BOX_SCORE_STAT_NAMES
     assert len(names) == 14, names
     for name in names:
+        assert name in NORMALIZER_STATS, name
         assert resolve_metric(name) in LEADERBOARD_METRICS, name
         career = resolve_metric(name, career=True)
         assert career in LEADERBOARD_METRICS and LEADERBOARD_METRICS[career].career is not None, name

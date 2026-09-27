@@ -169,17 +169,23 @@ One-shot:
      2024  77  38.7  268  692
      2023  69  41.2  301  731
 
-Add ``--verbose`` to watch the routing decision and every tool call as they
-happen. The same trace is always written to ``.history/`` regardless, so a
-surprising answer can be diagnosed after the fact:
+Add ``--verbose`` to watch the reading and every tool call as they happen:
+what the model copied out of the question (``normalizer``), what the parser
+read from the words (``parser``), the settled route (``router``, the stages'
+module) and the point the answer was read from (``reading``), each with its
+timing. The same trace is always written to ``.history/`` regardless, so a
+surprising answer can be diagnosed after the fact (timing lines left out
+here):
 
 .. code-block:: console
 
    $ association query --verbose "most games with 20+ rebounds this season?"
-     [timing] model inference #1: 1.46s
-     -> (router) intent='leaderboard' slots={'stat': 'rebounds', 'season': 2026, 'season_type': 2}
-     -> (subject) intent='threshold_count' slots={'stat': 'rebounds', 'season': 2026, 'season_type': 2, 'threshold': 20}
-     [timing] template threshold_count: 0.02s
+     -> (normalizer) names=[] stat='rebounds'
+     -> (parser) parent='leaderboard' kind='everyone' intent='threshold_count'
+     -> (router) intent='threshold_count' slots={'stat': 'rebounds', 'season': 2026, 'season_type': 2, 'threshold': 20}
+     -> (decision) subject kind: 'everyone'
+     -> (reading) relation=everyone subject=everyone shape=grouped measures=[] aggregate=count group=player predicates=[('rebounds', '>=', 20)] window=measure/desc/5 source=games scope={'stat': 'rebounds', 'threshold': 20, 'season': 2026, 'season_type': 2}
+     -> (compose) intent='threshold_count' point={'span': None}
    Nikola Jokic had the most games with 20+ rebounds in the 2026 regular season, with
    5. Next: Karl-Anthony Towns (3), Donovan Clingan (2), Andre Drummond (1), Bam Adebayo (1).
 
@@ -187,7 +193,7 @@ What you can ask
 ----------------
 
 The fast path answers these shapes. The questions below are real ones, from the
-routing check (``scripts/check_routing.py``) and StatMuse's query feed.
+recorded routing corpus and StatMuse's query feed.
 
 * **Rankings by any stat**: "who has the most threes this season", "Best true
   shooting percentage last season?". A percentage qualifies on attempts, and the
@@ -390,8 +396,8 @@ contained a script - so nothing is lost by refusing to run one, and the
 directory being served is one you can drop files into yourself. A frame taller
 than the cap scrolls, and the link beneath it opens the standalone file. A
 chart-only answer still gets a headline above it and any note the template
-attached beneath - which player, which season, a substitution the router made
-- rather than just the chart on its own.
+attached beneath - which player, which season, how a name was read - rather
+than just the chart on its own.
 
 Three more things about it are deliberate:
 

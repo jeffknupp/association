@@ -50,7 +50,7 @@ before that commit needs re-checking against the current warehouse.
 - **Found:** 2026-09-26, Jeff reviewing the pipeline walkthrough page (yardstick-v2 F088, all five wordings; blind key 4-2).
 - **Evidence:** `live_day10.jsonl` (bcf30a8): the router files `head_to_head` (team PHI, opponent BOS); the reading's rule "a player's record against a team, not two teams meeting" (`subject._decide_intent`) reroutes to `with_without` with `without=[Joel Embiid]`, and the template answers "Philadelphia 76ers with and without Joel Embiid vs the Boston Celtics, 2026 regular season: out 2 1-1, played 2 1-1". The key (blind, reading a, dominant): the 76ers went 4-2 in the 6 games Embiid played vs Boston in 2025-26 - 2 regular-season meetings and playoff Games 4-7 (he has no box row for Games 1-3). Two faults: the SHAPE (a split with an "out" row nobody asked for, where the question is his games and their record - dates, outcomes, and reasonably his line in each), and the SCOPE ("this year" narrowed to the regular season by the unstated-season-type default, `_validate_season_type`; `season_type_unstated` widens only "last N games" and "including playoffs" wordings today).
 - **User sees:** a fluent table about a different question, with the right numbers for the narrower scope it states - which is why the blind grader passed all five wordings; re-graded wrong on Jeff's call (overrides run day10). Day10 is 160/175 and families 150/166 after the re-grade.
-- **Parser path (2026-09-27, plan item 6 steps b-c):** the SHAPE is fixed on the default reader - the parser reads a player's record with no companion as `player_splits` ("Joel Embiid vs the Boston Celtics, splits, 2026 regular season (2 games he played) ... W-L 1-1"), graded correct in `live_parser1`-`3` under Jeff's 2026-09-27 instruction to score the season type as the regular-season default. The router reader (`--reader router`, the rollback) still answers the with/without split, and goes when step (d) retires it. The SCOPE half (regular season only) is the deferred season-type decision, unchanged on both readers.
+- **Parser path (2026-09-27, plan item 6 steps b-d):** the SHAPE is fixed - the parser reads a player's record with no companion as `player_splits` ("Joel Embiid vs the Boston Celtics, splits, 2026 regular season (2 games he played) ... W-L 1-1"), graded correct in `live_parser1`-`3` under Jeff's 2026-09-27 instruction to score the season type as the regular-season default, and the router reader that still answered the with/without split is gone (step d). The SCOPE half (regular season only) is the deferred season-type decision, unchanged.
 - **Next step:** two decisions for the parser (ROADMAP: the consolidation). Shape: a player set against a team is his games narrowed by opponent - the player-games relation, rows with W/L and his line plus the tally - never the team's with/without split (the reroute rule goes; the compiler's rows shape with a record summary is the nearest thing today). Scope: "this year" / "this season" with no type named reads both types and says so, the way `season_type_unstated` already does for "last N games" - a policy for every question, to confirm with Jeff, since the regular-season default is what every per-game average answers under today.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #231
@@ -62,12 +62,6 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** read "when X plays" as a `conditions` entry with `predicate: "played"` the same way "starts"/"bench"/"reached" already are (wherever that reading lives - `subject.py`'s companion-role parsing did not turn up in this session's read of it); and stop the router/parser from setting `split` for a phrase that names a companion rather than the subject himself, so "when Draymond starts" does not also narrow Curry's own starts. Worth checking whether `with_without`'s own intent-reroute rule is what is stealing the third wording from `shot_distance`.
 - **Source:** ours, not ESPN's.
 
-### The shorter router prompt (4.5.0, the seven children out) moved eight day5 rows that no text rule meets yet
-- **Found:** 2026-09-25, plan item 2 step 2c-ii, `live_day5.jsonl` (e8c68ba) against `live_day4.jsonl` (91d1461); `~/association-research/intent-shrink/RESULT.md` has the full list.
-- **Evidence:** the 3B router, with 16 intents instead of 23 in its prompt, files these differently and nothing in `route()` or the subject reading moves them back: "jokic vs cade since 2022" as `player_compare` (which does not honor `since`; day4 `player_matchup`) - fell through; "KNICKS point differential over the last 7 games" as `with_without` with `order`/`limit` (day4 `game_log`) - answers the last 7 REGULAR-season games, +46, where the last 7 were the Finals, +62; "Ayton stats in game 4 playoff games" and "nba team with least playoff wins since 2022" with `limit: 1` ("game 4" reads as naming one game, so the filler survives; the ranking hides a three-way tie at zero); "Payton Prichard ... including playoffs game log" with `season_ref: current` (day4 a career); "oklahoma city thunder all-time triple doubles vs west" as `leaderboard` with the team (the refusal now names a stat nothing ranks, not the team-aggregate shape); "jay huff game log vs Embiid" as `game_log` with a career span (the pair reading's `player_matchup` refuses the span - the `check_routing` GAP case).
-- **User sees:** re-measured on `live_day9.jsonl` (29fc1b4, 161/175): of the eight, six are met (F087's Maxey read from its own words after day9, the differential, the series game's filler, the tie at the cut, the career for "including playoffs", the team total's cause) and two remain - "jokic vs cade since 2022" (`player_compare` does not honor `since`; falls through) and F142 "jay huff game log vs Embiid" (the pair reading refuses the career span; the `check_routing` GAP case).
-- **Next step:** `player_compare` honors `since` (or "X vs Y since" with no compare word is the pair relation), and the pair reading over a career span for F142. Then a live run, since a text rule cannot be measured on recorded routes the model no longer produces.
-- **GitHub:** #223
 ### The web page scales a composed usage rate by 100 a second time: "USG% 2435.5%"
 - **Found:** 2026-09-25, fixing #222 (plan item 2, step 2a).
 - **Evidence:** `usage_pct` is stored as a percent - `fetch/advanced_stats.py`
@@ -209,6 +203,14 @@ before that commit needs re-checking against the current warehouse.
   sentinel `stat` and drops the filler player, and `leaderboard` refuses on
   the sentinel, naming the real cause and pointing at `shot_distance` for one
   named player, before either wrong-cause path can run.
+- **Parser path (4.5.0, the router gone):** "game score nba leader" answers
+  the game-score leaderboard (Jokic 28.68), read from the words by
+  `parse.MEASURE_GRAMMAR` before the model's key, and "defensive rebounds" is
+  `MEASURE_WORDS`' own key. The shape stays possible: the normalizer's `stat`
+  is required over a closed enum (`NORMALIZER_STATS`), so a stat word neither
+  the measure grammar nor the enum holds can still get the nearest key the
+  model knows - unmeasured on the normalizer; "ats okc" and "players with the
+  highest scoring triple doubles" are the cases to check.
 
 The 391 date-only games printed a day early (#76), 2008's team rebound columns
 (#74) and the swapped 1990 Finals Game 5 were fixed on 2026-09-16. Before adding
@@ -250,8 +252,8 @@ those were found.
   in 25-26".
 - **User sees:** the right shape for the season before the one asked.
 - **Next step:** teach `_validate_season`'s text read "YY-YY" and "YY/YY"
-  (consecutive years only, so "10-12" stays a score). `route()` only; hash the
-  prompt constants to prove nothing else can move.
+  (consecutive years only, so "10-12" stays a score) - a stage in `router.py`,
+  which the parser runs through `settle`, so no model input changes.
 - **Re-measured 2026-09-21, after #95's fix landed.** The symptom changed, not
   the gap: "23-24" still is not read as a year, so a bare model `season` for
   it is dropped rather than kept (#95 no longer trusts a `season` int with
@@ -262,31 +264,10 @@ those were found.
   open.
 - **GitHub:** #168
 
-### A thresholdless `threshold_count` is rewritten to `leaderboard` before the subject is restored
-- **Found:** 2026-09-21, a Sonnet agent replaying the 172 distinct
-  `.history/*.log` web-session questions offline through `31b2ec6`
-- **Evidence:** "how many games did embid play" answers "Tyrese Maxey led the
-  league in minutes per game in the 2026 regular season, at 38.0". The agent's
-  trace: `_route_threshold` (`router.py`, ~1672) rewrites to `leaderboard`
-  without checking for a subject, and runs before `_route_subject_slots`, which
-  excludes `leaderboard` from `_SUBJECT_RESTORED_INTENTS`; `_SUBJECT_OF_HAVE`
-  has no "play/played" verb either. **Lead re-check:** with a `player` slot
-  present the rewrite keeps it (`leaderboard` then refuses a named player), so
-  the wrong answer needs the router to have dropped the player as well.
-  1 of 172 web-session questions; population in the large set unmeasured (it
-  depends on the model's slots, not on a regex). The live sample has 4
-  `threshold_count` fall-throughs on `threshold: 0` for "most X" questions
-  ("luka stats most turnovers"), the refusing side of the same rewrite.
-- **User sees:** a league leaderboard in a stat nobody asked about.
-- **Next step:** guard the rewrite on the question naming no player
-  (`players_named_in`), and send a named player's "how many games" to
-  `player_stat`.
-- **GitHub:** #169
-
 ### `player_stat` given a `team` slot answers this season and never mentions the team: "lebron stats as a starter for Miami"
 - **Found:** 2026-09-27, the step (c) rehearsal (the whole agent with the parser as reader and the normalizer's recorded replies, `~/association-research/yardstick-v2/run_offline_parser.py`), on an intermediate parser that wrote the player's own team into `team`.
-- **Evidence:** slots `{'player': 'LeBron James', 'team': 'Miami Heat', 'season_type': 2, 'split': 'starter'}` answered "LeBron James averaged 20.9 points, 6.1 rebounds and 7.2 assists per game in 60 games as a starter in the 2026 regular season." - his Lakers season, with Miami nowhere in the sentence. With no `team` slot the subject stage reads the own team and the span it implies, and the same question answers "... in 294 games with the Miami Heat as a starter over his career (2011-2014 ...)". The parser no longer writes the own team (`parse._read_route_names`), so it does not reach this; the router path does whenever its model files the team, which it did not for this wording in day10.
-- **User sees:** a fluent, correct-looking line about a different team's season.
+- **Evidence:** slots `{'player': 'LeBron James', 'team': 'Miami Heat', 'season_type': 2, 'split': 'starter'}` answered "LeBron James averaged 20.9 points, 6.1 rebounds and 7.2 assists per game in 60 games as a starter in the 2026 regular season." - his Lakers season, with Miami nowhere in the sentence. With no `team` slot the subject stage reads the own team and the span it implies, and the same question answers "... in 294 games with the Miami Heat as a starter over his career (2011-2014 ...)". The parser does not write the own team into `team` (`parse._read_route_names`; the subject stage writes it to `own_team`), so it does not reach this; the router reader did whenever its model filed the team, and it is gone (4.5.0).
+- **User sees:** nothing on the parser. A fluent, correct-looking line about a different team's season for any route that carries `team` on `player_stat` - a recorded one, or a reader that files the own team there (step 3c moves the own-team writer into the parser).
 - **Next step:** find why `check_scope` lets `team` through for `player_stat` when the template does not narrow by it - either honor it as the own-team narrowing the subject stage already builds, or refuse it; warehouse-verified test on this question.
 - **GitHub:** #237
 
@@ -300,7 +281,7 @@ those were found.
 
 ### The parser reads a teammate's start as the subject's own split: "maxey points when embiid starts" falls through, "maxey points in games embiid started" compares the two
 - **Found:** 2026-09-27, plan item 6 step (d), round 2, probing the entry above on the default reader.
-- **Evidence:** the agent with `reader="parser"` and the normalizer's reply stubbed as the model gives it (names `["maxey", "embiid"]`, stat `points` - the way `yardstick-v2/run_offline_parser.py` replays recorded replies), read-only against the main warehouse on the round-2 tree: "maxey points when embiid starts" and "how many points does maxey average when embiid starts" parse as `with_without` with `split: 'starter'` - Embiid's start filed as Maxey's own split - while the subject stage writes `conditions: [{Joel Embiid, started}]` beside it; `with_without` refuses `split` and the question falls through. "maxey stats when embiid comes off the bench" does the same with `split: 'bench'`. "maxey points in games embiid started" parses as `player_compare` (kind `pair`) and answers a table of Maxey (28.3 in 70 games) against Embiid (26.9 in 38).
+- **Evidence:** the agent reading with the parser and the normalizer's reply stubbed as the model gives it (names `["maxey", "embiid"]`, stat `points` - the way `yardstick-v2/run_offline_parser.py` replays recorded replies), read-only against the main warehouse on the round-2 tree: "maxey points when embiid starts" and "how many points does maxey average when embiid starts" parse as `with_without` with `split: 'starter'` - Embiid's start filed as Maxey's own split - while the subject stage writes `conditions: [{Joel Embiid, started}]` beside it; `with_without` refuses `split` and the question falls through. "maxey stats when embiid comes off the bench" does the same with `split: 'bench'`. "maxey points in games embiid started" parses as `player_compare` (kind `pair`) and answers a table of Maxey (28.3 in 70 games) against Embiid (26.9 in 38).
 - **User sees:** a fall-through for the "when X starts" wordings; for "in games X started", a fluent comparison of the two players - a different question.
 - **Next step:** a teammate's role word ("starts", "started", "comes off the bench") beside a player subject reads as that teammate's `conditions` entry on the subject's own intent (`player_stat`, or `game_log` for a log) - never as the subject's `split`, never as a pair. The entry above has to land first, or `player_stat` answers the season line. A `tests/query/test_parser.py` case per wording, and the hold-out comparison (`holdout_compare.py`).
 - **Source:** ours.
@@ -317,6 +298,13 @@ those were found.
 - **Evidence:** measured read-only against `/home/jeff/code/association/nba.duckdb`. `subject.read_subject(con, "76ers record when they score 120 points when embiid starts", "record_when", {"team": "Philadelphia 76ers", "stat": "points", "threshold": 120, "season_type": 2})` returns `subject.conditions = (Companion(name='Joel Embiid', predicate='reached', stat='points', threshold=120),)` - the team's own "they score 120 points" is folded into Embiid's condition, and "starts" is not read at all. `_apply_team_record_when` (`subject.py:1064`) then fires as designed - its own rule is "the TEAM's record in the games a companion reached a line" ("Sixers record when Embiid scores 30", a real, correctly-answered shape) - and rewrites the slots to `{'player': 'Joel Embiid', 'stat': 'points', 'threshold': 120, 'team': 'Philadelphia 76ers'}` on the strength of that misread condition. `record_when` (and `compose.answer`, identically) then answers "Philadelphia 76ers record when Joel Embiid had 120+ points, 2026 regular season: 120+ points 0 0-0 ... under 120 points 38 24-14" - a real player's real 0-for-120 record, for a question about the TEAM's own scoring with Embiid's start as its actual (and separately dropped) condition. Neither of this session's `record_when` fixes touches it: a `player` slot is already set by the time the question reaches `record_when`, so it never reaches `compose.team`'s `TeamQuery` or the team branch's own `conditions` refusal at all - confirmed by re-running both after the fixes, identical output.
 - **User sees:** a fluent, confidently wrong-subject answer - a real player's real record, for a question about his team's own scoring.
 - **Next step:** `read_subject`'s companion-condition parsing needs to keep "they/the team score N" (the team's own subject-level threshold) and "X starts"/"X comes off the bench" (a role with no stat attached) as two separate facts, rather than folding both into one `Companion(predicate="reached", ...)` - fix belongs in `query/subject.py`, not this session's files.
+- **Source:** ours.
+
+### A misspelled team name is dropped by the parser, and the question is answered without it: "gui last 5 games vs sours" lists his last 5 games, none against the Spurs
+- **Found:** 2026-09-27, plan item 6 step (d) part 3 (deleting the router reader), re-measuring #131 ("gui last 5 games vs sours") on the parser path.
+- **Evidence:** the parser path offline on 33cfd60 (and before it on 96b4b65), the normalizer stubbed with the question's own name spans (what the model is told to copy, and what `parse._as_typed` puts back when it corrects one), read-only on the main warehouse: "gui last 5 games vs sours" routes `{'player': 'Gui Santos', 'order': 'recent', 'limit': 5, ...}` with no `opponent` and lists his last 5 games (LAC, SAC, HOU, CLE, DEN), where "gui last 5 games vs spurs" lists his last 4 against San Antonio; "jalen brunson points vs the celtcs this season" answers his season average (26 points in 74 games); "lakers record vs the nuggest" answers the Lakers' season record (53-29). `parse.classify_span` reads a span as a team only by its exact word, nickname, code or name (`team_named_in`, `find_teams`), and the index's near-spelling pass is for players only, so the typo'd span is nobody's and is dropped, and nothing says a word of the question went unread.
+- **User sees:** a fluent answer to the un-narrowed question - the player's or team's whole window or season - with the opponent it names nowhere in it.
+- **Next step:** a near spelling of exactly one franchise's word or nickname (within the index's edit budget, against the 30 franchises' words only) reads as that team and says so, the way `entities.read_near_spelling` does for a player; a span near nothing refuses by name rather than vanishing. A `tests/query/test_parser.py` case per wording above, watched to fail, and the hold-out comparison.
 - **Source:** ours.
 
 ## P2: misleading or incomplete
@@ -482,26 +470,6 @@ those were found.
   bugs (a wrong dict key; an answer-only append) independent of the page.
 - **GitHub:** #218
 
-### "Since 2000-01" still reads the default season live, although route() reads it on stubbed slots
-- **Found:** 2026-09-24, grading `live_day2.jsonl` (yardstick-v2 F161) after
-  sweep 2 merged (`637ff4e`).
-- **Evidence:** "players with 33 point and 13 rebound and 10 assist 2 blocks
-  and 2 steals games since 2000-01" composes over "2026 regular season -
-  last 3 games" on the live run, exactly as before the sweep, while
-  `tests/query/test_router.py`'s stubbed case for the same wording files
-  `since: 2001`. Both arms of sweep 2 passed the stubbed test; neither could
-  run the model. The live trace is the place to look: the model's raw
-  slots for this wording (a `season` beside the range? a `limit`?) and
-  which post-processing step wins.
-- **User sees:** the right five lines counted over one season where 26 were
-  asked - the scope is stated, so it is correctable.
-- **Next step:** capture the live raw slots (`association query --verbose`),
-  add the case to `check_routing.py` with the exact expectation, and fix
-  whichever step drops `since`.
-- **Source:** ours.
-- **GitHub:** not yet filed
-- **GitHub:** #219
-
 ### `player_stat`'s coverage floor is computed from the wrong slot list, and misses `situation`, `since`, `game_n`
 - **Found:** 2026-09-24, in passing while verifying the K3-2 conference/division
   narrowing did not need a new coverage-floor entry of its own.
@@ -594,6 +562,12 @@ those were found.
   needs measuring how often this shape appears in the routing corpus before
   building anything, since a broad "ask on short questions" rule risks
   breaking working ones.
+- **Parser path (4.5.0, the router gone):** the parser reads "rec" beside one
+  player as his own record (`player_splits`, from its recorded reply
+  `names: ['Tatum']`): "Jayson Tatum, splits, 2026 regular season (16 games he
+  played)", W-L by venue and 13-3 as a starter - a different guess from the
+  router's (Jaylen Tatum's stat line), still made without saying the question
+  could mean the team's record.
 - **GitHub:** #200
 
 ### A question with zero valid readings gets a fluent, self-chosen answer: "25-26 knicks playoff statistics vs other historic teams"
@@ -618,30 +592,6 @@ those were found.
   ("vs" with nothing concrete after it) might be the shape, but was not
   measured here.
 - **GitHub:** #201
-
-### "steph curry record vs lebron regular season without kd" reads the router's default season, and `without` a non-teammate as no games
-- **Found:** 2026-09-23, yardstick-v2 F114; re-measured 2026-09-25 after the
-  subject reading took the intent (ROADMAP plan item 1, step 3d-iii).
-- **Evidence:** routes `with_without {'stat': 'wins', 'team': 'Los Angeles
-  Lakers', ..., 'season': 2026, 'without': ['kd']}`. Until 3d-iii the
-  answer was the Houston Rockets' record with and without Durant - a
-  fluent wrong answer about a team the question never named. The reading
-  now says the subject is the pair (Curry, LeBron) with Durant as a
-  companion and settles `player_matchup`, which honors `without`:
-  "No meetings between Stephen Curry and LeBron James in Stephen Curry's
-  games without Kevin Durant in the 2026 regular season." Two things
-  remain: the season is the router's default (`season_ref: current`) on
-  a question that names none, where the pair's history with Durant on
-  Curry's side is 2017-2019; and `without` a player who was never Curry's
-  teammate that season narrows to no games without saying so.
-- **User sees:** an honest "no meetings" for the wrong season, with
-  nothing saying Durant was not on the roster.
-- **Next step:** the pair relation with a player CONDITION `(player,
-  side, predicate)` (ROADMAP plan item 3): "without kd" is Durant absent
-  from Curry's own side, over the span the two share, and a condition
-  naming a player who was never on that side says so.
-- **Source:** ours, not ESPN's.
-- **GitHub:** #202
 
 ### Five P7-bucket "partial" answers from the yardstick are still open
 - **Found:** 2026-09-23, same session - not reached; recorded from
@@ -740,13 +690,14 @@ those were found.
   a CLI invocation racing a running web server, both talking to the same
   ollama, would hit this.
 - **Next step:** decide whether cross-process serialization is worth adding
-  (a lock file or a documented "run one instance" rule already implicit in
-  `check_routing.py`'s docstring but not enforced anywhere outside that
-  script), and extend the same docstring's warning to say what the failure
-  looks like now that it has been measured (silent wrong routing, not only a
-  wedge). Compare yardstick runs only when nothing else was asking ollama
-  anything at the same time, not merely "within one server load" as the
-  original entry said - a load-time comparison does not catch this.
+  (a lock file; AGENTS.md's "Only one ollama caller at a time", where the
+  routing check's docstring warning moved when the check was deleted, is
+  enforced nowhere). Compare yardstick runs only when nothing else was asking
+  ollama anything at the same time, not merely "within one server load" as
+  the original entry said - a load-time comparison does not catch this.
+- **After 4.5.0:** the router's model call is gone; the normalizer asks the
+  same qwen2.5:3b on the same single-slot instance, so the mechanism applies
+  to it unchanged - unmeasured on the normalizer.
 - **Source:** ours (a single-slot ollama instance under two concurrent
   callers), not the prompt, and not ambient CPU load.
 - **Re-ranked P1 -> P2 at the merge (2026-09-22):** the web path cannot
@@ -811,36 +762,6 @@ those were found.
   the two `game_log`'s venue narrowing reads.
 - **GitHub:** #173
 
-### "Since he joined the league" becomes one season, the year he joined
-- **Found:** 2026-09-21, yardstick-v2 live run (`live_31b2ec6.jsonl`)
-- **Evidence:** "Show me luka's avg assists in each year since he joined the
-  league" routed to `player_history` with `season=2019, limit=10` and answered
-  "Luka Doncic, assists per game by regular season, 2019" - one row, where
-  eight seasons were asked for. The model did the arithmetic (he joined in
-  2018-19) and spent it on `season` where the question means `since`. The
-  sibling wording "year over year" answers 2022-2026, the five-season default.
-- **User sees:** a one-row table, titled with the year, so the narrowing is
-  visible - which is why this is P2 and not P1.
-- **Next step:** related to the invented-season entry (#95) but not fixed by
-  it: "since he joined", "since his rookie year", "over his career" on
-  `player_history` want `span=career` read from the question's own words in
-  `route()`.
-- **Re-measured 2026-09-21, after #95's fix landed** (`route()` on this
-  commit, recorded slots from `live_31b2ec6.jsonl` pushed back through it with
-  the model stubbed): `season` now drops (nothing in the text names 2019) and
-  `limit=10` survives, so `player_history` reads `latest = current_season()`
-  (2026) with a 10-season window - Luka has played 8, so this particular
-  question now gets all of them, by coincidence rather than by fix. The
-  prediction below this entry's evidence ("the five-season default") was
-  wrong: `limit` was 10 in the recording, not absent, and `player_history`'s
-  own default (`DEFAULT_HISTORY_SEASONS`) is 4, not 5. Left open: a player
-  with a career longer than the model's `limit` (or a recording with no
-  `limit` at all, which reads a real 4-season default) still gets a short
-  answer with nothing saying so - #95 removed the ONE-season floor this entry
-  was filed against, not the general gap.
-- **Source:** ours, not ESPN's.
-- **GitHub:** #174
-
 ### "His best season" is answered with a season nobody determined
 - **Found:** 2026-09-21, working #95 (the invented-season entry above) -
   found in passing while checking `~/association-research/yardstick-v2/live_namerule.jsonl`
@@ -856,14 +777,16 @@ those were found.
   standing in for a year). Re-measured on this commit, after #95's fix: the
   bare `season` now drops (nothing in the text names a year), so the same
   question renders the CURRENT season instead - also not necessarily his best,
-  just a different unexamined guess.
+  just a different unexamined guess. On the parser (4.5.0) no model supplies
+  a season at all, and it renders the current season the same way: "Rendered
+  NetPoints fingerprint (total) for Nikola Jokic (2026 season, percentile
+  scale)".
 - **User sees:** a fingerprint titled with a real season, so the narrowing is
-  visible (same reasoning the "since he joined the league" entry above is P2
-  and not P1) - but the season shown answers a different question than "his
-  best", with nothing saying so.
+  visible (which is why this is P2 and not P1) - but the season shown answers
+  a different question than "his best", with nothing saying so.
 - **Next step:** either read "best season"/"his best year"/"career year" as a
-  request `route()` can recognize (`CODE_ASSIGNED_INTENTS` is not the right
-  mechanism - this is a slot value, not an intent) and resolve deterministically
+  request the parser's grammar recognizes (a slot value, not an intent) and
+  resolve deterministically
   against a stat (which stat "best" means is itself unstated and would need a
   default), or refuse the shape rather than silently substituting a season -
   in the spirit of "prefer refusing to guessing" (`AGENTS.md`).
@@ -1660,17 +1583,17 @@ those were found.
     sampled - so a mid-season change is invisible - and is wrong for whole
     franchises: Detroit is empty or wrong in all nine seasons sampled from
     1994 to 2026.
-- **User sees:** a fall-through on any coach question, which lands on the SQL
-  agent with no coach column to find - the case `check_coverage` exists for,
-  except that nothing declares it, so the agent is free to fill the silence
-  from its own weights.
+- **User sees:** since (a) below landed, the refusal: `coach` is assigned
+  from the question's words (`CODE_ASSIGNED_INTENTS`, and the parser's
+  `PARENT_GRAMMAR`) and answers that no table here holds a coach and why
+  ESPN's are not worth reading. Before it, a fall-through to an agent with no
+  coach column, free to fill the silence from its own weights.
 - **Next step:** a decision, not a fetch. Either (a) leave it unfetched and
-  refuse a coach question with a sentence naming the real cause, which needs a
-  router intent and so a `ROUTER_PROMPT` edit - and any such edit moves slots
-  on unrelated questions, so it needs `scripts/check_routing.py` run after it;
-  or (b) fetch the team-scoped endpoint and caveat it hard, which means
-  publishing a coaching record that is wrong about Detroit for two decades.
-  (a) is the cheaper and more honest of the two.
+  refuse a coach question with a sentence naming the real cause - done, with
+  no prompt edit, since the intent is read from the words; or (b) fetch the
+  team-scoped endpoint and caveat it hard, which means publishing a coaching
+  record that is wrong about Detroit for two decades. (a) is the cheaper and
+  more honest of the two; close this unless (b) is wanted.
 - **Source:** DATA.md, "ESPN publishes coaches, and the collection that looks
   league-wide is not historical"
 - **GitHub:** #97
@@ -1680,8 +1603,8 @@ those were found.
   fast path; **fixed for every measured case and re-ranked P1 -> P3 on
   2026-09-16**, after the second pass measured zero left.
 - **What it was.** `check_scope()` refuses a narrowing a template cannot
-  honor, but it can only see slots the router emits, and `ROUTER_SCHEMA` has
-  no slot for a weekday, a holiday, an age, a minutes condition, "since
+  honor, but it can only see slots the reader emits, and the router's schema
+  had no slot for a weekday, a holiday, an age, a minutes condition, "since
   returning from injury", a calendar date, a game of a playoff series or a
   season named by ordinal. Those words never reached it, so the template
   answered the *un-narrowed* question - the largest single cause of a wrong
@@ -1707,8 +1630,9 @@ those were found.
   dropped (8), wrong metric (6) and wrong scope (4), all different entries.
 - **Why it is still open, at P3.** The fix is a list of regexes, one per shape
   somebody happened to ask in a 261-query sample. The structural fault is
-  untouched: **`check_scope` still cannot refuse what `ROUTER_SCHEMA` never
-  emits**, so the next narrowing nobody has thought of is dropped silently and
+  untouched: **`check_scope` still cannot refuse what the reader never
+  emits** (the router's schema until 4.5.0; the parser's grammar tables and
+  the stages since), so the next narrowing nobody has thought of is dropped silently and
   answered fluently, exactly as these eight were. It is P3 rather than P1
   because no measured question is wrong today - but the mechanism that produced
   11 of them is still there, and the only thing standing in front of it is a
@@ -1846,12 +1770,17 @@ those were found.
   handler still has no column or shape to answer from. ("oklahoma city thunder
   all-time triple doubles vs west" looked like a third instance but is not -
   "vs west" is Western Conference scoping, which is #25's gap, not this one.)
-- **User sees:** a fall-through to the slow agent for both.
-- **Next step:** not an `entities.py` fix. Either teach the router to route a
-  bare team subject with no player words to a team-shaped intent
-  (`team_stat`/`team_leaderboard`), or add the missing shapes (a team's
-  per-game shot-distance breakdown; `team_leaderboard` ranking every team by a
-  counting stat with no `stat` narrowed to one metric already listed).
+- **User sees:** a fall-through to the slow agent for both, on the router.
+- **Parser path (4.5.0):** the kind reading routes a bare team subject to a
+  team-shaped intent. "cavaliers 3 pointers every game" (normalizer stubbed
+  with the team's span and `threePointFieldGoalsMade`) answers `team_stat`:
+  "The Cleveland Cavaliers' 3-pointers made per game was 14.3 in the 2026
+  regular season (82 games), 8th-best of 30 teams." - an average, where "every
+  game" may want the log; "rebounds allowed per team" names a key no team
+  metric holds and refuses by name.
+- **Next step:** not an `entities.py` fix, and no longer a routing one: the
+  missing shapes (a team's per-game breakdown of one stat; `team_leaderboard`
+  ranking every team by a counting stat it allows).
 - **GitHub:** #121
 
 ### Conference and division are in the standings we fetch, and the parser drops them
@@ -2271,87 +2200,6 @@ those were found.
   unpredictably and in part"
 - **GitHub:** #77
 
-### A question naming two seasons routes with only one, and the answer never says so
-- **Found:** 2026-09-18, adding `team_record`'s month split
-- **Evidence:** "knicks record by month 2024 2025" (a question naming both the
-  2023-24 and 2024-25 seasons, most plausibly asking for both broken out by
-  month) routes with `slots = {"team": "New York Knicks", "season": 2024,
-  "split": "month", ...}` - the second year is dropped entirely, with nothing
-  in the slots recording that the question named it. `team_record` now
-  answers the by-month table for 2024 alone, correctly and completely for that
-  one season - but the answer has no way to know a second season was asked
-  for, since the router never carried it past routing. Measured against
-  `replay_recorded_routes.py` and the built warehouse: the 2024 table it
-  returns is numerically exact (November 9-5 through April 6-2, cross-checked
-  against a direct SQL tally), so this is not a wrong answer - it is a
-  narrower one, stated as though it were the whole question.
-- **User sees:** a correct, complete answer for one of the two seasons named,
-  with no caveat that the other was dropped - the same shape #19
-  (`player_history`) and #20 (a fingerprint comparison losing its second name)
-  already describe for a name or a season silently narrowed.
-- **Next step:** this is a router-level gap (`ROUTER_SCHEMA`'s `season` slot
-  takes one integer, not a list or a range), not a template one - no template
-  file can restore a second season the router never emitted. Fixing it needs
-  either a `season` slot that can carry a span, or reading a second year out
-  of the question text the way `CODE_ASSIGNED_INTENTS` does for other slots,
-  and either one needs `scripts/check_routing.py` run after, per
-  `router_prompt.py`'s own rules.
-- **GitHub:** #124
-
-### Two more router typo'd names resolve to a safe clarification rather than a direct answer, and a stricter fix was measured and reverted
-- **Found:** 2026-09-18, building the span-contract fix for entity resolution
-  (`entities._question_derived_player`, ISSUES.md #122's fix)
-- **Evidence:** "kon knepuell stats last 10 games" (router: `player='Kon
-  Knepuvel'`) and "gui last 5 games vs sours" (router, after its own given-name
-  fabrication is repaired: `player='Gui Santos'`) both still ask "'Kon'/'Gui'
-  matches more than one player - did you mean ... ?" rather than answering
-  directly, even after the span-contract fix. Both fragments ("Kon", "Gui")
-  are in fact EXACT, globally unique whole-word matches
-  (`entities._exact_name_span`) - the same shape `players_named_in` already
-  uses elsewhere to answer confidently - so a version of this fix that also
-  trusted a bare matched fragment's own exact uniqueness inside
-  `undo_name_completion` answered both directly (`Kon Knueppel`, `Gui
-  Santos`).
-- **Why it was reverted rather than shipped:** measured on the same 261-row
-  replay, that version also answered "kareem stats vs bob lanier" with
-  **Kareem Rush** - a real but wholly unrelated player - because "Kareem"
-  alone is *equally* an exact, globally unique whole-word match, and Kareem
-  Abdul-Jabbar (like Bob Lanier) retired before the warehouse's 1993-94
-  floor and has no row to be found under at all (DATA.md, "Coverage
-  floors"). Nothing in the fragment-uniqueness check can tell "the surname
-  is garbled beyond this repair" (Kon, Gui - real players, just spelled
-  worse than this fix's edit budgets reach) apart from "the intended person
-  simply is not in `players`" (Kareem, Bob Lanier) - both are a single
-  given name, exactly and uniquely matching someone real but unrelated. The
-  position-based guard that protects `_question_derived_player` itself
-  (trust a lone anchor only from the surname position) does not help here
-  either: "Kon" and "Kareem" are both given names, the same position, with
-  opposite right answers. A P1 wrong-entity answer for a real, if narrow,
-  question shape (a pre-1994 legend named alongside a typo'd modern player)
-  was judged worse than two rows staying a safe, if imperfect, clarification
-  that already names the right player among its options - so the
-  fragment-uniqueness branch was removed before this shipped, and
-  `test_two_anchored_words_that_fail_together_do_not_fall_back_to_one` /
-  `test_a_given_name_anchor_alone_is_not_trusted_but_its_window_is` pin the
-  guard that would otherwise regress if this is attempted again.
-- **User sees:** an unnecessary "did you mean Kon Knueppel, John Konchar, or
-  Yanic Konan Niederhauser?" (or the Gui-Santos equivalent) where a direct
-  answer is possible - safe, not misleading, but a clarification the
-  question did not need to ask.
-- **Next step:** needs a second, independent signal the way #122's own
-  "Next step" already called for before this fix existed - something that
-  tells "Kon"/"Gui" apart from "Kareem"/"Bob Lanier" other than exact
-  uniqueness, e.g. checking whether the OTHER word of the router's name has
-  literally any surname-shaped near neighbor in the question at all (Kon
-  Knepuvel's "Knepuvel" is one edit outside this fix's own budget of
-  "knepuell", the question's own spelling, and could be caught by widening
-  that budget slightly; Kareem Abdul-Jabbar's "Abdul"/"Jabbar" have no
-  question word anywhere near them). Not attempted here - it needs measuring
-  against the corpus the same way the guard that replaced it was, and this
-  session's budget did not extend to a second round of that measurement.
-- **Source:** ours (a matching heuristic), not ESPN's.
-- **GitHub:** #131
-
 ### A career-span `shot_distance` drops an unseparable season and loses the derived-season caveat, silently
 - **Found:** 2026-09-20, fixing #141 (`shot_chart`/`shot_distance` honoring a
   career `span`)
@@ -2557,6 +2405,13 @@ those were found.
 - **Next step:** read "scores 30" (a number after a scoring verb) as the threshold where the stat is points, and make `_team_where_a_player_belongs` check the slot against the team index before saying it is a team - otherwise say which fact is missing (the line).
 - **Source:** ours.
 
+### A league ranking by 2-point percentage is refused as an outside figure; five other box-score keys the normalizer can emit rank only through the compiler, under raw column names
+- **Found:** 2026-09-27, plan item 6 step (d) part 3, re-aiming `tests/query/test_career_spans.py`'s vocabulary test from the router's prompt to `NORMALIZER_STATS`.
+- **Evidence:** six player keys in `NORMALIZER_STATS` resolve to no leaderboard metric (`leaderboard.resolve_metric` returns None): `fieldGoalsAttempted`, `freeThrowsAttempted`, `threePointFieldGoalsAttempted`, `offensiveRebounds`, `defensiveRebounds`, `twoPointFieldGoalPct`. Parser path offline on 33cfd60 (and before it on 96b4b65), normalizer stubbed with the key, read-only on the main warehouse: the template refuses each and the compiler ranks five from box scores - "who leads the league in offensive rebounds this season" answers "every player, 2026 regular season, by player (offensiveRebounds per game, minimum 20 games): Steven Adams ... 4.5", the column's own name as the label (the attempts read "FTA", "FGA", "3PA") - and refuses the sixth: "who has the best 2 point percentage this season" answers "No ranking reads 'twoPointFieldGoalPct' on the player-games relation - it only ranks the box-score measures it knows, not a NetPoints or other outside figure." A 2-point percentage is a box-score figure (field goals less threes; `player_history` and `player_stat` already compute it), so the refusal names the wrong cause.
+- **User sees:** a refusal naming the wrong cause for a 2-point-percentage ranking; for the two rebound halves, a right ranking labeled "offensiveRebounds per game".
+- **Next step:** leaderboard metrics for the six (2-point percentage with an attempts floor the way `fg_pct` has one); then `test_every_box_score_stat_the_model_may_name_ranks_by_a_metric` can read `NORMALIZER_STATS` itself rather than the router's fourteen names.
+- **Source:** ours.
+
 ## P3: refusal or gap
 
 ### The compiler has no NetPoints measure, so a single-game NetPoints ranking has nowhere to land but the agent
@@ -2605,26 +2460,6 @@ those were found.
   excluded if that reasoning holds for them.
 - **Priority note:** P3 - one corpus question, a fall-through.
 - **GitHub:** #214
-
-### A player's team record since an absolute date, both season types, is refused: "towns home rec including playoffs since 1/26/20 vs spurs"
-- **Found:** 2026-09-24, fixing yardstick-v2 F110 (it used to answer the
-  Raptors' record, a team the question never names; now refused by name).
-- **Evidence:** the key asks for Towns's teams' home record against the
-  Spurs in his games since 2020-01-26, regular season and playoffs. No slot
-  carries an absolute start date: `situation: "since january 26"` is read
-  within EACH season (`calendar.parse_situation`'s `since_day`), so
-  `since: 2020` beside it would drop October-January of every later season;
-  and "1/26/20" is not read by `router._validate_date` at all (month names
-  only). No player-relation template answers "his team's record in his
-  games" with both season types combined either.
-- **User sees:** a refusal naming Towns ("team record has no reading for
-  one") - honest about the subject, silent about the date window.
-- **Next step:** an absolute `after`/`before` date slot on both relations
-  (one clause on `Narrowed` and `TeamNarrowed`), and a numeric-date reading
-  ("1/26/20") in `route()`; then this is record_when/player_splits-shaped.
-- **Priority note:** P3 - one corpus question, refused rather than wrong.
-- **Addendum (2026-09-27, the step (b) audit):** two readers disagree about the subject. With the recorded router slots, `read_subject` at c1812e2 returns kind `everyone` and no players (the ordinary-word filter drops "towns" when the router names no Towns), while `players_named_in` finds Karl-Anthony Towns and the refusal at `entities.py` names him. The fix has to make the reading and the refusal agree.
-- **GitHub:** #215
 
 ### `game_log`'s "last 10 of N games" heading misses the without branch
 - **Found:** 2026-09-24, grading `live_rest.jsonl` (yardstick-v2 F158).
@@ -2699,43 +2534,6 @@ those were found.
   own `data` (add the first season there if it is not), not by parsing their
   sentences.
 - **Source:** ours (the standings' own floor is ESPN's, in `DATA.md`).
-### The router cannot ask `leaderboard` to show each player's team (F017)
-- **Found:** 2026-09-23, fixing yardstick-v2 F017 ("who are the top 50 in
-  total adjusted netpoints with the team they play for").
-- **Evidence:** `leaderboard`'s `fields` slot now accepts `"team"` and adds a
-  "team" column, read from `player_game_log` (the season's most recent
-  team, with a "Team is each player's most recent team that season." note
-  when a shown player was traded) - `templates/players.py`,
-  `_leaderboard_fields`/`_leaderboard_show_teams`. Warehouse-verified
-  directly (`leaderboard(ctx, {"stat": "netpoints_per_100", "fields":
-  ["team"], "limit": 50})` lists all 50 players with a team beside each).
-  But `ROUTER_SCHEMA`'s `fields` enum (`router_prompt.py`) is
-  `["points","rebounds","assists","steals","blocks","minutes"]` - no
-  `"team"` - so the router can never emit `fields: ["team"]` under
-  constrained decoding, whatever the question's wording. F017's own trace
-  (`slots={'stat': 'netpoints_per_100', 'limit': 50, 'season_type': 2}`)
-  confirms this: no `fields` at all. Also note the row-count half of F017's
-  complaint ("neither the full 50 ... is given") was not reproducible
-  measured directly against this worktree's code before this change - a
-  50-row request already returned exactly 50 rows in the answer text
-  (1,238 characters); the yardstick log's own captured `answer` field cuts
-  off mid-word ("...Jalen") in a way consistent with the LOG's display
-  truncation, not the system's real output. Not re-measured on a from-
-  scratch git-bisect, so recorded as a discrepancy rather than closed as a
-  separately-fixed bug.
-- **User sees:** a leaderboard that never shows team names, even for
-  wording that explicitly asks for them ("with the team they play for",
-  "and their team") - the router's own words, not the template's.
-- **Next step:** add `"team"` to `ROUTER_SCHEMA`'s `fields` enum and a line
-  in `ROUTER_PROMPT` describing when to set it, then verify with
-  `scripts/check_routing.py` (both belong to the router owner - this
-  session's split assigns `router_prompt.py`/`router.py` there, and
-  changing either without re-running that script risks moving an unrelated
-  question's routing per `AGENTS.md`, "Any edit to ROUTER_PROMPT moves
-  slots on unrelated questions").
-- **Source:** ours.
-- **GitHub:** #210
-
 ### No leaderboard metric ranks average three-point shot distance
 - **Found:** 2026-09-23, fixing the wrong-cause refusal `leaderboard` gives
   for `stat: "shot_distance"` (yardstick-v2 F019 - "who lead the league in
@@ -3079,6 +2877,12 @@ those were found.
   wrong, 3 more fell through; 27 of 1,972 reasonable large-set questions name
   an award (regex also catches "since the all star break"). P1 by the file's
   own definition.
+- **Parser path (4.5.0):** still wrong. "nba mvps in 2010's" (normalizer
+  stubbed with no names and no stat) reads parent `leaderboard` with
+  `since: 2010, until: 2019` and answers the 2026 points-per-game board
+  ("every player, 2026 regular season, by player (points per game, minimum 20
+  games): Luka Doncic 33.5 ...") - the award unread and the range dropped as
+  well (#207's shape).
 - **GitHub:** #146
 
 ### `_subject_named_in`'s original grammar reads a bare noun as a subject on four corpus questions
@@ -3265,23 +3069,6 @@ those were found.
 - **Next step:** give slot rewrites their own field prefix or stage ("slot", key), and keep "kind" for the subject alone.
 - **Source:** ours.
 - **GitHub:** #234
-
-### The two-teams kind depends on the routed intent, which the parser will not have
-- **Found:** 2026-09-27, the step (b) audit agent (`IR_AUDIT.md`, `RESULT_b_baseline.md`).
-- **Evidence:** `read_subject` returns kind `teams` only when passed `head_to_head` (its docstring: the intent "is read only to tell two teams meeting from a team set against another"). Passed "other", all 5 two-team day10 questions ("how many times did the 76ers play boston?", "Lakers vs Celtics record this season") read as `team`. Baseline harness, DEV: 0 of 5 two-team questions read as `teams` with the router withheld.
-- **User sees:** nothing today (the router supplies the intent); once the parser owns the kind (ROADMAP plan item 6, step b), a two-teams question reads as one team against an opponent.
-- **Next step:** the parser decides `teams` from the words ("X vs Y", "X play Y", "how many times did X play Y") with both teams named and no player.
-- **Source:** ours.
-- **GitHub:** #235
-
-### The reading accepts a name no player has once the names come from the normalizer
-- **Found:** 2026-09-27, the step (b) audit agent, the baseline harness on the 3B normalizer's names.
-- **Evidence:** `read_subject` counts any name slot whose words appear in the question as a player. From the normalizer, "southeast division" makes "alperen sengun double-doubles vs southeast division career away" a pair, "jolic" (a typo) makes "generate fingerprints for embiid vs jolic in 2026" a pair, and "team" becomes a player on "most opponent bench points allowed ... by team this month".
-- **User sees:** nothing today (the router's names resolve); once the normalizer feeds names (plan item 6, step c), a non-name in the slot becomes a subject.
-- **Next step:** the entity index classifies each span (player / team / alignment / none) before it becomes a subject; the typo policy (a single near spelling defaults visibly) covers "jolic".
-- **Source:** ours.
-- **GitHub:** #236
-
 
 ### player_splits has no reader over a settled narrowing, and single_game_high's orchestration is restated in compose.present
 - **Found:** 2026-09-25, plan item 2 step 2a (`query/compose/present.py`);
@@ -3494,7 +3281,7 @@ those were found.
   ("most steals by bucks players 2010s", `run_leaderboard`) and
   `team_leaderboard` ("nba team with least playoff wins since 2022",
   `templates/teams.py`). Both still refuse `since`, and `until` is set beside
-  `since` in `route()` but is in neither `HONORED_SCOPING` nor `SCOPING_SLOTS`
+  `since` by the stages (`router._route_season_range`) but is in neither `HONORED_SCOPING` nor `SCOPING_SLOTS`
   (see #23). So the "three separate season-handling paths" this entry first
   counted are two: the relation's span, and the metric templates' own.
 - **User sees:** the two leaderboard questions fall through; every other
@@ -3541,120 +3328,6 @@ those were found.
 - **GitHub:** #136
 
 
-### Router name fidelity is a per-model property, not a floor - and a smaller, faster model beats the current default on it
-- **Found:** 2026-09-18, sweeping six local models over the same 60 name-bearing
-  corpus questions, one model resident at a time, graded through the real
-  `override_invented_players` / `find_teams` against the read-only warehouse
-- **Evidence:**
-
-  | model | warm median | clean | needed repair | fabricated |
-  | --- | --- | --- | --- | --- |
-  | qwen2.5:3b (current) | 3.36s | 64% | 34% | 2% |
-  | **llama3.2:3b** | **2.66s** | **73%** | 25% | **2%** |
-  | gemma3:4b | 3.09s | 57% | 31% | 12% |
-  | phi4-mini | 5.31s | 50% | 32% | 18% |
-  | qwen2.5:7b | 5.86s | 64% | 28% | 8% |
-  | llama3.1:8b | 5.60s | 80% | 18% | 2% |
-
-  Fabrication is **not** a constant across families, which an earlier two-family
-  reading suggested: both llama models and the current qwen2.5:3b sit at 2%,
-  while qwen2.5:7b is 8%, gemma3:4b 12% and phi4-mini 18%. What varies far more
-  is the clean rate - 50% to 80%. `phi4-mini` emitted a player slot on only 28
-  of 60 questions, so its row is not comparable to the others.
-- **User sees:** nothing yet. `llama3.2:3b` is the same size class as the
-  current default and is both faster and cleaner, so it is a candidate upgrade.
-- **Settled: it is not adoptable.** `scripts/check_routing.py --model
-  llama3.2:3b` scores **76/85** against the current default's **85/85**, and the
-  nine failures are ordinary shapes rather than edge cases - "which team scores
-  the most points per game" routed `team_stat` instead of `team_leaderboard`,
-  "how did curry do against the celtics this year" routed `head_to_head`
-  instead of `player_stat`, "Giannis stats by month" routed `player_stat`
-  instead of `player_splits`.
-
-  Hand-grading the 20 intent disagreements on the corpus sample independently
-  reached the same verdict: **qwen2.5:3b is better on 14, llama3.2:3b on 3, 3
-  are ties.** Its dominant failure is routing a player-vs-team question to
-  `head_to_head` with the *player* in the `teams` slot (`tim hardaway vs nyk`,
-  `keon ellis stats vs trailblazers`, `jokic vs cade since 2022`), and it puts
-  question text in the `stat` slot (`stat: "P.J. Washington vs gsw"`). It also
-  invented `Jalen Mathurin` (Bennedict) and `Thaddeus Portis` (Bobby), and
-  produced `team: "Vancouver Grizzlies"` - a franchise dissolved in 2001 - from
-  "vj edgecombe".
-
-  `qwen3:4b` is separately disqualified on latency: a single cold call took
-  **244.7s**, because it emits visible reasoning before the JSON.
-
-  **The metric that suggested otherwise was measuring the wrong thing.** "Clean
-  name rate" counts a correctly-spelled name as clean wherever it lands, so a
-  name in the wrong slot scores well and is useless. Do not rank routers on name
-  fidelity alone; pair it with `check_routing`'s ground truth.
-- **Next step:** stay on `qwen2.5:3b`. `ROUTER_PROMPT` and the intent taxonomy
-  are tuned around this model's failure modes, so a family swap trades one set
-  of failures for another rather than net-improving. Re-tuning the prompt for
-  another family is a real project, not a free win.
-- **Raw data:** `~/association-research/statmuse-2026-09/router_*_prodgraded.jsonl`,
-  shared sample `router_bench_sample.json`, runner `router_bench.py`.
-- **GitHub:** #134
-
-### A per-question candidate enum could make a fabricated name unemittable
-- **Found:** 2026-09-18, testing whether the `format=` grammar could constrain
-  `player` the way it already constrains `intent`
-- **Evidence:** `ROUTER_SCHEMA` is compiled into a decoder grammar by ollama, so
-  an intent outside the enum can never be emitted. `player` is a free string, so
-  a name with no basis in the question can be. Measured offline over the
-  261-question replay, building a candidate set per question from the roster
-  indexed by whole word, plus the curated nickname table:
-  **recall 154/157 = 98.1%** against resolved names that are genuinely on the
-  roster, with an enum of **median 9, p90 39, max 70** names - small enough to
-  compile per call and negligible against the 4096-token window.
-
-  All three apparent misses are cases where the current pipeline resolves to a
-  player the question never names, and the enum would refuse them:
-  `jay huff game log vs Embiid` -> **Jayson Tatum**;
-  `Ingram game log against the tockets` -> **Shai Gilgeous-Alexander**;
-  `garland on mondays game log` -> **Bradley Beal**. So recall on correct
-  resolutions is effectively total, and the misses are three wrong answers the
-  constraint would prevent.
-- **User sees:** nothing yet - this is feasibility only.
-- **Live result, 2026-09-18:** it works, and the distortion risk inverted.
-  **Zero grammar failures** - ollama 0.33.3 compiles a per-call enum of 1-70
-  names without complaint - and constrained decoding is slightly **faster**
-  (2.62s against 2.83s median), since a narrower grammar is less to search. The
-  router is deterministic at temperature 0 (verified: identical calls give
-  identical slots), so every difference is attributable to the enum.
-
-  Other slots moved on 9 of 19 questions, but graded: **5 improvements, 1
-  regression, 3 neutral.** Constraining `player` freed the decoder to get other
-  slots right - `luka ft log` went `stat: fieldGoalsMade` to `freeThrowsMade`;
-  `Cody Martin reb log` went `stat: none` to `rebounds`; and
-  `jay huff game log vs Embiid` went from `players: ['Jayson Tatum', 'Nikola
-  Jokic']` - two players the question never names - to `player: 'Jay Huff'` with
-  the intent corrected to `game_log`.
-
-  **The one regression was a bug in the candidate generator, not the concept.**
-  It near-matched at edit distance 1 without excluding ordinary words, so
-  **"while" reached "white"** and `barlow ... while starting` offered every
-  player named White; the model picked Jahidi White. This is the exact trap
-  `AGENTS.md` records for a different fuzzy matcher ("season" is one edit from
-  Tari Eason), reintroduced in a file whose own docstring cites it. Fixed by
-  refusing to near-match any word in the system dictionary - a user's misspelled
-  name is not an ordinary word, so `achiwawa`, `cossoko`, `jayleyn`, `knepuell`,
-  `dylon` and `fraymond` all still resolve.
-- **Recall after that fix: 152/157 (96.8%)**, enum median 5, p90 30, max 68.
-  Three of the five misses are fabrications the enum correctly refuses, so
-  recall on genuinely-correct resolutions is 152/154 (98.7%). The two real
-  losses are normalization - `adam's` against `adams`, `Amen` against `Amen`
-  with an accent.
-- **Next step:** fold the question's words with `fetch/parse.py`'s `match_key`
-  before matching - it already drops diacritics and punctuation for the
-  NetPoints name work, and would recover both remaining losses. Then run the
-  full 261 both ways and grade **end-to-end answers**, not slots: 19 questions
-  shows the mechanism works and is far too small to size the gain.
-- **Script:** `~/association-research/statmuse-2026-09/candidate_enum.py`,
-  runs offline with no model.
-- **GitHub:** #135
-
-
 ### The agent can finalize having made zero tool calls, delivering its own plan as the answer
 - **Found:** 2026-09-18, measuring the agent path
 - **Evidence:** 2 of the 9 answers that finished made **zero** tool calls and
@@ -3670,27 +3343,6 @@ those were found.
 - **Next step:** add the third guard beside the two existing ones in
   `_ask_inner_finalize`.
 - **GitHub:** #132
-
-### `models.py`'s model-size note is true about intent and silent about names
-- **Found:** 2026-09-18, benchmarking router models on name fidelity
-- **Evidence:** the comment says every model from 1.5B to 8B landed "within a
-  case or two" over `check_routing.py`'s cases. True, and about *intent
-  classification*, which is already ~99.6% stable run to run. Measured
-  separately over 60 name-bearing corpus questions, single model resident,
-  graded through the real `override_invented_players`/`find_teams`:
-  **qwen2.5:3b 64% clean / 4.5% unrepairable fabrication; qwen2.5:7b 64% /
-  9.4%; llama3.1:8b 80% / 3.6%.** Bigger within the same family made
-  fabrication *more* common, not less (n is ~50 per model, so 4.5% vs 9.4% is
-  not decisive - but it is certainly not the improvement a bigger-router
-  argument needs). Warm latency: 3b 3.36s median, 7b 5.86s, llama3.1:8b 5.60s;
-  cold load 33.4s / 68.5s / 68.6s.
-- **User sees:** nothing directly. This exists so the model-size question is not
-  re-litigated from scratch.
-- **Next step:** note the measurement near that comment. The operative finding
-  is that at every size and family tested, 18-34% of player slots needed the
-  repair layer - the router model is not where the leverage is.
-- **GitHub:** #133
-
 
 ### `limit` is not a scoping slot, so a template that ignores it does so silently
 - **Found:** 2026-09-18, merging the StatMuse scoping branches and re-measuring
@@ -4094,21 +3746,6 @@ those were found.
   and no season needs naming.
 - **Source:** DATA.md, "`pointsInPaint` is -1 before 2009, and two lead columns exist only in 2026"
 - **GitHub:** #78
-
-### "...against the celtics last season" is answered as a game log
-- **Found:** 2026-09-11, while making `opponent` refuse or narrow
-- **Evidence:** "how did steph curry do against the celtics last season"
-  routed to `game_log` (1 run) and listed his 2 games, not his averages over
-  them. The trace logs the intent after `route()` rewrites it. `route()` sends a
-  `player_matchup` naming a team to `game_log` whenever `_GAMES_WORDS` matches,
-  and it matches the "last" in "last season" (checked offline). Whether the
-  model chose `game_log` itself was not separated.
-- **User sees:** the right games, as a list rather than a line. The same
-  question with "this year" answers with the line.
-- **Next step:** log the raw router output for the question when ollama is
-  free. If it is the matchup rule, stop "last season" counting as "last N
-  games".
-- **GitHub:** #35
 
 ### A player's single qualifying game reads "1 games"
 - **Found:** 2026-09-11, while narrowing `threshold_count` by season
@@ -4677,7 +4314,7 @@ those were found.
 ### The Scope's door admits a float for an integer closed set: `shot_value` 3.0, `season_type` 3.0, `half` 2.0
 - **Found:** 2026-09-27, plan item 6 step (d) round 2, checking which values the removed template fallbacks could still meet.
 - **Evidence:** `reading._one_of` checks membership by equality, so `Scope.from_slots({"shot_value": 3.0})` keeps 3.0 - a float against `Literal[1, 2, 3]` - and `season_type` 3.0 and `half` 2.0 likewise, while `_whole` refuses `season` 2025.0 and `limit` 2.0 (measured on 0a7140a). The typed readers trust the Literal: `shots._shot_value` returns the float where the slot-dict code returned `int(3.0)`, `fingerprint` reads a season type of 3.0 as 3.0 where the slot-dict code fell back to the regular season, and `common._player_relation_season_type` passes it on the same way.
-- **User sees:** nothing today: `ROUTER_SCHEMA` types `shot_value` as an integer, and nothing else writes these slots from a float.
+- **User sees:** nothing today: nothing writes these slots from a float - the stages and the parser write integers, and the router's schema typed `shot_value` as an integer until its model call went (4.5.0).
 - **Next step:** make `_one_of` refuse a value whose type is not the matching allowed member's type (bool is already refused), with a test per closed-set field, watched to fail first.
 - **Source:** ours.
 
@@ -4686,4 +4323,18 @@ those were found.
 - **Evidence:** `shotchart.py:513` selects the shots with no `ORDER BY`. Drawing the same games twice on 0a7140a gave six multi-game charts (Stephen Curry's 14, 23, 28, 41, 187 and 194 games) different bytes that are identical as sorted markup fragments: the same shots, in another order.
 - **User sees:** nothing, beyond which of two overlapping markers is drawn on top.
 - **Next step:** order the read (event, period, clock) so a chart is byte-reproducible, and a golden can compare chart contents rather than only file names.
+- **Source:** ours.
+
+### The normalizer's `names` array has no `maxItems`, the bound the router's schema put on every array after a live hang
+- **Found:** 2026-09-27, plan item 6 step (d) part 3, re-aiming the router's schema tests at the normalizer: `test_array_slots_are_bounded` could not be kept, because it would fail.
+- **Evidence:** `NORMALIZER_SCHEMA["properties"]["names"]` is `{"type": "array", "items": {"type": "string"}}` (`query/normalizer.py`). The router's schema bounded `players` and `fields` because, measured live, an unbounded array under constrained decoding let the grammar permit "one more item" forever: the model emitted `["points","minutes","minutes"]` on one question and then hung for over five minutes on the next (the comment went with `router_prompt.py`). Not seen on the normalizer: three live runs over the 277 day10 wordings finished at about 5.3 minutes each.
+- **User sees:** nothing measured; the risk is a question that hangs for minutes.
+- **Next step:** bound `names` (measure the most names one recorded reply holds first), then re-record the normalizer's replies and make a live run the record, since a schema edit is a model-input change (AGENTS.md, "Any edit to the model's prompt").
+- **Source:** ours.
+
+### `Agent.last_question` is written on every question and read by nothing
+- **Found:** 2026-09-27, plan item 6 step (d) part 3: its one reader was `route()`'s `previous_question`, deleted with the router's classification.
+- **Evidence:** `query/agent.py` sets it in `__init__`, `reset_conversation` and twice in `_ask_inner`; nothing in `src/` reads it - only two assertions in `tests/query/test_agent.py` and the web runner test's stand-in, which is what keeps vulture quiet (AGENTS.md: delete such code rather than rely on that). Left in place because step 3c owns the rest of `agent.py` at the same time.
+- **User sees:** nothing.
+- **Next step:** once 3c merges, delete it, its four writes and the tests' assertions, and reword `reset_conversation`'s docstring: the conversation the fall-through agent reads is what a stranger's question leaks through now.
 - **Source:** ours.
