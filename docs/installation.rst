@@ -40,7 +40,7 @@ before :doc:`query <usage>` will answer anything.
 .. code-block:: console
 
    $ ollama serve &
-   $ ollama pull qwen2.5:3b    # router, the fast path - required, ~1.9GB
+   $ ollama pull qwen2.5:3b    # normalizer, the fast path - required, ~1.9GB
    $ ollama pull qwen2.5:7b    # fall-through agent - required, ~4.7GB
    $ ollama pull qwen3:8b      # optional, for --think, ~5.2GB
 

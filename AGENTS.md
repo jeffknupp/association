@@ -4,7 +4,7 @@ Orientation for agents (and people) making changes here. It covers what is
 *not* obvious from reading the code: the gates, the conventions that are
 enforced, and the specific shapes of bug this project keeps producing.
 
-For how the system is designed — the three stages, the router/agent split, why
+For how the system is designed — the three stages, the reader/agent split, why
 templates instead of better prompting — read `docs/architecture.rst`. That is
 the source of truth for design, and this file does not restate it.
 
@@ -168,7 +168,7 @@ gets turned off.
   having changed. A dev or docs tool goes in its extra, never in the core list.
 - **No function is more complex than radon grade C** (cyclomatic complexity
   20), no module worse than C, and the average no worse than B - a xenon gate.
-  The way past it is the one the templates and `route()` took: split the body
+  The way past it is the one the templates and the router's stages took: split the body
   into named steps called in the original order, each step keeping the comment
   that explains it. A pure refactor here is proven by a golden comparison, not
   by the suite alone (see "Verifying your work").
@@ -183,9 +183,10 @@ gets turned off.
   - `fetch/` - ESPN and NetPoints clients, parsing, the pipeline and the
     warehouse build; `fetch/repairs/` - load-time repairs of ESPN's faults and
     the tables built beside them.
-  - `check/` - the coverage report. `query/` - router (`router.py`, with what
-    the model sees in `router_prompt.py`), templates, entities, renderers, the
-    agent. `web/` - the local web interface.
+  - `check/` - the coverage report. `query/` - the reader (`parse.py`, with
+    what the model sees in `normalizer.py` and the stages it runs in
+    `router.py`), templates, entities, renderers, the agent. `web/` - the local
+    web interface.
 - **The package layers are a contract.** `cli` > `web` > `query | check` >
   `fetch` > `nba`, with `fetch` and `query` independent and the core free of
   the `web` extra's packages (`[tool.importlinter]`). A new module that needs
@@ -465,16 +466,16 @@ The pipeline is reader → template → deterministic answer, with the agent as
 fall-through. A question the fast path cannot answer falls through to the
 slower SQL-writing agent; that is by design, not a bug.
 
-**The reader is the parser by default, not the router** (ROADMAP plan item 6,
-step (c); `Agent(reader="parser")`, `--reader router` to roll back). The model
-only copies names verbatim and picks a stat (`query/normalizer.py`);
-`parse.read_route` reads everything else from the words and hands the rest of
-the path a route in the router's own shape, so the router-era bullets below
-still describe what happens after it. Two things differ, and both matter when
-you add a shape:
+**The reader is the parser** (ROADMAP plan item 6; the router's model
+classification went in step (d)). The model only copies names verbatim and
+picks a stat (`query/normalizer.py`); `parse.read_route` reads everything else
+from the words and hands the rest of the path a route in the shape the
+router's model used to fill (`router.Route`), and the stages in
+`query/router.py` settle its slots (`router.settle`), as they settled the
+model's. Two things follow, and both matter when you add a shape:
 
-- **A slot the router's model used to fill has to be read from the words
-  now,** or it is silently absent: `fields` ("with their rebounds and
+- **A slot the router's model used to fill has to be read from the words,**
+  or it is silently absent: `fields` ("with their rebounds and
   assists"), a team's quarter, the window ("last 10 games" - read before the
   stages, which decide the season type beside it). The hold-out comparison
   that found those (`~/association-research/yardstick-v2/holdout_compare.py`:
@@ -525,17 +526,24 @@ you add a shape:
   exists to catch for the router - here it is the repair itself doing the
   inventing. `team_named_in` is the same restoration `players_named_in`
   already makes for a dropped player, over team names instead.
-- **What the router model sees lives in `query/router_prompt.py`, alone.**
-  `ROUTER_PROMPT`, `ROUTER_SCHEMA` and the window they share are there; the
-  post-processing of the slots the model returns is in `query/router.py`. So a
-  diff that touches only `router.py` cannot move a slot on some unrelated
-  question, and a diff to `router_prompt.py` always can.
-- **Router prompt and JSON schema must agree.** An intent described in
-  `ROUTER_PROMPT` but missing from `ROUTER_SCHEMA`'s enum can never be emitted
-  under constrained decoding, so it silently routes elsewhere. This happened
-  with `player_compare`. Two tests now guard it —
-  `test_every_intent_the_prompt_describes_is_emittable` and
-  `test_every_ported_template_has_an_intent_in_the_schema`.
+- **What the model sees lives in `query/normalizer.py`'s constants, alone.**
+  `NORMALIZER_PROMPT`, `NORMALIZER_SCHEMA` (its stat enum is
+  `NORMALIZER_STATS`) and `NORMALIZER_NUM_CTX` are the model's whole input;
+  `normalize()` only decodes the reply, and the parser and the stages read
+  everything after it. So a diff to `parse.py` or `router.py` cannot change
+  what the model returns for an unrelated question, and a diff to those
+  constants always can.
+- **A prompt and its constrained schema must agree.** A value a prompt
+  teaches that the schema's enum lacks can never be emitted under
+  constrained decoding, so it silently becomes something else: the router's
+  `player_compare` was described in its prompt and missing from its schema's
+  enum, and every comparison routed to `player_stat`.
+  `test_the_prompt_and_the_schema_agree` (`tests/query/test_normalizer.py`)
+  holds the normalizer's examples to its enum; the other half of what the
+  router's pair of tests guarded - that every template is reachable - is
+  `test_every_template_is_reachable_from_the_reader`
+  (`tests/query/test_router.py`): the parser's `PARENT_GRAMMAR`, the stages'
+  `CODE_ASSIGNED_INTENTS` or the subject reading's `KIND_ASSIGNED_INTENTS`.
 - **The preamble has a hard token budget.** `PREAMBLE_TOKEN_BUDGET = 6400`
   against `AGENT_NUM_CTX = 16384`, enforced by raising `PreambleTooLarge`. This
   exists because ollama truncates an over-length prompt *silently and
@@ -553,7 +561,7 @@ you add a shape:
   Do not buy room by trimming `TABLE_SUMMARY` or the standing rules: that is
   the text the original truncation bug destroyed, and no gate can tell that the
   agent got worse at writing SQL.
-- **Tool schemas and the dispatch table must agree**, the same way the router
+- **Tool schemas and the dispatch table must agree**, the same way a model's
   prompt and schema must. They are two hand-maintained lists of the same names:
   a name in `TOOLS` with no handler is a `KeyError` the first time the model
   calls it, and a handler no schema mentions is a capability the model cannot
@@ -562,70 +570,73 @@ you add a shape:
   `test_every_advertised_tool_can_actually_be_dispatched` and
   `test_every_tool_schema_names_its_required_parameters`.
 - **A slot the schema does not require is a slot the decoder may never
-  consider, and no prompt wording fixes that.** `ROUTER_SCHEMA` already records
+  consider, and no prompt wording fixes that.** The router's schema recorded
   this for `stat`; `side` proved it again. "Show me Wembanyama's defensive
-  fingerprint chart" appears in `ROUTER_PROMPT` verbatim as a worked example
-  with `{"side":"defense"}` beside it, and still emitted `stat="defensive"`
-  with no `side` at all — 6/6 at temperature 0. `stat` is required, so the
-  adjective is spent there first. The whole fingerprint got drawn where its
-  defensive half was asked for.
+  fingerprint chart" appeared in the router's prompt verbatim as a worked
+  example with `{"side":"defense"}` beside it, and still emitted
+  `stat="defensive"` with no `side` at all — 6/6 at temperature 0. `stat` was
+  required, so the adjective was spent there first, and the whole fingerprint
+  got drawn where its defensive half was asked for. That is why
+  `NORMALIZER_SCHEMA` requires both of its fields
+  (`test_the_schema_asks_for_the_names_and_the_stat_and_requires_both`).
 
   The same slot has a second, opposite failure: **a required slot is one the
   decoder fills whether or not the question asked for it.** `stat` came back as
   `'points'` on "compare sga and embiid" 12 times out of 12, which narrowed
   `player_compare` to one average and undid the whole-line default it exists
-  for. `route()` drops it for that intent only. Note why the word list can be
+  for - and the normalizer's `stat` is required too. The stages drop it for
+  that intent only (`router._named_a_stat`). Note why the word list can be
   loose there and could not be anywhere else: for a comparison, a missed word
   widens the answer to a line that still holds the stat asked about, while
   `leaderboard` with no stat has nothing to rank by.
 
-  Two ways out, and prefer the second. Making the slot *required* works (that
-  is why `stat` is) but was measured and reverted for `season_ref`, because
-  requiring more slots crowds out others. Reading the value **from the question
-  text** in `route()` costs nothing and cannot move any other slot: that is
-  what `_validate_season` does for the year and `_validate_side` now does for
-  the side of the ball. Hash `ROUTER_PROMPT` and `ROUTER_SCHEMA` before and
-  after to prove the model's input is unchanged — if both hashes match, no
-  other question's routing can have moved, and `check_routing.py` should come
-  back line-for-line identical apart from the case you fixed.
-- **Any edit to `ROUTER_PROMPT` moves slots on unrelated questions.** Adding the
-  `fingerprint` intent line reproducibly flipped "What was the Lakers record
-  last season?" from `team` `"Lakers"` to `"Los Angeles Lakers"` — with *any*
-  wording of the added line, including a two-line one, so it is the prompt's
-  length as much as its content. The 3B router is that sensitive. Two
-  consequences: re-run `scripts/check_routing.py` after any prompt edit, and
-  assert in a case only what changes the *answer* (both those strings resolve
-  to team_id 13 and produce an identical sentence), never the encoding the
-  model happened to pick.
-- **A new intent does not need a prompt edit if the question's own words name
-  it.** `CODE_ASSIGNED_INTENTS` is the route for that: `route()` assigns
-  `period_split` and `coach` from the text, they are absent from
-  `ROUTER_SCHEMA`'s enum and `ROUTER_PROMPT`, and so adding them could not move
-  a slot on any other question - proved by hashing both constants before and
-  after and by `check_routing.py` coming back with the existing cases
-  unchanged. Reach for it before touching the prompt, especially for a
-  refusal: a question nothing can answer needs the model's help least. `coach`
-  is the worked example - the word is unmistakable, nothing else in the
-  warehouse is named it, and a bare surname is deliberately not matched
-  ("nurse" and "rivers" are ordinary words, the substring trap
-  `players_named_in` exists for). Such a template declares no tables, so it
-  goes in `TABLELESS_INTENTS` or the coverage gate fails.
+  Two ways out, and prefer the second. Making a slot *required* works (that
+  is why `stat` is) but was measured and reverted for the router's
+  `season_ref`, because requiring more slots crowds out others. Reading the
+  value **from the question text** costs nothing and cannot move any other
+  slot: that is what the parser does for every slot but the names and the
+  stat, and what `_validate_season` and `_validate_side` did for the
+  router. Hash `NORMALIZER_PROMPT` and `NORMALIZER_SCHEMA` before and after a
+  change to prove the model's input is unchanged - if both hashes match, the
+  normalizer's recorded replies still stand and the offline rehearsal (below)
+  is the whole check.
+- **Any edit to the model's prompt moves what it returns on unrelated
+  questions.** Measured on the router's prompt: adding the `fingerprint`
+  intent line reproducibly flipped "What was the Lakers record last season?"
+  from `team` `"Lakers"` to `"Los Angeles Lakers"` — with *any* wording of the
+  added line, including a two-line one, so it is the prompt's length as much
+  as its content. The 3B is that sensitive, and the normalizer runs the same
+  3B. Two consequences: after an edit to `NORMALIZER_PROMPT` or
+  `NORMALIZER_SCHEMA` the recorded replies no longer stand - re-record them,
+  and make a live run the record - and assert in a case only what changes the
+  *answer* (both those strings resolve to team_id 13 and produce an identical
+  sentence), never the encoding the model happened to pick.
+- **An intent comes from the question's own words, never from the model.**
+  The parser's `PARENT_GRAMMAR` names the parent by the subject's kind, and
+  the stages assign `CODE_ASSIGNED_INTENTS` (`period_split`, `coach`) from
+  the text, so a new intent is a grammar row or a stage, with no prompt edit
+  and nothing to move on another question. A refusal especially: a question
+  nothing can answer needs the model's help least. `coach` is the worked
+  example - the word is unmistakable, nothing else in the warehouse is named
+  it, and a bare surname is deliberately not matched ("nurse" and "rivers"
+  are ordinary words, the substring trap `players_named_in` exists for). Such
+  a template declares no tables, so it goes in `TABLELESS_INTENTS` or the
+  coverage gate fails.
 
-  The second route is one step later, where the subject's KIND is known:
+  The children come one step later, where the subject's KIND is known:
   `subject.KIND_ASSIGNED_INTENTS` (`_CHILD_GRAMMARS`). A child of a parent
-  the router still routes to - a count of 30+ point games under `game_log`,
-  a history over the past 4 seasons under `player_stat`, a streak under
-  `team_record` - is named by its words AND gated on the kind the reading
-  settled, which is what keeps "how many times did the 76ers play boston"
-  (two teams) off `threshold_count` and "who lead the league in avg 3 point
-  distance" (no player) off `shot_distance`. Measured before the seven left
-  the prompt: 0 false positives over 261 recorded questions of other
-  intents. The child's slots are the router's own stages run again under it
-  (`router.settle`), never a second reader per child; and the stages may
-  decline (a count with no threshold is a ranking), in which case the
-  router's intent stands. Add a case to `port_check.py`'s corpus
-  (`~/association-research/intent-shrink/`) and to
-  `tests/query/test_subject.py` for each wording a grammar gains.
+  the grammar names - a count of 30+ point games under `game_log`, a history
+  over the past 4 seasons under `player_stat`, a streak under `team_record` -
+  is named by its words AND gated on the kind the reading settled, which is
+  what keeps "how many times did the 76ers play boston" (two teams) off
+  `threshold_count` and "who lead the league in avg 3 point distance" (no
+  player) off `shot_distance`. Measured when the seven left the router's
+  prompt: 0 false positives over 261 recorded questions of other intents.
+  The child's slots are the stages run again under it (`router.settle`),
+  never a second reader per child; and the stages may decline (a count with
+  no threshold is a ranking), in which case the parent's intent stands. Add
+  a case to `port_check.py`'s corpus (`~/association-research/intent-shrink/`)
+  and to `tests/query/test_subject.py` for each wording a grammar gains.
 - **Refusing beats falling through wherever the agent has nothing to read.**
   That is `check_coverage`'s reasoning, and it applies past the floors: a coach
   question reached an agent that queried tables with no coach column and was
@@ -633,11 +644,22 @@ you add a shape:
   refusal, check what the source actually serves - "ESPN does not publish
   coaches" was the obvious sentence and it is false, and a refusal naming the
   wrong cause reads as honest while sending the reader somewhere useless.
-- **Add a case to `scripts/check_routing.py`** whenever you port a shape or
-  find a mis-route in the wild. It is the only regression net for routing —
-  pytest cannot catch a prompt change that starts routing questions to `other`.
-  Read its module docstring before running it: **only one instance at a time**,
-  or a CPU-only ollama goes into a reload loop that wedges it for minutes.
+- **The parser has four regression nets; add to them whenever you port a
+  shape or find a misreading in the wild.** Cheapest first:
+  `tests/query/test_parser.py`, a case per wording a table gains, watched to
+  fail; the offline rehearsal
+  (`~/association-research/yardstick-v2/run_offline_parser.py`, compared with
+  `cmp_routes.py`), the 277 day10 wordings through the whole agent with the
+  normalizer's recorded replies and no model - it reproduced three live runs
+  exactly; the hold-out comparison (`holdout_compare.py`), the recorded
+  corpus's questions outside day10, which nothing was tuned on; and the
+  yardstick's live run, graded blind, which is the record. Pytest cannot see
+  a table change that moves some other wording - that is what the rehearsal
+  and the hold-out are for.
+- **Only one ollama caller at a time.** Two callers on one CPU-only ollama
+  instance corrupted the router's output silently (ISSUES.md #171) or wedged
+  it in a reload loop for minutes, and the normalizer runs the same model. A
+  live run is the only caller: confirm it with `pgrep` first.
 
 ## Working on the fetch path
 
@@ -1001,7 +1023,8 @@ a season.
 The habits that caught real bugs here, in rough order of how often they paid:
 
 - **A refactor is proven by a golden comparison, not by the suite alone.** The
-  complexity refactor that split `route()`, `parse_game_summary` and the
+  complexity refactor that split the router's `route()` (its stages are
+  `router._settle`'s now), `parse_game_summary` and the
   templates into steps was checked by calling each function with many inputs
   - the routing corpus's slots, the tests' own cases, one per branch - against
   the original code and again after, and diffing the full results (answer text,
@@ -1205,8 +1228,9 @@ private helpers with the function they came from (the collisions under
 "Verifying your work" are what happens otherwise). Tell them to run the tests
 and hooks in the foreground: an agent that backgrounds a run and waits for a
 notification stops instead, and has to be resumed by hand - two did in one
-session. Tell every one not to run ollama or `scripts/check_routing.py`
-unless it is the only one doing so, for the reason in that script's docstring.
+session. Tell every one not to run ollama, `association query` or a live
+yardstick run unless it is the only one doing so - one ollama caller at a time
+(see "Working on the query path").
 
 **Re-verify a merged agent's load-bearing measurement yourself, and re-read
 `ISSUES.md` for entries the pair invalidated.** Each branch is sound alone and

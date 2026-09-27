@@ -1,36 +1,36 @@
-"""A small, constrained-decoding intent router that runs BEFORE the tool-calling
-agent.
+"""The stages that settle a question's route - the intent and the slots a
+template reads - from the question's own words.
 
-The agent in agent.py asks one model to understand the question AND write
-correct SQL, which forces prompt.py's whole schema and rule set resident for
-every question - ~10k tokens that ollama truncates head-first and silently, and
-that misses the KV prefix cache every iteration because the truncation offset
-slides. Measured: ~70s per call, with the schema among the discarded tokens.
-
-This module does only the first job. Its prompt carries no schema, no SQL and
-no gotchas - an intent list, its slots and worked examples, ~2,000 tokens
-against a 4,096-token window (see :mod:`association.query.router_prompt`, which holds it) - so it
-fits, stays cached, and answers in ~1-2s warm. Recognized intents go to a template in
-the templates package; everything else falls through to the agent unchanged.
+A reader hands them a raw route, and :func:`settle` runs them over it: the
+parser (:func:`association.query.parse.read_route`) with the parent intent
+its grammar names and the names and stat the normalizer copied out of the
+question, and the subject reading (:mod:`association.query.subject`) again
+for a child intent the question's words assign. Each stage reads a slot from
+the text, or checks one against it - the season and its type, the window,
+the side of the ball, the teammates absent - so a value the question never
+states is dropped rather than trusted. What they settle on is a
+:class:`Route`.
 
 Slot values are advisory: every one of them is re-validated in the templates package
-against a whitelist before it reaches SQL. Nothing here is trusted."""
+against a whitelist before it reaches SQL. Nothing here is trusted.
+
+.. versionchanged:: 4.5.0
+   The model classification is gone: ``route()``, which asked a model to
+   classify the question into an intent and its slots under a constrained
+   schema (the ``router_prompt`` module) and then ran these stages over its
+   reply. The parser reads the question instead (ROADMAP plan item 6).
+"""
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
-import ollama
-
 from association.nba.season import current_season
 
-from .keepalive import KEEP_ALIVE
 from .measures import MEASURE_WORDS
-from .router_prompt import ROUTER_NUM_CTX, ROUTER_PROMPT, ROUTER_SCHEMA
 from .season_text import season_from_text
 from .team_metrics import STAT_ALIASES
 
@@ -189,15 +189,18 @@ def _period_asked(question: str) -> dict[str, int] | None:
 
 
 class RouterUnavailable(RuntimeError):
-    """The router model could not be asked at all - ollama is down, or cannot
-    serve that model.
+    """The model could not be asked at all - ollama is down, or cannot serve
+    that model. Raised by :func:`association.query.normalizer.normalize`.
 
-    Distinct from :func:`route` returning None, which means the model answered
-    with something unusable. Both fall through to the agent, and neither is
-    fatal; what differs is the sentence the reader gets, and with
+    Distinct from ``normalize`` returning None, which means the model
+    answered with something unusable. Both fall through to the agent, and
+    neither is fatal; what differs is the sentence a person gets, and with
     ``--disable-fallthrough`` that sentence is the entire error.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 4.5.0
+       Raised by the normalizer: the router's own model call is gone.
     """
 
 
@@ -1828,48 +1831,6 @@ def _named_a_stat(question: str) -> bool:
     return bool(_STAT_WORDS.search(question))
 
 
-def _route_ask_model(model: str, question: str, previous_question: str | None) -> dict[str, Any] | None:
-    """The model's raw slots for one question, or None if it is unreachable or
-    replies with something that is not an object carrying an intent."""
-    user = f"Q: {question}"
-    if previous_question:
-        # A follow-up ("what about 2025?") is not self-contained. One line of
-        # prior context is enough to resolve it and costs ~15 tokens; the full
-        # conversation is not replayed here, since that would defeat the
-        # fixed, cache-friendly prefix. What arrives here is
-        # `Agent.last_question`, and both shipped callers keep it None - the
-        # CLI builds a new Agent per question, and the web server resets it
-        # per request (`Agent.reset_conversation`) - so this branch runs only
-        # for a caller that keeps one Agent across questions, as the `ai` REPL
-        # removed in 2.0.0 did.
-        user = f"(previous question, for context only: {previous_question})\n{user}"
-    try:
-        response = ollama.chat(
-            model=model,
-            messages=[{"role": "system", "content": ROUTER_PROMPT}, {"role": "user", "content": user}],
-            format=ROUTER_SCHEMA,
-            keep_alive=KEEP_ALIVE,
-            options={"num_ctx": ROUTER_NUM_CTX, "temperature": 0},
-        )
-        raw = json.loads(response.message.content or "{}")
-    except ConnectionError as exc:
-        # Not "no usable classification": the model was never asked. Saying so
-        # sends the reader to ollama rather than to their own question - with
-        # --disable-fallthrough this sentence IS the whole error, and every
-        # question gets it, which reads like the question was the problem.
-        raise RouterUnavailable(f"ollama is not answering, so the router model {model!r} could not be asked") from exc
-    except ollama.ResponseError as exc:
-        # A model that is not pulled, a server out of memory, a load already
-        # in flight. Each is about the server, and none is about the question.
-        raise RouterUnavailable(f"ollama could not serve the router model {model!r}: {exc}") from exc
-    except json.JSONDecodeError:
-        # This one IS the model replying with something unusable.
-        return None
-    if not isinstance(raw, dict) or not isinstance(raw.get("intent"), str):
-        return None
-    return raw
-
-
 def _route_coach_intent(raw: dict[str, Any], question: str) -> bool:
     """True when the question is about a coach, which nothing here can answer.
 
@@ -2848,44 +2809,38 @@ def _route_game_log_recent_span(intent: str, slots: dict[str, Any], question: st
     slots["season_type_unstated"] = True
 
 
-def route(model: str, question: str, previous_question: str | None = None) -> Route | None:
-    """Classify one question. Returns None if the model is unreachable or
-    replies with something unparsable - the caller falls through to the full
-    agent, so a router failure costs a round trip, never an answer."""
-    raw = _route_ask_model(model, question, previous_question)
-    if raw is None:
-        return None
-    return _settle(raw, question)
-
-
-#: The slot keys the model can emit - what :func:`settle` keeps of a settled
-#: route before running the stages again, since every other key is one the
-#: stages themselves read off the question for the intent they were run
-#: under (``since`` for a ``game_log``, ``limit``-as-seasons for a
-#: ``player_history``), and would otherwise survive into an intent whose
-#: template refuses it.
-_MODEL_SLOTS: frozenset[str] = frozenset(ROUTER_SCHEMA["properties"]) - {"intent"}
+#: The slot keys a raw route carries into the stages: the router model's
+#: schema properties less the intent, which is the shape the parser writes
+#: its names, stat and window in now that the model classification is gone
+#: (4.5.0). What :func:`settle` keeps of a settled route before running the
+#: stages again, since every other key is one the stages themselves read off
+#: the question for the intent they were run under (``since`` for a
+#: ``game_log``, ``limit``-as-seasons for a ``player_history``), and would
+#: otherwise survive into an intent whose template refuses it.
+_MODEL_SLOTS: frozenset[str] = frozenset(
+    {"stat", "threshold", "player", "players", "team", "teams", "period", "opponent", "season", "season_ref", "season_type", "order", "rate", "side", "date", "limit", "shot_value", "fields"}
+)
 
 
 def settle(intent: str, slots: dict[str, Any], question: str) -> Route:
-    """The route :func:`route` would have returned had the model replied with
-    ``intent`` - the same stages, run again over the slots the model could
-    have emitted, for an intent assigned after the model answered.
+    """The route the stages settle on for ``intent`` over ``slots``: the
+    parser's raw route (:func:`association.query.parse.read_route` runs them
+    under the parent its grammar names), or a settled route run again under
+    an intent assigned after it settled.
 
     That is how :mod:`association.query.subject` assigns a child intent
-    the router's prompt no longer describes (``threshold_count`` under a
-    ``game_log``, ``player_history`` under a ``player_stat``: its
-    ``KIND_ASSIGNED_INTENTS``): the question's words name the intent, and
-    the slots the child's own schema line used to teach the model
-    (``threshold`` from "30+", ``limit`` as a count of seasons from "the
-    past 4 seasons", ``kind`` of a streak, a ``split``) are the ones these
-    stages already read off the text - so re-running them under the child
-    is the whole recovery, and one definition of each slot rather than a
-    second reader per child. ``slots`` is a settled route's, so the keys the
-    stages derive are dropped first (:data:`_MODEL_SLOTS`) and a season the
-    model resolved from a relative reference is put back as that reference,
-    since :func:`_validate_season` keeps a bare ``season`` only where the
-    question names one. The stages may settle on a DIFFERENT intent than
+    (``threshold_count`` under a ``game_log``, ``player_history`` under a
+    ``player_stat``: its ``KIND_ASSIGNED_INTENTS``): the question's words
+    name the intent, and the child's own slots (``threshold`` from "30+",
+    ``limit`` as a count of seasons from "the past 4 seasons", ``kind`` of a
+    streak, a ``split``) are the ones these stages already read off the
+    text - so re-running them under the child is the whole recovery, and
+    one definition of each slot rather than a second reader per child.
+    ``slots`` may be a settled route's, so the keys the stages derive are
+    dropped first (:data:`_MODEL_SLOTS`) and a season resolved from a
+    relative reference is put back as that reference, since
+    :func:`_validate_season` keeps a bare ``season`` only where the question
+    names one. The stages may settle on a DIFFERENT intent than
     asked - a count with no threshold is a ranking, a "when X and Y played"
     record is ``with_without`` - and the caller reads the returned intent
     rather than assuming its own.
@@ -2907,7 +2862,7 @@ def settle(intent: str, slots: dict[str, Any], question: str) -> Route:
 
 
 def _settle(raw: dict[str, Any], question: str) -> Route:
-    """The post-processing stages, over the model's reply or a reassigned one (:func:`settle`)."""
+    """The stages, over a raw route or a reassigned one (:func:`settle`)."""
     # A coach question is refused whatever the model said, and carries no
     # slots, so it short-circuits before any of the stages below run.
     if _route_coach_intent(raw, question):

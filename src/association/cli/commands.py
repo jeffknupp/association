@@ -80,22 +80,25 @@ Setup for query (one-time):
 Pulling any other model: `ollama pull <name>:<tag>` (browse at https://ollama.com/library).
 Tool-calling support varies by model - check a model's page before swapping --model.
 
-A question matching a ported intent is answered by the router + a deterministic
-SQL template (one model call, ~1s warm on an 8-core CPU box); anything else falls
-through to the full tool-calling agent, which is minutes slower. --no-fast-path
-forces the agent path, for comparing the two.
+A question the parser can read is answered by a deterministic SQL template - one
+model call, which only copies the names out of the question and picks a stat, ~1s
+warm on an 8-core CPU box; anything else falls through to the full tool-calling
+agent, which is minutes slower. --no-fast-path forces the agent path, for comparing
+the two.
 
-Two models by design: routing is classification under a JSON schema, and benchmarked
-over 30 real questions every model from 1.5B to 8B scored 28-30/30 - so the router
-runs a 3B (1.8x faster than the 7B, same accuracy) while the agent keeps the 7B for
-writing SQL by hand. Both fit in RAM together (~6.6GB); set
-OLLAMA_MAX_LOADED_MODELS=2 to keep them both resident, otherwise ollama unloads one
-to load the other (~60-80s) whenever a question falls through.
+Two models by design: the normalizer copies names and picks one stat key under a
+JSON schema, and measured over 277 real questions the 3B copies 299 of 302 names
+verbatim at 0.8s a question while the 7B adds nothing on names at 1.8s - so
+--router-model runs a 3B while the agent keeps the 7B for writing SQL by hand.
+Both fit in RAM together (~6.6GB); set OLLAMA_MAX_LOADED_MODELS=2 to keep them both
+resident, otherwise ollama unloads one to load the other (~60-80s) whenever a
+question falls through.
 
-Do NOT point --router-model at a thinking model: qwen3:4b took ~20s per question
-against qwen2.5:3b's 1.1s, reasoning at length before emitting the same tiny JSON.
+Do NOT point --router-model at a thinking model: on the router's classification the
+normalizer replaced, qwen3:4b took ~20s per question against qwen2.5:3b's 1.1s,
+reasoning at length before emitting the same tiny JSON.
 
---think applies only to the fall-through agent (never the router), and is much
+--think applies only to the fall-through agent (never the normalizer), and is much
 slower than the default
 (qwen3:8b's thinking-token volume varies run to run, 3-6x+ the wall time of
 qwen2.5:7b for the same question) - reach for it when investigating a wrong answer,
@@ -139,11 +142,6 @@ AGENT_BUDGET_HELP = (
     "questions never finished and one ran past 17 minutes, so this bounds the wait rather than the tool calls. 0 removes the bound."
 )
 
-READER_HELP = (
-    "Who reads the question for the fast path: the parser (the model copies the names and picks a stat; the words decide the rest) "
-    "or the router (the model classifies the whole question - the previous path, kept until its slot writers are retired)."
-)
-
 DISABLE_FALLTHROUGH_HELP = (
     "DEVELOPMENT ONLY. When no template can answer a question, return an error saying why instead of handing it to the "
     "SQL-writing agent, which iterates for minutes and rarely gets it right. For testing the fast path, not for answering questions."
@@ -156,7 +154,7 @@ def _query_engine_options(f: F) -> F:
         "--router-model",
         default=DEFAULT_ROUTER_MODEL,
         show_default=True,
-        help="Ollama model for the intent router. Smaller on purpose - see the setup notes below.",
+        help="Ollama model for the normalizer, which copies the names out of the question and picks a stat. Smaller on purpose - see the setup notes below.",
     )(f)
     f = click.option("--db-path", default=DEFAULT_DB_PATH, show_default=True, help="DuckDB warehouse file.")(f)
     f = click.option("--out-dir", default=DEFAULT_OUT_DIR, show_default=True, help="Directory for rendered shot charts.")(f)
@@ -164,7 +162,10 @@ def _query_engine_options(f: F) -> F:
     f = click.option(
         "--no-fast-path",
         is_flag=True,
-        help="Skip the intent router and answer every question with the full tool-calling agent. For comparing the two paths while more question shapes are ported to templates.",
+        help=(
+            "Skip the fast path (the parser, the templates and the compiler) and answer every question with the full tool-calling agent. "
+            "For comparing the two paths while more question shapes are ported to templates."
+        ),
     )(f)
     f = click.option("--disable-fallthrough", is_flag=True, help=DISABLE_FALLTHROUGH_HELP)(f)
     f = click.option("--agent-budget", type=float, default=AGENT_BUDGET_SECONDS, show_default=True, help=AGENT_BUDGET_HELP)(f)
@@ -322,10 +323,7 @@ def data_check(seasons: str | None, season_types: str | None, data_dir: str, rat
 @cli.command("query")
 @click.argument("question")
 @_query_engine_options
-@click.option("--reader", type=click.Choice(["parser", "router"]), default="parser", show_default=True, help=READER_HELP)
-def query(
-    question: str, model: str, router_model: str, db_path: str, out_dir: str, verbose: bool, think: bool, no_fast_path: bool, disable_fallthrough: bool, agent_budget: float, reader: str
-) -> None:
+def query(question: str, model: str, router_model: str, db_path: str, out_dir: str, verbose: bool, think: bool, no_fast_path: bool, disable_fallthrough: bool, agent_budget: float) -> None:
     """Ask one natural-language question about the local data."""
     import shlex
     import sys
@@ -345,7 +343,6 @@ def query(
         router_model=router_model,
         fallthrough=not disable_fallthrough,
         budget_seconds=agent_budget,
-        reader=reader,
     )
     # Agent.ask no longer reads sys.argv - a caller says what the request was,
     # and for this caller that really is the command line.
@@ -359,20 +356,19 @@ def query(
 @click.option("--port", type=int, default=0, help="Port to serve on. The default binds a free one and prints the URL.")
 @click.option("--host", default="127.0.0.1", show_default=True, help="Address to bind. Localhost on purpose: this has no authentication.")
 @click.option("--model", default=DEFAULT_MODEL, show_default=True, help="Ollama model for the fall-through agent.")
-@click.option("--router-model", default=DEFAULT_ROUTER_MODEL, show_default=True, help="Ollama model for the intent router.")
+@click.option("--router-model", default=DEFAULT_ROUTER_MODEL, show_default=True, help="Ollama model for the normalizer, which copies the names out of the question and picks a stat.")
 @click.option("--db-path", default=DEFAULT_DB_PATH, show_default=True, help="DuckDB warehouse file.")
 @click.option("--out-dir", default=DEFAULT_OUT_DIR, show_default=True, help="Directory for rendered charts.")
 @click.option("--disable-fallthrough", is_flag=True, help=DISABLE_FALLTHROUGH_HELP)
 @click.option("--agent-budget", type=float, default=AGENT_BUDGET_SECONDS, show_default=True, help=AGENT_BUDGET_HELP)
-@click.option("--reader", type=click.Choice(["parser", "router"]), default="parser", show_default=True, help=READER_HELP)
-def web(port: int, host: str, model: str, router_model: str, db_path: str, out_dir: str, disable_fallthrough: bool, agent_budget: float, reader: str) -> None:
+def web(port: int, host: str, model: str, router_model: str, db_path: str, out_dir: str, disable_fallthrough: bool, agent_budget: float) -> None:
     """Serve a local web interface for asking questions, until interrupted.
 
     Needs the `web` extra: pip install 'association[web]'
     """
     from association.web.serve import serve
 
-    serve(host, port, db_path, Path(out_dir), model=model, router_model=router_model, fallthrough=not disable_fallthrough, budget_seconds=agent_budget, reader=reader)
+    serve(host, port, db_path, Path(out_dir), model=model, router_model=router_model, fallthrough=not disable_fallthrough, budget_seconds=agent_budget)
 
 
 def main() -> None:

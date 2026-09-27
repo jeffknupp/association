@@ -6,10 +6,11 @@ all defaulted ``--db-path``/``--data-dir`` to the literal ``./nba.duckdb`` and
 ``./data/parquet``. Both are gitignored build artifacts that live beside the
 main checkout, not files a worktree carries a copy of, so a fresh worktree
 failed every one of them with "database does not exist" - nine call sites
-(``cli.py``, and ``check_routing``, ``check_coverage``, ``check_nicknames``,
+(``cli.py``, and ``check_coverage``, ``check_nicknames``,
 ``check_net_points_games``, ``check_team_box``, ``backfill_season_totals``,
-``backfill_missing_playoffs`` and ``backfill_power_index`` under ``scripts/``)
-each hardcoding the same wrong default independently.
+``backfill_missing_playoffs``, ``backfill_power_index`` and the routing check
+retired in 4.5.0 under ``scripts/``) each hardcoding the same wrong default
+independently.
 
 ``git rev-parse --git-common-dir`` answers "where is the real ``.git``" from
 inside any worktree, main checkout included - a worktree's own ``.git`` is a

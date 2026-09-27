@@ -965,7 +965,7 @@ def _team_grounded(con: duckdb.DuckDBPyConnection, question: str, team: Entity) 
 
 #: Ordinary English words that also happen to be an NBA player's whole
 #: surname - measured against the full routing corpus
-#: (``scripts/check_routing.py``'s cases plus
+#: (the routing check's cases, retired in 4.5.0, plus
 #: ``/home/jeff/association-research/statmuse-2026-09/feed_queries.txt``, 380
 #: questions) before :data:`~association.query.templates.common.SUBJECT_RESTORABLE_INTENTS`
 #: shipped: "Best true shooting percentage last season?" and "Best record

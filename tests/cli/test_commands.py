@@ -165,7 +165,6 @@ def test_query_dispatches_with_question(monkeypatch: pytest.MonkeyPatch) -> None
             router_model: str,
             fallthrough: bool = True,
             budget_seconds: float = 0.0,
-            reader: str = "router",
         ) -> None:
             captured["model"] = model
 
@@ -206,7 +205,6 @@ def test_query_passes_the_engine_options_through(monkeypatch: pytest.MonkeyPatch
             router_model: str,
             fallthrough: bool = True,
             budget_seconds: float = 0.0,
-            reader: str = "router",
         ) -> None:
             captured["model"] = model
             captured["think"] = think
@@ -214,7 +212,6 @@ def test_query_passes_the_engine_options_through(monkeypatch: pytest.MonkeyPatch
             captured["router_model"] = router_model
             captured["fallthrough"] = fallthrough
             captured["budget_seconds"] = budget_seconds
-            captured["reader"] = reader
 
         def ask(self, question: str, label: str = "") -> Answer:
             return _answer("the answer")
@@ -228,10 +225,6 @@ def test_query_passes_the_engine_options_through(monkeypatch: pytest.MonkeyPatch
     assert captured["fast_path"] is True
     assert captured["fallthrough"] is True
     assert captured["budget_seconds"] == AGENT_BUDGET_SECONDS
-    assert captured["reader"] == "parser"
-    result = runner.invoke(query, ["--reader", "router", "who led the league in blocks"])
-    assert result.exit_code == 0, result.output
-    assert captured["reader"] == "router"
 
     assert captured["router_model"] == "qwen2.5:3b"
     assert captured["model"] != captured["router_model"]
@@ -256,7 +249,6 @@ def test_disable_fallthrough_reaches_the_agent_and_its_refusal_is_an_error(monke
             router_model: str,
             fallthrough: bool = True,
             budget_seconds: float = 0.0,
-            reader: str = "router",
         ) -> None:
             captured["fallthrough"] = fallthrough
 

@@ -2,9 +2,10 @@
 of it verbatim and pick one stat key - nothing else (ROADMAP plan item 6,
 step c).
 
-The router's prompt asks a 3B model for an intent and every slot, and a
-growing chain of code corrects what it returns (``router.py``). Measured with
-the router withheld, what that chain cannot replace is two things: the stat
+The router's prompt asked a 3B model for an intent and every slot, and a
+growing chain of code corrected what it returned (its model call went in
+4.5.0; the stages in ``router.py`` settle the parser's route now). Measured
+with the router withheld, what that chain could not replace is two things: the stat
 vocabulary ("fta" is ``freeThrowsAttempted``) and the spans that are names. So
 this is the whole job left to the model, and :func:`association.query.parse.parse`
 checks both - every span against the entity index, the stat against the
@@ -100,7 +101,8 @@ NORMALIZER_PROMPT = (
     'Q: 76ers record when maxey scores 20+ points -> {"names":["76ers","maxey"],"stat":"points"}'
 )
 """The prompt, verbatim as measured. Any edit moves what the model returns on
-unrelated questions (AGENTS.md, on ``ROUTER_PROMPT``): re-measure after one."""
+unrelated questions (AGENTS.md, "Any edit to the model's prompt"): re-measure
+after one."""
 
 NORMALIZER_NUM_CTX = 2048
 """The prompt is ~330 tokens; the window only has to hold it and one question."""
@@ -122,7 +124,7 @@ def normalize(model: str, question: str) -> Normalized | None:
     """The names and stat ``model`` reads in ``question``, or None when it
     replies with something that is not the schema's object. Raises
     :class:`~association.query.router.RouterUnavailable` when the model could
-    not be asked at all - the same two sentences the router gives, since the
+    not be asked at all - the same two sentences the router gave, since the
     reader has to be sent to the server rather than to their question.
 
     .. versionadded:: 4.5.0

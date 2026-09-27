@@ -1,10 +1,10 @@
-"""Render recorded questions through the web page without the router, and screenshot each answer.
+"""Render recorded questions through the web page without a model, and screenshot each answer.
 
 The page's renderers (``web/static/index.html``, ``RENDERERS``) draw an answer from
 the ``data`` a template returns, so a rendering problem is only visible with real
-data on the real page - and asking the live router for every case costs ollama a
-minute each and moves slots between runs. This script skips the router: it takes a
-question's RECORDED route (the ``-> (router) intent=... slots={...}`` line a live
+data on the real page - and asking the live model for every case costs ollama a
+minute each and moves slots between runs. This script skips reading the question: it
+takes its RECORDED route (the ``-> (router) intent=... slots={...}`` line a live
 yardstick run or a history file holds), runs the fast path exactly as ``agent.py``
 would from that Route (entity repairs, coverage, the compiler, the refusals - the
 model is never called), serializes the answer the way ``POST /api/ask`` does, and
@@ -91,7 +91,10 @@ def recorded_history(history_dir: Path, matches: list[str], since: str | None) -
 
 def answer_without_the_router(db_path: str, out_dir: Path, question: str, intent: str, slots: dict[str, Any]) -> dict[str, Any]:
     """The wire form of the fast path's answer from a fixed Route - the model
-    never called. A fall-through is reported as one rather than raised."""
+    never called. A fall-through is reported as one rather than raised.
+
+    Named for the router it stubbed until the recorded route was answered as
+    given; the golden and hold-out harnesses import it by this name."""
     import ollama
 
     from association.query.agent import Agent
@@ -105,9 +108,8 @@ def answer_without_the_router(db_path: str, out_dir: Path, question: str, intent
     original_chat = ollama.chat
     ollama.chat = never  # type: ignore[assignment]
     try:
-        # The recorded route is answered as given (Agent.ask's `route`): no
-        # reader runs, so the preview is the same whichever reader is the
-        # default, and no model is asked.
+        # The recorded route is answered as given (Agent.ask's `route`): the
+        # question is not read, so no model is asked.
         agent = Agent("preview", db_path, out_dir, history_dir=out_dir / ".history", trace=lambda line: None, fallthrough=False)
         try:
             answer = agent.ask(question, label="preview", route=Route(intent=intent, slots=dict(slots)))

@@ -5,7 +5,7 @@ The table is hand-curated and its correctness is a claim about the warehouse,
 not about the code: every value has to name exactly one player, and no key may
 be a name token that belongs only to somebody else. Neither can be asserted in
 pytest, which runs offline against fixtures - so it lives here, next to
-check_routing.py, and needs a built warehouse but no ollama.
+check_coverage.py, and needs a built warehouse but no ollama.
 
     python scripts/check_nicknames.py [--db-path ./nba.duckdb]
 

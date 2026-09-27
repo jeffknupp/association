@@ -158,13 +158,14 @@ per-game NetPoints files, which are an opt-in pull
 uv tool install git+https://github.com/jeffknupp/association@v4.4.0
 brew install ollama               # or see https://ollama.com/download
 ollama serve &
-ollama pull qwen2.5:3b            # router, the fast path - required, ~1.9GB
+ollama pull qwen2.5:3b            # normalizer, the fast path - required, ~1.9GB
 ollama pull qwen2.5:7b            # fall-through agent - required, ~4.7GB
 ollama pull qwen3:8b              # optional: visible reasoning (--think), ~5.2GB
 ```
 
-Both of the first two models are needed: the router classifies the question and
-the fall-through agent handles anything the templates don't cover.
+Both of the first two models are needed: the small one copies the names and the
+stat out of the question for the parser, and the fall-through agent handles
+anything the templates don't cover.
 
 > **Note** — `pip install association` does not work yet. The PyPI project is
 > unreachable pending an account-access issue, so releases live on GitHub only
@@ -178,11 +179,11 @@ To work on `association` itself, clone the repo and sync it instead (see
 
 ### Hardware
 
-Recommended: 16GB of RAM. The router and fall-through models together use
+Recommended: 16GB of RAM. The normalizer and fall-through models together use
 about 7GB once both are loaded, leaving headroom for DuckDB and the OS. No GPU
 is required.
 
-On a lighter machine, the router model alone (`qwen2.5:3b`) covers most
+On a lighter machine, the normalizer's model alone (`qwen2.5:3b`) covers most
 everyday questions through the fast path. Skip pulling `qwen2.5:7b` if RAM is
 tight — questions the fast path can't answer will just fail instead of
 falling through, rather than running slowly.
@@ -242,12 +243,10 @@ src/association/
   fetch/            client, endpoints, parse, storage, pipeline, warehouse
     repairs/        load-time repairs of ESPN's faults, and the filtered game list and rebuilt box lines
   check/            data coverage report, cross-checked live against ESPN
-  query/            intent router (router.py, and what the model is told in router_prompt.py), query templates, entity resolution, leaderboard, conditions (splits, with/without, streaks), team metrics, shot chart, fingerprint, prompt/knowledge base, tools, court and radar renderers, agent loop
+  query/            the reader (parse.py, what the model is told in normalizer.py, and the stages in router.py), query templates, entity resolution, leaderboard, conditions (splits, with/without, streaks), team metrics, shot chart, fingerprint, prompt/knowledge base, tools, court and radar renderers, agent loop
   web/              the local web interface: HTTP API, one-at-a-time runner, single-page app
 scripts/
   backfill_markers.sh   re-derive completion markers for data fetched before they existed
-  check_routing.py      routing regression check for the query fast path (needs ollama)
-  bench_router_models.py  score candidate router models on that same question set
   check_coverage.py     verify each table's coverage floor against a built warehouse
   check_nicknames.py    verify the player nickname table against a built warehouse
   check_net_points_games.py  verify which game each per-game NetPoints row lands on

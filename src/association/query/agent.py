@@ -28,7 +28,7 @@ from .models import AGENT_BUDGET_SECONDS, DEFAULT_ROUTER_MODEL
 from .prompt import AGENT_NUM_CTX, TOOLS, build_system_prompt
 from .reading import Reading, Scope, ScopeError
 from .refusals import by_question, unanswerable
-from .router import Route, RouterUnavailable, route
+from .router import Route, RouterUnavailable
 from .subject import Subject, apply_subject, read_subject
 from .templates import TEMPLATES
 from .templates.common import (
@@ -42,12 +42,6 @@ from .templates.common import (
     coverage_caveat,
 )
 from .toolbox import Toolbox
-
-READERS: tuple[str, ...] = ("router", "parser")
-"""What :class:`Agent` accepts as ``reader``.
-
-.. versionadded:: 4.5.0
-"""
 
 MAX_TOOL_ITERATIONS = 8
 MAX_AUTO_SQL_RECOVERIES = 2  # cap on auto-executing SQL the model wrote instead of calling run_sql
@@ -116,11 +110,10 @@ class Agent:
        and says what the fast path could not answer.
 
     .. versionchanged:: 4.5.0
-       Takes ``reader``, and the parser reads the question by default: the
-       model copies names and picks a stat (:mod:`~association.query.normalizer`)
-       and :func:`~association.query.parse.read_route` reads the rest.
-       ``reader="router"`` is the previous path, kept until the router's slot
-       writers are retired (ROADMAP plan item 6, step d).
+       The parser reads the question: the model copies names and picks a
+       stat (:mod:`~association.query.normalizer`) and
+       :func:`~association.query.parse.read_route` reads the rest, where the
+       router's model classified the whole question.
     """
 
     def __init__(
@@ -136,19 +129,11 @@ class Agent:
         trace: Callable[[str], None] = echo_to_stderr,
         fallthrough: bool = True,
         budget_seconds: float = AGENT_BUDGET_SECONDS,
-        reader: str = "parser",
     ):
-        if reader not in READERS:
-            raise ValueError(f"reader must be one of {READERS}, not {reader!r}")
         self.model = model
+        #: The normalizer's model (:func:`~association.query.normalizer.normalize`),
+        #: which copies the names out of the question and picks a stat.
         self.router_model = router_model
-        #: Who reads the question for the fast path: ``"parser"`` (the model
-        #: only copies names and picks a stat, :mod:`~association.query.normalizer`,
-        #: and :func:`~association.query.parse.read_route` reads the rest - the
-        #: default since yardstick-v2 scored it 162/175 against the router's
-        #: 160, at half the latency) or ``"router"`` (the model classifies it,
-        #: :func:`~association.query.router.route`).
-        self.reader = reader
         self.verbose = verbose
         self.think = think
         self.history_dir = history_dir
@@ -406,24 +391,24 @@ class Agent:
         return self._run_scoped_template(question, routed, handler, history, subject)
 
     def _read_or_fall_through(self, question: str, history: RunHistory) -> Route | None:
-        """The route the reader gives ``question``, or None with the reason the
-        fast path is falling through recorded. Split out of
+        """The route the parser reads for ``question``, or None with the
+        reason the fast path is falling through recorded. Split out of
         :meth:`_try_fast_path` so a recorded route can skip it."""
         t0 = time.monotonic()
         try:
-            routed = self._read_question(question, history) if self.reader == "parser" else route(self.router_model, question, previous_question=self.last_question)
+            routed = self._read_question(question, history)
         except RouterUnavailable as exc:
             # The fast path is gone for this question, but so is the agent's
             # own model, most likely - falling through is still right, and the
             # reason has to name the server rather than the question.
             history.record_model_call(time.monotonic() - t0)
-            history.log(f"  -> (router) {exc}, falling through to the agent")
+            history.log(f"  -> (normalizer) {exc}, falling through to the agent")
             self.fell_through = str(exc)
             return None
         history.record_model_call(time.monotonic() - t0)
         if routed is None:
-            history.log("  -> (router) no usable classification, falling through to the agent")
-            self.fell_through = "the router returned no usable classification"
+            history.log("  -> (normalizer) no usable reply, falling through to the agent")
+            self.fell_through = "the normalizer returned no usable reply"
         return routed
 
     def _read_question(self, question: str, history: RunHistory) -> Route | None:
@@ -432,10 +417,10 @@ class Agent:
         (:func:`~association.query.normalizer.normalize`), and
         :func:`~association.query.parse.read_route` checks both and reads the
         intent and every other slot from the words. None when the model's
-        reply is unusable, as for the router. What follows is the router's
-        path unchanged: the same subject reading, repairs and templates.
+        reply is unusable. What follows is the path every route takes: the
+        subject reading, the repairs and the templates.
 
-        The previous question is not passed: the normalizer copies spans of
+        The previous question is not read: the normalizer copies spans of
         THIS question, and a follow-up's missing name is not one of them."""
         from association.query.normalizer import normalize
         from association.query.parse import read_route

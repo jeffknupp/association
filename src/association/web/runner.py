@@ -138,11 +138,13 @@ class AgentRunner:
         already promised ("each message is a new question") and what the code
         did not do: one Agent reused across requests accumulated ONE history
         shared by every browser that connected. Two costs, and the second is
-        the serious one - the history is context nobody asked to spend, and
-        ``Agent.last_question`` goes to the router as ``previous_question``, so
-        "what about jokic" from one person was routed against whatever a
-        stranger had asked before it. Reset under the lock, where no question
-        is in flight to lose its own history mid-answer.
+        the serious one - the history is context nobody asked to spend, and a
+        follow-up is read against it: "what about jokic" from one person was
+        read against whatever a stranger had asked before it - by the router's
+        model, which was shown the previous question until 4.5.0, and by the
+        fall-through agent, which reads the whole conversation. Reset under
+        the lock, where no question is in flight to lose its own history
+        mid-answer.
 
         Giving the web UI real multi-turn memory means giving it per-client
         conversations, which needs a session the API does not have yet. Until
