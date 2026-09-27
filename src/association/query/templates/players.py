@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import duckdb
@@ -15,7 +15,7 @@ from association.nba.coverage import COVERAGE, POSTSEASON
 from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date
-from association.query.reading import Reading
+from association.query.reading import Reading, Scope
 
 from ..entities import Availability, Entity
 from ..leaderboard import SEASON_TOTAL_OF, LeaderboardError, LeaderboardResult, not_a_postseason_copy, resolve_metric, run_career_leaderboard, run_leaderboard
@@ -267,21 +267,21 @@ def threshold_count(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        alone, and a count of none then says the rebuilt lines were held back
        rather than implying there is nothing to read.
     """
-    slots = reading.scope.to_slots()
+    scope = reading.scope
     con = ctx.con
-    stat = slots.get("stat")
-    column, threshold = _threshold_count_ask(slots)
-    lines, counted, scope_text = _threshold_count_lines(stat, threshold, slots.get("below"), slots.get("above"))
+    stat = scope.stat
+    column, threshold = _threshold_count_ask(scope)
+    lines, counted, scope_text = _threshold_count_lines(stat, threshold, scope.below, scope.above)
 
-    career = _career_span("threshold_count", slots.get("span"), slots.get("season"))
-    season = None if career else (slots.get("season") or current_season())
+    career = _career_span("threshold_count", scope.span, scope.season)
+    season = None if career else (scope.season or current_season())
     # BOTH_SEASON_TYPES ("including the playoffs", or a "last N games"
     # question naming no type - _player_relation_season_type) reads one
     # combined query rather than a merge: a count has no rows to interleave.
-    season_type = _player_relation_season_type(slots)
-    limit = _clamp_limit(slots.get("limit"))
+    season_type = _player_relation_season_type(scope)
+    limit = _clamp_limit(scope.limit)
 
-    subject = _threshold_count_subject(con, slots.get("player"), slots.get("season_n"), season, season_type)
+    subject = _threshold_count_subject(con, scope.player, scope.season_n, season, season_type)
     if isinstance(subject, TemplateResult):
         return subject
     player, season, ordinal_n = subject
@@ -365,25 +365,27 @@ def _threshold_count_notes(
     return notes
 
 
-def _threshold_count_ask(slots: dict[str, Any]) -> tuple[str, int | None]:
+def _threshold_count_ask(scope: Scope) -> tuple[str, int | None]:
     """The box-score column and the threshold a count is over; raises for a
     stat this does not know or a threshold that counts every game. A
     below/above phrase carries a line of its own, in which case the count
     may have no threshold at all ("Sga games with under 14 fta" - the phrase
     IS the count, and once nothing asks the model for a threshold on this
     shape, none arrives)."""
-    stat, threshold = slots.get("stat"), slots.get("threshold")
-    lined = bool(slots.get("below") or slots.get("above"))
-    if lined and (not isinstance(stat, str) or stat not in THRESHOLD_STAT_COLUMNS):
+    stat, threshold = scope.stat, scope.threshold
+    lined = bool(scope.below or scope.above)
+    if lined and (stat is None or stat not in THRESHOLD_STAT_COLUMNS):
         # No stat from the model at all (under a player_stat parent, "fta"
         # names none of its words), or one no threshold is kept on (the
         # parser's "freeThrowsAttempted", read off the same "fta"): the one
         # line's own column is the count's.
-        lines = measure_filters(slots.get("below"), slots.get("above"))
+        lines = measure_filters(scope.below, scope.above)
         if len(lines) == 1:
             return lines[0].column, None
-    column = THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
-    if column is None or (not isinstance(threshold, int) and not (threshold is None and lined)):
+    column = THRESHOLD_STAT_COLUMNS.get(stat) if stat is not None else None
+    # A threshold is a whole number or absent (the Scope's own type), and
+    # absent is a count only where a below/above phrase carries the line.
+    if column is None or (threshold is None and not lined):
         raise TemplateUnsupported(f"threshold_count needs a known stat and an integer threshold, got {stat!r}/{threshold!r}")
     if threshold is None:
         return column, None
@@ -623,9 +625,9 @@ def leaderboard(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        rather than built here, since the ranking needs its own qualifying
        floor measured (not simply plugged into `LEADERBOARD_METRICS`).
     """
-    slots = reading.scope.to_slots()
+    scope = reading.scope
     con = ctx.con
-    if slots.get("stat") == "shot_distance":
+    if scope.stat == "shot_distance":
         # router._route_leaderboard_shot_distance's sentinel - see the
         # comment there. Checked before resolve_metric and before the named-
         # player refusal just below, on purpose: "who lead the league in avg
@@ -638,37 +640,37 @@ def leaderboard(ctx: TemplateContext, reading: Reading) -> TemplateResult:
         # check below gets a chance to name the wrong cause now.
         message = "Shot distance is not ranked league-wide yet - ask about one named player's average shot distance instead."
         return TemplateResult(data={"message": message, "headline": message}, answer=message)
-    career = _career_span("leaderboard", slots.get("span"), slots.get("season"))
-    metric = resolve_metric(slots.get("stat"), career=career)
+    career = _career_span("leaderboard", scope.span, scope.season)
+    metric = resolve_metric(scope.stat, career=career)
     if metric is None:
-        raise TemplateUnsupported(f"no leaderboard metric for stat {slots.get('stat')!r}")
-    rate = slots.get("rate")
+        raise TemplateUnsupported(f"no leaderboard metric for stat {scope.stat!r}")
+    rate = scope.rate
     if rate == "total":
         # `stat` names a category, never which of its two readings; "most
         # points this season" is a total and "leads in points" a per-game rate.
         metric = SEASON_TOTAL_OF.get(metric, metric)
     elif rate is not None:
         return _leaderboard_no_such_rate(rate, metric)
-    if isinstance(slots.get("player"), str) and slots["player"].strip():
+    if scope.player is not None and scope.player.strip():
         # A leaderboard ranks the league or a team, never one named person.
         # Confirmed live: "Klay Thompson's 3pt percentage over the past 4
         # seasons" landed here and came back with the league's true-shooting
         # leaders, Klay silently dropped.
-        raise TemplateUnsupported(f"a leaderboard cannot answer about one named player ({slots['player']!r})")
-    fields = _leaderboard_fields(slots, metric)
+        raise TemplateUnsupported(f"a leaderboard cannot answer about one named player ({scope.player!r})")
+    fields = _leaderboard_fields(scope, metric)
     if career:
-        return _career_leaderboard(con, metric, slots, fields)
+        return _career_leaderboard(con, metric, scope, fields)
     show_team = "team" in fields
     box_fields = [f for f in fields if f != "team"]
     try:
         result = run_leaderboard(
             con,
             metric,
-            season=slots.get("season"),
-            season_type=slots.get("season_type") or 2,
-            team=slots.get("team") if isinstance(slots.get("team"), str) else None,
+            season=scope.season,
+            season_type=scope.season_type or 2,
+            team=scope.team,
             fields=box_fields or None,
-            limit=_clamp_limit(slots.get("limit"), default=DEFAULT_LEADERBOARD_LIMIT),
+            limit=_clamp_limit(scope.limit, default=DEFAULT_LEADERBOARD_LIMIT),
         )
     except LeaderboardError as exc:
         # An ambiguous team, an unknown metric, or a table that needs a
@@ -709,7 +711,7 @@ def _leaderboard_result_data(data: dict[str, Any], answer: str, trade_note: str)
     return {**data, "headline": headline, "notes": [trade_note.strip()] if trade_note else []}
 
 
-def _leaderboard_fields(slots: dict[str, Any], metric: str) -> list[str]:
+def _leaderboard_fields(scope: Scope, metric: str) -> list[str]:
     """The extra columns a leaderboard was asked to show beside its metric -
     a box-score average (:data:`~association.query.metrics.EXTRA_FIELD_COLUMNS`),
     or ``"team"`` (F017, ISSUES.md), which :func:`leaderboard` looks up
@@ -718,7 +720,7 @@ def _leaderboard_fields(slots: dict[str, Any], metric: str) -> list[str]:
     # without the second half and without saying so - a silent partial answer,
     # the failure this whole architecture exists to prevent. An unknown field
     # falls through rather than being dropped.
-    requested = [f for f in slots.get("fields") or [] if isinstance(f, str)]
+    requested = scope.fields
     unknown = [f for f in requested if f not in EXTRA_FIELD_COLUMNS and f != "team"]
     if unknown:
         raise TemplateUnsupported(f"unknown leaderboard field(s) {unknown}")
@@ -786,20 +788,20 @@ def _leaderboard_show_teams(con: duckdb.DuckDBPyConnection, result: LeaderboardR
     return "\nTeam is each player's most recent team that season." if traded else ""
 
 
-def _career_leaderboard(con: duckdb.DuckDBPyConnection, metric: str, slots: dict[str, Any], fields: list[str]) -> TemplateResult:
+def _career_leaderboard(con: duckdb.DuckDBPyConnection, metric: str, scope: Scope, fields: list[str]) -> TemplateResult:
     """A career ranking, on its own path because its pool is its own - see
     :func:`~association.query.leaderboard.run_career_leaderboard`."""
     if fields:
         raise TemplateUnsupported("a career leaderboard cannot add per-game columns")
-    if isinstance(slots.get("team"), str) and slots["team"].strip():
+    if scope.team is not None and scope.team.strip():
         # A franchise's career list sums the per-team rows by team, and where a
         # franchise moved, which years are the franchise's is a question of its
         # own. Refused until that is decided, rather than answered with the
         # league's list under the team's name.
         raise TemplateUnsupported("franchise career leaderboards are not supported")
-    season_type = slots.get("season_type") or 2
+    season_type = scope.season_type or 2
     try:
-        result = run_career_leaderboard(con, metric, season_type=season_type, limit=_clamp_limit(slots.get("limit"), default=DEFAULT_LEADERBOARD_LIMIT))
+        result = run_career_leaderboard(con, metric, season_type=season_type, limit=_clamp_limit(scope.limit, default=DEFAULT_LEADERBOARD_LIMIT))
     except LeaderboardError as exc:
         raise TemplateUnsupported(str(exc)) from exc
     kind = SEASON_TYPE_NAMES.get(season_type, "regular season")
@@ -948,14 +950,14 @@ def player_history(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        actually asked for ("show me sga's career 2pt percentage") without
        ever stating it (F041, ISSUES.md).
     """
-    slots = reading.scope.to_slots()
-    player = _player_history_subject(ctx.con, slots)
+    scope = reading.scope
+    player = _player_history_subject(ctx.con, scope)
     if isinstance(player, TemplateResult):
         return player
-    return _player_history_read(ctx.con, player, slots)
+    return _player_history_read(ctx.con, player, scope)
 
 
-def _player_history_subject(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> Entity | TemplateResult:
+def _player_history_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> Entity | TemplateResult:
     """The player a history is about, settled the one way both
     ``player_history`` and the compiler's season-line source
     (``compose.present._present_player_history``) settle him.
@@ -964,14 +966,14 @@ def _player_history_subject(con: duckdb.DuckDBPyConnection, slots: dict[str, Any
     """
     # A named season anchors the range's END rather than replacing it, so
     # "3pt% over the 4 seasons through 2024" still spans four rows.
-    latest = slots.get("season") or current_season()
+    latest = scope.season or current_season()
     # Narrowed over every season the history could read, not the last N: the
     # query takes each player's last seasons up to `latest` wherever they fall,
     # so a player who retired a decade earlier still has an answer here.
-    return _resolved_player(con, slots.get("player"), "player_history needs a player name", available=_SEASON_LINES, through=latest)
+    return _resolved_player(con, scope.player, "player_history needs a player name", available=_SEASON_LINES, through=latest)
 
 
-def _player_history_read(con: duckdb.DuckDBPyConnection, player: Entity, slots: dict[str, Any]) -> TemplateResult:
+def _player_history_read(con: duckdb.DuckDBPyConnection, player: Entity, scope: Scope) -> TemplateResult:
     """``player_history``'s table over a settled player: the stat's columns
     season by season from ``player_season_stats_deduped``, and the career
     line under a career. Raises :class:`TemplateUnsupported` for a stat with
@@ -979,20 +981,20 @@ def _player_history_read(con: duckdb.DuckDBPyConnection, player: Entity, slots: 
 
     .. versionadded:: 4.5.0
     """
-    latest = slots.get("season") or current_season()
+    latest = scope.season or current_season()
 
-    stat = slots.get("stat")
-    if not isinstance(stat, str) or stat not in HISTORY_COLUMNS:
+    stat = scope.stat
+    if stat is None or stat not in HISTORY_COLUMNS:
         raise TemplateUnsupported(f"no per-season history for stat {stat!r}")
     label, columns = HISTORY_COLUMNS[stat]
 
-    span = slots.get("span")
+    span = scope.span
     if span and span != "career":
         raise TemplateUnsupported(f"no span called {span!r}")
     career = span == "career"
-    season_type = slots.get("season_type") or 2
-    limit = slots.get("limit")
-    seasons = limit if isinstance(limit, int) and 1 <= limit <= MAX_HISTORY_SEASONS else DEFAULT_HISTORY_SEASONS
+    season_type = scope.season_type or 2
+    limit = scope.limit
+    seasons = limit if limit is not None and 1 <= limit <= MAX_HISTORY_SEASONS else DEFAULT_HISTORY_SEASONS
 
     # A career is every season, however many - not the default four, and not a
     # count the model put in `limit`, which the router asks it for on this
@@ -1125,15 +1127,15 @@ STAT_LINE = ("points", "rebounds", "assists")
 COMPARE_STAT_LINE = ("points", "rebounds", "assists", "steals", "blocks", "turnovers", "fouls", "minutes")
 
 
-def _wanted_stats(slots: dict[str, Any], default: tuple[str, ...] = STAT_LINE) -> list[str]:
+def _wanted_stats(scope: Scope, default: tuple[str, ...] = STAT_LINE) -> list[str]:
     """The stats to report: the one named, or ``default`` if none was.
 
     A stat that was NAMED but is not supported must not fall back to the
     default line - that is how "what was Steph Curry's avg 3pt shot distance"
     came back as "26.6 points, 3.6 rebounds and 4.7 assists per game". Falling
     through to the agent is slow; answering a different question is worse."""
-    stat = slots.get("stat")
-    if stat is None or (isinstance(stat, str) and not stat.strip()):
+    stat = scope.stat
+    if stat is None or not stat.strip():
         return list(default)
     if stat in PLAYER_STAT_COLUMNS:
         return [stat]
@@ -1373,88 +1375,87 @@ def player_stat(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        1997-2010 range. A season the question named outright keeps the plain
        refusal, because it is the correct answer.
     """
-    slots = reading.scope.to_slots()
+    scope = reading.scope
     con = ctx.con
     # Refused here, before any name is resolved, if a line names no column.
-    measures = measure_filters(slots.get("below"), slots.get("above"))
+    measures = measure_filters(scope.below, scope.above)
     # One date is one game, read from the box score of that game - the same
     # narrowing game_log honors, so "how did maxey do on 2026-03-01" is that
     # night's line. A date replaces the season: the router's season is usually
     # its "current" default, and a date from last season looked for in this
     # one finds nothing.
-    raw_date = slots.get("date")
-    date = raw_date if isinstance(raw_date, str) and _ISO_DATE.match(raw_date) else None
-    from_box_scores = _player_stat_reads_box_scores(slots, measures) or bool(date)
-    if slots.get("limit") or slots.get("order"):
+    raw_date = scope.date
+    date = raw_date if raw_date is not None and _ISO_DATE.match(raw_date) else None
+    from_box_scores = _player_stat_reads_box_scores(scope, measures) or bool(date)
+    if scope.limit or scope.order:
         # "Jokic averages last 10 games" answered with his season line would be
         # the substitution this module exists to stop. game_log lists exactly
         # the games asked about and averages them beneath - the shape the
-        # question has, so it is handed there rather than refused.
+        # question has, so it is handed there rather than refused: the same
+        # Reading, its scope and subject, under game_log's intent.
         from .games import game_log
 
-        return game_log(ctx, Reading.from_slots(slots, intent="game_log", subject=reading.subject))
+        return game_log(ctx, replace(reading, intent="game_log"))
     # The order those steps have to run in lives in scoped_player, with why.
     # Settled before the name is resolved: the span, and the table it is read
     # from, are what narrow an ambiguous name to the players who could be the
     # answer - a career keeps Dell Curry, this season does not.
     if not from_box_scores:
-        season_line = _player_stat_season_line_subject(con, slots)
+        season_line = _player_stat_season_line_subject(con, scope)
         if isinstance(season_line, TemplateResult):
             return season_line
-        return _player_stat_season_line(con, *season_line, slots)
-    subject = scoped_player(
-        con, slots, "player_stat needs a player name", table="player_game_log", available=_GAME_LOGS, span="career" if date else slots.get("span"), season=None if date else slots.get("season")
-    )
+        return _player_stat_season_line(con, *season_line, scope)
+    subject = scoped_player(con, scope, "player_stat needs a player name", table="player_game_log", available=_GAME_LOGS, span="career" if date else scope.span, season=None if date else scope.season)
     if isinstance(subject, TemplateResult):
         return subject
     player, span = subject
-    stat = slots.get("stat")
+    stat = scope.stat
     # Before the ESPN-served columns - see _player_stat_season_line's own comment.
-    if isinstance(stat, str) and stat in ADVANCED_STATS:
+    if stat is not None and stat in ADVANCED_STATS:
         return _player_stat_advanced(con, player, span, stat, from_box_scores)
 
-    shooting = SHOOTING_STATS.get(stat) if isinstance(stat, str) else None
-    wanted = [] if shooting else _wanted_stats(slots)
-    narrowed = scoped_games(con, player, span, slots, opponent=slots.get("opponent"), measures=measures, date=date, team=slots.get("own_team"))
+    shooting = SHOOTING_STATS.get(stat) if stat is not None else None
+    wanted = [] if shooting else _wanted_stats(scope)
+    narrowed = scoped_games(con, player, span, scope, opponent=scope.opponent, measures=measures, date=date, team=scope.own_team)
     if isinstance(narrowed, TemplateResult):
         return narrowed
     return _box_score_player_stat(con, player, span, narrowed, wanted, shooting)
 
 
-def _player_stat_season_line_subject(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> tuple[Entity, _Span] | TemplateResult:
+def _player_stat_season_line_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> tuple[Entity, _Span] | TemplateResult:
     """The player and span an unnarrowed ``player_stat`` reads the season
     line over, settled the one way both the template and the compiler's
     season-line source (``compose.present._present_player_stat``) settle them.
 
     .. versionadded:: 4.5.0
     """
-    return scoped_player(con, slots, "player_stat needs a player name", table="player_season_stats_deduped", available=_SEASON_LINES, span=slots.get("span"), season=slots.get("season"))
+    return scoped_player(con, scope, "player_stat needs a player name", table="player_season_stats_deduped", available=_SEASON_LINES, span=scope.span, season=scope.season)
 
 
-def _player_stat_season_line(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, slots: dict[str, Any]) -> TemplateResult:
+def _player_stat_season_line(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, scope: Scope) -> TemplateResult:
     """An unnarrowed ``player_stat``: one season's line or a career, read
     from ``player_season_stats_deduped`` over a settled player and span.
 
     .. versionadded:: 4.5.0
     """
-    stat = slots.get("stat")
+    stat = scope.stat
     # Before the ESPN-served columns, because these carry their own table, their
     # own floor and their own career arithmetic - and because _wanted_stats
     # would otherwise refuse them as unknown, which is how "kevin durant true
     # shooting percentage career" fell through while the leaderboard ranked the
     # same stat happily.
-    if isinstance(stat, str) and stat in ADVANCED_STATS:
+    if stat is not None and stat in ADVANCED_STATS:
         return _player_stat_advanced(con, player, span, stat, False)
 
-    shooting = SHOOTING_STATS.get(stat) if isinstance(stat, str) else None
-    wanted = [] if shooting else _wanted_stats(slots)
+    shooting = SHOOTING_STATS.get(stat) if stat is not None else None
+    wanted = [] if shooting else _wanted_stats(scope)
     if span.career:
         return _career_player_stat(con, player, span, wanted, shooting)
 
-    return _season_player_stat(con, player, span, slots.get("season_type") or 2, wanted, shooting)
+    return _season_player_stat(con, player, span, scope.season_type or 2, wanted, shooting)
 
 
-def _player_stat_reads_box_scores(slots: dict[str, Any], measures: list[MeasureFilter]) -> bool:
+def _player_stat_reads_box_scores(scope: Scope, measures: list[MeasureFilter]) -> bool:
     """Whether ANY narrowing sends the read to box scores rather than the
     season line: the opponent, venue and absent teammates; a named half of the
     starter/bench split (it narrows the GAMES - the season line has no such
@@ -1477,21 +1478,21 @@ def _player_stat_reads_box_scores(slots: dict[str, Any], measures: list[MeasureF
        ``team`` slot - see that function's docstring for the recorded case
        that slot silently narrowed before this distinction existed.
     """
-    split_side = slots.get("split") if slots.get("split") in STARTER_SIDES else None
+    split_side = scope.split if scope.split in STARTER_SIDES else None
     # A `situation` (a weekday, a month, a holiday, "since <day>") is a
     # narrowing of the GAMES too - the season line has no such column.
     return any(
         (
-            slots.get("opponent"),
-            slots.get("venue"),
-            slots.get("without"),
+            scope.opponent,
+            scope.venue,
+            scope.without,
             split_side,
-            slots.get("since"),
+            scope.since,
             measures,
-            slots.get("game_n"),
-            slots.get("situation"),
-            slots.get("season_type_unstated"),
-            slots.get("own_team"),
+            scope.game_n,
+            scope.situation,
+            scope.season_type_unstated,
+            scope.own_team,
         )
     )
 
@@ -1984,22 +1985,22 @@ def single_game_high(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        games", true of the wrong year. A season the question named outright
        is unaffected.
     """
-    slots = reading.scope.to_slots()
-    stat = slots.get("stat")
-    column = THRESHOLD_STAT_COLUMNS.get(stat) if isinstance(stat, str) else None
+    scope = reading.scope
+    stat = scope.stat
+    column = THRESHOLD_STAT_COLUMNS.get(stat) if stat is not None else None
     if column is None:
         raise TemplateUnsupported(f"single_game_high needs a known stat, got {stat!r}")
 
-    career = _career_span("single_game_high", slots.get("span"), slots.get("season"))
+    career = _career_span("single_game_high", scope.span, scope.season)
     # Whether the season came from the question or from "now" - the same
     # distinction _span_of.defaulted makes for the templates built on it. This
-    # one is not, so it is read straight from the raw slot.
-    defaulted = not career and not (isinstance(slots.get("season"), int) and slots.get("season"))
-    season = None if career else (slots.get("season") or current_season())
-    season_type = slots.get("season_type") or 2
-    limit = _clamp_limit(slots.get("limit"), default=DEFAULT_SINGLE_GAME_LIMIT)
+    # one is not, so it is read straight from the scope's own season.
+    defaulted = not career and not scope.season
+    season = None if career else (scope.season or current_season())
+    season_type = scope.season_type or 2
+    limit = _clamp_limit(scope.limit, default=DEFAULT_SINGLE_GAME_LIMIT)
 
-    scoped = _single_game_high_scope(ctx, column, season, season_type, slots.get("player"))
+    scoped = _single_game_high_scope(ctx, column, season, season_type, scope.player)
     if isinstance(scoped, TemplateResult):
         return scoped
     narrowed, named_player, from_rebuilt = scoped
@@ -2176,13 +2177,13 @@ def player_compare(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     The agent wrote correct SQL but expanded "SGA" to '%Scottie G. Allen%' and
     compared Luka Doncic to Luka Garza. Nickname resolution is a lookup, not
     something to hope a 7B model knows - see entities.PLAYER_NICKNAMES."""
-    slots = reading.scope.to_slots()
+    scope = reading.scope
     con = ctx.con
-    names = slots.get("players")
-    if not isinstance(names, list) or len({n for n in names if isinstance(n, str) and n.strip()}) < 2:
+    names = scope.players
+    if len({n for n in names if n.strip()}) < 2:
         raise TemplateUnsupported("player_compare needs at least two distinct player names")
 
-    season = slots.get("season") or current_season()
+    season = scope.season or current_season()
     resolved: list[Entity] = []
     for name in names[:MAX_COMPARED_PLAYERS]:
         player = _resolved_player(con, name, available=_SEASON_LINES, season=season)
@@ -2193,8 +2194,8 @@ def player_compare(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     if len(resolved) < 2:
         raise TemplateUnsupported("the named players resolved to the same person")
 
-    season_type = slots.get("season_type") or 2
-    wanted = _wanted_stats(slots, COMPARE_STAT_LINE)
+    season_type = scope.season_type or 2
+    wanted = _wanted_stats(scope, COMPARE_STAT_LINE)
     columns = ["gamesPlayed"] + [PLAYER_STAT_COLUMNS[name][0] for name in wanted]
 
     rows: dict[str, dict[str, Any]] = {}
