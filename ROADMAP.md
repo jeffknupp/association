@@ -633,6 +633,17 @@ with nothing to read fills the silence from its own weights), and more data
    answer states its default. Baseline with the router withheld: DEV kind
    267/277, intent 256/277, window 186/277, stat 152/203; held-out kind
    257, intent 223. Two reading gaps it surfaced are fixed (c1812e2).
+   **Step (b), first tables, 2026-09-27 (6e4e4aa):** `query/parse.py` -
+   spans classified by the index before they can be subjects (the typo
+   policy: one near spelling is that player), `PARENT_GRAMMAR` by kind,
+   `WINDOW_GRAMMAR`, `MEASURE_GRAMMAR` (the NetPoints family) before the
+   model's key, two teams from the words; the children's grammars gain
+   the paraphrases' shapes (0 false positives). Router withheld: day10
+   kind 274/277, intent 267/277, stat 176/203, window 225/277; the
+   untouched v3 paraphrases kind 264/277, intent 242/277 (87.4%; ~8 of
+   the 35 misses are the paraphrase changing the meaning). Nothing live
+   calls it yet; golden 631/631. Remaining before (c): the 90% held-out
+   intent target, the scope/window tables settle still owns.
 
 ## The rules a spike keeps
 
