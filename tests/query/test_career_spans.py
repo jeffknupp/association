@@ -10,6 +10,7 @@ empty box score, a career that began before the box scores do.
 
 import json
 import re
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -17,13 +18,42 @@ import duckdb
 import pytest
 
 from association.nba.season import current_season
+from association.query.compose import answer as compose_answer
 from association.query.leaderboard import resolve_metric
 from association.query.metrics import BOX_SCORE_METRIC_NAMES, CORE_METRIC_NAMES, LEADERBOARD_METRICS
 from association.query.normalizer import NORMALIZER_STATS
 from association.query.prompt import TOOLS, build_system_prompt
 from association.query.reading import Reading
-from association.query.templates.common import TemplateContext, TemplateUnsupported, check_scope
-from association.query.templates.players import leaderboard, single_game_high, threshold_count
+from association.query.subject import Subject
+from association.query.templates.common import TemplateContext, TemplateResult, TemplateUnsupported, check_scope
+from association.query.templates.players import leaderboard
+
+
+def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResult]:
+    """``intent`` answered the way its retired template was called - a
+    Reading in, a TemplateResult out, ``TemplateUnsupported`` with the
+    reason where the compiler has no reading of the point - now that the
+    compiler alone answers it (``compose.COMPILED_INTENTS``, ROADMAP plan item
+    6, step (d), part 4). No question words, which would move the point:
+    these are the intent's own. The subject is the one the slots name, as a
+    question naming just them reads."""
+
+    def answered(ctx: TemplateContext, reading: Reading) -> TemplateResult:
+        scope = reading.scope
+        named = tuple(name for name in (scope.player, *scope.players) if name)
+        kind = "pair" if len(named) > 1 else "player" if named else "team" if scope.team else "everyone"
+        subject = reading.subject or Subject(kind, players=named, teams=(scope.team,) if scope.team else ())
+        why: list[str] = []
+        result = compose_answer(ctx, intent, scope.to_slots(), "", subject, declined=why.append)
+        if result is None:
+            raise TemplateUnsupported(why[0] if why else f"the compiler has no reading of this {intent} point")
+        return result
+
+    return answered
+
+
+single_game_high = _compiled("single_game_high")
+threshold_count = _compiled("threshold_count")
 
 _STATS_COLUMNS = (
     "athlete_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, gamesPlayed INTEGER, points INTEGER, avgPoints DOUBLE, "
@@ -230,9 +260,10 @@ def box_ctx(tmp_path: Path) -> TemplateContext:
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute("INSERT INTO players VALUES ('1','LeBron James'),('6','Michael Jordan'),('7','Stephen Curry'),('8','Seth Curry'),('9','Hakeem Olajuwon')")
-    c.execute("CREATE TABLE games (event_id VARCHAR, season INTEGER, date VARCHAR)")
+    # The home side and winner the compiler reads off `games`, empty here.
+    c.execute("CREATE TABLE games (event_id VARCHAR, season INTEGER, date VARCHAR, home_team_id VARCHAR, winner_team_id VARCHAR)")
     c.executemany(
-        "INSERT INTO games VALUES (?,?,?)",
+        "INSERT INTO games (event_id, season, date) VALUES (?,?,?)",
         [
             ("m1", 1995, "1995-03-29T00:30Z"),
             ("h1", 1994, "1994-03-01T01:00Z"),
@@ -242,9 +273,12 @@ def box_ctx(tmp_path: Path) -> TemplateContext:
             ("x1", 2014, "2014-02-01T01:00Z"),
         ],
     )
-    c.execute("CREATE TABLE player_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, athlete_id VARCHAR, points INTEGER, minutes INTEGER, did_not_play BOOLEAN)")
+    c.execute(
+        "CREATE TABLE player_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, athlete_id VARCHAR, points INTEGER, minutes INTEGER, did_not_play BOOLEAN, "
+        "team_id VARCHAR, rebounds INTEGER, assists INTEGER)"
+    )
     c.executemany(
-        "INSERT INTO player_box_stats VALUES (?,?,?,?,?,?,?)",
+        "INSERT INTO player_box_stats (event_id, season, season_type, athlete_id, points, minutes, did_not_play) VALUES (?,?,?,?,?,?,?)",
         [
             ("m1", 1995, 2, "6", 55, 40, False),
             ("h1", 1994, 2, "9", 45, 42, False),
@@ -266,6 +300,9 @@ def box_ctx(tmp_path: Path) -> TemplateContext:
         "INSERT INTO player_season_stats VALUES (?,?,?,?,?,?)",
         [("1", 2004, 2, "5", 79, 1654), ("1", 2015, 2, "5", 69, 1743), ("6", 1985, 2, "4", 82, 2313), ("6", 1995, 2, "4", 17, 457), ("9", 1985, 2, "10", 82, 1712)],
     )
+    # The warehouse reads postseason lines through a deduplicating view; no
+    # postseason copy here, so it is the table itself.
+    c.execute("CREATE VIEW player_season_stats_deduped AS SELECT * FROM player_season_stats")
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
@@ -312,7 +349,13 @@ def test_an_ambiguous_name_is_asked_about_rather_than_counted(box_ctx: TemplateC
     assert "did you mean Seth Curry or Stephen Curry?" in answer
 
 
-@pytest.mark.parametrize("template", [threshold_count, single_game_high])
-def test_a_career_with_a_season_named_is_refused_rather_than_read(box_ctx: TemplateContext, template: Any) -> None:
-    with pytest.raises(TemplateUnsupported, match="since it, or through it"):
-        template(box_ctx, Reading.from_slots({"stat": "points", "threshold": 30, "span": "career", "season": 2024}))
+@pytest.mark.parametrize("answered", [threshold_count, single_game_high])
+def test_a_career_with_a_season_named_reads_the_named_season(box_ctx: TemplateContext, answered: Any) -> None:
+    """ "Career ... in 2024": a named year is more specific than "career".
+    The compiler, which alone answers these two now, reads the year - the
+    condition templates' reading, the one ISSUES.md records as the useful
+    one - where their retired templates refused ("... since it, or through
+    it"). It answered them first from ROADMAP plan item 6, step (a), so
+    nothing a question reads moved."""
+    result = answered(box_ctx, Reading.from_slots({"stat": "points", "threshold": 30, "span": "career", "season": 2024}))
+    assert "2024 regular season" in result.answer and "career" not in result.answer

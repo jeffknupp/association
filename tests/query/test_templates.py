@@ -2,6 +2,7 @@
 question that failed three times through the tool-calling agent."""
 
 import re
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -12,15 +13,45 @@ from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date_of
 from association.query import shotchart
+from association.query.compose import answer as compose_answer
 from association.query.entities import MAX_CANDIDATES, Availability, Entity, collect_name_readings, resolve_player
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from association.query.reading import Reading
+from association.query.subject import Subject
 from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, TemplateContext, TemplateResult, TemplateUnsupported, check_scope
 from association.query.templates.games import _rebuilt_readable, game_log, head_to_head, period_leaderboard, period_split, player_matchup, team_quarter_points
 from association.query.templates.netpoints import fingerprint, player_netpoints
-from association.query.templates.players import SHOOTING_STATS, _box_score_stat_rebuilt, leaderboard, player_compare, player_history, player_stat, single_game_high, threshold_count
+from association.query.templates.players import SHOOTING_STATS, _box_score_stat_rebuilt, leaderboard, player_compare, player_stat
 from association.query.templates.shots import shot_chart, shot_distance
 from association.query.templates.teams import team_record
+
+
+def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResult]:
+    """``intent`` answered the way its retired template was called - a
+    Reading in, a TemplateResult out, ``TemplateUnsupported`` with the
+    reason where the compiler has no reading of the point - now that the
+    compiler alone answers it (``compose.COMPILED_INTENTS``, ROADMAP plan item
+    6, step (d), part 4). No question words, which would move the point:
+    these are the intent's own. The subject is the one the slots name, as a
+    question naming just them reads."""
+
+    def answered(ctx: TemplateContext, reading: Reading) -> TemplateResult:
+        scope = reading.scope
+        named = tuple(name for name in (scope.player, *scope.players) if name)
+        kind = "pair" if len(named) > 1 else "player" if named else "team" if scope.team else "everyone"
+        subject = reading.subject or Subject(kind, players=named, teams=(scope.team,) if scope.team else ())
+        why: list[str] = []
+        result = compose_answer(ctx, intent, scope.to_slots(), "", subject, declined=why.append)
+        if result is None:
+            raise TemplateUnsupported(why[0] if why else f"the compiler has no reading of this {intent} point")
+        return result
+
+    return answered
+
+
+player_history = _compiled("player_history")
+single_game_high = _compiled("single_game_high")
+threshold_count = _compiled("threshold_count")
 
 
 @pytest.fixture
@@ -51,7 +82,9 @@ def con(tmp_path: Path) -> TemplateContext:
         "CREATE VIEW player_game_log AS SELECT pbs.* REPLACE (COALESCE(pbs.event_id, 'e' || pbs.rowid) AS event_id), p.display_name AS player_name, "
         "NULL::VARCHAR AS game_date, NULL::VARCHAR AS opponent_abbr FROM player_box_stats pbs LEFT JOIN players p ON p.athlete_id = pbs.athlete_id"
     )
-    c.execute("CREATE VIEW games AS SELECT DISTINCT event_id, season, season_type FROM player_game_log")
+    # The date, home side and winner the compiler reads off `games` beside the
+    # log (compose.core._row_select), as the warehouse view carries them.
+    c.execute("CREATE VIEW games AS SELECT DISTINCT event_id, season, season_type, game_date AS date, NULL::VARCHAR AS home_team_id, NULL::VARCHAR AS winner_team_id FROM player_game_log")
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
@@ -249,7 +282,9 @@ def currys(tmp_path: Path) -> TemplateContext:
         "CREATE VIEW player_game_log AS SELECT pbs.* REPLACE (COALESCE(pbs.event_id, 'e' || pbs.rowid) AS event_id), p.display_name AS player_name, "
         "NULL::VARCHAR AS game_date, NULL::VARCHAR AS opponent_abbr FROM player_box_stats pbs LEFT JOIN players p ON p.athlete_id = pbs.athlete_id"
     )
-    c.execute("CREATE VIEW games AS SELECT DISTINCT event_id, season, season_type FROM player_game_log")
+    # The date, home side and winner the compiler reads off `games` beside the
+    # log (compose.core._row_select), as the warehouse view carries them.
+    c.execute("CREATE VIEW games AS SELECT DISTINCT event_id, season, season_type, game_date AS date, NULL::VARCHAR AS home_team_id, NULL::VARCHAR AS winner_team_id FROM player_game_log")
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
@@ -333,7 +368,12 @@ def rebuilt_counts(tmp_path: Path) -> TemplateContext:
         "INSERT INTO player_game_log VALUES (?,'99',?,2,NULL,?,?,?,?,?,?,FALSE)",
         [("e5", s, "2026-01-14T00:30Z", "SAC", 60, 2, 33, False), ("e6", s, "2026-01-16T00:30Z", "UTA", 55, 2, 30, False)],
     )
-    c.execute("CREATE VIEW games AS SELECT DISTINCT event_id, season, season_type FROM player_game_log")
+    # The date, home side and winner the compiler reads off `games` beside the
+    # log (compose.core._row_select), as the warehouse view carries them.
+    c.execute("CREATE VIEW games AS SELECT DISTINCT event_id, season, season_type, game_date AS date, NULL::VARCHAR AS home_team_id, NULL::VARCHAR AS winner_team_id FROM player_game_log")
+    # The warehouse builds the log over the filled box view; the relation
+    # learns rebuilt lines exist from it (conditions.box_source).
+    c.execute("CREATE VIEW player_box_stats_filled AS SELECT * FROM player_game_log")
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
@@ -1850,7 +1890,7 @@ def sgh_ctx(tmp_path: Path) -> TemplateContext:
     # add a row of their own) keep their order. A NULL there is the empty line
     # ESPN leaves, which single_game_high must not read as a game played.
     c.execute(
-        "CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER, season_type INTEGER, player_name VARCHAR, "
+        "CREATE TABLE player_game_log_rows (athlete_id VARCHAR, season INTEGER, season_type INTEGER, player_name VARCHAR, "
         "game_date VARCHAR, opponent_abbr VARCHAR, assists INTEGER, points INTEGER, minutes INTEGER, event_id VARCHAR, did_not_play BOOLEAN DEFAULT FALSE)"
     )
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
@@ -1859,7 +1899,7 @@ def sgh_ctx(tmp_path: Path) -> TemplateContext:
     c.execute("CREATE TABLE player_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, athlete_id VARCHAR, minutes INTEGER, did_not_play BOOLEAN)")
     s = current_season()
     c.executemany(
-        "INSERT INTO player_game_log VALUES (?,?,?,?,?,?,?,?,?,?,FALSE)",
+        "INSERT INTO player_game_log_rows VALUES (?,?,?,?,?,?,?,?,?,?,FALSE)",
         [
             ("1", s, 2, "Ryan Nembhard", "2026-04-13T00:30Z", "CHI", 23, 8, 30, "e1"),
             ("2", s, 2, "Nikola Jokic", "2026-03-26T02:00Z", "DAL", 19, 30, 34, "e2"),
@@ -1868,7 +1908,12 @@ def sgh_ctx(tmp_path: Path) -> TemplateContext:
             ("2", s - 1, 2, "Nikola Jokic", "2025-03-26T02:00Z", "DAL", 25, 30, 33, "e5"),
         ],
     )
-    c.execute("CREATE VIEW games AS SELECT DISTINCT event_id, season, season_type FROM player_game_log")
+    # The warehouse log carries each row's team, which the compiler reads for
+    # the home side and the winner; the rows are a table the tests add to.
+    c.execute("CREATE VIEW player_game_log AS SELECT *, NULL::VARCHAR AS team_id, NULL::INTEGER AS rebounds FROM player_game_log_rows")
+    # The date, home side and winner the compiler reads off `games` beside the
+    # log (compose.core._row_select), as the warehouse view carries them.
+    c.execute("CREATE VIEW games AS SELECT DISTINCT event_id, season, season_type, game_date AS date, NULL::VARCHAR AS home_team_id, NULL::VARCHAR AS winner_team_id FROM player_game_log")
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
@@ -1904,13 +1949,17 @@ def test_single_game_high_for_a_named_player(sgh_ctx: TemplateContext) -> None:
 
 
 def test_single_game_high_reports_a_tie_as_a_tie(sgh_ctx: TemplateContext) -> None:
-    sgh_ctx.con.execute("UPDATE player_game_log SET assists = 23 WHERE player_name = 'Nikola Jokic' AND opponent_abbr = 'DAL' AND season_type = 2")
+    sgh_ctx.con.execute("UPDATE player_game_log_rows SET assists = 23 WHERE player_name = 'Nikola Jokic' AND opponent_abbr = 'DAL' AND season_type = 2")
     assert "tied for the most" in (single_game_high(sgh_ctx, Reading.from_slots({"stat": "assists"})).answer or "")
 
 
-def test_single_game_high_unknown_stat_falls_through(sgh_ctx: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
-        single_game_high(sgh_ctx, Reading.from_slots({"stat": "assists); DROP TABLE players; --"}))
+def test_single_game_high_refuses_an_unknown_stat_before_any_sql(sgh_ctx: TemplateContext) -> None:
+    """A stat nothing ranks is refused by name - the compiler's own refusal,
+    which the retired template gave as a fall-through - and never reaches
+    SQL: the players table is still there to count."""
+    result = single_game_high(sgh_ctx, Reading.from_slots({"stat": "assists); DROP TABLE players; --"}))
+    assert "No ranking reads" in (result.answer or "")
+    assert sgh_ctx.con.execute("SELECT COUNT(*) FROM players").fetchone() == (2,)
 
 
 def test_single_game_high_ambiguous_player_asks(sgh_ctx: TemplateContext) -> None:
@@ -1918,7 +1967,7 @@ def test_single_game_high_ambiguous_player_asks(sgh_ctx: TemplateContext) -> Non
     # narrowed to the players with a row where the answer is read from, and
     # with Jokic alone in this season's log, "Nikola" is answered about him.
     sgh_ctx.con.execute("INSERT INTO players VALUES ('3','Nikola Jovic')")
-    sgh_ctx.con.execute("INSERT INTO player_game_log VALUES ('3',?,2,'Nikola Jovic','2026-02-01T00:30Z','BOS',4,12,26,'e9',FALSE)", [current_season()])
+    sgh_ctx.con.execute("INSERT INTO player_game_log_rows VALUES ('3',?,2,'Nikola Jovic','2026-02-01T00:30Z','BOS',4,12,26,'e9',FALSE)", [current_season()])
     assert "did you mean" in (single_game_high(sgh_ctx, Reading.from_slots({"stat": "assists", "player": "Nikola"})).answer or "")
 
 
@@ -1934,14 +1983,14 @@ def rebuilt_ctx(tmp_path: Path) -> TemplateContext:
     # _empty_box_scores reads both. A fixture without them passes a thinner
     # table than any warehouse ever holds, and hides a column dependency.
     c.execute(
-        "CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER, season_type INTEGER, player_name VARCHAR, "
+        "CREATE TABLE player_game_log_rows (athlete_id VARCHAR, season INTEGER, season_type INTEGER, player_name VARCHAR, "
         "game_date VARCHAR, opponent_abbr VARCHAR, points INTEGER, fouls INTEGER, minutes INTEGER, reconstructed BOOLEAN, "
         "event_id VARCHAR, did_not_play BOOLEAN)"
     )
     c.execute("CREATE TABLE player_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, athlete_id VARCHAR, minutes INTEGER, did_not_play BOOLEAN)")
     s = current_season()
     c.executemany(
-        "INSERT INTO player_game_log VALUES ('1',?,2,'Anthony Davis',?,?,?,?,?,?,?,FALSE)",
+        "INSERT INTO player_game_log_rows VALUES ('1',?,2,'Anthony Davis',?,?,?,?,?,?,?,FALSE)",
         [
             # Fetched: real box scores, real minutes.
             (s, "2026-01-02T00:30Z", "ORL", 24, 3, 31, False, "e1"),
@@ -1951,7 +2000,15 @@ def rebuilt_ctx(tmp_path: Path) -> TemplateContext:
             (s, "2026-01-11T00:30Z", "PHX", 12, 6, None, True, "e4"),
         ],
     )
-    c.execute("CREATE VIEW games AS SELECT DISTINCT event_id, season, season_type FROM player_game_log")
+    # The warehouse log carries each row's team, which the compiler reads for
+    # the home side and the winner; the rows are a table the tests add to.
+    c.execute("CREATE VIEW player_game_log AS SELECT *, NULL::VARCHAR AS team_id, NULL::INTEGER AS rebounds FROM player_game_log_rows")
+    # The date, home side and winner the compiler reads off `games` beside the
+    # log (compose.core._row_select), as the warehouse view carries them.
+    c.execute("CREATE VIEW games AS SELECT DISTINCT event_id, season, season_type, game_date AS date, NULL::VARCHAR AS home_team_id, NULL::VARCHAR AS winner_team_id FROM player_game_log")
+    # The warehouse builds the log over the filled box view; the relation
+    # learns rebuilt lines exist from it (conditions.box_source).
+    c.execute("CREATE VIEW player_box_stats_filled AS SELECT * FROM player_game_log")
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
@@ -1972,7 +2029,7 @@ def test_a_rebuilt_answer_says_it_was_rebuilt(rebuilt_ctx: TemplateContext) -> N
 def test_a_fetched_winner_says_nothing_about_rebuilding(rebuilt_ctx: TemplateContext) -> None:
     """The note is about the number given, not about what was read. Drop the
     rebuilt games below the fetched ones and the answer is an ordinary one."""
-    rebuilt_ctx.con.execute("UPDATE player_game_log SET points = 5 WHERE reconstructed")
+    rebuilt_ctx.con.execute("UPDATE player_game_log_rows SET points = 5 WHERE reconstructed")
     answer = single_game_high(rebuilt_ctx, Reading.from_slots({"stat": "points", "player": "Anthony Davis"})).answer or ""
     assert "24" in answer
     assert "rebuilt" not in answer
@@ -1992,7 +2049,7 @@ def test_a_withheld_stat_says_it_was_withheld_not_missing(rebuilt_ctx: TemplateC
     a stat outside REBUILT_STATS must name the decision. "No games with a box
     score" is true of the fetched lines and hides that the data exists and was
     held back for being too inaccurate to quote."""
-    rebuilt_ctx.con.execute("DELETE FROM player_game_log WHERE NOT reconstructed")
+    rebuilt_ctx.con.execute("DELETE FROM player_game_log_rows WHERE NOT reconstructed")
     answer = single_game_high(rebuilt_ctx, Reading.from_slots({"stat": "fouls", "player": "Anthony Davis"})).answer or ""
     assert "were rebuilt from play-by-play" in answer
     assert "not read from a rebuilt line" in answer
@@ -2032,7 +2089,7 @@ def test_a_warehouse_without_the_flag_still_answers(rebuilt_ctx: TemplateContext
     """The column arrives with a `data load`. An older warehouse has no such
     column, and the query must not be written as though it were always there -
     that is the Binder error AGENTS.md records for view changes."""
-    rebuilt_ctx.con.execute("ALTER TABLE player_game_log DROP COLUMN reconstructed")
+    rebuilt_ctx.con.execute("ALTER TABLE player_game_log_rows DROP COLUMN reconstructed")
     answer = single_game_high(rebuilt_ctx, Reading.from_slots({"stat": "points", "player": "Anthony Davis"})).answer or ""
     assert "24" in answer  # the best line that has minutes
     assert "rebuilt" not in answer
@@ -2048,7 +2105,7 @@ def test_single_game_high_defaulted_season_redirects_to_a_retired_players_range(
     refusal that reads as though he never played at all (issue #18)."""
     s, past = current_season(), current_season() - 16
     sgh_ctx.con.execute("INSERT INTO players VALUES ('3','Old Timer')")
-    sgh_ctx.con.execute("INSERT INTO player_game_log VALUES ('3',?,2,'Old Timer','2010-04-12T00:30Z','BOS',5,20,32,'e8',FALSE)", [past])
+    sgh_ctx.con.execute("INSERT INTO player_game_log_rows VALUES ('3',?,2,'Old Timer','2010-04-12T00:30Z','BOS',5,20,32,'e8',FALSE)", [past])
     result = single_game_high(sgh_ctx, Reading.from_slots({"stat": "points", "player": "Old Timer"}))
     answer = result.answer or ""
     assert answer == (f"Old Timer has no {s} regular season games in the warehouse. He last appears in {past}. The warehouse holds his {past} regular season; name one, or ask for his career.")
@@ -2068,7 +2125,7 @@ def test_single_game_high_a_named_season_keeps_the_plain_refusal(sgh_ctx: Templa
     redirect there would answer a season nobody asked about."""
     past = current_season() - 16
     sgh_ctx.con.execute("INSERT INTO players VALUES ('3','Old Timer')")
-    sgh_ctx.con.execute("INSERT INTO player_game_log VALUES ('3',?,2,'Old Timer','2010-04-12T00:30Z','BOS',5,20,32,'e8',FALSE)", [past])
+    sgh_ctx.con.execute("INSERT INTO player_game_log_rows VALUES ('3',?,2,'Old Timer','2010-04-12T00:30Z','BOS',5,20,32,'e8',FALSE)", [past])
     answer = single_game_high(sgh_ctx, Reading.from_slots({"stat": "points", "player": "Old Timer", "season": 1999})).answer or ""
     assert answer == "Old Timer has no 1999 regular season games in the warehouse."
 
@@ -2079,7 +2136,7 @@ def _all_box_scores_empty(ctx: TemplateContext, name: str) -> None:
     s = current_season()
     ctx.con.execute("INSERT INTO players VALUES ('9',?)", [name])
     ctx.con.executemany(
-        "INSERT INTO player_game_log VALUES ('9',?,2,?,?,'ORL',0,0,NULL,?,FALSE)",
+        "INSERT INTO player_game_log_rows VALUES ('9',?,2,?,?,'ORL',0,0,NULL,?,FALSE)",
         [(s, name, "2026-01-05T00:30Z", "x1"), (s, name, "2026-01-08T00:30Z", "x2")],
     )
     ctx.con.executemany("INSERT INTO player_box_stats VALUES (?,?,2,'9',NULL,FALSE)", [("x1", s), ("x2", s)])
@@ -2832,10 +2889,13 @@ def test_player_history_reports_a_percentage_with_its_volume(ps_con: TemplateCon
 
 
 def test_player_history_refuses_a_stat_it_has_no_history_for(ps_con: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+    """A stat neither the season line nor the games carry is refused - never
+    drawn as the points history the compiler's default measure would read in
+    its place (it did, from step (a) until part 4). A history naming no stat
+    at all is the points default, stated in its heading
+    (test_compose.test_a_history_naming_no_stat_is_points_and_says_so)."""
+    with pytest.raises(TemplateUnsupported, match="no per-season history for stat 'shot_distance'"):
         player_history(ps_con, Reading.from_slots({"player": "Luka Doncic", "stat": "shot_distance"}))
-    with pytest.raises(TemplateUnsupported):
-        player_history(ps_con, Reading.from_slots({"player": "Luka Doncic"}))
 
 
 def test_player_history_asks_on_an_ambiguous_player(ps_con: TemplateContext) -> None:
@@ -3250,6 +3310,11 @@ def test_every_template_honoring_a_scope_slot_actually_reads_it() -> None:
     from association.query import templates as module
 
     for intent, honored in HONORED_SCOPING.items():
+        if intent not in module.TEMPLATES:
+            # An intent the compiler alone answers (compose.COMPILED_INTENTS):
+            # its list gates the compiler's presentation of its own point
+            # (compose.present), and the compiler's relation reads the slots.
+            continue
         source = _source_a_template_reads_slots_in(module.TEMPLATES[intent])
         for slot in honored:
             assert _reads_slot(source, slot), f"{intent} claims to honor {slot} but never reads it"
@@ -5595,13 +5660,20 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
         "tg.side = ?",
         "tg.eastern_date = ?",
     )
-    for intent in ("game_log", "player_stat", "period_split", "player_splits", "record_when", "streak"):
-        # The template and the private steps it calls, transitively -
-        # game_log's player narrowing lives in _game_log_player and its team
-        # narrowing in _game_log_team, neither in game_log itself.
-        source = _source_with_private_steps(TEMPLATES[intent])
-        for token in forbidden:
-            assert token not in source, f"{intent} narrows the relation itself ({token!r}); use scoped_games / team_games"
+    from association.query.templates.splits import _record_when_answer, _record_when_query, _record_when_team_answer
+
+    readers: dict[str, list[Callable[..., Any]]] = {intent: [TEMPLATES[intent]] for intent in ("game_log", "player_stat", "period_split", "player_splits", "streak")}
+    # record_when's template is retired (compose.COMPILED_INTENTS); the readers
+    # the compiler answers it with still read the relation, walked the same way.
+    readers["record_when"] = [_record_when_query, _record_when_answer, _record_when_team_answer]
+    for intent, functions in readers.items():
+        for function in functions:
+            # The reader and the private steps it calls, transitively -
+            # game_log's player narrowing lives in _game_log_player and its
+            # team narrowing in _game_log_team, neither in game_log itself.
+            source = _source_with_private_steps(function)
+            for token in forbidden:
+                assert token not in source, f"{intent} narrows the relation itself ({token!r}); use scoped_games / team_games"
         # The quieter way to narrow by hand: hand the shared step a dict BUILT
         # here instead of the question's slots. period_split did exactly that -
         # `{"venue": venue, "without": without, "split": split}` - so `game_n`

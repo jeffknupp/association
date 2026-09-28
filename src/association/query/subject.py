@@ -42,7 +42,7 @@ from typing import Any, NamedTuple
 import duckdb
 from rapidfuzz.distance import DamerauLevenshtein
 
-from association.query.compose import COMPILER_FIRST
+from association.query.compose import COMPILED_INTENTS
 from association.query.compose.team import team_named_in
 from association.query.decisions import Decision
 from association.query.entities import (
@@ -1150,9 +1150,9 @@ def _apply_players(subject: Subject, slots: dict[str, Any], intent: str = "") ->
 def _apply_conditions_honored(intent: str) -> bool:
     """Whether a companion's role reaches ``intent``'s answer as a
     ``conditions`` entry (:func:`_apply_conditions`): its template honors
-    the slot, or the compiler answers it first and narrows its relation by
-    every condition (``compose.COMPILER_FIRST``)."""
-    return "conditions" in HONORED_SCOPING.get(intent, frozenset()) or intent in COMPILER_FIRST
+    the slot, or the compiler answers it and narrows its relation by every
+    condition (``compose.COMPILED_INTENTS``)."""
+    return "conditions" in HONORED_SCOPING.get(intent, frozenset()) or intent in COMPILED_INTENTS
 
 
 def _apply_conditions(subject: Subject, slots: dict[str, Any], intent: str) -> list[Decision]:
@@ -1169,8 +1169,8 @@ def _apply_conditions(subject: Subject, slots: dict[str, Any], intent: str) -> l
     refused it. ``with_without`` keeps reading its ``with_player`` (the
     router's stage reads it from the same words), and an absence stays the
     router's ``without`` ("with Draymond out" included) - ROADMAP plan item
-    3, steps B and C. The compiler-first intents too (``compose.COMPILER_FIRST``):
-    the compiler answers them first and narrows its relation by every
+    3, steps B and C. The compiled intents too (``compose.COMPILED_INTENTS``):
+    the compiler answers them and narrows its relation by every
     condition, so "how many 30 point games did maxey have when embiid
     started" counts his games with Embiid starting (34) - with nothing
     written it counted all of them (86), the start gone without a word."""

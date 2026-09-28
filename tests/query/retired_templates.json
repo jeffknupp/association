@@ -1,0 +1,124 @@
+{
+ "about": "The four compiler-first templates' own answers to the compiler parity cases in tests/query/test_compose.py, frozen from their last commit (4b3aff9) when they retired (ROADMAP plan item 6, step (d), part 4). Each expected answer is JSON text with the fixture's seasons as placeholders - {S} the current season, {S-1} and {S-2} the two before it, {S-1}-{s} and {S-2}-{s-1} their labels - since the fixture is built around current_season().",
+ "cases": [
+  {
+   "intent": "threshold_count",
+   "slots": {
+    "player": "Brandin Podziemski",
+    "stat": "points",
+    "threshold": 15
+   },
+   "question": "how many 15+ point games did podziemski have",
+   "expected": "{\"answer\": \"Brandin Podziemski had 3 games with 15+ points in the {S} regular season.\", \"data\": {\"empty_box_scores\": 0, \"headline\": \"Brandin Podziemski had 3 games with 15+ points in the {S} regular season.\", \"leaders\": [{\"games\": 3, \"player\": \"Brandin Podziemski\"}], \"notes\": [], \"question_shape\": \"games with 15+ points, {S} regular season\", \"rebuilt_games\": 0, \"season\": {S}, \"span\": null}}"
+  },
+  {
+   "intent": "threshold_count",
+   "slots": {
+    "player": "Brandin Podziemski",
+    "span": "career",
+    "stat": "points",
+    "threshold": 15
+   },
+   "question": "how many 15+ point games has podziemski had in his career",
+   "expected": "{\"answer\": \"Brandin Podziemski had 4 games with 15+ points in his regular season career ({S-2}-{s-1} through {S-1}-{s}).\", \"data\": {\"empty_box_scores\": 0, \"headline\": \"Brandin Podziemski had 4 games with 15+ points in his regular season career ({S-2}-{s-1} through {S-1}-{s}).\", \"leaders\": [{\"games\": 4, \"player\": \"Brandin Podziemski\"}], \"notes\": [], \"question_shape\": \"games with 15+ points, regular season career ({S-2}-{s-1} through {S-1}-{s})\", \"rebuilt_games\": 0, \"season\": null, \"span\": \"career\"}}"
+  },
+  {
+   "intent": "threshold_count",
+   "slots": {
+    "stat": "points",
+    "threshold": 25
+   },
+   "question": "who had the most 25+ point games",
+   "expected": "{\"answer\": \"Derek Vollmer had the most games with 25+ points in the {S} regular season, with 22. Next: Stephen Curry (3), Jaylen Brown (2), Brandin Podziemski (1).\", \"data\": {\"empty_box_scores\": 0, \"headline\": \"Derek Vollmer had the most games with 25+ points in the {S} regular season, with 22.\", \"leaders\": [{\"games\": 22, \"player\": \"Derek Vollmer\"}, {\"games\": 3, \"player\": \"Stephen Curry\"}, {\"games\": 2, \"player\": \"Jaylen Brown\"}, {\"games\": 1, \"player\": \"Brandin Podziemski\"}], \"notes\": [], \"question_shape\": \"games with 25+ points, {S} regular season\", \"rebuilt_games\": 0, \"season\": {S}, \"span\": null}}"
+  },
+  {
+   "intent": "threshold_count",
+   "slots": {
+    "above": [
+     "20+ point",
+     "5+ rebound"
+    ],
+    "stat": "points",
+    "threshold": 20
+   },
+   "question": "who had the most 20+ point 5+ rebound games",
+   "expected": "{\"answer\": \"Derek Vollmer had the most games with at least 20 points and at least 5 rebounds in the {S} regular season, with 22. Next: Brandin Podziemski (2), Jaylen Brown (2), Stephen Curry (1).\", \"data\": {\"empty_box_scores\": 0, \"headline\": \"Derek Vollmer had the most games with at least 20 points and at least 5 rebounds in the {S} regular season, with 22.\", \"leaders\": [{\"games\": 22, \"player\": \"Derek Vollmer\"}, {\"games\": 2, \"player\": \"Brandin Podziemski\"}, {\"games\": 2, \"player\": \"Jaylen Brown\"}, {\"games\": 1, \"player\": \"Stephen Curry\"}], \"notes\": [], \"question_shape\": \"games with at least 20 points and at least 5 rebounds, {S} regular season\", \"rebuilt_games\": 0, \"season\": {S}, \"span\": null}}"
+  },
+  {
+   "intent": "threshold_count",
+   "slots": {
+    "player": "Brandin Podziemski",
+    "span": "career",
+    "stat": "fouls",
+    "threshold": 6
+   },
+   "question": "how many times has podziemski fouled out",
+   "expected": "{\"answer\": \"Brandin Podziemski had no games with 6+ fouls in his regular season career ({S-2}-{s-1} through {S-1}-{s}).\", \"data\": {\"empty_box_scores\": 0, \"headline\": \"Brandin Podziemski had no games with 6+ fouls in his regular season career ({S-2}-{s-1} through {S-1}-{s}).\", \"leaders\": [], \"notes\": [], \"question_shape\": \"games with 6+ fouls, regular season career ({S-2}-{s-1} through {S-1}-{s})\", \"rebuilt_games\": 0, \"season\": null, \"span\": \"career\"}}"
+  },
+  {
+   "intent": "single_game_high",
+   "slots": {
+    "player": "Stephen Curry",
+    "stat": "points"
+   },
+   "question": "stephen curry's most points in a game",
+   "expected": "{\"answer\": \"Stephen Curry's highest point total in a single game in the {S} regular season was 40, on {S}-01-10 vs DET.\", \"data\": {\"empty_box_scores\": 0, \"games\": [{\"date\": \"{S}-01-10\", \"opponent\": \"DET\", \"player\": \"Stephen Curry\", \"reconstructed\": false, \"value\": 40}, {\"date\": \"{S-1}-11-01\", \"opponent\": \"BOS\", \"player\": \"Stephen Curry\", \"reconstructed\": false, \"value\": 35}, {\"date\": \"{S}-02-10\", \"opponent\": \"LAL\", \"player\": \"Stephen Curry\", \"reconstructed\": false, \"value\": 25}], \"headline\": \"Stephen Curry's highest point total in a single game in the {S} regular season was 40, on {S}-01-10 vs DET.\", \"notes\": [], \"question_shape\": \"most points in a single game, Stephen Curry, {S} regular season\", \"season\": {S}, \"span\": null, \"stat\": \"points\"}}"
+  },
+  {
+   "intent": "single_game_high",
+   "slots": {
+    "stat": "points"
+   },
+   "question": "most points in a single game",
+   "expected": "{\"answer\": \"Stephen Curry had the most points in a single game in the {S} regular season: 40, on {S}-01-10 vs DET. Next: Stephen Curry (35), Jaylen Brown (31).\", \"data\": {\"empty_box_scores\": 0, \"games\": [{\"date\": \"{S}-01-10\", \"opponent\": \"DET\", \"player\": \"Stephen Curry\", \"reconstructed\": false, \"value\": 40}, {\"date\": \"{S-1}-11-01\", \"opponent\": \"BOS\", \"player\": \"Stephen Curry\", \"reconstructed\": false, \"value\": 35}, {\"date\": \"{S}-03-01\", \"opponent\": \"GS\", \"player\": \"Jaylen Brown\", \"reconstructed\": false, \"value\": 31}], \"headline\": \"Stephen Curry had the most points in a single game in the {S} regular season: 40, on {S}-01-10 vs DET. Next: Stephen Curry (35), Jaylen Brown (31).\", \"notes\": [], \"question_shape\": \"most points in a single game, {S} regular season\", \"season\": {S}, \"span\": null, \"stat\": \"points\"}}"
+  },
+  {
+   "intent": "single_game_high",
+   "slots": {
+    "stat": "rebounds"
+   },
+   "question": "what was the highest rebounding game this year",
+   "expected": "{\"answer\": \"Domantas Sabonis had the most rebounds in a single game in the {S} regular season: 12, on {S-1}-12-01 vs GS. Next: Brandin Podziemski (10), Domantas Sabonis (10).\", \"data\": {\"empty_box_scores\": 0, \"games\": [{\"date\": \"{S-1}-12-01\", \"opponent\": \"GS\", \"player\": \"Domantas Sabonis\", \"reconstructed\": false, \"value\": 12}, {\"date\": \"{S}-01-10\", \"opponent\": \"DET\", \"player\": \"Brandin Podziemski\", \"reconstructed\": false, \"value\": 10}, {\"date\": \"{S}-01-10\", \"opponent\": \"GS\", \"player\": \"Domantas Sabonis\", \"reconstructed\": false, \"value\": 10}], \"headline\": \"Domantas Sabonis had the most rebounds in a single game in the {S} regular season: 12, on {S-1}-12-01 vs GS. Next: Brandin Podziemski (10), Domantas Sabonis (10).\", \"notes\": [], \"question_shape\": \"most rebounds in a single game, {S} regular season\", \"season\": {S}, \"span\": null, \"stat\": \"rebounds\"}}"
+  },
+  {
+   "intent": "record_when",
+   "slots": {
+    "player": "Brandin Podziemski",
+    "stat": "points",
+    "threshold": 15
+   },
+   "question": "warriors record when podziemski scores 15+",
+   "expected": "{\"answer\": \"Golden State Warriors record when Brandin Podziemski had 15+ points, {S} regular season:\\n                 G  W-L   Win%  Margin\\n15+ points       3  2-1   .667    +7.7\\nunder 15 points  1  1-0  1.000    +5.0\\nall his games    4  3-1   .750    +7.0\\nOver the 4 games he played; a game he missed is in neither row.\", \"data\": {\"fell_short\": {\"avg_margin\": 5.0, \"games\": 1, \"losses\": 0, \"wins\": 1}, \"headline\": \"Golden State Warriors record when Brandin Podziemski had 15+ points, {S} regular season\", \"notes\": [\"Over the 4 games he played; a game he missed is in neither row.\"], \"player\": \"Brandin Podziemski\", \"reached\": {\"avg_margin\": 7.666666666666667, \"games\": 3, \"losses\": 1, \"wins\": 2}, \"span\": \"{S} regular season\", \"stat\": \"points\", \"teams\": [\"Golden State Warriors\"], \"threshold\": 15}}"
+  },
+  {
+   "intent": "player_history",
+   "slots": {
+    "limit": 4,
+    "player": "Stephen Curry",
+    "stat": "threePointFieldGoalPct"
+   },
+   "question": "curry's 3pt percentage over the past 4 seasons",
+   "expected": "{\"answer\": \"Stephen Curry, 3PT% by regular season, {S-1}-{S} (most recent first):\\nseason   G  3PT%    3PM    3PA\\n  {S}  43  39.3  190.0  484.0\\n  {S-1}  70  40.0  280.0  700.0\", \"data\": {\"labels\": {\"threePointFieldGoalPct\": \"3PT%\", \"threePointFieldGoalsAttempted\": \"3PA\", \"threePointFieldGoalsMade\": \"3PM\"}, \"player\": \"Stephen Curry\", \"seasons\": [{\"games\": 43, \"season\": {S}, \"threePointFieldGoalPct\": 39.3, \"threePointFieldGoalsAttempted\": 484.0, \"threePointFieldGoalsMade\": 190.0}, {\"games\": 70, \"season\": {S-1}, \"threePointFieldGoalPct\": 40.0, \"threePointFieldGoalsAttempted\": 700.0, \"threePointFieldGoalsMade\": 280.0}], \"span\": null, \"stat\": \"threePointFieldGoalPct\"}}"
+  },
+  {
+   "intent": "player_history",
+   "slots": {
+    "limit": 1,
+    "player": "Brandin Podziemski",
+    "stat": "points"
+   },
+   "question": "podziemski's ppg over the past season",
+   "expected": "{\"answer\": \"Brandin Podziemski, points per game by regular season, {S} (most recent first):\\nseason   G   PPG\\n  {S}  70  12.5\", \"data\": {\"labels\": {\"avgPoints\": \"PPG\"}, \"player\": \"Brandin Podziemski\", \"seasons\": [{\"avgPoints\": 12.5, \"games\": 70, \"season\": {S}}], \"span\": null, \"stat\": \"points\"}}"
+  },
+  {
+   "intent": "player_history",
+   "slots": {
+    "player": "Stephen Curry",
+    "span": "career",
+    "stat": "points"
+   },
+   "question": "curry's ppg every season of his career",
+   "expected": "{\"answer\": \"Stephen Curry, points per game by regular season, career, {S-1}-{S} (most recent first):\\nseason   G   PPG\\n  {S}  43  26.0\\n  {S-1}  70  24.5\\nStephen Curry's career total: 2,833 points.\", \"data\": {\"labels\": {\"avgPoints\": \"PPG\"}, \"player\": \"Stephen Curry\", \"seasons\": [{\"avgPoints\": 26.0, \"games\": 43, \"season\": {S}}, {\"avgPoints\": 24.5, \"games\": 70, \"season\": {S-1}}], \"span\": \"career\", \"stat\": \"points\"}}"
+  }
+ ]
+}

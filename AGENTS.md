@@ -502,7 +502,15 @@ model's. Two things follow, and both matter when you add a shape:
   smaller agent - and it narrows the relation only through the shared steps in
   `templates/common.py`, the same discipline the six relation templates keep
   (see "A template on a relation does not declare, or apply, scoping of its
-  own" above).
+  own" above). Four intents have no template at all
+  (`compose.COMPILED_INTENTS`: `threshold_count`, `single_game_high`,
+  `record_when`, `player_history`): the compiler answers them alone, in their
+  retired templates' words (`compose/present.py`), and where it has no reading
+  the question is refused or falls through with the compiler's reason
+  (`agent._run_compiled`). Retiring a template this way is measured first:
+  every call its unit tests make, and every recorded question it answers,
+  answered both ways and compared - the recorded questions alone showed one
+  shape the template still carried; the unit tests showed five.
 - **A team can be the subject, not only a narrowing.** `compose/team.py`
   (`TeamQuery`/`TeamResult`/`run_team`, `move.team_move_point`,
   `sentence.team_sentence`) is a second, separate compiler beside `core.py`'s

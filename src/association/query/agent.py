@@ -14,6 +14,7 @@ from typing import Any
 import ollama
 
 from .answer import Answer, AnsweredBy, Artifact, FallthroughDisabled, Timing
+from .compose import COMPILED_INTENTS
 from .entities import (
     collect_name_readings,
     compared_but_unmatched,
@@ -355,6 +356,8 @@ class Agent:
         settled = self._settled_before_template(question, reading, handler, history)
         if settled is not None:
             return settled
+        if reading.intent in COMPILED_INTENTS:
+            return self._run_compiled(question, reading, history)
         if handler is None:
             return None
         # AGENTS.md, "Refuse by name where the intent cannot be about the
@@ -455,7 +458,7 @@ class Agent:
         if early is not None:
             history.log(f"  -> (refusal) {early.data['refused']}: nothing here reads that shape")
             return reading.intent, early
-        if handler is not None:
+        if handler is not None or reading.intent in COMPILED_INTENTS:
             return None
         refusal = unanswerable(self.toolbox.con, reading.intent, reading.scope.to_slots(), question, reading.subject)
         if refusal is not None:
@@ -474,17 +477,6 @@ class Agent:
         refusing"."""
         t0 = time.monotonic()
         intent, scope = reading.intent, reading.scope
-        # The four intents the compiler reproduces exactly are read and
-        # planned first (compose.COMPILER_FIRST): the Reading is their record,
-        # the template their presenter. Where the compiler declines, the
-        # template runs as it always did.
-        from association.query.compose import COMPILER_FIRST
-
-        if intent in COMPILER_FIRST:
-            composed = self._try_compose(question, reading, history)
-            if composed is not None:
-                history.record_tool_call(f"compose {intent}", time.monotonic() - t0)
-                return intent, composed
         try:
             check_scope(intent, scope)
             # Returned as the answer rather than raised past this point. A
@@ -539,7 +531,41 @@ class Agent:
         # TemplateResult for why that is both faster and safer than narrating.
         return intent, result
 
-    def _try_compose(self, question: str, reading: Reading, history: RunHistory) -> TemplateResult | None:
+    def _run_compiled(self, question: str, reading: Reading, history: RunHistory) -> tuple[str, TemplateResult] | None:
+        """An intent the compiler alone answers (``compose.COMPILED_INTENTS``:
+        the four whose templates it reproduced exactly, retired in ROADMAP
+        plan item 6, step (d), part 4). Where the compiler has no reading of
+        the point, the steps a template's refusal took, in its order: a
+        narrowing the intent cannot honor names why the question falls
+        through; a season under a table's floor is refused, never answered
+        from nothing; and a shape nothing here reads is refused by name
+        (query/refusals) before the agent is asked."""
+        t0 = time.monotonic()
+        intent, scope = reading.intent, reading.scope
+        declined: list[str] = []
+        composed = self._try_compose(question, reading, history, declined=declined.append)
+        if composed is not None:
+            history.record_tool_call(f"compose {intent}", time.monotonic() - t0)
+            return intent, composed
+        why = declined[0] if declined else "the compiler has no reading of this point"
+        try:
+            check_scope(intent, scope)
+        except TemplateUnsupported as exc:
+            why = str(exc)
+        else:
+            refused = check_coverage(intent, scope)
+            if refused is not None:
+                history.log(f"  -> (coverage) {refused}")
+                return intent, TemplateResult(data={"message": refused, "season": scope.season}, answer=refused)
+        refusal = unanswerable(self.toolbox.con, intent, scope.to_slots(), question, reading.subject)
+        if refusal is not None:
+            history.log(f"  -> (compose) {why} - refused ({refusal.data['refused']}): nothing here reads that shape")
+            return intent, refusal
+        history.log(f"  -> (compose) {why} - falling through to the agent")
+        self.fell_through = f"{intent}: {why}"
+        return None
+
+    def _try_compose(self, question: str, reading: Reading, history: RunHistory, declined: Callable[[str], None] | None = None) -> TemplateResult | None:
         """The step between a template's refusal and the fall-through agent:
         ``association.query.compose.answer``, called only here so a caller
         that never sees a ``TemplateUnsupported`` never pays for the import.
@@ -565,6 +591,7 @@ class Agent:
                 question,
                 reading.subject,
                 trace=lambda point: history.log(f"  -> (reading) {point.describe()}"),
+                declined=declined,
             )
         if composed is None:
             return None

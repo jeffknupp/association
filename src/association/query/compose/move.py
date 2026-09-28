@@ -21,7 +21,7 @@ import duckdb
 from association.query.measures import MEASURE_WORDS
 from association.query.metrics import PER_GAME_MIN_GAMES
 from association.query.reading import Aggregate, Reading, Scope
-from association.query.templates.common import DEFAULT_LIMIT, FILLER_PLAYER_WORDS, POSITIONS, TEAM_ONLY_INTENTS, TemplateResult, _clamp_limit, ordinal_word
+from association.query.templates.common import DEFAULT_LIMIT, FILLER_PLAYER_WORDS, HISTORY_COLUMNS, POSITIONS, TEAM_ONLY_INTENTS, TemplateResult, _clamp_limit, ordinal_word
 
 from .adapt import DEFAULT_SINGLE_GAME_LIMIT, _named_player, _named_player_in, _to_reading_scope
 from .core import BOOLEAN_MEASURES, COLUMNS, DERIVED, LINE, Query, Refused, Unsupported
@@ -530,11 +530,15 @@ def _everyone_threshold_count(intent: str, scope: Scope, predicates: list[tuple[
         # filed - the team narrows the league read to its roster's games.
         return None
     if not predicates and intent == "threshold_count":
+        if scope.threshold is not None and scope.threshold < 1:
+            # threshold_count's own refusal: measured, "most 3 pointers made
+            # since 2020" arrived as threshold 0 and would count every game.
+            raise Unsupported(f"a threshold of {scope.threshold} counts every game - not a question threshold_count answers")
         predicates = _everyone_threshold_count_line(scope)
     if not predicates:
         raise Unsupported("a league-wide count needs the line(s) it counts; none could be read from the question")
     if scope.season_n:
-        # threshold_count's own refusal (templates.players._threshold_count_subject):
+        # The refusal threshold_count's retired template gave:
         # "his 15th season" is a place in one career, and the league has none -
         # read over everyone it narrowed to players in their 15th season of the
         # default year while the sentence named only the year.
@@ -756,6 +760,12 @@ def _move_player_history(intent: str, scope: Scope, career: Scope, measure: str 
     it into a career of games grouped by season, newest first."""
     if intent != "player_history":
         return None
+    if measure is None and scope.stat is not None and scope.stat not in HISTORY_COLUMNS:
+        # A stat named that neither the season line nor the games carry
+        # ("shot_distance"): refused, as player_history's retired template
+        # refused it - never drawn as the points history the default measure
+        # below would read in its place.
+        raise Unsupported(f"no per-season history for stat {scope.stat!r}")
     del career  # the season line reads the question's own span; games_reading widens it
     return Reading(
         scope=scope,
@@ -999,6 +1009,11 @@ def _read_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, An
     # below read the scope those edits settle, through its one door.
     scope = Scope.from_slots(repair(con, slots, question, subject))
     if not _named_player_in(scope):
+        if intent == "record_when":
+            # A record "when" is a player's line or a team's own (the team
+            # branch above); naming neither, it has nobody to read - the
+            # reason record_when's retired template gave.
+            raise Unsupported("record_when needs a player or a team")
         return _everyone_point(intent, scope, question, _stat_measure(scope.stat), subject.position)
     return _move_named(intent, scope, question)
 

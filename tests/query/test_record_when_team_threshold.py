@@ -73,10 +73,10 @@ def _agent_with_a_team_threshold_split(tmp_path: Path) -> Agent:
 def test_a_team_only_threshold_record_answers_the_record_not_the_season_total(tmp_path: Path) -> None:
     """ISSUES.md #144's own wording. "what was the celtics record when they
     scored 120 points" routes `record_when {'stat': 'points', 'team': 'Boston
-    Celtics', 'season_type': 2, 'threshold': 120}` - and because
-    `record_when` is in `compose.COMPILER_FIRST`, the team compiler used to
-    answer first, with no notion of a threshold, silently reading the plain
-    season/window total and dropping the threshold. `run_team` declines a
+    Celtics', 'season_type': 2, 'threshold': 120}` - and because the
+    compiler answered `record_when` first, the team compiler used to answer
+    it with no notion of a threshold, silently reading the plain season/window
+    total and dropping the threshold. `run_team` declines a
     point whose scope carries a ``threshold``, and the compiler answers it
     with `record_when`'s own team reader, as the record it actually asked
     for: g1 (125, W) and g2 (130, L) reach 120+ (1-1, margin +15 and -5); g3

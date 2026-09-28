@@ -20,9 +20,8 @@ from association.query.reading import Reading, Scope
 from ..entities import Availability, Entity
 from ..leaderboard import SEASON_TOTAL_OF, LeaderboardError, LeaderboardResult, not_a_postseason_copy, resolve_metric, run_career_leaderboard, run_leaderboard
 from ..metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS
-from ..player_games import Narrowed, aggregate_sql, grouped_sql, league, rows_sql, scope_without_guard, season_type_clause
+from ..player_games import aggregate_sql, rows_sql, scope_without_guard, season_type_clause
 from .common import (
-    _BOX_SCORES,
     _GAME_LOGS,
     HISTORY_COLUMNS,
     PLAYER_STAT_COLUMNS,
@@ -36,7 +35,6 @@ from .common import (
     TemplateResult,
     TemplateUnsupported,
     _box_score_notes,
-    _career_end,
     _clamp_limit,
     _count_games,
     _defaulted_season_note,
@@ -45,18 +43,15 @@ from .common import (
     _Narrowed,
     _no_narrowed_games,
     _period,
-    _player_relation_season_type,
     _resolved_player,
     _season_redirect,
     _Span,
     _span_of,
     _table_cell,
     measure_filters,
-    narrow_measures,
     ordinal_word,
     scoped_games,
     scoped_player,
-    settle_ordinal_season,
 )
 
 DEFAULT_LEADERBOARD_LIMIT = 10
@@ -232,85 +227,6 @@ def _empty_note(found: tuple[int, int | None, int | None], name: str | None, con
     return f" {whose} {between} {'has' if count == 1 else 'have'} an empty box score in this warehouse, so {consequence}."
 
 
-def threshold_count(ctx: TemplateContext, reading: Reading) -> TemplateResult:
-    """ "Most games with N+ of some stat" - the shape that motivated this split.
-
-    A KNOWLEDGE_BASE entry covered it, but sat in the truncated-away head of the
-    prompt, so three consecutive runs answered with a season-averages
-    leaderboard instead. In code it cannot be truncated or substituted.
-
-    .. versionchanged:: 2.1.0
-       Honors ``span`` "career": every box score since 1993-94, for the league
-       or for one player, saying which. A named player is resolved to one
-       person; every player whose name contained the words used to be counted,
-       and the top one reported. An ambiguous name is narrowed to the players
-       with a box score in the season asked about before it is asked about.
-
-    .. versionchanged:: 2.2.0
-       Counts the games whose box score ESPN served empty from the line rebuilt
-       out of play-by-play, for the stats a rebuild gets right
-       (:data:`REBUILT_STATS`), and says how many of the counted games those
-       are. A stat outside that set is still counted from the stored box scores
-       alone, and a count of none then says the rebuilt lines were held back
-       rather than implying there is nothing to read.
-    """
-    scope = reading.scope
-    con = ctx.con
-    stat = scope.stat
-    column, threshold = _threshold_count_ask(scope)
-    lines, counted, scope_text = _threshold_count_lines(stat, threshold, scope.below, scope.above)
-
-    career = _career_span("threshold_count", scope.span, scope.season)
-    season = None if career else (scope.season or current_season())
-    # BOTH_SEASON_TYPES ("including the playoffs", or a "last N games"
-    # question naming no type - _player_relation_season_type) reads one
-    # combined query rather than a merge: a count has no rows to interleave.
-    season_type = _player_relation_season_type(scope)
-    limit = _clamp_limit(scope.limit)
-
-    subject = _threshold_count_subject(con, scope.player, scope.season_n, season, season_type)
-    if isinstance(subject, TemplateResult):
-        return subject
-    player, season, ordinal_n = subject
-    player_id = player.id if player else None
-    player_name = player.name if player else None
-
-    # A rebuilt line may be COUNTED, but only for a stat a rebuild gets right
-    # (REBUILT_STATS), and only where the warehouse actually carries the flag -
-    # an older one has no such column, and a fixture may have no log at all.
-    # Without both, the read is the stored table and no count moves.
-    from_rebuilt = column in REBUILT_STATS and _log_carries_rebuilt(con)
-    rows = _threshold_count_rows(con, column, counted, season, season_type, limit, player_id, from_rebuilt=from_rebuilt, lines=lines)
-
-    label = STAT_LABELS.get(stat or "", stat or "")
-    span = _game_span(con, season, season_type, player, ordinal=ordinal_n)
-    # covered_by_rebuild: the games this answer could not see are only the ones
-    # the rebuild could not reach either. Counting the rest would disclaim the
-    # very games the count was built from.
-    empty = _empty_box_scores(con, season, season_type, player_id, covered_by_rebuild=from_rebuilt)
-    phrase = span.preface + _phrase_threshold_count(rows, scope_text, span.when, player_name)
-    # The trailing "Next: ..." list restates the table in prose beside it -
-    # not the sentence itself, the same discipline the page's own headline
-    # fallback (firstLine, web/static/index.html) already keeps.
-    headline = phrase.split(" Next: ")[0]
-    notes = _threshold_count_notes(con, (season, season_type), player, rows, column, label, span, empty)
-    answer = " ".join([phrase, *notes])
-    leaders = [{"player": name, "games": games} for name, games, _ in rows]
-    return TemplateResult(
-        data={
-            "question_shape": f"games with {scope_text}, {span.caption}",
-            "season": season,
-            "span": "career" if career else None,
-            "leaders": leaders,
-            "empty_box_scores": empty[0],
-            "rebuilt_games": rows[0][2] if rows else 0,
-            "headline": headline,
-            "notes": notes,
-        },
-        answer=answer,
-    )
-
-
 def _threshold_count_notes(
     con: duckdb.DuckDBPyConnection,
     seasons: tuple[int | None, int],
@@ -384,48 +300,6 @@ def _threshold_count_ask(scope: Scope) -> tuple[str, int | None]:
     return column, threshold
 
 
-def _threshold_count_player(con: duckdb.DuckDBPyConnection, text: Any, season: int | None) -> Entity | TemplateResult | None:
-    """The one player a count is narrowed to, a clarifying question, or None for the league."""
-    # Resolved to one person, as every other template does. This used to be an
-    # ILIKE per word, so "Curry" counted Seth's games and Stephen's and reported
-    # whichever had more - the prominence tiebreak AGENTS.md records as measured
-    # and rejected, applied silently. Narrowed by who has a box score in the
-    # season, NOT by who has a qualifying game: that would let the answer pick
-    # the player, which is the same tiebreak by another route.
-    if isinstance(text, str) and text.strip():
-        return _resolved_player(con, text, available=_BOX_SCORES, season=season, through=_career_end(season))
-    return None
-
-
-def _threshold_count_subject(con: duckdb.DuckDBPyConnection, text: Any, season_n: Any, season: int | None, season_type: int) -> tuple[Entity | None, int | None, int | None] | TemplateResult:
-    """The player a count is about (None for the league), the season it
-    covers, and the ordinal that named that season, if one did.
-
-    An ordinal season ("his 18th season") is settled once he is known, so the
-    name is narrowed over his career rather than by the current year. A
-    league-wide count has no career to count seasons in, so "most points in
-    15th season played" refuses rather than answering for some year.
-
-    Not `common.scoped_player` (step 3/C1): that function's own `_resolved_player`
-    call raises when the question names nobody, which is right for every other
-    template on it but wrong here - "most games with 40+ points" with no player
-    named is the league leaderboard, not a refusal, and that optional-player
-    read has to happen before `settle_ordinal_season` can even be asked for
-    (see the raise two lines below). `settle_ordinal_season` itself IS shared -
-    once a player is known, this calls the same step `scoped_player` does."""
-    player = _threshold_count_player(con, text, None if season_n else season)
-    if isinstance(player, TemplateResult):
-        return player
-    if not season_n:
-        return player, season, None
-    if player is None:
-        raise TemplateUnsupported(f"the {ordinal_word(int(season_n))} season is a place in one player's career, and no player was named")
-    settled = settle_ordinal_season(con, player, season_n, _Span(None, season_type))
-    if isinstance(settled, TemplateResult):
-        return settled
-    return player, settled.season, settled.ordinal
-
-
 def _threshold_count_lines(stat: Any, threshold: int | None, below: Any, above: Any) -> tuple[list[MeasureFilter], int | None, str]:
     """The lines a count keeps games under or over, the model's own threshold
     if it is still one of them (None when a phrase carries it), and the
@@ -443,56 +317,6 @@ def _threshold_count_lines(stat: Any, threshold: int | None, below: Any, above: 
     label = STAT_LABELS.get(stat or "", stat or "")
     scope_text = " and ".join(([f"{threshold}+ {label}s"] if counted else []) + [line.label for line in lines])
     return lines, counted, scope_text
-
-
-def _threshold_count_rows(
-    con: duckdb.DuckDBPyConnection,
-    column: str,
-    threshold: int | None,
-    season: int | None,
-    season_type: int,
-    limit: int,
-    player_id: str | None,
-    *,
-    from_rebuilt: bool,
-    lines: list[MeasureFilter] | None = None,
-) -> list[tuple[Any, ...]]:
-    """(name, qualifying games, rebuilt games among them) per player, most first.
-
-    Read through the ``player_game`` relation, so the season floor, the phantom
-    and the played guard are the relation's. The guard changes no count: an
-    empty or did-not-play line carries 0, which never clears a threshold of 1
-    or more - checked against the warehouse before the relation took over, and
-    again by the golden comparison after. ``player_name IS NOT NULL`` keeps
-    the old INNER JOIN semantics: the log LEFT JOINs ``players``, so a box
-    score for an athlete missing from that table would otherwise be counted
-    under a NULL name and reported as a nameless leader.
-
-    Built on ``league()``, not ``common.scoped_games`` (step 3/C1): ``league()``
-    is the everyone-at-once read one optional ``athlete_id`` filter narrows to
-    one man, which is what a leaderboard needs and ``scoped_games`` cannot give
-    - it always takes a resolved :class:`~association.query.entities.Entity`,
-    never "nobody in particular". There is also nothing of ``scoped_games``'
-    own narrowing to gain: it exists for opponent, venue, an absent teammate, a
-    starter/bench half, a game of a series and a date, and
-    ``HONORED_SCOPING["threshold_count"]`` claims none of those - only
-    ``span``, ``below``, ``above`` and ``season_n``, all handled here already
-    (the first three through ``_span_of``/``measure_filters``, both shared;
-    the fourth through :func:`common.settle_ordinal_season`, also shared).
-    """
-    span = _span_of("career" if season is None else None, season, season_type, "player_game_log")
-    season_clause, season_params = span.clause("pgl.season")
-    narrowed = league(season_clause, season_params, season_type)
-    if player_id is not None:
-        narrowed.narrow("pgl.athlete_id = ?", player_id)
-    if threshold is not None:
-        narrowed.narrow_measure(column, ">=", threshold)
-    narrow_measures(narrowed, lines or [])
-    narrowed.narrow("pgl.player_name IS NOT NULL")
-    rebuilt_count = "COUNT(*) FILTER (WHERE pgl.reconstructed) AS rebuilt" if from_rebuilt else "0 AS rebuilt"
-    # Grouped by athlete_id, not by name: two players can share one.
-    sql, params = grouped_sql(narrowed, "pgl.athlete_id, pgl.player_name", ["pgl.player_name", "COUNT(*) AS n", rebuilt_count], order="2 DESC, 1", limit=limit, rebuilt=from_rebuilt)
-    return con.execute(sql, params).fetchall()
 
 
 def _threshold_count_rebuilt_note(rows: list[tuple[Any, ...]], named: bool) -> str:
@@ -912,36 +736,6 @@ DEFAULT_HISTORY_SEASONS = 4
 
 
 MAX_HISTORY_SEASONS = 20
-
-
-def player_history(ctx: TemplateContext, reading: Reading) -> TemplateResult:
-    """One player's stat across several seasons: the last four by default, a
-    number of them the question named, or every one of them for a career.
-
-    Every other template answers about a single season, so a multi-season
-    question routed to `leaderboard`, which dropped the player and ranked the
-    league. Distinct from the other gaps here: a missing DIMENSION cutting
-    across the shapes that existed, not a missing shape.
-
-    .. versionchanged:: 2.1.0
-       Honors ``span``: "his career" is every season on record, where it used
-       to be the default four under a heading that did not say so. The heading
-       now names the seasons shown.
-
-    .. versionchanged:: 4.4.0
-       A career span (``span: "career"``) now adds a single combined career
-       line under the season-by-season table - the games-weighted total for a
-       shooting percentage (makes and attempts summed across every season
-       shown, never a mean of means) and the plain career total for a
-       counting stat - since the rows summed to the figure the question
-       actually asked for ("show me sga's career 2pt percentage") without
-       ever stating it (F041, ISSUES.md).
-    """
-    scope = reading.scope
-    player = _player_history_subject(ctx.con, scope)
-    if isinstance(player, TemplateResult):
-        return player
-    return _player_history_read(ctx.con, player, scope)
 
 
 def _player_history_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> Entity | TemplateResult:
@@ -1956,84 +1750,6 @@ def _phrase_player_stat(name: str, period: str, values: dict[str, Any], wanted: 
 DEFAULT_SINGLE_GAME_LIMIT = 3
 
 
-def single_game_high(ctx: TemplateContext, reading: Reading) -> TemplateResult:
-    """ "Most assists in a single game" - a per-game MAXIMUM, not a season
-    ranking.
-
-    With no such intent the router picked the nearest shape it had: "most
-    assists in a single game" was answered with a season average, in 1.76s, off
-    by 13. A missing shape does not produce a refusal - it produces a confident
-    answer to a different question, so the fix is a template, not prompt
-    wording.
-
-    .. versionchanged:: 2.1.0
-       Honors ``span`` "career": a named player's career high, or the league's
-       best since 1993-94, each saying what it covers. A game's date is the
-       Eastern calendar day it was played; it used to be the UTC day it is
-       stored under, a day late for every game tipping after 7pm Eastern.
-
-    .. versionchanged:: 4.1.0
-       A defaulted (unnamed) season with no games for a named player now
-       redirects to the seasons he does have on record, when there are any,
-       rather than a refusal that reads as though he never played - "Allen
-       Iverson's highest point total" used to answer "no 2026 regular season
-       games", true of the wrong year. A season the question named outright
-       is unaffected.
-    """
-    scope = reading.scope
-    stat = scope.stat
-    column = THRESHOLD_STAT_COLUMNS.get(stat) if stat is not None else None
-    if column is None:
-        raise TemplateUnsupported(f"single_game_high needs a known stat, got {stat!r}")
-
-    career = _career_span("single_game_high", scope.span, scope.season)
-    # Whether the season came from the question or from "now" - the same
-    # distinction _span_of.defaulted makes for the templates built on it. This
-    # one is not, so it is read straight from the scope's own season.
-    defaulted = not career and not scope.season
-    season = None if career else (scope.season or current_season())
-    season_type = scope.season_type or 2
-    limit = _clamp_limit(scope.limit, default=DEFAULT_SINGLE_GAME_LIMIT)
-
-    scoped = _single_game_high_scope(ctx, column, season, season_type, scope.player)
-    if isinstance(scoped, TemplateResult):
-        return scoped
-    narrowed, named_player, from_rebuilt = scoped
-
-    sql, params = rows_sql(
-        narrowed,
-        f"pgl.player_name, pgl.{column}, pgl.game_date, pgl.opponent_abbr, {'pgl.reconstructed' if from_rebuilt else 'FALSE'}",
-        order=f"pgl.{column} DESC, pgl.game_date",
-        limit=limit,
-        rebuilt=from_rebuilt,
-    )
-    rows = ctx.con.execute(sql, params).fetchall()
-
-    label = STAT_LABELS.get(stat or "", stat or "")
-    span = _game_span(ctx.con, season, season_type, named_player)
-    games = [{"player": r[0], "value": r[1], "date": _eastern_date(r[2]), "opponent": r[3], "reconstructed": bool(r[4])} for r in rows]
-    # `question_shape` names the scope in the same form leaderboard and
-    # threshold_count use it: a caption for a caller that renders the rows
-    # itself and would otherwise have no way to say what season they are from
-    # except by reusing the whole sentence, which already lists them.
-    shape = f"most {label}s in a single game" + (f", {named_player.name}" if named_player else "") + f", {span.caption}"
-    # Counted BEFORE the sentence is built, because when the guard above has
-    # left nothing it is the difference between "he has no games" and "his
-    # games have no box score" - which are different facts.
-    # covered_by_rebuild: when the answer read rebuilt lines, the games it could
-    # not see are only those the rebuild could not reach either. Counting the
-    # rest would disclaim the very games the number came from.
-    empty = _empty_box_scores(ctx.con, season, season_type, named_player.id if named_player else None, covered_by_rebuild=from_rebuilt)
-    who = named_player.name if named_player else None
-    # Only when the answer is empty AND the stat was deliberately withheld: a
-    # refusal that names a decision beats one that implies missing data.
-    withheld = 0 if games or column in REBUILT_STATS else _rebuilt_in_scope(ctx.con, season, season_type, named_player.id if named_player else None)
-    headline = _single_game_high_answer(games, label, span, who, empty=empty, withheld=withheld)
-    redirect = _single_game_high_redirect(ctx.con, defaulted, named_player, games, empty, withheld, season_type)
-    data = {"question_shape": shape, "season": season, "span": "career" if career else None, "stat": stat, "games": games, "empty_box_scores": empty[0]}
-    return TemplateResult(data=_single_game_high_result_data(data, headline, redirect), answer=headline + redirect)
-
-
 def _single_game_high_result_data(data: dict[str, Any], headline: str, redirect: str) -> dict[str, Any]:
     """``single_game_high``'s own ``headline``/``notes`` - split out to keep
     the caller under the complexity gate. ``redirect`` is glued onto the
@@ -2046,44 +1762,6 @@ def _single_game_high_result_data(data: dict[str, Any], headline: str, redirect:
     .. versionadded:: 4.4.0
     """
     return {**data, "headline": headline, "notes": [redirect.strip()] if redirect else []}
-
-
-def _single_game_high_scope(ctx: TemplateContext, column: str, season: int | None, season_type: int, player_text: Any) -> tuple[Narrowed, Entity | None, bool] | TemplateResult:
-    """The relation read for the qualifying rows, whether a rebuilt
-    (play-by-play) line may stand in for a missing box score line, and the
-    named player if the question asked about one - unset means "the league".
-
-    The played guard is the relation's, and it matters here more than
-    anywhere: a line with no minutes is a game with NO BOX SCORE, not a game
-    he played and did nothing in. Those lines carry 0 rather than NULL, and
-    where a whole team-season is empty (every Chicago and New Orleans season
-    from 2013 to 2018) a zero then wins the maximum outright - "Anthony
-    Davis's highest point total in a single game in the 2015 regular season
-    was 0, on 2014-10-28 vs ORL" - fluent, dated, and false. A rebuilt line
-    may answer, but only for a stat a rebuild gets right (REBUILT_STATS) and
-    only where the warehouse carries the flag.
-
-    Same reasoning as :func:`_threshold_count_rows` for staying on ``league()``
-    rather than ``common.scoped_games`` (step 3/C1): the player here is
-    optional (unset means "the league"), which ``scoped_games`` cannot express,
-    and ``HONORED_SCOPING["single_game_high"]`` is ``{"span"}`` alone - none of
-    ``scoped_games``' own narrowing (opponent, venue, an absent teammate, a
-    split, a series game, a date) applies, so there is nothing it would add.
-    """
-    span = _span_of("career" if season is None else None, season, season_type, "player_game_log")
-    season_clause, season_params = span.clause("pgl.season")
-    narrowed = league(season_clause, season_params, season_type)
-    from_rebuilt = column in REBUILT_STATS and _log_carries_rebuilt(ctx.con)
-    narrowed.narrow(f"pgl.{column} IS NOT NULL")
-    named_player: Entity | None = None
-    # The player slot is optional here: unset means "the league".
-    if isinstance(player_text, str) and player_text.strip():
-        resolved = _resolved_player(ctx.con, player_text, available=_GAME_LOGS, season=season, through=_career_end(season))
-        if isinstance(resolved, TemplateResult):
-            return resolved
-        named_player = resolved
-        narrowed.narrow("pgl.athlete_id = ?", resolved.id)
-    return narrowed, named_player, from_rebuilt
 
 
 def _single_game_high_redirect(

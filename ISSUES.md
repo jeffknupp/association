@@ -212,25 +212,11 @@ those were found.
 - **GitHub:** #114
 
 
-### `single_game_high` ignores a named team, and answers the league's high for the default season
-- **Found:** 2026-09-21, live fast-path sample `~/association-research/statmuse-2026-09-large/live_sample200_2026-09-21/` (200 seeded-random reasonable StatMuse questions through the live router and templates on master `31b2ec6`, main checkout's `nba.duckdb`)
-- **Evidence:** 3 of 200 sampled questions, all answered fluently and wrong.
-  "most points in a game in cavs history", "most points in a game by a knicks
-  playter" and "most points in a game in pistons history power forward" each
-  route to `single_game_high` with `team` set and no season, and each answers
-  "Bam Adebayo had the most points in a single game in the 2026 regular season:
-  83". Reproduced offline by calling the template with
-  `{'stat': 'points', 'team': 'Cleveland Cavaliers', 'season_type': 2}`.
-  `HONORED_SCOPING["single_game_high"]` is `{"span"}` and `team` is not a
-  scoping slot, so nothing refuses it - the `limit`/`stat` shape of #125 on a
-  third slot. The corpus row "kawhi most threes in a game" is the same bug with
-  the player dropped instead (answers Curry and Trey Murphy).
-  5 of 1,972 reasonable large-set questions match the narrow regex
-  `in a game.*(history|by a \w+ player)`; 65 (3.3%) say history/all-time/franchise.
-- **User sees:** another team's player, another season, no caveat.
-- **Next step:** honor `team` on the relation (`player_games` already carries
-  the team), read "history"/"all-time" as `span: career`, and refuse a
-  subject the template was given and cannot use. We hold the data.
+### A team's single-game high is answered for this season only, and does not name the team: "most points in a game in cavs history"
+- **Found:** 2026-09-21, live fast-path sample `~/association-research/statmuse-2026-09-large/live_sample200_2026-09-21/` (200 seeded-random reasonable StatMuse questions through the live router and templates on master `31b2ec6`); re-measured 2026-09-27 on the compiler, which answers `single_game_high` alone (plan item 6, step (d), part 4).
+- **Evidence:** the router-era template ignored `team` and answered the league's high ("Bam Adebayo ... 83") for "most points in a game in cavs history", "most points in a game by a knicks playter" and "most points in a game in pistons history power forward". The compiler narrows to the team's players now - `compose.answer(ctx, "single_game_high", {"stat": "points", "team": "Cleveland Cavaliers", "season_type": 2}, "most points in a game in cavs history")` answers "Donovan Mitchell had the most points in a single game in the 2026 regular season: 48, on 2025-12-12 vs WSH. Next: Donovan Mitchell (46), Donovan Mitchell (45)." (the main warehouse) - but "history" is not read as a career, and the sentence never says the games are the Cavaliers'. 65 of 1,972 reasonable large-set questions (3.3%) say history/all-time/franchise.
+- **User sees:** the right team's players over the wrong span - this season, where the question asks the franchise's history - with nothing saying a team narrowed it.
+- **Next step:** read "history"/"all-time"/"franchise" beside a team as `span: career` (the parser's window table), and have the single-game sentence name the team it narrowed to (`Narrowed.filters()` already writes it); a test per wording on the relation.
 - **GitHub:** #167
 
 ### A two-digit season ("23-24") is answered for the wrong year
@@ -2440,42 +2426,6 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #208
 
-### A composed league-wide `threshold_count` falls through when the router's `stat` already names the threshold's own column
-- **Found:** 2026-09-24, building F161's multi-line move in
-  `query/compose/move.py`.
-- **Evidence:** `_everyone_threshold_predicates` adds the phrase's own
-  column as a predicate only when it differs from the ranking `measure`
-  variable (`_stat_measure(slots.get("stat"))`) - a dedup meant for
-  `_everyone_ranking`'s grouped-by-player point, where `measure` is what
-  the read is grouped and ordered by. `_everyone_threshold_count`'s point
-  uses no `measure` at all (only `predicates`), so whenever the router's own
-  `stat` slot already names the same column the threshold phrase does - the
-  ordinary case, not an edge one - the predicate is silently skipped and the
-  count has nothing to count, raising `Unsupported` in
-  `_everyone_threshold_count`. Reproduced against `nba.duckdb`:
-  `compose.answer(ctx, "threshold_count", {"stat": "points", "threshold":
-  30, "season_type": 2}, "who had the most games with 30+ points this
-  season")` returns `None` (falls through to the agent) - a very ordinary
-  routing of a very ordinary question.
-- **User sees:** a slow, unreliable agent fall-through (AGENTS.md: 1 correct
-  in 9 finished runs) for a league-wide threshold count phrased plainly,
-  where the fast path already answers the same shape correctly whenever the
-  router's `stat` happens to differ from the phrase's word (see
-  `test_the_questions_own_number_names_its_column_not_the_routers_stat`,
-  `tests/query/test_compose.py`).
-- **Next step:** `_everyone_threshold_count` needs the phrase's own column
-  regardless of what `measure` says, since it never reads `measure` at all -
-  either pass `_everyone_threshold_predicates` a `None` measure when the
-  caller is a count (not a ranking), or give `_everyone_threshold_count` its
-  own predicate read independent of the ranking dedup. Found while building
-  F161's `_everyone_multi_line_games` (same file); not fixed here to keep
-  that change to its own scope - a fixture test
-  (`test_a_single_number_stat_line_still_counts_by_player`) pins today's
-  behavior (a `stat` that differs from the phrase) so a fix does not regress
-  it silently.
-- **Source:** ours, not ESPN's.
-- **GitHub:** #209
-
 ### `team_record`'s combined-season-types sentence drops the regular half's "standings from 1993-94" caveat
 - **Found:** 2026-09-23, grading `live_sweep.jsonl` (yardstick-v2 F116).
 - **Evidence:** "warriors all-time record including playoff record at away"
@@ -2650,6 +2600,10 @@ those were found.
   slots, opposite outcomes, by template.
 - **User sees:** on one intent an answer for 2015; on another, the slow agent.
   Which one depends on the router's intent choice, not on the question.
+- **Moved 2026-09-27 (plan item 6, step (d), part 4):** `threshold_count`
+  and `single_game_high` are the compiler's alone now, and the compiler reads
+  the named year - the condition templates' reading - so of `_span_of`'s five
+  only `game_log`, `player_stat` and `period_split` still refuse.
 - **Next step:** one rule, in `scoped_player`, for both. The condition
   templates' reading is the useful one (a named year is more specific than
   "career"); decide it as a product decision in C2, then delete the branch
@@ -3057,34 +3011,24 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #234
 
-### player_splits has no reader over a settled narrowing, and single_game_high's orchestration is restated in compose.present
+### player_splits has no reader over a settled narrowing
 - **Found:** 2026-09-25, plan item 2 step 2a (`query/compose/present.py`);
   rewritten 2026-09-26 when the season line became the compiler's second
-  source (the season-line half and the duplicated `threshold_count` notes
-  are fixed - see `CHANGES.md`, "The season line is the compiler's second
-  source").
+  source, and 2026-09-27 when `single_game_high` and `threshold_count`
+  retired (plan item 6, step (d), part 4): their orchestration, restated in
+  `compose.present` beside the templates, now lives there alone.
 - **Evidence:** `compose.present` says an intent's own point in its
-  template's words by calling the template's helpers. Two places still
-  cannot be reached that way:
-  (1) `player_splits` has no function over an already-settled narrowing:
-  `_player_splits_player` resolves the player itself (`condition_player`),
-  so reaching parity means copying its tail (`games_subquery`, `_totals`,
-  `_SplitSubject`); it is 0/5 on the recorded corpus (`parity.py`,
-  2026-09-26, the `subject-kinds` tree, the main warehouse).
-  (2) `single_game_high`'s orchestration (the span, the empty box scores,
-  the withheld count, the redirect, the `data` dict) and `threshold_count`'s
-  outside its notes (the headline split, the `data` dict) are restated in
-  `present._present_single_game_high`/`_present_threshold_count` around the
-  templates' helpers. Parity holds today (10/10, 18/18), and the parity
-  tests in `tests/query/test_compose.py` catch a drift only on the fixture's
-  cases.
-- **User sees:** nothing today.
+  template's words by calling the template's helpers. `player_splits` has no
+  function over an already-settled narrowing: `_player_splits_player`
+  resolves the player itself (`condition_player`), so reaching parity means
+  copying its tail (`games_subquery`, `_totals`, `_SplitSubject`); it is 0/5
+  on the recorded corpus (`parity.py`, 2026-09-26, the `subject-kinds` tree,
+  the main warehouse).
+- **User sees:** nothing today - the template answers its own point.
 - **Next step:** give `player_splits` a `_player_splits_from(con, player,
-  narrowed, scope, ...)` both it and `present.py` call; split
-  `single_game_high` and `threshold_count` into a settle step and a
-  read-and-say step over the settled player and span (the shape
-  `_player_history_subject`/`_player_history_read` took), so the presenter
-  calls the second instead of restating it.
+  narrowed, scope, ...)` both it and `present.py` call - the shape
+  `_player_history_subject`/`_player_history_read` took - before it can
+  retire the way the four compiled intents did.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #228
 

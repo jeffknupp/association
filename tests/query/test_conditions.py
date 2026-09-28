@@ -17,6 +17,7 @@ templates have to get right, measured in the real warehouse first:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -26,11 +27,39 @@ import pytest
 from association.fetch.repairs import real_games
 from association.fetch.repairs.reconstructed_box import _FILLED_COLUMNS as FILLED_COLUMNS
 from association.nba.season import current_season
+from association.query.compose import answer as compose_answer
 from association.query.conditions import RAW_BOX, UNGATED_ON_REBUILD, box_source
 from association.query.reading import Reading
+from association.query.subject import Subject
 from association.query.templates.common import REBUILT_STATS, TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, check_scope
 from association.query.templates.games import player_matchup
-from association.query.templates.splits import SPLIT_KINDS, _record_when_group, player_splits, record_when, streak, with_without
+from association.query.templates.splits import SPLIT_KINDS, _record_when_group, player_splits, streak, with_without
+
+
+def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResult]:
+    """``intent`` answered the way its retired template was called - a
+    Reading in, a TemplateResult out, ``TemplateUnsupported`` with the
+    reason where the compiler has no reading of the point - now that the
+    compiler alone answers it (``compose.COMPILED_INTENTS``, ROADMAP plan item
+    6, step (d), part 4). No question words, which would move the point:
+    these are the intent's own. The subject is the one the slots name, as a
+    question naming just them reads."""
+
+    def answered(ctx: TemplateContext, reading: Reading) -> TemplateResult:
+        scope = reading.scope
+        named = tuple(name for name in (scope.player, *scope.players) if name)
+        kind = "pair" if len(named) > 1 else "player" if named else "team" if scope.team else "everyone"
+        subject = reading.subject or Subject(kind, players=named, teams=(scope.team,) if scope.team else ())
+        why: list[str] = []
+        result = compose_answer(ctx, intent, scope.to_slots(), "", subject, declined=why.append)
+        if result is None:
+            raise TemplateUnsupported(why[0] if why else f"the compiler has no reading of this {intent} point")
+        return result
+
+    return answered
+
+
+record_when = _compiled("record_when")
 
 S = current_season()
 BOS, LAL, PHI = "2", "13", "20"

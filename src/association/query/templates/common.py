@@ -1824,10 +1824,9 @@ def league_games(con: duckdb.DuckDBPyConnection, span: _Span, scope: Scope, *, p
     calendar ``situation`` narrowing - plus one dimension a single player's
     games have no use for, a position.
 
-    Built on :func:`association.query.player_games.league`, the same
-    "everyone at once" read ``threshold_count``'s and ``single_game_high``'s
-    no-player modes already use (:func:`_threshold_count_rows` in
-    ``query/templates/players.py``), narrowed by the same clauses
+    Built on :func:`association.query.player_games.league`, the "everyone
+    at once" read one optional ``athlete_id`` filter narrows to one man,
+    narrowed by the same clauses
     :func:`scoped_games` applies to a named player's - so a narrowing that
     reaches a player's games reaches this read too, without being taught to
     it separately. ``without``, ``split``, ``game_n`` and ``date`` are
@@ -1846,8 +1845,8 @@ def league_games(con: duckdb.DuckDBPyConnection, span: _Span, scope: Scope, *, p
     season_clause, season_params = span.clause("pgl.season")
     narrowed = league(season_clause, season_params, span.season_type)
     # The log LEFT JOINs players; a box score for an athlete missing there
-    # would otherwise be counted under a NULL name (the same guard
-    # _threshold_count_rows keeps for the same reason).
+    # would otherwise be counted under a NULL name and reported as a
+    # nameless leader.
     narrowed.narrow("pgl.player_name IS NOT NULL")
     if scope.opponent and scope.opponent.strip():
         team = _resolved_team(con, scope.opponent, season=span.season)

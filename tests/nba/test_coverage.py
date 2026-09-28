@@ -14,6 +14,7 @@ from __future__ import annotations
 import pytest
 
 from association.nba.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON, caveat, unavailable
+from association.query.compose import COMPILED_INTENTS
 from association.query.prompt import KNOWN_TABLES
 from association.query.templates import TEMPLATES
 from association.query.templates.common import RANKING_INTENTS, TABLELESS_INTENTS, TEMPLATE_SOURCES, check_coverage, coverage_caveat
@@ -26,11 +27,13 @@ def test_every_covered_table_is_a_real_table() -> None:
 
 
 def test_every_template_declares_the_tables_it_reads() -> None:
-    """TEMPLATE_SOURCES and TEMPLATES are two hand-maintained lists of the same
-    intents, the shape that already produced the player_compare bug. A template
-    missing here is one no floor can ever refuse."""
+    """TEMPLATE_SOURCES and the intents answered - a template's, or the
+    compiler's alone (``compose.COMPILED_INTENTS``, whose answers check the
+    same floors) - are two hand-maintained lists of the same intents, the
+    shape that already produced the player_compare bug. An intent missing
+    here is one no floor can ever refuse."""
     declared = set(TEMPLATE_SOURCES) | {"leaderboard"} | TABLELESS_INTENTS  # leaderboard resolves its table per metric; the tableless ones read none
-    assert declared == set(TEMPLATES)
+    assert declared == set(TEMPLATES) | COMPILED_INTENTS
 
 
 def test_a_tableless_intent_is_neither_refused_nor_caveated() -> None:
@@ -137,7 +140,7 @@ def test_a_full_season_carries_no_caveat() -> None:
 
 @pytest.mark.parametrize("intent", sorted(RANKING_INTENTS))
 def test_ranking_intents_are_all_real_intents(intent: str) -> None:
-    assert intent in TEMPLATES
+    assert intent in TEMPLATES or intent in COMPILED_INTENTS
 
 
 def test_the_first_playoffs_on_record_is_1989_and_the_refusal_says_why() -> None:

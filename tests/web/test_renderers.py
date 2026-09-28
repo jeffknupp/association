@@ -23,9 +23,11 @@ import duckdb
 import pytest
 
 from association.nba.netpoints import FINGERPRINT_CATEGORIES
+from association.query.compose import COMPILED_INTENTS
+from association.query.compose import answer as compose_answer
 from association.query.reading import Reading
 from association.query.templates import TEMPLATES
-from association.query.templates.common import TemplateContext
+from association.query.templates.common import TemplateContext, TemplateResult
 from association.web.app import INDEX_HTML
 
 # One set of slots per intent that has a renderer, chosen to produce the shape
@@ -92,7 +94,7 @@ def test_a_signed_cell_still_counts_as_a_number_for_alignment() -> None:
 def test_every_renderer_names_an_intent_that_actually_exists() -> None:
     """A renderer keyed 'leaderboards' would never fire, and nothing else would
     ever say so."""
-    unknown = sorted(set(_renderers()) - set(TEMPLATES))
+    unknown = sorted(set(_renderers()) - set(TEMPLATES) - COMPILED_INTENTS)
     assert unknown == [], f"renderers for intents that do not exist: {unknown}"
 
 
@@ -278,12 +280,23 @@ def ctx(tmp_path: Path) -> TemplateContext:
     return TemplateContext(con=con, out_dir=tmp_path / "out")
 
 
+def _answered(ctx: TemplateContext, intent: str) -> TemplateResult:
+    """``intent``'s answer to its case: its template's, or - for an intent
+    the compiler alone answers (``compose.COMPILED_INTENTS``) - the
+    compiler's, with no question words to move its own point."""
+    if intent in TEMPLATES:
+        return TEMPLATES[intent](ctx, Reading.from_slots(CASES[intent]))
+    result = compose_answer(ctx, intent, dict(CASES[intent]), "")
+    assert result is not None, f"the compiler has no reading of {intent}'s case"
+    return result
+
+
 def test_every_key_a_renderer_reads_is_a_key_its_template_produces(ctx: TemplateContext, subtests: Any) -> None:
     """The point of the whole file. A template that renames a key leaves the
     page silently falling back to text; this fails instead."""
     for intent, needs in sorted(_renderers().items()):
         with subtests.test(intent=intent):
-            result = TEMPLATES[intent](ctx, Reading.from_slots(CASES[intent]))
+            result = _answered(ctx, intent)
             missing = [key for key in needs if result.data.get(key) is None]
             assert missing == [], f"{intent} no longer produces {missing} - the page's renderer would fall back to text"
 
@@ -294,7 +307,7 @@ def test_the_data_a_renderer_reads_is_json_serializable_as_is(ctx: TemplateConte
     formats as a number would quietly become left-aligned text. So this
     serializes strictly: anything needing a fallback raises here instead."""
     for intent, needs in sorted(_renderers().items()):
-        data = TEMPLATES[intent](ctx, Reading.from_slots(CASES[intent])).data
+        data = _answered(ctx, intent).data
         json.dumps({key: data[key] for key in needs})  # no default= on purpose
 
 

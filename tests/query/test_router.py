@@ -2444,11 +2444,13 @@ def test_settle_reads_a_childs_slots_off_the_text_and_drops_the_parents_derived_
 
 
 def test_the_kind_assigned_intents_all_have_templates() -> None:
-    """A child the reading assigns is one a template answers - the same
-    reachability test the schema's enum and CODE_ASSIGNED_INTENTS get."""
+    """A child the reading assigns is one a template or the compiler answers
+    (``compose.COMPILED_INTENTS``) - the same reachability test the schema's
+    enum and CODE_ASSIGNED_INTENTS get."""
+    from association.query.compose import COMPILED_INTENTS
     from association.query.subject import KIND_ASSIGNED_INTENTS
 
-    assert set(TEMPLATES) >= KIND_ASSIGNED_INTENTS
+    assert set(TEMPLATES) | COMPILED_INTENTS >= KIND_ASSIGNED_INTENTS
     assert KIND_ASSIGNED_INTENTS.isdisjoint(CODE_ASSIGNED_INTENTS)
 
 

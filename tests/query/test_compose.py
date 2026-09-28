@@ -12,6 +12,7 @@ move, and the two K2 guards - see the module docstrings of ``core.py`` and
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import date, timedelta
 from pathlib import Path
@@ -28,7 +29,7 @@ from association.query.compose.core import Query, Refused, Unsupported, compile_
 from association.query.compose.move import _asc_or_desc, _career_scope, _drop_position_only_player, _everyone_career_scope, _position_only_player, _ranking_minimum, move_point, team_move_point
 from association.query.compose.team import TeamQuery, run_team
 from association.query.reading import Reading, Scope
-from association.query.templates.common import TemplateContext
+from association.query.templates.common import TemplateContext, TemplateResult
 
 #: Box-score columns, in the order ``_box`` below fills them - the same shape
 #: ``player_box_stats`` carries in the real warehouse.
@@ -1114,13 +1115,38 @@ def _add_condition_tables(con: duckdb.DuckDBPyConnection) -> None:
     )
 
 
+#: The retired templates' own answers to the parity cases below, frozen when
+#: the compiler replaced them (ROADMAP plan item 6, step (d), part 4).
+_RETIRED = json.loads((Path(__file__).parent / "retired_templates.json").read_text())
+
+
+def _retired_template_answer(intent: str, slots: dict[str, Any], question: str) -> TemplateResult:
+    """The answer ``intent``'s retired template gave for this case
+    (``retired_templates.json``), the fixture's seasons put back."""
+    s = current_season()
+    for case in _RETIRED["cases"]:
+        if (case["intent"], case["slots"], case["question"]) == (intent, slots, question):
+            text = case["expected"].replace("{S-1}-{s}", f"{s - 1}-{s % 100:02d}").replace("{S-2}-{s-1}", f"{s - 2}-{(s - 1) % 100:02d}")
+            frozen = json.loads(text.replace("{S-2}", str(s - 2)).replace("{S-1}", str(s - 1)).replace("{S}", str(s)))
+            return TemplateResult(data=frozen["data"], answer=frozen["answer"])
+    raise AssertionError(f"no frozen answer for {intent} {slots} {question!r}")
+
+
 def _parity(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: str) -> tuple[Any, Any]:
     """The template's answer and the compiler's for the same slots, the
-    compiler's with no template in front of it."""
+    compiler's with no template in front of it. For an intent the compiler
+    alone answers now (``compose.COMPILED_INTENTS``), the template's answer is
+    the one it gave when it retired, frozen, and the compiler's ``data`` is
+    compared in the same JSON form."""
+    from association.query.compose import COMPILED_INTENTS
     from association.query.templates import TEMPLATES
 
     _add_condition_tables(ctx.con)
 
+    if intent in COMPILED_INTENTS:
+        composed = compose_answer(ctx, intent, dict(slots), question)
+        assert composed is not None
+        return _retired_template_answer(intent, slots, question), TemplateResult(data=json.loads(json.dumps(composed.data, default=str)), answer=composed.answer)
     template = TEMPLATES[intent](ctx, Reading.from_slots(dict(slots)))
     composed = compose_answer(ctx, intent, dict(slots), question)
     assert composed is not None
@@ -1435,3 +1461,22 @@ def test_a_league_count_in_an_ordinal_season_is_declined_not_narrowed_silently(c
     why: list[str] = []
     assert compose_answer(cx_ctx, "threshold_count", {"stat": "points", "threshold": 20, "season_n": 15}, "", declined=why.append) is None
     assert why and "15th season is a place in one player's career" in why[0]
+
+
+def test_a_history_naming_no_stat_is_points_and_says_so(cx_ctx: TemplateContext) -> None:
+    """A per-season history that names no stat reads points per game, and its
+    heading says so - a default that is displayed and corrected by naming a
+    stat (AGENTS.md). The retired template refused it; the compiler, which
+    answered player_history first from step (a), read the same default."""
+    result = compose_answer(cx_ctx, "player_history", {"player": "Brandin Podziemski"}, "")
+    assert result is not None
+    assert "points per game" in result.answer.split("\n")[0]
+
+
+def test_a_history_of_a_stat_nothing_carries_is_declined_not_swapped_for_points(cx_ctx: TemplateContext) -> None:
+    """ "shot_distance" has no per-season column and no game-level measure:
+    the compiler drew Luka Doncic's POINTS by season for it, a stat named and
+    silently replaced, until it declined as the retired template did."""
+    why: list[str] = []
+    assert compose_answer(cx_ctx, "player_history", {"player": "Brandin Podziemski", "stat": "shot_distance"}, "", declined=why.append) is None
+    assert why == ["no per-season history for stat 'shot_distance'"]

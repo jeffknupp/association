@@ -127,6 +127,12 @@ def _adapt_threshold_count(scope: Scope) -> Reading:
             raise Unsupported(f"threshold_count: {exc}") from exc
         return Reading(scope=scope, shape="scalar", measures=[], aggregate="count", group="none", predicates=[], available=_BOX_SCORES)
     if col is None or threshold is None or threshold < 1:
+        # The reason threshold_count's retired template gave, where it has one
+        # (a threshold of 0 counts every game; no stat it keeps a line on).
+        try:
+            _threshold_count_ask(scope)
+        except TemplateUnsupported as exc:
+            raise Unsupported(f"threshold_count: {exc}") from exc
         raise Unsupported("threshold_count refuses; nothing to compare")
     # A below/above phrase carrying the threshold's own number IS the count,
     # misread as a threshold (threshold_count's own _threshold_count_lines).
@@ -166,8 +172,8 @@ def _adapt_record_when(scope: Scope) -> Reading:
     col = _stat_column(scope.stat)
     threshold = scope.threshold
     if not _named_player_in(scope) or col is None or threshold is None or threshold < 1:
-        # A line of 0 is every game he played: the template's own refusal
-        # (``templates.splits._record_when_stat``), never a record "when".
+        # A line of 0 is every game he played: never a record "when", as
+        # record_when's retired template refused it too.
         raise Unsupported("record_when needs a player, a stat and a positive threshold here")
     return Reading(scope=scope, shape="scalar", measures=[], aggregate="record", group="none", predicates=[(col, ">=", threshold)], available=_BOX_SCORES)
 

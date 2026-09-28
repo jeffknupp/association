@@ -92,14 +92,15 @@ def _team_point_data(query: TeamQuery, result: TeamResult) -> dict[str, Any]:
     }
 
 
-COMPILER_FIRST: frozenset[str] = frozenset({"threshold_count", "single_game_high", "record_when", "player_history"})
-"""The intents the compiler answers BEFORE their template runs - the four
-whose template the compiler reproduces exactly on every recorded case
-(``~/association-research/intent-shrink/parity.py``: 18/18, 10/10, 10/10,
-20/20). Their templates still exist, as the presenters
-(:mod:`~association.query.compose.present`) that say the point in their
-words, and as the fallback where the compiler declines. ROADMAP plan item
-6, step (a): the Reading is the record for these four first.
+COMPILED_INTENTS: frozenset[str] = frozenset({"threshold_count", "single_game_high", "record_when", "player_history"})
+"""The intents the compiler alone answers - the four whose templates it
+reproduced exactly (``~/association-research/intent-shrink/parity.py``:
+18/18, 10/10, 10/10, 20/20 on the recorded corpus) and then replaced
+(ROADMAP plan item 6, step (d), part 4). Each is said in its retired
+template's own words, through that template's phrasing helpers
+(:mod:`~association.query.compose.present`); where the compiler has no
+reading of a point, the question is refused or falls through, with the
+reason (``agent._run_compiled``).
 
 .. versionadded:: 4.5.0
 """
