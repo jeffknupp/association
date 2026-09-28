@@ -973,7 +973,6 @@ def apply_subject(subject: Subject, slots: dict[str, Any], *, intent: str) -> Ap
     decisions = list(players)
     decisions.extend(_apply_restored_player(subject, slots, intent))
     decisions.extend(_apply_own_team(subject, slots, intent))
-    decisions.extend(_apply_position(subject, slots, intent))
     decisions.extend(_apply_conditions(subject, slots, intent))
     rewritten, settled = _apply_intent(subject, slots, intent)
     decisions.extend(rewritten)
@@ -1191,26 +1190,6 @@ def _apply_conditions(subject: Subject, slots: dict[str, Any], intent: str) -> l
         return []
     slots["conditions"] = written
     return [Decision("subject", "conditions", None, written, "the role the question gives each player named beside the subject")]
-
-
-def _apply_position(subject: Subject, slots: dict[str, Any], intent: str) -> list[Decision]:
-    """A position group as the subject of a template that reads one player:
-    the group's phrase goes into ``player``, where the template refuses it
-    and the compiler reads it (``compose.move._drop_position_only_player``,
-    ``_everyone_point``'s position filter) - the path "highest 3 point
-    percentage ... by a shooting guard" took while the model filed the
-    phrase itself; after the 4.5.0 prompt shrink it arrived with no player
-    and the leaderboard ranked the whole league (day5, F056)."""
-    if subject.kind != "position" or slots.get("player") or slots.get("players") or intent != "leaderboard" or not subject.question:
-        # leaderboard only: it RAISES on a named player, which is what
-        # reaches the compiler; a game log resolves the phrase and answers
-        # a clarification ("No player found matching 'Centers'").
-        return []
-    phrase = next((match.group(0) for pattern, _ in POSITIONS if (match := re.search(pattern, subject.question, re.IGNORECASE))), None)
-    if phrase is None:
-        return []
-    slots["player"] = phrase
-    return [Decision("subject", "player", None, phrase, "the position group the question is about; the template steps aside and the compiler reads it")]
 
 
 def _routed_player_slots(slots: dict[str, Any]) -> list[str]:

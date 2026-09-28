@@ -462,12 +462,7 @@ def leaderboard(ctx: TemplateContext, reading: Reading) -> TemplateResult:
         metric = SEASON_TOTAL_OF.get(metric, metric)
     elif rate is not None:
         return _leaderboard_no_such_rate(rate, metric)
-    if scope.player is not None and scope.player.strip():
-        # A leaderboard ranks the league or a team, never one named person.
-        # Confirmed live: "Klay Thompson's 3pt percentage over the past 4
-        # seasons" landed here and came back with the league's true-shooting
-        # leaders, Klay silently dropped.
-        raise TemplateUnsupported(f"a leaderboard cannot answer about one named player ({scope.player!r})")
+    _leaderboard_refuse_a_subject(reading)
     fields = _leaderboard_fields(scope, metric)
     if career:
         return _career_leaderboard(con, metric, scope, fields)
@@ -505,6 +500,27 @@ def leaderboard(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     )
     data = {"question_shape": summary, "season": result.season, "fields": fields, "min_sample": result.min_sample_applied, "leaders": result.rows}
     return TemplateResult(data=_leaderboard_result_data(data, answer, trade_note), answer=answer + trade_note)
+
+
+def _leaderboard_refuse_a_subject(reading: Reading) -> None:
+    """``leaderboard``'s refusal of a subject it cannot rank for: a position
+    group, and one named player. Split out of :func:`leaderboard` for the
+    complexity gate, in its order."""
+    scope = reading.scope
+    if reading.subject is not None and reading.subject.kind == "position":
+        # A position group is part of the league no leaderboard metric
+        # narrows to - "highest 3 point percentage ... by a shooting guard"
+        # (F056) ranked the whole league before this refused it; the
+        # compiler reads the group off the subject (compose.move's
+        # league-wide point). Refused here, where a named player is, so what
+        # refuses first is unchanged.
+        raise TemplateUnsupported(f"a leaderboard cannot narrow to a position group ({reading.subject.position!r})")
+    if scope.player is not None and scope.player.strip():
+        # A leaderboard ranks the league or a team, never one named person.
+        # Confirmed live: "Klay Thompson's 3pt percentage over the past 4
+        # seasons" landed here and came back with the league's true-shooting
+        # leaders, Klay silently dropped.
+        raise TemplateUnsupported(f"a leaderboard cannot answer about one named player ({scope.player!r})")
 
 
 def _leaderboard_result_data(data: dict[str, Any], answer: str, trade_note: str) -> dict[str, Any]:

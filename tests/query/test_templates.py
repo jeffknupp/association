@@ -3561,6 +3561,19 @@ def test_no_template_narrows_to_a_playoff_round() -> None:
         check_scope("player_stat", {"player": "Jayson Tatum", "round": "finals"})
 
 
+def test_a_leaderboard_refuses_a_position_group_subject_for_the_compiler(lb_con: TemplateContext) -> None:
+    """F056 ("highest 3 point percentage in a season. by a shooting guard
+    with at least 400 attempts"): a position group is part of the league no
+    leaderboard metric narrows to. Refused, so the compiler reads the group
+    - where the subject reading used to write the phrase into ``player`` for
+    the named-player refusal to fire, and the compiler took it back out."""
+    from association.query.reading import Scope
+
+    reading = Reading(scope=Scope.from_slots({"stat": "points"}), intent="leaderboard", subject=Subject("position", position="SG"))
+    with pytest.raises(TemplateUnsupported, match="position group"):
+        leaderboard(lb_con, reading)
+
+
 def test_a_zero_threshold_is_refused_rather_than_counting_every_game(con: TemplateContext) -> None:
     """Measured: "most 3 pointers made since 2020" arrived as threshold 0."""
     with pytest.raises(TemplateUnsupported, match="counts every game"):

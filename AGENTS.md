@@ -534,13 +534,13 @@ model's. Two things follow, and both matter when you add a shape:
   narrows through - never a hand-written clause here either. A box-score
   count (3-pointers made, not a game-outcome figure) narrowed to a window
   refuses rather than answering the season instead, since the relation has no
-  box-score join yet. `move_point` tries `team_move_point` on the UNREPAIRED
-  slots, before the player-subject `repair()` step: "magic" is also Magic
-  Johnson's given name, and `repair()`'s dropped-subject restoration would
-  otherwise invent him from a team reference the way `subject.apply_subject`
-  exists to catch for the router - here it is the repair itself doing the
-  inventing. `team_named_in` is the same restoration `players_named_in`
-  already makes for a dropped player, over team names instead.
+  box-score join yet. `move_point` tries `team_move_point` before the
+  league-wide reading, and nothing after the parser restores a subject:
+  "magic" is also Magic Johnson's given name, and the compiler's own
+  dropped-subject restoration (`repair()`, gone with ROADMAP next step 1)
+  once invented him from a team reference - the shape `subject.apply_subject`
+  exists to catch. `team_named_in` restores a dropped team from the
+  question's own team word, the way `players_named_in` does a player.
 - **What the model sees lives in `query/normalizer.py`'s constants, alone.**
   `NORMALIZER_PROMPT`, `NORMALIZER_SCHEMA` (its stat enum is
   `NORMALIZER_STATS`) and `NORMALIZER_NUM_CTX` are the model's whole input;

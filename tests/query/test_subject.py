@@ -346,20 +346,15 @@ def test_a_position_phrase_or_a_filler_word_in_the_player_slot_is_not_a_player(c
     percentage ... by a shooting guard" (F056) and "player" on "Most points
     in 15th season played" (F099). Both words are in the question, so the
     support check passes them; neither is a name. The first is the
-    position-group subject; the second nobody - and the compiler, which
-    used to match both again, reads the kind."""
-    from association.query.compose.move import _drop_filler_or_team_player, _drop_position_only_player
-
+    position-group subject; the second nobody - and the compiler reads the
+    kind, where it used to take both back out of the slot."""
     s = _read(con, "highest 3 point percentage in a season by a shooting guard", "leaderboard", player="shooting guard")
     assert s.kind == "position" and s.position == "SG" and s.players == () and s.invented == ()
-    assert _drop_position_only_player({"player": "shooting guard"}, s) == {"player": None}
     s = _read(con, "Most points in 15th season played", "leaderboard", player="player")
     assert s.kind == "everyone" and s.players == () and s.invented == ()
-    assert _drop_filler_or_team_player({"player": "player", "stat": "points"}, s) == {"player": None, "stat": "points"}
     # A team in the player slot is the team's players' games, not a player.
     s = _read(con, "oklahoma city thunder all-time triple doubles", "threshold_count", player="Thunder")
     assert s.kind == "team" and s.teams == ("Oklahoma City Thunder",) and s.players == ()
-    assert _drop_filler_or_team_player({"player": "Thunder"}, s) == {"player": None, "team": "Thunder"}
 
 
 def test_the_compare_whose_second_player_the_router_filed_as_the_opponent(con: duckdb.DuckDBPyConnection) -> None:
@@ -542,9 +537,17 @@ def test_a_router_name_that_is_no_name_leaves_the_slots(con: duckdb.DuckDBPyConn
     assert _read(con, "travis best career stats", "player_stat", player="Travis Best").filler == ()
 
 
-def test_a_position_group_is_handed_to_the_compiler_as_the_player(con: duckdb.DuckDBPyConnection) -> None:
-    intent, slots = _assigned(con, "highest 3 point percentage in a season by a shooting guard with at least 400 attempts", "leaderboard", stat="threePointFieldGoalPct", limit=1, season_type=2)
-    assert intent == "leaderboard" and slots["player"] == "shooting guard"
+def test_a_position_group_is_the_subject_and_never_a_player_slot(con: duckdb.DuckDBPyConnection) -> None:
+    """F056 ("highest 3 point percentage in a season. by a shooting guard
+    with at least 400 attempts"): the position group is the subject's own
+    field, and nothing writes its phrase into ``player`` - the leaderboard
+    refuses a position subject itself, and the compiler reads the group off
+    the subject."""
+    question = "highest 3 point percentage in a season by a shooting guard with at least 400 attempts"
+    intent, slots = _assigned(con, question, "leaderboard", stat="threePointFieldGoalPct", limit=1, season_type=2)
+    assert intent == "leaderboard" and "player" not in slots
+    s = read_subject(con, question, "leaderboard", {"stat": "threePointFieldGoalPct"})
+    assert s.kind == "position" and s.position == "SG"
     # A team-only intent reads no player, so nothing is written there.
     _, slots = _assigned(con, "which team has the best centers", "team_leaderboard", stat="record", season_type=2)
     assert "player" not in slots

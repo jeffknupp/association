@@ -21,7 +21,7 @@ import duckdb
 from association.query.measures import MEASURE_WORDS
 from association.query.metrics import PER_GAME_MIN_GAMES
 from association.query.reading import Aggregate, Reading, Scope
-from association.query.templates.common import DEFAULT_LIMIT, FILLER_PLAYER_WORDS, HISTORY_COLUMNS, POSITIONS, TEAM_ONLY_INTENTS, TemplateResult, _clamp_limit, ordinal_word
+from association.query.templates.common import DEFAULT_LIMIT, HISTORY_COLUMNS, TEAM_ONLY_INTENTS, TemplateResult, _clamp_limit, ordinal_word
 
 from .adapt import DEFAULT_SINGLE_GAME_LIMIT, _named_player, _named_player_in, _to_reading_scope
 from .core import BOOLEAN_MEASURES, COLUMNS, DERIVED, LINE, Query, Refused, Unsupported
@@ -125,35 +125,6 @@ def _stat_measure(stat: str | None) -> str | None:
     return MEASURE_WORDS.get(stat.strip().lower())
 
 
-def repair(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], question: str, subject: Subject | None = None) -> dict[str, Any]:
-    """Two repairs the subject reading supports exactly - never a guess
-    between candidates. Returns a new dict.
-
-    .. versionadded:: 4.4.0
-
-    .. versionchanged:: 4.5.0
-       Reads the :class:`~association.query.subject.Subject` (read here
-       when not given) rather than the question's names over again.
-    """
-    slots = dict(slots)
-    subject = _subject(con, question, slots, subject)
-    named = list(dict.fromkeys((*subject.players, *subject.companions)))
-    # A subject the router dropped ("how many playoff games has embiid won?"
-    # arrived with a team and no player): restore it when the question names
-    # exactly one player.
-    if not _named_player(slots) and len(named) == 1:
-        slots["player"] = named[0]
-    # Player names filed as the opponent ("bane game log without anthony
-    # black and franz wagner") are teammates absent, when the question says so.
-    opp = slots.get("opponent")
-    if isinstance(opp, str) and opp.strip() and re.search(r"\bwithout\b", question, re.I):
-        parts = [p.strip() for p in re.split(r",|\band\b", opp) if p.strip()]
-        if parts and all(any(p.lower() in n.lower() or n.lower() in p.lower() for n in named) for p in parts):
-            slots["without"] = [*(slots.get("without") or []), *parts]
-            slots["opponent"] = None
-    return slots
-
-
 def _subject(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], subject: Subject | None, intent: str = "") -> Subject:
     """The reading the agent already made, or one made here for a caller
     (a test, a script) that has none. A call-time import: the subject module
@@ -167,86 +138,6 @@ def _subject(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any
 
 _RANKING = re.compile(r"\b(leaders?|most|highest|top|best|fewest|least|lowest)\b", re.I)
 _LOG = re.compile(r"\b(log|gamelog|game log|each game|by game|stats)\b", re.I)
-
-
-def _position_only_player(slots: dict[str, Any]) -> str | None:
-    """The position code the router's own ``player`` slot names, when the
-    slot holds NOTHING but a position word or phrase ("shooting guard") - a
-    position-GROUP subject the router misfiled as a name (F056: "highest 3
-    point percentage ... by a shooting guard"), not a player to resolve.
-    ``None`` where the slot holds anything else, including a real name
-    beside a position word - only an exact, whole-slot match counts, the
-    same discipline :func:`~association.query.entities.players_named_in`
-    keeps for a name.
-
-    .. versionadded:: 4.4.0
-    """
-    text = slots.get("player")
-    if not (isinstance(text, str) and text.strip()):
-        return None
-    stripped = text.strip()
-    for pattern, code in POSITIONS:
-        if re.fullmatch(pattern, stripped, re.I):
-            return code
-    return None
-
-
-def _drop_filler_or_team_player(slots: dict[str, Any], subject: Subject) -> dict[str, Any]:
-    """``slots`` with ``player`` cleared when it holds the router's own
-    filler word (:data:`~association.query.templates.common.FILLER_PLAYER_WORDS`,
-    filed on "Most points in 15th season played" - yardstick-v2 F099), or a
-    TEAM's name and no player's ("oklahoma city thunder all-time triple
-    doubles" - F152), which becomes the ``team`` narrowing of a league-wide
-    read: the team's players' games. The reading says which: a team in the
-    slot reads as ``team``/``team_players`` with no player, a real player as
-    the player. A name matching neither is left for the relation to refuse
-    by name.
-
-    .. versionadded:: 4.4.0
-
-    .. versionchanged:: 4.5.0
-       Reads the subject rather than the roster over again.
-    """
-    text = slots.get("player")
-    if not (isinstance(text, str) and text.strip()):
-        return slots
-    if text.strip().lower() in FILLER_PLAYER_WORDS:
-        return {**slots, "player": None}
-    if not slots.get("team") and subject.kind in ("team", "team_players") and not subject.players and not _drop_filler_or_team_player_is_companion(text, subject):
-        return {**slots, "player": None, "team": text}
-    return slots
-
-
-def _drop_filler_or_team_player_is_companion(text: str, subject: Subject) -> bool:
-    """Whether the ``player`` slot's text is one of the players the reading
-    placed BESIDE the team (``subject.companions``) - "show me stats for
-    sixers when maxey scored 20+ points" reads as kind team with Maxey
-    beside it, and moved into ``team`` the slot was resolved as a team called
-    "Maxey" and the question declined. A call-time import, for the same
-    cycle :func:`_subject` avoids.
-
-    .. versionadded:: 4.5.0
-    """
-    from association.query.subject import question_supports
-
-    return any(question_supports(text, companion) for companion in subject.companions)
-
-
-def _drop_position_only_player(slots: dict[str, Any], subject: Subject) -> dict[str, Any]:
-    """``slots``, with ``player`` cleared when the reading says the subject
-    is a position group and names no player - the router's ``player`` slot
-    holding nothing but a position phrase ("shooting guard", F056). Nothing
-    here needs to carry the code forward by hand: :func:`_everyone_point`
-    reads the position off the subject.
-
-    .. versionadded:: 4.4.0
-
-    .. versionchanged:: 4.5.0
-       Reads the subject's kind rather than matching the slot again.
-    """
-    if subject.kind == "position" and not subject.players and _position_only_player(slots) is not None:
-        return {**slots, "player": None}
-    return slots
 
 
 def _measure_and_predicates(words: list[str], fallback: str | None) -> tuple[str | None, list[tuple[str, str, Any]]]:
@@ -935,44 +826,35 @@ def team_move_point(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], quest
 def read_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None) -> Reading:
     """The intent's default point, moved by the question's own words: a
     measure beyond a template's list, a skeleton move ("most ... in a game" =
-    rows by measure; "how many ... won" = count with a predicate), and two
-    slot repairs (:func:`repair`) - none of it through a prompt edit. A team
-    named with no player (:func:`team_move_point`) is tried before the
-    league-wide reading, since a team's own total or differential is a
-    narrower, more specific claim than "no player subject" - the same
-    priority a named player already gets over the league-wide read.
+    rows by measure; "how many ... won" = count with a predicate) - none of it
+    through a prompt edit. A team named with no player
+    (:func:`team_move_point`) is tried before the league-wide reading, since a
+    team's own total or differential is a narrower, more specific claim than
+    "no player subject" - the same priority a named player already gets over
+    the league-wide read. Called by the parser, once
+    (:func:`~association.query.parse.reading_from_route`); the compiler plans
+    and runs the Reading it returns.
 
     .. versionchanged:: 4.4.0
-       Tries :func:`team_move_point` (the team as a subject) on the
-       UNREPAIRED slots, before :func:`repair` - not merely before
-       :func:`_everyone_point`. "Magic" (Orlando's nickname) is also Magic
-       Johnson's given name, so ``repair``'s dropped-subject restoration
-       (:func:`players_named_in` finding exactly one player) turns "how many
-       3-pointers have the magic made" into a question about him UNLESS the
-       team reading is settled first - the same shape as
-       ``subject.apply_subject``, in reverse: here it is the REPAIR that
-       would invent a subject, not the router. May return a
+       Tries :func:`team_move_point` (the team as a subject) before the
+       league-wide reading. May return a
        :class:`~association.query.compose.team.TeamQuery` instead of a
        :class:`~association.query.compose.core.Query`.
 
-    .. versionchanged:: 4.4.0
-       Drops the router's own ``player`` slot first when it holds nothing
-       but a position word (:func:`_drop_position_only_player`, F056:
-       "... by a shooting guard") - before even :func:`team_move_point`,
-       since a position phrase misfiled as a name would otherwise be
-       resolved as one (:func:`_move_named`) rather than read as the
-       position-group subject it is.
-
     .. versionchanged:: 4.5.0
        Takes the :class:`~association.query.subject.Subject` the agent read
-       (read here when not given), and every subject repair reads it: the
-       position group, the filler and the team in ``player``, the dropped
-       subject, the team the router left out, the position.
+       (read here when not given), and reads the position group, the team
+       and the subject's kind off it.
 
     .. versionchanged:: 4.5.0
        Returns the :class:`~association.query.reading.Reading` (the record of
        what was read) rather than the planned query; :func:`move_point` is
        the two together.
+
+    .. versionchanged:: 4.5.0
+       Repairs no slot: the position phrase, the filler word or team in
+       ``player``, the dropped subject and the opponent player it once
+       rewrote never reach it from the parser (ROADMAP next step 1).
     """
     subject = _subject(con, question, slots, subject, intent)
     reading = _read_point(con, intent, slots, question, subject)
@@ -992,8 +874,6 @@ def _read_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, An
         # (refusals._team_boolean_count) rather than the ranking's sentence
         # naming the wrong one.
         raise Unsupported(f"a team's total of its players' {slots['stat']} is not read")
-    slots = _drop_position_only_player(slots, subject)
-    slots = _drop_filler_or_team_player(slots, subject)
     if intent == "record_when" and not _named_player(slots) and isinstance(slots.get("team"), str) and slots["team"].strip():
         # A team's record above and below its OWN line - "what was the celtics
         # record when they scored 120 points" (ISSUES.md #144) - is neither the
@@ -1005,9 +885,11 @@ def _read_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, An
         team_reading = team_read_point(con, slots, question, subject)
         if team_reading is not None:
             return team_reading
-    # The repairs above and repair() edit the router's slot dict; the moves
-    # below read the scope those edits settle, through its one door.
-    scope = Scope.from_slots(repair(con, slots, question, subject))
+    # The parser's own slots, through the scope's one door: nothing here
+    # repairs them (the filler word, the team in `player`, the dropped
+    # subject and the opponent player never reach here from the parser -
+    # measured over the 628 questions with a recorded normalizer reply).
+    scope = Scope.from_slots(slots)
     if not _named_player_in(scope):
         if intent == "record_when":
             # A record "when" is a player's line or a team's own (the team

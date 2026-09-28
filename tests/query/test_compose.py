@@ -26,7 +26,7 @@ from association.nba.season import current_season
 from association.query.compose import answer as compose_answer
 from association.query.compose.adapt import to_query
 from association.query.compose.core import Query, Refused, Unsupported, compile_query, run
-from association.query.compose.move import _asc_or_desc, _career_scope, _drop_position_only_player, _everyone_career_scope, _position_only_player, _ranking_minimum, move_point, team_move_point
+from association.query.compose.move import _asc_or_desc, _career_scope, _everyone_career_scope, _ranking_minimum, move_point, team_move_point
 from association.query.compose.team import TeamQuery, run_team
 from association.query.reading import Reading, Scope
 from association.query.templates.common import TemplateContext, TemplateResult
@@ -552,7 +552,7 @@ def team_cx_ctx(tmp_path: Path) -> TemplateContext:
     """The Magic (season total, plus a finished postseason for the addendum)
     and the Raptors (five regular-season games, for a narrowed
     total/differential window). ``players`` is empty but present, since
-    ``move_point`` (unlike ``team_move_point`` alone) calls ``repair()``,
+    ``move_point`` (unlike ``team_move_point`` alone) reads the subject,
     which reads it via ``players_named_in`` for every question."""
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR, position_abbr VARCHAR)")
@@ -846,29 +846,15 @@ def test_a_league_wide_count_with_no_line_at_all_is_still_refused(cx_ctx: Templa
 # ---------------------------------------------------------------------------
 
 
-def test_a_position_only_player_slot_is_read_as_the_position_group_subject() -> None:
-    """:func:`_position_only_player` finds the position code only when the
-    ``player`` slot holds NOTHING else; a real name beside a position word
-    is left alone."""
-    assert _position_only_player({"player": "shooting guard"}) == "SG"
-    assert _position_only_player({"player": "shooting guards"}) == "SG"
-    assert _position_only_player({"player": "Klay Thompson"}) is None
-    assert _position_only_player({"player": None}) is None
-    from association.query.subject import Subject
-
-    # The reading says the subject is the position group and names nobody.
-    assert _drop_position_only_player({"player": "shooting guard", "stat": "points"}, Subject("position", position="SG")) == {"player": None, "stat": "points"}
-    assert _drop_position_only_player({"player": "Klay Thompson"}, Subject("player", players=("Klay Thompson",))) == {"player": "Klay Thompson"}
-
-
-def test_a_position_word_misfiled_as_the_player_slot_reads_as_the_subject(cx_ctx: TemplateContext) -> None:
-    """F056: "highest points per game ... by a point guard" arrives with
-    the router's own ``player`` slot holding "point guard" - read as the
-    position-group subject, not a name nothing resolves to. Curry ('PG')
-    is the fixture's only point guard; a "with at least 2 games" floor
+def test_a_position_group_subject_reads_that_positions_ranking(cx_ctx: TemplateContext) -> None:
+    """F056 ("highest 3 point percentage in a season. by a shooting guard
+    with at least 400 attempts"), the shape: a position group as the
+    subject is read off the subject reading - the phrase no longer rides in
+    the ``player`` slot for the compiler to take back out. Curry ('PG') is
+    the fixture's only point guard; a "with at least 2 games" floor
     (:func:`_ranking_minimum`) clears his 4 games past the real
     ``PER_GAME_MIN_GAMES`` default, which he does not reach on his own."""
-    q = move_point(cx_ctx.con, "leaderboard", {"player": "point guard", "stat": "points", "season_type": 2}, "highest points per game this season by a point guard with at least 2 games")
+    q = move_point(cx_ctx.con, "leaderboard", {"stat": "points", "season_type": 2}, "highest points per game this season by a point guard with at least 2 games")
     assert isinstance(q, Query)
     assert q.subject == "everyone" and q.position == "PG" and q.minimum_games == 2
     out = run(cx_ctx.con, q)
@@ -885,7 +871,7 @@ def test_an_attempts_or_minutes_floor_is_refused_by_name_not_dropped_or_misappli
     sample) and never misread as a games count (100 attempts is not 100
     games)."""
     with pytest.raises(Refused) as refused:
-        move_point(cx_ctx.con, "leaderboard", {"player": "point guard", "stat": "points", "season_type": 2}, "highest points per game by a point guard with at least 100 attempts")
+        move_point(cx_ctx.con, "leaderboard", {"stat": "points", "season_type": 2}, "highest points per game by a point guard with at least 100 attempts")
     assert "100 attempts" in refused.value.result.answer and "at least N games" in refused.value.result.answer
 
 
@@ -1028,24 +1014,24 @@ def test_a_ranked_by_marker_is_the_compilers_own_slot_not_an_unhonored_one(cx_ct
 
 
 def test_an_ordinal_season_over_everyone_is_each_players_own(cx_ctx: TemplateContext) -> None:
-    """yardstick-v2 F099 "Most points in 15th season played": the router's
-    filler `player: "player"` is dropped, and `season_n` over everyone is
-    each player's Nth regular season - every fixture player's 1st is s-1 and
+    """yardstick-v2 F099 "Most points in 15th season played": no player,
+    and `season_n` over everyone is each player's Nth regular season - every fixture player's 1st is s-1 and
     2nd is s, so the top single game moves from Brown's 26 (g6, s-1) to
     Curry's 40 (g3, s), and the sentence names the ordinal."""
-    first = compose_answer(cx_ctx, "single_game_high", {"player": "player", "stat": "points", "season_n": 1, "span": "career"}, "most points in a game in 1st season played")
-    second = compose_answer(cx_ctx, "single_game_high", {"player": "player", "stat": "points", "season_n": 2, "span": "career"}, "most points in a game in 2nd season played")
+    first = compose_answer(cx_ctx, "single_game_high", {"stat": "points", "season_n": 1, "span": "career"}, "most points in a game in 1st season played")
+    second = compose_answer(cx_ctx, "single_game_high", {"stat": "points", "season_n": 2, "span": "career"}, "most points in a game in 2nd season played")
     assert first is not None and second is not None
     assert first.data["rows"][0]["points"] == 26 and first.data["rows"][0]["player"] == "Jaylen Brown"
     assert second.data["rows"][0]["points"] == 40 and second.data["rows"][0]["player"] == "Stephen Curry"
     assert "in their 2nd season" in second.answer
 
 
-def test_a_team_in_the_player_slot_is_the_teams_players_games(cx_ctx: TemplateContext) -> None:
+def test_a_team_with_no_player_is_the_teams_players_games(cx_ctx: TemplateContext) -> None:
     """yardstick-v2 F152 "oklahoma city thunder all-time triple doubles":
-    a team's name where a player's belongs is the `team` narrowing of a
-    league-wide read - the Warriors' players' triple-doubles are
-    Podziemski's one (g3, 28/10/11).
+    the team named with no player is the `team` narrowing of a league-wide
+    read - the Warriors' players' triple-doubles are Podziemski's one (g3,
+    28/10/11). The parser files the team as `team`; the router once filed it
+    as the player, and the compiler moved it.
 
     Seen live on the rendered page (2026-09-24): the grouped head named the
     span but not WHAT was counted ("... regular season career (1994 on), by
@@ -1053,16 +1039,16 @@ def test_a_team_in_the_player_slot_is_the_teams_players_games(cx_ctx: TemplateCo
     no subject. ``_grouped_sentence`` now includes the predicates
     (``_predicates(q)``, the same call ``_rows_sentence``/``_scalar_sentence``
     already make), and ``data["headline"]`` carries the same sentence."""
-    result = compose_answer(cx_ctx, "threshold_count", {"player": "Golden State Warriors", "stat": "triple_double", "span": "career"}, "golden state warriors all-time triple doubles")
+    result = compose_answer(cx_ctx, "threshold_count", {"team": "Golden State Warriors", "stat": "triple_double", "span": "career"}, "golden state warriors all-time triple doubles")
     assert result is not None
     assert "Golden State Warriors" in result.answer
     assert "with a triple-double" in result.answer  # the predicate, not just the span
     assert result.data["rows"][0]["games"] == 1
     assert result.data["headline"] == result.answer.split("\n")[0].rstrip(":")
     assert "with a triple-double" in result.data["headline"]
-    # The router files player_stat for the live wording; the team makes it
-    # the same count.
-    as_stat = compose_answer(cx_ctx, "player_stat", {"player": "Golden State Warriors", "span": "career"}, "golden state warriors all-time triple doubles")
+    # Filed under player_stat (the router's intent for the live wording), the
+    # team still makes it the same count.
+    as_stat = compose_answer(cx_ctx, "player_stat", {"team": "Golden State Warriors", "span": "career"}, "golden state warriors all-time triple doubles")
     assert as_stat is not None and as_stat.data["rows"][0]["games"] == 1
 
 
