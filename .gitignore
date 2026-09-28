@@ -13,3 +13,6 @@ __pycache__/
 .pytest_cache/
 query_output/
 .venv/
+# Coverage data from a coverage-informed dead-code pass (pytest-cov, coverage run).
+.coverage
+.coverage.*
