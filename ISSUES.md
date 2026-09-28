@@ -227,13 +227,6 @@ those were found.
 - **Next step:** let `single_game_high`'s row apply under `team_leaderboard` for the everyone kind where no team word ("team", "franchise") is written, measured on the rehearsal and `intent-shrink/port_check.py` first; a single game "with 0 fgm" is a predicate on the high the compiler has not got, so it refuses by name until it has one.
 - **Source:** ours.
 
-### A name several players share is asked about over a range of seasons, where the range's own seasons would settle it: "curry playoff stats 2015-18" asks among six Currys
-- **Found:** 2026-09-28, fixing #261 (the short range now reads as the range it writes, and meets the gap every range already had).
-- **Evidence:** stubbed offline through the whole agent (main warehouse): "curry playoff stats 2015-18", "curry playoff stats 2015-2018" and "curry stats from 2015-18" each route `since`/`until` and answer "'curry' matches more than one player - did you mean Seth Curry, Stephen Curry, Dell Curry, Eddy Curry or JamesOn Curry (1 other also matches)?"; "Love stats 2012-14" asks among Caleb Love, Kevin Love and Lawson Lovering; "jordan stats 95-98" lists 28 players. `templates.common._career_end` narrows a name by the current season whenever no single season is asked (`through=current_season()`), so a range's own seasons never narrow it - where one season does: "curry playoff stats 2018" is Stephen Curry, the only Curry in that postseason. Stephen Curry holds all 63 of the Currys' 2015-2018 postseason games (`player_game_log`, minutes > 0): Seth has none, and Dell, Eddy, JamesOn and Michael Curry had retired.
-- **User sees:** a question where the answer was settled - the range names whose seasons to look in.
-- **Next step:** narrow by the range - `until` as the season a name left open is settled by, `since`..`until` as the seasons a candidate needs a row in (`entities.narrow_to_available` takes `season`/`through` today) - in `templates.common`'s resolution; a case per template reading `since`/`until`.
-- **Source:** ours.
-
 ### A month named with its calendar year is read as the season ending that year: "How many points did De'aaron fox average in November 2023" answers November 2022
 - **Found:** 2026-09-28, fixing #259 (one of the 19 research-corpus questions with a typographic apostrophe).
 - **Evidence:** stubbed offline through the whole agent (main warehouse, names `["De'aaron fox"]`): routes `{'player': "De'Aaron Fox", 'season': 2023, 'situation': 'in november'}` and lists "De'Aaron Fox in November, last 10 of 13 games of the 2023 regular season", dated 2022-11-11 to 2022-11-30. November 2023 is in the 2024 season (2023-24): `season_text.season_from_text` reads "2023" as the season ending that year, which is right for a year alone and wrong beside October, November or December. Of the 3,084 distinct research-corpus questions, 7 name a month with its year; this is the only one whose month falls before the new year ("Luka doncic march 2026", "steph stats april 2021" and the rest read right).
@@ -2972,6 +2965,13 @@ those were found.
 - **Next step:** let `_WHEN_PLAYED` (and `_WHEN_WITH`) take "while"; a parser test on the wording.
 - **Source:** ours.
 - **GitHub:** #250
+
+### A name several players share is asked about over a range of seasons, where the range's own seasons would settle it: "curry playoff stats 2015-18" asks among six Currys
+- **Found:** 2026-09-28, fixing #261 (the short range now reads as the range it writes, and meets the gap every range already had).
+- **Evidence:** stubbed offline through the whole agent (main warehouse): "curry playoff stats 2015-18", "curry playoff stats 2015-2018" and "curry stats from 2015-18" each route `since`/`until` and answer "'curry' matches more than one player - did you mean Seth Curry, Stephen Curry, Dell Curry, Eddy Curry or JamesOn Curry (1 other also matches)?"; "Love stats 2012-14" asks among Caleb Love, Kevin Love and Lawson Lovering; "jordan stats 95-98" lists 28 players. `templates.common._career_end` narrows a name by the current season whenever no single season is asked (`through=current_season()`), so a range's own seasons never narrow it - where one season does: "curry playoff stats 2018" is Stephen Curry, the only Curry in that postseason. Stephen Curry holds all 63 of the Currys' 2015-2018 postseason games (`player_game_log`, minutes > 0): Seth has none, and Dell, Eddy, JamesOn and Michael Curry had retired.
+- **User sees:** a question where the answer was settled - the range names whose seasons to look in.
+- **Next step:** narrow by the range - `until` as the season a name left open is settled by, `since`..`until` as the seasons a candidate needs a row in (`entities.narrow_to_available` takes `season`/`through` today) - in `templates.common`'s resolution; a case per template reading `since`/`until`.
+- **Source:** ours.
 
 ## P4: tooling, docs, low impact
 
