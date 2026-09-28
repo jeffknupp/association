@@ -2956,6 +2956,7 @@ those were found.
 - **User sees:** nothing in an answer. A caller of any of the sixteen non-template names breaks on what would be published as a minor upgrade.
 - **Next step:** decide before the bump (Jeff's call): either the next release is 5.0.0 - label the entries "Breaking:" and rewrite the 4.5.0 directives, as AGENTS.md's directive rule asks while `## Unreleased` records a breaking change - or the preamble names the query internals (the router's stages, the entity repairs, the compiler's moves) as outside the promise, the way it already names the templates. Settle it before step (f), which would remove `compose.answer`'s slot path and the slot adapters only the tests call (`compose.move.move_point`, `team_move_point`, `compose.adapt.to_reading`, `to_query`).
 - **Source:** ours.
+- **GitHub:** #264
 
 ### `player_stat` given a `team` slot answers this season and never mentions the team: "lebron stats as a starter for Miami"
 - **Found:** 2026-09-27, the step (c) rehearsal (the whole agent with the parser as reader and the normalizer's recorded replies, `~/association-research/yardstick-v2/run_offline_parser.py`), on an intermediate parser that wrote the player's own team into `team`.
