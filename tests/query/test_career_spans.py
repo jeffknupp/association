@@ -19,14 +19,15 @@ import pytest
 
 from association.nba.season import current_season
 from association.query.compose import answer as compose_answer
+from association.query.compose.present import STATED_SCOPING
 from association.query.leaderboard import resolve_metric
 from association.query.metrics import BOX_SCORE_METRIC_NAMES, CORE_METRIC_NAMES, LEADERBOARD_METRICS
 from association.query.normalizer import NORMALIZER_STATS
 from association.query.parse import with_point
 from association.query.prompt import TOOLS, build_system_prompt
-from association.query.reading import Reading
+from association.query.reading import Reading, Scope
 from association.query.subject import Subject
-from association.query.templates.common import TemplateContext, TemplateResult, TemplateUnsupported, check_scope
+from association.query.templates.common import TemplateContext, TemplateResult, TemplateUnsupported, check_scope, unhonored_scoping
 from association.query.templates.players import leaderboard
 
 
@@ -250,7 +251,14 @@ def test_a_career_leaderboard_refuses_what_it_cannot_answer(career_ctx: Template
 
 @pytest.mark.parametrize("intent", ["leaderboard", "threshold_count", "single_game_high"])
 def test_a_career_span_is_honored_by_the_ranking_templates(intent: str) -> None:
-    check_scope(intent, {"span": "career"})
+    """A career is declared: by the template's list, or - for a count and a
+    high the compiler alone answers - by what its presenter's words state
+    (``compose.present.STATED_SCOPING``), beside the relation, which honors
+    a career for any named player."""
+    if intent in STATED_SCOPING:
+        assert unhonored_scoping(intent, Scope.from_slots({"span": "career"}), STATED_SCOPING[intent]) == []
+    else:
+        check_scope(intent, {"span": "career"})
 
 
 # ---------------- career counts and highs, from box scores ----------------

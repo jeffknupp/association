@@ -535,11 +535,12 @@ class Agent:
         """An intent the compiler alone answers (``compose.COMPILED_INTENTS``:
         the four whose templates it reproduced exactly, retired in ROADMAP
         plan item 6, step (d), part 4). Where the compiler has no reading of
-        the point, the steps a template's refusal took, in its order: a
-        narrowing the intent cannot honor names why the question falls
-        through; a season under a table's floor is refused, never answered
-        from nothing; and a shape nothing here reads is refused by name
-        (query/refusals) before the agent is asked."""
+        the point, the steps a template's refusal took, in its order: the
+        compiler's own reason - the planner refusing a narrowing the relation
+        cannot honor, read at parse time (``Reading.point_declined``) - names
+        why the question falls through; a season under a table's floor is
+        refused, never answered from nothing; and a shape nothing here reads
+        is refused by name (query/refusals) before the agent is asked."""
         t0 = time.monotonic()
         intent, scope = reading.intent, reading.scope
         declined: list[str] = []
@@ -548,15 +549,10 @@ class Agent:
             history.record_tool_call(f"compose {intent}", time.monotonic() - t0)
             return intent, composed
         why = declined[0] if declined else "the compiler has no reading of this point"
-        try:
-            check_scope(intent, scope)
-        except TemplateUnsupported as exc:
-            why = str(exc)
-        else:
-            refused = check_coverage(intent, scope)
-            if refused is not None:
-                history.log(f"  -> (coverage) {refused}")
-                return intent, TemplateResult(data={"message": refused, "season": scope.season}, answer=refused)
+        refused = check_coverage(intent, scope)
+        if refused is not None:
+            history.log(f"  -> (coverage) {refused}")
+            return intent, TemplateResult(data={"message": refused, "season": scope.season}, answer=refused)
         refusal = unanswerable(self.toolbox.con, reading, question)
         if refusal is not None:
             history.log(f"  -> (compose) {why} - refused ({refusal.data['refused']}): nothing here reads that shape")

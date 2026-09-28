@@ -327,10 +327,11 @@ def test_starter_bench_category_is_refused_outside_a_grouped_read(cx_ctx: Templa
 
 def test_an_unhonored_scoping_slot_is_refused(cx_ctx: TemplateContext) -> None:
     """Rule 7: a scoping slot the relation cannot narrow by (``round``) is
-    refused rather than silently dropped."""
-    q = to_query("game_log", {"player": "Brandin Podziemski", "round": "finals"})
+    refused rather than silently dropped - by the planner, as the point is
+    planned (``to_query`` plans); the compile step keeps the same check for
+    a query built by hand."""
     with pytest.raises(Unsupported, match="cannot honor"):
-        compile_query(cx_ctx.con, q)
+        to_query("game_log", {"player": "Brandin Podziemski", "round": "finals"})
 
 
 # ---------------------------------------------------------------------------
@@ -1556,3 +1557,43 @@ def test_a_summed_true_shooting_rate_is_a_fraction_like_its_column(cx_ctx: Templ
     assert result is not None
     assert result.data["rows"][0]["ts_pct"] == pytest.approx(0.5)
     assert "50.0% TS%" in result.answer and "5000" not in result.answer
+
+
+# ---------------------------------------------------------------------------
+# The planner refuses from the Reading (ROADMAP plan item 6, step (f)).
+
+
+def test_the_planner_refuses_a_narrowing_the_relation_cannot_honor() -> None:
+    """``plan`` is where a Reading meets its relation, and a scoping slot the
+    relation does not narrow by (``rate``: no per-36 read on the games) is
+    refused there - not one call later, inside the compile step."""
+    from association.query.compose.adapt import to_reading
+
+    with pytest.raises(Unsupported, match="the relation cannot honor \\['rate'\\]"):
+        plan(to_reading("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30, "rate": "per_36"}))
+    assert isinstance(plan(to_reading("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30})), Query)
+
+
+def test_the_parser_carries_the_planners_refusal_on_the_reading(cx_ctx: TemplateContext) -> None:
+    """The point is planned as it is read (``parse.with_point``), so a
+    narrowing the relation cannot honor is the Reading's own verdict
+    (``point_declined``) - the reason the fall-through names, never a
+    template's list read after the fact."""
+    from association.query.parse import reading_from_route
+    from association.query.router import Route
+
+    reading = reading_from_route(cx_ctx.con, "podziemski 30 point games per 36", Route("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30, "rate": "per_36"}))
+    assert reading.point is None and reading.point_refusal is None
+    assert reading.point_declined is not None and reading.point_declined.startswith("the relation cannot honor ['rate']")
+
+
+def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: TemplateContext) -> None:
+    """A retired template's words name the narrowings it honored and no
+    other (``compose.present.STATED_SCOPING``): an opponent on a single-game
+    high is the relation's to narrow by and the compiler's sentence's to
+    state, so the presenter answers nothing and every presenter declares."""
+    from association.query.compose.present import PRESENTERS, STATED_SCOPING, present
+
+    assert set(STATED_SCOPING) == set(PRESENTERS)
+    narrowed = to_query("single_game_high", {"player": "Brandin Podziemski", "stat": "points", "opponent": "Boston Celtics"})
+    assert present(cx_ctx.con, "single_game_high", narrowed) is None

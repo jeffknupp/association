@@ -12,17 +12,30 @@ from __future__ import annotations
 
 from association.query.reading import Reading
 
-from .core import Query
+from .core import Query, _check_relation_scoping
 from .team import TeamQuery
 
 
 def plan(reading: Reading) -> Query | TeamQuery:
-    """The point ``reading`` names, on the relation it names.
+    """The point ``reading`` names, on the relation it names - or
+    :class:`~association.query.compose.core.Unsupported` where that relation
+    cannot honor a narrowing the scope carries (``round``, ``rate``, a
+    ``situation`` naming no calendar): the planner's own refusal, the rule
+    ``check_scope`` applies for a template, applied for the relation
+    (:func:`~association.query.compose.core._check_relation_scoping`). The
+    parser plans the point it reads (:func:`~association.query.parse.with_point`),
+    so a Reading carries the refusal from the start (``point_declined``).
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 5.0.0
+       Refuses a narrowing the relation cannot honor (ROADMAP plan item 6,
+       step (f)); the compiler's own compile step had, one call later.
     """
     if reading.relation == "team":
         return TeamQuery(scope=reading.scope, measure=reading.measures[0], aggregate=reading.aggregate)
+    subject = "everyone" if reading.relation == "everyone" else "player"
+    _check_relation_scoping(reading.scope, subject)
     return Query(
         scope=reading.scope,
         skeleton=reading.shape,
@@ -39,6 +52,6 @@ def plan(reading: Reading) -> Query | TeamQuery:
         span=reading.span,
         season=reading.season,
         source=reading.source,
-        subject="everyone" if reading.relation == "everyone" else "player",
+        subject=subject,
         position=reading.position,
     )

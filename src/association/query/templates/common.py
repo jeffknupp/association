@@ -359,7 +359,6 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # or a `since` does, and is read there through the shared `scoped_player`
     # (`_player_relation_season_type`), same as `threshold_count`'s.
     "player_stat": _relation_scoping("player_stat", "season_type_unstated"),
-    "player_history": frozenset({"span"}),
     # The team relation's whole set (step 3, C4b / K1): its games now come
     # from `team_games` (`opponent`, `venue`, `date`, `game_n`, `situation`,
     # the `order`/`limit` window) and its team and span from `scoped_team`
@@ -402,14 +401,6 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # ran: the per-90 question fell through to an agent with nothing to read,
     # and the `rate == "total"` branch below was unreachable in the pipeline.
     "leaderboard": frozenset({"span", "rate"}),
-    # A count is already a line on a column; `below` is the same line the
-    # other way ("games with under 14 fta"), and a phrase carrying the count's
-    # own number IS the count, misread - see _threshold_count_lines.
-    # `season_type_unstated` is honored the same way `scoped_player` reads it
-    # for game_log - one combined `season_type IN (2, 3)` read rather than a
-    # merge, since a count has no rows to interleave (_player_relation_season_type).
-    "threshold_count": frozenset({"span", "below", "above", "season_n", "season_type_unstated"}),
-    "single_game_high": frozenset({"span"}),
     # A career is every season on record rather than the current one; see
     # _condition_scope. `without` is the teammate with_without divides by, and
     # `split` is the one player_splits was asked for. `venue` and `opponent`
@@ -421,7 +412,6 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # the title says so - "Embiid career record vs boston" is his record in the
     # games his team played Boston, not overall (#163).
     "with_without": frozenset({"span", "without", "opponent", "conditions"}),
-    "record_when": _relation_scoping("record_when"),
     # `opponent` and `order` are excluded, each with its reason
     # (RELATION_SCOPING_EXCLUDED); a teammate's absence, a venue and a date
     # narrow the first player's games as they do on every relation template.
@@ -1002,7 +992,22 @@ def check_scope(intent: str, scope: Scope | Mapping[str, Any]) -> None:
        until every caller passes ``reading.scope``.
     """
     scope = _as_scope(scope)
-    honored = HONORED_SCOPING.get(intent, frozenset())
+    ignored = unhonored_scoping(intent, scope, HONORED_SCOPING.get(intent, frozenset()))
+    if ignored:
+        raise TemplateUnsupported(f"{intent} cannot honor {ignored} - it would answer for a different span than was asked")
+
+
+def unhonored_scoping(intent: str, scope: Scope, honored: frozenset[str]) -> list[str]:
+    """The scoping slots ``scope`` sets that ``honored`` does not hold, for
+    ``intent`` - :func:`check_scope`'s rule, on its own so the compiler's
+    presenters apply it too: a template refuses such a slot, and a presenter
+    steps aside for one its words do not state
+    (:data:`~association.query.compose.present.STATED_SCOPING`), leaving the
+    compiler's own sentence to answer. A slot is set when its field is truthy:
+    a field at its default (None, an empty tuple, False) is the slot absent.
+
+    .. versionadded:: 5.0.0
+    """
     ignored = sorted(name for name in SCOPING_SLOTS if getattr(scope, name) and name not in honored)
     # `split` is honored by the filtering templates only for a NAMED half. The
     # bare category means "show me both groups", which is player_splits' whole
@@ -1010,8 +1015,7 @@ def check_scope(intent: str, scope: Scope | Mapping[str, Any]) -> None:
     # quietly filtered to one side or quietly ignored.
     if scope.split == "starter_bench" and intent in _SPLIT_SIDE_ONLY:
         ignored = sorted({*ignored, "split"})
-    if ignored:
-        raise TemplateUnsupported(f"{intent} cannot honor {ignored} - it would answer for a different span than was asked")
+    return ignored
 
 
 class TemplateUnsupported(Exception):

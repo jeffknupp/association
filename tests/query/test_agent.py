@@ -1193,6 +1193,21 @@ def test_the_intent_the_parsers_words_assign_reaches_the_answers_decisions(monke
     assert "  -> (decision) parser intent: 'player_stat' -> 'shot_distance' (the words 'how far' name shot_distance)" in record
 
 
+def test_a_compiled_intents_fall_through_names_the_compilers_own_reason(tmp_path: Path) -> None:
+    """ROADMAP plan item 6, step (f): the reason a compiled intent falls
+    through is the planner's, read at parse time - "the relation cannot honor
+    ['rate']" - and not a template's list consulted afterwards, which named
+    a slot even where the compiler had declined for another cause."""
+    from association.query.answer import FallthroughDisabled
+    from association.query.router import Route
+
+    agent = _agent_with_players(tmp_path, "Joel Embiid")
+    agent.fallthrough = False
+    with pytest.raises(FallthroughDisabled, match="the relation cannot honor"):
+        agent.ask("how many 30 point games has embiid had per 36", route=Route("threshold_count", {"player": "Joel Embiid", "stat": "points", "threshold": 30, "rate": "per_36"}))
+    assert agent.fell_through == "threshold_count: the relation cannot honor ['rate'] - it would answer for a different span than was asked"
+
+
 def test_a_slot_the_reading_cannot_hold_falls_through_rather_than_crashing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """ "stephen curry last 0 games" reads as a window of 0, and a model can
     return a shot value of 0: the typed Scope refuses both, and the question

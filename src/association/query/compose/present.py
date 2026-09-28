@@ -40,6 +40,7 @@ from association.query.player_games import REBUILT_STATS
 from association.query.reading import Scope
 from association.query.templates.common import (
     HISTORY_COLUMNS,
+    HONORED_SCOPING,
     STAT_LABELS,
     THRESHOLD_STAT_COLUMNS,
     TemplateResult,
@@ -48,9 +49,10 @@ from association.query.templates.common import (
     _condition_scope,
     _optional_team,
     _player_relation_season_type,
+    _relation_scoping,
     _Span,
     check_coverage,
-    check_scope,
+    unhonored_scoping,
 )
 from association.query.templates.games import _game_log_lines, _log_extras, _player_game_log, _player_game_log_mixed
 from association.query.templates.players import (
@@ -381,6 +383,37 @@ template's words - see the module docstring.
 .. versionadded:: 5.0.0
 """
 
+STATED_SCOPING: dict[str, frozenset[str]] = {
+    # A standing template's words are its own: what it honors, it states.
+    "game_log": HONORED_SCOPING["game_log"],
+    "player_stat": HONORED_SCOPING["player_stat"],
+    # The retired templates' words, as they stated their narrowings when they
+    # retired (ROADMAP plan item 6, step (d), part 4).
+    "record_when": _relation_scoping("record_when"),
+    "player_history": frozenset({"span"}),
+    "single_game_high": frozenset({"span"}),
+    # A count is already a line on a column; `below` is the same line the
+    # other way ("games with under 14 fta"), and a phrase carrying the count's
+    # own number IS the count, misread - see _threshold_count_lines.
+    # `season_type_unstated` is stated the way `scoped_player` reads it -
+    # one combined `season_type IN (2, 3)` read (_player_relation_season_type).
+    "threshold_count": frozenset({"span", "below", "above", "season_n", "season_type_unstated"}),
+}
+"""Intent -> the scoping its presenter's WORDS state. A presenter answers in
+its template's sentence, which names the narrowings that template honored
+and no other: asked a point narrowed beyond them (an opponent on a
+single-game high, a condition on a history), it steps aside
+(:func:`present`) and the compiler's own sentence, which states every
+narrowing the relation applied, answers. A narrowing the relation cannot
+honor at all is the planner's refusal (:func:`~association.query.compose.plan.plan`),
+before any presenter runs; until 5.0.0 these lists lived in
+``HONORED_SCOPING`` under the retired templates' names, where
+``agent._run_compiled`` also read them as the fall-through's reason - which
+could name a slot where the compiler had declined for another cause.
+
+.. versionadded:: 5.0.0
+"""
+
 
 def present(con: duckdb.DuckDBPyConnection, intent: str, q: Query) -> TemplateResult | None:
     """``q`` answered as ``intent``'s template answers its own default point,
@@ -393,13 +426,12 @@ def present(con: duckdb.DuckDBPyConnection, intent: str, q: Query) -> TemplateRe
     presenter = PRESENTERS.get(intent)
     if presenter is None:
         return None
-    try:
-        # Only where the template itself would take these slots: a scoping
-        # slot it refuses (a league-wide ordinal season on single_game_high,
-        # an opponent on threshold_count) is exactly a point that is NOT its
-        # own, and the compiler's sentence says what was read.
-        check_scope(intent, q.scope)
-    except TemplateUnsupported:
+    # Only where the presenter's words state every narrowing asked: a
+    # scoping slot they do not (a league-wide ordinal season on
+    # single_game_high, an opponent on threshold_count) is exactly a point
+    # that is NOT the template's own, and the compiler's sentence says what
+    # was read (STATED_SCOPING).
+    if unhonored_scoping(intent, q.scope, STATED_SCOPING[intent]):
         return None
     try:
         return presenter(con, q)
@@ -416,18 +448,15 @@ def present_team(con: duckdb.DuckDBPyConnection, intent: str, q: TeamQuery) -> T
     ISSUES.md #144), which the team subject's own readers (a season sum, a
     window sum) cannot represent. Read by the template's own team reader
     (``templates.splits._record_when_team_answer``) behind the same two
-    checks the template ran behind: the slots it honors
-    (:func:`~association.query.templates.common.check_scope`) and the
-    coverage floor. ``None`` for any other point, which
+    checks the template ran behind: the slots its words state
+    (:data:`STATED_SCOPING`) and the coverage floor. ``None`` for any other point, which
     :func:`~association.query.compose.team.run_team` answers.
 
     .. versionadded:: 5.0.0
     """
     if intent != "record_when" or q.scope.threshold is None:
         return None
-    try:
-        check_scope(intent, q.scope)
-    except TemplateUnsupported:
+    if unhonored_scoping(intent, q.scope, STATED_SCOPING[intent]):
         return None
     refused = check_coverage(intent, q.scope)
     if refused is not None:

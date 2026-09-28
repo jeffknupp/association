@@ -512,7 +512,14 @@ model's. Two things follow, and both matter when you add a shape:
   `record_when`, `player_history`): the compiler answers them alone, in their
   retired templates' words (`compose/present.py`), and where it has no reading
   the question is refused or falls through with the compiler's reason
-  (`agent._run_compiled`). Retiring a template this way is measured first:
+  (`agent._run_compiled`). A presenter says what its retired template's
+  words state (`compose.present.STATED_SCOPING`) and steps aside for a
+  narrowing beyond them, so the compiler's own sentence, which states every
+  narrowing the relation applied, answers; a narrowing the relation cannot
+  honor at all is refused by the planner (`compose.plan.plan`) as the parser
+  reads the point, and the Reading carries the reason (`point_declined`) -
+  the fall-through names it, never a template's list. Retiring a template
+  this way is measured first:
   every call its unit tests make, and every recorded question it answers,
   answered both ways and compared - the recorded questions alone showed one
   shape the template still carried; the unit tests showed five.

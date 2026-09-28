@@ -14,12 +14,13 @@ from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date_of
 from association.query import shotchart
 from association.query.compose import answer as compose_answer
+from association.query.compose.present import STATED_SCOPING
 from association.query.entities import MAX_CANDIDATES, Availability, Entity, collect_name_readings, resolve_player
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from association.query.parse import with_point
-from association.query.reading import Reading
+from association.query.reading import Reading, Scope
 from association.query.subject import Subject
-from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, TemplateContext, TemplateResult, TemplateUnsupported, check_scope
+from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, TemplateContext, TemplateResult, TemplateUnsupported, check_scope, unhonored_scoping
 from association.query.templates.games import _rebuilt_readable, game_log, head_to_head, period_leaderboard, period_split, player_matchup, team_quarter_points
 from association.query.templates.netpoints import fingerprint, player_netpoints
 from association.query.templates.players import SHOOTING_STATS, _box_score_stat_rebuilt, leaderboard, player_compare, player_stat
@@ -3294,10 +3295,15 @@ def test_scope_guard_lets_only_the_templates_that_read_it_honor_season_type_unst
     silently ignore."""
     check_scope("game_log", {"order": "recent", "limit": 5, "season_type_unstated": True})
     check_scope("player_stat", {"season_type_unstated": True})
-    check_scope("threshold_count", {"season_type_unstated": True})
-    for intent in ("leaderboard", "single_game_high"):
-        with pytest.raises(TemplateUnsupported, match="different span"):
-            check_scope(intent, {"season_type_unstated": True})
+    # threshold_count is the compiler's (compose.COMPILED_INTENTS): the
+    # relation honors the slot for a named player, and the count's own words
+    # state it (compose.present.STATED_SCOPING).
+    assert unhonored_scoping("threshold_count", Scope.from_slots({"season_type_unstated": True}), STATED_SCOPING["threshold_count"]) == []
+    with pytest.raises(TemplateUnsupported, match="different span"):
+        check_scope("leaderboard", {"season_type_unstated": True})
+    # single_game_high's words do not state it: its presenter steps aside and
+    # the compiler's sentence, which does, answers.
+    assert unhonored_scoping("single_game_high", Scope.from_slots({"season_type_unstated": True}), STATED_SCOPING["single_game_high"]) == ["season_type_unstated"]
 
 
 def test_scope_guard_ignores_absent_or_empty_slots() -> None:
@@ -3311,11 +3317,9 @@ def test_every_template_honoring_a_scope_slot_actually_reads_it() -> None:
     from association.query import templates as module
 
     for intent, honored in HONORED_SCOPING.items():
-        if intent not in module.TEMPLATES:
-            # An intent the compiler alone answers (compose.COMPILED_INTENTS):
-            # its list gates the compiler's presentation of its own point
-            # (compose.present), and the compiler's relation reads the slots.
-            continue
+        # An intent the compiler alone answers has no entry here: what its
+        # presenter's words state is compose.present.STATED_SCOPING's.
+        assert intent in module.TEMPLATES, f"{intent} declares scoping but has no template"
         source = _source_a_template_reads_slots_in(module.TEMPLATES[intent])
         for slot in honored:
             assert _reads_slot(source, slot), f"{intent} claims to honor {slot} but never reads it"
@@ -3528,7 +3532,7 @@ def test_scope_guard_refuses_what_the_question_text_narrowed_to(intent: str, slo
 def test_scope_guard_lets_through_what_the_player_templates_now_honor() -> None:
     check_scope("game_log", {"player": "Jaylen Brown", "opponent": "Detroit Pistons", "venue": "home", "span": "career", "without": "x", "order": "recent"})
     check_scope("player_stat", {"player": "Evan Mobley", "opponent": "Milwaukee Bucks", "venue": "away", "span": "career", "without": "x"})
-    check_scope("player_history", {"player": "Nikola Jokic", "span": "career"})
+    assert unhonored_scoping("player_history", Scope.from_slots({"player": "Nikola Jokic", "span": "career"}), STATED_SCOPING["player_history"]) == []
     check_scope("shot_distance", {"player": "Jaylen Brown", "opponent": "Detroit Pistons"})
 
 
@@ -5475,6 +5479,14 @@ def _c5_shots_ported() -> bool:
     return not hasattr(shots_module, "_scoping_game")
 
 
+def _declared_scoping(intent: str) -> frozenset[str]:
+    """What ``intent`` declares it honors: its template's list, or - for an
+    intent the compiler alone answers (``record_when``) - what its
+    presenter's words state (``compose.present.STATED_SCOPING``), which the
+    same relation discipline binds."""
+    return HONORED_SCOPING[intent] if intent in HONORED_SCOPING else STATED_SCOPING[intent]
+
+
 def test_templates_on_the_relation_declare_no_scoping_of_their_own() -> None:
     """Step 3, C3. Six templates settle their player and narrow his games
     through the shared steps, and what they honor is declared ONCE
@@ -5512,7 +5524,7 @@ def test_templates_on_the_relation_declare_no_scoping_of_their_own() -> None:
         excluded = RELATION_SCOPING_EXCLUDED.get(intent, {})
         for slot, reason in excluded.items():
             assert slot in RELATION_SCOPING and reason.strip(), f"{intent} excludes {slot!r} without a reason"
-        assert HONORED_SCOPING[intent] == (RELATION_SCOPING | extra) - set(excluded), f"{intent} declares scoping of its own"
+        assert _declared_scoping(intent) == (RELATION_SCOPING | extra) - set(excluded), f"{intent} declares scoping of its own"
 
 
 def test_until_is_declared_wherever_since_is() -> None:
@@ -5544,7 +5556,7 @@ def test_until_is_declared_wherever_since_is() -> None:
     if _c5_shots_ported():
         on_the_relation += ["shot_chart", "shot_distance"]
     for intent in on_the_relation:
-        honored = HONORED_SCOPING[intent]
+        honored = _declared_scoping(intent)
         assert ("since" in honored) == ("until" in honored), f"{intent} honors since XOR until"
 
 

@@ -28,11 +28,12 @@ from association.fetch.repairs import real_games
 from association.fetch.repairs.reconstructed_box import _FILLED_COLUMNS as FILLED_COLUMNS
 from association.nba.season import current_season
 from association.query.compose import answer as compose_answer
+from association.query.compose.present import STATED_SCOPING
 from association.query.conditions import RAW_BOX, UNGATED_ON_REBUILD, box_source
 from association.query.parse import with_point
-from association.query.reading import Reading
+from association.query.reading import Reading, Scope
 from association.query.subject import Subject
-from association.query.templates.common import REBUILT_STATS, TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, check_scope
+from association.query.templates.common import REBUILT_STATS, TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, unhonored_scoping
 from association.query.templates.games import player_matchup
 from association.query.templates.splits import SPLIT_KINDS, _record_when_group, player_splits, streak, with_without
 
@@ -1748,8 +1749,11 @@ def test_a_condition_the_relation_cannot_read_refuses(league: TemplateContext) -
         _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "dunked"})
     with pytest.raises(TemplateUnsupported, match="reached condition"):
         _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "reached", "stat": "vibes", "threshold": 3})
-    with pytest.raises(TemplateUnsupported, match="conditions"):
-        check_scope("player_history", {"player": "Jaylen Brown", "stat": "points", "conditions": [{"player": "Jayson Tatum"}]})
+    # A history's words state no condition (compose.present.STATED_SCOPING):
+    # its presenter steps aside, and the compiler's sentence says what it read.
+    assert unhonored_scoping("player_history", Scope.from_slots({"player": "Jaylen Brown", "stat": "points", "conditions": [{"player": "Jayson Tatum"}]}), STATED_SCOPING["player_history"]) == [
+        "conditions"
+    ]
 
 
 def test_a_matchup_emptied_by_an_absence_says_what_it_counted(league: TemplateContext) -> None:
