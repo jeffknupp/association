@@ -16,6 +16,7 @@ from association.query import shotchart
 from association.query.compose import answer as compose_answer
 from association.query.entities import MAX_CANDIDATES, Availability, Entity, collect_name_readings, resolve_player
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
+from association.query.parse import with_point
 from association.query.reading import Reading
 from association.query.subject import Subject
 from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, TemplateContext, TemplateResult, TemplateUnsupported, check_scope
@@ -41,7 +42,7 @@ def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResul
         kind = "pair" if len(named) > 1 else "player" if named else "team" if scope.team else "everyone"
         subject = reading.subject or Subject(kind, players=named, teams=(scope.team,) if scope.team else ())
         why: list[str] = []
-        result = compose_answer(ctx, intent, scope.to_slots(), "", subject, declined=why.append)
+        result = compose_answer(ctx, with_point(ctx.con, "", Reading(scope=scope, intent=intent, subject=subject)), declined=why.append)
         if result is None:
             raise TemplateUnsupported(why[0] if why else f"the compiler has no reading of this {intent} point")
         return result

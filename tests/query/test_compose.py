@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -23,13 +24,42 @@ import pytest
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
-from association.query.compose import answer as compose_answer
+from association.query import compose
 from association.query.compose.adapt import to_query
 from association.query.compose.core import Query, Refused, Unsupported, compile_query, run
-from association.query.compose.move import _asc_or_desc, _career_scope, _everyone_career_scope, _ranking_minimum, move_point, team_move_point
+from association.query.compose.move import _asc_or_desc, _career_scope, _everyone_career_scope, _ranking_minimum, read_point
+from association.query.compose.move import team_move_point as _team_move_point
+from association.query.compose.plan import plan
 from association.query.compose.team import TeamQuery, run_team
+from association.query.parse import with_point
 from association.query.reading import Reading, Scope
+from association.query.subject import Subject, read_subject
 from association.query.templates.common import TemplateContext, TemplateResult
+
+
+def _reading(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None) -> Reading:
+    """A test's slot dict as the Reading the parser hands the compiler (5.0.0:
+    the package takes the Reading alone): the typed scope, and the subject
+    read from the question the way ``compose.move`` read it for a caller
+    with none - never applied to the slots, so a case says what it did."""
+    return Reading(scope=Scope.from_slots(slots), intent=intent, subject=subject or read_subject(con, question, intent, dict(slots)))
+
+
+def compose_answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None, declined: Callable[[str], None] | None = None) -> TemplateResult | None:
+    """``compose.answer`` over the point ``question`` moves for ``slots``."""
+    return compose.answer(ctx, with_point(ctx.con, question, _reading(ctx.con, intent, slots, question, subject)), declined=declined)
+
+
+def move_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None) -> Query | TeamQuery:
+    """The point ``question`` moves for ``slots``, planned - raising the
+    compiler's own ``Unsupported``/``Refused`` as the reader does."""
+    return plan(read_point(con, _reading(con, intent, slots, question, subject), question))
+
+
+def team_move_point(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], question: str) -> TeamQuery | None:
+    """``compose.move.team_move_point`` over ``slots``' scope and the subject read from the question."""
+    return _team_move_point(con, Scope.from_slots(slots), question, read_subject(con, question, "", dict(slots)))
+
 
 #: Box-score columns, in the order ``_box`` below fills them - the same shape
 #: ``player_box_stats`` carries in the real warehouse.
@@ -346,13 +376,12 @@ def test_a_boolean_measure_on_a_per_game_intent_is_counted_never_averaged(cx_ctx
     this the compiler built ``AVG(<boolean>)`` and DuckDB threw - a crash,
     the one shape worse than a wrong answer - so ``_agg`` refuses the
     average outright, whatever move asked for it."""
-    from association.query.compose import answer
     from association.query.compose.core import Unsupported, _agg
 
     slots = {"player": "Brandin Podziemski", "stat": "double_double", "venue": "away", "span": "career"}
     q = move_point(cx_ctx.con, "player_splits", dict(slots), "Podziemski double-doubles career away")
     assert isinstance(q, Query) and q.skeleton == "scalar" and q.aggregate == "count" and ("double_double", "=", True) in q.predicates
-    result = answer(cx_ctx, "player_splits", dict(slots), "Podziemski double-doubles career away")
+    result = compose_answer(cx_ctx, "player_splits", dict(slots), "Podziemski double-doubles career away")
     assert result is not None and "double-double" in result.answer
     with pytest.raises(Unsupported):
         _agg("double_double", "per_game")
@@ -1380,8 +1409,6 @@ def test_a_teams_total_of_triple_doubles_is_declined_for_the_refusals_module(cx_
     reads - declined here, so refusals._team_boolean_count names that cause
     instead of the ranking's "no ranking reads triple_double"."""
     from association.query.compose.core import Unsupported
-    from association.query.compose.move import move_point
-    from association.query.subject import Subject
 
     with pytest.raises(Unsupported, match="team's total"):
         move_point(
@@ -1474,42 +1501,46 @@ def test_a_history_of_a_stat_nothing_carries_is_declined_not_swapped_for_points(
 # ---------------------------------------------------------------------------
 
 
-def test_the_parser_reads_the_point_and_the_compiler_answers_it_unread(cx_ctx: TemplateContext) -> None:
+def test_the_parser_reads_the_point_and_the_compiler_answers_it_unread(cx_ctx: TemplateContext, monkeypatch: pytest.MonkeyPatch) -> None:
     """``parse.reading_from_route`` reads the compiler's point from the
-    question's words (``Reading.point``), and ``compose.answer_reading``
-    plans and runs it without the question - the same answer, text and
-    ``data``, as the compiler reading the question itself (``compose.answer``)."""
-    from association.query.compose import answer_reading
+    question's words (``Reading.point``), and ``compose.answer`` plans and
+    runs it without the question: with the point reader disabled outright,
+    the answer is the one the same point gives read the test's own way
+    (``compose_answer`` above, the subject and the point built by hand)."""
     from association.query.parse import reading_from_route
     from association.query.router import Route
 
     question = "how many 15+ point games did podziemski have"
     reading = reading_from_route(cx_ctx.con, question, Route("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15}))
     assert reading.point is not None and (reading.point.shape, reading.point.aggregate) == ("scalar", "count")
-    by_reading = answer_reading(cx_ctx, reading)
-    by_slots = compose_answer(cx_ctx, "threshold_count", reading.scope.to_slots(), question, reading.subject)
-    assert by_reading is not None and by_slots is not None
-    assert (by_reading.answer, by_reading.data) == (by_slots.answer, by_slots.data)
+    by_hand = compose_answer(cx_ctx, "threshold_count", reading.scope.to_slots(), question, reading.subject)
+
+    def unread(*args: Any, **kwargs: Any) -> Reading:
+        raise AssertionError("the compiler read the question")
+
+    monkeypatch.setattr("association.query.compose.move.read_point", unread)
+    answered = compose.answer(cx_ctx, reading)
+    assert answered is not None and by_hand is not None
+    assert (answered.answer, answered.data) == (by_hand.answer, by_hand.data)
 
 
 def test_a_point_the_compiler_declines_or_refuses_travels_on_the_reading(cx_ctx: TemplateContext) -> None:
-    """The compiler's verdict, read at parse time, is what ``answer_reading``
+    """The compiler's verdict, read at parse time, is what ``compose.answer``
     gives: a decline's reason (a league count with no line to count), and a
     refusal as the answer - a copy, since the agent appends its notes to the
     answer it is handed."""
-    from association.query.compose import answer_reading
     from association.query.parse import reading_from_route
     from association.query.router import Route
 
     declined = reading_from_route(cx_ctx.con, "how many games", Route("threshold_count", {"stat": "points"}))
     assert declined.point is None and declined.point_declined is not None
     why: list[str] = []
-    assert answer_reading(cx_ctx, declined, declined=why.append) is None
+    assert compose.answer(cx_ctx, declined, declined=why.append) is None
     assert why == [declined.point_declined]
 
     refused = reading_from_route(cx_ctx.con, "most gizmos in a single game", Route("single_game_high", {"stat": "gizmos"}))
     assert refused.point is None and refused.point_refusal is not None
-    answered = answer_reading(cx_ctx, refused)
+    answered = compose.answer(cx_ctx, refused)
     assert answered is not None and answered.answer == refused.point_refusal.answer and answered is not refused.point_refusal
 
 

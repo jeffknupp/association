@@ -460,7 +460,7 @@ class Agent:
             return reading.intent, early
         if handler is not None or reading.intent in COMPILED_INTENTS:
             return None
-        refusal = unanswerable(self.toolbox.con, reading.intent, reading.scope.to_slots(), question, reading.subject)
+        refusal = unanswerable(self.toolbox.con, reading, question)
         if refusal is not None:
             history.log(f"  -> (refusal) {refusal.data['refused']}: nothing here reads that shape")
             return reading.intent, refusal
@@ -519,7 +519,7 @@ class Agent:
             # read - a playoff round, an age, a stat by quarter other than
             # points? The agent has no better source for those either, and a
             # refusal naming the missing thing is the answer (query/refusals).
-            refusal = unanswerable(self.toolbox.con, intent, scope.to_slots(), question, reading.subject)
+            refusal = unanswerable(self.toolbox.con, reading, question)
             if refusal is not None:
                 history.log(f"  -> (template) {exc} - refused ({refusal.data['refused']}): nothing here reads that shape")
                 return intent, refusal
@@ -557,7 +557,7 @@ class Agent:
             if refused is not None:
                 history.log(f"  -> (coverage) {refused}")
                 return intent, TemplateResult(data={"message": refused, "season": scope.season}, answer=refused)
-        refusal = unanswerable(self.toolbox.con, intent, scope.to_slots(), question, reading.subject)
+        refusal = unanswerable(self.toolbox.con, reading, question)
         if refusal is not None:
             history.log(f"  -> (compose) {why} - refused ({refusal.data['refused']}): nothing here reads that shape")
             return intent, refusal
@@ -567,7 +567,7 @@ class Agent:
 
     def _try_compose(self, question: str, reading: Reading, history: RunHistory, declined: Callable[[str], None] | None = None) -> TemplateResult | None:
         """The compiler's answer to the point the parser read
-        (``association.query.compose.answer_reading``): the four compiled
+        (``association.query.compose.answer``): the four compiled
         intents' only answer, and the step between a template's refusal and
         the fall-through agent. Answered exactly like a template's own result
         - same name-reading and coverage-caveat attachment as
@@ -576,12 +576,12 @@ class Agent:
         that IS the interesting fact about a compiled answer.
 
         The module is looked up at call time, not bound at import: that is
-        what tests monkeypatch (``association.query.compose.answer_reading``).
+        what tests monkeypatch (``association.query.compose.answer``).
         """
         from . import compose
 
         with collect_name_readings() as readings:
-            composed = compose.answer_reading(
+            composed = compose.answer(
                 TemplateContext(con=self.toolbox.con, out_dir=self.toolbox.out_dir),
                 reading,
                 trace=lambda point: history.log(f"  -> (reading) {point.describe()}"),

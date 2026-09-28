@@ -42,15 +42,8 @@ def _stat_column(stat: str | None) -> str | None:
     return MEASURE_WORDS.get(stat.strip().lower())
 
 
-def _named_player(slots: dict[str, Any]) -> bool:
-    """Whether ``slots`` - the router's slot dict, before its scope is read -
-    names a player at all."""
-    return isinstance(slots.get("player"), str) and bool(slots["player"].strip())
-
-
 def _named_player_in(scope: Scope) -> bool:
-    """Whether ``scope`` names a player at all: :func:`_named_player`, once
-    the slots are the typed scope."""
+    """Whether ``scope`` names a player at all."""
     return scope.player is not None and bool(scope.player.strip())
 
 

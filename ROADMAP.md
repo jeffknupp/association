@@ -153,7 +153,7 @@ text as written is the last section of `ROADMAP-HISTORY.md`.
    - (e) the compiler's reading of the question moved into the parser -
      done. The parser reads the compiler's point once and the Reading
      carries it (`Reading.point`); the compiler plans and runs the point it
-     is handed (`compose.answer_reading`) and repairs no slot; a position
+     is handed (`compose.answer`) and repairs no slot; a position
      group is a subject, never a player; and the intent the words assign is
      a recorded decision (#258) (`1702db8`, `31c87f9`, `0ede991`; live
      162/175, no answer moved). The word tables still live beside the

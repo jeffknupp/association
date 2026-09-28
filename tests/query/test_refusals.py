@@ -11,10 +11,20 @@ from typing import Any
 import duckdb
 import pytest
 
+from association.query import refusals
 from association.query.calendar import parse_alignment, parse_situation
-from association.query.reading import Reading
-from association.query.refusals import by_question, unanswerable
-from association.query.templates.common import TemplateUnsupported, check_scope
+from association.query.reading import Reading, Scope
+from association.query.refusals import by_question
+from association.query.subject import read_subject
+from association.query.templates.common import TemplateResult, TemplateUnsupported, check_scope
+
+
+def unanswerable(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str) -> TemplateResult | None:
+    """A test's slot dict as the Reading the agent hands
+    :func:`association.query.refusals.unanswerable` (5.0.0: it takes the
+    Reading alone): the typed scope, and the subject read from the question
+    the way the module read it for a caller with none."""
+    return refusals.unanswerable(con, Reading(scope=Scope.from_slots(slots), intent=intent, subject=read_subject(con, question, intent, dict(slots))), question)
 
 
 @pytest.fixture
@@ -187,8 +197,6 @@ def test_a_championship_question_is_refused_before_a_ranking_answers_it() -> Non
 
 
 def test_a_teams_total_of_triple_doubles_is_refused_for_that_cause(con: duckdb.DuckDBPyConnection) -> None:
-    from association.query.refusals import unanswerable
-
     result = unanswerable(con, "leaderboard", {"stat": "triple_double", "team": "Los Angeles Lakers", "span": "career"}, "los angeles lakers all-time triple doubles vs west")
     assert result is not None and result.data["refused"] == "team_boolean_count" and "team's total" in result.answer
     assert unanswerable(con, "leaderboard", {"stat": "triple_double"}, "who has the most triple doubles this season") is None

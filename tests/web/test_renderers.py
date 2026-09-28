@@ -26,7 +26,9 @@ from association.nba.netpoints import FINGERPRINT_CATEGORIES
 from association.query.compose import COMPILED_INTENTS
 from association.query.compose import answer as compose_answer
 from association.query.compose.sentence import _FRACTION_COLUMNS
-from association.query.reading import Reading
+from association.query.parse import with_point
+from association.query.reading import Reading, Scope
+from association.query.subject import read_subject
 from association.query.templates import TEMPLATES
 from association.query.templates.common import TemplateContext, TemplateResult
 from association.web.app import INDEX_HTML
@@ -307,7 +309,8 @@ def _answered(ctx: TemplateContext, intent: str) -> TemplateResult:
     compiler's, with no question words to move its own point."""
     if intent in TEMPLATES:
         return TEMPLATES[intent](ctx, Reading.from_slots(CASES[intent]))
-    result = compose_answer(ctx, intent, dict(CASES[intent]), "")
+    slots = dict(CASES[intent])
+    result = compose_answer(ctx, with_point(ctx.con, "", Reading(scope=Scope.from_slots(slots), intent=intent, subject=read_subject(ctx.con, "", intent, slots))))
     assert result is not None, f"the compiler has no reading of {intent}'s case"
     return result
 

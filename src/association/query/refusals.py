@@ -28,13 +28,13 @@ names the wrong cause").
 from __future__ import annotations
 
 import re
-from typing import Any
 
 import duckdb
 
 from association.query.calendar import parse_alignment, parse_situation
 from association.query.entities import find_teams
-from association.query.subject import Subject, read_subject
+from association.query.reading import Reading, Scope
+from association.query.subject import Subject
 from association.query.templates.common import PLAYER_INTENTS, TemplateResult
 
 _CHAMPIONSHIP = re.compile(r"\b(?:championships?|champions?|nba\s+titles?|won\s+the\s+(?:title|finals)|title\s+winners?|finals\s+winners?)\b", re.IGNORECASE)
@@ -43,29 +43,36 @@ _AGE = re.compile(r"\b(?:\d+\s+years?\s+old|(?:before|after|by|at)\s+(?:turning|
 _CONFERENCE_OR_DIVISION = re.compile(r"\b(?:east(?:ern)?|west(?:ern)?|conference|division|atlantic|central|southeast|northwest|pacific|southwest)\b", re.IGNORECASE)
 
 
-def unanswerable(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None) -> TemplateResult | None:
+def unanswerable(con: duckdb.DuckDBPyConnection, reading: Reading, question: str) -> TemplateResult | None:
     """The refusal for a question shape nothing here reads, or None where the
     agent should have its turn. Called only after the template refused and
     the compiler declined, so an answerable question never reaches it.
+    ``reading`` is the parser's (:func:`~association.query.parse.reading_from_route`):
+    the checks read its intent, its typed scope and the subject it read.
 
     .. versionadded:: 4.4.0
 
     .. versionchanged:: 5.0.0
-       Takes the :class:`~association.query.subject.Subject` the agent read
-       (read here when not given); the team-in-``player`` refusal reads it.
+       Takes the :class:`~association.query.reading.Reading` in place of an
+       intent, a slot dict and a subject read here for a caller with none
+       (ROADMAP plan item 6, step (f)).
     """
+    subject = reading.subject
     if subject is None:
-        subject = read_subject(con, question, intent, slots)
+        # Who the question is about is read once, by the parser; a Reading
+        # with none is a caller's mistake, said here rather than as an
+        # AttributeError inside a check.
+        raise ValueError("unanswerable needs the reading's subject - who the question is about, as the parser read it")
     for check in (_playoff_round, _non_calendar_situation, _period_stat, _team_period_stat, _bench_points, _team_where_a_player_belongs, _team_boolean_count):
-        message = check(con, intent, slots, question, subject)
+        message = check(con, reading.intent, reading.scope, question, subject)
         if message is not None:
-            return TemplateResult(data={"message": message, "refused": check.__name__.lstrip("_"), "intent": intent}, answer=message)
+            return TemplateResult(data={"message": message, "refused": check.__name__.lstrip("_"), "intent": reading.intent}, answer=message)
     return None
 
 
-def _playoff_round(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject) -> str | None:
+def _playoff_round(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, question: str, subject: Subject) -> str | None:
     """A named round: the games carry no round or series label (ISSUES #10)."""
-    playoff_round = slots.get("round")
+    playoff_round = scope.round
     if not isinstance(playoff_round, str) or not playoff_round.strip():
         return None
     return (
@@ -74,7 +81,7 @@ def _playoff_round(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str,
     )
 
 
-def _non_calendar_situation(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject) -> str | None:
+def _non_calendar_situation(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, question: str, subject: Subject) -> str | None:
     """A ``situation`` that names neither a calendar narrowing nor a
     conference or division (:func:`association.query.calendar.parse_situation`/
     :func:`~association.query.calendar.parse_alignment`, the same two readers
@@ -91,7 +98,7 @@ def _non_calendar_situation(con: duckdb.DuckDBPyConnection, intent: str, slots: 
        A conference or division IS read now (K3-2), by value - this used to
        refuse every one outright ("not read from the standings yet").
     """
-    situation = slots.get("situation")
+    situation = scope.situation
     if not isinstance(situation, str) or not situation.strip():
         return None
     if parse_situation(situation) is not None or parse_alignment(situation) is not None:
@@ -103,18 +110,18 @@ def _non_calendar_situation(con: duckdb.DuckDBPyConnection, intent: str, slots: 
     return f"'{situation}' is not something the games are read by - a weekday, a month, a holiday, \"since <day>\", a conference or a division is. Ask without it, or with one of those."
 
 
-def _period_stat(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject) -> str | None:
+def _period_stat(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, question: str, subject: Subject) -> str | None:
     """A stat other than points by quarter or half: the per-period figures
     are rebuilt from the scoring plays, so points is the only one."""
-    stat = slots.get("stat")
+    stat = scope.stat
     if intent != "period_split" or not isinstance(stat, str) or stat in ("points", "pts", ""):
         return None
-    period = slots.get("period") or slots.get("half")
-    where = f"the {period}{'st' if period == 1 else 'nd' if period == 2 else 'rd' if period == 3 else 'th'} {'half' if slots.get('half') else 'quarter'}" if isinstance(period, int) else "a period"
+    period = scope.period or scope.half
+    where = f"the {period}{'st' if period == 1 else 'nd' if period == 2 else 'rd' if period == 3 else 'th'} {'half' if scope.half else 'quarter'}" if isinstance(period, int) else "a period"
     return f"By quarter or half, only points are on record - {stat!r} is not split by period. Ask for points in {where}, or for {stat} over whole games."
 
 
-def _team_where_a_player_belongs(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject) -> str | None:
+def _team_where_a_player_belongs(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, question: str, subject: Subject) -> str | None:
     """A team in the ``player`` slot of a template that answers for one
     player - the reading says the subject is the team and names no player:
     ask which player was meant, or send the team's own question to the team
@@ -129,31 +136,31 @@ def _team_where_a_player_belongs(con: duckdb.DuckDBPyConnection, intent: str, sl
     has no sentence for. A word that is a team's and a player's both
     ("magic") is the team here: the reading already chose it over the
     player."""
-    player = slots.get("player")
+    player = scope.player
     if intent not in PLAYER_INTENTS or not isinstance(player, str) or not player.strip():
         return None
     if subject.kind not in ("team", "team_players") or subject.players:
         return None
     if not find_teams(con, player):
-        return _team_where_a_player_belongs_line(intent, slots, player)
-    return f"'{player}' is a team, and this was read as a question about one player's {slots.get('stat') or 'stats'}. Name a player, or ask for the team's own record or stats."
+        return _team_where_a_player_belongs_line(intent, scope, player)
+    return f"'{player}' is a team, and this was read as a question about one player's {scope.stat or 'stats'}. Name a player, or ask for the team's own record or stats."
 
 
-def _team_where_a_player_belongs_line(intent: str, slots: dict[str, Any], player: str) -> str | None:
+def _team_where_a_player_belongs_line(intent: str, scope: Scope, player: str) -> str | None:
     """The refusal for a player named beside a team where ``record_when`` has
     no line to split the team's games by: the number and the stat together,
     which is what the template needs and the question did not give."""
-    threshold = slots.get("threshold")
-    if intent != "record_when" or (isinstance(threshold, int) and not isinstance(threshold, bool) and threshold >= 1 and slots.get("stat")):
+    threshold = scope.threshold
+    if intent != "record_when" or (isinstance(threshold, int) and not isinstance(threshold, bool) and threshold >= 1 and scope.stat):
         return None
-    team = f" {slots['team']}" if isinstance(slots.get("team"), str) and slots["team"].strip() else " team's"
+    team = f" {scope.team}" if isinstance(scope.team, str) and scope.team.strip() else " team's"
     return (
         f"A record split by '{player}' needs a line - a number and a stat, as in \"when {player} scores 30+ points\" - and this question gives none it can read. "
         f"Ask with the line, or for the{team} record with and without {player}."
     )
 
 
-def _team_boolean_count(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject) -> str | None:
+def _team_boolean_count(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, question: str, subject: Subject) -> str | None:
     """A team's count of its players' triple-doubles or double-doubles, as a
     ranking with the team filed: "oklahoma city thunder all-time triple
     doubles vs west" arrives as ``leaderboard`` with ``team`` and
@@ -161,18 +168,18 @@ def _team_boolean_count(con: duckdb.DuckDBPyConnection, intent: str, slots: dict
     compiler's decline said "no ranking reads triple_double" - the wrong
     cause, since one player's triple-doubles ARE counted; what is not read
     is the team's aggregate of them."""
-    stat = slots.get("stat")
-    if intent != "leaderboard" or stat not in ("triple_double", "double_double") or subject.kind not in ("team", "team_players") or not slots.get("team"):
+    stat = scope.stat
+    if intent != "leaderboard" or stat not in ("triple_double", "double_double") or subject.kind not in ("team", "team_players") or not scope.team:
         return None
     label = "triple-doubles" if stat == "triple_double" else "double-doubles"
     return f"A team's total of its players' {label} is not read yet - one player's {label} are (ask '<player> triple doubles this season'), and so is the team's own record. Ask one of those."
 
 
-def _team_period_stat(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject) -> str | None:
+def _team_period_stat(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, question: str, subject: Subject) -> str | None:
     """A team's stat other than points by quarter or half: the linescore
     holds each team's points per period and nothing else (yardstick-v2 F065,
     "trailblazers ... 3 point average 1st quarter")."""
-    stat = slots.get("stat")
+    stat = scope.stat
     if intent != "team_quarter_points" or not isinstance(stat, str) or stat in ("points", "pts", ""):
         return None
     return (
@@ -181,7 +188,7 @@ def _team_period_stat(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[s
     )
 
 
-def _bench_points(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject) -> str | None:
+def _bench_points(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, question: str, subject: Subject) -> str | None:
     """Bench points: derivable (the non-starters' points in the box score,
     which flags starters) but read by nothing yet - a gap of ours, named as
     one, not "no data" (yardstick-v2 F106, "most opponent bench points

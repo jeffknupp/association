@@ -737,17 +737,23 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
         decisions=(*_subject_decisions(subject), *route.decisions, *applied.decisions),
         misread=tuple(applied.dropped),
     )
-    return _reading_point(con, question, reading)
+    return with_point(con, question, reading)
 
 
-def _reading_point(con: duckdb.DuckDBPyConnection, question: str, reading: Reading) -> Reading:
+def with_point(con: duckdb.DuckDBPyConnection, question: str, reading: Reading) -> Reading:
     """``reading`` with the compiler's point read from the question's words
     (:func:`~association.query.compose.move.read_point`) - or with why there
     is none: the compiler declining (``point_declined``) or refusing
     (``point_refusal``). Read here, once, so nothing after the parser reads
-    the question: the compiler plans and runs the point it is handed."""
+    the question: the compiler plans and runs the point it is handed
+    (:func:`~association.query.compose.answer`). :func:`reading_from_route`'s
+    last step; public for a caller that builds a Reading by hand (a test
+    handing the compiler a subject of its own) rather than from a route.
+
+    .. versionadded:: 5.0.0
+    """
     try:
-        point = read_point(con, reading.intent, reading.scope.to_slots(), question, reading.subject)
+        point = read_point(con, reading, question)
     except Unsupported as exc:
         return replace(reading, point_declined=str(exc))
     except Refused as exc:

@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING, Any
 from association.query.templates.common import TemplateContext, TemplateResult, check_coverage
 
 from .core import Query, Refused, Unsupported, run
-from .move import games_reading, read_point
+from .move import games_reading
 from .plan import plan
 from .present import present, present_team
 from .sentence import _span_phrase
@@ -43,9 +43,8 @@ from .team import TeamQuery, TeamResult, run_team
 
 if TYPE_CHECKING:
     from association.query.reading import Reading
-    from association.query.subject import Subject
 
-__all__ = ["answer", "answer_reading"]
+__all__ = ["answer"]
 
 
 def _point_data(query: Query, out: dict[str, Any], headline: str) -> dict[str, Any]:
@@ -107,107 +106,42 @@ reason (``agent._run_compiled``).
 """
 
 
-def answer(
-    ctx: TemplateContext,
-    intent: str,
-    slots: dict[str, Any],
-    question: str,
-    subject: Subject | None = None,
-    trace: Callable[[Reading], None] | None = None,
-    declined: Callable[[str], None] | None = None,
-) -> TemplateResult | None:
-    """A router-classified question, answered by the compiler where a
-    template refused it - or ``None``, meaning the question is not a point on
-    this relation at all and should fall through to the agent.
+def answer(ctx: TemplateContext, reading: Reading, trace: Callable[[Reading], None] | None = None, declined: Callable[[str], None] | None = None) -> TemplateResult | None:
+    """The point the parser read for a question (:attr:`Reading.point`,
+    :func:`~association.query.parse.reading_from_route`), answered - planned
+    and run, never read from the question again. The parser's own verdict
+    stands where it has no point: its refusal is the answer
+    (:attr:`Reading.point_refusal`), and a decline is ``None`` - the question
+    is not a point on this relation and falls through to the agent - with
+    the reason given to ``declined``.
 
     ``Refused`` (the relation itself refusing - no such player, an ambiguous
-    name, a coverage floor) is returned as the answer: it is a handled
-    outcome carrying the template-shaped refusal, not a reason to fall
-    through. ``Unsupported`` (the compiler cannot say this question) becomes
-    ``None`` instead, since falling through is exactly what it means.
+    name, a coverage floor) is returned as the answer: a handled outcome
+    carrying the template-shaped refusal, not a reason to fall through.
+    ``Unsupported`` (the compiler cannot say this question) becomes ``None``
+    instead, since falling through is exactly what it means. The team
+    subject is answered through :func:`~association.query.compose.team.run_team`
+    (a team's record above and below its own line by
+    :func:`~association.query.compose.present.present_team`), an intent's own
+    default point in its template's words
+    (:func:`~association.query.compose.present.present`), and the rest by the
+    compiler's own sentence, with the box-score caveats
+    :func:`~association.query.compose.core.run` reads appended (#197); the
+    agent appends :func:`~association.query.templates.common.coverage_caveat`
+    as it does to a template's answer. ``trace`` is handed the point before
+    it is planned - the agent logs it as the decision record.
 
     This function is the whole surface the agent's fall-through wiring calls;
     nothing else in this package is meant to be called from outside it.
 
     .. versionadded:: 4.4.0
 
-    .. versionchanged:: 4.4.0
-       ``move_point`` may return a :class:`~association.query.compose.team.TeamQuery`
-       (the team as a subject, step 3, K1) instead of a
-       :class:`~association.query.compose.core.Query` - answered through
-       :func:`~association.query.compose.team.run_team` and
-       :func:`~association.query.compose.sentence.team_sentence` instead, the
-       same ``Unsupported``/``Refused`` handling either way.
-
-    .. versionchanged:: 4.4.0
-       Checks :func:`~association.query.templates.common.check_coverage`
-       before compiling and appends
-       :func:`~association.query.templates.common.coverage_caveat` after -
-       the same two calls every relation template makes, which this package
-       carried neither of before (#197, ISSUES.md: a season under a table's
-       floor was answered as confidently as a modern one). The team subject
-       makes the same two calls its own way
-       (:func:`~association.query.compose.team.team_coverage_refusal`,
-       inside :func:`~association.query.compose.team.run_team`).
-
-    .. versionchanged:: 4.4.0
-       Appends ``out["notes"]`` - the box-score caveats
-       :func:`~association.query.compose.core._box_notes` reads off the
-       ``Narrowed``/player/span :func:`~association.query.compose.core.run`
-       builds internally (#197, ISSUES.md, the box-score-CAVEAT half: the
-       coverage-floor half was fixed first and is a separate call, above).
-       ``TeamQuery`` carries none, since the team relation has no box-score
-       equivalent to check (:mod:`association.query.compose.team` reads
-       ``games``/``team_season_stats``, never a player's box score).
-
     .. versionchanged:: 5.0.0
-       An intent's own default point is answered in its template's own words
-       and ``data`` (:func:`~association.query.compose.present.present`,
-       plan item 2 step 2a), and no partial-season caveat is appended here:
-       the agent appends :func:`~association.query.templates.common.coverage_caveat`
-       to a composed answer as it does to a template's, and this appending it
-       as well printed the note twice.
-
-    .. versionchanged:: 5.0.0
-       Reads the question once into a :class:`~association.query.reading.Reading`
-       (:func:`~association.query.compose.move.read_point`), hands it to
-       ``trace`` when given - the agent logs it as the decision record - and
-       plans it (:func:`~association.query.compose.plan.plan`).
-
-    .. versionchanged:: 5.0.0
-       Reads the season line as a second source: an unnarrowed player line
-       and a per-season history are said by the templates' own season-line
-       readers (``source="seasons"``, :mod:`~association.query.compose.present`),
-       and a history they decline falls back to the game-level reading
-       (:func:`~association.query.compose.move.games_reading`).
-
-    .. versionchanged:: 5.0.0
-       Answers a team's record above and below its own line in
-       ``record_when``'s own words
-       (:func:`~association.query.compose.present.present_team`), and takes
-       ``declined``, called with the reason when the compiler has no reading
-       of the point - the reason a question it alone answers falls through.
-    """
-    try:
-        point = read_point(ctx.con, intent, slots, question, subject)
-    except Unsupported as exc:
-        if declined is not None:
-            declined(str(exc))
-        return None
-    except Refused as exc:
-        return exc.result
-    return _answer_point(ctx, intent, point, trace, declined)
-
-
-def answer_reading(ctx: TemplateContext, reading: Reading, trace: Callable[[Reading], None] | None = None, declined: Callable[[str], None] | None = None) -> TemplateResult | None:
-    """The point the parser read for a question (:attr:`Reading.point`,
-    :func:`~association.query.parse.reading_from_route`), answered - planned
-    and run, never read from the question again. The parser's own verdict
-    stands where it has no point: its refusal is the answer
-    (:attr:`Reading.point_refusal`), and a decline is ``None``, with the
-    reason given to ``declined``. Otherwise exactly :func:`answer`'s outcome.
-
-    .. versionadded:: 5.0.0
+       Takes the :class:`~association.query.reading.Reading` the parser
+       settled, in place of an intent, a slot dict and the question it read
+       its own point from (ROADMAP plan item 6, step (f)): the compiler plans
+       and runs, and never reads the question. Until then this was
+       ``answer_reading``, beside the slot-taking ``answer``.
     """
     if reading.point_refusal is not None:
         # A copy: the caller appends its notes to the answer it is handed.
@@ -222,7 +156,7 @@ def answer_reading(ctx: TemplateContext, reading: Reading, trace: Callable[[Read
 def _answer_point(ctx: TemplateContext, intent: str, point: Reading, trace: Callable[[Reading], None] | None, declined: Callable[[str], None] | None) -> TemplateResult | None:
     """``point`` planned and run: the team subject's reader, the intent's
     own presenter, or the compiler's own sentence - :func:`answer` and
-    :func:`answer_reading`'s shared tail."""
+    :func:`answer`'s tail."""
     try:
         if trace is not None:
             trace(point)

@@ -491,12 +491,13 @@ model's. Two things follow, and both matter when you add a shape:
 - **A template's `TemplateUnsupported` gets one more deterministic try before
   the agent does.** `query/compose` sits between the two: when `check_scope`
   or the template itself raises, `agent.py`'s `_try_compose` offers
-  `compose.answer_reading(ctx, reading)` the same point on the relation the
+  `compose.answer(ctx, reading)` the same point on the relation the
   template could not narrow to - the point the parser read from the
   question's words once (`Reading.point`, `parse.reading_from_route`), so
   the compiler plans and runs it and never reads the question itself.
-  `compose.answer(ctx, intent, slots, question)` still reads its own point,
-  for a caller that holds slots rather than a Reading (the tests, scripts). A `TemplateResult` back is
+  There is no slot door: a caller with a Reading of its own (a test handing
+  the compiler a subject it built) reads the point into it with
+  `parse.with_point`. A `TemplateResult` back is
   answered exactly like a template's own - `answered_by="fast"`, the intent
   kept, the same name-reading and coverage-caveat attachment - including when
   that result is itself a refusal (a clarification, a "no match"): looking at
@@ -534,7 +535,7 @@ model's. Two things follow, and both matter when you add a shape:
   narrows through - never a hand-written clause here either. A box-score
   count (3-pointers made, not a game-outcome figure) narrowed to a window
   refuses rather than answering the season instead, since the relation has no
-  box-score join yet. `move_point` tries `team_move_point` before the
+  box-score join yet. `read_point` tries `team_read_point` before the
   league-wide reading, and nothing after the parser restores a subject:
   "magic" is also Magic Johnson's given name, and the compiler's own
   dropped-subject restoration (`repair()`, gone with plan item 6, step (e))
