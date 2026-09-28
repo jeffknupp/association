@@ -24,7 +24,7 @@ Two properties are not negotiable on the way there:
   a follow-up wording reaches the alternative.** (Jeff, 2026-09-21.) A silent
   default is still the worst failure; a stated one is an answer.
 
-## Where it stands (2026-09-27, `8c808b7`)
+## Where it stands (2026-09-28, `0ede991`)
 
 **162 of 175 questions (92.6%), 151 of 166 families (91.0%)** on the live
 yardstick run: 3 wrong, 6 partial, 4 fall-throughs, a median of 1.2 seconds
@@ -155,9 +155,10 @@ text as written is the last section of `ROADMAP-HISTORY.md`.
      carries it (`Reading.point`); the compiler plans and runs the point it
      is handed (`compose.answer_reading`) and repairs no slot; a position
      group is a subject, never a player; and the intent the words assign is
-     a recorded decision (#258) (`1702db8`, `31c87f9`, `0ede991`). The word
-     tables still live beside the compiler (`compose.move.read_point`), and
-     the parser is their one caller on the live path.
+     a recorded decision (#258) (`1702db8`, `31c87f9`, `0ede991`; live
+     162/175, no answer moved). The word tables still live beside the
+     compiler (`compose.move.read_point`), and the parser is their one
+     caller on the live path.
    - (f) the planner replaces `check_scope`, and (g) the templates the
      compiler can reproduce go - next steps 1 and 2.
 
@@ -202,6 +203,7 @@ A change is checked by four nets, cheapest first:
 | the parser reads the question (item 6, step c) | `efef90d` | 162 / 175 (92.6%) | 151 / 166 (91.0%) |
 | one writer: the router and the repair chain deleted (item 6, step d, part 3) | `a884272` | 162 / 175 (92.6%), no answer moved | 151 / 166 (91.0%) |
 | four templates retired: the compiler answers them alone (item 6, step d, part 4) | `8c808b7` | 162 / 175 (92.6%), no answer moved | 151 / 166 (91.0%) |
+| the compiler's reading moved into the parser (item 6, step e) | `0ede991` | 162 / 175 (92.6%), no answer moved | 151 / 166 (91.0%) |
 
 ## How it got here
 
@@ -236,7 +238,8 @@ ends.
   `player_history` alone, in their words.
 - **2026-09-27, item 6 (e):** the compiler's reading of the question moved
   into the parser - the Reading carries the compiler's point, the compiler
-  repairs no slot, and the intent the words assign is a decision.
+  repairs no slot, and the intent the words assign is a decision: 162, no
+  answer moved.
 
 ## The rules a spike keeps
 
